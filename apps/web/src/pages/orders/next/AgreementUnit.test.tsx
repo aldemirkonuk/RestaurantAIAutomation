@@ -73,6 +73,10 @@ vi.mock('@/hooks/queries/useProviderQueries', () => ({
 
 import { AgreementSheet } from './AgreementSheet';
 import { agreementTotal, describeStatedPrice } from './price-unit';
+import { fmtMoney } from './format';
+
+/** Says a figure in dollars, for the assertions that mean a USD order. */
+const usd = (n: number) => fmtMoney(n, 'USD');
 
 function mount() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -139,6 +143,7 @@ describe('the total is drawn from the pair and says so', () => {
   it('totals five cases of twelve at $420 per case as $2,100, not $25,200', () => {
     mount();
     fillCaseOrder();
+    fireEvent.change(screen.getByLabelText('Currency'), { target: { value: 'USD' } });
     fireEvent.change(screen.getByTestId('price-uom'), { target: { value: 'case' } });
     fireEvent.change(screen.getByTestId('price-pack'), { target: { value: '12' } });
 
@@ -153,6 +158,7 @@ describe('the total is drawn from the pair and says so', () => {
   it('totals the same order priced per bottle by the bottle, and calls it ordinary', () => {
     mount();
     fillCaseOrder({ price: '35' });
+    fireEvent.change(screen.getByLabelText('Currency'), { target: { value: 'USD' } });
     fireEvent.change(screen.getByTestId('price-uom'), { target: { value: 'bottle' } });
 
     expect(screen.getByTestId('agreement-total').textContent).toBe('$2,100.00');
@@ -273,17 +279,17 @@ describe('the lists are honest about not having been read', () => {
 
 describe('the page arithmetic agrees with the words it prints', () => {
   it('describes a case price with its pack and a bottle price without one', () => {
-    expect(describeStatedPrice(420, { priceUom: 'case', pricePackSize: 12 })).toBe(
+    expect(describeStatedPrice(420, { priceUom: 'case', pricePackSize: 12 }, usd)).toBe(
       '$420.00 per case (12 bottles)',
     );
-    expect(describeStatedPrice(35, { priceUom: 'bottle', pricePackSize: 1 })).toBe(
+    expect(describeStatedPrice(35, { priceUom: 'bottle', pricePackSize: 1 }, usd)).toBe(
       '$35.00 per bottle',
     );
   });
 
   it('groups thousands like every other figure on the page (ORD-W14)', () => {
-    expect(describeStatedPrice(1090, null)).toBe('$1,090.00');
-    expect(describeStatedPrice(2400, { priceUom: 'case', pricePackSize: 6 })).toBe(
+    expect(describeStatedPrice(1090, null, usd)).toBe('$1,090.00');
+    expect(describeStatedPrice(2400, { priceUom: 'case', pricePackSize: 6 }, usd)).toBe(
       '$2,400.00 per case (6 bottles)',
     );
   });

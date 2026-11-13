@@ -22,7 +22,10 @@
  * bargain, and no later reader can tell them apart.
  */
 
-import { fmtMoney } from './format';
+/** How a figure is said: callers pass the order's own currency. Default: bare, never `$` (ADR 0117). */
+export type Say = (n: number) => string;
+const bare: Say = (n) => n.toFixed(2);
+
 
 /**
  * The seven the database accepts.
@@ -98,10 +101,11 @@ export interface StatedPriceUnit {
 export function describeStatedPrice(
   price: number | null | undefined,
   stated: StatedPriceUnit | null,
+  say: Say = bare,
 ): string | null {
   if (price == null || !Number.isFinite(Number(price))) return null;
   // Grouped like every other figure on the page ($1,090.00, not $1090.00; ORD-W14).
-  const money = fmtMoney(Number(price));
+  const money = say(Number(price));
   if (!stated) return money;
   const pack =
     stated.pricePackSize > 1 ? ` (${stated.pricePackSize} bottles)` : '';
@@ -199,8 +203,11 @@ export function agreementTotal(input: {
    * what they were before phase 2 — no existing figure moves.
    */
   fees?: AgreementFees;
+  /** Says a figure in the order's own currency. Default: the bare figure. */
+  say?: Say;
 }): AgreementTotal | null {
   const { price, stated, quantity, unitType } = input;
+  const say = input.say ?? bare;
   if (price == null || quantity == null || !Number.isFinite(price)) return null;
 
   const orderOpaque = OPAQUE.has(unitType);
@@ -225,13 +232,13 @@ export function agreementTotal(input: {
           (fees.freight ?? 0)) *
           100,
       ) / 100;
-    const parts = [`Goods $${goods.toFixed(2)}`];
+    const parts = [`Goods ${say(goods)}`];
     if (fees.allowance !== null)
-      parts.push(`less allowance $${fees.allowance.toFixed(2)}`);
+      parts.push(`less allowance ${say(fees.allowance)}`);
     if (fees.deposit !== null)
-      parts.push(`plus deposit $${fees.deposit.toFixed(2)}`);
+      parts.push(`plus deposit ${say(fees.deposit)}`);
     if (fees.freight !== null)
-      parts.push(`plus freight $${fees.freight.toFixed(2)}`);
+      parts.push(`plus freight ${say(fees.freight)}`);
     // NO trailing "= $total": the sheet prints the figure above this sentence
     // and the ledger row prints it after, so carrying it here printed it twice
     // on the row. Measured in the first capture of this pass.
@@ -246,7 +253,7 @@ export function agreementTotal(input: {
   if (!stated) {
     return goodsOnly(
       price * bottlesTotal,
-      `${bottlesTotal} × $${price.toFixed(2)} — no price unit stated, so this uses the old per-bottle convention.`,
+      `${bottlesTotal} × ${say(price)} — no price unit stated, so this uses the old per-bottle convention.`,
     );
   }
 
@@ -254,7 +261,7 @@ export function agreementTotal(input: {
     if (stated.priceUom === unitType) {
       return goodsOnly(
         price * quantity,
-        `${quantity} × $${price.toFixed(2)} per ${unitType}.`,
+        `${quantity} × ${say(price)} per ${unitType}.`,
       );
     }
     return {
@@ -267,8 +274,8 @@ export function agreementTotal(input: {
   return goodsOnly(
     Math.round(price * unitsBought * 100) / 100,
     stated.pricePackSize === 1
-      ? `${bottlesTotal} × $${price.toFixed(2)} per ${stated.priceUom}.`
-      : `${bottlesTotal} bottles ÷ ${stated.pricePackSize} = ${unitsBought} ${stated.priceUom}${unitsBought === 1 ? '' : 's'} × $${price.toFixed(2)}.`,
+      ? `${bottlesTotal} × ${say(price)} per ${stated.priceUom}.`
+      : `${bottlesTotal} bottles ÷ ${stated.pricePackSize} = ${unitsBought} ${stated.priceUom}${unitsBought === 1 ? '' : 's'} × ${say(price)}.`,
   );
 }
 
@@ -280,13 +287,13 @@ export function agreementTotal(input: {
  * and does not need announcing. Absence of a READ does — see
  * `ROW_FEES_NOT_READ`.
  */
-export function describeFees(fees: AgreementFees): string | null {
+export function describeFees(fees: AgreementFees, say: Say = bare): string | null {
   const parts = [
     fees.allowance !== null
-      ? `an allowance of $${fees.allowance.toFixed(2)}`
+      ? `an allowance of ${say(fees.allowance)}`
       : null,
-    fees.deposit !== null ? `a deposit of $${fees.deposit.toFixed(2)}` : null,
-    fees.freight !== null ? `freight of $${fees.freight.toFixed(2)}` : null,
+    fees.deposit !== null ? `a deposit of ${say(fees.deposit)}` : null,
+    fees.freight !== null ? `freight of ${say(fees.freight)}` : null,
   ].filter(Boolean);
   return parts.length ? parts.join(', ') : null;
 }

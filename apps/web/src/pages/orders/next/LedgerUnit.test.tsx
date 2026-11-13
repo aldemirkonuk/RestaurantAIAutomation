@@ -64,6 +64,7 @@ function wire(over: Record<string, unknown> = {}) {
     bottlesTotal: 60,
     finalPrice: 420,
     totalCost: 2100,
+    currency: 'USD',
     status: 'PENDING',
     requestedAt: '2026-09-01T10:00:00Z',
     wineName: 'Barolo Riserva',

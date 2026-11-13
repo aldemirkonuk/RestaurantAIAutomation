@@ -285,7 +285,7 @@ export default function OrdersNext() {
             </span>
             <Tally
               value={data.month.thisMonth}
-              format={fmtMoneyWhole}
+              format={(n) => fmtMoneyWhole(n, null)}
               style={{
                 display: 'block',
                 fontFamily: MONO,
@@ -297,7 +297,7 @@ export default function OrdersNext() {
               }}
             />
             <span style={{ fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
-              last month {data.month.lastMonth === null ? EM : fmtMoneyWhole(data.month.lastMonth)}
+              last month {data.month.lastMonth === null ? EM : fmtMoneyWhole(data.month.lastMonth, null)}
               {data.month.unpricedThisMonth > 0 &&
                 ` · ${data.month.unpricedThisMonth} unpriced — excluded, not zeroed`}
             </span>

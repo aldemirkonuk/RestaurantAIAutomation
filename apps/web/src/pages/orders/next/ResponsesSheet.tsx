@@ -353,7 +353,9 @@ export function ResponsesSheet({
     );
   };
 
-  const priceLine = describeStatedPrice(row.unitPrice, row.priceUnit.stated);
+  const priceLine = describeStatedPrice(row.unitPrice, row.priceUnit.stated, (n) =>
+    fmtMoney(n, row.currency),
+  );
   const orderedLine = describeOrderedQuantity({
     quantity: row.quantity,
     unitType: row.unitType,
@@ -396,7 +398,7 @@ export function ResponsesSheet({
                 <div style={{ marginTop: 4 }}>
                   <HoldToApprove
                     key={`confirm-${row.id}-${attempt}`}
-                    label={`Hold to confirm · ${fmtMoney(row.total)}`}
+                    label={`Hold to confirm · ${fmtMoney(row.total, row.currency)}`}
                     approvedLabel="Confirmed"
                     disabled={approve.isPending || cancel.isPending || heldForApproval}
                     onApprove={onApprove}
@@ -541,7 +543,7 @@ export function ResponsesSheet({
             </span>
           </Field>
           <Field name="Order total">
-            <span style={{ fontFamily: MONO, fontSize: 12.5 }}>{fmtMoney(row.total)}</span>
+            <span style={{ fontFamily: MONO, fontSize: 12.5 }}>{fmtMoney(row.total, row.currency)}</span>
           </Field>
         </div>
 

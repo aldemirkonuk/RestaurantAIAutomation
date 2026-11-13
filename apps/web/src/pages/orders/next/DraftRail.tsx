@@ -745,7 +745,8 @@ function DraftCard({
             flex: "none",
           }}
         >
-          {qty !== null ? `${qty} × ${fmtMoney(price)}` : fmtMoney(total)}
+          {/* The draft payload names no currency: bare figure, never a dollar sign. */}
+          {qty !== null ? `${qty} × ${fmtMoney(price, null)}` : fmtMoney(total, null)}
         </span>
         <span
           aria-hidden
