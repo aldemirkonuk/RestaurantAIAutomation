@@ -1950,6 +1950,10 @@ describe('ReportsNext — the sheet keeps its places', () => {
     expect(screen.getByRole('button', { name: 'Ruling off…' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Put it all back' })).toBeDisabled();
     expect(screen.queryByText('Ruled off.')).toBeNull();
+    // The paper is held still while the write is in flight: no cutting can be
+    // taken off or swapped, so no edit is made that the landing save drops.
+    expect(screen.queryByText('Take off')).toBeNull();
+    expect(screen.queryByLabelText(/^Show instead of /)).toBeNull();
     await act(async () => land());
     expect(screen.getByText('Ruled off.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Arrange the sheet' })).toBeEnabled();
