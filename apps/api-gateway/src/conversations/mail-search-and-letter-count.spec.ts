@@ -159,6 +159,7 @@ describe("mailSearchOf", () => {
   it("reads null and undefined as no search, and keeps inner spaces", () => {
     expect(mailSearchOf(undefined)).toBeNull();
     expect(mailSearchOf(null)).toBeNull();
+    expect(mailSearchOf("   ")).toBeNull();
     expect(mailSearchOf(" po 12 ")).toBe("po 12");
   });
   it("refuses a number or an array", () => {
