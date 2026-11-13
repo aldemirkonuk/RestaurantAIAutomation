@@ -201,6 +201,17 @@ describe('MenuNext — a dish is not listed among the drinks (menu walk 2026-11-
     expect(screen.getAllByTestId('menu-kitchen-row')).toHaveLength(1);
   });
 
+  it('a line whose section the owner chose on the first proof reads "set by hand: its section", never "flagged" (walk 2026-11-12)', async () => {
+    mockGetMenu.mockResolvedValue(
+      menu({ items: [line({ name: 'Soave', category: 'white', status: 'flagged', flag_reason: 'corrected', flag_field: 'category' })] }),
+    );
+    mount();
+    const chip = await screen.findByTestId('menu-line-status');
+    expect(chip).toHaveTextContent('set by hand: its section');
+    expect(chip).toHaveAttribute('title', 'A manager set its section after the menu was read. Nothing more is needed.');
+    expect(screen.getByTestId('menu-row')).not.toHaveTextContent(/flagged/i);
+  });
+
   it('a menu of drinks only shows no kitchen group', async () => {
     mockGetMenu.mockResolvedValue(menu());
     mount();

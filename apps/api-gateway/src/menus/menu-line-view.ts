@@ -1,5 +1,6 @@
 import { policyFor } from "../ask-readings/reading-data-classes";
 import { MENU_CATEGORY_VOCABULARY } from "./wine-extract-item.interface";
+import { EDITABLE_MENU_ITEM_FIELDS, type EditableMenuItemField } from "./dto/review-menu-item.dto";
 
 /**
  * What one menu line read says to the person reading it (ADR 0309 option 1c,
@@ -73,6 +74,31 @@ export const MEMBER_LINE_KEYS = [
   "price_flag_note",
   "created_at",
 ] as const;
+
+/**
+ * Why a line's status is 'flagged', from the closed set of notes the gateway
+ * itself writes (menus.service.ts: a manager's correction, a line added by
+ * hand during review, a typed line past the free plan's limit). The note's
+ * text never leaves the gateway -- only this reason and, for a correction,
+ * which field was corrected (one of EDITABLE_MENU_ITEM_FIELDS). Onboarding
+ * walk 2026-11-12: the owner chose a line's section on the first proof and
+ * /menu then called that line "flagged", with nothing to say why.
+ */
+export type FlagReason = "corrected" | "added_by_hand" | "past_free_limit" | "unknown";
+
+export function flagReasonOf(
+  status: unknown,
+  notes: unknown,
+): { reason: FlagReason; field: EditableMenuItemField | null } | null {
+  if (status !== "flagged") return null;
+  const text = typeof notes === "string" ? notes.trim() : "";
+  const corrected = /^Manager corrected ([a-z_]+)$/.exec(text);
+  if (corrected && (EDITABLE_MENU_ITEM_FIELDS as readonly string[]).includes(corrected[1]))
+    return { reason: "corrected", field: corrected[1] as EditableMenuItemField };
+  if (text === "Manually added during review") return { reason: "added_by_hand", field: null };
+  if (text.startsWith("Free tier:")) return { reason: "past_free_limit", field: null };
+  return { reason: "unknown", field: null };
+}
 
 /** Who a line read is for. `rawLine` true sends the raw line itself. */
 export interface LineView {
@@ -158,6 +184,13 @@ export function lineForViewer(row: Record<string, unknown>, view: LineView): Rec
     if (Object.prototype.hasOwnProperty.call(row, key)) out[key] = row[key];
   }
   out.kitchen_line = isKitchenLine(row.category, raw, row);
+  // Only when the select read the status: a reader that did not ask for it
+  // is not told a reason for a status it never sent.
+  if (Object.prototype.hasOwnProperty.call(row, "status")) {
+    const flag = flagReasonOf(row.status, row.review_notes);
+    out.flag_reason = flag?.reason ?? null;
+    out.flag_field = flag?.field ?? null;
+  }
   if (view.rawLine) {
     out[RAW_LINE_COLUMN] = raw ?? null;
   } else if (typeof raw === "string" && raw.length > 0) {
