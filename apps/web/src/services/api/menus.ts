@@ -223,6 +223,13 @@ export interface MenuLine {
   /** Blank menu price: the house kept its last known one, or had none either; a manager can change it. */
   price_flag?: 'blank_kept_last_known' | 'blank_no_house_price' | null
   price_flag_note?: string | null
+  /**
+   * Why `status` is 'flagged', from the gateway's own notes (menu-line-view.ts
+   * `flagReasonOf`); null when it is not. Absent from an older gateway.
+   */
+  flag_reason?: 'corrected' | 'added_by_hand' | 'past_free_limit' | 'unknown' | null
+  /** For a correction: the field a manager corrected. */
+  flag_field?: string | null
   created_at: string
   /**
    * The gateway's kitchen split (menu-line-view.ts isKitchenLine), sent to every

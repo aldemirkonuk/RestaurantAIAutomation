@@ -48,6 +48,7 @@ import { settingsApi } from '../../../services/api/settings';
 import { formatMoney } from '@/lib/currency';
 import { Wordmark } from '@/components/mudavym';
 import { isKitchenLine } from '../../../lib/firstProof';
+import { lineStatusWords } from './menu-line-status';
 import '../../cellar/next/cellar-next.css';
 
 const EM = '—';
@@ -254,9 +255,21 @@ function MenuRow({ line, currency, onDiscard, discarding, testId = 'menu-row' }:
       <td className="cl-num">{money(line.by_glass_price, currency)}</td>
       <td className="cl-num">{money(line.bottle_price, currency)}</td>
       <td>
-        <span className="cl-chip" data-seal={line.status === 'approved' ? 'true' : 'false'}>
-          {line.status.replace('_', ' ')}
-        </span>
+        {(() => {
+          const s = lineStatusWords(line);
+          return (
+            <>
+              <span className="cl-chip" data-seal={s.sealed ? 'true' : 'false'} title={s.why ?? undefined} data-testid="menu-line-status">
+                {s.words}
+              </span>
+              {s.noteShown && s.why ? (
+                <span className="cl-note" style={{ display: 'block' }} data-testid="menu-line-status-why">
+                  {s.why}
+                </span>
+              ) : null}
+            </>
+          );
+        })()}
         {line.price_flag ? (
           <span className="cl-note" style={{ display: 'block' }} data-testid="menu-price-flag" title={line.price_flag_note ?? undefined}>
             {line.price_flag_note ?? 'A blank price kept the last known one.'}

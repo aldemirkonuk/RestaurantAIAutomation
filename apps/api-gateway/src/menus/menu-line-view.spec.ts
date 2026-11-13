@@ -1,4 +1,4 @@
-import { isKitchenLine, lineForViewer, seesRawLine, KITCHEN_HINTS, MEMBER_LINE_KEYS } from "./menu-line-view";
+import { flagReasonOf, isKitchenLine, lineForViewer, seesRawLine, KITCHEN_HINTS, MEMBER_LINE_KEYS } from "./menu-line-view";
 import { MenusController, MenuVersionsController } from "./menus.controller";
 import { ROLE_POLICY } from "../ask-readings/reading-data-classes";
 
@@ -134,5 +134,32 @@ describe("the menu read routes pass the viewer's view", () => {
     const c = new MenuVersionsController({ getVersion } as any, {} as any);
     await c.one("rest-1", role as string | null, "11111111-1111-4111-8111-111111111111");
     expect(getVersion).toHaveBeenCalledWith("rest-1", "11111111-1111-4111-8111-111111111111", { rawLine });
+  });
+});
+
+describe("why a line is flagged (onboarding walk 2026-11-12)", () => {
+  it("reads the gateway's own notes into a closed reason, never sending the note", () => {
+    expect(flagReasonOf("flagged", "Manager corrected category")).toEqual({ reason: "corrected", field: "category" });
+    expect(flagReasonOf("flagged", "Manager corrected bottle_price")).toEqual({ reason: "corrected", field: "bottle_price" });
+    expect(flagReasonOf("flagged", "Manually added during review")).toEqual({ reason: "added_by_hand", field: null });
+    expect(flagReasonOf("flagged", "Free tier: exceeds 25 item limit")).toEqual({ reason: "past_free_limit", field: null });
+    // A field outside the editable list, or any other note, is not trusted as a correction.
+    expect(flagReasonOf("flagged", "Manager corrected cost_price")).toEqual({ reason: "unknown", field: null });
+    expect(flagReasonOf("flagged", null)).toEqual({ reason: "unknown", field: null });
+    expect(flagReasonOf("approved", "Manager corrected category")).toBeNull();
+  });
+
+  it("lineForViewer says the reason to every member and drops review_notes", () => {
+    const row = { id: "a", name: "Soave", category: "white", status: "flagged", review_notes: "Manager corrected category" };
+    for (const rawLine of [false, true]) {
+      const out = lineForViewer(row, { rawLine });
+      expect(out.flag_reason).toBe("corrected");
+      expect(out.flag_field).toBe("category");
+      expect("review_notes" in out).toBe(false);
+    }
+    const ok = lineForViewer({ id: "b", name: "Gavi", status: "approved", review_notes: null }, { rawLine: false });
+    expect(ok.flag_reason).toBeNull();
+    expect(ok.flag_field).toBeNull();
+    expect(MEMBER_LINE_KEYS as readonly string[]).not.toContain("review_notes");
   });
 });

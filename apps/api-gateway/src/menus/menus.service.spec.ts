@@ -314,7 +314,10 @@ describe("MenusService line reads — a line's raw line is a holder's (ADR 0145 
   });
 
   it("LINE_SELECT asks for exactly the member keys plus the raw line, which only lineForViewer may let out", () => {
-    expect(LINE_SELECT.split(",").map((c) => c.trim()).sort()).toEqual([...MEMBER_KEYS, "raw_extracted_text"].sort());
+    expect(LINE_SELECT.split(",").map((c) => c.trim()).sort()).toEqual([...MEMBER_KEYS, "raw_extracted_text", "review_notes"].sort());
+    // review_notes is read only to say why a line is flagged (flag_reason,
+    // flag_field); its text is never a member key.
+    expect(MEMBER_LINE_KEYS as readonly string[]).not.toContain("review_notes");
     expect([...MEMBER_LINE_KEYS].sort()).toEqual([...MEMBER_KEYS].sort());
   });
 
@@ -326,9 +329,9 @@ describe("MenusService line reads — a line's raw line is a holder's (ADR 0145 
     const barolo = byName(r.items, "Barolo");
     const tiramisu = byName(r.items, "Tiramisu");
     const soave = byName(r.items, "Soave");
-    expect(Object.keys(barolo).sort()).toEqual([...MEMBER_KEYS, "kitchen_line", "raw_line_withheld"].sort());
-    expect(Object.keys(tiramisu).sort()).toEqual([...MEMBER_KEYS, "kitchen_line", "raw_line_withheld"].sort());
-    expect(Object.keys(soave).sort()).toEqual([...MEMBER_KEYS, "kitchen_line"].sort());
+    expect(Object.keys(barolo).sort()).toEqual([...MEMBER_KEYS, "kitchen_line", "flag_reason", "flag_field", "raw_line_withheld"].sort());
+    expect(Object.keys(tiramisu).sort()).toEqual([...MEMBER_KEYS, "kitchen_line", "flag_reason", "flag_field", "raw_line_withheld"].sort());
+    expect(Object.keys(soave).sort()).toEqual([...MEMBER_KEYS, "kitchen_line", "flag_reason", "flag_field"].sort());
     expect(barolo.raw_line_withheld).toBe(true);
     // The kitchen split survives withholding: Tiramisu's only kitchen clue is
     // its unmapped "Dessert" cell.
@@ -348,7 +351,7 @@ describe("MenusService line reads — a line's raw line is a holder's (ADR 0145 
     const r: any = await service.getVersion("rest-1", "menu-1", { rawLine: seesRawLine("owner") });
     expect(Object.keys(r).sort()).toEqual(["items", "namesReadable", "namesReason", "version"]);
     const barolo = byName(r.items, "Barolo");
-    expect(Object.keys(barolo).sort()).toEqual([...MEMBER_KEYS, "kitchen_line", "raw_extracted_text"].sort());
+    expect(Object.keys(barolo).sort()).toEqual([...MEMBER_KEYS, "kitchen_line", "flag_reason", "flag_field", "raw_extracted_text"].sort());
     expect(barolo.raw_extracted_text).toBe(row.raw_text);
     expect(byName(r.items, "Soave").raw_extracted_text).toBeNull();
     for (const name of ["Barolo", "Tiramisu", "Soave"]) {
@@ -375,7 +378,7 @@ describe("MenusService line reads — a line's raw line is a holder's (ADR 0145 
     for (const r of [await service.getMenu("rest-1"), await service.getMenu("rest-1", { rawLine: false })] as any[]) {
       expect(Object.keys(r).sort()).toEqual([...ROOT_KEYS, "rawLineWithheld"].sort());
       expect(r.rawLineWithheld).toBe(true);
-      expect(Object.keys(byName(r.items, "Barolo")).sort()).toEqual([...MEMBER_KEYS, "kitchen_line", "raw_line_withheld"].sort());
+      expect(Object.keys(byName(r.items, "Barolo")).sort()).toEqual([...MEMBER_KEYS, "kitchen_line", "flag_reason", "flag_field", "raw_line_withheld"].sort());
       expect(byName(r.items, "Tiramisu").kitchen_line).toBe(true);
       const text = JSON.stringify(r);
       for (const secret of SECRETS) expect(text).not.toContain(secret);
