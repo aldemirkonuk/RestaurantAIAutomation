@@ -92,6 +92,18 @@ describe('the till offers bars and a line', () => {
     expect(view.table!.cols.map((c) => c.label)).toEqual(['Day', 'Taken']);
   });
 
+  it('the average check is drawn on its own axis beside the takings, and the checks beside it', () => {
+    const view = till.view(read(COUNTED), ctx);
+    const plan = planCombo(view.cats!, { bars: 'value', line: 'avg' })!;
+    expect(plan.line.label).toBe('Average check');
+    expect(plan.split).toBe(true);
+    expect(planCombo(view.cats!, { bars: 'checks', line: 'avg' })!.split).toBe(true);
+  });
+
+  it('a window with no day sent offers nothing to combine', () => {
+    expect(tillMeasures(read({ ...COUNTED, dailySeries: [] }), ['2026-11-11'], moneyIn('TRY'))).toBeUndefined();
+  });
+
   it('a day of takings with no check counted has no average, never a division by zero', () => {
     const w = read({ ...COUNTED, dailySeries: [{ date: '2026-11-11', revenue: 0, checks: 0 }] });
     const m = tillMeasures(w, ['2026-11-11'], moneyIn('TRY'))!;
