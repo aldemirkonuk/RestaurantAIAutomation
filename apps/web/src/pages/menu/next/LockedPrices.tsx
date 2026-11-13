@@ -30,6 +30,7 @@ import {
 } from '../../../services/api/pricing';
 import { useAuthStore } from '../../../stores';
 import { formatMoney } from '../../../lib/currency';
+import { formatHousePercent } from '../../../lib/house-number';
 import { useHouseCurrencyCode } from '../../../hooks/queries/useHouseCurrencyCode';
 
 const EM = '—';
@@ -61,11 +62,42 @@ function readPrice(raw: string): number | null {
   return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null;
 }
 
+/** A percent as the advice states it: whole when whole, else one decimal, in the house's form. */
+function pct(points: number, currency: string | null): string {
+  const r = Math.round(points * 100) / 100;
+  return formatHousePercent(r, currency, { digits: Number.isInteger(r) ? 0 : 1 });
+}
+
+/**
+ * The off-target advice in the house's own numbers (r26 walk: a lira house
+ * read "Raise the bottle to 194.29 (now 58.00, 70.2% below it)"). The same
+ * sentence the gateway writes (`margin-to-target.ts`), built from its figures
+ * with the house's money and percent. A gateway that does not send the
+ * figures yet gets its own sentence printed as it came.
+ */
+export function adviceWords(l: PriceLock, currency: string | null): string | null {
+  const a = l.advice;
+  if (!a) return null;
+  const { advisedPrice, gapPct, price, currentMarginPct, targetPct } = a;
+  if (
+    (a.state !== 'raise' && a.state !== 'lower') ||
+    advisedPrice == null || gapPct == null || price == null ||
+    currentMarginPct == null || targetPct == null
+  )
+    return a.sentence;
+  const gap = pct(Math.abs(gapPct), currency);
+  const margin = pct(currentMarginPct, currency);
+  const target = pct(targetPct, currency);
+  return a.state === 'raise'
+    ? `Raise the ${l.kind} to ${money(advisedPrice, currency)} (now ${money(price, currency)}, ${gap} below it): today's margin is ${margin}, your target is ${target}.`
+    : `Lower the ${l.kind} to ${money(advisedPrice, currency)} (now ${money(price, currency)}, ${gap} above it): today's margin is ${margin}, above your ${target} target.`;
+}
+
 /** One lock's facts, in words. The menu grouping says "not on the current menu" itself. */
 export function markerWords(l: PriceLock, currency: string | null = null): string[] {
   const out: string[] = [];
   const has = (m: LockMarker) => l.markers.includes(m);
-  if (has('off_target') && l.advice) out.push(`off your target margin: ${l.advice.sentence}`);
+  if (has('off_target') && l.advice) out.push(`off your target margin: ${adviceWords(l, currency)}`);
   if (has('advice_unknown')) out.push(`no advice: ${l.adviceUnknownReason ?? 'the reason was not given'}`);
   if (has('menu_differs')) out.push(`the current menu reads ${money(l.menuPrice, currency)}`);
   if (has('wine_removed')) out.push('the wine was removed from inventory');
