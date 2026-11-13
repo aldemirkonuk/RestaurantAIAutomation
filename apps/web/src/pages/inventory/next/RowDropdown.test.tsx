@@ -603,6 +603,16 @@ describe('Ported acts in the More menu: Mark inactive and Remove from inventory'
     expect(arg.rows[0].id).toBe('i1');
     expect(arg.columns.map((c: { header: string }) => c.header)).toContain('Value at cost');
   });
+
+  // Inventory r28, gap 3: a food's row file says kg and its stock in kg.
+  it('Export this row writes a weighed good in kg and says so', async () => {
+    tableExport.exportTable.mockClear();
+    const m = await menu({ row: row({ stock: 12400, wac: 0.0125 }), uom: 'g' });
+    fireEvent.click(within(m).getByRole('menuitem', { name: 'Export this row' }));
+    const arg = tableExport.exportTable.mock.calls[0][0];
+    const value = (h: string) => arg.columns.find((c: { header: string }) => c.header === h).value(arg.rows[0]);
+    expect([value('Unit'), value('Live'), value('WAC')]).toEqual(['kg', 12.4, 12.5]);
+  });
 });
 
 describe('Name this wine in the opened row (ADR 0192, ported from RowExpansion.tsx:166)', () => {
