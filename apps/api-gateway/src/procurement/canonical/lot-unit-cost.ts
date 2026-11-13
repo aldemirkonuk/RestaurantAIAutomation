@@ -43,7 +43,7 @@ export interface LotCostLine {
   line_total?: number | string | null;
   /** The paper's own glyphs; `uom` / `priceBaseUom` keep a unit we could not map. */
   printed?: unknown;
-  /** What ONE bottle (or keg) of the line holds, in ml, when the paper says (`procurement_document_lines.format_ml`). */
+  /** ml in one bottle or keg of the line, when printed. */
   format_ml?: number | string | null;
 }
 
@@ -94,8 +94,7 @@ export function perBottleLotCost(line: LotCostLine, item?: LotCostItem): LotUnit
 }
 
 function resolve(line: LotCostLine, price: number, item?: LotCostItem): LotUnitCost {
-  // r21: an item kept by volume is costed per one of ITS unit (ml or l), and a
-  // line measured in litres books only into such an item.
+  // r21: an item kept in ml/l is costed per one of it; litres book only there.
   if (item?.uom && isVolumeItemUnit(String(item.uom))) return byVolume(line, price, String(item.uom));
   if (item?.uom && (line.uom === "liter" || line.price_base_uom === "liter"))
     return refuse(`the invoice line is measured in liters, but the item it books into is kept in ${item.uom}s, and a liter is not a number of ${item.uom}s`);
@@ -103,12 +102,9 @@ function resolve(line: LotCostLine, price: number, item?: LotCostItem): LotUnitC
 }
 
 /**
- * An item kept by volume (r21). `5 liter @ 120` into olive oil kept in `ml`
- * is 0.12 a millilitre, and the lot's 5000 ml at 0.12 is the paper's 600.
- * A bottle, case or keg line converts through what ONE of it holds
- * (`format_ml`): `12 bottle @ 30` of 200 ml tonic is 0.15 a millilitre over
- * 2400 ml. With no size printed it is refused by name: a bottle is not a
- * millilitre, and booking it as one is the 1,000-times pour this fixes.
+ * An item kept by volume (r21): `5 liter @ 120` into ml is 0.12 a ml; a bottle,
+ * case or keg converts by what one holds (`format_ml`): `12 bottle @ 30` of
+ * 200 ml is 0.15 a ml. No size printed: refused, never booked as 1 ml a bottle.
  */
 function byVolume(line: LotCostLine, price: number, kept: string): LotUnitCost {
   const uom = asUom(line.uom);
@@ -146,7 +142,7 @@ function byVolume(line: LotCostLine, price: number, kept: string): LotUnitCost {
   return inItem(price, `${asBottles.priced} of ${fmt} ml`, unitsPriced, perUnit, kept);
 }
 
-/** QA 9a by volume: the printed total for the count, in the item's unit, must bear the price out. */
+/** QA 9a by volume: the printed total must bear the price out. */
 function check(line: LotCostLine, perUnit: number, inItemUnits: number | null, kept: string, countedSaid: string): LotUnitCost | null {
   if (!Number.isFinite(perUnit) || perUnit <= 0) return refuse(`a price of ${perUnit} per ${kept} is not a price`);
   const total = asNumber(line.line_total);

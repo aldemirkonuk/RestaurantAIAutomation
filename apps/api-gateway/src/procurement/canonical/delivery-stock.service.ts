@@ -153,11 +153,9 @@ interface LineRow {
   allowance?: number | string | null;
   deposit?: number | string | null;
   printed?: unknown;
-  /** What one bottle or keg of the line holds, in ml, when the paper says (r21). */
   format_ml?: number | string | null;
   /** The house item's own unit (`restaurant_inventory.uom`), attached after the read (R8). */
   item_uom?: string | null;
-  /** Set by `inItemUnits` when a volume line's counts were scaled into the item's unit (r21). */
   in_item_unit?: boolean;
 }
 
@@ -218,17 +216,18 @@ export function shelfQuantity(
   return { ok: true, qty: whole };
 }
 
+/** What one bottle or keg of a line holds in ml, or null when not stated (r21). */
+function sizeMl(v: unknown): number | null {
+  const n = Number(v);
+  return v != null && v !== "" && Number.isFinite(n) && n > 0 ? n : null;
+}
+
 /**
- * What a line puts on the shelf of an item kept by volume, or a litre line on
- * any shelf (r21); null when neither, and the weight and count rules decide.
- *
- * `5 liter` into olive oil kept in `ml` is 5000. A bottle, case or keg line
- * whose paper says what one holds (`format_ml`) is that many ml: `12 bottle` of
- * 200 ml tonic is 2400. A plain count with no size is the count in the item's
- * own unit, the door's rule for weights too (a door-typed line states no size).
- * A case, pack or keg with no size is refused: what it holds is not known. A
- * litre line into an item not kept by volume is refused: 30 liters is not 30
- * kegs, and booking it so was the same 1,000-times error the other way round.
+ * r21: a line into an item kept by volume, or a litre line anywhere; null when
+ * neither. `5 liter` into ml is 5000; `12 bottle` of 200 ml is 2400 (by
+ * `format_ml`); a plain count with no size is the item's unit (the door's
+ * rule); a case or keg with no size, or litres into a non-volume item (30
+ * liters booked as 30 kegs), is refused by name.
  */
 function volumeShelf(
   n: number,
@@ -247,14 +246,13 @@ function volumeShelf(
   }
   if (isMass(line.uom))
     return { ok: false, reason: `this line is weighed in ${line.uom}, but the item it names is kept in ${itemUom}, and a weight is not a volume. It is NOT booked.` };
-  const fmt = Number(line.format_ml);
-  const sized = line.format_ml != null && line.format_ml !== "" && Number.isFinite(fmt) && fmt > 0;
+  const fmt = sizeMl(line.format_ml);
   let exact: number;
   let said: string;
   if (measured) {
     exact = n * (volumeFactor("liter", itemUom) as number);
     said = `${n} liter`;
-  } else if (sized) {
+  } else if (fmt != null) {
     exact = n * fmt * (volumeFactor("ml", itemUom) as number);
     said = `${n} of ${fmt} ml`;
   } else if (PLAIN_COUNT.has(line.uom ?? "")) {
@@ -271,20 +269,14 @@ function volumeShelf(
   return { ok: true, qty: whole };
 }
 
-/**
- * How many of the ITEM's unit one counted unit of the line is, when the line
- * must be scaled to meet the item (R8 weights, r21 volumes); null when it is
- * read as it is. A sized container into an item kept by volume scales by what
- * one holds; its count is already bottles, so the pack is not applied twice.
- */
+/** The item units in one counted unit of the line (R8 weight, r21 volume); null: read as is. */
 function itemScale(line: LineRow): { factor: number; volume: boolean } | null {
   if (!line.item_uom) return null;
   if (isVolumeItemUnit(line.item_uom)) {
     if (line.uom === "liter") return { factor: volumeFactor("liter", line.item_uom) as number, volume: true };
     if (isMass(line.uom)) return null;
-    const fmt = Number(line.format_ml);
-    if (line.format_ml == null || line.format_ml === "" || !Number.isFinite(fmt) || !(fmt > 0)) return null;
-    return { factor: fmt * (volumeFactor("ml", line.item_uom) as number), volume: true };
+    const fmt = sizeMl(line.format_ml);
+    return fmt == null ? null : { factor: fmt * (volumeFactor("ml", line.item_uom) as number), volume: true };
   }
   if (!isMass(line.uom)) return null;
   const f = massFactor(String(line.uom), line.item_uom);
@@ -547,7 +539,6 @@ export class DeliveryStockService {
         notBooked.push({ documentId, lineNo: line.line_no, label, reason: onShelf.reason });
         continue;
       }
-      // Grams and millilitres are not bottles moved (r21: nor is a volume).
       const weighed = itemUnit === "kg" || itemUnit === "g" || itemUnit === "mg" || isVolumeItemUnit(itemUnit);
       bookable.push({ line, inventoryId, qty: onShelf.qty, weighed });
       counted.set(inventoryId, (counted.get(inventoryId) ?? 0) + onShelf.qty);

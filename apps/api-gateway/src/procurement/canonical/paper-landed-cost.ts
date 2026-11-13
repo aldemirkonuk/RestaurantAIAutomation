@@ -92,11 +92,7 @@ export interface PaperLineRow {
   allowance?: number | string | null;
   deposit?: number | string | null;
   printed?: unknown;
-  /**
-   * The counts were scaled into the ITEM's unit by the caller (a litre or a
-   * sized bottle into an item kept in ml, cost-math r21). Its free line then
-   * takes the item's unit, as a weighed one does.
-   */
+  /** Counts already scaled into the item's unit (r21 volume); a free line takes that unit. */
   in_item_unit?: boolean;
 }
 

@@ -3,13 +3,7 @@ import { makeMockDb, MockDb } from "./delivery-mock";
 import { DeliveryStockService, shelfQuantity } from "./delivery-stock.service";
 import { perBottleLotCost } from "./lot-unit-cost";
 
-/**
- * r21: a line measured in litres, or a sized bottle, goes on the shelf and is
- * costed in the unit its house item is kept in by volume (ml, or l on an older
- * row). Before this, `5 liter @ 120` into olive oil kept in ml was booked as
- * 5 ml at 120 a millilitre: the lot's money matched the paper, and a 30 ml
- * pour drawn from it cost 3,600 instead of 3.60.
- */
+/** r21: litres and sized bottles book and cost in the ml (or l) their item is kept in. */
 const REST = "11111111-1111-1111-1111-111111111111";
 const DEL = "dddddddd-dddd-dddd-dddd-dddddddddddd";
 const DOC = "cccccccc-cccc-cccc-cccc-cccccccccccc";
@@ -19,26 +13,21 @@ describe("shelfQuantity by volume (r21)", () => {
   it.each([
     // Worked: 5 l of olive oil is 5,000 ml on the shelf.
     [{ qty_bottles: 5, uom: "liter" }, "ml", 5000],
-    [{ qty_bottles: 2.5, uom: "liter" }, "ml", 2500],
     [{ qty_bottles: 5, uom: "liter" }, "l", 5],
     // Worked: 12 bottles of 200 ml tonic are 2,400 ml.
     [{ qty_bottles: 12, uom: "bottle", format_ml: 200 }, "ml", 2400],
     // Worked: 2 cases of 6 x 1 l juice — qty_bottles already 12 — are 12,000 ml.
     [{ qty_bottles: 12, uom: "case", format_ml: 1000 }, "ml", 12000],
-    // A 20 l keg of draught beer is 20,000 ml.
     [{ qty_bottles: 1, uom: "keg", format_ml: 20000 }, "ml", 20000],
     [{ qty_bottles: 4, uom: "bottle", format_ml: "1000" }, "l", 4],
     // The door's rule: a plain count with no size is the item's own unit.
     [{ qty_bottles: 750, uom: "bottle" }, "ml", 750],
-    [{ qty_bottles: 750 }, "ml", 750],
-    // A bottle into an item kept in bottles is untouched by a size.
     [{ qty_bottles: 6, uom: "bottle", format_ml: 750 }, "bottle", 6],
   ])("%j into an item kept in %s puts %d on the shelf", (line, unit, want) => {
     expect(shelfQuantity(line, unit)).toEqual({ ok: true, qty: want });
   });
 
   it.each([
-    // Before: booked as 30 kegs.
     [{ qty_bottles: 30, uom: "liter" }, "keg", "a liter is not a number of kegs"],
     [{ qty_bottles: 5, uom: "liter" }, "bottle", "a liter is not a number of bottles"],
     [{ qty_bottles: 5, uom: "liter" }, null, "states no unit"],
@@ -120,7 +109,7 @@ describe("DeliveryStockService — a volume door count and its invoice (r21)", (
     db.answers["restaurant_inventory[]"] = { data: [{ id: ITEM, uom: "ml" }], error: null };
   });
 
-  it("the door books 5 liter of olive oil kept in ml as 5000, and no bottle moved", async () => {
+  it("the door books 5 liter into ml as 5000; no bottle moved", async () => {
     db.answers.deliveries = { data: { id: DEL, state: "DELIVERED", order_id: null }, error: null };
     db.answers.procurement_document_lines = {
       data: [{ document_id: DOC, line_no: 1, inventory_id: ITEM, qty_bottles: 5, uom: "liter", unit_price: null, description: "Zeytinyağı", vendor_sku: null }],

@@ -123,12 +123,8 @@ export function massFactor(from: string, to: string): number | null {
 }
 
 /**
- * Volumes (cost-math r21). A house item kept by volume is kept in `ml` (the
- * /inventory "Carry this" form turns a picked litre into 1,000 ml) or, for an
- * older row, in `l`. An invoice line measures in `liter`. Before this, `5 liter
- * @ 120` into olive oil kept in `ml` was booked as 5 ml at 120 a millilitre:
- * the lot's money was right and every pour drawn from it cost 1,000 times too
- * much.
+ * Volumes (r21): an item is kept in `ml` (or `l` on an older row); a line
+ * measures in `liter`. `5 liter @ 120` into ml was booked as 5 ml at 120.
  */
 const MILLILITRES: Readonly<Record<string, number>> = { liter: 1000, l: 1000, ml: 1 };
 
