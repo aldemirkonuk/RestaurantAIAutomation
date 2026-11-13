@@ -181,6 +181,7 @@ const OUTCOME_WORDS: Record<string, (n: number, noun: KindNoun) => string> = {
   no_price: (n) => `${n} line${n === 1 ? '' : 's'} with no price on the menu`,
   not_linked: (n, k) =>
     `${n} line${n === 1 ? '' : 's'} not matched to ${k[0] === 'line' ? "anything on the house's list" : `a ${k[0]}`}, so no price`,
+  kitchen_line: (n) => `${n} kitchen line${n === 1 ? '' : 's'}, kept off the wine list`,
   failed: () => '',
 };
 
@@ -196,7 +197,7 @@ export function makeCurrentSentence(r: MakeCurrentResult, name?: string, lines?:
   const parts = [`${r.lines} line${r.lines === 1 ? '' : 's'}`];
   const keys = Object.keys(r.priceSync);
   if (!keys.includes('changed')) parts.push(OUTCOME_WORDS.changed(0, noun));
-  for (const k of ['changed', 'unchanged', 'stale', 'locked', 'no_price', 'not_linked']) {
+  for (const k of ['changed', 'unchanged', 'stale', 'locked', 'no_price', 'not_linked', 'kitchen_line']) {
     const n = r.priceSync[k] ?? 0;
     if (n > 0) parts.push(OUTCOME_WORDS[k](n, noun));
   }

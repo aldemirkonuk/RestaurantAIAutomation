@@ -160,6 +160,67 @@ describe('MenuNext — reading', () => {
   });
 });
 
+describe('MenuNext — a dish is not listed among the drinks (menu walk 2026-11-11)', () => {
+  it('sets a kitchen line apart under "From the kitchen", and never names the menu "Wine List"', async () => {
+    mockGetMenu.mockResolvedValue(
+      menu({
+        name: 'Wine List',
+        items: [
+          line({ id: 'w1', name: 'Chianti', category: 'red', bottle_price: 48, kitchen_line: false }),
+          line({ id: 'k1', name: 'Tiramisu', category: 'dessert', bottle_price: 9, kitchen_line: true }),
+        ],
+      }),
+    );
+    mount();
+    const drinks = await screen.findAllByTestId('menu-row');
+    expect(drinks.map((r) => r.textContent)).toEqual([expect.stringContaining('Chianti')]);
+    const kitchen = screen.getByTestId('menu-kitchen');
+    expect(kitchen).toHaveTextContent('From the kitchen');
+    expect(kitchen).toHaveTextContent('carried nowhere');
+    expect(screen.getAllByTestId('menu-kitchen-row').map((r) => r.textContent)).toEqual([
+      expect.stringContaining('Tiramisu'),
+    ]);
+    const standing = screen.getByTestId('menu-standing');
+    expect(standing).toHaveTextContent('1 drink on the current menu, and 1 line from the kitchen, set apart below.');
+    expect(standing).not.toHaveTextContent('Wine List');
+  });
+
+  it('works the split out itself when an older gateway sends no kitchen_line', async () => {
+    mockGetMenu.mockResolvedValue(
+      menu({
+        items: [
+          line({ id: 'k1', name: 'Tiramisu', category: 'dessert', bottle_price: 9 }),
+          line({ id: 'w2', name: 'Sauternes', category: 'dessert', vintage: '2015', bottle_price: 80 }),
+        ],
+      }),
+    );
+    mount();
+    expect((await screen.findAllByTestId('menu-row')).map((r) => r.textContent)).toEqual([
+      expect.stringContaining('Sauternes'),
+    ]);
+    expect(screen.getAllByTestId('menu-kitchen-row')).toHaveLength(1);
+  });
+
+  it('a line whose section the owner chose on the first proof reads "set by hand: its section", never "flagged" (walk 2026-11-12)', async () => {
+    mockGetMenu.mockResolvedValue(
+      menu({ items: [line({ name: 'Soave', category: 'white', status: 'flagged', flag_reason: 'corrected', flag_field: 'category' })] }),
+    );
+    mount();
+    const chip = await screen.findByTestId('menu-line-status');
+    expect(chip).toHaveTextContent('set by hand: its section');
+    expect(chip).toHaveAttribute('title', 'A manager set its section after the menu was read. Nothing more is needed.');
+    expect(screen.getByTestId('menu-row')).not.toHaveTextContent(/flagged/i);
+  });
+
+  it('a menu of drinks only shows no kitchen group', async () => {
+    mockGetMenu.mockResolvedValue(menu());
+    mount();
+    await screen.findAllByTestId('menu-row');
+    expect(screen.queryByTestId('menu-kitchen')).not.toBeInTheDocument();
+    expect(screen.getByTestId('menu-standing')).toHaveTextContent('1 drink on the current menu.');
+  });
+});
+
 describe('MenuNext — money states its own house currency', () => {
   it('prints the HOUSE currency, never a bare dollar sign', async () => {
     mockCurrency.mockResolvedValue(currency({ code: 'TRY' }));

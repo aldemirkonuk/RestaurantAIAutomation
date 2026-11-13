@@ -47,9 +47,31 @@ import { LockedPrices } from './LockedPrices';
 import { settingsApi } from '../../../services/api/settings';
 import { formatMoney } from '@/lib/currency';
 import { Wordmark } from '@/components/mudavym';
+import { isKitchenLine } from '../../../lib/firstProof';
+import { lineStatusWords } from './menu-line-status';
 import '../../cellar/next/cellar-next.css';
 
 const EM = '—';
+
+/**
+ * Whether a line on the current menu is a dish (a kitchen line): the gateway's
+ * own word when it sends one (menu-line-view.ts isKitchenLine), else the same
+ * test here. A kitchen line stays on the menu and is carried nowhere (#1085);
+ * the page sets it apart from the drinks instead of listing a dessert among
+ * the wines (menu walk 2026-11-11).
+ */
+export function isKitchenMenuLine(line: MenuLine): boolean {
+  if (typeof line.kitchen_line === 'boolean') return line.kitchen_line;
+  return isKitchenLine({
+    category: line.category,
+    rawText: null,
+    name: line.name,
+    producer: line.producer,
+    vintage: line.vintage,
+    region: line.region,
+    grapeVariety: line.grape_variety,
+  });
+}
 
 /**
  * Money, in the HOUSE's own reporting currency — never a hardcoded `$`.
@@ -217,24 +239,37 @@ function AddItemForm({ onAdd, adding, error }: {
   );
 }
 
-function MenuRow({ line, currency, onDiscard, discarding }: {
+function MenuRow({ line, currency, onDiscard, discarding, testId = 'menu-row' }: {
   line: MenuLine
   currency: string | null
+  testId?: string
   /** Absent for a member who may not discard (ADR 0358 D2: owner or manager only). */
   onDiscard?: () => void
   discarding: boolean
 }) {
   return (
-    <tr data-testid="menu-row">
+    <tr data-testid={testId}>
       <td>{line.name}</td>
       <td className="cl-dim">{line.category ?? EM}</td>
       <td className="cl-dim">{[line.producer, line.region].filter(Boolean).join(', ') || EM}</td>
       <td className="cl-num">{money(line.by_glass_price, currency)}</td>
       <td className="cl-num">{money(line.bottle_price, currency)}</td>
       <td>
-        <span className="cl-chip" data-seal={line.status === 'approved' ? 'true' : 'false'}>
-          {line.status.replace('_', ' ')}
-        </span>
+        {(() => {
+          const s = lineStatusWords(line);
+          return (
+            <>
+              <span className="cl-chip" data-seal={s.sealed ? 'true' : 'false'} title={s.why ?? undefined} data-testid="menu-line-status">
+                {s.words}
+              </span>
+              {s.noteShown && s.why ? (
+                <span className="cl-note" style={{ display: 'block' }} data-testid="menu-line-status-why">
+                  {s.why}
+                </span>
+              ) : null}
+            </>
+          );
+        })()}
         {line.price_flag ? (
           <span className="cl-note" style={{ display: 'block' }} data-testid="menu-price-flag" title={line.price_flag_note ?? undefined}>
             {line.price_flag_note ?? 'A blank price kept the last known one.'}
@@ -268,6 +303,35 @@ export default function MenuNext() {
   const { q, discard, add } = useActiveMenu(activeRestaurantId);
   const currency = useHouseCurrency(activeRestaurantId);
   const [discardingId, setDiscardingId] = useState<string | null>(null);
+  const lines = q.data?.items ?? [];
+  const drinks = lines.filter((l) => !isKitchenMenuLine(l));
+  const kitchen = lines.filter(isKitchenMenuLine);
+  const row = (line: MenuLine, testId?: string) => (
+    <MenuRow
+      key={line.id}
+      line={line}
+      currency={currency}
+      testId={testId}
+      discarding={discard.isPending && discardingId === line.id}
+      onDiscard={!canManage ? undefined : () => {
+        setDiscardingId(line.id);
+        discard.mutate(line.id, { onSettled: () => setDiscardingId(null) });
+      }}
+    />
+  );
+  const head = (
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Section</th>
+        <th>Producer / region</th>
+        <th>Glass</th>
+        <th>Bottle</th>
+        <th>Status</th>
+        <th />
+      </tr>
+    </thead>
+  );
 
   return (
     <div
@@ -303,9 +367,15 @@ export default function MenuNext() {
           </p>
         ) : (
           <>
-            <p className="cl-standing" style={{ fontSize: 15.5 }}>
-              {q.data.items.length} {q.data.items.length === 1 ? 'line' : 'lines'} on{' '}
-              {q.data.name ?? 'the active menu'}.
+            {/* Every kept menu is stored as "Wine List" (the column's default), so
+                the name is not said: a menu with a dessert on it is not a wine
+                list, and the kept menus below are told apart by when they were read. */}
+            <p className="cl-standing" style={{ fontSize: 15.5 }} data-testid="menu-standing">
+              {drinks.length} {drinks.length === 1 ? 'drink' : 'drinks'} on the current menu
+              {kitchen.length > 0
+                ? `, and ${kitchen.length} ${kitchen.length === 1 ? 'line' : 'lines'} from the kitchen, set apart below`
+                : ''}
+              .
             </p>
 
             <div style={{ marginTop: 16 }}>
@@ -330,42 +400,39 @@ export default function MenuNext() {
             </div>
 
             <div style={{ overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10, marginTop: 16 }}>
-              <table className="cl-table" style={{ width: '100%' }}>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Section</th>
-                    <th>Producer / region</th>
-                    <th>Glass</th>
-                    <th>Bottle</th>
-                    <th>Status</th>
-                    <th />
-                  </tr>
-                </thead>
+              <table className="cl-table" style={{ width: '100%' }} aria-label="Drinks on the current menu">
+                {head}
                 <tbody>
-                  {q.data.items.length === 0 ? (
+                  {drinks.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="cl-said" style={{ padding: 14 }}>
-                        Nothing on the menu yet — add the first line above.
+                        {kitchen.length === 0
+                          ? 'Nothing on the menu yet — add the first line above.'
+                          : 'No drink on the menu yet — only the kitchen lines below.'}
                       </td>
                     </tr>
                   ) : (
-                    q.data.items.map((line) => (
-                      <MenuRow
-                        key={line.id}
-                        line={line}
-                        currency={currency}
-                        discarding={discard.isPending && discardingId === line.id}
-                        onDiscard={!canManage ? undefined : () => {
-                          setDiscardingId(line.id);
-                          discard.mutate(line.id, { onSettled: () => setDiscardingId(null) });
-                        }}
-                      />
-                    ))
+                    drinks.map((line) => row(line))
                   )}
                 </tbody>
               </table>
             </div>
+            {kitchen.length > 0 ? (
+              <section aria-labelledby="menu-kitchen-h" style={{ marginTop: 20 }} data-testid="menu-kitchen">
+                <h2 id="menu-kitchen-h" className="cl-crumb">
+                  From the kitchen
+                </h2>
+                <p className="cl-note" style={{ marginTop: 4, fontSize: 12 }}>
+                  On the menu, and carried nowhere: no wine, no house price, no stock.
+                </p>
+                <div style={{ overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10, marginTop: 8 }}>
+                  <table className="cl-table" style={{ width: '100%' }} aria-label="Kitchen lines on the current menu">
+                    {head}
+                    <tbody>{kitchen.map((line) => row(line, 'menu-kitchen-row'))}</tbody>
+                  </table>
+                </div>
+              </section>
+            ) : null}
             {discard.isError ? (
               <p role="alert" className="cl-said" style={{ marginTop: 8 }}>
                 That line was not discarded (

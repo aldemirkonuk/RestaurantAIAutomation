@@ -48,7 +48,7 @@ export interface MenuImportReviewItem {
    * a menu update changes the house price). `failed` carries the reason in
    * `priceSyncError`; the page says so rather than implying the price moved.
    */
-  priceSync?: 'changed' | 'unchanged' | 'stale' | 'locked' | 'no_price' | 'not_linked' | 'not_current' | 'failed'
+  priceSync?: 'changed' | 'unchanged' | 'stale' | 'locked' | 'no_price' | 'not_linked' | 'not_current' | 'kitchen_line' | 'failed'
   priceSyncError?: string | null
   /**
    * Set when a blank menu price kept the house's last known one (founder,
@@ -349,7 +349,20 @@ export interface MenuLine {
   /** Blank menu price: the house kept its last known one, or had none either; a manager can change it. */
   price_flag?: 'blank_kept_last_known' | 'blank_no_house_price' | null
   price_flag_note?: string | null
+  /**
+   * Why `status` is 'flagged', from the gateway's own notes (menu-line-view.ts
+   * `flagReasonOf`); null when it is not. Absent from an older gateway.
+   */
+  flag_reason?: 'corrected' | 'added_by_hand' | 'past_free_limit' | 'unknown' | null
+  /** For a correction: the field a manager corrected. */
+  flag_field?: string | null
   created_at: string
+  /**
+   * The gateway's kitchen split (menu-line-view.ts isKitchenLine), sent to every
+   * member: a dish on the menu, never carried to the house. Absent from an older
+   * gateway; the page then works it out with the same test.
+   */
+  kitchen_line?: boolean
 }
 
 export interface ActiveMenu {
@@ -552,6 +565,29 @@ export interface MenuPlan {
   }>
   namesReadable: boolean
   namesReason: string | null
+  /**
+   * Lines set aside as kitchen lines: they stay on the menu and are carried
+   * nowhere (no wine, price or stock). Optional only for an older gateway.
+   */
+  kitchenLines?: Array<{ menuItemId: string; name: string }>
+  /**
+   * Wines on the menu being replaced that this menu does not carry ("not on this
+   * file"). Shown only: choosing the menu leaves their price, row and locks as
+   * they are (ADR 0193 L12). Optional only for an older gateway.
+   */
+  notOnThisFile?: Array<{
+    menuItemId: string
+    name: string
+    producer: string | null
+    vintage: string | null
+    wineLibraryId: string | null
+    inventoryId: string | null
+    bottle: number | null
+    glass: number | null
+    locked: Array<'bottle' | 'glass'>
+    /** False when the house deleted or set inactive its row; null with no row. Optional for an older gateway. */
+    active?: boolean | null
+  }>
 }
 
 /** What choosing this menu would do. Nothing is written. A failed read throws. */

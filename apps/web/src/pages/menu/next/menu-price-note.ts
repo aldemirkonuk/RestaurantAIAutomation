@@ -36,6 +36,11 @@ export function housePriceNote(
         tone: 'alert',
         text: `Added to the menu, but this wine's own price was NOT updated (${item.priceSyncError || 'no reason given'}). Change it on Inventory, under Your price.`,
       };
+    case 'kitchen_line':
+      return {
+        tone: 'said',
+        text: 'A kitchen line: it stays on the menu, and no wine, price or stock is made for it.',
+      };
     case 'not_current':
       return {
         tone: 'said',

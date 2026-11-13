@@ -8,7 +8,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MenuPlan, kindWords, orderedRows, planSentence } from './MenuPlan';
+import { MenuPlan, kindWords, notOnFileWords, orderedRows, planSentence } from './MenuPlan';
 import { getMenuPlan, makeMenuCurrent, type MenuPlan as Plan, type PlanLine } from '../../../services/api/menus';
 import { lockPrice, releasePriceLock } from '../../../services/api/pricing';
 
@@ -145,6 +145,64 @@ describe('the plan in one sentence', () => {
     ).toBe(
       "Choosing this menu will change the price of 1 wine the house already has, add 1 wine new to the house at its menu price and keep 1 wine already at the menu's price.",
     );
+  });
+  it('names the kitchen lines it leaves on the menu and carries nowhere', () => {
+    expect(planSentence(plan({ dormantLocks: [], kitchenLines: [{ menuItemId: 'k1', name: 'Tiramisu' }] }))).toBe(
+      'Choosing this menu will change the price of 1 wine the house already has and leave 1 wine at its locked price. 1 kitchen line stays on the menu and is not carried (Tiramisu).',
+    );
+    expect(planSentence(plan({ dormantLocks: [], kitchenLines: [] }))).toBe(
+      'Choosing this menu will change the price of 1 wine the house already has and leave 1 wine at its locked price.',
+    );
+  });
+});
+
+describe('2d: not on this file -- shown, never acted on (L12)', () => {
+  const BAROLO_GONE = {
+    menuItemId: 'old-2', name: 'Barolo', producer: null, vintage: '2016', wineLibraryId: 'mw-2', inventoryId: 'inv-2',
+    bottle: 80, glass: 14, locked: ['bottle' as const],
+  };
+  const HOUSE_RED = {
+    menuItemId: 'old-3', name: 'House red', producer: null, vintage: null, wineLibraryId: null, inventoryId: null,
+    bottle: null, glass: null, locked: [],
+  };
+
+  it('counts them in the sentence and says they keep their price', () => {
+    expect(planSentence(plan({ dormantLocks: [], notOnThisFile: [BAROLO_GONE, HOUSE_RED] }))).toBe(
+      'Choosing this menu will change the price of 1 wine the house already has and leave 1 wine at its locked price. 2 wines on the current menu are not on this file and keep their price.',
+    );
+    expect(planSentence(plan({ dormantLocks: [], notOnThisFile: [] }))).toBe(
+      'Choosing this menu will change the price of 1 wine the house already has and leave 1 wine at its locked price.',
+    );
+  });
+
+  it('says each one in a line: what the house keeps, its locks, or that the house never had it', () => {
+    expect(notOnFileWords(BAROLO_GONE)).toBe('Barolo 2016: keeps bottle 80.00, glass 14.00, bottle locked');
+    expect(notOnFileWords(HOUSE_RED)).toBe("House red: not in the house's wines, so nothing is kept for it");
+    expect(notOnFileWords({ ...BAROLO_GONE, bottle: null, glass: null, locked: [] })).toBe('Barolo 2016: keeps no price (it had none)');
+    expect(notOnFileWords({ ...BAROLO_GONE, active: false })).toBe(
+      'Barolo 2016: the house no longer sells it; its row keeps bottle 80.00, glass 14.00, bottle locked',
+    );
+    expect(notOnFileWords({ ...BAROLO_GONE, active: true })).toBe('Barolo 2016: keeps bottle 80.00, glass 14.00, bottle locked');
+  });
+
+  it('lists them on the plan, with no control that would act on them', async () => {
+    mockPlan.mockResolvedValue(plan({ notOnThisFile: [BAROLO_GONE, HOUSE_RED] }));
+    mount(true);
+    const box = await screen.findByTestId('menu-plan-not-on-file');
+    expect(box).toHaveTextContent('Not on this file');
+    expect(box).toHaveTextContent('the price, the house\'s row and any lock stay');
+    expect(screen.getAllByTestId('menu-plan-not-on-file-line').map((l) => l.textContent)).toEqual([
+      'Barolo 2016: keeps bottle 80.00, glass 14.00, bottle locked',
+      "House red: not in the house's wines, so nothing is kept for it",
+    ]);
+    expect(box.querySelectorAll('button, input')).toHaveLength(0);
+  });
+
+  it('an older gateway that sends no list shows nothing', async () => {
+    mockPlan.mockResolvedValue(plan());
+    mount(true);
+    await screen.findAllByTestId('menu-plan-row');
+    expect(screen.queryByTestId('menu-plan-not-on-file')).not.toBeInTheDocument();
   });
 });
 
