@@ -360,6 +360,28 @@ describe('CalendarNext — the KEEP', () => {
     fireEvent.click(slots[7]);
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByLabelText('Starts')).toHaveValue('13:00');
+    // Opened on an hour, so it is a timed entry.
+    expect(screen.getByLabelText('All day')).not.toBeChecked();
+  });
+
+  it('a new entry opened on a day is all day, and is sent so without touching the box (r29 finding 5)', () => {
+    const create = mutation();
+    state.current = mkData({ create });
+    draw('/calendar?openModal=true&date=2026-09-28');
+    const sheet = screen.getByRole('dialog');
+    expect(within(sheet).getByLabelText('All day')).toBeChecked();
+    expect(within(sheet).queryByLabelText('Starts')).not.toBeInTheDocument();
+    fireEvent.change(within(sheet).getByLabelText('Title'), { target: { value: 'Stocktake' } });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Write it in' }));
+    expect(create.mutate.mock.calls[0][0]).toMatchObject({ allDay: true, eventDate: '2026-09-28' });
+    expect(create.mutate.mock.calls[0][0].eventTime).toBeUndefined();
+  });
+
+  it('an entry being edited keeps its own all-day choice', () => {
+    state.current = mkData({ events: [event({ id: 'e1', title: 'Vega Sicilia crate', date: '2026-09-17', allDay: false })] });
+    draw();
+    fireEvent.click(screen.getByText('Vega Sicilia crate'));
+    expect(within(screen.getByRole('dialog')).getByLabelText('All day')).not.toBeChecked();
   });
 
   it('wears the house sheet: portalled, tokened, and closed by Esc (ADR 0112)', () => {
@@ -611,7 +633,8 @@ describe('CalendarNext — an entry over several days (QA round 4 B5)', () => {
     draw('/calendar?openModal=true&date=2026-09-28');
     const sheet = screen.getByRole('dialog');
     fireEvent.change(within(sheet).getByLabelText('Title'), { target: { value: 'Autumn closure' } });
-    fireEvent.click(within(sheet).getByLabelText('All day'));
+    // All day is already on for a new entry opened on a day (r29 finding 5).
+    expect(within(sheet).getByLabelText('All day')).toBeChecked();
     const ends = within(sheet).getByLabelText('Ends on (optional)');
     expect(ends).not.toBeDisabled();
     fireEvent.change(ends, { target: { value: '2026-10-02' } });
