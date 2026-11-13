@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { currencyCode } from "../../common/iso-4217";
 import { DatabaseService } from "../../database/database.service";
 import {
   ProducerLedgerService,
@@ -103,7 +104,7 @@ export class SaleRecordProducer {
       return tally;
     }
 
-    const hours = await this.operatingHours(restaurantId);
+    const { hours, currency } = await this.houseRow(restaurantId);
     const today = localDateIn(now, timeZone);
 
     // Days this producer has already spoken about. The claim index would refuse
@@ -166,7 +167,7 @@ export class SaleRecordProducer {
             // `nt-format.ts:111` files under the "Sales" register.
             type: "service_closed",
             title: `Service record for ${localDate}`,
-            message: this.sentence(localDate, totals),
+            message: this.sentence(localDate, totals, currency),
             // A record, not a summons. Low keeps it out of the mobile push
             // fan-out (notifications.service.ts:729-745), which is right for a
             // once-a-day summary nobody has to act on.
@@ -177,7 +178,7 @@ export class SaleRecordProducer {
               serviceDate: localDate,
               checks: totals.checks,
               revenue: totals.revenue,
-              currency: "USD",
+              currency,
               // `null` means no check on the day reported a cover count.
               covers: totals.covers,
               checksWithoutCovers: totals.checksWithoutCovers,
@@ -316,10 +317,14 @@ export class SaleRecordProducer {
     };
   }
 
-  private sentence(localDate: string, totals: DayTotals): string {
+  private sentence(
+    localDate: string,
+    totals: DayTotals,
+    currency: string | null,
+  ): string {
     const parts: string[] = [];
     parts.push(
-      `${totals.checks} check${totals.checks === 1 ? "" : "s"}, ${money(totals.revenue)}.`,
+      `${totals.checks} check${totals.checks === 1 ? "" : "s"}, ${money(totals.revenue, currency)}.`,
     );
 
     if (totals.covers === null) {
@@ -336,7 +341,7 @@ export class SaleRecordProducer {
 
     if (totals.topItem) {
       parts.push(
-        `Best seller by revenue: ${totals.topItem.name}, ${trimQty(totals.topItem.qty)} sold for ${money(totals.topItem.revenue)}.`,
+        `Best seller by revenue: ${totals.topItem.name}, ${trimQty(totals.topItem.qty)} sold for ${money(totals.topItem.revenue, currency)}.`,
       );
     } else {
       parts.push(
@@ -348,16 +353,19 @@ export class SaleRecordProducer {
   }
 
   /**
-   * The venue's hours, or `null` when it has none. A read failure also returns
-   * `null` — with a log line — because the settle rule degrades gracefully to
-   * the midnight margin and losing a whole day's record over an unreadable
-   * hours column would be the worse outcome.
+   * The venue's hours and its currency, each `null` when the house has none. A
+   * read failure returns both `null` — with a log line — because the settle
+   * rule degrades gracefully to the midnight margin, and losing a whole day's
+   * record over an unreadable column would be the worse outcome. A `null`
+   * currency prints the takings bare: never dollars, never a guessed sign.
    */
-  private async operatingHours(restaurantId: string): Promise<unknown | null> {
+  private async houseRow(
+    restaurantId: string,
+  ): Promise<{ hours: unknown | null; currency: string | null }> {
     const { data, error } = await this.databaseService
       .getClient()
       .from("restaurants")
-      .select("operating_hours")
+      .select("operating_hours, currency")
       .eq("id", restaurantId)
       .maybeSingle();
     if (error) {
@@ -365,9 +373,12 @@ export class SaleRecordProducer {
         `SALE_RECORD_HOURS_UNREADABLE restaurant=${restaurantId} — ${error.message}. ` +
           "The settle rule falls back to the margin past local midnight, and the row says so.",
       );
-      return null;
+      return { hours: null, currency: null };
     }
-    return data?.operating_hours ?? null;
+    return {
+      hours: data?.operating_hours ?? null,
+      currency: currencyCode(data?.currency),
+    };
   }
 }
 

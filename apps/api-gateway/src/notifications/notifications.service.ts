@@ -17,6 +17,7 @@ import { ExpoPushService } from "../push/expo-push.service";
 import { AreaRoutingService } from "../areas/area-routing.service";
 import { type AreaLabel, readAreaLabel } from "../areas/area-label";
 import type { RouteStep } from "../areas/area-routing";
+import { moneyIn } from "../common/money-in";
 import type { DeliveryMode, DigestFrequency } from "./dto/notifications.dto";
 
 /**
@@ -279,12 +280,14 @@ export class NotificationsService {
     quantity: number;
     providerName: string;
     price?: number;
+    /** The order's own currency; unset prints the figure bare. */
+    currency?: string | null;
   }): Promise<void> {
     const payload: NotificationPayload = {
       type: "order_approval",
       title: "New order awaiting approval",
       body: `${data.quantity} bottles of ${data.wineName} from ${data.providerName}${
-        data.price ? ` ($${data.price.toFixed(2)}/bottle)` : ""
+        data.price ? ` (${moneyIn(data.price, data.currency)}/bottle)` : ""
       }`,
       data: {
         orderId: data.orderId,
@@ -442,6 +445,8 @@ export class NotificationsService {
     currentPrice: number;
     proposedPrice: number;
     providerName: string;
+    /** The order's own currency; unset prints the figures bare. */
+    currency?: string | null;
   }): Promise<void> {
     const priceDiff = data.currentPrice - data.proposedPrice;
     const percentage = ((priceDiff / data.currentPrice) * 100).toFixed(1);
@@ -450,7 +455,7 @@ export class NotificationsService {
     const payload: NotificationPayload = {
       type: "price_negotiation",
       title: "New price offer",
-      body: `${data.providerName} offered $${data.proposedPrice.toFixed(2)}/bottle for ${
+      body: `${data.providerName} offered ${moneyIn(data.proposedPrice, data.currency)}/bottle for ${
         data.wineName
       } (${Math.abs(Number(percentage))}% ${direction})`,
       data: {

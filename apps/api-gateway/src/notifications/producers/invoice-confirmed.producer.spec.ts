@@ -73,6 +73,28 @@ describe("InvoiceConfirmedProducer", () => {
     expect(call.type).toBe("invoice_received");
   });
 
+  it("[REVERT-FAILS] a lira invoice is said in lira, with no dollar sign", async () => {
+    const { db, notifications, producer } = build();
+    db.tables.procurement_documents.push(doc({ currency: "TRY" }));
+    vendor(db);
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    const call = notifications.persistForRestaurant.calls[0][1];
+    expect(call.message).toContain("\u20ba1,240.50 from Terroir Selections.");
+    expect(call.message).not.toContain("$");
+    expect(call.metadata.currency).toBe("TRY");
+  });
+
+  it("[REVERT-FAILS] a document that names no currency is said bare, never as dollars", async () => {
+    const { db, notifications, producer } = build();
+    db.tables.procurement_documents.push(doc({ currency: null }));
+    vendor(db);
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    const call = notifications.persistForRestaurant.calls[0][1];
+    expect(call.message).toContain("1,240.50 from Terroir Selections.");
+    expect(call.message).not.toContain("$");
+    expect(call.metadata.currency).toBeNull();
+  });
+
   it("[REVERT-FAILS] never says approved, accepted or paid", async () => {
     const { db, notifications, producer } = build();
     db.tables.procurement_documents.push(doc());

@@ -161,6 +161,23 @@ describe("MarketPriceProducer", () => {
     expect(call.actionUrl).toBe("/vendor-prices?product=wine%3Amw-1");
   });
 
+  it("[REVERT-FAILS] a lira quote is said in lira, and one with no code is said bare", async () => {
+    const lira = build([rankedItem({ currency: "TRY" })]);
+    bought(lira.db);
+    await lira.producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    const t = lira.notifications.persistForRestaurant.calls[0][1];
+    expect(t.message).toContain("quoting \u20ba42.00 for");
+    expect(t.message).toContain("average of \u20ba51.20");
+    expect(t.message).not.toContain("$");
+
+    const bare = build([rankedItem({ currency: null })]);
+    bought(bare.db);
+    await bare.producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    const b = bare.notifications.persistForRestaurant.calls[0][1];
+    expect(b.message).toContain("quoting 42.00 for");
+    expect(b.message).not.toContain("$");
+  });
+
   it("[REVERT-FAILS] a second sweep on the same day writes nothing", async () => {
     const { db, notifications, sweepAt } = build();
     bought(db);
