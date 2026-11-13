@@ -107,6 +107,9 @@ export default function ItemDrawer(props: ItemDrawerProps) {
     if (evidence !== null) detailRef.current?.scrollIntoView?.({ block: 'nearest' });
   }, [evidence]);
   const id = row?.id ?? '';
+  // A supply (napkins, foil) is not eaten or drunk: it has no nutrition or
+  // allergens to state, so the drawer neither reads nor offers them.
+  const hasContents = (house.kind ?? row?.kind ?? null) !== 'supply';
 
   const enabled = row !== null && restaurantId !== null;
   const figuresQ = useQuery({
@@ -120,7 +123,7 @@ export default function ItemDrawer(props: ItemDrawerProps) {
   const nutritionQ = useQuery({
     queryKey: inventoryItemKeys.nutrition(restaurantId ?? '', id),
     queryFn: () => getItemNutrition(id, restaurantId ?? undefined),
-    enabled,
+    enabled: enabled && hasContents,
     staleTime: 60_000,
     retry: false,
   });
@@ -270,10 +273,12 @@ export default function ItemDrawer(props: ItemDrawerProps) {
               onSheet={setSheet}
             />
           ) : null}
-          <div className="ivd-nutrition" data-slot="NutritionCard" data-testid="ivd-nutrition-slot">
-            {evidence !== 'inside' ? <h4 className="ivd-used-h">{CARD_TITLE.inside}</h4> : null}
-            <NutritionCard row={row} house={house} restaurantId={restaurantId} canManage={canManage} />
-          </div>
+          {hasContents ? (
+            <div className="ivd-nutrition" data-slot="NutritionCard" data-testid="ivd-nutrition-slot">
+              {evidence !== 'inside' ? <h4 className="ivd-used-h">{CARD_TITLE.inside}</h4> : null}
+              <NutritionCard row={row} house={house} restaurantId={restaurantId} canManage={canManage} />
+            </div>
+          ) : null}
         </section>
       ) : null}
       <ItemUsedIn
