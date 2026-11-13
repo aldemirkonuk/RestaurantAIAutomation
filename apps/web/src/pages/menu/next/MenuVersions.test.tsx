@@ -8,7 +8,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  MENU_FILE_ACCEPT,
   MenuVersions,
+  menuFileRefusal,
   makeCurrentSentence,
   readMenuDate,
   sourceWords,
@@ -413,5 +415,48 @@ describe('MenuVersions', () => {
     fireEvent.change(await screen.findByLabelText('Menu to read'), { target: { files: [file] } });
     fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
     expect(await screen.findByTestId('menu-read-error')).toHaveTextContent(/the menu read is waiting: nothing was sent/);
+  });
+});
+
+// r28 G18: the box offered .xls, which cannot be read, and the house was then
+// told to check that each row names a wine.
+describe('the upload box reads what it offers (r28 G18)', () => {
+  const XLS = 'This is an older Excel file (.xls), which cannot be read here. Save it as .xlsx or CSV and choose that.';
+
+  it('offers photos, PDFs, CSV and .xlsx, and not .xls', () => {
+    expect(MENU_FILE_ACCEPT.split(',')).toEqual(['image/*', 'application/pdf', '.csv', '.xlsx']);
+    expect(menuFileRefusal({ name: 'Menu.XLS' })).toBe(XLS);
+    expect(menuFileRefusal({ name: 'menu.bin', type: 'application/vnd.ms-excel' })).toBe(XLS);
+    expect(menuFileRefusal({ name: 'menu.xlsx', type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })).toBeNull();
+    expect(menuFileRefusal(null)).toBeNull();
+  });
+
+  it('an .xls chosen anyway is said at once, never sent, and a readable file clears it', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mockImport.mockResolvedValue({ menuId: 'm9', itemsExtracted: 1, submissionsCreated: 0, items: [] });
+    mount(false);
+    const box = await screen.findByLabelText('Menu to read');
+    expect(box).toHaveAttribute('accept', MENU_FILE_ACCEPT);
+    fireEvent.change(box, { target: { files: [new File(['x'], 'menu.xls', { type: 'application/vnd.ms-excel' })] } });
+    expect(screen.getByTestId('menu-file-refused')).toHaveTextContent(XLS);
+    expect(screen.getByRole('button', { name: 'Read this menu' })).toBeDisabled();
+    fireEvent.change(box, { target: { files: [new File(['name,bottle_price\nOpus,60\n'], 'menu.csv', { type: 'text/csv' })] } });
+    expect(screen.queryByTestId('menu-file-refused')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
+    await waitFor(() => expect(mockImport).toHaveBeenCalledTimes(1));
+    expect(mockImport.mock.calls[0][0]).toBe('csv');
+  });
+
+  it('an .xlsx is still sent as a workbook', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mockImport.mockResolvedValue({ menuId: 'm9', itemsExtracted: 1, submissionsCreated: 0, items: [] });
+    mount(false);
+    fireEvent.change(await screen.findByLabelText('Menu to read'), {
+      target: { files: [new File(['PK'], 'menu.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })] },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
+    await waitFor(() => expect(mockImport).toHaveBeenCalledTimes(1));
+    expect(mockImport.mock.calls[0][0]).toBe('csv');
+    expect(mockImport.mock.calls[0][1]).toHaveProperty('fileBase64');
   });
 });
