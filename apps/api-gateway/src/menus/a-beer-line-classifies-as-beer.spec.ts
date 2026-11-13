@@ -173,6 +173,9 @@ function makeMenusService() {
       eq: () => api,
       is: () => api,
       order: () => api,
+      // The house's goods are read first (house-good-match.ts), keyset-paged.
+      gt: () => api,
+      limit: () => api,
       insert: (payload: any) => {
         api._inserted = payload;
         return api;

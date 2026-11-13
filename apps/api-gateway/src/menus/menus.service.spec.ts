@@ -2007,3 +2007,175 @@ describe("a line linked to a good with no library wine is planned and carried by
     expect(r.priceSync).toEqual({ failed: 1 });
   });
 });
+
+/**
+ * A MENU LINE FINDS THE HOUSE'S OWN GOOD FIRST (r21 walk, D1 and D4). A line
+ * that names exactly one good the house carries is linked to it: no library
+ * row, no second inventory row. Its price is carried onto that good.
+ */
+describe("a menu line finds the house's own good before the library (r21 D1)", () => {
+  const spyLibrary = () => {
+    const sent: unknown[] = [];
+    return {
+      sent,
+      resolveLibraryWinesBatch: async (items: unknown[]) => {
+        sent.push(...items);
+        return items.map(() => ({ masterWineId: "mw-new", matched: false, libraryTier: 3, confidence: 40 }));
+      },
+      normalizeText: (t: string | null | undefined) => (t ? t.toLowerCase() : null),
+    };
+  };
+  const priceRpc = (fn: string) =>
+    fn === "set_house_menu_price" ? { data: { outcome: "changed", held: [] }, error: null } : { data: null, error: null };
+  const good = (over: Row): Row => ({ restaurant_id: "rest-1", is_active: true, deleted_at: null, menu_price_current: null, menu_price_glass: null, ...over });
+  const house = (inventory: Row[], extra: Record<string, Row[]> = {}): Record<string, Row[]> => ({
+    restaurant_menus: [{ id: "menu-1", restaurant_id: "rest-1", status: "active" }],
+    restaurants: [{ id: "rest-1", default_threshold_min: 3 }],
+    restaurant_inventory: inventory,
+    menu_items: [],
+    master_wine_library_submissions: [],
+    ...extra,
+  });
+
+  it("a hand-added line naming the house's wine, year typed in the name, links that wine: no library row, no second row", async () => {
+    const lib = spyLibrary();
+    const calls: RpcCall[] = [];
+    const tables = house(
+      [good({ id: "inv-c1", master_wine_id: "mw-c1", display_name: "Local Check Cabernet", wine_name: "Local Check Cabernet", kind: "wine", menu_price_current: 70 })],
+      { master_wine_library: [{ id: "mw-c1", vintage: 2020 }] },
+    );
+    const service = makeService(tables, { wineSubmissions: lib, rpcCalls: calls, rpc: priceRpc });
+    const item = await service.addMenuItem({ menuId: "menu-1", name: "Local Check Cabernet 2020", bottle_price: 75 } as any, "user-1", "rest-1", true);
+
+    expect(lib.sent).toHaveLength(0);
+    expect(tables.restaurant_inventory).toHaveLength(1);
+    expect(tables.master_wine_library_submissions).toHaveLength(0);
+    expect(tables.menu_items[0]).toMatchObject({ wine_library_id: "mw-c1", inventory_item_id: "inv-c1" });
+    expect(item).toMatchObject({ inventoryItemId: "inv-c1", inventoryCreated: false, submissionId: null, matched: true, priceSync: "changed" });
+    const price = calls.filter(([fn]) => fn === "set_house_menu_price");
+    expect(price).toHaveLength(1);
+    expect(price[0][1]).toMatchObject({ p_inventory_id: "inv-c1", p_bottle_price: 75 });
+  });
+
+  it("another vintage of the same name is not the house's wine: it goes to the library", async () => {
+    const lib = spyLibrary();
+    const tables = house(
+      [good({ id: "inv-c1", master_wine_id: "mw-c1", display_name: "Local Check Cabernet", kind: "wine" })],
+      { master_wine_library: [{ id: "mw-c1", vintage: 2019 }] },
+    );
+    const service = makeService(tables, { wineSubmissions: lib, rpc: priceRpc });
+    await service.addMenuItem({ menuId: "menu-1", name: "Local Check Cabernet 2020" } as any, "user-1", "rest-1", true);
+    expect(lib.sent).toHaveLength(1);
+    expect(tables.menu_items[0].wine_library_id).toBe("mw-new");
+  });
+
+  it("a spirit line links the house's gin whose row names no library wine, and an unpriced one is called a spirit (D4)", async () => {
+    const lib = spyLibrary();
+    const tables = house([good({ id: "inv-gin", master_wine_id: null, display_name: "House London Dry Gin", kind: "spirit" })]);
+    const service = makeService(tables, { wineSubmissions: lib, rpc: priceRpc });
+    const item = await service.addMenuItem({ menuId: "menu-1", name: "House London Dry Gin", category: "Spirits" } as any, "user-1", "rest-1", true);
+
+    expect(lib.sent).toHaveLength(0);
+    expect(tables.restaurant_inventory).toHaveLength(1);
+    expect(tables.menu_items[0]).toMatchObject({ wine_library_id: null, inventory_item_id: "inv-gin" });
+    expect(item).toMatchObject({ inventoryItemId: "inv-gin", priceSync: "no_price", priceFlag: "blank_no_house_price" });
+    expect(item.priceFlagNote).toMatch(/the house had no price for this spirit either/);
+    expect(tables.menu_items[0].price_flag_note).not.toMatch(/wine/);
+  });
+
+  it("a priced spirit line sets the price on the house's gin, by its row", async () => {
+    const calls: RpcCall[] = [];
+    const tables = house([good({ id: "inv-gin", master_wine_id: null, display_name: "House London Dry Gin", kind: "spirit" })]);
+    const service = makeService(tables, { wineSubmissions: spyLibrary(), rpcCalls: calls, rpc: priceRpc });
+    const item = await service.addMenuItem({ menuId: "menu-1", name: "house london dry gin", category: "Spirits", by_glass_price: 12 } as any, "user-1", "rest-1", true);
+    expect(item.priceSync).toBe("changed");
+    const price = calls.filter(([fn]) => fn === "set_house_menu_price");
+    expect(price).toHaveLength(1);
+    expect(price[0][1]).toMatchObject({ p_inventory_id: "inv-gin", p_glass_price: 12 });
+  });
+
+  it("a good of another kind, or another house's good, is never taken", async () => {
+    const lib = spyLibrary();
+    const tables = house([
+      good({ id: "inv-food", master_wine_id: null, display_name: "House London Dry Gin", kind: "food" }),
+      good({ id: "inv-wine", master_wine_id: null, display_name: "House London Dry Gin", kind: "wine" }),
+      good({ id: "inv-other-house", restaurant_id: "rest-2", master_wine_id: null, display_name: "House London Dry Gin", kind: "spirit" }),
+    ]);
+    const service = makeService(tables, { wineSubmissions: lib, rpc: priceRpc });
+    const item = await service.addMenuItem({ menuId: "menu-1", name: "House London Dry Gin", category: "Spirits" } as any, "user-1", "rest-1", true);
+    expect(lib.sent).toHaveLength(1);
+    expect(item.houseCandidates).toBeUndefined();
+    expect(["inv-food", "inv-wine", "inv-other-house"]).not.toContain(tables.menu_items[0].inventory_item_id);
+  });
+
+  it("two of the house's goods that fit are not guessed between: the line goes to the library and names both", async () => {
+    const lib = spyLibrary();
+    const tables = house([
+      good({ id: "inv-a", master_wine_id: null, display_name: "House Red", kind: "wine" }),
+      good({ id: "inv-b", master_wine_id: null, wine_name: "HOUSE RED", display_name: "House red.", kind: "other" }),
+    ]);
+    const service = makeService(tables, { wineSubmissions: lib, rpc: priceRpc });
+    const item = await service.addMenuItem({ menuId: "menu-1", name: "House Red" } as any, "user-1", "rest-1", true);
+    expect(lib.sent).toHaveLength(1);
+    expect(item.houseCandidates?.map((c) => c.inventoryItemId)).toEqual(["inv-a", "inv-b"]);
+    expect(tables.menu_items[0].wine_library_id).toBe("mw-new");
+  });
+
+  it("a failed read of the house's goods adds nothing: it is never taken for a house that carries nothing", async () => {
+    const lib = spyLibrary();
+    const tables = house([good({ id: "inv-gin", master_wine_id: null, display_name: "House London Dry Gin", kind: "spirit" })]);
+    (tables as any).__readFails = [{ restaurant_inventory: "connection reset" }];
+    const service = makeService(tables, { wineSubmissions: lib, rpc: priceRpc });
+    await expect(
+      service.addMenuItem({ menuId: "menu-1", name: "House London Dry Gin" } as any, "user-1", "rest-1", true),
+    ).rejects.toThrow(/the house's goods could not be read: connection reset/);
+    expect(lib.sent).toHaveLength(0);
+    expect(tables.menu_items).toHaveLength(0);
+  });
+
+  it("a kept menu's line keeps its link; the plan and the choice carry its price onto the house's gin", async () => {
+    const lib = spyLibrary();
+    const calls: RpcCall[] = [];
+    const tables: Record<string, Row[]> = {
+      restaurant_menus: [{ id: "menu-old", restaurant_id: "rest-1", status: "active" }],
+      restaurants: [{ id: "rest-1", default_threshold_min: 3 }],
+      restaurant_inventory: [good({ id: "inv-gin", master_wine_id: null, display_name: "House London Dry Gin", kind: "spirit" })],
+      menu_items: [],
+      user_onboarding_progress: [],
+      master_wine_library_submissions: [],
+    };
+    const service = makeService(tables, {
+      wineSubmissions: lib,
+      rpcCalls: calls,
+      rpc: (fn: string, args: Row) => {
+        if (fn === "make_menu_current") {
+          for (const m of tables.restaurant_menus) m.status = m.id === args.p_menu_id ? "active" : "archived";
+          return { data: { outcome: "made_current", previous_menu_ids: ["menu-old"], made_current_at: "2026-11-13T12:00:00Z" }, error: null };
+        }
+        return priceRpc(fn);
+      },
+      scanParser: { parseWithWarnings: async () => ({ items: [{ name: "House London Dry Gin", category: "spirit", bottle_price: 40 }], warnings: [] }) },
+    });
+    const read = await service.importMenu(
+      { method: "scan", data: { imageBase64: Buffer.from("%PDF").toString("base64") }, restaurantId: "rest-1" } as any,
+      "user-1",
+    );
+    await (service as any).whenRead?.(read.menuId);
+    expect(lib.sent).toHaveLength(0);
+    const line = tables.menu_items.find((m) => m.menu_id === read.menuId)!;
+    expect(line).toMatchObject({ wine_library_id: null, inventory_item_id: "inv-gin" });
+    // Kept, not current: the house's price is not touched yet.
+    expect(calls.filter(([fn]) => fn === "set_house_menu_price")).toHaveLength(0);
+
+    const plan = await service.planFor("rest-1", read.menuId);
+    expect(plan.lines).toHaveLength(1);
+    expect(plan.lines[0]).toMatchObject({ inventoryId: "inv-gin", bottle: { result: "change", menuPrice: 40 } });
+
+    const r = await service.makeCurrent("rest-1", read.menuId, "user-2", plan.fingerprint);
+    expect(r).toMatchObject({ outcome: "made_current", priceSync: { changed: 1 } });
+    const price = calls.filter(([fn]) => fn === "set_house_menu_price");
+    expect(price).toHaveLength(1);
+    expect(price[0][1]).toMatchObject({ p_inventory_id: "inv-gin", p_bottle_price: 40 });
+    expect(tables.restaurant_inventory).toHaveLength(1);
+  });
+});

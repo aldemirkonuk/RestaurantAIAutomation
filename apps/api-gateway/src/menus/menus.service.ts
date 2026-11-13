@@ -21,7 +21,7 @@ import { UpdateOnboardingProgressDto } from "./dto/update-onboarding-progress.dt
 import { MenuReadWarning, WineExtractItem } from "./wine-extract-item.interface";
 import { itemNeedsPencil } from "./pencil-rule";
 import { isKitchenLine, lineForViewer, type LineView } from "./menu-line-view";
-import { kindNoun } from "./house-good-match";
+import { kindNoun, matchHouseGoods } from "./house-good-match";
 import {
   setHouseMenuPrice,
   type HeldKind,
@@ -52,6 +52,16 @@ interface ResolvedItem {
   libraryTier: number | null;
   /** Best library-match score, 0-100. See LibraryResolutionResult. */
   confidence: number | null;
+  /** The house's own good this line named (house-good-match.ts); never sent to the library. */
+  houseItemId?: string | null;
+  /** Two or more of the house's goods fit the line: none was guessed. */
+  houseCandidates?: HouseCandidate[];
+}
+
+interface HouseCandidate {
+  inventoryItemId: string;
+  name: string;
+  kind: string | null;
 }
 
 interface InsertedMenuItem {
@@ -502,6 +512,11 @@ export interface MenuImportReviewItem {
   priceFlagNote?: string | null;
   /** ADR 0193 round 3: the kinds a price lock held, with their locks. */
   priceHeld?: HeldKind[];
+  /**
+   * Set when two or more of the house's goods fit this line by name, kind,
+   * vintage and size: none was guessed, and the line went to the library.
+   */
+  houseCandidates?: HouseCandidate[];
 }
 
 @Injectable()
@@ -1922,7 +1937,24 @@ export class MenusService {
     const kitchen = items.map((item) =>
       isKitchenLine(item.category, item.raw_text, item as unknown as Record<string, unknown>),
     );
-    const drinks = items.filter((_, idx) => !kitchen[idx]);
+    //
+    // THE HOUSE'S OWN GOODS COME FIRST (r21 walk, D1). A drink line that names
+    // exactly one good the house already carries (house-good-match.ts: name,
+    // kind, vintage and size where stated) is linked to that good and never
+    // sent to the library, so it makes no library row and no second inventory
+    // row. Its library wine, if the good names one, comes with it. A line two
+    // goods fit goes the old way and says which. A failed read of the house's
+    // goods is fatal, like the library call below: taking it for "the house
+    // carries nothing" is exactly how the copies were made.
+    const house = await matchHouseGoods(
+      this.dbService.supabase,
+      restaurantId,
+      items.map((item, idx) => (kitchen[idx] ? null : item)),
+    ).catch((err: Error) => {
+      this.logger.error(`Menu import: ${err.message}`);
+      throw new Error(`Menu import failed: ${err.message}`);
+    });
+    const drinks = items.filter((_, idx) => !kitchen[idx] && house[idx].outcome !== "one");
     let resolved: ResolvedItem[];
     try {
       const drinkResults = drinks.length === 0 ? [] : await this.wineSubmissions.resolveLibraryWinesBatch(
@@ -1946,9 +1978,21 @@ export class MenusService {
         // whose menu this is.
         restaurantId,
       );
-      // Back onto every line, in the menu's order: a kitchen line is unlinked.
+      // Back onto every line, in the menu's order: a kitchen line is unlinked,
+      // and a line that named the house's good takes that good.
       let next = 0;
       resolved = items.map((item, idx) => {
+        const h = house[idx];
+        if (!kitchen[idx] && h.outcome === "one") {
+          return {
+            item,
+            masterWineId: h.good.master_wine_id ?? null,
+            matched: true,
+            libraryTier: null,
+            confidence: null,
+            houseItemId: h.good.id,
+          };
+        }
         const r = kitchen[idx] ? undefined : drinkResults[next++];
         return {
           item,
@@ -1956,6 +2000,15 @@ export class MenusService {
           matched: r?.matched ?? false,
           libraryTier: r?.libraryTier ?? null,
           confidence: r?.confidence ?? null,
+          ...(h.outcome === "many"
+            ? {
+                houseCandidates: h.goods.map((g) => ({
+                  inventoryItemId: g.id,
+                  name: g.display_name ?? g.wine_name ?? "",
+                  kind: g.kind ?? null,
+                })),
+              }
+            : {}),
         };
       });
     } catch (err) {
@@ -1967,16 +2020,26 @@ export class MenusService {
 
     // Unlinked items are the ones a manager has to fix by hand, so say how
     // many there are rather than leaving it to be discovered in the UI.
-    // A kitchen line is unlinked on purpose and is not counted.
-    const unlinked = resolved.filter((r, idx) => !r.masterWineId && !kitchen[idx]).length;
+    // A kitchen line is unlinked on purpose and is not counted; nor is a line
+    // linked to the house's own good, library wine or not.
+    const unlinked = resolved.filter((r, idx) => !r.masterWineId && !r.houseItemId && !kitchen[idx]).length;
     if (unlinked > 0) {
       this.logger.error(
         `Menu import: ${unlinked}/${drinks.length} drink line(s) could not be ` +
           `linked to the wine library and will have no inventory row`,
       );
     }
+    for (const r of resolved) {
+      if (r.houseCandidates) {
+        this.logger.warn(
+          `Menu import: "${r.item.name}" fits ${r.houseCandidates.length} of the house's goods ` +
+            `(${r.houseCandidates.map((c) => `${c.name} [${c.kind ?? "no kind"}] ${c.inventoryItemId}`).join("; ")}); ` +
+            `none was guessed, so it went to the library`,
+        );
+      }
+    }
 
-    const menuItemRows = resolved.map(({ item, masterWineId }, idx) => ({
+    const menuItemRows = resolved.map(({ item, masterWineId, houseItemId }, idx) => ({
       menu_id: menuId,
       restaurant_id: restaurantId,
       name: item.name,
@@ -1989,6 +2052,7 @@ export class MenusService {
       bottle_price: item.bottle_price ?? null,
       raw_extracted_text: item.raw_text ?? null,
       wine_library_id: masterWineId,
+      ...(houseItemId ? { inventory_item_id: houseItemId } : {}),
       source: method,
       status:
         method === "manual" && idx >= FREE_TIER_MANUAL_LIMIT
@@ -2004,7 +2068,7 @@ export class MenusService {
       .from("menu_items")
       .insert(menuItemRows)
       .select(
-        "id, wine_library_id, name, by_glass_price, bottle_price, created_at, producer, vintage, region, grape_variety, category, raw_extracted_text",
+        "id, wine_library_id, inventory_item_id, name, by_glass_price, bottle_price, created_at, producer, vintage, region, grape_variety, category, raw_extracted_text",
       );
 
     if (menuItemsErr) {
@@ -2063,7 +2127,7 @@ export class MenusService {
       return {
         menuItemId: menuItem?.id,
         inventoryItemId: menuItem
-          ? (inventoryMap.get(menuItem.id) ?? null)
+          ? (inventoryMap.get(menuItem.id) ?? r.houseItemId ?? null)
           : null,
         inventoryCreated: menuItem
           ? inventoryMap.created.has(menuItem.id)
@@ -2094,6 +2158,7 @@ export class MenusService {
         priceFlag: menuItem ? (priceSync.get(menuItem.id)?.flag ?? null) : null,
         priceFlagNote: menuItem ? (priceSync.get(menuItem.id)?.flagNote ?? null) : null,
         priceHeld: menuItem ? (priceSync.get(menuItem.id)?.held ?? []) : [],
+        ...(r.houseCandidates ? { houseCandidates: r.houseCandidates } : {}),
       };
     });
   }
@@ -2108,7 +2173,8 @@ export class MenusService {
     const correspondingMenuItemIds: string[] = [];
 
     resolved.forEach((r, idx) => {
-      if (!r.masterWineId) return;
+      // A line that named the house's own good never went to the library.
+      if (!r.masterWineId || r.houseItemId) return;
       const menuItem = insertedMenuItems[idx];
       if (!menuItem) return;
 
