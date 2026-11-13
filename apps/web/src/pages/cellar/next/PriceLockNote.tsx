@@ -17,14 +17,17 @@
 import { useQuery } from '@tanstack/react-query';
 import { listPriceLocks, type PriceLock } from '../../../services/api/pricing';
 import { useAuthStore } from '../../../stores';
-import { money } from './cellar-format';
+import { useHouseMoney, type SayMoney } from './useHouseMoney';
 
 function day(iso: string): string {
   return String(iso).slice(0, 10);
 }
 
-/** One lock, in words a person reads at the price. */
-export function lockWords(l: PriceLock, namesReadable = true): string {
+/**
+ * One lock, in words a person reads at the price. `money` is the house's
+ * (`useHouseMoney`): this said "$" for every house.
+ */
+export function lockWords(l: PriceLock, money: SayMoney, namesReadable = true): string {
   const who =
     l.lockedBy.name ?? (namesReadable ? 'someone whose name is not on record' : 'someone whose name could not be read');
   return `The ${l.kind} price is locked at ${money(l.lockedPrice)} at this house, by ${who} since ${day(l.lockedAt)}. No menu, correction or advice changes it; an owner or a manager does, on Menu, under Locked prices.`;
@@ -34,6 +37,7 @@ export default function PriceLockNote({ inventoryId }: { inventoryId: string }) 
   // Same key as Menu's Locked prices, house included (MENU-01).
   const house = useAuthStore((s) => s.activeRestaurantId) ?? null;
   const q = useQuery({ queryKey: ['pricing', 'locks', house], queryFn: listPriceLocks });
+  const money = useHouseMoney();
   if (q.isLoading) return null;
   if (q.isError || !q.data || q.data.readable === false) {
     const why = q.data?.reason ?? (q.error instanceof Error ? q.error.message : null);
@@ -52,7 +56,7 @@ export default function PriceLockNote({ inventoryId }: { inventoryId: string }) 
     <div data-testid="bottle-leaf-locks" style={{ marginTop: 4 }}>
       {mine.map((l) => (
         <p key={l.lockId} className="cl-note" data-testid={`bottle-leaf-lock-${l.kind}`}>
-          {lockWords(l, namesReadable)}
+          {lockWords(l, money, namesReadable)}
         </p>
       ))}
     </div>
