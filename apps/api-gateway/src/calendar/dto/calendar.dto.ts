@@ -357,6 +357,21 @@ export class GetCalendarEventsQueryDto {
   @IsOptional()
   includeEarlierSeries?: boolean;
 
+  // Also return the number and status of every order a returned row links
+  // to, read from this house's orders only. The web calendar rules a delivery
+  // off when its linked order has arrived; reading the orders book itself
+  // gave it only the newest 50 orders, so an older linked order read as
+  // "not in the book" and its delivery never ruled off.
+  @ApiPropertyOptional({ default: false })
+  @Transform(({ value }) => {
+    if (value === "true" || value === true) return true;
+    if (value === "false" || value === false) return false;
+    return value;
+  })
+  @IsBoolean()
+  @IsOptional()
+  withOrders?: boolean;
+
   @ApiPropertyOptional({ default: 1 })
   @Type(() => Number)
   @IsInt()
@@ -504,6 +519,33 @@ export class CalendarEventsListResponseDto {
 
   @ApiProperty()
   hasMore: boolean;
+
+  /**
+   * Only with `withOrders=true`: the orders this page's rows link to, from
+   * this house's book. A linked id missing here is not in this house's book.
+   */
+  @ApiPropertyOptional({ type: () => [CalendarLinkedOrderDto] })
+  linkedOrders?: CalendarLinkedOrderDto[];
+
+  /**
+   * Only with `withOrders=true`: false when the orders book could not be
+   * read. The events still come back; `linkedOrders` is then empty and means
+   * "not known", never "none".
+   */
+  @ApiPropertyOptional()
+  linkedOrdersReadable?: boolean;
+}
+
+export class CalendarLinkedOrderDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiPropertyOptional({ nullable: true })
+  orderNumber: string | null;
+
+  /** The order's status exactly as the orders book stores it. */
+  @ApiProperty()
+  status: string;
 }
 
 export class GenerateOccurrencesResponseDto {
