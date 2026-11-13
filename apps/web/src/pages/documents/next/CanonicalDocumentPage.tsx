@@ -78,6 +78,8 @@ import {
   sourceSentence,
 } from '../../../components/documents'
 import { ItemChooser } from '../../../components/documents/ItemChooser'
+import type { LineFacts } from '../../../components/documents/newGoodFromLine'
+import { addHouseGood, carryThenPair } from '../../../services/api/houseGoods'
 import { AuthContext } from '@/contexts/AuthContext'
 import { canonicalApi } from '../../../services/api/canonical'
 import { getInventory } from '../../../services/api/inventory'
@@ -220,6 +222,32 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
   const fetchedAt = q.dataUpdatedAt || Date.now()
   const res = q.data
   const doc = res?.canonical
+
+  /** What a line says of itself, for "add as a new good" (r21). */
+  const lineFacts = (lineId: string): LineFacts | undefined => {
+    const r = doc?.layer2.lines.find((l) => l.lineId === lineId)
+    const l = r ? doc?.layer1.lines[r.lineIndex] : undefined
+    if (!l) return undefined
+    return { description: l.description.value ?? null, uom: l.unit.value ?? null, formatMl: l.formatMl.value ?? null }
+  }
+
+  /** Carry the line's good, then pair the line with it (r21; rules in `carryThenPair`). */
+  const createGood = async (
+    lineId: string,
+    body: { kind: string; uom: string; displayName: string },
+  ): Promise<string | null> => {
+    const out = await carryThenPair(
+      body,
+      (b) => addHouseGood(b, rid ?? undefined),
+      async (goodId) => {
+        await itemsQ.refetch()
+        await pickItem(lineId, goodId)
+      },
+      messageFrom,
+    )
+    if (out.note) setWriteError(out.note)
+    return out.refused
+  }
 
   /**
    * The delivery this document sits on — the FIRST one, and only when there is
@@ -677,6 +705,8 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
                   itemsFailed={itemsQ.isError}
                   busy={writing}
                   onPick={(inventoryId) => void pickItem(lineId, inventoryId)}
+                  line={lineFacts(lineId)}
+                  onCreate={(body) => createGood(lineId, body)}
                   onCancel={() => setChoosingLineId(null)}
                 />
               )}
