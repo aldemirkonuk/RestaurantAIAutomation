@@ -18,17 +18,30 @@ import { describe, expect, it } from 'vitest';
 import {
   cancelledWords,
   colsForWidth,
+  liftCuttings,
   moveCutting,
   movedWords,
   pickedUpWords,
   placedWords,
   positionWords,
+  projectCuttings,
+  reorderCutting,
   resizeCutting,
   sameSlot,
+  sheetLayouts,
   slotOf,
   slotRect,
 } from './rp-arrange';
-import { SHEET_COLS, SHEET_MIN_H, SHEET_MIN_W, type Cutting } from './rp-sheet';
+import { cloneLayout, correctBounds, getCompactor } from 'react-grid-layout/core';
+import {
+  DEFAULT_ON,
+  DEFAULT_SLOTS,
+  SHEET_BREAKPOINT_COLS,
+  SHEET_COLS,
+  SHEET_MIN_H,
+  SHEET_MIN_W,
+  type Cutting,
+} from './rp-sheet';
 
 /** Two cuttings stacked in the same column — the shape compaction acts on. */
 function stack(): Cutting[] {
@@ -118,6 +131,21 @@ describe('moving a cutting with the keyboard', () => {
     // and the ruling closed the gap. Both are still on the paper, in order.
     expect(slotOf(next, 'ledger')!.y).toBe(0);
     expect(slotOf(next, 'till')!.y).toBe(4);
+  });
+
+  it('moves past its neighbour on one arrow press, both ways', () => {
+    // Before 2026-11-11 a one-row nudge into a taller neighbour was pushed
+    // back by compaction, so ArrowUp/ArrowDown never moved anything.
+    const cs: Cutting[] = [
+      { id: 'till', slot: { x: 0, y: 0, w: 6, h: 9 }, graph: 'area' },
+      { id: 'ledger', slot: { x: 0, y: 9, w: 6, h: 4 }, graph: 'table' },
+    ];
+    const up = moveCutting(cs, 'ledger', 0, -1, 12);
+    expect(slotOf(up, 'ledger')).toEqual({ x: 0, y: 0, w: 6, h: 4 });
+    expect(slotOf(up, 'till')).toEqual({ x: 0, y: 4, w: 6, h: 9 });
+    const down = moveCutting(up, 'ledger', 0, 1, 12);
+    expect(slotOf(down, 'ledger')).toEqual({ x: 0, y: 9, w: 6, h: 4 });
+    expect(slotOf(down, 'till')).toEqual({ x: 0, y: 0, w: 6, h: 9 });
   });
 
   it('does not know about ids that are not on the sheet', () => {
@@ -218,5 +246,172 @@ describe('what a screen reader is told', () => {
     expect(cancelledWords('The room', { x: 0, y: 0, w: 6, h: 8 }, 12)).toBe(
       'Move cancelled. The room is back at column 1 of 12, row 1, 6 columns wide, 8 rows tall.',
     );
+  });
+});
+
+/**
+ * One sheet, several rulings. The saved sheet is in twelfths; a phone draws a
+ * projection of it. Found in the browser 2026-11-11 at 390 px: the keyboard
+ * moved the saved seven-wide slot on the four-column ruling, said "column 1 of
+ * 4 … 7 columns wide", and every arrow answered "did not move".
+ */
+describe('a narrow ruling', () => {
+  /** The house sheet's opening rows: two side by side, one full width below. */
+  function house(): Cutting[] {
+    return [
+      { id: 'reading', slot: { x: 0, y: 0, w: 7, h: 9 }, graph: 'table' },
+      { id: 'till', slot: { x: 7, y: 0, w: 5, h: 9 }, graph: 'area' },
+      { id: 'writing', slot: { x: 0, y: 9, w: 12, h: 3 }, graph: 'table' },
+    ];
+  }
+
+  it('draws every cutting inside the ruling, the way the grid does', () => {
+    const drawn = projectCuttings(house(), 4);
+    for (const c of drawn) {
+      expect(c.slot.x + c.slot.w).toBeLessThanOrEqual(4);
+    }
+    expect(slotOf(drawn, 'reading')).toEqual({ x: 0, y: 0, w: 4, h: 9 });
+    // Side by side on the wide sheet, one above the other here, left first.
+    expect(slotOf(drawn, 'till')).toEqual({ x: 0, y: 9, w: 4, h: 9 });
+    expect(slotOf(drawn, 'writing')).toEqual({ x: 0, y: 18, w: 4, h: 3 });
+  });
+
+  it('leaves the full ruling alone — the sheet IS the layout there', () => {
+    const cs = house();
+    expect(projectCuttings(cs, 12)).toBe(cs);
+  });
+
+  it('announces the square the reader can see, never the saved twelfths', () => {
+    const slot = slotOf(projectCuttings(house(), 4), 'reading')!;
+    const said = pickedUpWords('The reading', slot, 4);
+    expect(said).toContain('column 1 of 4');
+    expect(said).toContain('4 columns wide');
+    expect(said).not.toContain('7 columns wide');
+  });
+
+  it('lets a held cutting actually move on the phone ruling', () => {
+    const cs = house();
+    // One press of ArrowUp: one place earlier in the narrow reading order.
+    const next = reorderCutting(cs, 'writing', -1);
+    const view = projectCuttings(next, 4);
+    expect(slotOf(view, 'writing')!.y).toBeLessThan(slotOf(projectCuttings(cs, 4), 'writing')!.y);
+    // …and the wide sheet is not touched at all.
+    for (const c of cs) expect(slotOf(next, c.id)).toEqual(c.slot);
+  });
+
+  it('moves up past a cutting the wide sheet holds lower, at four columns', () => {
+    // The house sheet on a tablet: Spend pacing sits under Against ourselves.
+    // On twelve columns pacing (x0) cannot rise beside bench (x7) — goals is
+    // in the way — so no wide rearrangement short of moving goals could say
+    // "pacing first". The list can.
+    const cs = DEFAULT_ON.map((id) => ({ id, slot: { ...DEFAULT_SLOTS[id] } }));
+    const view = (xs: typeof cs) =>
+      [...projectCuttings(xs, 4)].sort((p, q) => p.slot.y - q.slot.y).map((c) => c.id);
+    expect(view(cs).indexOf('pacing')).toBe(view(cs).indexOf('bench') + 1);
+    const next = reorderCutting(cs, 'pacing', -1);
+    expect(view(next).indexOf('pacing')).toBe(view(next).indexOf('bench') - 1);
+    for (const c of cs) expect(slotOf(next, c.id)).toEqual(c.slot);
+    expect(reorderCutting(cs, 'reading', -1)).toBe(cs);
+    expect(reorderCutting(cs, 'writing', 1)).toBe(cs);
+  });
+
+  it('re-reads the list in the wide reading order after a move on the full ruling', () => {
+    const cs = reorderCutting(house(), 'writing', -1); // phone order: reading, writing, till
+    const moved = moveCutting(cs, 'writing', 0, -1, 12);
+    const next = liftCuttings(cs, cs, moved, 12);
+    expect(next.map((c) => c.id)).toEqual(['writing', 'reading', 'till']);
+  });
+
+  it('gives the wide sheet back unchanged when nothing moved', () => {
+    const cs = house();
+    const drawn = projectCuttings(cs, 4);
+    expect(liftCuttings(cs, drawn, drawn, 4)).toBe(cs);
+  });
+
+  it('rebuilds the wide arrangement from the narrow rows when only a height changed', () => {
+    const cs = house();
+    const drawn = projectCuttings(cs, 4);
+    const taller = resizeCutting(drawn, 'writing', 0, 2, 4);
+    const lifted = liftCuttings(cs, drawn, taller, 4);
+    expect(slotOf(lifted, 'reading')).toEqual({ x: 0, y: 0, w: 7, h: 9 });
+    expect(slotOf(lifted, 'till')).toEqual({ x: 7, y: 0, w: 5, h: 9 });
+    expect(slotOf(lifted, 'writing')).toEqual({ x: 0, y: 9, w: 12, h: 5 });
+  });
+
+  it('never widens a cutting the reader narrowed, and never leaves the paper', () => {
+    const cs = house();
+    const drawn = projectCuttings(cs, 4);
+    const narrower = resizeCutting(drawn, 'reading', -1, 0, 4);
+    const lifted = liftCuttings(cs, drawn, narrower, 4);
+    const r = slotOf(lifted, 'reading')!;
+    expect(r.w).toBeLessThan(7);
+    expect(r.w).toBeGreaterThanOrEqual(SHEET_MIN_W);
+    for (const c of lifted) expect(c.slot.x + c.slot.w).toBeLessThanOrEqual(SHEET_COLS);
+  });
+
+  it('takes the same fraction of the paper when moved sideways on a six-column ruling', () => {
+    const cs: Cutting[] = [{ id: 'till', slot: { x: 0, y: 0, w: 4, h: 4 }, graph: 'area' }];
+    const drawn = projectCuttings(cs, 6);
+    const moved = moveCutting(drawn, 'till', 1, 0, 6);
+    expect(slotOf(liftCuttings(cs, drawn, moved, 6), 'till')).toEqual({ x: 2, y: 0, w: 4, h: 4 });
+  });
+
+  it('keeps a phone drag that puts a row-mate first as list order, not wide rows', () => {
+    // The pointer path: the grid hands back the dragged projection. `till`
+    // shares a row with `reading` on the wide sheet; the drag puts it first:
+    // the list order changes, the wide sheet's squares do not.
+    const cs = house();
+    const drawn = projectCuttings(cs, 4);
+    const before = slotOf(drawn, 'till')!;
+    const moved = moveCutting(drawn, 'till', 0, -1, 4);
+    const next = liftCuttings(cs, drawn, moved, 4);
+    const after = slotOf(projectCuttings(next, 4), 'till')!;
+    expect(after.y).toBe(0);
+    expect(movedWords('Through the till', before, after, 4, 'move')).toContain('is now at column 1 of 4, row 1');
+    expect(next.map((c) => c.id)).toEqual(['till', 'reading', 'writing']);
+    expect(slotOf(next, 'till')).toEqual({ x: 7, y: 0, w: 5, h: 9 });
+    expect(slotOf(next, 'reading')).toEqual({ x: 0, y: 0, w: 7, h: 9 });
+    expect(slotOf(next, 'writing')).toEqual({ x: 0, y: 9, w: 12, h: 3 });
+  });
+
+  it('draws the order the list gives, whatever the wide columns', () => {
+    // On the six-column ruling a 4-wide cutting at wide column 8 is clamped to
+    // column 3; it still comes first when the list puts it first.
+    const cs: Cutting[] = [
+      { id: 'reading', slot: { x: 0, y: 0, w: 8, h: 6 }, graph: 'table' },
+      { id: 'till', slot: { x: 8, y: 0, w: 4, h: 6 }, graph: 'area' },
+    ];
+    const view = projectCuttings(reorderCutting(cs, 'till', -1), 6);
+    expect(slotOf(view, 'till')!.y).toBe(0);
+    expect(slotOf(view, 'reading')!.y).toBe(6);
+  });
+
+  it('says so when a cutting at the top is pushed further up', () => {
+    const cs = house();
+    const drawn = projectCuttings(cs, 4);
+    expect(moveCutting(drawn, 'reading', 0, -1, 4)).toBe(drawn);
+  });
+
+  it('hands each ruling a layout the grid draws exactly as handed, read or arranged', () => {
+    // The house sheet, as the grid receives it. `correctBounds` then `compact`
+    // is what react-grid-layout runs on it; static (arrange off) used to push
+    // the right column below the left one on a phone.
+    const cs = DEFAULT_ON.map((id) => ({ id, slot: { ...DEFAULT_SLOTS[id] } }));
+    const wide = [...cs].sort((a, b) => a.slot.y - b.slot.y || a.slot.x - b.slot.x).map((c) => c.id);
+    const compactor = getCompactor('vertical', false, false);
+    for (const arranging of [false, true]) {
+      const layouts = sheetLayouts(cs, arranging);
+      for (const bp of Object.keys(SHEET_BREAKPOINT_COLS) as (keyof typeof SHEET_BREAKPOINT_COLS)[]) {
+        const cols = SHEET_BREAKPOINT_COLS[bp];
+        if (cols >= SHEET_COLS) continue; // the full ruling is the sheet itself
+        const given = layouts[bp];
+        const drawn = compactor.compact(correctBounds(cloneLayout(given), { cols }), cols);
+        expect(drawn.map(({ i, x, y, w, h }) => ({ i, x, y, w, h }))).toEqual(
+          given.map(({ i, x, y, w, h }) => ({ i, x, y, w, h })),
+        );
+        const order = [...drawn].sort((a, b) => a.y - b.y || a.x - b.x).map((l) => l.i);
+        expect(order).toEqual(wide);
+      }
+    }
   });
 });

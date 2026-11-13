@@ -130,10 +130,10 @@ export function PlacingBar({ title, arrange }: PlacingBarProps) {
         <Step label={`Move ${title} left one column`} onClick={() => arrange.nudge(-1, 0)}>
           <ArrowLeft size={13} strokeWidth={1.6} aria-hidden />
         </Step>
-        <Step label={`Move ${title} down one row`} onClick={() => arrange.nudge(0, 1)}>
+        <Step label={`Move ${title} down past the cutting below`} onClick={() => arrange.nudge(0, 1)}>
           <ArrowDown size={13} strokeWidth={1.6} aria-hidden />
         </Step>
-        <Step label={`Move ${title} up one row`} onClick={() => arrange.nudge(0, -1)}>
+        <Step label={`Move ${title} up past the cutting above`} onClick={() => arrange.nudge(0, -1)}>
           <ArrowUp size={13} strokeWidth={1.6} aria-hidden />
         </Step>
         <Step label={`Move ${title} right one column`} onClick={() => arrange.nudge(1, 0)}>

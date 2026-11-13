@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { readWholeWindow } from "../common/read-whole-window";
 import {
   INSIGHT_CANDIDATES,
   availableCandidates,
@@ -233,35 +234,39 @@ export class DevTruthService {
   async asOf(restaurantId: string, cutoff: string) {
     const client = this.db.getClient();
 
-    const [before, after] = await Promise.all([
-      client
-        .from("pos_checks")
-        .select("id, opened_at, total, covers", { count: "exact" })
-        .eq("restaurant_id", restaurantId)
-        .lte("opened_at", cutoff),
-      client
-        .from("pos_checks")
-        .select("id, opened_at, total, covers", { count: "exact" })
-        .eq("restaurant_id", restaurantId)
-        .gt("opened_at", cutoff),
-    ]);
-
-    if (before.error || after.error) {
+    // Both sides read whole or refused (ADR 0292). They asked for an exact
+    // count and then never read it: unranged, each side stopped at
+    // PostgREST's 1,000 rows, so a cut past the thousandth check showed
+    // "1000 checks" on either side however many there were (readers lane r4).
+    const side = (what: string, cut: (q: any) => any) =>
+      readWholeWindow<any>(what, () =>
+        cut(
+          client
+            .from("pos_checks")
+            .select("id, opened_at, total, covers", { count: "exact" })
+            .eq("restaurant_id", restaurantId),
+        ),
+      );
+    let knownRows: any[];
+    let afterRows: any[];
+    try {
+      [knownRows, afterRows] = await Promise.all([
+        side("The checks up to the cut", (q) => q.lte("opened_at", cutoff)),
+        side("The checks after the cut", (q) => q.gt("opened_at", cutoff)),
+      ]);
+    } catch (err: any) {
       return {
         restaurantId,
         cutoff,
-        error: before.error?.message ?? after.error?.message,
+        error: String(err?.message ?? err),
         known: null,
         happened: null,
         limits: null,
       };
     }
 
-    const sum = (rows: any[] | null, f: string) =>
-      (rows ?? []).reduce((a, r) => a + (Number(r[f]) || 0), 0);
-
-    const knownRows = before.data ?? [];
-    const afterRows = after.data ?? [];
+    const sum = (rows: any[], f: string) =>
+      rows.reduce((a, r) => a + (Number(r[f]) || 0), 0);
 
     return {
       restaurantId,

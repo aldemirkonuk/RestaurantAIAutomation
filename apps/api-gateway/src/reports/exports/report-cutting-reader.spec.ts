@@ -112,15 +112,33 @@ const HOLDER = { role: "manager" };
  * The page's request for each cutting, as `rp-registers-*.tsx` builds its path,
  * turned into the controller call Nest would make for it. The path strings are
  * asserted against the web source below, so this table cannot drift from them.
+ *
+ * The bench reads no path of its own: its spec lists `sources`, each read once
+ * and settled to `{ [key]: payload | null }` (`useReportsNextData`). Its entry
+ * names each source's path and composes the same controller calls.
  */
-const PAGE: Record<
-  ExportableCutting,
-  { path: string; call: (c: AnalyticsController, days: number) => Promise<unknown> }
-> = {
+type PageRead = {
+  call: (c: AnalyticsController, days: number) => Promise<unknown>;
+} & ({ path: string } | { sources: Record<string, string> });
+
+const BENCH_SOURCES = {
+  cashflow: "`/analytics/cashflow/${rid}`",
+  seasonality: "`/analytics/seasonality/${rid}`",
+  goals: "`/analytics/goals/${rid}?status=active`",
+};
+
+const PAGE: Record<ExportableCutting, PageRead> = {
   reading: { path: "`/analytics/insights/${rid}?limit=40`", call: (c) => c.getInsights(RID, undefined, undefined, "40", undefined, HOLDER) },
   till: { path: "`/analytics/pos-revenue/${rid}?days=${ctx.days}`", call: (c, d) => c.getPosRevenue(RID, String(d)) },
   goals: { path: "`/analytics/goals/${rid}/progress`", call: (c) => c.listGoalsWithProgress(RID, undefined, HOLDER) },
-  bench: { path: "`/analytics/overview/${rid}`", call: (c) => c.getOverview(RID, HOLDER) },
+  bench: {
+    sources: BENCH_SOURCES,
+    call: async (c) => ({
+      cashflow: await c.getCashflow(RID),
+      seasonality: await c.getSeasonality(RID),
+      goals: await c.listGoals(RID, "active", HOLDER),
+    }),
+  },
   pacing: { path: "`/analytics/cashflow/${rid}`", call: (c) => c.getCashflow(RID) },
   week: { path: "`/analytics/seasonality/${rid}`", call: (c) => c.getSeasonality(RID) },
   ahead: { path: "`/analytics/forecast/${rid}?horizon=14`", call: (c) => c.getForecast(RID, undefined, "14") },
@@ -142,8 +160,44 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
         ),
       )
       .join("\n");
-    for (const [id, p] of Object.entries(PAGE))
-      expect([id, web.includes(`path: (rid${id === "till" ? ", ctx" : ""}) => ${p.path}`)]).toEqual([id, true]);
+    for (const [id, p] of Object.entries(PAGE)) {
+      if ("path" in p) {
+        expect([id, web.includes(`path: (rid${id === "till" ? ", ctx" : ""}) => ${p.path}`)]).toEqual([id, true]);
+        continue;
+      }
+      // A composed cutting: its own path is null, and its `sources` block names
+      // exactly these keys, each with exactly this path.
+      const block = /path: null,\s*sources: \{([\s\S]*?)\n\s*\},/.exec(web)?.[1] ?? "";
+      const named = [...block.matchAll(/(\w+): \(rid\) => (`[^`]*`)/g)].map((m) => [m[1], m[2]]);
+      expect([id, Object.fromEntries(named)]).toEqual([id, p.sources]);
+    }
+  });
+
+  it("bench: a source that throws is null in the export, as on the page, and the others still answer", async () => {
+    const { reader } = build();
+    const exp = reader as unknown as {
+      goals: { listGoals: jest.Mock };
+      advanced: { getSeasonality: jest.Mock };
+    };
+    exp.goals.listGoals.mockRejectedValueOnce(new Error("goals down"));
+    const out = (await reader.read(RID, "bench", null)) as Record<string, unknown>;
+    expect(out.goals).toBeNull();
+    expect(out.cashflow).toEqual({ served: "getCashflow", args: [RID] });
+    expect(out.seasonality).toEqual({ served: "getSeasonality", args: [RID] });
+  });
+
+  it("bench: when none of the three answers, the export fails with each reason rather than writing an empty file", async () => {
+    const fail = (m: string) => jest.fn(async () => { throw new Error(m); });
+    const reader = new ReportCuttingReader(
+      null as never,
+      { getCashflow: fail("cf down"), getSeasonality: fail("se down") } as never,
+      { listGoals: fail("goals down") } as never,
+      null as never,
+      null as never,
+    );
+    await expect(reader.read(RID, "bench", null)).rejects.toThrow(
+      "cashflow: cf down; seasonality: se down; goals: goals down",
+    );
   });
 
   for (const id of EXPORTABLE_CUTTINGS) {
@@ -190,9 +244,9 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
       const { controller } = build();
       const gate = { withSales };
       const fin = (await controller.getFinancial(RID, undefined, user)) as unknown as { args: unknown[] };
-      const bench = (await controller.getOverview(RID, user)) as unknown as { args: unknown[] };
+      const overview = (await controller.getOverview(RID, user)) as unknown as { args: unknown[] };
       const goals = (await controller.listGoalsWithProgress(RID, undefined, user)) as unknown as { args: unknown[] };
-      expect([user, fin.args, bench.args, goals.args]).toEqual([
+      expect([user, fin.args, overview.args, goals.args]).toEqual([
         user,
         [RID, 0, gate],
         [RID, gate],
