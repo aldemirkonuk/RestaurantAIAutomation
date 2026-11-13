@@ -29,7 +29,12 @@ import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
 import { readOverdueContext } from "../procurement/overdue-order-reads";
 import { HouseFrame, houseFrame } from "../common/house-frame";
 import { DataClass } from "../ask-readings/reading-data-classes";
-import { insightsForRole, lensHidden } from "./role-reads";
+import {
+  insightsForRole,
+  lensHidden,
+  reorderCostReadable,
+  riskForRole,
+} from "./role-reads";
 
 /**
  * AdvancedAnalyticsService — the second wave of catalogue features.
@@ -835,6 +840,7 @@ export class AdvancedAnalyticsService {
     sees?: readonly DataClass[],
   ) {
     const startedAt = Date.now();
+    const finHidden = sees ? lensHidden("financial", sees) : [];
     const menuHidden = sees ? lensHidden("menuEngineering", sees) : [];
     const cashHidden = sees ? lensHidden("cashflow", sees) : [];
     const [
@@ -847,9 +853,13 @@ export class AdvancedAnalyticsService {
       insights,
       goals,
     ] = await Promise.allSettled([
-      this.analyticsService.getFinancialSummary(restaurantId, 0, gate),
+      finHidden.length
+        ? null
+        : this.analyticsService.getFinancialSummary(restaurantId, 0, gate),
       this.analyticsService.getRiskProfile(restaurantId, gate),
-      this.analyticsService.getInventoryScience(restaurantId),
+      this.analyticsService.getInventoryScience(restaurantId, {
+        withCost: sees ? reorderCostReadable(sees) : true,
+      }),
       menuHidden.length ? null : this.getMenuEngineering(restaurantId),
       this.getSeasonality(restaurantId),
       cashHidden.length ? null : this.getCashflow(restaurantId),
@@ -860,9 +870,12 @@ export class AdvancedAnalyticsService {
       r.status === "fulfilled" ? r.value : null;
     const inventoryScience = ok(invSci);
     const menuFull = ok(menu);
+    const riskRead = ok(risk);
     return {
-      financial: ok(financial),
-      risk: ok(risk),
+      financial: finHidden.length
+        ? { withheldForRole: finHidden }
+        : ok(financial),
+      risk: riskRead && sees ? riskForRole(riskRead, sees) : riskRead,
       inventory: inventoryScience
         ? {
             reorderCount: inventoryScience.reorderCount,

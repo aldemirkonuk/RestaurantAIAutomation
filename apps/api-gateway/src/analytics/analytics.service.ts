@@ -683,8 +683,20 @@ export class AnalyticsService {
 
   async getInventoryScience(
     restaurantId: string,
-    opts: { serviceLevel?: number; leadTimeDays?: number } = {},
+    opts: {
+      serviceLevel?: number;
+      leadTimeDays?: number;
+      /**
+       * `false` for a reader whose role does not see money (ADR 0348, slice
+       * 4): unit cost, value at cost, EOQ (cost reads back out of it) and the
+       * ABC class (a rank by value) are null, `costWithheld` says so, and the
+       * rows are ranked by bottles on hand, never by value. Omitted, the
+       * internal callers read the whole lens.
+       */
+      withCost?: boolean;
+    } = {},
   ) {
+    const withCost = opts.withCost !== false;
     const serviceLevel = opts.serviceLevel ?? 0.95;
     const leadTime = opts.leadTimeDays ?? 7;
     const sinceDays = 90;
@@ -784,7 +796,13 @@ export class AnalyticsService {
     // classify the priced subset and present it as the cellar's ABC, the whole
     // column goes null and the basis says why (ADR 0051).
     const costCoverage = summarizeCostBasis(inventory.filter((i) => i.qty > 0));
-    if (costCoverage.complete) {
+    if (!withCost) {
+      for (const s of skus) {
+        s.unitCost = null;
+        s.inventoryValue = null;
+        s.eoq = null;
+      }
+    } else if (costCoverage.complete) {
       // Rows holding no bottles are worth 0 whatever they cost — a knowable
       // zero, not a guess — so they take part in the ranking without needing
       // a price.
@@ -815,9 +833,11 @@ export class AnalyticsService {
         demand: `bottles/day over ${sinceDays}d — ${unitsBasisSentence(unitsCoverage)}${unassessed > 0 ? `; ${unassessed} row(s) are unassessed (skus[].demandUnknown): their demand, cover, reorder point and stockout risk are null and they are never put on the reorder list` : ""}`,
         reorderScience: `King safety stock at serviceLevel ${serviceLevel}, lead time ${leadTime}d — demand-derived, unaffected by cost`,
         inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
-        costDerived:
-          "skus[].inventoryValue, skus[].unitCost and skus[].eoq are null for any row with no recorded cost; skus[].abcClass is null for EVERY row unless the whole cellar is priced, because ABC cuts on share of a total (ADR 0051)",
+        costDerived: withCost
+          ? "skus[].inventoryValue, skus[].unitCost and skus[].eoq are null for any row with no recorded cost; skus[].abcClass is null for EVERY row unless the whole cellar is priced, because ABC cuts on share of a total (ADR 0051)"
+          : "skus[].inventoryValue, skus[].unitCost, skus[].eoq and skus[].abcClass are withheld for this reader's role: they are cost, or read back to it; rows are ranked by bottles on hand",
       },
+      costWithheld: !withCost,
       costCoverage,
       unitsCoverage,
       skuCount: skus.length,
@@ -836,8 +856,12 @@ export class AnalyticsService {
       ),
       skus: skus
         // Unpriced rows sort last instead of turning the comparator into NaN.
+        // Without cost the rank is by bottles, then name: a rank by value
+        // would say which goods are worth most.
         .sort((a, b) =>
-          a.inventoryValue == null || b.inventoryValue == null
+          !withCost
+            ? b.onHand - a.onHand || a.name.localeCompare(b.name)
+            : a.inventoryValue == null || b.inventoryValue == null
             ? (a.inventoryValue == null ? 1 : 0) -
                 (b.inventoryValue == null ? 1 : 0) || b.onHand - a.onHand
             : b.inventoryValue - a.inventoryValue,
