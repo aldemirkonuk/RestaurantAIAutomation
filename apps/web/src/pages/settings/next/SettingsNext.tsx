@@ -235,7 +235,9 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
     // the section (an instant jump, never a glide, so nothing is cut off)
     // until the reader's own first input (pointer, wheel, touch or key) hands
     // the page to them.
-    const jump = () => el.scrollIntoView({ behavior: 'auto', block: 'start' });
+    // 'instant', not 'auto': 'auto' defers to the CSS, and the app's global
+    // stylesheet sets `html { scroll-behavior: smooth }`, so 'auto' glided too.
+    const jump = () => el.scrollIntoView({ behavior: 'instant', block: 'start' });
     let cancelPending = whenBodyScrollUnlocked(() => {
       scrolledRef.current = true;
       jump();

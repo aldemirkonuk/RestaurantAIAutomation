@@ -620,7 +620,7 @@ describe('SettingsNext — the editorial spine', () => {
     it('re-jumps to the section on each layout change, as an instant jump', () => {
       mount('/settings?tab=measurement');
       expect(calls()).toHaveLength(1);
-      expect(calls()[0][0]).toEqual({ behavior: 'auto', block: 'start' });
+      expect(calls()[0][0]).toEqual({ behavior: 'instant', block: 'start' });
       act(() => resized?.());
       expect(calls()).toHaveLength(2);
       expect((Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mock.instances[1]).toHaveProperty('id', 'st-section-measurement');
