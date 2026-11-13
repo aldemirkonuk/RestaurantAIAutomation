@@ -23,6 +23,8 @@ import {
   clearHouseEnded,
   goToChooser,
   lastHouseHintFor,
+  rememberSignInDevice,
+  signInDeviceFor,
   storeSession,
   tokenClaims,
   tokenHouse,
@@ -806,13 +808,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // submitted is ever sent, never any other account this device
       // remembers (item 8, 2026-09-19).
       const hint = lastHouseHintFor(email);
+      // The known-device token this device was given at its last login for
+      // THIS email; it earns the device its own rate-limit bucket (QA round
+      // 19). Never sent for another email.
+      const signInDevice = signInDeviceFor(email);
       const response = await api.post("/api/v1/auth/login", {
         email,
         password,
         lastHouses: hint ? [hint] : [],
+        ...(signInDevice ? { signInDevice } : {}),
       });
 
       const { accessToken, refreshToken: refresh } = response.data;
+      rememberSignInDevice(email, response.data.signInDevice);
 
       storeSession(accessToken, refresh);
       api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;

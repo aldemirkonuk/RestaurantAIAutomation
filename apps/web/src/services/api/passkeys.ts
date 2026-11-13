@@ -13,7 +13,7 @@
 
 import { startAuthentication, startRegistration, browserSupportsWebAuthn } from '@simplewebauthn/browser'
 import { apiClient } from './client'
-import { lastHouseHintFor } from '../../lib/houseMemory'
+import { lastHouseHintFor, rememberSignInDevice, signInDeviceFor } from '../../lib/houseMemory'
 
 export interface Passkey {
   id: string
@@ -156,11 +156,27 @@ export async function requestSignInCode(email: string): Promise<{ message: strin
  */
 export async function signInWithEmailCode(email: string, code: string): Promise<SessionPair> {
   const hint = lastHouseHintFor(email)
-  const { data } = await apiClient.post<SessionPair>('/auth/email-code/verify', {
+  // The known-device token, as a password sign-in sends it (QA round 21): the
+  // code proves the mailbox, so the device comes back known and its next
+  // password sign-in no longer shares the untrusted bucket.
+  const signInDevice = signInDeviceFor(email)
+  const { data } = await apiClient.post<SessionPair & { signInDevice?: string }>('/auth/email-code/verify', {
     email,
     code: code.replace(/\s+/g, ''),
     lastHouses: hint ? [hint] : [],
+    ...(signInDevice ? { signInDevice } : {}),
   })
+  rememberSignInDevice(email, data.signInDevice)
+  return { accessToken: data.accessToken, refreshToken: data.refreshToken }
+}
+
+/** The sign-in mail's link (QA round 23). No per-address hint is sent: the address is unknown until the answer. */
+export async function signInWithEmailLink(token: string): Promise<SessionPair> {
+  const { data } = await apiClient.post<SessionPair & { signInDevice?: string; email?: string }>(
+    '/auth/email-code/link',
+    { token },
+  )
+  if (data.email) rememberSignInDevice(data.email, data.signInDevice)
   return { accessToken: data.accessToken, refreshToken: data.refreshToken }
 }
 

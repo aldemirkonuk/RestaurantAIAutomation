@@ -15,6 +15,7 @@ import {
   Delete,
   BadRequestException,
   GoneException,
+  Optional,
 } from "@nestjs/common";
 import { AuthService, LoginCredentials } from "./auth.service";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
@@ -51,6 +52,14 @@ import {
   SESSION_RENEWAL_RATE_LIMIT,
   SESSION_END_RATE_LIMIT,
 } from "../common/rate-limit";
+import { clientAddress } from "../common/rate-limit/client-address";
+import {
+  foldAccount,
+  issueSignInDevice,
+  readSignInDevice,
+  signInDeviceSecret,
+} from "../common/rate-limit/sign-in-device";
+import { ConfigService } from "@nestjs/config";
 import { Request } from "express";
 import { devBypassAllowed, devBypassEnvEnabled } from "./dev-bypass.util";
 
@@ -58,7 +67,10 @@ import { devBypassAllowed, devBypassEnvEnabled } from "./dev-bypass.util";
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
 
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    @Optional() private readonly config?: ConfigService,
+  ) {}
 
   /**
    * Login with email/password
@@ -66,13 +78,29 @@ export class AuthController {
   // Public by DECISION, not by omission (ADR 0096): the caller has no token yet; obtaining one is what this route is for.
   @Public()
   @Post("login")
+  // The /auth/ default (10 a minute per address), plus 10 a minute per
+  // account: an address bucket alone let one password be guessed from as
+  // many addresses as a caller has (QA round 14).
+  @RateLimit({ limit: 10, windowSeconds: 60, accountField: "email" })
   @HttpCode(HttpStatus.OK)
   async login(@Body() credentials: LoginCredentials) {
     this.logger.log(`Login attempt: ${credentials.email}`);
     const tokens = await this.authService.login(credentials);
+    // Known-device token (rate-limit/sign-in-device.ts); a valid one sent in
+    // keeps its device id.
+    const secret = signInDeviceSecret(
+      this.config?.get<string>("JWT_SECRET") ?? process.env.JWT_SECRET,
+    );
+    const folded = foldAccount(String(credentials.email ?? ""));
+    const signInDevice = issueSignInDevice(
+      secret,
+      folded,
+      readSignInDevice(secret, credentials.signInDevice, folded) ?? undefined,
+    );
     return {
       success: true,
       ...tokens,
+      signInDevice,
       message: "Login successful",
     };
   }
@@ -368,7 +396,12 @@ export class AuthController {
     @Body() body: RequestPasswordResetDto,
     @Req() req: Request,
   ) {
-    await this.authService.requestPasswordReset(body.email, req.ip || null);
+    // `req.ip` is the socket peer: without `trust proxy` that is Railway's
+    // edge, the same for every caller (R11-10).
+    await this.authService.requestPasswordReset(
+      body.email,
+      clientAddress(req),
+    );
     return {
       success: true,
       message:

@@ -6,6 +6,11 @@ import {
   Injectable,
 } from "@nestjs/common";
 import { Request } from "express";
+import {
+  PEER_LIMIT_FACTOR,
+  bucketAddress,
+  requestAddresses,
+} from "../../common/rate-limit/client-address";
 
 /**
  * Per-IP rate limit on POST /auth/request-password-reset.
@@ -37,21 +42,36 @@ export class PasswordResetThrottleGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest<Request>();
-    const ip = this.resolveIp(req);
+    // R11-10: `client` may be caller-written on a direct call, so the address
+    // Railway's edge saw (`peer`) gets its own, looser bucket as well.
+    // QA round 14: an IPv6 address counts as its /64.
+    const addresses = requestAddresses(req);
+    const client = bucketAddress(addresses.client);
+    const peer = bucketAddress(addresses.peer);
     const now = Date.now();
 
     const windowStart = now - PasswordResetThrottleGuard.WINDOW_MS;
-    const existing = (this.hits.get(ip) || []).filter((t) => t > windowStart);
+    const max = PasswordResetThrottleGuard.MAX_REQUESTS_PER_WINDOW;
+    const buckets: Array<[string, number]> = [[`ip:${client || "unknown"}`, max]];
+    if (peer && peer !== client) {
+      buckets.push([`peer:${peer}`, max * PEER_LIMIT_FACTOR]);
+    }
+    const kept = buckets.map(([key, limit]) => {
+      const times = (this.hits.get(key) || []).filter((t) => t > windowStart);
+      return { key, limit, times };
+    });
 
-    if (existing.length >= PasswordResetThrottleGuard.MAX_REQUESTS_PER_WINDOW) {
+    if (kept.some((b) => b.times.length >= b.limit)) {
       throw new HttpException(
         "Too many password reset requests from this address. Please try again later.",
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
 
-    existing.push(now);
-    this.hits.set(ip, existing);
+    for (const b of kept) {
+      b.times.push(now);
+      this.hits.set(b.key, b.times);
+    }
 
     // Opportunistic cleanup so `hits` does not grow without bound across the
     // life of the process — every call trims one entry's window rather than
@@ -65,14 +85,4 @@ export class PasswordResetThrottleGuard implements CanActivate {
     return true;
   }
 
-  private resolveIp(req: Request): string {
-    // x-forwarded-for can carry a comma-separated chain when behind a proxy;
-    // the client is the first entry. Falls back to the socket address for a
-    // direct connection (e.g. local dev, health checks).
-    const forwarded = req.headers["x-forwarded-for"];
-    if (typeof forwarded === "string" && forwarded.length > 0) {
-      return forwarded.split(",")[0].trim();
-    }
-    return req.ip || req.socket?.remoteAddress || "unknown";
-  }
 }

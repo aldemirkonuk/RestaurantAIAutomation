@@ -6,12 +6,14 @@ import {
   InternalServerErrorException,
   Logger,
   Optional,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import { createHmac, randomInt, timingSafeEqual } from "crypto";
 import { resolveJwtSecret } from "../auth/jwt-secret";
 import { DatabaseService } from "../database/database.service";
 import { GmailService } from "../communications/gmail.service";
 import { signInCodeEmailTemplate } from "../communications/email-templates/sign-in-code.template";
+import { frontendUrl } from "../communications/email-templates/template-config";
 
 /**
  * Emailed one-time codes (ADR 0229, Locked 2026-09-27; founder 2026-09-25, item 29).
@@ -82,6 +84,12 @@ export const ADDRESS_BUSY =
   "Several codes were already sent to this address in the last hour. Use the newest one, or wait a little and ask again.";
 export const SOURCE_BUSY =
   "Too many codes were asked for from this connection. Wait a little and try again.";
+export const LINK_REFUSAL =
+  "That sign-in link has expired or was already used. Ask for a new code.";
+export const LINK_UNREADABLE =
+  "The sign-in link could not be checked just now. Nothing was done; try again.";
+export const MAX_LINK_TOKEN_LENGTH = 200;
+const UUID_RE = /^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 export const SIGN_IN_SENT =
   "If an account uses that address, a six-digit code is on its way. It works for ten minutes.";
 
@@ -100,6 +108,13 @@ interface CodeRow {
   created_at: string;
   expires_at: string;
   consumed_at: string | null;
+}
+
+/** A stored code: the digits to mail, and the row its link names. */
+interface IssuedCode {
+  code: string;
+  id: string;
+  codeHash: string;
 }
 
 const CODE_COLUMNS =
@@ -132,6 +147,17 @@ export class SignInCodesService {
         .digest();
     }
     return this.keyCache;
+  }
+
+  /** `<rowId>.<mac>`, the mac keyed like `key()` under its own label. */
+  linkToken(rowId: string, codeHash: string): string {
+    const key = createHmac("sha256", resolveJwtSecret(process.env.JWT_SECRET))
+      .update("mudavym/sign-in-link/v1")
+      .digest();
+    const mac = createHmac("sha256", key)
+      .update(`sign-in-link.v1.${rowId}.${codeHash}`)
+      .digest("base64url");
+    return `${rowId}.${mac}`;
   }
 
   hashCode(purpose: CodePurpose, email: string, code: string): string {
@@ -257,7 +283,9 @@ export class SignInCodesService {
         "This account has no email address to send a code to.",
       );
     }
-    return this.store("verify_email", email, userId, source);
+    // The verify mail carries the code beside its own link, so only the code
+    // goes back (#999's sign-in link is built from the row, for sign-in only).
+    return (await this.store("verify_email", email, userId, source)).code;
   }
 
   private async store(
@@ -265,7 +293,7 @@ export class SignInCodesService {
     email: string,
     userId: string | null,
     source: string | null,
-  ): Promise<string> {
+  ): Promise<IssuedCode> {
     const now = this.now();
     const sourceHash = this.hashSource(source);
 
@@ -315,31 +343,39 @@ export class SignInCodesService {
       CODE_DIGITS,
       "0",
     );
-    const { error } = await this.db.from("sign_in_codes").insert({
+    const codeHash = this.hashCode(purpose, email, code);
+    const { data: stored, error } = await this.db.from("sign_in_codes").insert({
       email,
       user_id: userId,
       purpose,
-      code_hash: this.hashCode(purpose, email, code),
+      code_hash: codeHash,
       attempts: 0,
       requested_from: sourceHash,
       created_at: new Date(now).toISOString(),
       expires_at: new Date(now + CODE_TTL_MS).toISOString(),
-    });
-    if (error) {
-      this.logger.error(`Could not store a ${purpose} code: ${error.message}`);
+    }).select("id").single();
+    const id = (stored as { id?: string } | null)?.id;
+    if (error || !id) {
+      this.logger.error(`Could not store a ${purpose} code: ${error?.message}`);
       throw new InternalServerErrorException(
         "We could not send a code just now. Nothing was sent; try again.",
       );
     }
-    return code;
+    return { code, id, codeHash };
   }
 
   private async send(
     email: string,
     name: string | null,
-    code: string,
+    issued: IssuedCode,
     purpose: MailedPurpose,
   ): Promise<boolean> {
+    const { code, id, codeHash } = issued;
+    // Sign-in mails only: a step-up code is typed by someone already signed in.
+    const link =
+      purpose === "sign_in"
+        ? `${frontendUrl()}/login/code#t=${this.linkToken(id, codeHash)}`
+        : undefined;
     if (!this.gmail) {
       this.logger.error(`No mail service: a ${purpose} code was not sent.`);
       return false;
@@ -351,7 +387,7 @@ export class SignInCodesService {
           purpose === "sign_in"
             ? `${code} is your Mudavym sign-in code`
             : `${code} is your Mudavym confirmation code`,
-        html: signInCodeEmailTemplate({ name, code, purpose }),
+        html: signInCodeEmailTemplate({ name, code, purpose, link }),
       });
       if (!result.success) {
         this.logger.warn(
@@ -500,6 +536,58 @@ export class SignInCodesService {
       attempts = Number(row.attempts);
     }
     return null;
+  }
+
+  /**
+   * The link from a sign-in mail (QA round 23). One sentence refuses every bad
+   * token or unusable row; a failed read or write is a 503. It never reads the
+   * daily lock: the token cannot be guessed, so the guess budget is not its bound.
+   */
+  async verifyLink(tokenRaw: unknown): Promise<{ userId: string; email: string }> {
+    const token = typeof tokenRaw === "string" ? tokenRaw : "";
+    const [id, mac, extra] = token.split(".");
+    if (token.length > MAX_LINK_TOKEN_LENGTH || extra !== undefined || !UUID_RE.test(id) || !mac) {
+      throw new BadRequestException(LINK_REFUSAL);
+    }
+    const { data, error } = await this.db
+      .from("sign_in_codes")
+      .select(CODE_COLUMNS)
+      .eq("id", id)
+      .eq("purpose", "sign_in")
+      .maybeSingle();
+    if (error) throw new ServiceUnavailableException(LINK_UNREADABLE);
+    const row = data as CodeRow | null;
+    if (!row) throw new BadRequestException(LINK_REFUSAL);
+    // Compared as canonical text, so no second spelling of the mac passes.
+    const expected = Buffer.from(this.linkToken(row.id, row.code_hash));
+    const given = Buffer.from(token);
+    const now = this.now();
+    if (
+      expected.length !== given.length ||
+      !timingSafeEqual(expected, given) ||
+      !row.user_id ||
+      row.consumed_at ||
+      new Date(row.expires_at).getTime() <= now
+    ) {
+      throw new BadRequestException(LINK_REFUSAL);
+    }
+    // Consume once. `attempts + 1` stands for the try a right code claims, so
+    // the daily count (`attempts - 1` on a consumed row) keeps every wrong
+    // guess: the link must not loosen the lock for the guesser who set it.
+    const { data: consumed, error: writeError } = await this.db
+      .from("sign_in_codes")
+      .update({
+        consumed_at: new Date(now).toISOString(),
+        attempts: (Number(row.attempts) || 0) + 1,
+      })
+      .eq("id", row.id)
+      .is("consumed_at", null)
+      .gt("expires_at", new Date(now).toISOString())
+      .select("id")
+      .maybeSingle();
+    if (writeError) throw new ServiceUnavailableException(LINK_UNREADABLE);
+    if (!consumed) throw new BadRequestException(LINK_REFUSAL);
+    return { userId: row.user_id, email: row.email };
   }
 
   /** Step-up: the address is the account's own, read from the row. */
