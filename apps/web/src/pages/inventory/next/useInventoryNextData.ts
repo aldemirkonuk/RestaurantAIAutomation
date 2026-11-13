@@ -574,12 +574,16 @@ export function onHandByUnit(rows: InvRow[], uomOf: (r: InvRow) => string | null
  * The one read sentence at the top (no KPI tiles). Every number in it is a
  * count of what was read; what was not read is named, never folded into a 0.
  * `uomOf` names each row's own unit, so no total adds grams to bottles.
+ * `seesCost` false (staff) leaves out what the stock cost and the market
+ * line: staff read quantities, not what the house paid, so the sentence says
+ * nothing about cost rather than calling a withheld cost "not on the books".
  */
 export function readSentence(
   rows: InvRow[],
   currency: HouseCurrency,
   zonesReadable: boolean,
   uomOf: (r: InvRow) => string | null = () => null,
+  seesCost = true,
 ): string {
   const n = rows.length;
   const read = rows.filter((r) => r.stock !== null);
@@ -614,6 +618,7 @@ export function readSentence(
     parts.push(`${s}.`);
   }
 
+  if (!seesCost) return parts.join(' ');
   const priced = rows.filter((r) => r.value !== null);
   if (priced.length === 0) {
     parts.push('No title has a cost on the books yet, so the value at cost reads —, not 0.');
