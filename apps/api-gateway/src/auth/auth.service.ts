@@ -72,6 +72,7 @@ import {
   CODE_SPENT,
   DAILY_LOCK,
   SignInCodesService,
+  findUserBySignInAddress,
   normalizeEmail,
 } from "../passkeys/sign-in-codes.service";
 import { isFreshSignIn, STEP_UP_REQUIRED } from "../passkeys/passkeys.service";
@@ -482,13 +483,16 @@ export class AuthService {
 
   /**
    * Validate user credentials
+   *
+   * QA rounds 11 and 13 (R11-02): the address is looked up the way every other
+   * door looks it up (`findUserBySignInAddress`), so `Chef@Bistro.com` typed
+   * for the row registration now stores as `chef@bistro.com` signs in.
    */
   async validateUser(email: string, password: string): Promise<any> {
-    const { data: user, error } = await this.databaseService.supabase
-      .from("users")
-      .select("*")
-      .eq("email", email)
-      .single();
+    const { user, error } = await findUserBySignInAddress<any>(
+      () => this.databaseService.supabase.from("users").select("*"),
+      email,
+    );
 
     if (error || !user) {
       throw new UnauthorizedException("Invalid credentials");
@@ -729,11 +733,10 @@ export class AuthService {
       throw new UnauthorizedException("DEV_AUTH_BYPASS_EMAIL is not set");
     }
 
-    const { data: user, error } = await this.databaseService.supabase
-      .from("users")
-      .select("*")
-      .eq("email", email)
-      .maybeSingle();
+    const { user, error } = await findUserBySignInAddress<any>(
+      () => this.databaseService.supabase.from("users").select("*"),
+      email,
+    );
 
     if (error || !user) {
       throw new UnauthorizedException(
@@ -1758,7 +1761,9 @@ export class AuthService {
     dto: RegisterAccountDto,
   ): Promise<TokenPair & { verificationMail: VerificationMail }> {
     const email = dto.email.toLowerCase().trim();
-    if (await this.emailAlreadyRegistered(email)) {
+    // The address as typed: the shared lookup folds it itself, and JS
+    // toLowerCase would hide a held non-ASCII row from the SQL fold.
+    if (await this.emailAlreadyRegistered(dto.email)) {
       throw new BadRequestException("Email already registered");
     }
 
@@ -1804,7 +1809,7 @@ export class AuthService {
   async registerAccountWithGoogle(googleToken: string): Promise<TokenPair> {
     const googleUser = await this.verifyGoogleToken(googleToken);
     const email = googleUser.email.toLowerCase().trim();
-    if (await this.emailAlreadyRegistered(email)) {
+    if (await this.emailAlreadyRegistered(googleUser.email)) {
       throw new ConflictException(
         "An account already uses this email. Sign in instead.",
       );
@@ -1999,6 +2004,12 @@ export class AuthService {
    * User starts with email_verified: false and must verify email.
    */
   async registerRestaurant(dto: RegisterRestaurantDto): Promise<TokenPair> {
+    // Folded the way every door that looks an account up folds it (reset,
+    // emailed code, Google, /sign-in-methods). Stored as typed, an owner who
+    // registered as Chef@Bistro.com could never be found again (QA R11-01).
+    const email = normalizeEmail(dto.email);
+    // Checked as typed: the shared lookup folds it, and also finds a row the
+    // fold migration held under a spelling normalizeEmail would not produce.
     if (await this.emailAlreadyRegistered(dto.email)) {
       throw new BadRequestException("Email already registered");
     }
@@ -2109,7 +2120,7 @@ export class AuthService {
       const { data: user, error: userErr } = await this.databaseService.supabase
         .from("users")
         .insert({
-          email: dto.email,
+          email,
           password_hash: passwordHash,
           name: dto.name,
           restaurant_id: restaurantId,
@@ -2168,7 +2179,7 @@ export class AuthService {
       // here it has been assigned from the created row and the throw on
       // failure means it cannot be null. Asserting that rather than widening
       // the callee, which would let a genuinely-null id through elsewhere.
-      this.queueEmailVerification(userId as string, dto.email).catch((err) =>
+      this.queueEmailVerification(userId as string, email).catch((err) =>
         this.logger.warn(
           `queueEmailVerification failed (non-fatal): ${err.message}`,
         ),
@@ -2176,7 +2187,7 @@ export class AuthService {
 
       this.gmailService
         .sendOnboardingEmail({
-          to: dto.email,
+          to: email,
           ownerName: dto.name,
           restaurantName: dto.restaurantName,
           restaurantCity: dto.city,
@@ -2710,7 +2721,7 @@ export class AuthService {
           .from("team_members")
           .select("id, invite_id, user_id")
           .eq("restaurant_id", params.restaurantId)
-          .ilike("email", params.email)
+          .in("email", teamEmailSpellings(params.email))
           .maybeSingle();
         if (existing) {
           if (!existing.user_id) {
@@ -2778,7 +2789,7 @@ export class AuthService {
           .from("team_members")
           .select("id")
           .eq("restaurant_id", params.restaurantId)
-          .ilike("email", params.email)
+          .in("email", teamEmailSpellings(params.email))
           .maybeSingle();
         if (byEmail) memberId = byEmail.id;
       }
@@ -2981,6 +2992,33 @@ export class AuthService {
   }
 
   /**
+   * The account a joiner's typed address names, through the shared lookup
+   * (QA r17 gap 1): an exact `.eq` missed a held row typed in another case and
+   * inserted a case-twin. Neither a failed read nor held twins is the
+   * joiner's doing, so the invite is given back before refusing.
+   */
+  private async joinerAccount(
+    typed: string,
+    inviteId: string,
+  ): Promise<{ data: any | null }> {
+    const lookup = await findUserBySignInAddress<any>(
+      () => this.databaseService.supabase.from("users").select("*"),
+      typed,
+    );
+    if (!lookup.error && !lookup.ambiguous) return { data: lookup.user };
+    await this.databaseService.supabase
+      .from("organization_invites")
+      .update({ used_at: null, used_by_email: null })
+      .eq("id", inviteId);
+    if (lookup.error) {
+      throw new ServiceUnavailableException(
+        "Could not check that address. Nothing was done; try again.",
+      );
+    }
+    throw new UnauthorizedException("Invalid credentials");
+  }
+
+  /**
    * Path A: Join via invite code — atomically consumes invite and creates user.
    *
    * A NEW account is verified only when the address typed here is the address
@@ -3058,11 +3096,7 @@ export class AuthService {
       );
     }
 
-    const { data: existingUser } = await this.databaseService.supabase
-      .from("users")
-      .select("*")
-      .eq("email", email)
-      .maybeSingle();
+    const { data: existingUser } = await this.joinerAccount(dto.email, invite.id);
 
     let user: any;
     // Whether the joining account's address is proved right now (fork 13).
@@ -3878,17 +3912,21 @@ export class AuthService {
   }) {
     const { provider, email } = params;
 
-    // Normalised like every other lookup (checkEmailExists, resolveSignInMethods).
-    // `users.email` is UNIQUE and case-sensitive, so a mixed-case stored address
-    // against Google's lower-cased claim used to miss and fall through to the
-    // create branch — the same defect wearing a different hat.
-    const normalizedEmail = email.toLowerCase().trim();
-
-    const { data: user } = await this.databaseService.supabase
-      .from("users")
-      .select("*")
-      .eq("email", normalizedEmail)
-      .single();
+    // Looked up like every other door (findUserBySignInAddress). `users.email`
+    // is UNIQUE and case-sensitive, so a mixed-case stored address against
+    // Google's lower-cased claim used to miss and fall through to the create
+    // branch — the same defect wearing a different hat. A row the backfill
+    // held unfolded (R11-01) is found by the SQL fold. A failed read is not
+    // "no account".
+    const { user, error: userReadError } = await findUserBySignInAddress<any>(
+      () => this.databaseService.supabase.from("users").select("*"),
+      email,
+    );
+    if (userReadError) {
+      throw new ServiceUnavailableException(
+        "We could not check your account just now. Nothing was changed; try again.",
+      );
+    }
 
     if (!user) {
       this.logger.warn(
@@ -4038,22 +4076,25 @@ export class AuthService {
    * Returns true if email exists, false otherwise.
    */
   async checkEmailExists(email: string): Promise<boolean> {
-    return this.emailAlreadyRegistered(email.toLowerCase().trim());
+    return this.emailAlreadyRegistered(email);
   }
 
   /** A failed users read is not "email is free". */
+  /**
+   * Through the shared lookup, so an address a held row answers to under the
+   * SQL fold (R11-01) is taken: registration never writes a new case-twin.
+   */
   private async emailAlreadyRegistered(email: string): Promise<boolean> {
-    const { data: existing, error } = await this.databaseService.supabase
-      .from("users")
-      .select("email")
-      .eq("email", email)
-      .maybeSingle();
+    const { user, error, ambiguous } = await findUserBySignInAddress(
+      () => this.databaseService.supabase.from("users").select("email"),
+      email,
+    );
     if (error) {
       throw new InternalServerErrorException(
         "Could not check whether that email is already registered",
       );
     }
-    return !!existing;
+    return ambiguous || !!user;
   }
 
   /** Build profile payload for GET/PATCH /auth/me */
@@ -4247,6 +4288,7 @@ export class AuthService {
     const normalizedEmail = email.trim().toLowerCase();
 
     void this.requestPasswordResetInBackground(
+      email,
       normalizedEmail,
       requestIp,
     ).catch((err) =>
@@ -4258,16 +4300,32 @@ export class AuthService {
     return { sent: true };
   }
 
-  /** The account-dependent part of requestPasswordReset, off the request's clock. */
+  /**
+   * The account-dependent part of requestPasswordReset, off the request's
+   * clock. `typed` is the address as sent: the shared lookup folds it itself.
+   */
   private async requestPasswordResetInBackground(
+    typed: string,
     normalizedEmail: string,
     requestIp: string | null,
   ): Promise<void> {
-    const { data: user } = await this.databaseService.supabase
-      .from("users")
-      .select("user_id, name, email")
-      .eq("email", normalizedEmail)
-      .maybeSingle();
+    // The shared lookup (R11-01): a row held unfolded is found too. A failed
+    // read is logged and ends here like an unknown address; the caller was
+    // already answered the same way either way.
+    const { user, error: userReadError } = await findUserBySignInAddress<{
+      user_id: string;
+      name: string;
+      email: string;
+    }>(
+      () => this.databaseService.supabase.from("users").select("user_id, name, email"),
+      typed,
+    );
+    if (userReadError) {
+      this.logger.error(
+        `Password reset could not read the account: ${userReadError.message}`,
+      );
+      return;
+    }
 
     // Always return the same shape. Do not throw NotFound here — that is
     // exactly the timing/branching oracle enumeration relies on.
@@ -4595,11 +4653,18 @@ export class AuthService {
     const normalizedEmail = email.trim().toLowerCase();
     const declared = sortForDisplay([...IDENTITY_PROVIDERS]);
 
-    const { data: user } = await this.databaseService.supabase
-      .from("users")
-      .select("user_id, password_hash")
-      .eq("email", normalizedEmail)
-      .maybeSingle();
+    const { user, error: userReadError } = await findUserBySignInAddress<{
+      user_id: string;
+      password_hash: string | null;
+    }>(
+      () => this.databaseService.supabase.from("users").select("user_id, password_hash"),
+      email,
+    );
+    if (userReadError) {
+      throw new ServiceUnavailableException(
+        "We could not check that address just now. Try again.",
+      );
+    }
 
     if (!user) {
       return {
@@ -4982,4 +5047,14 @@ export class AuthService {
 
     this.logger.log(`Account deleted: ${userId}`);
   }
+}
+
+/**
+ * QA round 23: team rows matched by `ilike` read `_` and `%` in an address as
+ * wildcards, so john_smith@ claimed john.smith@'s row. Exact match only: the
+ * folded spelling, or the one typed. A row stored in another case is not
+ * matched and the join makes a new row, never someone else's.
+ */
+function teamEmailSpellings(email: string): string[] {
+  return [...new Set([normalizeEmail(email), email])];
 }

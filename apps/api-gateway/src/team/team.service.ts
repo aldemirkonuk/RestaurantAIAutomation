@@ -2142,7 +2142,18 @@ export class TeamService {
       if (!mine) return [];
       q = q.eq("member_id", mine);
     }
-    const { data } = await q.order("expires_at", { ascending: true });
+    const { data, error } = await q.order("expires_at", { ascending: true });
+    // A failed read is not an empty file (QA round 4, B2): `[]` printed "no
+    // credential on file", which a manager reads as nothing to check.
+    if (error) {
+      this.logger.error(
+        `listCertifications: could not read the credential file of ` +
+          `${restaurantId}: ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read the credentials file, so it is not shown. It is not empty.",
+      );
+    }
     // A removed person's credentials are kept five years, not listed (ADR
     // 0215, founder 2026-09-25 round 4 item 19): they appear only in the
     // owner's former-staff history. A staff caller's list is already their own.
@@ -2240,7 +2251,18 @@ export class TeamService {
       if (!mine) return [];
       q = q.eq("member_id", mine);
     }
-    const { data } = await q.order("created_at", { ascending: false });
+    const { data, error } = await q.order("created_at", { ascending: false });
+    // A failed read is not an empty file (QA round 4, B2): `[]` read as "no
+    // one has asked for time off".
+    if (error) {
+      this.logger.error(
+        `listTimeOff: could not read the time-off file of ${restaurantId}: ` +
+          error.message,
+      );
+      throw new InternalServerErrorException(
+        "Could not read the time-off requests, so they are not shown. That is not none.",
+      );
+    }
     if (role === "staff") return data ?? [];
     // A removed person's requests are kept five years, not listed (ADR 0215
     // item 20): before 20261201110200 the removal deleted them, and a

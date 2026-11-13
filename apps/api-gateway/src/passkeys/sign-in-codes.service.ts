@@ -90,6 +90,83 @@ export function normalizeEmail(raw: unknown): string {
   return raw.trim().toLowerCase();
 }
 
+/**
+ * The column migration a_sign_in_address_is_kept_in_lower_case gives
+ * `users` for the third read: `public.email_folded(users)`, a PostgREST
+ * computed field over the indexed `public.sign_in_address_fold(email)`.
+ */
+export const EMAIL_FOLDED = "email_folded";
+
+/**
+ * `public.sign_in_address_fold` in TypeScript: A-Z to a-z and nothing else,
+ * on an address already trimmed by `String.prototype.trim` (the SQL fold
+ * trims exactly that set). Locale-free on both sides.
+ */
+export function asciiFoldAddress(trimmed: string): string {
+  return trimmed.replace(/[A-Z]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 32));
+}
+
+export interface SignInAddressMatch<T> {
+  /** The one account the address names, or null. */
+  user: T | null;
+  /** A failed read: never an answer about the address. */
+  error: { message: string } | null;
+  /** More than one account holds this address under the fold (held twins). */
+  ambiguous: boolean;
+}
+
+/**
+ * The account a typed sign-in address names (QA rounds 11 and 13: R11-01,
+ * R11-02). Every door that looks an account up by address goes through here,
+ * so sign-in, reset, the emailed code, Google/Microsoft and registration's
+ * "already registered" agree on which row an address means.
+ *
+ * Three reads, each only when the one before found nothing:
+ *  1. the address exactly as typed, trimmed -- only when that differs from the
+ *     folded spelling. A row the backfill held unfolded (its lower-case twin
+ *     exists, or it has a non-ASCII letter) keeps answering to the spelling
+ *     its owner always used, ahead of a lower-case twin someone else holds;
+ *  2. the folded spelling (`normalizeEmail`) -- every row written since
+ *     registration folded, and every row the backfill folded;
+ *  3. the SQL fold (`email_folded`: trim + ASCII-only lower case, indexed) --
+ *     a held row typed in another case. Two holders is `ambiguous` and names
+ *     nobody: a person decides which account keeps the address.
+ *
+ * `usersRead` is the caller's own `from("users").select("<literal columns>")`,
+ * built fresh for each read: the column list stays a literal at the call site,
+ * where check_read_columns_exist.py can read it.
+ */
+export async function findUserBySignInAddress<T = any>(
+  usersRead: () => any,
+  typed: unknown,
+): Promise<SignInAddressMatch<T>> {
+  const none: SignInAddressMatch<T> = { user: null, error: null, ambiguous: false };
+  const folded = normalizeEmail(typed);
+  if (!folded) return none;
+  const asTyped = (typed as string).trim();
+
+  const byAddress = async (address: string) => {
+    const { data, error } = await usersRead().eq("email", address).maybeSingle();
+    return { user: (data ?? null) as T | null, error: error ?? null };
+  };
+
+  if (asTyped !== folded) {
+    const exact = await byAddress(asTyped);
+    if (exact.error || exact.user) return { ...exact, ambiguous: false };
+  }
+  const plain = await byAddress(folded);
+  if (plain.error || plain.user) return { ...plain, ambiguous: false };
+
+  const { data, error } = await usersRead()
+    // No .limit: the rows sharing one folded address are the held twins, a
+    // handful at most, and two or more is the answer "ambiguous".
+    .eq(EMAIL_FOLDED, asciiFoldAddress(asTyped));
+  if (error) return { user: null, error, ambiguous: false };
+  const rows = (data ?? []) as T[];
+  if (rows.length > 1) return { user: null, error: null, ambiguous: true };
+  return { user: rows[0] ?? null, error: null, ambiguous: false };
+}
+
 interface CodeRow {
   id: string;
   email: string;
@@ -162,18 +239,23 @@ export class SignInCodesService {
     if (!email.includes("@") || email.length < 3 || email.length > 320) {
       throw new BadRequestException("Type the email address you sign in with.");
     }
-    const { data: user, error } = await this.db
-      .from("users")
-      .select("user_id, name, email")
-      .eq("email", email)
-      .maybeSingle();
+    // R11-01/R11-02: the shared lookup, so a row held unfolded is found too.
+    // A held twin (`ambiguous`) names nobody: no code is mailed.
+    const { user, error } = await findUserBySignInAddress(
+      () => this.db.from("users").select("user_id, name, email"),
+      emailRaw,
+    );
     if (error) {
       // Not an answer about the address: every address gets this on a failed read.
       throw new InternalServerErrorException(
         "We could not send a code just now. Nothing was sent; try again.",
       );
     }
-    const person = user as { user_id: string; name: string | null } | null;
+    const person = user as {
+      user_id: string;
+      name: string | null;
+      email: string | null;
+    } | null;
     const code = await this.store(
       "sign_in",
       email,
@@ -183,7 +265,11 @@ export class SignInCodesService {
     if (person) {
       // Deliberately not awaited: the response time must not say whether a
       // mail went out. A failed send is logged; the person can ask again.
-      void this.send(email, person.name, code, "sign_in").catch(() => false);
+      // To the address on the account: for a row held unfolded that is not
+      // the folded spelling the code is filed under.
+      void this.send(person.email ?? email, person.name, code, "sign_in").catch(
+        () => false,
+      );
     }
     return {
       sent: true,
