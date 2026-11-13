@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { goodBody, proposeGood, unitMisfit } from './newGoodFromLine'
+import { goodBody, goodSizeSuffix, proposeGood, unitMisfit } from './newGoodFromLine'
 
 /**
  * r21: a paper line becomes a good in the unit its cost can be read in. Each
@@ -39,6 +39,9 @@ describe('unitMisfit: the gateway refusal, said before the good exists', () => {
   })
   it('a piece line kept in grams waits for a weight', () => {
     expect(unitMisfit({ description: 'Peynir', uom: 'each', formatMl: null }, 'g')).toMatch(/not a weight/)
+    expect(unitMisfit({ description: 'Peynir', uom: 'each', formatMl: null }, 'g')).toMatch(/counts pieces,/)
+    expect(unitMisfit({ description: 'Tonik', uom: 'each', formatMl: null }, 'ml')).toMatch(/counts pieces and/)
+    expect(unitMisfit({ description: 'Kasa', uom: 'split_case', formatMl: null }, 'g')).toMatch(/counts split cases,/)
   })
   it('a weighed line kept by the piece or by volume is refused', () => {
     expect(unitMisfit({ description: 'Peynir', uom: 'kg', formatMl: null }, 'each')).toMatch(/Keep it by weight/)
@@ -61,5 +64,18 @@ describe('goodBody', () => {
   it('refuses an empty or long name', () => {
     expect(goodBody('  ', 'food', 'g').ok).toBe(false)
     expect(goodBody('x'.repeat(121), 'food', 'g').ok).toBe(false)
+  })
+})
+
+describe('goodSizeSuffix: the label says a size only when one was set', () => {
+  it('a food row the read filled with 750 says no size', () => {
+    expect(goodSizeSuffix({ kind: 'food', bottleSizeMl: 750, bottle_size_ml: null })).toBe('')
+    expect(goodSizeSuffix({ kind: 'other', bottleSizeMl: 750 })).toBe('')
+  })
+  it('a size the house set is said', () => {
+    expect(goodSizeSuffix({ kind: 'other', bottleSizeMl: 200, bottle_size_ml: 200 })).toBe(' · 200 ml')
+  })
+  it('a wine says its library bottle', () => {
+    expect(goodSizeSuffix({ kind: 'wine', bottleSizeMl: 750, bottle_size_ml: null })).toBe(' · 750 ml')
   })
 })

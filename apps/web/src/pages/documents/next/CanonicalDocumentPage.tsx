@@ -79,6 +79,7 @@ import {
 } from '../../../components/documents'
 import { ItemChooser } from '../../../components/documents/ItemChooser'
 import type { LineFacts } from '../../../components/documents/newGoodFromLine'
+import { goodSizeSuffix } from '../../../components/documents/newGoodFromLine'
 import { addHouseGood, carryThenPair } from '../../../services/api/houseGoods'
 import { AuthContext } from '@/contexts/AuthContext'
 import { canonicalApi } from '../../../services/api/canonical'
@@ -172,7 +173,7 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
     if (!it) return null
     if (!it.wineName) return null
     const vintage = it.wineVintage ? ` ${it.wineVintage}` : ''
-    const size = it.bottleSizeMl ? ` · ${it.bottleSizeMl} ml` : ''
+    const size = goodSizeSuffix(it as Parameters<typeof goodSizeSuffix>[0])
     return `${it.wineName}${vintage}${size}`
   }
   const itemVintage = (inventoryId: string): number | null => {

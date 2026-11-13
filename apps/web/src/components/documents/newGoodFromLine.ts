@@ -65,7 +65,8 @@ export function proposeGood(line: LineFacts): { name: string; kind: GoodKind; un
  */
 export function unitMisfit(line: LineFacts, unit: GoodUnit): string | null {
   const u = line.uom ?? ''
-  const what = u ? u.replace('_', ' ') + 's' : 'pieces'
+  // `each` is already the piece: "eachs" is not a word.
+  const what = u && u !== 'each' ? u.replace('_', ' ') + 's' : 'pieces'
   if (unit === 'g')
     return WEIGHED.has(u)
       ? null
@@ -97,4 +98,21 @@ export function goodBody(
   if (n.length < 1) return { ok: false, why: 'Give the good a name.' }
   if (n.length > 120) return { ok: false, why: 'Keep the name to 120 characters.' }
   return { ok: true, body: { kind, uom: unit, displayName: n } }
+}
+
+/**
+ * The size a paired good's label carries, or nothing. The inventory read fills
+ * `bottleSizeMl` with 750 for every row that names no size, so a jar of olive
+ * oil kept in ml would read "· 750 ml". A size is said only when the house set
+ * one on the row, or when the good is a wine (its library names the bottle).
+ */
+export function goodSizeSuffix(item: {
+  bottleSizeMl?: number | null
+  bottle_size_ml?: number | null
+  kind?: string | null
+}): string {
+  const own = item.bottle_size_ml
+  if (own != null && own > 0) return ` · ${own} ml`
+  if (item.kind === 'wine' && item.bottleSizeMl) return ` · ${item.bottleSizeMl} ml`
+  return ''
 }
