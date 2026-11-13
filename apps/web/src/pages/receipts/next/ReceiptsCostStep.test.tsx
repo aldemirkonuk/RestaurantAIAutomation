@@ -4,9 +4,9 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useNavigate, type NavigateFunction } from 'react-router-dom';
 import { createContext, type ReactNode } from 'react';
 import type { ProcurementDocument } from '../../../services/api/documents';
 
@@ -111,10 +111,18 @@ const LINE = {
   allowance: null,
 };
 
+/** The router's own navigate, so a test can press the browser's Back. */
+let nav: NavigateFunction | null = null;
+function Nav() {
+  nav = useNavigate();
+  return null;
+}
+
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return (
     <MemoryRouter>
+      <Nav />
       <QueryClientProvider client={qc}>{children}</QueryClientProvider>
     </MemoryRouter>
   );
@@ -212,6 +220,22 @@ describe('the card says what puts the paper\'s prices on cost (r28 G4)', () => {
     fireEvent.keyDown(screen.getByRole('button', { name: /Swipe up to confirm/ }), { key: ' ' });
     await screen.findByTestId('confirmed-note', undefined, { timeout: 3000 });
     await openFirstDoc();
+    expect(screen.queryByTestId('confirmed-note')).toBeNull();
+    // and it stays ended once that paper is closed again
+    fireEvent.click(screen.getByRole('button', { name: /All receipts/ }));
+    await waitFor(() => expect(screen.queryByLabelText('Quantity, line 1')).toBeNull());
+    expect(screen.queryByTestId('confirmed-note')).toBeNull();
+  });
+
+  it('the browser\'s Back onto the confirmed paper does not draw the note over it', async () => {
+    api.sheet.mockResolvedValue({ canonical: { layer3: null }, deliveries: [] });
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    await screen.findByTestId('cost-next-step');
+    fireEvent.keyDown(screen.getByRole('button', { name: /Swipe up to confirm/ }), { key: ' ' });
+    await screen.findByTestId('confirmed-note', undefined, { timeout: 3000 });
+    act(() => nav!(-1));
+    await screen.findByLabelText('Quantity, line 1');
     expect(screen.queryByTestId('confirmed-note')).toBeNull();
   });
 
