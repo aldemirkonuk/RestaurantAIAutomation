@@ -423,8 +423,9 @@ describe("recordPurchase — money in, with its provenance", () => {
       );
       expect(db.tables.house_message_credits[0].currency).toBe("TRY");
       expect(db.tables.house_message_credits[0].detail).toContain(
-        "5000 TRY minor units",
+        "Credits bought: ₺50.00.",
       );
+      expect(db.tables.house_message_credits[0].detail).not.toContain("5000");
     }
   });
 

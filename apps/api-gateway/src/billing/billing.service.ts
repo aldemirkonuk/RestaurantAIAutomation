@@ -6,6 +6,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { moneyFromMinor } from "../common/money-in";
 import { BillingCustomerService } from "./billing-customer.service";
 import { PaymentMethodMirrorService } from "./payment-method-mirror.service";
 import { StripeClient, StripePaymentMethod } from "./stripe.client";
@@ -602,7 +603,7 @@ export class BillingService {
         charged: true,
         paymentIntentId: intent.id,
         status,
-        words: `Charged ${input.amountMinor} ${input.currency} minor units to the card on file.`,
+        words: `Charged ${chargedAmount(input.amountMinor, input.currency)} to the card on file.`,
       };
     } catch (error) {
       const said = (error as Error)?.message ?? "the provider gave no reason";
@@ -724,4 +725,16 @@ export class BillingService {
       providerRef: first ? String(first.provider_ref) : null,
     };
   }
+}
+
+/**
+ * What a charge took, said as money: "₺50.00", not "5000 TRY minor units".
+ * Where the minor unit cannot be scaled honestly (`moneyFromMinor` says why),
+ * the minor units are said with their code, which is exact if less readable.
+ */
+export function chargedAmount(amountMinor: number, currency: string): string {
+  return (
+    moneyFromMinor(amountMinor, currency) ??
+    `${amountMinor} ${currency} minor units`
+  );
 }

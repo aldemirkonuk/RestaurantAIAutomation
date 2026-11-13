@@ -663,7 +663,8 @@ describe("BillingService.chargeForMessageCredits — the five outcomes", () => {
     if (!out.charged) throw new Error("unreachable");
     expect(out.paymentIntentId).toBe("pi_1");
     expect(out.status).toBe("succeeded");
-    expect(out.words).toContain("5000 USD");
+    // 5000 USD minor units is fifty dollars, said as money, not as cents.
+    expect(out.words).toBe("Charged $50.00 to the card on file.");
   });
 
   it("refuses with `provider_not_connected` and asks the provider NOTHING", async () => {
@@ -848,5 +849,22 @@ describe("BillingService.chargeForMessageCredits — what it reads, and what it 
       sealId: "seal-1",
     });
     expect(h.chargeArgs[0].currency).toBe("TRY");
+  });
+});
+
+describe("chargedAmount — what a charge took, said as money", () => {
+  // Imported here rather than at the top so this block reads on its own.
+  const { chargedAmount } = jest.requireActual("./billing.service");
+
+  it("scales minor units by the money's own places", () => {
+    expect(chargedAmount(5000, "TRY")).toBe("₺50.00");
+    expect(chargedAmount(5000, "USD")).toBe("$50.00");
+    expect(chargedAmount(5000, "JPY")).toBe("¥5,000");
+    expect(chargedAmount(5000, "KWD")).toBe("KWD\u00a05.000");
+  });
+
+  it("says the minor units with their code where the scale is not known", () => {
+    expect(chargedAmount(5000, "UGX")).toBe("5000 UGX minor units");
+    expect(chargedAmount(5000, "ISK")).toBe("5000 ISK minor units");
   });
 });

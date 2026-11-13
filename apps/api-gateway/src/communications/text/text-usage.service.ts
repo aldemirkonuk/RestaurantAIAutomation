@@ -40,6 +40,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { currencyCode, notACurrencyBecause } from "../../common/iso-4217";
+import { moneyFromMinor } from "../../common/money-in";
 
 /** Columns read here, as module-level literals for check_read_columns_exist.py. */
 const ALLOWANCE_COLUMNS =
@@ -639,7 +640,7 @@ export class TextUsageService {
         meter_id: null,
         seal_id: params.sealId,
         payment_ref: params.paymentRef,
-        detail: `Credits bought: ${params.amountMinor} ${currency} minor units. ${PLATFORM_FEE_BASIS_UNSET}`,
+        detail: `Credits bought: ${moneyFromMinor(params.amountMinor, currency) ?? `${params.amountMinor} ${currency} minor units`}. ${PLATFORM_FEE_BASIS_UNSET}`,
         recorded_by: params.recordedBy,
       })
       .select("id")
