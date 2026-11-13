@@ -18,7 +18,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { deleteInventoryItem, reconcileItem } from '../../services/api/inventory'
 import { ThemedSelect } from '../ui/ThemedSelect'
-import { fmtMoney } from '../../pages/inventory/command/bits'
+import { houseMoney, useHouseCurrency } from '../../pages/inventory/command/house-money'
 import {
   COST_NOT_KNOWN,
   stockValue,
@@ -47,6 +47,11 @@ type Phase = 'confirm' | 'working' | 'error'
 
 export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: RemoveFromInventoryModalProps) {
   const queryClient = useQueryClient()
+  // The house's own money (r56, 2026-11-12): this modal printed every value
+  // with a hard-coded `$`, so a lira house wrote off "$60". Same read, same
+  // key as the page behind it, so it costs no second fetch.
+  const currency = useHouseCurrency()
+  const money = (n: number) => houseMoney(n, currency, 'whole')
   const [reason, setReason] = useState(REMOVE_REASONS[0].value)
   const [phase, setPhase] = useState<Phase>('confirm')
   const [failures, setFailures] = useState<{ name: string; message: string }[]>([])
@@ -166,7 +171,7 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
                     {value == null ? (
                       <span className="ml-2 text-gray-500">{COST_NOT_KNOWN}</span>
                     ) : value > 0 ? (
-                      <b className="ml-2 text-gray-700">{fmtMoney(value)}</b>
+                      <b className="ml-2 text-gray-700">{money(value)}</b>
                     ) : null}
                   </span>
                 </div>
@@ -178,7 +183,7 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
                 <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                 <p className="text-xs text-amber-800 leading-relaxed">
                   {totalValue.known > 0 || totalValue.unknownItems > 0 ? (
-                    <>This will write off <b>{totalStockValueText(totalValue, fmtMoney)}</b> in on-hand value. </>
+                    <>This will write off <b>{totalStockValueText(totalValue, money)}</b> in on-hand value. </>
                   ) : null}
                   Remaining stock is reconciled to zero and logged to the ledger with the reason below before removal —
                   nothing is deleted silently.
