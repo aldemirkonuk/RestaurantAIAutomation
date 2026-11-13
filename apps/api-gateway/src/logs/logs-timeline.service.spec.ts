@@ -34,6 +34,8 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
       const containsFilters: Array<[string, Row]> = [];
       const inFilters: Array<[string, any[]]> = [];
       const notInFilters: Array<[string, string[]]> = [];
+      // `.is(col, null)` → [col, true]; `.not(col, "is", null)` → [col, false].
+      const nullChecks: Array<[string, boolean]> = [];
       const rec: Asked = { table, order: [], limit: null, or: [] };
       asked.push(rec);
       const api: any = {
@@ -56,6 +58,10 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
         // the "in" operator is parsed; a wider call throws so a future caller
         // does not get a filter that silently does nothing.
         not(col: string, op: string, val: any) {
+          if (op === "is" && val === null) {
+            nullChecks.push([col, false]);
+            return api;
+          }
           if (op !== "in") {
             throw new Error(`fake client cannot parse not(${col}, ${op}, …)`);
           }
@@ -64,6 +70,11 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
             .split(",")
             .filter(Boolean);
           notInFilters.push([col, list]);
+          return api;
+        },
+        is(col: string, val: any) {
+          if (val !== null) throw new Error(`fake client cannot parse is(${col}, ${val})`);
+          nullChecks.push([col, true]);
           return api;
         },
         order(col: string, opts: any) {
@@ -92,6 +103,9 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
           }
           for (const [col, excluded] of notInFilters) {
             rows = rows.filter((r) => !excluded.includes(String(r[col])));
+          }
+          for (const [col, wantNull] of nullChecks) {
+            rows = rows.filter((r) => (r[col] === null || r[col] === undefined) === wantNull);
           }
           // The cursor filter the service writes: `<col>.lte.<iso>,<col>.is.null`.
           for (const expr of rec.or) {
@@ -417,6 +431,7 @@ describe("LogsTimelineService.getTimeline", () => {
             eq: () => api,
             contains: () => api,
             not: () => api,
+            is: () => api,
             order: () => api,
             limit: () => api,
             then: (resolve: any) =>
@@ -548,6 +563,7 @@ describe("LogsTimelineService.getTimeline", () => {
         "decision_log",
         "inventory_transactions",
         "pos_checks",
+        "pos_checks",
         "procurement_documents",
         "system_audit_log",
       ]);
@@ -556,6 +572,43 @@ describe("LogsTimelineService.getTimeline", () => {
         expect(a.order).toHaveLength(1);
         expect(a.order[0][1]).toEqual({ ascending: false, nullsFirst: false });
       }
+    });
+
+    it("pages POS checks on the moment they are dated by, so a late close is not pushed to a later page", async () => {
+      const check = (id: string, opened: string, closed: string | null): Row => ({
+        id,
+        restaurant_id: "r1",
+        external_check_id: id,
+        source: "simpos",
+        opened_at: opened,
+        closed_at: closed,
+        correlation_id: null,
+        items: [],
+      });
+      const tables = {
+        ...EMPTY,
+        pos_checks: [
+          // Opened first, closed last: the newest event in the house.
+          check("early-late", "2026-09-01T09:00:00.000Z", "2026-09-01T23:00:00.000Z"),
+          check("b", "2026-09-01T20:00:00.000Z", "2026-09-01T20:30:00.000Z"),
+          check("c", "2026-09-01T21:00:00.000Z", "2026-09-01T21:30:00.000Z"),
+          check("d", "2026-09-01T22:00:00.000Z", "2026-09-01T22:10:00.000Z"),
+          // Still open: dated by its open.
+          check("open", "2026-09-01T22:05:00.000Z", null),
+        ],
+      };
+      const first = await service(tables).getTimeline("r1", { limit: 3 });
+      expect(first.events.map((e) => e.id)).toEqual(["early-late", "d", "open"]);
+      expect(first.hasMore).toBe(true);
+      expect(first.nextCursor).toBe("2026-09-01T22:05:00.000Z");
+
+      const second = await service(tables).getTimeline("r1", {
+        limit: 3,
+        before: first.nextCursor!,
+      });
+      // The inclusive cursor re-reads "open"; the page de-duplicates on source:id.
+      expect(second.events.map((e) => e.id)).toEqual(["open", "c", "b"]);
+      expect(second.hasMore).toBe(false);
     });
 
     it("reports hasMore exactly and hands over the last dated event as the cursor", async () => {
