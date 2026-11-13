@@ -37,6 +37,12 @@ describe('Ask the book reads every letter', () => {
     expect(tokensOf('Öküzgözü')).toEqual(['okuzgozu']);
   });
 
+  it('[REVERT-FAILS] keeps a letter that has no plain form inside its word', () => {
+    // ß, ø and ł do not fold to a-z; an a-z split would cut each word in two.
+    expect(tokensOf('Weißbier')).toEqual(['weißbier']);
+    expect(tokensOf('Smørrebrød Żubrówka')).toEqual(['smørrebrød', 'zubrowka']);
+  });
+
   it('[REVERT-FAILS] a Turkish search finds its sentence, and only it', () => {
     expect(keys('Öküzgözü')).toEqual(['a']);
   });
