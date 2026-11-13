@@ -27,7 +27,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { decodeSheet, defaultSheet, encodeSheet } from './useReportsNextData';
 import { CATALOGUE } from './rp-catalogue';
@@ -44,7 +44,7 @@ const decode = (id: 'goals' | 'bench', raw: unknown) => CATALOGUE[id].select(raw
 
 const hook = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 /** What the page last asked the data layer to READ — the draft included. */
-const asked = vi.hoisted(() => ({ showing: undefined as unknown }));
+const asked = vi.hoisted(() => ({ showing: undefined as unknown, place: undefined as unknown }));
 
 vi.mock('./useReportsNextData', async () => {
   const actual = await vi.importActual<typeof import('./useReportsNextData')>(
@@ -54,6 +54,7 @@ vi.mock('./useReportsNextData', async () => {
     ...actual,
     useReportsNextData: (...args: unknown[]) => {
       asked.showing = args[2];
+      asked.place = args[3];
       return hook.current;
     },
   };
@@ -77,7 +78,8 @@ function broke(status: number | null, message = 'boom') {
   };
 }
 
-const saveSheet = vi.fn();
+/** The real `saveSheet` returns the preference write's promise; this one lands. */
+const saveSheet = vi.fn((_next: unknown) => Promise.resolve());
 
 /** The export desk (OD-81), stubbed; its own render contract is ExportsShelf.test.tsx. */
 const exportStub = {
@@ -458,6 +460,11 @@ function paint() {
 }
 
 const arrange = () => fireEvent.click(screen.getByText('Arrange the sheet'));
+/** Press "Rule it off" and let the preference write settle, as the page waits for it. */
+const ruleItOff = () =>
+  act(async () => {
+    fireEvent.click(screen.getByText('Rule it off'));
+  });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -514,7 +521,7 @@ describe('ReportsNext — the sheet', () => {
     ).toBeInTheDocument();
   });
 
-  it('brings the drag-to-rearrange canvas back: one toggle rules the paper, one writes it', () => {
+  it('brings the drag-to-rearrange canvas back: one toggle rules the paper, one writes it', async () => {
     const { container } = paint();
     const sheet = container.querySelector('.rp-sheet') as HTMLElement;
     expect(sheet).toHaveAttribute('data-arranging', 'false');
@@ -531,10 +538,10 @@ describe('ReportsNext — the sheet', () => {
     fireEvent.click(screen.getByRole('button', { name: 'The reading' }));
     expect(screen.getByRole('region', { name: 'The reading' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('Rule it off'));
+    await ruleItOff();
     expect(saveSheet).toHaveBeenCalledTimes(1);
     expect(sheet).toHaveAttribute('data-arranging', 'false');
-    expect(screen.getByText('Ruled off.')).toBeInTheDocument();
+    expect(await screen.findByText('Ruled off.')).toBeInTheDocument();
   });
 
   it('carries exactly one period control, and it lives inside the cutting it governs', () => {
@@ -609,14 +616,14 @@ describe('ReportsNext — the drawing is the reader’s, within what is true', (
     expect(within(ledger).getByText(/four different units/)).toBeInTheDocument();
   });
 
-  it('keeps the drawing with the layout, in the one preference', () => {
+  it('keeps the drawing with the layout, in the one preference', async () => {
     paint();
     arrange();
     const till = screen.getByRole('region', { name: 'Through the till' });
     fireEvent.change(within(till).getByLabelText('Draw Through the till as'), {
       target: { value: 'bars' },
     });
-    fireEvent.click(screen.getByText('Rule it off'));
+    await ruleItOff();
 
     const saved = saveSheet.mock.calls[0][0] as {
       cuttings: Array<{ id: string; graph: string; slot: unknown }>;
@@ -628,7 +635,7 @@ describe('ReportsNext — the drawing is the reader’s, within what is true', (
 });
 
 describe('ReportsNext — the subject is the reader’s too', () => {
-  it('swaps a cutting for another analysis in the same square of paper', () => {
+  it('swaps a cutting for another analysis in the same square of paper', async () => {
     paint();
     arrange();
     const quad = screen.getByRole('region', { name: 'Margin against movement' });
@@ -645,7 +652,7 @@ describe('ReportsNext — the subject is the reader’s too', () => {
     expect(asked.showing).toContain('seats');
     expect(asked.showing).not.toContain('quadrants');
 
-    fireEvent.click(screen.getByText('Rule it off'));
+    await ruleItOff();
     const saved = saveSheet.mock.calls[0][0] as { cuttings: Array<{ id: string; slot: unknown }> };
     expect(saved.cuttings.find((c) => c.id === 'seats')?.slot).toEqual(DEFAULT_SLOTS.quadrants);
     expect(saved.cuttings.some((c) => c.id === 'quadrants')).toBe(false);
@@ -1149,7 +1156,7 @@ describe('ReportsNext — moving a cutting without a pointer', () => {
     expect(said.textContent).toContain('Shift and an arrow key resize it');
   });
 
-  it('moves one column per arrow key and resizes on Shift, and both survive the save', () => {
+  it('moves one column per arrow key and resizes on Shift, and both survive the save', async () => {
     hook.current = alone();
     paint();
     arrange();
@@ -1162,7 +1169,7 @@ describe('ReportsNext — moving a cutting without a pointer', () => {
     fireEvent.keyDown(grip, { key: 'Enter' });
     expect(grip).toHaveAttribute('aria-pressed', 'false');
 
-    fireEvent.click(screen.getByText('Rule it off'));
+    await ruleItOff();
     expect(saveSheet).toHaveBeenCalledTimes(1);
     const saved = saveSheet.mock.calls[0][0] as { cuttings: Array<Record<string, unknown>> };
     expect(saved.cuttings[0]).toEqual({
@@ -1196,7 +1203,7 @@ describe('ReportsNext — moving a cutting without a pointer', () => {
     expect(said).not.toContain('row 6');
   });
 
-  it('puts a cutting back where it was on Escape', () => {
+  it('puts a cutting back where it was on Escape', async () => {
     hook.current = alone();
     paint();
     arrange();
@@ -1207,24 +1214,24 @@ describe('ReportsNext — moving a cutting without a pointer', () => {
     fireEvent.keyDown(grip, { key: 'Escape' });
     expect(screen.getByRole('status', { name: '' }).textContent).toContain('Move cancelled');
 
-    fireEvent.click(screen.getByText('Rule it off'));
+    await ruleItOff();
     const saved = saveSheet.mock.calls[0][0] as { cuttings: Array<{ slot: { x: number } }> };
     expect(saved.cuttings[0].slot.x).toBe(0);
   });
 
-  it('ignores arrow keys until a cutting is actually picked up', () => {
+  it('ignores arrow keys until a cutting is actually picked up', async () => {
     hook.current = alone();
     paint();
     arrange();
     const grip = gripFor('Through the till');
     fireEvent.keyDown(grip, { key: 'ArrowRight' });
     fireEvent.keyDown(grip, { key: 'ArrowRight' });
-    fireEvent.click(screen.getByText('Rule it off'));
+    await ruleItOff();
     const saved = saveSheet.mock.calls[0][0] as { cuttings: Array<{ slot: { x: number } }> };
     expect(saved.cuttings[0].slot.x).toBe(0);
   });
 
-  it('offers every keystroke as a button too — WCAG 2.2 SC 2.5.7 is not the keyboard one', () => {
+  it('offers every keystroke as a button too — WCAG 2.2 SC 2.5.7 is not the keyboard one', async () => {
     hook.current = alone();
     paint();
     arrange();
@@ -1250,18 +1257,18 @@ describe('ReportsNext — moving a cutting without a pointer', () => {
     );
     fireEvent.click(within(bar).getByRole('button', { name: 'Make Through the till one row taller' }));
     fireEvent.click(within(bar).getByRole('button', { name: 'Place it' }));
-    fireEvent.click(screen.getByText('Rule it off'));
+    await ruleItOff();
     const saved = saveSheet.mock.calls[0][0] as { cuttings: Array<{ slot: unknown }> };
     expect(saved.cuttings[0].slot).toEqual({ x: 1, y: 0, w: 4, h: 5 });
   });
 
-  it('drops the pick-up when the sheet stops being arranged', () => {
+  it('drops the pick-up when the sheet stops being arranged', async () => {
     hook.current = alone();
     paint();
     arrange();
     fireEvent.keyDown(gripFor('Through the till'), { key: ' ' });
     expect(screen.getByRole('group', { name: 'Placing Through the till' })).toBeInTheDocument();
-    fireEvent.click(screen.getByText('Rule it off'));
+    await ruleItOff();
     expect(screen.queryByRole('group', { name: 'Placing Through the till' })).toBeNull();
   });
 });
@@ -1905,6 +1912,11 @@ describe('ReportsNext — a register this role is not sent (ADR 0348)', () => {
   });
 });
 
+/**
+ * "No bugs when switched places" (the founder's /goal, 2026-11-07). Three
+ * paths let a reader's own sheet be written over: a narrow screen, a cold
+ * load, and a save that was reported before it landed.
+ */
 describe('ReportsNext — the sheet keeps its places', () => {
   const region = (name: string) => screen.getByRole('region', { name });
 
@@ -1927,6 +1939,121 @@ describe('ReportsNext — the sheet keeps its places', () => {
     expect(screen.getByText(unread)).toBeInTheDocument();
     expect(region('Through the till')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Arrange the sheet' })).toBeDisabled();
+  });
+
+  it('says “Ruling off…” until the save lands, and only then stamps it', async () => {
+    let land: () => void = () => {};
+    saveSheet.mockImplementationOnce(() => new Promise<void>((r) => (land = r)));
+    paint();
+    arrange();
+    fireEvent.click(screen.getByText('Rule it off'));
+    expect(screen.getByRole('button', { name: 'Ruling off…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Put it all back' })).toBeDisabled();
+    expect(screen.queryByText('Ruled off.')).toBeNull();
+    // The paper is held still while the write is in flight: no cutting can be
+    // taken off or swapped, so no edit is made that the landing save drops.
+    expect(screen.queryByText('Take off')).toBeNull();
+    expect(screen.queryByLabelText(/^Show instead of /)).toBeNull();
+    await act(async () => land());
+    expect(screen.getByText('Ruled off.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Arrange the sheet' })).toBeEnabled();
+  });
+
+  it('holds "Put it on the sheet" while the save is in flight, and places the cutting once it has landed', async () => {
+    let land: () => void = () => {};
+    saveSheet.mockImplementationOnce(() => new Promise<void>((r) => (land = r)));
+    // Wire the stub desk to the page's real placer, as the hook does.
+    deskStub.place.mockImplementation((c: unknown) =>
+      (asked.place as (c: unknown) => void)(c),
+    );
+    deskStub.proposal = {
+      goalId: 'g1',
+      goalName: 'Lift wine revenue',
+      cutting: { id: 'seats', graph: 'bars', days: null },
+      why: null,
+      refusal: null,
+    };
+    const { container } = paint();
+    arrange();
+    fireEvent.click(within(region('The reading')).getByText('Take off'));
+    fireEvent.click(screen.getByText('Rule it off'));
+    const put = within(region('Goals')).getByRole('button', { name: 'Put it on the sheet' });
+    expect(put).toBeDisabled();
+    expect(within(region('Goals')).getByText('Ruling off…')).toBeInTheDocument();
+    fireEvent.click(put);
+    expect(deskStub.place).not.toHaveBeenCalled();
+    await act(async () => land());
+    expect(saveSheet).toHaveBeenCalledTimes(1);
+
+    // After the save, the same button works and the cutting is on the draft.
+    expect(screen.getByText('Ruled off.')).toBeInTheDocument();
+    arrange();
+    const again = within(region('Goals')).getByRole('button', { name: 'Put it on the sheet' });
+    expect(again).toBeEnabled();
+    fireEvent.click(again);
+    expect(deskStub.place).toHaveBeenCalledWith({ id: 'seats', graph: 'bars', days: null });
+    expect(container.querySelector('.rp-sheet')).toHaveAttribute('data-arranging', 'true');
+    await ruleItOff();
+    const saved = saveSheet.mock.calls[1][0] as { cuttings: Array<{ id: string }> };
+    expect(saved.cuttings.some((c) => c.id === 'seats')).toBe(true);
+  });
+
+  it('says a failed save failed, and keeps both the draft and the arranging', async () => {
+    saveSheet.mockImplementationOnce(() => Promise.reject(new Error('Request failed with status code 503')));
+    const { container } = paint();
+    arrange();
+    fireEvent.click(within(region('The reading')).getByText('Take off'));
+    fireEvent.click(screen.getByText('Rule it off'));
+    expect(await screen.findByText('The sheet was not saved. Try again.')).toHaveAttribute(
+      'role',
+      'alert',
+    );
+    expect(screen.queryByText('Ruled off.')).toBeNull();
+    expect(container.querySelector('.rp-sheet')).toHaveAttribute('data-arranging', 'true');
+    // The draft survived: the cutting that was taken off is still off.
+    expect(screen.queryByRole('region', { name: 'The reading' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Rule it off' })).toBeEnabled();
+  });
+
+  it('keeps the stamp until 2.4 s after the LATEST rule-off, and clears its timer on the way out', async () => {
+    vi.useFakeTimers();
+    try {
+      const view = paint();
+      const ruleOnce = async () => {
+        arrange();
+        await act(async () => {
+          fireEvent.click(screen.getByText('Rule it off'));
+        });
+      };
+      await ruleOnce();
+      expect(screen.getByText('Ruled off.')).toBeInTheDocument();
+      await act(async () => {
+        vi.advanceTimersByTime(1000);
+      });
+      await ruleOnce();
+      await act(async () => {
+        vi.advanceTimersByTime(1500); // 2.5 s after the first, 1.5 s after the second
+      });
+      expect(screen.getByText('Ruled off.')).toBeInTheDocument();
+      await act(async () => {
+        vi.advanceTimersByTime(900); // 2.4 s after the second
+      });
+      expect(screen.queryByText('Ruled off.')).toBeNull();
+
+      const set = vi.spyOn(window, 'setTimeout');
+      await ruleOnce();
+      expect(screen.getByText('Ruled off.')).toBeInTheDocument();
+      const at = set.mock.calls.findIndex((c) => c[1] === 2400);
+      expect(at).toBeGreaterThanOrEqual(0);
+      const stampTimer = set.mock.results[at].value;
+      const clear = vi.spyOn(window, 'clearTimeout');
+      view.unmount();
+      expect(clear).toHaveBeenCalledWith(stampTimer);
+      set.mockRestore();
+      clear.mockRestore();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
