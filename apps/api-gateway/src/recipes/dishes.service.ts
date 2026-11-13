@@ -15,6 +15,10 @@ import { DISH_NOT_THIS_HOUSE, RecipesService } from "./recipes.service";
 
 export const DISHES_UNREAD = "Your dishes could not be read just now. Nothing is shown rather than a wrong list.";
 export const DISH_USE_UNREAD = "Which dishes use this item could not be read just now.";
+export const DRINK_USE_UNREAD = "Which drinks use this item could not be read just now.";
+
+/** Whose recipe: a dish (recipe_current_dish) or a house drink (recipe_current). */
+export type RecipeOwner = "dish" | "cocktail";
 export const SHELF_MATCH_UNREAD = "The shelf could not be read just now, so no line is linked for you.";
 export const ITEM_NOT_THIS_HOUSE = "This item is not on this house's shelf.";
 export const DISH_NAME_NEEDED = "A dish needs a name.";
@@ -55,8 +59,9 @@ export interface DishFigures {
 
 /**
  * Dishes (ADR 0366): the list a house keeps of its plates, the figures each
- * one has at today's prices, which dishes use a shelf item, and the exact-name
- * shelf lookup a pasted recipe line proposes its link from.
+ * one has at today's prices, which dishes and which house drinks use a shelf
+ * item (each with the same figures), and the exact-name shelf lookup a pasted
+ * recipe line proposes its link from.
  *
  * Every read is scoped to the house in the path and pages past PostgREST's
  * 1,000-row cap; a failed read is a 503 with a sentence, never an empty list
@@ -122,43 +127,72 @@ export class DishesService {
   }
 
   /**
-   * The figures of each dish that has a current recipe, at today's prices.
-   * One read per table (chunked by id), never one read per dish.
+   * The figures of each dish (or drink) that has a current recipe, at today's
+   * prices. One read per table (chunked by id), never one read per recipe.
+   * A drink is priced exactly as a dish is, so the drawer's drink cards and
+   * its dish cards can never price one good two ways.
    */
-  async figures(restaurantId: string, dishIds: string[], money: boolean, sentence: string): Promise<Map<string, DishFigures>> {
+  async figures(
+    restaurantId: string,
+    ownerIds: string[],
+    money: boolean,
+    sentence: string,
+    owner: RecipeOwner = "dish",
+  ): Promise<Map<string, DishFigures>> {
     const client = this.db.getClient();
     const out = new Map<string, DishFigures>();
-    if (!dishIds.length) return out;
+    if (!ownerIds.length) return out;
 
-    const pointers: any[] = [];
-    for (const ids of chunks(dishIds)) {
-      pointers.push(
-        ...(await this.all<any>("dish pointer read", sentence, (from, to) =>
-          client
-            .from("recipe_current_dish")
-            .select("dish_id, version_id")
-            .eq("restaurant_id", restaurantId)
-            .in("dish_id", ids)
-            .order("dish_id", { ascending: true })
-            .range(from, to),
-        )),
-      );
+    // Two literal column lists per table, so the read-columns guard checks each.
+    const pointers: Array<{ ownerId: string; versionId: string }> = [];
+    for (const ids of chunks(ownerIds)) {
+      const rows =
+        owner === "dish"
+          ? await this.all<any>("dish pointer read", sentence, (from, to) =>
+              client
+                .from("recipe_current_dish")
+                .select("dish_id, version_id")
+                .eq("restaurant_id", restaurantId)
+                .in("dish_id", ids)
+                .order("dish_id", { ascending: true })
+                .range(from, to),
+            )
+          : await this.all<any>("drink pointer read", sentence, (from, to) =>
+              client
+                .from("recipe_current")
+                .select("cocktail_id, version_id")
+                .eq("restaurant_id", restaurantId)
+                .in("cocktail_id", ids)
+                .order("cocktail_id", { ascending: true })
+                .range(from, to),
+            );
+      for (const r of rows) pointers.push({ ownerId: owner === "dish" ? r.dish_id : r.cocktail_id, versionId: r.version_id });
     }
-    const versionIds = pointers.map((p) => p.version_id as string);
-    const versions = new Map<string, any>();
+    const versionIds = pointers.map((p) => p.versionId);
+    const versions = new Map<string, { ownerId: string; yieldServes: number }>();
     const lines = new Map<string, any[]>();
     for (const ids of chunks(versionIds)) {
       const [v, l] = await Promise.all([
-        this.all<any>("dish version read", sentence, (from, to) =>
-          client
-            .from("recipe_versions")
-            .select("id, dish_id, yield_serves")
-            .eq("restaurant_id", restaurantId)
-            .in("id", ids)
-            .order("id", { ascending: true })
-            .range(from, to),
-        ),
-        this.all<any>("dish line read", sentence, (from, to) =>
+        owner === "dish"
+          ? this.all<any>("dish version read", sentence, (from, to) =>
+              client
+                .from("recipe_versions")
+                .select("id, dish_id, yield_serves")
+                .eq("restaurant_id", restaurantId)
+                .in("id", ids)
+                .order("id", { ascending: true })
+                .range(from, to),
+            )
+          : this.all<any>("drink version read", sentence, (from, to) =>
+              client
+                .from("recipe_versions")
+                .select("id, cocktail_id, yield_serves")
+                .eq("restaurant_id", restaurantId)
+                .in("id", ids)
+                .order("id", { ascending: true })
+                .range(from, to),
+            ),
+        this.all<any>("recipe line read", sentence, (from, to) =>
           client
             .from("recipe_lines")
             .select("id, version_id, position, role, inventory_id, qty_base, base_unit")
@@ -168,7 +202,9 @@ export class DishesService {
             .range(from, to),
         ),
       ]);
-      for (const r of v) versions.set(r.id, r);
+      for (const r of v) {
+        versions.set(r.id, { ownerId: owner === "dish" ? r.dish_id : r.cocktail_id, yieldServes: Number(r.yield_serves) });
+      }
       for (const r of l) lines.set(r.version_id, [...(lines.get(r.version_id) ?? []), r]);
     }
 
@@ -181,7 +217,7 @@ export class DishesService {
         try {
           read = await this.recipes.readPricing(restaurantId, ids, true);
         } catch (e) {
-          this.failed("dish pricing read", e, sentence);
+          this.failed(`${owner} pricing read`, e, sentence);
         }
         read.items.forEach((v, k) => items.set(k, v));
         read.lots.forEach((v, k) => lots.set(k, v));
@@ -189,11 +225,11 @@ export class DishesService {
     }
 
     for (const p of pointers) {
-      const v = versions.get(p.version_id);
-      // A pointer whose version is not this house's, or not this dish's, is not read as a recipe.
-      if (!v || v.dish_id !== p.dish_id) continue;
-      const rows = [...(lines.get(p.version_id) ?? [])].sort((a, b) => a.position - b.position);
-      const yieldServes = Number(v.yield_serves);
+      const v = versions.get(p.versionId);
+      // A pointer whose version is not this house's, or not this owner's, is not read as a recipe.
+      if (!v || v.ownerId !== p.ownerId) continue;
+      const rows = [...(lines.get(p.versionId) ?? [])].sort((a, b) => a.position - b.position);
+      const yieldServes = v.yieldServes;
       let cost: DishFigures["cost"] = null;
       if (money) {
         const priced = recipeCost(
@@ -216,18 +252,18 @@ export class DishesService {
           partial: priced.partial,
         };
       }
-      out.set(p.dish_id, { versionId: p.version_id, yieldServes, lineCount: rows.length, cost });
+      out.set(p.ownerId, { versionId: p.versionId, yieldServes, lineCount: rows.length, cost });
     }
     return out;
   }
 
   /**
-   * The dishes whose CURRENT recipe links this item (ADR 0366 item 5), each
-   * with its figures and the item's own lines in it. An earlier version that
-   * used the item does not count: the drawer says what the kitchen makes now.
+   * The item's lines in recipes, and which CURRENT recipe each belongs to:
+   * the dish (or drink) of every current version that links the item. An
+   * earlier version that used the item does not count: the drawer says what
+   * the house makes now. Throws 404 for another house's item.
    */
-  async dishesUsingItem(restaurantId: string, itemId: string, role: string | null | undefined) {
-    const money = seesHouseAmounts(role);
+  private async currentUses(restaurantId: string, itemId: string, owner: RecipeOwner, sentence: string) {
     const client = this.db.getClient();
     const item = await client
       .from("restaurant_inventory")
@@ -235,10 +271,10 @@ export class DishesService {
       .eq("id", itemId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
-    if (item.error) this.failed("item read", item.error, DISH_USE_UNREAD);
+    if (item.error) this.failed("item read", item.error, sentence);
     if (!item.data) throw new NotFoundException(ITEM_NOT_THIS_HOUSE);
 
-    const used = await this.all<any>("item line read", DISH_USE_UNREAD, (from, to) =>
+    const used = await this.all<any>("item line read", sentence, (from, to) =>
       client
         .from("recipe_lines")
         .select("id, version_id, position, label, qty_entered, unit_code")
@@ -248,24 +284,53 @@ export class DishesService {
         .range(from, to),
     );
     const versionIds = [...new Set(used.map((l) => l.version_id as string))];
-    const current = new Map<string, string>(); // version -> dish
+    const current = new Map<string, string>(); // version -> owner
     for (const ids of chunks(versionIds)) {
-      const rows = await this.all<any>("dish pointer read", DISH_USE_UNREAD, (from, to) =>
-        client
-          .from("recipe_current_dish")
-          .select("dish_id, version_id")
-          .eq("restaurant_id", restaurantId)
-          .in("version_id", ids)
-          .order("dish_id", { ascending: true })
-          .range(from, to),
-      );
-      for (const r of rows) current.set(r.version_id, r.dish_id);
+      const rows =
+        owner === "dish"
+          ? await this.all<any>("dish pointer read", sentence, (from, to) =>
+              client
+                .from("recipe_current_dish")
+                .select("dish_id, version_id")
+                .eq("restaurant_id", restaurantId)
+                .in("version_id", ids)
+                .order("dish_id", { ascending: true })
+                .range(from, to),
+            )
+          : await this.all<any>("drink pointer read", sentence, (from, to) =>
+              client
+                .from("recipe_current")
+                .select("cocktail_id, version_id")
+                .eq("restaurant_id", restaurantId)
+                .in("version_id", ids)
+                .order("cocktail_id", { ascending: true })
+                .range(from, to),
+            );
+      for (const r of rows) current.set(r.version_id, owner === "dish" ? r.dish_id : r.cocktail_id);
     }
-    const dishIds = [...new Set(current.values())];
-    if (!dishIds.length) return { dishes: [] };
+    return { used, ownerIds: [...new Set(current.values())] };
+  }
+
+  /** This item's own lines in one owner's current version, in recipe order. */
+  private usesIn(used: any[], f: DishFigures | undefined) {
+    return used
+      .filter((l) => f && l.version_id === f.versionId)
+      .sort((a, b) => a.position - b.position)
+      .map((l) => ({ label: l.label, qtyEntered: Number(l.qty_entered), unitCode: l.unit_code }));
+  }
+
+  /**
+   * The dishes whose CURRENT recipe links this item (ADR 0366 item 5), each
+   * with its figures and the item's own lines in it.
+   */
+  async dishesUsingItem(restaurantId: string, itemId: string, role: string | null | undefined) {
+    const money = seesHouseAmounts(role);
+    const client = this.db.getClient();
+    const { used, ownerIds } = await this.currentUses(restaurantId, itemId, "dish", DISH_USE_UNREAD);
+    if (!ownerIds.length) return { dishes: [] };
 
     const dishes: any[] = [];
-    for (const ids of chunks(dishIds)) {
+    for (const ids of chunks(ownerIds)) {
       dishes.push(
         ...(await this.all<any>("dish read", DISH_USE_UNREAD, (from, to) =>
           client
@@ -284,20 +349,62 @@ export class DishesService {
       dishes: dishes
         .map((d) => {
           const f = figures.get(d.id);
-          const uses = used
-            .filter((l) => f && l.version_id === f.versionId)
-            .sort((a, b) => a.position - b.position)
-            .map((l) => ({ label: l.label, qtyEntered: Number(l.qty_entered), unitCode: l.unit_code }));
           return {
             dishId: d.id,
             name: d.name,
             section: d.menu_section ?? null,
             price: money && d.price != null ? Number(d.price) : null,
             ...this.figureFields(f),
-            uses,
+            uses: this.usesIn(used, f),
           };
         })
         // A pointer that moved since the lines were read leaves a dish with no line of this item: not listed.
+        .filter((d) => d.uses.length > 0)
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    };
+  }
+
+  /**
+   * The house's drinks whose CURRENT recipe links this item, each with the
+   * same figures a dish has (cost a serve, price) and the item's own lines in
+   * it, so the drawer gives a drink the cards it gives a dish. A catalogue
+   * cocktail (no restaurant_id) or a deleted one is not this house's drink.
+   */
+  async drinksUsingItem(restaurantId: string, itemId: string, role: string | null | undefined) {
+    const money = seesHouseAmounts(role);
+    const client = this.db.getClient();
+    const { used, ownerIds } = await this.currentUses(restaurantId, itemId, "cocktail", DRINK_USE_UNREAD);
+    if (!ownerIds.length) return { drinks: [] };
+
+    const drinks: any[] = [];
+    for (const ids of chunks(ownerIds)) {
+      drinks.push(
+        ...(await this.all<any>("drink read", DRINK_USE_UNREAD, (from, to) =>
+          client
+            .from("cocktails")
+            .select("id, name, display_name, menu_section, price")
+            .eq("restaurant_id", restaurantId)
+            .is("deleted_at", null)
+            .in("id", ids)
+            .order("id", { ascending: true })
+            .range(from, to),
+        )),
+      );
+    }
+    const figures = await this.figures(restaurantId, drinks.map((d) => d.id), money, DRINK_USE_UNREAD, "cocktail");
+    return {
+      drinks: drinks
+        .map((d) => {
+          const f = figures.get(d.id);
+          return {
+            cocktailId: d.id,
+            name: (d.display_name as string | null)?.trim() || d.name,
+            section: d.menu_section ?? null,
+            price: money && d.price != null ? Number(d.price) : null,
+            ...this.figureFields(f),
+            uses: this.usesIn(used, f),
+          };
+        })
         .filter((d) => d.uses.length > 0)
         .sort((a, b) => a.name.localeCompare(b.name)),
     };

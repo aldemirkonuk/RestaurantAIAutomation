@@ -114,6 +114,16 @@ export class DishesController {
     return this.dishes.dishesUsingItem(restaurantId, itemId, user?.role);
   }
 
+  @Get(":restaurantId/items/:itemId/drinks")
+  @ApiOperation({ summary: "The house's drinks whose current recipe uses a shelf item, each with its figures" })
+  drinksUsingItem(
+    @Param("restaurantId", ParseUUIDPipe) restaurantId: string,
+    @Param("itemId", ParseUUIDPipe) itemId: string,
+    @CurrentUser() user: { role?: string } | undefined,
+  ) {
+    return this.dishes.drinksUsingItem(restaurantId, itemId, user?.role);
+  }
+
   @Post(":restaurantId/shelf/match")
   @UseGuards(RolesGuard)
   @Roles("owner", "manager")
