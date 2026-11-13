@@ -77,7 +77,7 @@
 // What stays here is what is about MONEY rather than about countries: the codes
 // a manager may pick, their names, and the formatter that refuses to print a
 // symbol nobody earned.
-import { countryByCode } from './countries';
+import { houseNumberLocale } from './house-number';
 
 export { currencyForCountry } from './countries';
 
@@ -362,15 +362,9 @@ export const CURRENCY_NOT_RECORDED = 'currency not recorded'
  * better.
  */
 export function moneyLocale(currency: string | null | undefined): string | undefined {
-  if (typeof currency !== 'string' || !/^[A-Z]{3}$/.test(currency)) return undefined
-  const country = countryByCode(currency.slice(0, 2))
-  if (!country || country.currency !== currency) return undefined
-  try {
-    const locale = new Intl.Locale(`und-${country.code}`).maximize()
-    return locale.script === 'Latn' ? locale.baseName : undefined
-  } catch {
-    return undefined
-  }
+  // One rule for a house's money and its plain numbers (a share, a box hint):
+  // lib/house-number.ts holds it, so "₺12,00" and "%13,1" never drift apart.
+  return houseNumberLocale(currency)
 }
 
 const SIGN_BLOCK = /^[\u20A0-\u20CF]$/

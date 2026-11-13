@@ -10,6 +10,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { COUNTRIES } from './countries'
+import { formatHousePercent, houseNumberLocale } from './house-number'
 import {
   CURRENCY_CODES,
   CURRENCY_NOT_RECORDED,
@@ -237,5 +238,19 @@ describe('one house locale for a money', () => {
   it('says a missing currency in the same words from the drawer as from the lib', () => {
     expect(inventoryMoney(12, null)).toContain(CURRENCY_NOT_RECORDED)
     expect(inventoryMoney(null, 'TRY')).toBe('—')
+  })
+})
+
+describe('money and plain numbers share one locale rule (r24)', () => {
+  it('moneyLocale is houseNumberLocale for every code a house may pick', () => {
+    for (const code of [...CURRENCY_CODES, 'EUR', 'XOF', 'USN', 'try', '']) {
+      expect(moneyLocale(code)).toBe(houseNumberLocale(code))
+    }
+    expect(moneyLocale(null)).toBe(houseNumberLocale(null))
+  })
+
+  it('a lira drink card reads one way: the price and the pour cost share the comma', () => {
+    expect(formatMoney(12, 'TRY')).toBe('₺12,00')
+    expect(formatHousePercent(13.1, 'TRY')).toBe('%13,1')
   })
 })
