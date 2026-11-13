@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const auth = vi.hoisted(() => ({ activeRestaurantId: 'r1' as string | null }));
 const read = vi.hoisted(() => vi.fn());
 
-vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => auth }));
+vi.mock('../../stores', () => ({ useAuthStore: (pick: (s: typeof auth) => unknown) => pick(auth) }));
 vi.mock('../../services/api/settings', () => ({ settingsApi: { houseCurrency: read } }));
 
 import { useHouseCurrencyCode } from './useHouseCurrencyCode';

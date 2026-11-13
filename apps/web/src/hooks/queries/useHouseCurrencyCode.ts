@@ -10,11 +10,13 @@
  * form plus "(currency not recorded)" for money — never a guessed sign.
  */
 import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuthStore } from '../../stores';
 import { settingsApi } from '../../services/api/settings';
 
 export function useHouseCurrencyCode(): string | null {
-  const { activeRestaurantId } = useAuth();
+  // The store, not useAuth(): the menu plan, the locks and the versions read
+  // the house there too, and they mount where no AuthProvider wraps them.
+  const activeRestaurantId = useAuthStore((s) => s.activeRestaurantId) ?? null;
   const { data } = useQuery({
     // The house is in the key: one house's money never writes another's page.
     queryKey: ['settings', 'currency', activeRestaurantId],
