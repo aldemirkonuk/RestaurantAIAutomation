@@ -43,7 +43,7 @@ import { getPriceAdvice } from '../../../services/api/pricing';
 import type { InventoryItem as ApiItem, Wine as ApiWine } from '../../../services/api/types';
 import type { Provider } from '../../../services/api/providers';
 import { DELIVERIES_TO_NAME_KEY } from '../../../components/mudavym/DeliveriesToName';
-import { fmtMoney } from '../../../lib/mudavym/format';
+import { fmtMoney, fmtUnitMoney, unitCostPlaces } from '../../../lib/mudavym/format';
 import { queryKeys } from '../../../lib/query-keys';
 import { pendingSpotCountCount, watchSpotCountOutbox } from '../../../lib/spotCountOutbox';
 import { num, text } from '../../cellar/next/cellar-format';
@@ -569,6 +569,18 @@ export function cellMoney(v: number | null, currency: HouseCurrency): string {
   if (currency.state === 'reading') return EM;
   if (currency.state === 'recorded') return fmtMoney(v, currency.code);
   return v.toLocaleString('en-GB', { maximumFractionDigits: 2 });
+}
+
+/**
+ * A lot's cost per unit (WAC, a purchase's unit cost): `cellMoney`, but a cost
+ * below one whole unit of the currency keeps its places, so 0.035 a gram does
+ * not read 0.04 (QA round 11b; the lot stores six places since PR #839).
+ */
+export function cellUnitCost(v: number | null, currency: HouseCurrency): string {
+  if (v === null || !Number.isFinite(v)) return EM;
+  if (currency.state === 'reading') return EM;
+  if (currency.state === 'recorded') return fmtUnitMoney(v, currency.code);
+  return v.toLocaleString('en-GB', { maximumFractionDigits: unitCostPlaces(v) ?? 2 });
 }
 
 /* ── the read sentence ───────────────────────────────────────────────────── */
