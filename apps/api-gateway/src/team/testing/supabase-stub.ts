@@ -85,11 +85,18 @@ function matches(row: Row, filters: Filter[]): boolean {
         return actual > f.value;
       case "or":
         return (f.value as Filter[]).some((sub) => matches(row, [sub]));
-      case "ilike":
-        return (
-          typeof actual === "string" &&
-          actual.toLowerCase() === String(f.value).toLowerCase()
-        );
+      case "ilike": {
+        // LIKE-faithful (QA round 23): `%`/`*` any run, `_` one character,
+        // case-insensitive, whole value. Plain equality hid wildcard bugs.
+        if (typeof actual !== "string") return false;
+        const re = String(f.value)
+          .split("")
+          .map((c) =>
+            c === "%" || c === "*" ? ".*" : c === "_" ? "." : c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+          )
+          .join("");
+        return new RegExp(`^${re}$`, "is").test(actual);
+      }
       default:
         throw new Error(`supabase-stub: unhandled filter ${f.kind}`);
     }

@@ -25,6 +25,14 @@ import { signInCodeEmailTemplate } from "../communications/email-templates/sign-
  *     account (below).
  *   * `step_up` -- signed in, proving it is you before a passkey is added. The
  *     address is the account's own, read from the row, never from the body.
+ *   * `verify_email` -- the code the verification mail carries beside its link
+ *     (onboarding OB-3, founder /goal 2026-11-07, proposal §4 F3: "the mail
+ *     carries a six-digit code and the link"). Issued at sign-up and on every
+ *     resend to the address the account was registered with; checked only for
+ *     a signed-in caller against the account's own address, like the link
+ *     (ADR 0229 fork 12). The mail is sent by `AuthService`, which puts the
+ *     code and the link in one message, so `issueForEmailVerification` stores
+ *     and returns the code and sends nothing itself.
  *
  * THE RULES, and why each number:
  *   * Six digits (`randomInt`, a CSPRNG), ten minutes, single use. Six is the
@@ -58,7 +66,10 @@ const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 const SWEEP_AFTER_MS = 2 * DAY_MS;
 
-export type CodePurpose = "sign_in" | "step_up";
+export type CodePurpose = "sign_in" | "step_up" | "verify_email";
+
+/** The purposes this service mails itself; `verify_email` is mailed by AuthService. */
+type MailedPurpose = Exclude<CodePurpose, "verify_email">;
 
 /** The one refusal a wrong, expired, superseded or accountless code gets. */
 export const CODE_REFUSAL =
@@ -77,6 +88,83 @@ export const SIGN_IN_SENT =
 export function normalizeEmail(raw: unknown): string {
   if (typeof raw !== "string") return "";
   return raw.trim().toLowerCase();
+}
+
+/**
+ * The column migration a_sign_in_address_is_kept_in_lower_case gives
+ * `users` for the third read: `public.email_folded(users)`, a PostgREST
+ * computed field over the indexed `public.sign_in_address_fold(email)`.
+ */
+export const EMAIL_FOLDED = "email_folded";
+
+/**
+ * `public.sign_in_address_fold` in TypeScript: A-Z to a-z and nothing else,
+ * on an address already trimmed by `String.prototype.trim` (the SQL fold
+ * trims exactly that set). Locale-free on both sides.
+ */
+export function asciiFoldAddress(trimmed: string): string {
+  return trimmed.replace(/[A-Z]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 32));
+}
+
+export interface SignInAddressMatch<T> {
+  /** The one account the address names, or null. */
+  user: T | null;
+  /** A failed read: never an answer about the address. */
+  error: { message: string } | null;
+  /** More than one account holds this address under the fold (held twins). */
+  ambiguous: boolean;
+}
+
+/**
+ * The account a typed sign-in address names (QA rounds 11 and 13: R11-01,
+ * R11-02). Every door that looks an account up by address goes through here,
+ * so sign-in, reset, the emailed code, Google/Microsoft and registration's
+ * "already registered" agree on which row an address means.
+ *
+ * Three reads, each only when the one before found nothing:
+ *  1. the address exactly as typed, trimmed -- only when that differs from the
+ *     folded spelling. A row the backfill held unfolded (its lower-case twin
+ *     exists, or it has a non-ASCII letter) keeps answering to the spelling
+ *     its owner always used, ahead of a lower-case twin someone else holds;
+ *  2. the folded spelling (`normalizeEmail`) -- every row written since
+ *     registration folded, and every row the backfill folded;
+ *  3. the SQL fold (`email_folded`: trim + ASCII-only lower case, indexed) --
+ *     a held row typed in another case. Two holders is `ambiguous` and names
+ *     nobody: a person decides which account keeps the address.
+ *
+ * `usersRead` is the caller's own `from("users").select("<literal columns>")`,
+ * built fresh for each read: the column list stays a literal at the call site,
+ * where check_read_columns_exist.py can read it.
+ */
+export async function findUserBySignInAddress<T = any>(
+  usersRead: () => any,
+  typed: unknown,
+): Promise<SignInAddressMatch<T>> {
+  const none: SignInAddressMatch<T> = { user: null, error: null, ambiguous: false };
+  const folded = normalizeEmail(typed);
+  if (!folded) return none;
+  const asTyped = (typed as string).trim();
+
+  const byAddress = async (address: string) => {
+    const { data, error } = await usersRead().eq("email", address).maybeSingle();
+    return { user: (data ?? null) as T | null, error: error ?? null };
+  };
+
+  if (asTyped !== folded) {
+    const exact = await byAddress(asTyped);
+    if (exact.error || exact.user) return { ...exact, ambiguous: false };
+  }
+  const plain = await byAddress(folded);
+  if (plain.error || plain.user) return { ...plain, ambiguous: false };
+
+  const { data, error } = await usersRead()
+    // No .limit: the rows sharing one folded address are the held twins, a
+    // handful at most, and two or more is the answer "ambiguous".
+    .eq(EMAIL_FOLDED, asciiFoldAddress(asTyped));
+  if (error) return { user: null, error, ambiguous: false };
+  const rows = (data ?? []) as T[];
+  if (rows.length > 1) return { user: null, error: null, ambiguous: true };
+  return { user: rows[0] ?? null, error: null, ambiguous: false };
 }
 
 interface CodeRow {
@@ -151,18 +239,23 @@ export class SignInCodesService {
     if (!email.includes("@") || email.length < 3 || email.length > 320) {
       throw new BadRequestException("Type the email address you sign in with.");
     }
-    const { data: user, error } = await this.db
-      .from("users")
-      .select("user_id, name, email")
-      .eq("email", email)
-      .maybeSingle();
+    // R11-01/R11-02: the shared lookup, so a row held unfolded is found too.
+    // A held twin (`ambiguous`) names nobody: no code is mailed.
+    const { user, error } = await findUserBySignInAddress(
+      () => this.db.from("users").select("user_id, name, email"),
+      emailRaw,
+    );
     if (error) {
       // Not an answer about the address: every address gets this on a failed read.
       throw new InternalServerErrorException(
         "We could not send a code just now. Nothing was sent; try again.",
       );
     }
-    const person = user as { user_id: string; name: string | null } | null;
+    const person = user as {
+      user_id: string;
+      name: string | null;
+      email: string | null;
+    } | null;
     const code = await this.store(
       "sign_in",
       email,
@@ -172,7 +265,11 @@ export class SignInCodesService {
     if (person) {
       // Deliberately not awaited: the response time must not say whether a
       // mail went out. A failed send is logged; the person can ask again.
-      void this.send(email, person.name, code, "sign_in").catch(() => false);
+      // To the address on the account: for a row held unfolded that is not
+      // the folded spelling the code is filed under.
+      void this.send(person.email ?? email, person.name, code, "sign_in").catch(
+        () => false,
+      );
     }
     return {
       sent: true,
@@ -224,6 +321,29 @@ export class SignInCodesService {
       sentTo: maskEmail(email),
       expiresInSeconds: CODE_TTL_MS / 1000,
     };
+  }
+
+  /**
+   * The verification mail's code (`verify_email`). Stored with the same rules
+   * as every other code -- HMAC, ten minutes, single use, five tries, and the
+   * per-address and per-source issue limits, all counted with sign-in and
+   * step-up codes for the same address -- and returned for the caller to put
+   * in the mail beside the link. Throws as `store` does (429 when the
+   * address is busy or locked for the day); the caller decides what a mail
+   * without a code says.
+   */
+  async issueForEmailVerification(
+    userId: string,
+    emailRaw: unknown,
+    source: string | null = null,
+  ): Promise<string> {
+    const email = normalizeEmail(emailRaw);
+    if (!email.includes("@") || email.length < 3 || email.length > 320) {
+      throw new BadRequestException(
+        "This account has no email address to send a code to.",
+      );
+    }
+    return this.store("verify_email", email, userId, source);
   }
 
   private async store(
@@ -304,7 +424,7 @@ export class SignInCodesService {
     email: string,
     name: string | null,
     code: string,
-    purpose: CodePurpose,
+    purpose: MailedPurpose,
   ): Promise<boolean> {
     if (!this.gmail) {
       this.logger.error(`No mail service: a ${purpose} code was not sent.`);
@@ -486,6 +606,29 @@ export class SignInCodesService {
       codeRaw,
       userId,
     );
+  }
+
+  /**
+   * The verification mail's code, typed by the signed-in person. The address
+   * is the account's own, read from the row now -- so a code mailed to an
+   * address the account has since moved away from, or to any other address,
+   * cannot match (the hash binds the address). Returns the address the code
+   * proved, for the caller's compare-and-set.
+   */
+  async verifyEmailCode(userId: string, codeRaw: unknown): Promise<string> {
+    const { data: user, error } = await this.db
+      .from("users")
+      .select("email")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error || !user) {
+      throw new InternalServerErrorException(
+        "Your account could not be read, so the code was not checked.",
+      );
+    }
+    const email = normalizeEmail((user as { email: string | null }).email);
+    await this.verify("verify_email", email, codeRaw, userId);
+    return email;
   }
 
   private async recentForEmail(email: string, now: number): Promise<CodeRow[]> {
