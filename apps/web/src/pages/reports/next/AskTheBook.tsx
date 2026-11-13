@@ -31,7 +31,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Panel } from '@/components/mudavym/Sheet';
-import { failureLine } from './rp-format';
+import { categoryLabel, failureLine } from './rp-format';
 import type { ReadingRow, Register } from './useReportsNextData';
 
 /** Question scaffolding carries no signal — dropping it lets "why did tuesday
@@ -47,9 +47,25 @@ const STOPWORDS = new Set([
   'please',
 ]);
 
+/**
+ * Text folded for matching: lower case, accents and dots taken off, and the
+ * Turkish dotless ı read as i. "Öküzgözü", "ÖKÜZGÖZÜ" and "okuzgozu" all fold
+ * to "okuzgozu", so a search typed with or without its marks finds the
+ * sentence written either way. An English-only split (`[^a-z0-9]`) dropped
+ * every letter outside a-z, so "Öküzgözü" became no token at all and the
+ * palette answered a search with every sentence it had.
+ */
+export function foldText(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/\p{M}+/gu, '')
+    .replace(/ı/g, 'i');
+}
+
 export function tokensOf(query: string): string[] {
   const seen = new Set<string>();
-  for (const raw of query.toLowerCase().split(/[^a-z0-9]+/)) {
+  for (const raw of foldText(query).split(/[^\p{L}\p{N}]+/u)) {
     if (raw.length < 3 || STOPWORDS.has(raw)) continue;
     seen.add(raw);
   }
@@ -62,7 +78,11 @@ export function rank(rows: ReadingRow[], query: string): ReadingRow[] {
   if (tokens.length === 0) return rows;
   const scored = rows
     .map((r) => {
-      const hay = `${r.sentence} ${r.category} ${r.entityLabel ?? ''}`.toLowerCase();
+      // The category as the page says it, so a search for the word on screen
+      // finds it; the stored key stays searchable too.
+      const hay = foldText(
+        `${r.sentence} ${categoryLabel(r.category)} ${r.category} ${r.entityLabel ?? ''}`,
+      );
       return { r, matched: tokens.filter((t) => hay.includes(t)).length };
     })
     .filter((s) => s.matched > 0);
@@ -136,7 +156,7 @@ export function AskTheBook({ open, onClose, reading }: AskTheBookProps) {
             {results.slice(0, 20).map((r) => (
               <li key={r.ruleKey} style={{ display: 'grid', gap: 2 }}>
                 <span className="rp-eyebrow">
-                  {r.category}
+                  {categoryLabel(r.category)}
                   {r.entityLabel ? ` · ${r.entityLabel}` : ''}
                 </span>
                 <p className="rp-sentence">{r.sentence}</p>
