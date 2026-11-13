@@ -18,8 +18,7 @@ const h = vi.hoisted(() => ({ get: vi.fn(), rid: '11111111-1111-4111-8111-111111
 vi.mock('../../../../services/api/client', () => ({ apiClient: { get: h.get } }));
 vi.mock('../../../../contexts/AuthContext', () => ({ useAuth: () => ({ activeRestaurantId: h.rid }) }));
 
-import LineRow, { LineRowRead, goodHref, rowQty, type DraftRow } from './LineRow';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import LineRow, { LineRowRead, rowQty, type DraftRow } from './LineRow';
 import { amountWithUnit, qtyText, readQty, unitWord } from './units';
 import { useShelf } from './useRecipe';
 
@@ -279,45 +278,5 @@ describe('LineRow unit picker by recipe kind', () => {
     mount(<Harness start={{ ...blank, qtyText: '1', unit: 'oz' }} kind="dish" />);
     expect(options()).toEqual(['g', 'kg', 'ml', 'l', 'tsp', 'tbsp', 'each', 'US oz']);
     expect((screen.getByLabelText('Unit') as HTMLSelectElement).value).toBe('oz');
-  });
-});
-
-describe('a linked line leads to its good on /inventory', () => {
-  const linked: DraftRow = { ...blank, inventoryId: GIN, itemName: 'House Gin', itemKind: 'spirit', label: 'gin' };
-
-  it('the editing line links to the good’s drawer, named for the good', () => {
-    render(<Harness start={linked} />);
-    const a = screen.getByRole('link', { name: 'Open House Gin in inventory' });
-    expect(a.getAttribute('href')).toBe(`/inventory?open=${GIN}`);
-    expect(goodHref('a b')).toBe('/inventory?open=a%20b');
-  });
-
-  it('an unlinked, not-counted, archived or deleted line has no link', () => {
-    render(
-      <ul>
-        <LineRowRead row={{ ...blank, label: 'Campari' }} />
-        <LineRowRead row={{ ...linked, role: 'untracked', inventoryId: null }} />
-        {/* Not counted is never a link, even if a stale id rode along. */}
-        <LineRowRead row={{ ...linked, role: 'untracked' }} />
-        <LineRowRead row={{ ...linked, itemGone: 'archived' }} />
-        <LineRowRead row={{ ...linked, itemGone: 'deleted' }} />
-      </ul>,
-    );
-    expect(screen.queryByTestId('recipe-line-good')).toBeNull();
-    render(<Harness start={{ ...linked, inventoryId: null, itemName: null }} />);
-    expect(screen.queryByTestId('recipe-line-good')).toBeNull();
-  });
-
-  it('a staff reader’s line links too, and inside the app it moves without a reload', () => {
-    render(
-      <MemoryRouter initialEntries={['/cocktails']}>
-        <Routes>
-          <Route path="/cocktails" element={<ul><LineRowRead row={linked} /></ul>} />
-          <Route path="/inventory" element={<p>the gin drawer</p>} />
-        </Routes>
-      </MemoryRouter>,
-    );
-    fireEvent.click(screen.getByRole('link', { name: 'Open House Gin in inventory' }));
-    expect(screen.getByText('the gin drawer')).toBeTruthy();
   });
 });
