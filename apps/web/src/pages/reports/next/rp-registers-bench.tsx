@@ -41,7 +41,7 @@
  * a duplicate, not a comparison.
  */
 
-import { EM, countOf, figure, money, num, pct } from './rp-format';
+import { EM, countOf, figure, moneyIn, num, pct } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
 
 export interface BenchGoalRow {
@@ -135,7 +135,8 @@ export const bench = analysis<BenchRegister>({
       >,
     };
   },
-  view: (b) => {
+  view: (b, ctx) => {
+    const money = moneyIn(ctx.currency);
     const noPeers =
       'No other house is in this comparison. Mudavym holds only this restaurant’s books, so there is no market median to stand beside these figures — every one of them is this house against its own past. The one median the engine does publish, over this house’s own list, is drawn as the crosshair on “Margin against movement”.';
 

@@ -12,7 +12,7 @@
 
 import { Link } from 'react-router-dom';
 import { FigureRow } from './rp-plot';
-import { EM, MONO, countOf, figure, figureTo, money, num, ratioPct } from './rp-format';
+import { EM, MONO, countOf, figure, figureTo, moneyIn, num, ratioPct } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
 
 /* ────────────────────────────────────────── 6. margin against movement ── */
@@ -65,7 +65,8 @@ const quadrants = analysis<QuadrantRegister>({
       })),
     };
   },
-  view: (q) => {
+  view: (q, ctx) => {
+    const money = moneyIn(ctx.currency);
     const unclassified = q.counts.unclassified ?? 0;
     const priced = q.items.filter((i) => i.marginPerBottle != null);
     const basis = [q.basis?.velocity, q.basis?.margin];
@@ -251,7 +252,8 @@ const ledger = analysis<LedgerRegister>({
       deadStockCapital: num(d.deadStockCapital),
     };
   },
-  view: (f) => {
+  view: (f, ctx) => {
+    const money = moneyIn(ctx.currency);
     const cc = f.costCoverage;
     const cg = f.cogsCoverage;
     const withheld = 'Owners and managers see the till’s figures';
@@ -480,7 +482,8 @@ const seats = analysis<SeatsRegister>({
       })),
     };
   },
-  view: (s) => {
+  view: (s, ctx) => {
+    const money = moneyIn(ctx.currency);
     const basis = [
       `Non-voided pos_checks the till attributed to a shown table over the last ${s.sinceDays} days.`,
       s.dataStatus ? `Feed: ${s.dataStatus}.` : null,
@@ -650,7 +653,8 @@ const service = analysis<ServiceRegister>({
       })),
     };
   },
-  view: (s) => {
+  view: (s, ctx) => {
+    const money = moneyIn(ctx.currency);
     const basis = [
       `Non-voided pos_checks grouped by server name over the last ${s.sinceDays} days.`,
       s.dataStatus ? `Feed: ${s.dataStatus}.` : null,
