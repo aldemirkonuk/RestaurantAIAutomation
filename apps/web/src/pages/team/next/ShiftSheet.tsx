@@ -119,7 +119,11 @@ export function ShiftSheet({
 
   const body = () => ({
     // camelCase: `forbidNonWhitelisted` (main.ts:54) 400s a snake_case body.
-    scheduleId: scheduleId ?? undefined,
+    // `scheduleId` only on a new shift: `UpdateShiftDto` has no such field, so
+    // an edit that carried it was refused whole ("property scheduleId should
+    // not exist") and no shift on a schedule could be saved from this sheet
+    // (r29 walk). A shift does not move between weeks by an edit.
+    ...(editing ? {} : { scheduleId: scheduleId ?? undefined }),
     memberId: form.memberId || undefined,
     shiftDate: form.shiftDate,
     startTime: form.startTime,
