@@ -26,13 +26,11 @@ vi.mock("axios", () => ({
 import {
   AuthProvider,
   useAuth,
-  doRefresh,
   type AuthContextType,
 } from "./AuthContext";
 
 const U = "11111111-1111-4111-8111-111111111111";
 const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-const B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 function jwt(claims: Record<string, unknown>): string {
   const b64 = (o: unknown) =>
