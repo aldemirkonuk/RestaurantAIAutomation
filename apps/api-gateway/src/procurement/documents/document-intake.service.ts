@@ -7,6 +7,7 @@ import {
   stripJsonFence,
 } from "./document-extractor.service";
 import { normalizeUom, SourceChannel, toBottles } from "./document-types";
+import { doorLineRefusal, knownPack } from "./door-count-lines";
 import {
   applyCurrencyRules,
   planRefile,
@@ -206,10 +207,16 @@ export class DocumentIntakeService {
           "A door count with no lines is not a count. Submit the lines somebody counted; a line nobody counted is simply absent and stays 'not counted'.",
       };
 
+    // A case with no pack, or part of a bottle, cannot go on the shelf as
+    // counted (r28 G1, G13): refused whole, before anything is written.
+    const refused = doorLineRefusal(input.lines);
+    if (refused)
+      return { documentId: null, parsed: null, duplicate: false, error: refused };
+
     const countedAt = input.countedAt ?? new Date().toISOString();
     const lines: ParsedLine[] = input.lines.map((l) => {
       const uom = (normalizeUom(l.uom) ?? "bottle") as ParsedLine["uom"];
-      const packSize = l.packSize && l.packSize >= 1 ? l.packSize : 1;
+      const packSize = knownPack(l.packSize) ?? 1;
       return {
         lineNo: l.lineNo,
         vendorSku: l.vendorSku ?? null,

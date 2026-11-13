@@ -8,12 +8,15 @@
  *
  * THE PAPER IS THE TRUTH, NOT THE CLIENT. Each counted line names the paper's
  * line (`sourceLineId`); the item, unit, size and pack are copied from THAT
- * row, read under this house. The door line keeps the paper's line number, so
+ * row, read under this house. One exception: a case whose pack the paper does
+ * not state takes the pack the door gives (r28 G1). The door line keeps the paper's line number, so
  * the paper can later say what each of its lines received. Every refusal here
  * comes before anything is written.
  */
 
 import { DoorCountLineDto } from "../dto/deliveries.dto";
+import { normalizeUom, Uom } from "./document-types";
+import { knownPack, PACKED_DOOR_UNITS, UNIT_WORDS } from "./door-count-lines";
 
 type Client = { from: (table: string) => any };
 
@@ -108,13 +111,28 @@ export async function paperForTheDoor(
     seen.add(row.id);
     if (row.line_no == null)
       return { ok: false, status: 409, error: `A line of the paper ("${row.description ?? row.vendor_sku ?? row.id}") carries no line number, so its count could not be kept against it. Nothing was recorded.` };
+    // THE PACK THE PAPER DOES NOT KNOW (r28 G1). A pack of 1 on a case is the
+    // paper saying nothing (the column defaults to 1). The person holding the
+    // case then says how many bottles it holds, and only then: a pack the
+    // paper states is never overridden from the door. With neither, the count
+    // is refused, because two unread cases would go on the shelf as 2 bottles.
+    const unit = (normalizeUom(row.uom ?? c.uom) ?? "bottle") as Uom;
+    const paperPack = knownPack(row.pack_size);
+    const doorPack = knownPack(c.packSize);
+    const pack = PACKED_DOOR_UNITS.has(unit) ? (paperPack ?? doorPack) : int(row.pack_size);
+    if (PACKED_DOOR_UNITS.has(unit) && paperPack == null && doorPack == null && Number(c.qty) > 0)
+      return {
+        ok: false,
+        status: 422,
+        error: `Line ${row.line_no} of the paper ("${row.description ?? row.vendor_sku ?? "no description"}") is in ${UNIT_WORDS[unit]}, and the paper does not say how many bottles one holds, so the count cannot go on the shelf as bottles. Say how many bottles are in one, or set the pack on the paper's line first. Nothing was recorded.`,
+      };
     lines.push({
       lineNo: row.line_no,
       qty: c.qty,
       uom: row.uom ?? c.uom,
       ...(row.description ? { description: row.description } : {}),
       ...(row.vendor_sku ? { vendorSku: row.vendor_sku } : {}),
-      ...(int(row.pack_size) ? { packSize: int(row.pack_size) } : {}),
+      ...(pack ? { packSize: pack } : {}),
       ...(int(row.vintage) ? { vintage: int(row.vintage) } : {}),
       ...(int(row.format_ml) ? { formatMl: int(row.format_ml) } : {}),
       // The paper's pairing, or none: a line the paper has not paired books
