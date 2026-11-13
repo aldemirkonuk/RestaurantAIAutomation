@@ -40,6 +40,7 @@ import { AuthProvider, useAuth, type AuthContextType } from "./AuthContext";
 import { offlineStorage } from "../lib/offline-storage";
 import { syncManager } from "../lib/sync-manager";
 import { signOutWarning } from "../lib/queue-owner";
+import { draftKey, keepDraft, takeDraft, forgetDrafts } from "../pages/cellar/next/recipe/drafts";
 
 const U1 = "11111111-1111-4111-8111-111111111111";
 const U2 = "22222222-2222-4222-8222-222222222222";
@@ -245,6 +246,26 @@ describe("OD-203 (c) — signing out warns, then clears; a session that ends kee
     expect(await syncManager.discardNotSent()).toBe(1);
     const left = (await offlineStorage.getAllPendingMutationsOnDevice()).map((m) => m.id);
     expect(left.sort()).toEqual([waiting, other].sort());
+  });
+});
+
+describe("QA round 21 - an unsaved recipe draft is the signed-out person's, not the next one's", () => {
+  it("sign-out forgets the drafts, and the leave warning goes with them", async () => {
+    forgetDrafts();
+    const auth = await mountAs(U1, H1);
+    const key = draftKey(U1, H1, "c1");
+    keepDraft(key, { rows: [], openedFrom: null, dirty: true, setAside: null });
+    const ev = () => {
+      const e = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(e);
+      return e.defaultPrevented;
+    };
+    expect(ev()).toBe(true);
+    await act(async () => {
+      await auth().logout();
+    });
+    expect(takeDraft(key)).toBeNull();
+    expect(ev()).toBe(false);
   });
 });
 
