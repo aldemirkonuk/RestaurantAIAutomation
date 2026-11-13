@@ -3,7 +3,11 @@ import { DatabaseService } from "../database/database.service";
 import { readWholeWindow } from "../common/read-whole-window";
 import { readByIds } from "../common/read-by-ids";
 import * as E from "./engine";
-import { AnalyticsService, SalesGate } from "./analytics.service";
+import {
+  AnalyticsService,
+  SalesGate,
+  houseItemName,
+} from "./analytics.service";
 import {
   InsightGeneratorService,
   readHouseCurrency,
@@ -85,7 +89,7 @@ export class AdvancedAnalyticsService {
         // Same schema-drift fix as AnalyticsService.loadInventory: a single
         // unknown column 42703s the whole PostgREST query.
         .select(
-          "id, wine_name, stock_live, menu_price_current, last_purchase_price, master_wine_id, master_wine_library(primary_type)",
+          "id, wine_name, display_name, stock_live, menu_price_current, last_purchase_price, master_wine_id, master_wine_library(primary_type, name)",
           { count: "exact" },
         )
         .eq("restaurant_id", restaurantId)
@@ -119,7 +123,10 @@ export class AdvancedAnalyticsService {
       return {
         id: i.id,
         masterWineId: i.master_wine_id,
-        name: i.wine_name || i.master_wine_id || i.id,
+        // The house's own name, then a good's `display_name`, then the
+        // library's: a beer or a spirit has no wine_name, and an id is never
+        // a name (`houseItemName`, as the dead-stock card names a row).
+        name: houseItemName(i),
         type: i.master_wine_library?.primary_type || "unknown",
         qty: lot?.live_qty ?? i.stock_live ?? 0,
         unitCost,
@@ -305,16 +312,25 @@ export class AdvancedAnalyticsService {
       this.loadInventoryWithCost(restaurantId),
       this.loadConsumption(restaurantId, sinceDays),
     ]);
-    const soldByWine = new Map<string, number>();
-    const standInWines = new Set<string>();
+    // Sales are keyed by the inventory row each line was poured from, the row
+    // the menu prices. Keyed by master wine, a beer, a spirit or a soft drink
+    // (no master wine) sold nothing and read "candidate to delist", and two
+    // rows of one wine each took both rows' sales.
+    const soldByItem = new Map<string, number>();
+    const standInItems = new Set<string>();
+    const unmeasuredItems = new Set<string>();
     for (const c of consumption) {
-      if (!c.wineId || c.qty == null) continue;
-      soldByWine.set(c.wineId, (soldByWine.get(c.wineId) || 0) + c.qty);
-      if (c.how === "stand_in") standInWines.add(c.wineId);
+      if (!c.inventoryId) continue;
+      // A row with any line that carries no bottle figure has no velocity:
+      // summing the rest would report it slower than it sold (ADR 0297).
+      if (c.how === "uncounted") unmeasuredItems.add(c.inventoryId);
+      if (c.qty == null) continue;
+      soldByItem.set(
+        c.inventoryId,
+        (soldByItem.get(c.inventoryId) || 0) + c.qty,
+      );
+      if (c.how === "stand_in") standInItems.add(c.inventoryId);
     }
-    // A wine with any line that carries no bottle figure has no velocity:
-    // summing the rest would report it slower than it sold (ADR 0297).
-    const unmeasuredWines = this.uncountedWines(consumption);
     const unitsCoverage = summarizeUnits(consumption);
     const priced = inventory.filter((i) => i.unitPrice > 0);
     const costCoverage = summarizeCostBasis(priced);
@@ -322,10 +338,10 @@ export class AdvancedAnalyticsService {
       id: i.id,
       name: i.name,
       type: i.type,
-      velocityPerDay: unmeasuredWines.has(i.masterWineId)
+      velocityPerDay: unmeasuredItems.has(i.id)
         ? null
-        : (soldByWine.get(i.masterWineId) || 0) / sinceDays,
-      sizeStandIn: standInWines.has(i.masterWineId),
+        : (soldByItem.get(i.id) || 0) / sinceDays,
+      sizeStandIn: standInItems.has(i.id),
       marginPerBottle: i.marginPerBottle,
       costBasis: i.costBasis,
       marginPct:

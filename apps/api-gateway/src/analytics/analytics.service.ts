@@ -370,13 +370,13 @@ export class AnalyticsService {
     });
   }
 
-  /** Wines with at least one line that carries no bottle figure. */
-  private uncountedWines(
-    consumption: Array<{ masterWineId: string | null; how: string }>,
+  /** Inventory rows with at least one line that carries no bottle figure. */
+  private uncountedItems(
+    consumption: Array<{ inventoryId: string | null; how: string }>,
   ) {
     const out = new Set<string>();
     for (const c of consumption)
-      if (c.masterWineId && c.how === "uncounted") out.add(c.masterWineId);
+      if (c.inventoryId && c.how === "uncounted") out.add(c.inventoryId);
     return out;
   }
 
@@ -781,24 +781,26 @@ export class AnalyticsService {
       this.loadConsumption(restaurantId, sinceDays),
     ]);
 
-    // Demand series per master wine.
-    const demandByWine = new Map<
+    // Demand series per inventory row, the row whose on-hand it reorders.
+    // Keyed by master wine, a good with none (a beer, a spirit) had no demand,
+    // and two rows of one wine each reordered on both rows' pours.
+    const demandByItem = new Map<
       string,
       Array<{ date: string; value: number }>
     >();
     for (const c of consumption) {
-      if (!c.masterWineId || c.qty == null) continue;
-      const arr = demandByWine.get(c.masterWineId) || [];
+      if (!c.inventoryId || c.qty == null) continue;
+      const arr = demandByItem.get(c.inventoryId) || [];
       arr.push({ date: c.date, value: c.qty });
-      demandByWine.set(c.masterWineId, arr);
+      demandByItem.set(c.inventoryId, arr);
     }
-    // A wine with any line that carries no bottle figure has no demand to
+    // A row with any line that carries no bottle figure has no demand to
     // reorder on: its counted lines alone would understate it (ADR 0297).
-    const unknownDemand = this.uncountedWines(consumption);
+    const unknownDemand = this.uncountedItems(consumption);
     const unitsCoverage = summarizeUnits(consumption);
 
     const skus = inventory.map((i) => {
-      const rows = demandByWine.get(i.masterWineId || "") || [];
+      const rows = demandByItem.get(i.id) || [];
       const { values } = this.toDailySeries(rows, sinceDays);
       const profile = E.inventory.demandProfile(values) || {
         mean: 0,
@@ -847,7 +849,7 @@ export class AnalyticsService {
         inventoryValue: i.inventoryValue,
         abcClass: null as "A" | "B" | "C" | null,
         demandUnknown: false,
-        ...(unknownDemand.has(i.masterWineId || "")
+        ...(unknownDemand.has(i.id)
           ? {
               avgDailyDemand: null,
               demandCv: null,
