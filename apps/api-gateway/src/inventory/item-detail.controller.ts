@@ -84,7 +84,21 @@ export class ItemDetailController {
   @ApiOperation({ summary: "Carry a food or other good the wine library does not hold" })
   @ApiResponse({ status: 201, description: "Carried" })
   @ApiResponse({ status: 409, description: "This house already carries it" })
-  async carry(@Param("restaurantId") restaurantId: string, @Body() dto: CreateHouseItemDto) {
+  async carry(
+    @Param("restaurantId") restaurantId: string,
+    @Body() dto: CreateHouseItemDto,
+    @CurrentUser() user?: { userId?: string },
+  ) {
+    // Adding a good to the books is an owner's or a manager's (inventory r28,
+    // gap 6). The page hid "Carry a food or supply" from staff, but the route
+    // took anyone in the house. The role is read from the access rows.
+    if (!user?.userId) {
+      throw new HttpException(
+        "Adding a good names the person who added it, and this session names nobody. Nothing was added.",
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(user.userId, restaurantId, "add a good to the inventory");
     try {
       return await this.houseItems.carry(restaurantId, dto);
     } catch (error) {
