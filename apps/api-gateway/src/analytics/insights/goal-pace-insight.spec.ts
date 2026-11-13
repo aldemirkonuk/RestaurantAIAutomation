@@ -67,10 +67,13 @@ describe("the feed's goal sentence reads a dated reading, by direction", () => {
     expect(family([goal({ current_unread: "no time zone is set" })])).toEqual([]);
   });
 
-  it("a days-of-stock goal is not paced in a feed every role reads", () => {
+  // Merged with the goals trio (r22): every goal's pace is stored and each
+  // read filters it per viewer (ADR 0298 decision 9a; the read is pinned in
+  // analytics/days-of-stock-goal-feeds.spec.ts), so a sales holder keeps it.
+  it("a days-of-stock goal's pace is stored, for the read to keep for a sales holder", () => {
     expect(
       family([goal({ metric_key: "days_of_inventory", direction: "at_most", target_value: 30, current_value: 40 })]),
-    ).toEqual([]);
+    ).toHaveLength(1);
   });
 
   it("a target half reached at half time", () => {

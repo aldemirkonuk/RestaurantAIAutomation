@@ -23,7 +23,6 @@ import {
 import { GoalsService } from "./goals.service";
 import { isSalesGatedGoal } from "./sales-gated-goals";
 import { DatabaseService } from "../database/database.service";
-import { readHouseZone } from "../common/house-day";
 import {
   RecommendationActionsService,
   RecommendationStatus,

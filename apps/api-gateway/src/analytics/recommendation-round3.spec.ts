@@ -1015,6 +1015,8 @@ describe("a firing is read on the house's clock (QA round 4 H4)", () => {
           excludedDates: new Set(),
           exclusionsReadable: true,
           consumption: [],
+          // The generator reads the orders to say what spend it withheld (#1208's train).
+          orders: [],
           unread: [],
         });
         gen.computeConsumptionFamily = (_b: unknown, push: (r: unknown) => void) =>

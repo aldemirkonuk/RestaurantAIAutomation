@@ -29,7 +29,6 @@ import { DayExclusionsService } from "./day-exclusions.service";
 import { goalPaceForViewer } from "../sales-gated-goals";
 import { readHouseZone } from "../../common/house-day";
 import { RecommendationActionsService } from "../recommendation-actions.service";
-import { isSalesGatedGoal } from "../sales-gated-goals";
 import {
   datedReading,
   figureOrNull,
@@ -38,7 +37,6 @@ import {
   scoreGoal,
   storedGoalSchedule,
 } from "../goal-score";
-import { readHouseZone } from "../../common/house-day";
 import {
   SuppressionScope,
   buildSuppressionKey,
@@ -2151,10 +2149,10 @@ export class InsightGeneratorService {
   private computeGoalsFamily(bundle: Bundle, push: Push) {
     if (!bundle.availability.has("goals")) return;
     for (const g of bundle.goals) {
-      // Every role reads this feed, and a days-of-stock goal is read from the
-      // till, which reaches owners and managers only (ADR 0298 decision 9):
-      // its pace is said on the goal itself, never here.
-      if (isSalesGatedGoal(g.metric_key)) continue;
+      // Every goal's pace is stored, a days-of-stock goal's too: the read
+      // filters it per viewer (goalPaceForViewer, ADR 0298 decision 9a), so a
+      // sales holder keeps it and nobody else is shown it. Skipping it here
+      // blanked it for every role (the session's call, r22, over #1114's skip).
       // The stored reading, dated, and not one a later reading refused. A
       // never-read row (the column's default 0) is no reading: it read "0% of
       // the way" for every goal before (reports browser walk 2026-11-11).
