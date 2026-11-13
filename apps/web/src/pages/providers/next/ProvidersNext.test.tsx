@@ -287,6 +287,19 @@ describe('ProvidersNext', () => {
     expect(screen.queryByText('0')).not.toBeInTheDocument();
   });
 
+  it('a refused open-order count says it could not be counted, not that it is waiting', () => {
+    mockData.current = {
+      ...base,
+      ordersKnown: false,
+      ordersFailed: true,
+      cards: [{ provider: provider({}), openOrders: null, leadTimeDays: null, lastContact: null }],
+    };
+    render(<ProvidersNext />);
+    expect(screen.getByText(/open orders could not be counted/)).toBeInTheDocument();
+    expect(screen.queryByText(/hasn’t answered/)).not.toBeInTheDocument();
+    expect(screen.queryByText('0')).not.toBeInTheDocument();
+  });
+
   it('says a gateway failure in words with a retry', () => {
     mockData.current = { ...base, hasData: false, isError: true, errorMessage: 'boom', cards: [] };
     render(<ProvidersNext />);

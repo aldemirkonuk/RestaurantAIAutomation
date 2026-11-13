@@ -4,7 +4,8 @@
  * today's page) with the learned detail held back for the sheet (the virtue
  * of the redesign). The card gets at most three facts, all real:
  *
- *   open orders    — counted from the orders book (pending/approved/ordered);
+ *   open orders    — counted by the gateway over the WHOLE orders book
+ *                    (`useOpenOrdersByVendor`); never from the newest 50;
  *   lead time      — the provider's own leadTimeDays, EM when unrecorded;
  *   last contact   — lastContactDate, said plainly when absent.
  *
@@ -15,10 +16,9 @@
 
 import { useMemo } from 'react';
 import { useProviders } from '../../../hooks/queries/useProviderQueries';
-import { useOrders } from '../../../hooks/queries/useOrderQueries';
+import { useOpenOrdersByVendor } from '../../../hooks/queries/useOpenOrdersByVendor';
 import { useAuth } from '../../../contexts/AuthContext';
 import type { Provider } from '../../../services/api/providers';
-import { canonicalStatus } from '../../../lib/mudavym/status';
 import { num } from './pv-format';
 
 export interface ProviderCardVM {
@@ -29,36 +29,18 @@ export interface ProviderCardVM {
   lastContact: string | null;
 }
 
-/**
- * "Open" = live business with the vendor: not yet delivered, not closed.
- * Matched on the CANONICAL status (canonicalStatus knows the gateway's
- * SCREAMING_SNAKE variants — PENDING, APPROVAL_NEEDED, CONFIRMED, IN_TRANSIT —
- * that raw lowercasing silently dropped; audit finding, providers-audit.md).
- */
-const OPEN_STAGES = new Set([
-  'pending',
-  'pending_approval',
-  'negotiating',
-  'approved',
-  'ordered',
-  'in_transit',
-  'partially_received',
-]);
-
 export function useProvidersNextData() {
   const { activeRestaurantId } = useAuth();
   const providersQ = useProviders(activeRestaurantId ?? '');
-  const ordersQ = useOrders();
+  // "Open" is the gateway's `OPEN_ORDER_STATUSES` (open-orders-by-vendor.ts):
+  // placed, waiting, negotiated, approved, confirmed, on its way or partly
+  // received — the set this hook used to apply to the newest 50 rows.
+  const ordersQ = useOpenOrdersByVendor();
 
-  const openByProvider = useMemo(() => {
-    if (!ordersQ.data) return null;
-    const m = new Map<string, number>();
-    for (const o of ordersQ.data) {
-      if (!o.providerId || !OPEN_STAGES.has(canonicalStatus(o.status))) continue;
-      m.set(o.providerId, (m.get(o.providerId) ?? 0) + 1);
-    }
-    return m;
-  }, [ordersQ.data]);
+  const openByProvider = useMemo(
+    () => (ordersQ.data ? new Map(Object.entries(ordersQ.data.byVendor)) : null),
+    [ordersQ.data],
+  );
 
   const cards: ProviderCardVM[] = useMemo(() => {
     const providers = providersQ.data ?? [];
@@ -86,6 +68,8 @@ export function useProvidersNextData() {
     errorMessage:
       providersQ.error instanceof Error ? providersQ.error.message : 'unknown error',
     ordersKnown: openByProvider !== null,
+    /** The count was asked for and refused — said in words, not as a wait. */
+    ordersFailed: openByProvider === null && ordersQ.isError,
     refetch: () => {
       void providersQ.refetch();
       void ordersQ.refetch();
