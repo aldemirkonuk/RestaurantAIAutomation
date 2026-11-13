@@ -101,4 +101,10 @@ describe('InventoryTable: goods read in their own unit', () => {
     expect(goodUnit('g')).toEqual({ factor: 1000, kept: 'kept in kg', per: 'a kg' });
     expect(goodUnit('case').per).toBe('a case');
   });
+
+  it('says a good stored in kg, l or mg "kept in kg" / "a litre", never "by the kg" or "a l"', () => {
+    expect(goodUnit('kg')).toEqual({ factor: 1, kept: 'kept in kg', per: 'a kg' });
+    expect(goodUnit('l')).toEqual({ factor: 1, kept: 'kept in litres', per: 'a litre' });
+    expect(goodUnit('mg')).toEqual({ factor: 1_000_000, kept: 'kept in kg', per: 'a kg' });
+  });
 });

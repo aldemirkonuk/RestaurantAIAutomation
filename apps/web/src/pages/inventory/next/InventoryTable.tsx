@@ -57,8 +57,12 @@ const HEADER_SORT: Partial<Record<string, SortId>> = { Title: 'name', 'Vel/day':
  * so the two can word their own lines without breaking each other.
  */
 export function goodUnit(uom: string): { factor: number; kept: string; per: string } {
+  // Weight and volume read in kg and litres whatever unit the shelf stores (uom CHECK: mg, g, kg, ml, l).
+  if (uom === 'mg') return { factor: 1_000_000, kept: 'kept in kg', per: 'a kg' };
   if (uom === 'g') return { factor: 1000, kept: 'kept in kg', per: 'a kg' };
+  if (uom === 'kg') return { factor: 1, kept: 'kept in kg', per: 'a kg' };
   if (uom === 'ml') return { factor: 1000, kept: 'kept in litres', per: 'a litre' };
+  if (uom === 'l') return { factor: 1, kept: 'kept in litres', per: 'a litre' };
   if (uom === 'each') return { factor: 1, kept: 'kept by the piece', per: 'each' };
   return { factor: 1, kept: `kept by the ${uom}`, per: `a ${uom}` };
 }
