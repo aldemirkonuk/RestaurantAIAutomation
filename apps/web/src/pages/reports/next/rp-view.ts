@@ -139,6 +139,14 @@ export interface AnalysisView {
   figures: Fig[];
   /** Sentences printed under the drawing — caveats, counts, what is off-plot. */
   notes: ReactNode[];
+  /**
+   * Why `cats`/`points`/`matrix` are absent, in the register's own words.
+   * When the reader's drawing needs the missing shape, this sentence is said
+   * IN PLACE of the generic "cannot be drawn as …" line, and is not repeated
+   * from `notes` below it (Cutting.tsx `Body`). Put the same value in `notes`
+   * so a table or figure drawing still says it.
+   */
+  undrawn?: ReactNode;
   /** The SERVER's own `basis` strings, verbatim. Nulls are dropped. */
   basis: Array<string | null | undefined>;
 }

@@ -1706,6 +1706,75 @@ describe('ReportsNext — the benchmark cutting', () => {
     expect(within(bench).getByText(/no bars are drawn/)).toBeInTheDocument();
   });
 
+  it('in bars, says only the real reason no pair is drawn, once, never the generic line above it', () => {
+    hook.current = {
+      ...withRegister(
+        'bench',
+        ok(decode('bench', { ...BENCH, cashflow: { ...BENCH.cashflow, spendLast30d: 0, spendPrev30d: 0 } })),
+      ),
+      sheet: { cuttings: [{ id: 'bench', slot: { x: 0, y: 0, w: 6, h: 11 }, graph: 'bars' }] },
+    } as never;
+    paint();
+    const bench = screen.getByRole('region', { name: 'Against ourselves' });
+    expect(within(bench).queryByText(/cannot be drawn as/)).toBeNull();
+    expect(within(bench).getAllByText(/No delivered purchase order falls in either 30-day window/)).toHaveLength(1);
+  });
+
+  it('in bars, a house with no time zone is told that, not that the register cannot be drawn', () => {
+    hook.current = {
+      ...withRegister(
+        'bench',
+        ok(
+          decode('bench', {
+            ...BENCH,
+            cashflow: { ...BENCH.cashflow, spendLast30d: null, spendPrev30d: null, zoneUnset: true },
+          }),
+        ),
+      ),
+      sheet: { cuttings: [{ id: 'bench', slot: { x: 0, y: 0, w: 6, h: 11 }, graph: 'bars' }] },
+    } as never;
+    paint();
+    const bench = screen.getByRole('region', { name: 'Against ourselves' });
+    expect(within(bench).queryByText(/cannot be drawn as/)).toBeNull();
+    expect(within(bench).getAllByText(/time zone isn’t set/)).toHaveLength(1);
+  });
+
+  // r21 integration (#1184 meets the cost train): a window withheld over an
+  // order with no recorded cost is the real reason no pair is drawn.
+  it('in bars, a window withheld over an uncosted order says that, once, not the one-window fallback', () => {
+    const why = 'Spend over the last 30 days is not stated: 1 of 4 delivered orders in it carries no recorded cost.';
+    hook.current = {
+      ...withRegister(
+        'bench',
+        ok(
+          decode('bench', {
+            ...BENCH,
+            cashflow: { ...BENCH.cashflow, spendLast30d: null, unread: { spendLast30d: why } },
+          }),
+        ),
+      ),
+      sheet: { cuttings: [{ id: 'bench', slot: { x: 0, y: 0, w: 6, h: 11 }, graph: 'bars' }] },
+    } as never;
+    paint();
+    const bench = screen.getByRole('region', { name: 'Against ourselves' });
+    expect(within(bench).queryByText(/cannot be drawn as/)).toBeNull();
+    expect(within(bench).queryByText(/one bar alone is not a comparison/)).toBeNull();
+    expect(within(bench).getAllByText(why)).toHaveLength(1);
+  });
+
+  it('in a table, the same reason stays among the notes', () => {
+    hook.current = {
+      ...withRegister(
+        'bench',
+        ok(decode('bench', { ...BENCH, cashflow: { ...BENCH.cashflow, spendLast30d: 0, spendPrev30d: 0 } })),
+      ),
+      sheet: { cuttings: [{ id: 'bench', slot: { x: 0, y: 0, w: 6, h: 11 }, graph: 'table' }] },
+    } as never;
+    paint();
+    const bench = screen.getByRole('region', { name: 'Against ourselves' });
+    expect(within(bench).getAllByText(/No delivered purchase order falls in either 30-day window/)).toHaveLength(1);
+  });
+
   it('does not say it when the windows carry real figures', () => {
     paint();
     const bench = screen.getByRole('region', { name: 'Against ourselves' });
