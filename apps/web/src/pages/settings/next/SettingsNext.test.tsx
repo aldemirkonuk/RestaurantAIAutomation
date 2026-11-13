@@ -35,6 +35,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
+import { ROW_WORDS_MIN_PX } from './SectionKit';
 
 const mock = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 
@@ -1330,5 +1331,75 @@ describe('the collapse — four connection tabs become one line', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('/settings?tab=pos');
     const nav = screen.getByRole('navigation', { name: /settings registers/i });
     expect(within(nav).queryByRole('link', { name: /Connections/ })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * A 375px phone (r24 walk: /settings measured 756px wide there).
+ *
+ * jsdom has no layout engine, so these pin the CSS that keeps the page inside
+ * the screen rather than measuring it: a Row's control may wrap under its
+ * words and is never wider than the row, a select is never wider than its
+ * row, a long unbroken word breaks instead of widening the page, and a stored
+ * value printed as one long string breaks inside its record row. The real
+ * width is a browser check (r26 mobile-width BUILD report).
+ */
+describe('SettingsNext — fits a phone', () => {
+  it('lets every row put its control under the words, never wider than the row', () => {
+    mount();
+    const rows = screen.getAllByTestId('st-row');
+    expect(rows.length).toBeGreaterThan(20);
+    for (const row of rows) {
+      expect(row.style.flexWrap).toBe('wrap');
+      const words = row.firstElementChild as HTMLElement;
+      expect(words.style.flexBasis).toBe(`${ROW_WORDS_MIN_PX}px`);
+      expect(words.style.flexGrow).toBe('1');
+      expect(words.style.minWidth).toBe('0px');
+    }
+    const controls = screen.getAllByTestId('st-row-control');
+    expect(controls.length).toBeGreaterThan(10);
+    for (const control of controls) {
+      expect(control.style.maxWidth).toBe('100%');
+    }
+  });
+
+  it('keeps the long-option selects inside the row', () => {
+    mount();
+    for (const name of ['Currency', 'Time zone', 'Default glass pour']) {
+      expect(screen.getByRole('combobox', { name }).style.maxWidth).toBe('100%');
+    }
+  });
+
+  it('breaks a long unbroken word instead of widening the page', () => {
+    mount();
+    expect(screen.getByTestId('st-page').style.overflowWrap).toBe('break-word');
+  });
+
+  it('keeps the vendor-terms table and its hidden header label inside their own scroller', () => {
+    mount('/settings?tab=vendor-terms');
+    const scroller = screen.getByTestId('st-vendor-terms-scroll');
+    expect(scroller.style.overflowX).toBe('auto');
+    expect(scroller.style.position).toBe('relative');
+    const label = within(scroller).getByText('Record terms');
+    expect(label.style.position).toBe('absolute');
+  });
+
+  it('breaks a stored value printed as one long string inside its record row', () => {
+    mock.current = base({
+      ledger: remote(ledgerRegister({
+        entries: [{
+          id: 'a2', occurredAt: THREE_DAYS_AGO, action: 'vendor_terms_changed',
+          register: 'vendor-terms', entityType: 'provider_terms', entityId: 'p1',
+          subject: 'Anadolu',
+          actor: { userId: 'u9', name: 'Deniz Aksoy', email: 'd@example.com' },
+          fields: { terms: { from: null, to: { weekdays: [1, 3, 5], cutoff: '14:00', minimumOrder: 250 } } },
+        }],
+      })),
+    });
+    mount('/settings?tab=ledger');
+    const [field] = screen.getAllByTestId('st-ledger-field');
+    expect(field).toHaveTextContent('{"weekdays":[1,3,5],"cutoff":"14:00","minimumOrder":250}');
+    expect(field.style.overflowWrap).toBe('anywhere');
+    expect((field.parentElement as HTMLElement).style.gridTemplateColumns).toBe('minmax(0, 1fr)');
   });
 });
