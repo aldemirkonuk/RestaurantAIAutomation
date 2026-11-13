@@ -20,6 +20,8 @@ const WORDS: Record<
   "arrival" | "register",
   {
     refused: string;
+    /** A 403: on /get-started, the one refusal is an address not verified yet. */
+    unverified?: string;
     unconfirmed?: string;
     alreadyOpen?: string;
     fallback: string;
@@ -31,6 +33,8 @@ const WORDS: Record<
   arrival: {
     refused:
       "We could not open the house with these details. Check the name, the address and the phone number. If you picked the address from the list, try typing it in yourself.",
+    unverified:
+      "Your email address is not verified yet, so the house was not opened. Verify it, then come back here.",
     unconfirmed:
       "We could not confirm the house opened. Try again in a moment: if it did open, we will tell you, and no second house is opened.",
     alreadyOpen:
@@ -58,6 +62,7 @@ export function houseNotOpened(
   const status = getErrorStatus(cause);
   if (status === 400) return words.refused;
   if (status === 409 && words.alreadyOpen) return words.alreadyOpen;
+  if (status === 403 && words.unverified) return words.unverified;
   if (status === 429) return TOO_MANY_TRIES;
   return words.fallback;
 }

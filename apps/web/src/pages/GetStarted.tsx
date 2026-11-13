@@ -34,10 +34,15 @@ const SIGN_IN_THEN_GET_STARTED = '/login?redirect=%2Fget-started'
  * staff and managers go to the desk, never owner onboarding; an owner (or no
  * role) resumes at the menu step; no house starts at the first step.
  */
-type Entry = 'sign-in' | 'desk' | 'menu' | 'restaurant'
+type Entry = 'sign-in' | 'verify' | 'desk' | 'menu' | 'restaurant'
 
-function entryFor(user: Pick<User, 'restaurantId' | 'role'> | null): Entry {
+function entryFor(user: Pick<User, 'restaurantId' | 'role' | 'emailVerified'> | null): Entry {
   if (!user) return 'sign-in'
+  // An address not yet verified cannot open a house (the gateway answers 403,
+  // auth.service.ts createFirstHouse): sending it to the form first let a
+  // person fill every field and then be told only "We could not create the
+  // house." Only an explicit `false` counts, as on /choose-house.
+  if (user.emailVerified === false) return 'verify'
   if (user.restaurantId) {
     return user.role === 'staff' || user.role === 'manager' ? 'desk' : 'menu'
   }
@@ -48,23 +53,51 @@ function entryFor(user: Pick<User, 'restaurantId' | 'role'> | null): Entry {
 const HOUSE_NOT_LOADED =
   'This account already has a house, but it did not load here just now. Choose it to go on.'
 
-/** What the menu step says when a dropped photo is not read, from the status alone. */
+/** The two other ways in, named wherever a photo is not read (walk 2026-11-12, r21). */
+const OTHER_WAYS = 'or send a file or type a few lines below instead.'
+
+/**
+ * What the menu step says when a dropped photo is not read, from the status
+ * alone. Every sentence names a way on: a 503 is also what a house hears
+ * while the photo reader is switched off, and "try again in a moment" alone
+ * then sent the person round the same drop zone for good.
+ */
 function photoNotRead(cause: unknown): string {
   const status = getErrorStatus(cause)
   if (status === 413) return 'That photo is too large to send. Try a smaller one, or send a file.'
   if (status === 429) return 'Too many tries in a short time. Wait a minute, then try again.'
-  if (isUnconfirmedWrite(cause)) return 'We could not read that photo just now. Try again in a moment.'
+  if (isUnconfirmedWrite(cause)) return `We could not read that photo just now. Try again in a moment, ${OTHER_WAYS}`
   if (status === 400 || status === 422)
     return 'We could not find a menu in that photo. Try a clearer photo, or send a file.'
-  return 'We could not read that photo.'
+  return `We could not read that photo. Try again, ${OTHER_WAYS}`
+}
+
+/** "the restaurant name, the city and the country" — what is still empty, by name. */
+function missingSentence(missing: string[]): string {
+  const named = missing.map((field) => `the ${field}`)
+  const list =
+    named.length === 1 ? named[0] : `${named.slice(0, -1).join(', ')} and ${named[named.length - 1]}`
+  return `Add ${list} to open the house.`
+}
+
+/** Enter in a typed field opens the house, as a form would (not the pickers: their Enter chooses). */
+function submitOnEnter(submit: () => void) {
+  return (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
+    event.preventDefault()
+    submit()
+  }
 }
 
 function ArrivalShell({
   step,
+  onSignOut,
   children,
 }: {
   /** Null while the entry rule has not decided yet: no step is named. */
   step: Step | null
+  /** The way out for a signed-in person on the wrong account; absent before entry. */
+  onSignOut?: () => void
   children?: React.ReactNode
 }) {
   const label = step
@@ -77,11 +110,22 @@ function ArrivalShell({
     <div className="min-h-screen bg-[#fbfaf7] text-[#211f1b]">
       <header className="h-14 border-b border-[#211f1b]/15 px-5 flex items-center justify-between bg-white">
         <BrandMark size={24} alt="Mudavym" />
-        {label && (
-          <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#6d685f]">
-            {label}
-          </span>
-        )}
+        <div className="flex items-center gap-5">
+          {label && (
+            <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#6d685f]">
+              {label}
+            </span>
+          )}
+          {onSignOut && (
+            <button
+              type="button"
+              onClick={onSignOut}
+              className="text-xs text-[#6d685f] underline underline-offset-4"
+            >
+              Sign out
+            </button>
+          )}
+        </div>
       </header>
       <main aria-busy={step === null} className="mx-auto w-full max-w-3xl px-5 py-10 sm:py-16">
         {children}
@@ -92,7 +136,7 @@ function ArrivalShell({
 
 export default function GetStarted() {
   const navigate = useNavigate()
-  const { user, loading, createFirstHouse, signInWithSession } = useAuth()
+  const { user, loading, createFirstHouse, signInWithSession, logout } = useAuth()
   // No step shows until the entry rule decides, so Welcome never flashes.
   const [step, setStep] = useState<Step>('restaurant')
   const [entered, setEntered] = useState(false)
@@ -128,6 +172,8 @@ export default function GetStarted() {
   const [locationStatus, setLocationStatus] = useState<string | null>(null)
   const [menuMethod, setMenuMethod] = useState<MenuMethod>(null)
   const [error, setError] = useState<string | null>(null)
+  // A 403 from opening the house means the address is not verified yet.
+  const [needsVerify, setNeedsVerify] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [dropping, setDropping] = useState(false)
@@ -168,6 +214,7 @@ export default function GetStarted() {
     entryDecided.current = true
     const entry = entryFor(user)
     if (entry === 'sign-in') navigate(SIGN_IN_THEN_GET_STARTED, { replace: true })
+    else if (entry === 'verify') navigate('/verify-email', { replace: true })
     else if (entry === 'desk') navigate('/', { replace: true })
     else {
       if (entry === 'menu') setStep('menu')
@@ -192,6 +239,7 @@ export default function GetStarted() {
       setStep('menu')
     } else if (entry === 'desk') navigate('/', { replace: true })
     else if (entry === 'sign-in') navigate(SIGN_IN_THEN_GET_STARTED, { replace: true })
+    else if (entry === 'verify') navigate('/verify-email', { replace: true })
     else navigate('/choose-house', { replace: true })
   }, [navigate, rerouting, user])
 
@@ -238,8 +286,17 @@ export default function GetStarted() {
       setChangingName(true)
       return
     }
-    if (!restaurantName.trim() || !address.trim() || !city.trim() || !country.trim()) {
-      setError('Restaurant name and full address are required.')
+    // Name what is empty (walk r21): "Restaurant name and full address are
+    // required." made a person who had picked a place hunt for the one field
+    // the place did not fill.
+    const missing = [
+      !restaurantName.trim() && 'restaurant name',
+      !address.trim() && 'address',
+      !city.trim() && 'city',
+      !country.trim() && 'country',
+    ].filter((field): field is string => Boolean(field))
+    if (missing.length > 0) {
+      setError(missingSentence(missing))
       return
     }
     if (zone.source === 'pick' && !pickStands) {
@@ -249,6 +306,7 @@ export default function GetStarted() {
     setSaving(true)
     setError(null)
     setHouseNotLoaded(false)
+    setNeedsVerify(false)
     try {
       // The name is saved only when it was changed here (it came from sign-up).
       if (name.trim() !== (user?.name ?? '').trim()) {
@@ -282,7 +340,9 @@ export default function GetStarted() {
         await stepIntoTheHouse()
         return
       }
-      // Said from the status alone (F-006).
+      // Said from the status alone (F-006). The one 403 here is an address
+      // not verified yet: say it, and give the way to verify it.
+      if (getErrorStatus(cause) === 403) setNeedsVerify(true)
       setError(houseNotOpened(cause, 'arrival'))
     } finally {
       setSaving(false)
@@ -343,11 +403,17 @@ export default function GetStarted() {
     }
   }
 
+  const signOut = () =>
+    void logout().then((out) => {
+      // `false`: the person kept their unsent changes and stayed signed in.
+      if (out) navigate('/login', { replace: true })
+    })
+
   if (!entered) return <ArrivalShell step={null} />
 
   if (step === 'restaurant') {
     return (
-      <ArrivalShell step={step}>
+      <ArrivalShell step={step} onSignOut={signOut}>
         <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">
           Welcome, {name.trim().split(/\s+/)[0] || 'there'}.
           {!changingName && name.trim() && (
@@ -366,6 +432,7 @@ export default function GetStarted() {
             <span className="text-xs uppercase tracking-wider">Your name · required</span>
             <input
               aria-label="Your name"
+              onKeyDown={submitOnEnter(() => void createHouse())}
               value={name}
               onChange={(event) => {
                 nameTouched.current = true
@@ -420,19 +487,19 @@ export default function GetStarted() {
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="border-b border-[#211f1b]/25 pb-2">
               <span className="text-xs uppercase tracking-wider">Restaurant name · required</span>
-              <input aria-label="Restaurant name" value={restaurantName} onChange={(e) => setRestaurantName(e.target.value)} className="mt-2 w-full bg-transparent text-lg outline-none" />
+              <input aria-label="Restaurant name" onKeyDown={submitOnEnter(() => void createHouse())} value={restaurantName} onChange={(e) => setRestaurantName(e.target.value)} className="mt-2 w-full bg-transparent text-lg outline-none" />
             </label>
             <label className="border-b border-[#211f1b]/25 pb-2">
               <span className="text-xs uppercase tracking-wider">Address · required</span>
-              <input aria-label="Address" value={address} onChange={(e) => { setAddress(e.target.value); setPlacePoint(null) }} className="mt-2 w-full bg-transparent text-lg outline-none" />
+              <input aria-label="Address" onKeyDown={submitOnEnter(() => void createHouse())} value={address} onChange={(e) => { setAddress(e.target.value); setPlacePoint(null) }} className="mt-2 w-full bg-transparent text-lg outline-none" />
             </label>
             <label className="border-b border-[#211f1b]/25 pb-2">
               <span className="text-xs uppercase tracking-wider">Restaurant phone · optional</span>
-              <input aria-label="Restaurant phone" value={restaurantPhone} onChange={(e) => setRestaurantPhone(e.target.value)} className="mt-2 w-full bg-transparent text-lg outline-none" />
+              <input aria-label="Restaurant phone" onKeyDown={submitOnEnter(() => void createHouse())} value={restaurantPhone} onChange={(e) => setRestaurantPhone(e.target.value)} className="mt-2 w-full bg-transparent text-lg outline-none" />
             </label>
             <label className="border-b border-[#211f1b]/25 pb-2">
               <span className="text-xs uppercase tracking-wider">City · required</span>
-              <input aria-label="City" value={city} onChange={(e) => setCity(e.target.value)} className="mt-2 w-full bg-transparent text-lg outline-none" />
+              <input aria-label="City" onKeyDown={submitOnEnter(() => void createHouse())} value={city} onChange={(e) => setCity(e.target.value)} className="mt-2 w-full bg-transparent text-lg outline-none" />
             </label>
             <div>
               <span className="text-xs uppercase tracking-wider">Country · required</span>
@@ -467,6 +534,11 @@ export default function GetStarted() {
           </div>
         </div>
         {error && <p role="alert" className="mt-5 text-sm text-red-700">{error}</p>}
+        {needsVerify && (
+          <Link to="/verify-email" replace className="mt-3 inline-block text-sm text-[#1a5e6b] underline underline-offset-4">
+            Verify your email
+          </Link>
+        )}
         {houseNotLoaded && (
           <Link to="/choose-house" replace className="mt-3 inline-block text-sm text-[#1a5e6b] underline underline-offset-4">
             Choose your house
@@ -481,10 +553,12 @@ export default function GetStarted() {
 
   if (step === 'menu') {
     return (
-      <ArrivalShell step={step}>
-        <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">The first inscription</p>
+      <ArrivalShell step={step} onSignOut={signOut}>
+        <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">One last step</p>
         <h1 className="mt-3 font-serif text-4xl sm:text-5xl">Your menu</h1>
-        <p className="mt-3 text-[#6d685f]">Drop the menu here. Mudavym will set it as the house&apos;s own list.</p>
+        <p className="mt-3 text-[#6d685f]">
+          A photo, a file, or a few typed lines. Mudavym sets it out as the house&apos;s own list, and you check it on the next page.
+        </p>
         {notice && <p role="status" className="mt-3 text-sm text-[#6d685f]">{notice}</p>}
         <button
           type="button"
@@ -523,10 +597,6 @@ export default function GetStarted() {
           {menuMethod === 'photo' && <MenuScanUpload onSuccess={menuRead} />}
           {menuMethod === 'file' && <MenuCsvUpload onSuccess={menuRead} />}
           {menuMethod === 'typed' && <MenuManualEntry onSuccess={menuRead} currency={currency} />}
-        </div>
-        <div className="mt-8 border border-dashed border-[#211f1b]/20 px-4 py-3 text-sm text-[#b7b2a8]">
-          <p className="text-[11px] uppercase tracking-[0.12em]">Later</p>
-          <p>Your last invoice — read the same way, set beside the menu. Not a step now.</p>
         </div>
         <div className="mt-6 border-t border-[#211f1b]/15 pt-5">
           <button type="button" onClick={() => navigate('/house', { replace: true })} className="text-sm text-[#6d685f] underline underline-offset-4">
