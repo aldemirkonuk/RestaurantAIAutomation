@@ -43,7 +43,7 @@ function cells(d: DishListRow, say: Say, sayPct: SayPercent) {
   const per = d.cost?.complete ? d.cost.perServe : null;
   // `partial` counts priced lines whose invoice cost covers only part of the
   // stock (bought another way, invoiced at 0, or not yet verified).
-  const part = per != null ? (d.cost?.partial ?? 0) : 0;
+  const part = d.cost?.partial ?? 0;
   return {
     price: d.price != null ? say(d.price) : 'No price',
     cost:

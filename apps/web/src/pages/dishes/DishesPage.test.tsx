@@ -117,6 +117,19 @@ describe('DishesPage', () => {
     await waitFor(() => expect(a).toHaveTextContent('33.3%'));
   });
 
+  it('a currency that could not be read leaves the share in the reader\'s form, never a guessed house form', async () => {
+    const lira = h.get.getMockImplementation();
+    h.get.mockImplementation(async (url: string) =>
+      url === '/settings/currency'
+        ? { data: { restaurantId: RID, code: 'TRY', country: 'Turkey', readable: false, reason: 'not readable', statedAt: null } }
+        : (lira as (u: string) => unknown)(url),
+    );
+    mount();
+    const a = await screen.findByTestId(`dish-row-${A}`);
+    await waitFor(() => expect(a).toHaveTextContent('33.3%'));
+    expect(a.textContent).not.toContain('%33,3');
+  });
+
   it('staff read the list with no money, even if a figure reached them', async () => {
     h.auth = { activeRestaurantId: RID, activeRole: 'staff', user: { userId: 'u2', role: 'staff' } };
     mount();
