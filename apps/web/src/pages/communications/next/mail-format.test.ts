@@ -26,6 +26,7 @@ import {
   senderLine,
   READING_WITHIN_MIN,
   spanWords,
+  setupLinkWords,
   storedKindsLine,
   todayLine,
   TODAY_ZONE_UNSET,
@@ -297,8 +298,19 @@ describe('a letter in a thread', () => {
 describe('the list around the people', () => {
   it('says which kinds of mail are not stored', () => {
     expect(storedKindsLine(['vendor'])).toBe(
-      "Vendor mail is listed here by person and thread. A stranger's letter, and a letter held because its sender could not be confirmed, are under Who is writing, below. Mail from your team and guests is not read yet.",
+      'Vendor mail is listed here by person and thread. A letter from someone Mudavym does not know is under Who is writing, below, only when it carries an attachment or reads as an offer; a plain one is not kept. A letter held because its sender could not be confirmed is there too. Mail from your team and guests is not read yet.',
     );
+  });
+
+  it('says a plain letter from someone unknown is not kept (r28 gap 6)', () => {
+    const line = storedKindsLine(null);
+    expect(line).toMatch(/only when it carries an attachment or reads as an offer; a plain one is not kept\./);
+    expect(line).not.toMatch(/A stranger's letter, and/);
+  });
+
+  it('staff are shown how mail reaches the house, not told to set it up (r28 gap 15)', () => {
+    expect(setupLinkWords(true)).toBe('Set up how mail reaches the house');
+    expect(setupLinkWords(false)).toBe('See how mail reaches the house');
   });
 
   it('an empty list names which doors are connected', () => {

@@ -41,6 +41,7 @@ import {
   lastWriterWords,
   houseMailboxStatus,
   mailStatusLine,
+  setupLinkWords,
   storedKindsLine,
   todayLine,
   type MailAnswer,
@@ -231,12 +232,15 @@ function People({
   summary,
   onOpenPerson,
   onSetup,
+  setupWords,
 }: {
   waitingOnly: boolean;
   reader: MailboxReader | null;
   summary: Parameters<typeof emptyListWords>[1];
   onOpenPerson: (key: string) => void;
   onSetup: () => void;
+  /** setupLinkWords(canReply): staff are not told to set up what they cannot change. */
+  setupWords: string;
 }) {
   const q = useMailPeople(waitingOnly);
   const pages = q.data?.pages ?? [];
@@ -259,7 +263,7 @@ function People({
           {emptyListWords(reader, summary, { waitingOnly })}{' '}
           {!waitingOnly && (
             <button type="button" data-testid="empty-setup" onClick={onSetup} style={LINK_BUTTON}>
-              Set up how mail reaches the house
+              {setupWords}
             </button>
           )}
         </p>
@@ -460,7 +464,7 @@ export function MailTab({
               cursor: 'pointer',
             }}
           >
-            Set up how mail reaches the house
+            {setupLinkWords(canReply)}
           </button>
         )}
       </header>
@@ -509,6 +513,7 @@ export function MailTab({
             summary={summary}
             onOpenPerson={(key) => go({ with: key })}
             onSetup={openSetup}
+            setupWords={setupLinkWords(canReply)}
           />
           {whoIsWriting}
         </>
