@@ -15,7 +15,9 @@ export interface User {
   userId: string
   email: string
   name: string
-  role: 'owner' | 'manager' | 'staff'
+  /** The role in the session's house; null for a session in no house. */
+  role: 'owner' | 'manager' | 'staff' | null
+  /** The session's house; "" for a session in no house. */
   restaurantId: string
 }
 
@@ -48,6 +50,12 @@ interface AuthState {
   setActiveRestaurantId: (restaurantId: string) => void
   setTokens: (accessToken: string, refreshToken: string) => void
   clearTokens: () => void
+  /**
+   * Takes the signed-in person from AuthProvider (contexts/AuthContext.tsx),
+   * or null once signed out. AuthProvider owns the session; this store is the
+   * copy hooks read when they cannot call `useAuth()`.
+   */
+  followSession: (user: User | null) => void
   
   // Auth methods
   login: (email: string, password: string) => Promise<void>
@@ -94,6 +102,22 @@ export const useAuthStore = create<AuthState>()(
         localStorage.setItem('accessToken', accessToken)
         localStorage.setItem('refreshToken', refreshToken)
         api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`
+      },
+      followSession: (user) => {
+        if (user) {
+          set({
+            user: {
+              userId: user.userId,
+              email: user.email,
+              name: user.name,
+              role: user.role,
+              restaurantId: user.restaurantId,
+            },
+          })
+        } else {
+          // Signed out: nothing of the last person stays for the next one.
+          set({ user: null, activeRestaurantId: null, availableRestaurants: [] })
+        }
       },
       clearTokens: () => {
         set({ accessToken: null, refreshToken: null })
