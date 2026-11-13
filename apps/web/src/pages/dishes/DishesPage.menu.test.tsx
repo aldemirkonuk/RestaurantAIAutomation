@@ -16,6 +16,7 @@ const B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const C = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const D = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const E = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+const F = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
 const MENU = `/recipes/${RID}/menu-prices`;
 
 const h = vi.hoisted(() => ({ get: vi.fn(), role: 'manager', menu: null as unknown }));
@@ -44,10 +45,12 @@ beforeEach(() => {
     { dishId: C, menu: { found: 'none' } },
     { dishId: D, menu: { found: 'several', lines: 2 } },
     { dishId: E, menu: { found: 'one', prices: [], agrees: null } },
+    // F has no price of its own: agreement is unknown, never "differs".
+    { dishId: F, menu: { found: 'one', prices: [600], agrees: null } },
   ]);
   h.get.mockReset().mockImplementation(async (url: string) => {
     if (url === '/settings/currency') return { data: { restaurantId: RID, code: 'TRY', country: 'Turkey', readable: true, reason: null, statedAt: null } };
-    if (url === `/recipes/${RID}/dishes`) return { data: [row(A, 'Lamb shank', 900), row(B, 'Mezze', 500), row(C, 'Soup', 300), row(D, 'Bread', 50), row(E, 'Tea', 40)] };
+    if (url === `/recipes/${RID}/dishes`) return { data: [row(A, 'Lamb shank', 900), row(B, 'Mezze', 500), row(C, 'Soup', 300), row(D, 'Bread', 50), row(E, 'Tea', 40), row(F, 'Pilaf', null)] };
     if (url === MENU) {
       if (h.menu instanceof Error) throw h.menu;
       return { data: h.menu };
@@ -84,6 +87,12 @@ describe('/dishes Menu column', () => {
     await waitFor(() => expect(cell(C)).toBe('Not on the menu'));
     expect(cell(D)).toBe('2 lines differ');
     expect(cell(E)).toBe('No price on the menu');
+  });
+
+  it('a dish with no price of its own shows the menu price and is not marked as differing', async () => {
+    mount();
+    await waitFor(() => expect(cell(F)).toBe(fmtMoney(600, 'TRY')));
+    expect(screen.queryByTestId(`menu-differs-${F}`)).toBeNull();
   });
 
   it('the column sits right after Price', async () => {
