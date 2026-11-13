@@ -456,7 +456,7 @@ describe("R5 — a manager with pay access may set their own wage, and the owner
     expect(notices).toHaveLength(1);
     expect(notices[0]).toMatchObject({ user_id: OWNER, restaurant_id: RID, channels: ["in_app"], status: "unread" });
     expect(notices[0].title).toBe("Moe set their own wage");
-    expect(notices[0].message).toContain("from 30.00 TRY to 35.00 TRY");
+    expect(notices[0].message).toContain("from ₺30.00 to ₺35.00");
     expect(notices[0].metadata).toMatchObject({
       action: "team_member_own_wage_set",
       member_id: "m-manager",

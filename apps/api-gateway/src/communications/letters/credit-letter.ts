@@ -20,6 +20,8 @@
  *     like any other letter, and a test pins that it trips nothing.
  */
 
+import { moneyIn } from "../../common/money-in";
+
 export interface CreditLetterFacts {
   reason: string | null;
   summary: string | null;
@@ -52,9 +54,13 @@ export function creditLetterCategory(reason: string | null): string {
     : "invoice_mismatch";
 }
 
+/**
+ * The claim's amount in its own money, in the bell's shape (`moneyIn`): the
+ * money's own sign, grouped, in its own places ("€1,240.50", "¥5,000").
+ * No currency: the grouped figure alone. Never converted.
+ */
 function money(amount: number, currency: string | null): string {
-  const fixed = Number.isFinite(amount) ? amount.toFixed(2) : String(amount);
-  return currency ? `${fixed} ${currency}` : fixed;
+  return Number.isFinite(amount) ? moneyIn(amount, currency) : String(amount);
 }
 
 function day(iso: string | null): string | null {
