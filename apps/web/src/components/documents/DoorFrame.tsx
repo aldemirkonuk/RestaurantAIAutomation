@@ -376,6 +376,19 @@ function BookingNote({ booking }: { booking: DoorBooking }) {
           Not on the shelf: {n.label} — {n.reason}
         </p>
       ))}
+      {/* r28 G9: the delivery was already verified, so the cost of what this
+          count added was posted now, or waits for an owner or a manager. */}
+      {!booking.failed && booking.afterVerify && (
+        <p
+          data-testid="door-after-verify"
+          style={{
+            margin: '2px 0 0',
+            color: booking.afterVerify.costed > 0 ? 'var(--ink-2, #4F473C)' : '#94661A',
+          }}
+        >
+          {booking.afterVerify.sentence}
+        </p>
+      )}
     </div>
   )
 }

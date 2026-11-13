@@ -116,6 +116,15 @@ export interface DoorBooking {
   error?: string;
   booked: { lineNo: number; inventoryId: string; delta: number }[];
   notBooked: { lineNo: number; label: string; reason: string }[];
+  /**
+   * A count onto a delivery already VERIFIED (r28 G9): what happened to the
+   * cost of what it added, in the gateway's words. Absent for any other count.
+   */
+  afterVerify?: {
+    costed: number;
+    waitsForAManager: boolean;
+    sentence: string;
+  };
 }
 
 /** The body both `propose` and `counter` take — declared once, so a counter
