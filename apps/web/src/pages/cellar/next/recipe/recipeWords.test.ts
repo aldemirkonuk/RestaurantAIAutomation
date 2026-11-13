@@ -43,6 +43,9 @@ describe('recipeWords', () => {
   it("a dish line's notes say plate, dish and deliveries; a drink's are unchanged", () => {
     const dish = recipeWords('dish');
     expect(rowNote(row(), say, dish)?.text).toBe('$1.25 a plate, from the deliveries that have an invoice; some on hand have none yet.');
+    const whole = { status: 'priced', costPerServe: 1.25, costPerServeExact: 1.25, costBasis: 'invoice_lot_wac' } as unknown as DraftRow['saved'];
+    expect(rowNote(row({ saved: whole }), say, dish)?.text).toBe('$1.25 a plate');
+    expect(rowNote(row({ saved: whole }), say)?.text).toBe('$1.25 a serve');
     expect(rowNote(row({ inventoryId: null }), say, dish)?.text).toBe(
       "This dish won't take stock until 'Olive Oil' is linked to something on your shelf.",
     );
