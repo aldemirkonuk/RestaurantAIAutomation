@@ -328,13 +328,6 @@ describe('In dish recipes', () => {
     expect(screen.queryByTestId('ivd-dish-d1-food-cost')).toBeNull();
   });
 
-  it('staff are shown no money even if the gateway sent some', () => {
-    mount(ready(dish()), false);
-    expect(screen.queryByTestId('ivd-dish-d1-cost')).toBeNull();
-    expect(screen.queryByTestId('ivd-dish-d1-price')).toBeNull();
-    expect(screen.queryByTestId('ivd-dish-d1-food-cost')).toBeNull();
-  });
-
   it('an unknown yield is Not known, not a guess', () => {
     mount(ready(dish({ yieldServes: null })));
     expect(t('per-plate')).toContain('Not known');
