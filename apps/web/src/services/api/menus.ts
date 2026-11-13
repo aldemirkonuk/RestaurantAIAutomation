@@ -184,11 +184,25 @@ export async function importMenu(
   return response.data
 }
 
+/**
+ * One field of one line, corrected. A price correction on the CURRENT menu also
+ * moves the house's own price (ADR 0193) and says what happened in `priceSync`;
+ * `newValue` is what was stored ("45,50" comes back "45.5").
+ */
+export interface MenuItemCorrection {
+  menuItemId: string
+  fieldName: string
+  newValue: string
+  priceSync?: MenuImportReviewItem['priceSync']
+  priceSyncError?: string | null
+  priceHeld?: HeldKind[]
+}
+
 export async function reviewMenuItem(
   menuItemId: string,
   fieldName: EditableMenuItemField,
   newValue: string
-): Promise<{ menuItemId: string; fieldName: string; newValue: string }> {
+): Promise<MenuItemCorrection> {
   const response = await apiClient.patch(`/menus/items/${menuItemId}`, { fieldName, newValue })
   return response.data
 }

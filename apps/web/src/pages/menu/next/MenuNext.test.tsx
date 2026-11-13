@@ -18,7 +18,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MenuNext from './MenuNext';
 import { housePriceNote } from './menu-price-note';
-import { getMenu, discardMenuItem, addMenuItem, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
+import { getMenu, discardMenuItem, addMenuItem, reviewMenuItem, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
 import { settingsApi, type HouseCurrency } from '../../../services/api/settings';
 
 // ADR 0358 D2: discarding a line is an owner's or a manager's, so the page
@@ -37,6 +37,7 @@ vi.mock('../../../services/api/menus', async () => {
     getMenu: vi.fn(),
     discardMenuItem: vi.fn(),
     addMenuItem: vi.fn(),
+    reviewMenuItem: vi.fn(),
     // The kept-menus panel (MenuVersions.tsx, its own test file) reads on
     // mount; here it answers "none kept" so this file tests the current menu.
     listMenuVersions: vi.fn().mockResolvedValue({ current: null, lastUsed: null, versions: [] }),
@@ -78,6 +79,7 @@ vi.mock('../../../services/api/settings', async () => {
 const mockGetMenu = vi.mocked(getMenu);
 const mockDiscard = vi.mocked(discardMenuItem);
 const mockAdd = vi.mocked(addMenuItem);
+const mockReview = vi.mocked(reviewMenuItem);
 const mockCurrency = vi.mocked(settingsApi.houseCurrency);
 
 function line(over: Partial<MenuLine> = {}): MenuLine {
@@ -130,6 +132,8 @@ beforeEach(() => {
   mockGetMenu.mockReset();
   mockDiscard.mockReset();
   mockAdd.mockReset();
+  mockReview.mockReset();
+  role = 'manager';
   mockCurrency.mockReset();
   mockCurrency.mockResolvedValue(currency());
 });
@@ -319,5 +323,88 @@ describe('MenuNext — discard', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
     await waitFor(() => expect(mockDiscard).toHaveBeenCalledWith('r1', 'l9'));
     expect(await screen.findByRole('alert')).toHaveTextContent('not discarded');
+  });
+});
+
+// Menu r21: the page could add and discard a line, never change its price.
+describe('MenuNext — a price changes on its line', () => {
+  const chianti = () => line({ id: 'w1', name: 'Chianti', category: 'red', by_glass_price: 12, bottle_price: 48, inventory_item_id: 'inv-1', kitchen_line: false });
+
+  async function openEditor(name: string) {
+    fireEvent.click(await screen.findByRole('button', { name: `Change the price of ${name}` }));
+  }
+
+  it('a manager changes the bottle price; the menu is read again and the answer names the house price', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [chianti()] }));
+    mockReview.mockResolvedValue({ menuItemId: 'w1', fieldName: 'bottle_price', newValue: '45.5', priceSync: 'changed', priceSyncError: null, priceHeld: [] });
+    mount();
+    await openEditor('Chianti');
+    fireEvent.change(screen.getByLabelText('Bottle price of Chianti'), { target: { value: '45,50' } });
+    fireEvent.click(screen.getByTestId('menu-price-save'));
+    const note = await screen.findByTestId('menu-price-note');
+    expect(mockReview).toHaveBeenCalledTimes(1);
+    expect(mockReview).toHaveBeenCalledWith('w1', 'bottle_price', '45,50');
+    expect(note).toHaveAttribute('role', 'status');
+    expect(note.textContent).toMatch(/^Chianti: the bottle price is now .*45\.50 on the menu, and the house's own bottle price is .*45\.50 too\.$/);
+    await waitFor(() => expect(mockGetMenu).toHaveBeenCalledTimes(2));
+    expect(screen.queryByTestId('menu-price-save')).not.toBeInTheDocument();
+  });
+
+  it('an empty box or an unchanged one sends nothing for that price', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [chianti()] }));
+    mount();
+    await openEditor('Chianti');
+    fireEvent.change(screen.getByLabelText('Glass price of Chianti'), { target: { value: '' } });
+    fireEvent.click(screen.getByTestId('menu-price-save'));
+    expect(await screen.findByTestId('menu-price-note')).toHaveTextContent('Chianti: no price was changed.');
+    expect(mockReview).not.toHaveBeenCalled();
+  });
+
+  it('a locked price is said as locked, never as changed', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [chianti()] }));
+    mockReview.mockResolvedValue({
+      menuItemId: 'w1', fieldName: 'by_glass_price', newValue: '14', priceSync: 'locked', priceSyncError: null,
+      priceHeld: [{ kind: 'glass', lockId: 'L1', lockedPrice: 12, lockedBy: 'u1', lockedAt: '2026-11-01T10:00:00Z' }],
+    });
+    mount();
+    await openEditor('Chianti');
+    fireEvent.change(screen.getByLabelText('Glass price of Chianti'), { target: { value: '14' } });
+    fireEvent.click(screen.getByTestId('menu-price-save'));
+    const note = await screen.findByTestId('menu-price-note');
+    expect(note.textContent).toMatch(/the glass price is now .*14\.00 on the menu, but the house's glass price is locked at .*12\.00, so it was not changed/);
+    expect(note.textContent).not.toMatch(/too\./);
+  });
+
+  it('a refused price keeps the boxes open and says the gateway\'s reason', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [chianti()] }));
+    mockReview.mockRejectedValue({ response: { status: 400, data: { message: '"1,250" is not a price: it could be 1250 or 1.25; write it as 1250 or 1.25. Nothing was changed.' } } });
+    mount();
+    await openEditor('Chianti');
+    fireEvent.change(screen.getByLabelText('Bottle price of Chianti'), { target: { value: '1,250' } });
+    fireEvent.click(screen.getByTestId('menu-price-save'));
+    const note = await screen.findByTestId('menu-price-note');
+    expect(note).toHaveAttribute('role', 'alert');
+    expect(note).toHaveTextContent('the bottle price was not changed ("1,250" is not a price: it could be 1250 or 1.25');
+    expect(screen.getByTestId('menu-price-save')).toBeInTheDocument();
+    expect(mockGetMenu).toHaveBeenCalledTimes(1);
+  });
+
+  it('a dish says it has no house price', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'k1', name: 'Tiramisu', category: 'dessert', by_glass_price: null, bottle_price: 9, kitchen_line: true })] }));
+    mockReview.mockResolvedValue({ menuItemId: 'k1', fieldName: 'bottle_price', newValue: '11', priceSync: 'kitchen_line', priceSyncError: null, priceHeld: [] });
+    mount();
+    await openEditor('Tiramisu');
+    fireEvent.change(screen.getByLabelText('Bottle price of Tiramisu'), { target: { value: '11' } });
+    fireEvent.click(screen.getByTestId('menu-price-save'));
+    const note = await screen.findByTestId('menu-price-note');
+    expect(note.textContent).toMatch(/^Tiramisu: the price is now .*11\.00 on the menu\. A dish has no house price and no stock, so nothing else changed\.$/);
+  });
+
+  it('staff are offered no price change', async () => {
+    role = 'staff';
+    mockGetMenu.mockResolvedValue(menu({ items: [chianti()] }));
+    mount();
+    await screen.findAllByTestId('menu-row');
+    expect(screen.queryByTestId('menu-price-edit')).not.toBeInTheDocument();
   });
 });
