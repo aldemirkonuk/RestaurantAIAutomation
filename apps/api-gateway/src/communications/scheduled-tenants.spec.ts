@@ -646,3 +646,35 @@ describe("scheduled jobs — a failed recipient lookup is a FAILED run, not an e
     expect(tenantErrors.join("\n")).not.toMatch(/SCHEDULED_JOB_TENANT_FAILED/);
   });
 });
+
+describe("the inventory audit mail is in the house's own money (r11)", () => {
+  it("passes each house's currency to the mail, and none as null", async () => {
+    const { service, gmailService } = makeScheduledTasks({
+      restaurants: [
+        restaurant("r1", "Istanbul", { currency: "TRY" }),
+        restaurant("r2", "Unstated"),
+      ],
+      flags: [optIn("r1"), optIn("r2")],
+    });
+
+    await service.sendInventoryAuditReminder();
+
+    const calls = gmailService.sendInventoryAuditReminder.mock.calls as unknown as Array<
+      [{ restaurantName: string; currency: string | null; totalValue: number }]
+    >;
+    const byHouse = Object.fromEntries(calls.map(([d]) => [d.restaurantName, d.currency]));
+    expect(byHouse).toEqual({ Istanbul: "TRY", Unstated: null });
+  });
+
+  it("the audit template then prints the lira sign, and the bare figure with none", () => {
+    // The gateway's mail path: GmailService hands `data` to the template whole.
+    const { inventoryAuditTemplate } = jest.requireActual("./email-templates") as typeof import("./email-templates");
+    const base = { restaurantName: "Istanbul", scheduledDate: "2026-11-18", totalBottles: 4, totalValue: 840 };
+    const lira = inventoryAuditTemplate({ ...base, currency: "TRY" });
+    expect(lira).toContain("₺840");
+    expect(lira).not.toMatch(/\$\s?840/);
+    const bare = inventoryAuditTemplate({ ...base, currency: null });
+    expect(bare).toContain("840");
+    expect(bare).not.toMatch(/[$₺]\s?840/);
+  });
+});
