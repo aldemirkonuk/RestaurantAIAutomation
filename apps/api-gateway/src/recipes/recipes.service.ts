@@ -13,6 +13,7 @@ import { mergeAgreedLotCost, mergeInvoiceLotCost } from "../analytics/inventory-
 import { BaseUnit, CostItem, recipeCost } from "./recipe-cost";
 import { PreviewCostDto, SaveRecipeDto } from "./dto/recipes.dto";
 import { FIGURE_KEYS, ItemFigures, ServeNutrition, serveNutrition } from "./recipe-nutrition";
+import { shelfSearchPattern } from "./name-fold";
 
 export const NOT_THIS_HOUSE = "This drink is not on this house's list.";
 export const STALE_SAVE = "Someone saved this recipe after you opened it. Nothing was changed.";
@@ -697,8 +698,12 @@ export class RecipesService {
       .eq("restaurant_id", restaurantId)
       .eq("is_active", true)
       .is("deleted_at", null);
-    const term = (search ?? "").trim();
-    if (term) q = q.ilike("display_name", `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
+    // A term is read under foldName's rules (r28 gap 14): "RAKI", "raki" and
+    // "rakı" all find "Rakı", and "seker" finds "Şeker". Each folded letter is
+    // sent as the class of every way it is written, both cases, so the answer
+    // does not lean on the database's own case rules for I and İ.
+    const pattern = shelfSearchPattern(search ?? "");
+    if (pattern) q = q.filter("display_name", "imatch", pattern);
     const { data, error } = await q
       .order("display_name", { ascending: true })
       .limit(Math.min(Math.max(limit ?? 50, 1), 50));

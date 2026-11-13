@@ -64,8 +64,21 @@ describe("dishes: a pasted label proposes its shelf item by exact name", () => {
     expect(m).toMatchObject({ item: null, sameName: 2 });
   });
 
-  it("folds runs of spaces and case, nothing else", () => {
+  it("folds runs of spaces, case the Turkish way, the dotless i and accents; nothing else", () => {
     expect(foldName("  Bread  FLOUR ")).toBe("bread flour");
     expect(foldName("Flour")).not.toBe(foldName("Flours"));
+    // r28 gap 14: "RAKI" and "Rakı" are one name; so are "İSOT" and "isot", "ŞEKER" and "seker".
+    expect(foldName("RAKI")).toBe(foldName("Rakı"));
+    expect(foldName("Rakı")).toBe("raki");
+    expect(foldName("İSOT")).toBe("isot");
+    expect(foldName("ŞEKER")).toBe("seker");
+    expect(foldName("Crème  brûlée")).toBe("creme brulee");
+  });
+
+  it("a RAKI line proposes the house's Rakı (r28 gap 14)", async () => {
+    const rows = twoHouses();
+    rows.restaurant_inventory.push({ id: "f0000000-0000-4000-8000-0000000000b9", restaurant_id: HOUSE_A, display_name: "Yeni Rakı", kind: "spirit", uom: "bottle", bottle_size_ml: 700, is_active: true, deleted_at: null });
+    const out = await dishes(rows).matchShelf(HOUSE_A, ["YENİ RAKI", "yeni raki"]);
+    expect(out.map((m) => m.item?.name ?? null)).toEqual(["Yeni Rakı", "Yeni Rakı"]);
   });
 });
