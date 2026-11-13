@@ -755,18 +755,39 @@ describe('SettingsNext — provenance and unknowns', () => {
       })),
     });
     mount('/settings?tab=notifications');
-    // Push: stored, but nothing sends it — no control anywhere for it.
-    expect(screen.queryByRole('switch', { name: /^Push/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/Nothing in the product sends a push notification/i)).toBeInTheDocument();
-    // Said in the house's words; the file citations moved to a code comment.
-    expect(screen.getByText(/nothing that sends an alert looks at it/i)).toBeInTheDocument();
-    expect(screen.queryByText(/push-is-not-resolved-here/)).not.toBeInTheDocument();
+    // The push switch is real now (#825), and still said in the house's
+    // words: the gate's file name stays in a code comment.
+    expect(screen.queryByText(/push-gate/)).not.toBeInTheDocument();
     // Email and SMS are real, so they keep their switches.
     expect(screen.getByRole('switch', { name: /Email notifications/i })).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: /SMS notifications/i })).toBeInTheDocument();
     // The category that is off is shown as a stored value, not as a switch.
     expect(screen.getAllByText('stored: off').length).toBe(1);
-    expect(screen.getAllByText('stored: on').length).toBeGreaterThanOrEqual(5);
+    // Four categories on; push is no longer a stored-only record (it has a switch).
+    expect(screen.getAllByText('stored: on').length).toBe(4);
+  });
+
+  it('gives push a real switch, because the phone leg now reads it (QA round 4 B1)', () => {
+    // It rendered as a dead record ("Nothing in the product sends a push
+    // notification") while the gateway pushed through Expo and ignored it.
+    // `push/push-gate.ts` reads `push_enabled` now, so the switch is real.
+    mock.current = base({ notif: remote(notifPrefs({ push: true })) });
+    mount('/settings?tab=notifications');
+    expect(screen.queryByText(/Nothing in the product sends a push notification/i)).not.toBeInTheDocument();
+    const toggle = screen.getByRole('switch', { name: /^Push notifications$/i });
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(toggle);
+    expect(saveNotif).toHaveBeenCalledWith('push', { push: false });
+    expect(screen.getByText(/critical alerts included/i)).toBeInTheDocument();
+    // Audit follow-up: three gateway pushes read no preference
+    // (team/notes.service.ts, schedule.service.ts, team.service.ts call
+    // push.sendToUsers directly), so the copy names them rather than
+    // promising the switch covers every push.
+    expect(
+      screen.getByText(
+        /does not yet cover three pushes: a note from your manager, a shift offer asking you to cover, and the notice that someone left the team still reach your phone with it off/i,
+      ),
+    ).toBeInTheDocument();
   });
 
   it('keeps a real switch on quiet hours, because the alerting agent reads it', () => {
@@ -788,6 +809,17 @@ describe('SettingsNext — provenance and unknowns', () => {
     });
     // And it is honest about the half that does NOT honour it.
     expect(screen.getByText(/consult this window and sends on its own clock/i)).toBeInTheDocument();
+    // Audit follow-up: only the phone leg reads the window on the house's
+    // clock; the agent reads `datetime.now()` (notification_agent.py:1539).
+    // The copy must not claim the whole window is on the house's clock, and
+    // it names the direct pushes that ignore the window.
+    expect(screen.queryByText(/Read on this house’s clock/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/judges the window on its server’s clock, not yet on this house’s/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/a shift offer and the notice that someone left the team are still pushed inside the window/i),
+    ).toBeInTheDocument();
   });
 
   it('says what each date is a date OF — granted for access, issued for an invite', () => {

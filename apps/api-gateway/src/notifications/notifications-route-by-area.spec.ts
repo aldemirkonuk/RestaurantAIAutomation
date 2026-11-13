@@ -66,7 +66,13 @@ function build(db: StubDb, withRouting = true) {
       },
     },
   };
-  const expo = { sendToUsers: async (ids: string[]) => void pushed.push(ids) };
+  // The funnel asks the per-person gate first since QA round 4 B1
+  // (`push-follows-the-person.spec.ts` covers the gate); this suite is about
+  // WHO routing addresses, so its gate lets everyone through.
+  const expo = {
+    pushGate: async (_house: string, ids: string[]) => ({ send: ids }),
+    sendToUsers: async (ids: string[]) => void pushed.push(ids),
+  };
   const database = dbService(db);
   const routing = withRouting ? new AreaRoutingService(database) : undefined;
   const svc = new NotificationsService(
