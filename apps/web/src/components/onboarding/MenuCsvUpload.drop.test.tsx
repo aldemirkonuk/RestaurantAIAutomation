@@ -66,6 +66,14 @@ describe('MenuCsvUpload stages a dropped file', () => {
     expect(screen.getByText('Click to upload file')).toBeInTheDocument()
   })
 
+  it('a picked file is still staged the same way', async () => {
+    const { container } = render(<MenuCsvUpload onSuccess={onSuccess} droppedFiles={null} />)
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [pdf()] } })
+    expect(await screen.findByText('menu.pdf')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Import the menu' })).toBeInTheDocument()
+  })
+
   it('with nothing dropped the box waits for a pick', () => {
     render(<MenuCsvUpload onSuccess={onSuccess} droppedFiles={null} />)
     expect(screen.getByText('Click to upload file')).toBeInTheDocument()

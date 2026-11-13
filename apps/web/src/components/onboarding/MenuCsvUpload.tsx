@@ -107,11 +107,9 @@ export function MenuCsvUpload({ onSuccess, droppedFiles }: MenuCsvUploadProps) {
     stageFiles(files)
   }
 
-  // A drop is staged once: the same array is never read twice.
-  const stagedDrop = useRef<File[] | null>(null)
+  // A drop is staged once per drop (a new array), never on a re-render.
   useEffect(() => {
-    if (!droppedFiles || droppedFiles.length === 0 || stagedDrop.current === droppedFiles) return
-    stagedDrop.current = droppedFiles
+    if (!droppedFiles || droppedFiles.length === 0) return
     stageFiles(droppedFiles)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- staged per drop, not per render
   }, [droppedFiles])
