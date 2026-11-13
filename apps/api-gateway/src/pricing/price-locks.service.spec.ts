@@ -149,6 +149,14 @@ describe("PriceLocksService.list -- every open lock, and the facts that say whet
     });
     expect(by["lock-a"].markers.sort()).toEqual(["menu_differs", "off_target"]);
     expect(by["lock-a"].advice).toMatchObject({ state: "raise", advisedPrice: 57.14 });
+    // r26 walk: the sentence's own figures travel with it, so /menu can write
+    // them in the house's form instead of the sentence's "57.14".
+    const a = by["lock-a"].advice!;
+    expect(a.price).not.toBeNull();
+    expect(a.targetPct).not.toBeNull();
+    expect(a.currentMarginPct).not.toBeNull();
+    expect(a.sentence).toContain(`now ${a.price!.toFixed(2)}`);
+    expect(a.sentence).toContain(`your target is ${a.targetPct}%`);
 
     expect(by["lock-b"].dormant).toBe(true);
     expect(by["lock-b"].markers.sort()).toEqual(["author_without_access", "not_on_current_menu"]);
