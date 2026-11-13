@@ -419,3 +419,20 @@ html .mudavym input[type]::-webkit-datetime-edit-text {
    file: the fix and the rules it must beat now share globals.css's one
    hoisted base block, so this file's placement is irrelevant to it.
    See globals.css's own comment for the corrected mechanism in full. */
+
+/* ── A long word breaks; it never widens the page (r26, 2026-11-13) ─────────
+   A mail address, a link, a file name or a stored value written as one long
+   string has no place to wrap. On a 375px phone such a word ran past the
+   right edge and widened the whole page, so the screen scrolled sideways.
+   `break-word` breaks it only when it would overflow its line.
+
+   `break-word`, not `anywhere`, on purpose: `break-word` does not change how
+   wide a table column or a flex item asks to be (its min-content), so a table
+   on a wide screen lays out exactly as before. A box that must shrink below
+   its longest word (an `auto` grid column, a flex item with no
+   `min-width: 0`) still needs `min-width: 0` or `anywhere` where it is
+   built. Settings does both since #1342. Inherited, so every house page
+   gets it from its root. */
+.mudavym {
+  overflow-wrap: break-word;
+}
