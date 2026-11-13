@@ -49,7 +49,8 @@ export function pencilledCount(items: MenuImportReviewItem[]) {
  * out cleared nothing, so on a shared tablet the next owner (or the same
  * owner in another house) opened /house and /house/menu on the first
  * owner's lines, and placing one PATCHed the first owner's menu and failed
- * as "That line was not placed." `null` when no token can be read.
+ * as "That line was not placed." `null` when no token can be read at all
+ * (no session): only then does an unstamped proof match.
  */
 type ProofStamp = { account: string; house: string } | null
 
@@ -63,9 +64,12 @@ function sessionStamp(): ProofStamp {
       sub?: unknown
       restaurantId?: unknown
     }
-    if (typeof claims.sub !== 'string' || !claims.sub) return null
-    if (typeof claims.restaurantId !== 'string' || !claims.restaurantId) return null
-    return { account: claims.sub, house: claims.restaurantId }
+    // A claim that is missing is said as '' and still compared, so two
+    // tokens that each lack one never match on the other claim alone.
+    return {
+      account: typeof claims.sub === 'string' ? claims.sub : '',
+      house: typeof claims.restaurantId === 'string' ? claims.restaurantId : '',
+    }
   } catch {
     return null
   }
