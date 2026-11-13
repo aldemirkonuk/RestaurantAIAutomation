@@ -25,7 +25,10 @@ import { doRefresh } from './sessionRefresh'
  *
  * A read that failed is shared too, for the same few seconds: a 429, a 503 or
  * a dropped connection would only fail again if asked again at once. Each
- * client already keeps the session on those.
+ * client already keeps the session on those. A reader that has waited one
+ * out (AuthContext's wait loop, or its "Try now") asks with `fresh`, which
+ * never takes a settled failure: its ask must reach the gateway, not replay
+ * the failure it waited for.
  *
  * A 401 means the access token expired. A reader that gets one:
  *
@@ -57,6 +60,8 @@ type Entry = {
   answeredAt: number | null
   /** The client that asked refreshes on a 401 by itself (AuthContext's interceptor). */
   askRefreshes: boolean
+  /** It settled as a failure. */
+  failed: boolean
 }
 
 export interface MeAtBootOptions {
@@ -66,6 +71,12 @@ export interface MeAtBootOptions {
    * second one is made for it.
    */
   askRefreshes?: boolean
+  /**
+   * True when the caller has already waited out a failed read and is asking
+   * again: a failure that settled is not shared with it (a read in flight
+   * still is).
+   */
+  fresh?: boolean
 }
 
 let last: Entry | null = null
@@ -78,21 +89,28 @@ function shared<T>(
   token: string,
   ask: (token: string) => Promise<T>,
   askRefreshes: boolean,
+  fresh = false,
 ): Entry {
   const prior = last
   if (
     prior &&
     prior.token === token &&
+    !(fresh && prior.failed && prior.answeredAt !== null) &&
     (prior.answeredAt === null || Date.now() - prior.answeredAt < ME_AT_BOOT_REUSE_MS)
   ) {
     return prior
   }
-  const entry: Entry = { token, promise: ask(token), answeredAt: null, askRefreshes }
+  const entry: Entry = { token, promise: ask(token), answeredAt: null, askRefreshes, failed: false }
   last = entry
-  const settle = () => {
-    entry.answeredAt = Date.now()
-  }
-  entry.promise.then(settle, settle)
+  entry.promise.then(
+    () => {
+      entry.answeredAt = Date.now()
+    },
+    () => {
+      entry.failed = true
+      entry.answeredAt = Date.now()
+    },
+  )
   return entry
 }
 
@@ -104,9 +122,9 @@ function shared<T>(
 export async function readMeAtBoot<T>(
   token: string,
   ask: (token: string) => Promise<T>,
-  { askRefreshes = false }: MeAtBootOptions = {},
+  { askRefreshes = false, fresh = false }: MeAtBootOptions = {},
 ): Promise<T> {
-  const entry = shared(token, ask, askRefreshes)
+  const entry = shared(token, ask, askRefreshes, fresh)
   try {
     return (await entry.promise) as T
   } catch (err) {

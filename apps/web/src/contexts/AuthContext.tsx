@@ -450,10 +450,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // One `/auth/me` per page load, shared with any other boot read of
           // the same token (lib/meAtBoot.ts). Asked under the token on disk
           // now, which a refresh during an earlier wait may have renewed.
+          // After a wait it is `fresh`: the failure it waited out is not
+          // replayed, so the next ask (or "Try now") reaches the gateway.
           const response = await readMeAtBoot(
             localStorage.getItem("accessToken") ?? token,
             () => api.get("/api/v1/auth/me"),
-            { askRefreshes: true },
+            { askRefreshes: true, fresh: attempt > 0 },
           );
           if (cancelled) return;
           // Studio roles come from the JWT itself (app_metadata.roles), and the

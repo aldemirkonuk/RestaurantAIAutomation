@@ -63,6 +63,29 @@ describe('readMeAtBoot', () => {
     expect(second).not.toHaveBeenCalled()
   })
 
+  it('a fresh ask after a wait is not given the settled failure: it reaches the gateway', async () => {
+    for (const failure of [refused(429), refused(503), Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' })]) {
+      forgetMeAtBoot()
+      const first = vi.fn(async () => {
+        throw failure
+      })
+      const second = vi.fn(async () => ok('u1'))
+      await expect(readMeAtBoot('t1', first)).rejects.toBe(failure)
+      // AuthContext's wait loop (or "Try now") asks again inside the window.
+      await expect(readMeAtBoot('t1', second, { fresh: true })).resolves.toMatchObject({
+        data: { user: { userId: 'u1' } },
+      })
+      expect(second).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  it('a fresh ask still shares a read in flight and an answer that succeeded', async () => {
+    const ask = vi.fn(async () => ok('u1'))
+    await Promise.all([readMeAtBoot('t1', ask), readMeAtBoot('t1', ask, { fresh: true })])
+    await readMeAtBoot('t1', ask, { fresh: true })
+    expect(ask).toHaveBeenCalledTimes(1)
+  })
+
   it('a 401 refreshes once and every reader shares the read under the new token', async () => {
     localStorage.setItem('accessToken', 'old')
     refresh.doRefresh.mockImplementation(async () => {
