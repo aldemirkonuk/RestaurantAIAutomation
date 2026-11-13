@@ -126,7 +126,12 @@ function mount(at: string | string[] = '/communications?tab=mail', props: Partia
   render(
     <MemoryRouter initialEntries={entries} initialIndex={entries.length - 1}>
       <QueryClientProvider client={qc}>
-        <MailTab draftedOrderIds={new Set<string>()} onOpenReply={onOpenReply} {...props} />
+        <MailTab
+          draftedOrderIds={new Set<string>()}
+          onOpenReply={onOpenReply}
+          whoIsWriting={<section aria-label="Who is writing" data-testid="who-is-writing" />}
+          {...props}
+        />
         <Where />
         <BrowserBack />
       </QueryClientProvider>
@@ -169,12 +174,28 @@ describe('the list', () => {
     expect(within(rows[0]).getByRole('img', { name: 'waiting on you' })).toBeInTheDocument();
     expect(within(rows[1]).queryByRole('img', { name: 'waiting on you' })).toBeNull();
     expect(within(rows[0]).getByRole('img', { name: 'mail' })).toBeInTheDocument();
-    expect(screen.getByTestId('stored-kinds')).toHaveTextContent('Only vendor mail reaches Mudavym for now');
+    expect(screen.getByTestId('stored-kinds')).toHaveTextContent('are under Who is writing, below');
     // Two chips only: All and Waiting on you.
     expect(within(screen.getByRole('group', { name: 'Show' })).getAllByRole('button').map((b) => b.textContent)).toEqual([
       'All',
       'Waiting on you',
     ]);
+  });
+
+  // r21: strangers and held letters are mail too. "Who is writing" sits
+  // under the people list, and only there: a person's threads, a thread and
+  // the setup are their own views.
+  it('draws "Who is writing" under the people, and not inside a person, a thread or the setup', async () => {
+    mount();
+    await screen.findAllByTestId('mail-person');
+    const people = screen.getByRole('region', { name: 'People' });
+    const who = screen.getByTestId('who-is-writing');
+    expect(people.compareDocumentPosition(who) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it.each([['with=vendor%3Ap1'], ['thread=gm%3Aabc'], ['setup=1']])('no "Who is writing" at ?%s', (q) => {
+    mount(`/communications?tab=mail&${q}`);
+    expect(screen.queryByTestId('who-is-writing')).toBeNull();
   });
 
   it('Waiting on you asks for only the waiting people', async () => {

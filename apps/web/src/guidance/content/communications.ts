@@ -18,7 +18,7 @@ export const communicationsTour: TourDefinition = {
       element: 'nav[aria-label="Mail and letters"]',
       title: 'Mail and letters',
       description:
-        'Mail is every letter between you and your vendors, by person and by thread. Letters is what waits to be sent and what you write.',
+        'Mail is every letter between you and your vendors, by person and by thread, and Who is writing: strangers, and letters held because their sender could not be confirmed. Letters is what waits to be sent and what you write.',
     },
     {
       // COMMS-W38 (founder: "#571's order, step 2 widened"): the whole waiting
@@ -35,12 +35,6 @@ export const communicationsTour: TourDefinition = {
       title: 'Write a letter',
       description:
         "Write to a vendor from scratch, or start from one of the house's templates.",
-    },
-    {
-      element: 'section[aria-label="Who is writing"]',
-      title: 'Know who is writing',
-      description:
-        'People who wrote to the house. An owner or a manager can trust one, or add them as a vendor.',
     },
   ],
 }

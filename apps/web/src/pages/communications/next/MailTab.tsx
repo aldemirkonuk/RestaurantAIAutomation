@@ -17,11 +17,16 @@
  * `?setup=1` opens the mail setup (MailSetup.tsx): reached from the status
  * line, from an empty list, from "Not connected", and from Connections.
  *
- * Only vendor mail is stored (`storedKinds`), so there are no Team, Guests or
- * Strangers chips; a quiet line says what the list does not cover (F5).
+ * Only vendor mail is stored as threads (`storedKinds`), so there are no Team,
+ * Guests or Strangers chips; a quiet line says what the list does not cover
+ * (F5). A stranger's letter and a letter held because its sender could not be
+ * confirmed live in "Who is writing" (email_prospects), which the page hands
+ * in as `whoIsWriting` and this tab draws under the people list (r21,
+ * 2026-11-13): the tab is where every person who writes is reached.
+ * `?senders=open` opens that register, which is where those notices link.
  */
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Mail, MessageCircle } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -320,6 +325,7 @@ export function MailTab({
   draftedOrderIds,
   onOpenReply,
   bookFacts,
+  whoIsWriting = null,
 }: {
   /** Orders with a drafted reply waiting (useCommsNextData's drafts). */
   draftedOrderIds: ReadonlySet<string>;
@@ -327,6 +333,12 @@ export function MailTab({
   onOpenReply: (orderId: string) => void;
   /** Why a recent letter was held or refused, by letter id, from the book (see MailThread). */
   bookFacts?: ReadonlyMap<string, LetterFacts>;
+  /**
+   * The page's "Who is writing" section (strangers, trusted senders, held
+   * letters), drawn under the people list only — never inside a person, a
+   * thread or the setup.
+   */
+  whoIsWriting?: ReactNode;
 }) {
   // Owners and managers only; staff and an unknown role see no composer act
   // (ADR 0357 answer 3, proposal F6) — read as the rest of this page reads it.
@@ -490,6 +502,7 @@ export function MailTab({
             onOpenPerson={(key) => go({ with: key })}
             onSetup={openSetup}
           />
+          {whoIsWriting}
         </>
       )}
 
