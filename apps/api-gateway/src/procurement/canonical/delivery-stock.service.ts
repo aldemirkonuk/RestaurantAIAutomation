@@ -499,6 +499,14 @@ export class DeliveryStockService {
     );
     if (!units.ok) return units;
 
+    // A5 THE OTHER WAY ROUND (r24): what the order's own door already put on
+    // the shelf, outside any delivery. The legacy door asks the delivery model
+    // before it books; this is the delivery asking the legacy door.
+    const elsewhere = delivery.value.orderId
+      ? await this.bookedAtTheOrdersDoor(restaurantId, delivery.value.orderId)
+      : ({ ok: true, value: new Map<string, number>() } as const);
+    if (!elsewhere.ok) return elsewhere;
+
     // Pass 1: what each line puts on the shelf, in its item's unit, and what
     // THIS count says of each item in all. Two lines of one item in one count
     // (two wheels of a cheese, two cases of a wine) are one count of that item
@@ -529,6 +537,17 @@ export class DeliveryStockService {
           label,
           reason:
             "this line names no item on the shelf. It is NOT booked and NOT guessed at from its description — a wrong guess puts the bottles on the wrong wine. Link the line to an item and re-post the count.",
+        });
+        continue;
+      }
+
+      const atOrderDoor = elsewhere.value.get(inventoryId) ?? 0;
+      if (atOrderDoor > 0) {
+        notBooked.push({
+          documentId,
+          lineNo: line.line_no,
+          label,
+          reason: `this order's goods for this item were already put on the shelf at the order's own door (${atOrderDoor} there). Booking this count too would count them twice. It is NOT booked; correct the count at the order's door.`,
         });
         continue;
       }
@@ -1087,6 +1106,45 @@ export class DeliveryStockService {
         row.inventory_id,
         (totals.get(row.inventory_id) ?? 0) + Number(row.quantity_change ?? 0),
       );
+    }
+    return { ok: true, value: totals };
+  }
+
+  /**
+   * Per item, what an order's LEGACY door booked: its live movements that carry
+   * the order and no delivery (`door-receipt:` events, `order-delivered:`). Read
+   * a page at a time, so an order past the 1,000-row cap is read whole. A failed
+   * read is not "nothing" (ADR 0067): the caller books nothing on it.
+   */
+  private async bookedAtTheOrdersDoor(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<StockResult<Map<string, number>>> {
+    const totals = new Map<string, number>();
+    const page = 1000;
+    for (let from = 0; ; from += page) {
+      const read = await this.db
+        .getClient()
+        .from("inventory_transactions")
+        .select("id, inventory_id, quantity_change, delivery_id")
+        .eq("restaurant_id", restaurantId)
+        .eq("order_id", orderId)
+        .eq("stock_type", "live")
+        .is("delivery_id", null)
+        .order("id", { ascending: true })
+        .range(from, from + page - 1);
+      if (read.error)
+        return {
+          ok: false,
+          status: 503,
+          error: `what order ${orderId}'s own door already booked could not be read (${read.error.message}), so nothing was booked. Booking without this answer is how one truck lands on the shelf twice.`,
+        };
+      const rows = (read.data ?? []) as { inventory_id: string | null; quantity_change: number | string | null; delivery_id?: string | null }[];
+      for (const r of rows) {
+        if (!r.inventory_id || r.delivery_id) continue;
+        totals.set(r.inventory_id, (totals.get(r.inventory_id) ?? 0) + Number(r.quantity_change ?? 0));
+      }
+      if (rows.length < page) break;
     }
     return { ok: true, value: totals };
   }
