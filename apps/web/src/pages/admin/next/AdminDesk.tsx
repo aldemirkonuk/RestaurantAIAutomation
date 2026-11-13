@@ -46,7 +46,7 @@ const POLL_MS = 30_000;
 
 /** ADR 0143's one desk. It reports observations; house settings retain their own writers. */
 export default function AdminDesk() {
-  const { user } = useAuth();
+  const { user, activeRole } = useAuth();
   useEffect(() => { ensureFraunces(); }, []);
   const [revision, setRevision] = useState(0);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -76,7 +76,13 @@ export default function AdminDesk() {
   // or staff. The server enforces this independently on every read
   // (health-proxy.controller.ts's OwnerOrPlatformOperatorGuard) — this only
   // decides what the browser attempts and shows.
-  const canRead = user?.role === 'owner' || operator;
+  // The role is the one in the house the session is in now (`activeRole`, read
+  // per house from the membership), so the desk follows a house switch even
+  // when `/auth/me` did not re-load after it and `user.role` still names the
+  // last house's role. Only while that read is unknown does the session's own
+  // role stand in, so an owner is not told "not yours" because a read failed.
+  const houseRole = activeRole ?? user?.role ?? null;
+  const canRead = houseRole === 'owner' || operator;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -106,7 +112,7 @@ export default function AdminDesk() {
       // An owner may read the shared rows without a platform grant (the server's
       // OwnerOrPlatformOperatorGuard), so those reads start alongside the grant
       // check instead of after it.
-      const owner = user?.role === 'owner';
+      const owner = houseRole === 'owner';
       if (owner) readDesk();
       // A re-read's own permission check can fail (a blip, not a real revocation) while
       // the server-enforced guards on every other route still stand. Falling back to the
@@ -128,7 +134,7 @@ export default function AdminDesk() {
     })();
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [revision, user?.userId, user?.restaurantId, user?.role]);
+  }, [revision, user?.userId, user?.restaurantId, houseRole]);
 
   // Poll every 30s while the tab is visible; a hidden tab neither fires a
   // request nor keeps a stale reading ticking toward staleness for no reason.
