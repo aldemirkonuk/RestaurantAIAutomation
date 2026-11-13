@@ -40,6 +40,7 @@ import {
 import { oneNounFor, type KindNoun } from './menu-line-kind';
 import { useAuthStore } from '../../../stores';
 import { MenuPlan } from './MenuPlan';
+import { deviceClockNote, houseDay, houseMoment } from './menu-clock';
 import { isPhoto, pagesProblem, photoToJpegBase64, photosToPages } from '../../../lib/menuPhotos';
 
 const EM = '—';
@@ -74,27 +75,22 @@ export function ReadWarnings({ warnings, testId }: { warnings: MenuReadWarning[]
   );
 }
 
-const pad = (n: number) => String(n).padStart(2, '0');
-
 /**
- * The calendar day of a moment, on this device's clock. Not the UTC day: a
- * menu read at 22:05 in Detroit is that evening's menu, not tomorrow's.
+ * The calendar day of a moment, on the house's clock (menu-clock.ts; the
+ * device's when the house has no zone). Not the UTC day: a menu read at 22:05
+ * in Detroit is that evening's menu, not tomorrow's.
  */
-function day(iso: string | null): string {
+function day(iso: string | null, zone?: string | null): string {
   if (!iso) return EM;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return houseDay(iso, zone) ?? iso.slice(0, 10);
 }
 
 /**
  * The day and the minute, so two menus read the same day are told apart; with
  * `second`, the second too, for two read in the same minute.
  */
-function moment(iso: string, second = false): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso.slice(0, second ? 19 : 16).replace('T', ' ');
-  return `${day(iso)} ${pad(d.getHours())}:${pad(d.getMinutes())}${second ? `:${pad(d.getSeconds())}` : ''}`;
+function moment(iso: string, second = false, zone?: string | null): string {
+  return houseMoment(iso, zone, second) ?? iso.slice(0, second ? 19 : 16).replace('T', ' ');
 }
 
 /**
@@ -112,13 +108,13 @@ function keepFailure(failure: string): string {
  * same name: a read moment to the second, a dated menu with when it was read,
  * and a menu from before reads were dated with when it was kept.
  */
-export function versionLabel(v: MenuVersion, sharp = false): string {
-  const read = v.extractedAt ? moment(v.extractedAt, sharp) : null;
+export function versionLabel(v: MenuVersion, sharp = false, zone?: string | null): string {
+  const read = v.extractedAt ? moment(v.extractedAt, sharp, zone) : null;
   const date = v.menuDate
     ? `${v.menuDatePrecision === 'month' ? `the ${v.menuDate} menu` : `the menu for ${v.menuDate}`}${sharp && read ? `, read ${read}` : ''}`
     : read
       ? `the menu read ${read}`
-      : `a menu read before menus were kept${sharp && v.createdAt ? ` (kept ${moment(v.createdAt, true)})` : ''}`;
+      : `a menu read before menus were kept${sharp && v.createdAt ? ` (kept ${moment(v.createdAt, true, zone)})` : ''}`;
   return v.cadence && v.cadence !== 'none' ? `${date} (${v.cadence})` : date;
 }
 
@@ -130,7 +126,7 @@ export function versionLabel(v: MenuVersion, sharp = false): string {
  * for a dated menu, when it was read); two still alike -- the same second --
  * are counted in the order they were read, "(1 of 2)", "(2 of 2)".
  */
-export function versionLabels(versions: MenuVersion[]): Map<string, string> {
+export function versionLabels(versions: MenuVersion[], zone?: string | null): Map<string, string> {
   const out = new Map<string, string>();
   const groups = (vs: MenuVersion[], name: (v: MenuVersion) => string) => {
     const by = new Map<string, MenuVersion[]>();
@@ -138,12 +134,12 @@ export function versionLabels(versions: MenuVersion[]): Map<string, string> {
     return by;
   };
   const when = (v: MenuVersion) => v.extractedAt ?? v.createdAt ?? '';
-  for (const [plain, alike] of groups(versions, (v) => versionLabel(v))) {
+  for (const [plain, alike] of groups(versions, (v) => versionLabel(v, false, zone))) {
     if (alike.length === 1) {
       out.set(alike[0].menuId, plain);
       continue;
     }
-    for (const [close, still] of groups(alike, (v) => versionLabel(v, true))) {
+    for (const [close, still] of groups(alike, (v) => versionLabel(v, true, zone))) {
       if (still.length === 1) {
         out.set(still[0].menuId, close);
         continue;
@@ -284,8 +280,10 @@ function stillReading(err: unknown): boolean {
   return (err as { response?: { status?: number } })?.response?.status === 202;
 }
 
-export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onChosen, currentMenuId }: {
+export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onChosen, currentMenuId, zone }: {
   canManage: boolean
+  /** The house's zone for the dates it says (menu-clock.ts); the device's clock without one. */
+  zone?: string | null
   /**
    * The house's current menu as the host last read it (null: none; left out:
    * the host does not know). When it moves, the read's line follows it, so a
@@ -429,7 +427,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
         <div style={{ marginTop: 10 }} data-testid="menu-read-result">
           <p className="cl-said">
             {result.reopened
-              ? `This exact file was already read${result.reopened.readAt ? ` on ${day(result.reopened.readAt)}` : ''}; this is that read, and nothing was read again. It found ${result.itemsExtracted} line${result.itemsExtracted === 1 ? '' : 's'}. `
+              ? `This exact file was already read${result.reopened.readAt ? ` on ${day(result.reopened.readAt, zone)}` : ''}; this is that read, and nothing was read again. It found ${result.itemsExtracted} line${result.itemsExtracted === 1 ? '' : 's'}. `
               : `Read ${result.itemsExtracted} line${result.itemsExtracted === 1 ? '' : 's'}${result.pages && result.pages > 1 ? ` from ${result.pages} pages` : ''} and kept this menu. `}
             {result.source && !result.source.kept
               ? `Its file was not kept: ${result.source.failure ? keepFailure(result.source.failure) : 'no reason given'}. `
@@ -501,8 +499,9 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
   );
 }
 
-function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan }: {
+function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan, zone }: {
   v: MenuVersion
+  zone: string | null
   /** Its name among the house's kept menus (versionLabels): no two alike. */
   label: string
   canManage: boolean
@@ -526,9 +525,9 @@ function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan }: {
     : readState === 'failed'
       ? `the read failed: ${v.readFailure ?? 'no reason was given'}`
       : v.current
-    ? `current since ${day(v.madeCurrentAt)}${v.madeCurrentBy?.name ? `, chosen by ${v.madeCurrentBy.name}` : ''}`
+    ? `current since ${day(v.madeCurrentAt, zone)}${v.madeCurrentBy?.name ? `, chosen by ${v.madeCurrentBy.name}` : ''}`
     : v.status === 'archived'
-      ? `${v.menuId === lastUsedId ? 'last one used, ' : ''}used until ${day(v.retiredAt)}`
+      ? `${v.menuId === lastUsedId ? 'last one used, ' : ''}used until ${day(v.retiredAt, zone)}`
       : 'kept, never current';
   return (
     <tr data-testid="menu-version-row">
@@ -584,8 +583,9 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
     refetchInterval: (query) => (query.state.data?.versions.some((v) => v.readState === 'reading') ? 5000 : false),
   });
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu'] });
-  const labels = versionLabels(q.data?.versions ?? []);
-  const nameOf = (v: MenuVersion) => labels.get(v.menuId) ?? versionLabel(v);
+  const zone = q.data?.timezone ?? null;
+  const labels = versionLabels(q.data?.versions ?? [], zone);
+  const nameOf = (v: MenuVersion) => labels.get(v.menuId) ?? versionLabel(v, false, zone);
 
   return (
     <section style={{ marginTop: 32 }} aria-labelledby="menu-versions-h">
@@ -600,6 +600,7 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
         canManage={canManage}
         onRead={refresh}
         currentMenuId={q.data ? (q.data.current?.menuId ?? null) : undefined}
+        zone={zone}
         onChosen={() => {
           // The list's own sentence was about an earlier choice.
           setSaid(null);
@@ -649,6 +650,7 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
                       label={nameOf(v)}
                       canManage={canManage}
                       lastUsedId={q.data?.lastUsed?.menuId ?? null}
+                      zone={zone}
                       planning={planFor === v.menuId}
                       onPlan={(id) => {
                         setSaid(null);
@@ -659,6 +661,15 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
                 </tbody>
               </table>
             </div>
+            {(() => {
+              // An older gateway sends no zone at all: its dates were never the house's, and nothing new is said.
+              const clock = q.data.timezone === undefined ? null : deviceClockNote(zone, q.data.timezoneReason);
+              return clock ? (
+                <p className="cl-note" data-testid="menu-versions-clock">
+                  {clock}
+                </p>
+              ) : null;
+            })()}
             {q.data.namesReadable === false ? (
               <p className="cl-note">{q.data.namesReason ?? 'Who read or chose these menus could not be named.'}</p>
             ) : null}
