@@ -31,7 +31,6 @@ function load(over: Partial<UsedIn> = {}) {
       soldAs: ok([line('m1', 'Rakı, single')]),
       inCocktails: ok([{ cocktailId: 'c1', name: 'Rakı sour', quantity: 40, unit: 'ml' }]),
       namedNotLinked: ok([line('m2', 'Rakı table set')]),
-      recipes: { recorded: false as const, note: 'n' },
       ...over,
     },
   };

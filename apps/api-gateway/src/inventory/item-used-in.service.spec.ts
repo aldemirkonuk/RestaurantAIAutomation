@@ -60,7 +60,6 @@ describe("ItemUsedInService (proposal I4/I11)", () => {
     ]);
     expect(out.inCocktails.lines).toEqual([{ cocktailId: "c-house", name: "Unx Sour", quantity: 50, unit: "ml" }]);
     expect(out.namedNotLinked.lines!.map((l) => l.menuItemId)).toEqual(["l-same-name"]);
-    expect(out.recipes.recorded).toBe(false);
   });
 
   it("(a) a wine is sold by its library link, and that line is not repeated as named-not-linked", async () => {
@@ -167,11 +166,43 @@ describe("ItemUsedInService (proposal I4/I11)", () => {
       expect(out.inDrinkRecipes.lines).toHaveLength(1001);
     });
 
-    it("(d) the recipes note no longer says drink", async () => {
+    it("(d) says nothing about dish recipes: those are read from the dish route (ADR 0366)", async () => {
       const { svc } = seed({ kind: "spirit", display_name: "Unx", beverage_id: null, master_wine_id: null });
       const out = await svc.usedIn(H, I);
-      expect(out.recipes.note).toBe("Dish recipes are not recorded yet, so no dish recipe is shown here.");
-      expect(out.recipes.note).not.toMatch(/drink/i);
+      // The old "Dish recipes are not recorded yet" note was false once dishes kept recipes.
+      expect(out).not.toHaveProperty("recipes");
+      expect(JSON.stringify(out)).not.toMatch(/not recorded yet/);
     });
+  });
+});
+
+describe("ItemUsedInService reads its groups at once (the drawer waits for the slowest, not the sum)", () => {
+  it("starts the drink reads while the menu read is still out, and still answers every group", async () => {
+    const { db, svc } = seed({ kind: "spirit", display_name: "Unx", beverage_id: "bev-1", master_wine_id: null });
+    db.tables.menu_items = [line("l-linked", "Unx (kadeh)", { inventory_item_id: I })];
+    const started: string[] = [];
+    let open!: () => void;
+    const gate = new Promise<void>((r) => (open = r));
+    const real = db.from.bind(db);
+    (db as any).from = (t: string) => {
+      started.push(t);
+      const q: any = real(t);
+      if (t === "restaurant_menus") {
+        const then = q.then.bind(q);
+        q.then = (ok: any, no: any) => gate.then(() => then(ok, no));
+      }
+      return q;
+    };
+    const pending = svc.usedIn(H, I);
+    for (let i = 0; i < 5; i += 1) await new Promise((r) => setImmediate(r));
+    // The menu read is held; the cocktail card and recipe reads have already gone out.
+    expect(started).toContain("restaurant_menus");
+    expect(started).toContain("cocktail_ingredients");
+    expect(started).toContain("recipe_lines");
+    expect(started).not.toContain("menu_items");
+    open();
+    const out = await pending;
+    expect(out.soldAs.lines!.map((l) => l.menuItemId)).toEqual(["l-linked"]);
+    expect(out.inDrinkRecipes).toMatchObject({ readable: true, lines: [] });
   });
 });
