@@ -18,7 +18,12 @@ import {
 } from "./insight-verbalizer";
 import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
 import { readWholeWindow } from "../../common/read-whole-window";
-import { UncostedOrdersError, orderCostOrNull } from "../order-cost";
+import {
+  orderCurrency,
+  orderHouseCostOrNull,
+  orderInOtherMoney,
+  unsummedOrdersSentence,
+} from "../order-cost";
 import {
   BottleHow,
   UnitsLabel,
@@ -376,17 +381,33 @@ const SPEND_TREND_DAYS = 90;
 /** What a purchasing insight holds back, and why. */
 interface SpendHeld {
   uncostedOrders: number;
+  /** Orders not in house currency, by code (order-cost.ts). */
+  notInHouseCurrency: Record<string, number>;
   orders: number;
   reason: string;
 }
 
-function heldOver(orders: Bundle["orders"]): SpendHeld | null {
-  const uncosted = orders.filter((o) => o.cost == null).length;
-  if (uncosted === 0) return null;
+function heldOver(
+  orders: Bundle["orders"],
+  money: Pick<Bundle, "currency" | "currencyUnread">,
+): SpendHeld | null {
+  const other: Record<string, number> = {};
+  for (const o of orders)
+    if (o.otherMoney) other[o.otherMoney] = (other[o.otherMoney] ?? 0) + 1;
+  const uncosted = orders.filter((o) => o.cost == null && !o.otherMoney).length;
+  const reason = unsummedOrdersSentence(
+    uncosted,
+    orders.length,
+    other,
+    money.currency,
+    money.currencyUnread,
+  );
+  if (reason === null) return null;
   return {
     uncostedOrders: uncosted,
+    notInHouseCurrency: other,
     orders: orders.length,
-    reason: new UncostedOrdersError(uncosted, orders.length).message,
+    reason,
   };
 }
 
@@ -416,8 +437,9 @@ function spendWithheld(
   const last = day(1);
   const trend = heldOver(
     bundle.orders.filter((o) => !!o.date && o.date >= first && o.date <= last),
+    bundle,
   );
-  const vendorShare = heldOver(bundle.orders);
+  const vendorShare = heldOver(bundle.orders, bundle);
   return trend || vendorShare ? { trend, vendorShare } : null;
 }
 
@@ -1047,7 +1069,7 @@ export class InsightGeneratorService {
             // an empty order list, and the entire purchasing insight family went
             // permanently silent. The vendor label comes from the provider_id FK.
             .select(
-              "id, provider_id, providers(name), total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
+              "id, provider_id, providers(name), total_cost, final_price, currency, bottles_total, quantity, delivered_at, created_at, status",
               { count: "exact" },
             )
             .eq("restaurant_id", restaurantId)
@@ -1131,6 +1153,12 @@ export class InsightGeneratorService {
     const ok = <T>(r: PromiseSettledResult<any>): T[] =>
       r.status === "fulfilled" && !r.value.error ? r.value.data || [] : [];
 
+    // Every amount is in the house's money and nothing converts: an order in
+    // another currency carries no house cost and names its own (order-cost.ts).
+    // With the house's currency unread, an order that names one cannot be
+    // placed, so it carries no cost either.
+    const houseCode = houseMoney.status === "fulfilled" ? houseMoney.value : null;
+    const houseUnread = houseMoney.status === "rejected";
     const bundle: Bundle = {
       restaurantId,
       consumption: ok<any>(cons).map((c: any) => ({
@@ -1151,8 +1179,15 @@ export class InsightGeneratorService {
         vendorId: o.provider_id || "unknown",
         vendorName: o.providers?.name || o.provider_id || "unknown vendor",
         // Unknown, never $0 (order-cost.ts): the spend insights withhold
-        // while any order in the bundle carries no recorded cost.
-        cost: orderCostOrNull(o),
+        // while any order in the bundle carries no recorded cost, or is not
+        // in house currency.
+        cost:
+          houseUnread && orderCurrency(o) !== null
+            ? null
+            : orderHouseCostOrNull(o, houseCode),
+        otherMoney: houseUnread
+          ? orderCurrency(o)
+          : orderInOtherMoney(o, houseCode),
         date: (o.delivered_at || o.created_at || "").substring(0, 10),
       })),
       inventory: ok<any>(inv),
@@ -2622,8 +2657,13 @@ interface Bundle {
   orders: Array<{
     vendorId: string;
     vendorName: string;
-    /** Null when the order carries no recorded cost (order-cost.ts). */
+    /**
+     * Null when the order carries no recorded cost, or is not in house
+     * currency (order-cost.ts).
+     */
     cost: number | null;
+    /** The order's currency when it is not the house's, else null. */
+    otherMoney: string | null;
     date: string;
   }>;
   inventory: any[];

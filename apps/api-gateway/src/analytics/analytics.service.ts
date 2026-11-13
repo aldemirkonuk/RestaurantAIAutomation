@@ -17,6 +17,13 @@ import {
   volumeMlOf,
 } from "./consumption-units";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
+import {
+  HouseMoneyUnreadError,
+  anyOrderNamesCurrency,
+  orderHouseCostOrNull,
+  orderInOtherMoney,
+} from "./order-cost";
+import { readHouseCurrency } from "./insights/insight-generator.service";
 import { houseDayBounds } from "../common/house-day";
 import {
   TillCostRead,
@@ -81,12 +88,6 @@ export interface PosConsumptionRow {
  */
 export interface SalesGate {
   withSales?: boolean;
-}
-
-/** A recorded money figure above 0, else null (never a fabricated 0). */
-function positiveOrNull(v: unknown): number | null {
-  const n = typeof v === "string" ? Number(v) : (v as number);
-  return typeof n === "number" && Number.isFinite(n) && n > 0 ? n : null;
 }
 
 /** Said for an inventory row that carries no name anywhere. Never its id. */
@@ -266,18 +267,32 @@ export class AnalyticsService {
         client
           .from("procurement_orders")
           .select(
-            "id, provider_id, total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
+            "id, provider_id, total_cost, final_price, currency, bottles_total, quantity, delivered_at, created_at, status",
             { count: "exact" },
           )
           .eq("restaurant_id", restaurantId)
           .in("status", ORDER_SPEND_STATUSES)
           .gte("delivered_at", since),
     );
+    // Every figure built on this list is in the house's money, and nothing
+    // converts: an order in another currency carries no house cost, and
+    // says which money it is in (order-cost.ts). The house's currency is
+    // read only when an order names one; a failed read refuses the list.
+    let house: string | null = null;
+    if (anyOrderNamesCurrency(data)) {
+      try {
+        house = await readHouseCurrency(client, restaurantId);
+      } catch (e) {
+        throw new HouseMoneyUnreadError(e);
+      }
+    }
     return data.map((o: any) => ({
       providerId: o.provider_id || "unknown",
       // A delivered order with no recorded cost is an unknown, never 0: the
       // purchases total below withholds rather than counting it as free.
-      cost: positiveOrNull(o.total_cost) ?? positiveOrNull(o.final_price),
+      cost: orderHouseCostOrNull(o, house),
+      /** The order's currency when it is not the house's, else null. */
+      otherMoney: orderInOtherMoney(o, house),
       bottles: o.bottles_total || o.quantity || 0,
       date: (o.delivered_at || o.created_at || "").substring(0, 10),
     }));
@@ -601,9 +616,15 @@ export class AnalyticsService {
     // `E.stats.sum([])` is 0, and the loader degrades a failed query to `[]`,
     // so an empty list is "none, or no answer": null, never $0. An order with
     // no recorded cost withholds the total rather than adding 0 for it.
-    const ordersUncosted = orders.filter((o) => o.cost == null).length;
+    const ordersOther: Record<string, number> = {};
+    for (const o of orders)
+      if (o.otherMoney)
+        ordersOther[o.otherMoney] = (ordersOther[o.otherMoney] ?? 0) + 1;
+    const ordersOtherCount = orders.filter((o) => o.otherMoney).length;
+    const ordersUncosted =
+      orders.filter((o) => o.cost == null).length - ordersOtherCount;
     const deliveredPurchases =
-      orders.length === 0 || ordersUncosted > 0
+      orders.length === 0 || ordersUncosted > 0 || ordersOtherCount > 0
         ? null
         : E.stats.sum(orders.map((o) => o.cost as number));
 
@@ -690,6 +711,13 @@ export class AnalyticsService {
         deliveredPurchases:
           orders.length === 0
             ? "Delivered orders over the last 365 days — left blank: no delivered order was returned for this window, which is either no purchasing or a read that failed, and a zero would claim the first"
+            : ordersOtherCount > 0
+              ? `Delivered orders over the last 365 days — left blank: ${ordersOtherCount} of ${orders.length} delivered order${orders.length === 1 ? "" : "s"} ${ordersOtherCount === 1 ? "is" : "are"} not in house currency (${Object.entries(
+                  ordersOther,
+                )
+                  .sort(([a, x], [b, y]) => y - x || (a < b ? -1 : 1))
+                  .map(([c, n]) => `${n} in ${c}`)
+                  .join(", ")}), and nothing here converts one currency into another`
             : ordersUncosted > 0
               ? `Delivered orders over the last 365 days — left blank: ${ordersUncosted} of ${orders.length} delivered order${orders.length === 1 ? "" : "s"} carry no recorded cost, and counting them as zero would understate what was bought`
               : `Delivered orders over the last 365 days — ${orders.length} order${orders.length === 1 ? "" : "s"} summed. What was bought, not what sold: it feeds no ratio`,
@@ -923,6 +951,10 @@ export class AnalyticsService {
     const spendByVendor = new Map<string, number>();
     // An order with no recorded cost carries no spend weight (as before the
     // purchases total stopped reading it as 0); it is left out, not priced.
+    // An order not in house currency withholds the shares instead: its
+    // weight is in other money, and a share drawn without it is not the
+    // house's buying (nothing converts).
+    const otherMoneyOrders = orders.filter((o) => o.otherMoney).length;
     for (const o of orders) {
       if (o.cost == null) continue;
       spendByVendor.set(
@@ -931,9 +963,14 @@ export class AnalyticsService {
       );
     }
     const vendorWeights = Array.from(spendByVendor.values());
-    const hhi = E.finance.herfindahlIndex(vendorWeights);
-    const effectiveVendors = E.finance.effectiveCount(vendorWeights);
-    const cr4 = E.finance.concentrationRatio(vendorWeights, 4);
+    const hhi =
+      otherMoneyOrders > 0 ? null : E.finance.herfindahlIndex(vendorWeights);
+    const effectiveVendors =
+      otherMoneyOrders > 0 ? null : E.finance.effectiveCount(vendorWeights);
+    const cr4 =
+      otherMoneyOrders > 0
+        ? null
+        : E.finance.concentrationRatio(vendorWeights, 4);
 
     // Revenue concentration across SKUs (Gini) — sell-price valuation proxy.
     const skuRevenue = inventory.map((i) => i.unitPrice * i.qty);
@@ -975,7 +1012,9 @@ export class AnalyticsService {
         cr4,
         vendorCount: vendorWeights.length,
         interpretation:
-          hhi === null
+          otherMoneyOrders > 0
+            ? `not read: ${otherMoneyOrders} delivered order${otherMoneyOrders === 1 ? " is" : "s are"} not in house currency, and nothing here converts one currency into another`
+            : hhi === null
             ? "insufficient data"
             : hhi > 0.25
               ? "highly concentrated — single-vendor risk"
