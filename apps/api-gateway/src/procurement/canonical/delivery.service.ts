@@ -873,10 +873,10 @@ export class DeliveryService {
    * IDEMPOTENT. A second verify returns the first one's stamp unchanged. Writing
    * again would move `verified_at` to a moment at which nobody decided anything.
    *
-   * NO STOCK, NO COST — MEASURED. See the class header: `cost_state` and
-   * `inventory_transactions.delivery_id` have zero writers on this tree, so
-   * setting `cost_state = final` here would be this code asserting a cost state
-   * about a booking it never made. Filed as the next stop, not half-done.
+   * NO STOCK, BUT THE COST. The door count booked the goods, provisional and
+   * unpriced; verifying moves no quantity. It settles the cost: the agreed
+   * price is written onto the lots this delivery booked (`finaliseAtVerified`)
+   * and an item with no usable price stays provisional, named in `costNote`.
    */
   async verify(
     restaurantId: string,

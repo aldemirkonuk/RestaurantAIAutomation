@@ -17,7 +17,8 @@
  * re-implements D3: the gateway decides, this reports.
  *
  * WHAT A LAPSE SAYS. A LAPSED delivery prints what the LAW deems, in words, and
- * the sentence that inventory did not move — because a lapse is a measurable
+ * the sentence that the lapse moved no inventory and settled no cost (what the
+ * door count booked stays booked, unpriced) — because a lapse is a measurable
  * failure of the venue's process (D9 clause 6) and the product must say so
  * rather than absorb it.
  */
@@ -109,7 +110,8 @@ export function DeliveryGates({
         >
           {delivery.lapseDeemed ??
             'A clock on this delivery expired and what the law deems was not recorded.'}{' '}
-          Nothing was posted to inventory or cost.
+          The lapse itself posted nothing to inventory or cost: anything counted
+          at the door stays on the shelf with its cost unsettled.
           {delivery.amendedAt
             ? ' A later document has amended it; what was deemed on the lapse date still stands.'
             : ''}
@@ -162,8 +164,10 @@ export function DeliveryGates({
             {verified ? (
               <>
                 Verified {fmtStamp(delivery.verifiedAt, delivery.jurisdiction)} by a
-                named person. Nothing was posted to inventory or cost by this step
-                on this build.
+                named person. Verifying moved no stock: the goods went on the shelf
+                at the door count. It is the step that settles their cost — the
+                agreed price became the cost of what this delivery booked, and an
+                item with no usable price stays provisional.
               </>
             ) : agreed ? (
               'A named person asserts the goods arrived. This is not the same act as agreeing the document, and the two are never collapsed.'

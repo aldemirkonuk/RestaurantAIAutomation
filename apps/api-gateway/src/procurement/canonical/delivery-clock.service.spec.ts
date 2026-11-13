@@ -450,9 +450,12 @@ describe("DeliveryClockService", () => {
       const note = notifications.sent.find(
         (n) => (n.payload as { type: string }).type === "delivery_lapsed",
       );
-      expect((note?.payload as { message: string }).message).toMatch(
-        /Nothing was posted to inventory or cost/,
-      );
+      const message = (note?.payload as { message: string }).message;
+      expect(message).toMatch(/The lapse itself posted nothing to inventory or cost/);
+      // The door count may already have booked stock; the sentence must not
+      // say the shelf is empty of it.
+      expect(message).toMatch(/counted at the door stays on the shelf with its cost unsettled/);
+      expect(message).not.toMatch(/Nothing was posted/);
     });
 
     it("CANCELS rather than fires a timer on a delivery that already reached an end", async () => {

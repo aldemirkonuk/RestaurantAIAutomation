@@ -995,7 +995,31 @@ describe('DeliveryGates — the two gates, explained before they are pressed', (
     )
     const text = screen.getByTestId('lapse-notice').textContent ?? ''
     expect(text).toMatch(/accepted IN FULL/)
-    expect(text).toMatch(/Nothing was posted to inventory or cost/)
+    // The lapse moved nothing, but the door count may already have booked
+    // stock: the sentence says the first without denying the second.
+    expect(text).toMatch(/The lapse itself posted nothing to inventory or cost/)
+    expect(text).toMatch(/counted at the door stays on the shelf with its cost unsettled/)
+  })
+
+  it('r24 B2: a VERIFIED delivery says verifying settled its cost and moved no stock', () => {
+    render(
+      <DeliveryGates
+        delivery={event({
+          state: 'VERIFIED',
+          agreedAt: '2026-08-15T10:00:00Z',
+          agreedRule: 'both_sides_recorded',
+          verifiedAt: '2026-08-15T11:00:00Z',
+        })}
+      />,
+    )
+    const text = screen.getByTestId('delivery-gates').textContent ?? ''
+    // Verifying is where the cost is settled (finaliseAtVerified), so the
+    // screen must not say the step posted nothing to cost.
+    expect(text).not.toMatch(/Nothing was posted to inventory or cost/)
+    expect(text).toMatch(/Verifying moved no stock: the goods went on the shelf\s+at the door count/)
+    expect(text).toMatch(/settles their cost/)
+    expect(text).toMatch(/agreed price became the cost of what this delivery booked/)
+    expect(text).toMatch(/no usable price stays provisional/)
   })
 })
 
