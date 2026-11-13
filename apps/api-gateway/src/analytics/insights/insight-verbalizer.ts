@@ -49,17 +49,11 @@ export interface InsightEvidence {
   surgeMinutes?: number;
   n?: number;
   /**
-   * The money every amount in the sentence is in: the house's ISO 4217 code,
-   * `null` when the house has not stated one, and absent when it could not be
-   * read. It is stored with the row, so a stored sentence says which money it
-   * was written in, and the stored read refuses one written in money the
-   * house no longer reports in (`InsightGeneratorService.queryStored`).
-   *
-   * Absent is not null. A money sentence whose currency could not be read is
-   * not rendered at all (`verbalize` returns null), and the generator names
-   * "house currency" as unread, as it does the house's time zone. The version
-   * this replaces printed `$` before every amount, so a lira house read
-   * "($181)" on /reports (r7 browser check, 2026-11-12).
+   * The money every amount is in: the house's ISO 4217 code, `null` when none
+   * is stated, absent when it could not be read (then a sentence with an
+   * amount is withheld). Stored with the row, so the stored read can refuse
+   * a sentence written in other money (`queryStored`). Was a fixed `$`: a
+   * lira house read "($181)" on /reports (r7 browser check, 2026-11-12).
    */
   currency?: string | null;
 }

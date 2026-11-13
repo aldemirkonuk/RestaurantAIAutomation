@@ -528,7 +528,8 @@ export class InsightGeneratorService {
 
     let insights: InsightRecord[] = [];
     const push = (r: InsightRecord | null) => {
-      if (r && r.sentence) insights.push(r);
+      const said = r && r.sentence ? inHouseMoney(r, bundle) : null;
+      if (said) insights.push(said);
     };
 
     // ---- family executors (each guards on its own data) -------------------
@@ -803,15 +804,11 @@ export class InsightGeneratorService {
       return [];
     }
     const rows = data || [];
-    // A money row says which money it was written in (`evidence.currency`,
-    // version 17). When the house has since stated another — a house with
-    // none recorded naming TRY, say — every amount in it is in the wrong
-    // money, so the set is treated as ABSENT, exactly as a row below the
-    // version is: the caller recomputes and replaces it. Age cannot decide
-    // this and the scheduler's sweep does not see it; only this read does.
-    // When the currency cannot be read, the rows go out as written: each was
-    // right in the money it names, and refusing them would make the
-    // recompute withhold every amount for the same unread value.
+    // A money row names the money it was written in (`evidence.currency`,
+    // version 17). If the house has since stated another, the set is ABSENT,
+    // as a row below the version is: the caller recomputes and replaces it.
+    // The sweep cannot see this; only this read does. An unreadable currency
+    // serves the rows as written: each was right in the money it names.
     if (!money.readable) {
       this.logger.warn(
         `getStored could not read the house's currency, serving rows in the ` +
@@ -1279,7 +1276,6 @@ export class InsightGeneratorService {
     );
 
     this.timeSeriesInsights({
-      bundle,
       push: (r) => push(withUnits(r, seriesUnits)),
       dates,
       values,
@@ -1351,7 +1347,7 @@ export class InsightGeneratorService {
             effectPct: bestMove.cmp.deltaPct,
             n: 14,
             entityLabel: bestMove.wine,
-          }, bundle),
+          }),
           this.unitsOf(
             bundle.consumption.filter(
               (c) => c.wineId === movedId && fortnight.has(c.date),
@@ -1394,7 +1390,6 @@ export class InsightGeneratorService {
                 effectPct: topShare - 3 / totalsByWine.length, // excess vs uniform
                 n: dates.length,
               },
-              bundle,
             ),
             this.unitsOf(counted.filter((c) => !!c.wineId)),
           ),
@@ -1437,7 +1432,6 @@ export class InsightGeneratorService {
                 effectPct: gap,
                 n: 7,
               },
-              bundle,
             ),
             seriesUnits,
           ),
@@ -1470,7 +1464,6 @@ export class InsightGeneratorService {
       );
 
       this.timeSeriesInsights({
-        bundle,
         push,
         dates,
         values,
@@ -1522,7 +1515,6 @@ export class InsightGeneratorService {
             n: bundle.orders.length,
             boost: hhi > 0.4 ? 1.4 : 1,
           },
-          bundle,
         ),
       );
     }
@@ -1624,7 +1616,7 @@ export class InsightGeneratorService {
             z: null,
             n: worst.rows,
             boost: 1.5,
-          }, bundle),
+          }),
           // Its demand's bottle basis (ADR 0297).
           this.unitsOf(
             bundle.consumption.filter((c) => c.wineId === worst.wineId),
@@ -1653,7 +1645,6 @@ export class InsightGeneratorService {
       bundle.excludedDates,
     );
     this.timeSeriesInsights({
-      bundle,
       push,
       dates,
       values,
@@ -1853,7 +1844,6 @@ export class InsightGeneratorService {
                   z: Math.abs(corr.z),
                   n: best.n,
                 },
-                bundle,
               ),
             );
           }
@@ -1915,7 +1905,6 @@ export class InsightGeneratorService {
                   effectPct: reg.r2,
                   n: fitRows.length,
                 },
-                bundle,
               ),
             );
           }
@@ -1941,7 +1930,7 @@ export class InsightGeneratorService {
               effectPct: top.pctVsMean,
               z: lead.zVsRest,
               n: lead.ranked[0].n,
-            }, bundle),
+            }),
           );
         }
       }
@@ -1996,7 +1985,7 @@ export class InsightGeneratorService {
               effectPct: top.pctVsMean,
               z: lead.zVsRest,
               n: lead.ranked[0].n,
-            }, bundle),
+            }),
           );
         }
       }
@@ -2035,7 +2024,7 @@ export class InsightGeneratorService {
             effectPct: (best.lift - 1) / 2,
             z: zOfUpperTail(best.pUpper),
             n: best.count,
-          }, bundle),
+          }),
         );
       }
     }
@@ -2093,7 +2082,7 @@ export class InsightGeneratorService {
             z,
             n: hist.length,
             boost: 1.6,
-          }, bundle),
+          }),
         );
       }
     }
@@ -2161,7 +2150,7 @@ export class InsightGeneratorService {
           n: 14,
           boost: score.onTrack === false ? 1.5 : 1,
           entityLabel: g.name,
-        }, bundle),
+        }),
       );
     }
   }
@@ -2171,7 +2160,6 @@ export class InsightGeneratorService {
   // ==========================================================================
 
   private timeSeriesInsights(params: {
-    bundle: Bundle;
     push: Push;
     dates: string[];
     values: number[];
@@ -2186,7 +2174,6 @@ export class InsightGeneratorService {
     windowLabel?: string;
   }) {
     const {
-      bundle,
       push,
       dates,
       values,
@@ -2255,7 +2242,6 @@ export class InsightGeneratorService {
                 subject: E.WEEKDAY_NAMES[weekday],
                 periodKey: dayGrain(lastDate),
               },
-              bundle,
             ),
           );
         }
@@ -2293,7 +2279,6 @@ export class InsightGeneratorService {
             n: window * 2,
             periodKey: windowGrain(window, dates[values.length - 1]),
           },
-          bundle,
         ),
       );
     }
@@ -2324,7 +2309,6 @@ export class InsightGeneratorService {
             n: trendSeries.length,
             periodKey: trendGrain(28, dates[values.length - 1]),
           },
-          bundle,
         ),
       );
     }
@@ -2356,7 +2340,6 @@ export class InsightGeneratorService {
               n: values.length,
               periodKey: dayGrain(dates[i]),
             },
-            bundle,
           ),
         );
         break; // one anomaly headline per measure
@@ -2372,7 +2355,7 @@ export class InsightGeneratorService {
     candidateKey: string,
     category: InsightCategory,
     template: string,
-    unstamped: InsightEvidence,
+    evidence: InsightEvidence,
     scoreParams: {
       effectPct?: number | null;
       z?: number | null;
@@ -2384,27 +2367,10 @@ export class InsightGeneratorService {
       /** The period it covers, at its grain ("d:2026-09-02"). */
       periodKey?: string | null;
     },
-    /** The house's money comes from here, per call: never from `this`. */
-    bundle: Pick<Bundle, "currency" | "currencyUnread" | "unread">,
   ): InsightRecord | null {
-    // Every row carries the money its amounts were written in (version 17).
-    // The bundle is passed in, not held on the service: this is a singleton,
-    // and two houses computing at once must never share a currency.
-    const evidence: InsightEvidence = bundle.currencyUnread
-      ? unstamped
-      : { ...unstamped, currency: bundle.currency };
-    const sentence = verbalize(template, evidence);
-    if (!sentence) {
-      // Withheld only because the money could not be read: say so, once, as
-      // the zone is said (`HOUSE_ZONE_WORD`), so the quiet is not a quiet week.
-      if (
-        bundle.currencyUnread &&
-        verbalize(template, { ...unstamped, currency: null }) !== null &&
-        !bundle.unread.includes(HOUSE_CURRENCY_WORD)
-      )
-        bundle.unread.push(HOUSE_CURRENCY_WORD);
-      return null;
-    }
+    // Bare amounts here; `inHouseMoney` renders it again in the house's money.
+    const sentence = verbalize(template, { ...evidence, currency: null });
+    if (!sentence) return null;
     const subject =
       scoreParams.subject ?? scoreParams.entityLabel ?? evidence.entity ?? null;
     // "Each firing is one card" (ADR 0191 round 3, founder 2026-09-21): a
@@ -2445,6 +2411,7 @@ export class InsightGeneratorService {
       },
       periodStart: null,
       periodEnd: null,
+      [TEMPLATE]: template,
     };
   }
 }
@@ -2452,6 +2419,30 @@ export class InsightGeneratorService {
 // ---------------------------------------------------------------------------
 
 type Push = (r: InsightRecord | null) => void;
+
+/** The template a record was rendered from, so `inHouseMoney` can render it again. */
+const TEMPLATE = Symbol("template");
+
+/**
+ * The record rendered in the house's money and stamped with it (version 17),
+ * or null when it prints an amount and the money could not be read; then
+ * "house currency" is named unread, once, as the zone is. The bundle comes
+ * from the one `generate()` call: this service is a singleton, and two houses
+ * computing at once must never share a currency.
+ */
+function inHouseMoney(
+  r: InsightRecord,
+  bundle: Pick<Bundle, "currency" | "currencyUnread" | "unread">,
+): InsightRecord | null {
+  const evidence: InsightEvidence = bundle.currencyUnread
+    ? r.evidence
+    : { ...r.evidence, currency: bundle.currency };
+  const sentence = verbalize(r[TEMPLATE] ?? "", evidence);
+  if (sentence) return { ...r, evidence, sentence };
+  if (bundle.currencyUnread && !bundle.unread.includes(HOUSE_CURRENCY_WORD))
+    bundle.unread.push(HOUSE_CURRENCY_WORD);
+  return null;
+}
 
 /** The record with the bottle basis of the lines it rests on (ADR 0297). */
 function withUnits(
@@ -2582,6 +2573,8 @@ export interface InsightRecord {
   candidateKey: string;
   category: InsightCategory;
   sentence: string;
+  /** Never stored or sent: a symbol key, read by `inHouseMoney` only. */
+  [TEMPLATE]?: string;
   score: number;
   effectPct: number | null;
   z: number | null;
