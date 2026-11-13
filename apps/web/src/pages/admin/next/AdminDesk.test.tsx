@@ -1,13 +1,14 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), role: 'owner', operator: false, mailWatch: true }));
+// `activeRole` undefined means "the same as `role`"; a spec sets it to tell the two apart.
+const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), role: 'owner', activeRole: undefined as string | null | undefined, operator: false, mailWatch: true }));
 vi.mock('@/services/api/client', () => ({ default: { get: mocks.get, post: mocks.post }, getErrorMessage: (error: Error) => error.message }));
-vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { userId: 'operator-id', restaurantId: 'house-id', role: mocks.role } }) }));
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { userId: 'operator-id', restaurantId: 'house-id', role: mocks.role }, activeRole: mocks.activeRole === undefined ? mocks.role : mocks.activeRole }) }));
 import AdminDesk from './AdminDesk';
 
 beforeEach(() => {
-  mocks.role = 'owner'; mocks.operator = false; mocks.mailWatch = true; mocks.post.mockReset();
+  mocks.role = 'owner'; mocks.activeRole = undefined; mocks.operator = false; mocks.mailWatch = true; mocks.post.mockReset();
   mocks.get.mockReset().mockImplementation(async (path: string) => {
     if (path === '/health/access') return { data: { platformOperator: mocks.operator } };
     if (path === '/health/agents') return { data: { agents: [{ agent_name: 'inventory', version: '1', status: 'idle', healthy: true }], observedAt: '2026-09-13T20:00:00Z', scope: 'platform' } };
@@ -285,3 +286,31 @@ describe('each reading lands on its own', () => {
   });
 });
 
+
+describe('the role in the house the session is in now', () => {
+  const read = (path: string) => mocks.get.mock.calls.some(([p]) => p === path);
+  it("reads the desk for this house's owner while the session's role still names the last house", async () => {
+    mocks.role = 'manager'; mocks.activeRole = 'owner';
+    open(); await screen.findByText('inventory');
+    expect(screen.queryByText(/This desk is available/)).not.toBeInTheDocument();
+  });
+  it("refuses a manager in this house even when the session's role still says owner", async () => {
+    mocks.role = 'owner'; mocks.activeRole = 'manager';
+    open(); await screen.findByText(/This desk is available/);
+    expect(read('/health/agents')).toBe(false);
+    expect(read('/health/ready')).toBe(false);
+  });
+  it("falls back to the session's role only while the house role is not known", async () => {
+    mocks.role = 'owner'; mocks.activeRole = null;
+    open(); await screen.findByText('inventory');
+  });
+  it('starts reading when a house switch makes the person its owner', async () => {
+    mocks.role = 'manager'; mocks.activeRole = 'manager';
+    const view = open(); await screen.findByText(/This desk is available/);
+    expect(read('/health/agents')).toBe(false);
+    mocks.activeRole = 'owner';
+    view.rerender(<MemoryRouter><AdminDesk /></MemoryRouter>);
+    await screen.findByText('inventory');
+    expect(screen.queryByText(/This desk is available/)).not.toBeInTheDocument();
+  });
+});
