@@ -122,6 +122,27 @@ export function massFactor(from: string, to: string): number | null {
   return a == null || b == null ? null : a / b;
 }
 
+/**
+ * Volumes (r21): an item is kept in `ml` (or `l` on an older row); a line
+ * measures in `liter`. `5 liter @ 120` into ml was booked as 5 ml at 120.
+ */
+const MILLILITRES: Readonly<Record<string, number>> = { liter: 1000, l: 1000, ml: 1 };
+
+/** True for an item unit that is a volume: `ml` or `l` (`restaurant_inventory.uom`). */
+export function isVolumeItemUnit(u: unknown): u is "ml" | "l" {
+  return u === "ml" || u === "l";
+}
+
+/**
+ * How many `to` make one `from`, both volumes, or null when either is not a
+ * volume this file knows. `volumeFactor("liter", "ml")` is 1000.
+ */
+export function volumeFactor(from: string, to: string): number | null {
+  const a = MILLILITRES[from];
+  const b = MILLILITRES[to];
+  return a == null || b == null ? null : a / b;
+}
+
 export const MATCH_METHODS = [
   "vendor_sku",
   "description",
