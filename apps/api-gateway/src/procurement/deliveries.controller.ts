@@ -45,6 +45,7 @@ type AuthedUser = { userId: string; restaurantId: string; role?: string | null }
  *   POST /procurement/deliveries/:id/accept-as-billed  A11 — answer a difference
  *   POST /procurement/deliveries/:id/agree     D3 — and it says which rule fired
  *   POST /procurement/deliveries/:id/verify    D6 — a human, and idempotent
+ *   POST /procurement/deliveries/:id/return-stock  give a closed delivery's stock back again
  *   POST /procurement/deliveries/clocks/run    the catch-up for D9's ladder
  *                                              (platform operators only)
  *
@@ -301,6 +302,23 @@ export class DeliveriesController {
   async verify(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
     assertSettlesDeliveryMoney(user, "verify");
     const res = await this.deliveries.verify(
+      user.restaurantId,
+      id,
+      user.userId,
+    );
+    if (!res.ok) throw new HttpException(res.error, res.status);
+    return res.value;
+  }
+
+  @Post(":id/return-stock")
+  @ApiOperation({
+    summary: "Give back a rejected or cancelled delivery's stock, again (r28 G2)",
+    description:
+      "A rejection gives back what the door count booked; when that fails, the rejection's answer says so in `stockReturn` and the house is notified. This tries again. Only for a REJECTED or CANCELLED delivery (409 otherwise). Safe to repeat: an item already given back moves nothing. `stockReturn.returned` false carries the sentence. Owner or manager.",
+  })
+  async returnStock(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
+    assertSettlesDeliveryMoney(user, "return_stock");
+    const res = await this.deliveries.returnStock(
       user.restaurantId,
       id,
       user.userId,

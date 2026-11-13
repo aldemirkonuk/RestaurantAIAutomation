@@ -39,6 +39,7 @@ function harness(proposals: Record<string, unknown>[] = []) {
     acceptAsBilled: ok("acceptAsBilled"),
     agree: ok("agree"),
     verify: ok("verify"),
+    returnStock: ok("returnStock"),
     proposalsFor: ok("proposalsFor", proposals),
     list: ok("list", []),
     create: ok("create"),
@@ -69,6 +70,7 @@ const MONEY_ACTS: Act[] = [
   ],
   ["POST :id/agree", "agree", (c, u) => c.agree(DELIVERY, u)],
   ["POST :id/verify", "verify", (c, u) => c.verify(DELIVERY, u)],
+  ["POST :id/return-stock", "returnStock", (c, u) => c.returnStock(DELIVERY, u)],
 ];
 
 describe("a delivery's money acts need the house's money", () => {
