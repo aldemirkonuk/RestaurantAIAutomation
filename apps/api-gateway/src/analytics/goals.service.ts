@@ -51,6 +51,9 @@ import {
   type SpecRejection,
 } from "./report-cuttings";
 
+/** What became of a goal reading's write (`recordReading`). */
+export type GoalReadingStored = "stored" | "superseded" | "unstored";
+
 /**
  * GoalsService — metric-linked goals with AI assistance.
  *
@@ -212,23 +215,48 @@ export class GoalsService {
    * Store what the latest live reading found. Scoped to the house as well as
    * the id. A failed write is logged and never fails the read: the reader
    * still gets the live answer, and the stored row stays as it was.
+   *
+   * Newest reading wins, not last writer (reports lane r3). `current_read_at`
+   * is when the reading BEGAN, and the row is written only while it holds no
+   * reading or an older one, in the same UPDATE, so Postgres re-checks the
+   * condition against a row another reading has just written. A slow refusal
+   * that began before a quicker success therefore finds the success stored
+   * and leaves it. Two readings that began in the same millisecond are
+   * equally fresh, and the first stored stays. Gateways stamp from their own
+   * clocks, so two of them skewed by more than the gap between two readings
+   * could still order them wrongly.
+   *
+   * Says what became of the write (fix round on #1133): `stored` when the row
+   * now holds this reading, `superseded` when the condition matched no row
+   * because a newer reading is already stored, `unstored` when the write
+   * failed or the store did not say. The caller still answers with its own
+   * live reading; this only tells it whether the stored row agrees.
    */
   private async recordReading(
     restaurantId: string,
     goalId: string,
-    patch: Record<string, unknown>,
-  ): Promise<void> {
+    patch: Record<string, unknown> & { current_read_at: string },
+  ): Promise<GoalReadingStored> {
     try {
-      const { error } = await this.dbService
+      const { data, error } = await this.dbService
         .getClient()
         .from("analytics_goals")
         .update(patch)
         .eq("restaurant_id", restaurantId)
-        .eq("id", goalId);
-      if (error)
+        .eq("id", goalId)
+        .or(
+          `current_read_at.is.null,current_read_at.lt."${patch.current_read_at}"`,
+        )
+        .select("id");
+      if (error) {
         this.logger.warn(`goal reading not stored for ${goalId}: ${error.message}`);
+        return "unstored";
+      }
+      if (!Array.isArray(data)) return "unstored";
+      return data.length > 0 ? "stored" : "superseded";
     } catch (err: any) {
       this.logger.warn(`goal reading not stored for ${goalId}: ${err?.message ?? err}`);
+      return "unstored";
     }
   }
 
@@ -620,6 +648,9 @@ export class GoalsService {
     // goal and records nothing.
     const callerRefused =
       isSalesGatedGoal(goal.metric_key) && gate.withSales !== true;
+    // When this reading began: what it observed is at least this fresh, and
+    // `recordReading` stores it only over an older one.
+    const readAt = new Date();
     let reading: Awaited<ReturnType<GoalsService["computeMetricWithSeries"]>>;
     try {
       reading = await this.computeMetricWithSeries(
@@ -634,17 +665,16 @@ export class GoalsService {
       if (!callerRefused)
         await this.recordReading(restaurantId, goalId, {
           current_unread: String(err?.message ?? "the reading failed"),
-          current_read_at: new Date().toISOString(),
+          current_read_at: readAt.toISOString(),
         });
       throw err;
     }
     const { current, dailySeries, units } = reading;
-    const readAt = new Date();
-    await this.recordReading(restaurantId, goalId, {
+    const readingStored = await this.recordReading(restaurantId, goalId, {
       current_value: current,
       current_unread: null,
       current_read_at: readAt.toISOString(),
-      updated_at: readAt.toISOString(),
+      updated_at: new Date().toISOString(),
     });
 
     const target = Number(goal.target_value) || 0;
@@ -737,6 +767,13 @@ export class GoalsService {
         category: s.category,
         score: s.score,
       })),
+      /**
+       * Whether the stored row now holds this reading (fix round on #1133).
+       * Every figure above is this live reading. `superseded` means a newer
+       * reading, begun after this one, is already stored, so the next list
+       * read shows that one rather than `goal.current_value` here.
+       */
+      readingStored,
       generatedAt: new Date().toISOString(),
     };
   }
