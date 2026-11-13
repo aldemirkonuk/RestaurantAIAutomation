@@ -24,12 +24,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const mockGet = vi.hoisted(() => vi.fn());
 const created = vi.hoisted(() => ({ baseURL: undefined as string | undefined }));
+const responseUse = vi.hoisted(() => vi.fn());
+const sayPlainly = vi.hoisted(() => vi.fn((e: unknown) => Object.assign(e as object, { said: true })));
 
 vi.mock('axios', () => {
   const instance = {
     get: mockGet,
     post: vi.fn(),
-    interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } },
+    interceptors: { request: { use: vi.fn() }, response: { use: responseUse } },
   };
   const create = (config: { baseURL?: string }) => {
     created.baseURL = config?.baseURL;
@@ -39,6 +41,7 @@ vi.mock('axios', () => {
 });
 
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: vi.fn() }));
+vi.mock('../../services/api/client', () => ({ sayPlainly }));
 
 import { useAuth } from '../../contexts/AuthContext';
 import { useProcurementConversationHistory } from './useConversationQueries';
@@ -97,5 +100,16 @@ describe('useConversationQueries — every hand-built path carries the gateway p
     expect(calls.length).toBeGreaterThan(0);
     const missing = calls.map((m) => m[2]).filter((p) => !p.startsWith('/api/v1/'));
     expect(missing, `paths missing the /api/v1 prefix: ${missing.join(', ')}`).toEqual([]);
+  });
+});
+
+describe('useConversationQueries — a refusal says the gateway sentence, as the shared client does', () => {
+  it('rejects every failure on this instance through sayPlainly', async () => {
+    // Registered once, at import, before beforeEach could reset anything.
+    expect(responseUse).toHaveBeenCalledTimes(1);
+    const onError = responseUse.mock.calls[0][1] as (e: unknown) => Promise<unknown>;
+    const refused = { response: { status: 400, data: { message: 'That supplier is not in this house.' } } };
+    await expect(onError(refused)).rejects.toMatchObject({ said: true });
+    expect(sayPlainly).toHaveBeenCalledWith(refused);
   });
 });
