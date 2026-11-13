@@ -35,7 +35,9 @@ import {
   type MenuImportResult,
   type MenuReadWarning,
   type MenuVersion,
+  type PlanLine,
 } from '../../../services/api/menus';
+import { oneNounFor, type KindNoun } from './menu-line-kind';
 import { useAuthStore } from '../../../stores';
 import { MenuPlan } from './MenuPlan';
 import { isPhoto, pagesProblem, photoToJpegBase64, photosToPages } from '../../../lib/menuPhotos';
@@ -167,16 +169,18 @@ export function sourceWords(v: MenuVersion): string {
  * not know is still printed (ADR 0193 round 3, L15): an outcome the page
  * drops is a price change -- or a hold -- nobody hears about.
  */
-const OUTCOME_WORDS: Record<string, (n: number) => string> = {
+const OUTCOME_WORDS: Record<string, (n: number, noun: KindNoun) => string> = {
   // Counted by line, as the gateway tallies priceSync: one wine can carry a
   // bottle and a glass price. Every count names its unit, and the plan counts
-  // the same wines in the same words (MenuPlan.tsx `lineOutcome`).
-  changed: (n) => `${n} wine${n === 1 ? '' : 's'} priced from this menu`,
-  unchanged: (n) => `${n} wine${n === 1 ? '' : 's'} already at the menu's price`,
-  stale: (n) => `${n} wine${n === 1 ? '' : 's'} kept a price someone set after this menu was chosen`,
-  locked: (n) => `${n} wine${n === 1 ? '' : 's'} at ${n === 1 ? 'its' : 'their'} locked price`,
+  // the same lines in the same words (MenuPlan.tsx `lineOutcome`), named by
+  // menu-line-kind `oneNounFor`.
+  changed: (n, k) => `${n} ${k[n === 1 ? 0 : 1]} priced from this menu`,
+  unchanged: (n, k) => `${n} ${k[n === 1 ? 0 : 1]} already at the menu's price`,
+  stale: (n, k) => `${n} ${k[n === 1 ? 0 : 1]} kept a price someone set after this menu was chosen`,
+  locked: (n, k) => `${n} ${k[n === 1 ? 0 : 1]} at ${n === 1 ? 'its' : 'their'} locked price`,
   no_price: (n) => `${n} line${n === 1 ? '' : 's'} with no price on the menu`,
-  not_linked: (n) => `${n} line${n === 1 ? '' : 's'} not matched to a wine, so no price`,
+  not_linked: (n, k) =>
+    `${n} line${n === 1 ? '' : 's'} not matched to ${k[0] === 'line' ? "anything on the house's list" : `a ${k[0]}`}, so no price`,
   failed: () => '',
 };
 
@@ -186,14 +190,15 @@ const OUTCOME_WORDS: Record<string, (n: number) => string> = {
  * sentence says which menu it is about (menu walk 2026-11-12: a choice made
  * from the list was said as "This is now the current menu" with no name).
  */
-export function makeCurrentSentence(r: MakeCurrentResult, name?: string): string {
+export function makeCurrentSentence(r: MakeCurrentResult, name?: string, lines?: PlanLine[]): string {
   if (r.outcome === 'already_current') return 'That menu was already the current one. Nothing changed.';
+  const noun = oneNounFor(lines);
   const parts = [`${r.lines} line${r.lines === 1 ? '' : 's'}`];
   const keys = Object.keys(r.priceSync);
-  if (!keys.includes('changed')) parts.push(OUTCOME_WORDS.changed(0));
+  if (!keys.includes('changed')) parts.push(OUTCOME_WORDS.changed(0, noun));
   for (const k of ['changed', 'unchanged', 'stale', 'locked', 'no_price', 'not_linked']) {
     const n = r.priceSync[k] ?? 0;
-    if (n > 0) parts.push(OUTCOME_WORDS[k](n));
+    if (n > 0) parts.push(OUTCOME_WORDS[k](n, noun));
   }
   for (const k of keys) {
     if (k in OUTCOME_WORDS) continue;
@@ -472,9 +477,9 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
               menuId={result.menuId}
               canManage={canManage}
               onCancel={() => setPlanning(false)}
-              onDone={(r) => {
+              onDone={(r, lines) => {
                 setPlanning(false);
-                setChosen(makeCurrentSentence(r));
+                setChosen(makeCurrentSentence(r, undefined, lines));
                 // The read's own line said "not the current menu" and offered the
                 // choice again under "This is now the current menu" (browser walk
                 // 2026-11-12). Once it is chosen, the read says so.
@@ -663,10 +668,10 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
                 menuId={planFor}
                 canManage={canManage}
                 onCancel={() => setPlanFor(null)}
-                onDone={(r) => {
+                onDone={(r, lines) => {
                   const chosenOne = q.data?.versions.find((v) => v.menuId === r.menuId);
                   setPlanFor(null);
-                  setSaid(makeCurrentSentence(r, chosenOne ? nameOf(chosenOne) : undefined));
+                  setSaid(makeCurrentSentence(r, chosenOne ? nameOf(chosenOne) : undefined, lines));
                   refresh();
                 }}
               />

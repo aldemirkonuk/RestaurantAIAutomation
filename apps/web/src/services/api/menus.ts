@@ -516,6 +516,8 @@ export interface PlanKind {
 export interface PlanLine {
   menuItemId: string
   name: string
+  /** The line's section (red, cocktail, beer…). Absent from a gateway older than the field. */
+  category?: string | null
   producer: string | null
   vintage: string | null
   wineLibraryId: string | null

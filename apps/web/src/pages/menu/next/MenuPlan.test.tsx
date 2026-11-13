@@ -189,7 +189,7 @@ describe('MenuPlan -- the section before the choice (L13)', () => {
     const { onDone } = mount(true);
     fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
     await waitFor(() => expect(mockMake).toHaveBeenCalledWith('menu-new', 'fp-1'));
-    await waitFor(() => expect(onDone).toHaveBeenCalledWith(result));
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith(result, expect.arrayContaining([expect.objectContaining({ menuItemId: expect.any(String) })])));
   });
 
   it('a plan that moved (409) is said, nothing is changed, and it is read again', async () => {

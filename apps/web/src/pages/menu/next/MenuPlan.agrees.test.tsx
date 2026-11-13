@@ -16,9 +16,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MenuPlan, planNeedsScroll, planSentence } from './MenuPlan';
+import { MenuPlan, lineOutcome, planNeedsScroll, planSentence } from './MenuPlan';
 import { makeCurrentSentence } from './MenuVersions';
-import { getMenuPlan, type MenuPlan as Plan, type PlanKind, type PlanLine, type PlanResult } from '../../../services/api/menus';
+import { getMenuPlan, type MakeCurrentResult, type MenuPlan as Plan, type PlanKind, type PlanLine, type PlanResult } from '../../../services/api/menus';
 
 vi.mock('../../../services/api/menus', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/menus')>('../../../services/api/menus');
@@ -101,7 +101,7 @@ function agree(lines: PlanLine[]) {
     priceSync,
     flagged: 0,
     failed: [],
-  });
+  }, undefined, lines);
   const planPriced = num(said, /change the price of (\d+) wines?/) + num(said, /add (\d+) wines? new/);
   expect({ case: lines.map((l) => `${l.bottle.result}/${l.glass.result}`), n: planPriced }).toEqual({
     case: lines.map((l) => `${l.bottle.result}/${l.glass.result}`),
@@ -133,9 +133,64 @@ describe('the plan counts what the result will count', () => {
   it('the walk: one new wine with a bottle and a glass price is one wine on both sides', () => {
     const said = planSentence(planOf([line(0, 'new_wine', 'new_wine')]));
     expect(said).toBe('Choosing this menu will add 1 wine new to the house at its menu price.');
-    expect(makeCurrentSentence({ outcome: 'made_current', menuId: 'm', previousMenuIds: [], lines: 1, priceSync: { changed: 1 }, flagged: 0, failed: [] })).toBe(
+    expect(makeCurrentSentence({ outcome: 'made_current', menuId: 'm', previousMenuIds: [], lines: 1, priceSync: { changed: 1 }, flagged: 0, failed: [] }, undefined, [line(0, 'new_wine', 'new_wine')])).toBe(
       'This is now the current menu: 1 line, 1 wine priced from this menu.',
     );
+  });
+});
+
+// r13 walk 2026-11-12: a typed Soave and a typed Negroni (Cocktail) were
+// planned as "add 2 wines new to the house", and the result said "2 wines".
+describe('a line is named by its kind', () => {
+  const as = (l: PlanLine, category: string | null): PlanLine => ({ ...l, category });
+  const made = (priceSync: Record<string, number>, n: number): MakeCurrentResult => ({
+    outcome: 'made_current',
+    menuId: 'm',
+    previousMenuIds: [],
+    lines: n,
+    priceSync,
+    flagged: 0,
+    failed: [],
+  });
+
+  it('the walk: a wine and a cocktail are planned as a wine and a cocktail, and the result calls them drinks', () => {
+    const lines = [as(line(0, 'new_wine', 'new_wine'), 'white'), as(line(1, 'blank_never_priced', 'new_wine'), 'cocktail')];
+    expect(planSentence(planOf(lines))).toBe(
+      'Choosing this menu will add 1 wine and 1 cocktail new to the house at their menu prices.',
+    );
+    expect(makeCurrentSentence(made({ changed: 2 }, 2), undefined, lines)).toBe(
+      'This is now the current menu: 2 lines, 2 drinks priced from this menu.',
+    );
+  });
+
+  it('a menu of one kind keeps that kind on both sides', () => {
+    const lines = [as(line(0, 'change', 'change'), 'beer'), as(line(1, 'unchanged', 'unchanged'), 'beer')];
+    expect(planSentence(planOf(lines))).toBe(
+      "Choosing this menu will change the price of 1 beer the house already has and keep 1 beer already at the menu's price.",
+    );
+    expect(makeCurrentSentence(made({ changed: 1, unchanged: 1 }, 2), undefined, lines)).toBe(
+      "This is now the current menu: 2 lines, 1 beer priced from this menu, 1 beer already at the menu's price.",
+    );
+  });
+
+  it('a line with no section is a drink, never a wine; an unmatched cocktail is not "matched to a wine"', () => {
+    expect(planSentence(planOf([as(line(0, 'held_by_lock', 'held_by_lock'), null)]))).toBe(
+      'Choosing this menu will leave 1 drink at its locked price.',
+    );
+    const said = planSentence(planOf([as(line(0, 'not_linked', 'not_linked'), 'cocktail')]));
+    expect(said).toContain('1 line is not matched to a cocktail, so no price');
+    expect(said).not.toMatch(/wine/);
+  });
+
+  it('the plan and the result still count the same lines when the kinds differ', () => {
+    for (const [b1, g1] of [['change', 'change'], ['new_wine', 'new_wine'], ['held_by_lock', 'held_by_lock'], ['unchanged', 'unchanged']] as const)
+      for (const [b2, g2] of [['change', 'blank_kept'], ['new_wine', 'blank_never_priced'], ['unchanged', 'held_by_lock']] as const) {
+        const lines = [as(line(1, b1, g1), 'red'), as(line(2, b2, g2), 'spirit')];
+        const said = planSentence(planOf(lines));
+        const counted = [...said.matchAll(/(\d+) (?:wines?|spirits?)/g)].reduce((n, m) => n + Number(m[1]), 0);
+        const priced = lines.filter((l) => lineOutcome(l) !== 'no_price').length;
+        expect({ said, counted }).toEqual({ said, counted: priced });
+      }
   });
 });
 

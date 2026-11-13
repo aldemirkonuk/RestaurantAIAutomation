@@ -60,6 +60,8 @@ interface InsertedMenuItem {
   created_at?: string | null;
   producer?: string | null;
   vintage?: string | null;
+  /** The section the line was read or set into (LINE_SELECT reads it). */
+  category?: string | null;
 }
 
 /**
@@ -125,6 +127,8 @@ export interface PlanLine {
   menuItemId: string;
   /** As the menu reads. */
   name: string;
+  /** The line's section as read or set (red, cocktail, beer…): the plan names a line by its kind. */
+  category: string | null;
   producer: string | null;
   vintage: string | null;
   wineLibraryId: string | null;
@@ -1881,6 +1885,7 @@ export class MenusService {
       return {
         menuItemId: line.id,
         name: line.name,
+        category: typeof line.category === "string" && line.category.trim() ? line.category : null,
         producer: line.producer ?? null,
         vintage: line.vintage ?? null,
         wineLibraryId: wineId,

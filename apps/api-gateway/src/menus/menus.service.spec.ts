@@ -1263,7 +1263,7 @@ describe("MenusService — the plan before a menu is chosen, and the locks it re
         // The menu to choose:
         { id: "n-1", menu_id: "menu-new", restaurant_id: "rest-1", name: "Barolo", vintage: "2020", wine_library_id: "mw-1", bottle_price: 64, by_glass_price: 15, status: "approved" },
         { id: "n-2", menu_id: "menu-new", restaurant_id: "rest-1", name: "Chianti", wine_library_id: "mw-2", bottle_price: 55, status: "approved" },
-        { id: "n-3", menu_id: "menu-new", restaurant_id: "rest-1", name: "Nebbiolo", wine_library_id: "mw-3", bottle_price: 40, status: "approved" },
+        { id: "n-3", menu_id: "menu-new", restaurant_id: "rest-1", name: "Nebbiolo", category: "cocktail", wine_library_id: "mw-3", bottle_price: 40, status: "approved" },
         { id: "n-4", menu_id: "menu-new", restaurant_id: "rest-1", name: "Soave", wine_library_id: "mw-4", status: "approved" },
         { id: "n-5", menu_id: "menu-new", restaurant_id: "rest-1", name: "House red", wine_library_id: null, bottle_price: 20, status: "approved" },
         { id: "n-6", menu_id: "menu-new", restaurant_id: "rest-1", name: "Mystery", wine_library_id: "mw-6", status: "approved" },
@@ -1362,6 +1362,18 @@ describe("MenusService — the plan before a menu is chosen, and the locks it re
     delete menu.created_at;
     expect((await service.planFor("rest-1", "menu-new")).readAt).toBeNull();
     expect((await lineOf("n-2")).bottle.setAfterRead).toBe(false);
+  });
+
+  // r13 walk 2026-11-12: the plan called a typed Negroni a "wine"; it now
+  // carries each line's section so the page names the line by its kind.
+  it("each plan line carries its section as read or set; a line with none carries null", async () => {
+    const { tables, service } = setup();
+    tables.menu_items.find((m: any) => m.id === "n-5")!.category = "   ";
+    const plan = await service.planFor("rest-1", "menu-new");
+    const by = Object.fromEntries(plan.lines.map((l) => [l.menuItemId, l]));
+    expect(by["n-3"].category).toBe("cocktail");
+    expect(by["n-1"].category).toBeNull();
+    expect(by["n-5"].category).toBeNull();
   });
 
   it("L18: a locked wine that was NOT on the menu being replaced is 'returned', and a differing vintage is marked", async () => {
