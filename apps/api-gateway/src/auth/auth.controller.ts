@@ -572,7 +572,9 @@ export class AuthController {
   }
 
   /**
-   * Verify email with the token from the verification email.
+   * Verify email with the token from the verification email, or with the
+   * six-digit code the same email carries (onboarding OB-3, founder /goal
+   * 2026-11-07): `{ token }` or `{ code }`, never both.
    *
    * Signed-in only (ADR 0229 fork 12; the founder, 2026-09-28, item 81, "Link
    * needs sign-in (Recommended)"): the link verifies only for a session of
@@ -595,16 +597,28 @@ export class AuthController {
     @Req() req: Request & { user: any },
     @Body() dto: VerifyEmailDto,
   ) {
-    const tokens = await this.authService.verifyEmail(
-      dto.token,
-      req.user?.userId ?? null,
-      req.user?.restaurantId ?? null,
-    );
+    // The mail's six-digit code (onboarding OB-3) or its link's token; the
+    // DTO admits exactly one. Same session rules, same answer.
+    const tokens =
+      dto.code !== undefined
+        ? await this.authService.verifyEmailWithCode(
+            dto.code,
+            req.user?.userId ?? null,
+            req.user?.restaurantId ?? null,
+          )
+        : await this.authService.verifyEmail(
+            dto.token as string,
+            req.user?.userId ?? null,
+            req.user?.restaurantId ?? null,
+          );
     return { success: true, ...tokens, message: "Email verified" };
   }
 
   /**
-   * Resend verification email — rate-limited to 1 per minute.
+   * Resend verification email — rate-limited to 1 per minute. Answers
+   * `verificationMail: 'sent' | 'not_sent'` as sign-up does (onboarding OB-3,
+   * round 6 #789): `success` means the request was handled, not that a mail
+   * left.
    */
   @Post("resend-verification")
   @UseGuards(JwtAuthGuard)
