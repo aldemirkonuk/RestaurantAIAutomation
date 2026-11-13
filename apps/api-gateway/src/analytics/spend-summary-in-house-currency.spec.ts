@@ -40,6 +40,26 @@ describe("the financial summary and risk profile", () => {
     expect(out.deliveredPurchases).toBe(340);
   });
 
+  it("the loader gives a euro order no house cost and names its money", async () => {
+    const client = db({
+      restaurants: house("TRY"),
+      procurement_orders: [
+        order("a", 5, 300, "TRY"),
+        order("e", 6, 840, "EUR"),
+      ],
+    });
+    const rows = await (
+      new AnalyticsService({ getClient: () => client } as any) as any
+    ).loadDeliveredOrders(HOUSE, 365);
+    const byCost = rows.map((r: any) => [r.cost, r.otherMoney]);
+    expect(byCost).toEqual(
+      expect.arrayContaining([
+        [300, null],
+        [null, "EUR"],
+      ]),
+    );
+  });
+
   it("does not draw vendor shares over a euro order", async () => {
     const client = db({
       restaurants: house("TRY"),
@@ -95,6 +115,23 @@ describe("the insight feed's purchasing family", () => {
     });
     expect(out.spendWithheld.trend.reason).toContain(
       "not in house currency (1 in EUR; the house keeps TRY)",
+    );
+  });
+
+  it("the bundle gives a euro order no house cost", async () => {
+    const client = db({
+      restaurants: house("TRY"),
+      procurement_orders: [
+        order("a", 5, 300, "TRY"),
+        order("e", 6, 840, "EUR"),
+      ],
+    });
+    const bundle = await (generator(client) as any).loadBundle(HOUSE);
+    expect(bundle.orders.map((o: any) => [o.cost, o.otherMoney])).toEqual(
+      expect.arrayContaining([
+        [300, null],
+        [null, "EUR"],
+      ]),
     );
   });
 
