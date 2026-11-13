@@ -479,7 +479,10 @@ describe('nothing the retired tables knew was lost', () => {
   })
 
   it('still offers all 194 display names, in the same order', () => {
-    expect(COUNTRY_NAMES).toEqual(RETIRED_COUNTRY_NAMES)
+    // Côte d'Ivoire is the one name added since (r28 onboarding, 2026-11-13):
+    // the retired list never had it.
+    expect(COUNTRY_NAMES.filter((name) => name !== 'Côte d\'Ivoire')).toEqual(RETIRED_COUNTRY_NAMES)
+    expect(COUNTRY_NAMES).toHaveLength(RETIRED_COUNTRY_NAMES.length + 1)
   })
 
   it('resolves every one of COUNTRY_CURRENCY’s pairs to the same code', () => {
