@@ -227,4 +227,21 @@ describe("a temporary /auth/me failure keeps the session loading and asks again"
     await advance(10_000);
     expect(meReads()).toBe(1);
   });
+
+  it("unmounting while the read is still in flight: its later 429 asks nothing more", async () => {
+    let fail: (e: unknown) => void = () => {};
+    h.instance.get.mockImplementation((url: string) =>
+      url === "/api/v1/auth/me"
+        ? new Promise((_, reject) => {
+            fail = reject;
+          })
+        : Promise.resolve({ data: [] }),
+    );
+    const view = mount();
+    await flush();
+    view.unmount();
+    fail((tooMany(1) as { fail: unknown }).fail);
+    await advance(10_000);
+    expect(meReads()).toBe(1);
+  });
 });

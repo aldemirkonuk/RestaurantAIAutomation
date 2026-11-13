@@ -73,9 +73,8 @@ describe("sessionReadRetryDelayMs", () => {
   });
 
   it("never waits longer than 60 s, whatever the server says", () => {
-    expect(sessionReadRetryDelayMs(failed(429, { data: { retryAfter: 3600 } }), 0)).toBe(
-      SESSION_READ_MAX_DELAY_MS,
-    );
+    expect(sessionReadRetryDelayMs(failed(429, { data: { retryAfter: 3600 } }), 0)).toBe(60_000);
+    expect(SESSION_READ_MAX_DELAY_MS).toBe(60_000);
   });
 
   it("backs off 1, 2, 4, 8, 16 s then holds at 30 s without a Retry-After", () => {
