@@ -296,7 +296,7 @@ export default function InventoryTable(props: InventoryTableProps) {
                       }}
                     >
                       <span className="iv-name">
-                        {row.name ?? 'Unnamed title'}
+                        {row.name ?? (row.kind === 'food' || row.kind === 'supply' ? 'Unnamed good' : 'Unnamed title')}
                         {row.abc ? (
                           <span className="iv-abc" data-testid="inv-abc" title={`ABC class ${row.abc}`}>
                             {row.abc}

@@ -951,6 +951,53 @@ describe('counts read with grouped digits, as money does (INV-W33)', () => {
     expect(half).toContain('the 1,200 without a cost');
   });
 
+  describe('a house of goods hears no all-clear for what has no par (inventory r28 gap 12)', () => {
+    const cur = { state: 'recorded', code: 'EUR' } as const;
+    const flour = (id: string, over: Partial<InvRow> = {}) =>
+      row({ id, kind: 'food', name: 'Flour', stock: 12400, par: null, standing: 'nopar', runway: null, value: 10, zones: null, ...over });
+
+    it('never says nothing is below par when no good has a par', () => {
+      const s = readSentence([flour('a'), flour('b')], cur, false);
+      expect(s).toContain('Nothing is out.');
+      expect(s).not.toContain('below par');
+      expect(s).toContain('2 goods have no par, so nothing here says when they run low.');
+    });
+
+    it('says the all-clear for those with a par, and names the one without', () => {
+      const s = readSentence([flour('a'), flour('b', { par: 5000, standing: 'above' })], cur, false);
+      expect(s).toContain('Nothing is out or below par.');
+      expect(s).toContain('One good has no par, so nothing here says when it runs low.');
+    });
+
+    it('names the goods without a par beside what is below par too', () => {
+      const s = readSentence([flour('a'), flour('b', { stock: 100, par: 5000, standing: 'below' })], cur, false);
+      expect(s).toContain('None is out; 1 is below par.');
+      expect(s).toContain('One good has no par');
+    });
+
+    it('speaks of goods and the house, not titles and the cellar, once a food is on the list', () => {
+      const s = readSentence([flour('a'), row({ id: 'w', stock: 3, standing: 'above', value: 20, zones: null })], cur, false);
+      expect(s).toContain('2 goods,');
+      expect(s).toContain('At cost the house holds');
+      expect(s).toContain('of 2 goods priced');
+      expect(s).not.toContain('title');
+      expect(s).not.toContain('cellar');
+    });
+
+    it('keeps a wine list’s words', () => {
+      const s = readSentence([row({ id: 'w', stock: 3, par: 2, standing: 'above', value: 20, zones: null })], cur, false);
+      expect(s).toContain('1 title,');
+      expect(s).toContain('At cost the cellar holds');
+      expect(s).not.toContain('no par');
+    });
+
+    it('a food with no name reads "Unnamed good" on the list', () => {
+      mock.data = data({ rows: [flour('a', { name: null })] });
+      renderPage();
+      expect(screen.getByText('Unnamed good')).toBeTruthy();
+    });
+  });
+
   it('groups the out, below-par and dry-tomorrow counts', () => {
     const cur = { state: 'recorded', code: 'EUR' } as const;
     const big = (id: string, over: Partial<InvRow>) => Array.from({ length: 1000 }, (_, i) => row({ id: `${id}${i}`, zones: null, ...over }));
