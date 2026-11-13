@@ -8,7 +8,7 @@
  *  - IMPROVE 6: a vendor or order from another house could be linked.
  */
 import { BadRequestException, HttpException, ValidationPipe } from "@nestjs/common";
-import { CalendarService } from "./calendar.service";
+import { CalendarService, linkedOrderMovedEntry } from "./calendar.service";
 import { CalendarController } from "./calendar.controller";
 import {
   CalendarEventType,
@@ -121,6 +121,64 @@ describe("CalendarService.createEvent — refusals", () => {
     });
     const out = await service(db).createEvent(R, "u-1", { ...base, providerId: "pv-1", orderId: "o-1" });
     expect(out).toMatchObject({ providerId: "pv-1", orderId: "o-1" });
+  });
+
+  // r29 walk, finding 3: the table's insert trigger (ADR 0284) files a
+  // delivery whose order has already arrived on the day it arrived, ruled off.
+  // The insert's own RETURNING row predates that, so the answer used to say
+  // the typed date and "pending" over a row stored otherwise.
+  it("a delivery linked to an arrived order answers the stored row and says the order moved it", async () => {
+    const sent = { ...eventRow, start_date: "2026-11-16", order_id: "o-1" };
+    const db = fakeDb({
+      procurement_orders: [{ data: { id: "o-1" }, error: null }],
+      calendar_events: [
+        { data: sent, error: null },
+        { data: { ...sent, start_date: "2026-10-15", status: "completed", reminder_enabled: false }, error: null },
+      ],
+    });
+    const out = await service(db).createEvent(R, "u-1", { ...base, eventDate: "2026-11-16", orderId: "o-1" });
+    expect(out).toMatchObject({ eventDate: "2026-10-15", status: "completed", reminderEnabled: false });
+    expect(out.notice).toBe(
+      "Its order has already arrived, so this delivery is on 2026-10-15, the day it arrived, not 2026-11-16, and it is ruled off.",
+    );
+    expect(db.calls).toContainEqual({ table: "calendar_events", method: "eq", args: ["restaurant_id", R] });
+  });
+
+  it("an open order leaves the entry as sent, and no notice is added", async () => {
+    const sent = { ...eventRow, order_id: "o-1" };
+    const db = fakeDb({
+      procurement_orders: [{ data: { id: "o-1" }, error: null }],
+      calendar_events: [{ data: sent, error: null }, { data: sent, error: null }],
+    });
+    const out = await service(db).createEvent(R, "u-1", { ...base, orderId: "o-1" });
+    expect(out).toMatchObject({ eventDate: "2026-09-03", status: "pending" });
+    expect(out.notice).toBeUndefined();
+  });
+
+  it("an entry that cannot be read back says so instead of vouching for the typed date", async () => {
+    const sent = { ...eventRow, order_id: "o-1" };
+    const db = fakeDb({
+      procurement_orders: [{ data: { id: "o-1" }, error: null }],
+      calendar_events: [{ data: sent, error: null }, { data: null, error: { message: "down" } }],
+    });
+    const out = await service(db).createEvent(R, "u-1", { ...base, orderId: "o-1" });
+    expect(out.notice).toMatch(/^The entry was saved, but it could not be read back\./);
+  });
+
+  it("an entry with no order is not read back", async () => {
+    const db = fakeDb({ calendar_events: [{ data: eventRow, error: null }] });
+    const out = await service(db).createEvent(R, "u-1", base);
+    expect(out.notice).toBeUndefined();
+    expect(db.calls.filter((c) => c.table === "calendar_events" && c.method === "select")).toHaveLength(1);
+  });
+
+  it("a cancelled order's delivery says it is not coming", () => {
+    expect(
+      linkedOrderMovedEntry({ status: "pending", start_date: "2026-11-16" }, { status: "cancelled", start_date: "2026-11-16" }),
+    ).toBe("Its order was cancelled, rejected or failed, so this delivery is not coming and is marked cancelled.");
+    expect(
+      linkedOrderMovedEntry({ status: "pending", start_date: "2026-11-16" }, { status: "completed", start_date: "2026-11-16" }),
+    ).toBe("Its order has already arrived, so this delivery is ruled off.");
   });
 
   it("does not create an entry whose links could not be checked", async () => {

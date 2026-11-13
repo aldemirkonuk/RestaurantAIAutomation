@@ -212,6 +212,39 @@ export class CalendarService {
       }
     }
 
+    // A DELIVERY LINKED TO AN ORDER FOLLOWS THE ORDER (ADR 0284). The table's
+    // AFTER INSERT trigger (`delivery_event_is_born_matching_its_order`)
+    // closes an entry whose order has already arrived, on the day it arrived,
+    // or cancels one whose order will not come. That is the right date: the
+    // entry is the arrival, and the arrival is a fact. But it runs AFTER the
+    // insert, so the row this insert RETURNED is the one the user typed, and
+    // the answer said "saved for 16 Nov, pending" over a row stored for
+    // 15 Oct, completed (r29 walk, finding 3). Read the stored row back and
+    // say what the order did to it.
+    let stored: CalendarEventRow = eventData as CalendarEventRow;
+    let notice: string | undefined;
+    if (eventData.event_type === "delivery" && eventData.order_id) {
+      const { data: after, error: afterError } = await this.databaseService.supabase
+        .from("calendar_events")
+        .select("*")
+        .eq("id", eventData.id)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      if (afterError || !after) {
+        this.logger.warn({
+          message: "A linked delivery entry could not be read back after it was saved",
+          eventId: eventData.id,
+          error: afterError?.message ?? "no row",
+        });
+        notice =
+          "The entry was saved, but it could not be read back. If its order has already " +
+          "arrived, it is on the day the order arrived and ruled off; open that day to check.";
+      } else {
+        stored = after as CalendarEventRow;
+        notice = linkedOrderMovedEntry(eventData as CalendarEventRow, stored) ?? undefined;
+      }
+    }
+
     // Emit event to event ingestion system
     try {
       await this.eventsService.createEvent(restaurantId, userId, {
@@ -241,8 +274,9 @@ export class CalendarService {
     });
 
     return {
-      ...this.mapCalendarEvent(eventData),
+      ...this.mapCalendarEvent(stored),
       recurrenceRule,
+      ...(notice ? { notice } : {}),
     };
   }
 
@@ -1365,4 +1399,25 @@ export class CalendarService {
 
   // The iCal feed and its links moved to `calendar-links.service.ts` (personal
   // links, ADR 0111 review trail 2026-09-21) and `ical-render.ts`.
+}
+
+/**
+ * What the order did to a delivery entry linked to it at birth (ADR 0284's
+ * insert trigger), in words, or null when the stored row is what was sent.
+ * Exported for the spec.
+ */
+export function linkedOrderMovedEntry(
+  sent: { status: string; start_date: string | null },
+  stored: { status: string; start_date: string | null },
+): string | null {
+  if (stored.status === sent.status && stored.start_date === sent.start_date) return null;
+  if (stored.status === "completed") {
+    return stored.start_date && stored.start_date !== sent.start_date
+      ? `Its order has already arrived, so this delivery is on ${stored.start_date}, the day it arrived, not ${sent.start_date}, and it is ruled off.`
+      : "Its order has already arrived, so this delivery is ruled off.";
+  }
+  if (stored.status === "cancelled") {
+    return "Its order was cancelled, rejected or failed, so this delivery is not coming and is marked cancelled.";
+  }
+  return `The entry was saved, and the order changed it: it is on ${stored.start_date}, ${stored.status}.`;
 }

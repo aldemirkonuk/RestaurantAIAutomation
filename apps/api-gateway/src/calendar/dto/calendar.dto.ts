@@ -524,6 +524,12 @@ export class CalendarEventResponseDto {
   @ApiPropertyOptional()
   recurrenceRule?: RecurrenceRuleResponseDto;
 
+  @ApiPropertyOptional({
+    description:
+      "Create only: what the entry's linked order did to it as it was saved (an arrived order files its delivery on the day it arrived, ruled off), in words. Absent when the entry is stored as sent.",
+  })
+  notice?: string;
+
   @ApiProperty()
   createdAt: string;
 
