@@ -3,12 +3,26 @@ import { Link, useNavigate } from 'react-router-dom'
 import { BrandMark } from '../components/brand/BrandMark'
 import { addCustomProvider } from '../services/api/vendors'
 import { getOnboardingProgress } from '../services/api/menus'
-import { pencilledCount, readProof } from '../lib/firstProof'
+import { proofStanding, readProof, type ProofStanding } from '../lib/firstProof'
+
+/** The menu row's sentence for the first proof (r28 gap 6: never "in ink" over no drink). */
+function proofSaid(standing: ProofStanding): string {
+  switch (standing.kind) {
+    case 'empty':
+      return 'The first proof holds no lines yet.'
+    case 'dishes-only':
+      return `${standing.dishes} ${standing.dishes === 1 ? 'dish' : 'dishes'} read, set aside from the drinks. No drink was read.`
+    case 'ink':
+      return 'The first proof is set in ink.'
+    case 'pencil':
+      return `${standing.lines} ${standing.lines === 1 ? 'line' : 'lines'} in pencil, worth a second look`
+  }
+}
 
 export default function HouseContents() {
   const navigate = useNavigate()
   const proof = readProof()
-  const pencilled = proof ? pencilledCount(proof.items) : 0
+  const standing = proof ? proofStanding(proof.items) : null
   const [supplier, setSupplier] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -76,9 +90,7 @@ export default function HouseContents() {
                 onClick={() => navigate('/house/menu')}
                 className="mt-2 block text-left font-serif text-2xl"
               >
-                {pencilled === 0
-                  ? 'The first proof is set in ink.'
-                  : `${pencilled} ${pencilled === 1 ? 'line' : 'lines'} in pencil, worth a second look`}
+                {standing && proofSaid(standing)}
               </button>
             ) : menuKept === null ? null : menuKept ? (
               <p className="mt-2 font-serif text-2xl">
