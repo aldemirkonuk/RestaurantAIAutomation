@@ -76,8 +76,22 @@ export interface LockView {
   /** The current menu's price for this kind of this wine, when it lists one. */
   menuPrice: number | null;
   markers: LockMarker[];
-  /** The advice for this kind at the held price, when it could be computed. */
-  advice: { state: string; sentence: string; advisedPrice: number | null; gapPct: number | null } | null;
+  /**
+   * The advice for this kind at the held price, when it could be computed.
+   * `price`, `currentMarginPct` and `targetPct` are the sentence's own figures
+   * (r26 walk): the gateway writes the sentence's numbers in one plain form,
+   * and a page that writes the house's numbers ("194,29", "%70,2" in a lira
+   * house) builds the line from these instead of re-reading the sentence.
+   */
+  advice: {
+    state: string;
+    sentence: string;
+    advisedPrice: number | null;
+    gapPct: number | null;
+    price: number | null;
+    currentMarginPct: number | null;
+    targetPct: number | null;
+  } | null;
   /** Why the advice is unknown, when it is (`advice_unknown`). */
   adviceUnknownReason: string | null;
 }
@@ -306,7 +320,15 @@ export class PriceLocksService {
         const wa = this.marginAdvice.adviseWine(w, lots.get(l.inventoryId) ?? null, terms);
         const a = l.kind === "bottle" ? wa.bottle : wa.glass;
         if (a) {
-          advice = { state: a.state, sentence: a.sentence, advisedPrice: a.advisedPrice, gapPct: a.gapPct };
+          advice = {
+            state: a.state,
+            sentence: a.sentence,
+            advisedPrice: a.advisedPrice,
+            gapPct: a.gapPct,
+            price: a.price,
+            currentMarginPct: a.currentMarginPct,
+            targetPct: a.targetPct,
+          };
           if (a.state === "raise" || a.state === "lower") markers.push("off_target");
           else if (a.state !== "on_target") {
             markers.push("advice_unknown");
