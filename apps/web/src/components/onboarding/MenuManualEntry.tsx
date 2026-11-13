@@ -3,6 +3,31 @@ import { Plus, Trash2, RotateCcw } from 'lucide-react'
 import { Button } from '../ui/button'
 import { importMenu, type WineExtractItem, type MenuImportSuccess } from '../../services/api/menus'
 
+/**
+ * What a typed line is. Drink values are exactly the gateway's
+ * MENU_CATEGORY_VOCABULARY (apps/api-gateway/src/menus/wine-extract-item.interface.ts);
+ * "food" is a kitchen hint the first proof sets aside. "" sends no category.
+ */
+export const LINE_KINDS: ReadonlyArray<{ label: string; value: string }> = [
+  { label: 'Choose…', value: '' },
+  { label: 'Red wine', value: 'red' },
+  { label: 'White wine', value: 'white' },
+  { label: 'Rosé', value: 'rose' },
+  { label: 'Sparkling', value: 'sparkling' },
+  { label: 'Orange wine', value: 'orange' },
+  { label: 'Dessert wine', value: 'dessert' },
+  { label: 'Fortified wine', value: 'fortified' },
+  { label: 'Beer', value: 'beer' },
+  { label: 'Cider', value: 'cider' },
+  { label: 'Sake', value: 'sake' },
+  { label: 'Cocktail', value: 'cocktail' },
+  { label: 'Spirit', value: 'spirit' },
+  { label: 'Whiskey', value: 'whiskey' },
+  { label: 'Soft drink', value: 'soft drink' },
+  { label: 'Alcohol-free', value: 'non-alcoholic' },
+  { label: 'Food', value: 'food' },
+]
+
 interface WineRow extends WineExtractItem {
   _id: number
 }
@@ -18,6 +43,7 @@ function emptyRow(): WineRow {
     region: '',
     by_glass_price: undefined,
     bottle_price: undefined,
+    category: '',
   }
 }
 
@@ -48,6 +74,18 @@ export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
     )
   }
 
+  const setKind = (id: number, kind: string) => {
+    setRows((prev) =>
+      prev.map((row) =>
+        row._id === id
+          ? kind === 'food'
+            ? { ...row, category: kind, by_glass_price: undefined, bottle_price: undefined }
+            : { ...row, category: kind }
+          : row
+      )
+    )
+  }
+
   const addRow = () => setRows((prev) => [...prev, emptyRow()])
 
   const removeRow = (id: number) => {
@@ -60,14 +98,25 @@ export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
   const handleImport = async () => {
     setValidationError(null)
     if (validRows.length === 0) {
-      setValidationError('Please enter at least one wine name before importing.')
+      setValidationError('Type at least one name before importing.')
       return
     }
 
     setLoading(true)
     setError(null)
     try {
-      const items: WineExtractItem[] = validRows.map(({ _id: _discard, ...rest }) => rest)
+      const items: WineExtractItem[] = validRows.map(({ _id: _discard, category, ...rest }) => {
+        const item: WineExtractItem = { ...rest }
+        if (category) item.category = category
+        if (category === 'food') {
+          delete item.by_glass_price
+          delete item.bottle_price
+        }
+        for (const key of Object.keys(item) as Array<keyof WineExtractItem>) {
+          if (item[key] === undefined) delete item[key]
+        }
+        return item
+      })
       const result = await importMenu('manual', { items })
       onSuccess(result)
     } catch (e: any) {
@@ -96,8 +145,9 @@ export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
               <th className="px-3 py-2.5 text-left font-semibold text-gray-600 min-w-[200px]">
-                Wine Name <span className="text-red-400">*</span>
+                Name <span className="text-red-400">*</span>
               </th>
+              <th className="px-3 py-2.5 text-left font-semibold text-gray-600 min-w-[140px]">What it is</th>
               <th className="px-3 py-2.5 text-left font-semibold text-gray-600 min-w-[160px]">Producer</th>
               <th className="px-3 py-2.5 text-left font-semibold text-gray-600 min-w-[90px]">Vintage</th>
               <th className="px-3 py-2.5 text-left font-semibold text-gray-600 min-w-[140px]">Region</th>
@@ -114,9 +164,23 @@ export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
                     type="text"
                     value={row.name}
                     onChange={(e) => updateRow(row._id, 'name', e.target.value)}
-                    placeholder={idx === 0 ? 'e.g. Château Margaux 2018' : 'Wine name'}
+                    placeholder={idx === 0 ? 'e.g. Château Margaux 2018 or Negroni' : 'Name on the menu'}
                     className="w-full px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 focus:border-[#1A5E6B] focus:outline-none focus:ring-2 focus:ring-[#1A5E6B]/20 text-sm transition-colors"
                   />
+                </td>
+                <td className="px-2 py-1.5">
+                  <select
+                    aria-label={`What line ${idx + 1} is`}
+                    value={row.category ?? ''}
+                    onChange={(e) => setKind(row._id, e.target.value)}
+                    className="w-full px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 focus:border-[#1A5E6B] focus:outline-none focus:ring-2 focus:ring-[#1A5E6B]/20 text-sm transition-colors bg-transparent"
+                  >
+                    {LINE_KINDS.map((k) => (
+                      <option key={k.value} value={k.value}>
+                        {k.label}
+                      </option>
+                    ))}
+                  </select>
                 </td>
                 <td className="px-2 py-1.5">
                   <input
@@ -145,6 +209,12 @@ export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
                     className="w-full px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 focus:border-[#1A5E6B] focus:outline-none focus:ring-2 focus:ring-[#1A5E6B]/20 text-sm transition-colors"
                   />
                 </td>
+                {row.category === 'food' ? (
+                  <td colSpan={2} className="px-3 py-1.5 text-xs text-gray-400">
+                    Dishes stay on the menu; Mudavym does not price them yet.
+                  </td>
+                ) : (
+                  <>
                 <td className="px-2 py-1.5">
                   <input
                     type="number"
@@ -167,6 +237,8 @@ export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
                     className="w-full px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 focus:border-[#1A5E6B] focus:outline-none focus:ring-2 focus:ring-[#1A5E6B]/20 text-sm transition-colors"
                   />
                 </td>
+                  </>
+                )}
                 <td className="px-2 py-1.5">
                   <button
                     onClick={() => removeRow(row._id)}
@@ -188,7 +260,7 @@ export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
           className="flex items-center gap-1.5 text-sm text-[#1A5E6B] hover:text-[#14515C] font-medium transition-colors"
         >
           <Plus className="w-4 h-4" />
-          Add another wine
+          Add another line
         </button>
 
         <Button
@@ -199,16 +271,18 @@ export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
           {loading ? (
             <span className="flex items-center gap-2">
               <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-              Importing...
+              Importing…
             </span>
           ) : (
-            `Import ${validRows.length > 0 ? validRows.length : ''} wine${validRows.length !== 1 ? 's' : ''}`
+            validRows.length > 0
+              ? `Import ${validRows.length} ${validRows.length === 1 ? 'line' : 'lines'}`
+              : 'Import lines'
           )}
         </Button>
       </div>
 
       <p className="mt-3 text-xs text-gray-400 text-center">
-        Only the wine name is required — all other fields are optional
+        Only the name is needed. Say what each line is and Mudavym places it; dishes are kept but not priced yet.
       </p>
     </div>
   )
