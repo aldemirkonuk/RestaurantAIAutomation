@@ -263,12 +263,12 @@ const ledger = analysis<LedgerRegister>({
         : undefined;
     const figures = [
       {
-        label: 'Sold, net (365d)',
+        label: 'Sold, net (last 365 days)',
         value: money(f.revenue),
         note: f.salesWithheld ? withheld : 'No closed check, or a till line could not be read',
       },
       {
-        label: 'What it cost (365d)',
+        label: 'What it cost (last 365 days)',
         value: money(f.cogs),
         note: f.salesWithheld ? withheld : (costGap ?? 'The till moved no stocked item, or its movements could not be read'),
       },
@@ -288,7 +288,7 @@ const ledger = analysis<LedgerRegister>({
       { label: 'Days of inventory', value: figureTo(f.daysInventoryOutstanding, 1), note: 'Needs the till’s goods at cost, what it cost, and 28 days of the till' },
       { label: 'GMROI', value: figureTo(f.gmroi, 2), note: 'Needs the till’s goods at cost, what was kept, and 28 days of the till' },
       {
-        label: 'Bought (365d)',
+        label: 'Bought (last 365 days)',
         value: money(f.deliveredPurchases),
         note: 'No delivered order came back, or one carries no recorded cost',
       },
