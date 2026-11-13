@@ -129,6 +129,13 @@ export function useUserPreferences() {
     queryFn: () => fetchPreferences(userId!),
     enabled: !!userId,
     staleTime: 30_000,
+    // App.tsx's default is `refetchOnMount: 'always'`, which ignores the
+    // staleTime above: the shell's reader (GroundChoiceSync, the guidance
+    // provider) fetched the blob, then the page's own reader mounted a moment
+    // later and fetched it again, on every page (r18 walk, production build:
+    // two GETs per load). `true` refetches on mount only once it is stale;
+    // a write still refreshes it through the mutation's invalidate below.
+    refetchOnMount: true,
     gcTime: 5 * 60_000,
     placeholderData: {} as UserPreferences,
     retry: 1,
