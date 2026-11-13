@@ -21,7 +21,7 @@ import { UpdateOnboardingProgressDto } from "./dto/update-onboarding-progress.dt
 import { MenuReadWarning, WineExtractItem } from "./wine-extract-item.interface";
 import { itemNeedsPencil } from "./pencil-rule";
 import { isKitchenLine, lineForViewer, type LineView } from "./menu-line-view";
-import { kindNoun, matchHouseGoods } from "./house-good-match";
+import { kindNoun, lineFamily, matchHouseGoods } from "./house-good-match";
 import {
   setHouseMenuPrice,
   setHouseMenuPrices,
@@ -487,6 +487,39 @@ interface PriceSyncEntry {
   held: HeldKind[];
   /** Set when the flag itself could not be written on the line. */
   flagError?: string;
+}
+
+/**
+ * The kind and unit of a good a menu line adds to the house (r28 G2), from the
+ * line's section the way the matcher reads it (`lineFamily`). A section that
+ * names no known drink says nothing here, and the insert trigger's wine and
+ * bottle stand: a library wine line with no section is most often a wine.
+ *
+ * A cocktail is counted in servings ('each'), not bottles: it is mixed, not
+ * stocked. Linking it to its recipe is not done here (left in the PR).
+ */
+export function newGoodIdentity(category: string | null | undefined): { kind?: string; uom?: string } {
+  const family = lineFamily(category);
+  const words = ` ${String(category ?? "").toLowerCase().replace(/[^a-z]+/g, " ")} `;
+  switch (family) {
+    case "beer":
+    case "cider":
+    case "sake":
+      return { kind: family, uom: "bottle" };
+    case "cocktail":
+      return { kind: "cocktail", uom: "each" };
+    case "spirit":
+      if (/ (whiskey|whisky|whiskies) /.test(words)) return { kind: "whiskey", uom: "bottle" };
+      if (/ (liqueur|liqueurs) /.test(words)) return { kind: "liqueur", uom: "bottle" };
+      return { kind: "spirit", uom: "bottle" };
+    case "soft":
+      if (/ (non alcoholic|alcohol free) /.test(words)) return { kind: "non_alcoholic", uom: "bottle" };
+      return { kind: "soft_drink", uom: "bottle" };
+    case "wine":
+      return { kind: "wine", uom: "bottle" };
+    default:
+      return {};
+  }
 }
 
 /** What one line will write, and the flag it carries, decided BEFORE the write. */
@@ -2399,6 +2432,10 @@ export class MenusService {
         wine_name: firstLine.get(w)!.name,
         threshold_min: thresholdMin,
         is_active: true,
+        // The good's kind from its line's section (r28 G2). Without it the
+        // insert trigger files every good a menu adds as a bottle of wine
+        // (20260903171000:431), beer, gin, cola and cocktail alike.
+        ...newGoodIdentity(firstLine.get(w)!.category),
       });
       const { data, error } = await client
         .from("restaurant_inventory")
