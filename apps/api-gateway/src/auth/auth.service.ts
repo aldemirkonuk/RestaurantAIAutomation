@@ -8,6 +8,8 @@ import {
   NotFoundException,
   ServiceUnavailableException,
   InternalServerErrorException,
+  HttpException,
+  HttpStatus,
   Logger,
   Optional,
   forwardRef,
@@ -65,8 +67,18 @@ import {
   newInviteEmailSecret,
   unprovenPasswordHasLapsed,
 } from "./unproven-address";
-import { normalizeEmail } from "../passkeys/sign-in-codes.service";
+import {
+  CODE_REFUSAL,
+  CODE_SPENT,
+  DAILY_LOCK,
+  SignInCodesService,
+  normalizeEmail,
+} from "../passkeys/sign-in-codes.service";
 import { isFreshSignIn, STEP_UP_REQUIRED } from "../passkeys/passkeys.service";
+import {
+  VERIFY_EMAIL_SUBJECT,
+  verifyEmailTemplate,
+} from "../communications/email-templates/verify-email.template";
 import {
   ORG_ROW_INSERT_ONLY,
   orgRoleForHouseGrant,
@@ -245,6 +257,72 @@ export interface SignInResult extends TokenPair {
  * returned to the minter, so they are told the invite was made and not
  * mailed.
  */
+/**
+ * Whether the verification mail left (onboarding OB-3; proposal §5 I15, "A
+ * failed send is said to the person"). 'sent' only when `sendEmail` said
+ * success; a refused send, an unstored link or a throw is 'not_sent'. A send
+ * still unanswered after `VERIFICATION_SEND_BOUND_MS` is 'unconfirmed' (OB-6):
+ * it may still leave, so it is never called 'not_sent', and never 'sent'.
+ * It is not a delivery receipt: 'sent' means the provider took it.
+ */
+export type VerificationMail = "sent" | "not_sent" | "unconfirmed";
+
+/**
+ * How long sign-up and resend wait on the mailer before answering
+ * 'unconfirmed' (onboarding OB-6). `GmailService` bounds only its OAuth token
+ * fetch; its `messages.send` has no bound, so a hung Gmail call held "Create
+ * account" open forever. 8 s is the session's call under the 2026-11-07
+ * /goal and is NOT measured against production Gmail.
+ */
+export const VERIFICATION_SEND_BOUND_MS = 8_000;
+
+/**
+ * What a resend answers: the same `verificationMail` sign-up answers, read
+ * from the same `queueEmailVerification` (round 2 B-5, round 6 #789: until
+ * this, a resend said `{ sent: true }` whatever the mailer said). `sent` is
+ * kept for the clients that read it, and is now true only when the mail left.
+ */
+export interface VerificationResend {
+  sent: boolean;
+  verificationMail: VerificationMail;
+}
+
+/** What a resend for an already-verified address answers (409, ALREADY_VERIFIED). */
+export const ALREADY_VERIFIED_SENTENCE = "This address is already verified.";
+
+function resendAnswer(verificationMail: VerificationMail): VerificationResend {
+  return { sent: verificationMail === "sent", verificationMail };
+}
+
+/**
+ * A verify_email code's refusal, with a `code` the page words it by (OB-6:
+ * words come from status and code, never the prose). `SignInCodesService`
+ * gives a wrong code and a spent one the same 400 with different sentences,
+ * so they are told apart here by the service's own constants. A wrong code
+ * and an expired one share one refusal on purpose (`CODE_REFUSAL`), so they
+ * share one code. Anything else passes through unchanged.
+ */
+function codedCodeRefusal(err: unknown): unknown {
+  if (!(err instanceof HttpException)) return err;
+  const status = err.getStatus();
+  if (status === HttpStatus.BAD_REQUEST && err.message === CODE_SPENT) {
+    return new BadRequestException({ message: CODE_SPENT, code: "CODE_SPENT" });
+  }
+  if (status === HttpStatus.BAD_REQUEST && err.message === CODE_REFUSAL) {
+    return new BadRequestException({
+      message: CODE_REFUSAL,
+      code: "CODE_REFUSED",
+    });
+  }
+  if (status === HttpStatus.TOO_MANY_REQUESTS && err.message === DAILY_LOCK) {
+    return new HttpException(
+      { message: DAILY_LOCK, code: "CODE_LOCKED_FOR_THE_DAY" },
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
+  }
+  return err;
+}
+
 export type InvitationEmailOutcome =
   | "sent"
   | "not_sent"
@@ -357,6 +435,24 @@ export class AuthService {
   @Optional()
   @Inject(ModuleRef)
   private moduleRef?: ModuleRef;
+
+  /**
+   * The verification mail's six-digit code (onboarding OB-3; founder /goal
+   * 2026-11-07, proposal §4 F3). Built here from the two dependencies this
+   * service already holds rather than injected: `SignInCodesService` lives in
+   * `PasskeysModule`, which imports `AuthModule`, so injecting it would be a
+   * module ring, and a constructor parameter would rewrite every spec that
+   * builds `new AuthService(...)` with five arguments. It keeps nothing
+   * between calls but its derived key, so a second instance is the same
+   * service. Specs may set `verifyCodesService` to share a clock.
+   */
+  private verifyCodesService?: SignInCodesService;
+  private get verifyCodes(): SignInCodesService {
+    return (this.verifyCodesService ??= new SignInCodesService(
+      this.databaseService,
+      this.gmailService,
+    ));
+  }
 
   constructor(
     private readonly jwtService: JwtService,
@@ -1658,7 +1754,9 @@ export class AuthService {
    * Creates only an identity. The first restaurant is deliberately created
    * after verification, from the restaurant screen in the arrival flow.
    */
-  async registerAccount(dto: RegisterAccountDto): Promise<TokenPair> {
+  async registerAccount(
+    dto: RegisterAccountDto,
+  ): Promise<TokenPair & { verificationMail: VerificationMail }> {
     const email = dto.email.toLowerCase().trim();
     if (await this.emailAlreadyRegistered(email)) {
       throw new BadRequestException("Email already registered");
@@ -1683,14 +1781,19 @@ export class AuthService {
       );
     }
 
-    this.queueEmailVerification(user.user_id, email).catch((err) =>
-      this.logger.warn(
-        `queueEmailVerification failed (non-fatal): ${err.message}`,
-      ),
+    // Awaited, and its result said (proposal §5 I15, "A failed send is said
+    // to the person"): until OB-3 this was fire-and-forget, so a refused send
+    // was only logged and the new account was told "please verify" about a
+    // mail that never left. A failed send never fails the sign-up -- the
+    // account exists either way, and the page offers a resend.
+    const verificationMail = await this.queueEmailVerification(
+      user.user_id,
+      email,
     );
     // A new account has no house yet (ADR 0213), so its session names none
     // (ADR 0164): no house, no role, until createFirstHouse opens one.
-    return this.generateTokens(user, false, null, signedInNow());
+    const tokens = await this.generateTokens(user, false, null, signedInNow());
+    return { ...tokens, verificationMail };
   }
 
   /**
@@ -2115,17 +2218,43 @@ export class AuthService {
     }
   }
 
+  /**
+   * Store a verification link and a `verify_email` code, and mail both in one
+   * message (onboarding OB-3). Returns whether the mail went out, from
+   * `sendEmail`'s own answer: 'sent' only when it said success. Never throws.
+   *
+   * A code that cannot be stored (the address is busy or locked for the day,
+   * or the write failed) does not stop the mail: the link still goes, alone,
+   * and the failure is logged. A link that cannot be stored stops it, because
+   * a mail with neither would verify nothing.
+   */
   private async queueEmailVerification(
     userId: string,
     email: string,
-  ): Promise<void> {
+  ): Promise<VerificationMail> {
     try {
-      const { data: verif } = await this.databaseService.supabase
-        .from("email_verifications")
-        .insert({ user_id: userId, email })
-        .select("token")
-        .single();
-      if (!verif) return;
+      const { data: verif, error: linkError } =
+        await this.databaseService.supabase
+          .from("email_verifications")
+          .insert({ user_id: userId, email })
+          .select("token")
+          .single();
+      if (linkError || !verif) {
+        this.logger.warn(
+          `Verification email not sent to ${email}: the link could not be stored` +
+            (linkError ? ` (${linkError.message})` : ""),
+        );
+        return "not_sent";
+      }
+
+      let code: string | null = null;
+      try {
+        code = await this.verifyCodes.issueForEmailVerification(userId, email);
+      } catch (err) {
+        this.logger.warn(
+          `Verification email to ${email} goes without a code: ${(err as Error).message}`,
+        );
+      }
 
       // FRONTEND_URL is a comma-separated CORS allow-list (cors-origins.ts);
       // canonicalOrigin() takes only its first entry (template-config.ts).
@@ -2135,63 +2264,58 @@ export class AuthService {
       const verifyUrl = `${frontendUrl}/verify-email?token=${verif.token}`;
 
       // Always call sendEmail() — it handles lazy-init and falls back to mock if OAuth unconfigured
-      const result = await this.gmailService.sendEmail({
+      const send = this.gmailService.sendEmail({
         to: [email],
-        subject: "Verify your Mudavym account",
-        html: this.buildVerificationEmailHtml(verifyUrl),
+        subject: VERIFY_EMAIL_SUBJECT,
+        html: verifyEmailTemplate({ code, verifyUrl }),
       });
+      // Bounded (onboarding OB-6): the caller answers a person waiting on a
+      // button, and Gmail's messages.send has no timeout of its own. A send
+      // still open at the bound is 'unconfirmed' -- it may yet leave -- and its
+      // eventual answer is still logged.
+      let bound: ReturnType<typeof setTimeout> | undefined;
+      const settled = await Promise.race([
+        send.then((answer) => ({ answer })),
+        new Promise<null>((resolve) => {
+          bound = setTimeout(() => resolve(null), VERIFICATION_SEND_BOUND_MS);
+        }),
+      ]).finally(() => clearTimeout(bound));
+      if (settled === null) {
+        this.logger.warn(
+          `Verification email to ${email} unconfirmed: the mailer had not answered after ${VERIFICATION_SEND_BOUND_MS} ms`,
+        );
+        send.then(
+          (late) =>
+            late.success
+              ? this.logger.log(
+                  `Verification email to ${email} left after the bound (id: ${late.messageId})`,
+                )
+              : this.logger.warn(
+                  `Verification email to ${email} refused after the bound: ${late.error}`,
+                ),
+          (err) =>
+            this.logger.error(
+              `Verification email to ${email} failed after the bound: ${(err as Error)?.message}`,
+            ),
+        );
+        return "unconfirmed";
+      }
+      const result = settled.answer;
 
       if (!result.success) {
         this.logger.warn(
           `Verification email not delivered to ${email}: ${result.error}`,
         );
-      } else {
-        this.logger.log(
-          `Verification email sent to ${email} (id: ${result.messageId})`,
-        );
+        return "not_sent";
       }
+      this.logger.log(
+        `Verification email sent to ${email} (id: ${result.messageId})`,
+      );
+      return "sent";
     } catch (err) {
       this.logger.error(`Failed to queue email verification: ${err.message}`);
+      return "not_sent";
     }
-  }
-
-  private buildVerificationEmailHtml(verifyUrl: string): string {
-    return `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Verify your Mudavym account</title></head>
-<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f3f4f6;">
-  <div style="max-width:560px;margin:40px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.1);">
-    <div style="background:#7c2d12;padding:28px 32px;text-align:center;">
-      <h1 style="margin:0;color:#fff;font-size:22px;font-weight:700;">Mudavym</h1>
-      <p style="margin:6px 0 0;color:rgba(255,255,255,.8);font-size:14px;">Verify your email address</p>
-    </div>
-    <div style="padding:32px;">
-      <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">
-        You're almost there! Click the button below to verify your email address and activate your Mudavym account.
-      </p>
-      <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">
-        Open it where you are signed in to this account. If you did not choose this account's password, sign in with a code emailed to this address instead: that confirms the address and removes any password you did not set.
-      </p>
-      <div style="text-align:center;margin:28px 0;">
-        <a href="${verifyUrl}" style="display:inline-block;padding:14px 36px;background:#7c2d12;color:#fff;text-decoration:none;font-weight:600;border-radius:8px;font-size:16px;">
-          Verify My Email
-        </a>
-      </div>
-      <p style="margin:20px 0 0;color:#6b7280;font-size:13px;line-height:1.6;">
-        This link expires in <strong>24 hours</strong>. If you didn't create a Mudavym account, you can safely ignore this email.
-      </p>
-      <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb;" />
-      <p style="margin:0;color:#9ca3af;font-size:12px;">
-        If the button doesn't work, copy and paste this link into your browser:<br/>
-        <a href="${verifyUrl}" style="color:#7c2d12;word-break:break-all;">${verifyUrl}</a>
-      </p>
-    </div>
-    <div style="padding:16px 32px;background:#f9fafb;border-top:1px solid #e5e7eb;text-align:center;">
-      <p style="margin:0;color:#9ca3af;font-size:11px;">© ${new Date().getFullYear()} Mudavym. Automated message — please do not reply.</p>
-    </div>
-  </div>
-</body>
-</html>`;
   }
 
   /**
@@ -3436,6 +3560,71 @@ export class AuthService {
   }
 
   /**
+   * Verify email with the six-digit code from the verification mail
+   * (onboarding OB-3; founder /goal 2026-11-07, proposal §4 F3). The same
+   * proof as the link, typed instead of clicked, so it works on any device
+   * where the person is signed in -- not only in the browser that opens the
+   * mail.
+   *
+   * Signed-in only, exactly like the link (ADR 0229 fork 12, item 81): the
+   * code proves the mailbox, the session proves the password, and verifying
+   * takes both. The code is checked against the account's OWN address, read
+   * from the row now (`SignInCodesService.verifyEmailCode`), never one from
+   * the body, so a code mailed to any other address -- another account's, or
+   * one this account has moved away from -- is refused. It has every rule a
+   * sign-in code has: ten minutes, single use, five tries and then dead, and
+   * the per-address daily lock shared with sign-in and step-up codes.
+   *
+   * A right code then verifies through the link's own compare-and-set
+   * (`verifyEmailProvedByLink`), pinned to the address the code proved, so the
+   * password rules are the link's (kept inside the seven days, removed once
+   * lapsed), and the open links are marked used.
+   */
+  async verifyEmailWithCode(
+    code: string,
+    callerUserId: string | null,
+    sessionHouse: string | null = null,
+  ): Promise<TokenPair> {
+    if (!callerUserId) {
+      throw new UnauthorizedException({
+        message:
+          "Sign in to finish verifying. If this account's password is not yours, sign in with a code emailed to this address instead.",
+        code: "SIGN_IN_TO_VERIFY",
+      });
+    }
+    let user: any;
+    try {
+      const proved = await this.verifyCodes.verifyEmailCode(
+        callerUserId,
+        code,
+      );
+      user = await this.verifyEmailProvedByLink(callerUserId, proved);
+    } catch (err) {
+      throw codedCodeRefusal(err);
+    }
+
+    // The link in the same mail now has nothing left to prove. Best effort:
+    // the account is verified either way, and a later click is answered
+    // "Email already verified" by the row it reads.
+    const { error: linkError } = await this.databaseService.supabase
+      .from("email_verifications")
+      .update({ verified_at: new Date().toISOString() })
+      .eq("user_id", callerUserId)
+      .is("verified_at", null);
+    if (linkError) {
+      this.logger.warn(
+        `Verified ${callerUserId} by code; its open links were not marked used: ${linkError.message}`,
+      );
+    }
+
+    return this.generateTokens(
+      user,
+      false,
+      sessionHouse ?? user.restaurant_id ?? null,
+    );
+  }
+
+  /**
    * The verification link proves the mailbox, and verifies the account.
    *
    * Inside the seven days (ADR 0229 fork 8) the password on the account is
@@ -3461,8 +3650,18 @@ export class AuthService {
    * racing this one makes it miss and re-read (three tries). A row already
    * verified is returned as it is. A failed write verifies nothing: 503, and
    * the link is not spent.
+   *
+   * `provedEmail` (the emailed code, OB-3): the address the code was checked
+   * against. A row that has moved to another address verifies nothing (400,
+   * the code's own refusal): the code proved the old mailbox, not the current
+   * one. The address is compared on the row just read; the write's
+   * compare-and-set stays on `email_verified` and the session version only
+   * (the text ADR 0229 fork 8's claim pins).
    */
-  private async verifyEmailProvedByLink(userId: string): Promise<any> {
+  private async verifyEmailProvedByLink(
+    userId: string,
+    provedEmail: string | null = null,
+  ): Promise<any> {
     for (let attempt = 0; attempt < 3; attempt++) {
       const { data: row, error: readErr } = await this.databaseService.supabase
         .from("users")
@@ -3484,6 +3683,9 @@ export class AuthService {
         holdsUnprovenPassword(row) &&
         unprovenPasswordHasLapsed(row, Date.now());
       const from = sessionVersionOf(row);
+      if (provedEmail !== null && normalizeEmail(row.email) !== provedEmail) {
+        throw new BadRequestException(CODE_REFUSAL);
+      }
       const { data: written, error } = await this.databaseService.supabase
         .from("users")
         .update(
@@ -3548,7 +3750,7 @@ export class AuthService {
     userId: string,
     email: string,
     devBypassSession = false,
-  ): Promise<{ sent: boolean }> {
+  ): Promise<VerificationResend> {
     // ADR 0229 fork 12 (item 81): a resend honours the fork 8 lapse, as a
     // refresh does (fork 10). Past the seven days an unproven password opens
     // nothing, and the session that password opened asks for no more links:
@@ -3577,6 +3779,17 @@ export class AuthService {
         message:
           "This session was signed out because its password was never confirmed. Sign in with a code emailed to you.",
         code: SESSION_ENDED,
+      });
+    }
+    // A verified address gets no new code (walk 2026-11-11): a resend that
+    // landed 18 ms after a code verified minted and mailed a fresh code to an
+    // account that needed none. The row says verified, so nothing is sent.
+    // The lockout shape above (every email_verifications row used, the
+    // account still unverified) reads `false` here and keeps its send.
+    if (account.email_verified === true) {
+      throw new ConflictException({
+        message: ALREADY_VERIFIED_SENTENCE,
+        code: "ALREADY_VERIFIED",
       });
     }
 
@@ -3612,9 +3825,9 @@ export class AuthService {
         }
       }
 
-      // queueEmailVerification inserts the row and sends in one step.
-      await this.queueEmailVerification(userId, email);
-      return { sent: true };
+      // queueEmailVerification inserts the row and sends in one step, and
+      // says whether the mail left: the person is told, as at sign-up.
+      return resendAnswer(await this.queueEmailVerification(userId, email));
     }
 
     if (verif.last_resent_at) {
@@ -3633,8 +3846,10 @@ export class AuthService {
       })
       .eq("id", verif.id);
 
-    await this.queueEmailVerification(userId, email);
-    return { sent: true };
+    // A refused send still counts toward the one-a-minute cooldown above: it
+    // also paces calls into a mailer that is failing, and the page says
+    // "try again in a minute" to match.
+    return resendAnswer(await this.queueEmailVerification(userId, email));
   }
 
   /**

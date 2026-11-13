@@ -28,6 +28,7 @@ import {
   tokenHouse,
 } from "../lib/houseMemory";
 import { doRefresh } from "../lib/sessionRefresh";
+import { clearSignUpMail, noteSignUpMail } from "../lib/verificationMail";
 import { syncManager } from "../lib/sync-manager";
 import { flushDoorOutbox } from "../lib/doorOutbox";
 import { flushSpotCountOutbox } from "../lib/spotCountOutbox";
@@ -871,9 +872,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         setError(null);
         setLoading(true);
-        await establishSession(
-          await api.post("/api/v1/auth/register/account", data),
-        );
+        const response = await api.post("/api/v1/auth/register/account", data);
+        // What became of the verification mail (onboarding OB-6), kept for
+        // /verify-email, where Register.tsx sends the new account next: a
+        // send that did not leave, or did not confirm, is said there in words
+        // and never as "check your inbox".
+        noteSignUpMail(response.data?.verificationMail, data.email);
+        await establishSession(response);
       } catch (err: any) {
         const message = err.response?.data?.message || "Registration failed";
         setError(message);
@@ -1084,6 +1089,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // only ids and times, and it is what lets this person go straight back
       // into their house tomorrow.
       clearHouseEnded();
+      // The sign-up's mail note (OB-6) was this account's: on a shared device
+      // the next person's /verify-email must not say a send of theirs failed.
+      clearSignUpMail();
       // The read cache was this session's: the next person on a shared device
       // must not see it. Cache only — unsent work is ADR 0241's to decide.
       // Bounded: IndexedDB's open has no timeout and has hung on WebKit, and a
