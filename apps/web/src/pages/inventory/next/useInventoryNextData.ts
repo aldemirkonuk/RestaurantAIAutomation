@@ -38,7 +38,7 @@ import { failureReason } from './iv-failure';
 import { settingsApi } from '../../../services/api/settings';
 import { documentsApi, type ProcurementDocument } from '../../../services/api/documents';
 import { fetchDeliveriesToName } from '../../../services/api/orders';
-import { fetchAuctionLotRecords, type AuctionLotRecord } from '../../../services/api/inventory';
+import { fetchAuctionLotRecords, houseFieldsOf, type AuctionLotRecord } from '../../../services/api/inventory';
 import { getPriceAdvice } from '../../../services/api/pricing';
 import type { InventoryItem as ApiItem, Wine as ApiWine } from '../../../services/api/types';
 import type { Provider } from '../../../services/api/providers';
@@ -188,8 +188,21 @@ export function typeOf(category: unknown, beverageKind: unknown): { type: string
 const TYPE_WORDS: Record<string, string> = {
   rose: 'Rosé',
   non_alcoholic: 'Non-alcoholic',
+  soft_drink: 'Soft drink',
   unclassified: 'not classified',
 };
+
+/**
+ * A drink the house added itself (house-items, #862: a spirit, a soft drink, a
+ * beer) has no library row, so the library says nothing about its type; the
+ * house's own kind does. It stands in only where the library is silent, so a
+ * wine's style still wins. A food or supply is not a drink type: the list says
+ * Food or Supply for it from its own column, so it is left null here.
+ */
+export function withHouseKind(lib: { type: string | null; kind: string | null }, own: string | null): { type: string | null; kind: string | null } {
+  if (lib.type !== null || own === null || own === 'food' || own === 'supply') return lib;
+  return { type: own, kind: own };
+}
 
 /** The house's word for a `type` key: never the key itself ("non_alcoholic"). */
 export function typeLabel(key: string): string {
@@ -227,7 +240,7 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
     name,
     libraryName: library && library !== name ? library : null,
     producer: text(r.wineProducer) ?? text(w?.producer),
-    ...typeOf(w?.category, w?.beverageKind),
+    ...withHouseKind(typeOf(w?.category, w?.beverageKind), houseFieldsOf(item).kind),
     vintage: num(r.wineVintage) ?? num(w?.vintage),
     grape: text(w?.grapeVariety),
     bottleSizeMl: num(r.bottleSizeMl) ?? num(w?.bottleSizeMl),
