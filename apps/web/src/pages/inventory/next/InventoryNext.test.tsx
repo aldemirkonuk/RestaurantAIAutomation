@@ -316,7 +316,9 @@ describe('unknown is never zero', () => {
     const live = tr.querySelector('td[data-label="Live / shadow · par"]')!;
     expect(live.textContent).toContain('—');
     expect(live.textContent).not.toMatch(/^0/);
-    expect(tr.querySelector('td[data-label="Value at cost"]')!.textContent).toBe('—');
+    // Staff are not drawn the value column at all (InventoryTable.staff.test.tsx
+    // holds the owner's dash for an unknown value).
+    expect(tr.querySelector('td[data-label="Value at cost"]')).toBeNull();
     expect(tr.querySelector('td[data-label="Zone"]')!.textContent).toBe('—');
     expect(tr.querySelector('td[data-label="Your price"]')!.textContent).toBe('— · —');
   });
@@ -443,6 +445,49 @@ describe('chips', () => {
     renderPage();
     expect(screen.queryByTestId('house-price')).toBeNull();
     expect(screen.getByTestId('inv-row-i1').querySelector('td[data-label="Your price"]')!.textContent).toContain('€');
+  });
+
+  function renderSorted(url: string) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={[url]}>
+          <InventoryNext />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  it('staff read quantities, not cost: no value sort, no valuation export, no cost in the count sheet', async () => {
+    exportSpy.mockClear();
+    mock.data = data({ rows: [row()], canManage: false });
+    renderSorted('/inventory?sort=value');
+    expect(screen.getByTestId('inventory-read-sentence').textContent).not.toContain('At cost');
+    expect(screen.queryByRole('option', { name: 'Value at cost' })).toBeNull();
+    expect(screen.getByTestId('inventory-footer').textContent).toContain('sorted Needs you first');
+    expect(screen.queryByRole('button', { name: 'Export valuation' })).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export count sheet' }));
+    });
+    const cols = (exportSpy.mock.calls[0][0] as { columns: { header: string }[] }).columns.map((c) => c.header);
+    expect(cols).toContain('System qty (live)');
+    expect(cols).not.toContain('WAC');
+    expect(cols).not.toContain('Value');
+  });
+
+  it('an owner keeps the value sort, the valuation export and the cost in the count sheet', async () => {
+    exportSpy.mockClear();
+    mock.data = data({ rows: [row()], canManage: true });
+    renderSorted('/inventory?sort=value');
+    expect(screen.getByTestId('inventory-read-sentence').textContent).toContain('At cost');
+    expect(screen.getByRole('option', { name: 'Value at cost' })).toBeTruthy();
+    expect(screen.getByTestId('inventory-footer').textContent).toContain('sorted Value at cost');
+    expect(screen.getByRole('button', { name: 'Export valuation' })).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export count sheet' }));
+    });
+    const cols = (exportSpy.mock.calls[0][0] as { columns: { header: string }[] }).columns.map((c) => c.header);
+    expect(cols).toEqual(expect.arrayContaining(['WAC', 'Value']));
   });
 });
 
