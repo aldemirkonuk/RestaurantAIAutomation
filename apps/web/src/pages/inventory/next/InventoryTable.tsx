@@ -19,12 +19,14 @@ import { HousePriceCell, type AdviceLoad } from '../command/HousePriceCell';
 import type { RowDropdownProps } from './RowDropdown';
 import { cellMoney, EM, fmtCount, fmtPace, noZoneWord, SEVERITY_GROUP, severity, typeLabel, type InvRow, type SortId } from './useInventoryNextData';
 import { NameHint } from './NameThisWine';
-import { fmtQty } from './ItemCards';
+import { fmtQty, perUnit } from './ItemCards';
 
 export interface InventoryTableProps extends Omit<RowDropdownProps, 'row'> {
   rows: InvRow[];
   /** Each row's own unit (g, ml, each…); absent or null is a bottle, drawn bare as before. */
   uomOf?: (r: InvRow) => string | null;
+  /** Whether a row is a drink, a food or a supply. Absent = every row is a drink, drawn as before. */
+  goodOf?: (r: InvRow) => 'food' | 'supply' | 'drink';
   /** The wine library did not answer: a missing type is unknown, not "not recorded" (INV-W28). */
   libraryUnread?: boolean;
   /** Head the rows by severity (the "Needs you first" sort). */
@@ -47,6 +49,24 @@ const COLUMNS = ['Title', 'Type', 'Zone', 'Live / shadow · par', 'Vel/day', 'Ru
 
 /** The headers that sort, and the sort each one sets. */
 const HEADER_SORT: Partial<Record<string, SortId>> = { Title: 'name', 'Vel/day': 'pace', Value: 'value' };
+
+/** The word for a unit a good is kept in: kg for weight, l for volume, item for each. */
+function unitWord(uom: string | null): string {
+  return uom === null ? EM : `kept in ${perUnit(0, uom).per}`;
+}
+
+/** A food or supply is costed, not priced: the average cost a unit, or a dash when none is known (ADR 0051/0053). */
+function costCell(row: InvRow, uom: string | null, currency: RowDropdownProps['currency']) {
+  // No recorded unit means no way to say what the cost is a: a dash, never a guessed bottle.
+  if (row.wac === null || uom === null) return EM;
+  const u = perUnit(row.wac, uom);
+  return (
+    <>
+      <span className="iv-dim">cost </span>
+      {cellMoney(u.amount, currency)} a {u.per}
+    </>
+  );
+}
 
 /** The status word, never a colour alone. */
 function statusWord(row: InvRow): string {
@@ -84,9 +104,21 @@ function zoneCell(row: InvRow, zoneName: (id: string | null) => string, unavaila
 
 export default function InventoryTable(props: InventoryTableProps) {
   const { rows, grouped, openId, onToggle, currency, canManage, advice, onPriceChanged, zoneName } = props;
+  // A list that carries any food or supply cannot head the price column btl · glass.
+  const goodOf = props.goodOf;
+  const mixed = goodOf !== undefined && rows.some((r) => goodOf(r) !== 'drink');
   const counts = [0, 0, 0];
   for (const r of rows) counts[severity(r)] += 1;
   const selecting = props.selected !== undefined && props.onSelect !== undefined;
+  const priceHead = mixed ? (
+    <>
+      Price <span className="iv-dim">or cost a unit</span>
+    </>
+  ) : (
+    <>
+      Your price <span className="iv-dim">btl · glass</span>
+    </>
+  );
   const span = COLUMNS.length + (selecting ? 1 : 0);
   const allSelected = selecting && rows.length > 0 && rows.every((r) => props.selected!.has(r.id));
   const someSelected = selecting && !allSelected && rows.some((r) => props.selected!.has(r.id));
@@ -122,7 +154,7 @@ export default function InventoryTable(props: InventoryTableProps) {
               const label =
                 c === 'Your price' ? (
                   <>
-                    Your price <span className="iv-dim">btl · glass</span>
+                    {priceHead}
                   </>
                 ) : c === 'Value' ? (
                   <>
@@ -148,7 +180,7 @@ export default function InventoryTable(props: InventoryTableProps) {
                   </button>
                 ) : c === 'Your price' ? (
                   <>
-                    Your price <span className="iv-dim">btl · glass</span>
+                    {priceHead}
                   </>
                 ) : c === 'Value' ? (
                   <>
@@ -167,6 +199,7 @@ export default function InventoryTable(props: InventoryTableProps) {
             const sev = severity(row);
             // A good kept in g, ml or another unit says it (12.4 kg); a bottle stays a bare count.
             const uom = props.uomOf?.(row) ?? null;
+            const good = goodOf?.(row) ?? 'drink';
             const qty = (n: number) => (uom === null || uom === 'bottle' ? fmtCount(n) : fmtQty(n, uom));
             const startsGroup = grouped && (i === 0 || severity(rows[i - 1]) !== sev);
             const open = openId === row.id;
@@ -219,14 +252,20 @@ export default function InventoryTable(props: InventoryTableProps) {
                         ) : null}
                       </span>
                       <span className="iv-producer">
-                        {[row.producer, row.vintage === null ? null : String(row.vintage)].filter(Boolean).join(' · ') || EM}
+                        {good === 'drink'
+                          ? [row.producer, row.vintage === null ? null : String(row.vintage)].filter(Boolean).join(' · ') || EM
+                          : unitWord(uom)}
                       </span>
                     </button>
                     <NameHint inventoryId={row.id} />
                   </td>
-                  <td data-label="Type" className={row.type && row.type !== 'unclassified' ? undefined : 'iv-dim'}>
-                    {row.type ? typeLabel(row.type) : props.libraryUnread ? EM : 'not recorded'}
-                  </td>
+                  {good === 'drink' ? (
+                    <td data-label="Type" className={row.type && row.type !== 'unclassified' ? undefined : 'iv-dim'}>
+                      {row.type ? typeLabel(row.type) : props.libraryUnread ? EM : 'not recorded'}
+                    </td>
+                  ) : (
+                    <td data-label="Type">{good === 'food' ? 'Food' : 'Supply'}</td>
+                  )}
                   <td data-label="Zone">{zoneCell(row, zoneName, props.locationsUnavailable)}</td>
                   <td data-label="Live / shadow · par" className="iv-r iv-num">
                     <span>
@@ -244,7 +283,9 @@ export default function InventoryTable(props: InventoryTableProps) {
                     {row.runway === null ? EM : `${fmtCount(Math.round(row.runway))}d`}
                   </td>
                   <td data-label="Your price" className="iv-r iv-num" onClick={(e) => e.stopPropagation()}>
-                    {canManage ? (
+                    {good !== 'drink' ? (
+                      costCell(row, uom, currency)
+                    ) : canManage ? (
                       <HousePriceCell
                         inventoryId={row.id}
                         wineName={row.name ?? 'this title'}

@@ -611,7 +611,7 @@ export default function InventoryNext() {
     <div className="mudavym iv-page min-h-full" style={{ background: 'var(--paper-0)', color: 'var(--ink-1)', fontFamily: SANS }}>
       <div className="iv-wrap">
         <p className="iv-crumb">
-          The cellar · Inventory
+          {carriesGoods ? 'Inventory' : 'The cellar · Inventory'}
           {data.state === 'ready' && rows !== null
             ? crumb
               ? ` · last count ${fmtWhen(crumb)}`
@@ -835,9 +835,17 @@ export default function InventoryNext() {
               <button type="button" className="iv-btn iv-focus" onClick={showTools}>
                 Tools
               </button>
-              <Link to="/wines" className="iv-btn iv-focus" data-seal="true" title="Opens the wine register, where a wine is brought into the cellar. Other drinks come in from a scanned menu.">
-                Add a bottle
-              </Link>
+              {kind === 'food' || kind === 'supply' ? (
+                data.canManage ? (
+                  <button type="button" className="iv-btn iv-focus" data-seal="true" onClick={() => setPanel('carry')}>
+                    Carry a food or supply
+                  </button>
+                ) : null
+              ) : (
+                <Link to="/wines" className="iv-btn iv-focus" data-seal="true" title="Opens the wine register, where a wine is brought into the cellar. Other drinks come in from a scanned menu.">
+                  Add a bottle
+                </Link>
+              )}
             </div>
             {data.unread.length > 0 ? (
               <p className="iv-note" data-testid="inv-unread">
@@ -949,6 +957,7 @@ export default function InventoryNext() {
                 onSelectAll={selectAllVisible}
                 rows={visible}
                 uomOf={uomOf}
+                goodOf={goodOf}
                 libraryUnread={!data.libraryAnswered}
                 grouped={sort === 'needs'}
                 sort={sort}
