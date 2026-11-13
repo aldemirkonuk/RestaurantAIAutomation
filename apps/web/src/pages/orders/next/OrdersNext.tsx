@@ -40,6 +40,7 @@ import { Tally } from './Tally';
 import { EM, MONO, SANS, SERIF, fmtMoneyWhole, fmtReadTime } from './format';
 import { emptyStationSentence } from './recurrence';
 import { STAGES, useOrdersNextData, type OrderRowVM } from './useOrdersNextData';
+import { useDeepLinkOrder } from './useDeepLinkOrder';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
 
@@ -164,6 +165,8 @@ export default function OrdersNext() {
    * about the order's existence or ownership.
    */
   const targetMissing = Boolean(targetOrderId) && data.hasData && !data.isError && !targetRow;
+  // Not loaded is not "does not exist": ask the gateway once (r29 walk).
+  const targetLookup = useDeepLinkOrder(targetOrderId ?? null, targetMissing);
 
   useEffect(() => {
     if (!targetOrderId || !targetRow) return;
@@ -425,9 +428,10 @@ export default function OrdersNext() {
         )}
 
         {/* ── a link asked for ONE order, and it is not among the rows this
-            page loaded ── says only what was checked (§ targetMissing
-            above): the list read is one page, so "not loaded here" is never
-            widened into "does not exist" or "not this house's". */}
+            page loaded ── the list read is one page, so "not loaded here"
+            is never widened into "does not exist" on its own: the gateway is
+            asked once (useDeepLinkOrder), and only its order_not_found 404
+            is said as "no such order". */}
         {targetMissing && (
           <div
             role="alert"
@@ -441,9 +445,26 @@ export default function OrdersNext() {
               background: 'var(--paper-1, #F3EFE6)',
             }}
           >
-            Order {targetOrderId} was not among the {data.rows.length} most recently loaded
-            orders — it may exist further back, or belong to a different house. Showing every
-            loaded order below instead.
+            {targetLookup?.kind === 'none' ? (
+              <>
+                No order with the id {targetOrderId} belongs to this house. The link may be old
+                or mistyped. Showing every order below instead.
+              </>
+            ) : targetLookup?.kind === 'older' ? (
+              <>
+                Order {targetLookup.orderNumber ?? targetOrderId} is this house&apos;s, but it is
+                older than the {data.rows.length} most recent orders this page loads, so it is not
+                in the list below.
+              </>
+            ) : targetLookup?.kind === 'unread' ? (
+              <>
+                Order {targetOrderId} was not among the {data.rows.length} most recently loaded
+                orders, and it could not be looked up ({targetLookup.why}), so whether it exists
+                is not known. Showing every loaded order below instead.
+              </>
+            ) : (
+              <>Looking up order {targetOrderId}…</>
+            )}
           </div>
         )}
 
