@@ -152,6 +152,14 @@ export class DoorCountLineDto {
   @IsOptional()
   @IsUUID()
   inventoryId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "With `forDocumentId`: the paper's line this count is of (`procurement_document_lines.id`). The item, unit, size and pack are then read from that line, not from this body.",
+  })
+  @IsOptional()
+  @IsUUID()
+  sourceLineId?: string;
 }
 
 export class DoorCountDto {
@@ -237,6 +245,14 @@ export class DoorCountDto {
   @IsOptional()
   @IsUUID()
   deliveryId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "The paper (invoice or delivery note) this count is of. Every line must then name its `sourceLineId`; the delivery carries the paper and the paper's order, and each line books into the item the paper pairs it with.",
+  })
+  @IsOptional()
+  @IsUUID()
+  forDocumentId?: string;
 }
 
 export class ProposeDto {
