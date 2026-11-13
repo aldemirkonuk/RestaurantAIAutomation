@@ -181,6 +181,14 @@ import {
   refusePriceChange,
   refuseUnreadableStatus,
 } from "./order-transitions";
+import {
+  CLOSED_WHILE_EDITING,
+  MOVING_ON_NEEDS_THE_RIGHT,
+  ORDER_CLOSED_TO_EDITS,
+  ORDER_MOVED_ON_BY_AUTHORITY_FROM,
+  STATUS_OWNED_BY_AN_ACT,
+  refuseEditOfClosedOrder,
+} from "./order-edit-gate";
 import { toPostgrestInList } from "./order-status";
 import {
   CANCEL_REASON_REFUSAL_WORDS,
@@ -3311,6 +3319,56 @@ export class ProcurementService {
     return { from: verdict.from, row };
   }
 
+  /** The order's state before an edit. A missing order is a 404; a failed or unknown read refuses. */
+  private async readStatusForEdit(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<ProcurementOrderStatus> {
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_orders")
+      .select("id, status")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", orderId)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(
+        `This order could not be read (${error.message}), so whether it may be edited was not decided and nothing was changed.`,
+      );
+    }
+    if (!data) {
+      throw new NotFoundException(
+        "No order with that id belongs to this restaurant, so there was nothing to change.",
+      );
+    }
+    const status = readOrderStatus((data as { status: unknown }).status);
+    if (!status) {
+      throw new UnprocessableEntityException({
+        reason: "order_status_unreadable",
+        message: `This order's state reads "${String((data as { status: unknown }).status)}", which this house does not recognise, so it was not edited. Nothing was changed.`,
+      });
+    }
+    return status;
+  }
+
+  /**
+   * ADR 0254 rule 4: an owner, a manager, or a person holding a live
+   * `vendor_send` grant (the right an owner gives today). Fails closed: no
+   * named person, an unwired service or an unreadable standing refuses.
+   */
+  private async assertMayMoveApprovedOrderOn(
+    restaurantId: string,
+    userId: string | undefined,
+  ): Promise<void> {
+    if (!userId?.trim()) throw new ForbiddenException(MOVING_ON_NEEDS_THE_RIGHT);
+    if (!this.vendorSendAuthority) {
+      throw new InternalServerErrorException(
+        "Who may move an approved order on could not be checked (the authority service is not wired into procurement), so nothing was changed. This is a gateway fault, not a decision about this order.",
+      );
+    }
+    const standing = await this.vendorSendAuthority.standing(userId, restaurantId);
+    if (standing.mode !== "send") throw new ForbiddenException(MOVING_ON_NEEDS_THE_RIGHT);
+  }
+
   async updateOrder(
     restaurantId: string,
     orderId: string,
@@ -3331,6 +3389,12 @@ export class ProcurementService {
       cancelReasonCode?: CancelReasonCode;
       cancelledFromStatus?: ProcurementOrderStatus;
       cancelledAt?: string;
+      /**
+       * Who is editing, from the token. Set by `PATCH orders/:id`; a status
+       * move off an approved order is checked against this person (ADR 0254
+       * rule 4) and refused when it is missing.
+       */
+      actorUserId?: string;
     },
   ): Promise<OrderResponseDto> {
     // ADR 0192 — WHAT AN ORDER RECEIVED IS NOT TYPED IN. This route used to
@@ -3407,6 +3471,30 @@ export class ProcurementService {
       await this.assertPriceStillOpen(restaurantId, orderId);
     }
 
+    // ADR 0254 rule 4, and a received or closed order stays as it is (r25).
+    // After the transition table and the price rule, so their refusals keep
+    // their own words; before anything is written.
+    // Every edit except `cancelOrder`'s own proven write (which has already
+    // run the transition rule and the role check) goes through this.
+    const isEdit = !opts?.statusTransitionAlreadyChecked;
+    if (isEdit) {
+      const owned = dto.status !== undefined ? STATUS_OWNED_BY_AN_ACT[dto.status] : undefined;
+      if (owned) {
+        throw new UnprocessableEntityException({ reason: "status_has_its_own_act", message: owned });
+      }
+      const from = await this.readStatusForEdit(restaurantId, orderId);
+      if (ORDER_CLOSED_TO_EDITS.includes(from)) {
+        throw new UnprocessableEntityException({
+          reason: "order_closed_to_edits",
+          message: refuseEditOfClosedOrder(from),
+        });
+      }
+      if (dto.status !== undefined && ORDER_MOVED_ON_BY_AUTHORITY_FROM.includes(from)) {
+        await this.assertMayMoveApprovedOrderOn(restaurantId, opts?.actorUserId);
+      }
+    }
+
+
     // D-06: Block location assignment while order is in a pending state.
     if (dto.locationId !== undefined) {
       const BLOCKED_STATUSES = [
@@ -3467,10 +3555,15 @@ export class ProcurementService {
     if (writesPrice) {
       write = write.in("status", [...ORDER_PRICE_OPEN_STATUSES]);
     }
+    // The closed rule repeated on the write, so an order received between the
+    // read above and this UPDATE is not edited.
+    if (isEdit) {
+      write = write.not("status", "in", `(${ORDER_CLOSED_TO_EDITS.join(",")})`);
+    }
     const selected = write.select("*, inventory:inventory_id(wine_name)");
     // `maybeSingle` on the price path only: there, no row means the condition
     // above refused the write, which is a refusal and not a server fault.
-    const { data, error } = writesPrice
+    const { data, error } = writesPrice || isEdit
       ? await selected.maybeSingle()
       : await selected.single();
 
@@ -3488,6 +3581,9 @@ export class ProcurementService {
         message:
           "This order was approved or closed while its price was being changed, so the price it had then stands. Nothing was changed.",
       });
+    }
+    if (isEdit && !data) {
+      throw new ConflictException({ reason: "order_closed_while_editing", message: CLOSED_WHILE_EDITING });
     }
 
     const row = data as any;

@@ -6,6 +6,8 @@ import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.ser
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
 import { SealChallengeService } from "../common/seal/seal-challenge.service";
 import { OrganizationsService } from "../organizations/organizations.service";
+import { VendorSendAuthorityService } from "../organizations/vendor-send-authority.service";
+import { PASSING_AUTHORITY } from "./testing/passing-vendor-gates";
 import { ForbiddenException } from "@nestjs/common";
 import { ProcurementOrderStatus } from "./dto/procurement.dto";
 import { ORDER_CANCEL_ACT, ORDER_SEAL_ACT, orderSealArgs } from "./order-seal";
@@ -85,6 +87,9 @@ async function build(supabaseHolder: any): Promise<ProcurementService> {
         provide: OrganizationsService,
         useValue: { assertCanManageRestaurant: roleGate.assert },
       },
+      // ADR 0254 rule 4: a move off an approved order asks who holds the
+      // right to send to vendors. A manager, here.
+      { provide: VendorSendAuthorityService, useValue: PASSING_AUTHORITY },
     ],
   }).compile();
   const svc = module.get<ProcurementService>(ProcurementService);
@@ -448,9 +453,14 @@ describe("the PATCH route is held to the same table", () => {
 
   it("still allows a move the house makes today", async () => {
     const h = await makeService({ status: ProcurementOrderStatus.APPROVED });
-    await h.service.updateOrder(HOUSE, ORDER_ID, {
-      status: ProcurementOrderStatus.CONFIRMED,
-    } as any);
+    // ADR 0254 rule 4: moving an approved order on is checked against the
+    // editor, so the route passes who it is.
+    await h.service.updateOrder(
+      HOUSE,
+      ORDER_ID,
+      { status: ProcurementOrderStatus.CONFIRMED } as any,
+      { actorUserId: "manager-1" },
+    );
     expect(h.order.status).toBe(ProcurementOrderStatus.CONFIRMED);
   });
 
