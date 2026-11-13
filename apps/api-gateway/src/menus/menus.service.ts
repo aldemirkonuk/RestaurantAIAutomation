@@ -176,6 +176,32 @@ export interface MenuPlan {
   /** Whether the people named in the plan could be named (L25). */
   namesReadable: boolean;
   namesReason: string | null;
+  /** The house's IANA zone, for saying its dates on its clock (never part of the fingerprint). */
+  timezone?: string | null;
+  /** Why there is no zone to say them in: not set, not a zone, or not readable. */
+  timezoneReason?: string | null;
+}
+
+/**
+ * The zone a house's menu dates are said in, or why there is none (menu r21:
+ * the founder's goal is "dates in the house time zone"; until now /menu named
+ * a read by the clock of whatever device looked at it, so a house in Istanbul
+ * read from a laptop in Detroit was told its 06:05 menu was read 22:05 the
+ * day before). Never a default: a missing zone is said, and the page falls
+ * back to the device's clock saying so (ADR 0067; venueTime.ts rule 2).
+ */
+export function houseZoneOf(
+  raw: unknown,
+  readError: string | null,
+): { timezone: string | null; timezoneReason: string | null } {
+  if (readError !== null) return { timezone: null, timezoneReason: `the house's time zone could not be read (${readError})` };
+  if (typeof raw !== "string" || raw.trim() === "") return { timezone: null, timezoneReason: "the house has no time zone set" };
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: raw.trim() });
+  } catch {
+    return { timezone: null, timezoneReason: `the house's time zone "${raw}" is not one this page knows` };
+  }
+  return { timezone: raw.trim(), timezoneReason: null };
 }
 
 function emptyPlanCounts(): Record<PlanResult, number> {
@@ -1610,6 +1636,8 @@ export class MenusService {
     versions: MenuVersion[];
     namesReadable: boolean;
     namesReason: string | null;
+    timezone: string | null;
+    timezoneReason: string | null;
   }> {
     await this.sweepStaleReads(restaurantId);
     const rows: Array<Record<string, any>> = [];
@@ -1646,6 +1674,7 @@ export class MenusService {
       versions,
       namesReadable: namesError === null,
       namesReason: namesError === null ? null : `who read or chose these menus could not be named: ${namesError}`,
+      ...(await this.houseZone(restaurantId)),
     };
   }
 
@@ -1744,6 +1773,7 @@ export class MenusService {
       ...plan,
       namesReadable: error === null,
       namesReason: error === null ? null : `the people named in this plan could not be named: ${error}`,
+      ...(await this.houseZone(restaurantId)),
     };
   }
 
@@ -2148,6 +2178,17 @@ export class MenusService {
    * (ADR 0193 round 3, L25: it used to be logged and dropped, so "read by X"
    * vanished without a word), never raw ids shown as names.
    */
+  /** The house's zone for its menu dates (houseZoneOf); a failed read is said, never a default. */
+  private async houseZone(restaurantId: string): Promise<{ timezone: string | null; timezoneReason: string | null }> {
+    const { data, error } = await this.dbService.supabase
+      .from("restaurants")
+      .select("timezone")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error) this.logger.warn(`The house's time zone could not be read: ${error.message}`);
+    return houseZoneOf((data as { timezone?: unknown } | null)?.timezone, error ? error.message : null);
+  }
+
   private async namesOf(
     ids: Array<string | null | undefined>,
   ): Promise<{ names: Map<string, string | null>; error: string | null }> {
