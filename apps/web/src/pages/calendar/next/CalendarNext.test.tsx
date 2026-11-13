@@ -472,8 +472,58 @@ describe('CalendarNext — honesty', () => {
     });
     draw();
     expect(screen.getByText('— The book has not been read.')).toBeInTheDocument();
-    expect(screen.getByText(/orders book has not answered/)).toBeInTheDocument();
+    // The orders come with the book now: an unread book already says it, and
+    // a second "orders book" line would describe the same read twice.
+    expect(screen.queryByText(/orders book has not answered/)).not.toBeInTheDocument();
     expect(screen.queryByText('0 deliveries')).not.toBeInTheDocument();
+  });
+
+  it('says the orders are unknown only when a line in view links an order', () => {
+    state.current = mkData({
+      events: [event({ id: 'e1', title: 'Fish', date: '2026-09-17', orderId: 'o-1' })],
+      ordersById: null,
+      ordersKnown: false,
+    });
+    const { unmount } = draw();
+    expect(screen.getByText(/orders book has not answered, so a delivery/)).toBeInTheDocument();
+    unmount();
+
+    state.current = mkData({
+      events: [event({ id: 'e1', title: 'Fish', date: '2026-09-17' })],
+      ordersById: null,
+      ordersKnown: false,
+    });
+    draw();
+    expect(screen.queryByText(/orders book has not answered/)).not.toBeInTheDocument();
+  });
+
+  it('names a linked order by number and says its state in words', () => {
+    state.current = mkData({
+      events: [
+        event({ id: 'e1', title: 'Fish', date: '2026-09-17', orderId: 'o-1' }),
+        event({ id: 'e2', title: 'Wine', date: '2026-09-17', orderId: 'o-2', startTime: '11:00', endTime: '12:00' }),
+        event({ id: 'e3', title: 'Bread', date: '2026-09-17', orderId: 'o-gone', startTime: '13:00', endTime: '14:00' }),
+      ],
+      ordersById: new Map([
+        ['o-1', { id: 'o-1', orderNumber: 'PO-0007', status: 'PARTIALLY_RECEIVED' }],
+        ['o-2', { id: 'o-2', orderNumber: null, status: 'IN_TRANSIT' }],
+      ]),
+      ordersKnown: true,
+    });
+    draw();
+    fireEvent.click(screen.getByLabelText(/Thursday, September 17/));
+    expect(screen.getByText(/order PO-0007 · partly arrived/)).toBeInTheDocument();
+    expect(screen.getByText(/an order with no number · on the way/)).toBeInTheDocument();
+    expect(screen.getByText(/order no longer in the orders book/)).toBeInTheDocument();
+    expect(screen.queryByText(/PARTIALLY_RECEIVED|IN_TRANSIT/)).not.toBeInTheDocument();
+  });
+
+  it('says a window past the read cap is partial, in the house\'s words', () => {
+    state.current = mkData({ truncated: true, windowTotal: 5210, windowRead: 5000 });
+    draw();
+    const note = screen.getByText(/This period holds 5,210 entries and only the first 5,000 are drawn/);
+    expect(note.textContent).toMatch(/counts on this page are short/);
+    expect(screen.queryByText(/gateway/i)).not.toBeInTheDocument();
   });
 
   it('admits an unread vendor book on the line that needed it', () => {

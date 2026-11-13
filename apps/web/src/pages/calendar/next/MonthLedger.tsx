@@ -19,7 +19,7 @@
 import { useState } from 'react';
 import { Seal } from '../../../components/mudavym';
 import { EM, clock, longDay, sinceOrUntil, span } from './cal-format';
-import { isDelivery, type CalEvent, type CalendarData } from './useCalendarNextData';
+import { isDelivery, orderStateWords, type CalEvent, type CalendarData } from './useCalendarNextData';
 import { DayRecordMark, SkyMark, TakingsMark } from './SkyMark';
 import { addDays, dayKey, parseDayKey, startOfWeek } from './cal-format';
 
@@ -93,7 +93,11 @@ export function LinkLine({ event, data }: { event: CalEvent; data: CalendarData 
     if (!data.ordersKnown) bits.push(`order ${EM} the orders book has not answered`);
     else {
       const o = data.ordersById?.get(event.orderId);
-      bits.push(o ? `order ${o.orderNumber ?? o.id.slice(0, 8)} · ${o.status}` : 'order not in the book');
+      bits.push(
+        o
+          ? `${o.orderNumber ? `order ${o.orderNumber}` : 'an order with no number'} · ${orderStateWords(o.status)}`
+          : 'order no longer in the orders book',
+      );
     }
   }
 

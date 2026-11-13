@@ -24,13 +24,14 @@
 import { useCallback, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
-import { useCalendarEventsSubscription } from '../../../contexts/RealtimeContext';
+import {
+  useCalendarEventsSubscription,
+  useOrdersSubscription,
+} from '../../../contexts/RealtimeContext';
 import { apiClient } from '../../../services/api/client';
 import { fetchProviders, type Provider } from '../../../services/api/providers';
-import { useOrders } from '../../../hooks/queries/useOrderQueries';
 import { canonicalStatus } from '../../../lib/mudavym/status';
 import { expandSeries } from './expand-series';
-import type { Order } from '../../../services/api/types';
 import { rangeFor, type CalView } from './cal-format';
 
 /* ── The gateway's own shape (calendar.dto.ts CalendarEventResponseDto) ───── */
@@ -322,12 +323,33 @@ export interface CalEvent {
   reminderSent: boolean;
 }
 
-/** The calendar's spine: the event types that describe goods arriving. */
 /**
  * The largest page the gateway will serve: `GetCalendarEventsQueryDto.limit`
- * carries `@Max(500)` (apps/api-gateway/src/calendar/dto/calendar.dto.ts:356).
+ * carries `@Max(500)` (apps/api-gateway/src/calendar/dto/calendar.dto.ts).
  */
 const EVENT_WINDOW_LIMIT = 500;
+
+/**
+ * How many pages one window may read: 10 × 500 = 5,000 entries. The densest
+ * window the page draws is the 90-day agenda; a house past 55 entries a day
+ * for a quarter is told the view is partial rather than left waiting on an
+ * unbounded read.
+ */
+export const EVENT_WINDOW_MAX_PAGES = 10;
+
+/**
+ * An order a calendar line links to, as the calendar list carries it
+ * (`withOrders=true`, calendar.service.ts `readLinkedOrders`): only this
+ * house's orders, only the ones this window links to.
+ */
+export interface LinkedOrder {
+  id: string;
+  orderNumber: string | null;
+  /** The orders book's own status, unconverted (`PROCUREMENT` SCREAMING_SNAKE). */
+  status: string;
+}
+
+/** The calendar's spine: the event types that describe goods arriving. */
 
 const DELIVERY_TYPES = new Set(['delivery', 'delivery_eta', 'order']);
 
@@ -336,6 +358,35 @@ const ARRIVED = new Set(['delivered', 'verified', 'completed']);
 
 export function isDelivery(e: CalEvent): boolean {
   return DELIVERY_TYPES.has(e.type);
+}
+
+/** An order's state in the words a house uses, never the book's code. */
+const ORDER_WORDS: Record<string, string> = {
+  draft: 'still a draft',
+  negotiating: 'being agreed with the vendor',
+  pending: 'not sent yet',
+  pending_approval: 'waiting for approval',
+  approved: 'approved, not sent yet',
+  ordered: 'sent to the vendor',
+  in_transit: 'on the way',
+  delivered: 'arrived',
+  partially_received: 'partly arrived',
+  verified: 'arrived and checked',
+  completed: 'arrived',
+  cancelled: 'cancelled',
+  rejected: 'turned down',
+};
+
+/**
+ * `canonicalStatus` reads anything it does not know as `pending`; a line that
+ * printed "not sent yet" for an order in a state this page has never heard of
+ * would be a guess, so an unknown state is quoted as the book wrote it.
+ */
+export function orderStateWords(raw: string): string {
+  const known = canonicalStatus(raw);
+  const lower = (raw ?? '').trim().toLowerCase().replace(/-/g, '_');
+  if (lower === '' || known !== 'pending' || lower === 'pending') return ORDER_WORDS[known];
+  return `marked “${lower.replace(/_/g, ' ')}”`;
 }
 
 function str(v: unknown): string | null {
@@ -453,34 +504,86 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
   const { start, end } = useMemo(() => rangeFor(view, cursor), [view, cursor]);
 
   /**
-   * The window asks for the page maximum, 500. This used to be impossible:
-   * `GetCalendarEventsQueryDto.limit` was `@IsInt()` with no
-   * `@Type(() => Number)`, and the global ValidationPipe runs `transform: true`
-   * WITHOUT `enableImplicitConversion` (main.ts:51-57), so any `?limit=` stayed
-   * a string, failed `@IsInt` and 400d the whole read. Fixed 2026-09-03 in
-   * `apps/api-gateway/src/calendar/dto/calendar.dto.ts:328-359`; verified live
-   * against the local gateway (`?limit=50` and `?limit=500` → 200, `?limit=abc`
-   * and `?limit=501` → 400).
+   * The whole window, page by page. One page is the gateway's maximum, 500
+   * (`@Max(500)`); a busy 90-day agenda can hold more, and drawing only the
+   * first page made every count on the page short without saying so. The
+   * first answer carries `total`, so the remaining pages are asked for
+   * together, and the gateway breaks start-date ties by id so no row repeats
+   * or falls between two pages. Past `EVENT_WINDOW_MAX_PAGES` the page says
+   * the view is partial instead of reading forever.
    *
-   * 500 is `@Max(500)` — the server will not serve a larger page — so a month
-   * denser than 500 events is still possible in principle. The page keeps
-   * reporting the server's `hasMore` rather than quietly drawing a truncated
-   * month; it does not silently paginate.
+   * `withOrders=true`: each page also carries the orders its rows link to,
+   * from this house's book. The page used to read the orders book itself and
+   * got its newest 50 orders, so a delivery linked to any older order read
+   * "order not in the book" and never ruled off.
    */
   const eventsQ = useQuery({
     queryKey: ['mudavym', 'calendar', 'events', restaurantId, start, end],
     enabled: !!restaurantId,
     staleTime: 60_000,
     queryFn: async () => {
-      const res = await apiClient.get<{ events: ApiEvent[]; total?: number; hasMore?: boolean }>(
-        // `includeEarlierSeries`: a series that began before the window still
-        // falls inside it (sweep 2026-09-28 row 16).
-        `/calendar/events?startDate=${start}&endDate=${end}&limit=${EVENT_WINDOW_LIMIT}&includeEarlierSeries=true`,
-      );
+      type Page = {
+        events: ApiEvent[];
+        total?: number;
+        hasMore?: boolean;
+        linkedOrders?: LinkedOrder[];
+        linkedOrdersReadable?: boolean;
+      };
+      // `includeEarlierSeries`: a series that began before the window still
+      // falls inside it (sweep 2026-09-28 row 16).
+      const base = `/calendar/events?startDate=${start}&endDate=${end}&limit=${EVENT_WINDOW_LIMIT}&includeEarlierSeries=true`;
+      let withOrders = true;
+      const read = async (page: number) =>
+        (
+          await apiClient.get<Page>(
+            `${base}&page=${page}${withOrders ? '&withOrders=true' : ''}`,
+          )
+        ).data ?? { events: [] };
+
+      let first: Page;
+      try {
+        first = await read(1);
+      } catch (err) {
+        // A gateway deployed before `withOrders` refuses the unknown field
+        // with a 400 (the pipe runs `forbidNonWhitelisted`). The entries are
+        // still readable without it; the orders are then unknown, and the
+        // page says so rather than going dark while the deploys catch up.
+        if (statusOf(err) !== 400) throw err;
+        withOrders = false;
+        first = await read(1);
+      }
+      const pages: Page[] = [first];
+      const total = typeof first.total === 'number' ? first.total : null;
+      if (first.hasMore === true && total !== null) {
+        const count = Math.min(Math.ceil(total / EVENT_WINDOW_LIMIT), EVENT_WINDOW_MAX_PAGES);
+        const rest = await Promise.all(
+          Array.from({ length: count - 1 }, (_, i) => read(i + 2)),
+        );
+        pages.push(...rest);
+      }
+
+      const seen = new Set<string>();
+      const rows: CalEvent[] = [];
+      const orders = new Map<string, LinkedOrder>();
+      // Known only when every page answered it: a page that could not read
+      // the orders book leaves its lines' orders unknown, never "not in the
+      // book". A gateway that predates `withOrders` sends no flag at all.
+      let ordersReadable = withOrders;
+      for (const p of pages) {
+        for (const raw of p.events ?? []) {
+          if (seen.has(raw.id)) continue;
+          seen.add(raw.id);
+          rows.push(toCalEvent(raw));
+        }
+        if (p.linkedOrdersReadable !== true) ordersReadable = false;
+        for (const o of p.linkedOrders ?? []) orders.set(o.id, o);
+      }
+      const last = pages[pages.length - 1];
       return {
-        rows: (res.data?.events ?? []).map(toCalEvent),
-        total: typeof res.data?.total === 'number' ? res.data.total : null,
-        hasMore: res.data?.hasMore === true,
+        rows,
+        total,
+        hasMore: last.hasMore === true,
+        orders: ordersReadable ? orders : null,
       };
     },
   });
@@ -561,14 +664,15 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
     },
   });
 
-  const ordersQ = useOrders();
-
-  /** Anything else in the app moving a calendar row refreshes this window. */
-  useCalendarEventsSubscription(
-    useCallback(() => {
-      void eventsQ.refetch();
-    }, [eventsQ]),
-  );
+  /**
+   * Anything else in the app moving a calendar row refreshes this window — and
+   * so does an order moving, since a linked order arriving rules its line off.
+   */
+  const refetchEvents = useCallback(() => {
+    void eventsQ.refetch();
+  }, [eventsQ]);
+  useCalendarEventsSubscription(refetchEvents);
+  useOrdersSubscription(refetchEvents);
 
   /* ── The window, with recurring series expanded into their occurrences ──── */
 
@@ -592,11 +696,8 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
     return new Map<string, Provider>(rows.map((p) => [p.id, p]));
   }, [providersQ.data]);
 
-  const ordersById = useMemo(() => {
-    const rows = ordersQ.data;
-    if (!rows) return null;
-    return new Map<string, Order>(rows.map((o) => [o.id, o]));
-  }, [ordersQ.data]);
+  /** null until the window has answered with a readable orders book. */
+  const ordersById: Map<string, LinkedOrder> | null = eventsQ.data?.orders ?? null;
 
   /**
    * Ruled off — the account for this line is settled. Two honest sources, and
@@ -730,8 +831,10 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
     byDay,
     /** undefined until the first answer; the grid draws days either way. */
     hasEvents: eventsQ.data !== undefined,
-    /** The gateway paged this window — say so rather than draw a short month. */
+    /** Past the read cap — say so rather than draw a short period as whole. */
     truncated: eventsQ.data?.hasMore === true,
+    /** How many entries were read and drawn, against `windowTotal`. */
+    windowRead: eventsQ.data?.rows.length ?? 0,
     windowTotal: eventsQ.data?.total ?? null,
     /** Repeating entries whose dates could not be drawn — the page names them. */
     unexpandedSeries: series.unexpanded,
