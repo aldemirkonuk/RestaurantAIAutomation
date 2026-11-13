@@ -216,10 +216,11 @@ describe('useRecommendationsNextData transport', () => {
 
     let release: (v: unknown) => void = () => {};
     // Only the FEED read is held open — the digest, the exclusion list, the
-    // goal list and the till window are separate reads and must not be the
-    // thing this test resolves.
+    // goal list, the till window and the house currency are separate reads and
+    // must not be the thing this test resolves.
     api.get.mockImplementation((url: string) => {
       if (url.includes('/digest')) return Promise.resolve({ data: null });
+      if (url === '/settings/currency') return Promise.resolve({ data: null });
       if (url.includes('/exclusions'))
         return Promise.resolve({ data: { items: [], readable: true, problem: null } });
       if (url.includes('/analytics/goals/')) return Promise.resolve({ data: [] });

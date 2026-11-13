@@ -38,6 +38,7 @@ import { apiClient } from '@/services/api/client';
 import { decodeBook, type GoalScenarioBook } from '@/hooks/useGoalScenarios';
 import { toGoalBook, type GoalBookVM } from './rec-masthead';
 import { getTeamMembers } from '@/services/api/team';
+import { settingsApi, type HouseCurrency } from '@/services/api/settings';
 import {
   failureOf,
   handOf,
@@ -384,6 +385,13 @@ export interface RecommendationsData {
   /** Why the till window could not be read, when it could not. */
   posProblem: string | null;
   /**
+   * The house's own currency, for the till money a day says. undefined = being
+   * read, null = the read failed. The till window names no currency of its own,
+   * so its figures are this house's money. Optional so a caller that never
+   * reads it says the figure is pending rather than printing a guessed sign.
+   */
+  houseCurrency?: HouseCurrency | null;
+  /**
    * Ask for a till window `days` back from today. The ribbon calls it when the
    * month on screen changes; the gateway clamps to 1–365, so a month further
    * back than a year comes back with every day `unknown`, never `none`.
@@ -526,6 +534,7 @@ export function useRecommendationsNextData(): RecommendationsData {
   const [scenarios, setScenarios] = useState<GoalScenarioBook | null | undefined>(undefined);
   const [pos, setPos] = useState<PosVM>(undefined);
   const [posProblem, setPosProblem] = useState<string | null>(null);
+  const [houseCurrency, setHouseCurrency] = useState<HouseCurrency | null | undefined>(undefined);
   const [note, setNote] = useState<string | null>(null);
   const [undo, setUndo] = useState<UndoVM | null>(null);
   const [sourcesUnread, setSourcesUnread] = useState<string[] | null>(null);
@@ -997,6 +1006,31 @@ export function useRecommendationsNextData(): RecommendationsData {
   }, [rid, posDays]);
 
   /**
+   * The house's currency, for the ribbon's "through the till" figure. Read on
+   * its own so a settings failure never takes the till window or the book down
+   * with it, and keyed by tenant so a restaurant switch never says the last
+   * house's money. A failed read is null: the figure is then said with no sign
+   * and says why, never with a guessed one.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    setHouseCurrency(undefined);
+    if (!rid) return;
+    settingsApi
+      .houseCurrency()
+      .then((hc) => {
+        if (!cancelled)
+          setHouseCurrency(hc && typeof hc === 'object' && typeof hc.readable === 'boolean' ? hc : null);
+      })
+      .catch(() => {
+        if (!cancelled) setHouseCurrency(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [rid]);
+
+  /**
    * Write one goal.
    *
    * The gateway refuses two ways and says why in plain English — 400
@@ -1306,6 +1340,7 @@ export function useRecommendationsNextData(): RecommendationsData {
     scenarios,
     pos,
     posProblem,
+    houseCurrency,
     requestPosBack,
     note,
     undo,

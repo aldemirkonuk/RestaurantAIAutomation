@@ -57,6 +57,8 @@
 
 import { monthDays, recordWords as houseRecordWords } from '@/components/mudavym/dayStripDates';
 import type { EntryVM, GoalRow } from './useRecommendationsNextData';
+import type { HouseCurrency } from '@/services/api/settings';
+import { fmtMoney } from '../../receipts/next/rc2-format';
 
 /** The POS window, as the ribbon needs it. */
 export interface PosWindowVM {
@@ -265,4 +267,22 @@ export function recordWords(cell: DayCell): string {
     cell.records === 'future' ? 'unknown' : cell.records,
     cell.isFuture,
   );
+}
+
+/**
+ * A day's till money, in the house's own currency.
+ *
+ * The strip printed a bare `$` for every house, so a lira house read "$4,210
+ * through the till" (r9, 2026-11-12). The till window carries no currency, so
+ * the figure is this house's money and is said the way /receipts says it
+ * (`fmtMoney`: the lira sign for lira, the code where a sign is shared, the
+ * currency's own decimals). While the currency is being read the figure waits
+ * rather than gaining a sign a moment later; an unreadable currency prints the
+ * figure with no sign and says so.
+ */
+export function sayTill(revenue: number, houseCurrency: HouseCurrency | null | undefined): string {
+  if (houseCurrency === undefined) return '… through the till';
+  if (houseCurrency === null || houseCurrency.readable === false)
+    return `${revenue.toFixed(2)} through the till (the house's money could not be read)`;
+  return `${fmtMoney(revenue, houseCurrency.code)} through the till`;
 }

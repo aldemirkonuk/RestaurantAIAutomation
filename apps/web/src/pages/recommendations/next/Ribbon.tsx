@@ -43,10 +43,12 @@ import { useEffect, useState } from 'react';
 import { CircleSlash, Info } from 'lucide-react';
 import { DayStrip, type DayStripDay } from '@/components/mudavym';
 import { EM } from './rec-format';
+import type { HouseCurrency } from '@/services/api/settings';
 import {
   barHeight,
   fmtLongDay,
   recordWords,
+  sayTill,
   type DayCell,
   type PosVM,
 } from './rec-days';
@@ -71,6 +73,8 @@ export interface RibbonProps {
   /** The POS window behind the record marks — undefined asked, null unreadable. */
   pos: PosVM;
   posProblem: string | null;
+  /** The house's currency for the till figure: undefined = being read, null = unreadable. */
+  houseCurrency?: HouseCurrency | null;
   /** undefined = the exclusion store has not been read yet. */
   exclusionsReadable: boolean | undefined;
   exclusionsProblem: string | null;
@@ -208,7 +212,7 @@ export default function Ribbon(props: RibbonProps) {
           <p className="rc-micro">
             {cell.fired.length} first fired · {cell.due.length} falls due ·{' '}
             {cell.records === 'yes' && cell.revenue !== null
-              ? `$${Math.round(cell.revenue).toLocaleString()} through the till`
+              ? sayTill(cell.revenue, props.houseCurrency)
               : recordWords(cell)}
           </p>
           <p className="rc-why">
