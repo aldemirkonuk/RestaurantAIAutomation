@@ -462,6 +462,22 @@ describe('DashboardNext', () => {
       ).toBeInTheDocument();
     });
 
+    it('says the house has no goods, and names the approvals it could not read', async () => {
+      routeGets({ '/dashboard/stats/': goods(0) });
+      const base = api.get.getMockImplementation()!;
+      api.get.mockImplementation((url: string, ...rest: unknown[]) =>
+        url.includes('/orders/pending')
+          ? Promise.reject(Object.assign(new Error('Network Error'), { response: undefined }))
+          : base(url, ...rest),
+      );
+
+      mount();
+
+      expect(
+        await screen.findByText(/^The house has no goods on its list yet\. The approvals couldn’t be reached just now\./),
+      ).toBeInTheDocument();
+    });
+
     it('keeps "Nothing is waiting on you." and the stock list for a house that holds goods', async () => {
       routeGets({ '/dashboard/stats/': goods(4) });
 
