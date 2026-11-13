@@ -441,6 +441,21 @@ describe("next steps lead past the menu to the house's costs (r28 gap 3)", () =>
     expect(a.next_steps.mailbox_connected).toBe(true);
   });
 
+  it("no checked invoice and an unread waiting list is null, never 'none'", async () => {
+    const tables = withValue();
+    tables.procurement_documents = [];
+    const { service } = serviceOn(tables);
+    const db = (service as any).dbService.supabase;
+    const from = db.from;
+    let papers = 0;
+    db.from = (table: string) => {
+      // The second read of the papers is the waiting one.
+      if (table === "procurement_documents" && ++papers === 2) throw new Error("client gone");
+      return from(table);
+    };
+    expect((await service.getOnboardingProgress("u-1", houseA)).next_steps.invoice).toBeNull();
+  });
+
   it("the next steps never decide setup: all held with no supplier leaves completed_at null; with no menu, not activated", async () => {
     const tables = withValue();
     tables.providers = [];
