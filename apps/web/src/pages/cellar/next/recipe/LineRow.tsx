@@ -8,6 +8,7 @@
  * The amount and unit rules live in `units.ts`.
  */
 import { useId, useState } from 'react';
+import { Link, useInRouterContext } from 'react-router-dom';
 import { Link2, Trash2 } from 'lucide-react';
 import type { RecipeLineRole, RecipeLineStatus, ShelfItem } from '../../../../services/api/recipes';
 import { amountWithUnit, qtyText, readQty, unitChoices, unitWord, type RecipeUnit } from './units';
@@ -152,6 +153,33 @@ function amountWords(row: DraftRow): string {
   return amountWithUnit(q, row.unit);
 }
 
+/** Where a shelf item opens: its drawer on /inventory, with its cards and what is in it. */
+export const goodHref = (inventoryId: string) => `/inventory?open=${encodeURIComponent(inventoryId)}`;
+
+/**
+ * A linked line leads to its good (founder /goal 2026-11-07: a drink, or a
+ * dish, and its recipe lead to the goods in it, each with its cards and its
+ * nutrition card). A router link, so an unsaved draft is kept (drafts.ts); a
+ * plain link outside a router (a bare mount). A good that was archived or
+ * deleted has no drawer to open, so it has no link.
+ */
+export function GoodLink({ row }: { row: DraftRow }) {
+  const routed = useInRouterContext();
+  if (row.role !== 'stocked' || !row.inventoryId || row.itemGone) return null;
+  const to = goodHref(row.inventoryId);
+  const label = `Open ${row.itemName ?? row.label} in inventory`;
+  const props = { className: 'cl-rcp-good cl-focus', 'aria-label': label, 'data-testid': 'recipe-line-good' };
+  return routed ? (
+    <Link to={to} {...props}>
+      Open in inventory
+    </Link>
+  ) : (
+    <a href={to} {...props}>
+      Open in inventory
+    </a>
+  );
+}
+
 /** A line as a staff member reads it: no inputs, no money, and no warning that is not theirs to act on. */
 export function LineRowRead({ row }: { row: DraftRow }) {
   return (
@@ -165,6 +193,7 @@ export function LineRowRead({ row }: { row: DraftRow }) {
           ) : null}
           {row.role === 'untracked' ? <span className="cl-dim"> · not counted</span> : null}
         </span>
+        <GoodLink row={row} />
       </div>
     </li>
   );
@@ -228,7 +257,8 @@ export default function LineRow({
                 </span>
               )}
             </button>
-          ) : (
+          ) : null}
+          {stocked ? <GoodLink row={row} /> : (
             <>
               <label htmlFor={`${id}-label`} className="cl-sr">What it is</label>
               <input
