@@ -333,7 +333,7 @@ describe('approved arrival flow', () => {
     )
     render(<MemoryRouter><HouseMenu /></MemoryRouter>)
     const counts = screen.getByRole('group', { name: 'The reading count' })
-    expect(counts).toHaveTextContent(/2read1set1pencilled/)
+    expect(counts).toHaveTextContent(/2read1in ink1in pencil/)
     expect(screen.queryByText('Smoky No. 4 18')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Smoky No. 4/ }))
     expect(await screen.findByText('Smoky No. 4 18')).toBeInTheDocument()
@@ -551,7 +551,7 @@ describe('approved arrival flow', () => {
       }),
     )
     render(<MemoryRouter><HouseContents /></MemoryRouter>)
-    expect(screen.getByText('1 pencilled')).toBeInTheDocument()
+    expect(screen.getByText('1 line in pencil, worth a second look')).toBeInTheDocument()
     expect(screen.getByText(/The one ask/)).toBeInTheDocument()
     expect(screen.getByLabelText('Supplier')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Receipts' })).toHaveAttribute('href', '/receipts')
