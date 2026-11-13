@@ -23,6 +23,7 @@ import {
   type ProviderContact,
 } from '../../services/api/providers'
 import { useNotificationStore } from '../../stores'
+import { toast as houseToast } from 'sonner'
 import { offlineStorage } from '../../lib/offline-storage'
 import { syncManager } from '../../lib/sync-manager'
 import { useAuth } from '../../contexts/AuthContext'
@@ -293,7 +294,6 @@ export function useUpdateProvider() {
  */
 export function useDeleteProvider() {
   const queryClient = useQueryClient()
-  const toast = useNotificationStore()
 
   return useMutation({
     mutationFn: (id: string) => deleteProvider(id),
@@ -301,7 +301,10 @@ export function useDeleteProvider() {
       queryClient.invalidateQueries({ queryKey: queryKeys.providers.lists() })
       // Its standing orders were paused: /orders must not show them running.
       queryClient.invalidateQueries({ queryKey: queryKeys.orders.all })
-      toast.success('Vendor removed', result.message)
+      // The house toaster (AppToaster, sonner). `useNotificationStore().success`
+      // only appends to a store list that no component draws, so the sentence
+      // would reach no one (r29 walk, 2026-11-13).
+      houseToast.success('Vendor removed', { description: result.message })
     },
   })
 }

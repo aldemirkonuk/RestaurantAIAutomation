@@ -18,6 +18,7 @@ const api = vi.hoisted(() => ({ deleteProvider: vi.fn() }));
 const auth = vi.hoisted(() => ({ role: 'manager' as string | null }));
 const toast = vi.hoisted(() => ({ info: vi.fn(), success: vi.fn(), error: vi.fn() }));
 const sync = vi.hoisted(() => ({ queueMutation: vi.fn() }));
+const houseToast = vi.hoisted(() => ({ success: vi.fn(), info: vi.fn(), error: vi.fn() }));
 
 vi.mock('../../../services/api/providers', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
@@ -28,6 +29,7 @@ vi.mock('../../../contexts/AuthContext', () => ({
 }));
 vi.mock('../../../stores', () => ({ useNotificationStore: () => toast }));
 vi.mock('../../../lib/sync-manager', () => ({ syncManager: sync }));
+vi.mock('sonner', () => ({ toast: houseToast }));
 
 import { RemoveVendor, removalAsk } from './RemoveVendor';
 
@@ -88,7 +90,10 @@ describe('RemoveVendor — asks first, then says what happened', () => {
     fireEvent.click(screen.getByTestId('vendor-remove-confirm'));
     await waitFor(() => expect(onRemoved).toHaveBeenCalledTimes(1));
     expect(api.deleteProvider).toHaveBeenCalledWith('prov-1');
-    expect(toast.success).toHaveBeenCalledWith('Vendor removed', SENTENCE);
+    // The sentence goes to the house toaster (the one the app draws), never to
+    // the notification store's list, which no component renders.
+    expect(houseToast.success).toHaveBeenCalledWith('Vendor removed', { description: SENTENCE });
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it('a refusal stays in the panel in the gateway words; nothing is queued or toasted', async () => {
@@ -109,6 +114,7 @@ describe('RemoveVendor — asks first, then says what happened', () => {
     expect(sync.queueMutation).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();
     expect(toast.info).not.toHaveBeenCalled();
+    expect(houseToast.success).not.toHaveBeenCalled();
   });
 
   it('no connection says nothing was removed, and is not queued as a later removal', async () => {
