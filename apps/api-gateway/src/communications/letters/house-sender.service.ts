@@ -636,7 +636,11 @@ export class HouseSenderService {
 
     return {
       where: "shared_mailbox",
-      words: `Neither half is on this house's mailbox. No letter may leave at all, and a vendor's reply arrives through ${deploymentAddress} — the address every restaurant on this deployment shares — and is filed from there. Two separate connections put the conversation here, and each asks for one thing: "${GMAIL_SEND_DEFINITION.label}" and "${INTEGRATION_DEFINITIONS.gmail_read.label}".${readConsented ? readCaveat : ""}`,
+      // r12 walk (2026-11-12): this used to open "Neither half is on this
+      // house's mailbox. No letter may leave at all". Order letters do leave,
+      // from the shared address (85026e4f3), so "at all" was broader than
+      // the code; only a letter the house writes to a vendor is held.
+      words: `Nothing runs through a mailbox of this house's own yet. Order letters leave from ${deploymentAddress}, the address every restaurant on this deployment shares, and a letter written here to a vendor cannot leave until a mailbox is connected. A vendor's reply arrives at ${deploymentAddress} and is filed in this house's book. Two connections move this onto your own mailbox, and each asks for one thing: "${GMAIL_SEND_DEFINITION.label}" and "${INTEGRATION_DEFINITIONS.gmail_read.label}".${readConsented ? readCaveat : ""}`,
       sending,
       receiving,
     };

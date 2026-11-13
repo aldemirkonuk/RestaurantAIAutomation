@@ -149,7 +149,16 @@ describe("the four states of a house's conversation", () => {
   it("STATE 4 — neither: the whole conversation is on the shared mailbox", async () => {
     const identity = await resolveWith([], READER_OFF);
     expect(identity.conversation.where).toBe("shared_mailbox");
-    expect(identity.conversation.words).toContain("Neither half");
+    expect(identity.conversation.words).toContain(
+      "Nothing runs through a mailbox of this house's own yet",
+    );
+    // r12 walk: order letters DO leave, from the shared address, so the
+    // sentence may not say no letter leaves at all — only the house's own.
+    expect(identity.conversation.words).toContain("Order letters leave from");
+    expect(identity.conversation.words).toContain(
+      "a letter written here to a vendor cannot leave",
+    );
+    expect(identity.conversation.words).not.toMatch(/no letter may leave at all/i);
     expect(identity.conversation.words).toContain(
       "every restaurant on this deployment shares",
     );
