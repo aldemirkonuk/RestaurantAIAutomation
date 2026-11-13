@@ -268,6 +268,8 @@ describe('the month figure', () => {
     mount(row(), { thisMonth: 12480, thisCurrency: 'TRY' });
     expect(document.body.textContent).toMatch(/12,480/);
     expect(document.body.textContent).not.toMatch(/\$12,480/);
-    expect(document.body.textContent).toMatch(/TRY/);
+    // The month speaks the rows' sign, not the code (r11): "₺12,480", never "TRY 12,480".
+    expect(document.body.textContent).toMatch(/₺12,480/);
+    expect(document.body.textContent).not.toMatch(/TRY\s?12,480/);
   });
 });

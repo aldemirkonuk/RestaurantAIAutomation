@@ -9,7 +9,7 @@ vi.mock('@/hooks/queries/useOrderQueries', () => ({
 }));
 
 import { LedgerRow } from './LedgerRow';
-import { fmtMoney } from './format';
+import { fmtMoney, fmtMoneyWhole } from './format';
 import { describeFees } from './price-unit';
 import { sumInOneCurrency, toRow, type OrderRowVM } from './useOrdersNextData';
 
@@ -119,5 +119,28 @@ describe('a month in more than one currency is not added together', () => {
     const s = sumInOneCurrency([r(100, 'TRY'), r(50, null)]);
     expect(s.total).toBeNull();
     expect(s.withheld).toMatch(/name no currency/);
+  });
+});
+
+describe('the month figure speaks the same money as the rows (r11)', () => {
+  it('a lira month prints the lira sign, whole, never the code', () => {
+    expect(fmtMoneyWhole(12480, 'TRY')).toBe('₺12,480');
+    expect(fmtMoneyWhole(12480, 'TRY')).toBe(fmtMoney(12480, 'TRY').replace(/\.00$/, ''));
+  });
+
+  it('a money whose narrow sign is shared keeps its code; a dollar month keeps its dollar', () => {
+    expect(fmtMoneyWhole(500, 'SEK')).toContain('SEK');
+    expect(fmtMoneyWhole(500, 'USD')).toBe('$500');
+  });
+
+  it('a zero month with no currency is a plain 0, not a caveat about nothing', () => {
+    expect(fmtMoneyWhole(0, null)).toBe('0');
+    expect(sumInOneCurrency([])).toEqual({ total: 0, currency: null, withheld: null });
+    expect(fmtMoneyWhole(sumInOneCurrency([]).total, null)).toBe('0');
+  });
+
+  it('a non-zero amount with no currency still carries its caveat, and an unknown is the dash', () => {
+    expect(fmtMoneyWhole(600, null)).toBe('600 (currency not recorded)');
+    expect(fmtMoneyWhole(null, 'TRY')).toBe('—');
   });
 });
