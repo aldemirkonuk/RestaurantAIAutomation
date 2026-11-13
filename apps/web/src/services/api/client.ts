@@ -191,7 +191,28 @@ export function sayPlainly<T>(error: T): T {
   if (!sentence) return error;
   marked.transportMessage = marked.message;
   marked.message = sentence;
+  sayBodyPlainly(marked.response?.data, sentence);
   return error;
+}
+
+/**
+ * About ninety places read `error.response.data.message` themselves before
+ * `.message` (`data.message || error.message`). There Nest's list of field
+ * messages printed as one run-on line or "a,b", and its stock names ("Bad
+ * Request", "Forbidden resource", "Internal server error") printed as if they
+ * were reasons. When the body carries a `message`, it now says the same
+ * sentence as `.message`; the value the gateway sent stays on
+ * `messageAsSent` for logs. Every other field (`code`, `provider`, …) is left
+ * as sent, and so is a body that is text, a Blob or frozen.
+ */
+function sayBodyPlainly(data: unknown, sentence: string): void {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return;
+  if (!Object.prototype.hasOwnProperty.call(data, 'message')) return;
+  if (!Object.isExtensible(data) || Object.isFrozen(data)) return;
+  const body = data as { message?: unknown; messageAsSent?: unknown };
+  if (body.message === sentence) return;
+  body.messageAsSent = body.message;
+  body.message = sentence;
 }
 
 /** Wrap a response-error handler so whatever it rejects with is said plainly. */
