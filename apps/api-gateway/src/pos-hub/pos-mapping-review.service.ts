@@ -4,6 +4,7 @@ import {
   inventoryVolumesFromRow,
   PosHubService,
   resolveSaleVolume,
+  type PastSalesReplay,
 } from "./pos-hub.service";
 import { SaleUnit, SaleUnitAnswerDto } from "./dto/pos-mapping-review.dto";
 
@@ -176,6 +177,12 @@ export interface SetSaleUnitResult {
   previous_sale_unit: SaleUnit | null;
   item_name: string | null;
   error?: string;
+  /**
+   * What the save did to this item's sales that arrived before the answer
+   * (POS-2): replayed through the live depletion path, keyed so none moves
+   * twice. Absent on a failed entry.
+   */
+  past_sales?: PastSalesReplay;
 }
 
 /** One POS button that has arrived on a check and moved no stock. */
@@ -624,6 +631,7 @@ export class PosMappingReviewService {
       sale_unit: (saved?.sale_unit as SaleUnit | null) ?? saleUnit,
       previous_sale_unit: (existing.sale_unit as SaleUnit | null) ?? null,
       item_name: existing.item_name || null,
+      ...(saved?.past_sales ? { past_sales: saved.past_sales } : {}),
     };
   }
 

@@ -3,7 +3,7 @@ type: adr
 id: 0011
 title: POS sale-volume contract
 status: locked
-updated: 2026-08-25
+updated: 2026-11-07
 links: []
 ---
 
@@ -238,6 +238,26 @@ can, and 5x is not a rounding error.
   more than one container — 2×750ml as a single 1500ml line — which this design
   queues rather than serves.
 
+## Amended 2026-11-07: a saved mapping replays its item's queue (POS-2)
+
+The session's call under the founder's 2026-11-07 /goal ("Do not ask me any questions I approve you decide them all"); not put to the founder. Built on PR #804 (`fix/pos-unresolved-lines-replay-on-mapping`) and PR #806 (the catalog approve and the sale-unit review return it). Entry: `../tech-debt.d/2026-11-07-fix-pos-unresolved-lines-replay-on-mapping.md`.
+
+**What was true.** *The trade-off, stated plainly* above rests on the queue being worked, and the queue could not heal stock. On origin/main at `259feea3f` nothing writes `pos_unresolved_lines.resolved`: `git grep` over `apps`, `services` and `supabase/functions` for a `resolved: true` or `resolved_at` write returns nothing. Mapping an item fixed the checks after it and moved none of the stock its earlier sales should have, so "reversible" held for the record and not for the stock. QA round 5 filed it as POS-2.
+
+**Decision.** `upsertItemMapping` writes every mapping (POST /pos-hub/mappings, the catalog matcher's approve, the sale-unit review). After its upsert it replays the item's open queue rows through the live depletion path. Its reply carries `past_sales`: a count per outcome and one sentence in the house's words. The calls, each with what it beat:
+
+1. **Replay from the stored check, not the queue row.** The line is rebuilt from `pos_checks.items` at its own position, so it carries the live key `pos:{source}:{check}:{item}:{lineNo}`, and a replayed line, a second save and a till re-sending the check all deplete once. *Rejected:* the queue row's `qty`. The dedupe index keeps one row per (check, item, reason), so two lines of one wine on a check share a row, and a row has no line position to key on.
+2. **Only the rows the live path would now book under this mapping.** A fetched row is kept only when the lookup `resolveWine` uses (`findMapping`) sends its name and item id to the mapping just saved. *Rejected:* every row sharing the item id or the name. Tills often give the glass SKU and the bottle SKU one name; the other SKU's row answers to its own mapping. PR #804's audit reproduced the cost: stock moved while the reply said nothing applied.
+3. **An outcome per line, then per row.** Each queued line is replayed on its own. A line that moved counts as applied whatever its neighbours did. A row is cleared only when its own lines moved, had moved already, or need no stock. A row asking the question its line still waits on stays open. A row whose question was answered (`unmapped`, now waiting as `no_sale_volume`) is cleared beside the narrower row the replay queues. *Rejected:* one outcome per check. That reported every line on a check as waiting when one line was queued again, and left a settled row open, so someone settling it by hand would take the stock twice.
+4. **Toast-door rows are replayed under that door's key** (revised 2026-11-07 after QA round 8c; first call: they stayed open). That door stores no `pos_checks` row and books once per (order, menu item) under `toast_sale_{order}_{menuGuid}`. The replay books under that key with the door's RPCs, matches by item id only and reads a missing sale unit as a bottle, as the door does (B36). The order's `events` rows stand in for the stored check: a `pos_order_voided` order is cleared with no stock, a sale is dated by its `toast_closed_at` (ADR 0281), and an order with no readable close stays queued. *Rejected:* leaving them for a person, because a Toast house runs on that door, so POS-2 stayed true for it (QA 8c). *Rejected:* the hub's key, which could book a sale twice.
+5. **A voided check's row is cleared and moves nothing.** The sale did not happen, and its void moved nothing either.
+6. **At most 500 lines booked per save, rows in turn; at most 2,000 tried and 5,000 rows read** (revised 2026-11-07, QA rounds 8c, 11b, 15; first call: 500 rows per lookup). The item's open rows are read in turn, in pages of 500, until a short page or 5,000 rows: rows no save has looked at, oldest first, then those looked at longest ago (`replay_tried_at`, stamped on each open row a save looked at). The 500 counts only lines whose stock moved or had already moved. A line the save tries and cannot book (a failed stock write, a sale requeued for a missing pour size) uses one of 2,000 tries and no slot. A row that cannot replay (no stored check, no such line, no readable close) costs a read and neither. Every id list (`pos_checks`, Toast `events`) is read 100 ids at a time (PR #803's size for `GET /wines?ids=`). If a limit stopped it, the reply says so and the next save takes the rest. A row waits only until every never-looked-at row queued before it has been looked at once; a failed row never delays another again (QA round 15). Stamped rows stay open and listed. A check is tried whole, so a save can pass 2,000 tries by less than one check. *Rejected (QA round 11b):* counting every tried line against the 500, which let 500 failing writes or pour-size waits hide every newer row. *Rejected:* a fixed window of the oldest 500 rows: 500 rows that cannot replay hid every newer one, and a 500-id `.in()` made a 17 KB URL, past the 16 KB limit (QA round 2's U-1). *Rejected (QA round 15; supersedes rejecting a new column):* the `id` keyset, which lasted one save; parking after N failures, which needs an unpark path and still an order; an attempts counter (read-modify-write). *Rejected:* no cap, since one save could then run for minutes in a request.
+7. **Synchronous, inside the save.** *Rejected:* a background job. The person saving is the one who needs to know what moved (ADR 0281: the import says what it did), and a job would need a second place to say it. The cap bounds the wait.
+8. **A failed read says so.** If the queue, mapping or check read fails, the reply says `status: "unavailable"` with null counts, never zeros (ADR 0020). The mapping is saved either way, and saving it again finishes the replay without moving any sale twice.
+9. **A `*` in a name is not a wildcard.** PostgREST reads every `*` in a like pattern as `%`, and no escape survives that. The name read sends it as `_`, then keeps only rows equal to the name, ignoring case, which is the equality `resolveWine` uses.
+
+**Consequences.** `resolved` now has a writer, so an "open" row and an "ever held" row differ. ADR 0301's admit rule already says "resolved or not", and its sentences that said nothing sets `resolved` are corrected in place. The cellar's counts do not move: the replay settles only rows whose check it read, and `house_till_lines` counts those lines from the check. `resolved_by` stays null, because the mapping routes carry no user id. The web does not show `past_sales.message` yet. Claims: `POS-2-A-SAVED-MAPPING-REPLAYS-ITS-QUEUE`, `POS-2-REPLAY-IS-PER-LINE-AND-ONLY-ITS-OWN-ITEM` and `POS-2-REPLAY-REACHES-EVERY-ROW` (`claims.d/fix-pos-unresolved-lines-replay-on-mapping.jsonl`).
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -247,6 +267,8 @@ can, and 5x is not a rounding error.
 | 2026-08-25 | Claude | Declined to auto-fill `sale_volume_ml` from `normalizeDescription()` despite the pointer: a by-the-glass SKU carries the size of the bottle it is poured from, so parsing it rebuilds the bottle default under a new name |
 | 2026-08-25 | Claude | Left B19 (glass voids return whole bottles) and the Toast door untouched and raised both rather than fixing them silently — both change recorded/live behaviour and are the founder's call. OD-64 |
 | 2026-10-04 | Claude | Corrected 1b in place ([[0285-a-short-pour-opens-the-next-bottle]]): the over-container pour never wrote a negative `open_bottle_ml`. The CHECK refused it as 23514, measured on PGlite at `8c673db4b`. The queue guard is unchanged |
+| 2026-11-07 | Claude | Amended under the founder's 2026-11-07 /goal: a saved mapping replays its item's queue (POS-2), with the nine calls and their rejected alternatives above. The per-line outcome, the own-mapping filter and the `*` rule came from PR #804's audit |
+| 2026-11-07 | Claude | Revised calls 4 and 6 after QA round 8c, the session's call under the 2026-11-07 /goal: Toast-door rows replay under that door's key, every open row is read in pages, and id lists go 100 at a time |
 
 ## Amendment — 2026-11-07: a volume void gives back the ml its sale poured (B19 superseded)
 

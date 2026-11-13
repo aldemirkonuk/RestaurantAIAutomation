@@ -88,6 +88,8 @@ ALLOWLIST = {
     ("pos-hub/pos-hub.service.ts", "applyStockEffects", "record_glass_pour"): (
         "scoped", "pours only an id the house-scoped loadInventoryVolumes returned; anything else is queued "
                   "(mapping-inventory-ids-belong-to-the-house.spec.ts)"),
+    ("pos-hub/pos-hub.service.ts", "replayToastDoorRows", "record_glass_pour"): (
+        "assert", "replays a Toast-door sale (QA 8c): asserts the mapping's item belongs to the house before the RPC"),
     ("toast/toast.service.ts", "applyOrderSaleEffects", "record_glass_pour"): (
         "scoped", "a read scoped to the house must return the mapping's item or the line is queued "
                   "(mapping-inventory-ids-belong-to-the-house.spec.ts)"),
