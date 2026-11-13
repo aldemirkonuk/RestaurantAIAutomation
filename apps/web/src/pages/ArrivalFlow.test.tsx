@@ -121,8 +121,8 @@ function fillRestaurantStep() {
 }
 
 async function toRestaurantStep() {
+  // Two steps since OB-7 (#1055): the restaurant step is the first screen.
   const view = render(<MemoryRouter><GetStarted /></MemoryRouter>)
-  fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
   await screen.findByRole('heading', { name: 'Your restaurant' })
   fillRestaurantStep()
   return view
@@ -140,15 +140,8 @@ const NOT_LOADED =
 describe('approved arrival flow', () => {
   it('creates the house on the restaurant screen and offers skip only on menu', async () => {
     render(<MemoryRouter><GetStarted /></MemoryRouter>)
-    expect(screen.getByRole('heading', { name: /Welcome, Selin/ })).toBeInTheDocument()
-    expect(screen.queryByText(/Skip for now/)).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await screen.findByRole('heading', { name: 'Your restaurant' })
-    expect(patch).toHaveBeenCalledWith('/auth/me', {
-      name: 'Selin Kaya',
-      phone: undefined,
-    })
+    expect(screen.getByText(/Welcome, Selin/)).toBeInTheDocument()
     expect(screen.queryByText(/Skip for now/)).not.toBeInTheDocument()
 
     fillRestaurantStep()
@@ -165,8 +158,12 @@ describe('approved arrival flow', () => {
       }),
     )
     expect(screen.getByText('Skip for now — open the house')).toBeInTheDocument()
+    // The name came from sign-up unchanged, so it is not written again.
+    expect(patch).not.toHaveBeenCalled()
     expect(screen.getByText('Drop the menu here')).toBeInTheDocument()
-    expect(screen.getByText(/Your last invoice — read the same way/)).toBeInTheDocument()
+    // The greyed "Later: your last invoice… Not a step now." box went (r21):
+    // it offered nothing to press; /house carries the way to Receipts.
+    expect(screen.queryByText(/last invoice/i)).not.toBeInTheDocument()
     expect(screen.queryByText('Photograph the menu')).not.toBeInTheDocument()
     expect(screen.queryByText(/certain/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/likely/i)).not.toBeInTheDocument()
@@ -285,12 +282,11 @@ describe('approved arrival flow', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  it('shows SMS consent only after a mobile number is entered', async () => {
+  it('asks no mobile number, so no SMS consent is drawn (the You step went, OB-7)', async () => {
     render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    await screen.findByRole('heading', { name: 'Your restaurant' })
+    expect(screen.queryByLabelText('Mobile')).not.toBeInTheDocument()
     expect(screen.queryByText(/the account does not depend on it/i)).not.toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText('Mobile'), { target: { value: '+90 532 000 00 00' } })
-    expect(screen.getByText(/the account does not depend on it/i)).toBeInTheDocument()
-    expect(screen.getByText('STOP')).toBeInTheDocument()
   })
 
   it('passes Use my location into Places as a search bias', async () => {
@@ -302,7 +298,6 @@ describe('approved arrival flow', () => {
       value: { getCurrentPosition },
     })
     render(<MemoryRouter><GetStarted /></MemoryRouter>)
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await screen.findByRole('heading', { name: 'Your restaurant' })
     fireEvent.click(screen.getByRole('button', { name: /Use my location/ }))
     expect(getCurrentPosition).toHaveBeenCalled()

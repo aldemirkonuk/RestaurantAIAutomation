@@ -129,7 +129,10 @@ describe('GetStarted menu step', () => {
     fireEvent.drop(screen.getByText('Drop the menu here'), { dataTransfer: { files: [photo] } })
 
     const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toBe('We could not read that photo just now. Try again in a moment.')
+    // r21: every refusal names a way on (a 503 is also the reader switched off).
+    expect(alert.textContent).toBe(
+      'We could not read that photo just now. Try again in a moment, or send a file or type a few lines below instead.',
+    )
     expect(document.body.textContent).not.toContain('parser exploded')
   })
 
