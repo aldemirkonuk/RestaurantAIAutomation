@@ -31,7 +31,8 @@ export type DeliveryMoneyAct =
   | "accept"
   | "accept_as_billed"
   | "agree"
-  | "verify";
+  | "verify"
+  | "return_stock";
 
 const ACT_WORDS: Readonly<Record<DeliveryMoneyAct, string>> = {
   propose: "Putting a position on a delivery's record",
@@ -40,6 +41,7 @@ const ACT_WORDS: Readonly<Record<DeliveryMoneyAct, string>> = {
   accept_as_billed: "Accepting a difference on a delivery as billed",
   agree: "Agreeing a delivery",
   verify: "Verifying a delivery, which settles what its goods cost,",
+  return_stock: "Giving back a closed delivery's stock",
 };
 
 /** Refuse a session that does not hold the house's money, in words, or return. */
