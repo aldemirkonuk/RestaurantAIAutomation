@@ -160,3 +160,10 @@ button.ivd-card:hover {
   color: var(--ink-2);
   font-size: 13px;
 }
+
+.ivd-dish {
+  margin-top: 10px;
+}
+.ivd-dish-h {
+  margin: 0 0 6px;
+}

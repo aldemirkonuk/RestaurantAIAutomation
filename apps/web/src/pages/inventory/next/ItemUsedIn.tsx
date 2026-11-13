@@ -10,9 +10,9 @@
  *
  * An empty group is said as "None" under the server's own sentence for it,
  * which names the state (no current menu, not a catalogue drink); the drawer
- * never sums the groups into "not used anywhere". Dish recipes are not read
- * by this page at all (recipe lines live on the recipe-engine stack), so that
- * line says whether a recipe uses the item is not known here, never "no".
+ * never sums the groups into "not used anywhere". Dish recipes come from
+ * GET /recipes/:rid/items/:id/dishes (ADR 0366): each dish whose current recipe
+ * uses the good, with its cards. A failed read says so and is never "None".
  *
  * The two drink groups answer one question from two sources (a cocktail card
  * that names the catalogue drink, and a current recipe line linked to the
@@ -23,12 +23,23 @@
  */
 import { Link, useInRouterContext } from 'react-router-dom';
 import type { ItemMenuLine, ItemUsedIn as UsedIn, ItemUsedInGroup } from '../../../services/api/inventory';
+import { dishHref, type ItemDish, type ItemDishCost, type ItemDishes } from '../../../services/api/itemDishes';
 import { cellMoney, type HouseCurrency } from './useInventoryNextData';
 
 export type UsedInLoad = { status: 'reading' } | { status: 'failed'; reason: string } | { status: 'ready'; data: UsedIn };
 
-export const RECIPES_UNKNOWN =
-  'No dish carries a recipe yet, so which dishes use this good is not known here. It is never read as none.';
+export type DishesLoad = { status: 'reading' } | { status: 'failed'; reason: string } | { status: 'ready'; data: ItemDishes };
+
+export const FOOD_COST_TAX_NOTE = 'of the price as your list has it; whether that price includes tax is not recorded';
+
+/** Food cost as a share of the price: only from a complete cost and a price above zero. */
+export function foodCostShare(cost: ItemDishCost | null, price: number | null): { pct: number } | { missing: string[] } {
+  const missing: string[] = [];
+  if (!(cost?.complete === true && cost.perServeExact !== null)) missing.push('the cost is not complete');
+  if (!(price !== null && price > 0)) missing.push('the dish has no price');
+  if (missing.length > 0 || cost === null || cost.perServeExact === null || price === null) return { missing };
+  return { pct: Math.round((cost.perServeExact / price) * 1000) / 10 };
+}
 
 /** Where a drink opens: its own card on /cocktails, with its recipe. */
 export const drinkHref = (cocktailId: string) => `/cocktails?open=${encodeURIComponent(cocktailId)}`;
@@ -56,6 +67,63 @@ export const DRINKS_DO_NOT_DRAW =
 /** A recipe quantity as a person writes it: 0.30000000000000004 reads 0.3, 29.5735295625 reads 29.57. */
 export function fmtRecipeQty(n: number): string {
   return n.toLocaleString('en-GB', { maximumFractionDigits: 2 });
+}
+
+function DishCard({ id, title, value, sub }: { id: string; title: string; value: string; sub?: string }) {
+  return (
+    <div className="ivd-card" data-testid={id}>
+      <span className="ivd-card-k">{title}</span>
+      <span className="ivd-card-v">{value}</span>
+      {sub ? <span className="ivd-card-s">{sub}</span> : null}
+    </div>
+  );
+}
+
+function DishBlock({ dish, canManage, currency }: { dish: ItemDish; canManage: boolean; currency: HouseCurrency }) {
+  const t = `ivd-dish-${dish.dishId}`;
+  const y = dish.yieldServes;
+  const known = y !== null && y > 0;
+  const perPlate = known ? dish.uses.map((u) => `${fmtRecipeQty(u.qtyEntered / y)} ${u.unitCode}`).join(' + ') : '';
+  const share = foodCostShare(dish.cost, dish.price);
+  return (
+    <div className="ivd-dish" data-testid={t}>
+      <p className="ivd-dish-h">
+        <LineLink to={dishHref(dish.dishId)}>{dish.name}</LineLink>
+        {dish.section ? <span className="ivd-dim"> · {dish.section}</span> : null}
+      </p>
+      <div className="ivd-cards">
+        <DishCard
+          id={`${t}-per-plate`}
+          title="This good a plate"
+          value={known && perPlate ? perPlate : 'Not known'}
+          sub={known && y > 1 ? `in a batch of ${y}` : undefined}
+        />
+        {canManage && dish.cost !== null ? (
+          <DishCard
+            id={`${t}-cost`}
+            title="Cost a plate"
+            value={dish.cost.complete ? cellMoney(dish.cost.perServe, currency) : 'Not known'}
+            sub={dish.cost.complete ? undefined : `${dish.cost.priced} of ${dish.cost.of} lines priced`}
+          />
+        ) : null}
+        {canManage ? (
+          <DishCard
+            id={`${t}-price`}
+            title="Price"
+            value={dish.price !== null ? cellMoney(dish.price, currency) : 'Not on the dish'}
+          />
+        ) : null}
+        {canManage ? (
+          <DishCard
+            id={`${t}-food-cost`}
+            title="Food cost"
+            value={'pct' in share ? `${share.pct.toFixed(1)}%` : 'Not known'}
+            sub={'pct' in share ? FOOD_COST_TAX_NOTE : share.missing.join(' and ')}
+          />
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 function Group<T>({
@@ -142,14 +210,18 @@ export function drinkGroups<C extends { cocktailId: string }, D extends { cockta
 
 export default function ItemUsedIn({
   load,
+  dishes,
   canManage,
   currency,
   onRetry,
+  onRetryDishes,
 }: {
   load: UsedInLoad;
+  dishes: DishesLoad;
   canManage: boolean;
   currency: HouseCurrency;
   onRetry: () => void;
+  onRetryDishes: () => void;
 }) {
   // Menu prices are money: owners and managers only, as on every card above.
   const menu = (l: ItemMenuLine) => ({
@@ -235,7 +307,25 @@ export default function ItemUsedIn({
       {body}
       <section className="ivd-used-g" data-testid="ivd-used-recipes">
         <h4 className="ivd-used-h">In dish recipes</h4>
-        <p className="iv-note">{RECIPES_UNKNOWN}</p>
+        {dishes.status === 'reading' ? (
+          <p className="iv-note">Reading which dishes use it…</p>
+        ) : dishes.status === 'failed' ? (
+          <p className="iv-note" role="alert">
+            Which dishes use this good could not be read — {dishes.reason}.{' '}
+            <button type="button" className="iv-linkish iv-focus" onClick={onRetryDishes}>
+              Read again
+            </button>
+          </p>
+        ) : dishes.data.dishes.length === 0 ? (
+          <>
+            <p className="iv-said" data-testid="ivd-used-recipes-none">
+              None.
+            </p>
+            <p className="iv-note">No dish&apos;s current recipe uses this good.</p>
+          </>
+        ) : (
+          dishes.data.dishes.map((d) => <DishBlock key={d.dishId} dish={d} canManage={canManage} currency={currency} />)
+        )}
       </section>
     </section>
   );
