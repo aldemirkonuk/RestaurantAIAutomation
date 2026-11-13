@@ -417,3 +417,29 @@ describe("the register, by who reads it (founder, 2026-09-21)", () => {
     ]);
   });
 });
+
+describe("grantLimitWords — the owners' notice says the limit as money", () => {
+  // Required here so this block reads on its own.
+  const { grantLimitWords } = jest.requireActual("./authority-grants.service");
+
+  it("says the limit in the grant's own currency, grouped, with its places", () => {
+    expect(grantLimitWords(1500.5, "TRY")).toBe("up to ₺1,500.50");
+    expect(grantLimitWords(2000, "EUR")).toBe("up to €2,000.00");
+  });
+
+  it("[REVERT-FAILS] the issued notice the owners read carries the limit as money", async () => {
+    const t = build();
+    await t.issue(OWNER, toStaff({ limitAmount: 1500.5, limitCurrency: "TRY" }));
+    const [call] = t.notifications.persistForRestaurant.calls;
+    expect(call[1].message).toContain("(up to ₺1,500.50, until revoked)");
+    expect(call[1].message).not.toContain("1500.5 TRY");
+  });
+
+  it("never prints the word null beside a figure", () => {
+    expect(grantLimitWords(250, null)).toBe("up to 250.00");
+  });
+
+  it("a letters-only grant has no money limit", () => {
+    expect(grantLimitWords(null, null)).toBe("letters only, no money limit");
+  });
+});
