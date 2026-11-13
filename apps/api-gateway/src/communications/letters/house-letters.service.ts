@@ -692,6 +692,11 @@ export class HouseLettersService {
     // (`checkLetter`, shared with `ask` so the two cannot disagree.)
     const { match, hits, priorOutbound } = await this.checkLetter(restaurantId, dto);
 
+    // ── 2b. a reply names the letter it answers (r28 mail audit, gap 3) ─────
+    const answered = dto.answers
+      ? await this.readAnswered(restaurantId, dto.providerId, dto.answers)
+      : null;
+
     // ── 3. the house must have a sending identity ───────────────────────────
     const identity = await this.sender.resolve(restaurantId, userId);
     if (!identity.sendable) {
@@ -809,7 +814,20 @@ export class HouseLettersService {
         // so the credit can still name its letter (ADR 0230).
         ...(draft?.creditId ? { credit_id: draft.creditId } : {}),
         ...(draft ? { drafted_by: draft.draftedBy } : {}),
+        // A reply: the letter it answers, and the threading the vendor's
+        // mail program reads (sent by `dispatchDue`).
+        ...(answered
+          ? {
+              answers: answered.id,
+              in_reply_to: answered.inReplyTo,
+              references: answered.references,
+            }
+          : {}),
       },
+      // A reply joins the thread of the letter it answers, now, whatever the
+      // vendor's mail program does with the headers (the trigger keeps a key
+      // the writer sets).
+      ...(answered?.threadKey ? { thread_key: answered.threadKey } : {}),
     };
 
     // From a draft, the draft row BECOMES the letter — conditional on it still
@@ -1029,6 +1047,81 @@ export class HouseLettersService {
   }
 
   /** A vendor's name for a notice; null (never a guess) when it cannot be read. */
+  /**
+   * The letter a reply answers (r28 mail audit, gap 3): this house's, from or
+   * to the same vendor, and one that arrived or left (a draft or a queued
+   * letter has nothing to answer). Its thread key, and the threading headers
+   * the reply carries: In-Reply-To is its Message-ID; References is its own
+   * References and then its Message-ID, the last ten. A letter stored with no
+   * Message-ID gives no headers, and the reply still joins its thread.
+   */
+  private async readAnswered(
+    restaurantId: string,
+    providerId: string,
+    id: string,
+  ): Promise<{
+    id: string;
+    threadKey: string | null;
+    inReplyTo: string | null;
+    references: string | null;
+  }> {
+    const { data, error } = await this.db.client
+      .from("procurement_conversations")
+      .select(
+        "id, restaurant_id, provider_id, direction, channel, sent_at, message_id, thread_key, email_headers",
+      )
+      .eq("id", id)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      throw new BadRequestException(
+        `The letter this answers could not be read (${error.message}). Nothing was queued and nothing was sent.`,
+      );
+    }
+    const row = data as Record<string, any> | null;
+    if (!row || row.restaurant_id !== restaurantId) {
+      throw new UnprocessableEntityException(
+        "The letter this answers is not one of this house's letters. Nothing was queued and nothing was sent.",
+      );
+    }
+    if (row.provider_id !== providerId) {
+      throw new UnprocessableEntityException(
+        "The letter this answers is from a different vendor. A reply goes to the vendor of that letter; write a new letter to write to someone else. Nothing was queued and nothing was sent.",
+      );
+    }
+    // A letter that came another way (WhatsApp) has no mail thread to join.
+    // A row with no channel is from before the column, and those are mail.
+    if (row.channel && String(row.channel).toLowerCase() !== "email") {
+      throw new UnprocessableEntityException(
+        "The letter this answers did not come by mail, so a mail reply cannot answer it. Nothing was queued and nothing was sent.",
+      );
+    }
+    if (String(row.direction).toLowerCase() !== "inbound" && !row.sent_at) {
+      throw new UnprocessableEntityException(
+        "The letter this answers has not left the house, so there is nothing to answer yet. Nothing was queued and nothing was sent.",
+      );
+    }
+    const bracketed = (v: unknown): string[] =>
+      typeof v === "string" ? (v.match(/<[^<>\s]+>/g) ?? []) : [];
+    const own = bracketed(row.message_id)[0] ??
+      (typeof row.message_id === "string" && /^[^<>\s]+$/.test(row.message_id.trim())
+        ? `<${row.message_id.trim()}>`
+        : null);
+    const chain = [
+      ...bracketed(row.email_headers?.references).filter((r) => r !== own),
+      ...(own ? [own] : []),
+    ].slice(-10);
+    return {
+      id: String(row.id),
+      threadKey:
+        typeof row.thread_key === "string" && row.thread_key.trim()
+          ? row.thread_key
+          : null,
+      inReplyTo: own,
+      references: chain.length ? chain.join(" ") : null,
+    };
+  }
+
   private async vendorNameOf(restaurantId: string, providerId: string | null): Promise<string | null> {
     if (!providerId) return null;
     const { data, error } = await this.db.client
@@ -1698,6 +1791,13 @@ export class HouseLettersService {
           to,
           subject,
           text: String(row.message_text ?? ""),
+          // A reply from Mail carries the letter it answers (queue, step 2b).
+          ...(typeof headers.in_reply_to === "string" && headers.in_reply_to
+            ? { inReplyTo: headers.in_reply_to }
+            : {}),
+          ...(typeof headers.references === "string" && headers.references
+            ? { references: headers.references }
+            : {}),
         });
         leftTheHouse = true;
         const { error: sentWriteError } = await this.db.client

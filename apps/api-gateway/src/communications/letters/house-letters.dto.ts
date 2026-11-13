@@ -96,6 +96,14 @@ export class QueueLetterDto {
   @IsOptional()
   @IsUUID()
   requestId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "The house's letter this one answers (a procurement_conversations id), from Mail's \"Write a reply\". It must be this house's, from or to the same vendor, and have arrived or left. The reply joins its thread and carries In-Reply-To and References.",
+  })
+  @IsOptional()
+  @IsUUID()
+  answers?: string;
 }
 
 /**
