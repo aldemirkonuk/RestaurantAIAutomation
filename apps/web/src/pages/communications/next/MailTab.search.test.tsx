@@ -117,6 +117,8 @@ describe('the Mail search (gap 16)', () => {
     expect(screen.queryByTestId('people-empty')).toBeNull();
     expect(screen.queryByText(/No vendor mail has been stored yet/)).toBeNull();
     fireEvent.click(screen.getByTestId('search-clear-empty'));
+    // At once, not after the typing pause: the unsearched list is already held.
+    expect(screen.queryByTestId('search-empty')).toBeNull();
     await waitFor(() => expect(screen.getAllByTestId('mail-person')).toHaveLength(2));
     expect(screen.getByRole('searchbox', { name: 'Search mail' })).toHaveValue('');
   });
