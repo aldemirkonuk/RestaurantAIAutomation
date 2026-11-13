@@ -16,7 +16,7 @@ import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { draftId, draftKey, dropDraft } from './drafts';
-import { dishesApi, ownerOf, recipesApi, type DishBody, type DishChange, type PreviewCostBody, type RecipeOwner, type SaveRecipeBody } from '../../../../services/api/recipes';
+import { dishesApi, ownerOf, recipesApi, type DishBody, type DishChange, type MenuPrice, type PreviewCostBody, type RecipeOwner, type SaveRecipeBody } from '../../../../services/api/recipes';
 import { getErrorStatus } from '../../../../services/api/client';
 import { managesHouse } from '../../../communications/next/cm-format';
 
@@ -48,6 +48,41 @@ export function useDrinkFigures(enabled: boolean) {
   return {
     byId: q.data ? new Map(q.data.map((d) => [d.cocktailId, d])) : null,
     loading: q.isLoading,
+    error: q.isError ? reason(q.error) : null,
+  };
+}
+
+/**
+ * Where a list's menu prices are kept. Under the list's own key, so a dish or
+ * drink added or changed (its name or its price) is read against the menu
+ * again with it.
+ */
+export const menuPricesKey = (rid: string | null | undefined, side: 'dish' | 'drink') =>
+  side === 'dish'
+    ? ([...dishesKey(rid), 'menu-prices'] as const)
+    : (['cellar', 'cocktails', rid ?? null, 'menu-prices'] as const);
+
+/**
+ * The current menu's price beside each dish or drink (r28 recipes audit,
+ * gap 2). Read only for a role that sees the house's money. `byId` is null
+ * until read; `currentMenus` 0 means no menu is current, so nothing compares.
+ */
+export function useMenuPrices(side: 'dish' | 'drink', enabled: boolean) {
+  const { activeRestaurantId } = useAuth();
+  const q = useQuery({
+    queryKey: menuPricesKey(activeRestaurantId, side),
+    enabled: Boolean(enabled && activeRestaurantId),
+    queryFn: () => dishesApi.menuPrices(activeRestaurantId as string),
+  });
+  const d = q.data;
+  // An answer without its lists (an older gateway, a stub) compares nothing.
+  const rows = d ? (side === 'dish' ? d.dishes : d.drinks) : null;
+  const byId: Map<string, MenuPrice> | null = Array.isArray(rows)
+    ? new Map(rows.map((x) => ['dishId' in x ? x.dishId : x.cocktailId, x.menu] as [string, MenuPrice]))
+    : null;
+  return {
+    byId,
+    currentMenus: byId && typeof d?.currentMenus === 'number' ? d.currentMenus : null,
     error: q.isError ? reason(q.error) : null,
   };
 }

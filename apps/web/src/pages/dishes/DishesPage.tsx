@@ -18,6 +18,10 @@
  * under the figure ("partly invoiced"), as the dish's own cost card does; the
  * food cost share is written in the house's form ("%33,3" in a lira house),
  * as the inventory drawer writes it (r28 recipes audit, gaps 13 and 15).
+ *
+ * A "Menu" column beside the price shows what the house's current menu gives
+ * a line of the dish's name, and "differs" when the two disagree (gap 2).
+ * Only while a menu is current; an unread menu is said once above the list.
  */
 import { useId, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -26,7 +30,8 @@ import RecipeSheet from '../cellar/next/recipe/RecipeSheet';
 import { pourCostShare } from '../cellar/next/recipe/DrinkCards';
 import { PRICE_UNREAD, priceText, readPrice } from '../cellar/next/recipe/price-text';
 import { useHousePercent, type SayPercent } from '../cellar/next/recipe/useHousePercent';
-import { reason, useCanEditRecipe, useCreateDish, useDishes, useHouseMoney, useRemoveDish, useUpdateDish } from '../cellar/next/recipe/useRecipe';
+import { reason, useCanEditRecipe, useCreateDish, useDishes, useHouseMoney, useMenuPrices, useRemoveDish, useUpdateDish } from '../cellar/next/recipe/useRecipe';
+import { MENU_PRICES_UNREAD, MenuPriceCell } from '../cellar/next/recipe/MenuPriceCell';
 import type { DishListRow } from '../../services/api/recipes';
 import { EM, SANS } from '../cellar/next/cellar-format';
 import '../cellar/next/cellar-next.css';
@@ -263,6 +268,8 @@ export default function DishesPage() {
   const sayMoney = useHouseMoney();
   const sayPct = useHousePercent();
   const say = canEdit ? sayMoney : null;
+  const menu = useMenuPrices('dish', canEdit);
+  const showMenu = Boolean(say && menu.byId && (menu.currentMenus ?? 0) > 0);
   const [params, setParams] = useSearchParams();
   const asked = params.get('open');
   const rows = dishes.data ?? [];
@@ -279,7 +286,7 @@ export default function DishesPage() {
       { replace: true },
     );
   const toggle = (id: string) => open(id === openId ? null : id);
-  const cols = say ? 5 : 2;
+  const cols = (say ? 5 : 2) + (showMenu ? 1 : 0);
 
   return (
     <div className="mudavym min-h-full" style={{ background: 'var(--paper-0)', color: 'var(--ink-1)', fontFamily: SANS }}>
@@ -290,6 +297,12 @@ export default function DishesPage() {
         </p>
 
         {canEdit ? <AddDish onAdded={open} /> : null}
+
+        {say && menu.error ? (
+          <p className="cl-said" role="status" style={{ marginTop: 12 }} data-testid="dishes-menu-unread">
+            {MENU_PRICES_UNREAD}
+          </p>
+        ) : null}
 
         {dishes.loading ? (
           <p className="cl-said" role="status" style={{ marginTop: 12 }}>Reading the dishes…</p>
@@ -313,6 +326,7 @@ export default function DishesPage() {
                   <th scope="col">Dish</th>
                   <th scope="col">Section</th>
                   {say ? <th scope="col" style={{ textAlign: 'right' }}>Price</th> : null}
+                  {showMenu ? <th scope="col" style={{ textAlign: 'right' }}>Menu</th> : null}
                   {say ? <th scope="col" style={{ textAlign: 'right' }}>Cost per plate</th> : null}
                   {say ? <th scope="col" style={{ textAlign: 'right' }}>Food cost</th> : null}
                 </tr>
@@ -341,6 +355,11 @@ export default function DishesPage() {
                       </td>
                       <td>{d.section ?? <span className="cl-dim">{EM}</span>}</td>
                       {c ? <td className="cl-num" style={{ textAlign: 'right' }}>{c.price}</td> : null}
+                      {showMenu && say ? (
+                        <td className="cl-num" style={{ textAlign: 'right' }} data-testid={`dish-menu-${d.id}`}>
+                          <MenuPriceCell id={d.id} menu={menu.byId?.get(d.id)} say={say} />
+                        </td>
+                      ) : null}
                       {c ? <td className="cl-num" style={{ textAlign: 'right' }}>{c.cost}</td> : null}
                       {c ? <td className="cl-num" style={{ textAlign: 'right' }}>{c.share}</td> : null}
                     </tr>,

@@ -299,6 +299,26 @@ export interface DrinkFigureRow {
   cost: DishListRow['cost'];
 }
 
+/**
+ * What the house's current menu says for one dish or drink of the same name
+ * (GET /recipes/:rid/menu-prices; r28 recipes audit, gap 2). `prices` are the
+ * line's distinct prices, lowest first; `agrees` is null when either side has
+ * no price.
+ */
+export type MenuPrice =
+  | { found: 'one'; prices: number[]; agrees: boolean | null }
+  | { found: 'none' }
+  | { found: 'several'; lines: number };
+
+export interface MenuPricesAnswer {
+  /** True for a role that does not see the house's money: nothing was read. */
+  amountsWithheld: boolean;
+  /** How many menus are current; 0 is "no current menu". Null when withheld. */
+  currentMenus: number | null;
+  dishes: Array<{ dishId: string; menu: MenuPrice }>;
+  drinks: Array<{ cocktailId: string; menu: MenuPrice }>;
+}
+
 export interface DishBody {
   name: string;
   section?: string;
@@ -333,6 +353,12 @@ export const dishesApi = {
   async drinkFigures(restaurantId: string): Promise<DrinkFigureRow[]> {
     const r = await apiClient.get<{ drinks: DrinkFigureRow[] }>(`${base(restaurantId)}/drinks/figures`);
     return r.data.drinks;
+  },
+
+  /** The current menu's price beside each dish and drink, in one read (r28 recipes audit, gap 2). */
+  async menuPrices(restaurantId: string): Promise<MenuPricesAnswer> {
+    const r = await apiClient.get<MenuPricesAnswer>(`${base(restaurantId)}/menu-prices`);
+    return r.data;
   },
 
   async create(restaurantId: string, body: DishBody): Promise<Dish> {
