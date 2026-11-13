@@ -16,6 +16,7 @@ import { SealChallengeService } from "../common/seal/seal-challenge.service";
 import { readRestaurantRole } from "./organizations.service";
 import { VendorSendAuthorityService } from "./vendor-send-authority.service";
 import type { IssueAuthorityGrantDto } from "./authority-grants.dto";
+import { moneyIn } from "../common/money-in";
 
 const REGISTER_COLUMNS =
   "id, restaurant_id, grantor_user_id, grantee_user_id, scope, limit_amount, limit_currency, expires_at, created_at, revoked_at, revoked_by_user_id, vouched_by_user_id, vouched_at, suspended_at, suspended_reason, owner_only, deleted_at";
@@ -532,8 +533,7 @@ export class AuthorityGrantsService {
     }
     const who = grant.grantee.name ?? "A member";
     const by = actorName ?? "an owner";
-    const limit =
-      grant.limitAmount === null ? "letters only, no money limit" : `up to ${grant.limitAmount} ${grant.limitCurrency}`;
+    const limit = grantLimitWords(grant.limitAmount, grant.limitCurrency);
     const until = grant.expiresAt ? `until ${grant.expiresAt.slice(0, 10)}` : "until revoked";
     const words: Record<typeof what, { title: string; message: string }> = {
       issued: {
@@ -590,4 +590,19 @@ function firstRow(data: unknown): GrantRow | null {
   if (!row || typeof row !== "object") return null;
   const r = row as Partial<GrantRow>;
   return r.id ? (r as GrantRow) : null;
+}
+
+/**
+ * A grant's money limit in the owners' notice: "up to ₺1,500.00", in the
+ * grant's own currency. It was the raw number and code ("up to 1500.5 TRY"),
+ * with no grouping and no fixed places. A limit always carries its currency
+ * (`issue` refuses one without the other); were one ever read without it, the
+ * figure is said bare rather than beside the word "null".
+ */
+export function grantLimitWords(
+  limitAmount: number | null,
+  limitCurrency: string | null,
+): string {
+  if (limitAmount === null) return "letters only, no money limit";
+  return `up to ${moneyIn(limitAmount, limitCurrency)}`;
 }

@@ -417,3 +417,21 @@ describe("the register, by who reads it (founder, 2026-09-21)", () => {
     ]);
   });
 });
+
+describe("grantLimitWords — the owners' notice says the limit as money", () => {
+  // Required here so this block reads on its own.
+  const { grantLimitWords } = jest.requireActual("./authority-grants.service");
+
+  it("says the limit in the grant's own currency, grouped, with its places", () => {
+    expect(grantLimitWords(1500.5, "TRY")).toBe("up to ₺1,500.50");
+    expect(grantLimitWords(2000, "EUR")).toBe("up to €2,000.00");
+  });
+
+  it("never prints the word null beside a figure", () => {
+    expect(grantLimitWords(250, null)).toBe("up to 250.00");
+  });
+
+  it("a letters-only grant has no money limit", () => {
+    expect(grantLimitWords(null, null)).toBe("letters only, no money limit");
+  });
+});
