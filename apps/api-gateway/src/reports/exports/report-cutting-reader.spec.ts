@@ -118,7 +118,7 @@ const PAGE: Record<
   { path: string; call: (c: AnalyticsController, days: number) => Promise<unknown> }
 > = {
   reading: { path: "`/analytics/insights/${rid}?limit=40`", call: (c) => c.getInsights(RID, undefined, undefined, "40") },
-  till: { path: "`/analytics/pos-revenue/${rid}?days=${ctx.days}`", call: (c, d) => c.getPosRevenue(RID, String(d)) },
+  till: { path: "`/analytics/pos-revenue/${rid}?days=${ctx.days}`", call: (c, d) => c.getPosRevenue(RID, String(d), HOLDER) },
   goals: { path: "`/analytics/goals/${rid}/progress`", call: (c) => c.listGoalsWithProgress(RID, undefined, HOLDER) },
   bench: { path: "`/analytics/overview/${rid}`", call: (c) => c.getOverview(RID, HOLDER) },
   pacing: { path: "`/analytics/cashflow/${rid}`", call: (c) => c.getCashflow(RID) },

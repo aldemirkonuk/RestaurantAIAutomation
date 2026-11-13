@@ -970,6 +970,14 @@ export function useRecommendationsNextData(): RecommendationsData {
       .get<Record<string, unknown>>(`/analytics/pos-revenue/${rid}?days=${posDays}`)
       .then(({ data }) => {
         if (cancelled) return;
+        // Staff are not shown the till (ADR 0298 decision 9): the gateway
+        // answers with every figure null. That is not a window with no
+        // records, nor a house with no till, so the ribbon claims neither.
+        if (data?.salesWithheld === true) {
+          setPos(null);
+          setPosProblem('the till is read by owners and managers');
+          return;
+        }
         const series = Array.isArray(data?.dailySeries)
           ? (data.dailySeries as Array<Record<string, unknown>>)
           : [];

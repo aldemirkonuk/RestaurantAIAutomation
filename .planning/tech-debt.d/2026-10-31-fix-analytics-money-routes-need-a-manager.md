@@ -59,3 +59,18 @@ a role guard admits `admin`, which `RolesGuard` no longer does
 `apps/web/src/pages/reports/next/useReportExports.ts:117`. /reports no longer
 asks for the table and server registers for a role the gateway refuses; they
 say they are held back (ADR 0348 §Decision 2).
+
+**2026-11-13, first slice of the follow-up (`fix/till-figures-withheld-from-staff`).**
+GET `pos-revenue` and GET `basket` now pass the caller's gate: a role
+without `sales` (staff, an access row with no role, a demoted manager) gets
+200 with `salesWithheld: true` and every figure `null`, and neither the
+checks nor the house's clock are read for them. Pinned on real staff,
+unroled and demoted tokens by
+`apps/api-gateway/src/analytics/till-figures-withheld-from-staff.spec.ts`.
+/reports holds the till register back for staff (`readers`), and the
+/recommendations ribbon reads a withheld till as unread, not as a month of
+empty days. Still open from the list above: `insights` (`peer_rank`),
+`recommendations` (`staff_spread` and amounts), `financial` amounts beyond
+the till, `inventory-science`, `risk`, `consult`, `menu-engineering`,
+`vendor-scorecard`, `cashflow`, `wine`, `overview`, the four writes, and
+`/toast/sales`. The entry stays OPEN.

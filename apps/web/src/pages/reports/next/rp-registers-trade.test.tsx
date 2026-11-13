@@ -157,6 +157,39 @@ const desk = {
   proposal: null,
 } as unknown as GoalsDesk;
 
+describe('the till is a sales figure, withheld from staff (ADR 0298 decision 9, ADR 0348)', () => {
+  it('names owner and manager as its readers, so the page never asks for it for staff', () => {
+    expect(till.readers).toEqual(['owner', 'manager']);
+  });
+
+  it('says a withheld answer is withheld, never "no POS", and draws no figure', () => {
+    const w = read({
+      restaurantId: 'r1',
+      days: 30,
+      salesWithheld: true,
+      from: null,
+      to: null,
+      timezone: null,
+      zoneUnset: null,
+      posConnected: null,
+      revenue: null,
+      checkCount: null,
+      dailySeries: null,
+      consumption: null,
+    });
+    expect(w.salesWithheld).toBe(true);
+    const view = till.view(w, ctx);
+    render(<MemoryRouter>{view.say}</MemoryRouter>);
+    expect(screen.getByText('The till register is written for owners and managers. Nothing below is claimed.')).toBeInTheDocument();
+    expect(screen.queryByText(/No POS check has ever landed/)).toBeNull();
+    expect(view.figures).toEqual([]);
+  });
+
+  it('reads an answer without the flag as not withheld', () => {
+    expect(read(OLD_PAYLOAD).salesWithheld).toBe(false);
+  });
+});
+
 describe("a goal's pace in a house with no time zone (ADR 0296)", () => {
   it('reads the reason off the payload, and a payload without one as none', () => {
     expect(book(STOCK).goals[0].paceUnread).toBe(NO_ZONE_PACE);
