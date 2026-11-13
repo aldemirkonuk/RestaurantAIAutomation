@@ -425,6 +425,71 @@ describe('MenuNext — a price changes on its line', () => {
     expect(note.textContent).toMatch(/^Tiramisu: the price is now .*11\.00 on the menu\. A dish has no house price and no stock, so nothing else changed\.$/);
   });
 
+  // r26 (r24 walk): Enter in a price box did not save; the boxes are in two
+  // table cells, not a form. Enter saves, Escape puts back and closes.
+  it('Enter in a price box saves what the boxes hold, as the Save button does', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [chianti()] }));
+    mockReview.mockResolvedValue({ menuItemId: 'w1', fieldName: 'bottle_price', newValue: '45.5', priceSync: 'changed', priceSyncError: null, priceHeld: [] });
+    mount();
+    await openEditor('Chianti');
+    const box = screen.getByLabelText('Bottle price of Chianti');
+    fireEvent.change(box, { target: { value: '45,50' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await screen.findByTestId('menu-price-note');
+    expect(mockReview).toHaveBeenCalledTimes(1);
+    expect(mockReview).toHaveBeenCalledWith('w1', 'bottle_price', '45,50');
+  });
+
+  it('a second Enter while the first is saving sends nothing more', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [chianti()] }));
+    let settle: (v: Awaited<ReturnType<typeof mockReview>>) => void = () => {};
+    mockReview.mockReturnValue(new Promise((r) => { settle = r; }));
+    mount();
+    await openEditor('Chianti');
+    const box = screen.getByLabelText('Bottle price of Chianti');
+    fireEvent.change(box, { target: { value: '50' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => expect(screen.getByTestId('menu-price-save')).toBeDisabled());
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(mockReview).toHaveBeenCalledTimes(1);
+    settle({ menuItemId: 'w1', fieldName: 'bottle_price', newValue: '50', priceSync: 'changed', priceSyncError: null, priceHeld: [] });
+    await screen.findByTestId('menu-price-note');
+  });
+
+  it('Enter while an input method is still composing is the method\'s, not a save', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [chianti()] }));
+    mount();
+    await openEditor('Chianti');
+    const box = screen.getByLabelText('Bottle price of Chianti');
+    fireEvent.change(box, { target: { value: '50' } });
+    fireEvent.keyDown(box, { key: 'Enter', isComposing: true });
+    expect(mockReview).not.toHaveBeenCalled();
+    expect(screen.getByTestId('menu-price-save')).toBeInTheDocument();
+  });
+
+  it('Escape closes the boxes, sends nothing, and the next open starts from the stored price', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [chianti()] }));
+    mount();
+    await openEditor('Chianti');
+    const box = screen.getByLabelText('Bottle price of Chianti');
+    fireEvent.change(box, { target: { value: '99' } });
+    fireEvent.keyDown(box, { key: 'Escape' });
+    expect(screen.queryByTestId('menu-price-save')).not.toBeInTheDocument();
+    expect(mockReview).not.toHaveBeenCalled();
+    await openEditor('Chianti');
+    expect(screen.getByLabelText('Bottle price of Chianti')).not.toHaveValue('99');
+  });
+
+  it('opening puts the cursor in the first box; Escape gives it back to "Change price"', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [chianti()] }));
+    mount();
+    await openEditor('Chianti');
+    const glass = screen.getByLabelText('Glass price of Chianti');
+    expect(glass).toHaveFocus();
+    fireEvent.keyDown(glass, { key: 'Escape' });
+    expect(screen.getByRole('button', { name: 'Change the price of Chianti' })).toHaveFocus();
+  });
+
   it('staff are offered no price change', async () => {
     role = 'staff';
     mockGetMenu.mockResolvedValue(menu({ items: [chianti()] }));

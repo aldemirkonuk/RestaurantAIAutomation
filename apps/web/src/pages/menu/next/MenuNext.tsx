@@ -42,7 +42,7 @@
  * shown an empty add form that would 404 on submit.
  */
 
-import { Fragment, useState, type FormEvent } from 'react';
+import { Fragment, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import { addMenuItem, discardMenuItem, getMenu, reviewMenuItem, type MenuLine } from '../../../services/api/menus';
@@ -288,15 +288,51 @@ function MenuRow({ line, currency, onDiscard, discarding, testId = 'menu-row', e
 }) {
   const [draft, setDraft] = useState<PriceDraft>({ glass: priceText(line.by_glass_price, currency), bottle: priceText(line.bottle_price, currency) });
   const editing = !!edit?.open;
+  const firstBox = useRef<HTMLInputElement>(null);
+  const changeButton = useRef<HTMLButtonElement>(null);
+  const wasEditing = useRef(editing);
+  // r26: the boxes are not a <form> (they sit in two table cells), so Enter did
+  // nothing (r24 walk). Opening puts the cursor in the first box; closing (saved,
+  // cancelled, Escape) gives it back to "Change price" instead of dropping it on
+  // the page, so a keyboard user stays on the line they were changing.
+  useEffect(() => {
+    if (editing && !wasEditing.current) firstBox.current?.focus();
+    if (!editing && wasEditing.current) {
+      const lost = !document.activeElement || document.activeElement === document.body;
+      if (lost) changeButton.current?.focus();
+    }
+    wasEditing.current = editing;
+  }, [editing]);
+  const cancel = () => {
+    setDraft({ glass: priceText(line.by_glass_price, currency), bottle: priceText(line.bottle_price, currency) });
+    edit?.onCancel();
+  };
+  // Enter saves what both boxes hold, Escape puts both back and closes: the
+  // same two keys as every other price box on /menu (the add form and the lock
+  // forms submit on Enter; the lock forms close on Escape). A key pressed while
+  // an input method is composing belongs to that method, not to the page.
+  const onBoxKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.nativeEvent.isComposing) return;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (edit && !edit.saving) edit.onSave(draft);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      if (!edit?.saving) cancel();
+    }
+  };
   const box = (kind: 'glass' | 'bottle') => (
     <input
+      ref={kind === 'glass' ? firstBox : undefined}
       className="cl-field cl-focus cl-num"
       inputMode="decimal"
+      enterKeyHint="done"
       aria-label={`${kind === 'glass' ? 'Glass' : 'Bottle'} price of ${line.name}`}
       data-testid={`menu-price-${kind}`}
       value={draft[kind]}
       placeholder="keep"
       onChange={(e) => setDraft((d) => ({ ...d, [kind]: e.target.value }))}
+      onKeyDown={onBoxKey}
       style={{ width: 80 }}
     />
   );
@@ -345,10 +381,7 @@ function MenuRow({ line, currency, onDiscard, discarding, testId = 'menu-row', e
               type="button"
               className="cl-btn cl-focus"
               disabled={edit.saving}
-              onClick={() => {
-                setDraft({ glass: priceText(line.by_glass_price, currency), bottle: priceText(line.bottle_price, currency) });
-                edit.onCancel();
-              }}
+              onClick={cancel}
             >
               Cancel
             </button>
@@ -356,6 +389,7 @@ function MenuRow({ line, currency, onDiscard, discarding, testId = 'menu-row', e
         ) : edit ? (
           <>
             <button
+              ref={changeButton}
               type="button"
               className="cl-btn cl-focus"
               onClick={() => {
