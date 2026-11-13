@@ -576,6 +576,7 @@ describe('ReportsNext — the drawing is the reader’s, within what is true', (
       'Area',
       'Line',
       'Bars',
+      'Bars and a line',
       'Heat map',
       'Table',
       'One figure',
