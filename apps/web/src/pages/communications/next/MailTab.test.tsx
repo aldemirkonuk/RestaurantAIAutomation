@@ -27,6 +27,7 @@ vi.mock('./QueuedPullBack', () => ({
 }));
 
 import { MailTab } from './MailTab';
+import { communicationsTour } from '../../../guidance/content/communications';
 import type { MailMessage, MailSummary } from './mail-format';
 
 const SUMMARY: MailSummary = {
@@ -252,6 +253,34 @@ describe('the list', () => {
     expect(await screen.findByTestId('people-unread')).toHaveTextContent(
       'The people this house has mail with could not be read (The mail could not be read). That does not mean there are none.',
     );
+  });
+});
+
+// r23 walk: the page tour has steps for each tab. Started from Mail it showed
+// "1/1", since both later steps were Letters' own. Mail's steps must be drawn
+// by the real tab: the status line in every view, the people and "Who is
+// writing" in the list.
+describe('the tour on the Mail tab', () => {
+  const mailSteps = communicationsTour.steps
+    .map((s) => s.element)
+    .filter((el) => el !== 'nav[aria-label="Mail and letters"]');
+  const drawn = () => mailSteps.filter((el) => document.querySelector(el));
+
+  it('the list draws three steps of its own', async () => {
+    mount();
+    await screen.findAllByTestId('mail-person');
+    expect(drawn()).toEqual([
+      '[data-tour="mail-status"]',
+      'section[aria-label="People"]',
+      'section[aria-label="Who is writing"]',
+    ]);
+  });
+
+  it.each([['with=vendor%3Ap1'], ['thread=gm%3Aabc'], ['setup=1']])('?%s still draws the status step', async (q) => {
+    mount(`/communications?tab=mail&${q}`);
+    await screen.findByTestId('mail-status');
+    expect(drawn()).toEqual(['[data-tour="mail-status"]']);
+    expect(document.querySelector('[data-tour="mail-status"]')).toContainElement(screen.getByTestId('mail-status'));
   });
 });
 

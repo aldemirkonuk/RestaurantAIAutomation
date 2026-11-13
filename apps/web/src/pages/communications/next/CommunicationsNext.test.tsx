@@ -996,18 +996,34 @@ describe('the tour finds every step (COMMS-W38)', () => {
     mockDrafts.current = { drafts: [], failed: false, error: null, refetch: () => {} };
   });
 
-  it('every step’s element is on the page with nothing drafted', () => {
+  it('every Letters step’s element is on the page with nothing drafted, and no Mail step’s', () => {
     const { container } = render(<CommunicationsNext />);
     expect(container.querySelector('section[aria-label="Drafts waiting"]')).toBeNull();
-    expect(communicationsTour.steps.map((s) => s.element)).toEqual([
+    const found = communicationsTour.steps.map((s) => s.element).filter((el) => container.querySelector(el));
+    expect(found).toEqual([
       'nav[aria-label="Mail and letters"]',
       'section[aria-label="To send"]',
       '[data-tour="comms-write"]',
     ]);
-    for (const step of communicationsTour.steps) {
-      expect(container.querySelector(step.element), step.element).not.toBeNull();
-    }
     expect(container.querySelector('[data-tour="comms-write"]')?.textContent).toMatch(/Write a letter/);
+  });
+
+  // r23 walk: started from Mail, the tour kept only its first step ("1/1"),
+  // because both later steps are Letters' own. Mail's steps are proved on the
+  // real tab in MailTab.test.tsx; here, Letters' steps must not be drawn on
+  // Mail, and the shared first step must be.
+  it('on Mail, the shared step is drawn and none of Letters’ steps', () => {
+    const { container } = render(<CommunicationsNext />, '/communications?tab=mail');
+    const letters = ['section[aria-label="To send"]', '[data-tour="comms-write"]'];
+    expect(container.querySelector('nav[aria-label="Mail and letters"]')).not.toBeNull();
+    for (const el of letters) expect(container.querySelector(el), el).toBeNull();
+    expect(communicationsTour.steps.map((s) => s.element)).toEqual([
+      'nav[aria-label="Mail and letters"]',
+      '[data-tour="mail-status"]',
+      'section[aria-label="People"]',
+      'section[aria-label="Who is writing"]',
+      ...letters,
+    ]);
   });
 });
 

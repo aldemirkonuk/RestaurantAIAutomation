@@ -420,7 +420,7 @@ export function MailTab({
         <p data-testid="mail-today" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
           {todayLine(summary)}
         </p>
-        <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1" style={{ margin: 0 }}>
+        <p data-tour="mail-status" className="flex flex-wrap items-baseline gap-x-3 gap-y-1" style={{ margin: 0 }}>
           <span data-testid="mail-status" data-state={status.state} role="status" style={{ fontSize: 12.5, fontWeight: 500, color: tone }}>
             {status.words}
           </span>
