@@ -2,17 +2,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, render, waitFor } from "@testing-library/react";
 
 /**
- * One owner of the session (r19, 2026-11-13).
+ * One reader of the session (r19, 2026-11-13).
  *
  * `/auth/me` was read twice on every page load: once by AuthProvider's boot
  * load and once by the auth store's own `loadUser`, which ran at import time.
- * AuthProvider owns the session and the store is its copy, so:
+ * AuthProvider is now the only reader and the store is its copy, so:
  *
+ *  - a page load reads `/auth/me` once, and importing the store reads nothing;
  *  - the copy follows sign-in (password, Google, a passkey or e-mail-code
  *    session pair, a dev-bypass token stored after the store loaded) and
  *    sign-out;
  *  - a dead session at boot still takes ADR 0344's one reaction, which the
- *    store's load makes too, so it does not hang on a second read.
+ *    store's load used to make.
  */
 
 const h = vi.hoisted(() => {
@@ -40,6 +41,7 @@ import { AUTH_STORAGE_KEY } from "../lib/deadSession";
 
 const meReads = () =>
   h.instance.get.mock.calls.filter(([url]) => url === "/api/v1/auth/me").length;
+const ME_READS_AT_IMPORT = meReads();
 
 const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
@@ -121,6 +123,19 @@ afterEach(() => {
   Object.defineProperty(window, "location", {
     configurable: true,
     value: realLocation,
+  });
+});
+
+describe("one read of /auth/me per page load", () => {
+  it("importing the auth store reads nothing, with a token already on the device", () => {
+    expect(ME_READS_AT_IMPORT).toBe(0);
+  });
+
+  it("a load with a stored token reads /auth/me exactly once", async () => {
+    localStorage.setItem("accessToken", jwt({ sub: "p1", restaurantId: A }));
+    answerMeWith("p1");
+    await mount();
+    expect(meReads()).toBe(1);
   });
 });
 

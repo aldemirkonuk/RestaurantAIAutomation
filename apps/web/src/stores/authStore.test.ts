@@ -1,218 +1,91 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 /**
- * ADR 0164, item 2/3. Before this fix, `loadUser`'s catch block treated ANY
- * error from `GET /auth/me` other than a successfully-recovered 401 as
- * "clear both tokens and redirect to /login" — a 503 (the gateway could not
- * read the session), a rate limit, or a dropped connection all did that,
- * exactly the failure `AuthContext.tsx`'s own `/auth/me` load had already
- * been fixed for. ADR 0164 claimed this was fixed "on both web clients"; it
- * was fixed on one. It also refreshed through its own fourth, independent
- * implementation instead of the one, single-flight `doRefresh` every other
- * caller uses, so it could not honour `houseAccessEnded` and could race a
- * refresh AuthContext started at the same moment.
+ * The auth store is a copy of the session that AuthProvider writes
+ * (contexts/AuthContext.tsx). It used to run its own `loadUser` at import
+ * time, which read `/auth/me` a second time on every page load (r18,
+ * 2026-11-13). The boot read, the refresh rules and the dead-session reaction
+ * it carried are tested where they now live: `AuthContext.oneSessionReader`,
+ * `AuthContext.houses` and `deadSession`.
  */
 
-const h = vi.hoisted(() => ({
-  get: vi.fn(),
-  post: vi.fn(),
-}));
-
+const net = vi.hoisted(() => ({ create: vi.fn(), get: vi.fn(), post: vi.fn() }));
 vi.mock("axios", () => ({
-  default: {
-    create: () => ({
-      get: h.get,
-      post: h.post,
-      defaults: { headers: { common: {} as Record<string, string> } },
-    }),
-  },
+  default: { create: net.create, get: net.get, post: net.post },
+  create: net.create,
+  get: net.get,
+  post: net.post,
 }));
-
-const refresh = vi.hoisted(() => ({ doRefresh: vi.fn() }));
-vi.mock("../lib/sessionRefresh", () => ({ doRefresh: refresh.doRefresh }));
+const fetchSpy = vi.hoisted(() => {
+  // A token is on the device before the store loads, as on a reload.
+  localStorage.setItem("accessToken", "boot-token");
+  return vi.fn();
+});
+vi.stubGlobal("fetch", fetchSpy);
 
 import { useAuthStore } from "./authStore";
 import { AUTH_STORAGE_KEY } from "../lib/deadSession";
 
-const USER = { userId: "u1", email: "a@b.com", name: "A", role: "owner", restaurantId: "house-A" };
+const HOUSE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const PERSON = {
+  userId: "u1",
+  email: "a@b.com",
+  name: "A",
+  role: "owner" as const,
+  restaurantId: HOUSE,
+};
 
 beforeEach(() => {
   localStorage.clear();
-  vi.clearAllMocks();
-  useAuthStore.setState({
-    user: null,
-    loading: true,
-    error: null,
-    activeRestaurantId: null,
-    availableRestaurants: [],
-    accessToken: null,
-    refreshToken: null,
+  useAuthStore.setState({ user: null, activeRestaurantId: null });
+});
+
+describe("the auth store does no network work of its own", () => {
+  it("importing it with a stored token asks nothing", () => {
+    // The module above was imported once; a boot read would have fired then.
+    expect(net.get).not.toHaveBeenCalled();
+    expect(net.post).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect("loadUser" in useAuthStore.getState()).toBe(false);
   });
 });
 
-describe("authStore.loadUser — a 503 (or any non-401) keeps the session", () => {
-  it("does not clear tokens or redirect when /auth/me fails with 503", async () => {
-    localStorage.setItem("accessToken", "a");
-    localStorage.setItem("refreshToken", "r");
-    h.get.mockRejectedValue({ response: { status: 503 } });
-
-    await useAuthStore.getState().loadUser();
-
-    expect(localStorage.getItem("accessToken")).toBe("a");
-    expect(localStorage.getItem("refreshToken")).toBe("r");
-    expect(refresh.doRefresh).not.toHaveBeenCalled();
-    expect(useAuthStore.getState().loading).toBe(false);
-  });
-
-  it("does not clear tokens on a network error (no status at all)", async () => {
-    localStorage.setItem("accessToken", "a");
-    localStorage.setItem("refreshToken", "r");
-    h.get.mockRejectedValue(new Error("Network Error"));
-
-    await useAuthStore.getState().loadUser();
-
-    expect(localStorage.getItem("accessToken")).toBe("a");
-    expect(localStorage.getItem("refreshToken")).toBe("r");
-  });
-});
-
-describe("authStore.loadUser — 401 goes through the one shared doRefresh", () => {
-  it("applies the retried user data when doRefresh recovers a token", async () => {
-    localStorage.setItem("accessToken", "expired");
-    localStorage.setItem("refreshToken", "r");
-    h.get
-      .mockRejectedValueOnce({ response: { status: 401 } })
-      .mockResolvedValueOnce({ data: { user: USER, availableRestaurants: ["house-A"] } });
-    refresh.doRefresh.mockImplementation(async () => {
-      localStorage.setItem("refreshToken", "r"); // unchanged, as a real rotation-less refresh would leave it
-      return "new-access";
+describe("followSession", () => {
+  it("takes the signed-in person's ids, and only those fields", () => {
+    useAuthStore.getState().followSession({
+      ...PERSON,
+      // AuthContext's person carries more; the copy keeps what readers use.
+      ...({ emailVerified: true, studioRoles: [] } as object),
     });
-
-    await useAuthStore.getState().loadUser();
-
-    expect(refresh.doRefresh).toHaveBeenCalledTimes(1);
-    expect(useAuthStore.getState().user).toEqual(USER);
-    expect(useAuthStore.getState().loading).toBe(false);
+    expect(useAuthStore.getState().user).toEqual(PERSON);
   });
 
-  it("signs out only when doRefresh actually removed the refresh token (genuine 401)", async () => {
-    localStorage.setItem("accessToken", "expired");
-    localStorage.setItem("refreshToken", "r");
-    h.get.mockRejectedValue({ response: { status: 401 } });
-    refresh.doRefresh.mockImplementation(async () => {
-      localStorage.removeItem("accessToken");
-      localStorage.removeItem("refreshToken");
-      return null;
-    });
-
-    await useAuthStore.getState().loadUser();
-
-    expect(localStorage.getItem("refreshToken")).toBeNull();
+  it("a sign-out leaves nothing of the last person, not even the house", () => {
+    useAuthStore.getState().followSession(PERSON);
+    useAuthStore.getState().setActiveRestaurantId(HOUSE);
+    useAuthStore.getState().followSession(null);
     expect(useAuthStore.getState().user).toBeNull();
-  });
-
-  it("keeps the session when doRefresh returns null for a houseAccessEnded redirect (refresh token still present)", async () => {
-    localStorage.setItem("accessToken", "expired");
-    localStorage.setItem("refreshToken", "r");
-    h.get.mockRejectedValue({ response: { status: 401 } });
-    refresh.doRefresh.mockImplementation(async () => {
-      // Mirrors what the real doRefresh does on houseAccessEnded: stores a
-      // fresh no-house pair and navigates away, returning null.
-      localStorage.setItem("refreshToken", "new-no-house-refresh");
-      return null;
-    });
-
-    await useAuthStore.getState().loadUser();
-
-    expect(localStorage.getItem("refreshToken")).toBe("new-no-house-refresh");
-    // Not forced into a full sign-out: the chooser redirect (inside
-    // doRefresh, exercised separately in sessionRefresh.test.ts) is what
-    // handles this case, not a second, conflicting one here.
-    expect(useAuthStore.getState().loading).toBe(false);
-  });
-
-  it("keeps the session when doRefresh returns null for a 503 while refreshing", async () => {
-    localStorage.setItem("accessToken", "expired");
-    localStorage.setItem("refreshToken", "r");
-    h.get.mockRejectedValue({ response: { status: 401 } });
-    refresh.doRefresh.mockResolvedValue(null); // refreshToken left untouched, as the real 503 path does
-
-    await useAuthStore.getState().loadUser();
-
-    expect(localStorage.getItem("refreshToken")).toBe("r");
-    expect(useAuthStore.getState().loading).toBe(false);
+    expect(useAuthStore.getState().activeRestaurantId).toBeNull();
+    const persisted = JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY) ?? "{}");
+    expect(persisted.state?.user ?? null).toBeNull();
+    expect(persisted.state?.activeRestaurantId ?? null).toBeNull();
   });
 });
 
-describe("authStore.loadUser — a dead session takes the API client's one reaction", () => {
-  const realLocation = window.location;
-  let href = "";
-  let pathname = "";
-  const reload = vi.fn();
-  const at = (page: string) => {
-    href = page;
-    pathname = page;
-    Object.defineProperty(window, "location", {
-      configurable: true,
-      value: {
-        get pathname() {
-          return pathname;
-        },
-        get href() {
-          return href;
-        },
-        set href(v: string) {
-          href = v;
-        },
-        reload,
-      },
-    });
-  };
-  const deadSession = () => {
-    localStorage.setItem("accessToken", "expired");
-    localStorage.setItem("refreshToken", "r");
-    h.get.mockRejectedValue({ response: { status: 401 } });
-    refresh.doRefresh.mockImplementation(async () => {
-      localStorage.removeItem("accessToken");
-      localStorage.removeItem("refreshToken");
-      return null;
-    });
-  };
-  afterEach(() => {
-    Object.defineProperty(window, "location", { configurable: true, value: realLocation });
+describe("setActiveRestaurantId", () => {
+  it("takes a house id and remembers it", () => {
+    useAuthStore.getState().setActiveRestaurantId(HOUSE);
+    expect(useAuthStore.getState().activeRestaurantId).toBe(HOUSE);
+    expect(localStorage.getItem("activeRestaurantId")).toBe(HOUSE);
   });
 
-  it.each(["/", "/story", "/register"])(
-    "clears the session and the persisted person, and reloads %s",
-    async (page) => {
-      at(page);
-      deadSession();
-      await useAuthStore.getState().loadUser();
-      expect(localStorage.getItem("accessToken")).toBeNull();
-      expect(localStorage.getItem(AUTH_STORAGE_KEY)).toBeNull();
-      expect(useAuthStore.getState().user).toBeNull();
-      expect(reload).toHaveBeenCalledTimes(1);
-      expect(href).toBe(page);
-    },
-  );
-
-  it("still sends a private page to /login", async () => {
-    at("/inventory");
-    deadSession();
-    await useAuthStore.getState().loadUser();
-    expect(href).toBe("/login");
-    expect(reload).not.toHaveBeenCalled();
+  it("ignores anything that is not a house id", () => {
+    useAuthStore.getState().setActiveRestaurantId("house-A");
+    expect(useAuthStore.getState().activeRestaurantId).toBeNull();
+    expect(localStorage.getItem("activeRestaurantId")).toBeNull();
   });
+});
 
-  it("after the reload, a boot with no token asks nothing, so the reload cannot repeat", async () => {
-    at("/");
-    await useAuthStore.getState().loadUser();
-    expect(h.get).not.toHaveBeenCalled();
-    expect(refresh.doRefresh).not.toHaveBeenCalled();
-    expect(reload).not.toHaveBeenCalled();
-  });
-
-  it("persists under the key the dead-session reaction clears", () => {
-    expect(useAuthStore.persist.getOptions().name).toBe(AUTH_STORAGE_KEY);
-  });
+it("persists under the key the dead-session reaction clears", () => {
+  expect(useAuthStore.persist.getOptions().name).toBe(AUTH_STORAGE_KEY);
 });

@@ -1,8 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import axios from 'axios'
-import { doRefresh } from '../lib/sessionRefresh'
-import { AUTH_STORAGE_KEY, leaveDeadSession } from '../lib/deadSession'
+import { AUTH_STORAGE_KEY } from '../lib/deadSession'
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 
@@ -64,7 +63,6 @@ interface AuthState {
   loginWithMicrosoft: (token: string) => Promise<void>
   logout: () => Promise<void>
   refreshAccessToken: () => Promise<void>
-  loadUser: () => Promise<void>
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -247,97 +245,6 @@ export const useAuthStore = create<AuthState>()(
           throw err
         }
       },
-      
-      loadUser: async () => {
-        const token = localStorage.getItem('accessToken')
-        if (!token) {
-          set({ loading: false })
-          return
-        }
-        if (token === 'demo-token') {
-          get().clearTokens()
-          localStorage.removeItem('demoMode')
-          set({ loading: false })
-          return
-        }
-
-        api.defaults.headers.common['Authorization'] = `Bearer ${token}`
-
-        const applyUserData = (user: any, availableRestaurants: any[]) => {
-          const restaurants = Array.isArray(availableRestaurants) && availableRestaurants.length > 0
-            ? availableRestaurants
-            : [user.restaurantId]
-          const storedActive = localStorage.getItem('activeRestaurantId')
-          const isUuid = storedActive
-            ? /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(storedActive)
-            : false
-          const resolvedActive =
-            storedActive && isUuid && restaurants.includes(storedActive)
-              ? storedActive
-              : user.restaurantId
-          set({
-            user,
-            availableRestaurants: restaurants,
-            activeRestaurantId: resolvedActive,
-            accessToken: localStorage.getItem('accessToken'),
-            refreshToken: localStorage.getItem('refreshToken'),
-            loading: false,
-          })
-        }
-
-        try {
-          const response = await api.get('/api/v1/auth/me')
-          applyUserData(response.data.user, response.data.availableRestaurants)
-        } catch (err: any) {
-          const status = err?.response?.status
-          if (status === 401) {
-            // ADR 0164, item 2/3: the one shared, single-flight refresh
-            // (`doRefresh`, also used by AuthContext.tsx and its axios
-            // interceptor) instead of a fourth independent implementation —
-            // a refresh AuthContext started around the same moment is
-            // shared, not raced, and houseAccessEnded/503 are handled the
-            // one place both clients rely on.
-            const newAccess = await doRefresh()
-            if (newAccess) {
-              get().setTokens(newAccess, localStorage.getItem('refreshToken') || '')
-              try {
-                const retryRes = await api.get('/api/v1/auth/me')
-                applyUserData(retryRes.data.user, retryRes.data.availableRestaurants)
-                return
-              } catch (retryErr) {
-                console.error('Failed to load user after refresh:', retryErr)
-              }
-            }
-            // `doRefresh` removes the stored refresh token itself only when
-            // it was genuinely rejected. A houseAccessEnded response leaves a
-            // fresh (no-house) pair in place and has already sent the person
-            // to the chooser; a 503 or a dropped connection while refreshing
-            // leaves the original pair untouched. Only the first case is
-            // actually signed out — the other two keep whatever session is
-            // now on disk instead of wiping it.
-            if (!localStorage.getItem('refreshToken')) {
-              get().clearTokens()
-              set({ user: null, loading: false })
-              // The one reaction the API client shares: a public page reloads
-              // as a stranger's, any other goes to /login (ADR 0344).
-              leaveDeadSession()
-            } else {
-              set({ loading: false })
-            }
-            return
-          }
-          // A rate limit, a 500, a 503, and a dropped connection all say "ask
-          // again later"; none of them says "you are not who you said you
-          // were" — this used to clear both tokens on ANY error here,
-          // including a 503, which is the exact failure AuthContext.tsx's own
-          // `/auth/me` load was already fixed for (ADR 0164 claimed "both web
-          // clients"; this one was not).
-          console.warn(
-            `Keeping the session: /auth/me failed with ${status ?? 'no status (network)'}, which is not an authentication failure.`,
-          )
-          set({ loading: false })
-        }
-      },
     }),
     {
       name: AUTH_STORAGE_KEY,
@@ -350,5 +257,7 @@ export const useAuthStore = create<AuthState>()(
   )
 )
 
-// Initialize auth on app load
-useAuthStore.getState().loadUser()
+
+// No boot load here. AuthProvider (contexts/AuthContext.tsx) reads `/auth/me`
+// once per page load and writes this copy through `followSession`; this store
+// used to read it a second time at import (r18, 2026-11-13).
