@@ -13,11 +13,13 @@
 import {
   comparableUnits,
   isMass,
+  isVolumeItemUnit,
   massFactor,
   normalizeUom,
   toBottles,
   Uom,
   UOMS,
+  volumeFactor,
 } from "../documents/document-types";
 
 /**
@@ -41,6 +43,8 @@ export interface LotCostLine {
   line_total?: number | string | null;
   /** The paper's own glyphs; `uom` / `priceBaseUom` keep a unit we could not map. */
   printed?: unknown;
+  /** What ONE bottle (or keg) of the line holds, in ml, when the paper says (`procurement_document_lines.format_ml`). */
+  format_ml?: number | string | null;
 }
 
 /** `unitCost` is `perBottle` at the column's precision, and what is posted. */
@@ -90,6 +94,81 @@ export function perBottleLotCost(line: LotCostLine, item?: LotCostItem): LotUnit
 }
 
 function resolve(line: LotCostLine, price: number, item?: LotCostItem): LotUnitCost {
+  // r21: an item kept by volume is costed per one of ITS unit (ml or l), and a
+  // line measured in litres books only into such an item.
+  if (item?.uom && isVolumeItemUnit(String(item.uom))) return byVolume(line, price, String(item.uom));
+  if (item?.uom && (line.uom === "liter" || line.price_base_uom === "liter"))
+    return refuse(`the invoice line is measured in liters, but the item it books into is kept in ${item.uom}s, and a liter is not a number of ${item.uom}s`);
+  return byContainer(line, price, item);
+}
+
+/**
+ * An item kept by volume (r21). `5 liter @ 120` into olive oil kept in `ml`
+ * is 0.12 a millilitre, and the lot's 5000 ml at 0.12 is the paper's 600.
+ * A bottle, case or keg line converts through what ONE of it holds
+ * (`format_ml`): `12 bottle @ 30` of 200 ml tonic is 0.15 a millilitre over
+ * 2400 ml. With no size printed it is refused by name: a bottle is not a
+ * millilitre, and booking it as one is the 1,000-times pour this fixes.
+ */
+function byVolume(line: LotCostLine, price: number, kept: string): LotUnitCost {
+  const uom = asUom(line.uom);
+  const rawBase = line.price_base_qty;
+  const base = rawBase == null || rawBase === "" ? 1 : asNumber(rawBase);
+  const baseUom = line.price_base_uom == null || line.price_base_uom === "" ? uom : asUom(line.price_base_uom);
+  if (isMass(uom) || isMass(baseUom))
+    return refuse(`the invoice line is weighed in ${isMass(uom) ? uom : baseUom}, but the item it books into is kept in ${kept}, and a weight is not a volume`);
+  if (uom === "liter" || baseUom === "liter") {
+    if (uom !== "liter" || baseUom !== "liter")
+      return refuse(`the invoice line is counted in ${uom ? words(uom) : "an unknown unit"}s but priced per ${baseUom ? words(baseUom) : "an unknown unit"}, and a liter is not a number of bottles`);
+    if (base == null || base <= 0)
+      return refuse(`the invoice line prints its price for ${JSON.stringify(rawBase)} liters, which cannot be divided by`);
+    const toItem = volumeFactor("liter", kept) as number;
+    const unitsPriced = base * toItem;
+    const perUnit = price / unitsPriced;
+    const counted = asNumber(line.qty_bottles);
+    const checked = check(line, perUnit, counted == null ? null : Math.abs(counted) * toItem, kept, `${counted} liter`);
+    if (checked) return checked;
+    const priced = `${base === 1 ? "" : `${base} `}liter${base === 1 ? "" : "s"}`;
+    return inItem(price, priced, unitsPriced, perUnit, kept);
+  }
+
+  // A container: what one bottle costs, then what one of the item's unit costs.
+  const asBottles = byContainer(line, price, undefined);
+  if (!asBottles.ok) return asBottles;
+  const fmt = asNumber(line.format_ml);
+  const what = asBottles.per === "keg" ? "keg" : "bottle";
+  if (fmt == null || !(fmt > 0))
+    return refuse(`the item this line books into is kept in ${kept}, but the invoice line counts ${uom ? words(uom) : "bottle"}s and does not say how much one ${what} holds, so what one ${kept} costs is not known`);
+  const perItemUnit = volumeFactor("ml", kept) as number;
+  const unitsPerBottle = fmt * perItemUnit;
+  const unitsPriced = asBottles.bottles * unitsPerBottle;
+  const perUnit = asBottles.perBottle / unitsPerBottle;
+  return inItem(price, `${asBottles.priced} of ${fmt} ml`, unitsPriced, perUnit, kept);
+}
+
+/** QA 9a by volume: the printed total for the count, in the item's unit, must bear the price out. */
+function check(line: LotCostLine, perUnit: number, inItemUnits: number | null, kept: string, countedSaid: string): LotUnitCost | null {
+  if (!Number.isFinite(perUnit) || perUnit <= 0) return refuse(`a price of ${perUnit} per ${kept} is not a price`);
+  const total = asNumber(line.line_total);
+  if (total == null || inItemUnits == null || inItemUnits === 0) return null;
+  const unitCost = toLotCostPrecision(perUnit);
+  if (Math.abs(perUnit * inItemUnits - Math.abs(total)) > Math.max(0.05, Math.abs(total) * 0.01))
+    return refuse(`the invoice line totals ${total} for ${countedSaid}, but ${sixPlaces(unitCost)} a ${kept} makes ${sixPlaces(unitCost * inItemUnits)}, so the price's unit is not what the line says`);
+  return null;
+}
+
+function inItem(price: number, priced: string, unitsPriced: number, perUnit: number, kept: string): LotUnitCost {
+  const unitCost = toLotCostPrecision(perUnit);
+  if (!(unitCost > 0))
+    return refuse(`a price per ${kept} of ${perUnit} rounds to ${sixPlaces(unitCost)}, and a lot is never booked at a cost of nothing`);
+  const basis =
+    unitsPriced === 1
+      ? `invoice price ${price} per ${priced}; booked as-is`
+      : `invoice price ${price} per ${priced} = ${sixPlaces(perUnit)} per ${kept}`;
+  return { ok: true, perBottle: perUnit, unitCost, basis, bottles: unitsPriced, priced, per: kept };
+}
+
+function byContainer(line: LotCostLine, price: number, item?: LotCostItem): LotUnitCost {
   // Audit D1: the extractor keeps an unmapped unit as `each` and its glyph in
   // `printed`. "kutu" stored as `each` is not one bottle; neither guess holds.
   const said = printedUnit(line.printed, "uom");

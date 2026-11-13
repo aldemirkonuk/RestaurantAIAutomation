@@ -92,6 +92,12 @@ export interface PaperLineRow {
   allowance?: number | string | null;
   deposit?: number | string | null;
   printed?: unknown;
+  /**
+   * The counts were scaled into the ITEM's unit by the caller (a litre or a
+   * sized bottle into an item kept in ml, cost-math r21). Its free line then
+   * takes the item's unit, as a weighed one does.
+   */
+  in_item_unit?: boolean;
 }
 
 /** An invoice line and what the unit gatekeeper made of it. */
@@ -261,13 +267,15 @@ function freeLineBottles(
       ok: false,
       reason: `its free line's unit reads ${JSON.stringify(uom)}, which is not a unit this house counts in`,
     };
-  if (uom === "keg" || uom === "liter")
+  // A count the caller already put in the item's unit (r21) needs no pack.
+  if ((uom === "keg" || uom === "liter") && !r.in_item_unit)
     return {
       ok: false,
       reason: `its free line is counted in ${uom}s, and a ${uom} is not a number of bottles`,
     };
   const pack = num(r.pack_size);
   if (
+    !r.in_item_unit &&
     (uom === "case" || uom === "pack" || uom === "split_case") &&
     (pack == null || !(pack > 1))
   )
@@ -421,8 +429,8 @@ function feed(line: PaperLine, kind: LineKind | null, key: string | null): Fed {
       row: r,
       key,
       listed: free.bottles,
-      per: isMass(r.uom) ? null : "bottle",
-      said: `line ${n}: free goods, ${plural(free.bottles, isMass(r.uom) ? "unit" : "bottle")} at no price`,
+      per: isMass(r.uom) || r.in_item_unit ? null : "bottle",
+      said: `line ${n}: free goods, ${plural(free.bottles, isMass(r.uom) || r.in_item_unit ? "unit" : "bottle")} at no price`,
       input: {
         ...shared,
         qty: free.bottles,

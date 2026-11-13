@@ -2,7 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { queueResearchIfLibraryLacks } from "../../inventory/house-item-research";
 import { closeDeliveryItemToNameBookedElsewhere } from "../delivery-item-to-name";
-import { isMass, massFactor } from "../documents/document-types";
+import { isMass, isVolumeItemUnit, massFactor, volumeFactor } from "../documents/document-types";
 import { LotUnitCost, perBottleLotCost, proposalPerBottle, toCentsAsBooked } from "./lot-unit-cost";
 import {
   LandedBlock,
@@ -153,8 +153,12 @@ interface LineRow {
   allowance?: number | string | null;
   deposit?: number | string | null;
   printed?: unknown;
+  /** What one bottle or keg of the line holds, in ml, when the paper says (r21). */
+  format_ml?: number | string | null;
   /** The house item's own unit (`restaurant_inventory.uom`), attached after the read (R8). */
   item_uom?: string | null;
+  /** Set by `inItemUnits` when a volume line's counts were scaled into the item's unit (r21). */
+  in_item_unit?: boolean;
 }
 
 /** The weights a house item may be kept in (`restaurant_inventory_uom_check`, ADR 0070). */
@@ -186,12 +190,14 @@ const PLAIN_COUNT: ReadonlySet<string> = new Set(["", "bottle", "each"]);
  * is refused into such an item: its weight is not known.
  */
 export function shelfQuantity(
-  line: { qty_bottles: unknown; uom?: string | null },
+  line: { qty_bottles: unknown; uom?: string | null; format_ml?: unknown },
   itemUom: string | null | undefined,
 ): { ok: true; qty: number } | { ok: false; reason: string } {
   const n = Number(line.qty_bottles ?? 0);
   if (!Number.isFinite(n) || n < 0)
     return { ok: false, reason: `the counted quantity reads ${String(line.qty_bottles)}, which is not a number` };
+  const byVolume = volumeShelf(n, line, itemUom);
+  if (byVolume) return byVolume;
   const weighed = isMass(line.uom);
   const keptByWeight = itemUom != null && ITEM_MASS.has(itemUom);
   if (!weighed && !keptByWeight) return { ok: true, qty: Math.round(n) };
@@ -213,18 +219,92 @@ export function shelfQuantity(
 }
 
 /**
+ * What a line puts on the shelf of an item kept by volume, or a litre line on
+ * any shelf (r21); null when neither, and the weight and count rules decide.
+ *
+ * `5 liter` into olive oil kept in `ml` is 5000. A bottle, case or keg line
+ * whose paper says what one holds (`format_ml`) is that many ml: `12 bottle` of
+ * 200 ml tonic is 2400. A plain count with no size is the count in the item's
+ * own unit, the door's rule for weights too (a door-typed line states no size).
+ * A case, pack or keg with no size is refused: what it holds is not known. A
+ * litre line into an item not kept by volume is refused: 30 liters is not 30
+ * kegs, and booking it so was the same 1,000-times error the other way round.
+ */
+function volumeShelf(
+  n: number,
+  line: { uom?: string | null; format_ml?: unknown },
+  itemUom: string | null | undefined,
+): { ok: true; qty: number } | { ok: false; reason: string } | null {
+  const measured = line.uom === "liter";
+  if (!isVolumeItemUnit(itemUom)) {
+    if (!measured) return null;
+    return {
+      ok: false,
+      reason: itemUom
+        ? `this line is measured in liters, but the item it names is kept in ${itemUom}s, and a liter is not a number of ${itemUom}s. It is NOT booked; keep the item in ml, or link the line to one that is.`
+        : `this line is measured in liters, and the item it names states no unit, so how much of it this is cannot be put on the shelf`,
+    };
+  }
+  if (isMass(line.uom))
+    return { ok: false, reason: `this line is weighed in ${line.uom}, but the item it names is kept in ${itemUom}, and a weight is not a volume. It is NOT booked.` };
+  const fmt = Number(line.format_ml);
+  const sized = line.format_ml != null && line.format_ml !== "" && Number.isFinite(fmt) && fmt > 0;
+  let exact: number;
+  let said: string;
+  if (measured) {
+    exact = n * (volumeFactor("liter", itemUom) as number);
+    said = `${n} liter`;
+  } else if (sized) {
+    exact = n * fmt * (volumeFactor("ml", itemUom) as number);
+    said = `${n} of ${fmt} ml`;
+  } else if (PLAIN_COUNT.has(line.uom ?? "")) {
+    return { ok: true, qty: Math.round(n) };
+  } else {
+    return {
+      ok: false,
+      reason: `the item this line names is kept in ${itemUom}, but the line counts ${String(line.uom).replace("_", " ")}s and does not say how much one holds. It is NOT booked; state the line's size in ml, or count it in ${itemUom}.`,
+    };
+  }
+  const whole = Math.round(exact);
+  if (Math.abs(exact - whole) > 1e-9)
+    return { ok: false, reason: `${said} is ${exact} ${itemUom}, not a whole number of ${itemUom}, the unit the item is kept in. It is NOT rounded; keep the item in ml.` };
+  return { ok: true, qty: whole };
+}
+
+/**
+ * How many of the ITEM's unit one counted unit of the line is, when the line
+ * must be scaled to meet the item (R8 weights, r21 volumes); null when it is
+ * read as it is. A sized container into an item kept by volume scales by what
+ * one holds; its count is already bottles, so the pack is not applied twice.
+ */
+function itemScale(line: LineRow): { factor: number; volume: boolean } | null {
+  if (!line.item_uom) return null;
+  if (isVolumeItemUnit(line.item_uom)) {
+    if (line.uom === "liter") return { factor: volumeFactor("liter", line.item_uom) as number, volume: true };
+    if (isMass(line.uom)) return null;
+    const fmt = Number(line.format_ml);
+    if (line.format_ml == null || line.format_ml === "" || !Number.isFinite(fmt) || !(fmt > 0)) return null;
+    return { factor: fmt * (volumeFactor("ml", line.item_uom) as number), volume: true };
+  }
+  if (!isMass(line.uom)) return null;
+  const f = massFactor(String(line.uom), line.item_uom);
+  return f == null ? null : { factor: f, volume: false };
+}
+
+/**
  * A weighed line as the landed rule reads it (R8): its listed and free counts
  * in the ITEM's unit, so they meet the door's booking (also in that unit) and
  * the gatekeeper's price per one of it. `3 kg` into a cheese kept in `g` lists
  * 3000. Any other line is returned as it is.
  */
 function inItemUnits(line: LineRow): LineRow {
-  if (!isMass(line.uom) || !line.item_uom) return line;
-  const f = massFactor(String(line.uom), line.item_uom);
-  if (f == null) return line;
+  const scaled = itemScale(line);
+  if (!scaled) return line;
+  const f = scaled.factor;
   const scale = (v: unknown) => (v == null || v === "" || !Number.isFinite(Number(v)) ? v : Number(v) * f);
   return {
     ...line,
+    ...(scaled.volume ? { in_item_unit: true } : {}),
     qty_bottles: scale(line.qty_bottles) as LineRow["qty_bottles"],
     ...("free_goods_qty" in line ? { free_goods_qty: scale((line as { free_goods_qty?: unknown }).free_goods_qty) } : {}),
   } as LineRow;
@@ -391,7 +471,7 @@ export class DeliveryStockService {
       .getClient()
       .from("procurement_document_lines")
       .select(
-        "document_id, line_no, inventory_id, qty_bottles, unit_price, description, vendor_sku, uom",
+        "document_id, line_no, inventory_id, qty_bottles, unit_price, description, vendor_sku, uom, format_ml",
       )
       .eq("restaurant_id", restaurantId)
       .eq("document_id", documentId);
@@ -467,7 +547,8 @@ export class DeliveryStockService {
         notBooked.push({ documentId, lineNo: line.line_no, label, reason: onShelf.reason });
         continue;
       }
-      const weighed = itemUnit === "kg" || itemUnit === "g" || itemUnit === "mg";
+      // Grams and millilitres are not bottles moved (r21: nor is a volume).
+      const weighed = itemUnit === "kg" || itemUnit === "g" || itemUnit === "mg" || isVolumeItemUnit(itemUnit);
       bookable.push({ line, inventoryId, qty: onShelf.qty, weighed });
       counted.set(inventoryId, (counted.get(inventoryId) ?? 0) + onShelf.qty);
     }
@@ -1184,7 +1265,7 @@ export class DeliveryStockService {
         .getClient()
         .from("procurement_document_lines")
         .select(
-          "document_id, line_no, inventory_id, qty_bottles, free_goods_qty, unit_price, uom, pack_size, price_base_qty, price_base_uom, line_total, allowance, deposit, printed, description, vendor_sku",
+          "document_id, line_no, inventory_id, qty_bottles, free_goods_qty, unit_price, uom, pack_size, price_base_qty, price_base_uom, line_total, allowance, deposit, printed, description, vendor_sku, format_ml",
         )
         .eq("restaurant_id", restaurantId)
         .in("document_id", allIds)
