@@ -2082,6 +2082,19 @@ describe('ReportsNext — bars and a line on one cutting', () => {
     },
   });
   const WORDS = /Bars: Mean per day\. Line: Spread\. Both are in bottles\/day, so they share one scale\./;
+  /** The page as the real hook serves it: a save becomes the sheet it then reads. */
+  const paintSaving = () => {
+    const page = paint();
+    saveSheet.mockImplementation(async (next: unknown) => {
+      hook.current = { ...hook.current, sheet: next };
+      page.rerender(
+        <MemoryRouter>
+          <ReportsNext />
+        </MemoryRouter>,
+      );
+    });
+    return page;
+  };
 
   it('offers the combination only where the register has a second measure', () => {
     paint();
@@ -2107,11 +2120,13 @@ describe('ReportsNext — bars and a line on one cutting', () => {
     expect(within(week).getByLabelText('Bars show')).toBeInTheDocument();
   });
 
-  it('is the same drawing, with the same measures, when laid full screen', () => {
+  it('is the same drawing, with the same measures, when laid full screen', async () => {
     hook.current = weekAsCombo();
-    paint();
+    paintSaving();
     const week = screen.getByRole('region', { name: 'The week’s shape' });
-    fireEvent.change(within(week).getByLabelText('Line shows'), { target: { value: 'seen' } });
+    await act(async () => {
+      fireEvent.change(within(week).getByLabelText('Line shows'), { target: { value: 'seen' } });
+    });
     expect(within(week).getByText(/Line: Days seen \(days\), on the right scale/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Show The week’s shape full screen' }));
@@ -2151,10 +2166,12 @@ describe('ReportsNext — bars and a line on one cutting', () => {
     expect(saveSheet).not.toHaveBeenCalled();
   });
 
-  it('keeps the drawing and its measures when the cutting is moved to another place', () => {
+  it('keeps the drawing and its measures when the cutting is moved to another place', async () => {
     hook.current = alone('week', { x: 0, y: 0, w: 4, h: 4 }, 'combo');
-    paint();
-    fireEvent.change(screen.getByLabelText('Line shows'), { target: { value: 'seen' } });
+    paintSaving();
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Line shows'), { target: { value: 'seen' } });
+    });
     arrange();
     const grip = gripFor('The week’s shape');
     fireEvent.keyDown(grip, { key: ' ' });
@@ -2167,16 +2184,92 @@ describe('ReportsNext — bars and a line on one cutting', () => {
     );
     expect((within(week).getByLabelText('Line shows') as HTMLSelectElement).value).toBe('seen');
 
-    fireEvent.click(screen.getByText('Rule it off'));
-    const saved = saveSheet.mock.calls[0][0] as {
-      cuttings: Array<{ id: string; graph: string; slot: { x: number } }>;
+    // The pick was saved with the sheet the moment it was made…
+    expect(saveSheet.mock.calls[0][0]).toMatchObject({
+      cuttings: [{ id: 'week', combo: { bars: 'value', line: 'seen' } }],
+    });
+    await ruleItOff();
+    const saved = saveSheet.mock.calls.at(-1)![0] as {
+      cuttings: Array<{ id: string; graph: string; slot: { x: number }; combo?: unknown }>;
     };
     const moved = saved.cuttings.find((c) => c.id === 'week');
     expect(moved?.slot.x).toBe(2);
     expect(moved?.graph).toBe('combo');
+    // …and the move carries it into the ruled-off sheet.
+    expect(moved?.combo).toEqual({ bars: 'value', line: 'seen' });
     expect(
       within(screen.getByRole('region', { name: 'The week’s shape' })).getByText(/Line: Days seen/),
     ).toBeInTheDocument();
+  });
+
+  it('opens on the pick saved with the sheet, so a reload keeps it', () => {
+    hook.current = {
+      ...base(),
+      sheet: {
+        cuttings: [
+          { id: 'week', slot: { x: 0, y: 0, w: 4, h: 4 }, graph: 'combo', combo: { bars: 'value', line: 'seen' } },
+        ],
+      },
+    };
+    paint();
+    expect((screen.getByLabelText('Line shows') as HTMLSelectElement).value).toBe('seen');
+    expect(screen.getByText(/Line: Days seen \(days\), on the right scale/)).toBeInTheDocument();
+  });
+
+  it('a pick made while reading is written once, and a refused write says so', async () => {
+    hook.current = alone('week', { x: 0, y: 0, w: 4, h: 4 }, 'combo');
+    saveSheet.mockImplementationOnce(() => Promise.reject(new Error('503')));
+    paint();
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Line shows'), { target: { value: 'seen' } });
+    });
+    expect(saveSheet).toHaveBeenCalledTimes(1);
+    expect(saveSheet.mock.calls[0][0]).toMatchObject({
+      cuttings: [{ id: 'week', combo: { bars: 'value', line: 'seen' } }],
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent('The sheet was not saved. Try again.');
+  });
+
+  it('a pick made while arranging waits in the draft and is saved on rule-off', async () => {
+    hook.current = alone('week', { x: 0, y: 0, w: 4, h: 4 }, 'combo');
+    paint();
+    arrange();
+    fireEvent.change(screen.getByLabelText('Line shows'), { target: { value: 'seen' } });
+    expect(saveSheet).not.toHaveBeenCalled();
+    expect((screen.getByLabelText('Line shows') as HTMLSelectElement).value).toBe('seen');
+    await ruleItOff();
+    expect(saveSheet.mock.calls[0][0]).toMatchObject({
+      cuttings: [{ id: 'week', combo: { bars: 'value', line: 'seen' } }],
+    });
+  });
+
+  it('a pick made before the reader’s sheet is known is shown, and never written', () => {
+    hook.current = {
+      ...alone('week', { x: 0, y: 0, w: 4, h: 4 }, 'combo'),
+      sheetKnown: false,
+      sheetUnread: 'Your own arrangement of this sheet could not be read (boom), so the house sheet is shown. Arranging is off until it can be read.',
+    };
+    paint();
+    fireEvent.change(screen.getByLabelText('Line shows'), { target: { value: 'seen' } });
+    expect((screen.getByLabelText('Line shows') as HTMLSelectElement).value).toBe('seen');
+    expect(saveSheet).not.toHaveBeenCalled();
+  });
+
+  it('the pick survives a save and a read of the sheet, and a malformed one is dropped', () => {
+    const sheet = {
+      cuttings: [
+        { id: 'week' as const, slot: { x: 0, y: 0, w: 4, h: 4 }, graph: 'combo' as const, combo: { bars: 'spread', line: 'value' } },
+        { id: 'seats' as const, slot: { x: 4, y: 0, w: 6, h: 8 }, graph: 'bars' as const },
+      ],
+    };
+    const decoded = decodeSheet(encodeSheet(sheet));
+    expect(decoded.cuttings[0].combo).toEqual({ bars: 'spread', line: 'value' });
+    expect(decoded.cuttings[1]).not.toHaveProperty('combo');
+    const blob = encodeSheet(sheet) as { blocks: Array<Record<string, unknown>> };
+    for (const bad of [{ b: 'value', l: 'value' }, { b: 1, l: 'seen' }, { b: 'value' }, 'value', null]) {
+      blob.blocks[0].c = bad;
+      expect(decodeSheet(blob).cuttings[0]).not.toHaveProperty('combo');
+    }
   });
 
   it('R-7: a swap grows the square to the new subject’s declared size, never smaller', () => {
