@@ -38,7 +38,8 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 import { animate, settle } from '../../../lib/mudavym/motion';
-import { EM, money, shortDate } from './cellar-format';
+import { EM, shortDate } from './cellar-format';
+import { useHouseMoney } from './useHouseMoney';
 import type { ColumnSeries } from './cellar-columns';
 import type { BookRecordVM, RowRecordVM } from './useCellarNextData';
 
@@ -67,6 +68,9 @@ function Spark({
   points: { at: string; value: number }[];
   unit: 'money' | 'count';
 }) {
+  // The house's money (`useHouseMoney`): the cellar's `money()` printed $ for
+  // every house, so a lira house read "$14.00" (r8 browser check, 2026-11-12).
+  const money = useHouseMoney();
   const W = 560;
   const H = 96;
   const PAD = 8;
@@ -171,6 +175,9 @@ function BookBlock({
   book: BookRecordVM;
   column: string;
 }) {
+  // The house's money (`useHouseMoney`): the cellar's `money()` printed $ for
+  // every house, so a lira house read "$14.00" (r8 browser check, 2026-11-12).
+  const money = useHouseMoney();
   const axis = axisFor(book.book, column);
   const points = axis === 'price' ? book.price : book.quantity;
 

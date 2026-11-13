@@ -15,6 +15,20 @@ vi.mock('../../../services/api/pricing', async () => {
 });
 const listPriceLocks = vi.mocked(listPriceLocksReal);
 
+// The lock is said in the house's money (`useHouseMoney`), read for the
+// signed-in house. This house is a lira one: the note said "$95.00" for every
+// house (r8 browser check, 2026-11-12).
+vi.mock('../../../contexts/AuthContext', () => ({
+  useAuth: () => ({ activeRestaurantId: 'r1', loading: false, isAuthenticated: true }),
+}));
+vi.mock('../../../services/api/settings', async () => {
+  const actual = await vi.importActual<typeof import('../../../services/api/settings')>('../../../services/api/settings');
+  return {
+    ...actual,
+    settingsApi: { ...actual.settingsApi, houseCurrency: async () => ({ readable: true, code: 'TRY' }) },
+  };
+});
+
 
 function lock(over: Partial<PriceLock> = {}): PriceLock {
   return {
@@ -77,10 +91,13 @@ describe('PriceLockNote -- a locked price is said beside the price', () => {
     );
     mount();
     const line = await screen.findByTestId('bottle-leaf-lock-bottle');
-    expect(line).toHaveTextContent(
-      'The bottle price is locked at $95.00 at this house, by Ayse since 2026-09-21. No menu, correction or advice changes it; an owner or a manager does, on Menu, under Locked prices.',
+    await waitFor(() =>
+      expect(line).toHaveTextContent(
+        'The bottle price is locked at ₺95.00 at this house, by Ayse since 2026-09-21. No menu, correction or advice changes it; an owner or a manager does, on Menu, under Locked prices.',
+      ),
     );
-    expect(screen.queryByText(/\$40\.00/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/40\.00/)).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/\$\d/);
     expect(screen.queryByText(/Kerem/)).not.toBeInTheDocument();
   });
 
@@ -92,8 +109,8 @@ describe('PriceLockNote -- a locked price is said beside the price', () => {
     const box = await screen.findByTestId('bottle-leaf-locks');
     const lines = box.querySelectorAll('p');
     expect(lines).toHaveLength(2);
-    expect(lines[0]).toHaveTextContent('The bottle price is locked at $95.00');
-    expect(lines[1]).toHaveTextContent('The glass price is locked at $14.00');
+    await waitFor(() => expect(lines[0]).toHaveTextContent('The bottle price is locked at ₺95.00'));
+    expect(lines[1]).toHaveTextContent('The glass price is locked at ₺14.00');
   });
 
   it('shows nothing when the locks were read and none holds this wine (no lock is the ordinary state)', async () => {

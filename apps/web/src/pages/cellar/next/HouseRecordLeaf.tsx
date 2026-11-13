@@ -32,11 +32,11 @@ import {
   EM,
   count,
   matchNote,
-  money,
   quoteSource,
   shortDate,
   volume,
 } from './cellar-format';
+import { sayReference, useHouseMoney } from './useHouseMoney';
 import { doorCheckedMark } from './registerCells';
 import type { RegisterRowVM } from './useCellarNextData';
 
@@ -119,6 +119,9 @@ export default function HouseRecordLeaf({
   const h = row.house;
   const c = row.catalogue;
   const note = matchNote(c?.matchedBy ?? null);
+  // The house's money (`useHouseMoney`): the cellar's `money()` printed $ for
+  // every house, so a lira house read "$14.00" (r8 browser check, 2026-11-12).
+  const money = useHouseMoney();
 
   return (
     <div className="cl-panel" data-testid="house-leaf" style={{ marginTop: 4 }}>
@@ -237,7 +240,9 @@ export default function HouseRecordLeaf({
               <Fact label="ABV" value={c.abvPct === null ? EM : `${c.abvPct}%`} />
               <Fact label="Format" value={volume(c.volumeMl)} />
               <Fact label="Package" value={c.packageFormat ?? EM} />
-              <Fact label="Reference price" value={money(c.priceReference)} />
+              {/* The shared catalogue's market hint, not this house's money:
+                  it names no currency, so none is printed (`sayReference`). */}
+              <Fact label="Reference price" value={sayReference(c.priceReference)} />
             </div>
           </div>
           {note ? (
