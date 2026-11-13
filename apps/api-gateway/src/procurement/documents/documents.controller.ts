@@ -46,6 +46,7 @@ import { DeliveryService } from "../canonical/delivery.service";
 import { DeliveryStockService } from "../canonical/delivery-stock.service";
 import { LineMappingService } from "../canonical/line-mapping.service";
 import { DoorCountDto } from "../dto/deliveries.dto";
+import { paperForTheDoor, PaperForDoor } from "./door-count-paper";
 import { SealChallengeService } from "../../common/seal/seal-challenge.service";
 import {
   DOCUMENT_SEAL_SUBJECT_KIND,
@@ -865,7 +866,7 @@ export class DocumentsController {
     summary:
       "Record a door count as a receiving_advice document (ADR 0104 D11)",
     description:
-      "Writes the count as OUR document, with the lines somebody actually counted and, optionally, one photograph as evidence. `createDelivery` makes the commercial event in the same call and attaches the count to it with the `door_count` role; `deliveryId` attaches it to an existing one. Nothing here writes stock — a count is a record (ADR 0078), not a booking.",
+      "Writes the count as OUR document, with the lines somebody actually counted and, optionally, one photograph as evidence. `createDelivery` makes the commercial event in the same call and attaches the count to it with the `door_count` role; `deliveryId` attaches it to an existing one. `forDocumentId` counts a paper: each line names the paper's line, takes its item, unit and size from it, and the delivery carries the paper and its one order. A counted line that names an item is booked on the delivery as provisional stock (ADR 0103 A1); `booking.notBooked` says why any other line was not.",
   })
   async doorCount(@Body() body: DoorCountDto, @CurrentUser() user: AuthedUser) {
     let photo: {
@@ -895,15 +896,46 @@ export class DocumentsController {
       };
     }
 
+    /**
+     * A COUNT OF A PAPER BOOKS BY THE PAPER (r24). Each line takes its item,
+     * unit and size from the paper's own line; the delivery carries the paper
+     * (so the vendor's side is on it and VERIFIED has a price) and the paper's
+     * order. A paper already on one open delivery is counted onto THAT one, so
+     * two receivers on a stale page do not make two deliveries of one truck.
+     * Every refusal here comes before anything is written.
+     */
+    let paper: PaperForDoor | null = null;
+    let targetDeliveryId = body.deliveryId ?? null;
+    if (body.forDocumentId) {
+      const read = await paperForTheDoor(
+        this.db.getClient(),
+        user.restaurantId,
+        body.forDocumentId,
+        body.lines,
+        body.orderId ?? null,
+      );
+      if (!read.ok) throw new HttpException(read.error, read.status);
+      paper = read.value;
+      if (!targetDeliveryId && body.createDelivery) {
+        if (paper.openDeliveryIds.length > 1)
+          throw new HttpException(
+            `This paper is on ${paper.openDeliveryIds.length} open deliveries, so which truck this count is for cannot be told. Open the delivery and count there; nothing was recorded.`,
+            HttpStatus.CONFLICT,
+          );
+        targetDeliveryId = paper.openDeliveryIds[0] ?? null;
+      }
+    }
+
     const result = await this.intake.recordDoorCount({
       restaurantId: user.restaurantId,
       providerId: body.providerId ?? null,
       countedBy: user.userId,
       countedAt: body.countedAt ?? null,
-      lines: body.lines,
+      lines: paper ? paper.lines : body.lines,
       signedBy: body.signedBy ?? null,
       note: body.note ?? null,
       photo,
+      countedFor: paper?.documentId ?? null,
     });
     /**
      * THE SAME COUNT TWICE IS A CONFLICT, AND IT NAMES THE DOCUMENT.
@@ -929,10 +961,10 @@ export class DocumentsController {
     let delivery: unknown = null;
     let differsOnLines: number | null = null;
     let deliveryId: string | null = null;
-    if (body.deliveryId) {
+    if (targetDeliveryId) {
       const linked = await this.deliveries.linkDocument(
         user.restaurantId,
-        body.deliveryId,
+        targetDeliveryId,
         result.documentId,
         "door_count",
       );
@@ -940,21 +972,39 @@ export class DocumentsController {
         throw new HttpException(
           // The COUNT landed. Saying "the door count failed" would send a
           // receiver to type it again on top of a document that already exists.
-          `The door count was recorded as ${result.documentId} but could not be attached to delivery ${body.deliveryId}: ${linked.error}`,
+          `The door count was recorded as ${result.documentId} but could not be attached to delivery ${targetDeliveryId}: ${linked.error}`,
           linked.status,
         );
       delivery = linked.value.delivery;
-      deliveryId = body.deliveryId;
+      deliveryId = targetDeliveryId;
+      if (paper) {
+        // Already there is the usual case (the paper's own delivery).
+        const carried = await this.deliveries.linkDocument(
+          user.restaurantId,
+          targetDeliveryId,
+          paper.documentId,
+          paper.role,
+        );
+        if (!carried.ok)
+          throw new HttpException(
+            `The door count was recorded as ${result.documentId} on delivery ${targetDeliveryId}, but the paper could not be put on it: ${carried.error}. Nothing was booked; count again once it is.`,
+            carried.status,
+          );
+        delivery = carried.value.delivery;
+      }
     } else if (body.createDelivery) {
       const created = await this.deliveries.create(
         user.restaurantId,
         user.userId,
         {
-          orderId: body.orderId ?? null,
+          orderId: paper ? paper.orderId : (body.orderId ?? null),
           providerId: body.providerId ?? null,
           jurisdiction: body.jurisdiction ?? null,
           deliveredAt: body.countedAt ?? null,
-          documents: [{ documentId: result.documentId, role: "door_count" }],
+          documents: [
+            { documentId: result.documentId, role: "door_count" },
+            ...(paper ? [{ documentId: paper.documentId, role: paper.role }] : []),
+          ],
         },
       );
       if (!created.ok)
@@ -1032,6 +1082,8 @@ export class DocumentsController {
       // NULL = no comparison was possible (no order, or the read failed).
       // 0 = compared, and nothing differed. The two are never the same answer.
       differsOnLines,
+      // The paper this count was of, and the order its delivery names.
+      ...(paper ? { countedFor: { documentId: paper.documentId, orderId: paper.orderId } } : {}),
       ...(result.storageError ? { storageError: result.storageError } : {}),
     };
   }
