@@ -22,7 +22,7 @@
  * is said, under the recipes. A group that could not be read always says so.
  *
  * A drink in a recipe gets the cards a dish gets (founder /goal 2026-11-07:
- * "the same for drinks and their recipes"): this good a serve, cost a serve,
+ * "the same for drinks and their recipes"): used per serve, cost per serve,
  * price and pour cost, from GET /recipes/:rid/items/:id/drinks. Until that
  * read answers, or when it fails, the drink is the used-in read's one line,
  * and a failed read says its cards could not be read, with Read again.
@@ -98,10 +98,18 @@ function DishCard({ id, title, value, sub }: { id: string; title: string; value:
   );
 }
 
-/** What a recipe's cards call themselves: a dish is a plate and a food cost, a drink a serve and a pour cost. */
+/**
+ * What a recipe's cards call themselves: a dish is a plate and a food cost, a
+ * drink a serve and a pour cost.
+ *
+ * "per", never "a" (r21 walk D5): the labels are drawn in capitals, and
+ * "COST A SERVE" / "THIS GOOD A SERVE" read as an instruction or a fragment.
+ * "Used per serve" is how much of this good one serve takes; "Cost per serve"
+ * is what one serve costs, the restaurant's own term.
+ */
 const RECIPE_WORDS = {
-  dish: { per: 'This good a plate', perId: 'per-plate', cost: 'Cost a plate', share: 'Food cost', shareId: 'food-cost', noPrice: 'Not on the dish' },
-  drink: { per: 'This good a serve', perId: 'per-serve', cost: 'Cost a serve', share: 'Pour cost', shareId: 'pour-cost', noPrice: 'Not on the drink' },
+  dish: { per: 'Used per plate', perId: 'per-plate', cost: 'Cost per plate', share: 'Food cost', shareId: 'food-cost', noPrice: 'Not on the dish' },
+  drink: { per: 'Used per serve', perId: 'per-serve', cost: 'Cost per serve', share: 'Pour cost', shareId: 'pour-cost', noPrice: 'Not on the drink' },
 } as const;
 
 /** One dish or drink that uses the good: its name as a link, then its cards. */
