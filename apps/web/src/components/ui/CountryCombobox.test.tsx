@@ -77,4 +77,36 @@ describe('CountryCombobox', () => {
     expect(onChange).toHaveBeenLastCalledWith('Germany')
     expect(box).toHaveValue('Germany')
   })
+
+  it('floats its list over what follows by default (a page has room below)', () => {
+    render(<Labelled />)
+    fireEvent.focus(screen.getByRole('combobox'))
+    expect(screen.getByRole('listbox')).toHaveClass('absolute', 'top-full')
+  })
+
+  it('inline: the list takes its room in the flow and is brought into view as it opens', () => {
+    const seen = vi.fn()
+    const original = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = function (this: Element, arg?: boolean | ScrollIntoViewOptions) {
+      if (this.getAttribute('role') === 'listbox') seen(arg)
+    }
+    try {
+      render(<CountryCombobox value="" onChange={vi.fn()} inline />)
+      const box = screen.getByRole('combobox', { name: 'Country' })
+      expect(seen).not.toHaveBeenCalled()
+      fireEvent.focus(box)
+      const list = screen.getByRole('listbox')
+      expect(list).not.toHaveClass('absolute')
+      expect(list.className).not.toMatch(/top-full|z-50/)
+      expect(seen).toHaveBeenCalledWith({ block: 'nearest' })
+      // The globe and the chevron sit in the box's own frame, not the frame
+      // the list makes taller, so they stay centred on the box.
+      const frame = box.parentElement!
+      expect(frame).toHaveClass('relative')
+      expect(frame.querySelectorAll('svg')).toHaveLength(2)
+      expect(frame.contains(list)).toBe(false)
+    } finally {
+      Element.prototype.scrollIntoView = original
+    }
+  })
 })

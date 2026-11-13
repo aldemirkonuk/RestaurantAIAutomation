@@ -240,13 +240,14 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
         )}
 
         <div>
-          <span className="mdv-label">
+          <label className="mdv-label" htmlFor="mdv-newloc-country">
             Country <span aria-hidden style={{ color: 'var(--seal)' }}>*</span>
-          </span>
+          </label>
           {/* `.mdv-adopt`: a shared legacy control, repainted not rewritten —
-              see the honest limit in this file's header. */}
+              see the honest limit in this file's header. `inline`: the Sheet
+              body scrolls, and it clipped a floating list to about two rows. */}
           <div className="mdv-adopt">
-            <CountryCombobox value={country} onChange={setCountry} />
+            <CountryCombobox id="mdv-newloc-country" value={country} onChange={setCountry} inline />
           </div>
           {!country && (
             <p className="mdv-hintline">Select a country to enable address search</p>
@@ -256,11 +257,12 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
         {country.trim().length >= 2 && (
           <>
             <div>
-              <span className="mdv-label">
+              <label className="mdv-label" htmlFor="mdv-newloc-address">
                 Street Address <span aria-hidden style={{ color: 'var(--seal)' }}>*</span>
-              </span>
+              </label>
               <div className="mdv-adopt">
                 <PlacesAutocomplete
+                  id="mdv-newloc-address"
                   country={country}
                   value={address}
                   onChange={setAddress}
@@ -311,9 +313,10 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
                 />
               </div>
               <div>
-                <span className="mdv-label">Phone</span>
+                <label className="mdv-label" htmlFor="mdv-newloc-phone">Phone</label>
                 <div className="mdv-adopt">
                   <PhoneNumberInput
+                    id="mdv-newloc-phone"
                     value={phone}
                     onChange={setPhone}
                     countryHint={country}
@@ -409,7 +412,7 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
               {/* Country — FIRST so autocomplete can bias results */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Country <span className="text-wine-600">*</span></label>
-                <CountryCombobox value={country} onChange={setCountry} />
+                <CountryCombobox value={country} onChange={setCountry} inline />
                 {!country && (
                   <p className="text-xs text-gray-400 mt-1">Select a country to enable address search</p>
                 )}
