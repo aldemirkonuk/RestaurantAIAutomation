@@ -210,6 +210,7 @@ describe("GoalReachedProducer", () => {
     expect(log).toHaveBeenCalledWith(
       expect.stringMatching(/not read: 1 on days of stock/),
     );
+    log.mockRestore();
   });
 
   it("[REVERT-FAILS] a days-of-stock goal is not read without the sales gate, and is named", async () => {

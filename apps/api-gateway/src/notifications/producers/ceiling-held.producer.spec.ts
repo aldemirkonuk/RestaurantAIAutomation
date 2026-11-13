@@ -211,6 +211,17 @@ describe("CeilingHeldProducer", () => {
     );
   });
 
+  it("[REVERT-FAILS] a days-of-stock ceiling whose period is still open is named as not read", async () => {
+    const { db, goals, producer } = build(HELD);
+    db.tables.analytics_goals.push(
+      ceiling({ metric_key: "days_of_inventory", deadline: "2026-12-31" }),
+    );
+    const tally = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    expect(goals.getGoalProgress.calls).toHaveLength(0);
+    expect(tally.withheldReason).toMatch(/1 on days of stock or without a metric key/);
+    expect(tally.withheldReason).not.toMatch(/period has not closed yet/);
+  });
+
   it("[REVERT-FAILS] exactly at the ceiling is under it, not over", async () => {
     const { db, notifications, producer } = build({ ...HELD, current: 10000 });
     db.tables.analytics_goals.push(ceiling());
