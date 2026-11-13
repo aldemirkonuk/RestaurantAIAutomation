@@ -472,6 +472,7 @@ export function MailTab({
           senderFailed={senderQ.isError}
           conversationWords={senderQ.data?.conversation?.words ?? null}
           mailboxSwitchedOff={houseMailboxStatus(reader, { readFailed: readerFailed, now }).state === 'switched_off'}
+          readerGranted={readerFailed || !reader ? 'unknown' : reader.granted}
           onBack={() => back({ setup: null })}
         />
       ) : threadKey ? (

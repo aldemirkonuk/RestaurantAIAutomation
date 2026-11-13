@@ -163,10 +163,22 @@ export function MailArrival({ view, now }: { view: MailSetupView; now: number })
             )}
           </div>
           <ol data-testid="setup-forwarding" style={{ ...TEXT, margin: 0, paddingLeft: 18 }} className="grid gap-1">
-            <li>Give this address to your vendors, or put it on your orders as the address to reply to.</li>
-            <li>
-              To bring vendor mail from your own mailbox here too, forward those letters to this address. A letter
-              forwarded as it is keeps the vendor&rsquo;s name.
+            {/* r28 gap 11. Order letters already carry this address as their
+                Reply-To (procurement.service.ts sendProviderEmail), so asking
+                the owner to "put it on your orders" was advice to do what is
+                done. And a letter forwarded by hand is FROM the person who
+                forwarded it: the bridge files a letter by its From address
+                (rabbitmq-bridge.service.ts, provider lookup by contact_email)
+                and has no forwarded-letter handling, so it never "keeps the
+                vendor's name". An unknown sender's letter is kept only when it
+                carries an attachment or reads as an offer. */}
+            <li data-testid="setup-forwarding-give">
+              Give this address to your vendors. The order letters Mudavym sends already ask vendors to reply to it.
+            </li>
+            <li data-testid="setup-forwarding-by-hand">
+              A letter you forward by hand arrives from you, not from the vendor, so it is not filed as the
+              vendor&rsquo;s. Mudavym reads it as a letter from someone it does not know, and keeps it only when it
+              carries an attachment or reads as an offer. Ask the vendor to write to this address instead.
             </li>
             <li>
               Automatic forwarding from your mailbox&rsquo;s settings asks to confirm with a letter sent to this address.
