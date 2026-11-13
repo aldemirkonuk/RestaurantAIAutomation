@@ -46,7 +46,24 @@ export interface DoorOrderVM {
   expectedBottles: number | null;
   /** Expected BOXES — only when the order's own unit is cases. Never derived. */
   expectedBoxes: number | null;
+  /**
+   * r24: the order is measured (liters, kg, kegs…), not a count of bottles.
+   * The r23 walk read "The order says 5 bottles" for a 5-liter order: the
+   * gateway's `bottlesTotal` echoes the quantity for any unit. Null otherwise.
+   */
+  measured?: string | null;
 }
+
+/** Order units that are an amount, not a number of bottles or boxes (r24). */
+const MEASURED_WORDS: Record<string, [string, string]> = {
+  l: ['liter', 'liters'], lt: ['liter', 'liters'], liter: ['liter', 'liters'], litre: ['liter', 'liters'],
+  ml: ['ml', 'ml'], cl: ['cl', 'cl'], kg: ['kg', 'kg'], g: ['g', 'g'], gram: ['g', 'g'], keg: ['keg', 'kegs'],
+};
+const measuredKey = (unit: string | null): string | null => {
+  if (!unit) return null;
+  const u = unit.replace(/s$/, '');
+  return u in MEASURED_WORDS ? u : null;
+};
 
 /**
  * The gateway's GET /procurement/orders/:id returns OrderResponseDto
@@ -83,8 +100,9 @@ export function normalizeDoorOrder(raw: Order | null | undefined): DoorOrderVM |
         : null,
     quantity,
     unitType,
-    expectedBottles: bottlesTotal ?? (isBottles ? quantity : null),
+    expectedBottles: measuredKey(unitType) ? null : (bottlesTotal ?? (isBottles ? quantity : null)),
     expectedBoxes: isCases ? quantity : null,
+    measured: measuredKey(unitType),
   };
 }
 
@@ -284,6 +302,17 @@ export function matchLine(
       tone: 'over',
       ...base,
       deltaWords: r.deltaWords,
+    };
+  }
+  const m = order.measured ? MEASURED_WORDS[order.measured] : null;
+  if (m && order.quantity !== null) {
+    // r24: an amount is not boxes. Say the amount, and where it is counted.
+    return {
+      text: `The order says ${order.quantity} ${order.quantity === 1 ? m[0] : m[1]} — this door counts boxes. Count it on its paper's door, where it goes on the shelf by ${m[0] === 'kg' || m[0] === 'g' ? 'weight' : 'volume'}.`,
+      tone: 'incomparable',
+      deltaBoxes: null,
+      deltaBottles: null,
+      deltaWords: null,
     };
   }
   if (order.expectedBottles !== null) {

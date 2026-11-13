@@ -26,7 +26,7 @@
 
 import { useState } from 'react'
 import type { CanonicalDocument } from '../../services/api/canonical'
-import type { DoorCountLine } from '../../services/api/deliveries'
+import type { DoorBooking, DoorCountLine } from '../../services/api/deliveries'
 import { EM, MONO, SERIF, fmtQty, fmtReceived } from './canonical-format'
 
 export interface DoorFrameProps {
@@ -46,6 +46,8 @@ export interface DoorFrameProps {
   busy?: boolean
   /** The gateway's own words when it refused. */
   error?: string | null
+  /** What the last count put on the shelf, and what it did not, with why (r24). */
+  booking?: DoorBooking | null
 }
 
 export function DoorFrame({
@@ -55,8 +57,11 @@ export function DoorFrame({
   onSubmitCount,
   busy,
   error,
+  booking,
 }: DoorFrameProps) {
   const adjudicated = new Map(doc.layer3.lines.map((l) => [l.lineIndex, l]))
+  /** r24: each line's own row and pairing on the paper, by index. */
+  const resolved = new Map(doc.layer2.lines.map((l) => [l.lineIndex, l]))
   const anyCounted = doc.layer3.lines.some((l) => l.received !== 'not_counted')
   /**
    * Counts keyed by line index, and ABSENT means untouched.
@@ -83,6 +88,8 @@ export function DoorFrame({
         uom: line?.unit.value ?? 'bottle',
         ...(line?.vintage.value != null ? { vintage: line.vintage.value } : {}),
         ...(line?.formatMl.value != null ? { formatMl: line.formatMl.value } : {}),
+        // r24: the paper's own line, so the gateway books by its pairing and unit.
+        ...(resolved.get(idx)?.lineId ? { sourceLineId: resolved.get(idx)!.lineId! } : {}),
       }
     })
     await onSubmitCount({
@@ -125,7 +132,11 @@ export function DoorFrame({
         {doc.layer1.seller.name.value ?? 'This delivery'}
       </h3>
       <p style={{ margin: '1px 0 6px', fontSize: 10, color: 'var(--ink-2, #4F473C)' }}>
-        {countedBy ? `Counted by ${countedBy}` : 'Nobody has counted this yet'}
+        {countedBy
+          ? `Counted by ${countedBy}`
+          : countedAt || anyCounted
+            ? 'Counted at the door'
+            : 'Nobody has counted this yet'}
         {countedAt ? ` · ${countedAt.slice(0, 16).replace('T', ' ')}` : ''}
       </p>
 
@@ -270,6 +281,17 @@ export function DoorFrame({
                   Short of what the paperwork says.
                 </span>
               )}
+              {onSubmitCount && typeof adj?.received === 'number' && (
+                <span data-testid="door-counted-so-far" style={{ display: 'block', fontSize: 9.5, color: 'var(--ink-2, #4F473C)' }}>
+                  Counted so far: {fmtQty(adj.received)} {line.unit.value ?? ''}. A new count of this line replaces it.
+                </span>
+              )}
+              {onSubmitCount && resolved.has(i) && resolved.get(i)!.inventoryIdSource !== 'line' && (
+                <span data-testid="door-unpaired" style={{ display: 'block', fontSize: 9.5, color: '#94661A' }}>
+                  Not paired with a good on this paper. A count of it is kept, but it goes on no
+                  shelf until the line is paired on the sheet.
+                </span>
+              )}
             </li>
           )
         })}
@@ -301,6 +323,7 @@ export function DoorFrame({
               {error}
             </p>
           )}
+          {booking && <BookingNote booking={booking} />}
           <p style={{ margin: 0, fontSize: 9.5, color: 'var(--ink-4, #665D50)' }}>
             {touched === 0
               ? 'Nothing counted yet. A line you do not touch is not a zero — it stays “not counted”, and the delivery says so.'
@@ -333,6 +356,27 @@ export function DoorFrame({
         </p>
       )}
     </section>
+  )
+}
+
+/** What the last count put on the shelf (r24). Every line not booked says why. */
+function BookingNote({ booking }: { booking: DoorBooking }) {
+  const moved = booking.booked.filter((b) => b.delta !== 0).length
+  return (
+    <div data-testid="door-booking" role="status" style={{ fontSize: 10.5, color: 'var(--ink-2, #4F473C)' }}>
+      <p style={{ margin: 0 }}>
+        {booking.failed
+          ? `The count is recorded, but nothing was put on the shelf: ${booking.error ?? 'the booking failed'}.`
+          : moved === 0 && booking.notBooked.length === 0
+            ? 'The count is recorded. The shelf already held it, so nothing moved.'
+            : `The count is recorded. ${moved} line${moved === 1 ? '' : 's'} went on the shelf.`}
+      </p>
+      {booking.notBooked.map((n) => (
+        <p key={`${n.lineNo}-${n.label}`} style={{ margin: '2px 0 0', color: '#94661A' }}>
+          Not on the shelf: {n.label} — {n.reason}
+        </p>
+      ))}
+    </div>
   )
 }
 

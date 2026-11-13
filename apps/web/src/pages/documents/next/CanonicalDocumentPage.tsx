@@ -84,7 +84,8 @@ import { addHouseGood, carryThenPair, type GoodBody } from '../../../services/ap
 import { AuthContext } from '@/contexts/AuthContext'
 import { canonicalApi } from '../../../services/api/canonical'
 import { getInventory } from '../../../services/api/inventory'
-import { deliveriesApi, type ProposalBody } from '../../../services/api/deliveries'
+import { deliveriesApi, type DoorBooking, type ProposalBody } from '../../../services/api/deliveries'
+import { lastCountedAt, paperCountBody, showsTheDoor } from './door-paper'
 import './canonical-document.css'
 
 type Tab = 'sheet' | 'door'
@@ -137,6 +138,8 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
   /** The gateway's words when a GATE or a proposal refused, kept apart from a
    *  correction's error so one does not overwrite the other on screen. */
   const [deliveryError, setDeliveryError] = useState<string | null>(null)
+  /** What the last door count put on the shelf (r24). */
+  const [doorBooking, setDoorBooking] = useState<DoorBooking | null>(null)
 
   /**
    * Every key below names the house (ADR 0051). The gateway scopes these reads
@@ -486,7 +489,8 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
   const doorDelivery = (res.deliveries ?? []).find((d) =>
     d.documents.some((doc2) => doc2.role === 'door_count'),
   )
-  const showDoorTab = doc.docType === 'receiving_advice' || !!doorDelivery
+  // r24: a paper that came with goods is counted at its door, order or no order.
+  const showDoorTab = showsTheDoor(doc, doorDelivery)
 
   return shell(
     <>
@@ -719,6 +723,8 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
               doc={doc}
               busy={writing}
               error={deliveryError}
+              countedAt={lastCountedAt(doorDelivery)}
+              booking={doorBooking}
               /* The count is a WRITE — unless this document IS a door count, in
                  which case the frame shows what was counted and correcting it
                  means recording another count, never editing this one. */
@@ -726,15 +732,17 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
                 doc.docType === 'receiving_advice'
                   ? undefined
                   : (input) =>
-                      deliveryWrite(() =>
-                        deliveriesApi.recordDoorCount({
-                          ...input,
-                          ...(soleDelivery
-                            ? { deliveryId: soleDelivery.deliveryId }
-                            : { createDelivery: true }),
-                          ...(doc.jurisdiction ? { jurisdiction: doc.jurisdiction } : {}),
-                        }),
-                      )
+                      deliveryWrite(async () => {
+                        setDoorBooking(null)
+                        const out = await deliveriesApi.recordDoorCount(
+                          paperCountBody(input, {
+                            documentId: doc.documentId,
+                            jurisdiction: doc.jurisdiction ?? null,
+                            soleDeliveryId: soleDelivery?.deliveryId ?? null,
+                          }),
+                        )
+                        setDoorBooking(out.booking ?? null)
+                      })
               }
             />
           )}

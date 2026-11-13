@@ -105,6 +105,17 @@ export interface DoorCountLine {
   packSize?: number;
   vintage?: number;
   formatMl?: number;
+  /** r24: the paper's line this counts (`procurement_document_lines.id`); with
+   *  `forDocumentId` the gateway books by that line's own item, unit and size. */
+  sourceLineId?: string;
+}
+
+/** What a door count put on the shelf, as the gateway answers it (ADR 0103 A1/A6). */
+export interface DoorBooking {
+  failed?: boolean;
+  error?: string;
+  booked: { lineNo: number; inventoryId: string; delta: number }[];
+  notBooked: { lineNo: number; label: string; reason: string }[];
 }
 
 /** The body both `propose` and `counter` take — declared once, so a counter
@@ -274,9 +285,13 @@ export const deliveriesApi = {
     deliveryId?: string;
     orderId?: string;
     jurisdiction?: string;
+    /** r24: the paper this count is of; every line then names its `sourceLineId`. */
+    forDocumentId?: string;
   }): Promise<{
     documentId: string;
     delivery: Record<string, unknown> | null;
+    /** NULL = no delivery, so nothing was booked. */
+    booking: DoorBooking | null;
     /** NULL = no comparison was possible. 0 = compared, nothing differed. */
     differsOnLines: number | null;
     storageError?: string;
