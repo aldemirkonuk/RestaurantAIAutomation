@@ -3,6 +3,7 @@ import { Plus, Trash2, RotateCcw } from 'lucide-react'
 import { Button } from '../ui/button'
 import { importMenu, type WineExtractItem, type MenuImportSuccess } from '../../services/api/menus'
 import { readTypedPrice } from '../../lib/typedPrice'
+import { housePriceHint } from '../../lib/house-number'
 
 /**
  * What a typed line is. Drink values are exactly the gateway's
@@ -73,6 +74,10 @@ interface MenuManualEntryProps {
 
 export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
   const unit = currency ? ` (${currency})` : ''
+  // The hints are written the way the house writes a price, "14,00" in a lira
+  // house (r23 walk: they read "14.00"). readTypedPrice takes either mark and
+  // refuses a grouped "1,250", so a hint never shows a thousands mark.
+  const hint = (n: number) => housePriceHint(n, currency)
   const [rows, setRows] = useState<WineRow[]>([emptyRow()])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -285,16 +290,16 @@ export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
                 </td>
                 {row.category === 'food' ? (
                   <td colSpan={2} className="px-2 py-1.5">
-                    {priceBox(row, 'bottle', `Price of line ${idx + 1}`, '24.00')}
+                    {priceBox(row, 'bottle', `Price of line ${idx + 1}`, hint(24))}
                     <span className="block px-2 text-xs text-gray-400">The dish's price stays on the menu; no stock is made for it.</span>
                   </td>
                 ) : (
                   <>
                 <td className="px-2 py-1.5">
-                  {priceBox(row, 'glass', `Glass price of line ${idx + 1}`, '14.00')}
+                  {priceBox(row, 'glass', `Glass price of line ${idx + 1}`, hint(14))}
                 </td>
                 <td className="px-2 py-1.5">
-                  {priceBox(row, 'bottle', `Bottle price of line ${idx + 1}`, '68.00')}
+                  {priceBox(row, 'bottle', `Bottle price of line ${idx + 1}`, hint(68))}
                 </td>
                   </>
                 )}
