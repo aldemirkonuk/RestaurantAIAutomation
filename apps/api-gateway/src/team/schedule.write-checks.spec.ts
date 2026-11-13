@@ -386,6 +386,30 @@ describe("B5 — a staff claim matches the shift's role and the person's certifi
     expect(openShift(db).member_id).toBe("m-kim");
   });
 
+  it("a role listed only as someone else's skill is still a qualification", async () => {
+    const db = seed();
+    const sam = db.tables.team_members.find((m) => m.id === "m-sam")!;
+    sam.position = "Staff";
+    sam.skills = ["Sommelier"];
+    kim(db).position = "Staff";
+    openShift(db).role = "sommelier";
+    const err = await claim(db).catch((e) => e);
+    expect(err).toBeInstanceOf(ForbiddenException);
+    expect(openShift(db).member_id).toBeNull();
+  });
+
+  it("another house's roster does not make this house's station a qualification", async () => {
+    const db = seed();
+    openShift(db).role = "Main bar";
+    kim(db).position = "Staff";
+    db.tables.team_members.push({
+      id: "m-far", restaurant_id: "other-house", user_id: "user-far",
+      display_name: "Far", position: "Main bar", skills: [],
+    });
+    await claim(db);
+    expect(openShift(db).member_id).toBe("m-kim");
+  });
+
   it("a shift that names no role is anyone's", async () => {
     const db = seed();
     kim(db).position = null;
@@ -415,7 +439,11 @@ describe("B5 — a staff claim matches the shift's role and the person's certifi
 
   it("a certificate good through the shift's day, or with no expiry, does not stop it", async () => {
     const db = seed();
-    db.tables.team_certifications.push(cert("2099-01-06"), cert(null), cert("2100-01-01"));
+    db.tables.team_certifications.push(
+      cert("2099-01-06"),
+      cert(null, { id: "c-none", cert_type: "allergen" }),
+      cert("2100-01-01", { id: "c-later", cert_type: "alcohol_service" }),
+    );
     await claim(db);
     expect(openShift(db).member_id).toBe("m-kim");
   });
