@@ -1,7 +1,7 @@
 import { NotFoundException } from "@nestjs/common";
 import { DishesService, dishNameTaken } from "./dishes.service";
 import { RecipesService } from "./recipes.service";
-import { B_DISH, HOUSE_A, TART, V_TART_2, fakeDb, twoHouses } from "./dishes.testing";
+import { B_DISH, GONE, HOUSE_A, TART, V_TART_2, fakeDb, twoHouses } from "./dishes.testing";
 
 /**
  * A house's dish list, and adding and changing a dish (ADR 0366), through the
@@ -79,5 +79,27 @@ describe("dishes: adding and changing a dish", () => {
     await expect(dishes.updateDish(HOUSE_A, B_DISH, { price: 1 })).rejects.toBeInstanceOf(NotFoundException);
     expect(rows.dishes.find((d) => d.id === B_DISH)!.price).toBe(777);
     await expect(dishes.updateDish(HOUSE_A, TART, { price: null })).resolves.toMatchObject({ price: null, name: "Lemon tart" });
+  });
+});
+
+describe("dishes: taking a dish off the list", () => {
+  it("soft-deletes this house's live dish, keeps its versions, and the list stops reading it", async () => {
+    const rows = twoHouses();
+    const versionsBefore = rows.recipe_versions.length;
+    const { dishes } = services(rows);
+    await expect(dishes.removeDish(HOUSE_A, TART)).resolves.toEqual({ id: TART, name: "Lemon tart", removed: true });
+    expect(rows.dishes.find((d) => d.id === TART)!.deleted_at).toEqual(expect.any(String));
+    expect(rows.recipe_versions.length).toBe(versionsBefore);
+    const list = await dishes.listDishes(HOUSE_A, "owner");
+    expect(list.map((d) => d.id)).not.toContain(TART);
+  });
+
+  it("another house's dish, and one already removed, are a 404 and stay as they were", async () => {
+    const rows = twoHouses();
+    const { dishes } = services(rows);
+    await expect(dishes.removeDish(HOUSE_A, B_DISH)).rejects.toBeInstanceOf(NotFoundException);
+    expect(rows.dishes.find((d) => d.id === B_DISH)!.deleted_at ?? null).toBeNull();
+    await expect(dishes.removeDish(HOUSE_A, GONE)).rejects.toBeInstanceOf(NotFoundException);
+    expect(rows.dishes.find((d) => d.id === GONE)!.deleted_at).toBe("2026-10-01");
   });
 });
