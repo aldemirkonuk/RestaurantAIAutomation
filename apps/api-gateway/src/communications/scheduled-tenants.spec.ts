@@ -181,6 +181,20 @@ describe("ScheduledTenantsService — an unset zone is an absence, not New York"
     expect(tenants[0].timezone).toBe("Europe/Istanbul");
     expect(tenants[0].timezoneIsSet).toBe(true);
   });
+
+  it("carries the house's own currency, and an absent one as null (never a default)", async () => {
+    const stated = await makeTenantsService({
+      restaurants: [restaurant(LEGACY_ID, "Istanbul", { currency: "TRY" })],
+      flags: [],
+    }).list();
+    const unstated = await makeTenantsService({
+      restaurants: [restaurant(LEGACY_ID, "Unstated")],
+      flags: [],
+    }).list();
+
+    expect(stated[0].currency).toBe("TRY");
+    expect(unstated[0].currency).toBeNull();
+  });
 });
 
 describe("ScheduledTenantsService — who the crons serve", () => {

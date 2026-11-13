@@ -9,6 +9,7 @@ import { GmailService } from "./gmail.service";
 import { SmsService } from "./sms.service";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
 import { DatabaseService } from "../database/database.service";
+import { moneyIn } from "../common/money-in";
 import {
   LowStockAlertDto,
   MultiChannelResultDto,
@@ -234,6 +235,8 @@ export class CommunicationsService {
       totalBottles: number;
       lowStockCount: number;
       totalValue: number;
+      /** The house's own currency; absent prints every figure bare. */
+      currency?: string | null;
       topSellers: Array<{ name: string; sold: number; revenue: number }>;
       lowStockItems: Array<{
         name: string;
@@ -275,6 +278,7 @@ export class CommunicationsService {
     totalBottles: number;
     lowStockCount: number;
     totalValue: number;
+    currency?: string | null;
     topSellers: Array<{ name: string; sold: number; revenue: number }>;
     lowStockItems: Array<{ name: string; current: number; threshold: number }>;
     conversationSummaries?: Array<{
@@ -290,7 +294,7 @@ export class CommunicationsService {
       <tr>
         <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">${item.name}</td>
         <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: center;">${item.sold}</td>
-        <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: right;">$${item.revenue.toLocaleString()}</td>
+        <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: right;">${moneyIn(item.revenue, data.currency)}</td>
       </tr>
     `,
       )
@@ -341,7 +345,7 @@ export class CommunicationsService {
             </td>
             <td width="5px"></td>
             <td width="33%" style="padding: 15px; text-align: center; background-color: #f0f9ff; border-radius: 8px;">
-              <p style="margin: 0; color: #0369a1; font-size: 32px; font-weight: bold;">$${(data.totalValue / 1000).toFixed(1)}K</p>
+              <p style="margin: 0; color: #0369a1; font-size: 32px; font-weight: bold;">${moneyIn(data.totalValue, data.currency, true)}</p>
               <p style="margin: 5px 0 0; color: #0c4a6e; font-size: 14px;">Total Value</p>
             </td>
           </tr>
