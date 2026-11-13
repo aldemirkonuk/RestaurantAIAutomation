@@ -27,7 +27,7 @@
 import { useState } from 'react'
 import type { CanonicalDocument } from '../../services/api/canonical'
 import type { DoorBooking, DoorCountLine } from '../../services/api/deliveries'
-import { EM, MONO, SERIF, fmtQty, fmtReceived } from './canonical-format'
+import { EM, MONO, SERIF, fmtQty, fmtReceived, unitWord } from './canonical-format'
 
 export interface DoorFrameProps {
   doc: CanonicalDocument
@@ -176,7 +176,7 @@ export function DoorFrame({
                 The paperwork says{' '}
                 <strong>
                   {fmtQty(adj?.shipped ?? adj?.billed ?? null)}{' '}
-                  {line.unit.value ?? ''}
+                  {line.unit.value ? unitWord(line.unit.value, adj?.shipped ?? adj?.billed ?? null) : ''}
                 </strong>
               </span>
               <span
@@ -283,7 +283,7 @@ export function DoorFrame({
               )}
               {onSubmitCount && typeof adj?.received === 'number' && (
                 <span data-testid="door-counted-so-far" style={{ display: 'block', fontSize: 9.5, color: 'var(--ink-2, #4F473C)' }}>
-                  Counted so far: {fmtQty(adj.received)} {line.unit.value ?? ''}. A new count of this line replaces it.
+                  Counted so far: {fmtQty(adj.received)} {line.unit.value ? unitWord(line.unit.value, adj.received) : ''}. A new count of this line replaces it.
                 </span>
               )}
               {onSubmitCount && resolved.has(i) && resolved.get(i)!.inventoryIdSource !== 'line' && (

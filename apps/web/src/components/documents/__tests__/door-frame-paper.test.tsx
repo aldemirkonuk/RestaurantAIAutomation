@@ -50,7 +50,18 @@ describe('DoorFrame on a paper (r24)', () => {
     expect(screen.getByTestId('door-frame').textContent).not.toContain('Nobody has counted this yet')
     const soFar = screen.getAllByTestId('door-counted-so-far')
     expect(soFar).toHaveLength(1)
-    expect(soFar[0].textContent).toContain('Counted so far: 5 liter')
+    // r26 walk: "5 liter" is said in words, "5 liters" (one is "1 liter").
+    expect(soFar[0].textContent).toContain('Counted so far: 5 liters.')
+    expect(screen.getByTestId('door-frame').textContent).toContain('The paperwork says 5 liters')
+  })
+
+  it('one of a unit is said in the singular, and a unit code in words', () => {
+    const one = doc({ received: [1, 'not_counted'] })
+    ;(one.layer1.lines[1] as { unit: { value: string } }).unit.value = 'split_case'
+    render(<DoorFrame doc={one} onSubmitCount={async () => {}} />)
+    expect(screen.getAllByTestId('door-counted-so-far')[0].textContent).toContain('Counted so far: 1 liter.')
+    expect(screen.getByTestId('door-frame').textContent).toContain('5 split cases')
+    expect(screen.getByTestId('door-frame').textContent).not.toContain('split_case')
   })
 
   it('a paper nobody counted says so', () => {
