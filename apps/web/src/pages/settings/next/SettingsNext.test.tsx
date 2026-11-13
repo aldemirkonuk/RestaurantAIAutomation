@@ -32,7 +32,7 @@
  * assertions would pass against the scaffold this file replaced.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 
@@ -591,19 +591,60 @@ describe('SettingsNext — the editorial spine', () => {
     expect(scrolledTo.id).toBe('st-section-measurement');
   });
 
-  // r29 walk: on a full load the theme prompt opened ~400 ms after the deep
-  // link had already asked for its scroll, and the prompt's lock cut a SMOOTH
-  // scroll off partway (the page stopped about a third of the way down). The
-  // arrival is an instant jump, so it is finished before any lock can land;
-  // only a contents click glides.
-  it('a ?tab= deep link arrives with an instant jump, and a contents click still glides (r29 walk)', () => {
-    mount('/settings?tab=measurement');
-    const calls = (Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mock.calls;
-    expect(calls).toHaveLength(1);
-    expect(calls[0][0]).toEqual({ behavior: 'auto', block: 'start' });
-    fireEvent.click(within(screen.getByRole('navigation', { name: /settings registers/i })).getByText('What it carries'));
-    expect(calls).toHaveLength(2);
-    expect(calls[1][0]).toEqual({ behavior: 'smooth', block: 'start' });
+  // r29 walk: the deep link's first jump landed while the registers above
+  // were still loading (the section at ~1,400 px, later ~3,700 px), and the
+  // theme prompt opened and closed in the same window. The arrival stays
+  // anchored: each layout change re-jumps (instantly, once no overlay holds
+  // the scroll) until the reader's own first input. Input while an overlay
+  // holds the scroll (the "Not now" press) is the overlay's.
+  describe('a ?tab= deep link stays anchored while the page settles (r29 walk)', () => {
+    let resized: (() => void) | null = null;
+    const RealRO = (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
+    beforeEach(() => {
+      resized = null;
+      (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
+        constructor(cb: () => void) {
+          resized = cb;
+        }
+        observe() {}
+        disconnect() {
+          resized = null;
+        }
+      };
+    });
+    afterEach(() => {
+      (globalThis as { ResizeObserver?: unknown }).ResizeObserver = RealRO;
+    });
+    const calls = () => (Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mock.calls;
+
+    it('re-jumps to the section on each layout change, as an instant jump', () => {
+      mount('/settings?tab=measurement');
+      expect(calls()).toHaveLength(1);
+      expect(calls()[0][0]).toEqual({ behavior: 'auto', block: 'start' });
+      act(() => resized?.());
+      expect(calls()).toHaveLength(2);
+      expect((Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mock.instances[1]).toHaveProperty('id', 'st-section-measurement');
+    });
+
+    it('a layout change under an overlay waits for it, and the press that closes it is not the reader taking over', () => {
+      mount('/settings?tab=measurement');
+      const release = lockBodyScroll();
+      act(() => resized?.());
+      fireEvent.pointerDown(window);
+      expect(calls()).toHaveLength(1);
+      act(() => release());
+      expect(calls()).toHaveLength(2);
+    });
+
+    it("hands the page to the reader at their first input, and a contents click still glides", () => {
+      mount('/settings?tab=measurement');
+      fireEvent.wheel(window);
+      act(() => resized?.());
+      expect(calls()).toHaveLength(1);
+      fireEvent.click(within(screen.getByRole('navigation', { name: /settings registers/i })).getByText('What it carries'));
+      expect(calls()).toHaveLength(2);
+      expect(calls()[1][0]).toEqual({ behavior: 'smooth', block: 'start' });
+    });
   });
 
   it('honours a ?tab=hours deep link the same way — graft B lives under "The house"', () => {

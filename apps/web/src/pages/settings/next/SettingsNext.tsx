@@ -68,7 +68,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { Plug } from 'lucide-react';
 import { Wordmark } from '@/components/mudavym';
-import { whenBodyScrollUnlocked } from '@/components/mudavym/overlayState';
+import { isBodyScrollLocked, whenBodyScrollUnlocked } from '@/components/mudavym/overlayState';
 import { useAuth } from '@/contexts/AuthContext';
 import { animate, ink, prefersReducedMotion, settle } from '@/lib/mudavym';
 import { useMudavymDesign } from '@/lib/mudavym/useMudavymDesign';
@@ -226,17 +226,44 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
     // at `overflow: hidden`, and the scroll asked for then never moved the
     // page. It waits for the overlay to let go, and counts as done only once
     // it has run.
-    // The arrival is a jump, never an animation (r29 walk): on a full load the
-    // theme prompt can open a few hundred ms AFTER this runs, and its scroll
-    // lock cut a smooth scroll off partway, leaving the page about a third of
-    // the way down. An instant scroll is done before any overlay can lock the
-    // body, and `overflow: hidden` keeps the position it lands on. A browser's
-    // own #fragment arrival is instant too; a contents click (below) still
-    // glides.
-    return whenBodyScrollUnlocked(() => {
+    //
+    // r29 walk: the first jump lands while the registers above are still
+    // loading. The section sat at about 1,400 px and moved to 3,700 px once
+    // their data arrived. The theme prompt's lock also opens and closes during
+    // that time, so the browser's own scroll anchoring cannot hold the place.
+    // The arrival therefore STAYS anchored: every layout change re-jumps to
+    // the section (an instant jump, never a glide, so nothing is cut off)
+    // until the reader's own first input (pointer, wheel, touch or key) hands
+    // the page to them.
+    const jump = () => el.scrollIntoView({ behavior: 'auto', block: 'start' });
+    let cancelPending = whenBodyScrollUnlocked(() => {
       scrolledRef.current = true;
-      el.scrollIntoView({ behavior: 'auto', block: 'start' });
+      jump();
     });
+    if (typeof ResizeObserver !== 'function') return cancelPending;
+    const READER = ['pointerdown', 'wheel', 'touchstart', 'keydown'] as const;
+    const observer = new ResizeObserver(() => {
+      cancelPending();
+      cancelPending = whenBodyScrollUnlocked(() => {
+        scrolledRef.current = true;
+        jump();
+      });
+    });
+    const stop = () => {
+      observer.disconnect();
+      cancelPending();
+      for (const type of READER) window.removeEventListener(type, handOver, true);
+    };
+    // Input while an overlay holds the scroll (choosing "Not now" on the theme
+    // prompt) is the overlay's, not the reader's: the arrival still owes them
+    // their section.
+    function handOver() {
+      if (isBodyScrollLocked()) return;
+      stop();
+    }
+    observer.observe(document.body);
+    for (const type of READER) window.addEventListener(type, handOver, { capture: true, passive: true });
+    return stop;
   }, [tabParam, connectionsOn, live]);
 
   // The settle-in reveal, once, on first paint — `animate` collapses to the

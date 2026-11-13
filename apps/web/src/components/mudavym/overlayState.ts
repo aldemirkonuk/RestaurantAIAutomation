@@ -33,6 +33,11 @@ export function whenBodyScrollUnlocked(fn: () => void): () => void {
   };
 }
 
+/** True while any overlay holds the body's scroll; its input is the overlay's, not the page's. */
+export function isBodyScrollLocked(): boolean {
+  return scrollLocks > 0;
+}
+
 export function lockBodyScroll(): () => void {
   if (typeof document === 'undefined') return () => {};
   if (scrollLocks === 0) {
