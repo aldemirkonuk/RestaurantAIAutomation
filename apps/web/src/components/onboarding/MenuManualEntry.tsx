@@ -79,7 +79,9 @@ export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
       prev.map((row) =>
         row._id === id
           ? kind === 'food'
-            ? { ...row, category: kind, by_glass_price: undefined, bottle_price: undefined }
+            ? // A dish has one price, kept on its menu line the way a read menu keeps
+              // "Tiramisu 9" (bottle_price, menus.service.ts); a glass price has no meaning for it.
+              { ...row, category: kind, by_glass_price: undefined }
             : { ...row, category: kind }
           : row
       )
@@ -108,10 +110,7 @@ export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
       const items: WineExtractItem[] = validRows.map(({ _id: _discard, category, ...rest }) => {
         const item: WineExtractItem = { ...rest }
         if (category) item.category = category
-        if (category === 'food') {
-          delete item.by_glass_price
-          delete item.bottle_price
-        }
+        if (category === 'food') delete item.by_glass_price
         for (const key of Object.keys(item) as Array<keyof WineExtractItem>) {
           if (item[key] === undefined) delete item[key]
         }
@@ -210,8 +209,18 @@ export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
                   />
                 </td>
                 {row.category === 'food' ? (
-                  <td colSpan={2} className="px-3 py-1.5 text-xs text-gray-400">
-                    Dishes stay on the menu; Mudavym does not price them yet.
+                  <td colSpan={2} className="px-2 py-1.5">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      aria-label={`Price of line ${idx + 1}`}
+                      value={row.bottle_price ?? ''}
+                      onChange={(e) => updateRow(row._id, 'bottle_price', e.target.value)}
+                      placeholder="24.00"
+                      className="w-full px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 focus:border-[#1A5E6B] focus:outline-none focus:ring-2 focus:ring-[#1A5E6B]/20 text-sm transition-colors"
+                    />
+                    <span className="block px-2 text-xs text-gray-400">The dish's price stays on the menu; no stock is made for it.</span>
                   </td>
                 ) : (
                   <>
@@ -282,7 +291,7 @@ export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
       </div>
 
       <p className="mt-3 text-xs text-gray-400 text-center">
-        Only the name is needed. Say what each line is and Mudavym places it; dishes are kept but not priced yet.
+        Only the name is needed. Say what each line is and Mudavym places it; a dish keeps its price on the menu, and no stock is made for it.
       </p>
     </div>
   )

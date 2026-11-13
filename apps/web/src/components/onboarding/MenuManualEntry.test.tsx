@@ -49,17 +49,29 @@ describe('MenuManualEntry takes any line', () => {
     expect(text).not.toContain('Add another wine')
   })
 
-  it('sends a food line as food with no price', async () => {
+  // Menu r21: a typed dish lost its price, where a read menu keeps "Tiramisu 9"
+  // on its line (bottle_price) and /menu shows and changes it.
+  it('sends a food line as food with its one price, kept on the line', async () => {
     render(<MenuManualEntry onSuccess={vi.fn()} />)
     fireEvent.change(nameInput(1), { target: { value: 'Lamb shank' } })
     fireEvent.change(screen.getByLabelText('What line 1 is'), { target: { value: 'food' } })
-    expect(screen.queryAllByRole('spinbutton')).toHaveLength(0)
-    expect(screen.getByText('Dishes stay on the menu; Mudavym does not price them yet.')).toBeInTheDocument()
+    expect(screen.queryAllByRole('spinbutton')).toHaveLength(1)
+    expect(screen.getByText("The dish's price stays on the menu; no stock is made for it.")).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Price of line 1'), { target: { value: '24.5' } })
     fireEvent.click(screen.getByRole('button', { name: 'Import 1 line' }))
     await waitFor(() => expect(importMenu).toHaveBeenCalled())
-    expect(importMenu).toHaveBeenCalledWith('manual', { items: [expect.objectContaining({ name: 'Lamb shank', category: 'food' })] })
+    expect(importedItems()[0]).toMatchObject({ name: 'Lamb shank', category: 'food', bottle_price: 24.5 })
     expect(importedItems()[0]).not.toHaveProperty('by_glass_price')
+  })
+
+  it('a dish typed with no price is sent with none', async () => {
+    render(<MenuManualEntry onSuccess={vi.fn()} />)
+    fireEvent.change(nameInput(1), { target: { value: 'Bread' } })
+    fireEvent.change(screen.getByLabelText('What line 1 is'), { target: { value: 'food' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Import 1 line' }))
+    await waitFor(() => expect(importMenu).toHaveBeenCalled())
     expect(importedItems()[0]).not.toHaveProperty('bottle_price')
+    expect(importedItems()[0]).not.toHaveProperty('by_glass_price')
   })
 
   it('keeps the prices of a beer line', async () => {
@@ -72,14 +84,16 @@ describe('MenuManualEntry takes any line', () => {
     expect(importedItems()[0]).toMatchObject({ name: 'Efes draft', category: 'beer', by_glass_price: 6 })
   })
 
-  it('clears the prices when a priced row is switched to Food', async () => {
+  it('a priced row switched to Food keeps its price as the dish price and drops the glass price', async () => {
     render(<MenuManualEntry onSuccess={vi.fn()} />)
     fireEvent.change(nameInput(1), { target: { value: 'Mystery' } })
+    fireEvent.change(screen.getAllByRole('spinbutton')[0], { target: { value: '12' } })
     fireEvent.change(screen.getAllByRole('spinbutton')[1], { target: { value: '40' } })
     fireEvent.change(screen.getByLabelText('What line 1 is'), { target: { value: 'food' } })
+    expect(screen.getByLabelText('Price of line 1')).toHaveValue(40)
     fireEvent.click(screen.getByRole('button', { name: 'Import 1 line' }))
     await waitFor(() => expect(importMenu).toHaveBeenCalled())
-    expect(importedItems()[0]).not.toHaveProperty('bottle_price')
+    expect(importedItems()[0]).toMatchObject({ bottle_price: 40 })
     expect(importedItems()[0]).not.toHaveProperty('by_glass_price')
   })
 
