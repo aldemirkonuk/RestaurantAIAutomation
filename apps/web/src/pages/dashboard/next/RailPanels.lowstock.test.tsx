@@ -156,6 +156,11 @@ describe('LowStockPanel — a kilo reads as a kilo, as on the list and in Lately
     expect(said(200, 500, 'g')).toBe('200 / min 500 g');
   });
 
+  it('reads a stock counted below zero by the same rule', () => {
+    expect(said(-1500, 1000, 'g')).toBe('-1.5 / min 1 kg');
+    expect(said(-12, 6, 'bottle')).toBe('-12 / min 6 bottles');
+  });
+
   it('leaves bottles, units and unknown units as they are', () => {
     expect(said(1250, 1500, 'bottle')).toBe('1,250 / min 1,500 bottles');
     expect(said(0, 1, 'each')).toBe('0 / min 1 unit');
