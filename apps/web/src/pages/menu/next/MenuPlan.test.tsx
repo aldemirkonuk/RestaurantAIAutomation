@@ -114,7 +114,7 @@ describe('the plan in one sentence', () => {
     const unpriced = line({ menuItemId: 'n6', flag: 'blank_no_house_price', bottle: { ...line().bottle, menuPrice: null, result: 'blank_never_priced', lastSet: null } });
     expect(
       planSentence(plan({ lines: [unmatched, unpriced], counts: { change: 0, unchanged: 0, held_by_lock: 0, blank_kept: 0, blank_never_priced: 3, not_linked: 2, new_wine: 0 }, dormantLocks: [] })),
-    ).toBe('Choosing this menu changes no price. 1 line shows no price and the house has none either (flagged); 1 line is not matched to a wine, so no price.');
+    ).toBe('Choosing this menu changes no price. 1 line shows no price and the house has none either, so it stays unpriced, and the line carries a note saying so; 1 line is not matched to a wine, so no price.');
     expect(planSentence(plan({ current: true }))).toBe('This is already the current menu. Choosing it again changes nothing.');
   });
 
@@ -286,14 +286,14 @@ describe('every line of the menu, per kind (L13)', () => {
     expect(lines[1]).toHaveTextContent('Barolo 2020');
     expect(lines[1]).toHaveTextContent('stays 60.00, locked');
     expect(lines[2]).toHaveTextContent('not matched to a wine, so no price');
-    expect(lines[3]).toHaveTextContent('no price on the menu or at the house (flagged)');
+    expect(lines[3]).toHaveTextContent('no price on the menu or at the house (noted on the line)');
   });
 
   it('each result has its words, and one it does not know is still printed', () => {
     const l = line();
     const k = (over: Partial<PlanLine['bottle']>) => ({ ...l.bottle, ...over });
     expect(kindWords(l, k({ result: 'unchanged', housePrice: 50 }))).toBe('already 50.00');
-    expect(kindWords(l, k({ result: 'blank_kept', housePrice: 30 }))).toBe('blank on the menu; the house keeps 30.00 (flagged)');
+    expect(kindWords(l, k({ result: 'blank_kept', housePrice: 30 }))).toBe('blank on the menu; the house keeps 30.00 (noted on the line)');
     expect(kindWords(l, k({ result: 'new_wine', menuPrice: 40 }))).toBe('new to the house at 40.00');
     expect(kindWords(l, k({ result: 'blank_never_priced' }))).toBe('—');
     expect(kindWords(l, k({ result: 'held_somewhere_else' as never }))).toBe('held somewhere else');

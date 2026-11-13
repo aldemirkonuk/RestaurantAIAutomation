@@ -213,7 +213,7 @@ describe('the words the panel uses', () => {
         failed: [{ menuItemId: 'l9', name: 'Barolo', error: 'timeout' }],
       }),
     ).toBe(
-      'This is now the current menu: 3 lines, 1 wine priced from this menu, 1 wine kept a price someone set after this menu was chosen, 1 line not matched to a wine, so no price, 1 flagged for a blank price. 1 could not be priced: Barolo (timeout).',
+      'This is now the current menu: 3 lines, 1 wine priced from this menu, 1 wine kept a price someone set after this menu was chosen, 1 line not matched to a wine, so no price, 1 line with a blank price, noted on the line so a manager can set it on Inventory. 1 could not be priced: Barolo (timeout).',
     );
   });
 
@@ -401,7 +401,7 @@ describe('MenuVersions', () => {
     await waitFor(() => expect(mockMake).toHaveBeenCalledWith('m1', 'fp-m1'));
     // Named, and said under the list it is about (menu walk 2026-11-12).
     expect(await screen.findByTestId('menu-list-choice-said')).toHaveTextContent(
-      /^The menu read 2026-09-20 10:00 is now the current menu: 42 lines, 40 wines priced from this menu, 2 flagged/,
+      /^The menu read 2026-09-20 10:00 is now the current menu: 42 lines, 40 wines priced from this menu, 2 lines with a blank price, noted on the line/,
     );
   });
 
