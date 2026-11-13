@@ -46,7 +46,10 @@ function makeClient(rowsByTable: Rows) {
       const builder: any = {};
       for (const m of passthrough) builder[m] = jest.fn(() => builder);
       builder.maybeSingle = jest.fn(() =>
-        Promise.resolve({ data: null, error: null }),
+        Promise.resolve({
+          data: table === "restaurants" ? (rowsByTable.restaurants?.[0] ?? null) : null,
+          error: null,
+        }),
       );
       builder.then = (resolve: any, reject: any) =>
         Promise.resolve({ data: rowsByTable[table] ?? [], error: null }).then(
@@ -63,9 +66,13 @@ const RESTAURANT = "33333333-3333-3333-3333-333333333333";
 const analytics = (rows: Rows) =>
   new AnalyticsService({ getClient: () => makeClient(rows) } as any);
 
+/** Seasonality files on house days (ADR 0296), so the house states a zone. */
 const advanced = (rows: Rows) =>
   new AdvancedAnalyticsService(
-    { getClient: () => makeClient(rows) } as any,
+    {
+      getClient: () =>
+        makeClient({ restaurants: [{ id: RESTAURANT, timezone: "UTC" }], ...rows }),
+    } as any,
     { getDemandForecast: async () => ({}) } as any,
     {} as any,
     {} as any,

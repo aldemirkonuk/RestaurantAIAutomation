@@ -32,6 +32,15 @@ function client(tables: Record<string, Row[]>, failing = new Set<string>()) {
           filters.push((r) => vs.includes(r[c])),
           q
         ),
+        // `loadOrders` reads whole (ADR 0292) and by either date: "a.gte.x,b.gte.y".
+        or: (expr: string) => {
+          const parts = expr.split(",").map((p) => p.split(".gte."));
+          filters.push((r) => parts.some(([c, v]) => r[c] != null && r[c] >= v));
+          return q;
+        },
+        order: () => q,
+        gt: () => q,
+        limit: () => q,
         maybeSingle: () =>
           Promise.resolve({
             data:
@@ -48,6 +57,9 @@ function client(tables: Record<string, Row[]>, failing = new Set<string>()) {
                   data: (tables[table] ?? []).filter((r) =>
                     filters.every((f) => f(r)),
                   ),
+                  count: (tables[table] ?? []).filter((r) =>
+                    filters.every((f) => f(r)),
+                  ).length,
                   error: null,
                 },
           ).then(res, rej),

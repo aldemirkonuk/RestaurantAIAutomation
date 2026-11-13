@@ -303,16 +303,22 @@ function writePacing(payload: unknown): ExportDoc {
   const projection = Array.isArray(c.projectedNext4Weeks)
     ? (c.projectedNext4Weeks as unknown[])
     : null;
-  const bothZero = (last ?? 0) === 0 && (prev ?? 0) === 0;
+  // A house with no time zone has no days to file a delivery on (ADR 0296):
+  // spend is withheld, and what is committed is still stated.
+  const zoneUnset = c.zoneUnset === true;
+  const bothZero = !zoneUnset && last === 0 && prev === 0;
+  const spendWhy = zoneUnset ? HOUSE_ZONE_UNSET : "the cashflow register returned no figure";
 
   return doc({
-    say: bothZero
-      ? "No delivered purchase order falls in either 30-day window, so there is no pace to read."
-      : null,
+    say: zoneUnset
+      ? HOUSE_ZONE_UNSET
+      : bothZero
+        ? "No delivered purchase order falls in either 30-day window, so there is no pace to read."
+        : null,
     figures: [
-      f("Paid out, the last 30 days", figure(last, "the cashflow register returned no figure"), "money"),
-      f("Paid out, the 30 days before", figure(prev, "the cashflow register returned no figure"), "money"),
-      f("Pace", figure(pctOf(c.paceDeltaPct), "Needs two comparable 30-day windows"), "percent"),
+      f("Paid out, the last 30 days", figure(last, spendWhy), "money"),
+      f("Paid out, the 30 days before", figure(prev, spendWhy), "money"),
+      f("Pace", figure(pctOf(c.paceDeltaPct), zoneUnset ? HOUSE_ZONE_UNSET : "Needs two comparable 30-day windows"), "percent"),
       f("Committed, not yet delivered", figure(c.committedOpenOrders, "the cashflow register returned no figure"), "money"),
       f("Open orders", figure(c.openOrderCount, "the cashflow register returned no figure"), "count"),
     ],
@@ -334,15 +340,15 @@ function writePacing(payload: unknown): ExportDoc {
           ]
         : [],
     notes: [
-      projection && projection.length > 0
+      projection && projection.length > 0 || zoneUnset
         ? ""
         : "Too few weeks of purchasing to project — withheld rather than a line drawn through two points.",
-      bothZero
-        ? 'Both windows came back at zero, and the zeros are ambiguous: the cashflow lens sums a loader that returns an empty list for a failed query as well as for a quiet month, so zero means "no delivered order was returned", not necessarily "nothing was bought".'
-        : "",
     ],
+    // The orders are read whole (ADR 0292): a failed read refuses the sheet,
+    // so a zero here is a quiet month, never a read that came back empty.
     basis: sentences(
       obj(c.basis).outflow ? `Outflow: ${str(obj(c.basis).outflow)}.` : null,
+      obj(c.basis).uncosted ? str(obj(c.basis).uncosted) : null,
     ),
   });
 }
@@ -366,6 +372,9 @@ function writeWeek(payload: unknown): ExportDoc {
     stdev: num(p.stdev),
     n: num(p.n),
   }));
+  // No time zone, no weekday to file a line on (ADR 0296): say so, rather
+  // than read the empty profile as a quiet quarter.
+  if (w.zoneUnset === true) return doc({ say: HOUSE_ZONE_UNSET, basis: [] });
   if (profile.length === 0)
     return doc({
       say: "No consumption is recorded in the last 90 days, so the week has no shape yet.",
@@ -853,15 +862,27 @@ function writeRestock(payload: unknown): ExportDoc {
 
 function writeBench(payload: unknown): ExportDoc {
   const d = obj(payload);
+  // The bench is composed from three reads (ReportCuttingReader.readBench, as
+  // the page's `sources`): a read that failed arrives as null and is withheld
+  // by name, never as a zero or as "no goal is running".
   const cashflowMissing = d.cashflow == null;
-  const seasonalityMissing = d.seasonality == null;
+  const goalsMissing = d.goals == null;
+  // A house with no zone names no weekday (ADR 0296): withheld with that reason.
+  const seasonalityMissing = d.seasonality == null || obj(d.seasonality).zoneUnset === true;
   const cf = obj(d.cashflow);
   const se = obj(d.seasonality);
-  const cfMissing = "the cashflow lens did not answer inside the overview call";
-  const seMissing = "the weekday lens did not answer inside the overview call";
-  const cfWhy = cashflowMissing ? cfMissing : "the cashflow register returned no figure";
+  const cfMissing = "the cashflow register could not be read";
+  const seMissing =
+    d.seasonality != null && obj(d.seasonality).zoneUnset === true
+      ? HOUSE_ZONE_UNSET
+      : "the seasonality register could not be read";
+  const cfWhy = cashflowMissing
+    ? cfMissing
+    : cf.zoneUnset === true
+      ? HOUSE_ZONE_UNSET
+      : "the cashflow register returned no figure";
   const tie = se.tie === true;
-  const goals = arr(d.activeGoals).map((g) => ({
+  const goals = arr(d.goals).map((g) => ({
     name: str(g.name) || "Untitled goal",
     baseline: num(g.baseline_value),
     current: num(g.current_value),
@@ -901,8 +922,8 @@ function writeBench(payload: unknown): ExportDoc {
 
   return doc({
     say:
-      cashflowMissing && seasonalityMissing && goals.length === 0
-        ? "Nothing in the overview register answered — neither the buying lens nor the weekday lens returned, and no goal is running."
+      cashflowMissing && d.seasonality == null && goalsMissing
+        ? "None of the three registers this compares could be read — buying, weekdays and goals."
         : null,
     figures: [
       f("Bought, the last 30 days", figure(last, cfWhy), "money"),
@@ -910,7 +931,7 @@ function writeBench(payload: unknown): ExportDoc {
       f("Pace against last month", figure(pctOf(cf.paceDeltaPct), cashflowMissing ? cfMissing : "the server withholds a pace when the two windows are not comparable"), "percent"),
       f("Committed, not yet delivered", figure(cf.committedOpenOrders, cfWhy), "money"),
       f("Trend per day, last 28 days", figure(pctOf(se.trendPerDayPct), seasonalityMissing ? seMissing : "the seasonality register returned no trend"), "percent"),
-      f("Goals running", goals.length, "count"),
+      f("Goals running", goalsMissing ? withheld("the goals list could not be read") : goals.length, "count"),
     ],
     tables: [
       {
@@ -926,12 +947,16 @@ function writeBench(payload: unknown): ExportDoc {
     ],
     notes: [
       noPeers,
+      // The cashflow lens reads its orders whole (ADR 0292): a failed read
+      // refuses the lens, so a pair of zeros is a quiet stretch.
       last === 0 && prev === 0
-        ? 'Both buying windows came back at zero, and the zeros are ambiguous: the cashflow lens sums a loader that returns an empty list for a failed query as well as for a quiet month, so zero means "no delivered order was returned", not necessarily "nothing was bought".'
+        ? "No delivered purchase order falls in either 30-day window."
         : "",
-      goals.length === 0
-        ? "No goal is running, so there is nothing to measure against a baseline."
-        : "",
+      goalsMissing
+        ? "The goals list could not be read, so no goal is compared with its baseline — this is not the same as no goal running."
+        : goals.length === 0
+          ? "No goal is running, so there is nothing to measure against a baseline."
+          : "",
     ],
     basis: sentences(obj(cf.basis).outflow, obj(se.basis).weekday, obj(se.basis).extremes),
   });

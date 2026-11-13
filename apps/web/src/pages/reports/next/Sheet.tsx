@@ -46,13 +46,12 @@ import {
 } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 import { tuck } from '@/lib/mudavym';
-import { colsForWidth, slotRect } from './rp-arrange';
+import { colsForWidth, liftCuttings, projectCuttings, sheetLayouts, slotRect } from './rp-arrange';
 import {
+  ANALYSIS_IDS,
   SHEET_BREAKPOINTS,
   SHEET_BREAKPOINT_COLS,
   SHEET_MARGIN,
-  SHEET_MIN_H,
-  SHEET_MIN_W,
   SHEET_ROW_HEIGHT,
   type AnalysisId,
   type Slot,
@@ -74,7 +73,9 @@ export interface SheetCutting {
 export interface SheetProps {
   cuttings: SheetCutting[];
   arranging: boolean;
-  onMove: (slots: Partial<Record<AnalysisId, Slot>>) => void;
+  /** `order` is the list order the move leaves the sheet in: on a narrow
+   *  ruling, row-mates are drawn in list order (`liftCuttings`). */
+  onMove: (slots: Partial<Record<AnalysisId, Slot>>, order?: AnalysisId[]) => void;
   /** The sheet element, shared with `useArrange` so both measure one ruling. */
   containerRef?: (el: HTMLDivElement | null) => void;
   /** Where a keyboard-held cutting started. Drawn as an outline, not a child. */
@@ -85,25 +86,30 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
   const [el, setEl] = useState<HTMLDivElement | null>(null);
   const [ghostBox, setGhostBox] = useState<CSSProperties | null>(null);
 
-  const layouts = useMemo((): ResponsiveLayouts => {
-    const lg: LayoutItem[] = cuttings.map((c) => ({
-      i: c.id,
-      ...c.slot,
-      minW: SHEET_MIN_W,
-      minH: SHEET_MIN_H,
-      static: !arranging,
-    }));
-    return { lg, md: lg, sm: lg, xs: lg, xxs: lg };
-  }, [cuttings, arranging]);
+  const layouts = useMemo(
+    (): ResponsiveLayouts => sheetLayouts(cuttings, arranging),
+    [cuttings, arranging],
+  );
 
+  /* The grid hands back the layout of the ruling it is drawing. On a narrow
+     ruling that is a PROJECTION of the twelve-column sheet, so it is written
+     back through `liftCuttings` — the keyboard's path — rather than saved as
+     is, which left every cutting four twelfths wide on the desktop after one
+     drag on a phone. */
   const handleChange = useCallback(
     (next: readonly LayoutItem[]) => {
       if (!arranging) return;
+      const cols = colsForWidth(el?.clientWidth ?? 0);
+      const placed = next.map((l) => ({
+        id: l.i as AnalysisId,
+        slot: { x: l.x, y: l.y, w: l.w, h: l.h },
+      }));
+      const lifted = liftCuttings(cuttings, projectCuttings(cuttings, cols), placed, cols);
       const slots: Partial<Record<AnalysisId, Slot>> = {};
-      for (const l of next) slots[l.i as AnalysisId] = { x: l.x, y: l.y, w: l.w, h: l.h };
-      onMove(slots);
+      for (const c of lifted) slots[c.id] = c.slot;
+      onMove(slots, lifted.map((c) => c.id));
     },
-    [arranging, onMove],
+    [arranging, cuttings, el, onMove],
   );
 
   /* The ghost is positioned from react-grid-layout's OWN `calcGridItemPosition`
@@ -156,11 +162,16 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
         onDragStop={handleChange}
         onResizeStop={handleChange}
       >
-        {cuttings.map((c) => (
-          <div key={c.id} className="rp-grid-item">
-            {c.body}
-          </div>
-        ))}
+        {/* A stable DOM order: the list is the narrow reading order and
+            changes under a held cutting, and moving the focused grip's node
+            would drop keyboard focus mid-move. Position comes from the layout. */}
+        {[...cuttings]
+          .sort((a, b) => ANALYSIS_IDS.indexOf(a.id) - ANALYSIS_IDS.indexOf(b.id))
+          .map((c) => (
+            <div key={c.id} className="rp-grid-item">
+              {c.body}
+            </div>
+          ))}
       </Grid>
     </div>
   );
