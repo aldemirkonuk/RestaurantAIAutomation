@@ -360,6 +360,58 @@ function sniffMime(bytes: Buffer): { mime: string; ext: string } {
   return { mime: "application/octet-stream", ext: "bin" };
 }
 
+/**
+ * A price a person typed for a menu line, as a number, or why it is not one.
+ *
+ * Menu r21 (2026-11-13): the correction route read a price by deleting every
+ * character that was not a digit or a dot, so a house that writes a decimal
+ * comma had "45,50" stored as 4550.00 and "1.250,00" as 1.25, and "-5" became
+ * 5 -- and on the current menu that number became the house's own price. Now:
+ *   - a currency mark at either end and spaces are dropped (45 TL, $70, ₺ 1 250);
+ *   - one separator followed by one or two digits is the decimal ("45,5", "45.50");
+ *   - with both marks, the last is the decimal and the other groups thousands
+ *     in threes ("1.250,00", "1,250.00");
+ *   - one mark followed by three digits ("1,250", "1.250") is refused: it is
+ *     1250 in one house and 1.25 in another, and a price is never guessed;
+ *   - anything else (a minus, letters, two decimals) is refused.
+ */
+export function parseMenuPrice(raw: string): { value: number } | { refused: string } {
+  const typed = String(raw ?? "");
+  const s = typed
+    .replace(/\s+/g, "")
+    .replace(/^(?:[₺$€£]|TL|TRY|USD|EUR|GBP)/i, "")
+    .replace(/(?:[₺$€£]|TL|TRY|USD|EUR|GBP)$/i, "");
+  const not = (why: string) => ({ refused: `"${typed}" is not a price: ${why}. Nothing was changed.` });
+  if (s === "") return not("there is no number in it");
+  if (!/^\d[\d.,]*$/.test(s)) return not("a price is written in digits, with no minus, no letters and at most one decimal mark");
+  const dot = s.lastIndexOf(".");
+  const comma = s.lastIndexOf(",");
+  const asNumber = (whole: string, frac: string) => ({ value: Number(`${whole}${frac ? `.${frac}` : ""}`) });
+  if (dot >= 0 && comma >= 0) {
+    const dec = dot > comma ? "." : ",";
+    const group = dec === "." ? "," : ".";
+    const at = s.lastIndexOf(dec);
+    const whole = s.slice(0, at);
+    const frac = s.slice(at + 1);
+    const grouped = new RegExp(`^\\d{1,3}(?:\\${group}\\d{3})*$`);
+    if (frac.length < 1 || frac.length > 2 || !grouped.test(whole)) return not("its marks do not read as one amount");
+    return asNumber(whole.split(group).join(""), frac);
+  }
+  const sep = dot >= 0 ? "." : comma >= 0 ? "," : null;
+  if (sep === null) return asNumber(s, "");
+  const parts = s.split(sep);
+  if (parts.length === 2 && parts[1].length >= 1 && parts[1].length <= 2 && parts[0] !== "") return asNumber(parts[0], parts[1]);
+  if (parts.length === 2 && parts[1].length === 3 && /^\d{1,3}$/.test(parts[0])) {
+    const whole = `${parts[0]}${parts[1]}`;
+    const small = String(Number(`${parts[0]}.${parts[1]}`));
+    return not(`it could be ${whole} or ${small}; write it as ${whole} or ${small}`);
+  }
+  if (parts.length > 2 && /^\d{1,3}$/.test(parts[0]) && parts.slice(1).every((p) => p.length === 3)) {
+    return asNumber(parts.join(""), "");
+  }
+  return not("its marks do not read as one amount");
+}
+
 /** A `YYYY-MM-DD` or `YYYY-MM` that is a real date, as the stored date and its precision. */
 export function parseMenuDate(
   raw: string | null | undefined,
@@ -940,14 +992,11 @@ export class MenusService {
 
     const oldValue = (menuItem as Record<string, unknown>)[dto.fieldName];
     const isPrice = PRICE_FIELDS.has(dto.fieldName);
-    const newValueTyped: string | number = isPrice
-      ? parseFloat(dto.newValue.replace(/[^0-9.]/g, ""))
-      : dto.newValue;
-
-    if (isPrice && Number.isNaN(newValueTyped as number)) {
-      throw new BadRequestException(
-        `Invalid numeric value for ${dto.fieldName}`,
-      );
+    let newValueTyped: string | number = dto.newValue;
+    if (isPrice) {
+      const price = parseMenuPrice(dto.newValue);
+      if ("refused" in price) throw new BadRequestException(price.refused);
+      newValueTyped = price.value;
     }
 
     const { error: updateErr } = await this.dbService.supabase
@@ -1006,6 +1055,10 @@ export class MenusService {
     if (isPrice && priceSync === undefined) {
       if (!lineMenuCurrent) {
         priceSync = "not_current";
+      } else if (isKitchenItem(menuItem as InsertedMenuItem)) {
+        // A dish's price lives on its menu line only (#1085): there is no
+        // house price for it, and saying "not matched to a wine" was wrong.
+        priceSync = "kitchen_line";
       } else if (!menuItem.inventory_item_id) {
         priceSync = "not_linked";
       } else {
@@ -1059,7 +1112,8 @@ export class MenusService {
     return {
       menuItemId,
       fieldName: dto.fieldName,
-      newValue: dto.newValue,
+      // What was stored, so a page says the price it now holds ("45,50" -> "45.5").
+      newValue: String(newValueTyped),
       ...(priceSync !== undefined ? { priceSync, priceSyncError, priceHeld } : {}),
     };
   }
