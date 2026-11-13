@@ -139,6 +139,7 @@ function row(over: Partial<OrderRowVM> = {}): OrderRowVM {
     },
     computedTotal: 2100,
     listedTotal: 2100,
+    currency: 'USD',
     total: 2100,
     stage: 'pending',
     status: 'pending',

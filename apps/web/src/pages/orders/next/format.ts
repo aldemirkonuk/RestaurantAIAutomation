@@ -3,6 +3,9 @@
  * em dash, never as a zero. A zero is a claim; a dash is an admission.
  */
 
+import { formatMoney } from '@/lib/currency';
+import { fmtMoney as fmtMoneyIn } from '../../receipts/next/rc2-format';
+
 export const EM = '—';
 
 /** A finite number or null. Guards against NaN and the API's occasional string. */
@@ -12,28 +15,16 @@ export function num(v: unknown): number | null {
   return null;
 }
 
-const money = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
-export function fmtMoney(v: number | null | undefined): string {
+/** Money in the ORDER's own currency via the shared receipts formatter; no code prints bare with its caveat. */
+export function fmtMoney(v: number | null | undefined, code: string | null | undefined): string {
   const n = num(v);
-  return n === null ? EM : money.format(n);
+  return n === null ? EM : fmtMoneyIn(n, code);
 }
 
-/** Whole-dollar form for the month figure ($12,480). Unknown stays a dash. */
-const moneyWhole = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  maximumFractionDigits: 0,
-});
-
-export function fmtMoneyWhole(v: number | null | undefined): string {
+/** Whole-unit month form via `formatMoney` (the shared formatter has no whole variant, so no narrow sign). */
+export function fmtMoneyWhole(v: number | null | undefined, code: string | null | undefined): string {
   const n = num(v);
-  return n === null ? EM : moneyWhole.format(n);
+  return n === null ? EM : formatMoney(n, code, { maximumFractionDigits: 0 });
 }
 
 export function fmtInt(v: number | null | undefined): string {

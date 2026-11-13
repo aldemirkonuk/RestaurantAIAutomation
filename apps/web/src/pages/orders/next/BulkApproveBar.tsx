@@ -304,7 +304,7 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
               ? result.refused > 0
                 ? `${result.refused} refused by the gateway — still pending, still selected.`
                 : 'The rows settle; the seal stays rationed.'
-              : `${fmtMoney(knownTotal)} known${unpriced > 0 ? ` · ${unpriced} unpriced` : ''}`}
+              : `${fmtMoney(knownTotal, null)} known${unpriced > 0 ? ` · ${unpriced} unpriced` : ''}`}
           </span>
           {phase === 'done' && result && result.reasons.length > 0 && (
             <span
