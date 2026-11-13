@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import {
@@ -553,6 +554,10 @@ export class BeveragesService {
       .getClient()
       .from("cocktails")
       .insert({
+        // `cocktails.id` has no database default (20260817090000_cocktails.sql:27
+        // keeps the ids the reference rows were migrated with), so a row the
+        // house writes names its own id, or the insert is refused as a null id.
+        id: randomUUID(),
         // The tenant comes from the guarded path parameter, never the body.
         restaurant_id: restaurantId,
         name: dto.name.trim(),

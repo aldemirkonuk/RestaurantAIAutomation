@@ -288,6 +288,12 @@ describe("BeveragesService cocktail writes", () => {
       source: "manual",
     });
     expect(inserted[0]).not.toHaveProperty("restaurantId");
+    // The table has no id default, so the row must carry one of its own.
+    expect((inserted[0] as { id?: unknown }).id).toEqual(
+      expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      ),
+    );
   });
 
   it("refuses to report success for an update that matched no row", async () => {
