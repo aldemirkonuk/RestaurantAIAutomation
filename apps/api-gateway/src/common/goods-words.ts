@@ -38,6 +38,36 @@ export function quantityIn(n: number, uom: string | null | undefined): string {
   return `${n} ${unitWord(uom, n)}`;
 }
 
+/** Up to three places, so a whole gram or millilitre is never rounded away. */
+function exact(n: number): string {
+  return n.toLocaleString("en-GB", { maximumFractionDigits: 3 });
+}
+
+/**
+ * A figure as the inventory list prints it (fmtQty in
+ * apps/web/src/pages/inventory/next/ItemCards.tsx), so the dashboard and the
+ * list never say the same stock two ways. Whole g, ml or mg of 1,000 or more
+ * read a unit up, every gram kept: 2000 g is "2 kg", 1750 g "1.75 kg",
+ * 1500 ml "1.5 l". A good kept each is a bare count ("40"), as the list
+ * shows it. Any other unit keeps its word, with the list's thousands
+ * separator ("1,250 bottles").
+ */
+export function amountIn(n: number, uom: string | null | undefined): string {
+  const key = (uom ?? "").trim().toLowerCase();
+  const up = new Map([
+    ["g", "kg"],
+    ["ml", "l"],
+    ["mg", "g"],
+  ]).get(key);
+  if (up) {
+    return Math.abs(n) >= 1000
+      ? `${exact(n / 1000)} ${up}`
+      : `${exact(n)} ${key}`;
+  }
+  if (key === "each") return exact(n);
+  return `${exact(n)} ${unitWord(uom, n)}`;
+}
+
 /**
  * The noun for a set of goods: "wine" only when every one is a wine (a row
  * with no kind is from the wines-only view), else "good". A beer and a flour
