@@ -49,6 +49,7 @@ describe('error tracking — what reaches Sentry', () => {
     it('forwards only opaque identifiers', async () => {
       const { errorTracking } = await freshModule()
       errorTracking.init({ dsn: 'https://key@example.test/1', environment: 'test' })
+      await errorTracking.loadNow()
 
       errorTracking.setUser({
         id: '2f1c6a1e-0000-4000-8000-000000000001',
@@ -66,6 +67,7 @@ describe('error tracking — what reaches Sentry', () => {
     it('drops identity fields a caller smuggles past the type', async () => {
       const { errorTracking } = await freshModule()
       errorTracking.init({ dsn: 'https://key@example.test/1', environment: 'test' })
+      await errorTracking.loadNow()
 
       // TypeScript rejects this shape; JavaScript at runtime does not, and a
       // stale build or a JS caller would sail straight through.
@@ -93,6 +95,7 @@ describe('error tracking — what reaches Sentry', () => {
     it('states sendDefaultPii: false and installs a beforeSend scrubber', async () => {
       const { errorTracking } = await freshModule()
       errorTracking.init({ dsn: 'https://key@example.test/1', environment: 'test' })
+      await errorTracking.loadNow()
 
       const options = initMock.mock.calls[0][0] as Record<string, unknown>
       expect(options.sendDefaultPii).toBe(false)
@@ -102,6 +105,7 @@ describe('error tracking — what reaches Sentry', () => {
     it('the installed beforeSend actually scrubs', async () => {
       const { errorTracking } = await freshModule()
       errorTracking.init({ dsn: 'https://key@example.test/1', environment: 'test' })
+      await errorTracking.loadNow()
 
       const options = initMock.mock.calls[0][0] as {
         beforeSend: (e: Record<string, any>) => Record<string, any>

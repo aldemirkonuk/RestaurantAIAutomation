@@ -84,6 +84,8 @@ describe('the entry chunk every page loads', () => {
     'exceljs',
     'jspdf',
     'html2canvas',
+    // Loaded after the first paint by lib/error-tracking.ts (r19, 2026-11-13).
+    '@sentry/react',
   ])('does not carry %s', (pkg) => {
     expect(packages.has(pkg)).toBe(false)
   })

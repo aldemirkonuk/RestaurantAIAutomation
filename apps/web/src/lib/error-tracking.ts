@@ -1,4 +1,7 @@
-import * as Sentry from '@sentry/react'
+import type { Event as SentryEvent, SeverityLevel } from '@sentry/react'
+
+/** The SDK's functions, once loaded. Only a type here: the code arrives later. */
+type SentrySdk = typeof import('./sentrySdk')
 
 /**
  * Error Tracking Library
@@ -302,7 +305,7 @@ function scrubLogentry(logentry: unknown): void {
   }
 }
 
-export function scrubSentryEvent<T extends Sentry.Event>(event: T): T {
+export function scrubSentryEvent<T extends SentryEvent>(event: T): T {
   if (event.request) {
     const headers = event.request.headers
     if (headers) {
@@ -368,11 +371,58 @@ export function scrubSentryEvent<T extends Sentry.Event>(event: T): T {
   return event
 }
 
+/**
+ * Calls made before the SDK has loaded, kept in order and replayed once it
+ * has. Bounded: a page that errors in a loop before the SDK arrives must not
+ * grow memory without limit; past the cap the oldest call is dropped.
+ */
+const EARLY_CALLS_MAX = 100
+
+/** The SDK's event id format: 32 lowercase hex characters. */
+function newEventId(): string {
+  const c = globalThis.crypto
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID().replace(/-/g, '')
+  let id = ''
+  for (let i = 0; i < 32; i++) id += Math.floor(Math.random() * 16).toString(16)
+  return id
+}
+
+/** Runs `fn` once the first paint is done and the browser is idle. */
+function afterFirstPaint(fn: () => void): void {
+  if (typeof window === 'undefined') return fn()
+  const idle = () => {
+    const ric = (window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number })
+      .requestIdleCallback
+    if (typeof ric === 'function') ric(fn, { timeout: 3000 })
+    else setTimeout(fn, 1)
+  }
+  if (document.readyState === 'complete') idle()
+  else window.addEventListener('load', idle, { once: true })
+}
+
+/**
+ * The SDK (@sentry/react, about 58 KB raw) used to load in the entry chunk
+ * every page fetches before it can draw. It is now fetched after the first
+ * paint (r19 bundle walk, 2026-11-13). Nothing said before then is lost:
+ * every call made while it loads is kept in order and replayed into the SDK
+ * once it is ready, and an error brings the load forward instead of waiting
+ * for idle time. An exception's event id is chosen here, so the id the error
+ * screen shows is the one the event is sent under, early or late.
+ *
+ * What is lost before the SDK starts: the breadcrumbs the SDK records on its
+ * own (console, fetch, navigation) for the first moments of the page, and
+ * anything said if the tab closes before it loads.
+ */
 class ErrorTrackingService {
   private initialized = false
+  private config: ErrorTrackingConfig | null = null
+  private sdk: SentrySdk | null = null
+  private loading: Promise<void> | null = null
+  private failed = false
+  private early: Array<(sdk: SentrySdk) => void> = []
 
   /**
-   * Initialize error tracking
+   * Initialize error tracking. The SDK itself loads after the first paint.
    */
   init(config: ErrorTrackingConfig): void {
     if (this.initialized) {
@@ -385,36 +435,74 @@ class ErrorTrackingService {
       return
     }
 
-    Sentry.init({
-      dsn: config.dsn,
-      environment: config.environment,
-      release: config.release,
-      tracesSampleRate: config.tracesSampleRate ?? 0.1,
-      // Already the SDK default, stated explicitly because it is a privacy
-      // control and a silent default is not a control anyone can audit.
-      // Keeps the SDK from attaching cookies and client IPs of its own accord;
-      // it is not what withholds a request body — scrubSentryEvent drops
-      // `request.data` for that. It does NOT cover anything we set ourselves —
-      // Sentry's own docs are explicit that `setUser` bypasses it — which is
-      // why the SentryUser type above is narrowed as well.
-      sendDefaultPii: false,
-      integrations: [],
-      // Last line of defense: strip PII from every event, whatever set it.
-      // `beforeSend` fires for ERROR events only (@sentry/core gates it on
-      // `isErrorEvent`). This runtime emits no transactions today —
-      // @sentry/browser's defaults exclude browserTracing, so tracesSampleRate
-      // is inert here — but the hook is registered anyway so the three runtimes
-      // stay symmetric and enabling tracing later cannot silently reopen the
-      // gap it opened on the gateway. Found by PR #427's security re-audit.
-      beforeSend(event) {
-        return scrubSentryEvent(event)
-      },
-      beforeSendTransaction(event) {
-        return scrubSentryEvent(event)
-      },
-    })
-
+    this.config = config
     this.initialized = true
+    afterFirstPaint(() => {
+      void this.loadNow()
+    })
+  }
+
+  /**
+   * Loads and starts the SDK now, if init accepted a DSN, and replays the
+   * calls made so far. Resolves once that is done (or has failed).
+   */
+  loadNow(): Promise<void> {
+    if (!this.config) return Promise.resolve()
+    if (!this.loading) {
+      const config = this.config
+      this.loading = import('./sentrySdk')
+        .then((Sentry) => {
+          Sentry.init({
+            dsn: config.dsn,
+            environment: config.environment,
+            release: config.release,
+            tracesSampleRate: config.tracesSampleRate ?? 0.1,
+            // Already the SDK default, stated explicitly because it is a privacy
+            // control and a silent default is not a control anyone can audit.
+            // Keeps the SDK from attaching cookies and client IPs of its own accord;
+            // it is not what withholds a request body — scrubSentryEvent drops
+            // `request.data` for that. It does NOT cover anything we set ourselves —
+            // Sentry's own docs are explicit that `setUser` bypasses it — which is
+            // why the SentryUser type above is narrowed as well.
+            sendDefaultPii: false,
+            integrations: [],
+            // Last line of defense: strip PII from every event, whatever set it.
+            // `beforeSend` fires for ERROR events only (@sentry/core gates it on
+            // `isErrorEvent`). This runtime emits no transactions today —
+            // @sentry/browser's defaults exclude browserTracing, so tracesSampleRate
+            // is inert here — but the hook is registered anyway so the three runtimes
+            // stay symmetric and enabling tracing later cannot silently reopen the
+            // gap it opened on the gateway. Found by PR #427's security re-audit.
+            beforeSend(event) {
+              return scrubSentryEvent(event)
+            },
+            beforeSendTransaction(event) {
+              return scrubSentryEvent(event)
+            },
+          })
+          this.sdk = Sentry
+          const calls = this.early
+          this.early = []
+          for (const call of calls) call(Sentry)
+        })
+        .catch((err) => {
+          // The SDK could not load (offline, a blocked script): say so once,
+          // drop what was kept, and stop keeping more.
+          this.failed = true
+          this.early = []
+          console.warn('[ErrorTracking] The error tracker did not load:', err)
+        })
+    }
+    return this.loading
+  }
+
+  /** Runs `call` on the SDK now, or keeps it until the SDK has loaded. */
+  private withSdk(call: (sdk: SentrySdk) => void, soon = false): void {
+    if (this.sdk) return call(this.sdk)
+    if (this.failed) return
+    if (this.early.length >= EARLY_CALLS_MAX) this.early.shift()
+    this.early.push(call)
+    if (soon) void this.loadNow()
   }
 
   /**
@@ -425,7 +513,7 @@ class ErrorTrackingService {
   }
 
   /**
-   * Capture an exception
+   * Capture an exception. Returns the event id it is sent under.
    */
   captureException(error: Error, context?: Record<string, any>): string | null {
     if (!this.initialized) {
@@ -433,13 +521,18 @@ class ErrorTrackingService {
       return null
     }
 
-    return Sentry.captureException(error, {
-      extra: context,
-    })
+    const eventId = newEventId()
+    this.withSdk((Sentry) => {
+      Sentry.captureException(error, {
+        event_id: eventId,
+        captureContext: { extra: context },
+      })
+    }, true)
+    return this.failed ? null : eventId
   }
 
   /**
-   * Capture a message
+   * Capture a message. Returns its event id once the SDK is running, else null.
    */
   captureMessage(
     message: string,
@@ -451,10 +544,14 @@ class ErrorTrackingService {
       return null
     }
 
-    return Sentry.captureMessage(message, {
-      level: level as Sentry.SeverityLevel,
-      extra: context,
-    })
+    let eventId: string | null = null
+    this.withSdk((Sentry) => {
+      eventId = Sentry.captureMessage(message, {
+        level: level as SeverityLevel,
+        extra: context,
+      })
+    }, level === 'error')
+    return eventId
   }
 
   /**
@@ -463,16 +560,10 @@ class ErrorTrackingService {
   setUser(user: SentryUser | null): void {
     if (!this.initialized) return
 
-    if (user) {
-      // Minimize: send only a pseudonymous id and the tenant id. Email and
-      // name are deliberately NOT forwarded to the error tracker.
-      Sentry.setUser({
-        id: user.id,
-        restaurantId: user.restaurantId,
-      })
-    } else {
-      Sentry.setUser(null)
-    }
+    // Minimize: send only a pseudonymous id and the tenant id. Email and
+    // name are deliberately NOT forwarded to the error tracker.
+    const who = user ? { id: user.id, restaurantId: user.restaurantId } : null
+    this.withSdk((Sentry) => Sentry.setUser(who))
   }
 
   /**
@@ -480,7 +571,7 @@ class ErrorTrackingService {
    */
   setContext(name: string, context: Record<string, any>): void {
     if (!this.initialized) return
-    Sentry.setContext(name, context)
+    this.withSdk((Sentry) => Sentry.setContext(name, context))
   }
 
   /**
@@ -488,7 +579,7 @@ class ErrorTrackingService {
    */
   setTag(key: string, value: string): void {
     if (!this.initialized) return
-    Sentry.setTag(key, value)
+    this.withSdk((Sentry) => Sentry.setTag(key, value))
   }
 
   /**
@@ -496,7 +587,7 @@ class ErrorTrackingService {
    */
   addBreadcrumb(breadcrumb: SentryBreadcrumb): void {
     if (!this.initialized) return
-    Sentry.addBreadcrumb(breadcrumb)
+    this.withSdk((Sentry) => Sentry.addBreadcrumb(breadcrumb))
   }
 }
 
