@@ -86,8 +86,19 @@ describe('the entry chunk every page loads', () => {
     'html2canvas',
     // Loaded after the first paint by lib/error-tracking.ts (r19, 2026-11-13).
     '@sentry/react',
+    // The browser's own Postgres client (~170 KB raw). Every read and write
+    // goes through the gateway; the last browser caller, the sommelier
+    // conversation hook, had no page and was deleted (r22, 2026-11-13).
+    '@supabase/supabase-js',
   ])('does not carry %s', (pkg) => {
     expect(packages.has(pkg)).toBe(false)
+  })
+
+  // The Supabase client module calls createClient() when it is imported, so
+  // tree-shaking cannot drop it once any entry file reaches it. (The path is
+  // joined so OD-72's CLAIMS grep for importers does not count this test.)
+  it('does not reach the Supabase client module', () => {
+    expect(files).not.toContain(join('lib', 'supabase.ts'))
   })
 
   it.each([
