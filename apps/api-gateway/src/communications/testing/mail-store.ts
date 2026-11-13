@@ -47,9 +47,15 @@ export function memoryDb(
     let lim = Infinity;
     const qb: any = {
       select: () => qb,
+      // `a->>b` reads a JSON field as text, as PostgREST does.
       ilike: (c: string, v: string) => {
         const re = likeToRegExp(v);
-        filters.push((r) => re.test(String(r[c] ?? "")));
+        const [col, field] = c.split("->>");
+        filters.push((r) =>
+          re.test(
+            String((field === undefined ? r[col] : r[col]?.[field]) ?? ""),
+          ),
+        );
         return qb;
       },
       // `a->>b` reads a JSON field the way PostgREST does (as text).
