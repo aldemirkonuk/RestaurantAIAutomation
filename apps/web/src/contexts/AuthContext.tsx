@@ -28,6 +28,7 @@ import {
   tokenHouse,
 } from "../lib/houseMemory";
 import { doRefresh } from "../lib/sessionRefresh";
+import { leaveDeadSession } from "../lib/deadSession";
 import { syncManager } from "../lib/sync-manager";
 import { flushDoorOutbox } from "../lib/doorOutbox";
 import { flushSpotCountOutbox } from "../lib/spotCountOutbox";
@@ -404,6 +405,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user]);
 
+  // The auth store is a copy of this session for hooks that cannot call
+  // `useAuth()` (stores/authStore.ts). This provider owns the session, so the
+  // copy follows every sign-in, refresh, house switch and sign-out here.
+  // While the first load is still running the store keeps what it rehydrated.
+  useEffect(() => {
+    if (loading) return;
+    useAuthStore.getState().followSession(user);
+  }, [user, loading]);
+
   // Load user from token on mount
   useEffect(() => {
     const loadUser = async () => {
@@ -461,6 +471,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (!localStorage.getItem("refreshToken")) {
             localStorage.removeItem("accessToken");
             localStorage.removeItem("refreshToken");
+            // The dead session's one reaction (ADR 0344): a public page
+            // reloads as a stranger's, any other goes to /login. This load
+            // makes it as well as the auth store's, so the reaction does not
+            // depend on the store reading `/auth/me` a second time.
+            leaveDeadSession();
           } else {
             console.warn(
               "Keeping the session: the shared refresh kept a session on " +
