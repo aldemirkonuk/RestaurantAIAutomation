@@ -141,6 +141,59 @@ describe('Register — OB-11', () => {
   })
 })
 
+describe('Register — one step for a new owner (walk r23, register-step2)', () => {
+  it('asks only for the account: three named, required boxes and no house fields', () => {
+    open()
+    const name = screen.getByRole('textbox', { name: 'Full Name' })
+    const email = screen.getByRole('textbox', { name: 'Email' })
+    const password = screen.getByLabelText(/^Password/)
+    for (const box of [name, email, password]) expect(box).toBeRequired()
+    expect(name).toHaveAttribute('autocomplete', 'name')
+    expect(password).toHaveAccessibleName('Password')
+    expect(password).toHaveAccessibleDescription('Min. 8 characters')
+    // The restaurant step (country, address, cuisine) was unreachable and is
+    // gone: the house is opened at /get-started after verification (ADR 0213).
+    expect(screen.queryByRole('combobox')).toBeNull()
+    expect(screen.queryByText(/country/i)).toBeNull()
+    expect(screen.getByRole('button', { name: /create account/i })).toBeEnabled()
+  })
+
+  it('a press with nothing typed names all three, marks them and moves to the first', async () => {
+    open()
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Add your name, your email address and a password of at least 8 characters.',
+    )
+    const name = screen.getByRole('textbox', { name: 'Full Name' })
+    expect(name).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByRole('textbox', { name: 'Email' })).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByLabelText(/^Password/)).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByLabelText(/^Password/)).toHaveAccessibleDescription(
+      'Min. 8 characters Add your name, your email address and a password of at least 8 characters.',
+    )
+    expect(name).toHaveFocus()
+    expect(h.auth.registerAccount).not.toHaveBeenCalled()
+  })
+
+  it('the sentence follows the boxes and goes when they are filled', async () => {
+    open()
+    type(/^Full Name/, 'Ayşe Kaya')
+    type(/^Email/, 'ayse')
+    fireEvent.submit(screen.getByLabelText(/^Password/).closest('form')!)
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Add an email address with an @ in it and a password of at least 8 characters.',
+    )
+    expect(screen.getByRole('textbox', { name: 'Full Name' })).not.toHaveAttribute('aria-invalid')
+    expect(screen.getByRole('textbox', { name: 'Email' })).toHaveFocus()
+    expect(h.auth.registerAccount).not.toHaveBeenCalled()
+    type(/^Email/, 'ayse@kaya.test')
+    expect(screen.getByRole('alert')).toHaveTextContent('Add a password of at least 8 characters.')
+    type(/^Password/, 'long-enough-1')
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByLabelText(/^Password/)).not.toHaveAttribute('aria-invalid')
+  })
+})
+
 describe('signUpRefusal', () => {
   it('words each refusal without the gateway text', () => {
     expect(signUpRefusal({ status: 429, retryAfter: '9' }, 'account')).toMatchObject({ kind: 'wait', seconds: 9 })

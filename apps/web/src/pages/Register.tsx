@@ -47,11 +47,18 @@ function PasswordInput({
   value,
   onChange,
   on,
+  describedBy,
+  invalid,
+  required,
 }: {
   id: string
   value: string
   onChange: (value: string) => void
   on: boolean
+  /** Ids of the lines that explain the box (its hint, and what it still needs). */
+  describedBy?: string
+  invalid?: boolean
+  required?: boolean
 }) {
   const [shown, setShown] = useState(false)
   return (
@@ -61,6 +68,9 @@ function PasswordInput({
         id={id}
         type={shown ? 'text' : 'password'}
         autoComplete="new-password"
+        required={required}
+        aria-invalid={invalid || undefined}
+        aria-describedby={describedBy}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="••••••••"
@@ -77,6 +87,27 @@ function PasswordInput({
       </button>
     </div>
   )
+}
+
+/**
+ * What the account step still needs, in the order its boxes stand. The button
+ * used to stay greyed until all three were right and said nothing about why;
+ * now a press names what is missing, marks those boxes and moves to the first
+ * (walk r23, register-step2).
+ */
+type AccountGap = { id: 'create-name' | 'create-email' | 'create-password'; words: string }
+function accountGaps(name: string, email: string, password: string): AccountGap[] {
+  const gaps: AccountGap[] = []
+  if (!name.trim()) gaps.push({ id: 'create-name', words: 'your name' })
+  if (!email.trim()) gaps.push({ id: 'create-email', words: 'your email address' })
+  else if (!email.includes('@')) gaps.push({ id: 'create-email', words: 'an email address with an @ in it' })
+  if (password.length < 8) gaps.push({ id: 'create-password', words: 'a password of at least 8 characters' })
+  return gaps
+}
+function gapSentence(gaps: AccountGap[]): string {
+  const words = gaps.map((g) => g.words)
+  const list = words.length < 2 ? words[0] : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`
+  return `Add ${list}.`
 }
 
 type Path = 'selector' | 'join' | 'create'
@@ -122,6 +153,12 @@ export function Register() {
   const [createName, setCreateName] = useState('')
   const [createEmail, setCreateEmail] = useState('')
   const [createPassword, setCreatePassword] = useState('')
+  // Set by the first press with something missing; from then the step says
+  // what is still missing, and the sentence goes when the boxes are filled.
+  const [createTried, setCreateTried] = useState(false)
+  const createGaps = accountGaps(createName, createEmail, createPassword)
+  const createSays = createTried && createGaps.length > 0 ? gapSentence(createGaps) : null
+  const createGap = (id: AccountGap['id']) => createTried && createGaps.some((g) => g.id === id)
 
   // A refused sign-up that means "this address already has an account"
   // offers Sign in under the sentence; a 429 holds the button until the
@@ -725,19 +762,28 @@ export function Register() {
         noValidate
         onSubmit={(e) => {
           e.preventDefault()
-          if (loading || waiting || !createName || !createEmail || createPassword.length < 8) return
+          if (loading || waiting) return
+          if (createGaps.length > 0) {
+            setCreateTried(true)
+            document.getElementById(createGaps[0].id)?.focus()
+            return
+          }
           void handleAccountSubmit()
         }}
       >
       <div className="space-y-4">
         {/* Full Name */}
         <div>
-          <label htmlFor="create-name" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Full Name *</label>
+          <label htmlFor="create-name" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Full Name <span aria-hidden="true">*</span></label>
           <div className="relative">
             <User className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="create-name"
               type="text"
+              autoComplete="name"
+              required
+              aria-invalid={createGap('create-name') || undefined}
+              aria-describedby={createGap('create-name') ? 'create-account-says' : undefined}
               value={createName}
               onChange={(e) => setCreateName(e.target.value)}
               placeholder="John Smith"
@@ -748,13 +794,16 @@ export function Register() {
 
         {/* Email */}
         <div>
-          <label htmlFor="create-email" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Email *</label>
+          <label htmlFor="create-email" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Email <span aria-hidden="true">*</span></label>
           <div className="relative">
             <Mail className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="create-email"
               type="email"
               autoComplete="email"
+              required
+              aria-invalid={createGap('create-email') || undefined}
+              aria-describedby={createGap('create-email') ? 'create-account-says' : undefined}
               value={createEmail}
               onChange={(e) => setCreateEmail(e.target.value)}
               placeholder="john@myrestaurant.com"
@@ -765,18 +814,27 @@ export function Register() {
 
         {/* Password */}
         <div>
-          <label htmlFor="create-password" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Password *</label>
-          <PasswordInput id="create-password" value={createPassword} onChange={setCreatePassword} on={on} />
-          <p className={on ? 'text-xs !text-inkm-3 mt-1' : 'text-xs text-gray-400 mt-1'}>Min. 8 characters</p>
+          <label htmlFor="create-password" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Password <span aria-hidden="true">*</span></label>
+          <PasswordInput
+            id="create-password"
+            value={createPassword}
+            onChange={setCreatePassword}
+            on={on}
+            required
+            invalid={createGap('create-password')}
+            describedBy={createGap('create-password') ? 'create-password-hint create-account-says' : 'create-password-hint'}
+          />
+          <p id="create-password-hint" className={on ? 'text-xs !text-inkm-3 mt-1' : 'text-xs text-gray-400 mt-1'}>Min. 8 characters</p>
         </div>
       </div>
-      {/* Step 1 had no error line at all: a refused sign-up said nothing. */}
-      {(error || authError) && (
-        <div role="alert" className={on ? 'mdv-ep-note mt-4 border-red-700' : 'mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2'}>
+      {/* Step 1 had no error line at all: a refused sign-up said nothing. What is
+          still missing comes first: it is what the next press needs. */}
+      {(createSays || error || authError) && (
+        <div id="create-account-says" role="alert" className={on ? 'mdv-ep-note mt-4 border-red-700' : 'mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2'}>
           {!on && <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />}
           <p className={on ? 'mdv-ep-note-title !text-red-800' : 'text-sm text-red-700'}>
-            {error || authError}
-            {signInHint && (
+            {createSays ?? (error || authError)}
+            {!createSays && signInHint && (
               <>
                 {' '}
                 <Link to="/login" className={on ? 'text-seal hover:text-seal-deep font-medium underline' : 'text-wine-600 hover:text-wine-700 font-medium underline'}>
@@ -790,7 +848,7 @@ export function Register() {
       <Button
         type="submit"
         className={on ? `w-full h-12 mt-5 ${HOUSE_BUTTON}` : 'w-full h-12 mt-5'}
-        disabled={loading || waiting || !createName || !createEmail || createPassword.length < 8}
+        disabled={loading || waiting}
       >
         {loading ? (
           <>
