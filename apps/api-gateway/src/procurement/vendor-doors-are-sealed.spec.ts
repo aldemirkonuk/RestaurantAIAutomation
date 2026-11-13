@@ -743,6 +743,49 @@ describe("every order-keyed conversation read on the deal and reply paths is thi
     expect(t.gmail.sendEmail.calls).toHaveLength(1);
   });
 
+  it.each([
+    ["deleted", { deleted_at: "2026-11-01T00:00:00Z", is_active: false }],
+    ["switched off", { deleted_at: null, is_active: false }],
+  ])("a scheduled auto-send to a vendor %s after it was staged is held as a draft, unsent (r25)", async (_w, flags) => {
+    const t = build();
+    Object.assign(t.db.tables.procurement_orders[0].providers, flags);
+    t.db.tables.procurement_conversations.push({
+      id: "auto-3",
+      order_id: ORDER,
+      restaurant_id: HOUSE,
+      provider_id: "prov-1",
+      direction: "outbound",
+      status: "AUTO_SEND_SCHEDULED",
+      scheduled_send_at: "2026-09-20T09:00:00Z",
+      content: "Six cases, Tuesday.",
+      email_headers: { subject: "Re: Yakut" },
+      created_at: "2026-09-20T08:00:00Z",
+    });
+    await t.service.processScheduledAutoSends();
+    expect(t.db.tables.procurement_conversations.find((r) => r.id === "auto-3")?.status).toBe("PENDING_APPROVAL");
+    expect(t.gmail.sendEmail.calls).toHaveLength(0);
+  });
+
+  it("a vendor whose is_active was never written (NULL) is live, and the auto-send goes", async () => {
+    const t = build();
+    Object.assign(t.db.tables.procurement_orders[0].providers, { deleted_at: null, is_active: null });
+    t.db.tables.procurement_conversations.push({
+      id: "auto-4",
+      order_id: ORDER,
+      restaurant_id: HOUSE,
+      provider_id: "prov-1",
+      direction: "outbound",
+      status: "AUTO_SEND_SCHEDULED",
+      scheduled_send_at: "2026-09-20T09:00:00Z",
+      content: "Six cases, Tuesday.",
+      email_headers: { subject: "Re: Yakut" },
+      created_at: "2026-09-20T08:00:00Z",
+    });
+    await t.service.processScheduledAutoSends();
+    expect(t.db.tables.procurement_conversations.find((r) => r.id === "auto-4")?.status).toBe("AUTO_SENT");
+    expect(t.gmail.sendEmail.calls).toHaveLength(1);
+  });
+
   it("a scheduled auto-send with a blank the send cannot fill is held unsent (ORD-W7)", async () => {
     const t = build();
     t.db.tables.procurement_conversations.push({

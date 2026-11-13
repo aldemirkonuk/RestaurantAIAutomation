@@ -1,4 +1,4 @@
-import { ForbiddenException, NotFoundException } from "@nestjs/common";
+import { ForbiddenException, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { ProcurementService } from "./procurement.service";
 import { SealChallengeService } from "../common/seal/seal-challenge.service";
 import { DatabaseService } from "../database/database.service";
@@ -349,6 +349,38 @@ describe("refusalSentence and policyNote — the words the person reads", () => 
   it("a house with no rule says so in those words", () => {
     expect(policyNote(false)).toBe("no threshold is set for this house");
     expect(policyNote(true)).toContain("recorded at least one approval rule");
+  });
+});
+
+describe("approveOrder — a removed vendor's order is not approved (r25, #1283)", () => {
+  it.each([
+    ["deleted", { deleted_at: "2026-11-01T00:00:00Z", is_active: false }],
+    ["switched off", { deleted_at: null, is_active: false }],
+  ])("refuses to approve, or to begin the hold, for a vendor %s; writes nothing", async (_w, vendor) => {
+    const { db, calls } = makeDb({ order: { ...ORDER_ROW, vendor } });
+    const svc = service(db, thresholdsStub([]), orgsStub("owner"));
+
+    const hold = await svc.issueOrderSealChallenge(REST, ORDER, USER).catch((e) => e);
+    expect(hold).toBeInstanceOf(UnprocessableEntityException);
+    expect(hold.getResponse()).toEqual({
+      reason: "vendor_removed",
+      message:
+        "This order's vendor was removed from your vendors, so the order was not approved. " +
+        "It stays on Orders; place it with another vendor instead.",
+    });
+    const approve = await svc.approveOrder(REST, ORDER, USER, "tok").catch((e) => e);
+    expect(approve).toBeInstanceOf(UnprocessableEntityException);
+    expect(calls.orderUpdates).toHaveLength(0);
+    expect(calls.seals).toHaveLength(0);
+  });
+
+  it("approves an order whose vendor's is_active was never written (NULL is live)", async () => {
+    const { db, calls } = makeDb({
+      order: { ...ORDER_ROW, vendor: { deleted_at: null, is_active: null } },
+    });
+    const svc = service(db, thresholdsStub([]), orgsStub("owner"));
+    await sealedApprove(svc);
+    expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
   });
 });
 
