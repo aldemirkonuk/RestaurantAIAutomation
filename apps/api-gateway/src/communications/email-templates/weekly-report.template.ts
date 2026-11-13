@@ -11,6 +11,8 @@ import {
 import { baseTemplate, metricBox, tableRow } from "./base-template";
 
 export interface WeeklyReportData {
+  /** The money these figures are in; absent or null prints them bare. */
+  currency?: string | null;
   restaurantName: string;
   reportPeriod: {
     start: Date | string;
@@ -56,7 +58,7 @@ export function weeklyReportTemplate(data: WeeklyReportData): string {
         })}
         <td width="15px"></td>
         ${metricBox({
-          value: formatCurrency(data.metrics.totalValue),
+          value: formatCurrency(data.metrics.totalValue, data.currency ?? null),
           label: "Inventory Value",
           backgroundColor: "#ecfdf5",
           textColor: colors.success,
@@ -107,7 +109,7 @@ export function weeklyReportTemplate(data: WeeklyReportData): string {
             <tr style="background-color: ${index % 2 === 0 ? "#ffffff" : colors.gray[50]};">
               <td style="padding: 12px 15px; color: ${colors.gray[900]}; font-size: 14px;">${wine.name}</td>
               <td style="padding: 12px 15px; text-align: right; color: ${colors.gray[700]}; font-size: 14px;">${wine.sold}</td>
-              <td style="padding: 12px 15px; text-align: right; color: ${colors.success}; font-size: 14px; font-weight: 600;">${formatCurrency(wine.revenue)}</td>
+              <td style="padding: 12px 15px; text-align: right; color: ${colors.success}; font-size: 14px; font-weight: 600;">${formatCurrency(wine.revenue, data.currency ?? null)}</td>
             </tr>
           `,
             )
@@ -176,7 +178,7 @@ export function weeklyReportTemplate(data: WeeklyReportData): string {
 
   return baseTemplate({
     title: `Weekly Report - ${data.restaurantName}`,
-    preheader: `Your weekly inventory summary: ${data.metrics.totalBottles} bottles, ${formatCurrency(data.metrics.totalValue)} value`,
+    preheader: `Your weekly inventory summary: ${data.metrics.totalBottles} bottles, ${formatCurrency(data.metrics.totalValue, data.currency ?? null)} value`,
     content,
     ctaButton: {
       text: "View Full Report",

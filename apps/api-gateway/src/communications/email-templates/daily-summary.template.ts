@@ -11,6 +11,8 @@ import {
 import { baseTemplate, metricBox, alertBox } from "./base-template";
 
 export interface DailySummaryData {
+  /** The money these figures are in; absent or null prints them bare. */
+  currency?: string | null;
   restaurantName: string;
   date: Date | string;
   metrics: {
@@ -155,7 +157,7 @@ export function dailySummaryTemplate(data: DailySummaryData): string {
         ? `
     <p style="margin: 15px 0; padding: 15px; background-color: ${colors.gray[50]}; border-radius: 8px; text-align: center;">
       <span style="color: ${colors.gray[500]}; font-size: 14px;">Total Inventory Value: </span>
-      <span style="color: ${colors.success}; font-size: 18px; font-weight: bold;">${formatCurrency(data.metrics.totalInventoryValue)}</span>
+      <span style="color: ${colors.success}; font-size: 18px; font-weight: bold;">${formatCurrency(data.metrics.totalInventoryValue, data.currency ?? null)}</span>
     </p>
     `
         : ""

@@ -11,6 +11,8 @@ import {
 import { baseTemplate, metricBox, tableRow, alertBox } from "./base-template";
 
 export interface EventPrepData {
+  /** The money these figures are in; absent or null prints them bare. */
+  currency?: string | null;
   restaurantName: string;
   eventName: string;
   eventDate: Date | string;
@@ -132,7 +134,7 @@ export function eventPrepTemplate(data: EventPrepData): string {
       ${tableRow("Event Date", formatDate(data.eventDate))}
       ${data.eventTime ? tableRow("Time", data.eventTime) : ""}
       ${data.organizer ? tableRow("Organizer", data.organizer) : ""}
-      ${data.estimatedCost ? tableRow("Estimated Wine Cost", formatCurrency(data.estimatedCost)) : ""}
+      ${data.estimatedCost ? tableRow("Estimated Wine Cost", formatCurrency(data.estimatedCost, data.currency ?? null)) : ""}
     </table>
 
     ${metricsHtml}

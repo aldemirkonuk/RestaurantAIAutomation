@@ -11,6 +11,8 @@ import {
 import { baseTemplate, tableRow, alertBox } from "./base-template";
 
 export interface RecurringOrderReminderData {
+  /** The money these figures are in; absent or null prints them bare. */
+  currency?: string | null;
   restaurantName: string;
   orderName: string;
   providerName: string;
@@ -54,15 +56,15 @@ export function recurringOrderReminderTemplate(
           <tr style="background-color: ${index % 2 === 0 ? "#ffffff" : colors.gray[50]};">
             <td style="padding: 12px 15px; color: ${colors.gray[900]}; font-size: 14px;">${item.name}</td>
             <td style="padding: 12px 15px; text-align: center; color: ${colors.gray[700]}; font-size: 14px;">${item.quantity}</td>
-            <td style="padding: 12px 15px; text-align: right; color: ${colors.gray[700]}; font-size: 14px;">${formatCurrency(item.unitPrice)}</td>
-            <td style="padding: 12px 15px; text-align: right; color: ${colors.gray[900]}; font-size: 14px; font-weight: 600;">${formatCurrency(item.quantity * item.unitPrice)}</td>
+            <td style="padding: 12px 15px; text-align: right; color: ${colors.gray[700]}; font-size: 14px;">${formatCurrency(item.unitPrice, data.currency ?? null)}</td>
+            <td style="padding: 12px 15px; text-align: right; color: ${colors.gray[900]}; font-size: 14px; font-weight: 600;">${formatCurrency(item.quantity * item.unitPrice, data.currency ?? null)}</td>
           </tr>
         `,
           )
           .join("")}
         <tr style="background-color: ${colors.gray[100]};">
           <td colspan="3" style="padding: 12px 15px; text-align: right; color: ${colors.gray[900]}; font-size: 14px; font-weight: 600;">Estimated Total</td>
-          <td style="padding: 12px 15px; text-align: right; color: ${colors.primary}; font-size: 16px; font-weight: bold;">${formatCurrency(data.totalAmount)}</td>
+          <td style="padding: 12px 15px; text-align: right; color: ${colors.primary}; font-size: 16px; font-weight: bold;">${formatCurrency(data.totalAmount, data.currency ?? null)}</td>
         </tr>
       </tbody>
     </table>
