@@ -297,6 +297,8 @@ describe('a linked line leads to its good on /inventory', () => {
       <ul>
         <LineRowRead row={{ ...blank, label: 'Campari' }} />
         <LineRowRead row={{ ...linked, role: 'untracked', inventoryId: null }} />
+        {/* Not counted is never a link, even if a stale id rode along. */}
+        <LineRowRead row={{ ...linked, role: 'untracked' }} />
         <LineRowRead row={{ ...linked, itemGone: 'archived' }} />
         <LineRowRead row={{ ...linked, itemGone: 'deleted' }} />
       </ul>,
