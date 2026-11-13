@@ -29,7 +29,7 @@
 import { useEffect, useMemo } from 'react';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
-import { useInventory } from '../../../hooks/queries/useInventoryQueries';
+import { useInventory, useLowStockItems } from '../../../hooks/queries/useInventoryQueries';
 import { useWinesByIds } from '../../../hooks/queries/useWineQueries';
 import { useProviders } from '../../../hooks/queries/useProviderQueries';
 import { useStorageLocations, type StorageLocation } from '../../../hooks/useStorageLocations';
@@ -38,15 +38,16 @@ import { failureReason } from './iv-failure';
 import { settingsApi } from '../../../services/api/settings';
 import { documentsApi, type ProcurementDocument } from '../../../services/api/documents';
 import { fetchDeliveriesToName } from '../../../services/api/orders';
-import { fetchAuctionLotRecords, type AuctionLotRecord } from '../../../services/api/inventory';
+import { fetchAuctionLotRecords, houseFieldsOf, type AuctionLotRecord } from '../../../services/api/inventory';
 import { getPriceAdvice } from '../../../services/api/pricing';
 import type { InventoryItem as ApiItem, Wine as ApiWine } from '../../../services/api/types';
 import type { Provider } from '../../../services/api/providers';
 import { DELIVERIES_TO_NAME_KEY } from '../../../components/mudavym/DeliveriesToName';
-import { fmtMoney } from '../../../lib/mudavym/format';
+import { fmtMoney, fmtUnitMoney, unitCostPlaces } from '../../../lib/mudavym/format';
 import { queryKeys } from '../../../lib/query-keys';
 import { pendingSpotCountCount, watchSpotCountOutbox } from '../../../lib/spotCountOutbox';
 import { num, text } from '../../cellar/next/cellar-format';
+import { houseLocale } from '../../team/next/tm-format';
 import type { MapTone } from '../command/CellarMapView';
 import type { InventoryItem as LegacyItem } from '../useInventoryPage';
 import { COUNT_DUE_DAYS } from '../command/bits';
@@ -60,9 +61,14 @@ export const EM = '—';
  * Where a title stands against its par. `out` is counted apart from `below`
  * (founder, INV-W4 F-2), and `below` is strictly stock < par (ADR 0129).
  * `nopar` is a par of 0: there is nothing to be below. `unknown` is a stock
- * that was not read.
+ * that was not read. `uncounted` is a title nobody has counted whose figure
+ * is 0: that 0 is either the default of a row nothing moved or receipts minus
+ * sales, never a count, so it is never called Out (OD-161). A never-counted
+ * title with a figure above 0 keeps its below / at / above standing (the
+ * figure comes from its live lots, which only stock movements write) and the
+ * row says "not counted yet" beside it (`neverCounted`).
  */
-export type Standing = 'out' | 'below' | 'at' | 'above' | 'nopar' | 'unknown';
+export type Standing = 'out' | 'below' | 'at' | 'above' | 'nopar' | 'unknown' | 'uncounted';
 
 export interface ZoneQty {
   locationId: string | null;
@@ -133,6 +139,12 @@ export interface InvRow {
   providerName: string | null;
   standing: Standing;
   /**
+   * True when the server said nobody ever counted this title (lastCountedAt
+   * sent as null). Absent or false claims nothing. The status word adds
+   * "not counted yet" beside a below / at / above / no-par standing (OD-161).
+   */
+  neverCounted?: boolean;
+  /**
    * The row's is_active as the server sent it; null when it did not say. The
    * normaliser's camel `isActive` defaults to true, so it is not read here.
    */
@@ -148,19 +160,35 @@ export function standingOf(stock: number | null, par: number | null): Standing {
   return 'above';
 }
 
+/**
+ * OD-161's one rule for a title on this page: a title the server says nobody
+ * ever counted (`neverCounted`) whose figure is 0 stands `uncounted`, never
+ * Out, because that 0 is either the default of a row nothing moved or receipts
+ * minus sales. Above 0 the figure comes from live lots, which only stock
+ * movements write, so it stands by the figure like any other. The row, the
+ * map tile, the chips, the order and the read sentence all read the standing
+ * this returns, so no two of them can answer differently for one title.
+ */
+export function standingFor(stock: number | null, par: number | null, neverCounted: boolean): Standing {
+  if (neverCounted && stock !== null && stock <= 0) return 'uncounted';
+  return standingOf(stock, par);
+}
+
 /** The map's legend in this page's words: the chips say Out / Below par / Reconcile (INV-W19). */
 export const MAP_WORDS: Record<MapTone, string> = {
   green: 'At or above par',
   amber: 'Below par',
   rose: 'Out',
   violet: 'Reconcile',
-  neutral: 'Not read, or no par set',
+  neutral: 'Not read, not counted yet, or no par set',
 };
 
 /** A map tile's tint by the same standing the table and chips use. */
 export function mapTone(item: LegacyItem): MapTone {
   if ((item.shadowStock ?? 0) > 0) return 'violet';
-  switch (standingOf(item.liveStock ?? null, item.threshold ?? null)) {
+  // Never counted and at 0 is not Out (OD-161): standingFor gives 'uncounted',
+  // which falls to neutral below.
+  switch (standingFor(item.liveStock ?? null, item.threshold ?? null, item.lastCounted === null)) {
     case 'out':
       return 'rose';
     case 'below':
@@ -197,8 +225,21 @@ export function typeOf(category: unknown, beverageKind: unknown): { type: string
 const TYPE_WORDS: Record<string, string> = {
   rose: 'Rosé',
   non_alcoholic: 'Non-alcoholic',
+  soft_drink: 'Soft drink',
   unclassified: 'not classified',
 };
+
+/**
+ * A drink the house added itself (house-items, #862: a spirit, a soft drink, a
+ * beer) has no library row, so the library says nothing about its type; the
+ * house's own kind does. It stands in only where the library is silent, so a
+ * wine's style still wins. A food or supply is not a drink type: the list says
+ * Food or Supply for it from its own column, so it is left null here.
+ */
+export function withHouseKind(lib: { type: string | null; kind: string | null }, own: string | null): { type: string | null; kind: string | null } {
+  if (lib.type !== null || own === null || own === 'food' || own === 'supply') return lib;
+  return { type: own, kind: own };
+}
 
 /** The house's word for a `type` key: never the key itself ("non_alcoholic"). */
 export function typeLabel(key: string): string {
@@ -236,7 +277,7 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
     name,
     libraryName: library && library !== name ? library : null,
     producer: text(r.wineProducer) ?? text(w?.producer),
-    ...typeOf(w?.category, w?.beverageKind),
+    ...withHouseKind(typeOf(w?.category, w?.beverageKind), houseFieldsOf(item).kind),
     vintage: num(r.wineVintage) ?? num(w?.vintage),
     grape: text(w?.grapeVariety),
     bottleSizeMl: num(r.bottleSizeMl) ?? num(w?.bottleSizeMl),
@@ -265,7 +306,13 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
     zones,
     providerId: text(r.providerId),
     providerName: text(r.providerName),
-    standing: standingOf(stock, par),
+    // OD-161: a title the server says nobody counted (lastCountedAt sent as
+    // null) at 0 is "Not counted yet", never Out. Above 0 it keeps its
+    // standing, so it still counts under Below par, in the order and in the
+    // read sentence, as the low-stock alert does. A row that did not carry the
+    // field at all claims nothing either way and keeps its standing.
+    standing: standingFor(stock, par, r.lastCountedAt === null),
+    neverCounted: r.lastCountedAt === null,
     active: typeof r.is_active === 'boolean' ? r.is_active : null,
   };
 }
@@ -279,14 +326,30 @@ export function suggestedToPar(row: InvRow): number | null {
 
 /* ── the order: "Needs you first" ────────────────────────────────────────── */
 
-/** 0 out, 1 below par, 2 everything else. */
-export function severity(row: InvRow): 0 | 1 | 2 {
+/**
+ * 0 out, 1 below par, 2 not counted yet, 3 everything else. A never-counted 0
+ * can be a wine received and sold down to nothing, which the low-stock alert
+ * calls critical, so it is not left under "Everything else" (QA 9c); it is
+ * not under Out either, because nobody counted it.
+ */
+export function severity(row: InvRow): 0 | 1 | 2 | 3 {
   if (row.standing === 'out') return 0;
   if (row.standing === 'below') return 1;
-  return 2;
+  if (row.standing === 'uncounted') return 2;
+  return 3;
 }
 
-export const SEVERITY_GROUP = ['Out', 'Below par', 'Everything else, by runway'] as const;
+export const SEVERITY_GROUP = ['Out', 'Below par', 'Not counted yet', 'Everything else, by runway'] as const;
+
+const collators = new Map<string, Intl.Collator>();
+
+/** Names in the house's language, not the browser's (QA round 12 R7). */
+export function compareNames(a: string | null, b: string | null, locale?: string): number {
+  const key = locale ?? '';
+  let c = collators.get(key);
+  if (!c) collators.set(key, (c = new Intl.Collator(locale)));
+  return c.compare(a ?? '', b ?? '');
+}
 
 /**
  * Severity first, then runway ascending, then the name. The legacy sort
@@ -294,13 +357,13 @@ export const SEVERITY_GROUP = ['Out', 'Below par', 'Everything else, by runway']
  * so a bottle at 0 with no recent sale — whose runway is null — sank to the
  * bottom of the page (dossier E §1).
  */
-export function needsYouFirst(a: InvRow, b: InvRow): number {
+export function needsYouFirst(a: InvRow, b: InvRow, locale?: string): number {
   const s = severity(a) - severity(b);
   if (s !== 0) return s;
   const ra = a.runway ?? Number.POSITIVE_INFINITY;
   const rb = b.runway ?? Number.POSITIVE_INFINITY;
   if (ra !== rb) return ra < rb ? -1 : 1;
-  return (a.name ?? '').localeCompare(b.name ?? '');
+  return compareNames(a.name, b.name, locale);
 }
 
 export type SortId = 'needs' | 'name' | 'value' | 'pace';
@@ -327,23 +390,24 @@ export function sortWords(sort: SortId, rows: InvRow[]): string {
   return `sorted ${SORT_LABEL[sort]}`;
 }
 
-export function sortRows(rows: InvRow[], sort: SortId): InvRow[] {
+export function sortRows(rows: InvRow[], sort: SortId, locale?: string): InvRow[] {
   const out = [...rows];
-  if (sort === 'needs') return out.sort(needsYouFirst);
-  if (sort === 'name') return out.sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
+  const needs = (a: InvRow, b: InvRow) => needsYouFirst(a, b, locale);
+  if (sort === 'needs') return out.sort(needs);
+  if (sort === 'name') return out.sort((a, b) => compareNames(a.name, b.name, locale));
   // The legacy velocity sort (InventoryCommandPage.tsx:96), fastest first; an
   // unread pace sorts after every read one, never as 0.
   if (sort === 'pace')
     return out.sort((a, b) => {
       const va = a.velocity ?? Number.NEGATIVE_INFINITY;
       const vb = b.velocity ?? Number.NEGATIVE_INFINITY;
-      return va === vb ? needsYouFirst(a, b) : vb > va ? 1 : -1;
+      return va === vb ? needs(a, b) : vb > va ? 1 : -1;
     });
   // Value at cost, largest first; an unknown value sorts after every known one.
   return out.sort((a, b) => {
     const va = a.value ?? Number.NEGATIVE_INFINITY;
     const vb = b.value ?? Number.NEGATIVE_INFINITY;
-    return va === vb ? needsYouFirst(a, b) : vb > va ? 1 : -1;
+    return va === vb ? needs(a, b) : vb > va ? 1 : -1;
   });
 }
 
@@ -386,12 +450,13 @@ export function matchesSearch(row: InvRow, query: string, zoneName: (id: string 
 
 /* ── chips ───────────────────────────────────────────────────────────────── */
 
-export type ChipId = 'all' | 'out' | 'below' | 'reconcile' | 'count' | 'dead' | 'price';
+export type ChipId = 'all' | 'out' | 'below' | 'alerts' | 'reconcile' | 'count' | 'dead' | 'price';
 
 export const CHIPS: { id: ChipId; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'out', label: 'Out' },
   { id: 'below', label: 'Below par' },
+  { id: 'alerts', label: 'Low-stock alerts' },
   { id: 'reconcile', label: 'Reconcile' },
   { id: 'count', label: 'Count due' },
   { id: 'dead', label: 'Dead stock' },
@@ -406,18 +471,40 @@ export function countDue(row: InvRow, now = Date.now()): boolean {
 }
 
 /**
+ * Below par as the alerts count it: below on the shelf AND held by
+ * `v_low_stock_items` (QA 12a R1: a title in transit is not). `alerted` null
+ * is a list not read, which claims nothing.
+ */
+export function belowParAlerted(row: InvRow, alerted: ReadonlySet<string> | null): boolean {
+  return row.standing === 'below' && alerted !== null && alerted.has(row.id);
+}
+
+/**
  * Whether a row belongs under a chip. `price` matches nothing: a price signal
  * needs a market figure and none is read (`retail_price_avg` is not selected,
  * database.service.ts:42-53), so its count is the dash, never 0.
+ *
+ * `alerts` is the server's own list, not a rule re-derived here: the ids
+ * `v_low_stock_items` holds, which are the wines the low-stock alerts and the
+ * dashboard are about (QA round 9c: the alerts' `?filter=low-stock` link
+ * landed on an unfiltered page). `alerted` null is a list not read, which
+ * matches nothing; the page shows its count as the dash.
  */
-export function chipMatch(row: InvRow, chip: ChipId, now = Date.now()): boolean {
+export function chipMatch(
+  row: InvRow,
+  chip: ChipId,
+  now = Date.now(),
+  alerted: ReadonlySet<string> | null = null,
+): boolean {
   switch (chip) {
     case 'all':
       return true;
     case 'out':
       return row.standing === 'out';
     case 'below':
-      return row.standing === 'below';
+      return belowParAlerted(row, alerted);
+    case 'alerts':
+      return alerted?.has(row.id) ?? false;
     case 'reconcile':
       return row.shadow !== null && row.shadow > 0;
     case 'count':
@@ -501,6 +588,18 @@ export function cellMoney(v: number | null, currency: HouseCurrency): string {
   return v.toLocaleString('en-GB', { maximumFractionDigits: 2 });
 }
 
+/**
+ * A lot's cost per unit (WAC, a purchase's unit cost): `cellMoney`, but a cost
+ * below one whole unit of the currency keeps its places, so 0.035 a gram does
+ * not read 0.04 (QA round 11b; the lot stores six places since PR #839).
+ */
+export function cellUnitCost(v: number | null, currency: HouseCurrency): string {
+  if (v === null || !Number.isFinite(v)) return EM;
+  if (currency.state === 'reading') return EM;
+  if (currency.state === 'recorded') return fmtUnitMoney(v, currency.code);
+  return v.toLocaleString('en-GB', { maximumFractionDigits: unitCostPlaces(v) ?? 2 });
+}
+
 /* ── the read sentence ───────────────────────────────────────────────────── */
 
 /**
@@ -521,14 +620,74 @@ export function dryTomorrow(row: InvRow): boolean {
   return row.standing !== 'out' && row.runway !== null && row.runway < 1.5;
 }
 
+const TOTAL_WORDS: Record<string, [string, string]> = {
+  bottle: ['bottle', 'bottles'],
+  case: ['case', 'cases'],
+  keg: ['keg', 'kegs'],
+  pack: ['pack', 'packs'],
+  glass: ['glass', 'glasses'],
+  shot: ['shot', 'shots'],
+  each: ['item', 'items'],
+};
+
+/** The unit a total is summed in, and how many of it one stored unit is. */
+const MEASURE: Record<string, [string, number]> = {
+  mg: ['g', 0.001],
+  g: ['g', 1],
+  kg: ['g', 1000],
+  ml: ['ml', 1],
+  l: ['ml', 1000],
+};
+
+/** One total in its own unit: grams read in kg and millilitres in l from 1,000 up. */
+function totalWords(n: number, uom: string): string {
+  // kg and l keep every gram and millilitre: 1,750 g is "1.75 kg", not "1.8 kg".
+  const scaled = (v: number) => v.toLocaleString('en-GB', { maximumFractionDigits: 3 });
+  if (uom === 'g') return n >= 1000 ? `${scaled(n / 1000)} kg` : `${fmtCount(n)} g`;
+  if (uom === 'ml') return n >= 1000 ? `${scaled(n / 1000)} l` : `${fmtCount(n)} ml`;
+  const [one, many] = TOTAL_WORDS[uom] ?? [uom, uom];
+  return plural(n, one, many);
+}
+
+/**
+ * What is on hand, added up within one unit only (ADR 0070 keeps each good in
+ * its own g, ml or count): 10 bottles and 12,400 g of flour read "10 bottles
+ * and 12.4 kg", never "12,410 bottles". A row with no unit is a bottle.
+ */
+export function onHandByUnit(rows: InvRow[], uomOf: (r: InvRow) => string | null): string {
+  const sums = new Map<string, number>();
+  for (const r of rows) {
+    if (r.stock === null) continue;
+    // One sum per measure, not per stored unit: sugar kept in g and flour kept
+    // in kg are both weight, so they read "12 kg", never "2 kg, 10 kg" (browser
+    // walk 2026-11-11). Volume likewise sums ml and l. Bottles, packs and items
+    // are counts of different things and stay apart.
+    const stored = uomOf(r) ?? 'bottle';
+    const [u, factor] = MEASURE[stored] ?? [stored, 1];
+    sums.set(u, (sums.get(u) ?? 0) + Math.max(0, r.stock) * factor);
+  }
+  if (sums.size === 0) sums.set('bottle', 0);
+  // Bottles lead, as the page always has; the other units follow as first met.
+  const units = [...sums.keys()].sort((a, b) => (a === b ? 0 : a === 'bottle' ? -1 : b === 'bottle' ? 1 : 0));
+  const words = units.map((u) => totalWords(sums.get(u)!, u));
+  return words.length <= 1 ? words.join('') : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`;
+}
+
 /**
  * The one read sentence at the top (no KPI tiles). Every number in it is a
  * count of what was read; what was not read is named, never folded into a 0.
+ * `uomOf` names each row's own unit, so no total adds grams to bottles.
  */
-export function readSentence(rows: InvRow[], currency: HouseCurrency, zonesReadable: boolean): string {
+export function readSentence(
+  rows: InvRow[],
+  currency: HouseCurrency,
+  zonesReadable: boolean,
+  alerted: ReadonlySet<string> | null,
+  uomOf: (r: InvRow) => string | null = () => null,
+): string {
   const n = rows.length;
   const read = rows.filter((r) => r.stock !== null);
-  const bottles = read.reduce((sum, r) => sum + Math.max(0, r.stock ?? 0), 0);
+  const onHand = onHandByUnit(read, uomOf);
   const zoneIds = new Set<string>();
   for (const r of rows) for (const z of r.zones ?? []) if (z.locationId !== null && z.qty > 0) zoneIds.add(z.locationId);
   const parts: string[] = [];
@@ -537,17 +696,33 @@ export function readSentence(rows: InvRow[], currency: HouseCurrency, zonesReada
     read.length === 0
       ? `${plural(n, 'title', 'titles')}; no title's stock could be read, so the bottle count is unknown`
       : read.length < n
-        ? `${plural(n, 'title', 'titles')}, ${plural(bottles, 'bottle', 'bottles')} on the ${fmtCount(read.length)} whose stock was read (${fmtCount(n - read.length)} could not be read)`
-        : `${plural(n, 'title', 'titles')}, ${plural(bottles, 'bottle', 'bottles')}`;
+        ? `${plural(n, 'title', 'titles')}, ${onHand} on the ${fmtCount(read.length)} whose stock was read (${fmtCount(n - read.length)} could not be read)`
+        : `${plural(n, 'title', 'titles')}, ${onHand}`;
   if (zonesReadable && zoneIds.size > 0) first += ` across ${plural(zoneIds.size, 'zone', 'zones')}`;
   parts.push(`${first}.`);
 
   const out = rows.filter((r) => r.standing === 'out').length;
-  const below = rows.filter((r) => r.standing === 'below').length;
+  // The Below par chip's own count; null while the alert list is not read.
+  const belowN = alerted === null ? null : rows.filter((r) => belowParAlerted(r, alerted)).length;
+  const below = belowN ?? 0;
   const dry = rows.filter(dryTomorrow).length;
+  // A never-counted 0 is neither out nor fine, so it is said in words and the
+  // sentence never claims "Nothing is out or below par" past it (QA 9c).
+  const unc = rows.filter((r) => r.standing === 'uncounted').length;
   const lead = read.length < n ? 'Of the titles read, nothing' : 'Nothing';
   if (read.length === 0) {
     // No stock was read, so nothing can be said to be out or fine.
+  } else if (belowN === null) {
+    // Without the alert list nothing is called below par, nor fine.
+    const said = [`${out === 0 ? 'None' : fmtCount(out)} ${out <= 1 ? 'is' : 'are'} out`];
+    if (unc > 0) said.push(`${fmtCount(unc)} more ${unc === 1 ? 'is' : 'are'} not counted yet`);
+    if (dry > 0) said.push(`${dry === 1 ? 'one runs' : `${fmtCount(dry)} run`} dry tomorrow`);
+    parts.push(`${said.join('; ')}; which titles are below par has not been read yet.`);
+  } else if (out === 0 && below === 0 && unc > 0) {
+    const one = unc === 1;
+    let s = `${fmtCount(unc)} ${one ? 'is' : 'are'} not counted yet, so whether ${one ? 'it is' : 'they are'} out is not known until ${one ? 'it is' : 'they are'} counted; ${read.length < n ? 'of the other titles read, none' : 'nothing else'} is out or below par`;
+    if (dry > 0) s += `, but ${dry === 1 ? 'one runs' : `${fmtCount(dry)} run`} dry tomorrow`;
+    parts.push(`${s}.`);
   } else if (out === 0 && below === 0) {
     parts.push(dry === 0 ? `${lead} is out or below par.` : `${lead} is out or below par, but ${dry === 1 ? 'one runs' : `${fmtCount(dry)} run`} dry tomorrow.`);
   } else {
@@ -555,6 +730,7 @@ export function readSentence(rows: InvRow[], currency: HouseCurrency, zonesReada
       out === 0
         ? `None is out; ${fmtCount(below)} ${below === 1 ? 'is' : 'are'} below par`
         : `${fmtCount(out)} ${out === 1 ? 'is' : 'are'} out${below > 0 ? `, and ${fmtCount(below)} more ${below === 1 ? 'is' : 'are'} below par` : ''}`;
+    if (unc > 0) s += `; ${fmtCount(unc)} more ${unc === 1 ? 'is' : 'are'} not counted yet`;
     if (dry > 0) s += `; ${dry === 1 ? 'one runs' : `${fmtCount(dry)} run`} dry tomorrow`;
     parts.push(`${s}.`);
   }
@@ -630,6 +806,13 @@ export function useInventoryNextData() {
   const rows = useMemo<InvRow[] | null>(
     () => (items === null ? null : items.map((i) => toRow(i, i.wineId ? winesById.get(i.wineId) : null))),
     [items, winesById],
+  );
+
+  // The wines the low-stock alerts are about, as the server holds them.
+  const lowQ = useLowStockItems();
+  const alerted = useMemo<ReadonlySet<string> | null>(
+    () => (lowQ.data ? new Set(lowQ.data.map((i) => i.id)) : null),
+    [lowQ.data],
   );
 
   const currencyQ = useQuery({
@@ -733,6 +916,7 @@ export function useInventoryNextData() {
   if (storage.locationsUnavailable) unread.push('the storage locations, so zones show — and the zone filter is off');
   if (currency.state === 'unreadable') unread.push('the house’s currency');
   if (advice.status === 'error') unread.push('the price advice');
+  if (lowQ.isError) unread.push('the low-stock alert list, so its chip shows —');
   if (invoicesQ.isError) unread.push('the invoices waiting for a match');
   if (deliveriesQ.isError) unread.push('the delivered lines waiting for their item');
   // A read still in flight is not an answer either: until the library answers,
@@ -747,6 +931,7 @@ export function useInventoryNextData() {
   // else it never runs, so it is not "still reading".
   if (canManage && advice.status === 'loading') pending.push('the price advice');
   if (invoicesQ.isPending) pending.push('the invoices waiting for a match');
+  if (rid !== null && lowQ.isPending) pending.push('the low-stock alert list');
   if (deliveriesQ.isPending) pending.push('the delivered lines waiting for their item');
   const rereadUnread = () => {
     if (paceUnread) void list.refetch();
@@ -754,6 +939,7 @@ export function useInventoryNextData() {
     if (storage.locationsUnavailable) void queryClient.invalidateQueries({ queryKey: ['storageLocations', rid] });
     if (currency.state === 'unreadable') void currencyQ.refetch();
     if (advice.status === 'error') void adviceQ.refetch();
+    if (lowQ.isError) void lowQ.refetch();
     if (invoicesQ.isError) void invoicesQ.refetch();
     if (deliveriesQ.isError) void deliveriesQ.refetch();
   };
@@ -781,7 +967,10 @@ export function useInventoryNextData() {
     libraryAnswered,
     /** The selling-pace join failed for this read: pace, runway and dead stock are unread, not zero (INV-W29). */
     paceUnread,
+    /** Ids of the wines the low-stock alerts name; null until read, or when the read failed. */
+    alerted,
     currency,
+    locale: currencyQ.data?.readable ? houseLocale(currencyQ.data.country) : undefined,
     locations: {
       list: storage.locations as StorageLocation[],
       loading: storage.locationsLoading,

@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cellMoney, EM, type InvRow } from './useInventoryNextData';
+import { cellUnitCost, EM, type InvRow } from './useInventoryNextData';
 import type { Provider } from '../../../services/api/providers';
 
 // Per-test overrides for the stubbed reads (INV-W8 / INV-W9).
@@ -959,7 +959,7 @@ describe('a food or supply is costed in its own unit, with no price, margin, mar
   it('a food kept in g reads its costs a kg and says it is costed, not priced', () => {
     renderDrop({ row: food, kind: 'food', uom: 'g' });
     const drop = screen.getByTestId('row-dropdown');
-    const kg = (n: number) => `${cellMoney(n, eur)} a kg`;
+    const kg = (n: number) => `${cellUnitCost(n, eur)} a kg`;
     expect(drop.textContent).toContain(`Weighted average cost${kg(9)}`);
     expect(drop.textContent).toContain(`${kg(7.5)} → ${kg(9)} (+20%)`);
     for (const k of ['Your price', 'Margin over cost', 'Market', 'Auction lots']) expect(within(drop).queryByText(k)).toBeNull();
@@ -968,7 +968,7 @@ describe('a food or supply is costed in its own unit, with no price, margin, mar
 
   it('a supply kept each reads each; one with no recorded unit reads a dash, never a guessed bottle', () => {
     renderDrop({ row: food, kind: 'supply', uom: 'each' });
-    expect(screen.getByTestId('row-dropdown').textContent).toContain(`Weighted average cost${cellMoney(0.009, eur)} each`);
+    expect(screen.getByTestId('row-dropdown').textContent).toContain(`Weighted average cost${cellUnitCost(0.009, eur)} each`);
     expect(screen.getByTestId('good-not-priced')).toHaveTextContent('A supply is costed, not priced.');
     cleanup();
     renderDrop({ row: food, kind: 'supply', uom: null });
@@ -982,3 +982,47 @@ describe('a food or supply is costed in its own unit, with no price, margin, mar
     expect(screen.queryByTestId('good-not-priced')).toBeNull();
   });
 });
+
+describe('RowDropdown keeps a per-gram cost readable (QA round 11b, PR #839)', () => {
+  it('a lot cost below one unit of the currency keeps its places; whole figures do not grow any', async () => {
+    const { cellMoney, cellUnitCost } = await vi.importActual<typeof import('./useInventoryNextData')>('./useInventoryNextData');
+    const usd = { state: 'recorded', code: 'USD' } as const;
+    expect(cellUnitCost(0.035, usd)).toBe('US$0.035');
+    expect(cellUnitCost(0.0356667, usd)).toBe('US$0.03567');
+    expect(cellUnitCost(0.5, usd)).toBe('US$0.50');
+    expect(cellUnitCost(22, usd)).toBe('US$22');
+    expect(cellUnitCost(33.333333, usd)).toBe('US$33.33');
+    expect(cellUnitCost(0.5, { state: 'recorded', code: 'JPY' })).toBe('JP¥0.5');
+    expect(cellUnitCost(0.0125, { state: 'recorded', code: 'KWD' })).toBe('KWD\u00a00.0125');
+    expect(cellUnitCost(0.035, { state: 'not_recorded', code: null })).toBe('0.035');
+    expect(cellUnitCost(0.035, { state: 'reading', code: null })).toBe(EM_DASH);
+    // Money that is not a cost per unit reads as it did.
+    expect(cellMoney(0.035, usd)).toBe('US$0.04');
+  });
+
+  it('shows 0.035 a gram as 0.035 in the opened row, and the prices as before', () => {
+    reads.detail = {
+      purchases: [
+        { id: 'l2', at: '2026-10-20T10:00:00Z', qty: 2000, unitCost: 0.036, orderId: null },
+        { id: 'l1', at: '2026-09-20T10:00:00Z', qty: 1000, unitCost: 0.035, orderId: null },
+      ],
+      purchasesTotal: 2,
+    };
+    try {
+      renderDrop({ row: row({ wac: 0.035, bottle: 92, glass: 18 }), currency: { state: 'recorded', code: 'USD' } });
+      const drop = screen.getByTestId('row-dropdown');
+      const kv = (k: string) => within(drop).getByText(k).nextElementSibling!.textContent;
+      expect(kv('Weighted average cost')).toContain('US$0.035');
+      expect(kv('Last bought')).toContain('US$0.036');
+      expect(kv('Before that')).toContain('US$0.035');
+      expect(kv('Was → now')).toContain('US$0.035 → US$0.036');
+      expect(kv('Your price')).toBe('US$92 · US$18');
+      const units = [...drop.querySelectorAll('td[data-label="Unit"]')].map((td) => td.textContent);
+      expect(units).toEqual(['US$0.036', 'US$0.035']);
+    } finally {
+      reads.detail = {};
+    }
+  });
+});
+
+const EM_DASH = '—';

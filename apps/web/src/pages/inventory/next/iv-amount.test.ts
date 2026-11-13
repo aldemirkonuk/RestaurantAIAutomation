@@ -30,6 +30,20 @@ describe('amountUnit: what is typed for a good, in its own unit (ADR 0070)', () 
     expect(amountUnit('bottle').why('500')).toBeNull();
   });
 
+  it('asks about a comma or a point before exactly three digits, never guessing which it is', () => {
+    const g = amountUnit('g');
+    expect(g.parse('1,500')).toBeNull();
+    expect(g.why('1,500')).toBe('“1,500” could be either: type 1.5 for 1.5 kg, or 1500 for 1,500 kg.');
+    expect(g.parse('1.500')).toBeNull();
+    expect(g.why('2.250 kg')).toBe('“2.250 kg” could be either: type 2.25 kg for 2.25 kg, or 2250 kg for 2,250 kg.');
+    expect(g.why('10.000')).toBe('“10.000” could be either: type 10 for 10 kg, or 10000 for 10,000 kg.');
+    expect(amountUnit('ml').why('1,250')).toBe('“1,250” could be either: type 1.25 for 1.25 l, or 1250 for 1,250 l.');
+    // A leading 0 cannot be a thousands mark, and two places cannot either.
+    expect(g.parse('0.035')).toBe(35);
+    expect(g.why('0.035')).toBeNull();
+    expect(g.parse('2,25')).toBe(2250);
+  });
+
   it('refuses what is not a whole gram, never rounding it', () => {
     const g = amountUnit('g');
     expect(g.parse('2.5 g')).toBeNull();

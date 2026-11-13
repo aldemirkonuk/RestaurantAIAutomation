@@ -42,14 +42,33 @@ describe("DashboardService", () => {
     beforeEach(() => {
       // Mock inventory data
       mockDatabaseService.getRestaurantInventory.mockResolvedValue([
-        { id: "1", name: "Wine 1", stock_live: 10 },
-        { id: "2", name: "Wine 2", stock_live: 5 },
-        { id: "3", name: "Wine 3", stock_live: 0 },
+        // Counted rows: a never-counted row is unknown, not zero (OD-161).
+        {
+          id: "1",
+          name: "Wine 1",
+          stock_live: 10,
+          threshold_min: 4,
+          last_counted_at: "2026-11-01T10:00:00Z",
+        },
+        {
+          id: "2",
+          name: "Wine 2",
+          stock_live: 5,
+          threshold_min: 4,
+          last_counted_at: "2026-11-01T10:00:00Z",
+        },
+        {
+          id: "3",
+          name: "Wine 3",
+          stock_live: 0,
+          threshold_min: 4,
+          last_counted_at: "2026-11-01T10:00:00Z",
+        },
       ]);
 
-      // Mock low stock items
+      // Mock low stock items: par 4, so only Wine 3 (0 of 4) is below it.
       mockDatabaseService.getLowStockItems.mockResolvedValue([
-        { id: "2", name: "Wine 2", stock_live: 5 },
+        { id: "3", name: "Wine 3", stock_live: 0 },
       ]);
 
       // Mock procurement orders

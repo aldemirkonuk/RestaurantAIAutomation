@@ -42,6 +42,7 @@ import { writeFailure } from './iv-failure';
 import { oneLine, rowFilename, runExport, valuationColumns } from './iv-export';
 import {
   cellMoney,
+  cellUnitCost,
   EM,
   fmtCount,
   fmtPace,
@@ -724,12 +725,14 @@ function WhatItHasCost({
   // so it reads as a dash, never as a guessed bottle. A drink is drawn as before.
   const good = kind === 'food' || kind === 'supply' ? kind : null;
   const money = (n: number | null): ReactNode => {
-    if (good === null) return cellMoney(n, currency);
+    // A unit cost keeps the places it needs (0.035 a gram, #858) for a drink
+    // and a food or supply alike.
+    if (good === null) return cellUnitCost(n, currency);
     if (n === null || uom === null) return EM;
     const u = perUnit(n, uom);
     return (
       <>
-        {cellMoney(u.amount, currency)} <span className="iv-dim">{u.per}</span>
+        {cellUnitCost(u.amount, currency)} <span className="iv-dim">{u.per}</span>
       </>
     );
   };
@@ -907,7 +910,7 @@ function Paperwork({
                       {line.qty === null ? EM : fmtCount(line.qty)}
                     </td>
                     <td data-label="Unit" className="iv-num">
-                      {cellMoney(line.unitCost, currency)}
+                      {cellUnitCost(line.unitCost, currency)}
                     </td>
                     <td data-label="Invoice">{doc ? (doc.doc_number ?? 'filed, no number') : EM}</td>
                     <td>

@@ -245,13 +245,22 @@ export default function InventoryNext() {
   }, []);
 
   // A chip whose count could not be read cannot hold the list (INV-W29).
-  const activeChip: ChipId = chip === 'dead' && data.paceUnread ? 'all' : chip;
+  // The same for the alert list (QA 9c): until it is read, the alerts' link
+  // shows every title rather than an empty list that would read as none.
+  const alerted = data.alerted ?? null;
+  const activeChip: ChipId =
+    (chip === 'dead' && data.paceUnread) ||
+    (chip === 'below' && alerted === null) ||
+    (chip === 'alerts' && alerted === null) ? 'all' : chip;
   const chipCounts = useMemo(() => {
     const now = Date.now();
     const m = new Map<ChipId, number>();
-    for (const c of CHIPS) m.set(c.id, (rows ?? []).filter((r) => chipMatch(r, c.id, now)).length);
+    for (const c of CHIPS) {
+      if ((c.id === 'alerts' || c.id === 'below') && alerted === null) continue;
+      m.set(c.id, (rows ?? []).filter((r) => chipMatch(r, c.id, now, alerted)).length);
+    }
     return m;
-  }, [rows]);
+  }, [rows, alerted]);
   const chipCount = (id: ChipId) => {
     const k = chipCounts.get(id);
     return k === undefined ? EM : fmtCount(k);
@@ -292,6 +301,11 @@ export default function InventoryNext() {
       return own === 'food' || own === 'supply' ? own : 'drink';
     };
   }, [data.rawItems]);
+  // Each good's own unit (g, ml, each, bottle…): totals and cells never add one to another.
+  const uomOf = useMemo(() => {
+    const u = new Map(data.rawItems.map((i) => [i.id, houseFieldsOf(i).uom]));
+    return (r: InvRow): string | null => u.get(r.id) ?? null;
+  }, [data.rawItems]);
   const carriesGoods = kind !== '' || (rows ?? []).some((r) => goodOf(r) !== 'drink');
   const visible = useMemo(() => {
     if (!rows) return [];
@@ -300,15 +314,16 @@ export default function InventoryNext() {
     return sortRows(
       rows.filter(
         (r) =>
-          chipMatch(r, activeChip, now) &&
+          chipMatch(r, activeChip, now, alerted) &&
           (kind === '' || goodOf(r) === kind) &&
           inZone(r, zone) &&
           ofType(r, type) &&
           matchesSearch(r, query, zn),
       ),
       sort,
+      data.locale,
     );
-  }, [rows, activeChip, kind, goodOf, zone, type, query, sort, locs.list]);
+  }, [rows, activeChip, kind, goodOf, zone, type, query, sort, locs.list, alerted, data.locale]);
 
   // ── Row selection, ported from the legacy page (NEW-064, InventoryCommandPage.tsx:507-531).
   // Keyed by restaurant_inventory id. A house switch or a filter change empties
@@ -606,7 +621,7 @@ export default function InventoryNext() {
     <div className="mudavym iv-page min-h-full" style={{ background: 'var(--paper-0)', color: 'var(--ink-1)', fontFamily: SANS }}>
       <div className="iv-wrap">
         <p className="iv-crumb">
-          The cellar · Inventory
+          {carriesGoods ? 'Inventory' : 'The cellar · Inventory'}
           {data.state === 'ready' && rows !== null
             ? crumb
               ? ` · last count ${fmtWhen(crumb)}`
@@ -709,7 +724,7 @@ export default function InventoryNext() {
           /* ── the book ───────────────────────────────────────────────── */
           <>
             <p className="iv-read" data-testid="inventory-read-sentence">
-              {readSentence(rows, data.currency, !locs.unavailable)}
+              {readSentence(rows, data.currency, !locs.unavailable, alerted, uomOf)}
             </p>
             {data.stale ? (
               <p className="iv-note" role="status">
@@ -729,6 +744,16 @@ export default function InventoryNext() {
                     className="iv-chip"
                     disabled
                     title="Whether a title is dead stock could not be read: the selling pace did not answer"
+                  >
+                    {c.label} <span className="iv-num">{EM}</span>
+                  </button>
+                ) : (c.id === 'alerts' || c.id === 'below') && alerted === null ? (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className="iv-chip"
+                    disabled
+                    title="Which titles the low-stock alerts name has not been read"
                   >
                     {c.label} <span className="iv-num">{EM}</span>
                   </button>
@@ -830,9 +855,17 @@ export default function InventoryNext() {
               <button type="button" className="iv-btn iv-focus" onClick={showTools}>
                 Tools
               </button>
-              <Link to="/wines" className="iv-btn iv-focus" data-seal="true" title="Opens the wine register, where a wine is brought into the cellar. Other drinks come in from a scanned menu.">
-                Add a bottle
-              </Link>
+              {kind === 'food' || kind === 'supply' ? (
+                data.canManage ? (
+                  <button type="button" className="iv-btn iv-focus" data-seal="true" onClick={() => setPanel('carry')}>
+                    Carry a food or supply
+                  </button>
+                ) : null
+              ) : (
+                <Link to="/wines" className="iv-btn iv-focus" data-seal="true" title="Opens the wine register, where a wine is brought into the cellar. Other drinks come in from a scanned menu.">
+                  Add a bottle
+                </Link>
+              )}
             </div>
             {data.unread.length > 0 ? (
               <p className="iv-note" data-testid="inv-unread">
@@ -943,6 +976,8 @@ export default function InventoryNext() {
                 onSelect={toggleSelect}
                 onSelectAll={selectAllVisible}
                 rows={visible}
+                uomOf={uomOf}
+                goodOf={goodOf}
                 libraryUnread={!data.libraryAnswered}
                 grouped={sort === 'needs'}
                 sort={sort}

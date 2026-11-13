@@ -28,13 +28,17 @@
  * those nulls, and the cuttings render them as em dashes.
  */
 
-import { useCallback, useMemo } from 'react';
-import { useQueries, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useMemo, useRef } from 'react';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
+import { settingsApi } from '@/services/api/settings';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
+import { useAuthStore } from '@/stores/authStore';
 import { failureOf, heldBackFailure, num, type Failure } from './rp-format';
 import { CATALOGUE, defaultGraph, graphOrDefault, type ReadingRow } from './rp-catalogue';
+import { readsRegister } from './rp-spec';
+import type { ComboPick } from './rp-combo';
 import { useGoalsDesk, type GoalsDesk } from './useGoalsDesk';
 import { useReportExports, type ExportDesk } from './useReportExports';
 import {
@@ -95,8 +99,9 @@ const SHEET_PREF_KEY = 'reportsSheet';
  * sheet last week still gets the goals desk the founder asked to be visible,
  * without a reader who deliberately took a cutting off having it forced back.
  */
-const SHEET_PREF_KEY_VERSIONS = [1, 2, 3];
-const SHEET_VERSION = 3;
+const SHEET_PREF_KEY_VERSIONS = [1, 2, 3, 4];
+/** v4: block order is the narrow reading order (`projectCuttings`). */
+const SHEET_VERSION = 4;
 
 interface StoredBlock {
   i?: unknown;
@@ -108,6 +113,8 @@ interface StoredBlock {
   g?: unknown;
   /** v2: on the sheet at all. */
   on?: unknown;
+  /** The bars-and-line pick, `{ b, l }` (measure keys). Optional in v4. */
+  c?: unknown;
   /** v1: taken off the sheet. */
   hidden?: unknown;
 }
@@ -158,14 +165,15 @@ export function decodeSheet(stored: unknown): SheetState {
         ? { x, y, w: Math.max(2, w), h: Math.max(2, h) }
         : DEFAULT_SLOTS[id];
     const graph = isGraphType(b?.g) ? graphOrDefault(id, b.g) : defaultGraph(id);
-    cuttings.push({ id, slot, graph });
+    const combo = decodeCombo(b?.c);
+    cuttings.push(combo ? { id, slot, graph, combo } : { id, slot, graph });
   }
   if (seen.size === 0) return defaultSheet();
 
   // An analysis introduced after this blob was written was never offered to
   // this reader, so its absence is not a decision. It lands at the foot, where
   // it cannot appear underneath something already being read.
-  if (Number(s.v) < SHEET_VERSION) {
+  if (Number(s.v) < 3) {
     let foot = cuttings.reduce((m, c) => Math.max(m, c.slot.y + c.slot.h), 0);
     for (const id of IDS_ADDED_IN_V3) {
       if (seen.has(id)) continue;
@@ -174,19 +182,43 @@ export function decodeSheet(stored: unknown): SheetState {
       foot += slot.h;
     }
   }
+  // Before v4 the blocks were written in catalogue order, which says nothing;
+  // the reading order then was the wide sheet's, row then column.
+  if (Number(s.v) < 4) cuttings.sort((a, b) => a.slot.y - b.slot.y || a.slot.x - b.slot.x);
   return { cuttings };
 }
 
+/** A stored bars-and-line pick, or nothing: two short, different keys. */
+function decodeCombo(c: unknown): ComboPick | undefined {
+  const o = c as { b?: unknown; l?: unknown } | null | undefined;
+  const key = (v: unknown) => typeof v === 'string' && v.length > 0 && v.length <= 64;
+  if (!o || typeof o !== 'object' || !key(o.b) || !key(o.l) || o.b === o.l) return undefined;
+  return { bars: o.b as string, line: o.l as string };
+}
+
 export function encodeSheet(state: SheetState): StoredSheet {
-  const byId = new Map(state.cuttings.map((c) => [c.id, c]));
+  const on = new Set(state.cuttings.map((c) => c.id));
   return {
     v: SHEET_VERSION,
-    // Every id is written, on or off, so "I took that one off" is a stored
-    // fact rather than an absence a later release could read as "never seen".
-    blocks: ANALYSIS_IDS.map((id) => {
-      const c = byId.get(id);
-      return c ? { i: id, ...c.slot, g: c.graph, on: true } : { i: id, on: false };
-    }),
+    // The cuttings go first and in the sheet's own order: on a narrow ruling
+    // two row-mates are clamped to the same column and the grid breaks the tie
+    // by list order, so the order is the phone's reading order and must
+    // survive a save (`liftCuttings`). Every id is still written, on or off,
+    // so "I took that one off" is a stored fact rather than an absence a later
+    // release could read as "never seen".
+    blocks: [
+      ...state.cuttings.map((c) => ({
+        i: c.id,
+        ...c.slot,
+        g: c.graph,
+        on: true,
+        ...(c.combo ? { c: { b: c.combo.bars, l: c.combo.line } } : {}),
+      })),
+      ...ANALYSIS_IDS.filter((id) => !on.has(id)).map((id) => ({
+        i: id,
+        on: false,
+      })),
+    ],
   };
 }
 
@@ -216,11 +248,47 @@ export interface ReportsNextData {
   tillDays: number;
   setTillDays: (days: number) => void;
   sheet: SheetState;
-  saveSheet: (next: SheetState) => void;
-  /** False while the preferences API has not answered — the sheet is not yet the reader's. */
+  /**
+   * Writes the sheet to the reader's preferences and settles when the gateway
+   * has answered — rejecting if it refused, and rejecting WITHOUT writing while
+   * the sheet is not known, so the house sheet can never be saved over the
+   * reader's own. The page stamps "Ruled off." only after this resolves.
+   */
+  saveSheet: (next: SheetState) => Promise<void>;
+  /**
+   * True once the account's preferences have answered, so `sheet` is the
+   * reader's own. Read from `isPlaceholderData`, not `isLoading`: the
+   * preferences query has `placeholderData: {}`, so `isLoading` is false before
+   * the gateway has said anything (`useUserPreferences.ts`, its own note).
+   */
   sheetKnown: boolean;
+  /**
+   * The house's money, three states (`HouseCurrency`, services/api/settings.ts):
+   * `stated` with a code; `unstated` (nobody recorded one); `unread` (the read
+   * failed, or has not answered yet). Only `stated` prints a currency mark.
+   */
+  currency: HouseMoney;
+  /**
+   * Why the reader's own sheet cannot be known, when it cannot: the read
+   * failed, or no one is signed in so there is nothing to read. `sheet` is
+   * then the house sheet, and the page says so and keeps arranging shut. Null
+   * while the read is simply in flight, and once it has answered.
+   */
+  sheetUnread: string | null;
+  /**
+   * Set when a refetch failed AFTER a good load: the last good sheet stays on
+   * screen under its own label and Arrange stays open, and this says the
+   * refresh failed (ADR 0020). Never set on a cold-load failure — that is
+   * `sheetUnread`.
+   */
+  sheetStale: string | null;
   refetchAll: () => void;
 }
+
+export type HouseMoney =
+  | { state: 'stated'; code: string }
+  | { state: 'unstated'; code: null }
+  | { state: 'unread'; code: null; pending: boolean };
 
 export function useReportsNextData(
   tillDays: number,
@@ -239,7 +307,40 @@ export function useReportsNextData(
   const { activeRestaurantId, activeRole } = useAuth();
   const rid = activeRestaurantId;
   const qc = useQueryClient();
-  const { preferences, updatePreferences, isLoading: prefsLoading } = useUserPreferences();
+  const {
+    preferences,
+    updatePreferencesAsync,
+    isPlaceholderData: prefsPlaceholder,
+    error: prefsError,
+  } = useUserPreferences();
+  // The preferences query is disabled without a user id, and a disabled query
+  // keeps its placeholder forever — so the placeholder alone would leave the
+  // sheet unknown forever. Read the id the hook itself keys on.
+  const userId = useAuthStore((s) => s.user?.userId) ?? null;
+  // `error` first: a failed read leaves `{}` behind, which would otherwise look
+  // like a perfectly good answer of "no sheet saved" (GroundChoiceSync.tsx
+  // reads the same three in the same order).
+  const answeredCleanly = userId !== null && !prefsError && !prefsPlaceholder;
+  // A good answer, once had, stays the reader's sheet: a later background
+  // refetch that fails keeps the last good data (React Query retains it) and
+  // sets `error`, but the sheet on screen is still theirs (or the house's, if
+  // that is what they saved) and is safe to arrange. Only a failure BEFORE any
+  // good answer leaves the house sheet standing in for theirs.
+  const hadGoodAnswerFor = useRef<string | null>(null);
+  if (answeredCleanly) hadGoodAnswerFor.current = userId;
+  const hadGoodAnswer = userId !== null && hadGoodAnswerFor.current === userId;
+  const sheetKnown = answeredCleanly || (hadGoodAnswer && !prefsPlaceholder);
+  const sheetStale = hadGoodAnswer && prefsError
+    ? 'The sheet could not be refreshed just now; what is shown is the last one that loaded.'
+    : null;
+  const sheetUnread =
+    userId === null
+      ? 'No one is signed in, so there is no arrangement of yours to read: the house sheet is shown, and arranging is off.'
+      : prefsError && !hadGoodAnswer
+        ? `Your own arrangement of this sheet could not be read (${
+            failureOf(prefsError)?.message ?? 'the request failed'
+          }), so the house sheet is shown. Arranging is off until it can be read.`
+        : null;
 
   const sheet = useMemo(() => decodeSheet(preferences?.[SHEET_PREF_KEY]), [preferences]);
 
@@ -247,7 +348,7 @@ export function useReportsNextData(
    *  the palette needs. The writing desk has no path and is never fetched. */
   const active = useMemo<AnalysisId[]>(() => {
     const ids = (showing ?? sheet.cuttings.map((c) => c.id)).filter(
-      (id) => CATALOGUE[id].path !== null,
+      (id) => readsRegister(CATALOGUE[id]),
     );
     return ids.includes('reading') ? ids : ['reading', ...ids];
   }, [sheet, showing]);
@@ -270,6 +371,18 @@ export function useReportsNextData(
     return out;
   }, [active, activeRole]);
 
+  /**
+   * One raw payload per URL, shared by every register that reads it, so the
+   * bench and spend pacing (both on /analytics/cashflow) cost one request
+   * (audit G9). Same freshness as the registers.
+   */
+  const readRaw = (url: string) =>
+    qc.fetchQuery({
+      queryKey: [ROOT, 'raw', url],
+      queryFn: async () => (await apiClient.get<unknown>(url)).data,
+      staleTime: 60_000,
+    });
+
   const results = useQueries({
     queries: active.map((id) => {
       const spec = CATALOGUE[id];
@@ -279,8 +392,25 @@ export function useReportsNextData(
         staleTime: 60_000,
         retry: 1,
         queryFn: async () => {
-          const { data } = await apiClient.get<unknown>(spec.path!(rid as string, { days: tillDays }));
-          return spec.select(data);
+          const ctx = { days: tillDays };
+          if (spec.sources) {
+            // A composed register (the bench): each source read once per
+            // minute however many cuttings share it; a failed source is null,
+            // which the register says, never a zero.
+            const keys = Object.keys(spec.sources);
+            const settled = await Promise.allSettled(
+              keys.map((k) => readRaw(spec.sources![k](rid as string, ctx))),
+            );
+            return spec.select(
+              Object.fromEntries(
+                keys.map((k, i) => {
+                  const r = settled[i];
+                  return [k, r.status === 'fulfilled' ? r.value : null];
+                }),
+              ),
+            );
+          }
+          return spec.select(await readRaw(spec.path!(rid as string, ctx)));
         },
       };
     }),
@@ -314,6 +444,23 @@ export function useReportsNextData(
     // actually matter, and recomputing a map of eight entries is free.
   }, [active, results, heldBack, activeRole]);
 
+  // One small read, cached with the registers, so every money figure on the
+  // sheet prints in the house's own currency rather than `$` (audit G5).
+  const currencyQuery = useQuery({
+    queryKey: [ROOT, 'currency', rid],
+    enabled: !!rid,
+    staleTime: 5 * 60_000,
+    retry: 1,
+    queryFn: () => settingsApi.houseCurrency(),
+  });
+  const currency = useMemo<HouseMoney>(() => {
+    const c = currencyQuery.data;
+    if (c && c.readable && typeof c.code === 'string' && /^[A-Z]{3}$/.test(c.code))
+      return { state: 'stated', code: c.code };
+    if (c && c.readable && c.code === null) return { state: 'unstated', code: null };
+    return { state: 'unread', code: null, pending: currencyQuery.isPending };
+  }, [currencyQuery.data, currencyQuery.isPending]);
+
   const reading = (registers.reading ?? {
     data: undefined,
     loading: true,
@@ -322,10 +469,12 @@ export function useReportsNextData(
   }) as Register<ReadingRow[]>;
 
   const saveSheet = useCallback(
-    (next: SheetState) => {
-      updatePreferences({ [SHEET_PREF_KEY]: encodeSheet(next) });
+    async (next: SheetState): Promise<void> => {
+      if (!sheetKnown)
+        throw new Error('The sheet is not known yet, so it was not saved over the one you keep.');
+      await updatePreferencesAsync({ [SHEET_PREF_KEY]: encodeSheet(next) });
     },
-    [updatePreferences],
+    [sheetKnown, updatePreferencesAsync],
   );
 
   const refetchAll = useCallback(() => {
@@ -345,7 +494,10 @@ export function useReportsNextData(
     setTillDays,
     sheet,
     saveSheet,
-    sheetKnown: !prefsLoading,
+    sheetKnown,
+    sheetUnread,
+    sheetStale,
+    currency,
     refetchAll,
   };
 }

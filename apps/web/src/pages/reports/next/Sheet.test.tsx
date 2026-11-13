@@ -66,7 +66,7 @@ describe('Sheet — the drag-to-rearrange canvas', () => {
       { i: 'till', x: 3, y: 2, w: 5, h: 9 },
       { i: 'ledger', x: 5, y: 0, w: 7, h: 9 },
     ]);
-    expect(onMove).toHaveBeenCalledWith({
+    expect(onMove.mock.calls[0][0]).toEqual({
       till: { x: 3, y: 2, w: 5, h: 9 },
       ledger: { x: 5, y: 0, w: 7, h: 9 },
     });
@@ -79,10 +79,33 @@ describe('Sheet — the drag-to-rearrange canvas', () => {
       { i: 'till', x: 0, y: 0, w: 9, h: 14 },
       { i: 'ledger', x: 9, y: 0, w: 3, h: 9 },
     ]);
-    expect(onMove).toHaveBeenCalledWith({
+    expect(onMove.mock.calls[0][0]).toEqual({
       till: { x: 0, y: 0, w: 9, h: 14 },
       ledger: { x: 9, y: 0, w: 3, h: 9 },
     });
+  });
+
+  it('writes a phone drag back onto the wide sheet without shrinking it', () => {
+    // Found in the browser 2026-11-11: the grid hands back the layout of the
+    // ruling it draws, and on a phone that is four columns. Saved as is, one
+    // drag left every cutting four twelfths wide on the desktop.
+    const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(500);
+    try {
+      const { onMove, props } = paint(true);
+      // xs (4 columns): `ledger` dragged above `till`.
+      props.onDragStop?.([
+        { i: 'ledger', x: 0, y: 0, w: 4, h: 9 },
+        { i: 'till', x: 0, y: 9, w: 4, h: 9 },
+      ]);
+      const slots = onMove.mock.calls[0][0] as Record<string, { x: number; w: number }>;
+      expect(slots.till.w).toBe(5);
+      expect(slots.ledger.w).toBe(7);
+      expect(slots.ledger.x + slots.ledger.w).toBeLessThanOrEqual(12);
+      // The phone draws row-mates in list order, so who comes first travels too.
+      expect(onMove.mock.calls[0][1]).toEqual(['ledger', 'till']);
+    } finally {
+      width.mockRestore();
+    }
   });
 
   it('moves and resizes only while arranging, and pins every cutting while reading', () => {

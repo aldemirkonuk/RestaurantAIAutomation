@@ -535,9 +535,9 @@ describe('CellarNext — "In the building tonight" (ADR 0160 sec110 item 2)', ()
   // lines say "items", not "wine rows"; the par tiles also name the items
   // their figure looks at. Labels and figures are unchanged. One case per line.
   it.each([
-    ['bottles', 'Bottles on hand', 'this house’s items'],
+    ['bottles', 'Bottles on hand', 'this house’s items counted by the bottle'],
     ['titles', 'Titles carried', 'this house’s items'],
-    ['par', 'At or under their own par', 'this house’s items with a par recorded, against each item’s own par'],
+    ['par', 'Below their own par', 'this house’s items with a par recorded, against each item’s own par'],
     ['parUnset', 'No par recorded', 'this house’s items with no par recorded'],
   ])('the %s tile names the items it was counted from, not "wine rows" (ADR 0293 F3)', (id, label, source) => {
     mock.current = {

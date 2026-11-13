@@ -38,6 +38,8 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
+  ComposedChart,
   Label,
   Line,
   LineChart,
@@ -52,6 +54,7 @@ import {
 } from 'recharts';
 import { turn } from '@/lib/mudavym';
 import { EM, MONO, failureLine, type Failure } from './rp-format';
+import { choose, planCombo, type ComboPick, type ComboPlan } from './rp-combo';
 import type { CatSeries, Fig, MatrixSeries, PointSeries, TableSpec } from './rp-view';
 
 /* ─────────────────────────────────────────────────── shared chrome ─────── */
@@ -74,9 +77,14 @@ const RULE = { stroke: 'var(--ink-3)', strokeDasharray: '2 3' } as const;
 /** Room for the two axis labels. Kept in one place so every plot agrees. */
 const MARGIN = { top: 8, right: 8, bottom: 14, left: 2 } as const;
 
-function Plot({ children }: { children: ReactNode }) {
+/**
+ * The frame every recharts drawing sits in. It names itself for a screen
+ * reader in words (`label`), because the SVG inside is a picture: the same
+ * register's table drawing is the readable form, one "Draw as" away.
+ */
+function Plot({ children, label }: { children: ReactNode; label: string }) {
   return (
-    <div className="rp-plot">
+    <div className="rp-plot" role="img" aria-label={label}>
       <ResponsiveContainer width="100%" height="100%" debounce={1}>
         {children as never}
       </ResponsiveContainer>
@@ -101,18 +109,23 @@ function Tip({
   projectedLabel?: string;
 }) {
   if (!active || !payload || payload.length === 0) return null;
-  const row = payload[0]?.payload as { full?: string } | undefined;
+  const row = payload[0]?.payload as { full?: string; isProjected?: boolean } | undefined;
   const rows = payload.filter((p) => typeof p.value === 'number');
   if (rows.length === 0) return null;
   return (
     <div className="rp-tip">
       <span className="rp-tip__head">{row?.full ?? String(label ?? '')}</span>
-      {rows.map((p) => (
-        <span key={String(p.dataKey)} className="rp-tip__row">
-          <b>{format(p.value as number)}</b> {unit}
-          {p.dataKey === 'projected' && projectedLabel ? ` · ${projectedLabel}` : ''}
-        </span>
-      ))}
+      {rows.map((p) => {
+        // A bar drawing carries one series, so a projected bar says so itself.
+        const projected =
+          p.dataKey === 'projected' || (p.dataKey === 'shown' && row?.isProjected === true);
+        return (
+          <span key={String(p.dataKey)} className="rp-tip__row">
+            <b>{format(p.value as number)}</b> {unit}
+            {projected && projectedLabel ? ` · ${projectedLabel}` : ''}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -191,8 +204,15 @@ export function RegisterBody<T>({
  * a figure computed from WAC on 2 rows in 72. Reprinting it verbatim is the
  * only version of this line that cannot go stale.
  */
-export function Working({ lines }: { lines: Array<string | null | undefined> }) {
-  const [open, setOpen] = useState(false);
+export function Working({
+  lines,
+  defaultOpen = false,
+}: {
+  lines: Array<string | null | undefined>;
+  /** Open on first paint. The flat view starts open: it has the room. */
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
   const real = lines.filter((l): l is string => !!l && l.trim() !== '');
   if (real.length === 0) return null;
   return (
@@ -213,8 +233,10 @@ export function Working({ lines }: { lines: Array<string | null | undefined> }) 
       >
         <div>
           <ul style={{ margin: '4px 0 0', padding: '0 0 0 14px', display: 'grid', gap: 3 }}>
-            {real.map((l) => (
-              <li key={l} className="rp-cap">
+            {/* Keyed by position AND text: a server can return the same
+                sentence twice, and a text-only key collapsed the pair into one. */}
+            {real.map((l, i) => (
+              <li key={`${i}:${l}`} className="rp-cap">
                 {l}
               </li>
             ))}
@@ -265,9 +287,24 @@ export function BigFigure({ fig, window }: { fig: Fig; window: string }) {
  * `projected` is always the dashed/hollow half: a forecast that looks like a
  * measurement is a lie told with a stroke width.
  */
+/**
+ * Which category ticks to draw. A week (seven short names) always fits, so it
+ * shows every day: `preserveStartEnd` with a 26px gap dropped Mon, Wed and Sat
+ * from "The week's shape" on a 340px plot. Longer runs keep the first and last
+ * and thin the middle rather than overprint.
+ */
+export function tickInterval(rows: ReadonlyArray<{ label: string }>): 0 | 'preserveStartEnd' {
+  return rows.length <= 7 && rows.every((r) => r.label.length <= 5) ? 0 : 'preserveStartEnd';
+}
+
+const KIND_WORDS = { line: 'A line', area: 'An area', bars: 'Bars' } as const;
+
 export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'area' | 'bars' }) {
   const { data, xLabel, yLabel, unit, format, refs, projectedLabel } = series;
   const hasProjection = data.some((d) => d.projected != null);
+  const label = `${KIND_WORDS[kind]} of ${yLabel} by ${xLabel}${
+    hasProjection ? `, the ${projectedLabel ?? 'projected'} part dashed` : ''
+  }`;
   const tip = (
     <Tooltip
       cursor={kind === 'bars' ? { fill: 'var(--seal-tint)' } : { stroke: 'var(--seal-ring)' }}
@@ -279,7 +316,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
   const axes = (
     <>
       <CartesianGrid vertical={false} stroke="var(--paper-2)" />
-      <XAxis dataKey="label" {...AXIS} interval="preserveStartEnd" minTickGap={26}>
+      <XAxis dataKey="label" {...AXIS} interval={tickInterval(data)} minTickGap={26}>
         <Label value={xLabel} position="insideBottom" offset={-11} style={AXIS_LABEL} />
       </XAxis>
       <YAxis {...AXIS} width={52} tickFormatter={(v: number) => format(v)}>
@@ -304,29 +341,44 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
     </>
   );
 
-  if (kind === 'bars')
+  if (kind === 'bars') {
+    // ONE bar series, so every day keeps a full-width slot. A day that was
+    // measured is drawn measured, including the seam day the line drawings
+    // share between both halves; a day that is only expected is the hollow,
+    // dashed bar in the same slot. Two grouped series put a measured and a
+    // projected bar side by side at half width, and drew the seam twice.
+    const rows = data.map((d) => ({
+      ...d,
+      shown: d.value ?? d.projected ?? null,
+      isProjected: d.value == null && d.projected != null,
+    }));
     return (
-      <Plot>
-        <BarChart data={data} margin={MARGIN}>
+      <Plot label={label}>
+        <BarChart data={rows} margin={MARGIN}>
           {axes}
-          <Bar dataKey="value" fill="var(--seal)" radius={[3, 3, 0, 0]} isAnimationActive={false} />
-          {hasProjection && (
-            <Bar
-              dataKey="projected"
-              fill="var(--seal-tint)"
-              stroke="var(--seal-deep)"
-              strokeDasharray="3 2"
-              radius={[3, 3, 0, 0]}
-              isAnimationActive={false}
-            />
-          )}
+          <Bar dataKey="shown" radius={[3, 3, 0, 0]} isAnimationActive={false}>
+            {rows.map((r, i) =>
+              r.isProjected ? (
+                <Cell
+                  key={`${i}:${r.label}`}
+                  fill="var(--seal-tint)"
+                  stroke="var(--seal-deep)"
+                  strokeDasharray="3 2"
+                  data-projected="true"
+                />
+              ) : (
+                <Cell key={`${i}:${r.label}`} fill="var(--seal)" data-projected="false" />
+              ),
+            )}
+          </Bar>
         </BarChart>
       </Plot>
     );
+  }
 
   if (kind === 'area')
     return (
-      <Plot>
+      <Plot label={label}>
         <AreaChart data={data} margin={MARGIN}>
           {axes}
           <Area
@@ -357,7 +409,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
     );
 
   return (
-    <Plot>
+    <Plot label={label}>
       <LineChart data={data} margin={MARGIN}>
         {axes}
         <Line
@@ -387,6 +439,184 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
 }
 
 /**
+ * A measure named for the caption: "Label (unit)", and just "Label" when the
+ * unit only repeats the label ("Checks" in checks, "Taken" in taken), which
+ * would read as "Checks, in checks".
+ */
+function named(m: { label: string; unit: string }): string {
+  const same = m.unit.trim().toLowerCase() === m.label.trim().toLowerCase();
+  return same ? m.label : `${m.label} (${m.unit})`;
+}
+
+/**
+ * Bars for one measure and a line for another, on the same points — see
+ * `rp-combo.ts` for the three rules (one axis per unit, a gap is a gap, the
+ * picker never names a measure twice).
+ *
+ * The picker is shown only when the register offers more than two measures; with
+ * exactly two there is nothing to choose. `pick`/`onPick` make it controlled
+ * (the sheet keeps the choice above the cutting, keyed by its id, so moving the
+ * cutting never loses it). The full-screen view holds its own choice the same
+ * way, one level up in `CuttingFlat`, so it survives a "Draw as" flip there and
+ * is never written to the sheet. With no `onPick` at all it keeps its own.
+ */
+export function ComboPlot({
+  series,
+  pick,
+  onPick,
+}: {
+  series: CatSeries;
+  pick?: Partial<ComboPick>;
+  onPick?: (p: ComboPick) => void;
+}) {
+  const [own, setOwn] = useState<Partial<ComboPick> | undefined>(pick);
+  const plan = planCombo(series, onPick ? pick : own);
+  if (!plan) return null;
+  const set = (side: keyof ComboPick, key: string) => {
+    const next = choose(plan.pick, side, key);
+    if (onPick) onPick(next);
+    else setOwn(next);
+  };
+  const { bars, line, split, rows } = plan;
+  const shared = split ? null : bars.unit;
+  const words = split
+    ? `Bars: ${named(bars)}, on the left scale. Line: ${named(line)}, on the right scale.`
+    : `Bars: ${bars.label}. Line: ${line.label}. Both are in ${bars.unit}, so they share one scale.`;
+  return (
+    <>
+      {plan.measures.length > 2 && (
+        <div className="rp-row rp-no-drag" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <label className="rp-field">
+            <span className="rp-eyebrow">Bars show</span>
+            <select
+              className="rp-select rp-focus"
+              aria-label="Bars show"
+              value={plan.pick.bars}
+              onChange={(e) => set('bars', e.target.value)}
+            >
+              {plan.measures.map((m) => (
+                <option key={m.key} value={m.key}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="rp-field">
+            <span className="rp-eyebrow">Line shows</span>
+            <select
+              className="rp-select rp-focus"
+              aria-label="Line shows"
+              value={plan.pick.line}
+              onChange={(e) => set('line', e.target.value)}
+            >
+              {plan.measures.map((m) => (
+                <option key={m.key} value={m.key}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+      <Plot label={`Bars of ${bars.label} and a line of ${line.label} by ${series.xLabel}`}>
+        <ComposedChart
+          data={rows}
+          margin={split ? { ...MARGIN, right: 2 } : MARGIN}
+        >
+          <CartesianGrid vertical={false} stroke="var(--paper-2)" />
+          <XAxis dataKey="label" {...AXIS} interval={tickInterval(rows)} minTickGap={26}>
+            <Label value={series.xLabel} position="insideBottom" offset={-11} style={AXIS_LABEL} />
+          </XAxis>
+          <YAxis
+            yAxisId="bars"
+            {...AXIS}
+            width={52}
+            tickFormatter={(v: number) => bars.format(v)}
+          >
+            <Label
+              value={shared ?? bars.label}
+              angle={-90}
+              position="insideLeft"
+              offset={12}
+              style={AXIS_LABEL}
+            />
+          </YAxis>
+          {split && (
+            <YAxis
+              yAxisId="line"
+              orientation="right"
+              {...AXIS}
+              width={52}
+              tickFormatter={(v: number) => line.format(v)}
+            >
+              <Label
+                value={line.label}
+                angle={90}
+                position="insideRight"
+                offset={12}
+                style={AXIS_LABEL}
+              />
+            </YAxis>
+          )}
+          <Tooltip
+            cursor={{ fill: 'var(--seal-tint)' }}
+            content={<ComboTip plan={plan} /> as unknown as never}
+          />
+          <Bar
+            yAxisId="bars"
+            dataKey="bar"
+            name={bars.label}
+            fill="var(--seal)"
+            radius={[3, 3, 0, 0]}
+            isAnimationActive={false}
+          />
+          <Line
+            yAxisId={split ? 'line' : 'bars'}
+            dataKey="line"
+            name={line.label}
+            type="monotone"
+            stroke="var(--ink-2)"
+            strokeWidth={1.8}
+            dot={{ r: 2.4, fill: 'var(--ink-2)', stroke: 'var(--ink-2)' }}
+            isAnimationActive={false}
+            connectNulls={false}
+          />
+        </ComposedChart>
+      </Plot>
+      <p className="rp-cap">{words}</p>
+    </>
+  );
+}
+
+/** The tooltip for the combination: each measure in its OWN unit, in words. */
+function ComboTip({
+  active,
+  payload,
+  plan,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload?: { full?: string; bar: number | null; line: number | null } }>;
+  plan: ComboPlan;
+}) {
+  const row = active ? payload?.[0]?.payload : undefined;
+  if (!row) return null;
+  const lines: Array<[string, number | null, ComboPlan['bars']]> = [
+    ['Bars', row.bar, plan.bars],
+    ['Line', row.line, plan.line],
+  ];
+  return (
+    <div className="rp-tip">
+      <span className="rp-tip__head">{row.full}</span>
+      {lines.map(([side, v, m]) => (
+        <span key={side} className="rp-tip__row">
+          {m.label}: {v == null ? <b>{EM}</b> : <b>{m.format(v)}</b>} {v == null ? '' : m.unit}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/**
  * Two measures against each other, with the engine's own medians as the
  * crosshair. A row with no y is NOT plotted — dropping it to y=0 would file
  * every uncosted wine as a "dog" (the server refuses that too: `quadrant:
@@ -395,7 +625,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
 export function PointPlot({ series }: { series: PointSeries }) {
   const { data, xLabel, yLabel, formatX, formatY, refX, refY } = series;
   return (
-    <Plot>
+    <Plot label={`${yLabel} against ${xLabel}, one point each`}>
       <ScatterChart margin={MARGIN}>
         <CartesianGrid stroke="var(--paper-2)" />
         <XAxis type="number" dataKey="x" {...AXIS} tickFormatter={(v: number) => formatX(v)}>
@@ -498,8 +728,8 @@ export function HeatGrid({ series }: { series: MatrixSeries }) {
                     key={c}
                     className="rp-heat__cell"
                     data-blank={v == null}
-                    title={cell ? `${cell.title} — ${format(v as number)} ${unit}` : undefined}
-                    aria-label={cell ? `${cell.title}, ${format(v as number)} ${unit}` : undefined}
+                    title={cell ? `${cell.title} — ${heatWords(v, format, unit)}` : undefined}
+                    aria-label={cell ? `${cell.title}, ${heatWords(v, format, unit)}` : undefined}
                   >
                     <span style={{ opacity: v == null ? 0 : 0.1 + 0.9 * t }} />
                   </td>
@@ -511,6 +741,11 @@ export function HeatGrid({ series }: { series: MatrixSeries }) {
       </table>
     </div>
   );
+}
+
+/** A heat cell's figure in words; a cell with no value is "nothing recorded", never a formatted null. */
+function heatWords(v: number | null, format: (n: number) => string, unit: string): string {
+  return v == null ? 'nothing recorded' : `${format(v)} ${unit}`;
 }
 
 /** The plain register: rows as they are, already formatted, dashes intact. */

@@ -26,21 +26,28 @@
  * is a sentence naming the register, an unknown is an em dash, and a true
  * answer that must be SAID rather than drawn (`view.say`) suppresses the chart
  * whatever type is selected.
+ *
+ * While reading, a cutting with a register also offers "full screen"
+ * (`CuttingFlat.tsx`, `?flat=<id>`), drawn here over the same register.
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ChartArea,
   ChartColumn,
   ChartLine,
+  ChartNoAxesCombined,
   ChartScatter,
   Grid3x3,
   Hash,
+  Maximize2,
   Table,
 } from 'lucide-react';
 import {
   BigFigure,
   CatPlot,
+  ComboPlot,
   DataTable,
   FigureRow,
   HeatGrid,
@@ -50,8 +57,11 @@ import {
   Working,
 } from './rp-plot';
 import { CATALOGUE, graphOrDefault, type ViewCtx } from './rp-catalogue';
+import { readsRegister } from './rp-spec';
 import { Grip, PlacingBar } from './Placing';
+import CuttingFlat, { FLAT_PARAM } from './CuttingFlat';
 import type { ArrangeApi } from './rp-arrange';
+import type { ComboPick } from './rp-combo';
 import { GRAPH_LABEL, type AnalysisId, type GraphType } from './rp-sheet';
 import type { AnalysisView } from './rp-view';
 import type { Register } from './useReportsNextData';
@@ -64,6 +74,7 @@ import type { Register } from './useReportsNextData';
 const GRAPH_ICON: Record<GraphType, typeof ChartLine> = {
   line: ChartLine,
   bars: ChartColumn,
+  combo: ChartNoAxesCombined,
   area: ChartArea,
   heatmap: Grid3x3,
   scatter: ChartScatter,
@@ -84,7 +95,9 @@ export function TillWindowPicker({
   days: number;
   onChange: (d: number) => void;
 }) {
-  const options = useMemo(() => [7, 30, 90], []);
+  // A year is the window an owner reads a season against (audit G19); the
+  // gateway already allows 1–365 house days (`analytics.controller.ts`).
+  const options = useMemo(() => [7, 30, 90, 365], []);
   return (
     <div role="group" aria-label="Till window" style={{ display: 'flex', gap: 3 }}>
       {options.map((d) => (
@@ -102,43 +115,73 @@ export function TillWindowPicker({
   );
 }
 
+/**
+ * True when the reader's drawing needs a shape this view does not carry, so
+ * `Drawing` says why instead of plotting. One test, read by `Drawing` (what to
+ * show) and `Body` (whether the view's own reason was already said above).
+ */
+function cannotDraw(view: AnalysisView, graph: GraphType): boolean {
+  if (view.say) return false;
+  switch (graph) {
+    case 'line':
+    case 'area':
+    case 'bars':
+      return !view.cats;
+    case 'combo':
+      return !view.cats?.measures?.length;
+    case 'scatter':
+      return !view.points;
+    case 'heatmap':
+      return !view.matrix;
+    case 'figure':
+      return view.figures.length === 0;
+    case 'table':
+    default:
+      return !view.node && !view.table;
+  }
+}
+
 /** The chosen drawing, or — when the register cannot honestly be drawn that
  *  way at all — a sentence saying so rather than an empty frame. */
 function Drawing({
   view,
   graph,
   windowLine,
+  combo,
 }: {
   view: AnalysisView;
   graph: GraphType;
   windowLine: string;
+  combo?: ComboControl;
 }) {
   if (view.say) return <Nothing>{view.say}</Nothing>;
+  if (cannotDraw(view, graph)) return <Undrawable graph={graph} why={view.undrawn} />;
   switch (graph) {
     case 'line':
     case 'area':
     case 'bars':
-      return view.cats ? <CatPlot series={view.cats} kind={graph} /> : <Undrawable graph={graph} />;
+      return <CatPlot series={view.cats!} kind={graph} />;
+    case 'combo':
+      return <ComboPlot series={view.cats!} pick={combo?.pick} onPick={combo?.onPick} />;
     case 'scatter':
-      return view.points ? <PointPlot series={view.points} /> : <Undrawable graph={graph} />;
+      return <PointPlot series={view.points!} />;
     case 'heatmap':
-      return view.matrix ? <HeatGrid series={view.matrix} /> : <Undrawable graph={graph} />;
+      return <HeatGrid series={view.matrix!} />;
     case 'figure':
-      return view.figures.length > 0 ? (
-        <BigFigure fig={view.figures[0]} window={windowLine} />
-      ) : (
-        <Undrawable graph={graph} />
-      );
+      return <BigFigure fig={view.figures[0]} window={windowLine} />;
     case 'table':
     default:
       if (view.node) return <>{view.node}</>;
-      return view.table ? <DataTable table={view.table} /> : <Undrawable graph={graph} />;
+      return <DataTable table={view.table!} />;
   }
 }
 
 /** The register answered, and this particular answer has nothing of that
- *  shape in it. Said, never drawn as an empty axis. */
-function Undrawable({ graph }: { graph: GraphType }) {
+ *  shape in it. Said, never drawn as an empty axis. When the register knows
+ *  WHY (`view.undrawn` — say, no order fell in either window), only that real
+ *  reason is said: a generic line above it would only bury it (r56). */
+function Undrawable({ graph, why }: { graph: GraphType; why?: ReactNode }) {
+  if (why != null) return <Nothing>{why}</Nothing>;
   return (
     <Nothing>
       This register answered, and what it returned cannot be drawn as{' '}
@@ -158,18 +201,29 @@ function Body({
   view,
   graph,
   windowLine,
+  workingOpen = false,
+  combo,
 }: {
   view: AnalysisView;
   graph: GraphType;
   windowLine: string;
+  /** Which measure is the bars and which the line, when the drawing is `combo`. */
+  combo?: ComboControl;
+  /** Start with the server's working shown — the flat view has the room. */
+  workingOpen?: boolean;
 }) {
   // With a bespoke table (the reading's sentences, the writing desk) the
   // figures would repeat what the rows already say, so they are left off.
   const figures =
     graph === 'table' && view.node ? [] : graph === 'figure' ? view.figures.slice(1) : view.figures;
+  // The reason the drawing is absent was just said in its place; say it once.
+  const notes =
+    view.undrawn != null && cannotDraw(view, graph)
+      ? view.notes.filter((n) => n !== view.undrawn)
+      : view.notes;
   return (
     <>
-      <Drawing view={view} graph={graph} windowLine={windowLine} />
+      <Drawing view={view} graph={graph} windowLine={windowLine} combo={combo} />
       {figures.length > 0 && (
         <dl className="rp-dl">
           {figures.map((f) => (
@@ -177,14 +231,20 @@ function Body({
           ))}
         </dl>
       )}
-      {view.notes.map((n, i) => (
+      {notes.map((n, i) => (
         <p key={i} className="rp-cap">
           {n}
         </p>
       ))}
-      <Working lines={view.basis} />
+      <Working lines={view.basis} defaultOpen={workingOpen} />
     </>
   );
+}
+
+/** The bars-and-line choice. With no `onPick` the drawing keeps its own (the full-screen view). */
+interface ComboControl {
+  pick?: Partial<ComboPick>;
+  onPick?: (p: ComboPick) => void;
 }
 
 export interface CuttingProps {
@@ -198,6 +258,9 @@ export interface CuttingProps {
   swapOptions: Array<{ id: AnalysisId; taken: boolean }>;
   /** The keyboard/button path over the same layout state (`rp-arrange.ts`). */
   arrange: ArrangeApi;
+  /** The page's memory of which measure is bars and which is the line, by cutting. */
+  comboPick?: Partial<ComboPick>;
+  onComboPick?: (p: ComboPick) => void;
   onGraph: (g: GraphType) => void;
   onSwap: (to: AnalysisId) => void;
   onRemove: () => void;
@@ -212,6 +275,8 @@ export default function Cutting({
   arranging,
   swapOptions,
   arrange,
+  comboPick,
+  onComboPick,
   onGraph,
   onSwap,
   onRemove,
@@ -221,21 +286,77 @@ export default function Cutting({
   const drawn = graphOrDefault(id, graph);
   const windowLine = spec.window(ctx);
 
-  const body = spec.path ? (
-    <RegisterBody
-      register={spec.register}
-      loading={register?.loading ?? true}
-      failure={register?.failure ?? null}
-      data={register?.data}
-      onRetry={() => register?.refetch()}
-    >
-      {(data) => <Body view={spec.view(data, ctx)} graph={drawn} windowLine={windowLine} />}
-    </RegisterBody>
-  ) : (
-    <Body view={spec.view(null, ctx)} graph={drawn} windowLine={windowLine} />
-  );
+  // One body, two places: the sheet, and the flat view (working open).
+  // The flat view passes its own bars-and-line choice (view-only, kept across
+  // its "Draw as" flips); the sheet passes the page's, keyed by cutting id.
+  const sheetCombo: ComboControl = { pick: comboPick, onPick: onComboPick };
+  const bodyFor = (g: GraphType, workingOpen = false, combo: ComboControl = sheetCombo) =>
+    readsRegister(spec) ? (
+      <RegisterBody
+        register={spec.register}
+        loading={register?.loading ?? true}
+        failure={register?.failure ?? null}
+        data={register?.data}
+        onRetry={() => register?.refetch()}
+      >
+        {(data) => (
+          <Body
+            view={spec.view(data, ctx)}
+            graph={g}
+            windowLine={windowLine}
+            workingOpen={workingOpen}
+            combo={combo}
+          />
+        )}
+      </RegisterBody>
+    ) : (
+      <Body
+        view={spec.view(null, ctx)}
+        graph={g}
+        windowLine={windowLine}
+        workingOpen={workingOpen}
+        combo={combo}
+      />
+    );
+  const body = bodyFor(drawn);
 
   const held = arrange.picked === id;
+
+  /* Laid flat: only with a register, only while reading, only for the id
+     the URL names (`get` answers the first, so two params open one dialog).
+     Opening pushes an entry marked with this id, so close goes back through
+     history and Back, Esc and the button agree; a cold `?flat=` has no entry
+     of ours, so close removes the param in place. */
+  const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const canLayFlat = readsRegister(spec);
+  const flat = canLayFlat && !arranging && params.get(FLAT_PARAM) === id;
+  const openerRef = useRef<HTMLButtonElement | null>(null);
+  const flatLabel = `Show ${spec.title} full screen`;
+
+  const openFlat = () => {
+    const next = new URLSearchParams(params);
+    next.set(FLAT_PARAM, id);
+    setParams(next, { state: { rpFlat: id } });
+  };
+  const closeFlat = () => {
+    const ours = (location.state as { rpFlat?: unknown } | null)?.rpFlat === id;
+    if (ours) {
+      navigate(-1);
+      return;
+    }
+    const next = new URLSearchParams(params);
+    next.delete(FLAT_PARAM);
+    setParams(next, { replace: true });
+  };
+
+  // Focus goes back to the control that opened the view, however it closed.
+  const wasFlat = useRef(flat);
+  useEffect(() => {
+    if (wasFlat.current && !flat) openerRef.current?.focus();
+    wasFlat.current = flat;
+  }, [flat]);
 
   return (
     <section className="rp-cut" aria-label={spec.title} data-held={held || undefined}>
@@ -257,8 +378,22 @@ export default function Cutting({
               Take off
             </button>
           </div>
-        ) : spec.takesWindow ? (
-          <TillWindowPicker days={ctx.days} onChange={onDays} />
+        ) : spec.takesWindow || canLayFlat ? (
+          <div className="rp-row" style={{ gap: 6 }}>
+            {spec.takesWindow && <TillWindowPicker days={ctx.days} onChange={onDays} />}
+            {canLayFlat && (
+              <button
+                ref={openerRef}
+                type="button"
+                className="rp-flat-open rp-ink rp-focus rp-no-drag"
+                aria-label={flatLabel}
+                title={flatLabel}
+                onClick={openFlat}
+              >
+                <Maximize2 size={14} strokeWidth={1.6} aria-hidden />
+              </button>
+            )}
+          </div>
         ) : null}
       </div>
 
@@ -310,6 +445,22 @@ export default function Cutting({
       )}
 
       <div className="rp-cut__body">{body}</div>
+
+      {flat && (
+        <CuttingFlat
+          title={spec.title}
+          windowLine={windowLine}
+          graphs={spec.graphs}
+          initialGraph={drawn}
+          initialComboPick={comboPick}
+          renderBody={(g, combo) => bodyFor(g, true, combo)}
+          windowControl={
+            spec.takesWindow ? <TillWindowPicker days={ctx.days} onChange={onDays} /> : undefined
+          }
+          anchorRef={openerRef}
+          onClose={closeFlat}
+        />
+      )}
     </section>
   );
 }

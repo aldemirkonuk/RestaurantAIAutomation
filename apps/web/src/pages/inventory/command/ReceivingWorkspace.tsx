@@ -44,7 +44,7 @@ import { CURRENCY_CODES } from '../../../lib/currency'
  */
 import { RECEIVING_PRICE_CURRENCY_RUNGS } from '../../../../../api-gateway/src/procurement/price-currency'
 import { ThemedSelect } from '../../../components/ui/ThemedSelect'
-import { computeMatch, verdictStyle, money } from '../../../lib/invoiceMatch'
+import { computeMatch, costCorrectionLine, verdictStyle, money } from '../../../lib/invoiceMatch'
 import { cn } from '../../../lib/utils'
 import type { InventoryItem } from '../useInventoryPage'
 import type { ShelfReceived } from '../../../services/api/types'
@@ -641,16 +641,18 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
         })),
         note: note || undefined,
       }),
-    onSuccess: () => {
+    onSuccess: (verified) => {
       queryClient.invalidateQueries({ queryKey: ['inventory'] })
       queryClient.invalidateQueries({ queryKey: ['orders'] })
       queryClient.invalidateQueries({ queryKey: ['notifications'] })
       const heldOpen = match.backorderQty > 0
+      const settled = costCorrectionLine(verified?.costCorrection)
+      const said = heldOpen
+        ? `${acceptedQty} of ${orderedQty} accepted — ${match.backorderQty} still on backorder.`
+        : match.summary
       toast.success(
         heldOpen ? 'Received, order held open' : 'Receipt verified',
-        heldOpen
-          ? `${acceptedQty} of ${orderedQty} accepted — ${match.backorderQty} still on backorder.`
-          : match.summary,
+        settled ? `${said} ${settled}` : said,
       )
       onClose()
     },

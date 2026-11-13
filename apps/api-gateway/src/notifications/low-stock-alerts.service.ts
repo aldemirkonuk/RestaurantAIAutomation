@@ -8,7 +8,12 @@ import {
 import { Cron } from "@nestjs/schedule";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
-import { CRITICAL_RATIO, classifyStock } from "../common/stock-status";
+import { readWholeWindow } from "../common/read-whole-window";
+import {
+  CRITICAL_RATIO,
+  alertBandOf,
+  classifyStock,
+} from "../common/stock-status";
 import { NotificationsService } from "./notifications.service";
 import { GmailService } from "../communications/gmail.service";
 import {
@@ -143,6 +148,93 @@ export function heldNoNewerThan(cutoff: string): string {
   return `last_held_at.is.null,last_held_at.lte.${iso}`;
 }
 
+/**
+ * One wine as a stored low-stock row names it (`metadata.wines`).
+ * `inventoryId` is written from QA round 9c on; older rows carry `wineId`
+ * (the library id) only.
+ */
+export interface InboxWine {
+  inventoryId?: string;
+  wineId?: string;
+  wineName: string;
+  currentStock: number;
+  threshold: number;
+  severity?: "critical" | "low";
+  notCounted?: boolean;
+  /** Set when a count restated this entry: the figure the alert first gave. */
+  uncountedFigure?: number;
+  /** The count that restated this entry. */
+  countedAt?: string;
+}
+
+/** The stored message of an instant alert, from the wines it names. */
+export function instantAlertMessage(wines: readonly InboxWine[]): string {
+  const said = (w: InboxWine) =>
+    w.notCounted
+      ? `${w.wineName} (${w.currentStock}/${w.threshold}, not counted yet)`
+      : w.countedAt
+        ? `${w.wineName} (${w.currentStock}/${w.threshold}, counted since)`
+        : `${w.wineName} (${w.currentStock}/${w.threshold})`;
+  if (wines.length !== 1) {
+    return `Just crossed below par: ${wines.map(said).join(", ")}`;
+  }
+  const w = wines[0];
+  if (w.notCounted) {
+    return `${w.currentStock} bottles by receipts and sales, not counted yet (par: ${w.threshold})`;
+  }
+  if (w.countedAt) {
+    const n = w.currentStock;
+    return `Counted since: ${n} bottle${n === 1 ? "" : "s"} (par: ${w.threshold}). The alert's ${w.uncountedFigure} was by receipts and sales.`;
+  }
+  return `Only ${w.currentStock} bottles remaining (par: ${w.threshold})`;
+}
+
+/**
+ * QA round 9c, item 3: a stored alert must not keep saying "not counted yet"
+ * once the wine is counted. Restates every entry the alert called not counted
+ * whose wine has been counted after `notifiedAt`, with the counted figure,
+ * keeping the alert's own figure as `uncountedFigure`. Returns null when
+ * nothing was counted since, so the caller writes nothing. A library id that
+ * matches more than one of the house's rows is left as it was: restating the
+ * wrong wine's count would be worse than the stale words.
+ */
+export function restateOnCount(
+  wines: readonly InboxWine[],
+  notifiedAt: string,
+  counted: readonly {
+    id: string;
+    master_wine_id?: string | null;
+    stock_live?: number | null;
+    last_counted_at: string;
+  }[],
+): InboxWine[] | null {
+  const at = Date.parse(notifiedAt);
+  let changed = false;
+  const out = wines.map((w) => {
+    if (w.notCounted !== true) return w;
+    const hits = counted.filter((c) =>
+      w.inventoryId
+        ? c.id === w.inventoryId
+        : c.master_wine_id === w.wineId || c.id === w.wineId,
+    );
+    if (hits.length !== 1) return w;
+    const c = hits[0];
+    const stock = Number(c.stock_live);
+    if (!(Date.parse(c.last_counted_at) > at) || !Number.isFinite(stock)) {
+      return w;
+    }
+    changed = true;
+    return {
+      ...w,
+      notCounted: false,
+      uncountedFigure: w.currentStock,
+      currentStock: stock,
+      countedAt: c.last_counted_at,
+    };
+  });
+  return changed ? out : null;
+}
+
 interface LowStockRow {
   inventoryId: string;
   wineId: string;
@@ -150,6 +242,12 @@ interface LowStockRow {
   currentStock: number;
   threshold: number;
   severity: "critical" | "low";
+  /**
+   * OD-161: nobody has counted this wine; `currentStock` is received minus
+   * sold (a_received_wine_not_counted_yet_can_run_low). The alert says so in
+   * words instead of passing a computed figure off as a count.
+   */
+  notCounted?: boolean;
 }
 
 /**
@@ -219,7 +317,11 @@ export class LowStockAlertsService {
     try {
       // Before the read, for the same reason as `evaluateInventoryItems`.
       const lowReadStartedAt = new Date().toISOString();
+      await this.restateCountedAlerts();
       const byRestaurant = await this.getLowStockByRestaurant();
+      // Unread is not "nothing is low" (ADR 0020; QA round 12 R5): an empty
+      // map reset every state to ok and the next good read re-fired them all.
+      if (byRestaurant === null) return;
       const names = await this.getRestaurantNames([...byRestaurant.keys()]);
       for (const [restaurantId, rows] of byRestaurant) {
         await this.evaluateRestaurant(
@@ -276,7 +378,7 @@ export class LowStockAlertsService {
     try {
       const tick = hourTick(at);
       const byRestaurant = await this.getLowStockByRestaurant();
-      if (byRestaurant.size === 0) return;
+      if (byRestaurant === null || byRestaurant.size === 0) return;
       // Captured once, right after the read `rows` itself comes from — the
       // true "we observed these holds as of here" instant, before ANY
       // restaurant's email send or writes below (PR #486 round-2 audit,
@@ -422,6 +524,7 @@ export class LowStockAlertsService {
   }
   async triggerDailyDigest(): Promise<void> {
     const byRestaurant = await this.getLowStockByRestaurant();
+    if (byRestaurant === null) return;
     const rowsSnapshotAt = new Date().toISOString();
     const names = await this.getRestaurantNames([...byRestaurant.keys()]);
     for (const [restaurantId, rows] of byRestaurant) {
@@ -726,6 +829,8 @@ export class LowStockAlertsService {
       // rounds 3-4 audit).
       const readStartedAt = new Date().toISOString();
       const lowRows = await this.getLowStockForRestaurant(restaurantId);
+      // Unread is not recovered (QA round 12 R5).
+      if (lowRows === null) return;
       const lowById = new Map(lowRows.map((r) => [r.inventoryId, r]));
 
       const nowLow = inventoryIds
@@ -776,9 +881,6 @@ export class LowStockAlertsService {
     const criticalCount = wines.filter((w) => w.severity === "critical").length;
     const priority: "critical" | "high" =
       criticalCount > 0 ? "critical" : "high";
-    const list = wines
-      .map((w) => `${w.wineName} (${w.currentStock}/${w.threshold})`)
-      .join(", ");
     // No emoji in a stored title (ADR 0042 / the 2026-09-03 house rule): the
     // inbox draws the register's mark itself, and an emoji written into the
     // row is unstylable, unsearchable and permanent. The severity the emoji
@@ -797,10 +899,7 @@ export class LowStockAlertsService {
       {
         type: "inventory_low_stock",
         title,
-        message:
-          wines.length === 1
-            ? `Only ${wines[0].currentStock} bottles remaining (par: ${wines[0].threshold})`
-            : `Just crossed below par: ${list}`,
+        message: instantAlertMessage(wines),
         priority,
         actionUrl: "/inventory?filter=low-stock",
         actionLabel: "View Inventory",
@@ -810,11 +909,13 @@ export class LowStockAlertsService {
           count: wines.length,
           criticalCount,
           wines: wines.map((w) => ({
+            inventoryId: w.inventoryId,
             wineId: w.wineId,
             wineName: w.wineName,
             currentStock: w.currentStock,
             threshold: w.threshold,
             severity: w.severity,
+            notCounted: w.notCounted === true,
           })),
         },
       },
@@ -902,11 +1003,13 @@ export class LowStockAlertsService {
           count: rows.length,
           criticalCount,
           wines: rows.map((w) => ({
+            inventoryId: w.inventoryId,
             wineId: w.wineId,
             wineName: w.wineName,
             currentStock: w.currentStock,
             threshold: w.threshold,
             severity: w.severity,
+            notCounted: w.notCounted === true,
           })),
         },
       },
@@ -1048,6 +1151,7 @@ export class LowStockAlertsService {
       threshold: w.threshold,
       severity: w.severity,
       wineId: w.wineId,
+      notCounted: w.notCounted === true,
     }));
     try {
       await this.gmail.sendLowStockDigest({
@@ -1169,17 +1273,15 @@ export class LowStockAlertsService {
   // DATA HELPERS
   // ==========================================================================
 
-  /** All currently-low wines across every restaurant, grouped by restaurant. */
-  private async getLowStockByRestaurant(): Promise<Map<string, LowStockRow[]>> {
+  /** All currently-low wines grouped by restaurant; null when unread (never an empty map, which says every wine recovered). */
+  private async getLowStockByRestaurant(): Promise<Map<
+    string,
+    LowStockRow[]
+  > | null> {
     const map = new Map<string, LowStockRow[]>();
-    const { data, error } = await this.db.supabase
-      .from("v_low_stock_items")
-      .select("*");
-    if (error) {
-      this.logger.warn(`v_low_stock_items query failed: ${error.message}`);
-      return map;
-    }
-    for (const raw of data || []) {
+    const data = await this.readLowStockView(null);
+    if (data === null) return null;
+    for (const raw of data) {
       const restaurantId = raw.restaurant_id;
       if (!restaurantId) continue;
       const row = this.mapRow(raw);
@@ -1253,20 +1355,33 @@ export class LowStockAlertsService {
     };
   }
 
+  /** One house's view rows, or every house's; null when unread, logged. */
+  private async readLowStockView(
+    restaurantId: string | null,
+  ): Promise<any[] | null> {
+    try {
+      return await readWholeWindow<any>("v_low_stock_items", () => {
+        const q = this.db.supabase
+          .from("v_low_stock_items")
+          .select("*", { count: "exact" });
+        return restaurantId === null ? q : q.eq("restaurant_id", restaurantId);
+      });
+    } catch (e: any) {
+      this.logger.warn(
+        `v_low_stock_items could not be read${restaurantId ? ` for ${restaurantId}` : ""}: ${e?.message} — alert states kept, nothing sent`,
+      );
+      return null;
+    }
+  }
+
   /** Currently-low wines for a single restaurant (used by the real-time path). */
   private async getLowStockForRestaurant(
     restaurantId: string,
-  ): Promise<LowStockRow[]> {
-    const { data, error } = await this.db.supabase
-      .from("v_low_stock_items")
-      .select("*")
-      .eq("restaurant_id", restaurantId);
-    if (error) {
-      this.logger.warn(`v_low_stock_items (single) failed: ${error.message}`);
-      return [];
-    }
+  ): Promise<LowStockRow[] | null> {
+    const data = await this.readLowStockView(restaurantId);
+    if (data === null) return null;
     const rows: LowStockRow[] = [];
-    for (const raw of data || []) {
+    for (const raw of data) {
       const row = this.mapRow(raw);
       if (row) rows.push(row);
     }
@@ -1285,15 +1400,19 @@ export class LowStockAlertsService {
     // This service and the page disagreed on the lens run — it called Tsantali
     // at 2/5 "critical" while /summary reported criticalCount 0 — and the only
     // durable fix for two implementations of one rule is to stop having two.
-    const band = classifyStock(currentStock, threshold);
+    // A view row is in view by construction, so `alertBandOfViewRow` (what
+    // the dashboard asks) is `alertBandOf(classifyStock(...))` on its figure;
+    // this asks the same on the figure read above (stock_live, else the
+    // legacy current_stock).
+    const band = alertBandOf(classifyStock(currentStock, threshold));
     // Rows arrive from v_low_stock_items, which is already `stock < par`, so
     // `at_par`/`healthy` cannot appear here. If one ever does — the view and
     // this predicate having drifted — it is dropped rather than alerted on,
     // and said so, because alerting a venue about a wine that is not low is
     // how people learn to ignore alerts.
-    if (band !== "critical" && band !== "low") {
+    if (band === null) {
       this.logger.warn(
-        `v_low_stock_items returned ${raw.wine_name ?? inventoryId} at ${currentStock}/${threshold}, which classifyStock calls '${band}' — not alerting. The view's predicate and common/stock-status.ts have drifted.`,
+        `v_low_stock_items returned ${raw.wine_name ?? inventoryId} at ${currentStock}/${threshold}, which classifyStock does not call low — not alerting. The view's predicate and common/stock-status.ts have drifted.`,
       );
       return null;
     }
@@ -1305,7 +1424,78 @@ export class LowStockAlertsService {
       currentStock,
       threshold,
       severity,
+      // The view's last column (a_received_wine_not_counted_yet_can_run_low).
+      // Strictly null: a view without the column (undefined) only ever held
+      // counted rows.
+      notCounted: raw.last_counted_at === null,
     };
+  }
+
+  /**
+   * QA round 9c, item 3 — the session's call under the 2026-11-07 /goal:
+   * RESTATE, not retire. A stored low-stock row that called a wine "not
+   * counted yet" is rewritten in place once that wine is counted after it was
+   * sent: the counted figure replaces the received-minus-sold one, which is
+   * kept in the entry as `uncountedFigure`. Archiving was not enough: the
+   * inbox's default book ("Every line") still lists archived rows, so the
+   * stale words would stay on screen. An entry rewritten no longer carries
+   * `notCounted: true`, so it is read and written once per count.
+   *
+   * Every failure is logged and skipped, never thrown: a stale sentence is a
+   * smaller harm than a sweep that stops alerting.
+   */
+  async restateCountedAlerts(): Promise<number> {
+    let restated = 0;
+    try {
+      const { data, error } = await this.db.supabase
+        .from("notifications")
+        .select("id, restaurant_id, created_at, metadata")
+        .eq("type", "inventory_low_stock")
+        .contains("metadata", { wines: [{ notCounted: true }] });
+      if (error) throw new Error(error.message);
+      const byHouse = new Map<string, any[]>();
+      for (const n of data || []) {
+        if (!n.restaurant_id || !Array.isArray(n.metadata?.wines)) continue;
+        byHouse.set(n.restaurant_id, [...(byHouse.get(n.restaurant_id) ?? []), n]);
+      }
+      for (const [restaurantId, notes] of byHouse) {
+        const { data: counted, error: countedError } = await this.db.supabase
+          .from("restaurant_inventory")
+          .select("id, master_wine_id, stock_live, last_counted_at")
+          .eq("restaurant_id", restaurantId)
+          .not("last_counted_at", "is", null);
+        if (countedError) {
+          this.logger.warn(
+            `restate-on-count: counted wines of ${restaurantId} unreadable (${countedError.message}); stored alerts left as they are this sweep.`,
+          );
+          continue;
+        }
+        for (const n of notes) {
+          const wines = restateOnCount(n.metadata.wines, n.created_at, counted || []);
+          if (!wines) continue;
+          const patch: Record<string, any> = { metadata: { ...n.metadata, wines } };
+          // Only an instant alert's message names a figure; a digest's says
+          // counts ("1 critical · 2 low"), which a count does not falsify.
+          if (n.metadata.mode === "instant") {
+            patch.message = instantAlertMessage(wines);
+          }
+          const { error: writeError } = await this.db.supabase
+            .from("notifications")
+            .update(patch)
+            .eq("id", n.id);
+          if (writeError) {
+            this.logger.warn(
+              `restate-on-count: notification ${n.id} not rewritten (${writeError.message}).`,
+            );
+            continue;
+          }
+          restated++;
+        }
+      }
+    } catch (e: any) {
+      this.logger.warn(`restate-on-count skipped this sweep: ${e?.message}`);
+    }
+    return restated;
   }
 
   private async getAlertState(
