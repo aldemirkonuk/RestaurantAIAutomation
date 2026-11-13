@@ -109,7 +109,7 @@ describe("cost of goods is what the till sold", () => {
     expect(t.cogsCoverage).toMatchObject({ itemsMoved: 2, itemsCosted: 2 });
     expect(t.basis.cogs).toContain("2 items");
     expect(t.basis.cogs).toContain("4.00, are named apart");
-    expect(t.basis.costDerived).toContain("settledOnEarlierSales");
+    expect(t.basis.costDerived).toContain("Late prices settled in the window on bottles sold before it");
   });
 
   it("keeps the earlier-sale settlement null when the read does not name it, never 0", () => {
@@ -133,7 +133,7 @@ describe("cost of goods is what the till sold", () => {
     expect(t.grossMarginDollars).toBeNull();
     expect(t.daysInventoryOutstanding).toBeNull();
     expect(t.basis.cogs).toContain("1 bottle a void gave back named no sale");
-    expect(t.basis.cogs).toContain("came to 120.00 at cost (costOfCostedItems)");
+    expect(t.basis.cogs).toContain("came to 120.00 at cost: exact for those items");
     expect(t.basis.cogs).not.toMatch(/cost cost/);
     // None costed: nothing to give apart.
     const none = run({ cost: { ...COST, items: [item("a", { uncosted_out: 1 })] } });

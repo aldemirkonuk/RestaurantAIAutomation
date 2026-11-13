@@ -799,7 +799,9 @@ export class AdvancedAnalyticsService {
 
     return {
       basis: {
-        outflow: "delivered procurement_orders (revenue inflow needs POS feed)",
+        // Printed as "Outflow: …" on /reports and in the export: no table
+        // name (r11, 2026-11-12).
+        outflow: "delivered orders (money coming in needs the till connected)",
       },
       spendLast30d: last30,
       spendPrev30d: prev30,
