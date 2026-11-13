@@ -155,9 +155,57 @@ const UNIT_WORDS: Record<string, [one: string, many: string]> = {
 export function unitWord(uom: string | null | undefined, n: number | null): string | null {
   const key = (uom ?? '').trim().toLowerCase();
   if (!key) return null;
+  // Own keys only: "constructor" or "toString" is not a unit word.
+  if (!Object.prototype.hasOwnProperty.call(UNIT_WORDS, key)) return key;
   const pair = UNIT_WORDS[key];
-  if (!pair) return key;
   return n === 1 ? pair[0] : pair[1];
+}
+
+/** The unit a person reads 1,000 or more of a small unit in. */
+const UNIT_UP: Record<string, string> = { g: 'kg', ml: 'l', mg: 'g' };
+
+/**
+ * One figure as a person reads it, and the unit it is then in. Stock and par
+ * are integers in the good's own `uom` (ADR 0070), so a flour's 2500 is grams.
+ * Whole g, ml or mg of 1,000 or more read a unit up, every gram kept: 2500 g
+ * is "2.5 kg", 1750 g "1.75 kg", 1001 g "1.001 kg", 1500 ml "1.5 l". The same
+ * rule as `amountIn` in apps/api-gateway/src/common/goods-words.ts, which
+ * Lately and the alert line use, so the rail and the bell say the same stock
+ * the same way. Any other unit is left as it is.
+ */
+export function readAmount(
+  n: number,
+  uom: string | null | undefined,
+): { figure: string; unitKey: string } {
+  const key = (uom ?? '').trim().toLowerCase();
+  const up = Object.prototype.hasOwnProperty.call(UNIT_UP, key) ? UNIT_UP[key] : null;
+  if (up && Math.abs(n) >= 1000) {
+    return { figure: (n / 1000).toLocaleString('en-US', { maximumFractionDigits: 3 }), unitKey: up };
+  }
+  return { figure: formatNumber(n), unitKey: key };
+}
+
+/**
+ * "200 / min 500 g", "2.5 / min 5 kg", and, when the two figures read in
+ * different units, "800 g / min 2 kg": the stock carries its own unit only
+ * when it is not the minimum's. A missing figure is a dash and keeps the
+ * other's unit; a row with no unit says none, as before.
+ */
+export function stockAgainstMin(
+  stock: number | null,
+  min: number | null,
+  uom: string | null | undefined,
+): { stock: string; stockUnit: string | null; min: string; unit: string | null } {
+  const s = stock == null ? null : readAmount(stock, uom);
+  const m = min == null ? null : readAmount(min, uom);
+  const minKey = m?.unitKey ?? s?.unitKey ?? (uom ?? '').trim().toLowerCase();
+  const stockOwnUnit = s != null && m != null && s.unitKey !== m.unitKey;
+  return {
+    stock: s?.figure ?? DASH,
+    stockUnit: stockOwnUnit ? unitWord(s.unitKey, stock) : null,
+    min: m?.figure ?? DASH,
+    unit: unitWord(minKey, min),
+  };
 }
 
 function lowStockView(it: InventoryItem) {
@@ -169,7 +217,7 @@ function lowStockView(it: InventoryItem) {
     vintage: it.wineVintage ?? raw.vintage ?? null,
     stock: it.stockLive ?? raw.stock_live ?? null,
     min,
-    unit: unitWord(raw.uom, min),
+    uom: raw.uom ?? null,
     // OD-161: null = never counted (absent is not null).
     notCounted: raw.last_counted_at === null,
   };
@@ -245,7 +293,9 @@ export function LowStockPanel({
       )}
       {items != null && sorted.length > 0 && (
         <ul className="space-y-1.5">
-          {sorted.slice(0, 6).map((it) => (
+          {sorted.slice(0, 6).map((it) => {
+            const read = stockAgainstMin(it.stock, it.min, it.uom);
+            return (
             <li key={it.id} className="flex items-baseline justify-between gap-3 text-[13px]">
               {it.name ? (
                 <Link
@@ -269,16 +319,18 @@ export function LowStockPanel({
                 style={{ fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}
               >
                 <span className={it.stock === 0 ? 'text-seal font-semibold' : 'text-inkm-1'}>
-                  {it.stock == null ? DASH : formatNumber(it.stock)}
+                  {read.stock}
                 </span>
+                {read.stockUnit ? <span className="text-inkm-4">{` ${read.stockUnit}`}</span> : null}
                 <span className="text-inkm-4">
-                  {' '}/ min {it.min == null ? DASH : formatNumber(it.min)}
-                  {it.unit ? ` ${it.unit}` : null}
+                  {' '}/ min {read.min}
+                  {read.unit ? ` ${read.unit}` : null}
                 </span>
               </span>
               )}
             </li>
-          ))}
+            );
+          })}
           {sorted.length > 6 && (
             <li className="text-[11px] text-inkm-4">and {sorted.length - 6} more below minimum</li>
           )}
