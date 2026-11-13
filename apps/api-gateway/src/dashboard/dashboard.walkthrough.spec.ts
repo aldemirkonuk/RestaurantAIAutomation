@@ -435,6 +435,37 @@ describe("DashboardService — the founder walk-through, 2026-10-01", () => {
       expect(items.map((a) => a.description)).toEqual(["200 g on hand"]);
     });
 
+    it("Lately and the low line say a good as the inventory list does (kg, l, a bare count)", async () => {
+      db.getClient.mockReturnValue(
+        makeClient({
+          restaurant_inventory: [
+            { id: "f", display_name: "Bread Flour", stock_live: 2000, uom: "g", updated_at: "2026-09-12T00:00:00Z" },
+            { id: "o", display_name: "Olive Oil", stock_live: 1500, uom: "ml", updated_at: "2026-09-11T00:00:00Z" },
+            { id: "l", display_name: "Lemons", stock_live: 40, uom: "each", updated_at: "2026-09-10T00:00:00Z" },
+          ],
+        }),
+      );
+      const items = await service.getActivity("r1");
+      expect(items.map((a) => `${a.title} — ${a.description}`)).toEqual([
+        "Bread Flour — 2 kg on hand",
+        "Olive Oil — 1.5 l on hand",
+        "Lemons — 40 on hand",
+      ]);
+
+      db.getClient.mockReturnValue(
+        makeClient({
+          v_low_stock_items: [
+            { id: "f", stock_live: 2500, threshold_min: 5000, wine_name: "Bread Flour", vintage: null, uom: "g", last_counted_at: "2026-11-01T00:00:00Z" },
+          ],
+          restaurant_inventory: [],
+        }),
+      );
+      const alerts = await service.getAlerts("r1");
+      expect(alerts.map((a) => a.message)).toEqual([
+        "Bread Flour — 2.5 kg left, you keep at least 5 kg",
+      ]);
+    });
+
     it("an uncounted good at 0 that is not in the low list raises no out-of-stock alert", async () => {
       const client = makeClient({
         restaurant_inventory: [

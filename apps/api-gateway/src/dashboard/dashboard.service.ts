@@ -24,7 +24,7 @@ import {
   hasStatus,
 } from "../procurement/order-status";
 import { houseFrame } from "../common/house-frame";
-import { isBottles, quantityIn, unitWord } from "../common/goods-words";
+import { amountIn, isBottles } from "../common/goods-words";
 import {
   localDateIn,
   localMidnight,
@@ -1395,7 +1395,8 @@ export class DashboardService {
           id: `inv-${i.id}`,
           type: "inventory_change",
           title: name,
-          description: `${quantityIn(i.stock_live, i.uom)} on hand`,
+          // Said as the inventory list says it: "2 kg", not "2000 g".
+          description: `${amountIn(i.stock_live, i.uom)} on hand`,
           timestamp: i.updated_at,
           entityId: i.id,
           entityType: "inventory",
@@ -1480,7 +1481,7 @@ export class DashboardService {
           type: "low_stock",
           severity: item.stock_live === 0 ? "critical" : "warning",
           title: "Low Stock",
-          message: `${label} — ${quantityIn(item.stock_live, item.uom)} left, you keep at least ${item.threshold_min} ${unitWord(item.uom, item.threshold_min)}`,
+          message: `${label} — ${amountIn(item.stock_live, item.uom)} left, you keep at least ${amountIn(item.threshold_min, item.uom)}`,
           actionUrl: `/inventory?highlight=${item.id}`,
           createdAt: new Date().toISOString(),
         });
