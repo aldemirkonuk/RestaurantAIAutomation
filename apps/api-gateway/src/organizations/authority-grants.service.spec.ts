@@ -427,6 +427,14 @@ describe("grantLimitWords — the owners' notice says the limit as money", () =>
     expect(grantLimitWords(2000, "EUR")).toBe("up to €2,000.00");
   });
 
+  it("[REVERT-FAILS] the issued notice the owners read carries the limit as money", async () => {
+    const t = build();
+    await t.issue(OWNER, toStaff({ limitAmount: 1500.5, limitCurrency: "TRY" }));
+    const [call] = t.notifications.persistForRestaurant.calls;
+    expect(call[1].message).toContain("(up to ₺1,500.50, until revoked)");
+    expect(call[1].message).not.toContain("1500.5 TRY");
+  });
+
   it("never prints the word null beside a figure", () => {
     expect(grantLimitWords(250, null)).toBe("up to 250.00");
   });
