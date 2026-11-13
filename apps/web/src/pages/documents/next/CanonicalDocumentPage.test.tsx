@@ -22,6 +22,14 @@ const mintVerifyMock = vi.fn()
 const calls: string[] = []
 const linkMock = vi.fn()
 const inventoryMock = vi.fn()
+const doorCountMock = vi.fn()
+vi.mock('../../../services/api/deliveries', () => ({
+  deliveriesApi: {
+    event: vi.fn().mockResolvedValue(null),
+    proposals: vi.fn().mockResolvedValue([]),
+    recordDoorCount: (body: unknown) => doorCountMock(body),
+  },
+}))
 vi.mock('../../../services/api/inventory', () => ({
   getInventory: () => inventoryMock(),
 }))
@@ -647,5 +655,42 @@ describe('CanonicalDocumentPage', () => {
       fireEvent.click(screen.getByTestId('shelf-choose'))
       expect(screen.getByTestId('chooser')).toBeTruthy()
     })
+  })
+})
+
+// r24, door-count lane: the paper's own door counts FOR the paper, and the
+// page shows what the count put on the shelf (the r23 walk saw 201 and 0 lots).
+describe('CanonicalDocumentPage — counting the paper at its door (r24)', () => {
+  beforeEach(() => {
+    documentMock.mockReset()
+    doorCountMock.mockReset()
+    inventoryMock.mockReset()
+    inventoryMock.mockResolvedValue([])
+  })
+
+  it('sends the paper and its line, and shows what went on the shelf', async () => {
+    const r = response()
+    const canonical = r.canonical as Record<string, unknown>
+    canonical.layer2 = {
+      providerId: null,
+      vendorResolution: null,
+      lines: [{ lineIndex: 0, lineId: 'pl-syn-1', inventoryIdSource: 'line' }],
+    }
+    documentMock.mockResolvedValue(r)
+    doorCountMock.mockResolvedValue({
+      documentId: 'door-syn',
+      booking: { booked: [{ lineNo: 1, inventoryId: 'inv-syn', delta: 12 }], notBooked: [] },
+    })
+    mount()
+    fireEvent.click(await screen.findByRole('button', { name: 'The door' }))
+    fireEvent.change(await screen.findByTestId('door-count-input'), { target: { value: '12' } })
+    fireEvent.click(screen.getByTestId('door-submit'))
+    await waitFor(() => expect(doorCountMock).toHaveBeenCalledTimes(1))
+    expect(doorCountMock.mock.calls[0][0]).toMatchObject({
+      forDocumentId: 'doc-syn',
+      createDelivery: true,
+      lines: [{ lineNo: 1, qty: 12, sourceLineId: 'pl-syn-1' }],
+    })
+    expect(await screen.findByTestId('door-booking')).toHaveTextContent('1 line went on the shelf')
   })
 })
