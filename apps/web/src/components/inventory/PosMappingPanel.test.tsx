@@ -367,6 +367,9 @@ describe("PosMappingPanel — a pour is confirmed where the size waits for it", 
     expect(shot).toHaveAttribute("aria-pressed", "false");
     expect(onChanged).toHaveBeenCalled();
     expect(toast.success).toHaveBeenCalledWith("Good: one shot is now 40 ml.");
+    // Its opener is gone (nothing waits for a pour now): focus stays in the dialog, not the page.
+    expect(screen.queryByRole("button", { name: "Confirm a shot size" })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "POS buttons and stock" })).toHaveFocus();
     await user.click(shot);
     expect(shot).toHaveAttribute("aria-pressed", "true");
   });
@@ -393,6 +396,24 @@ describe("PosMappingPanel — a pour is confirmed where the size waits for it", 
     await user.type(screen.getByLabelText("One shot of Good, in ml"), "40{Escape}");
     expect(screen.queryByTestId("pour-box")).toBeNull();
     expect(confirmWinePour).not.toHaveBeenCalled();
+  });
+
+  it("Escape gives focus back to the button that opened the box (r26 walk)", async () => {
+    const user = userEvent.setup();
+    render(<PosMappingPanel isOpen onClose={() => {}} canManage inventory={good({ kind: "spirit", bottleMl: 700 })} />);
+    await screen.findByText("ext-1");
+    await user.click(screen.getByRole("button", { name: "Confirm a shot size" }));
+    await user.type(screen.getByLabelText("One shot of Good, in ml"), "40{Escape}");
+    expect(screen.getByRole("button", { name: "Confirm a shot size" })).toHaveFocus();
+  });
+
+  it("Cancel on the house glass gives focus back to its button", async () => {
+    const user = userEvent.setup();
+    render(<PosMappingPanel isOpen onClose={() => {}} canManage inventory={good({ kind: "wine", bottleMl: 750 })} />);
+    await screen.findByText("ext-1");
+    await user.click(screen.getByRole("button", { name: "Confirm the house glass" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("button", { name: "Confirm the house glass" })).toHaveFocus();
   });
 
   it("a wine with no bottle size is not asked for a pour: its size is what is missing", async () => {

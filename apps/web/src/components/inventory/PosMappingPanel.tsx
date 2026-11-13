@@ -31,7 +31,7 @@
  * queues, and stock reads high until someone knows. That is the honest state,
  * and the queue counter at the top of the panel is what makes it visible.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, Loader2, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -157,6 +157,25 @@ export function PosMappingPanel({
   const [ownPour, setOwnPour] = useState<Record<string, number>>({});
   // Which pour box is open: "house", or "item:<row key>". One at a time.
   const [pourOpen, setPourOpen] = useState<string | null>(null);
+  // r26 walk: after Escape (or Cancel, or a confirm) the box closes and its
+  // opener comes back, but focus fell to the page. It goes back to the button
+  // that opened the box, when that button is there again; else to the dialog,
+  // never to the page behind it.
+  const dialog = useRef<HTMLDivElement>(null);
+  const lastPour = useRef<string | null>(null);
+  useEffect(() => {
+    if (pourOpen !== null) {
+      lastPour.current = pourOpen;
+      return;
+    }
+    const key = lastPour.current;
+    lastPour.current = null;
+    if (!key || !dialog.current) return;
+    const opener = Array.from(
+      dialog.current.querySelectorAll<HTMLElement>("[data-pour-opener]"),
+    ).find((el) => el.getAttribute("data-pour-opener") === key);
+    (opener ?? dialog.current).focus();
+  }, [pourOpen]);
 
   const invById = useMemo(() => {
     const m = new Map<string, { name: string; facts: PortionFacts | null }>();
@@ -386,6 +405,7 @@ export function PosMappingPanel({
         <button
           type="button"
           onClick={() => setPourOpen(`item:${key}`)}
+          data-pour-opener={`item:${key}`}
           className="h-7 px-2 rounded-md text-[11px] font-semibold text-wine-700 hover:underline"
         >
           Confirm a {word} size
@@ -410,7 +430,9 @@ export function PosMappingPanel({
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto">
       <div
-        className="bg-white rounded-2xl shadow-xl w-full max-w-5xl my-6"
+        ref={dialog}
+        tabIndex={-1}
+        className="bg-white rounded-2xl shadow-xl w-full max-w-5xl my-6 outline-none"
         role="dialog"
         aria-label="POS buttons and stock"
       >
@@ -523,6 +545,7 @@ export function PosMappingPanel({
                   <button
                     type="button"
                     onClick={() => setPourOpen("house")}
+                    data-pour-opener="house"
                     className="h-7 px-2.5 rounded-md border border-gray-200 bg-white text-[11px] font-bold text-gray-700 hover:border-gray-300"
                   >
                     {housePour.state === "confirmed"
