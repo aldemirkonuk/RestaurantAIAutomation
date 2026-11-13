@@ -76,7 +76,16 @@ describe('HouseMenu lists the dishes it read', () => {
       screen.getByText('Every line read is a dish. They are kept on your menu as read. This page sets out drinks, and no drink was read.'),
     ).toBeInTheDocument()
     expect(screen.getByText(/1 dish kept on your menu as read/)).toBeInTheDocument()
-    expect(screen.getByRole('group', { name: 'The reading count' })).toHaveTextContent('1read0in ink0in pencil1dish')
+    expect(screen.getByRole('group', { name: 'The reading count' })).toHaveTextContent(/^1read0in ink0in pencil1dish$/)
+  })
+
+  it('a proof whose lines did not come back is not called a menu of dishes', () => {
+    sessionStorage.setItem(
+      FIRST_PROOF_KEY,
+      JSON.stringify({ menuId: 'm1', itemsExtracted: 2, submissionsCreated: 0, items: [] }),
+    )
+    page()
+    expect(screen.queryByText('Your dishes, read by Mudavym.')).toBeNull()
   })
 
   it('a menu with no dish shows no Dishes section', () => {
