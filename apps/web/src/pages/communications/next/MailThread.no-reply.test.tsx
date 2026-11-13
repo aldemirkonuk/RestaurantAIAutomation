@@ -155,6 +155,34 @@ describe('saying a letter needs no reply', () => {
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/mail/letters/v1/no-reply-needed'));
   });
 
+  it("a drafted answer after the vendor's letter is not the one marked", async () => {
+    const drafted = letter({
+      id: 'd1',
+      direction: 'outbound',
+      status: 'PENDING_APPROVAL',
+      aiGenerated: true,
+      text: 'Drafted answer.',
+      sentAt: null,
+      receivedAt: null,
+      createdAt: '2026-11-06T10:00:00Z',
+      door: 'from_house',
+    });
+    threadNow = () => thread([ORDER_LETTER, THANKS, drafted], true);
+    api.post.mockResolvedValue({ data: { id: 'v1', marked: true } });
+    mount();
+    fireEvent.click(await screen.findByTestId('thread-no-reply'));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/mail/letters/v1/no-reply-needed'));
+  });
+
+  it('of two received letters, the newer is the one marked', async () => {
+    const earlier = letter({ id: 'v0', text: 'Got your order.', receivedAt: '2026-11-06T08:30:00Z' });
+    threadNow = () => thread([ORDER_LETTER, earlier, THANKS], true);
+    api.post.mockResolvedValue({ data: { id: 'v1', marked: true } });
+    mount();
+    fireEvent.click(await screen.findByTestId('thread-no-reply'));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/mail/letters/v1/no-reply-needed'));
+  });
+
   it('a refusal is said in words and nothing claims it was marked', async () => {
     api.post.mockRejectedValue(Object.assign(new Error('x'), { response: { status: 503 } }));
     mount();
