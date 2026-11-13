@@ -139,7 +139,7 @@ describe("requestFailureSentence — a plain sentence when the gateway gave none
     ).toMatch(/did not answer/);
     expect(
       requestFailureSentence(
-        new AxiosError("canceled", "ERR_CANCELED", config),
+        new AxiosError("canceled", "ERR_CANCELED", config, {}),
       ),
     ).toBeNull();
     expect(requestFailureSentence(new Error("a page bug"))).toBeNull();
