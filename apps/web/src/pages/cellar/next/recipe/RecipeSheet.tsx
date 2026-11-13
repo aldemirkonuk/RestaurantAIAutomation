@@ -77,7 +77,7 @@ import {
   type SaveRecipeBody,
   type ShelfItem,
 } from '../../../../services/api/recipes';
-import LineRow, { LineRowRead, rowName, rowQty, type DraftRow } from './LineRow';
+import LineRow, { LineRowRead, labelOnLink, rowName, rowQty, type DraftRow } from './LineRow';
 import { draftId, draftKey, dropDraft, dropDraftsForDrink, keepDraft, takeDraft, type DraftMeta } from './drafts';
 import { parseLine, parseSpec, type ProposedLine } from './parseSpec';
 import { amountWithUnit, qtyText, readsAsThousandAmbiguous } from './units';
@@ -161,7 +161,7 @@ export function fromProposal(p: ProposedRow): DraftRow {
     itemName: item?.name ?? null,
     itemKind: item?.kind ?? null,
     itemUom: item?.uom ?? null,
-    label: p.label,
+    label: item ? labelOnLink(p.label, item.name) : p.label,
     qtyText: qtyText(p.qty),
     unit: p.unit ?? '',
     saved: null,

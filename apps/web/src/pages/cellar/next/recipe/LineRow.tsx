@@ -49,6 +49,24 @@ export function rowQty(row: DraftRow): number | null {
   return readQty(row.qtyText, row.unit);
 }
 
+/** A name with case and runs of spaces folded, as the shelf match folds it (ADR 0366 item 7). */
+const fold = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase();
+
+/** True when a line's label only spells the shelf item's name another way ("OLIVE OIL", "olive  oil"). */
+export function sameName(label: string, itemName: string | null | undefined): boolean {
+  return itemName != null && fold(label) === fold(itemName);
+}
+
+/**
+ * A line's label once it is linked to a shelf item. A label that is only the
+ * item's name in another case or spacing takes the shelf's spelling, so a
+ * pasted "OLIVE OIL" reads "Olive Oil". A label that says more ("juice of",
+ * "fresh", a brand) is the person's words and is kept as typed.
+ */
+export function labelOnLink(label: string, itemName: string): string {
+  return !label.trim() || sameName(label, itemName) ? itemName : label;
+}
+
 export function rowName(row: DraftRow): string {
   return row.label.trim() || row.itemName || 'this line';
 }
@@ -158,7 +176,7 @@ export function LineRowRead({ row }: { row: DraftRow }) {
         <span className="cl-num cl-rcp-amt">{amountWords(row)}</span>
         <span>
           {row.itemName ?? row.label}
-          {row.itemName && row.label && row.label !== row.itemName ? (
+          {row.itemName && row.label && !sameName(row.label, row.itemName) ? (
             <span className="cl-dim"> · {row.label}</span>
           ) : null}
           {row.role === 'untracked' ? <span className="cl-dim"> · not counted</span> : null}
@@ -191,7 +209,7 @@ export default function LineRow({
       itemKind: item.kind,
       itemUom: item.uom,
       itemGone: null,
-      label: row.label.trim() ? row.label : item.name,
+      label: labelOnLink(row.label, item.name),
       saved: null,
     });
     setPicking(false);
