@@ -1,14 +1,15 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Put, UseGuards } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RecipesService } from "./recipes.service";
-import { PreviewCostDto, SaveRecipeDto } from "./dto/recipes.dto";
+import { DishesService } from "./dishes.service";
+import { CreateDishDto, PreviewCostDto, SaveRecipeDto, UpdateDishDto } from "./dto/recipes.dto";
 
 /**
- * A dish's recipe (ADR 0366), on the drinks' recipe routes. Every route
+ * A dish and its recipe (ADR 0366), on the drinks' recipe routes. Every route
  * names the house, so `assertTenantMatch` inside `JwtAuthGuard` refuses
  * another house's caller. Owners and managers write; anyone in the house
  * reads, and a role that does not see money reads no price and no cost.
@@ -17,7 +18,36 @@ import { PreviewCostDto, SaveRecipeDto } from "./dto/recipes.dto";
 @Controller("recipes")
 @UseGuards(JwtAuthGuard)
 export class DishesController {
-  constructor(private readonly recipes: RecipesService) {}
+  constructor(
+    private readonly recipes: RecipesService,
+    private readonly dishes: DishesService,
+  ) {}
+
+  @Get(":restaurantId/dishes")
+  @ApiOperation({ summary: "The house's dishes, each with its cost a plate at today's prices" })
+  listDishes(@Param("restaurantId", ParseUUIDPipe) restaurantId: string, @CurrentUser() user: { role?: string } | undefined) {
+    return this.dishes.listDishes(restaurantId, user?.role);
+  }
+
+  @Post(":restaurantId/dishes")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({ summary: "Add a dish (owner/manager); 409 when the house already has one by that name" })
+  createDish(@Param("restaurantId", ParseUUIDPipe) restaurantId: string, @Body() dto: CreateDishDto) {
+    return this.dishes.createDish(restaurantId, dto);
+  }
+
+  @Patch(":restaurantId/dishes/:dishId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({ summary: "Change a dish's name, section, price or description (owner/manager)" })
+  updateDish(
+    @Param("restaurantId", ParseUUIDPipe) restaurantId: string,
+    @Param("dishId", ParseUUIDPipe) dishId: string,
+    @Body() dto: UpdateDishDto,
+  ) {
+    return this.dishes.updateDish(restaurantId, dishId, dto);
+  }
 
   @Get(":restaurantId/dishes/:dishId")
   @ApiOperation({ summary: "A dish's current recipe, its lines, its cost a plate and what is in a plate" })
