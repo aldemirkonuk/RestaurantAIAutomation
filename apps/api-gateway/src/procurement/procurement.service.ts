@@ -15,6 +15,7 @@ import {
 } from "@nestjs/common";
 import { Interval } from "@nestjs/schedule";
 import { currencyCode, isIso4217 } from "../common/iso-4217";
+import { moneyIn } from "../common/money-in";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
 import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.service";
@@ -380,6 +381,11 @@ export function describeConfirmedOrderTerms(input: {
   finalPrice: number | null;
   /** The line's stated price unit, when it has one. NULL keeps phase 0's sentence. */
   statedPriceUnit?: StatedPriceUnit | null;
+  /**
+   * The money the price is in (the agreement line's own currency). NULL prints
+   * the figure bare: a dollar sign here told a lira vendor a price in dollars.
+   */
+  currency?: string | null;
 }): string {
   const unit = (input.unitType ?? "").trim() || "unit";
   const isBottle = unit === "bottle";
@@ -396,13 +402,14 @@ export function describeConfirmedOrderTerms(input: {
     ? describeAgreedPrice({
         price: input.finalPrice,
         stated: input.statedPriceUnit,
+        say: (n) => moneyIn(n, input.currency),
       })
     : null;
 
   const priceLine = statedPrice
     ? ` at ${statedPrice}`
     : input.finalPrice != null
-      ? ` at $${Number(input.finalPrice).toFixed(2)} per ${unit}`
+      ? ` at ${moneyIn(Number(input.finalPrice), input.currency)} per ${unit}`
       : "";
 
   // Nothing to ask about when the unit IS the bottle, or when the pack is known.
@@ -6764,13 +6771,13 @@ export class ProcurementService {
           ? "The agreement also names money outside the price of the wine: " +
             [
               agreedFees.allowance !== null
-                ? `an allowance of $${agreedFees.allowance.toFixed(2)}`
+                ? `an allowance of ${moneyIn(agreedFees.allowance, agreedLine.currency)}`
                 : null,
               agreedFees.deposit !== null
-                ? `a deposit of $${agreedFees.deposit.toFixed(2)}`
+                ? `a deposit of ${moneyIn(agreedFees.deposit, agreedLine.currency)}`
                 : null,
               agreedFees.freight !== null
-                ? `freight of $${agreedFees.freight.toFixed(2)}`
+                ? `freight of ${moneyIn(agreedFees.freight, agreedLine.currency)}`
                 : null,
             ]
               .filter(Boolean)
@@ -9820,6 +9827,7 @@ export class ProcurementService {
           // assert a unit it has not read, and phase 0's version read the
           // quantity's unit because that was all there was.
           statedPriceUnit,
+          currency: agreedLine.currency,
         });
         const body =
           `Hi ${greetName},\n\n` +

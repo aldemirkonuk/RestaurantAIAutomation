@@ -99,7 +99,9 @@ describe("confirmDeal — the confirmation mail states the order's own unit", ()
 
   for (const c of cases) {
     it(c.name, () => {
-      expect(describeConfirmedOrderTerms(c.input)).toBe(c.expected);
+      expect(
+        describeConfirmedOrderTerms({ ...c.input, currency: "USD" }),
+      ).toBe(c.expected);
     });
 
     it(
@@ -116,6 +118,7 @@ describe("confirmDeal — the confirmation mail states the order's own unit", ()
   it("never says 'bottle' for a unit that is not the bottle", () => {
     for (const unitType of ["case", "keg", "pack", "split_case", "liter"]) {
       const sentence = describeConfirmedOrderTerms({
+        currency: "USD",
         quantity: 3,
         unitType,
         bottlesPerUnit: 12,
@@ -130,6 +133,7 @@ describe("confirmDeal — the confirmation mail states the order's own unit", ()
   it("claims no unit at all when the order states none", () => {
     expect(
       describeConfirmedOrderTerms({
+        currency: "USD",
         quantity: 4,
         unitType: null,
         bottlesPerUnit: null,
@@ -145,6 +149,7 @@ describe("confirmDeal — the confirmation mail states the order's own unit", ()
   it("omits the price clause entirely when no price was agreed", () => {
     expect(
       describeConfirmedOrderTerms({
+        currency: "USD",
         quantity: 1,
         unitType: "case",
         bottlesPerUnit: 6,

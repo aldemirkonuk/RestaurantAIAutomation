@@ -396,6 +396,7 @@ describe("describeConfirmedOrderTerms — the mail states the price's own unit",
   it("POST-FIX: the same order is mailed as $35.00 per bottle", () => {
     expect(
       describeConfirmedOrderTerms({
+        currency: "USD",
         quantity: 5,
         unitType: "case",
         bottlesPerUnit: 12,
@@ -411,6 +412,7 @@ describe("describeConfirmedOrderTerms — the mail states the price's own unit",
   it("names the pack in the price when the price is per case", () => {
     expect(
       describeConfirmedOrderTerms({
+        currency: "USD",
         quantity: 5,
         unitType: "case",
         bottlesPerUnit: 12,
@@ -430,6 +432,7 @@ describe("describeConfirmedOrderTerms — the mail states the price's own unit",
       bottlesPerUnit: 12,
       wineName: WINE,
       finalPrice: 120,
+      currency: "USD",
     };
     expect(describeConfirmedOrderTerms({ ...input, statedPriceUnit: null })).toBe(
       preFixSentence(input),
@@ -440,6 +443,7 @@ describe("describeConfirmedOrderTerms — the mail states the price's own unit",
   it("still asks for an unknown pack, and does so beside a stated price unit", () => {
     expect(
       describeConfirmedOrderTerms({
+        currency: "USD",
         quantity: 5,
         unitType: "case",
         bottlesPerUnit: null,
@@ -461,7 +465,7 @@ describe("describeAgreedPrice — the phrase the page and the vendor both read",
         price: 420,
         stated: { priceUom: "case", pricePackSize: 12 },
       }),
-    ).toBe("$420.00 per case (12 bottles)");
+    ).toBe("420.00 per case (12 bottles)");
   });
 
   it("does not say '(1 bottle)' after a bottle price", () => {
@@ -470,11 +474,11 @@ describe("describeAgreedPrice — the phrase the page and the vendor both read",
         price: 35,
         stated: { priceUom: "bottle", pricePackSize: 1 },
       }),
-    ).toBe("$35.00 per bottle");
+    ).toBe("35.00 per bottle");
   });
 
   it("shows a bare figure when no unit is stated, rather than inventing one", () => {
-    expect(describeAgreedPrice({ price: 35, stated: null })).toBe("$35.00");
+    expect(describeAgreedPrice({ price: 35, stated: null })).toBe("35.00");
   });
 
   it("is null when there is no price at all", () => {

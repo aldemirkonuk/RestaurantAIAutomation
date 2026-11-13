@@ -1,6 +1,7 @@
 import { Injectable, Logger, Optional } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../../database/database.service";
+import { moneyIn } from "../money-in";
 import {
   ModelClientService,
   NfEventRef,
@@ -241,7 +242,7 @@ export class InboundResponderService {
         .from("procurement_orders")
         .select(
           `
-          id, order_number, quantity, quoted_price, negotiated_price, final_price, status,
+          id, order_number, quantity, quoted_price, negotiated_price, final_price, currency, status,
           ai_autonomy_paused, negotiation_attempts,
           providers!left(name, contact_email, contact_first_name, primary_contact),
           restaurant_inventory:inventory_id(wine_name, target_price)
@@ -294,6 +295,7 @@ export class InboundResponderService {
         wineName,
         quantity,
         targetPrice,
+        currency: o.currency ?? null,
         transcript,
         instruction: ctx.instruction,
         firstName,
@@ -658,6 +660,8 @@ export class InboundResponderService {
     wineName: string;
     quantity: number;
     targetPrice: number | null;
+    /** The order's own currency, when the row states one. */
+    currency?: string | null;
     transcript: string;
     instruction?: string;
     firstName?: string;
@@ -672,7 +676,11 @@ export class InboundResponderService {
   }): Promise<Analysis | null> {
     const targetLine =
       input.targetPrice != null
-        ? `Our target price is $${input.targetPrice.toFixed(2)} per bottle. We do NOT want to pay more than this without manager sign-off.`
+        ? `Our target price is ${
+            input.currency
+              ? moneyIn(input.targetPrice, input.currency)
+              : `${input.targetPrice.toFixed(2)} in the order's currency`
+          } per bottle. We do NOT want to pay more than this without manager sign-off.`
         : `We have no fixed target price on record — aim for a fair market price and defer final pricing to the manager.`;
     const steerLine = input.instruction
       ? `\nMANAGER STEERING for this reply (follow it): ${input.instruction}\n`
