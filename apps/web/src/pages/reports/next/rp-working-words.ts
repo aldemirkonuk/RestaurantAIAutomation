@@ -79,6 +79,9 @@ const WORDS: Array<[RegExp, string | ((...m: string[]) => string)]> = [
   [/\bunit_price\b/g, 'the menu price'],
   [/\bWAC\b/g, 'average cost'],
   // Where a count came from.
+  // `.total` first: the column name must not survive the table's rule as
+  // "Till checks (voided ones left out).total" (r11 browser walk).
+  [/\bNon-voided pos_checks\.total\b/g, 'The total of every till check, voided ones left out,'],
   [/\bNon-voided pos_checks\b/g, 'Till checks (voided ones left out)'],
   [/\bpos_checks\b/g, 'till checks'],
   [/\bwith zero wine_consumption_log movement in\b/g, 'with nothing poured or sold in'],
@@ -122,6 +125,24 @@ export function workingInHouseWords(line: string): string {
   out = out.replace(SNAKE, (m) => m.replace(/_/g, ' '));
   // A sentence that began with a name now begins with a lower-case word.
   return out.charAt(0).toUpperCase() + out.slice(1);
+}
+
+/** The forecast methods the gateway names (`analytics.service.ts` getDemandForecast). */
+const MODELS: Record<string, string> = {
+  holt_winters: 'Trend and weekly pattern',
+  holt_linear: 'Trend',
+  ses: 'Smoothed average',
+};
+
+/**
+ * The forecast's "Model" figure, in the house's words. The gateway sends an
+ * engine code (`holt_winters`); the page printed it as is. A code nobody
+ * listed loses its underscores, as a working line's would.
+ */
+export function modelInHouseWords(code: string | null | undefined): string | null {
+  if (!code || code.trim() === '') return null;
+  const said = MODELS[code.trim()] ?? code.trim().replace(/_/g, ' ');
+  return said.charAt(0).toUpperCase() + said.slice(1);
 }
 
 /** The lines `Working` prints: the empty ones dropped, the rest in the house's words. */
