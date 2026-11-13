@@ -14,6 +14,7 @@ import {
 import type { Request } from "express";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { AllowsNoHouse } from "../common/tenant/allows-no-house.decorator";
 import { UserPreferencesService } from "./user-preferences.service";
 import {
   UpdatePreferencesDto,
@@ -77,7 +78,13 @@ function rethrow(error: unknown, fallback: string): never {
 export class UserPreferencesController {
   constructor(private readonly preferencesService: UserPreferencesService) {}
 
-  @Get(":userId/preferences")
+    // The person's own preferences, keyed by the token's user alone (ADR 0164,
+  // R4: a session in no house may "manage its own account"). The ground
+  // (ADR 0169) reads them on every page, /get-started included, where a new
+  // owner has no house yet; a HOUSE_REQUIRED here sent that page to the
+  // chooser and back every two seconds (r12 walk, 2026-11-12).
+@Get(":userId/preferences")
+  @AllowsNoHouse()
   @ApiOperation({ summary: "Get user preferences" })
   @ApiResponse({ status: 200, type: UserPreferencesResponseDto })
   async getPreferences(
@@ -93,6 +100,7 @@ export class UserPreferencesController {
   }
 
   @Patch(":userId/preferences")
+  @AllowsNoHouse()
   @ApiOperation({ summary: "Update user preferences (deep merge)" })
   @ApiResponse({ status: 200, type: UserPreferencesResponseDto })
   async updatePreferences(

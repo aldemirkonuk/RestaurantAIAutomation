@@ -65,7 +65,11 @@ describe("a session in no house (ADR 0164, R4)", () => {
       "GET /auth/me/linked-providers",
       "GET /auth/verify",
       "GET /organizations/branches",
+      // r12 (2026-11-12): the person's own preferences, read by the ground on
+      // /get-started before the first house exists.
+      "GET /users/:userId/preferences",
       "PATCH /auth/me",
+      "PATCH /users/:userId/preferences",
       // ADR 0229 fork 13 (item 82): a held joiner's session names no house.
       "POST /auth/held-memberships/accept",
       "POST /auth/invite/:code/accept",
