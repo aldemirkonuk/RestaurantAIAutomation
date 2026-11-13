@@ -552,10 +552,11 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
         )}
 
         {data.truncated && (
-          <p className="cn-quiet">
-            The gateway returned the first page of this window
-            {data.windowTotal !== null ? ` — ${data.windowTotal} entries exist` : ''}. What is drawn
-            below is not the whole period; narrow the view to see the rest.
+          <p role="status" className="cn-notice">
+            {data.windowTotal !== null
+              ? `This period holds ${data.windowTotal.toLocaleString()} entries and only the first ${data.windowRead.toLocaleString()} are drawn`
+              : `Only the first ${data.windowRead.toLocaleString()} entries of this period are drawn`}
+            , so the counts on this page are short. Switch to a week or a day to see every entry.
           </p>
         )}
 
@@ -602,7 +603,7 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
 
         {recordLine && <p className="cn-quiet">{recordLine}</p>}
 
-        {!data.ordersKnown && (
+        {data.hasEvents && !data.ordersKnown && data.events.some((e) => e.orderId) && (
           <p className="cn-quiet">
             The orders book has not answered, so a delivery can only be ruled off by its own status
             — not by its linked order arriving.

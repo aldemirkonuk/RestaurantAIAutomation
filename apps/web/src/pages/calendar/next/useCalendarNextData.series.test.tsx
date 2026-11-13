@@ -24,11 +24,9 @@ vi.mock('../../../contexts/AuthContext', () => ({
 }));
 vi.mock('../../../contexts/RealtimeContext', () => ({
   useCalendarEventsSubscription: () => {},
+  useOrdersSubscription: () => {},
 }));
 vi.mock('../../../services/api/providers', () => ({ fetchProviders: async () => [] }));
-vi.mock('../../../hooks/queries/useOrderQueries', () => ({
-  useOrders: () => ({ data: [], isError: false, isLoading: false }),
-}));
 
 import { useCalendarNextData } from './useCalendarNextData';
 
