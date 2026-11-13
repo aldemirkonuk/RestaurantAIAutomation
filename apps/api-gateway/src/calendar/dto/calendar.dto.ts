@@ -12,8 +12,23 @@ import {
   Max,
   ValidateNested,
   IsObject,
+  Matches,
+  MaxLength,
 } from "class-validator";
 import { Transform, Type } from "class-transformer";
+
+/**
+ * A wall-clock time as the web's time input sends it ("09:30") or as the
+ * `time` column echoes it back ("09:30:00"). "25:99" used to be accepted and
+ * then read by the reminder job as the 09:00 all-day slot, so a timed
+ * delivery was reminded about at the wrong hour (QA round 4 B9).
+ */
+export const WALL_TIME = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
+const WALL_TIME_MESSAGE = "A time must be written as hours and minutes, like 09:30.";
+/** A title with at least one character that is not a space. */
+const HAS_TEXT = /\S/;
+const TITLE_MESSAGE = "An entry needs a title.";
+export const TITLE_MAX = 300;
 
 // ============================================================================
 // ENUMS
@@ -135,8 +150,10 @@ export class RecurrenceRuleDto {
 // ============================================================================
 
 export class CreateCalendarEventDto {
-  @ApiProperty()
+  @ApiProperty({ maxLength: TITLE_MAX })
   @IsString()
+  @Matches(HAS_TEXT, { message: TITLE_MESSAGE })
+  @MaxLength(TITLE_MAX)
   title: string;
 
   @ApiPropertyOptional()
@@ -162,13 +179,16 @@ export class CreateCalendarEventDto {
   @IsOptional()
   allDay?: boolean;
 
+  // An empty string is "no time" here: createEvent writes `|| null`.
   @ApiPropertyOptional({ description: "Event time (HH:MM)" })
   @IsString()
+  @Matches(/^$|^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/, { message: WALL_TIME_MESSAGE })
   @IsOptional()
   eventTime?: string;
 
   @ApiPropertyOptional({ description: "Event end time (HH:MM)" })
   @IsString()
+  @Matches(/^$|^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/, { message: WALL_TIME_MESSAGE })
   @IsOptional()
   eventTimeEnd?: string;
 
@@ -227,8 +247,10 @@ export class CreateCalendarEventDto {
 // ============================================================================
 
 export class UpdateCalendarEventDto {
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ maxLength: TITLE_MAX })
   @IsString()
+  @Matches(HAS_TEXT, { message: TITLE_MESSAGE })
+  @MaxLength(TITLE_MAX)
   @IsOptional()
   title?: string;
 
@@ -257,13 +279,17 @@ export class UpdateCalendarEventDto {
   @IsOptional()
   allDay?: boolean;
 
-  @ApiPropertyOptional()
+  // No empty string here: updateEvent writes the value straight into a
+  // `time` column, where "" is a database error rather than "no time".
+  @ApiPropertyOptional({ description: "Event time (HH:MM)" })
   @IsString()
+  @Matches(WALL_TIME, { message: WALL_TIME_MESSAGE })
   @IsOptional()
   eventTime?: string;
 
   @ApiPropertyOptional({ description: "Event end time (HH:MM)" })
   @IsString()
+  @Matches(WALL_TIME, { message: WALL_TIME_MESSAGE })
   @IsOptional()
   eventTimeEnd?: string;
 

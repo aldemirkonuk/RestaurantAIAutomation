@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
 import { EventType, SourcePage } from "../events/dto/event.dto";
@@ -104,6 +110,14 @@ export class CalendarService {
       isRecurring: !!dto.recurrence,
     });
 
+    // An entry cannot end on a day before it starts. The window expander
+    // reads such a row as unreadable and drops it, so it would be saved and
+    // never drawn (QA round 4 B9).
+    if (dto.eventDateEnd && dto.eventDateEnd.slice(0, 10) < dto.eventDate.slice(0, 10)) {
+      throw new BadRequestException("An entry cannot end before the day it starts.");
+    }
+    await this.assertLinksInHouse(restaurantId, dto.providerId, dto.orderId);
+
     // Insert the calendar event
     const insertPayload = {
       restaurant_id: restaurantId,
@@ -168,26 +182,30 @@ export class CalendarService {
           .select("*")
           .single();
 
-      if (ruleError) {
+      // A repeat that could not be saved must not leave a one-off behind
+      // that the house believes repeats (QA round 4 B6): the entry is taken
+      // back out and the request fails with a sentence that says so.
+      const linked = ruleError
+        ? null
+        : await this.databaseService.supabase
+            .from("calendar_events")
+            .update({ recurrence_rule_id: ruleData.id })
+            .eq("id", eventData.id)
+            .eq("restaurant_id", restaurantId);
+      if (ruleError || linked?.error) {
         this.logger.error({
-          message: "Failed to create recurrence rule",
+          message: "Failed to save the repeat for a calendar event",
           eventId: eventData.id,
-          error: ruleError.message,
+          error: (ruleError ?? linked?.error)?.message,
         });
-        // Revert is_recurring to false to avoid leaving the event in an orphan
-        // state (is_recurring=true with no associated recurrence rule).
-        await this.databaseService.supabase
-          .from("calendar_events")
-          .update({ is_recurring: false })
-          .eq("id", eventData.id);
+        const undone = await this.undoCreate(restaurantId, eventData.id, ruleData?.id ?? null);
+        throw new InternalServerErrorException(
+          undone
+            ? "The repeat could not be saved, so the entry was not created. Nothing was written; try again."
+            : "The repeat could not be saved, and the entry may be on the calendar once, without repeating. Check that day before adding it again.",
+        );
       } else {
         recurrenceRule = this.mapRecurrenceRule(ruleData);
-
-        // Update event with recurrence rule ID
-        await this.databaseService.supabase
-          .from("calendar_events")
-          .update({ recurrence_rule_id: ruleData.id })
-          .eq("id", eventData.id);
 
         // Generate initial occurrences
         await this.generateOccurrences(restaurantId, ruleData.id);
@@ -226,6 +244,73 @@ export class CalendarService {
       ...this.mapCalendarEvent(eventData),
       recurrenceRule,
     };
+  }
+
+  /**
+   * A vendor or order linked on create must be this house's. The foreign key
+   * alone accepts any house's row, and its error text told a caller whether
+   * an id existed elsewhere (QA round 4 IMPROVE 6).
+   */
+  private async assertLinksInHouse(
+    restaurantId: string,
+    providerId: string | undefined,
+    orderId: string | undefined,
+  ): Promise<void> {
+    const checks: Array<[string, string, string]> = [];
+    if (providerId) checks.push(["providers", providerId, "That vendor is not in this house's vendor book."]);
+    if (orderId) checks.push(["procurement_orders", orderId, "That order is not in this house's orders book."]);
+    for (const [table, id, refusal] of checks) {
+      const { data, error } = await this.databaseService.supabase
+        .from(table)
+        .select("id")
+        .eq("id", id)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      if (error) {
+        this.logger.error({
+          message: "Failed to check a calendar link",
+          restaurantId,
+          table,
+          error: error.message,
+        });
+        throw new InternalServerErrorException(
+          "The link could not be checked, so the entry was not created. Nothing was written; try again.",
+        );
+      }
+      if (!data) throw new BadRequestException(refusal);
+    }
+  }
+
+  /**
+   * Take back a half-made entry: its rule (if one was written), then the row.
+   * True only when the row is gone, so the refusal never claims "nothing was
+   * written" over a row that stayed.
+   */
+  private async undoCreate(
+    restaurantId: string,
+    eventId: string,
+    ruleId: string | null,
+  ): Promise<boolean> {
+    if (ruleId) {
+      const { error } = await this.databaseService.supabase
+        .from("calendar_recurrence_rules")
+        .delete()
+        .eq("id", ruleId)
+        .eq("restaurant_id", restaurantId);
+      if (error) {
+        this.logger.error({ message: "Failed to remove a half-made repeat", ruleId, error: error.message });
+      }
+    }
+    const { error } = await this.databaseService.supabase
+      .from("calendar_events")
+      .delete()
+      .eq("id", eventId)
+      .eq("restaurant_id", restaurantId);
+    if (error) {
+      this.logger.error({ message: "Failed to remove a half-made calendar entry", eventId, error: error.message });
+      return false;
+    }
+    return true;
   }
 
   // ==========================================================================
