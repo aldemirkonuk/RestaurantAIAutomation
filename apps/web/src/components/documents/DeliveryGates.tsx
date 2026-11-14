@@ -40,7 +40,11 @@ export interface DeliveryGatesProps {
   onRecheck?: () => Promise<void>
   /** What the last re-check did to the cost; rendered, never discarded. */
   repair?: CostRepair | null
-  /** With `delivery.jurisdiction`, picks Turkish or English (canonical-format). */
+  /**
+   * The house's currency. No longer read here: the re-check's button and note
+   * are said in the page's language, not the house's (r33 w2 F1). Kept so
+   * callers need not change.
+   */
   currency?: string | null
   /**
    * Whether the person looking holds the house's money (`settlesDeliveryMoney`).
@@ -79,11 +83,8 @@ export function DeliveryGates({
   error,
   onRecheck,
   repair,
-  currency,
   settlesMoney = true,
 }: DeliveryGatesProps) {
-  const turkish =
-    delivery.jurisdiction === 'TR' || (delivery.jurisdiction !== 'US-CA' && currency === 'TRY')
   const agreed = !!delivery.agreedAt
   const verified = !!delivery.verifiedAt
   const lapsed = delivery.state === 'LAPSED' || delivery.state === 'LAPSED_AMENDED'
@@ -218,13 +219,13 @@ export function DeliveryGates({
               style={primary}
             >
               {busy
-                ? turkish ? 'Denetleniyor…' : 'Checking…'
-                : turkish ? 'Maliyeti yeniden denetle' : 'Check the cost again'}
+                ? 'Checking…'
+                : 'Check the cost again'}
             </button>
           )}
           {repair && (
             <div data-testid="cost-repair-notice" role="status" style={{ marginTop: 5 }}>
-              {costRepairSentences(repair, delivery.jurisdiction, currency).map((line) => (
+              {costRepairSentences(repair).map((line) => (
                 <p key={line} style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--ink-2, #4F473C)' }}>
                   {line}
                 </p>
