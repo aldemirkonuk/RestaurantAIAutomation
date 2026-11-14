@@ -147,8 +147,12 @@ export default function InsightsScreen() {
           ) : (
             activeGoals.slice(0, 3).map((g: any, idx: number) => {
               const target = Number(g.target_value) || 0;
+              // A null reading is not 0: the gateway withholds a money or
+              // till goal's reading from staff (ADR 0348 item 3), and a
+              // refused reading is null too. No figure, no bar.
+              const known = g.current_value !== null && g.current_value !== undefined;
               const current = Number(g.current_value) || 0;
-              const pct = target > 0 ? Math.min(1, current / target) : 0;
+              const pct = known && target > 0 ? Math.min(1, current / target) : null;
               const detail =
                 idx === 0 && topGoalProgress.data ? topGoalProgress.data : null;
               return (
@@ -159,9 +163,16 @@ export default function InsightsScreen() {
                       {g.name}
                     </AppText>
                     <AppText variant="footnote" tone="secondary" style={{ fontVariant: ["tabular-nums"] }}>
-                      {Math.round(pct * 100)}%
+                      {pct === null ? "—" : `${Math.round(pct * 100)}%`}
                     </AppText>
                   </View>
+                  {pct === null ? (
+                    <AppText variant="footnote" tone="tertiary">
+                      {detail?.withheldForRole?.length
+                        ? "How far along it is is written for owners and managers."
+                        : "How far along it is is not shown here."}
+                    </AppText>
+                  ) : (
                   <View style={{ height: 6, backgroundColor: color.fill, borderRadius: 3 }}>
                     <View
                       style={{
@@ -173,6 +184,7 @@ export default function InsightsScreen() {
                       }}
                     />
                   </View>
+                  )}
                   {detail ? (
                     <AppText variant="footnote" tone="secondary">
                       {detail.onTrack === false
