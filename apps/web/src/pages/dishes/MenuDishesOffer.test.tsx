@@ -46,6 +46,7 @@ beforeEach(() => {
   h.post.mockReset();
   h.get.mockReset().mockImplementation(async (url: string) => {
     if (url === '/settings/currency') return { data: { restaurantId: RID, code: 'TRY', country: 'Turkey', readable: true, reason: null, statedAt: null } };
+    if (url === `${LIST}/figures`) return { data: { costsUnread: false, dishes: (h.list as Array<{ id: string }>).map((r) => ({ dishId: r.id, ...r })) } };
     if (url === LIST) return { data: h.list };
     if (url === `/recipes/${RID}/menu-prices`) return { data: { amountsWithheld: false, currentMenus: 1, dishes: [], drinks: [] } };
     if (url === OFFER) {

@@ -104,19 +104,54 @@ export function useMenuPrices(side: 'dish' | 'drink', enabled: boolean) {
   };
 }
 
-/** The house's dishes, by name. */
+/** The house's dishes, by name: one read, nothing priced (their figures are `useDishFigures`). */
 export function useDishes() {
   const { activeRestaurantId } = useAuth();
   const q = useQuery({
     queryKey: dishesKey(activeRestaurantId),
     enabled: Boolean(activeRestaurantId),
     queryFn: () => dishesApi.list(activeRestaurantId as string),
+    staleTime: LIST_FIGURES_FRESH_MS,
+    refetchOnMount: true,
   });
   return {
     data: q.data ?? null,
     loading: q.isLoading,
     error: q.isError ? reason(q.error) : null,
     refetch: q.refetch,
+  };
+}
+
+/**
+ * Under the list's own key, so every write that invalidates the dishes (a dish
+ * added or changed, a recipe saved) reads the figures again with them.
+ */
+export const dishFiguresKey = (rid: string | null | undefined) => [...dishesKey(rid), 'figures'] as const;
+
+/**
+ * Every dish's cost a plate, whether it has a recipe, and its allergens, read
+ * beside the names so the list never waits for the pricing (r41 recipes
+ * audit, gap 2). Read for every role: allergens are not money. `costsUnread`
+ * is a failed pricing read that kept everything else (gap 3); `error` is a
+ * figures read that failed whole, which blanks only the figures.
+ */
+export function useDishFigures() {
+  const { activeRestaurantId } = useAuth();
+  const q = useQuery({
+    queryKey: dishFiguresKey(activeRestaurantId),
+    enabled: Boolean(activeRestaurantId),
+    queryFn: () => dishesApi.dishFigures(activeRestaurantId as string),
+    staleTime: LIST_FIGURES_FRESH_MS,
+    refetchOnMount: true,
+  });
+  // A failed re-read keeps the last answer in the cache; it is not shown
+  // beside the sentence that says none is shown.
+  const d = q.isError ? undefined : q.data;
+  return {
+    byId: d ? new Map(d.dishes.map((f) => [f.dishId, f])) : null,
+    costsUnread: d ? d.costsUnread : false,
+    loading: q.isLoading,
+    error: q.isError ? reason(q.error) : null,
   };
 }
 
