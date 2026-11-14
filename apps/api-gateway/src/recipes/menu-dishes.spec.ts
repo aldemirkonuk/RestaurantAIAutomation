@@ -93,6 +93,9 @@ function rows(): Record<string, Row[]> {
     mline(MENU_NOW, HOUSE_A, "LEMON TART", "Desserts", 9), // on the list as "Lemon tart"
     mline(MENU_NOW, HOUSE_A, "Chianti", "Red", 48),
     mline(MENU_ALSO_NOW, HOUSE_A, "Mercimek çorbası", "Starters", 160),
+    // A dish taken off the list, or house B's dish, never hides a menu dish.
+    mline(MENU_ALSO_NOW, HOUSE_A, "Retired pie", "Desserts", 5),
+    mline(MENU_ALSO_NOW, HOUSE_A, "B-only flan", "Desserts", 6),
     // Not current, discarded, or another house's: never offered.
     mline(MENU_OLD, HOUSE_A, "Old pasta", "Pasta", 11),
     mline(MENU_DRAFT, HOUSE_A, "Draft salad", "Salad", 8),
@@ -151,6 +154,8 @@ describe("DishesService.menuDishes: the offer read from the current menu", () =>
     expect(out.dishes).toEqual([
       { name: "Adana kebap", section: "Starters", price: 420, pricesDiffer: false },
       { name: "Mercimek çorbası", section: "Starters", price: 160, pricesDiffer: false },
+      { name: "Retired pie", section: "Desserts", price: 5, pricesDiffer: false },
+      { name: "B-only flan", section: "Desserts", price: 6, pricesDiffer: false },
     ]);
   });
 
@@ -168,7 +173,7 @@ describe("DishesService.menuDishes: the offer read from the current menu", () =>
     // Sorted last by id, so only a read past the first page sees it.
     r.dishes.push({ id: "dffffff0-0000-4000-8000-000000000000", restaurant_id: HOUSE_A, name: "adana  KEBAP", deleted_at: null });
     const out = await service(r).svc.menuDishes(HOUSE_A);
-    expect(out.dishes.map((d) => d.name)).toEqual(["Mercimek çorbası"]);
+    expect(out.dishes.map((d) => d.name)).toEqual(["Mercimek çorbası", "Retired pie", "B-only flan"]);
   });
 
   it("refuses with a sentence, never an empty offer, when the menu cannot be read", async () => {
