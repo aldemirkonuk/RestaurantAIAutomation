@@ -108,6 +108,19 @@ describe("a house with nothing to say is not recomputed on every load (r36 gap 8
 });
 
 describe("ColdStartMemo", () => {
+  it("an answer held again counts as the newest when the oldest is evicted", async () => {
+    const memo = new ColdStartMemo<any>(() => 0, COLD_EMPTY_TTL_MS, 2);
+    const compute = jest.fn(async () => ({ ...EMPTY }));
+    await memo.run("a", compute);
+    await memo.run("b", compute);
+    memo.hold("a", { ...EMPTY });
+    await memo.run("c", compute); // evicts the oldest: b, not the re-held a
+    await memo.run("a", compute);
+    expect(compute).toHaveBeenCalledTimes(3);
+    await memo.run("b", compute);
+    expect(compute).toHaveBeenCalledTimes(4);
+  });
+
   it("holds a clean empty answer for the window, then computes again", async () => {
     let t = 1_000;
     const memo = new ColdStartMemo<typeof EMPTY>(() => t);
