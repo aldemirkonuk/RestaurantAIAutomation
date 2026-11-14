@@ -60,8 +60,10 @@ describe('the sheet a role is handed is one it can read', () => {
     expect(heldMark('ledger', 'staff', () => ['owner'])).toBe(' (owners)');
   });
 
-  it('the hook hands staff with no saved sheet the readable default (catalogue readers)', () => {
-    // On this base the room and the servers are already held from staff.
+  it('with the real catalogue, a staff sheet with nothing saved lays no held cutting', () => {
+    // On this base only the room and the servers are held, and neither is on
+    // the house sheet, so this guards the property; the merged readers above
+    // are what tell a filtered sheet from an unfiltered one.
     for (const sheet of [decodeSheet(undefined, 'staff'), defaultSheet('staff')]) {
       const ids = sheet.cuttings.map((c) => c.id);
       expect(ids).not.toContain('seats');
