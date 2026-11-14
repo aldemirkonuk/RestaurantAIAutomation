@@ -258,7 +258,7 @@ export class OnboardingController {
   @ApiOperation({
     summary: "The setup of the house this session is in",
     description:
-      "Read from the house's own tables every time: a menu read, a menu made current, a supplier, an invite. A GET writes nothing. activated = the house has a current menu with a live line. next_steps (goods_listed, goods_counted = an active good someone has counted, mailbox_connected, mailbox_sends = a live Gmail grant to send, mailbox_reads = a live Gmail reading grant AND the house's reading switch on, invoice: none/waiting/checked, money_set = the house states its money) lead past the menu to the house's costs; they never decide completed_at or activated, and a fact whose read failed is null, not false. 404 when the session is in no house.",
+      "Read from the house's own tables every time: a menu read, a menu made current, a supplier, an invite (or, while there is none, the person's own \"No team yet\": no_team_yet). A GET writes nothing. activated = the house has a current menu with a live line. next_steps (goods_listed, goods_counted = an active good someone has counted, mailbox_connected, mailbox_sends = a live Gmail grant to send, mailbox_reads = a live Gmail reading grant AND the house's reading switch on, invoice: none/waiting/checked, money_set = the house states its money) lead past the menu to the house's costs; they never decide completed_at or activated, and a fact whose read failed is null, not false. 404 when the session is in no house.",
   })
   async getProgress(
     @CurrentUser() user: { userId: string; restaurantId?: string },
@@ -271,9 +271,9 @@ export class OnboardingController {
 
   @Patch("progress")
   @ApiOperation({
-    summary: "Put the setup checklist away (the person's own flag)",
+    summary: "The person's own setup answers: put the checklist away, or \"No team yet\"",
     description:
-      "Only checklist_dismissed is written. menu_uploaded, vendor_added and team_member_invited are read from the house and a body that names them changes nothing. Answers the progress read.",
+      "Only the person's own answers are written: checklist_dismissed, and no_team_yet (true stamps no_team_yet_at, which settles the team step while the house has no invite; false takes it back). menu_uploaded, vendor_added and team_member_invited are read from the house and a body that names them changes nothing. Answers the progress read.",
   })
   async updateProgress(
     @Body() dto: UpdateOnboardingProgressDto,

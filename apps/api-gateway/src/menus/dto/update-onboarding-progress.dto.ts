@@ -16,4 +16,9 @@ export class UpdateOnboardingProgressDto {
   @IsBoolean()
   @IsOptional()
   checklist_dismissed?: boolean;
+
+  /** "No team yet" on the invite step (true), or taken back (false). */
+  @IsBoolean()
+  @IsOptional()
+  no_team_yet?: boolean;
 }

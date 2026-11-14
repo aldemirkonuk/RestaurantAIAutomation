@@ -120,8 +120,10 @@ export interface OnboardingProgress {
   menu_current: boolean
   vendor_added: boolean
   team_member_invited: boolean
+  /** This person answered "No team yet" and the house has no invite. Absent from an older gateway. */
+  no_team_yet?: boolean
   checklist_dismissed: boolean
-  /** When the last of current menu, supplier and invite held; null while one is missing (derived, not remembered). */
+  /** When the last of current menu, supplier and invite (or, with none, this person's "No team yet") held; null while one is missing (derived, not remembered). */
   completed_at: string | null
   /** Reported only; it no longer gates activation (no screen sets it). */
   threshold_configured: boolean

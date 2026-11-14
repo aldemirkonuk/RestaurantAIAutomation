@@ -491,7 +491,13 @@ export function Sidebar() {
   }
 
   const completedCount = progress
-    ? [true, progress.menu_current, progress.vendor_added, progress.team_member_invited].filter(
+    ? [
+        true,
+        progress.menu_current,
+        progress.vendor_added,
+        // "No team yet" settles the team step, as the panel counts it.
+        progress.team_member_invited || progress.no_team_yet === true,
+      ].filter(
         Boolean,
       ).length
     : 1
