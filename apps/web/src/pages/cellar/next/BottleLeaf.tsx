@@ -27,7 +27,8 @@
 
 import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiClient } from '../../../services/api/client';
+import { apiClient, isUnconfirmedWrite } from '../../../services/api/client';
+import { failureReason, writeFailure } from '../../inventory/next/iv-failure';
 import { useCreateInventoryItem } from '../../../hooks/queries/useInventoryQueries';
 import { useRecommendedProviders } from '../../../hooks/queries/useProviderQueries';
 import { queryKeys } from '../../../lib/query-keys';
@@ -223,11 +224,16 @@ export default function BottleLeaf({
       void queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
       setSaid('Order sent to the vendor. It is on Orders now.');
     },
-    onError: (e: unknown) =>
-      setSaid(
-        `Nothing was sent — the gateway refused it (${e instanceof Error ? e.message : 'no reason given'}).`,
-      ),
+    // The failure is said once, by the hold itself (errorMessage below), in
+    // the house's words. The line under the leaf said it a second time and
+    // pasted "Request failed with status code 500" into "the gateway refused
+    // it", when a 5xx or no answer may have sent the order (INV-W31).
+    onError: (e: unknown) => {
+      setSaid(null);
+      if (isUnconfirmedWrite(e)) void queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
+    },
   });
+  const orderUnknown = order.isError && isUnconfirmedWrite(order.error);
 
   const cellar = bottle.cellar;
   const orderBlocked = !cellar
@@ -369,10 +375,19 @@ export default function BottleLeaf({
                       { wineId: bottle.id, stockLive: qty },
                       {
                         onSuccess: () => setSaid(`Booked into the cellar — ${qty} on hand.`),
-                        onError: (e: unknown) =>
-                          setSaid(
-                            `Nothing was booked (${e instanceof Error ? e.message : 'no reason given'}).`,
-                          ),
+                        onError: (e: unknown) => {
+                          // The write carries no key. The gateway refuses a second
+                          // row for a wine already carried (409, a read before the
+                          // insert, not a constraint), so the advice is to look,
+                          // and the cellar is re-read so a row that landed shows.
+                          const f = writeFailure(e, {
+                            refused: 'Nothing was booked',
+                            act: 'the bottles were booked',
+                            check: 'Look at the cellar before trying again: if the bottle is there, it was booked.',
+                          });
+                          if (f.unknown) void queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+                          setSaid(f.text);
+                        },
                       },
                     )
                   }
@@ -558,7 +573,14 @@ export default function BottleLeaf({
                 approvedLabel="Order sent"
                 pending={order.isPending}
                 sent={order.isSuccess}
-                errorMessage={order.isError ? (order.error instanceof Error ? order.error.message : 'the gateway refused it') : null}
+                errorMessage={order.isError ? failureReason(order.error) : null}
+                // The vendor order carries no key the gateway is held to, so an
+                // unanswered one may have gone; look on Orders first (INV-W31).
+                words={
+                  orderUnknown
+                    ? { failedLead: 'It is not known whether the order was sent', after: 'Look on Orders before ordering it again.' }
+                    : undefined
+                }
                 // `mutateAsync`, not `mutate`: both of `OrderCeremony`'s
                 // ceremonies eventually hand this to `HoldToApprove` (`auto`
                 // straight away, `hold` only once "Yes, order" is pressed),
