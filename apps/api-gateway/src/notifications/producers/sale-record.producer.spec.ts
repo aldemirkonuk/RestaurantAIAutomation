@@ -36,8 +36,11 @@ function build() {
 }
 
 /** A check inside the New York local day 2026-09-02. */
+let checkSeq = 0;
 function check(over: Record<string, any> = {}) {
   return {
+    // The day is read whole (readWholeWindow), which pages on `id`.
+    id: `chk-${String(++checkSeq).padStart(4, "0")}`,
     restaurant_id: TENANT,
     voided: false,
     opened_at: "2026-09-03T00:30:00Z", // 20:30 on 2 September, New York
