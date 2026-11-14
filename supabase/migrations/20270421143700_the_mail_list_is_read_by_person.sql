@@ -452,6 +452,40 @@ COMMENT ON FUNCTION public.mail_fold(text) IS
   'Folds Turkish and common accented letters to plain lower case for the Mail '
   'search (the_mail_list_is_read_by_person, r28 mail gap 16).';
 
+-- The search as a case-blind regular expression (use with ~*): what was
+-- typed, trimmed, cut to 100 characters and folded, each plain letter
+-- standing for its accented and Turkish forms, every other character taken
+-- literally (a backslash before a character that is not a letter or digit
+-- makes it plain). NULL for no search. The fold is applied to the few
+-- characters typed, never to the letters searched: translate() over every
+-- letter's text was most of the search's time (measured, PR body).
+CREATE OR REPLACE FUNCTION public.mail_search_pattern(p_query text)
+RETURNS text
+    LANGUAGE sql IMMUTABLE PARALLEL SAFE
+    SET search_path = ''
+    AS $$
+SELECT string_agg(
+         CASE ch
+           WHEN 'a' THEN '[aâáàäAÂÁÀÄ]'
+           WHEN 'c' THEN '[cçCÇ]'
+           WHEN 'e' THEN '[eéèêëEÉÈÊË]'
+           WHEN 'g' THEN '[gğGĞ]'
+           WHEN 'i' THEN '[iıîíìIİÎÍÌ]'
+           WHEN 'n' THEN '[nñNÑ]'
+           WHEN 'o' THEN '[oöóòôOÖÓÒÔ]'
+           WHEN 's' THEN '[sşSŞ]'
+           WHEN 'u' THEN '[uüûúùUÜÛÚÙ]'
+           ELSE CASE WHEN ch ~ '^[[:alnum:]]$' THEN ch ELSE '\' || ch END
+         END, '' ORDER BY n)
+FROM (SELECT public.mail_fold(left(btrim(p_query), 100)) AS f) x
+CROSS JOIN LATERAL generate_series(1, length(x.f)) AS n
+CROSS JOIN LATERAL (SELECT substr(x.f, n, 1) AS ch) c;
+$$;
+
+COMMENT ON FUNCTION public.mail_search_pattern(text) IS
+  'The Mail search as a case-blind regular expression for ~*: folded, each plain letter '
+  'standing for its accented and Turkish forms, all else literal (r28 mail gap 16).';
+
 
 CREATE OR REPLACE FUNCTION public.list_mail_people(
   p_restaurant_id uuid,
@@ -502,6 +536,26 @@ unsent AS (
                        'AUTO_SEND_SCHEDULED', 'HOUSE_FAILED', 'SEND_REFUSED',
                        'RELAY_REFUSED', 'HOUSE_CANCELLED', 'CANCELLED')
     ORDER BY l.provider_id, l.at DESC, l.id DESC
+),
+-- The search (r28 mail gap 16), NULL for none: see mail_search_pattern.
+q AS (
+    SELECT public.mail_search_pattern(p_query) AS pat
+),
+-- The people a search finds by a thread's subject or order number, or by the
+-- words of a letter this caller may read (a withheld letter is not read:
+-- mail_letter_rows removed it first; a second copy is not a letter). Worked
+-- out once per call, and only when there is a search: with none, nothing
+-- below asks for it.
+hits AS (
+    SELECT t.provider_id
+    FROM t, q
+    WHERE t.subject ~* q.pat
+       OR t.order_number ~* q.pat
+    UNION
+    SELECT l.provider_id
+    FROM public.mail_letter_rows(p_restaurant_id, p_withhold_house_letters, NULL) l, q
+    WHERE NOT l.duplicate
+      AND l.message_text ~* q.pat
 ),
 newest AS (
     SELECT DISTINCT ON (t.provider_id)
@@ -585,29 +639,12 @@ SELECT k.key::text,
        k.unsent_status
 FROM keyed k
 LEFT JOIN public.providers pr ON pr.id = k.provider_id
--- The search (r28 mail gap 16): what was typed, trimmed and cut to 100
--- characters, folded, with LIKE's own % _ \ taken as plain characters.
-CROSS JOIN (
-    SELECT CASE WHEN NULLIF(btrim(p_query), '') IS NULL THEN NULL
-                ELSE '%' || replace(replace(replace(
-                       public.mail_fold(left(btrim(p_query), 100)),
-                       '\', '\\'), '%', '\%'), '_', '\_') || '%'
-           END AS pat
-) q
+CROSS JOIN q
 WHERE (p_waiting_only IS NOT TRUE OR k.waiting)
-  -- A person matches by their name, a thread's subject or order number, or
-  -- the words of any letter this caller may read (a withheld letter is not
-  -- read: mail_letter_rows removed it first; a second copy is not a letter).
+  -- A person matches by their name, or is one of the search's hits.
   AND (q.pat IS NULL
-       OR public.mail_fold(pr.name::text) LIKE q.pat
-       OR EXISTS (SELECT 1 FROM t
-                  WHERE t.provider_id = k.provider_id
-                    AND (public.mail_fold(t.subject) LIKE q.pat
-                         OR public.mail_fold(t.order_number) LIKE q.pat))
-       OR EXISTS (SELECT 1
-                  FROM public.mail_letter_rows(p_restaurant_id, p_withhold_house_letters, k.provider_id) l
-                  WHERE NOT l.duplicate
-                    AND public.mail_fold(l.message_text) LIKE q.pat))
+       OR pr.name::text ~* q.pat
+       OR k.provider_id IN (SELECT h.provider_id FROM hits h))
   AND (p_after_at IS NULL
        OR k.last_at < p_after_at
        OR (k.last_at = p_after_at AND k.key > (p_after_key COLLATE "C")))
@@ -889,6 +926,7 @@ REVOKE ALL ON FUNCTION public.mail_letter_rows(uuid, boolean, uuid)
 REVOKE ALL ON FUNCTION public.mail_thread_states(uuid, boolean, uuid)
   FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.mail_fold(text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.mail_search_pattern(text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.list_mail_people(uuid, boolean, boolean, timestamp with time zone, text, integer, text)
   FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.list_mail_threads(uuid, uuid, boolean, timestamp with time zone, text, integer)
@@ -901,6 +939,7 @@ REVOKE ALL ON FUNCTION public.mail_thread_letters(uuid, text, uuid, boolean, tim
 GRANT EXECUTE ON FUNCTION public.mail_letter_rows(uuid, boolean, uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.mail_thread_states(uuid, boolean, uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.mail_fold(text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.mail_search_pattern(text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.list_mail_people(uuid, boolean, boolean, timestamp with time zone, text, integer, text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.list_mail_threads(uuid, uuid, boolean, timestamp with time zone, text, integer) TO service_role;
 GRANT EXECUTE ON FUNCTION public.mail_inbox_summary(uuid, boolean) TO service_role;
