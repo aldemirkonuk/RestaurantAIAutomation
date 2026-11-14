@@ -1888,6 +1888,71 @@ describe('the legacy velocity sort and column-header sort (round 4)', () => {
     expect(sortWords('pace', [row({ velocity: null })])).toMatch(/no pace was read/);
   });
 
+  it('compares a pace only within its unit: bottles, items, other counts, weight, then volume (r31 walk F6)', () => {
+    const units: Record<string, string | null> = {
+      brut: null,
+      flour: 'g',
+      sugar: 'kg',
+      salt: 'mg',
+      vodka: 'ml',
+      gin: 'l',
+      lemon: 'each',
+      beer: 'keg',
+      unread: 'g',
+    };
+    const uomOf = (r: { id: string }) => units[r.id] ?? null;
+    const rs = [
+      row({ id: 'flour', name: 'Flour', velocity: 290 }),
+      row({ id: 'unread', name: 'Unread', velocity: null }),
+      row({ id: 'vodka', name: 'Vodka', velocity: 500 }),
+      row({ id: 'brut', name: 'Brut', velocity: 3.7 }),
+      row({ id: 'gin', name: 'Gin', velocity: 0.7 }),
+      row({ id: 'sugar', name: 'Sugar', velocity: 1 }),
+      row({ id: 'salt', name: 'Salt', velocity: 300_000 }),
+      row({ id: 'lemon', name: 'Lemon', velocity: 40 }),
+      row({ id: 'beer', name: 'Beer', velocity: 0.2 }),
+    ];
+    // 290 g is never "faster" than 3.7 bottles; 1 kg leads 300 g (300,000 mg)
+    // and 290 g; 0.7 l leads 500 ml; an unread pace is last of all.
+    expect(sortRows(rs, 'pace', uomOf).map((r) => r.id)).toEqual([
+      'brut',
+      'lemon',
+      'beer',
+      'sugar',
+      'salt',
+      'flour',
+      'gin',
+      'vodka',
+      'unread',
+    ]);
+    expect(sortWords('pace', rs, uomOf)).toBe('sorted Fastest moving within each unit: bottles, items, kegs, weight, then volume');
+  });
+
+  it('one unit on the list keeps the plain words, and an unread pace does not add a unit', () => {
+    const uomOf = (r: { id: string }) => (r.id === 'u' ? 'g' : null);
+    const rs = [row({ id: 'a', velocity: 2 }), row({ id: 'b', velocity: 1 }), row({ id: 'u', velocity: null })];
+    expect(sortWords('pace', rs, uomOf)).toBe('sorted Fastest moving');
+    expect(sortRows(rs, 'pace', uomOf).map((r) => r.id)).toEqual(['a', 'b', 'u']);
+    expect(sortWords('pace', [row({ id: 'a', velocity: 1 }), row({ id: 'u', velocity: 2 })], uomOf)).toBe(
+      'sorted Fastest moving within each unit: bottles, then weight',
+    );
+  });
+
+  it('on the page, sorting Used a day keeps grams below bottles and says so', () => {
+    mock.data = data({
+      rows: [row({ id: 'f', name: 'Flour', velocity: 290 }), row({ id: 'w', name: 'Brut', velocity: 3.7 })],
+      rawItems: [
+        { id: 'f', kind: 'food', uom: 'g', display_name: 'Flour' },
+        { id: 'w', kind: 'wine', uom: 'bottle', display_name: 'Brut' },
+      ],
+    });
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Used a day' }));
+    const ids = screen.getAllByTestId(/^inv-row-/).map((el) => el.getAttribute('data-testid'));
+    expect(ids.indexOf('inv-row-w')).toBeLessThan(ids.indexOf('inv-row-f'));
+    expect(screen.getByTestId('inventory-footer').textContent).toContain('sorted Fastest moving within each unit: bottles, then weight');
+  });
+
   it('a sortable header sets its sort, and clicking it again goes back to Needs you first', () => {
     mock.data = data({ rows: [row({ id: 'a', name: 'Beta', velocity: 0.1 }), row({ id: 'b', name: 'Alpha', velocity: 3 })] });
     renderPage();

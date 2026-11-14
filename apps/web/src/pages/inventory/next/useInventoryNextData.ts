@@ -317,26 +317,69 @@ export const SORT_LABEL: Record<SortId, string> = {
  * listed title the value sort has nothing to sort by and falls back to Needs
  * you first (sortRows below); the line says so instead of going quiet.
  */
-export function sortWords(sort: SortId, rows: InvRow[]): string {
+export function sortWords(sort: SortId, rows: InvRow[], uomOf: (r: InvRow) => string | null = () => null): string {
   if (sort === 'value' && rows.length > 0 && rows.every((r) => r.value === null)) {
     return 'sorted Value at cost, though no title listed has a cost yet, so they stay in Needs you first order';
   }
   if (sort === 'pace' && rows.length > 0 && rows.every((r) => r.velocity === null)) {
     return 'sorted Fastest moving, though no pace was read for any title listed, so they stay in Needs you first order';
   }
+  if (sort === 'pace') {
+    // A gram and a bottle are not compared (r31 walk F6): the order is
+    // fastest first within each unit, and the line names the units in order.
+    const groups = [...new Set(rows.filter((r) => r.velocity !== null).map((r) => paceGroup(uomOf(r))))].sort(byPaceGroup);
+    if (groups.length > 1) return `sorted Fastest moving within each unit: ${listWords(groups.map(paceGroupWord))}`;
+  }
   return `sorted ${SORT_LABEL[sort]}`;
 }
 
-export function sortRows(rows: InvRow[], sort: SortId): InvRow[] {
+/**
+ * The unit a pace is compared in. Weights compare with weights and volumes
+ * with volumes, whatever unit each good is kept in (sugar in kg beside flour
+ * in g); every other unit is its own group. A good with no unit is a bottle.
+ */
+function paceGroup(uom: string | null): string {
+  const stored = uom ?? 'bottle';
+  return MEASURE[stored]?.[0] ?? stored;
+}
+
+/** Bottles lead, as the page always has; then items, other counts, weight, volume. */
+const PACE_GROUP_RANK: Record<string, number> = { bottle: 0, each: 1, g: 3, ml: 4 };
+function byPaceGroup(a: string, b: string): number {
+  const ra = PACE_GROUP_RANK[a] ?? 2;
+  const rb = PACE_GROUP_RANK[b] ?? 2;
+  return ra !== rb ? ra - rb : a.localeCompare(b);
+}
+
+function paceGroupWord(g: string): string {
+  if (g === 'g') return 'weight';
+  if (g === 'ml') return 'volume';
+  return TOTAL_WORDS[g]?.[1] ?? g;
+}
+
+function listWords(words: string[]): string {
+  return words.length <= 1 ? words.join('') : `${words.slice(0, -1).join(', ')}, then ${words[words.length - 1]}`;
+}
+
+export function sortRows(rows: InvRow[], sort: SortId, uomOf: (r: InvRow) => string | null = () => null): InvRow[] {
   const out = [...rows];
   if (sort === 'needs') return out.sort(needsYouFirst);
   if (sort === 'name') return out.sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
   // The legacy velocity sort (InventoryCommandPage.tsx:96), fastest first; an
-  // unread pace sorts after every read one, never as 0.
+  // unread pace sorts after every read one, never as 0. Paces are compared
+  // only within one unit (r31 walk F6: 290 g a day is not faster than 3.7
+  // bottles), each in its measure's base so 1 kg a day leads 290 g a day.
   if (sort === 'pace')
     return out.sort((a, b) => {
-      const va = a.velocity ?? Number.NEGATIVE_INFINITY;
-      const vb = b.velocity ?? Number.NEGATIVE_INFINITY;
+      if (a.velocity === null || b.velocity === null) {
+        if (a.velocity !== b.velocity) return a.velocity === null ? 1 : -1;
+        return needsYouFirst(a, b);
+      }
+      const ga = paceGroup(uomOf(a));
+      const gb = paceGroup(uomOf(b));
+      if (ga !== gb) return byPaceGroup(ga, gb);
+      const va = a.velocity * (MEASURE[uomOf(a) ?? '']?.[1] ?? 1);
+      const vb = b.velocity * (MEASURE[uomOf(b) ?? '']?.[1] ?? 1);
       return va === vb ? needsYouFirst(a, b) : vb > va ? 1 : -1;
     });
   // Value at cost, largest first; an unknown value sorts after every known one.
