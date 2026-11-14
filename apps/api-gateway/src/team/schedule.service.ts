@@ -1210,7 +1210,7 @@ export class ScheduleService {
         role: original.role,
         shift_type: "open",
         state: "open",
-        note: `Cover for call-out (${original.member_id ?? "unassigned"})`,
+        note: await this.coverNote(restaurantId, original.member_id),
         // The same window keeps the break on record for it, so the cover is
         // counted (and priced, once assigned) like the shift it replaces;
         // nothing on record stays nothing on record (ADR 0215).
@@ -1260,6 +1260,36 @@ export class ScheduleService {
       callout: shiftForViewer(calloutShift, viewer),
       open: shiftForViewer(openShift, viewer),
     };
+  }
+
+  /**
+   * The open cover shift's note, in words (QA round 4 S4). It printed the
+   * called-out person's raw member id, and every staff member's week carries
+   * open shifts, so the whole crew read a uuid. It now names the person, as
+   * the roster does; when the name cannot be read the note still says what
+   * the shift is, and a failed name read never stops the call-out.
+   */
+  private async coverNote(
+    restaurantId: string,
+    memberId: string | null | undefined,
+  ): Promise<string> {
+    const plain = "Cover for a call-out";
+    if (!memberId) return plain;
+    const { data, error } = await this.sb
+      .from("team_members")
+      .select("display_name")
+      .eq("id", memberId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      this.logger.warn(
+        `reportCallout: could not read the name of member ${memberId} in ` +
+          `${restaurantId} for the cover note: ${error.message}`,
+      );
+      return plain;
+    }
+    const name = String(data?.display_name ?? "").trim();
+    return name ? `Cover for ${name}, who called out` : plain;
   }
 
   /** Push the open shift to the selected (qualified/available) members. */
