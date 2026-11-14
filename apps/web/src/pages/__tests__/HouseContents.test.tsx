@@ -182,3 +182,47 @@ describe('HouseContents', () => {
     expect(screen.getByRole('button', { name: 'The first proof holds no lines yet.' })).toBeInTheDocument()
   })
 })
+
+// r36 onboarding gap 2 (/house half): a vendor saved by name alone has no
+// address, so no order can be mailed to it and no reply is matched to it.
+// Gap 8: the invoice is the way to the costs, not "Later · not required".
+describe('HouseContents: the vendor address and the invoice', () => {
+  it('sends the email with the name when one is typed, and asks for nothing more', async () => {
+    page()
+    fireEvent.change(screen.getByLabelText('Vendor'), { target: { value: 'Suvla' } })
+    fireEvent.change(screen.getByLabelText('Vendor email'), { target: { value: ' orders@suvla.com ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add this vendor' }))
+    expect(await screen.findByText('Suvla is saved as your vendor.')).toBeInTheDocument()
+    expect(addCustomProvider).toHaveBeenCalledWith({ name: 'Suvla', email: 'orders@suvla.com' })
+    expect(screen.queryByText(/With no email/)).toBeNull()
+  })
+
+  it('a name alone is saved, and the page says what an address would do', async () => {
+    page()
+    fireEvent.change(screen.getByLabelText('Vendor'), { target: { value: 'Suvla' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add this vendor' }))
+    expect(await screen.findByText('Suvla is saved as your vendor.')).toBeInTheDocument()
+    expect(addCustomProvider).toHaveBeenCalledWith({ name: 'Suvla' })
+    expect(screen.getByText(/With no email, orders cannot go to them by mail\./)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Add it on Vendors' })).toHaveAttribute('href', '/vendors')
+  })
+
+  it('an email that is not whole is said, and nothing is sent', () => {
+    page()
+    fireEvent.change(screen.getByLabelText('Vendor'), { target: { value: 'Suvla' } })
+    fireEvent.change(screen.getByLabelText('Vendor email'), { target: { value: 'orders@suvla' } })
+    expect(screen.getByText('That email is not complete yet.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add this vendor' })).toBeDisabled()
+    fireEvent.submit(screen.getByRole('button', { name: 'Add this vendor' }).closest('form')!)
+    expect(addCustomProvider).not.toHaveBeenCalled()
+  })
+
+  it('says the invoice leads to the costs, never "not required"', () => {
+    page()
+    expect(screen.getByText('Next · for your costs')).toBeInTheDocument()
+    expect(screen.getByText(/Costs come from the invoices you check\./)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Receipts' })).toHaveAttribute('href', '/receipts')
+    const row = screen.getByText('Next · for your costs').closest('p')!
+    expect(row.textContent).not.toMatch(/not required/)
+  })
+})

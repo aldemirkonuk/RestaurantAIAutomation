@@ -27,6 +27,18 @@ function proofSaid(standing: ProofStanding): string {
  * array of field notes ("name must be shorter than…"), and a database
  * refusal names a constraint. Said from the status alone.
  */
+/**
+ * A vendor's address, if one was typed (r36 onboarding gap 2): a vendor
+ * saved by name alone has no address, so no order can be mailed to it and
+ * no reply of theirs is matched to it. `''` = none typed; `null` = typed
+ * and not a whole address, so nothing is sent.
+ */
+function vendorEmail(typed: string): string | null {
+  const email = typed.trim()
+  if (!email) return ''
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null
+}
+
 function vendorNotSaved(cause: unknown, name: string): string {
   if (isUnconfirmedWrite(cause)) {
     return `We could not tell whether ${name} was saved: the connection dropped. Look on Vendors before adding it again.`
@@ -43,6 +55,8 @@ export default function HouseContents() {
   const proof = readProof()
   const standing = proof ? proofStanding(proof.items) : null
   const [supplier, setSupplier] = useState('')
+  const [supplierEmail, setSupplierEmail] = useState('')
+  const email = vendorEmail(supplierEmail)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -73,13 +87,13 @@ export default function HouseContents() {
   }, [])
 
   const saveSupplier = async () => {
-    if (!supplier.trim()) return
+    if (!supplier.trim() || email === null) return
     setSaving(true)
     setError(null)
     try {
       // One request: creating the provider marks `vendor_added` on the
       // house's onboarding row itself (providers.service.ts createProvider).
-      await addCustomProvider({ name: supplier.trim() })
+      await addCustomProvider(email ? { name: supplier.trim(), email } : { name: supplier.trim() })
       setSaved(true)
     } catch (cause) {
       setError(vendorNotSaved(cause, supplier.trim()))
@@ -148,7 +162,17 @@ export default function HouseContents() {
           </div>
 
           {saved ? (
-            <p className="py-6 font-serif text-2xl">{supplier.trim()} is saved as your vendor.</p>
+            <div className="py-6">
+              <p className="font-serif text-2xl">{supplier.trim()} is saved as your vendor.</p>
+              {!email && (
+                <p className="mt-1 text-sm text-[#6d685f]">
+                  With no email, orders cannot go to them by mail.{' '}
+                  <Link to="/vendors" className="underline underline-offset-4">
+                    Add it on Vendors
+                  </Link>
+                </p>
+              )}
+            </div>
           ) : supplierOnBook ? (
             <p className="py-6 font-serif text-2xl">
               Your vendor is saved.{' '}
@@ -172,10 +196,24 @@ export default function HouseContents() {
                   aria-label="Vendor"
                   value={supplier}
                   onChange={(event) => setSupplier(event.target.value)}
-                  placeholder="A name is enough"
+                  placeholder="Their name"
                   className="mt-3 block w-full border-b border-[#211f1b]/25 bg-transparent pb-2 text-lg outline-none"
                 />
               </label>
+              <label className="mt-4 block">
+                <span className="text-sm text-[#6d685f]">Their email, if you have it: orders go there, and their replies come back here.</span>
+                <input
+                  aria-label="Vendor email"
+                  type="email"
+                  value={supplierEmail}
+                  onChange={(event) => setSupplierEmail(event.target.value)}
+                  placeholder="orders@vendor.com"
+                  className="mt-2 block w-full border-b border-[#211f1b]/25 bg-transparent pb-2 text-lg outline-none"
+                />
+              </label>
+              {email === null && (
+                <p className="mt-2 text-sm text-red-700">That email is not complete yet.</p>
+              )}
               {error && (
                 <p role="alert" className="mt-3 text-sm text-red-700">
                   {error}{' '}
@@ -186,7 +224,7 @@ export default function HouseContents() {
               )}
               <button
                 type="submit"
-                disabled={!supplier.trim() || saving}
+                disabled={!supplier.trim() || email === null || saving}
                 className="mt-5 bg-[#1a5e6b] px-5 py-2.5 text-white disabled:opacity-40"
               >
                 {saving ? 'Adding…' : 'Add this vendor'}
@@ -194,15 +232,17 @@ export default function HouseContents() {
             </form>
           )}
 
-          {/* H-1: nothing is kept here. Receipts is where an invoice is read. */}
-          <p className="py-6 font-serif text-2xl text-[#b7b2a8]">
-            <span className="block text-xs uppercase tracking-[0.12em]">Later · not required</span>
+          {/* H-1: nothing is kept here. Receipts is where an invoice is read.
+              r36 gap 8: the checklist calls the first invoice the way to the
+              house's costs, so it is not said here as "not required". */}
+          <p className="py-6 font-serif text-2xl">
+            <span className="block text-xs uppercase tracking-[0.12em] text-[#1a5e6b]">Next · for your costs</span>
             <span className="mt-2 block">
-              Your last invoice can be read on{' '}
+              Costs come from the invoices you check. Read your last one on{' '}
               <Link to="/receipts" className="underline underline-offset-4">
                 Receipts
-              </Link>{' '}
-              whenever you want.
+              </Link>
+              .
             </span>
           </p>
 
