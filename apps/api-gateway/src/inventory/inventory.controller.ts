@@ -558,6 +558,23 @@ export class InventoryController {
     }
   }
 
+  @Get(":restaurantId/item/:itemId/opening-cost")
+  @ApiOperation({
+    summary: "What of an item's stock from no delivery still has no cost (r36 R1)",
+    description:
+      "Counts the lots the POST would state: no delivery, no order, no settled cost, sold-out lots included because what already left them is what keeps cost of goods withheld. Owner or manager of the house only, as the POST is.",
+  })
+  async readOpeningCost(
+    @Param("restaurantId") restaurantId: string,
+    @Param("itemId") itemId: string,
+    @CurrentUser() user?: { userId?: string },
+  ) {
+    if (!user?.userId)
+      throw new HttpException("This session names nobody, so what stock cost is not read.", HttpStatus.FORBIDDEN);
+    await this.organizations.assertCanManageRestaurant(user.userId, restaurantId, "read what stock cost");
+    return this.openingCost.uncosted(restaurantId, itemId);
+  }
+
   @Post(":restaurantId/item/:itemId/opening-cost")
   @ApiOperation({
     summary: "State what an item's stock from no delivery cost (r36 R1)",
