@@ -44,6 +44,34 @@ const chunks = <T>(xs: T[], n = ID_CHUNK): T[][] => {
   return out;
 };
 
+/**
+ * How many chunk reads run at once (r36 recipes audit, gap 10). /dishes and
+ * /cocktails read their figures in chunks of 20 ids; one chunk after another,
+ * 120 dishes were 6 pointer waves, then 6 version-and-line waves, then the
+ * pricing, before the page showed one cost. Four at a time cuts that to two
+ * and two, while one house's list never opens more than a handful of
+ * connections at once.
+ */
+export const WAVE = 4;
+
+/**
+ * `read` over every chunk, at most `width` at once, the answers in chunk
+ * order. The first failure rejects the whole read, as one failed chunk did
+ * before: a list is never shown from part of its chunks.
+ */
+export async function inWaves<T, R>(xs: T[], read: (x: T) => Promise<R>, width = WAVE): Promise<R[]> {
+  const out = new Array<R>(xs.length);
+  let next = 0;
+  const lane = async () => {
+    while (next < xs.length) {
+      const i = next++;
+      out[i] = await read(xs[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(width, xs.length) }, lane));
+  return out;
+}
+
 type Read = PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>;
 
 /** A dish's figures at today's prices: its current version, its yield and its cost a plate. */
@@ -150,34 +178,35 @@ export class DishesService {
 
     // Two literal column lists per table, so the read-columns guard checks each.
     const pointers: Array<{ ownerId: string; versionId: string }> = [];
-    for (const ids of chunks(ownerIds)) {
-      const rows =
-        owner === "dish"
-          ? await this.all<any>("dish pointer read", sentence, (from, to) =>
-              client
-                .from("recipe_current_dish")
-                .select("dish_id, version_id")
-                .eq("restaurant_id", restaurantId)
-                .in("dish_id", ids)
-                .order("dish_id", { ascending: true })
-                .range(from, to),
-            )
-          : await this.all<any>("drink pointer read", sentence, (from, to) =>
-              client
-                .from("recipe_current")
-                .select("cocktail_id, version_id")
-                .eq("restaurant_id", restaurantId)
-                .in("cocktail_id", ids)
-                .order("cocktail_id", { ascending: true })
-                .range(from, to),
-            );
+    const pointerReads = await inWaves(chunks(ownerIds), (ids) =>
+      owner === "dish"
+        ? this.all<any>("dish pointer read", sentence, (from, to) =>
+            client
+              .from("recipe_current_dish")
+              .select("dish_id, version_id")
+              .eq("restaurant_id", restaurantId)
+              .in("dish_id", ids)
+              .order("dish_id", { ascending: true })
+              .range(from, to),
+          )
+        : this.all<any>("drink pointer read", sentence, (from, to) =>
+            client
+              .from("recipe_current")
+              .select("cocktail_id, version_id")
+              .eq("restaurant_id", restaurantId)
+              .in("cocktail_id", ids)
+              .order("cocktail_id", { ascending: true })
+              .range(from, to),
+          ),
+    );
+    for (const rows of pointerReads) {
       for (const r of rows) pointers.push({ ownerId: owner === "dish" ? r.dish_id : r.cocktail_id, versionId: r.version_id });
     }
     const versionIds = pointers.map((p) => p.versionId);
     const versions = new Map<string, { ownerId: string; yieldServes: number }>();
     const lines = new Map<string, any[]>();
-    for (const ids of chunks(versionIds)) {
-      const [v, l] = await Promise.all([
+    const versionReads = await inWaves(chunks(versionIds), (ids) =>
+      Promise.all([
         owner === "dish"
           ? this.all<any>("dish version read", sentence, (from, to) =>
               client
@@ -206,7 +235,9 @@ export class DishesService {
             .order("id", { ascending: true })
             .range(from, to),
         ),
-      ]);
+      ]),
+    );
+    for (const [v, l] of versionReads) {
       for (const r of v) {
         versions.set(r.id, { ownerId: owner === "dish" ? r.dish_id : r.cocktail_id, yieldServes: Number(r.yield_serves) });
       }
@@ -217,13 +248,13 @@ export class DishesService {
     const lots = new Map<string, any>();
     if (money) {
       const itemIds = [...new Set([...lines.values()].flat().map((l) => l.inventory_id).filter(Boolean))] as string[];
-      for (const ids of chunks(itemIds, 100)) {
-        let read: { items: Map<string, any>; lots: Map<string, any> };
-        try {
-          read = await this.recipes.readPricing(restaurantId, ids, true);
-        } catch (e) {
-          this.failed(`${owner} pricing read`, e, sentence);
-        }
+      let reads: Array<{ items: Map<string, any>; lots: Map<string, any> }>;
+      try {
+        reads = await inWaves(chunks(itemIds, 100), (ids) => this.recipes.readPricing(restaurantId, ids, true));
+      } catch (e) {
+        this.failed(`${owner} pricing read`, e, sentence);
+      }
+      for (const read of reads) {
         read.items.forEach((v, k) => items.set(k, v));
         read.lots.forEach((v, k) => lots.set(k, v));
       }
