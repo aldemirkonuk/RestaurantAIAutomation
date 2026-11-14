@@ -56,8 +56,18 @@ describe('a compared line whose money is not worked out (r34 w2 F6)', () => {
     expect(screen.getByText(/120/, { selector: 'strong' })).toBeTruthy()
   })
 
-  it('a line nobody compared has no money slot at all', () => {
-    render(<VerdictBlock doc={doc({ shipped: null, received: 'not_counted' as never, verdict: 'ok' })} />)
+  it('[REVERT-FAILS] beside a compared line, a line nobody compared has no money slot at all', () => {
+    const d = doc({ moneyAtRisk: 120 }) as unknown as {
+      layer1: { lines: unknown[] }
+      layer3: { lines: unknown[] }
+    }
+    d.layer1.lines.push({ description: env('SYNTHETIC Rakı'), unit: env('bottle') })
+    d.layer3.lines.push({
+      lineIndex: 1, ordered: null, shipped: null, received: 'not_counted', billed: 6,
+      verdict: 'not_adjudicated', reason: null, moneyAtRisk: null,
+    })
+    render(<VerdictBlock doc={d as unknown as CanonicalDocument} />)
+    expect(screen.getByText(/SYNTHETIC Rakı/)).toBeTruthy()
     expect(screen.queryByTestId('line-money-unknown')).toBeNull()
   })
 })
