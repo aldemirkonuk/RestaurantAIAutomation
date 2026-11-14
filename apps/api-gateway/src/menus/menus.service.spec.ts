@@ -1644,7 +1644,7 @@ describe("MenusService — every menu read is kept as its own version", () => {
         return { data: { outcome, kinds, held }, error: null };
       };
 
-      async function dropped() {
+      async function dropped(items: Row[] = [{ name: "Opus One", bottle_price: 64 }]) {
         const calls: RpcCall[] = [];
         const tables: Record<string, Row[]> = base();
         tables.restaurant_inventory.push(
@@ -1665,7 +1665,7 @@ describe("MenusService — every menu read is kept as its own version", () => {
           wineSubmissions,
           rpcCalls: calls,
           rpc: writer(tables),
-          scanParser: { parseWithWarnings: async () => ({ items: [{ name: "Opus One", bottle_price: 64 }], warnings: [] }), },
+          scanParser: { parseWithWarnings: async () => ({ items, warnings: [] }), },
         });
         const read = await service.importMenu(
           { method: "scan", data: { imageBase64: Buffer.from("%PDF").toString("base64") }, restaurantId: "rest-1" } as any,
@@ -1711,6 +1711,33 @@ describe("MenusService — every menu read is kept as its own version", () => {
         // Silence changes nothing (L12): Chianti was not named.
         expect(cleared(calls, "inv-3")).toHaveLength(0);
         expect(tables.restaurant_inventory.find((i) => i.id === "inv-3")).toMatchObject({ menu_price_current: 40, menu_price_glass: 9 });
+      });
+
+      // r36 N5: a drink discarded from the current menu kept its price, and
+      // this list skipped it, so the next menu could never take it off sale.
+      it("a drink discarded from the current menu is still offered, and taken off sale when named", async () => {
+        const { tables, service, read } = await dropped();
+        await service.discardMenuItem("rest-1", "old-3");
+        expect(tables.menu_items.find((m) => m.id === "old-3")!.status).toBe("discarded");
+        const plan = await service.planFor("rest-1", read.menuId);
+        expect(plan.notOnThisFile.find((n) => n.menuItemId === "old-3")).toMatchObject({ name: "Chianti", inventoryId: "inv-3", bottle: 40, glass: 9 });
+        const r = await service.makeCurrent("rest-1", read.menuId, "user-2", plan.fingerprint, ["old-3"]);
+        expect(r.takenOff).toEqual([
+          { menuItemId: "old-3", name: "Chianti", inventoryId: "inv-3", bottle: "changed", glass: "changed", held: [], error: null },
+        ]);
+        expect(tables.restaurant_inventory.find((i) => i.id === "inv-3")).toMatchObject({ menu_price_current: null, menu_price_glass: null });
+      });
+
+      it("a discarded line does not count as on the menu being replaced: its locked wine comes back as 'returned'", async () => {
+        const { tables, service, read } = await dropped([{ name: "Barolo", bottle_price: 82 }]);
+        tables.house_price_locks.push({ id: "lock-2", restaurant_id: "rest-1", inventory_id: "inv-2", kind: "bottle", locked_price: 80, locked_by: "user-1", locked_at: "2026-09-01T00:00:00Z", released_at: null });
+        const before = await service.planFor("rest-1", read.menuId);
+        expect(before.lines.find((l) => l.name === "Barolo")!.returned).toBe(false);
+        await service.discardMenuItem("rest-1", "old-2");
+        const after = await service.planFor("rest-1", read.menuId);
+        expect(after.lines.find((l) => l.name === "Barolo")!.returned).toBe(true);
+        // On this file, so not offered to take off.
+        expect(after.notOnThisFile.map((n) => n.menuItemId)).not.toContain("old-2");
       });
 
       it("takes nothing off when nothing is named, and answers an empty list", async () => {

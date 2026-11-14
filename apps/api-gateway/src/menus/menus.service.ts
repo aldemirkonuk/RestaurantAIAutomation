@@ -1536,6 +1536,8 @@ export class MenusService {
     menuId: string,
     restaurantId: string,
     view: LineView = { rawLine: false },
+    // r36 N5: the plan reads the replaced menu's discarded lines too.
+    withDiscarded = false,
   ): Promise<Array<Record<string, unknown>>> {
     const out: Array<Record<string, unknown>> = [];
     let after: string | null = null;
@@ -1544,8 +1546,8 @@ export class MenusService {
         .from("menu_items")
         .select(LINE_SELECT)
         .eq("menu_id", menuId)
-        .eq("restaurant_id", restaurantId)
-        .neq("status", "discarded");
+        .eq("restaurant_id", restaurantId);
+      if (!withDiscarded) q = q.neq("status", "discarded");
       if (after) q = q.gt("id", after);
       const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
       if (error) throw new Error(`Failed to load menu items: ${error.message}`);
@@ -1873,9 +1875,14 @@ export class MenusService {
       for (const m of (actives ?? []) as Array<{ id: string }>) {
         if (m.id === menuId) continue;
         replacing = true;
-        for (const line of await this.readLines(m.id, restaurantId)) {
-          if (line.wine_library_id) onReplaced.add(String(line.wine_library_id));
-          else if (line.inventory_item_id) onReplaced.add(`good:${String(line.inventory_item_id)}`);
+        // r36 N5: a drink discarded from the current menu kept its house
+        // price, and this list skipped it, so the next menu could never take
+        // it off sale. It is offered here like any line this file leaves out;
+        // it is not "on the menu being replaced" for a lock's return (L18).
+        for (const line of await this.readLines(m.id, restaurantId, { rawLine: false }, true)) {
+          const discarded = line.status === "discarded";
+          if (!discarded && line.wine_library_id) onReplaced.add(String(line.wine_library_id));
+          else if (!discarded && line.inventory_item_id) onReplaced.add(`good:${String(line.inventory_item_id)}`);
           const row = line as unknown as InsertedMenuItem;
           if (!isKitchenItem(row)) replacedLines.push(row);
         }
