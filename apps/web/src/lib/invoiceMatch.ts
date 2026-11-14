@@ -48,6 +48,14 @@ export interface MatchInput {
   /** Freight/fees apportioned here, folded into landed cost. */
   allocatedCharges?: number
   priceOverrideReason?: string | null
+  /**
+   * The ISO 4217 codes the two prices are in: the order's (agreed) and the
+   * invoice's (billed). Words only, nothing is converted. Absent, a price is a
+   * bare number, never dollars (browser walk 2026-11-12: a TRY invoice read
+   * "$25.00" on this screen).
+   */
+  poCurrency?: string | null
+  invoiceCurrency?: string | null
 }
 
 export interface MatchResult {
@@ -63,7 +71,25 @@ export interface MatchResult {
   effectiveUnitCost: number | null
 }
 
-export const money = (n: number) => `$${n.toFixed(2)}`
+/**
+ * A price in its own currency, the same characters the gateway prints
+ * (`invoice-match.ts` `moneyIn`, parity test): a fixed locale, two places,
+ * `$25.00` for USD, `TRY 25.00` for lira, and the bare number with no code.
+ */
+export function money(n: number, code?: string | null): string {
+  const c = typeof code === 'string' ? code.trim().toUpperCase() : ''
+  if (!/^[A-Z]{3}$/.test(c)) return n.toFixed(2)
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: c,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(n)
+  } catch {
+    return `${n.toFixed(2)} ${c}`
+  }
+}
 
 /** Compare as cents so 22.000000001 still equals 22. */
 const priceEquals = (a: number, b: number) => Math.round(a * 100) === Math.round(b * 100)
@@ -136,14 +162,14 @@ export function computeMatch(input: MatchInput): MatchResult {
           // price" (browser walk 2026-11-12: billed 25 against an agreed 20,
           // accepted with an override, and the toast said "at the agreed price").
           (priceMismatch
-            ? `All ${acceptedQty} accepted at the billed ${money(invoiceUnitPrice as number)}, not the agreed ${money(poUnitPrice as number)}.`
+            ? `All ${acceptedQty} accepted at the billed ${money(invoiceUnitPrice as number, input.invoiceCurrency)}, not the agreed ${money(poUnitPrice as number, input.poCurrency)}.`
             : `All ${acceptedQty} accepted at the agreed price.`) +
           (freeGoodsQty > 0 ? ` Includes ${freeGoodsQty} free.` : '')
         )
       case 'overbilled_vs_ship':
         return `Their packing slip says ${shippedQty} but their invoice bills ${invoiceQty} — proven by their own paperwork.`
       case 'price_variance':
-        return `Billed ${money(invoiceUnitPrice as number)} against an agreed ${money(poUnitPrice as number)}.`
+        return `Billed ${money(invoiceUnitPrice as number, input.invoiceCurrency)} against an agreed ${money(poUnitPrice as number, input.poCurrency)}.`
       case 'qty_over':
         return `${billableReceived} arrived but only ${invoiceQty} were billed.`
       case 'qty_short':
@@ -204,8 +230,8 @@ export const verdictStyle = (v: MatchVerdict): VerdictStyle => VERDICT_STYLES[v]
  * walk 2026-11-11, item 5). Sales made before the invoice arrived are settled
  * to the invoice cost by `revalue_lot`; the house should hear that, not only
  * the gateway log. Null when there is nothing to say. No amount is printed:
- * the cost is per bottle in the order's currency, and `money` here only knows
- * dollars.
+ * the cost is per bottle in the order's currency, and the toast that carries
+ * this line already names the prices.
  */
 export function costCorrectionLine(
   c: { bottlesRevalued: number; salesSettled: number } | null | undefined,
