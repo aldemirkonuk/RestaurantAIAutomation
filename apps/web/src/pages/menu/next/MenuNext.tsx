@@ -46,6 +46,7 @@ import { Fragment, useEffect, useRef, useState, type FormEvent, type KeyboardEve
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import { addMenuItem, discardMenuItem, getMenu, reviewMenuItem, type MenuLine } from '../../../services/api/menus';
+import { DISCARD_FOOTER, discardedNote } from './menu-discard-note';
 import { flagNoteInHouseMoney, housePriceBesideWords, housePriceNote, priceChangeNote, type PriceChange } from './menu-price-note';
 import { MenuVersions } from './MenuVersions';
 import { LockedPrices } from './LockedPrices';
@@ -523,6 +524,8 @@ export default function MenuNext() {
   const { q, discard, add } = useActiveMenu(activeRestaurantId);
   const currency = useHouseCurrency(activeRestaurantId);
   const [discardingId, setDiscardingId] = useState<string | null>(null);
+  // r36 N5: what a discard did, said after the line leaves the list.
+  const [discarded, setDiscarded] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const [pricing, setPricing] = useState<{ id: string; saving: boolean } | null>(null);
   const [priceNote, setPriceNote] = useState<{ lineId: string; tone: 'alert' | 'said'; text: string } | null>(null);
@@ -571,7 +574,11 @@ export default function MenuNext() {
       discarding={discard.isPending && discardingId === line.id}
       onDiscard={!canManage ? undefined : () => {
         setDiscardingId(line.id);
-        discard.mutate(line.id, { onSettled: () => setDiscardingId(null) });
+        setDiscarded(null);
+        discard.mutate(line.id, {
+          onSuccess: () => setDiscarded(discardedNote(line, dish, (n) => money(n, currency))),
+          onSettled: () => setDiscardingId(null),
+        });
       }}
       edit={
         !canManage
@@ -747,6 +754,12 @@ export default function MenuNext() {
                 </div>
               </section>
             ) : null}
+            {/* Each tap clears it first, so it never stands beside a refusal. */}
+            {discarded ? (
+              <p role="status" className="cl-said" style={{ marginTop: 8 }} data-testid="menu-discard-said">
+                {discarded}
+              </p>
+            ) : null}
             {discard.isError ? (
               <p role="alert" className="cl-said" style={{ marginTop: 8 }} data-testid="menu-discard-refused">
                 That line was not discarded ({refusalOf(discard.error, 'discard a line')}).
@@ -770,7 +783,7 @@ export default function MenuNext() {
           }}
         >
           <p className="cl-note" style={{ margin: 0, fontSize: 11 }}>
-            Discard takes a line off the current menu. What it cost and who added it is kept —
+            {DISCARD_FOOTER} What it cost and who added it is kept —
             nothing here is a delete. Change price sets a drink's glass or bottle price, or a dish's
             one price; for a drink on the current menu the house's own price follows unless it is
             locked. An empty box keeps its price.
