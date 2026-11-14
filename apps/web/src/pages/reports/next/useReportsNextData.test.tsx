@@ -218,3 +218,58 @@ describe('useReportsNextData — the money lenses are not sent for staff (ADR 03
     expect(result.current.registers.pacing!.failure).toBeNull();
   });
 });
+
+describe('useReportsNextData — the figures of record and the reorder lens (ADR 0348, slice 4)', () => {
+  const LEDGER = '/analytics/financial/r1';
+  const RESTOCK = '/analytics/inventory-science/r1';
+  const RESTOCK_WITHOUT_COST = {
+    params: { serviceLevel: 0.95, leadTimeDays: 7, demandWindowDays: 90 },
+    basis: {},
+    costWithheld: true,
+    skuCount: 1,
+    reorderCount: 1,
+    reorderList: [{ id: 'g1', name: 'Rakı', onHand: 2, daysOfCover: 1, reorderPoint: 4, safetyStock: 1, stockoutProbability: 0.6, unitCost: null }],
+  };
+
+  beforeEach(() => {
+    auth.rid = 'r1';
+    api.get.mockReset();
+    api.get.mockImplementation(async (path: string) => {
+      if (path === READING) return { data: { insights: [] } };
+      if (path === LEDGER) return { data: {} };
+      if (path === RESTOCK) return { data: RESTOCK_WITHOUT_COST };
+      throw new Error(`unexpected GET ${path}`);
+    });
+  });
+
+  const mountBoth = () =>
+    renderHook(() => useReportsNextData(30, () => {}, ['ledger', 'restock']), { wrapper: wrapper() });
+
+  it('[REVERT-FAILS] staff: no request to the figures of record, and the ledger says it is held back', async () => {
+    auth.role = 'staff';
+    const { result } = mountBoth();
+    await waitFor(() => expect(paths()).toContain(RESTOCK));
+    expect(paths()).not.toContain(LEDGER);
+    expect(result.current.registers.ledger!.failure).toMatchObject({
+      forbidden: true,
+      heldBack: { readers: ['owner', 'manager'], known: true },
+    });
+  });
+
+  it('staff: the reorder lens is asked for and read, its withheld cost is not the whole lens withheld', async () => {
+    auth.role = 'staff';
+    const { result } = mountBoth();
+    await waitFor(() => expect(result.current.registers.restock!.loading).toBe(false));
+    expect(result.current.registers.restock!.failure).toBeNull();
+    const data = result.current.registers.restock!.data as { reorderList: Array<{ name: string; onHand: number }> };
+    expect(data.reorderList.map((r) => [r.name, r.onHand])).toEqual([['Rakı', 2]]);
+  });
+
+  it.each(['owner', 'manager'])('%s: the figures of record are asked for', async (role) => {
+    auth.role = role;
+    const { result } = mountBoth();
+    await waitFor(() => expect(paths()).toContain(LEDGER));
+    await waitFor(() => expect(result.current.registers.ledger!.loading).toBe(false));
+    expect(result.current.registers.ledger!.failure).toBeNull();
+  });
+});
