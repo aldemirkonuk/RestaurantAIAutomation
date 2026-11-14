@@ -475,12 +475,12 @@ describe('The Tools row offers only what this session can do (INV-W18)', () => {
 });
 
 describe('The Cellar map speaks the page\'s words (INV-W19)', () => {
-  it('hands the map the table\'s tint rule and the chips\' words', () => {
+  it('hands the map the table\'s tint rule and the chips\' words', async () => {
     mock.mapProps = null;
     mock.data = data({ rows: [row({ id: 'a', name: 'Barolo' })] });
     renderPage();
     fireEvent.click(screen.getByRole('button', { name: 'Cellar map' }));
-    expect(screen.getByTestId('cellar-map')).toBeTruthy();
+    expect(await screen.findByTestId('cellar-map')).toBeTruthy(); // read on demand (r41 gap 1)
     // Re-read through the declared type: the `= null` above narrows it for tsc.
     const props = mock.mapProps as Record<string, unknown> | null;
     expect(props?.toneOf).toBe(mapTone);

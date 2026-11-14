@@ -39,11 +39,11 @@ import { computeAutoLocatePlan, type AutoLocateResult, type WineInput, type Wine
 import { createInventoryItem } from '../../../services/api/inventory';
 import { isUnconfirmedWrite } from '../../../services/api/client';
 import { AuctionLotStart } from '../command/AuctionLotStart';
-import { MenuScannerFlow } from '../../../components/scanner/MenuScannerFlow';
+import { MenuScannerFlow } from './iv-lazy';
 import { summarizeMenuScanPersist } from '../../../lib/menuScannerPersistence';
 import { fmtWhen } from '../../../lib/mudavym/format';
 import { queryKeys } from '../../../lib/query-keys';
-import { CellarMapView } from '../command/CellarMapView';
+import { CellarMapView } from './iv-lazy';
 import type { InventoryItem as LegacyItem } from '../useInventoryPage';
 import InventoryTable from './InventoryTable';
 import { removeBlocked, removeTarget } from './RowDropdown';
