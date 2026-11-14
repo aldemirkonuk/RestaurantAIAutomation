@@ -10,6 +10,7 @@
 -- ORDER_REQUEST insert and on the door's insert). T3 (every prior kind still
 -- admitted, and NULL) and T4 (junk still refused) are pins: they pass on that
 -- build too, and fail on a rebuild that lost a kind or dropped the CHECK.
+-- T5 and T6 (a CHECK the migration must refuse) need psql; see T5.
 
 begin;
 
@@ -99,5 +100,67 @@ begin
   end;
 end
 $$;
+
+
+-- T5 and T6 re-run the migration on a CHECK it must refuse, and assert the
+-- CHECK is left as it was. They need psql (\ir, ON_ERROR_STOP and
+-- ON_ERROR_ROLLBACK): the migration is expected to raise, so for the \ir
+-- only, errors do not stop the file and each statement rolls back on its
+-- own; the migration's own assertion block then raises too (ORDER_REQUEST
+-- not admitted), which is expected. The DO block after each \ir is the test.
+
+-- T5. A CHECK with an extra condition is refused, never rebuilt: the rebuild
+-- keeps only the literals, so it would drop "direction = 'outbound'" and
+-- admit 'outbound' as a kind.
+savepoint t5;
+alter table public.procurement_conversations drop constraint chk_outbound_email_type;
+alter table public.procurement_conversations add constraint chk_outbound_email_type check (
+  outbound_email_type is null or (direction = 'outbound' and outbound_email_type::text = any (array[
+      'PRICE_INQUIRY', 'DEMAND_OFFER', 'PROMO_INQUIRY', 'WINE_INQUIRY',
+      'MANUAL_REPLY', 'ORDER_CONFIRMATION', 'ACCEPTANCE_CONFIRM_REQUEST',
+      'CLARIFICATION', 'COUNTER_OFFER', 'ESCALATION', 'HOUSE_LETTER'
+  ]))) not valid;
+\set ON_ERROR_STOP 0
+\set ON_ERROR_ROLLBACK on
+\ir ../migrations/20261227070000_an_order_request_is_a_letter_kind.sql
+\set ON_ERROR_ROLLBACK off
+\set ON_ERROR_STOP 1
+do $$
+declare
+  d text;
+begin
+  select pg_catalog.pg_get_constraintdef(c.oid) into d
+    from pg_catalog.pg_constraint c
+   where c.conrelid = 'public.procurement_conversations'::regclass
+     and c.conname = 'chk_outbound_email_type';
+  assert pg_catalog.strpos(d, 'direction') > 0, 'T5: the extra condition was dropped: ' || d;
+  assert pg_catalog.strpos(d, '''ORDER_REQUEST''') = 0, 'T5: a CHECK with an extra condition was rebuilt: ' || d;
+end
+$$;
+rollback to savepoint t5;
+
+-- T6. A CHECK that is not a membership test at all is refused, never rebuilt.
+savepoint t6;
+alter table public.procurement_conversations drop constraint chk_outbound_email_type;
+alter table public.procurement_conversations add constraint chk_outbound_email_type check (
+  outbound_email_type is null or pg_catalog.length(outbound_email_type) < 40) not valid;
+\set ON_ERROR_STOP 0
+\set ON_ERROR_ROLLBACK on
+\ir ../migrations/20261227070000_an_order_request_is_a_letter_kind.sql
+\set ON_ERROR_ROLLBACK off
+\set ON_ERROR_STOP 1
+do $$
+declare
+  d text;
+begin
+  select pg_catalog.pg_get_constraintdef(c.oid) into d
+    from pg_catalog.pg_constraint c
+   where c.conrelid = 'public.procurement_conversations'::regclass
+     and c.conname = 'chk_outbound_email_type';
+  assert pg_catalog.strpos(d, 'length') > 0 and pg_catalog.strpos(d, '''ORDER_REQUEST''') = 0,
+    'T6: a CHECK that is not a membership test was rebuilt: ' || d;
+end
+$$;
+rollback to savepoint t6;
 
 rollback;

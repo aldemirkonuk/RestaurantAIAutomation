@@ -30,10 +30,13 @@
  *   - Convert money. A price is written in its line's own currency, or says the
  *     currency was not recorded.
  *   - Claim more than it holds. The predicate refuses numerals, currency signs
- *     and words, links, stray brackets, money-and-terms words and commitment
- *     phrases in the house's prose. It does NOT stop a figure by reference
- *     ("same price as last time") or a term in a language it does not list;
- *     the house's own reading is the backstop (0173:48, ADR 0313).
+ *     and words, links (as `holdsLink` reads them), stray brackets,
+ *     money-and-terms words and commitment phrases in the house's prose. It
+ *     does NOT stop a figure by reference ("same price as last time"), a
+ *     link in a shape `URL_RE`'s comment lists as not caught (a domain
+ *     spelled out, spaced or broken across lines after the dot, among
+ *     others), or a term in a language it does not list; the house's own
+ *     reading is the backstop (0173:48, ADR 0313).
  *
  * LOCALE (F3, answered 2026-10-08: "Approve + Turkish now"). Every string the
  * renderer owns (subject, greeting, block texts, the Mudavym line, number and
@@ -178,7 +181,8 @@ export const ORDER_REQUEST_CATALOGUE = {
   when: "An order is placed with a vendor",
   who: "The vendor on the order; drafted for the house to approve before it is sent",
   channel: "email",
-  // PR-4b's flag ORDER_REQUEST_LETTER, off until the Turkish default is approved (F3) and 4a-ii merges.
+  // PR-4b's flag ORDER_REQUEST_LETTER, off until 4a-ii merges and F3's number-word lists are answered
+  // (ADR 0313). The F3 words, English and Turkish, are locked.
   armed: false,
   kind: ORDER_REQUEST_KIND,
 } as const;
@@ -229,6 +233,7 @@ export interface OrderRequestFacts {
 
 export interface ProseRefusal {
   rule:
+    | "too_long"
     | "unknown_token"
     | "missing_required_token"
     | "numeral"
@@ -276,8 +281,314 @@ const CURRENCY_WORD_RE = word([
   "franc",
   "francs",
 ]);
-const URL_RE =
-  /(?:[a-z][a-z0-9+.-]*:\/\/|www\.|(?<![\p{L}\p{N}_])[\p{L}\p{N}-]+\.(?:com|net|org|io|co|tr|uk|de|fr|it|es|eu|info|biz|app|shop|wine|me|us)(?![\p{L}\p{N}_])|@)/iu;
+/**
+ * A link (ADR 0313:37). `holdsLink` refuses the prose when `URL_RE` matches
+ * any of the three link views `linkViews` makes of it, or `SCHEME_RE` the
+ * scheme view `schemeView` makes. `URL_RE` matches:
+ *   - one ASCII letter and up to 31 more letters, digits, "+", "." or "-",
+ *     followed by "//" after a colon ("https://"). Nothing is required before
+ *     the letter, so "-https://x", "+http://a", ".https://x" and "…https://x"
+ *     match on their "https://";
+ *   - "www.", or an "@";
+ *   - a known non-web scheme followed by a colon and a non-space character
+ *     (`LINK_SCHEMES`: "javascript:", "data:text", "mailto:x", "tel:", "sms:",
+ *     "ftp:", "file:", "vbscript:"), with no letter, digit or "_" right before
+ *     it. A space after the colon is prose, so "Data: as before" and
+ *     "Note: thanks" are kept, and so is "Metadata:kept";
+ *   - a bare domain: two labels joined by a dot, the last starting with a
+ *     letter and at least two characters long, with any path after it
+ *     ("evil.xyz", "bit.ly/abc", "shop.example.ly"). A label may hold letters,
+ *     digits, "_" and "-", so "evil_site.com" and "evil.com_" are refused.
+ *     There is no suffix list, so an unlisted TLD is refused too. A one-letter
+ *     last label passes, so "e.g." and "U.S." are kept; two words joined by a
+ *     dot with no space ("St.Emilion", "Mod_name.Next") are refused. A last
+ *     label starting with a digit is left to the numeral rule.
+ * Not caught as a link (each pinned by a spec, ADR 0313:37):
+ *   - a domain spelled out ("evil dot com", "name AT evil DOT com"), spaced
+ *     ("evil . com"), or broken across lines after the dot ("evil.\ncom");
+ *   - a dot written as a word inside brackets other than "dot" ("[d0t]" holds
+ *     a digit, so the numeral rule refuses it in the house's prose);
+ *   - "dot" in a bracket on one side only ("evil [dot com"), and a space
+ *     outside an unmatched bracket ("evil [.com");
+ *   - a dot-like character not in `DOT_LIKE_RE`, and a bracket not in
+ *     `OPEN_BRACKETS` / `CLOSE_BRACKETS`;
+ *   - a scheme not in `LINK_SCHEMES` without "//" ("foo:bar"; also "http:x",
+ *     "http:/x" and "http:\\x", which a URL parser reads as "http://x": one
+ *     slash or backslash after the colon is not two), and a "://" whose
+ *     nearest ASCII letter before it is more than 31 characters back;
+ *   - a scheme word split by a mark, format or control character, filler,
+ *     backslash, tab or line break that no view shows whole with no letter,
+ *     digit or "_" right before it ("x\u034Fjava\u034Fscript:alert",
+ *     "x\tjava\tscript:alert"; see `linkViews`), and a tab or line break
+ *     right after a scheme's colon when no "/" follows it
+ *     ("javascript:\nalert"; see `schemeView`). A run of tab, line feed,
+ *     carriage return, U+2028 or U+2029 between a scheme word and its colon,
+ *     between the colon and "//", or between the two slashes ("http\t:\t//x",
+ *     "javascript\n:alert", "https:\t//x", "http:/\t/x") is caught by the
+ *     scheme view, and so is a backslash in place of either slash after the
+ *     colon of http, https, ftp, ws, wss or file with no letter right before
+ *     the scheme word once format and control characters are stripped (a
+ *     tab or line break there is not a letter: "x\thttp:\\\\x" is caught)
+ *     ("http:\\\\x", "http:/\\x", "http:\t\\//x"; see `schemeView`);
+ *   - a link made with a fact block: the test reads the prose with each
+ *     "{{token}}" replaced by a space, so "see {{signer}}.com" is clean here
+ *     and renders as "see Acme.com". The shipped templates hold each token on
+ *     its own line and no house can edit a template yet; this must be closed
+ *     before houses edit templates (PR-4a-ii, ADR 0313:37).
+ *
+ * Speed: the "://" alternative reads at most 35 characters from any start,
+ * and the bare-domain alternative starts only at the first character of a
+ * label run, so a long run ("aaaa…", "a-a-a-…") is scanned a bounded number
+ * of times per character (gate note, 2e6ee4c48: the unanchored scheme was
+ * quadratic, 1.4-6 s at 100 KB).
+ */
+const LINK_SCHEMES = ["javascript", "vbscript", "data", "mailto", "tel", "sms", "ftp", "file"];
+const SCHEME_SOURCES = [
+  "[a-z][a-z0-9+.-]{0,31}:\\/\\/",
+  `(?<![\\p{L}\\p{N}_])(?:${LINK_SCHEMES.join("|")}):(?=\\S)`,
+];
+/** The two scheme alternatives of `URL_RE`, alone, for `schemeView`. */
+const SCHEME_RE = new RegExp(SCHEME_SOURCES.join("|"), "iu");
+const URL_RE = new RegExp(
+  [
+    SCHEME_SOURCES[0],
+    "www\\.",
+    SCHEME_SOURCES[1],
+    "(?<![\\p{L}\\p{N}_-])[\\p{L}\\p{N}_-]+\\.\\p{L}[\\p{L}\\p{N}_-]+",
+    "@",
+  ].join("|"),
+  "iu",
+);
+/**
+ * Dot-like characters that survive NFKC, folded to "." for the link test
+ * only (the courtesy line keeps its own characters). NFKC already turns
+ * U+FF0E, U+FE52, U+2024 into "."; U+FF61, U+FE12 into U+3002; U+0387 into
+ * U+00B7; U+FF65 into U+30FB; U+0F0C into U+0F0B — so those are covered too.
+ *   U+3002 ideographic full stop (an IDNA label dot), U+00B7 middle dot,
+ *   U+0589 Armenian full stop, U+06D4 Arabic full stop, U+0700-U+0702 Syriac
+ *   end/full stops, U+0F0B and U+0F0D Tibetan tsheg and shad, U+1362
+ *   Ethiopic full stop, U+166E Canadian syllabics full stop, U+1803 and
+ *   U+1809 Mongolian full stops, U+1C3B Lepcha punctuation, U+2022 bullet,
+ *   U+2027 hyphenation point, U+2219 bullet operator, U+22C5 dot operator,
+ *   U+2E31 word separator middle dot, U+2E33 raised dot, U+2E3C stenographic
+ *   full stop, U+30FB katakana middle dot, U+A4FF Lisu full stop, U+A60E Vai
+ *   full stop, U+A6F3 Bamum full stop, U+10A56 Kharoshthi danda.
+ * Cost: letters joined by one of these with no space are refused like
+ * "St.Emilion" (Catalan "l·l", a katakana name split by ・, Tibetan prose).
+ */
+const DOT_LIKE_RE =
+  /[\u3002\u00B7\u0589\u06D4\u0700-\u0702\u0F0B\u0F0D\u1362\u166E\u1803\u1809\u1C3B\u2022\u2027\u2219\u22C5\u2E31\u2E33\u2E3C\u30FB\uA4FF\uA60E\uA6F3\u{10A56}\uFF0E\uFF61]/gu;
+/**
+ * Brackets a defanged dot may sit in, after NFKC (which already turns the
+ * fullwidth ( [ { < and the small ( { < into ASCII, the small tortoise shell
+ * into 〔, and U+2329 into 〈): ASCII ( [ { <, the CJK 【 〔 「 『 〖 〘 〚 《 〈,
+ * the math ⟨, and the guillemets « ‹ — with their closing pairs.
+ */
+const OPEN_BRACKETS = "\\[({<\u3010\u3014\u300C\u300E\u3016\u3018\u301A\u300A\u3008\u27E8\u00AB\u2039";
+const CLOSE_BRACKETS = "\\])}>\u3011\u3015\u300D\u300F\u3017\u3019\u301B\u300B\u3009\u27E9\u00BB\u203A";
+const O = `[${OPEN_BRACKETS}]`;
+/**
+ * Whitespace for the folds: JS `\s` plus U+0085 (NEL), which `\s` does not
+ * match although Unicode counts it as a line break.
+ */
+const WS = "\\s\\u0085";
+const C = `[${CLOSE_BRACKETS}]`;
+/** "&period;", the HTML entity for ".". */
+const DOT_ENTITY_RE = /&period;/giu;
+/**
+ * Whitespace (`WS`) before a dot that holds a line break ("evil\n.com",
+ * "evil\u0085.com"). It starts only at the first whitespace of a run, so a
+ * long run is scanned once.
+ */
+const BREAK_BEFORE_DOT_RE = new RegExp(`(?<![${WS}])[${WS}]+(?=\\.)`, "gu");
+const LINE_BREAK_RE = /[\n\r\v\f\u0085\u2028\u2029]/u;
+/**
+ * A defanged dot: "." or "dot" with one or more brackets before it and one
+ * or more after it, any of them nested or mixed, spaces allowed inside and
+ * around ("evil[.]com", "evil (.) com", "evil[[.]]com", "evil【.】com",
+ * "evil<.>com", "evil [dot] com"). A nest of any depth is one run, so one
+ * pass folds it. It starts only at the first character of a run of spaces
+ * and opening brackets, so a long run is scanned once.
+ * Cost: it swallows the spaces around it, so prose that brackets a dot or
+ * "dot" between two words is refused ("Merci (dot) beaucoup", "Hello [.]
+ * Goodbye"). `OPEN_AFTER_DOT_RE` refuses "U.S.(as before)" and
+ * `CLOSE_AFTER_DOT_RE` refuses "(Thanks.)Next" the same way. Each is pinned
+ * by a spec (ADR 0313:37).
+ */
+const DEFANGED_DOT_RE = new RegExp(
+  `(?<![${WS}${OPEN_BRACKETS}])[${WS}${OPEN_BRACKETS}]*(?:\\.|dot)(?<=${O}[${WS}]*(?:\\.|dot))(?=[${WS}]*${C})[${WS}${CLOSE_BRACKETS}]*`,
+  "giu",
+);
+/** An unmatched opening bracket before a dot ("evil[.com", "evil[[.com"). */
+const OPEN_BEFORE_DOT_RE = new RegExp(
+  `(?<![${WS}${OPEN_BRACKETS}])([${WS}]*)${O}[${WS}${OPEN_BRACKETS}]*\\.`,
+  "gu",
+);
+/** An unmatched closing bracket after a dot ("evil.]com"); spaces after it stay. */
+const CLOSE_AFTER_DOT_RE = new RegExp(`\\.(?=[${WS}]*${C})[${WS}${CLOSE_BRACKETS}]*`, "gu");
+/** An opening bracket between a dot and a letter ("evil.(com)", left by "(.)(com)"). */
+const OPEN_AFTER_DOT_RE = new RegExp(`\\.${O}+(?=\\p{L})`, "gu");
+
+/** Folds dot-like characters and defanged dots to "." (one pass, in this order). */
+function foldDots(text: string): string {
+  return text
+    .replace(DOT_LIKE_RE, ".")
+    .replace(DOT_ENTITY_RE, ".")
+    .replace(BREAK_BEFORE_DOT_RE, (ws) => (LINE_BREAK_RE.test(ws) ? "" : ws))
+    .replace(DEFANGED_DOT_RE, ".")
+    .replace(OPEN_BEFORE_DOT_RE, (_m, lead: string) => `${lead}.`)
+    .replace(CLOSE_AFTER_DOT_RE, (m) => `.${m.slice(m.replace(/[\s\u0085]+$/u, "").length)}`)
+    .replace(OPEN_AFTER_DOT_RE, ".");
+}
+/**
+ * Control characters (`\p{Cc}`) a reader does not see as a space or a line
+ * break: U+0000-U+0008, U+000E-U+001F, U+007F-U+0084 and U+0086-U+009F. Tab,
+ * line feed, U+000B, U+000C, carriage return and U+0085 (NEL) are left out:
+ * they are whitespace here, and the line breaks among them separate lines.
+ */
+const CONTROLS = "\\u0000-\\u0008\\u000E-\\u001F\\u007F-\\u0084\\u0086-\\u009F";
+const VIEW1_STRIP_RE = new RegExp(`[\\p{M}\\p{Cf}\\\\${CONTROLS}]`, "gu");
+const VIEW2_STRIP_RE = new RegExp(`[\\p{Cf}${CONTROLS}]`, "gu");
+const VIEW3_SPACE_RE = /[\p{Cf}\u115F\u1160\u3164\uFFA0]/gu;
+const SCHEME_VIEW_STRIP_RE = new RegExp(`[\\p{Cf}${CONTROLS}]`, "gu");
+const SCHEME_VIEW_JOIN_RE = /(?<=[\p{L}\p{N}])[\t\n\r\u2028\u2029]+(?=[\p{L}\p{N}])/gu;
+const SCHEME_VIEW_COLON_JOIN_RE =
+  /(?<=[\p{L}\p{N}+.-])[\t\n\r\u2028\u2029]+(?=:)/gu;
+/** A run the scheme view may remove inside a special scheme word. */
+const SCHEME_RUN = "[\\t\\n\\r\\u2028\\u2029]*";
+/** A special scheme word, any case, with such runs allowed between its letters. */
+const SPECIAL_SCHEME = [
+  `[Hh]${SCHEME_RUN}[Tt]${SCHEME_RUN}[Tt]${SCHEME_RUN}[Pp](?:${SCHEME_RUN}[Ss])?`,
+  `[Ff]${SCHEME_RUN}[Tt]${SCHEME_RUN}[Pp]`,
+  `[Ww]${SCHEME_RUN}[Ss](?:${SCHEME_RUN}[Ss])?`,
+  `[Ff]${SCHEME_RUN}[Ii]${SCHEME_RUN}[Ll]${SCHEME_RUN}[Ee]`,
+].join("|");
+/**
+ * A special scheme word with no letter right before it, its colon, and the
+ * slashes, backslashes and runs after it. No `i` flag: under `iu`, `\p{L}`
+ * also matches U+0345 (it case-folds to U+03B9).
+ */
+const SCHEME_VIEW_BACKSLASH_RE = new RegExp(
+  `(?<!\\p{L})(?:${SPECIAL_SCHEME}):[\\\\/\\t\\n\\r\\u2028\\u2029]+`,
+  "gu",
+);
+const SCHEME_VIEW_SLASH_JOIN_RE =
+  /(?<=:[\t\n\r\u2028\u2029]*\/)[\t\n\r\u2028\u2029]+(?=\/)|(?<=:)[\t\n\r\u2028\u2029]+(?=\/[\t\n\r\u2028\u2029]*\/)/gu;
+/**
+ * The three copies of the prose the link test reads (the courtesy line and
+ * the house's words keep their own characters). `holdsLink` is given the
+ * prose after NFKC only, before `normaliseProse` strips format characters.
+ * Each copy goes through `foldDots`:
+ *   1. with every combining mark (`\p{M}`: U+034F, U+0301, U+0338, the
+ *      variation selectors U+FE00-U+FE0F, the Mongolian U+180B-U+180D …),
+ *      every format character (`\p{Cf}`) and every backslash stripped first.
+ *      UTS 46 ignores or maps the marks, so "evil͏.com" reaches evil.com; here
+ *      it reads "evil.com", and "evil\.com" reads "evil.com";
+ *   2. with only the format characters stripped;
+ *   3. with nothing stripped, and every format character and Hangul filler
+ *      (U+115F, U+1160, U+3164, U+FFA0: letters that render as nothing)
+ *      turned into a space.
+ * The control characters in `CONTROLS` are stripped in copies 1 and 2, like
+ * format characters, so "evil\u001C.com" reads "evil.com" there. Copy 3
+ * keeps them: a control character is not a letter, digit or "_", so it
+ * already separates a scheme word from a letter before it.
+ * Stripping can join a letter onto a scheme word ("x\u0301javascript:alert"
+ * and "x\u200Bjavascript:alert" read "xjavascript:alert" in copy 1, which the
+ * scheme's lookbehind lets through); copy 2 keeps a mark or backslash as the
+ * separator, copy 3 a format character, control character or filler.
+ * Copy 2 is defence in depth: the scheme view also keeps marks and
+ * backslashes and strips format and control characters, and copy 1 strips
+ * more around a dot. No spec fails without copy 2, and no input has been
+ * found that only copy 2 refuses (ADR 0313:37).
+ * `holdsLink` refuses when any copy matches `URL_RE`, or the scheme view
+ * (`schemeView`) matches `SCHEME_RE`.
+ * Not caught: a scheme word that is itself split by a mark, format or
+ * control character, filler, backslash, tab or line break, whenever no view
+ * shows it whole with no letter, digit or "_" right before it. For example
+ * "x\u034Fjava\u034Fscript:alert", "x\\java\\script:alert",
+ * "x\u200Bjava\u200Bscript:alert", "x\u200Bjava\u0301script:alert",
+ * "xjava\u034Fscript:alert", "x\u001Cjava\u001Cscript:alert" and
+ * "x\tjava\tscript:alert". No mail client reads a split scheme as one.
+ * Pinned by a spec (ADR 0313:37).
+ */
+function linkViews(text: string): string[] {
+  return [
+    foldDots(text.replace(VIEW1_STRIP_RE, "")),
+    foldDots(text.replace(VIEW2_STRIP_RE, "")),
+    foldDots(text.replace(VIEW3_SPACE_RE, " ")),
+  ];
+}
+/**
+ * The scheme view: the prose with every format character and every control
+ * character in `CONTROLS` removed, and then every run of ASCII tab, line
+ * feed, carriage return, U+2028 or U+2029 that has a letter or digit on both
+ * sides. A browser's URL parser removes tab, line feed and carriage return
+ * from anywhere in an href, so "java\tscript:alert" is "javascript:alert" to
+ * it; here it reads so too, and so do "jav\u2028ascript:alert" and
+ * "java\u001Cscript:alert". Only `SCHEME_RE` is tested on it: joining two
+ * lines can make a bare domain ("Thank you.\nBest" would read "you.Best"), so
+ * the domain, "www." and "@" alternatives are not.
+ * Such a run is also removed between a letter, digit, "+", "." or "-" and a
+ * colon right after it ("http\t://x", "javascript\n:alert"); between a colon
+ * and a "/" that has another "/" after it (with only such runs between
+ * them); and between those two slashes. So "https:\t//x", "http:/\t/x" and
+ * "http:\t/\n/x" read "https://x" / "http://x".
+ * The steps run in this order: strip, the join before the colon, the
+ * backslash fold below, the join between letters or digits, the two slash
+ * joins. The fold turns every backslash into "/" in the run of slashes,
+ * backslashes and such runs right after the colon of a WHATWG special
+ * scheme word (http, https, ftp, ws, wss, file; any case, spelled out with
+ * no `i` flag), because a URL parser reads "\\" as "/" there: "http:\\\\x",
+ * "http:/\\x" and "https:\\/intranet" read "http://x" /
+ * "https://intranet". The scheme word may hold such runs between its
+ * letters ("ht\ntp:\\\\x"): tab, line feed and carriage return because a
+ * URL parser removes them, U+2028 and U+2029 on purpose to fail closed (a
+ * parser keeps them, but the letter join removes them too). The fold is off only
+ * when the character right before the scheme word, once format and control
+ * characters are stripped, is a letter: a tab or line break is not one, so
+ * "Thanks\nhttp:\\\\intranet" and "x\thttp:\\\\x" are refused (the fold runs
+ * before the letter join, which would read "Thankshttp"), and so is
+ * "\u0345http:\\\\x" (under an `i` flag `\p{L}` would match U+0345). A digit
+ * or "_" is not a letter either ("1http:\\\\x" is refused). A drive or a word
+ * that is not one of those schemes keeps its backslashes ("C:\\\\server",
+ * "D:\\path", "Not:\\ foo"). The lookbehind is letters only so that a word
+ * ending in a scheme name keeps them too ("Profile:\\\\ ok",
+ * "News:\\\\ see"). The cost, kept on purpose: "xhttp:\\\\x", a non-ASCII
+ * letter ("\u4E2Dhttp:\\\\x", "\u0647http:\\\\x"), the Hangul filler U+3164
+ * (a letter) and "x\u200Bhttp:\\\\y" or "x\u00ADhttp:\\\\y" (format
+ * characters, stripped) all pass, although a URL parser reading from "http"
+ * gives "http://x/". Each example in this paragraph is pinned by a spec
+ * (ADR 0313:37). With one slash or backslash after the colon the scheme view
+ * holds no "//" ("http:\\x" stays "http:\\x", "http:/x" stays "http:/x"), so
+ * it does not refuse them, although a URL parser reads both as "http://x/"
+ * (see `URL_RE`).
+ * Refused although they hold no link (fail closed, pinned by a spec): a
+ * scheme's shape (an ASCII letter and up to 31 more ASCII letters, digits,
+ * "+", "." or "-"), then a colon, then "/" and "/", where only such runs (at
+ * least one) sit between that shape and the colon, the colon and the first
+ * "/", or the two slashes: "Note:\n// see below",
+ * "Ek:\n/\t/", "Date:\t/\t/", "Dear team:\n\n// ok", "Note\n:// see"; and
+ * such a run between a named scheme word and its colon when a non-space
+ * character follows the colon ("Data\n:x"). A space anywhere in the gap,
+ * or before the colon, keeps the line ("Sizes:\n/ small", "Remarque :\n// merci",
+ * "Note\n: see below").
+ * Not caught: such a run next to any other character that is not a letter
+ * or digit, as right after the colon with no "/" after it
+ * ("javascript:\nalert"), because there a line break separates prose
+ * ("Data:" at a line's end, the next line below it). Pinned by a spec
+ * (ADR 0313:37).
+ */
+function schemeView(text: string): string {
+  return text
+    .replace(SCHEME_VIEW_STRIP_RE, "")
+    .replace(SCHEME_VIEW_COLON_JOIN_RE, "")
+    .replace(SCHEME_VIEW_BACKSLASH_RE, (m) => m.replace(/\\/g, "/"))
+    .replace(SCHEME_VIEW_JOIN_RE, "")
+    .replace(SCHEME_VIEW_SLASH_JOIN_RE, "");
+}
+function holdsLink(text: string): boolean {
+  return linkViews(text).some((v) => URL_RE.test(v)) || SCHEME_RE.test(schemeView(text));
+}
 /** EN + TR money-and-terms words (ADR 0313; adversary change 3). */
 const MONEY_TERMS_EN_RE = word([
   "price",
@@ -338,11 +649,46 @@ const NUMBER_WORDS_TR_RE = new RegExp(
 const COMMITMENT_RES = COMMITMENT_PATTERN_SOURCES.map((s) => new RegExp(s, "i"));
 
 /**
+ * The most UTF-16 code units (`template.length`) a letter template may hold,
+ * counted on the raw text before NFKC. NFKC turns one code point into at most
+ * eighteen (U+FDFA becomes an 18-letter phrase), so every scan after it is
+ * bounded by a fixed multiple of this. The shipped defaults are under 600
+ * code units.
+ */
+export const ORDER_REQUEST_TEMPLATE_MAX_CHARS = 16_384;
+
+/**
+ * The most UTF-16 code units (`length`) the AI's courtesy sentence may hold,
+ * raw and after normalising. The raw count is taken first, so an over-long
+ * sentence is dropped before NFKC or the link test reads it.
+ */
+const COURTESY_MAX_CHARS = 240;
+
+/**
  * Every reason the house's prose in `template` may not be used, empty when it
  * may. "Prose" is everything outside the tokens. Run over the default here, and
- * at save and publish in 4a-ii.
+ * at save and publish in 4a-ii. A template over
+ * ORDER_REQUEST_TEMPLATE_MAX_CHARS raw UTF-16 code units is refused as too_long
+ * alone, before NFKC or any pattern reads it.
  */
 export function orderRequestProseRefusals(template: string): ProseRefusal[] {
+  if (template.length > ORDER_REQUEST_TEMPLATE_MAX_CHARS) {
+    return [
+      {
+        rule: "too_long",
+        says: `This letter is ${template.length} characters long; a letter may hold at most ${ORDER_REQUEST_TEMPLATE_MAX_CHARS}.`,
+      },
+    ];
+  }
+  return orderRequestProseRefusalsUncapped(template);
+}
+
+/**
+ * orderRequestProseRefusals without the length cap. Exported only so the
+ * linear-time spec can prove the patterns themselves scan in linear time at
+ * lengths past the cap; every caller uses orderRequestProseRefusals.
+ */
+export function orderRequestProseRefusalsUncapped(template: string): ProseRefusal[] {
   const refusals: ProseRefusal[] = [];
   const found = new Set<string>();
   for (const m of template.matchAll(TOKEN_RE)) found.add(m[1]);
@@ -385,7 +731,7 @@ export function orderRequestProseRefusals(template: string): ProseRefusal[] {
       says: "Your words may not name money (a currency sign, code or word). A price, when one may be shown, comes from {{order_lines}}.",
     });
   }
-  if (URL_RE.test(prose)) {
+  if (holdsLink(template.replace(TOKEN_RE, " ").normalize("NFKC"))) {
     refusals.push({
       rule: "link",
       says: "Your words may not hold a link, a web address or an email address (ADR 0173 D5).",
@@ -440,8 +786,15 @@ const DATE_WORD_RE = word([
  */
 export function courtesyLineOrNull(sentence: string | null | undefined): string | null {
   if (typeof sentence !== "string") return null;
+  // Raw length first: nothing (NFKC, the link test) reads an over-long sentence.
+  if (sentence.length > COURTESY_MAX_CHARS) return null;
   const line = normaliseProse(sentence).replace(/\s+/g, " ").trim();
-  if (!line || line.length > 240) return null;
+  if (!line || line.length > COURTESY_MAX_CHARS) return null;
+  // The link test also reads the sentence before its whitespace is collapsed
+  // and its format characters stripped, so a line break before a dot
+  // ("evil\n.com") is folded and a format character before a scheme
+  // separates it, as in house prose.
+  if (holdsLink(sentence.normalize("NFKC"))) return null;
   if (/\p{N}|\p{Sc}|\[|\]|\{|\}/u.test(line)) return null;
   const lowers = [line.toLowerCase(), line.toLocaleLowerCase("tr")];
   if (lowers.some((l) => DATE_WORD_RE.test(l))) return null;
