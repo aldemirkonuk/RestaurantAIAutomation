@@ -695,5 +695,33 @@
     "owner",
     "manager",
     "staff"
+  ],
+  "GET /communications/designs/blocks (LetterDesignsController.blocks)": "open",
+  "GET /communications/designs (LetterDesignsController.list)": "open",
+  "POST /communications/designs (LetterDesignsController.create)": [
+    "owner",
+    "manager"
+  ],
+  "GET /communications/designs/:id (LetterDesignsController.one)": "open",
+  "PATCH /communications/designs/:id (LetterDesignsController.update)": [
+    "owner",
+    "manager"
+  ],
+  "POST /communications/designs/:id/publish (LetterDesignsController.publish)": [
+    "owner",
+    "manager"
+  ],
+  "GET /communications/designs/:id/versions (LetterDesignsController.versions)": "open",
+  "POST /communications/designs/:id/restore (LetterDesignsController.restore)": [
+    "owner",
+    "manager"
+  ],
+  "POST /communications/designs/:id/duplicate (LetterDesignsController.duplicate)": [
+    "owner",
+    "manager"
+  ],
+  "DELETE /communications/designs/:id (LetterDesignsController.remove)": [
+    "owner",
+    "manager"
   ]
 }
