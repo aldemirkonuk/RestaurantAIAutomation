@@ -316,6 +316,8 @@ export class GoalsService {
         target_value: input.targetValue,
         baseline_value: baseline,
         current_value: baseline,
+        // The baseline is a live reading too, taken now.
+        current_read_at: new Date().toISOString(),
         direction: input.direction ?? "at_least",
         period: input.period ?? "custom",
         deadline: input.deadline ?? null,
@@ -551,11 +553,21 @@ export class GoalsService {
       gate,
     );
 
-    // Refresh stored current_value (cheap side effect, keeps insights honest).
+    // Refresh the stored reading, dated (cheap side effect, keeps insights
+    // honest). The recommendations goal rule and the insight feed claim a
+    // pace only from a dated reading (goal-score.ts `datedReading`), so the
+    // stamp ships with them: without it every goal would go silent there.
+    const readAt = new Date().toISOString();
     await this.dbService
       .getClient()
       .from("analytics_goals")
-      .update({ current_value: current, updated_at: new Date().toISOString() })
+      .update({
+        current_value: current,
+        current_unread: null,
+        current_read_at: readAt,
+        updated_at: readAt,
+      })
+      .eq("restaurant_id", restaurantId)
       .eq("id", goalId);
 
     const target = Number(goal.target_value) || 0;
