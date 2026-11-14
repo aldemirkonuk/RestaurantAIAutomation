@@ -138,6 +138,60 @@ export function mailThreadUrl(
   return `/communications?${q.toString()}`;
 }
 
+/**
+ * The bell's notice for a vendor's letter on no order (r38, gap 6).
+ *
+ * Such a letter used to raise only the live toast, which nobody sees when no
+ * screen is open: the letter waited in Mail with nothing in the bell to say
+ * so. A letter on an order is left to the responder, which has its own
+ * notices. `mailKey` is the thread when the stored row has one, else the
+ * vendor, so one unread notice stands for a thread however many letters
+ * follow it.
+ */
+export function offOrderLetterNotice(letter: {
+  providerId: string;
+  providerName: string | null;
+  senderEmail: string;
+  subject: string;
+  threadKey: string | null;
+}): {
+  mailKey: string;
+  notice: {
+    type: string;
+    title: string;
+    message: string;
+    priority: "low";
+    actionUrl: string;
+    metadata: Record<string, any>;
+  };
+} {
+  const thread = letter.threadKey?.trim() || null;
+  const mailKey = thread ? `thread:${thread}` : `vendor:${letter.providerId}`;
+  const who = letter.providerName?.trim() || letter.senderEmail;
+  const subject = letter.subject.trim()
+    ? `"${letter.subject.trim().slice(0, 80)}"`
+    : "A letter with no subject";
+  return {
+    mailKey,
+    notice: {
+      type: "vendor_reply",
+      title: `${who} wrote to the house`.slice(0, 500),
+      message: `${subject}, from ${letter.senderEmail}. It is not on an order, and it waits for the house's reply on the Mail tab in Communications.`,
+      priority: "low",
+      actionUrl: mailThreadUrl(letter.providerId, thread),
+      metadata: {
+        kind: "vendor_letter",
+        mail_key: mailKey,
+        provider_id: letter.providerId,
+        thread_key: thread,
+      },
+    },
+  };
+}
+
+/** Who may answer a vendor's letter, and so whose bell it rings. */
+export const LETTER_BELL_ROLES = ["owner", "manager"] as const;
+
 @Injectable()
 export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RabbitMqBridgeService.name);
@@ -1251,6 +1305,29 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
           : mailThreadUrl(provider.id, (inserted as any).thread_key ?? null),
       });
 
+      // 5b. The bell (r38, gap 6). A letter on no order rang only the toast
+      //     above. Mass mail (bulk, list or auto-submitted) does not ring it,
+      //     the rule "Who is writing" already uses for strangers.
+      if (
+        !orderId &&
+        !(
+          transportSignals.bulk ||
+          transportSignals.listMail ||
+          transportSignals.autoSubmitted
+        )
+      ) {
+        await this.ringForOffOrderLetter(
+          restaurantId,
+          offOrderLetterNotice({
+            providerId: provider.id,
+            providerName: (provider as any).name ?? null,
+            senderEmail,
+            subject,
+            threadKey: (inserted as any).thread_key ?? null,
+          }),
+        );
+      }
+
       if (orderId) {
         this.websocketGateway.emitConversationUpdated(restaurantId, {
           conversation_id: inserted.id,
@@ -1295,6 +1372,37 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
    * uses the in-event base64; this runs alongside it so the manager can view what the AI
    * read and we keep a durable, deduped copy. Best-effort — never throws, never blocks.
    */
+  /**
+   * Rings the bell of the house's owners and managers for a letter on no
+   * order, unless an unread notice for the same thread (or vendor) is still
+   * there. Never throws: the letter is already stored. A failed check rings
+   * anyway, since a second notice costs less than a silent letter.
+   */
+  private async ringForOffOrderLetter(
+    restaurantId: string,
+    { mailKey, notice }: ReturnType<typeof offOrderLetterNotice>,
+  ): Promise<void> {
+    try {
+      const { data, error } = await this.databaseService.supabase
+        .from("notifications")
+        .select("id")
+        .eq("restaurant_id", restaurantId)
+        .eq("status", "unread")
+        .eq("metadata->>mail_key", mailKey)
+        .limit(1);
+      if (!error && Array.isArray(data) && data.length > 0) return;
+      void this.inboundResponder.persistManagerNotification(
+        restaurantId,
+        notice,
+        { roles: LETTER_BELL_ROLES },
+      );
+    } catch (err: any) {
+      this.logger.warn(
+        `handleInboundEmail: the bell for a letter on no order failed — ${err?.message}`,
+      );
+    }
+  }
+
   private async persistAttachments(
     conversationId: string,
     orderId: string | null,
