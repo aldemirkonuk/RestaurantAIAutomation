@@ -88,6 +88,28 @@ const CATEGORY_VOCABULARY_CLAUSE =
   "above, never the heading as printed, and never a word outside the list. " +
   "Omit category only when the line gives no basis at all for choosing one. ";
 
+/**
+ * THE MONEY A LINE IS PRINTED IN (r36 menu audit N1). A menu's prices were
+ * taken as the house's money whatever the menu printed, so "€12" became 12 in
+ * a lira house. The reader now names the money each line's prices are printed
+ * in, as printed, and a second column when the menu prints two monies; the
+ * gateway decides what the house takes (menus/menu-money.ts) and never
+ * converts. The reader is told not to infer money from the country or the
+ * language, the same rule the invoice reader keeps for `currencySeen`.
+ */
+const MONEY_CLAUSE =
+  "currency is the money mark or code the prices you gave are printed with, " +
+  "exactly as printed (for example '₺', 'TL', '€', 'EUR', '$', '£'), whether " +
+  "it is printed beside the price or once for the whole menu or section. " +
+  "Omit currency when the menu prints no money mark or code at all; never " +
+  "infer it from the country, the language or the price's size. When a line " +
+  "prints its price in more than one money (e.g. '₺450 / €12'), give the " +
+  "first money's prices in by_glass_price and bottle_price with its currency, " +
+  "and each other money's prices in also_priced as a list of " +
+  "{ currency, by_glass_price, bottle_price } (e.g. 'Chianti ₺450 / €12' is " +
+  '{"name":"Chianti","currency":"₺","bottle_price":450,"also_priced":[{"currency":"€","bottle_price":12}]}). ' +
+  "A price is always a number, never a string with its mark. ";
+
 /** What a dish carries. See "A DISH IS READ TOO" above. */
 const DISH_CLAUSE =
   "A dish (any food: starters, mains, sides, salads, pasta, pizza, desserts " +
@@ -104,9 +126,10 @@ export const WINE_EXTRACTION_PROMPT =
   "spirits, whiskey, cocktails, soft drinks and non-alcoholic listings all " +
   "count, and a menu that prints them in their own sections still prints " +
   "them — and EVERY dish listed as well. For each item return JSON: " +
-  "{ name, producer, category, vintage, region, grape_variety, by_glass_price, bottle_price }. " +
+  "{ name, producer, category, vintage, region, grape_variety, by_glass_price, bottle_price, currency, also_priced }. " +
   CATEGORY_VOCABULARY_CLAUSE +
   DISH_CLAUSE +
+  MONEY_CLAUSE +
   "producer is the winery/estate/château name, or the brewery/distillery for " +
   "a beer or a spirit. " +
   "vintage, region and grape_variety describe wine — omit all three on a " +
