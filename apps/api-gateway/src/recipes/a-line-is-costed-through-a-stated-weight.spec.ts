@@ -196,7 +196,13 @@ describe("the sheet reads a good's stated weights", () => {
     const dto = { yieldServes: 1, lines: [{ role: "stocked", inventoryId: EGGS, qtyEntered: 2, unitCode: "each" }] } as any;
     const out: any = await svc.previewDishCost(HOUSE_A, TART, dto);
     expect(out.perServe).toBe(6);
-    expect(out.lines[0]).toEqual({ status: "linked", costPerServe: 6, costBasis: "last_purchase_price", needs: null });
+    expect(out.lines[0]).toEqual({
+      status: "linked",
+      costPerServe: 6,
+      costBasis: "last_purchase_price",
+      needs: null,
+      weighed: { by: "piece_grams", grams: 60 },
+    });
 
     const bare = new RecipesService(fakeDb(houseWithEggs(), { rpc }).db);
     expect(((await bare.previewDishCost(HOUSE_A, TART, dto)) as any).lines[0].needs).toBe("piece_grams");
