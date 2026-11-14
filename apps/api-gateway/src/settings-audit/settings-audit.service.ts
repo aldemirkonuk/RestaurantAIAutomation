@@ -119,7 +119,14 @@ export type SettingsRegister =
    * The founder, 2026-10-04: *"Add it to the editor (Recommended)"* —
    * changed by owners only and recorded in the log.
    */
-  | "state-and-country";
+  | "state-and-country"
+  /**
+   * Whether the house's prices hold tax and whether it reclaims the tax it
+   * pays (`restaurants.tax_basis`, `reclaims_input_tax`; ADR 0359 C2/C3). Its
+   * own register: the answer decides what every delivery's stock is costed
+   * at from the day it is first given.
+   */
+  | "tax-basis";
 
 /**
  * Every member of `SettingsRegister`, as a record the compiler holds to the
@@ -141,6 +148,7 @@ const KNOWN_REGISTERS: Record<SettingsRegister, true> = {
   "target-margin": true,
   "ask-training": true,
   "state-and-country": true,
+  "tax-basis": true,
 };
 
 /**
@@ -174,6 +182,12 @@ export const SETTINGS_AUDIT_ACTIONS = [
    * `restaurants.timezone` had no writer a person could reach.
    */
   "house_time_zone_changed",
+  /**
+   * The house stated whether its prices hold tax and whether it reclaims the
+   * tax it pays (ADR 0359 C2/C3). Added 2026-11-13: until then every house
+   * read `unset` and nothing could change it.
+   */
+  "house_tax_basis_changed",
   /**
    * The house turned Jev tone scoring of its vendor mail on or off. Added
    * 2026-09-21 (ADR 0207); off by default.
