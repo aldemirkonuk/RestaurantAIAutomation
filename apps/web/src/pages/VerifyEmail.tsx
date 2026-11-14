@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 import { getOnboardingProgress } from '../services/api/menus'
 import { apiClient, getErrorMessage } from '../services/api/client'
 import { tokenHouse } from '../lib/houseMemory'
+import { afterVerifyIn } from '../lib/afterVerifyIn'
 import {
   CODE_REFUSAL_SENTENCE,
   clearSignUpMail,
@@ -113,14 +114,58 @@ export function VerifyEmail() {
     // already uploaded (re-verification flows).
     const house = tokenHouse(pair.accessToken)
     const progress = house ? await getOnboardingProgress().catch(() => null) : null
-    const destination = !house
-      ? '/choose-house'
-      : progress?.menu_uploaded
-        ? '/'
-        : '/get-started'
     toast.success('Email verified.')
-    navigate(destination, { replace: true })
+    navigate(!house ? '/choose-house' : afterVerifyIn(progress), { replace: true })
   }
+
+  // r36 onboarding gap 4: the address verified somewhere else (the link
+  // opened on the phone) left this tab saying "Check your email" for good,
+  // and after a reload it had no code box, no way on, and a Resend that the
+  // gateway answers 409. Once the house says the address is verified, this
+  // tab moves on by itself through the same finish as the link and the code.
+  // Only this page's own session is used: the pair already stored here.
+  const movedOn = useRef(false)
+  const moveOnWithThisSession = () => {
+    if (movedOn.current || verified) return
+    const accessToken = localStorage.getItem('accessToken')
+    const refreshToken = localStorage.getItem('refreshToken')
+    if (!accessToken || !refreshToken) return
+    movedOn.current = true
+    void finishVerified({ accessToken, refreshToken })
+  }
+  const verifiedElsewhere = !token && !loading && user?.emailVerified === true && !verified
+  useEffect(() => {
+    if (verifiedElsewhere) moveOnWithThisSession()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [verifiedElsewhere])
+
+  // While this tab waits (signed in, no link, not verified), it asks again
+  // when it is looked at, and every 30 s while it is shown.
+  const waiting = !token && !loading && Boolean(user) && user?.emailVerified !== true && !verified
+  useEffect(() => {
+    if (!waiting) return
+    let live = true
+    const ask = async () => {
+      if (!live || document.visibilityState === 'hidden') return
+      try {
+        const read = await apiClient.get<{ user?: { emailVerified?: boolean } }>('/auth/me')
+        if (live && read?.data?.user?.emailVerified === true) moveOnWithThisSession()
+      } catch {
+        // Not read just now: the tab keeps waiting, and says nothing new.
+      }
+    }
+    const onShown = () => void ask()
+    window.addEventListener('focus', onShown)
+    document.addEventListener('visibilitychange', onShown)
+    const timer = window.setInterval(onShown, 30_000)
+    return () => {
+      live = false
+      window.removeEventListener('focus', onShown)
+      document.removeEventListener('visibilitychange', onShown)
+      window.clearInterval(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waiting])
 
   const handleVerify = async () => {
     if (!token) {
