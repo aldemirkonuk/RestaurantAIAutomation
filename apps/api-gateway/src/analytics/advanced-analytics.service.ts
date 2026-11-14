@@ -598,6 +598,16 @@ export class AdvancedAnalyticsService {
     // with no movement reported Sunday as both the busiest and the quietest
     // night. An extreme that is shared is not an extreme (ADR 0020).
     const extremes = E.separableExtremes(weekday.profiles);
+    // Which weekdays hold a counted line in the window (r37 w3 R-F10): the
+    // others read 0 only because the series is zero-filled.
+    const lined = new Set<number>();
+    for (const day of dates)
+      if (byDay.has(day)) lined.add(new Date(`${day}T00:00:00Z`).getUTCDay());
+    const lowest = Math.min(...weekday.profiles.map((p) => p.mean));
+    const quietWithoutLine = weekday.profiles
+      .filter((p) => p.mean === lowest && !lined.has(p.weekday))
+      .map((p) => E.WEEKDAY_NAMES[p.weekday]);
+    const withoutLine = weekday.profiles.filter((p) => !lined.has(p.weekday)).length;
     const decomposition = E.seasonalDecompose(values, 7);
     const trend28 = E.trendPerPeriodPct(values.slice(-28));
 
@@ -650,10 +660,15 @@ export class AdvancedAnalyticsService {
       /** True when an extreme is shared, so `bestDay`/`worstDay` are withheld. */
       tie: extremes.tie,
       basis: {
-        weekday: `mean bottles per weekday over the last ${sinceDays} days of wine_consumption_log; a weekday with no observation is absent from weekdayProfile rather than reported as 0`,
+        // The series is zero-filled, so every weekday is in weekdayProfile;
+        // this used to say a weekday with no observation was absent (R-F10).
+        weekday: `mean bottles per weekday over the last ${sinceDays} days of wine_consumption_log; every day of the window is counted, and a day with no counted line reads 0, so a weekday with no line in the window has a mean of 0`,
         units: unitsBasisSentence(unitsCoverage, "series"),
         // Names which extreme is withheld, not just that one is (r33 R-F2).
-        extremes: E.extremesBasis(extremes, weekday.profiles.length),
+        extremes: E.extremesBasis(extremes, weekday.profiles.length, {
+          withoutLine,
+          quietWithoutLine,
+        }),
       },
       weeklySeasonalFactors: decomposition
         ? decomposition.seasonal.slice(0, 7)
