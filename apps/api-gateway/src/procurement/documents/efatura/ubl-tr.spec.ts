@@ -288,3 +288,49 @@ describe("a weighed e-Fatura line books by weight (R8, browser walk 2026-11-12)"
     expect(doc.lines[2].priceBaseUom).toBeNull();
   });
 });
+
+describe("an e-Fatura line keeps its own KDV rate (r35, BT-152)", () => {
+  const sub = (percent: string, code?: string) =>
+    `<cac:TaxSubtotal><cbc:TaxAmount currencyID="TRY">1</cbc:TaxAmount><cbc:Percent>${percent}</cbc:Percent>` +
+    `<cac:TaxCategory><cac:TaxScheme>${code ? `<cbc:TaxTypeCode>${code}</cbc:TaxTypeCode>` : ""}</cac:TaxScheme></cac:TaxCategory></cac:TaxSubtotal>`;
+  const line = (id: number, tax: string, item = "") =>
+    `<cac:InvoiceLine><cbc:ID>${id}</cbc:ID><cbc:InvoicedQuantity unitCode="C62">1</cbc:InvoicedQuantity>` +
+    `<cbc:LineExtensionAmount currencyID="TRY">10</cbc:LineExtensionAmount>${tax}` +
+    `<cac:Item><cbc:Name>SYN</cbc:Name>${item}</cac:Item>` +
+    `<cac:Price><cbc:PriceAmount currencyID="TRY">10</cbc:PriceAmount></cac:Price></cac:InvoiceLine>`;
+  const read = (extra: string) => readUblTr(invoice({ extraLine: extra }));
+
+  it("takes the line's KDV (0015) subtotal, beside an ÖTV (0071) one", () => {
+    const doc = read(
+      line(3, `<cac:TaxTotal>${sub("10", "0015")}</cac:TaxTotal>`) +
+        line(4, `<cac:TaxTotal>${sub("25", "0071")}${sub("20", "0015")}</cac:TaxTotal>`),
+    );
+    expect(doc.lines[2].vatRatePercent).toBe(10);
+    expect(doc.lines[3].vatRatePercent).toBe(20);
+  });
+
+  it("a plain UBL line with one untyped subtotal takes it; with none, its item's tax category", () => {
+    const doc = read(
+      line(3, `<cac:TaxTotal>${sub("8")}</cac:TaxTotal>`) +
+        line(4, "", "<cac:ClassifiedTaxCategory><cbc:Percent>1</cbc:Percent></cac:ClassifiedTaxCategory>"),
+    );
+    expect(doc.lines[2].vatRatePercent).toBe(8);
+    expect(doc.lines[3].vatRatePercent).toBe(1);
+  });
+
+  it("two KDV subtotals, or typed subtotals with no KDV, give the line no rate", () => {
+    const doc = read(
+      line(3, `<cac:TaxTotal>${sub("10", "0015")}${sub("20", "0015")}</cac:TaxTotal>`) +
+        line(4, `<cac:TaxTotal>${sub("25", "0071")}</cac:TaxTotal>`, "<cac:ClassifiedTaxCategory><cbc:Percent>20</cbc:Percent></cac:ClassifiedTaxCategory>"),
+    );
+    expect("vatRatePercent" in doc.lines[2]).toBe(false);
+    expect("vatRatePercent" in doc.lines[3]).toBe(false);
+  });
+
+  it("a rate that is not a rate is left empty and said; a line with no tax carries no rate key", () => {
+    const doc = read(line(3, `<cac:TaxTotal>${sub("120", "0015")}</cac:TaxTotal>`));
+    expect("vatRatePercent" in doc.lines[2]).toBe(false);
+    expect(doc.warnings).toContain("The file's line 3 tax rate reads 120 %, which is not a rate; it was left empty.");
+    expect("vatRatePercent" in doc.lines[0]).toBe(false);
+  });
+});
