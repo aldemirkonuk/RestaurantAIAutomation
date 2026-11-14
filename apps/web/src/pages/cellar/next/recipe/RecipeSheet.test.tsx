@@ -1410,3 +1410,13 @@ describe('a fresh line starts in the unit its kind measures by', () => {
     expect(lastUnit()).toBe('ml');
   });
 });
+
+describe('the sheet’s cards open what is in a serve (r36 recipes audit, gap 9)', () => {
+  it('the energy card moves the focus to the card below it; the margin card reads price less cost', async () => {
+    serve(negroni());
+    mount();
+    fireEvent.click(await screen.findByTestId('drink-card-energy-open'));
+    expect(document.activeElement).toBe(screen.getByTestId('recipe-whatisin-unread'));
+    expect(screen.getByTestId('drink-card-margin')).toHaveTextContent('₺393.00');
+  });
+});

@@ -715,8 +715,15 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
       ) : null}
       {/* The drink opens on its cards, then what is in a serve, then its lines
           (founder ask: a drink shows its KPI cards, then a nutrition card). */}
-      <DrinkCards data={data} sayMoney={say} sayPct={sayPct} unsaved={canEdit && dirty} draftCost={draftCost} />
-      <WhatIsInAServe data={data} unsaved={canEdit && dirty} />
+      <DrinkCards
+        data={data}
+        sayMoney={say}
+        sayPct={sayPct}
+        unsaved={canEdit && dirty}
+        draftCost={draftCost}
+        nutritionId={`rcp-whatisin-${cocktailId}`}
+      />
+      <WhatIsInAServe data={data} unsaved={canEdit && dirty} id={`rcp-whatisin-${cocktailId}`} />
 
       <header className="cl-rcp-head">
         <h4 className="cl-sec" style={{ margin: 0 }}>Recipe</h4>
