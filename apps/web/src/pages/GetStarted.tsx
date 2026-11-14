@@ -16,6 +16,7 @@ import { getBrowserTimezone } from '../lib/browserTimezone'
 import { countryCodeFor } from '../lib/countries'
 import { zoneForPlace } from '../lib/zoneForPlace'
 import { writeProof } from '../lib/firstProof'
+import { fitPhotoForReading } from '../lib/fitPhoto'
 import { readHouseMenuStanding, type HouseMenuStanding } from '../lib/houseMenuStanding'
 import { isMapsConfigured } from '../lib/googleMaps'
 import { houseNotOpened, HOUSE_OPEN_DETAILS_LATER } from '../lib/houseOpeningWords'
@@ -479,8 +480,12 @@ export default function GetStarted() {
         reader.onerror = () => reject(new Error('Could not read that photo.'))
         reader.readAsDataURL(file)
       })
-      const result = await importMenu('scan', { imageBase64: image })
-      menuRead(result, { image })
+      // Sent as bare base64, fitted for the reader (r28 gap 12): the data URL
+      // FileReader gives was sent whole, prefix and all, and a phone photo
+      // went up at full size.
+      const photo = await fitPhotoForReading(image)
+      const result = await importMenu('scan', { imageBase64: photo.base64 })
+      menuRead(result, { image: photo.dataUrl })
     } catch (cause) {
       setError(photoNotRead(cause))
     } finally {

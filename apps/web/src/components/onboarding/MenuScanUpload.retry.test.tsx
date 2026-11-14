@@ -32,7 +32,9 @@ describe('MenuScanUpload sends the same photo again', () => {
     const again = await screen.findByRole('button', { name: 'Send this photo again' })
     fireEvent.click(again)
     await waitFor(() => expect(importMenu).toHaveBeenCalledTimes(2))
-    expect(importMenu.mock.calls[1]).toEqual(['scan', { imageBase64: 'data:image/jpeg;base64,AAAA' }])
+    // The reader gets bare base64 (r28 gap 12); the page keeps a data URL.
+    expect(importMenu.mock.calls[0]).toEqual(['scan', { imageBase64: 'AAAA' }])
+    expect(importMenu.mock.calls[1]).toEqual(['scan', { imageBase64: 'AAAA' }])
     await waitFor(() =>
       expect(onSuccess).toHaveBeenCalledWith({ menuId: 'm-1', items: [] }, { image: 'data:image/jpeg;base64,AAAA' }),
     )

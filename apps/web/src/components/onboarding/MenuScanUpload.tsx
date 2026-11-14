@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { RotateCcw } from 'lucide-react'
 import { CameraCapture } from '../scanner/CameraCapture'
 import { importMenu, type MenuImportSuccess } from '../../services/api/menus'
+import { fitPhotoForReading } from '../../lib/fitPhoto'
 
 interface MenuScanUploadProps {
   onSuccess: MenuImportSuccess
@@ -20,8 +21,11 @@ export function MenuScanUpload({ onSuccess }: MenuScanUploadProps) {
     setLoading(true)
     setError(null)
     try {
-      const result = await importMenu('scan', { imageBase64 })
-      onSuccess(result, { image: imageBase64 })
+      // Bare base64 for the reader, a data URL for the first proof's crops,
+      // and a phone photo fitted first (r28 gap 12).
+      const photo = await fitPhotoForReading(imageBase64)
+      const result = await importMenu('scan', { imageBase64: photo.base64 })
+      onSuccess(result, { image: photo.dataUrl })
     } catch (e: any) {
       setError(e?.response?.data?.message || e?.message || 'Failed to analyze menu. Please try again.')
     } finally {
