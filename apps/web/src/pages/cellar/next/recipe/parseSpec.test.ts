@@ -226,6 +226,8 @@ describe('a name-first line is read by its trailing amount (r33 w1 F3)', () => {
     expect(parseLine('Gin 50 ml chilled')).toMatchObject({ qty: null, unit: null });
     expect(parseLine('Water 1.000 ml')).toMatchObject({ qty: null, unit: null });
     expect(parseLine('50 ml')).toMatchObject({ qty: null, unit: null });
+    // Something before the amount that names nothing is not a label.
+    expect(parseLine('— 50 ml')).toMatchObject({ qty: null, unit: null, label: '— 50 ml' });
   });
 
   it('a garnish or a top-up written name first is not taken from the shelf', () => {
