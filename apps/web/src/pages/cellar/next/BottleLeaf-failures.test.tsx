@@ -227,15 +227,23 @@ describe('BottleLeaf — bringing a bottle in, failed', () => {
     expect(body()).not.toMatch(/status code|no reason given/i);
   });
 
-  it('an unanswered bring-in is not known, and says to look at the cellar so it is not booked twice', async () => {
+  it('an unanswered bring-in is not known, and says to look at the cellar first', async () => {
     api.bringIn.mockRejectedValue(answered(500));
     mount(null);
     bringIn();
     await waitFor(() => expect(body()).toContain('it is not known whether the bottles were booked'));
     expect(body()).toContain(
-      'The server failed before it could answer, so it is not known whether the bottles were booked. Look at the cellar before trying again, so they are not booked twice.',
+      'The server failed before it could answer, so it is not known whether the bottles were booked. Look at the cellar before trying again: if the bottle is there, it was booked.',
     );
     expect(body()).not.toContain('Nothing was booked');
+  });
+
+  it('a second try on a wine that landed reads the server\'s own words', async () => {
+    api.bringIn.mockRejectedValue(answered(409, 'This wine already exists in inventory.'));
+    mount(null);
+    bringIn();
+    await waitFor(() => expect(body()).toContain('Nothing was booked'));
+    expect(body()).toContain('Nothing was booked — this wine already exists in inventory.');
   });
 
   it('a bring-in that failed on this device says so, never "no reason given"', async () => {

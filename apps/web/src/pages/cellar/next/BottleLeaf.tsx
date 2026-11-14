@@ -376,12 +376,14 @@ export default function BottleLeaf({
                       {
                         onSuccess: () => setSaid(`Booked into the cellar — ${qty} on hand.`),
                         onError: (e: unknown) => {
-                          // A new cellar row carries no key, so a second try after
-                          // an unanswered one can book the bottles twice (INV-W31).
+                          // The write carries no key. The gateway refuses a second
+                          // row for a wine already carried (409, a read before the
+                          // insert, not a constraint), so the advice is to look,
+                          // and the cellar is re-read so a row that landed shows.
                           const f = writeFailure(e, {
                             refused: 'Nothing was booked',
                             act: 'the bottles were booked',
-                            check: 'Look at the cellar before trying again, so they are not booked twice.',
+                            check: 'Look at the cellar before trying again: if the bottle is there, it was booked.',
                           });
                           if (f.unknown) void queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
                           setSaid(f.text);
