@@ -19,6 +19,7 @@ import {
   versionLabels,
 } from './MenuVersions';
 import { formatMoney } from '../../../lib/currency';
+import { photoToJpegBase64 } from '../../../lib/menuPhotos';
 
 vi.mock('../../../hooks/queries/useHouseCurrencyCode', () => ({ useHouseCurrencyCode: () => 'TRY' }));
 /** A price as a lira house writes it: the page routes every price through formatMoney. */
@@ -812,6 +813,31 @@ describe('the upload box reads what it offers (r28 G18)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
     await waitFor(() => expect(mockImport).toHaveBeenCalledTimes(1));
     expect(mockImport.mock.calls[0][0]).toBe('csv');
+  });
+
+  // r36 N3: a file too big for one read is said at once and never sent.
+  it('a PDF past 10 MB is refused when it is chosen, and nothing is sent', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mount(false);
+    fireEvent.change(await screen.findByLabelText('Menu to read'), {
+      target: { files: [new File([new Uint8Array(11 * 1024 * 1024)], 'menu.pdf', { type: 'application/pdf' })] },
+    });
+    expect(screen.getByTestId('menu-file-refused')).toHaveTextContent(/^This file is 11\.0 MB, and one read takes up to 10\.0 MB\./);
+    expect(screen.getByRole('button', { name: 'Read this menu' })).toBeDisabled();
+    expect(mockImport).not.toHaveBeenCalled();
+  });
+
+  it('a photo too big for the reader is said when Read is pressed, and nothing is sent', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mount(false);
+    const big = new Uint8Array(4 * 1024 * 1024);
+    big.set([0xff, 0xd8, 0xff, 0xe0]);
+    // r37 meet: this browser cannot redraw it, so it would go as it is.
+    vi.mocked(photoToJpegBase64).mockRejectedValueOnce(new Error('no canvas'));
+    fireEvent.change(await screen.findByLabelText('Menu to read'), { target: { files: [new File([big], 'menu.jpg', { type: 'image/jpeg' })] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
+    expect(await screen.findByTestId('menu-read-error')).toHaveTextContent(/The menu was not read: This photo is 4\.0 MB/);
+    expect(mockImport).not.toHaveBeenCalled();
   });
 
   it('an .xlsx is still sent as a workbook', async () => {

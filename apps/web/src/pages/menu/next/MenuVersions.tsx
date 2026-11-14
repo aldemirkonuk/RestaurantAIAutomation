@@ -49,6 +49,8 @@ import { takenOffSentence } from './menu-take-off';
 import { formatMoney } from '../../../lib/currency';
 import { useHouseCurrencyCode } from '../../../hooks/queries/useHouseCurrencyCode';
 import { MenuReadNotes } from '../../../components/onboarding/MenuReadNotes';
+import { sniffMime } from '../../../lib/fitPhoto';
+import { fittedPhotoRefusal, pickedSizeRefusal } from './menu-read-size';
 
 const EM = '—';
 
@@ -277,10 +279,10 @@ export function readMenuDate(raw: string): { ok: boolean; value: string | undefi
   return { ok: false, value: undefined, error: 'A date is a day (2026-10-15) or just a month (2026-10).' };
 }
 
-function fileToBase64(file: File): Promise<string> {
+function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
-    r.onload = () => resolve(String(r.result).split(',', 2)[1] ?? '');
+    r.onload = () => resolve(String(r.result));
     r.onerror = () => reject(r.error ?? new Error('the file could not be read'));
     r.readAsDataURL(file);
   });
@@ -306,15 +308,37 @@ export function uploadShapeOf(files: File[]): { kind: 'csv' | 'sheet' | 'file' |
   return { kind: 'photos', problem: null };
 }
 
+async function fileToBase64(file: File): Promise<string> {
+  return (await fileToDataUrl(file)).split(',', 2)[1] ?? '';
+}
+
+/**
+ * One photo or PDF as the reader takes it (r36 N3, #1566; r37 meet). A photo
+ * is redrawn as the chain redraws it (menuPhotos, up to ONE_PAGE_EDGE); one
+ * the browser cannot redraw goes as it is. A PDF goes as it is. What is still
+ * too big for the reader is refused here, in words, and never sent.
+ */
+export async function scanPayload(file: File): Promise<string> {
+  let base64: string;
+  let fitted = false;
+  if (isPhoto(file)) {
+    try {
+      base64 = await photoToJpegBase64(file);
+      fitted = true;
+    } catch {
+      base64 = await fileToBase64(file);
+    }
+  } else {
+    base64 = await fileToBase64(file);
+  }
+  const why = fittedPhotoRefusal({ base64, mime: fitted ? 'image/jpeg' : sniffMime(base64), fitted });
+  if (why) throw new Error(why);
+  return base64;
+}
+
 /** The pages of the chosen photos, ready to send. One photo the browser cannot redraw goes as it is. */
 async function pagesOf(files: File[]): Promise<{ images: string[] } | { imageBase64: string }> {
-  if (files.length === 1) {
-    try {
-      return { imageBase64: await photoToJpegBase64(files[0]) };
-    } catch {
-      return { imageBase64: await fileToBase64(files[0]) };
-    }
-  }
+  if (files.length === 1) return { imageBase64: await scanPayload(files[0]) };
   const images = await photosToPages(files);
   const problem = pagesProblem(images);
   if (problem) throw new Error(problem);
@@ -375,7 +399,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
       };
       if (shape.kind === 'csv') return importMenu('csv', { csvContent: await files[0].text() }, labels);
       if (shape.kind === 'sheet') return importMenu('csv', { fileBase64: await fileToBase64(files[0]) }, labels);
-      if (shape.kind === 'file') return importMenu('scan', { imageBase64: await fileToBase64(files[0]) }, labels);
+      if (shape.kind === 'file') return importMenu('scan', { imageBase64: await scanPayload(files[0]) }, labels);
       return importMenu('scan', await pagesOf(files), labels);
     },
     onMutate: () => onReadStart?.(),
@@ -426,7 +450,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
             onChange={(e) => {
               const picked = Array.from(e.target.files ?? []);
               // A file this box cannot read is said at once and never sent.
-              const why = picked.map((f) => menuFileRefusal(f)).find((w) => w !== null) ?? null;
+              const why = picked.map((f) => menuFileRefusal(f) ?? pickedSizeRefusal(f)).find((w) => w !== null) ?? null;
               setFileRefusal(why);
               setFiles(why ? [] : picked);
             }}
