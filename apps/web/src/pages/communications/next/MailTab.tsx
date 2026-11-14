@@ -420,6 +420,7 @@ export function MailTab({
       ? { state: 'failed' }
       : { state: 'checking' };
   const status = mailStatusLine(reader, summary, { readerFailed, summaryFailed: summaryQ.isError, now, test });
+  const mailboxDoor = houseMailboxStatus(reader, { readFailed: readerFailed, now });
   const withKey = params.get('with');
   const threadKey = params.get('thread');
   const setup = params.get('setup') === '1';
@@ -506,6 +507,30 @@ export function MailTab({
             {setupLinkWords(canReply)}
           </button>
         )}
+        {/* An empty vendor book is fixed on Vendors, not in Mail setup (r36
+            mail gap 5), whatever else the line says. Only an owner or a
+            manager is sent there. */}
+        {!setup && mailboxDoor.state === 'nothing_to_read' && canReply && (
+          <button
+            type="button"
+            data-testid="status-vendors"
+            onClick={() => navigate('/vendors')}
+            style={{
+              justifySelf: 'start',
+              marginTop: 4,
+              fontSize: 12,
+              fontWeight: 600,
+              padding: '5px 12px',
+              borderRadius: 999,
+              border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+              background: 'transparent',
+              color: 'var(--seal-deep, #14515C)',
+              cursor: 'pointer',
+            }}
+          >
+            Add a vendor&apos;s email address
+          </button>
+        )}
       </header>
 
       {setup ? (
@@ -514,7 +539,7 @@ export function MailTab({
           sender={senderQ.data ?? null}
           senderFailed={senderQ.isError}
           conversationWords={senderQ.data?.conversation?.words ?? null}
-          mailboxSwitchedOff={houseMailboxStatus(reader, { readFailed: readerFailed, now }).state === 'switched_off'}
+          mailboxSwitchedOff={mailboxDoor.state === 'switched_off'}
           readerGranted={readerFailed || !reader ? 'unknown' : reader.granted}
           onBack={() => back({ setup: null })}
         />

@@ -144,7 +144,17 @@ export interface MailboxReader {
   enabled: boolean;
   lastReadAt: string | null;
   lastError: string | null;
+  /**
+   * How many vendor addresses the reader may ask Gmail about (r36 mail gap
+   * 5). 0: connected, with nothing to read for until a vendor has an email
+   * address. null or absent (an older gateway): not known, and no claim.
+   */
+  bookAddresses?: number | null;
 }
+
+/** What a connected mailbox with an empty vendor book needs, in the house's words (r36 mail gap 5). */
+export const NOTHING_TO_READ_FOR =
+  'Connected, but no vendor has an email address yet, so there is nothing to read for.';
 
 /** A read inside this many minutes counts as "reading". */
 export const READING_WITHIN_MIN = 15;
@@ -265,7 +275,14 @@ export function mailTabLabel(summary: MailSummary | null): string {
   return `Mail · ${summary ? summary.waitingPeople : EM}`;
 }
 
-export type DoorState = 'not_connected' | 'switched_off' | 'reading' | 'behind' | 'failing' | 'cannot_tell';
+export type DoorState =
+  | 'not_connected'
+  | 'switched_off'
+  | 'nothing_to_read'
+  | 'reading'
+  | 'behind'
+  | 'failing'
+  | 'cannot_tell';
 
 export interface DoorStatus {
   state: DoorState;
@@ -324,6 +341,11 @@ export function houseMailboxStatus(
   }
   if (reader.lastError) {
     return { state: 'failing', words: readErrorWords(reader.lastError), tone: 'alarm' };
+  }
+  // A failing read speaks first; then an empty book, which no read can fix
+  // (r36 mail gap 5). Only an exact 0 counts: an older gateway sends none.
+  if (reader.bookAddresses === 0) {
+    return { state: 'nothing_to_read', words: NOTHING_TO_READ_FOR, tone: 'warn' };
   }
   const last = at(reader.lastReadAt);
   if (last === null) {
@@ -424,6 +446,7 @@ export type MailStatusState =
   | 'reading'
   | 'unproven'
   | 'switched_off'
+  | 'nothing_to_read'
   | 'needs_attention'
   | 'not_connected'
   | 'unknown';
@@ -497,7 +520,9 @@ export function mailStatusLine(
       ? `your mailbox was last read ${ago(lastRead)} ago`
       : mailbox.state === 'switched_off'
         ? 'reading your mailbox is switched off'
-        : mailbox.state === 'cannot_tell' && reader?.granted === true && !opts.readerFailed
+        : mailbox.state === 'nothing_to_read'
+          ? 'your mailbox has nothing to read for until a vendor has an email address'
+          : mailbox.state === 'cannot_tell' && reader?.granted === true && !opts.readerFailed
           ? 'no read of your mailbox is recorded yet'
           : mailbox.state === 'cannot_tell' && (opts.readerFailed || reader !== null)
             ? 'whether your mailbox is read could not be checked'
@@ -535,6 +560,13 @@ export function mailStatusLine(
 
   if (mailbox.state === 'switched_off') {
     return { state: 'switched_off', words: 'Not reading · your mailbox is connected, but reading is switched off', tone: 'warn' };
+  }
+  if (mailbox.state === 'nothing_to_read') {
+    return {
+      state: 'nothing_to_read',
+      words: 'Not reading yet · your mailbox is connected, but no vendor has an email address to read for',
+      tone: 'warn',
+    };
   }
 
   const mailboxKnownOff = mailbox.state === 'not_connected';
@@ -695,7 +727,9 @@ export function emptyListWords(
   if (opts.waitingOnly) return `No vendor is waiting on ${opts.on}.`;
   const open: string[] = [];
   const shut: string[] = [];
-  if (reader?.granted === true && reader.enabled) open.push('your mailbox');
+  if (reader?.granted === true && reader.enabled && reader.bookAddresses === 0)
+    shut.push('your mailbox is connected, but no vendor has an email address for it to read for');
+  else if (reader?.granted === true && reader.enabled) open.push('your mailbox');
   else if (reader?.granted === false) shut.push('your mailbox is not connected');
   else if (reader && reader.granted === true && !reader.enabled) shut.push('your mailbox is connected but not being read');
   else shut.push('whether your mailbox is connected could not be read');

@@ -335,6 +335,45 @@ describe('the status line', () => {
     expect(screen.getByTestId('mail-status')).toHaveAttribute('data-state', 'connected');
   });
 
+  // r36 mail gap 5: a connected mailbox with an empty vendor book.
+  it('a connected mailbox with no vendor address says so and sends an owner or manager to Vendors', async () => {
+    routes['/communications/letters/sender'] = () => ({ ...SENDER, reader: { ...SENDER.reader, bookAddresses: 0 } });
+    routes['/mail/summary'] = () => ({ ...SUMMARY, address: { configured: true, address: null } });
+    mount();
+    await waitFor(async () =>
+      expect(await status()).toHaveTextContent(
+        /^Not reading yet · your mailbox is connected, but no vendor has an email address to read for$/,
+      ),
+    );
+    expect(screen.queryByTestId('status-setup')).toBeNull();
+    fireEvent.click(screen.getByTestId('status-vendors'));
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/vendors$/);
+  });
+
+  it('staff are told the same, and are not sent to Vendors', async () => {
+    auth.current = { user: { role: 'staff', restaurantId: 'r1' }, activeRestaurantId: 'r1', activeRole: 'staff' };
+    routes['/communications/letters/sender'] = () => ({ ...SENDER, reader: { ...SENDER.reader, bookAddresses: 0 } });
+    routes['/mail/summary'] = () => ({ ...SUMMARY, address: { configured: true, address: null } });
+    mount();
+    await waitFor(async () => expect(await status()).toHaveTextContent(/no vendor has an email address/));
+    expect(screen.queryByTestId('status-vendors')).toBeNull();
+  });
+
+  it('the Vendors way shows beside other proof too', async () => {
+    routes['/communications/letters/sender'] = () => ({ ...SENDER, reader: { ...SENDER.reader, bookAddresses: 0 } });
+    mount();
+    await waitFor(async () => expect(await status()).toHaveTextContent(/nothing to read for until a vendor has an email address/));
+    expect(screen.getByTestId('status-vendors')).toHaveTextContent("Add a vendor's email address");
+  });
+
+  it('a book with addresses shows no Vendors way', async () => {
+    routes['/communications/letters/sender'] = () => ({ ...SENDER, reader: { ...SENDER.reader, bookAddresses: 2 } });
+    mount();
+    await screen.findByTestId('mail-status');
+    await waitFor(() => expect(screen.getByTestId('mail-status').textContent).not.toMatch(/Checking/));
+    expect(screen.queryByTestId('status-vendors')).toBeNull();
+  });
+
   // QA round 16, finding 4: never "cannot tell" for a house known not connected.
   it('not connected says "Not connected"', async () => {
     routes['/communications/letters/sender'] = () => ({ ...SENDER, reader: { ...SENDER.reader, granted: false } });
