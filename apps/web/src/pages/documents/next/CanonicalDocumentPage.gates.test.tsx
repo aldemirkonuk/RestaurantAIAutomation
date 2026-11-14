@@ -356,6 +356,24 @@ describe('a first verify says what it did to the cost, and the invoice tax (r34 
     expect(screen.queryByTestId('verify-cost-note')).toBeNull()
   })
 
+  it('a later write that fails does not leave the first verify\'s sentence standing beside its refusal', async () => {
+    verify.mockResolvedValueOnce({ alreadyVerified: false, costNote: TAX, cost: { finalised: [{}], stillProvisional: [] }, delivery: {} })
+    mount('manager')
+    const button = await screen.findByTestId('verify-button')
+    eventMock.mockResolvedValue(event({ state: 'VERIFIED', agreedAt: '2026-08-12T10:00:00Z', agreedRule: 'both_sides_recorded', verifiedAt: '2026-08-12T11:00:00Z' }))
+    await act(async () => {
+      fireEvent.click(button)
+    })
+    expect(await screen.findByTestId('verify-cost-note')).toBeTruthy()
+    verify.mockRejectedValueOnce(new Error('The cost could not be checked just now'))
+    const recheck = await screen.findByTestId('recheck-cost-button')
+    await act(async () => {
+      fireEvent.click(recheck)
+    })
+    await waitFor(() => expect(screen.getByTestId('gate-error')).toBeTruthy())
+    expect(screen.queryByTestId('verify-cost-note')).toBeNull()
+  })
+
   it('a refused verify shows the refusal and no cost sentence', async () => {
     verify.mockRejectedValue(new Error('Only an agreed delivery can be verified'))
     await press()
