@@ -1,9 +1,6 @@
 /**
- * r41 recipes audit, gap 5: App.tsx's default `refetchOnMount: 'always'`
- * ignores every staleTime, so reopening a recipe re-read the house's money and
- * coming back to /cocktails re-priced the whole house. The house money, the
- * house percent form, the drinks' figures and the menu prices now use a fresh
- * answer when a reader mounts again, and a write still refreshes them.
+ * r41 recipes audit, gap 5: App.tsx's `refetchOnMount: 'always'` ignored every
+ * staleTime, so each remount re-read the house's money and figures.
  */
 import { act, render, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';

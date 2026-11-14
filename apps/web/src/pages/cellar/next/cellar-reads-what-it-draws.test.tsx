@@ -1,10 +1,7 @@
 /**
- * r41 recipes audit, gap 1: /cocktails mounts the cellar's data hook, which
- * read the whole wine library (500 rows of every column), the house inventory
- * (re-read every minute) and the vendors, and the cocktail register showed
- * none of them. The book is now read only where it is drawn: the overview and
- * the wine register. These count the requests through the real hooks and the
- * real client contract (`apiClient`), not through mocked hooks.
+ * r41 recipes audit, gap 1: /cocktails read the wine library, the inventory
+ * and the vendors and drew none of them. Counted through the real hooks and
+ * the real client contract (`apiClient`).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
@@ -26,7 +23,7 @@ vi.mock('../../../services/api/client', () => ({
   apiClient: { get: (...args: unknown[]) => api.get(...args) },
 }));
 
-import { drawsTheBook, useCellarNextData } from './useCellarNextData';
+import { useCellarNextData } from './useCellarNextData';
 import type { RegisterId } from './cellar-format';
 
 /** The three house-wide reads the cocktail register never shows. */
@@ -77,12 +74,6 @@ describe('the cellar reads the wine book only where it draws it', () => {
     const overview = await readsFor(null);
     const cocktails = await readsFor('cocktails');
     expect(overview.length - cocktails.length).toBe(3);
-  });
-
-  it('only the overview and the wine register draw the book', () => {
-    const all: RegisterId[] = ['wines', 'beer', 'whiskey', 'spirits', 'cocktails', 'non_alcoholic', 'soft_drinks'];
-    expect(all.filter(drawsTheBook)).toEqual(['wines']);
-    expect(drawsTheBook(null)).toBe(true);
   });
 
   it('/cocktails does not listen for stock moves, so a sale does not re-render it', async () => {

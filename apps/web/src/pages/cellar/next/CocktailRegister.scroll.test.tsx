@@ -1,9 +1,6 @@
 /**
- * r41 recipes audit, gap 7: on /cocktails a clicked drink opens its recipe
- * below the whole list. Only a drink opened from a `?open=` link was scrolled
- * to, so a click on a top row of a long list seemed to do nothing. Any open
- * now brings the recipe's heading into view when it would land off screen, and
- * leaves the page still when it is already seen.
+ * r41 recipes audit, gap 7: a clicked drink opened below the whole list with
+ * no scroll. Any open now scrolls the recipe in when it would land off screen.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
