@@ -70,7 +70,7 @@ import {
 } from './rc2-format';
 import { DOC_TYPE_LABELS, nameCarriesYear } from '../../../components/documents/canonical-format';
 import { SwipeToConfirm } from './SwipeToConfirm';
-import { costNextStep, type CostNextStep } from './cost-next-step';
+import { costNextStep, settlesDeliveryCost, type CostNextStep } from './cost-next-step';
 import {
   RECEIPTS_SERVER_WINDOWS,
   useActiveRestaurantId,
@@ -876,6 +876,9 @@ function DocView({
 }) {
   const qc = useQueryClient();
   const rid = useActiveRestaurantId();
+  // r36 R10: staff are told who agrees and verifies, not sent to buttons they lack.
+  const { activeRole, user } = useAuth();
+  const settles = settlesDeliveryCost(activeRole, user?.role);
   const detailKey = ['receipts-next', 'doc', rid, doc.id];
   /**
    * The formatted sheet above this card reads the same rows under its own keys
@@ -1112,6 +1115,7 @@ function DocView({
   const costStep = costNextStep(
     doc.id,
     sheetQ.isError ? null : sheetQ.data === undefined ? undefined : sheetQ.data.deliveries,
+    settles,
   );
   const shownTieOut: ProcurementDocument = tieOut
     ? { ...shownDoc, ties_out: tieOut.tiesOut, tie_out_delta: tieOut.tieOutDelta }

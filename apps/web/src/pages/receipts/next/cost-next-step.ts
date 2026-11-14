@@ -13,8 +13,31 @@
  * it. It never takes the step: agreeing and verifying stay on the document's
  * gates, where the gateway explains a refusal in its own words.
  *
+ * WHO TAKES IT (r36 invoices R10). Agreeing and verifying settle what a
+ * delivery cost, and the gateway admits only the roles that hold the house's
+ * money to them (owner, manager, admin; `assertSettlesDeliveryMoney`). The
+ * document page hides those gates from anyone else and says who does them.
+ * This step used to send staff there with "Agree and verify the delivery",
+ * a link to buttons they would not find. For someone who does not settle,
+ * the step now says who does, and offers no link. Counting at the door is
+ * everyone's, so that step is unchanged.
+ *
  * Pure: no React, no fetch.
  */
+
+/**
+ * Whether this role settles what a delivery cost: owner, manager or admin, as
+ * the gateway's `assertSettlesDeliveryMoney` admits. Staff, an unknown role and
+ * no role do not. The role read is the one in this house (`activeRole`), else
+ * the global one while no house is active.
+ */
+export function settlesDeliveryCost(
+  activeRole: string | null | undefined,
+  globalRole: string | null | undefined,
+): boolean {
+  const r = (activeRole ?? globalRole ?? '').trim().toLowerCase();
+  return r === 'owner' || r === 'manager' || r === 'admin';
+}
 
 /** The fields of the gateway's delivery spine this reads. */
 export interface SpineState {
@@ -49,6 +72,8 @@ export interface CostNextStep {
 export function costNextStep(
   documentId: string,
   deliveries: readonly SpineState[] | null | undefined,
+  /** Whether the reader agrees and verifies deliveries (`settlesDeliveryCost`). */
+  settles = true,
 ): CostNextStep | null {
   if (deliveries === undefined) return null;
   const page = `/documents/${documentId}`;
@@ -86,16 +111,30 @@ export function costNextStep(
       link: null,
     };
   if (d.agreedAt)
-    return {
-      kind: 'verify',
-      sentence:
-        'Its delivery is agreed. These prices become the goods’ cost when the delivery is verified.',
-      link: { to: page, label: 'Verify the delivery' },
-    };
-  return {
-    kind: 'agree',
-    sentence:
-      'Its goods are on the shelf at a provisional cost. These prices become their cost when the delivery is agreed and then verified.',
-    link: { to: page, label: 'Agree and verify the delivery' },
-  };
+    return settles
+      ? {
+          kind: 'verify',
+          sentence:
+            'Its delivery is agreed. These prices become the goods’ cost when the delivery is verified.',
+          link: { to: page, label: 'Verify the delivery' },
+        }
+      : {
+          kind: 'verify',
+          sentence:
+            'Its delivery is agreed. An owner or a manager verifies it, and these prices become the goods’ cost then.',
+          link: null,
+        };
+  return settles
+    ? {
+        kind: 'agree',
+        sentence:
+          'Its goods are on the shelf at a provisional cost. These prices become their cost when the delivery is agreed and then verified.',
+        link: { to: page, label: 'Agree and verify the delivery' },
+      }
+    : {
+        kind: 'agree',
+        sentence:
+          'Its goods are on the shelf at a provisional cost. An owner or a manager agrees and verifies this delivery, and these prices become their cost then.',
+        link: null,
+      };
 }

@@ -16,10 +16,11 @@ const api = vi.hoisted(() => ({
   sheet: vi.fn(),
   verify: vi.fn(() => Promise.resolve()),
   mintVerifySeal: vi.fn(() => Promise.resolve('seal-token')),
+  role: 'manager' as string,
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({ activeRestaurantId: 'rest-A', activeRole: 'manager', user: null }),
+  useAuth: () => ({ activeRestaurantId: 'rest-A', activeRole: api.role, user: null }),
   AuthContext: createContext<{ activeRestaurantId: string | null } | null>(null),
 }));
 
@@ -147,6 +148,7 @@ beforeEach(() => {
   api.detail = { document: DOC, lines: [LINE], links: [] };
   api.verify.mockClear();
   api.sheet.mockReset();
+  api.role = 'manager';
 });
 
 async function openFirstDoc() {
@@ -180,6 +182,17 @@ describe('the card says what puts the paper\'s prices on cost (r28 G4)', () => {
     expect(screen.getByTestId('cost-next-step-link').textContent).toBe(
       'Agree and verify the delivery →',
     );
+  });
+
+  it('staff are told an owner or a manager agrees and verifies, with no link (r36 R10)', async () => {
+    api.role = 'staff';
+    api.sheet.mockResolvedValue({ canonical: { layer3: null }, deliveries: [spine()] });
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    const line = await screen.findByTestId('cost-next-step');
+    expect(line.getAttribute('data-step')).toBe('agree');
+    expect(line.textContent).toMatch(/An owner or a manager agrees and verifies this delivery/);
+    expect(screen.queryByTestId('cost-next-step-link')).toBeNull();
   });
 
   it('a failed sheet read is said, not read as "on no delivery"', async () => {
