@@ -16,12 +16,15 @@ import { foldName } from "./name-fold";
 import { readCurrentMenuLines } from "../menus/current-menu-lines";
 import { menuIndex, menuPriceFor, type MenuLine } from "./menu-price-match";
 import { menuDishesNotListed, type MenuDish } from "./menu-dishes";
+import { menuDrinksNotListed, type MenuDrink } from "./menu-drinks";
 
 export const DISHES_UNREAD = "Your dishes could not be read just now. Nothing is shown rather than a wrong list.";
 export const DISH_USE_UNREAD = "Which dishes use this item could not be read just now.";
 export const DRINK_USE_UNREAD = "Which drinks use this item could not be read just now.";
 export const MENU_PRICES_UNREAD = "Your menu's prices could not be read just now, so none is shown beside your list.";
 export const MENU_DISHES_UNREAD = "Your menu's dishes could not be read just now, so none is offered.";
+export const MENU_DRINKS_UNREAD = "Your menu's cocktails could not be read just now, so none is offered.";
+export const MENU_DRINKS_NOT_ADDED = "The menu's cocktails could not be saved just now. None was added; try again.";
 export const DRINK_FIGURES_UNREAD = "Your drinks' costs could not be read just now, so none is shown.";
 
 /** Whose recipe: a dish (recipe_current_dish) or a house drink (recipe_current). */
@@ -555,6 +558,78 @@ export class DishesService {
       notAdded,
       notOffered: names.filter((n) => !offered.has(foldName(n))),
     };
+  }
+
+  /**
+   * The current menu's cocktails that are not on the cocktail list yet, by
+   * name or shown name (r36 recipes audit, gap 3; the rule is in
+   * menu-drinks.ts). Read the way `menuDishes` reads: the list and the menu
+   * at once, each paged past the 1,000-row cap; no current menu offers
+   * nothing; a failed read is a 503 with a sentence, never an empty offer.
+   */
+  async menuDrinks(restaurantId: string): Promise<{ currentMenus: number; drinks: MenuDrink[] }> {
+    const client = this.db.getClient();
+    const [listed, menu] = await Promise.all([
+      this.all<any>("cocktail list read", MENU_DRINKS_UNREAD, (from, to) =>
+        client
+          .from("cocktails")
+          .select("id, name, display_name")
+          .eq("restaurant_id", restaurantId)
+          .is("deleted_at", null)
+          .order("id", { ascending: true })
+          .range(from, to),
+      ),
+      readCurrentMenuLines(client, restaurantId).catch((e: unknown) => this.failed("current menu read", e, MENU_DRINKS_UNREAD)),
+    ]);
+    if (menu.currentMenus === 0) return { currentMenus: 0, drinks: [] };
+    return {
+      currentMenus: menu.currentMenus,
+      drinks: menuDrinksNotListed(
+        menu.rows as unknown as MenuLine[],
+        listed.flatMap((c) => [c.name, c.display_name]),
+      ),
+    };
+  }
+
+  /**
+   * Puts the named menu cocktails on the list, with the menu's name, section
+   * and price and no recipe. The offer is read again here, so only a name
+   * still offered is made; the rest are `notOffered`.
+   *
+   * ONE INSERT, not one per drink (r36 audit gap 14 was the dishes' 500
+   * awaited inserts): a menu's drinks land together or not at all, so a
+   * failure is "none was added", never a half-made list. `cocktails` keeps no
+   * unique name, so there is no per-row conflict to sort out; a second run
+   * finds the drinks listed and offers nothing. `source` is 'menu', so a
+   * drink that came from the menu is never taken for one typed by hand.
+   */
+  async addMenuDrinks(restaurantId: string, names: string[]) {
+    const { drinks } = await this.menuDrinks(restaurantId);
+    const asked = new Set(names.map(foldName));
+    const offered = new Set(drinks.map((d) => foldName(d.name)));
+    const take = drinks.filter((d) => asked.has(foldName(d.name)));
+    const notOffered = names.filter((n) => !offered.has(foldName(n)));
+    if (take.length === 0) return { added: [], already: [], notAdded: [], notOffered };
+    const { data, error } = await this.db
+      .getClient()
+      .from("cocktails")
+      .insert(
+        take.map((d) => ({
+          // The house comes from the guarded path, never the body.
+          restaurant_id: restaurantId,
+          name: d.name,
+          menu_section: d.section,
+          price: d.price,
+          source: "menu",
+        })),
+      )
+      .select("id, name");
+    if (error) {
+      this.logger.error(`cocktails: the menu's ${take.length} cocktails were not added: ${error.message}`);
+      throw new ServiceUnavailableException(MENU_DRINKS_NOT_ADDED);
+    }
+    const added = ((data ?? []) as Array<{ id: string; name: string }>).map((r) => ({ id: r.id, name: r.name }));
+    return { added, already: [] as string[], notAdded: [] as string[], notOffered };
   }
 
   /**

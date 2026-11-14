@@ -1,6 +1,7 @@
 import { isKitchenLine } from "../menus/menu-line-view";
 import { foldName } from "./name-fold";
 import type { MenuLine } from "./menu-price-match";
+import { isCocktailLine } from "./menu-drinks";
 
 /**
  * The current menu's dishes that are not on the house's dish list yet
@@ -30,6 +31,10 @@ import type { MenuLine } from "./menu-price-match";
  *    different prices, the dish is offered with NO price and says so
  *    (`pricesDiffer`), never one of them guessed. A line with no price does
  *    not disagree with one that has one.
+ *  - A line whose section names cocktails ("Cocktails", "Kokteyller") is a
+ *    drink, never a dish, even when the section also holds a kitchen hint
+ *    ("Dessert cocktails"): it is offered on /cocktails instead
+ *    (menu-drinks.ts, r36 recipes audit gap 3).
  *  - A section that only says "this is food" ("Food", "Kitchen", "Dish") is
  *    not kept as a section; one the menu names ("Starters", "Pasta") is.
  *  - Values the dishes table would refuse are not sent: a name or section is
@@ -80,7 +85,7 @@ export function menuDishesNotListed(lines: MenuLine[], listed: Array<string | nu
     const name = tidy(l.name).slice(0, NAME_MAX).trim();
     const key = foldName(name);
     if (!key || have.has(key)) continue;
-    if (!isKitchenLine(l.category, null)) continue;
+    if (!isKitchenLine(l.category, null) || isCocktailLine(l.category)) continue;
     const price = linePrice(l);
     let dish = out.get(key);
     if (!dish) {

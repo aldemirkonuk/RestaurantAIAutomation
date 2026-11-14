@@ -54,6 +54,22 @@ export class DishesController {
     return this.dishes.addMenuDishes(restaurantId, dto.names);
   }
 
+  @Get(":restaurantId/drinks/from-menu")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({ summary: "The current menu's cocktails not on the cocktail list yet, with the menu's section and price (owner/manager)" })
+  menuDrinks(@Param("restaurantId", ParseUUIDPipe) restaurantId: string) {
+    return this.dishes.menuDrinks(restaurantId);
+  }
+
+  @Post(":restaurantId/drinks/from-menu")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({ summary: "Put the named menu cocktails on the list in one write (owner/manager); a name no longer offered is said, never made" })
+  addMenuDrinks(@Param("restaurantId", ParseUUIDPipe) restaurantId: string, @Body() dto: AddMenuDishesDto) {
+    return this.dishes.addMenuDrinks(restaurantId, dto.names);
+  }
+
   @Patch(":restaurantId/dishes/:dishId")
   @UseGuards(RolesGuard)
   @Roles("owner", "manager")
