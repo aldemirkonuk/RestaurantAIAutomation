@@ -50,7 +50,7 @@ describe("setMenuAside: set a kept menu aside (r36 N9)", () => {
       setAside: true,
       setAsideAt: AT,
       changed: true,
-      said: "Set aside. Its lines are kept as they were read; bring it back from Set aside to make it current again.",
+      said: "Put away. Its file and lines are kept as they were read; bring it back from Put away to make it current again.",
     });
     expect(ops(db.calls[0])).toEqual([
       ["select", "id, status, set_aside_at"],
@@ -76,7 +76,7 @@ describe("setMenuAside: set a kept menu aside (r36 N9)", () => {
     const db = fakeDb([{ id: "m-1", status: "active", set_aside_at: null }]);
     await expect(setMenuAside(db, "rest-1", "m-1", "u-1", true)).rejects.toThrow(
       new ConflictException(
-        "This is the current menu, so it cannot be set aside: the house sells from it. Make another menu current first. Nothing was changed.",
+        "This is the current menu, so it cannot be put away: the house sells from it. Make another menu current first. Nothing was changed.",
       ),
     );
     expect(db.calls).toHaveLength(1);
@@ -92,7 +92,7 @@ describe("setMenuAside: set a kept menu aside (r36 N9)", () => {
     const db = fakeDb([{ id: "m-1", status: "draft", set_aside_at: "2026-11-01T00:00:00Z" }]);
     const r = await setMenuAside(db, "rest-1", "m-1", "u-2", true);
     expect(r).toEqual(expect.objectContaining({ changed: false, setAside: true, setAsideAt: "2026-11-01T00:00:00Z" }));
-    expect(r.said).toBe("This menu was already set aside. Nothing was changed.");
+    expect(r.said).toBe("This menu was already put away. Nothing was changed.");
     expect(db.calls).toHaveLength(1);
   });
 
@@ -130,7 +130,7 @@ describe("setMenuAside: set a kept menu aside (r36 N9)", () => {
   it("a failed write is a 500 that says nothing changed", async () => {
     const db = fakeDb([{ id: "m-1", status: "draft", set_aside_at: null }], { data: null, error: { code: "08006", message: "connection lost" } });
     await expect(setMenuAside(db, "rest-1", "m-1", "u-1", true)).rejects.toThrow(
-      new InternalServerErrorException("The menu could not be set aside: connection lost. Nothing was changed."),
+      new InternalServerErrorException("The menu could not be put away: connection lost. Nothing was changed."),
     );
   });
 });
@@ -150,7 +150,7 @@ describe("setMenuAside: bring a menu back (r36 N9)", () => {
   it("a menu that is not set aside answers changed: false, and nothing is written", async () => {
     const db = fakeDb([{ id: "m-1", status: "draft", set_aside_at: null }]);
     expect(await setMenuAside(db, "rest-1", "m-1", "u-1", false)).toEqual(
-      expect.objectContaining({ changed: false, said: "This menu is not set aside. Nothing was changed." }),
+      expect.objectContaining({ changed: false, said: "This menu is not put away. Nothing was changed." }),
     );
     expect(db.calls).toHaveLength(1);
   });
