@@ -26,6 +26,10 @@
  * Above the add form, an owner or manager is offered the current menu's
  * dishes that are not on the list yet, all in one step (MenuDishesOffer;
  * r28 onboarding audit, gap 1, slice 3).
+ *
+ * Every role sees an Allergens column, and can check one allergen: the rows
+ * that state it free are hidden, every other row stays (ListAllergens; r36
+ * recipes audit, gap 8).
  */
 import { useId, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -37,6 +41,7 @@ import { useHousePercent, type SayPercent } from '../cellar/next/recipe/useHouse
 import { reason, useCanEditRecipe, useCreateDish, useDishes, useHouseMoney, useMenuPrices, useRemoveDish, useUpdateDish } from '../cellar/next/recipe/useRecipe';
 import { MENU_PRICES_UNREAD, MenuPriceCell } from '../cellar/next/recipe/MenuPriceCell';
 import MenuDishesOffer from './MenuDishesOffer';
+import { AllergenCell, AllergenCheck, keptFor } from '../cellar/next/recipe/ListAllergens';
 import type { DishListRow } from '../../services/api/recipes';
 import { EM, SANS } from '../cellar/next/cellar-format';
 import '../cellar/next/cellar-next.css';
@@ -277,7 +282,9 @@ export default function DishesPage() {
   const showMenu = Boolean(say && menu.byId && (menu.currentMenus ?? 0) > 0);
   const [params, setParams] = useSearchParams();
   const asked = params.get('open');
-  const rows = dishes.data ?? [];
+  const [allergen, setAllergen] = useState('');
+  const all = dishes.data ?? [];
+  const rows = all.filter((d) => keptFor(d.allergens, allergen));
   const openId = rows.some((d) => d.id === asked) ? asked : null;
 
   const open = (id: string | null) =>
@@ -291,7 +298,7 @@ export default function DishesPage() {
       { replace: true },
     );
   const toggle = (id: string) => open(id === openId ? null : id);
-  const cols = (say ? 5 : 2) + (showMenu ? 1 : 0);
+  const cols = (say ? 6 : 3) + (showMenu ? 1 : 0);
 
   return (
     <div className="mudavym min-h-full" style={{ background: 'var(--paper-0)', color: 'var(--ink-1)', fontFamily: SANS }}>
@@ -322,9 +329,11 @@ export default function DishesPage() {
               Read again
             </button>
           </div>
-        ) : rows.length === 0 ? (
+        ) : all.length === 0 ? (
           <p className="cl-said" style={{ marginTop: 12 }} data-testid="dishes-empty">No dishes yet.</p>
         ) : (
+          <>
+          <AllergenCheck value={allergen} onChange={setAllergen} hidden={all.length - rows.length} noun="dishes" />
           <div style={{ marginTop: 12, overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10 }}>
             <table className="cl-table">
               <thead>
@@ -335,6 +344,7 @@ export default function DishesPage() {
                   {showMenu ? <th scope="col" style={{ textAlign: 'right' }}>Menu</th> : null}
                   {say ? <th scope="col" style={{ textAlign: 'right' }}>Cost per plate</th> : null}
                   {say ? <th scope="col" style={{ textAlign: 'right' }}>Food cost</th> : null}
+                  <th scope="col">Allergens</th>
                 </tr>
               </thead>
               <tbody>
@@ -368,6 +378,7 @@ export default function DishesPage() {
                       ) : null}
                       {c ? <td className="cl-num" style={{ textAlign: 'right' }}>{c.cost}</td> : null}
                       {c ? <td className="cl-num" style={{ textAlign: 'right' }}>{c.share}</td> : null}
+                      <AllergenCell id={d.id} a={d.allergens} />
                     </tr>,
                     d.id === openId ? (
                       <tr key={`${d.id}-leaf`} data-testid={`dish-leaf-${d.id}`}>
@@ -382,6 +393,7 @@ export default function DishesPage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
     </div>

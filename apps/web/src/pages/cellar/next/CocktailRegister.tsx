@@ -43,6 +43,7 @@ import MenuDrinksOffer from './MenuDrinksOffer';
 import { PRICE_UNREAD, priceText, readPrice } from './recipe/price-text';
 import { pourCostShare } from './recipe/DrinkCards';
 import { useCanEditRecipe, useDrinkFigures, useHouseMoney, useMenuPrices } from './recipe/useRecipe';
+import { AllergenCell, AllergenCheck, keptFor } from './recipe/ListAllergens';
 import { MENU_PRICES_UNREAD, MenuPriceCell } from './recipe/MenuPriceCell';
 import { useHousePercent, type SayPercent } from './recipe/useHousePercent';
 import type { DrinkFigureRow } from '../../../services/api/recipes';
@@ -102,6 +103,9 @@ const PARTLY_INVOICED = 'partly invoiced';
 /** Said above the list when its costs could not be read. */
 const DRINK_COSTS_UNREAD = 'The drinks’ costs could not be read just now, so none is shown.';
 
+/** Said above the list, to every role, when the figures that carry the allergens could not be read. */
+export const DRINK_ALLERGENS_UNREAD = 'The drinks’ allergens could not be read just now, so none is shown.';
+
 /**
  * A drink's cost a serve and pour cost cells (r28 recipes audit, gap 9), as
  * the dish list writes a dish's: an incomplete cost is "Not known", never a
@@ -158,7 +162,9 @@ export default function CocktailRegister({
   // Cost and pour cost are the house's money: shown, and read, only for a
   // role that may change a recipe (the same rule as the dish list).
   const seesCost = useCanEditRecipe();
-  const figures = useDrinkFigures(seesCost);
+  // Read for every role: the figures carry each drink's allergens, which are
+  // not money (the gateway sends staff no price and no cost).
+  const figures = useDrinkFigures(true);
   // The current menu's price beside the drink's own (r28 recipes audit, gap 2).
   const menu = useMenuPrices('drink', seesCost);
   const showMenu = Boolean(seesCost && menu.byId && (menu.currentMenus ?? 0) > 0);
@@ -194,6 +200,7 @@ export default function CocktailRegister({
   const [confirmRetire, setConfirmRetire] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [allergen, setAllergen] = useState('');
 
   // Opened from a link: bring the drink into view once the list has it. A
   // link to a drink this house's list does not hold is said, not ignored.
@@ -203,12 +210,13 @@ export default function CocktailRegister({
     if (linkedRow && openId === linkedRow.id) leafRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
   }, [linkedRow, openId]);
 
-  const rows = (data?.rows ?? []).filter((c) => {
+  const searched = (data?.rows ?? []).filter((c) => {
     const q = query.trim().toLowerCase();
     if (!q) return true;
     return [c.name, c.display_name, c.menu_section, c.method, c.glass]
       .filter(Boolean).join(' ').toLowerCase().includes(q);
   });
+  const rows = searched.filter((c) => keptFor(figures.byId?.get(c.id)?.allergens, allergen));
   const openShown = Boolean(openId && rows.some((x) => x.id === openId));
 
   const priceRead = readPrice(draft?.priceText ?? '');
@@ -375,6 +383,16 @@ export default function CocktailRegister({
             </p>
           ) : null}
 
+          {figures.error ? (
+            <p className="cl-said" role="status" style={{ marginTop: 12 }} data-testid="cocktails-allergens-unread">
+              {DRINK_ALLERGENS_UNREAD}
+            </p>
+          ) : null}
+
+          {data.rows.length > 0 ? (
+            <AllergenCheck value={allergen} onChange={setAllergen} hidden={searched.length - rows.length} noun="drinks" />
+          ) : null}
+
           {rows.length === 0 ? (
             <p className="cl-said" style={{ marginTop: 12 }} data-testid="cocktails-empty">
               {data.rows.length === 0
@@ -395,6 +413,7 @@ export default function CocktailRegister({
                     {showMenu ? <th scope="col" style={{ textAlign: 'right' }}>Menu</th> : null}
                     {seesCost ? <th scope="col" style={{ textAlign: 'right' }}>Cost per serve</th> : null}
                     {seesCost ? <th scope="col" style={{ textAlign: 'right' }}>Pour cost</th> : null}
+                    <th scope="col">Allergens</th>
                     <th scope="col" style={{ textAlign: 'right' }}>Kept</th>
                   </tr>
                 </thead>
@@ -437,6 +456,7 @@ export default function CocktailRegister({
                       {fc ? (
                         <td className="cl-num" style={{ textAlign: 'right' }} data-testid={`drink-share-${c.id}`}>{fc.share}</td>
                       ) : null}
+                      <AllergenCell id={c.id} a={figures.byId?.get(c.id)?.allergens} />
                       <td className="cl-num cl-dim" style={{ textAlign: 'right' }}>
                         {shortDate((c as { created_at?: string }).created_at)}
                       </td>
