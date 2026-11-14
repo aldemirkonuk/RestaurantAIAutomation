@@ -103,6 +103,14 @@ export function tillDaysOf(raw: string | null): number {
   return (TILL_WINDOWS as readonly number[]).includes(n) ? n : DEFAULT_TILL_DAYS;
 }
 
+/**
+ * What a cutting says while the window just picked is still being read and the
+ * window before it stays drawn (r41 gap 4).
+ */
+export function standInSentence({ shownDays, readingDays }: { shownDays: number; readingDays: number }): string {
+  return `Reading the last ${readingDays} days. Until they arrive, the figures shown are the last ${shownDays} days.`;
+}
+
 /** Window picker for the till — the only period control on the whole sheet. */
 export function TillWindowPicker({
   days,
@@ -312,7 +320,13 @@ export default function Cutting({
 }: CuttingProps) {
   const spec = CATALOGUE[id];
   const drawn = graphOrDefault(id, graph);
-  const windowLine = spec.window(ctx);
+  // While a window just picked is still being read, the figures on screen are
+  // the window before it (r41 gap 4): they are drawn, and their window line
+  // written, over the days they were read for, never the days just picked.
+  const standIn = register?.standIn ?? null;
+  const shownCtx = standIn ? { ...ctx, days: standIn.shownDays } : ctx;
+  const windowLine = spec.window(shownCtx);
+  const standInLine = standIn ? standInSentence(standIn) : null;
 
   // One body, two places: the sheet, and the flat view (working open).
   // The flat view passes its own bars-and-line choice (view-only, kept across
@@ -329,7 +343,7 @@ export default function Cutting({
       >
         {(data) => (
           <Body
-            view={spec.view(data, ctx)}
+            view={spec.view(data, shownCtx)}
             graph={g}
             windowLine={windowLine}
             workingOpen={workingOpen}
@@ -389,7 +403,9 @@ export default function Cutting({
   const flatView = flat && (
     <CuttingFlat
       title={spec.title}
-      windowLine={flatOnly ? `${windowLine} ${NOT_ON_SHEET}` : windowLine}
+      windowLine={[windowLine, flatOnly ? NOT_ON_SHEET : null, standInLine]
+        .filter(Boolean)
+        .join(' ')}
       graphs={spec.graphs}
       initialGraph={drawn}
       initialComboPick={comboPick}
@@ -413,6 +429,11 @@ export default function Cutting({
         <div style={{ minWidth: 0 }}>
           <h2 className="rp-cut__title">{spec.title}</h2>
           <p className="rp-cut__window">{windowLine}</p>
+          {standInLine && (
+            <p className="rp-cut__window rp-cut__standin" role="status">
+              {standInLine}
+            </p>
+          )}
         </div>
         {arranging ? (
           <div className="rp-row" style={{ gap: 6 }}>

@@ -70,7 +70,25 @@ export interface Register<T> {
   loading: boolean;
   failure: Failure | null;
   refetch: () => void;
+  /**
+   * Set while a till window just picked is still being read (r41 gap 4): the
+   * figures in `data` are the window read before it, for this house, kept on
+   * screen so the chart does not blank to a skeleton. The cutting draws them
+   * over `shownDays` and says `readingDays` is being read. Never set across
+   * houses, and never over a failure: a new window that fails says so.
+   */
+  standIn?: { shownDays: number; readingDays: number };
 }
+
+/**
+ * How long a register's figures count as fresh (r41 gap 5). The sheet's
+ * figures move by the sale or by the hour, and each register behind it is a
+ * whole-window read, so coming back to the tab after a minute re-read about
+ * eleven registers and every window behind them. A return after this long
+ * still reads afresh (the app's `refetchOnWindowFocus`), and Refresh always
+ * does (`refetchAll`).
+ */
+export const REGISTER_FRESH_MS = 5 * 60_000;
 
 /** Exported so a write elsewhere (`useGoalsDesk`) can invalidate this read. */
 export const ROOT = 'reports-next';
@@ -401,7 +419,7 @@ export function useReportsNextData(
     qc.fetchQuery({
       queryKey: [ROOT, 'raw', url],
       queryFn: async () => (await apiClient.get<unknown>(url)).data,
-      staleTime: 60_000,
+      staleTime: REGISTER_FRESH_MS,
     });
 
   const results = useQueries({
@@ -410,7 +428,7 @@ export function useReportsNextData(
       return {
         queryKey: [ROOT, id, rid, spec.takesWindow ? tillDays : null],
         enabled: !!rid && !heldBack.has(id),
-        staleTime: 60_000,
+        staleTime: REGISTER_FRESH_MS,
         retry: 1,
         queryFn: async () => {
           const ctx = { days: tillDays };
@@ -437,11 +455,36 @@ export function useReportsNextData(
     }),
   });
 
+  /**
+   * The last window each window-taking register drew, for this house (r41
+   * gap 4). useQueries hands a changed key a NEW observer (query-core 5.90
+   * `#findMatchingObservers` matches by query hash), so `placeholderData`
+   * never sees the previous window; the page keeps it itself.
+   */
+  const lastWindow = useRef(new Map<AnalysisId, { rid: string; days: number; data: unknown }>());
+
   const registers = useMemo(() => {
     const map: Partial<Record<AnalysisId, Register<unknown>>> = {};
     active.forEach((id, i) => {
       const q = results[i];
       if (!q) return;
+      if (CATALOGUE[id].takesWindow && rid) {
+        if (q.isSuccess) {
+          lastWindow.current.set(id, { rid, days: tillDays, data: q.data });
+        } else if (q.isPending && !heldBack.has(id)) {
+          const kept = lastWindow.current.get(id);
+          if (kept && kept.rid === rid && kept.days !== tillDays) {
+            map[id] = {
+              data: kept.data,
+              loading: false,
+              failure: null,
+              refetch: () => void q.refetch(),
+              standIn: { shownDays: kept.days, readingDays: tillDays },
+            };
+            return;
+          }
+        }
+      }
       const readers = CATALOGUE[id].readers;
       if (readers && heldBack.has(id)) {
         // Not in flight, not refused by the gateway, not empty: withheld.
@@ -463,7 +506,7 @@ export function useReportsNextData(
     return map;
     // `results` is a fresh array each render; the ids and their states are what
     // actually matter, and recomputing a map of eight entries is free.
-  }, [active, results, heldBack, activeRole]);
+  }, [active, results, heldBack, activeRole, rid, tillDays]);
 
   // One small read, cached with the registers, so every money figure on the
   // sheet prints in the house's own currency rather than `$` (audit G5).
