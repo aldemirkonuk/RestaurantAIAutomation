@@ -865,7 +865,8 @@ describe("MenusService.reviewMenuItem — tenant isolation and the house price (
     it("another house's current menu does not count as this line's", async () => {
       const tables: Record<string, Row[]> = {
         menu_items: [line()],
-        restaurant_menus: [KEPT(), { id: "menu-1", restaurant_id: "rest-2", status: "active" }],
+        // The other house's row is first, so a read not scoped to the house finds it.
+        restaurant_menus: [{ id: "menu-1", restaurant_id: "rest-2", status: "active" }, KEPT()],
         restaurant_inventory: [good()],
       };
       const service = makeService(tables, { rpc: changed });
