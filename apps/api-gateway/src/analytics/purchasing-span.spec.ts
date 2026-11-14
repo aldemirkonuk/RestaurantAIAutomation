@@ -175,6 +175,9 @@ const order = (i: number, at: string, cost = 100) => ({
   status: ProcurementOrderStatus.DELIVERED,
 });
 
+/** Another house's order, years old: seen only by a read that is not scoped. */
+const OTHER_HOUSE = { ...order(0, "2020-01-01T00:00:00.000Z"), id: "po-other", restaurant_id: "other" };
+
 function stub(orders: any[], opts: { firstFails?: boolean } = {}) {
   const calls: Array<{ method: string; args: any[] }> = [];
   return {
@@ -187,14 +190,21 @@ function stub(orders: any[], opts: { firstFails?: boolean } = {}) {
             ? orders
             : [];
       let orderBy = "id";
+      let descending = false;
       let lim: number | null = null;
       let cursor: string | null = null;
+      let scoped = false;
       const b: any = {};
-      for (const m of ["eq", "in", "gte", "or"]) b[m] = () => b;
+      for (const m of ["in", "gte", "or"]) b[m] = () => b;
+      b.eq = (col: string, v: unknown) => {
+        if (col === "restaurant_id" && v === RID) scoped = true;
+        return b;
+      };
       b.select = () => b;
-      b.order = (col: string) => {
+      b.order = (col: string, o?: { ascending?: boolean }) => {
         calls.push({ method: "order", args: [table, col] });
         orderBy = col;
+        descending = o?.ascending === false;
         return b;
       };
       b.gt = (col: string, v: unknown) => {
@@ -212,8 +222,11 @@ function stub(orders: any[], opts: { firstFails?: boolean } = {}) {
             data: null,
             error: { message: "canceling statement due to statement timeout" },
           }).then(resolve, reject);
-        const sorted = [...rows].sort((x, y) =>
-          String(x[orderBy]).localeCompare(String(y[orderBy])),
+        // A read not scoped to this house sees another house's older order.
+        const visible = scoped || table === "restaurants" ? rows : [...rows, OTHER_HOUSE];
+        const sorted = [...visible].sort(
+          (x, y) =>
+            (descending ? -1 : 1) * String(x[orderBy]).localeCompare(String(y[orderBy])),
         );
         const past = cursor == null ? sorted : sorted.filter((r) => String(r.id) > cursor!);
         const page = past.slice(0, lim ?? 1000);
