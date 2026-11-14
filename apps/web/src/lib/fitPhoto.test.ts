@@ -81,6 +81,13 @@ describe('fitPhotoForReading', () => {
     expect(out).toEqual({ base64: '/9j/SMALL', dataUrl: 'data:image/jpeg;base64,/9j/SMALL', mime: 'image/jpeg', fitted: true })
   })
 
+  it('one pixel past the long edge is redrawn; the long edge itself is not', async () => {
+    const past = codec({ size: [READ_LONG_EDGE + 1, 1000] })
+    expect((await fitPhotoForReading(JPEG, past)).fitted).toBe(true)
+    const at = codec({ size: [1000, READ_LONG_EDGE] })
+    expect((await fitPhotoForReading(JPEG, at)).fitted).toBe(false)
+  })
+
   it('a photo past the byte limit is redrawn even when it is small in pixels', async () => {
     const c = codec({ size: [1200, 900] })
     const out = await fitPhotoForReading(ofBytes(READ_MAX_BYTES + 10), c)

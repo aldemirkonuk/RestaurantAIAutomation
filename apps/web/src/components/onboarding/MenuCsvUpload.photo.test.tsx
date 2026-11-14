@@ -42,6 +42,18 @@ describe('MenuCsvUpload sends a photo fitted', () => {
     expect(onSuccess).toHaveBeenCalledWith({ menuId: 'm-1', items: [] }, { image: null })
   })
 
+  it('a workbook gives the proof no image', async () => {
+    const book = new File([new Uint8Array([80, 75, 3, 4])], 'menu.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    render(<MenuCsvUpload onSuccess={onSuccess} droppedFiles={[book]} />)
+    fireEvent.click(await screen.findByRole('button', { name: /Import/ }))
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled())
+    expect(importMenu).toHaveBeenCalledWith('csv', { fileBase64: 'UEsDBA==' })
+    expect(fitPhotoForReading).not.toHaveBeenCalled()
+    expect(onSuccess).toHaveBeenCalledWith({ menuId: 'm-1', items: [] }, { image: null })
+  })
+
   it('a spreadsheet is never sent through the photo fitter', async () => {
     render(<MenuCsvUpload onSuccess={onSuccess} droppedFiles={[new File(['name,price\nRaki,100\n'], 'menu.csv', { type: 'text/csv' })]} />)
     fireEvent.click(await screen.findByRole('button', { name: /Import/ }))
