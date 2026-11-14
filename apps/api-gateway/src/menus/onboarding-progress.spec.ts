@@ -40,8 +40,18 @@ function fakeDb(
       }
       return out.slice(0, cap);
     };
+    // A plain column list is projected, as PostgREST does: a read that asks
+    // for `id` never sees `integration_id`. Embeds and `*` are left whole.
+    let picked: string[] | null = null;
+    const project = (r: Row) =>
+      picked ? Object.fromEntries(picked.map((c) => [c, r[c]])) : r;
     const api: any = {
-      select: () => api,
+      select: (cols?: string) => {
+        if (cols && !cols.includes("(") && !cols.includes("*")) {
+          picked = cols.split(",").map((c) => c.trim());
+        }
+        return api;
+      },
       eq: (c: string, v: any) => (preds.push((r) => col(r, c) === v), api),
       neq: (c: string, v: any) => (preds.push((r) => col(r, c) !== undefined && col(r, c) !== v), api),
       is: (c: string, v: null) => (preds.push((r) => (r[c] ?? null) === v), api),
@@ -72,7 +82,7 @@ function fakeDb(
         if (readFails[table]) return { data: null, error: { message: readFails[table] } };
         const found = rows();
         if (found.length > 1) return { data: null, error: { code: "PGRST116", message: "multiple rows" } };
-        return { data: found[0] ?? null, error: null };
+        return { data: found[0] ? project(found[0]) : null, error: null };
       },
       then(resolve: any) {
         if (write) {
@@ -91,7 +101,7 @@ function fakeDb(
           return resolve({ data: null, error: null });
         }
         if (readFails[table]) return resolve({ data: null, error: { message: readFails[table] } });
-        resolve({ data: rows(), error: null });
+        resolve({ data: rows().map(project), error: null });
       },
     };
     return api;
