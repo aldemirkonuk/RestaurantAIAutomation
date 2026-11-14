@@ -13,9 +13,9 @@ import { MenuScanUpload } from './MenuScanUpload'
 import { CameraCapture } from '../scanner/CameraCapture'
 
 describe('the first menu photo speaks to the owner', () => {
-  it('says what to do, with no scanner title, no AI and no model list', () => {
+  it('says what to do, with no scanner title, no AI and no model list', async () => {
     render(<MenuScanUpload onSuccess={vi.fn()} />)
-    expect(screen.getByRole('heading', { name: 'Photograph the menu' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Photograph the menu' })).toBeInTheDocument()
     expect(screen.getByText(/Take a photo of the printed menu, or choose a photo or a PDF of it\./)).toBeInTheDocument()
     expect(screen.queryByText('Scan Wine Menu')).toBeNull()
     expect(screen.queryByText('AI Detection Pipeline')).toBeNull()

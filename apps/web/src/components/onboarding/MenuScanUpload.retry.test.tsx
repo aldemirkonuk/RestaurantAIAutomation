@@ -28,7 +28,7 @@ describe('MenuScanUpload sends the same photo again', () => {
       .mockRejectedValueOnce(Object.assign(new Error('Network Error'), { response: { status: 503, data: { message: 'The reader is busy.' } } }))
       .mockResolvedValueOnce({ menuId: 'm-1', items: [] })
     render(<MenuScanUpload onSuccess={onSuccess} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Take the photo' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Take the photo' }))
     const again = await screen.findByRole('button', { name: 'Send this photo again' })
     fireEvent.click(again)
     await waitFor(() => expect(importMenu).toHaveBeenCalledTimes(2))
@@ -45,7 +45,7 @@ describe('MenuScanUpload sends the same photo again', () => {
     let finish: (value: unknown) => void = () => undefined
     importMenu.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)))
     render(<MenuScanUpload onSuccess={onSuccess} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Take the photo' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Take the photo' }))
     expect(await screen.findByText('Reading your menu…')).toBeInTheDocument()
     expect(screen.queryByText(/AI/)).toBeNull()
     finish({ menuId: 'm-1', items: [] })

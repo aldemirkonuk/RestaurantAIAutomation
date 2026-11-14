@@ -33,7 +33,7 @@ beforeEach(() => {
 describe('MenuScanUpload sends the photo fitted', () => {
   it('a taken photo is fitted, the reader gets the fitted base64, and the proof its data URL', async () => {
     render(<MenuScanUpload onSuccess={onSuccess} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Take the photo' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Take the photo' }))
     await waitFor(() => expect(onSuccess).toHaveBeenCalled())
     expect(fitPhotoForReading).toHaveBeenCalledWith('/9j/WHOLE')
     expect(importMenu).toHaveBeenCalledWith('scan', { imageBase64: '/9j/FIT' })
