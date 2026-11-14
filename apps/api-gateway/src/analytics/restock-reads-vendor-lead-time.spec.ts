@@ -83,6 +83,11 @@ describe("restock takes each good's lead time from its vendor", () => {
     expect(by.slow.reorderPoint).toBeCloseTo(2 * 21, 6);
     expect(by.fast.needsReorder).toBe(false);
     expect(by.slow.needsReorder).toBe(true);
+    // The stockout chance reads the same lead: 30 on hand covers 2 days of
+    // 2 a day, not 21.
+    expect(by.slow.stockoutProbability).toBeGreaterThan(
+      by.fast.stockoutProbability,
+    );
     expect(out.basis.reorderScience).toContain(
       "lead time per good, from its vendor's lead in the vendor register",
     );
