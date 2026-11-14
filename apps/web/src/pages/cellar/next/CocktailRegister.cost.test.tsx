@@ -87,7 +87,7 @@ function mount() {
       <QueryClientProvider client={qc}>{children}</QueryClientProvider>
     </MemoryRouter>
   );
-  return render(<CocktailRegister register={null} registerLoading={false} />, { wrapper: wrap });
+  return { qc, ...render(<CocktailRegister register={null} registerLoading={false} />, { wrapper: wrap }) };
 }
 
 const text = (id: string) => screen.getByTestId(id).textContent;
@@ -139,6 +139,19 @@ describe('the cocktail list cost columns', () => {
       throw new Error('boom');
     });
     mount();
+    await waitFor(() => expect(screen.getByTestId('cocktails-costs-unread')).toBeInTheDocument());
+    expect(text(`drink-cost-${GT}`)).toBe('—');
+    expect(text(`drink-share-${GT}`)).toBe('—');
+  });
+
+  it('a re-read that fails blanks the costs it read before, beside the sentence', async () => {
+    const { qc } = mount();
+    await waitFor(() => expect(text(`drink-cost-${GT}`)).not.toBe('—'));
+    h.get.mockImplementation(async (url: string) => {
+      if (url === '/settings/currency') return { data: { restaurantId: RID, code: 'TRY', country: null, readable: true, reason: null, statedAt: null } };
+      throw new Error('boom');
+    });
+    await qc.refetchQueries();
     await waitFor(() => expect(screen.getByTestId('cocktails-costs-unread')).toBeInTheDocument());
     expect(text(`drink-cost-${GT}`)).toBe('—');
     expect(text(`drink-share-${GT}`)).toBe('—');
