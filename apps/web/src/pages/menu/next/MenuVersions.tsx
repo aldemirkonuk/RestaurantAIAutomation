@@ -27,9 +27,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   MENU_CADENCES,
   getMenuSourceUrl,
+  bringMenuBack,
   importMenu,
   linkMenuLineToHouseGood,
   listMenuVersions,
+  setMenuAside,
   readWarningSentence,
   type MakeCurrentResult,
   type MenuCadence,
@@ -123,6 +125,22 @@ export function versionLabel(v: MenuVersion): string {
       ? `the menu read ${day(v.extractedAt)}`
       : 'a menu read before menus were kept';
   return v.cadence && v.cadence !== 'none' ? `${date} (${v.cadence})` : date;
+}
+
+/**
+ * The kept menus split for the list (r36 N9): the ones in use or offered, and
+ * the ones an owner or a manager put away. The current menu is never put away
+ * (the gateway refuses it), so it is always in the first list.
+ */
+export function splitPutAway<T extends Pick<MenuVersion, 'setAsideAt' | 'current'>>(versions: T[]): { kept: T[]; away: T[] } {
+  const away = versions.filter((v) => !v.current && !!v.setAsideAt);
+  return { kept: versions.filter((v) => !away.includes(v)), away };
+}
+
+/** One menu that was put away, in a line: when and by whom. */
+export function putAwayWords(v: MenuVersion): string {
+  const by = v.setAsideBy ? ` by ${v.setAsideBy.name ?? 'someone whose name is not on record'}` : '';
+  return `${versionLabel(v)}, put away on ${day(v.setAsideAt ?? null)}${by}`;
 }
 
 /** What one kept menu's source is, in words. */
@@ -377,12 +395,15 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
   );
 }
 
-function VersionRow({ v, canManage, lastUsedId, planning, onPlan }: {
+function VersionRow({ v, canManage, lastUsedId, planning, onPlan, onPutAway, busy }: {
   v: MenuVersion
   canManage: boolean
   lastUsedId: string | null
   planning: boolean
   onPlan: (menuId: string) => void
+  /** r36 N9: put this menu away (never offered on the current one). */
+  onPutAway: (v: MenuVersion) => void
+  busy: boolean
 }) {
   const [linkError, setLinkError] = useState<string | null>(null);
   const openSource = async () => {
@@ -435,6 +456,19 @@ function VersionRow({ v, canManage, lastUsedId, planning, onPlan }: {
             {planning ? 'See below' : v.current ? 'Check its prices' : 'Make current'}
           </button>
         ) : null}
+        {canManage && !v.current ? (
+          <button
+            type="button"
+            className="cl-btn cl-focus"
+            style={{ marginLeft: 6 }}
+            disabled={busy}
+            onClick={() => onPutAway(v)}
+            aria-label={`Put ${versionLabel(v)} away`}
+            data-testid="menu-version-put-away"
+          >
+            Put away
+          </button>
+        ) : null}
       </td>
     </tr>
   );
@@ -450,6 +484,24 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
   const q = useQuery({ queryKey: ['menu', 'versions', house], queryFn: listMenuVersions });
   const currency = useHouseCurrencyCode();
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu'] });
+  // r36 N9: a menu put away is kept whole and folded out of the list; it comes back with one tap.
+  const aside = useMutation({
+    mutationFn: ({ v, away }: { v: MenuVersion; away: boolean }) => (away ? setMenuAside(v.menuId) : bringMenuBack(v.menuId)),
+    onSuccess: (_r, { v, away }) => {
+      if (away && planFor === v.menuId) setPlanFor(null);
+      setSaid(
+        away
+          ? `${versionLabel(v)} is put away. Its file and lines are kept; bring it back from Put away below to make it current.`
+          : `${versionLabel(v)} is back among the menus kept, and can be made current again.`,
+      );
+      refresh();
+    },
+    onError: (err, { v, away }) => {
+      setSaid(`${versionLabel(v)} could not be ${away ? 'put away' : 'brought back'} (${reasonOf(err)}). Nothing was changed.`);
+      refresh();
+    },
+  });
+  const { kept, away } = splitPutAway(q.data?.versions ?? []);
 
   return (
     <section style={{ marginTop: 32 }} aria-labelledby="menu-versions-h">
@@ -480,7 +532,7 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
             {q.data?.current ? `Current: ${versionLabel(q.data.current)}.` : 'No menu is current yet.'}{' '}
             {standingSecond(q.data)}
           </p>
-          {q.data && q.data.versions.length > 0 ? (
+          {q.data && kept.length > 0 ? (
             <>
             <div style={{ overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10, marginTop: 10 }}>
               <table className="cl-table" style={{ width: '100%' }}>
@@ -494,7 +546,7 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {q.data.versions.map((v) => (
+                  {kept.map((v) => (
                     <VersionRow
                       key={v.menuId}
                       v={v}
@@ -505,6 +557,8 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
                         setSaid(null);
                         setPlanFor(id);
                       }}
+                      onPutAway={(menu) => aside.mutate({ v: menu, away: true })}
+                      busy={aside.isPending}
                     />
                   ))}
                 </tbody>
@@ -527,11 +581,40 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
               />
             ) : null}
             </>
-          ) : (
+          ) : away.length === 0 ? (
             <p className="cl-said" style={{ marginTop: 10 }}>
               No menu has been read yet.
             </p>
+          ) : (
+            <p className="cl-said" style={{ marginTop: 10 }}>
+              Every menu this house has read is put away.
+            </p>
           )}
+          {away.length > 0 ? (
+            <details style={{ marginTop: 12 }} data-testid="menu-versions-put-away">
+              <summary className="cl-said cl-focus" style={{ cursor: 'pointer' }}>
+                Put away ({away.length})
+              </summary>
+              <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                {away.map((v) => (
+                  <li key={v.menuId} className="cl-said" data-testid="menu-version-away" style={{ marginTop: 4 }}>
+                    {putAwayWords(v)}.{' '}
+                    {canManage ? (
+                      <button
+                        type="button"
+                        className="cl-btn cl-focus"
+                        disabled={aside.isPending}
+                        onClick={() => aside.mutate({ v, away: false })}
+                        aria-label={`Bring ${versionLabel(v)} back`}
+                      >
+                        Bring back
+                      </button>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
         </>
       )}
     </section>
