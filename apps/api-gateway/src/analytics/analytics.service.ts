@@ -25,6 +25,7 @@ import {
   tillStockOf,
   withheldTillFigures,
 } from "./cost-of-goods";
+import { cogsHeldBackOf } from "./cost-held-back";
 
 /**
  * AnalyticsService — the quantitative heart of WineOps.
@@ -583,6 +584,15 @@ export class AnalyticsService {
           windowDays: TILL_WINDOW_DAYS,
         })
       : withheldTillFigures(TILL_WINDOW_DAYS);
+    // While what it cost is withheld, the goods that hold it back, by the
+    // house's name (r36 invoices R2). Only for a caller who sees the till.
+    const cogsHeldBack =
+      till?.cost && t.cogs === null && t.cogsCoverage
+        ? cogsHeldBackOf(
+            till.cost,
+            new Map(inventory.map((i) => [i.id as string, i.name as string | null])),
+          )
+        : null;
 
     // `E.stats.sum([])` is 0, and the loader degrades a failed query to `[]`,
     // so an empty list is "none, or no answer": null, never $0. An order with
@@ -698,6 +708,7 @@ export class AnalyticsService {
       salesWithheld: !withSales,
       cogs: t.cogs,
       cogsCoverage: t.cogsCoverage,
+      cogsHeldBack,
       cogsSettledAfterSale: t.settledAfterSale,
       // Named apart, feeding no ratio (batch review 2026-11-11): late prices
       // settled in the window on bottles sold before it, and, while cogs is
