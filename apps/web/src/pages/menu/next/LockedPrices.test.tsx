@@ -9,7 +9,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { LockedPrices, markerWords } from './LockedPrices';
+import { LockedPrices, adviceWords, markerWords } from './LockedPrices';
 import { housePriceNote } from './menu-price-note';
 import {
   changeLockedPrice,
@@ -284,6 +284,36 @@ describe('Locked prices', () => {
     expect(await screen.findAllByTestId('locked-price-row')).toHaveLength(2);
     expect(screen.queryByRole('button', { name: /Release|Change and keep locked|Move/ })).not.toBeInTheDocument();
     expect(screen.getByText(/Only an owner or a manager changes or releases a lock/)).toBeInTheDocument();
+  });
+
+  it('the off-target advice is written in the house\'s numbers when its figures come (r26 walk)', () => {
+    const figures = {
+      state: 'raise',
+      sentence: 'Raise the bottle to 194.29 (now 58.00, 70.2% below it): today\'s margin is -17.2%, your target is 65%.',
+      advisedPrice: 194.29,
+      gapPct: -70.15,
+      price: 58,
+      currentMarginPct: -17.24,
+      targetPct: 65,
+    };
+    const words = markerWords(lock({ advice: figures }), 'TRY')[0];
+    const pc = (n: number, d: number) =>
+      new Intl.NumberFormat('tr-TR', { style: 'percent', minimumFractionDigits: d, maximumFractionDigits: d }).format(n / 100);
+    expect(shown(words)).toBe(
+      shown(
+        `off your target margin: Raise the bottle to ${m(194.29)} (now ${m(58)}, ${pc(70.15, 1)} below it): ` +
+          `today's margin is ${pc(-17.24, 1)}, your target is ${pc(65, 0)}.`,
+      ),
+    );
+    expect(words).not.toContain('70.2%');
+    const lower = adviceWords(lock({ kind: 'glass', advice: { ...figures, state: 'lower', advisedPrice: 9.5, price: 12, gapPct: 26.32, currentMarginPct: 72.4 } }), 'TRY');
+    expect(shown(lower!)).toBe(
+      shown(`Lower the glass to ${m(9.5)} (now ${m(12)}, ${pc(26.32, 1)} above it): today's margin is ${pc(72.4, 1)}, above your ${pc(65, 0)} target.`),
+    );
+  });
+
+  it('an advice without its figures (an older gateway) is printed as the gateway wrote it', () => {
+    expect(adviceWords(lock(), 'TRY')).toBe('Raise the bottle to 57.14 (now 50.00).');
   });
 
   it('markerWords says nothing for a lock that fits', () => {
