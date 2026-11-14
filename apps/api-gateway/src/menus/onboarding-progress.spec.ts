@@ -347,21 +347,22 @@ describe("next steps lead past the menu to the house's costs (r28 gap 3)", () =>
     tables.procurement_documents = [
       { id: "d-A", restaurant_id: houseA, doc_type: "invoice", status: "verified" },
     ];
+    tables.restaurants[0].currency = "TRY";
     return tables;
   }
 
   it("a house with no goods, no mailbox and no invoice says so, and its setup still answers", async () => {
     const a = await serviceOn(twoHouses()).service.getOnboardingProgress("u-1", houseA);
-    expect(a.next_steps).toEqual({ goods_listed: false, goods_counted: false, mailbox_connected: false, mailbox_sends: false, invoice: "none" });
+    expect(a.next_steps).toEqual({ goods_listed: false, goods_counted: false, mailbox_connected: false, mailbox_sends: false, invoice: "none", money_set: false });
     expect(a.menu_current).toBe(true);
   });
 
   it("house A's good, grant and checked invoice count for A and never for B", async () => {
     const { service } = serviceOn(withValue());
     const a = await service.getOnboardingProgress("u-1", houseA);
-    expect(a.next_steps).toEqual({ goods_listed: true, goods_counted: true, mailbox_connected: true, mailbox_sends: true, invoice: "checked" });
+    expect(a.next_steps).toEqual({ goods_listed: true, goods_counted: true, mailbox_connected: true, mailbox_sends: true, invoice: "checked", money_set: true });
     const b = await service.getOnboardingProgress("u-1", houseB);
-    expect(b.next_steps).toEqual({ goods_listed: false, goods_counted: false, mailbox_connected: false, mailbox_sends: false, invoice: "none" });
+    expect(b.next_steps).toEqual({ goods_listed: false, goods_counted: false, mailbox_connected: false, mailbox_sends: false, invoice: "none", money_set: false });
   });
 
   it("a good put away or deleted is not on the list", async () => {
@@ -526,11 +527,70 @@ describe("next steps lead past the menu to the house's costs (r28 gap 3)", () =>
     expect((await service.getOnboardingProgress("u-1", houseA)).next_steps.invoice).toBeNull();
   });
 
+  // r36 onboarding gap 6: with no money set, an invoice that names none and
+  // comes with no order is withheld, so the invoice step puts no cost on.
+  describe("money_set: the house states its money", () => {
+    const moneyOf = async (tables: Record<string, Row[]>, house = houseA) =>
+      (await serviceOn(tables).service.getOnboardingProgress("u-1", house)).next_steps.money_set;
+
+    it("is true for a house that states a money, and false for one that states none", async () => {
+      const tables = withValue();
+      expect(await moneyOf(tables)).toBe(true);
+      expect(await moneyOf(tables, houseB)).toBe(false);
+      tables.restaurants[0].currency = null;
+      expect(await moneyOf(tables)).toBe(false);
+      tables.restaurants[0].currency = "  ";
+      expect(await moneyOf(tables)).toBe(false);
+    });
+
+    it("reads the house's own row, never another house's money", async () => {
+      const tables = withValue();
+      tables.restaurants[0].currency = null;
+      tables.restaurants[1].currency = "EUR";
+      expect(await moneyOf(tables)).toBe(false);
+      expect(await moneyOf(tables, houseB)).toBe(true);
+    });
+
+    it("is null, not false, when the read rejects; the other steps and the setup still answer", async () => {
+      const { service } = serviceOn(withValue());
+      const db = (service as any).dbService.supabase;
+      const from = db.from;
+      db.from = (table: string) => {
+        const q = from(table);
+        if (table !== "restaurants") return q;
+        // Only the list read (then) fails; the setup's own maybeSingle read answers.
+        const thenable: any = new Proxy(q, {
+          get: (target, prop) =>
+            prop === "then"
+              ? (_ok: any, fail: any) => Promise.reject(new Error("socket hang up")).then(_ok, fail)
+              : typeof target[prop] === "function"
+                ? (...args: any[]) => {
+                    const out = target[prop](...args);
+                    return prop === "maybeSingle" ? out : thenable;
+                  }
+                : target[prop],
+        });
+        return thenable;
+      };
+      const a = await service.getOnboardingProgress("u-1", houseA);
+      expect(a.next_steps.money_set).toBeNull();
+      expect(a.next_steps.invoice).toBe("checked");
+      expect(a.threshold_configured).toBe(true);
+    });
+
+    it("is null when the house has no row to read", async () => {
+      const tables = withValue();
+      tables.restaurants = [];
+      // The setup read of the same row answers null data, not an error.
+      expect(await moneyOf(tables)).toBeNull();
+    });
+  });
+
   it("the next steps never decide setup: all held with no supplier leaves completed_at null; with no menu, not activated", async () => {
     const tables = withValue();
     tables.providers = [];
     const a = await serviceOn(tables).service.getOnboardingProgress("u-1", houseA);
-    expect(a.next_steps).toEqual({ goods_listed: true, goods_counted: true, mailbox_connected: true, mailbox_sends: true, invoice: "checked" });
+    expect(a.next_steps).toEqual({ goods_listed: true, goods_counted: true, mailbox_connected: true, mailbox_sends: true, invoice: "checked", money_set: true });
     expect(a.completed_at).toBeNull();
     tables.menu_items = [];
     const b = await serviceOn(tables).service.getOnboardingProgress("u-1", houseA);

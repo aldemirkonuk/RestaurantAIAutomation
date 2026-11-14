@@ -154,6 +154,12 @@ export interface OnboardingNextSteps {
   mailbox_sends?: boolean | null
   /** "checked" once an invoice is verified, "waiting" while one is in, else "none". */
   invoice: 'none' | 'waiting' | 'checked' | null
+  /**
+   * The house states its money. With none, an invoice that names no money
+   * and comes with no order puts no cost on. Absent from an older gateway;
+   * null when its read failed.
+   */
+  money_set?: boolean | null
 }
 
 type MenuImportData =

@@ -2267,6 +2267,11 @@ export class MenusService {
    * - invoice: "checked" once an invoice is verified (its costs are applied),
    *   else "waiting" while one is in and not yet checked, else "none".
    *   A rejected or superseded paper is neither.
+   * - money_set: the house states its money (`restaurants.currency`). With
+   *   none, an invoice that names no money and comes with no order is
+   *   withheld (invoice-currency.ts), so the invoice step puts no cost on
+   *   until it is set (r36 onboarding gap 6). Null when the read fails or
+   *   finds no house row.
    */
   private async readNextSteps(restaurantId: string): Promise<{
     goods_listed: boolean | null;
@@ -2274,6 +2279,7 @@ export class MenusService {
     mailbox_connected: boolean | null;
     mailbox_sends: boolean | null;
     invoice: "none" | "waiting" | "checked" | null;
+    money_set: boolean | null;
   }> {
     const supabase = this.dbService.supabase;
     // A read that throws or rejects (a dropped connection) is a failed read
@@ -2287,7 +2293,7 @@ export class MenusService {
         (read) => read,
         (error: unknown) => ({ data: null, error: error ?? "rejected" }),
       );
-    const [goods, counted, mailbox, checked, waiting] = await Promise.all([
+    const [goods, counted, mailbox, checked, waiting, money] = await Promise.all([
       settle(() =>
         supabase
           .from("restaurant_inventory")
@@ -2333,6 +2339,13 @@ export class MenusService {
           .in("status", ["received", "extracting", "needs_review"])
           .limit(1),
       ),
+      settle(() =>
+        supabase
+          .from("restaurants")
+          .select("currency")
+          .eq("id", restaurantId)
+          .limit(1),
+      ),
     ]);
     const held = (read: { data: unknown[] | null; error: unknown }) =>
       read.error ? null : (read.data ?? []).length > 0;
@@ -2353,6 +2366,12 @@ export class MenusService {
             (grant) => grant.integration_id === "gmail_send",
           ),
       invoice,
+      money_set: (() => {
+        if (money.error) return null;
+        const row = ((money.data ?? []) as Array<{ currency?: unknown }>)[0];
+        if (!row) return null;
+        return typeof row.currency === "string" && row.currency.trim() !== "";
+      })(),
     };
   }
 
