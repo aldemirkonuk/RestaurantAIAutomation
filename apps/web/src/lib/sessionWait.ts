@@ -136,3 +136,18 @@ export function sessionWaitWords(wait: SessionWait, now: number = Date.now()): {
     body: `You are still signed in; we will try again ${when}.`,
   };
 }
+
+/**
+ * How long a loading screen says nothing but "Loading..." before it says the
+ * read is slow (#1292). A boot read of `/auth/me` answers in well under a
+ * second; five seconds of nothing reads as broken.
+ */
+export const SESSION_READ_SLOW_AFTER_MS = 5_000;
+
+/**
+ * The line under "Loading..." once an ordinary read has taken that long. It
+ * does not claim the person is signed in: the read may still come back 401.
+ * A read that is waiting to ask again is not "slow": it has its own screen
+ * (SessionWaitScreen) that says why.
+ */
+export const SESSION_READ_SLOW_NOTE = 'Still reaching Mudavym. This is taking longer than usual.';

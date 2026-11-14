@@ -48,25 +48,35 @@ export function HousePageSkeleton() {
   );
 }
 
-function HouseLadderLoader() {
+/**
+ * `note` (r22) is a line from the caller that outranks the ladder's own
+ * words: RootDoor passes why the stored session is still being read (a rate
+ * limit, a dropped connection). Null or absent leaves the ladder as it was.
+ */
+function HouseLadderLoader({ note }: { note?: string | null }) {
   const stage = useLadderStage();
 
-  if (stage === 'silent') return null;
+  if (stage === 'silent' && !note) return null;
 
   return (
     <div className="mdv-pageloader mudavym" role="status" aria-live="polite">
       <p className="mdv-pageloader__mark">
         {stage === 'slow' ? 'Still reading — this is taking longer than usual.' : 'Reading…'}
       </p>
+      {note ? (
+        <p className="mdv-pageloader__note" data-session-wait-note>
+          {note}
+        </p>
+      ) : null}
       <HousePageSkeleton />
     </div>
   );
 }
 
-export function HousePageLoader() {
+export function HousePageLoader({ note }: { note?: string | null } = {}) {
   const shellOn = useMudavymDesign('shell');
-  if (shellOn) return <HouseLadderLoader />;
-  return <PageLoader />;
+  if (shellOn) return <HouseLadderLoader note={note} />;
+  return <PageLoader note={note} />;
 }
 
 export default HousePageLoader;

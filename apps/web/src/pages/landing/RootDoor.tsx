@@ -20,6 +20,7 @@ import { ProtectedRoute } from '../../components/ProtectedRoute';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { HousePageLoader } from '../../components/mudavym/HousePageLoader';
 import { SessionWaitScreen } from '../../components/SessionWaitScreen';
+import { useSessionWaitNote } from '../../hooks/useSessionWaitNote';
 
 function hasStoredSession(): boolean {
   try {
@@ -31,10 +32,12 @@ function hasStoredSession(): boolean {
 
 export function RootDoor({ landing }: { landing: ReactNode }) {
   const { loading, isAuthenticated, sessionWait, retrySessionNow, signOutWhileWaiting } = useAuth();
+  // Called before any return: a hook runs on every render (#1292's slow-read line).
+  const waitNote = useSessionWaitNote();
   if (loading && sessionWait) {
     return <SessionWaitScreen wait={sessionWait} onRetryNow={retrySessionNow} onSignOut={signOutWhileWaiting} />;
   }
-  if (loading && hasStoredSession()) return <HousePageLoader />;
+  if (loading && hasStoredSession()) return <HousePageLoader note={waitNote} />;
   if (!isAuthenticated) return <>{landing}</>;
   return (
     <ProtectedRoute>

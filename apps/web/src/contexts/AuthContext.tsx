@@ -486,13 +486,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             );
             setSessionWait({ reason, retryAt: Date.now() + delay, attempt: attempt + 1 });
             // Clear only this wait's own handle, never a later run's.
+            // A wait for a dropped connection also ends when the browser says
+            // it is back online (#1290): the page asks again as soon as the
+            // connection returns instead of sitting out the backoff. A rate
+            // limit or a server error is not mended by that event, so those
+            // waits run their full length.
             let wake: (() => void) | null = null;
             await new Promise<void>((resolve) => {
-              const timer = setTimeout(resolve, delay);
-              wake = () => {
+              const done = () => {
                 clearTimeout(timer);
+                window.removeEventListener("online", done);
                 resolve();
               };
+              const timer = setTimeout(done, delay);
+              if (reason === "offline") window.addEventListener("online", done);
+              wake = done;
               sessionWake.current = wake;
             });
             if (sessionWake.current === wake) sessionWake.current = null;
