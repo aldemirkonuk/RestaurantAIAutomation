@@ -282,6 +282,7 @@ export default function ItemDrawer(props: ItemDrawerProps) {
               kind={house.kind ?? row.kind}
               sections={CARD_EVIDENCE[evidence]}
               actions={false}
+              settled={figures.status === 'ready' ? figures.data.costTrend.points : null}
               sheet={sheet}
               onSheet={setSheet}
             />

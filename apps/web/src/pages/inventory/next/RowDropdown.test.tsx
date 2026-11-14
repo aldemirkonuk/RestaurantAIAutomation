@@ -10,6 +10,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cellMoney, EM, toRow, type InvRow } from './useInventoryNextData';
+import { shortDate } from '../../cellar/next/cellar-format';
 import type { Provider } from '../../../services/api/providers';
 
 // Per-test overrides for the stubbed reads (INV-W8 / INV-W9).
@@ -1113,5 +1114,56 @@ describe('a food or supply is costed in its own unit, with no price, margin, mar
     const drop = screen.getByTestId('row-dropdown');
     for (const k of ['Your price', 'Margin on your bottle price', 'Market', 'Auction lots']) expect(within(drop).getByText(k)).toBeTruthy();
     expect(screen.queryByTestId('good-not-priced')).toBeNull();
+  });
+});
+
+describe('Last bought reads the settled price, not only the ledger (r35, gap 8 slice 2)', () => {
+  const eur = { state: 'recorded', code: 'EUR' } as const;
+  const food = row({ name: 'Bread Flour', kind: 'food', bottleSizeMl: null, bottle: null, glass: null, wac: 0.009, openMl: 0 });
+  const kg = (n: number) => `${cellMoney(n, eur)} a kg`;
+  const kv = (k: string) => within(screen.getByTestId('row-dropdown')).getByText(k).parentElement!.textContent ?? '';
+
+  beforeEach(() => {
+    // A door delivery: booked with no cost, never restated on the ledger.
+    reads.detail = { purchases: [{ id: 'l1', at: '2026-11-10T10:00:00Z', qty: 5000, unitCost: null, orderId: 'o1' }] };
+  });
+
+  it('a delivery whose price was settled reads it, newest first, with the change between the last two', () => {
+    renderDrop({
+      row: food,
+      kind: 'food',
+      uom: 'g',
+      settled: [
+        { receivedAt: '2026-09-01T10:00:00Z', unitCost: 0.006 },
+        { receivedAt: '2026-10-01T10:00:00Z', unitCost: 0.0075 },
+        { receivedAt: '2026-11-01T10:00:00Z', unitCost: 0.009 },
+      ],
+    });
+    expect(kv('Last bought')).toContain(`${kg(9)} · settled ${shortDate('2026-11-01T10:00:00Z')}`);
+    expect(kv('Before that')).toContain(`${kg(7.5)} · settled ${shortDate('2026-10-01T10:00:00Z')}`);
+    expect(kv('Was → now')).toContain(`${kg(7.5)} → ${kg(9)} (+20%)`);
+    expect(screen.getByTestId('row-dropdown').textContent).not.toContain('none on the ledger');
+  });
+
+  it('no settled price falls back to the ledger, which here has no priced line', () => {
+    renderDrop({ row: food, kind: 'food', uom: 'g', settled: [] });
+    expect(kv('Last bought')).toContain('none on the ledger');
+    cleanup();
+    reads.detail = { purchases: [{ id: 'l1', at: '2026-11-10T10:00:00Z', qty: 5000, unitCost: 0.008, orderId: null }] };
+    renderDrop({ row: food, kind: 'food', uom: 'g', settled: null });
+    expect(kv('Last bought')).toContain(`${kg(8)} · ${shortDate('2026-11-10T10:00:00Z')}`);
+    expect(kv('Last bought')).not.toContain('settled');
+  });
+
+  it('a settled price is shown even while the ledger read failed or is still reading', () => {
+    reads.detail = { purchases: null, purchasesError: 'timeout' };
+    renderDrop({ row: food, kind: 'food', uom: 'g', settled: [{ receivedAt: '2026-11-01T10:00:00Z', unitCost: 0.009 }] });
+    expect(kv('Last bought')).toContain(kg(9));
+    expect(kv('Last bought')).not.toContain('could not be read');
+    expect(kv('Before that')).toContain('none settled before it');
+    cleanup();
+    reads.detail = { purchases: null, purchasesError: null };
+    renderDrop({ row: food, kind: 'food', uom: 'g', settled: [{ receivedAt: '2026-11-01T10:00:00Z', unitCost: 0.009 }] });
+    expect(kv('Last bought')).toContain(kg(9));
   });
 });
