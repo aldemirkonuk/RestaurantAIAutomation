@@ -1,7 +1,7 @@
 import { ALLERGEN_CHUNK, DishesService, rowAllergens } from "./dishes.service";
 import { RecipesService } from "./recipes.service";
 import { ALLERGENS } from "./recipe-nutrition";
-import { FLOUR, HOUSE_A, HOUSE_B, SOUP, TART, V_TART_2, fakeDb, line, twoHouses, type Row } from "./dishes.testing";
+import { FLOUR, HOUSE_A, HOUSE_B, SOUP, TART, V_TART_2, fakeDb, line, twoHouses, type Row, figuredDishes } from "./dishes.testing";
 
 /**
  * r36 recipes audit, gap 8: staff could not answer "which dishes have nuts"
@@ -43,7 +43,7 @@ function service(r = rows()) {
 
 describe("a recipe list says its allergens (gap 8)", () => {
   it("a dish contains what a line contains, and names the lines that leave one unstated", async () => {
-    const tart = (await service().dishes.listDishes(HOUSE_A, "owner")).find((d) => d.id === TART)!;
+    const tart = (await figuredDishes(service().dishes, HOUSE_A, "owner")).find((d) => d.id === TART)!;
     expect(tart.allergens).toMatchObject({ readable: true, unstatedBy: ["Lemons"] });
     const a = tart.allergens as Extract<typeof tart.allergens, { readable: true }>;
     expect(a.status.gluten).toBe("contains");
@@ -55,7 +55,7 @@ describe("a recipe list says its allergens (gap 8)", () => {
   it("a dish whose every line states every allergen is free of the ones none contains", async () => {
     const r = rows();
     r.recipe_lines = r.recipe_lines.filter((l) => !(l.version_id === V_TART_2 && l.label === "Lemons"));
-    const tart = (await service(r).dishes.listDishes(HOUSE_A, "owner")).find((d) => d.id === TART)!;
+    const tart = (await figuredDishes(service(r).dishes, HOUSE_A, "owner")).find((d) => d.id === TART)!;
     const a = tart.allergens as any;
     expect(a.unstatedBy).toEqual([]);
     expect(a.status.milk).toBe("free");
@@ -63,7 +63,7 @@ describe("a recipe list says its allergens (gap 8)", () => {
   });
 
   it("staff read the allergens, with no price and no cost", async () => {
-    const tart = (await service().dishes.listDishes(HOUSE_A, "staff")).find((d) => d.id === TART)!;
+    const tart = (await figuredDishes(service().dishes, HOUSE_A, "staff")).find((d) => d.id === TART)!;
     expect(tart.price).toBeNull();
     expect(tart.cost).toBeNull();
     expect((tart.allergens as any).status.gluten).toBe("contains");
@@ -72,7 +72,7 @@ describe("a recipe list says its allergens (gap 8)", () => {
   it("another house's statement about an item is never read", async () => {
     const r = rows();
     r.item_allergens = states(FLOUR, HOUSE_B, {}, "bbbb");
-    const tart = (await service(r).dishes.listDishes(HOUSE_A, "owner")).find((d) => d.id === TART)!;
+    const tart = (await figuredDishes(service(r).dishes, HOUSE_A, "owner")).find((d) => d.id === TART)!;
     const a = tart.allergens as any;
     expect(a.status.gluten).toBe("not_stated");
     expect(a.unstatedBy).toEqual(["Flour", "Lemons", "Flour for the base"]);
@@ -87,7 +87,7 @@ describe("a recipe list says its allergens (gap 8)", () => {
       if (t === "item_allergens") q.then = (ok: (v: unknown) => unknown) => ok({ data: null, error: { message: "down" } });
       return q;
     };
-    const out = await new DishesService(fake.db, new RecipesService(fake.db)).listDishes(HOUSE_A, "owner");
+    const out = await figuredDishes(new DishesService(fake.db, new RecipesService(fake.db)), HOUSE_A, "owner");
     const tart = out.find((d) => d.id === TART)!;
     expect(tart.allergens).toEqual({ readable: false });
     expect(tart.cost).toMatchObject({ priced: 2, of: 3 });
@@ -111,14 +111,14 @@ describe("a recipe list says its allergens (gap 8)", () => {
       };
       return q;
     };
-    const out = await new DishesService(fake.db, new RecipesService(fake.db)).listDishes(HOUSE_A, "staff");
+    const out = await figuredDishes(new DishesService(fake.db, new RecipesService(fake.db)), HOUSE_A, "staff");
     expect((out.find((d) => d.id === TART)!.allergens as any).unstatedBy).toEqual(["Lemons"]);
   });
 
   it("a dish with no recipe says nothing of allergens", async () => {
     const r = rows();
     r.recipe_current_dish = r.recipe_current_dish.filter((p) => p.dish_id !== SOUP);
-    const soup = (await service(r).dishes.listDishes(HOUSE_A, "owner")).find((d) => d.id === SOUP)!;
+    const soup = (await figuredDishes(service(r).dishes, HOUSE_A, "owner")).find((d) => d.id === SOUP)!;
     expect(soup.hasRecipe).toBe(false);
     expect(soup.allergens).toBeNull();
   });
@@ -131,7 +131,7 @@ describe("a recipe list says its allergens (gap 8)", () => {
     r.recipe_lines = r.recipe_lines.filter((l) => l.version_id !== V_TART_2);
     ids.forEach((id, i) => r.recipe_lines.push(line(`m${i}`, V_TART_2, HOUSE_A, i + 1, `Good ${i}`, id)));
     r.item_allergens = ids.flatMap((id, i) => states(id, HOUSE_A, i === n - 1 ? { tree_nuts: "contains" } : {}, String(i).padStart(4, "0")));
-    const tart = (await service(r).dishes.listDishes(HOUSE_A, "owner")).find((d) => d.id === TART)!;
+    const tart = (await figuredDishes(service(r).dishes, HOUSE_A, "owner")).find((d) => d.id === TART)!;
     const a = tart.allergens as any;
     expect(a.unstatedBy).toEqual([]);
     expect(a.status.tree_nuts).toBe("contains");

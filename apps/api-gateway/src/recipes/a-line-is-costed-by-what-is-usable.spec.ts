@@ -18,7 +18,7 @@ import { boughtPerUsed, recipeCost } from "./recipe-cost";
 import { RecipesService } from "./recipes.service";
 import { DishesService } from "./dishes.service";
 import { PreviewLineDto, RecipeLineDto } from "./dto/recipes.dto";
-import { HOUSE_A, TART, V_TART_2, fakeDb, twoHouses } from "./dishes.testing";
+import { HOUSE_A, TART, V_TART_2, fakeDb, figuredDishes, twoHouses } from "./dishes.testing";
 
 /* ── part 1: cost ─────────────────────────────────────────────────────── */
 
@@ -107,7 +107,7 @@ describe("the sheet, the preview and the list cost through the usable share", ()
   it("costs the dish list's plate through it", async () => {
     const rows = tartAtHalf();
     const fake = fakeDb(rows);
-    const list = await new DishesService(fake.db, new RecipesService(fake.db)).listDishes(HOUSE_A, "owner");
+    const list = await figuredDishes(new DishesService(fake.db, new RecipesService(fake.db)), HOUSE_A, "owner");
     expect(list.find((d) => d.id === TART)!.cost).toMatchObject({ complete: true, perServeExact: 1.1 });
   });
 

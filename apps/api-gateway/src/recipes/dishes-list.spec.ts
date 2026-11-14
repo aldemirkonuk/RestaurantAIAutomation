@@ -1,7 +1,7 @@
 import { NotFoundException } from "@nestjs/common";
 import { DishesService, dishNameTaken } from "./dishes.service";
 import { RecipesService } from "./recipes.service";
-import { B_DISH, HOUSE_A, TART, V_TART_2, fakeDb, twoHouses } from "./dishes.testing";
+import { B_DISH, HOUSE_A, TART, V_TART_2, fakeDb, twoHouses, figuredDishes } from "./dishes.testing";
 
 /**
  * A house's dish list, and adding and changing a dish (ADR 0366), through the
@@ -18,7 +18,7 @@ function services(rows = twoHouses(), opts: Parameters<typeof fakeDb>[1] = {}) {
 describe("dishes: the list", () => {
   it("lists this house's live dishes only, each with its current recipe's cost a plate", async () => {
     const { dishes } = services();
-    const out = await dishes.listDishes(HOUSE_A, "owner");
+    const out = await figuredDishes(dishes, HOUSE_A, "owner");
     expect(out.map((d) => d.name)).toEqual(["Bread soup", "Lemon tart"]);
     const tart = out.find((d) => d.id === TART)!;
     // 300 g of flour at 2 a kg = 0.60 for a batch of 8; the lemons are not linked, so not complete.
@@ -29,7 +29,7 @@ describe("dishes: the list", () => {
 
   it("a role that does not see money reads no price and no cost", async () => {
     const { dishes } = services();
-    const out = await dishes.listDishes(HOUSE_A, "staff");
+    const out = await figuredDishes(dishes, HOUSE_A, "staff");
     expect(out.every((d) => d.price === null && d.cost === null)).toBe(true);
   });
 
@@ -49,7 +49,7 @@ describe("dishes: the list", () => {
     rows.recipe_current_dish.push({ dish_id: stray, version_id: V_TART_2, restaurant_id: HOUSE_A });
     rows.dishes.push({ id: stray, restaurant_id: HOUSE_A, name: "Stray", price: null, deleted_at: null });
     const { dishes } = services(rows);
-    expect((await dishes.listDishes(HOUSE_A, "owner")).find((d) => d.name === "Stray")!.hasRecipe).toBe(false);
+    expect((await figuredDishes(dishes, HOUSE_A, "owner")).find((d) => d.name === "Stray")!.hasRecipe).toBe(false);
   });
 });
 

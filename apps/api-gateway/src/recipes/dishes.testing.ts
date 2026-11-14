@@ -1,4 +1,5 @@
 import { DatabaseService } from "../database/database.service";
+import type { DishesService } from "./dishes.service";
 
 /**
  * Test-only: two houses' dish rows and a fake supabase client that APPLIES
@@ -133,4 +134,17 @@ export function twoHouses(): Record<string, Row[]> {
     inventory_lot_rollup: [],
     users: [],
   };
+}
+
+/**
+ * /dishes as the page shows it (r41 recipes audit, gap 2): the names read
+ * (`listDishes`) joined to the figures read (`dishFigures`) by dish id.
+ */
+export async function figuredDishes(dishes: DishesService, house: string, role: string) {
+  const [names, figures] = await Promise.all([dishes.listDishes(house, role), dishes.dishFigures(house, role)]);
+  const byId = new Map(figures.dishes.map((f) => [f.dishId, f]));
+  return names.map((d) => {
+    const { dishId: _id, price: _price, ...f } = byId.get(d.id)!;
+    return { ...d, ...f };
+  });
 }
