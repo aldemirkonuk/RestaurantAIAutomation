@@ -719,7 +719,7 @@ describe('the cost column says per what, and to whom (inventory r28 gaps 9, 10)'
     // 0.03 a ml in a 700 ml bottle: 21 a bottle; sold at 60: a margin of 65 in a hundred.
     renderDrop({ row: row({ kind: 'spirit', bottleSizeMl: 700, bottle: 60, wac: 0.03 }), uom: 'ml', kind: 'spirit' });
     const text = screen.getByTestId('row-dropdown').textContent ?? '';
-    expect(text).toContain(`Weighted average cost${cellMoney(30, eur)} a litre`);
+    expect(text).toContain(`Weighted average cost${cellUnitCost(30, eur)} a litre`);
     expect(text).toContain('Margin on your bottle price65%');
     expect(screen.getByTestId('margin-tax-note')).toHaveTextContent(MARGIN_TAX_NOTE);
   });
@@ -735,7 +735,7 @@ describe('the cost column says per what, and to whom (inventory r28 gaps 9, 10)'
     // 40 a bottle sold at 92: 57.
     renderDrop({ row: row({ bottle: 92, wac: 40 }) });
     const text = screen.getByTestId('row-dropdown').textContent ?? '';
-    expect(text).toContain(`Weighted average cost${cellMoney(40, eur)}`);
+    expect(text).toContain(`Weighted average cost${cellUnitCost(40, eur)}`);
     expect(text).not.toContain('a litre');
     expect(text).toContain('Margin on your bottle price57%');
   });
