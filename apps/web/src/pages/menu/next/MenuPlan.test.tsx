@@ -681,6 +681,11 @@ describe('r36 N1: a line the menu prints only in another money', () => {
     expect(planSentence(plan({ lines: [EURO], counts: { ...counts, blank_kept: 1, blank_never_priced: 1 }, dormantLocks: [] }))).toBe(
       'Choosing this menu changes no price. 1 line is priced on the menu only in another money, so no price is taken from it and the house keeps its own; nothing converts (flagged).',
     );
+    // A held line the house prices by the bottle and the glass: both kinds come off the blank count.
+    const both = { ...EURO, glass: { ...EURO.glass, housePrice: 90, result: 'blank_kept' as const } };
+    expect(planSentence(plan({ lines: [both, BLANK], counts: { ...counts, blank_kept: 3, blank_never_priced: 0 }, dormantLocks: [] }))).toContain(
+      '. 1 price is blank on the menu, so the house keeps its own (flagged); 1 line is priced',
+    );
     // Two held lines are counted as lines, in the plural.
     expect(
       planSentence(plan({ lines: [EURO, { ...EURO, menuItemId: 'n10' }], counts: { ...counts, blank_kept: 2, blank_never_priced: 2 }, dormantLocks: [] })),
