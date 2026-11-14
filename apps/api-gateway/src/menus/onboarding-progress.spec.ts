@@ -68,6 +68,9 @@ function fakeDb(
           const [c, ...rest] = t.split(".");
           const op = rest.join(".");
           if (op === "not.is.null") return (r: Row) => (r[c] ?? null) !== null;
+          if (op === "is.null") return (r: Row) => (r[c] ?? null) === null;
+          // SQL `<>`: a NULL column matches neither side.
+          if (op.startsWith("neq.")) return (r: Row) => r[c] != null && String(r[c]) !== op.slice(4);
           if (op.startsWith("gt.")) return (r: Row) => r[c] != null && String(r[c]) > op.slice(3);
           throw new Error(`fake or(): unsupported term ${t}`);
         });
@@ -385,6 +388,25 @@ describe("next steps lead past the menu to the house's costs (r28 gap 3)", () =>
     const a = await serviceOn(tables).service.getOnboardingProgress("u-1", houseA);
     expect(a.next_steps.goods_listed).toBe(true);
     expect(a.next_steps.goods_counted).toBe(false);
+  });
+
+  // A cocktail is mixed, not shelved: nobody can count it (the desk leaves
+  // it out the same way, #1590).
+  it("a cocktail is neither a good on the list nor a good counted; a good of any other kind, or none, is", async () => {
+    const tables = withValue();
+    const steps = async () =>
+      (await serviceOn(tables).service.getOnboardingProgress("u-1", houseA)).next_steps;
+    tables.restaurant_inventory = [
+      { id: "c-1", restaurant_id: houseA, deleted_at: null, is_active: true, kind: "cocktail", last_counted_at: null },
+      { id: "c-2", restaurant_id: houseA, deleted_at: null, is_active: true, kind: "cocktail", last_counted_at: "2026-01-04T00:00:00+00:00" },
+    ];
+    expect((await steps()).goods_listed).toBe(false);
+    expect((await steps()).goods_counted).toBe(false);
+    tables.restaurant_inventory.push({ id: "w-1", restaurant_id: houseA, deleted_at: null, is_active: true, kind: "wine", last_counted_at: null });
+    expect((await steps()).goods_listed).toBe(true);
+    expect((await steps()).goods_counted).toBe(false);
+    tables.restaurant_inventory.push({ id: "n-1", restaurant_id: houseA, deleted_at: null, is_active: true, kind: null, last_counted_at: "2026-01-04T00:00:00+00:00" });
+    expect((await steps()).goods_counted).toBe(true);
   });
 
   it("one counted good is counted; a count in another house, or on a good put away or deleted, is not", async () => {

@@ -2261,7 +2261,12 @@ export class MenusService {
    * could not be read instead of calling it not done (absence is not health,
    * and a failed read is not absence).
    *
-   * - goods_listed: an active good on the house's list (the desk's count).
+   * - goods_listed: an active good on the house's list (the desk's count),
+   *   cocktails left out. A cocktail line of the first menu is carried as a
+   *   good of kind `cocktail`, but it is mixed, not shelved, and nobody can
+   *   count it; the desk leaves it out of "not counted yet" the same way
+   *   (#1590). Left in, a cocktail-only list said "Count the goods on your
+   *   list" about goods no count can reach. A good with no kind stays in.
    * - goods_counted: an active good someone has counted (`last_counted_at`
    *   is stamped only by a count, a_count_is_a_record). Making the first
    *   menu current puts every drink on the list at stock 0 with no count, so
@@ -2304,6 +2309,7 @@ export class MenusService {
     money_set: boolean | null;
   }> {
     const supabase = this.dbService.supabase;
+    const NOT_A_COCKTAIL = "kind.is.null,kind.neq.cocktail";
     // A read that throws or rejects (a dropped connection) is a failed read
     // like any other: it gives this fact `null` and never fails the setup.
     const settle = (
@@ -2323,6 +2329,7 @@ export class MenusService {
           .eq("restaurant_id", restaurantId)
           .is("deleted_at", null)
           .eq("is_active", true)
+          .or(NOT_A_COCKTAIL)
           .limit(1),
       ),
       settle(() =>
@@ -2332,6 +2339,7 @@ export class MenusService {
           .eq("restaurant_id", restaurantId)
           .is("deleted_at", null)
           .eq("is_active", true)
+          .or(NOT_A_COCKTAIL)
           .not("last_counted_at", "is", null)
           .limit(1),
       ),
