@@ -2550,6 +2550,16 @@ describe("MenusService — the plan before a menu is chosen, and the locks it re
       expect(stat.most).toBeGreaterThanOrEqual(4);
     });
 
+    it("the current menu's own plan reads no menu it would replace: seven reads, no more", async () => {
+      const tables = house();
+      tables.restaurant_menus = [{ id: "menu-new", restaurant_id: "rest-1", status: "active" }];
+      const { service, stat } = slowed(tables, 2);
+      const plan = await service.planFor("rest-1", "menu-new");
+      expect(plan.current).toBe(true);
+      // Row, lines, the other current menus, wines, locks, price versions, names.
+      expect(stat.reads).toBe(7);
+    });
+
     it("make-current reads its lines and its row together, and still chooses", async () => {
       const { service, stat } = slowed(house(), 20);
       const fp = (await service.planFor("rest-1", "menu-new")).fingerprint;
@@ -3081,6 +3091,44 @@ describe("a menu line finds the house's own good before the library (r21 D1)", (
     const price = calls.filter(([fn]) => fn === "set_house_menu_price");
     expect(price).toHaveLength(1);
     expect(price[0][1]).toMatchObject({ p_inventory_id: "inv-gin", p_bottle_price: 40 });
+    expect(tables.restaurant_inventory).toHaveLength(1);
+  });
+
+  it("r41 R3: a good's row that cannot be read while carrying fails its line, never taken for a good the house lacks", async () => {
+    const lib = spyLibrary();
+    const calls: RpcCall[] = [];
+    const tables: Record<string, Row[]> = {
+      restaurant_menus: [{ id: "menu-old", restaurant_id: "rest-1", status: "active" }],
+      restaurants: [{ id: "rest-1", default_threshold_min: 3 }],
+      restaurant_inventory: [good({ id: "inv-gin", master_wine_id: null, display_name: "House London Dry Gin", kind: "spirit" })],
+      menu_items: [],
+      user_onboarding_progress: [],
+      master_wine_library_submissions: [],
+    };
+    const service = makeService(tables, {
+      wineSubmissions: lib,
+      rpcCalls: calls,
+      rpc: (fn: string, args: Row) => {
+        if (fn === "make_menu_current") {
+          for (const m of tables.restaurant_menus) m.status = m.id === args.p_menu_id ? "active" : "archived";
+          // The house's rows cannot be read from here on: the carry's read fails.
+          (tables as any).__readFails = [{ restaurant_inventory: "connection reset" }];
+          return { data: { outcome: "made_current", previous_menu_ids: ["menu-old"], made_current_at: "2026-11-13T12:00:00Z" }, error: null };
+        }
+        return priceRpc(fn);
+      },
+      scanParser: { parseWithWarnings: async () => ({ items: [{ name: "House London Dry Gin", category: "spirit", bottle_price: 40 }], warnings: [] }) },
+    });
+    const read = await service.importMenu(
+      { method: "scan", data: { imageBase64: Buffer.from("%PDF").toString("base64") }, restaurantId: "rest-1" } as any,
+      "user-1",
+    );
+    await (service as any).whenRead?.(read.menuId);
+    const plan = await service.planFor("rest-1", read.menuId);
+    const r = await service.makeCurrent("rest-1", read.menuId, "user-2", plan.fingerprint);
+    expect(r.outcome).toBe("made_current");
+    expect(r.failed).toEqual([expect.objectContaining({ name: "House London Dry Gin", error: expect.stringMatching(/could not be read.*connection reset/) })]);
+    expect(calls.filter(([fn]) => fn === "set_house_menu_price")).toHaveLength(0);
     expect(tables.restaurant_inventory).toHaveLength(1);
   });
 
