@@ -95,6 +95,17 @@ export interface LotRollupRow {
    */
   has_agreed_cost?: unknown;
   agreed_wac?: unknown;
+  /**
+   * From `inventory_lot_invoice_cost`, merged in by `mergeInvoiceLotCost`.
+   * `invoice_cost_read: true` says the caller read it, and then the rollup's
+   * `wac` is never taken: it averages estimated lots into the invoice cost.
+   * A caller that has not joined the view is unchanged.
+   */
+  invoice_cost_read?: unknown;
+  invoice_wac?: unknown;
+  invoice_qty?: unknown;
+  settled_qty?: unknown;
+  stock_qty?: unknown;
 }
 
 /**
@@ -138,8 +149,13 @@ export function resolveUnitCost(
   row: InventoryCostRow | null | undefined,
   lot: LotRollupRow | null | undefined,
 ): ResolvedUnitCost {
+  const invoiceRead = lot?.invoice_cost_read === true;
+  if (invoiceRead) {
+    const fromInvoices = invoiceLotCost(lot);
+    if (fromInvoices) return fromInvoices;
+  }
   const rawWac = lot?.wac;
-  if (lot?.has_invoice_cost && rawWac != null) {
+  if (!invoiceRead && lot?.has_invoice_cost && rawWac != null) {
     const wac = Number(rawWac);
     if (Number.isFinite(wac) && wac >= 0) {
       const covered = Number(lot?.wac_qty);
@@ -172,6 +188,54 @@ export function resolveUnitCost(
       return { unitCost: last, costBasis: "last_purchase_price" };
   }
   return { unitCost: null, costBasis: "unknown" };
+}
+
+/**
+ * The invoice rung for a caller that read `inventory_lot_invoice_cost`: the
+ * average of the units on priced invoices, never an estimate (r28 recipes
+ * audit, gap 3). It describes the whole stock only when every unit is on an
+ * invoice whose cost is final; otherwise it is `invoice_lot_wac_partial`:
+ * stock bought another way, invoiced at 0, or delivered and not yet verified.
+ * Null when no unit is on a priced invoice, so the agreed cost, then the last
+ * price, then "unknown" are tried next. An unreadable count is partial.
+ */
+function invoiceLotCost(lot: LotRollupRow): ResolvedUnitCost | null {
+  if (lot.invoice_wac == null) return null;
+  const wac = Number(lot.invoice_wac);
+  const covered = Number(lot.invoice_qty);
+  if (!Number.isFinite(wac) || wac <= 0 || !Number.isFinite(covered) || covered <= 0) return null;
+  const settled = Number(lot.settled_qty);
+  const stock = Number(lot.stock_qty);
+  // Number(null) is 0, so an unstated stock is never "all settled".
+  const whole = Number.isFinite(settled) && Number.isFinite(stock) && stock > 0 && settled >= stock;
+  return { unitCost: wac, costBasis: whole ? "invoice_lot_wac" : "invoice_lot_wac_partial" };
+}
+
+/**
+ * Merge `inventory_lot_invoice_cost` rows into the lot rows of `ids`, marking
+ * each id as read (`invoice_cost_read`) even when the view has no row for it,
+ * so a good with no live stock never falls back to the rollup's blended `wac`.
+ * Mutates and returns `lots`.
+ */
+export function mergeInvoiceLotCost<M extends Map<string, any>>(
+  lots: M,
+  ids: ReadonlyArray<string>,
+  invoiceRows: ReadonlyArray<Record<string, unknown>> | null | undefined,
+): M {
+  const byId = new Map((invoiceRows ?? []).map((r) => [String(r.inventory_id), r]));
+  for (const id of ids) {
+    const r = byId.get(id);
+    lots.set(id, {
+      ...lots.get(id),
+      inventory_id: id,
+      invoice_cost_read: true,
+      invoice_wac: r?.invoice_wac ?? null,
+      invoice_qty: r?.invoice_qty ?? null,
+      settled_qty: r?.settled_qty ?? null,
+      stock_qty: r?.stock_qty ?? null,
+    });
+  }
+  return lots;
 }
 
 /** The columns of `inventory_lot_agreed_cost` that `resolveUnitCost` reads. */
