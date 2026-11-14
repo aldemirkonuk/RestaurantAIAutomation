@@ -354,7 +354,7 @@ export function tillFigures(input: {
       revenue: revenueBasis,
       costDerived:
         "grossMarginDollars, grossMargin, cogsRatio and primeCostRatio divide the cost of what the till sold by its net sales of the same items, and are null when either is; " +
-        `inventoryTurnover, daysInventoryOutstanding and gmroi annualise the span the till covers (null under ${MIN_SPAN_DAYS} days) against today's stock at cost, which is null unless every bottle on hand carries a recorded cost (ADR 0051). ` +
+        `inventoryTurnover, daysInventoryOutstanding and gmroi annualise the span the till covers (null under ${MIN_SPAN_DAYS} days) against today's stock at cost, which is null unless every on-hand row carries a recorded cost (ADR 0051; a row whose invoiced cost covers only part of its bottles is valued at that cost, as the cellar's basis names). ` +
         "settledOnEarlierSales (late prices settled in the window on bottles sold before it), costOfCostedItems, deliveredPurchases and shelfValueAtMenuPrice keep their own names and feed no ratio.",
     },
   };

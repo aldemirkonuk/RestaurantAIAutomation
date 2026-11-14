@@ -17,6 +17,7 @@ import {
   type HouseZone,
 } from "../common/house-day";
 import { localMidnight } from "../notifications/producers/service-day";
+import { isSalesGatedGoal } from "./sales-gated-goals";
 import {
   UncountedConsumptionError,
   UnitsLabel,
@@ -160,14 +161,39 @@ export class GoalsService {
   // ==========================================================================
 
   /**
-   * `_gate` is the caller's sales gate (ADR 0298 decision 9). The goal
-   * methods a route calls take it so that every caller already hands it on;
-   * none reads it yet, so every caller is answered as before.
+   * The goal rows a caller without sales may read (ADR 0298 decision 9).
+   *
+   * A days-of-stock goal is scored from the till, so `getGoalProgress` refuses
+   * it without sales. Its STORED `current_value` and `baseline_value` are the
+   * same ratio, written when an owner or manager last read it, and the row
+   * went back to staff unchanged on every route that returns a goal: the
+   * refusal's number, read beside it (cost-math walk 2026-11-11: staff saw
+   * `current_value` 312.07 under "cannot be read here"). With cellar at cost
+   * on the stock routes, days of stock gives the cost of what sold. So both
+   * are withheld (null) for such a caller; the target and the dates are the
+   * house's own setting and stay. Which metrics are gated is
+   * `isSalesGatedGoal`, the test the goal producers already use; every other
+   * metric is answered as before (the gate covers only what ADR 0298 moved
+   * onto the till).
+   */
+  static withholdTillGoalValues<T extends Record<string, any> | null>(
+    row: T,
+    gate: SalesGate = {},
+  ): T {
+    if (!row || gate.withSales === true) return row;
+    if (!isSalesGatedGoal(row.metric_key)) return row;
+    return { ...row, current_value: null, baseline_value: null };
+  }
+
+  /**
+   * `gate` is the caller's sales gate (ADR 0298 decision 9). Without sales a
+   * days-of-stock goal's stored values are withheld
+   * (`withholdTillGoalValues`); every other row is answered as before.
    */
   async listGoals(
     restaurantId: string,
     status = "active",
-    _gate: SalesGate = {},
+    gate: SalesGate = {},
   ) {
     const q = this.dbService
       .getClient()
@@ -178,7 +204,9 @@ export class GoalsService {
     const { data, error } =
       status === "all" ? await q : await q.eq("status", status);
     if (error) throw new Error(error.message);
-    return data || [];
+    return (data || []).map((g: any) =>
+      GoalsService.withholdTillGoalValues(g, gate),
+    );
   }
 
   /**
@@ -300,7 +328,12 @@ export class GoalsService {
     return data;
   }
 
-  async updateGoalStatus(restaurantId: string, goalId: string, status: string) {
+  async updateGoalStatus(
+    restaurantId: string,
+    goalId: string,
+    status: string,
+    gate: SalesGate = {},
+  ) {
     const allowed = ["active", "achieved", "missed", "archived"];
     if (!allowed.includes(status)) throw new Error("Invalid status");
     const { data, error } = await this.dbService
@@ -312,7 +345,7 @@ export class GoalsService {
       .select()
       .single();
     if (error) throw new Error(error.message);
-    return data;
+    return GoalsService.withholdTillGoalValues(data, gate);
   }
 
   /**
@@ -339,6 +372,7 @@ export class GoalsService {
       direction?: "at_least" | "at_most";
       period?: string;
     },
+    gate: SalesGate = {},
   ) {
     const patch: Record<string, unknown> = {};
 
@@ -395,7 +429,7 @@ export class GoalsService {
     if (error) throw new Error(error.message);
     if (!data)
       throw new Error("No goal with that id belongs to this restaurant.");
-    return data;
+    return GoalsService.withholdTillGoalValues(data, gate);
   }
 
   // ==========================================================================
@@ -976,13 +1010,13 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
             `the cost of what the till sold is known for ${cov.itemsCosted} of ${cov.itemsMoved} items sold`,
           );
         if (financial?.inventoryValue == null)
-          missing.push("a bottle on hand carries no recorded cost");
+          missing.push("a wine on hand has no recorded cost");
         const span = financial?.cogsWindow?.spanDays;
         if (typeof span === "number" && span < 28)
           missing.push(`the till covers ${span} of the 28 days it needs`);
         throw new Error(
           gate.withSales === true
-            ? "Days of stock cannot be read for this restaurant yet: it is today's stock at cost over the cost of what the till sold, so it is only known when every bottle on hand carries a recorded cost, every bottle sold carries its cost, and the till covers 28 days." +
+            ? "Days of stock cannot be read for this restaurant yet: it is today's stock at cost over the cost of what the till sold, so it is only known when every wine on hand has a recorded cost, every bottle sold carries its cost, and the till covers 28 days." +
               (missing.length ? ` Here ${missing.join("; ")}.` : "")
             : "Days of stock cannot be read here: it is read from the till's sales, which reach owners and managers only.",
         );

@@ -851,6 +851,39 @@ describe('ReportsNext — the costed part and earlier late prices, apart (batch 
   });
 });
 
+describe('ReportsNext — turns, days and GMROI read to the export\'s places (cost-math walk 2026-11-11)', () => {
+  it('prints days of inventory to one place and turns and GMROI to two, never three', () => {
+    hook.current = withRegister(
+      'ledger',
+      ok({
+        basis: { cogs: 'cost of what the till sold (365d)' },
+        costCoverage: { total: 9, priced: 9, unpriced: 0, complete: true },
+        cogsCoverage: { itemsMoved: 3, itemsCosted: 3, bottlesUncosted: 0 },
+        inventoryValue: 1510,
+        cogs: 150,
+        revenue: 440,
+        grossMarginDollars: 290,
+        grossMargin: 0.659,
+        cogsRatio: 0.341,
+        // The walk's figures: 150 of cost over 31 days of till against 1,510.
+        inventoryTurnover: 1.169608,
+        daysInventoryOutstanding: 312.066667,
+        gmroi: 2.261132,
+        deadStockCapital: 0,
+      }),
+    );
+    paint();
+    const ledger = screen.getByRole('region', { name: 'Figures of record' });
+    const value = (label: string) =>
+      (within(ledger).getByText(label).closest('.rp-fig') as HTMLElement).textContent;
+    expect(value('Days of inventory')).toContain('312.1');
+    expect(value('Days of inventory')).not.toContain('312.067');
+    expect(value('Inventory turns')).toContain('1.17');
+    expect(value('GMROI')).toContain('2.26');
+    expect(value('GMROI')).not.toContain('2.261');
+  });
+});
+
 describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
   it('prints an em dash for a COGS the server withheld, never $0', () => {
     hook.current = withRegister(

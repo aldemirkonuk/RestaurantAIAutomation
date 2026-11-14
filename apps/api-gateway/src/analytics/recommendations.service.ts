@@ -794,6 +794,11 @@ export class RecommendationsService {
 
     // ---- Goal rules -------------------------------------------------------
     for (const g of ctx.goals.slice(0, 3)) {
+      // A goal whose stored value is withheld from this caller (a
+      // days-of-stock goal without sales, GoalsService.withholdTillGoalValues)
+      // or was never read is not "0% done": it is left out, never called
+      // behind.
+      if (g.current_value === null || g.current_value === undefined) continue;
       const target = Number(g.target_value) || 0;
       const current = Number(g.current_value) || 0;
       const behind =
