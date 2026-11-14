@@ -157,6 +157,7 @@ function fakeDb(rows: Record<string, Row[]>, rpc?: (args: Row) => { data?: unkno
       eq: (c: string, v: unknown) => (filters.push((r) => r[c] === v), q),
       is: (c: string, v: unknown) => (filters.push((r) => (r[c] ?? null) === v), q),
       in: (c: string, vs: unknown[]) => (filters.push((r) => vs.includes(r[c])), q),
+      neq: (c: string, v: unknown) => (filters.push((r) => r[c] !== v), q),
       ilike: (c: string, p: string) => (filters.push((r) => likeToRegExp(p).test(String(r[c] ?? ""))), q),
       // PostgREST `imatch` is PostgreSQL's `~*`: a case-insensitive regex, found anywhere.
       filter: (c: string, op: string, p: string) => {

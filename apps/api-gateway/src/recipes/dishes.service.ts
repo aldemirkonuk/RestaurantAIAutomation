@@ -501,6 +501,9 @@ export class DishesService {
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true)
         .is("deleted_at", null)
+        // A cocktail good is never an ingredient, as in the picker (r36 gap 3):
+        // a pasted "Negroni" line must not link to the menu's own Negroni.
+        .neq("kind", "cocktail")
         .order("id", { ascending: true })
         .range(from, to),
     );

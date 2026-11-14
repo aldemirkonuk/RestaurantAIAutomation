@@ -772,7 +772,13 @@ export class RecipesService {
       .select("id, display_name, kind, uom, bottle_size_ml")
       .eq("restaurant_id", restaurantId)
       .eq("is_active", true)
-      .is("deleted_at", null);
+      .is("deleted_at", null)
+      // A cocktail good is a drink the house serves, not something poured
+      // into one: making a menu current files each menu cocktail as a
+      // stockless good of kind cocktail (#1392), and the picker offered the
+      // Negroni as an ingredient of the Negroni (r36 recipes gap 3). kind is
+      // NOT NULL, so neq drops nothing else.
+      .neq("kind", "cocktail");
     // A term is read under foldName's rules (r28 gap 14): "RAKI", "raki" and
     // "rakı" all find "Rakı", and "seker" finds "Şeker". Each folded letter is
     // sent as the class of every way it is written, both cases, so the answer
