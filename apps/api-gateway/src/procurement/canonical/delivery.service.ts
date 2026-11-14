@@ -653,7 +653,8 @@ export class DeliveryService {
       `delivery ${deliveryId} is closed but its stock was not returned: ${back.error}`,
     );
     const sentence =
-      `The delivery is closed, but what its door count put on the shelf was not given back: ${back.error}. ` +
+      // r31 w2 F4: the reason is a clause, so a stop it carries is not doubled.
+      `The delivery is closed, but what its door count put on the shelf was not given back: ${back.error.trim().replace(/[.\s]+$/, "")}. ` +
       "Those bottles still count as stock. Fix the cause, then give the stock back from the delivery.";
     await this.notifications.persistForRestaurant(
       restaurantId,
