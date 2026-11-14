@@ -353,39 +353,27 @@ export function nameCarriesYear(description: string | null, vintage: number | nu
 }
 
 /**
- * The sentences a RE-VERIFY's cost check puts on screen (QA 10a (5)). Turkish
- * or English by the same fork `fmtDate` uses. The gateway's reason is kept in
- * its own words: paraphrasing it would lose the part that says what to do.
+ * The sentences a RE-VERIFY's cost check puts on screen (QA 10a (5)), in the
+ * page's language. They used to fork to Turkish on the delivery's
+ * jurisdiction, so a TR house read a Turkish note and button on an English
+ * page (r33 w2 F1). They are the app's own words, not a legal text, so they
+ * follow the page; the date and number forms beside them still follow the
+ * house. The gateway's reason is kept in its own words: paraphrasing it would
+ * lose the part that says what to do.
  */
-export function costRepairSentences(
-  repair: {
-    repaired: readonly unknown[]
-    flagged: readonly { kind: 'refused' | 'line_changed'; reason: string }[]
-  },
-  jurisdiction?: string | null,
-  currency?: string | null,
-): string[] {
-  const turkish = jurisdiction === 'TR' || (jurisdiction !== 'US-CA' && currency === 'TRY')
+export function costRepairSentences(repair: {
+  repaired: readonly unknown[]
+  flagged: readonly { kind: 'refused' | 'line_changed'; reason: string }[]
+}): string[] {
   const out: string[] = []
   const n = repair.repaired.length
   if (n)
     out.push(
-      turkish
-        ? `Maliyet düzeltildi: ${n} kalem faturadaki basılı fiyatla kaydedilmişti, artık bir şişenin maliyetini taşıyor.`
-        : `Cost corrected: ${n} item${n === 1 ? '' : 's'} had been booked at the invoice's printed price and now carr${n === 1 ? 'ies' : 'y'} the cost of one bottle.`,
+      `Cost corrected: ${n} item${n === 1 ? '' : 's'} had been booked at the invoice's printed price and now carr${n === 1 ? 'ies' : 'y'} the cost of one bottle.`,
     )
   for (const f of repair.flagged)
-    out.push(
-      f.kind === 'refused'
-        ? `${turkish ? 'Reddedildi' : 'Refused'}: ${f.reason}`
-        : `${turkish ? 'Düzeltilmedi' : 'Not corrected'}: ${f.reason}`,
-    )
-  if (!out.length)
-    out.push(
-      turkish
-        ? 'Maliyet yeniden denetlendi: düzeltilecek bir şey yok.'
-        : 'Cost checked again: nothing needed correcting.',
-    )
+    out.push(f.kind === 'refused' ? `Refused: ${f.reason}` : `Not corrected: ${f.reason}`)
+  if (!out.length) out.push('Cost checked again: nothing needed correcting.')
   return out
 }
 

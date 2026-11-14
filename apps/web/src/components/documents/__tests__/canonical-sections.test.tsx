@@ -918,7 +918,7 @@ describe('DeliveryGates — the two gates, explained before they are pressed', (
     )
   })
 
-  it('QA 10a (5): a re-check of a VERIFIED delivery says what it did to the cost, in the house’s language', async () => {
+  it('QA 10a (5) + r33 w2 F1: a re-check of a VERIFIED delivery says what it did to the cost, in the page’s language, in a TR house too', async () => {
     let rechecked = 0
     const verified = event({
       state: 'VERIFIED',
@@ -935,27 +935,24 @@ describe('DeliveryGates — the two gates, explained before they are pressed', (
       ],
     }
     const { rerender } = render(
-      <DeliveryGates delivery={verified} onRecheck={async () => { rechecked++ }} repair={repair} />,
+      <DeliveryGates delivery={verified} currency="TRY" onRecheck={async () => { rechecked++ }} repair={repair} />,
     )
-    await userEvent.click(screen.getByTestId('recheck-cost-button'))
+    const button = screen.getByTestId('recheck-cost-button')
+    expect(button.textContent).toBe('Check the cost again')
+    await userEvent.click(button)
     expect(rechecked).toBe(1)
-    const tr = screen.getByTestId('cost-repair-notice')
-    expect(tr.getAttribute('role')).toBe('status')
-    expect(tr.textContent).toMatch(/Maliyet düzeltildi: 1 kalem/)
-    expect(tr.textContent).toContain('Reddedildi: the invoice prints its unit as "kutu"')
-    expect(tr.textContent).toContain('Düzeltilmedi: its invoice line now makes 30 a bottle')
+    const note = screen.getByTestId('cost-repair-notice')
+    expect(note.getAttribute('role')).toBe('status')
+    expect(note.textContent).toMatch(/Cost corrected: 1 item had been booked at the invoice's printed price/)
+    expect(note.textContent).toContain('Refused: the invoice prints its unit as "kutu"')
+    expect(note.textContent).toContain('Not corrected: its invoice line now makes 30 a bottle')
+    // Nothing Turkish on an English page: not the note, not the button.
+    expect(screen.getByTestId('delivery-gates').textContent).not.toMatch(/Maliyet|Reddedildi|Düzeltilmedi|denetle/i)
 
     rerender(
-      <DeliveryGates delivery={{ ...verified, jurisdiction: 'US-CA' }} onRecheck={async () => {}} repair={repair} />,
+      <DeliveryGates delivery={verified} currency="TRY" repair={{ repaired: [], flagged: [] }} />,
     )
-    const en = screen.getByTestId('cost-repair-notice').textContent ?? ''
-    expect(en).toMatch(/Cost corrected: 1 item had been booked at the invoice's printed price/)
-    expect(en).toContain('Refused: the invoice prints its unit as "kutu"')
-
-    rerender(
-      <DeliveryGates delivery={{ ...verified, jurisdiction: 'US-CA' }} repair={{ repaired: [], flagged: [] }} />,
-    )
-    expect(screen.getByTestId('cost-repair-notice').textContent).toMatch(/nothing needed correcting/)
+    expect(screen.getByTestId('cost-repair-notice').textContent).toBe('Cost checked again: nothing needed correcting.')
   })
 
   it('QA 10a (5): the page keeps the verify response instead of discarding it', () => {
