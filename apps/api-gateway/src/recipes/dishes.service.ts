@@ -200,7 +200,7 @@ export class DishesService {
         this.all<any>("recipe line read", sentence, (from, to) =>
           client
             .from("recipe_lines")
-            .select("id, version_id, position, role, inventory_id, qty_base, base_unit")
+            .select("id, version_id, position, role, inventory_id, qty_base, base_unit, usable_pct")
             .eq("restaurant_id", restaurantId)
             .in("version_id", ids)
             .order("id", { ascending: true })
@@ -245,6 +245,7 @@ export class DishesService {
             baseUnit: l.base_unit as BaseUnit,
             item: (l.inventory_id && (items.get(l.inventory_id) as CostItem)) || null,
             lot: (l.inventory_id && lots.get(l.inventory_id)) || null,
+            usablePct: l.usable_pct ?? null,
           })),
           yieldServes,
         );
