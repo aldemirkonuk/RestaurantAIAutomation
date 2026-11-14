@@ -3630,7 +3630,7 @@ export class AuthService {
     // is UNIQUE and case-sensitive, so a mixed-case stored address against
     // Google's lower-cased claim used to miss and fall through to the create
     // branch — the same defect wearing a different hat. A row the backfill
-    // held unfolded (R11-01) is found by the SQL fold. A failed read is not
+    // held unfolded (R11-01) is found once #931 lands. A failed read is not
     // "no account".
     const { user, error: userReadError } = await findUserBySignInAddress<any>(
       () => this.databaseService.supabase.from("users").select("*"),
@@ -3796,7 +3796,7 @@ export class AuthService {
   /** A failed users read is not "email is free". */
   /**
    * Through the shared lookup, so an address a held row answers to under the
-   * SQL fold (R11-01) is taken: registration never writes a new case-twin.
+   * SQL fold (R11-01, #931) is taken; until then a twin can be written.
    */
   private async emailAlreadyRegistered(email: string): Promise<boolean> {
     const { user, error, ambiguous } = await findUserBySignInAddress(
@@ -4016,7 +4016,7 @@ export class AuthService {
     const { data: recent } = await this.databaseService.supabase
       .from("password_resets")
       .select("created_at")
-      .eq("email", normalizedEmail)
+      .eq("user_id", user.user_id)
       .is("used_at", null)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -4041,7 +4041,7 @@ export class AuthService {
         .from("password_resets")
         .insert({
           user_id: user.user_id,
-          email: normalizedEmail,
+          email: user.email,
           requested_ip: requestIp,
         })
         .select("token")
@@ -4066,7 +4066,7 @@ export class AuthService {
       const { passwordResetEmailTemplate } =
         await import("../communications/email-templates");
       const result = await this.gmailService.sendEmail({
-        to: [normalizedEmail],
+        to: [user.email],
         subject: "Reset your Mudavym password",
         html: passwordResetEmailTemplate({ name: user.name, resetUrl }),
       });
