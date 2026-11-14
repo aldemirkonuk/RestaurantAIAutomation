@@ -92,6 +92,12 @@ export interface CanonicalDocumentPageProps {
   embedded?: boolean
 }
 
+/**
+ * The gates and the thread: two columns while each can be 240 px wide, one
+ * column below that (about 490 px of page), so a phone reads each card whole.
+ */
+const GATES_COLUMNS = 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))'
+
 export function CanonicalDocumentPage({ documentId, embedded = false }: CanonicalDocumentPageProps = {}) {
   const route = useParams<{ id: string }>()
   const id = documentId ?? route.id ?? ''
@@ -538,11 +544,14 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
       {/* The two gates and the thread, on the ONE delivery this document sits
           on. A document on several has no single event to agree, so neither is
           offered — an ambiguous gate is worse than no gate. */}
+      {/* Side by side when each card gets at least 240 px; on a phone (375 px,
+          r33 w2 F6) they stack, instead of two 137 px columns of words. */}
       {soleDelivery && (
         <div
+          data-testid="delivery-gates-grid"
           style={{
             display: 'grid',
-            gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+            gridTemplateColumns: GATES_COLUMNS,
             gap: 10,
             marginTop: 10,
           }}
