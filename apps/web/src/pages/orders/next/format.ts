@@ -3,6 +3,9 @@
  * em dash, never as a zero. A zero is a claim; a dash is an admission.
  */
 
+import { formatMoney } from '@/lib/currency';
+import { fmtMoney as fmtMoneyIn } from '../../receipts/next/rc2-format';
+
 export const EM = '—';
 
 /** A finite number or null. Guards against NaN and the API's occasional string. */
@@ -12,28 +15,46 @@ export function num(v: unknown): number | null {
   return null;
 }
 
-const money = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
-export function fmtMoney(v: number | null | undefined): string {
+/** Money in the ORDER's own currency via the shared receipts formatter; no code prints bare with its caveat. */
+export function fmtMoney(v: number | null | undefined, code: string | null | undefined): string {
   const n = num(v);
-  return n === null ? EM : money.format(n);
+  return n === null ? EM : fmtMoneyIn(n, code);
 }
 
-/** Whole-dollar form for the month figure ($12,480). Unknown stays a dash. */
-const moneyWhole = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  maximumFractionDigits: 0,
-});
-
-export function fmtMoneyWhole(v: number | null | undefined): string {
+/**
+ * Whole-unit month form, with the same sign as every other amount on the page.
+ *
+ * `formatMoney` prints the code where the default display has no sign of its
+ * own, so a lira month read "TRY 12,480" beside rows reading "₺2,520.00" (r10
+ * walk). The narrow sign is asked of Intl and used only when it is one
+ * character from Unicode's currency-symbol block (₺ ₽ ₴ …), the rule of the
+ * receipts formatter the rows use: a narrow "$", "kr" or "£" is shared by
+ * several monies, so those keep their code.
+ *
+ * A zero with no currency prints "0": no orders is the same amount in every
+ * money, and "0 (currency not recorded)" said a caveat about nothing.
+ */
+export function fmtMoneyWhole(v: number | null | undefined, code: string | null | undefined): string {
   const n = num(v);
-  return n === null ? EM : moneyWhole.format(n);
+  if (n === null) return EM;
+  const iso = typeof code === 'string' && /^[A-Z]{3}$/.test(code) ? code : null;
+  if (n === 0 && iso === null) return '0';
+  const said = formatMoney(n, iso, { maximumFractionDigits: 0 });
+  if (iso === null || !said.includes(iso)) return said;
+  try {
+    const glyph = new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: iso,
+      currencyDisplay: 'narrowSymbol',
+    })
+      .formatToParts(0)
+      .find((x) => x.type === 'currency')?.value;
+    if (glyph && /^[\u20A0-\u20CF]$/.test(glyph))
+      return said.replace(iso, glyph).replace(/^(\D*?[^\d\s-])\s+(?=\d)/, '$1');
+  } catch {
+    // An engine without narrowSymbol keeps the code, which is still honest.
+  }
+  return said;
 }
 
 export function fmtInt(v: number | null | undefined): string {

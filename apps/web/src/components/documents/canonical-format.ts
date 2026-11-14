@@ -13,6 +13,8 @@
  *    document's own currency and renders the em dash when there is none.
  */
 
+import { unitWord as storedUnitWord } from '@/lib/unit-words'
+
 export const EM = '—'
 
 export const SERIF = '"Fraunces", Georgia, "Times New Roman", serif'
@@ -324,18 +326,18 @@ export function printedVintageOf(vintage: number | null, description: string | n
  * "6 bottles", "1 bottle", "2 split cases" (founder walk-through, 2026-10-01,
  * W6). The sentence printed the stored unit code as-is, so every quantity
  * other than one read "6 bottle" and a split case read "split_case". A unit
- * outside the gateway's `UOMS` list is printed as it came. Moved here from
- * VerdictBlock at W22 so the sheet's "per 12 bottles" uses the same words.
+ * outside the gateway's `UOMS` list is printed as it came. The words are the
+ * one web table in `lib/unit-words.ts` (2026-11-13), so an invoice line and the
+ * order it pays say "item" and "litre" alike.
  */
-const UNIT_WORDS: Record<string, readonly [string, string]> = {
-  bottle: ['bottle', 'bottles'],
-  case: ['case', 'cases'],
-  keg: ['keg', 'kegs'],
-  pack: ['pack', 'packs'],
-  split_case: ['split case', 'split cases'],
-  each: ['each', 'each'],
-  liter: ['liter', 'liters'],
-  // Weights and US units a line may be read in (R8; r36 R4).
+
+/**
+ * Units a document line may be READ in but no picker offers (R8; r36 R4,
+ * #1550): weights and US units. The stored codes take their words from the
+ * one table in lib/unit-words.ts (#1289); these few are said here, on the
+ * documents that read them. (r37 meet of #1289 and #1550.)
+ */
+const READ_UNIT_WORDS: Record<string, readonly [string, string]> = {
   kg: ['kg', 'kg'],
   g: ['g', 'g'],
   lb: ['lb', 'lb'],
@@ -344,8 +346,8 @@ const UNIT_WORDS: Record<string, readonly [string, string]> = {
   floz: ['fl oz', 'fl oz'],
 }
 export function unitWord(unit: string, qty: unknown): string {
-  const words = UNIT_WORDS[unit]
-  if (!words) return unit
+  const words = Object.prototype.hasOwnProperty.call(READ_UNIT_WORDS, unit) ? READ_UNIT_WORDS[unit] : undefined
+  if (!words) return storedUnitWord(unit, qty)
   return typeof qty === 'number' && qty === 1 ? words[0] : words[1]
 }
 

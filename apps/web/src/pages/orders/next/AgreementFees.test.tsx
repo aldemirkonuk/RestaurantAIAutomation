@@ -75,6 +75,10 @@ vi.mock('@/hooks/queries/useOrderQueries', () => ({
 import { AgreementSheet } from './AgreementSheet';
 import { LedgerRow } from './LedgerRow';
 import { toRow } from './useOrdersNextData';
+import { fmtMoney } from './format';
+
+/** Says a figure in dollars, for the assertions that mean a USD order. */
+const usd = (n: number) => fmtMoney(n, 'USD');
 import {
   ROW_FEES_NOT_READ,
   agreementTotal,
@@ -119,6 +123,7 @@ function wire(over: Record<string, unknown> = {}) {
     bottlesTotal: 60,
     finalPrice: 420,
     totalCost: 2100,
+    currency: 'USD',
     status: 'PENDING',
     requestedAt: '2026-09-01T10:00:00Z',
     wineName: 'Barolo Riserva',
@@ -164,6 +169,8 @@ describe('the sheet asks for the money outside the price', () => {
   it('2. moves the total and prints the working when a fee is stated', () => {
     mountSheet();
     fillCaseAgreement();
+    // This agreement is in dollars: name it, as the desk would.
+    fireEvent.change(screen.getByLabelText('Currency'), { target: { value: 'USD' } });
     expect(screen.getByTestId('agreement-total').textContent).toContain('2,100');
 
     fireEvent.change(screen.getByTestId('fee-deposit'), { target: { value: '30' } });
@@ -172,7 +179,7 @@ describe('the sheet asks for the money outside the price', () => {
 
     expect(screen.getByTestId('agreement-total').textContent).toContain('2,078');
     const working = screen.getByTestId('agreement-working').textContent ?? '';
-    expect(working).toContain('Goods $2100.00');
+    expect(working).toContain('Goods $2,100.00');
     expect(working).toContain('less allowance $100.00');
     expect(working).toContain('plus deposit $30.00');
     expect(working).toContain('plus freight $48.00');
@@ -209,7 +216,7 @@ describe('the ledger row prints what the agreement charges beyond the wine', () 
   it('5. names the fees inside the working, with the goods stated separately', () => {
     mountRow({ allowance: null, deposit: 30, freight: 48 });
     const working = screen.getByTestId('row-working').textContent ?? '';
-    expect(working).toContain('Goods $2100.00');
+    expect(working).toContain('Goods $2,100.00');
     expect(working).toContain('plus deposit $30.00');
     expect(working).toContain('plus freight $48.00');
     // The goods figure stands on its own, so the $2,178 total can never be
@@ -306,7 +313,7 @@ describe('the arithmetic', () => {
     expect(
       describeFees({ allowance: null, deposit: null, freight: null }),
     ).toBeNull();
-    expect(describeFees({ allowance: 25, deposit: null, freight: null })).toBe(
+    expect(describeFees({ allowance: 25, deposit: null, freight: null }, usd)).toBe(
       'an allowance of $25.00',
     );
   });

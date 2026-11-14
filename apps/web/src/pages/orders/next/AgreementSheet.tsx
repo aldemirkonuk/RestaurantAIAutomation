@@ -49,6 +49,7 @@ import { useInventory } from '@/hooks/queries/useInventoryQueries';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
 import { queryKeys } from '@/lib/query-keys';
 import { CURRENCY_CODES, currencyLabel, currencyToRecord as resolveCurrency } from '@/lib/currency';
+import { unitMany } from '@/lib/unit-words';
 import { EM, MONO, SANS, SERIF, fmtMoney } from './format';
 import {
   PRICE_UOMS,
@@ -64,15 +65,9 @@ import {
 /** The order's own unit vocabulary — the same seven the price may use. */
 const ORDER_UOMS = PRICE_UOMS;
 
-const ORDER_UOM_LABEL: Record<PriceUom, string> = {
-  bottle: 'bottles',
-  case: 'cases',
-  keg: 'kegs',
-  pack: 'packs',
-  split_case: 'split cases',
-  each: 'each',
-  liter: 'litres',
-};
+const ORDER_UOM_LABEL = Object.fromEntries(
+  ORDER_UOMS.map((u) => [u, unitMany(u)]),
+) as Record<PriceUom, string>;
 
 const fieldStyle: React.CSSProperties = {
   width: '100%',
@@ -270,8 +265,9 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
         unitType,
         bottlesPerUnit: packNum,
         fees,
+        say: (n) => fmtMoney(n, currencyToRecord),
       }),
-    [priceNum, stated, qty, unitType, packNum, fees],
+    [priceNum, stated, qty, unitType, packNum, fees, currencyToRecord],
   );
 
   const orderPackMissing = isMultiplying(unitType) && (packNum == null || packNum < 1);
@@ -729,7 +725,7 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
                 color: 'var(--ink-1, #211C16)',
               }}
             >
-              {total && total.ok ? fmtMoney(total.total) : EM}
+              {total && total.ok ? fmtMoney(total.total, currencyToRecord) : EM}
             </span>
           </div>
           {total && total.ok ? (

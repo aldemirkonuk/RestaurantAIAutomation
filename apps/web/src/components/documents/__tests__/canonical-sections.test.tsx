@@ -1311,7 +1311,7 @@ describe('CanonicalSheet — what the reader kept, said as such (W41)', () => {
     d.layer3.lines = [adjudicated({ billed: 1 }), adjudicated({ lineIndex: 1, billed: 2 })]
     const { container } = render(<CanonicalSheet doc={d} />)
     expect(billedCell(container, 0)).toBe('1 bottle')
-    expect(billedCell(container, 1)).toBe('2 each')
+    expect(billedCell(container, 1)).toBe('2 items')
   })
 
   it('leaves a converted count bare rather than call 12 bottles "12 cases"', () => {

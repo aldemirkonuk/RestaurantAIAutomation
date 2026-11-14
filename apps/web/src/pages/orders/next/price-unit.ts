@@ -22,7 +22,12 @@
  * bargain, and no later reader can tell them apart.
  */
 
-import { fmtMoney } from './format';
+import { unitMany, unitOne, unitWord } from '@/lib/unit-words';
+
+/** How a figure is said: callers pass the order's own currency. Default: bare, never `$` (ADR 0117). */
+export type Say = (n: number) => string;
+const bare: Say = (n) => n.toFixed(2);
+
 
 /**
  * The seven the database accepts.
@@ -58,30 +63,29 @@ export function isOpaqueUnit(uom: PriceUom | null): boolean {
 }
 
 /** What the picker says. The stored word is the value; this is the reading. */
-export const PRICE_UOM_LABEL: Record<PriceUom, string> = {
-  bottle: 'per bottle',
-  case: 'per case',
-  keg: 'per keg',
-  pack: 'per pack',
-  split_case: 'per split case',
-  each: 'per each',
-  liter: 'per litre',
-};
+export const PRICE_UOM_LABEL = Object.fromEntries(
+  PRICE_UOMS.map((u) => [u, `per ${unitOne(u)}`]),
+) as Record<PriceUom, string>;
 
 /** A count of a unit in words: "1 bottle", "6 split cases" — never "bottle(s)" (ORD-W17). */
-const UOM_COUNT: Record<PriceUom, [string, string]> = {
-  bottle: ['bottle', 'bottles'],
-  case: ['case', 'cases'],
-  keg: ['keg', 'kegs'],
-  pack: ['pack', 'packs'],
-  split_case: ['split case', 'split cases'],
-  each: ['item', 'items'],
-  liter: ['litre', 'litres'],
-};
-
 export function uomCountWord(quantity: number | null, uom: PriceUom): string {
-  const [one, many] = UOM_COUNT[uom];
-  return quantity === 1 ? one : many;
+  return unitWord(uom, quantity);
+}
+
+/**
+ * One unit in words, for "per …" and "in one …": "split case", "item",
+ * "litre". The stored code is the database's spelling, not the page's —
+ * `split_case`, `each` and `liter` printed as "per split_case", "per each" and
+ * "per liter" beside rows that elsewhere say "litre" (2026-11-13 walk, r21).
+ * The words come from the one web table, `lib/unit-words.ts`.
+ */
+export function uomOne(uom: PriceUom): string {
+  return unitOne(uom);
+}
+
+/** Several of a unit in words: "split cases", "items", "litres". */
+export function uomMany(uom: PriceUom): string {
+  return unitMany(uom);
 }
 
 export interface StatedPriceUnit {
@@ -98,14 +102,15 @@ export interface StatedPriceUnit {
 export function describeStatedPrice(
   price: number | null | undefined,
   stated: StatedPriceUnit | null,
+  say: Say = bare,
 ): string | null {
   if (price == null || !Number.isFinite(Number(price))) return null;
   // Grouped like every other figure on the page ($1,090.00, not $1090.00; ORD-W14).
-  const money = fmtMoney(Number(price));
+  const money = say(Number(price));
   if (!stated) return money;
   const pack =
     stated.pricePackSize > 1 ? ` (${stated.pricePackSize} bottles)` : '';
-  return `${money} per ${stated.priceUom.replace('_', ' ')}${pack}`;
+  return `${money} per ${uomOne(stated.priceUom)}${pack}`;
 }
 
 /**
@@ -199,8 +204,11 @@ export function agreementTotal(input: {
    * what they were before phase 2 — no existing figure moves.
    */
   fees?: AgreementFees;
+  /** Says a figure in the order's own currency. Default: the bare figure. */
+  say?: Say;
 }): AgreementTotal | null {
   const { price, stated, quantity, unitType } = input;
+  const say = input.say ?? bare;
   if (price == null || quantity == null || !Number.isFinite(price)) return null;
 
   const orderOpaque = OPAQUE.has(unitType);
@@ -225,13 +233,13 @@ export function agreementTotal(input: {
           (fees.freight ?? 0)) *
           100,
       ) / 100;
-    const parts = [`Goods $${goods.toFixed(2)}`];
+    const parts = [`Goods ${say(goods)}`];
     if (fees.allowance !== null)
-      parts.push(`less allowance $${fees.allowance.toFixed(2)}`);
+      parts.push(`less allowance ${say(fees.allowance)}`);
     if (fees.deposit !== null)
-      parts.push(`plus deposit $${fees.deposit.toFixed(2)}`);
+      parts.push(`plus deposit ${say(fees.deposit)}`);
     if (fees.freight !== null)
-      parts.push(`plus freight $${fees.freight.toFixed(2)}`);
+      parts.push(`plus freight ${say(fees.freight)}`);
     // NO trailing "= $total": the sheet prints the figure above this sentence
     // and the ledger row prints it after, so carrying it here printed it twice
     // on the row. Measured in the first capture of this pass.
@@ -246,7 +254,7 @@ export function agreementTotal(input: {
   if (!stated) {
     return goodsOnly(
       price * bottlesTotal,
-      `${bottlesTotal} × $${price.toFixed(2)} — no price unit stated, so this uses the old per-bottle convention.`,
+      `${bottlesTotal} × ${say(price)} — no price unit stated, so this uses the old per-bottle convention.`,
     );
   }
 
@@ -254,12 +262,12 @@ export function agreementTotal(input: {
     if (stated.priceUom === unitType) {
       return goodsOnly(
         price * quantity,
-        `${quantity} × $${price.toFixed(2)} per ${unitType}.`,
+        `${quantity} × ${say(price)} per ${uomOne(unitType)}.`,
       );
     }
     return {
       ok: false,
-      message: `This order is placed in ${unitType}s and the price is stated per ${stated.priceUom}. Nothing says how many ${stated.priceUom}s a ${unitType} is, so the order's value cannot be worked out.`,
+      message: `This order is placed in ${uomMany(unitType)} and the price is stated per ${uomOne(stated.priceUom)}. Nothing says how many ${uomMany(stated.priceUom)} a ${uomOne(unitType)} is, so the order's value cannot be worked out.`,
     };
   }
 
@@ -267,8 +275,8 @@ export function agreementTotal(input: {
   return goodsOnly(
     Math.round(price * unitsBought * 100) / 100,
     stated.pricePackSize === 1
-      ? `${bottlesTotal} × $${price.toFixed(2)} per ${stated.priceUom}.`
-      : `${bottlesTotal} bottles ÷ ${stated.pricePackSize} = ${unitsBought} ${stated.priceUom}${unitsBought === 1 ? '' : 's'} × $${price.toFixed(2)}.`,
+      ? `${bottlesTotal} × ${say(price)} per ${uomOne(stated.priceUom)}.`
+      : `${bottlesTotal} bottles ÷ ${stated.pricePackSize} = ${unitsBought} ${uomCountWord(unitsBought, stated.priceUom)} × ${say(price)}.`,
   );
 }
 
@@ -280,13 +288,13 @@ export function agreementTotal(input: {
  * and does not need announcing. Absence of a READ does — see
  * `ROW_FEES_NOT_READ`.
  */
-export function describeFees(fees: AgreementFees): string | null {
+export function describeFees(fees: AgreementFees, say: Say = bare): string | null {
   const parts = [
     fees.allowance !== null
-      ? `an allowance of $${fees.allowance.toFixed(2)}`
+      ? `an allowance of ${say(fees.allowance)}`
       : null,
-    fees.deposit !== null ? `a deposit of $${fees.deposit.toFixed(2)}` : null,
-    fees.freight !== null ? `freight of $${fees.freight.toFixed(2)}` : null,
+    fees.deposit !== null ? `a deposit of ${say(fees.deposit)}` : null,
+    fees.freight !== null ? `freight of ${say(fees.freight)}` : null,
   ].filter(Boolean);
   return parts.length ? parts.join(', ') : null;
 }
@@ -319,7 +327,7 @@ export const UNSTATED_PRICE_UNIT_REFUSAL =
 
 /** The half-statement the gateway 400s on, said before the request is made. */
 export function halfStatedRefusal(uom: PriceUom): string {
-  return `A price stated "per ${uom.replace('_', ' ')}" also has to say how many bottles are in one. Half a statement cannot be converted, so it is refused rather than completed with a guess.`;
+  return `A price stated "per ${uomOne(uom)}" also has to say how many bottles are in one. Half a statement cannot be converted, so it is refused rather than completed with a guess.`;
 }
 
 /**
