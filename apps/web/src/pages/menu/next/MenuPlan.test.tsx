@@ -409,3 +409,43 @@ describe('L2 on the plan: nothing to keep where the house has no price', () => {
     expect(screen.queryByRole('button', { name: 'Keep the bottle price of Vermentino' })).not.toBeInTheDocument();
   });
 });
+
+// r28 G9: the carry writes a removed row's price (one row per house and wine),
+// and the plan never said the row stays removed, so a removed wine was sold off
+// the menu with nothing on Inventory saying so.
+describe('a line whose house row was removed is said (r28 G9)', () => {
+  const removed = line({ menuItemId: 'n7', name: 'Old Rioja', inventoryId: 'inv-9', house: { wineName: 'Old Rioja', vintage: 2015, active: false } });
+
+  it('the sentence counts and names the removed lines, and says they stay removed', () => {
+    expect(planSentence(plan({ lines: [line(), removed], dormantLocks: [] }))).toBe(
+      'Choosing this menu will set 1 price from this menu, leave 1 locked price as it is. 1 line is a good the house removed from Inventory; its price is kept on the removed row and it stays removed (Old Rioja). Bring it back on Inventory to sell it from there.',
+    );
+    const two = line({ ...removed, menuItemId: 'n8', name: 'Gone Gin' });
+    expect(planSentence(plan({ lines: [removed, two], dormantLocks: [] }))).toContain(
+      '2 lines are a good the house removed from Inventory; their price is kept on the removed row and they stay removed (Old Rioja, Gone Gin). Bring them back on Inventory to sell them from there',
+    );
+  });
+
+  it('a live row, or a line with no row, is not called removed', () => {
+    const noRow = line({ menuItemId: 'n9', house: null, inventoryId: null });
+    expect(planSentence(plan({ lines: [line(), noRow], dormantLocks: [] }))).not.toContain('removed');
+  });
+
+  it('the current menu says it too', () => {
+    expect(planSentence(plan({ current: true, lines: [removed], counts: { ...plan().counts, change: 0, new_wine: 0 } }))).toBe(
+      'This is the current menu, and every price on it already reached the house. 1 line is a good the house removed from Inventory; its price is kept on the removed row and it stays removed (Old Rioja). Bring it back on Inventory to sell it from there.',
+    );
+  });
+
+  it('marks the removed line in the price table and in every line, and no other', async () => {
+    mockPlan.mockResolvedValue(plan({ lines: [line(), removed], dormantLocks: [] }));
+    mount(true);
+    const rows = await screen.findAllByTestId('menu-plan-row');
+    const rioja = rows.find((r) => r.textContent?.includes('Old Rioja')) as HTMLElement;
+    expect(within(rioja).getByTestId('menu-plan-removed')).toHaveTextContent('removed from Inventory; it stays removed');
+    const chianti = rows.find((r) => r.textContent?.includes('Chianti')) as HTMLElement;
+    expect(within(chianti).queryByTestId('menu-plan-removed')).not.toBeInTheDocument();
+    const every = screen.getAllByTestId('menu-plan-line');
+    expect(every.filter((r) => within(r).queryByTestId('menu-plan-removed'))).toHaveLength(1);
+  });
+});
