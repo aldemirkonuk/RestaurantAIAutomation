@@ -584,6 +584,13 @@ export function readSentence(
   zonesReadable: boolean,
   uomOf: (r: InvRow) => string | null = () => null,
   seesCost = true,
+  /**
+   * Whether a row is a food or a supply. The page passes its `goodOf`, which
+   * reads the house item's own kind: a row's `kind` is the library's drink
+   * kind and stays null for a food (withHouseKind), so it cannot say this on
+   * the page (r33 walk). Absent, the row's own kind is read.
+   */
+  isGood: (r: InvRow) => boolean = (r) => r.kind === 'food' || r.kind === 'supply',
 ): string {
   const n = rows.length;
   const read = rows.filter((r) => r.stock !== null);
@@ -593,7 +600,7 @@ export function readSentence(
   const parts: string[] = [];
   // A list that carries a food or a supply is a house's goods, not a cellar's
   // titles (inventory r28 audit, gap 12); a wine list keeps its own words.
-  const goods = rows.some((r) => r.kind === 'food' || r.kind === 'supply');
+  const goods = rows.some(isGood);
   const [one, many] = goods ? ['good', 'goods'] : ['title', 'titles'];
 
   let first =

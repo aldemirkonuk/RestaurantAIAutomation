@@ -724,7 +724,7 @@ export default function InventoryNext() {
           /* ── the book ───────────────────────────────────────────────── */
           <>
             <p className="iv-read" data-testid="inventory-read-sentence">
-              {readSentence(rows, data.currency, !locs.unavailable, uomOf, data.canManage)}
+              {readSentence(rows, data.currency, !locs.unavailable, uomOf, data.canManage, (r) => goodOf(r) !== 'drink')}
             </p>
             {data.stale ? (
               <p className="iv-note" role="status">
