@@ -19,6 +19,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { MailService } from "./mail.service";
 import type {
+  MailAttachmentLink,
   MailNoReplyAnswer,
   MailPeoplePage,
   MailSummary,
@@ -162,6 +163,19 @@ export class MailController {
     @CurrentUser("role") role: string | null,
   ): Promise<MailSummary> {
     return this.mail.summary(houseOf(user), role);
+  }
+
+  @Get("attachments/:id/link")
+  @ApiOperation({
+    summary:
+      "A five-minute address for one file a letter carried, when the caller may read that letter",
+  })
+  attachmentLink(
+    @CurrentUser() user: AuthUser,
+    @CurrentUser("role") role: string | null,
+    @Param("id") id: string,
+  ): Promise<MailAttachmentLink> {
+    return this.mail.attachmentLink(houseOf(user), role, id);
   }
 
   @Post("letters/:id/no-reply-needed")
