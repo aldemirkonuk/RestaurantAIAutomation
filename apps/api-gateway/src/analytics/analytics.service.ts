@@ -17,6 +17,14 @@ import {
 } from "./consumption-units";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
 import { houseDayBounds } from "../common/house-day";
+import {
+  FirstRecord,
+  MIN_PLAN_DAYS,
+  observedWindow,
+  readFirstRecord,
+  trimToObserved,
+  windowWords,
+} from "./observed-window";
 
 /**
  * AnalyticsService — the quantitative heart of WineOps.
@@ -267,6 +275,24 @@ export class AnalyticsService {
         date: (c.created_at || "").substring(0, 10),
       };
     });
+  }
+
+  /**
+   * The house's first consumption line ever: a rate starts there, not at the
+   * window's first day (r36 reports gap 1). Never throws; a failed read
+   * falls back to the whole window and the basis says so.
+   */
+  private async firstConsumption(restaurantId: string): Promise<FirstRecord> {
+    const first = await readFirstRecord(
+      this.dbService.getClient(),
+      "wine_consumption_log",
+      restaurantId,
+    );
+    if (first.read === "could_not_read")
+      this.logger.warn(
+        `first consumption line could not be read; rates use the whole window: ${first.error}`,
+      );
+    return first;
   }
 
   /** Wines with at least one line that carries no bottle figure. */
@@ -645,10 +671,19 @@ export class AnalyticsService {
     const leadTime = opts.leadTimeDays ?? 7;
     const sinceDays = 90;
 
-    const [inventory, consumption] = await Promise.all([
+    const [inventory, consumption, first] = await Promise.all([
       this.loadInventory(restaurantId),
       this.loadConsumption(restaurantId, sinceDays),
+      this.firstConsumption(restaurantId),
     ]);
+    // The series ends today (`toDailySeries`) and starts at the house's first
+    // line when that is inside the window: a day before it is not a day the
+    // house sold nothing (r36 reports gap 1).
+    const observed = observedWindow(
+      sinceDays,
+      new Date().toISOString().substring(0, 10),
+      first,
+    );
 
     // Demand series per master wine.
     const demandByWine = new Map<
@@ -668,7 +703,10 @@ export class AnalyticsService {
 
     const skus = inventory.map((i) => {
       const rows = demandByWine.get(i.masterWineId || "") || [];
-      const { values } = this.toDailySeries(rows, sinceDays);
+      const { values } = trimToObserved(
+        this.toDailySeries(rows, sinceDays),
+        observed,
+      );
       const profile = E.inventory.demandProfile(values) || {
         mean: 0,
         stdev: 0,
@@ -765,10 +803,11 @@ export class AnalyticsService {
         leadTimeDays: leadTime,
         demandWindowDays: sinceDays,
       },
+      observed,
       // This endpoint carried no `basis` at all, which made its cost-derived
       // columns unreadable: nothing said where `inventoryValue` came from.
       basis: {
-        demand: `bottles/day over ${sinceDays}d — ${unitsBasisSentence(unitsCoverage)}${unassessed > 0 ? `; ${unassessed} row(s) are unassessed (skus[].demandUnknown): their demand, cover, reorder point and stockout risk are null and they are never put on the reorder list` : ""}`,
+        demand: `bottles/day ${windowWords(observed, "consumption line")} — ${unitsBasisSentence(unitsCoverage)}${unassessed > 0 ? `; ${unassessed} row(s) are unassessed (skus[].demandUnknown): their demand, cover, reorder point and stockout risk are null and they are never put on the reorder list` : ""}`,
         reorderScience: `King safety stock at serviceLevel ${serviceLevel}, lead time ${leadTime}d — demand-derived, unaffected by cost`,
         inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
         costDerived:
@@ -910,7 +949,15 @@ export class AnalyticsService {
   ) {
     const horizon = opts.horizon ?? 14;
     const sinceDays = 120;
-    const consumption = await this.loadConsumption(restaurantId, sinceDays);
+    const [consumption, first] = await Promise.all([
+      this.loadConsumption(restaurantId, sinceDays),
+      this.firstConsumption(restaurantId),
+    ]);
+    const observed = observedWindow(
+      sinceDays,
+      new Date().toISOString().substring(0, 10),
+      first,
+    );
     const scoped = consumption.filter(
       (c) => !opts.masterWineId || c.masterWineId === opts.masterWineId,
     );
@@ -921,7 +968,13 @@ export class AnalyticsService {
     const rows = scoped
       .filter((c) => c.qty != null)
       .map((c) => ({ date: c.date, value: c.qty as number }));
-    const { dates, values } = this.toDailySeries(rows, sinceDays);
+    // Starts at the house's first line, not 120 days back: the days before it
+    // are not days without sales, and Holt-Winters fitted on them drew a
+    // new house's first fortnight as a collapse from nothing (r36 gap 1).
+    const { dates, values } = trimToObserved(
+      this.toDailySeries(rows, sinceDays),
+      observed,
+    );
 
     // Try weekly-seasonal Holt-Winters; fall back to Holt then SES.
     // `warmup` is the seeding window each model reads before its recursion can
@@ -970,7 +1023,7 @@ export class AnalyticsService {
     } | null = null;
     // A short history is not scored either: an error measured against it
     // would be a claim about sales that were never counted.
-    if (result && !unmeasuredWine) {
+    if (result && !unmeasuredWine && !observed.young) {
       const w = Math.min(result.warmup, values.length);
       const actual = values.slice(w);
       const predicted = result.fitted.slice(w);
@@ -1021,7 +1074,10 @@ export class AnalyticsService {
     // projection itself must refuse too, or the page reads a flat zero line as
     // a claim about next week (ADR 0020).
     const hasObservation = values.some((v) => v !== 0);
-    const projection = hasObservation && !unmeasuredWine ? result : null;
+    // Under two of each weekday the house is too young to project from: a
+    // line drawn from a week of trade is the opening week, not the demand.
+    const projection =
+      hasObservation && !unmeasuredWine && !observed.young ? result : null;
 
     return {
       // `model` used to report the LAST model attempted even when none of the
@@ -1033,6 +1089,7 @@ export class AnalyticsService {
       masterWineId: opts.masterWineId ?? "all",
       horizon,
       history: { dates, values },
+      observed,
       forecast:
         projection?.forecast.map((v, i) => ({
           date: futureDates[i],
@@ -1045,10 +1102,12 @@ export class AnalyticsService {
         ? E.stats.sum(projection.forecast.map((v) => Math.max(0, v)))
         : null,
       basis: {
-        demand: `bottles/day over ${sinceDays}d, zero-filled to a dense daily series — ${unitsBasisSentence(unitsCoverage, "series")}${unmeasuredWine ? "; nothing is projected from this short series" : ""}`,
+        demand: `bottles/day ${windowWords(observed, "consumption line")}, zero-filled to a dense daily series — ${unitsBasisSentence(unitsCoverage, "series")}${unmeasuredWine ? "; nothing is projected from this short series" : ""}`,
         model: projection
           ? `${model} fitted on ${values.length} days of history`
-          : unmeasuredWine
+          : observed.young && hasObservation && !unmeasuredWine
+            ? `no model fitted — the house has ${observed.observedDays} days of records and a forecast needs ${MIN_PLAN_DAYS} (two of each weekday), so nothing is projected yet`
+            : unmeasuredWine
             ? "no model fitted — this wine has lines that carry no bottle figure, so its history is short by an unknown amount and nothing is projected from it"
             : hasObservation
               ? "no model fitted — Holt-Winters, Holt and SES each refused this history, so no line is projected and no total is claimed"
