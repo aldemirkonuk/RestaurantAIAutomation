@@ -77,6 +77,7 @@ import {
   type Slot,
 } from './rp-sheet';
 import { heldMark, layoutFor } from './rp-readable';
+import { readingAge } from './rp-registers-trade';
 import type { ComboPick } from './rp-combo';
 import ExportsShelf from './ExportsShelf';
 import Sheet, { type SheetCutting } from './Sheet';
@@ -405,6 +406,11 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     const top = data.reading.data[0];
     return top ? top.sentence : 'The engine has nothing to say about this restaurant yet.';
   }, [data.reading]);
+  /** When the opening sentence was written; it can be a day older than the registers (r36 gap 4). */
+  const openingAge = useMemo(() => {
+    const top = data.reading.failure ? undefined : data.reading.data?.[0];
+    return top ? readingAge([top]) : null;
+  }, [data.reading]);
 
   const swapOptions = useMemo(
     () => ANALYSIS_IDS.map((id) => ({ id, taken: onSheet.has(id), held: heldMark(id, role) })),
@@ -510,6 +516,11 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
             {/* Fraunces speaks only what the ENGINE said — verbatim, or the truth
                 about why it said nothing. This page never writes a sentence. */}
             <p className="rp-voice">{opening}</p>
+            {openingAge && (
+              <p className="rp-cap" data-testid="rp-opening-age">
+                Written by the engine {openingAge}. The registers below are read live.
+              </p>
+            )}
             {moneyLine && (
               <p className="rp-cap" data-testid="rp-money-line">
                 {moneyLine}{' '}
