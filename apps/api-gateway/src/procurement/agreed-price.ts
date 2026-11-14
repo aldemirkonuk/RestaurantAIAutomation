@@ -43,6 +43,7 @@
  */
 
 import { Uom, normalizeUom } from "./documents/document-types";
+import { sixPlaces, toLotCostPrecision } from "./canonical/lot-unit-cost";
 
 /**
  * The units a price may be stated in.
@@ -283,10 +284,18 @@ export function perBottleFromAgreedPrice(input: {
     };
   }
 
+  // Six places, the lot's own precision (`unit_cost numeric(14,6)`,
+  // `toLotCostPrecision`). This figure is the cost `markDelivered` books into
+  // the lot as an estimate, and a four-place step first lost a case's
+  // remainder: 100 per case of 12 went in as 8.3333, so the twelve bottles
+  // came to 99.9996. The note prints no currency mark: this function is not
+  // told the agreement's currency, and a `$` here was read on a TRY house's
+  // verify screen as dollars (browser walk 2026-11-12).
+  const perBottle = toLotCostPrecision(price / pricePackSize);
   return {
     ok: true,
-    perBottle: Math.round((price / pricePackSize) * 10000) / 10000,
-    note: `Price stated as $${price.toFixed(2)} per ${priceUom} of ${pricePackSize}; recorded per bottle as $${(price / pricePackSize).toFixed(4)}.`,
+    perBottle,
+    note: `Price stated as ${price.toFixed(2)} per ${priceUom} of ${pricePackSize}; recorded per bottle as ${sixPlaces(perBottle)}.`,
   };
 }
 
@@ -814,7 +823,7 @@ export function agreedPricePerBottleForDoor(input: {
     note:
       pricePackSize === 1
         ? `Agreed per ${priceUom}, which holds one bottle; compared as-is.`
-        : `Agreed at $${Number(input.price).toFixed(2)} per ${priceUom} of ${pricePackSize}; compared per bottle at $${converted.perBottle.toFixed(4)}.`,
+        : `Agreed at ${Number(input.price).toFixed(2)} per ${priceUom} of ${pricePackSize}; compared per bottle at ${sixPlaces(converted.perBottle)}.`,
   };
 }
 
