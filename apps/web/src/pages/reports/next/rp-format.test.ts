@@ -43,13 +43,31 @@ describe('money — in the house’s currency, never an assumed $ (audit G5)', (
     expect(money(1234, 'full', 'TRY')).toBe('₺1.234');
     expect(money(4302, 'full', 'TRY')).toBe('₺4.302');
     expect(money(112736.56, 'table', 'TRY')).toBe('₺112.736,56');
-    expect(money(1234.5, 'full', 'USD')).toBe('$1,234.5');
+    expect(money(1234.5, 'full', 'USD')).toBe('$1,234.50');
     // Compact keeps the page's English suffix with the house's marks: the
     // Turkish compact form "₺12,3 B" (bin) reads as billions on this page.
     expect(money(12345, 'compact', 'TRY')).toBe('₺12,3K');
     expect(money(12345678, 'compact', 'TRY')).toBe('₺12,3M');
     expect(money(12345, 'compact', 'EUR')).toBe('€12.3K');
     expect(money(4.5, 'table', 'GBP')).toBe('£4.50');
+  });
+
+  it('never prints a money with one decimal (r33 w2 F7)', () => {
+    // Walked: "₺113,2 of ₺95" and "₺828,7 · ₺800,3" on the projection card.
+    // Under a thousand there is no K to round to, so compact writes it in full.
+    expect(money(113.2, 'compact', 'TRY')).toBe('₺113,20');
+    expect(money(95, 'compact', 'TRY')).toBe('₺95');
+    expect(money(828.7, 'compact', 'TRY')).toBe('₺828,70');
+    expect(money(-800.3, 'compact', 'TRY')).toBe('-₺800,30');
+    expect(money(999.99, 'compact', 'USD')).toBe('$999.99');
+    // From a thousand up the compact form keeps its one decimal after the K.
+    expect(money(1000, 'compact', 'TRY')).toBe('₺1K');
+    expect(money(1500, 'compact', 'TRY')).toBe('₺1,5K');
+    // Full: whole stays whole, anything else carries both decimals.
+    expect(money(4.5, 'full', 'TRY')).toBe('₺4,50');
+    expect(money(4470, 'full', 'TRY')).toBe('₺4.470');
+    // A money without decimals (the yen) never grows any.
+    expect(money(113.2, 'compact', 'JPY')).toBe('¥113');
   });
 
   it('prints a bare number when no currency is recorded or read', () => {

@@ -79,18 +79,45 @@ export function money(
     // (r29 walk, finding 4). The locale is the one country that owns the
     // money (`houseNumberLocale`, #1303), so two readers see one figure.
     const locale = houseNumberLocale(code);
-    if (mode === 'compact') return compactInHouseMarks(n, code, locale);
+    // A compact amount under a thousand has no suffix to round to, so it is
+    // written in full (r33 w2 F7: "₺113,2 of ₺95" read as a money with one
+    // decimal). From a thousand up, "₺1,5K" keeps its one decimal.
+    if (mode === 'compact' && Math.abs(n) >= COMPACT_FROM) return compactInHouseMarks(n, code, locale);
+    if (mode === 'table') {
+      return new Intl.NumberFormat(locale, {
+        style: 'currency',
+        currency: code,
+        currencyDisplay: 'narrowSymbol',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(n);
+    }
+    // Full: a whole amount drops its decimals ("₺4.470"); any other amount
+    // shows all of the money's decimals ("₺113,20", never "₺113,2").
+    const digits = moneyDigits(code);
+    const whole = Math.round(Math.abs(n) * 10 ** digits) % 10 ** digits === 0;
     return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: code,
       currencyDisplay: 'narrowSymbol',
-      ...(mode === 'table'
-        ? { minimumFractionDigits: 2, maximumFractionDigits: 2 }
-        : { minimumFractionDigits: 0, maximumFractionDigits: 2 }),
+      minimumFractionDigits: whole ? 0 : digits,
+      maximumFractionDigits: digits,
     }).format(n);
   } catch {
     // A well-formed code this runtime does not know: the number is still true.
     return `${formatNumber(n, mode === 'compact' ? 'compact' : 'full')} ${code}`;
+  }
+}
+
+/** Below this a compact amount is written in full: there is no K to round to. */
+const COMPACT_FROM = 1000;
+
+/** The decimals a money is written with: 2 for the lira and the pound, 0 for the yen. */
+function moneyDigits(code: string): number {
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: code }).resolvedOptions().maximumFractionDigits ?? 2;
+  } catch {
+    return 2;
   }
 }
 
