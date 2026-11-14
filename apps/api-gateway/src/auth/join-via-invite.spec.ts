@@ -1,4 +1,4 @@
-import { UnauthorizedException } from "@nestjs/common";
+import { ServiceUnavailableException, UnauthorizedException } from "@nestjs/common";
 import * as bcrypt from "bcrypt";
 import { AuthService } from "./auth.service";
 import { asDatabaseService, makeStubDb } from "../team/testing/supabase-stub";
@@ -21,6 +21,8 @@ const ISSUER = "issuer-1";
 const HOUSE = "rest-1";
 const FUTURE = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
+let lastDb: ReturnType<typeof makeStubDb>;
+
 function makeService(opts: {
   invite?: any;
   existingUser?: any;
@@ -29,6 +31,9 @@ function makeService(opts: {
    * newer one (item 5, and Path A's own copy of it, round 2 2026-09-19), so
    * every case needs a legitimate issuer unless it says otherwise. */
   issuerAccess?: any;
+  /** Every users row, for the lookup cases (QA r17 gap 1). */
+  users?: any[];
+  usersReadFails?: boolean;
 }) {
   const invite = opts.invite ?? {
     id: "inv-1",
@@ -58,10 +63,11 @@ function makeService(opts: {
   // one-result-per-table stub cannot do.
   const db = makeStubDb({
     organization_invites: [invite],
-    users: opts.existingUser ? [opts.existingUser] : [],
+    users: opts.users ?? (opts.existingUser ? [opts.existingUser] : []),
     user_restaurant_access: issuerAccess ? [issuerAccess] : [],
     organization_members: [],
-  });
+  }, opts.usersReadFails ? { "users:select": { message: "down" } } : {});
+  lastDb = db;
 
   // Order matters: (jwtService, configService, databaseService,
   // tokenBlacklistService, gmailService) — auth.service.ts:58-64.
@@ -162,5 +168,43 @@ describe("AuthService#joinViaInvite — existing account branch", () => {
       membershipHeld: false,
     });
     expect((svc as any).generateTokens).toHaveBeenCalled();
+  });
+});
+
+describe("AuthService#joinViaInvite — the shared lookup (QA r17 gap 1)", () => {
+  const held = async (user_id: string, email: string) => ({
+    user_id,
+    email,
+    email_folded: email.toLowerCase(),
+    name: "Chef",
+    password_hash: await bcrypt.hash("pw", 4),
+    email_verified: true,
+  });
+  const join = (svc: AuthService, email: string) =>
+    svc.joinViaInvite({ code: "INVITE", email, name: "Chef", password: "pw" } as any);
+
+  it("a held row typed in another case joins as that account, no twin", async () => {
+    const svc = makeService({ users: [await held("chef", "Chef@Bistro.com")] });
+    await join(svc, "chef@bistro.com");
+    // toHaveLength, not toEqual on ids: toEqual skips an inserted row's
+    // undefined user_id, which hid the twin this spec is about.
+    expect(lastDb.tables.users).toHaveLength(1);
+    expect(lastDb.opsOn("users", "insert")).toEqual([]);
+  });
+
+  it("held twins: refused, nothing inserted, the invite given back", async () => {
+    const svc = makeService({
+      users: [await held("a", "Chef@Bistro.com"), await held("b", "CHEF@bistro.com")],
+    });
+    await expect(join(svc, "chef@bistro.com")).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(lastDb.tables.users).toHaveLength(2);
+    expect(lastDb.tables.organization_invites[0].used_at).toBeNull();
+  });
+
+  it("a failed users read is a 503, not a new account, and the invite is given back", async () => {
+    const svc = makeService({ usersReadFails: true });
+    await expect(join(svc, "new@bistro.com")).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(lastDb.tables.users).toHaveLength(0);
+    expect(lastDb.tables.organization_invites[0].used_at).toBeNull();
   });
 });
