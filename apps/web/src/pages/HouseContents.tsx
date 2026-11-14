@@ -5,6 +5,7 @@ import { addCustomProvider } from '../services/api/vendors'
 import { getErrorStatus, isUnconfirmedWrite } from '../services/api/client'
 import { getOnboardingProgress } from '../services/api/menus'
 import { proofStanding, readProof, type ProofStanding } from '../lib/firstProof'
+import { menuKept, type MenuKept } from '../lib/menuKept'
 
 /** The menu row's sentence for the first proof (r28 gap 6: never "in ink" over no drink). */
 function proofSaid(standing: ProofStanding): string {
@@ -52,18 +53,19 @@ export default function HouseContents() {
   // The same read answers the menu row when this tab holds no first proof
   // (r21): "No menu read yet." was said, with nothing to press, to a house
   // whose menu was read in another tab, and after "Skip for now" the row
-  // had no way back to reading one. Null until the read is in.
-  const [menuKept, setMenuKept] = useState<boolean | null>(null)
+  // had no way back to reading one. Null until the read is in. A menu kept
+  // as a draft is said as not current yet (r36 gap 3), never as done.
+  const [menuStanding, setMenuStanding] = useState<MenuKept | null>(null)
   useEffect(() => {
     let live = true
     getOnboardingProgress()
       .then((progress) => {
         if (!live) return
         if (progress?.vendor_added) setSupplierOnBook(true)
-        setMenuKept(Boolean(progress?.menu_uploaded))
+        setMenuStanding(menuKept(progress))
       })
       .catch(() => {
-        if (live) setMenuKept(false)
+        if (live) setMenuStanding('none')
       })
     return () => {
       live = false
@@ -110,7 +112,25 @@ export default function HouseContents() {
               >
                 {standing && proofSaid(standing)}
               </button>
-            ) : menuKept === null ? null : menuKept ? (
+            ) : menuStanding === null ? null : menuStanding === 'current' ? (
+              <p className="mt-2 font-serif text-2xl">
+                Your menu is the current one.{' '}
+                <Link to="/menu" className="font-sans text-sm underline underline-offset-4">
+                  See it on Menu
+                </Link>
+              </p>
+            ) : menuStanding === 'draft' ? (
+              <>
+                <p className="mt-2 font-serif text-2xl">
+                  Your menu is read, but it is not the current menu yet.{' '}
+                  <Link to="/menu" className="font-sans text-sm text-[#1a5e6b] underline underline-offset-4">
+                    Choose it on Menu
+                  </Link>
+                </p>
+                <p className="mt-1 text-sm text-[#6d685f]">Stock and prices come only from the current menu.</p>
+              </>
+            ) : menuStanding === 'read' ? (
+              // An older gateway names no current menu: said as before.
               <p className="mt-2 font-serif text-2xl">
                 Your menu is read and kept.{' '}
                 <Link to="/menu" className="font-sans text-sm underline underline-offset-4">
