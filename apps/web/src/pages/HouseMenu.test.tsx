@@ -2,10 +2,16 @@
  * The first proof says which parts of the file a scan could not read
  * (ADR 0213 #17), one plain sentence each, under the reading count.
  */
-import { afterEach, describe, expect, it } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import HouseMenu from './HouseMenu'
+import HouseMenu, { proofPrice } from './HouseMenu'
+import { formatMoney } from '../lib/currency'
+import { settingsApi } from '../services/api/settings'
+
+vi.mock('../services/api/settings', () => ({ settingsApi: { houseCurrency: vi.fn() } }))
+const houseCurrency = vi.mocked(settingsApi.houseCurrency)
+const lira = { restaurantId: 'r1', code: 'TRY', country: 'TR', readable: true, reason: null, statedAt: null }
 import { writeProof } from '../lib/firstProof'
 import type { MenuImportResult } from '../services/api/menus'
 
@@ -44,6 +50,10 @@ function mount() {
 }
 
 afterEach(() => sessionStorage.clear())
+beforeEach(() => {
+  houseCurrency.mockReset()
+  houseCurrency.mockResolvedValue(lira)
+})
 
 describe('HouseMenu, the first proof', () => {
   it('names the pages that were not read, one sentence each', () => {
@@ -68,5 +78,36 @@ describe('HouseMenu, the first proof', () => {
     mount()
     expect(screen.getByText('Opus One')).toBeInTheDocument()
     expect(screen.queryByTestId('first-proof-warnings')).not.toBeInTheDocument()
+  })
+})
+
+describe("HouseMenu, the proof's prices", () => {
+  it('says a price in the house money, never a bare "1250 bottle" (r23 walk)', async () => {
+    writeProof(proof({ items: [{ ...proof().items[0], byGlassPrice: 14, bottlePrice: 1250 }] }))
+    mount()
+    const want = `glass ${formatMoney(14, 'TRY')} · bottle ${formatMoney(1250, 'TRY')}`
+    await waitFor(() => expect(document.body.textContent).toContain(want))
+    expect(document.body.textContent).not.toContain('1250 bottle')
+  })
+
+  it('an unreadable answer is no code, even when it carries a stale one', async () => {
+    houseCurrency.mockResolvedValue({ ...lira, readable: false, reason: 'down' })
+    writeProof(proof())
+    mount()
+    await waitFor(() => expect(document.body.textContent).toContain('(currency not recorded)'))
+  })
+
+  it('a failed read says the currency is not recorded, never a guessed sign', async () => {
+    houseCurrency.mockRejectedValue(new Error('down'))
+    writeProof(proof())
+    mount()
+    await waitFor(() => expect(document.body.textContent).toContain(`bottle ${formatMoney(62, null)}`))
+    expect(document.body.textContent).toContain('(currency not recorded)')
+  })
+
+  it('while the currency is read, the figure stands alone, with no claim about the currency', () => {
+    const p = proofPrice({ byGlassPrice: null, bottlePrice: 62 }, { read: false, code: null })
+    expect(p).toMatch(/^bottle 62[.,]00$/)
+    expect(proofPrice({ byGlassPrice: 9, bottlePrice: null }, { read: true, code: 'TRY' })).toBe(`glass ${formatMoney(9, 'TRY')}`)
   })
 })

@@ -20,6 +20,14 @@ import {
   type LockReadout,
   type PriceLock,
 } from '../../../services/api/pricing';
+import { formatMoney } from '../../../lib/currency';
+
+vi.mock('../../../hooks/queries/useHouseCurrencyCode', () => ({ useHouseCurrencyCode: () => 'TRY' }));
+/** A price as a lira house writes it: the page routes every price through formatMoney. */
+const m = (n: number) => formatMoney(n, 'TRY');
+/** The page's text as the DOM matcher reads it: Intl's no-break space read as a space. */
+const shown = (s: string) => s.replace(/\s+/g, ' ');
+
 
 vi.mock('../../../services/api/pricing', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/pricing')>('../../../services/api/pricing');
@@ -125,13 +133,13 @@ describe('Locked prices', () => {
     mount(true);
     expect(await screen.findByTestId('locked-prices-standing')).toHaveTextContent('2 prices locked at this house, 2 worth a look.');
     const onMenu = screen.getByTestId('locked-on-menu');
-    expect(onMenu).toHaveTextContent('Barolo 2019 (bottle) locked at 50.00');
+    expect(onMenu).toHaveTextContent(shown(`Barolo 2019 (bottle) locked at ${m(50)}`));
     expect(onMenu).toHaveTextContent('by Aylin, 12 days ago');
     expect(onMenu).toHaveTextContent('off your target margin: Raise the bottle to 57.14 (now 50.00).');
-    expect(onMenu).toHaveTextContent('the current menu reads 55.00');
+    expect(onMenu).toHaveTextContent(shown(`the current menu reads ${m(55)}`));
     const off = screen.getByTestId('locked-off-menu');
     expect(screen.getByText('Locked, not on the current menu')).toBeInTheDocument();
-    expect(off).toHaveTextContent('Soave (glass) locked at 9.00');
+    expect(off).toHaveTextContent(shown(`Soave (glass) locked at ${m(9)}`));
     expect(off).toHaveTextContent('the wine was removed from inventory');
     expect(off).toHaveTextContent('set by someone who no longer manages this house');
     expect(off).toHaveTextContent('no advice: Cannot advise: no recorded cost for this wine.');
@@ -151,8 +159,8 @@ describe('Locked prices', () => {
     mount(true);
     const group = await screen.findByTestId('locked-menu-unknown');
     expect(screen.getByText('Locked (whether on the current menu could not be read)')).toBeInTheDocument();
-    expect(group).toHaveTextContent('Barolo 2019 (bottle) locked at 50.00');
-    expect(group).toHaveTextContent('Soave (glass) locked at 9.00');
+    expect(group).toHaveTextContent(shown(`Barolo 2019 (bottle) locked at ${m(50)}`));
+    expect(group).toHaveTextContent(shown(`Soave (glass) locked at ${m(9)}`));
     expect(screen.queryByTestId('locked-on-menu')).not.toBeInTheDocument();
     expect(screen.queryByTestId('locked-off-menu')).not.toBeInTheDocument();
     expect(screen.getByText(/the current menu could not be read \(timeout\)/)).toBeInTheDocument();
@@ -264,11 +272,11 @@ describe('Locked prices', () => {
 describe('the add-a-line note names a held kind (L5)', () => {
   it('a line whose price a lock held says so -- never "now matches"', () => {
     expect(
-      housePriceNote({ priceSync: 'locked', priceHeld: [{ kind: 'bottle', lockId: 'k', lockedPrice: 95, lockedBy: 'u', lockedAt: 't' }] })?.text,
-    ).toBe("Added to the menu, but the bottle price is locked at 95.00, so the house's price was not changed. An owner or a manager changes it under Locked prices.");
+      housePriceNote({ priceSync: 'locked', priceHeld: [{ kind: 'bottle', lockId: 'k', lockedPrice: 95, lockedBy: 'u', lockedAt: 't' }] }, 'TRY')?.text,
+    ).toBe(`Added to the menu, but the bottle price is locked at ${m(95)}, so the house's price was not changed. An owner or a manager changes it under Locked prices.`);
     expect(
-      housePriceNote({ priceSync: 'changed', priceHeld: [{ kind: 'glass', lockId: 'k', lockedPrice: 9, lockedBy: 'u', lockedAt: 't' }] })?.text,
-    ).toBe("This wine's own price on Inventory was updated where it could be; the glass price is locked at 9.00, so that one was not changed.");
+      housePriceNote({ priceSync: 'changed', priceHeld: [{ kind: 'glass', lockId: 'k', lockedPrice: 9, lockedBy: 'u', lockedAt: 't' }] }, 'TRY')?.text,
+    ).toBe(`This wine's own price on Inventory was updated where it could be; the glass price is locked at ${m(9)}, so that one was not changed.`);
     expect(housePriceNote({ priceSync: 'changed', priceHeld: [] })?.text).toBe("This wine's own price on Inventory now matches the line.");
   });
 });

@@ -51,6 +51,7 @@ import { MenuVersions } from './MenuVersions';
 import { LockedPrices } from './LockedPrices';
 import { settingsApi } from '../../../services/api/settings';
 import { formatMoney } from '@/lib/currency';
+import { housePriceHint } from '@/lib/house-number';
 import { Wordmark } from '@/components/mudavym';
 import { isKitchenLine } from '../../../lib/firstProof';
 import { lineStatusWords } from './menu-line-status';
@@ -260,9 +261,13 @@ function AddItemForm({ onAdd, adding, error, canPrice }: {
   );
 }
 
-/** A price as the edit box starts it: the number the line holds, or empty. */
-function priceText(v: number | null): string {
-  return v === null || v === undefined ? '' : String(v);
+/**
+ * A price as the edit box starts it: the number the line holds, in the house's
+ * form ("45,50" in a lira house, which the gateway's parseMenuPrice reads), or
+ * empty. It was `String(v)`, so a lira owner opened "45.5" (r23 walk).
+ */
+function priceText(v: number | null, currency: string | null): string {
+  return v === null || v === undefined ? '' : housePriceHint(v, currency);
 }
 
 /**
@@ -309,7 +314,7 @@ function MenuRow({ line, currency, onDiscard, discarding, testId = 'menu-row', e
     onSave: (draft: PriceDraft) => void
   }
 }) {
-  const [draft, setDraft] = useState<PriceDraft>({ glass: priceText(line.by_glass_price), bottle: priceText(line.bottle_price) });
+  const [draft, setDraft] = useState<PriceDraft>({ glass: priceText(line.by_glass_price, currency), bottle: priceText(line.bottle_price, currency) });
   const editing = !!edit?.open;
   const box = (kind: 'glass' | 'bottle') => (
     <input
@@ -369,7 +374,7 @@ function MenuRow({ line, currency, onDiscard, discarding, testId = 'menu-row', e
               className="cl-btn cl-focus"
               disabled={edit.saving}
               onClick={() => {
-                setDraft({ glass: priceText(line.by_glass_price), bottle: priceText(line.bottle_price) });
+                setDraft({ glass: priceText(line.by_glass_price, currency), bottle: priceText(line.bottle_price, currency) });
                 edit.onCancel();
               }}
             >
@@ -382,7 +387,7 @@ function MenuRow({ line, currency, onDiscard, discarding, testId = 'menu-row', e
               type="button"
               className="cl-btn cl-focus"
               onClick={() => {
-                setDraft({ glass: priceText(line.by_glass_price), bottle: priceText(line.bottle_price) });
+                setDraft({ glass: priceText(line.by_glass_price, currency), bottle: priceText(line.bottle_price, currency) });
                 edit.onOpen();
               }}
               aria-label={`Change the price of ${line.name}`}
@@ -428,8 +433,8 @@ export default function MenuNext() {
     setPricing({ id: line.id, saving: true });
     const changes: PriceChange[] = [];
     const fields = [
-      { kind: 'bottle' as const, field: 'bottle_price' as const, typed: draft.bottle.trim(), had: priceText(line.bottle_price) },
-      { kind: 'glass' as const, field: 'by_glass_price' as const, typed: draft.glass.trim(), had: priceText(line.by_glass_price) },
+      { kind: 'bottle' as const, field: 'bottle_price' as const, typed: draft.bottle.trim(), had: priceText(line.bottle_price, currency) },
+      { kind: 'glass' as const, field: 'by_glass_price' as const, typed: draft.glass.trim(), had: priceText(line.by_glass_price, currency) },
     ];
     for (const f of fields) {
       if (f.typed === '' || f.typed === f.had) continue;
@@ -565,7 +570,7 @@ export default function MenuNext() {
                 onAdd={(fields, opts) => add.mutate(fields, opts)}
               />
               {(() => {
-                const note = add.isSuccess ? housePriceNote(add.data) : null;
+                const note = add.isSuccess ? housePriceNote(add.data, currency) : null;
                 return note ? (
                   <p
                     role={note.tone === 'alert' ? 'alert' : 'status'}

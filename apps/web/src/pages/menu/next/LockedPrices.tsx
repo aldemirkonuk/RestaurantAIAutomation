@@ -29,11 +29,19 @@ import {
   type PriceLock,
 } from '../../../services/api/pricing';
 import { useAuthStore } from '../../../stores';
+import { formatMoney } from '../../../lib/currency';
+import { useHouseCurrencyCode } from '../../../hooks/queries/useHouseCurrencyCode';
 
 const EM = '—';
 
-function money(n: number | null | undefined): string {
-  return n === null || n === undefined ? EM : n.toFixed(2);
+/**
+ * A price in the house's own money (lib/currency formatMoney): "₺80,00" in a
+ * lira house, never the bare "80.00" the r23 walk read beside "₺80,00" on the
+ * same page. No code yet (still reading, or none recorded) prints the number
+ * with "(currency not recorded)", as /menu's rows do.
+ */
+function money(n: number | null | undefined, currency: string | null): string {
+  return n === null || n === undefined ? EM : formatMoney(n, currency);
 }
 
 function reasonOf(err: unknown): string {
@@ -54,12 +62,12 @@ function readPrice(raw: string): number | null {
 }
 
 /** One lock's facts, in words. The menu grouping says "not on the current menu" itself. */
-export function markerWords(l: PriceLock): string[] {
+export function markerWords(l: PriceLock, currency: string | null = null): string[] {
   const out: string[] = [];
   const has = (m: LockMarker) => l.markers.includes(m);
   if (has('off_target') && l.advice) out.push(`off your target margin: ${l.advice.sentence}`);
   if (has('advice_unknown')) out.push(`no advice: ${l.adviceUnknownReason ?? 'the reason was not given'}`);
-  if (has('menu_differs')) out.push(`the current menu reads ${money(l.menuPrice)}`);
+  if (has('menu_differs')) out.push(`the current menu reads ${money(l.menuPrice, currency)}`);
   if (has('wine_removed')) out.push('the wine was removed from inventory');
   if (has('author_without_access')) out.push('set by someone who no longer manages this house');
   return out;
@@ -111,14 +119,15 @@ function LockRow({ l, canManage, onSaid }: { l: PriceLock; canManage: boolean; o
     move.mutate({ target, price: p });
   };
 
-  const words = markerWords(l);
+  const currency = useHouseCurrencyCode();
+  const words = markerWords(l, currency);
   return (
     <li className="cl-said" style={{ padding: '10px 0', borderTop: '1px solid var(--paper-2)' }} data-testid="locked-price-row">
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'baseline', justifyContent: 'space-between' }}>
         <span>
           <strong>{l.wine.name ?? 'A wine'}</strong>
           {l.wine.vintage ? ` ${l.wine.vintage}` : ''} <span className="cl-dim">({l.kind})</span> locked at{' '}
-          <strong>{money(l.lockedPrice)}</strong>
+          <strong>{money(l.lockedPrice, currency)}</strong>
         </span>
         <span className="cl-dim">
           by {l.lockedBy.name ?? 'someone whose name could not be read'}, {l.ageDays} day{l.ageDays === 1 ? '' : 's'} ago

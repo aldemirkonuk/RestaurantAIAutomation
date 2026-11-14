@@ -350,6 +350,31 @@ describe('MenuNext — a price changes on its line', () => {
     expect(screen.queryByTestId('menu-price-save')).not.toBeInTheDocument();
   });
 
+  it('the boxes open in the house form: a lira house reads "48,00", never "48" or "48.5" (r23 walk)', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [{ ...chianti(), by_glass_price: 12.5 }] }));
+    mount();
+    await screen.findAllByTestId('menu-row');
+    // The row prints the lira first, so the house's money is read before the box opens.
+    await waitFor(() => expect(screen.getAllByTestId('menu-row')[0].textContent).toMatch(/TRY|₺/));
+    await openEditor('Chianti');
+    expect(screen.getByLabelText('Bottle price of Chianti')).toHaveValue('48,00');
+    expect(screen.getByLabelText('Glass price of Chianti')).toHaveValue('12,50');
+    // Opened and saved untouched, the house form is the price it had: nothing is sent.
+    fireEvent.click(screen.getByTestId('menu-price-save'));
+    expect(await screen.findByTestId('menu-price-note')).toHaveTextContent('Chianti: no price was changed.');
+    expect(mockReview).not.toHaveBeenCalled();
+  });
+
+  it('a pound house opens its boxes the English way', async () => {
+    mockCurrency.mockResolvedValue(currency({ code: 'GBP', country: 'United Kingdom' }));
+    mockGetMenu.mockResolvedValue(menu({ items: [chianti()] }));
+    mount();
+    await screen.findAllByTestId('menu-row');
+    await waitFor(() => expect(screen.getAllByTestId('menu-row')[0].textContent).toMatch(/£/));
+    await openEditor('Chianti');
+    expect(screen.getByLabelText('Bottle price of Chianti')).toHaveValue('48.00');
+  });
+
   it('an empty box or an unchanged one sends nothing for that price', async () => {
     mockGetMenu.mockResolvedValue(menu({ items: [chianti()] }));
     mount();
