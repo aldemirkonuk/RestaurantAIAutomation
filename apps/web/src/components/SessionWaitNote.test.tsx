@@ -3,12 +3,13 @@
  * 2026-11-13). Before this, a boot read waiting out a rate limit or a dropped
  * connection showed "Loading..." alone for up to a minute.
  */
-import { act, render, screen } from "@testing-library/react";
+import { act, render, renderHook, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { useAuth } from "../contexts/AuthContext";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { RootDoor } from "../pages/landing/RootDoor";
+import { useSessionWaitNote } from "../hooks/useSessionWaitNote";
 
 vi.mock("../contexts/AuthContext", () => ({ useAuth: vi.fn() }));
 vi.mock("./layout/DashboardLayout", () => ({ DashboardLayout: () => null }));
@@ -115,5 +116,28 @@ describe("the root's house loader (a stored session at /)", () => {
       vi.advanceTimersByTime(5_000);
     });
     expect(note()).toBe("Still reaching Mudavym. This is taking longer than usual.");
+  });
+});
+
+describe("useSessionWaitNote", () => {
+  it("gives no slow line while a wait is set, however long it lasts: the wait screen says why", () => {
+    loadingWith({ reason: "busy", retryAt: Date.now() + 53_250, attempt: 1 });
+    const { result, rerender } = renderHook(() => useSessionWaitNote());
+    act(() => {
+      vi.advanceTimersByTime(10_000);
+    });
+    rerender();
+    expect(result.current).toBeNull();
+  });
+
+  it("gives the slow line five seconds into an ordinary read", () => {
+    loadingWith(null);
+    const { result, rerender } = renderHook(() => useSessionWaitNote());
+    expect(result.current).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(5_000);
+    });
+    rerender();
+    expect(result.current).toBe("Still reaching Mudavym. This is taking longer than usual.");
   });
 });
