@@ -6,7 +6,9 @@
  * Every helper here takes `null` to mean "unknown" and returns the dash.
  */
 
+import { createContext, useContext } from 'react';
 import { formatMoney, formatNumber } from '@/lib/utils';
+import { currencyMinorUnits } from '@/lib/currency';
 
 export const DASH = '—';
 
@@ -161,4 +163,64 @@ const EVENT_KIND_WORDS: Record<string, string> = {
 export function eventKindWords(type: string | null | undefined): string | null {
   if (!type) return null;
   return EVENT_KIND_WORDS[type.toLowerCase()] ?? null;
+}
+
+/* ── the house's own money (r56, 2026-11-12) ─────────────────────────────── */
+
+/** A money formatter: the figure in the house's currency, or the dash. */
+export type Money = (v: number | null | undefined, mode?: 'compact' | 'full' | 'table') => string;
+
+/**
+ * What the page knows of the house's currency (`GET /settings/currency`):
+ * still reading, a recorded ISO code, or none it can use (not recorded, or
+ * the read failed). Never assumed to be dollars.
+ */
+export type HouseCurrencyState =
+  | { state: 'reading' }
+  | { state: 'recorded'; code: string }
+  | { state: 'not_recorded' };
+
+/**
+ * Money in the house's currency. A recorded code formats through `Intl`
+ * (compact cells as "TRY 4.2K", full figures up to the currency's own minor
+ * units, table figures at exactly them). While the code is still being read
+ * every figure is the dash; with no usable code a figure is a bare number
+ * and the page says once why. It never prints `$` for a house whose money
+ * is not dollars.
+ */
+export function houseMoney(c: HouseCurrencyState): Money {
+  return (v, mode = 'full') => {
+    if (v == null || Number.isNaN(v)) return DASH;
+    if (c.state === 'reading') return DASH;
+    if (c.state !== 'recorded' || !/^[A-Z]{3}$/.test(c.code)) return formatNumber(v, mode);
+    const minor = currencyMinorUnits(c.code) ?? 2;
+    const opts: Intl.NumberFormatOptions =
+      mode === 'compact'
+        ? Math.abs(v) >= 1_000
+          ? { notation: 'compact', maximumFractionDigits: 1 }
+          : { maximumFractionDigits: 0 }
+        : mode === 'table'
+          ? { minimumFractionDigits: minor, maximumFractionDigits: minor }
+          : { minimumFractionDigits: 0, maximumFractionDigits: minor };
+    try {
+      return new Intl.NumberFormat(undefined, { style: 'currency', currency: c.code, ...opts }).format(v);
+    } catch {
+      // A well-formed code Intl does not know still names the money.
+      return `${formatNumber(v, mode)} ${c.code}`;
+    }
+  };
+}
+
+/** Outside a provider the page knows no currency: bare numbers, never `$`. */
+export const HouseMoneyContext = createContext<Money>(houseMoney({ state: 'not_recorded' }));
+
+export function useHouseMoney(): Money {
+  return useContext(HouseMoneyContext);
+}
+
+/** The one sentence the page says when its money has no currency to print. */
+export function currencyNotRecordedSaid(c: HouseCurrencyState): string | null {
+  return c.state === 'not_recorded'
+    ? 'This house’s currency is not recorded or could not be read, so its money is shown as plain numbers.'
+    : null;
 }

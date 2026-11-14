@@ -25,12 +25,14 @@
  */
 
 import { useEffect, useMemo, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
+import { settingsApi } from '@/services/api/settings';
 import { Wordmark } from '@/components/mudavym';
 import { DayLine } from '@/components/mudavym/DayLine';
 import { animate, settle } from '@/lib/mudavym';
 import { houseZoneOf, useDashboardSpine } from './useDashboardNextData';
-import { hourIn } from './format';
+import { HouseMoneyContext, currencyNotRecordedSaid, hourIn, houseMoney, type HouseCurrencyState } from './format';
 import { SERIF } from './fonts';
 import KpiRow from './KpiRow';
 import SalesCalendar from './SalesCalendar';
@@ -70,6 +72,27 @@ export interface DashboardNextProps {
 export default function DashboardNext({ ground }: DashboardNextProps) {
   const { user, activeRestaurantId, activeRole } = useAuth();
   const spine = useDashboardSpine(activeRestaurantId);
+  // The house's money is printed in the house's currency, never a default
+  // dollar sign (r56, 2026-11-12). The house is in the key, as on /menu, so
+  // one house's currency never prices another's figures.
+  const currencyRead = useQuery({
+    queryKey: ['settings', 'currency', activeRestaurantId],
+    queryFn: () => settingsApi.houseCurrency(),
+    staleTime: 5 * 60_000,
+    enabled: Boolean(activeRestaurantId),
+  });
+  const currency: HouseCurrencyState =
+    currencyRead.isPending && currencyRead.fetchStatus !== 'idle'
+      ? { state: 'reading' }
+      : currencyRead.data?.readable && currencyRead.data.code
+        ? { state: 'recorded', code: currencyRead.data.code }
+        : { state: 'not_recorded' };
+  const houseMoneyFn = useMemo(
+    () => houseMoney(currency),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currency.state, currency.state === 'recorded' ? currency.code : null],
+  );
+  const currencyNote = currencyNotRecordedSaid(currency);
   // DASH-W22 (founder, 2026-10-01, "A: hide amounts for staff"): staff see
   // counts, not money. The gateway is the guard — it withholds the spend for
   // that role and says so in `amounts` — so its word wins; the role only
@@ -160,6 +183,7 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
   // a charcoal band — a seam across the first page a manager lands on. Every
   // other Next page states the viewport minimum directly; this one now matches.
   return (
+    <HouseMoneyContext.Provider value={houseMoneyFn}>
     <div
       className="mudavym min-h-screen bg-paper-0 text-inkm-1"
       data-ground={ground}
@@ -246,6 +270,7 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
                 Paid to vendors is money out, not sales. Net sales add up the subtotals register checks
                 carry, voided checks left out — before tax and surcharge when the register sends it that
                 way. A check that carries none is counted, never guessed.
+                {currencyNote ? <> {currencyNote}</> : null}
               </p>
             )}
           </div>
@@ -257,5 +282,6 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
         </footer>
       </div>
     </div>
+    </HouseMoneyContext.Provider>
   );
 }

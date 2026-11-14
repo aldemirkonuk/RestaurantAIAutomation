@@ -44,7 +44,7 @@ import {
   type DayLedger,
   type MonthLedger,
 } from './useDashboardNextData';
-import { DASH, dateIn, figure, longDay, money, monthName, uncostedSaid } from './format';
+import { DASH, dateIn, figure, longDay, monthName, uncostedSaid, useHouseMoney, type Money } from './format';
 import { SERIF } from './fonts';
 import DayDetail from './DayDetail';
 import { TryAgain } from './TryAgain';
@@ -161,6 +161,7 @@ function cellFigure(
   salesShown: boolean,
   zoneUnset: boolean,
   seesAmounts: boolean,
+  money: Money,
 ): string {
   if (!day || zoneUnset) return DASH;
   if (salesShown) {
@@ -177,7 +178,7 @@ function cellFigure(
 }
 
 /** A day's net sales in words, for its label (count and say, netsales F1). */
-function salesSaid(day: DayLedger): string {
+function salesSaid(day: DayLedger, money: Money): string {
   if (day.checks == null) return 'net sales unknown';
   if (day.checks === 0) return 'no sales';
   if (day.net_sales == null) return `net sales ${NOT_RECORDED}`;
@@ -189,7 +190,7 @@ function salesSaid(day: DayLedger): string {
  * The month's net sales in words: the figure, then how much of the month it
  * covers. "not recorded" when the counted days' checks carried no subtotal.
  */
-function monthSalesSaid(ledger: MonthLedger | null): { figure: string; from: string[] } {
+function monthSalesSaid(ledger: MonthLedger | null, money: Money): { figure: string; from: string[] } {
   if (!ledger) return { figure: DASH, from: [] };
   if (
     ledger.monthlyNetSales == null &&
@@ -216,13 +217,14 @@ function cellLabel(
   dateStr: string,
   day: DayLedger | undefined,
   o: { salesShown: boolean; zoneUnset: boolean; seesAmounts: boolean; isToday: boolean },
+  money: Money,
 ): string {
   const head = `${longDay(dateStr)}${o.isToday ? ', today' : ''}`;
   if (!day) return head;
   const parts: string[] = [];
   if (o.zoneUnset) parts.push('figures unknown, the house time zone is not set');
   else {
-    if (o.salesShown) parts.push(salesSaid(day));
+    if (o.salesShown) parts.push(salesSaid(day, money));
     if (o.seesAmounts) {
       parts.push(
         day.procurement_spend == null
@@ -246,6 +248,7 @@ function cellLabel(
 }
 
 export function SalesCalendar({ restaurantId, alerts, activity, zone = null, seesAmounts: mayShow = true }: SalesCalendarProps) {
+  const money = useHouseMoney();
   const now = new Date();
   // DASH-W20: the clock's today is the house's (the stats' zone) — it picks the
   // month the address leaves out. ADR 0290: once the month answers, its own
@@ -300,7 +303,7 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
   // gates sales and amounts on the same roles (owner, manager).
   const salesShown = seesAmounts && ledger?.sales === 'shown';
   const zoneUnset = ledger?.zoneUnset === true;
-  const monthSales = monthSalesSaid(ledger);
+  const monthSales = monthSalesSaid(ledger, money);
   const headline = (d: DayLedger | undefined): number | null =>
     d ? (salesShown ? d.net_sales : seesAmounts ? d.procurement_spend : d.order_count) : null;
   const maxHead = useMemo(
@@ -318,12 +321,13 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
         Math.max(
           0,
           ...daily.map((d) => {
-            const f = cellFigure(d, salesShown, zoneUnset, seesAmounts);
+            const f = cellFigure(d, salesShown, zoneUnset, seesAmounts, money);
             return f === NOT_RECORDED ? 0 : f.length;
           }),
         ),
       ),
-    [daily, salesShown, zoneUnset, seesAmounts],
+    // The formatter is in the deps: "TRY 29.0K" is longer than "$29.0K".
+    [daily, salesShown, zoneUnset, seesAmounts, money],
   );
 
   // Monday-first leading blanks.
@@ -460,7 +464,7 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
           const isToday = houseToday !== null && dateStr === todayStr;
           const head = zoneUnset ? null : headline(day);
           const heat = head != null && head > 0 ? 0.06 + 0.3 * (head / maxHead) : 0;
-          const fig = cellFigure(day, salesShown, zoneUnset, seesAmounts);
+          const fig = cellFigure(day, salesShown, zoneUnset, seesAmounts, money);
           // Count and say: a figure short of its day's checks says so here.
           const from = salesShown && !zoneUnset && day ? fromChecks(day.net_checks, day.checks) : null;
           return (
@@ -479,7 +483,7 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
               // holds — and says which day is open and which is today.
               aria-pressed={selected === dateStr}
               aria-current={isToday ? 'date' : undefined}
-              aria-label={cellLabel(dateStr, day, { salesShown, zoneUnset, seesAmounts, isToday })}
+              aria-label={cellLabel(dateStr, day, { salesShown, zoneUnset, seesAmounts, isToday }, money)}
               // color-mix keeps the heat on the seal TOKEN, so both grounds
               // (İznik on paper, lifted teal on charcoal) resolve correctly;
               // browsers without color-mix quietly keep the paper-1 ground.

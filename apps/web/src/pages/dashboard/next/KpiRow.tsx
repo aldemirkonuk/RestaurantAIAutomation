@@ -11,9 +11,9 @@
 
 import { Link } from 'react-router-dom';
 import type { DashboardStats } from '@/services/api/types';
-import { formatMoney, formatNumber } from '@/lib/utils';
+import { formatNumber } from '@/lib/utils';
 import CountUp from './CountUp';
-import { uncostedSaid } from './format';
+import { uncostedSaid, useHouseMoney } from './format';
 
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
 
@@ -72,6 +72,7 @@ export interface KpiRowProps {
 }
 
 export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true }: KpiRowProps) {
+  const money = useHouseMoney();
   const loading = stats === undefined;
   const s = stats ?? null;
 
@@ -141,7 +142,7 @@ export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true 
           <KpiTile
             label="Paid to vendors · today"
             value={todaySpend}
-            format={(n) => formatMoney(n, 'compact')}
+            format={(n) => money(n, 'compact')}
             sub={todayWhy ?? 'delivered purchase orders'}
             to="/orders?station=delivered"
             loading={loading}
@@ -149,7 +150,7 @@ export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true 
           <KpiTile
             label="Paid to vendors · month"
             value={monthSpend}
-            format={(n) => formatMoney(n, 'compact')}
+            format={(n) => money(n, 'compact')}
             sub={monthWhy ?? 'procurement, not sales'}
             to="/reports"
             loading={loading}

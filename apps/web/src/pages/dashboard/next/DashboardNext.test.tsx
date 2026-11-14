@@ -105,6 +105,10 @@ function routeGets(overrides: Record<string, unknown> = {}) {
     if (url.includes('/one-tap-actions')) return Promise.resolve({ data: { actions: [], total: 0 } });
     if (url.includes('/ux/experiments/')) return Promise.resolve({ data: {} });
     if (url.includes('/calendar/events')) return Promise.resolve({ data: { events: [], total: 0 } });
+    // r56: the house's currency (GET /settings/currency); a dollar house by default.
+    if (url.includes('/settings/currency')) {
+      return Promise.resolve({ data: { restaurantId: 'rest-A', code: 'USD', country: 'US', readable: true, reason: null, statedAt: null } });
+    }
     return Promise.resolve({ data: {} });
   });
 }
@@ -1036,6 +1040,48 @@ describe('DashboardNext — the month calendar (ADR 0290)', () => {
     expect(net.previousElementSibling?.textContent).toBe('$800');
     expect(screen.getByText('Checks').previousElementSibling?.textContent).toBe('12');
     expect(screen.getByText('Paid to vendors').previousElementSibling?.textContent).toBe('$500');
+  });
+
+  // r56 (2026-11-12): a house that keeps its money in lira is never shown a
+  // dollar sign — not on the tiles, the squares, the month line or the day.
+  it("prints a lira house's money in lira, never with a dollar sign", async () => {
+    browserAt('2026-10-03T19:00:00Z');
+    routeMonth(() => houseMonth({ days: TRADING_DAY, monthly_net_sales: 800, monthly_procurement_spend: 500 }), {
+      '/settings/currency': { restaurantId: 'rest-A', code: 'TRY', country: 'TR', readable: true, reason: null, statedAt: null },
+      '/dashboard/stats/': {
+        totalWines: 4, totalBottles: 40, lowStockItems: 0, pendingOrders: 0, totalVolumeMl: 0, totalVolumeOz: 0,
+        todayProcurementSpend: 500, weekProcurementSpend: 500, monthProcurementSpend: 4200,
+        uncostedOrders: { today: 0, week: 0, month: 0 },
+        todayDeliveries: 1, monthBottlesIn: 18, amounts: 'shown', timezone: 'UTC',
+      },
+    });
+    const { container } = mount();
+
+    await waitFor(() => expect(cellFig('2026-10-02')).toMatch(/TRY|₺/));
+    expect(screen.getByTestId('dn-month-totals').textContent).toMatch(/TRY|₺/);
+    for (const label of ['Paid to vendors · today', 'Paid to vendors · month']) {
+      const tile = screen.getByText(label).closest('a') as HTMLElement;
+      await waitFor(() => expect(tile.textContent).toMatch(/TRY|₺/));
+    }
+    fireEvent.click(dayCell('2026-10-02'));
+    const paid = await screen.findByText('Paid to vendors');
+    expect(paid.previousElementSibling?.textContent).toMatch(/TRY|₺/);
+    expect(container.textContent).not.toContain('$');
+    expect(screen.getByTestId('dn-figures-note').textContent).not.toMatch(/not recorded/);
+  });
+
+  it('prints bare numbers and says so once when the house currency is not recorded', async () => {
+    browserAt('2026-10-03T19:00:00Z');
+    routeMonth(() => houseMonth({ days: TRADING_DAY, monthly_net_sales: 800 }), {
+      '/settings/currency': { restaurantId: 'rest-A', code: null, country: null, readable: false, reason: 'not_recorded', statedAt: null },
+    });
+    const { container } = mount();
+
+    await waitFor(() => expect(cellFig('2026-10-02')).toBe('800'));
+    expect(screen.getByTestId('dn-figures-note').textContent).toMatch(
+      /currency is not recorded or could not be read, so its money is shown as plain numbers/,
+    );
+    expect(container.textContent).not.toContain('$');
   });
 
   // DASH-G5: a role the page has not read yet sees no sales either, even
