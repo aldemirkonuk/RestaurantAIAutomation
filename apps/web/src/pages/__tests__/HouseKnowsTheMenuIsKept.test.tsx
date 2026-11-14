@@ -91,7 +91,7 @@ describe('/house menu row with no first proof in this tab', () => {
   it('speaks in house words: no "on the book", "one ask" or "Cellar registers"', async () => {
     getOnboardingProgress.mockResolvedValue({ menu_uploaded: true, vendor_added: true })
     at(<HouseContents />)
-    expect(await screen.findByText(/Your supplier is saved\./)).toBeInTheDocument()
+    expect(await screen.findByText(/Your vendor is saved\./)).toBeInTheDocument()
     expect(screen.getByText('The house is open')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Set it in Settings' })).toBeInTheDocument()
     expect(document.body.textContent).not.toMatch(/on the book|one ask|Cellar registers|Open later|Contents/)

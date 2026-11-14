@@ -2,7 +2,7 @@
  * /house leads to the desk (QA BL-2) and keeps no invoice it cannot keep
  * (QA H-1). Every case here fails on origin/main.
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -44,9 +44,9 @@ describe('HouseContents', () => {
 
   it('adds a supplier with one request; the gateway marks vendor_added itself', async () => {
     page()
-    fireEvent.change(screen.getByLabelText('Supplier'), { target: { value: 'Suvla' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Add this supplier' }))
-    expect(await screen.findByText('Suvla is saved as your supplier.')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Vendor'), { target: { value: 'Suvla' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add this vendor' }))
+    expect(await screen.findByText('Suvla is saved as your vendor.')).toBeInTheDocument()
     await waitFor(() => expect(addCustomProvider).toHaveBeenCalledTimes(1))
     expect(updateOnboardingProgress).not.toHaveBeenCalled()
   })
@@ -56,16 +56,81 @@ describe('HouseContents', () => {
   it('a house whose supplier is on the book does not ask again after a reload', async () => {
     getOnboardingProgress.mockResolvedValue({ vendor_added: true })
     page()
-    expect(await screen.findByText(/Your supplier is saved\./)).toBeInTheDocument()
-    expect(screen.queryByLabelText('Supplier')).toBeNull()
-    expect(screen.getByRole('link', { name: 'See suppliers' })).toHaveAttribute('href', '/vendors')
+    expect(await screen.findByText(/Your vendor is saved\./)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Vendor')).toBeNull()
+    expect(screen.getByRole('link', { name: 'See vendors' })).toHaveAttribute('href', '/vendors')
+  })
+
+  // r28 gap 13: the gateway's own message was printed as it came, and a
+  // validation refusal is an array of field notes.
+  describe('a vendor that is not added is said in the house\'s words', () => {
+    const refuse = async (cause: unknown) => {
+      addCustomProvider.mockRejectedValue(cause)
+      page()
+      fireEvent.change(screen.getByLabelText('Vendor'), { target: { value: 'Suvla' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Add this vendor' }))
+      return screen.findByRole('alert')
+    }
+    const status = (code: number, message: unknown) =>
+      Object.assign(new Error('Request failed'), { response: { status: code, data: { message } } })
+
+    it('a validation refusal (an array of notes) is one sentence, with the way to Vendors', async () => {
+      const alert = await refuse(status(400, ['name must be shorter than or equal to 120 characters']))
+      expect(alert.textContent).toBe('That name could not be saved as it is. Try it shorter, or add the vendor on Vendors. Open Vendors')
+      expect(alert.textContent).not.toMatch(/must be shorter|characters/)
+      expect(within(alert).getByRole('link', { name: 'Open Vendors' })).toHaveAttribute('href', '/vendors')
+    })
+
+    it('a vendor already on the book says so', async () => {
+      const alert = await refuse(status(409, 'duplicate key value violates unique constraint "providers_name_key"'))
+      expect(alert.textContent).toMatch(/^Suvla is already on your vendors\./)
+      expect(alert.textContent).not.toMatch(/constraint/)
+    })
+
+    it('a folded duplicate names the vendor the house already keeps, not the typed spelling', async () => {
+      const cause = Object.assign(new Error('Request failed'), {
+        response: { status: 409, data: { message: 'A vendor with this name is already on this house.', existingId: 'p-1', existingName: 'Suvla Wines' } },
+      })
+      const alert = await refuse(cause)
+      expect(alert.textContent).toMatch(/^Suvla Wines is already on your vendors\./)
+    })
+
+    it('a duplicate refusal without a stored name falls back to the typed one', async () => {
+      const cause = Object.assign(new Error('Request failed'), {
+        response: { status: 409, data: { message: 'conflict', existingName: '   ' } },
+      })
+      const alert = await refuse(cause)
+      expect(alert.textContent).toMatch(/^Suvla is already on your vendors\./)
+    })
+
+    it('a session that may not add vendors is told who can', async () => {
+      const alert = await refuse(status(403, 'Forbidden resource'))
+      expect(alert.textContent).toMatch(/^This account cannot add vendors to this house\. An owner or a manager can\./)
+    })
+
+    it('a server error does not claim nothing was saved', async () => {
+      const alert = await refuse(status(500, 'insert failed: relation "providers"'))
+      expect(alert.textContent).toMatch(/^We could not tell whether Suvla was saved: the connection dropped\. Look on Vendors before adding it again\./)
+      expect(alert.textContent).not.toMatch(/relation/)
+    })
+
+    it('anything else asks to try again', async () => {
+      const alert = await refuse(new Error('boom'))
+      expect(alert.textContent).toMatch(/^We could not add Suvla just now\. Try again, or add it on Vendors\./)
+      expect(alert.textContent).not.toContain('boom')
+    })
+
+    it('a 422 reads as a validation refusal too', async () => {
+      const alert = await refuse(status(422, 'x'))
+      expect(alert.textContent).toMatch(/^That name could not be saved as it is\./)
+    })
   })
 
   it('a failed progress read keeps the ask', async () => {
     getOnboardingProgress.mockRejectedValue(new Error('offline'))
     page()
     await waitFor(() => expect(getOnboardingProgress).toHaveBeenCalled())
-    expect(screen.getByLabelText('Supplier')).toBeInTheDocument()
+    expect(screen.getByLabelText('Vendor')).toBeInTheDocument()
   })
 
   it('counts the pencilled lines from the proof as it now stands', () => {

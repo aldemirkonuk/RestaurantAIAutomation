@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { BrandMark } from '../components/brand/BrandMark'
 import { addCustomProvider } from '../services/api/vendors'
+import { getErrorStatus, isUnconfirmedWrite } from '../services/api/client'
 import { getOnboardingProgress } from '../services/api/menus'
 import { proofStanding, readProof, type ProofStanding } from '../lib/firstProof'
 
@@ -17,6 +18,29 @@ function proofSaid(standing: ProofStanding): string {
     case 'pencil':
       return `${standing.lines} ${standing.lines === 1 ? 'line' : 'lines'} in pencil, worth a second look`
   }
+}
+
+/**
+ * Why a vendor was not added, in the house's words (r28 gap 13). The page
+ * printed the gateway's `message` as it came: a validation refusal is an
+ * array of field notes ("name must be shorter than…"), and a database
+ * refusal names a constraint. Said from the status alone.
+ */
+function vendorNotSaved(cause: unknown, name: string): string {
+  if (isUnconfirmedWrite(cause)) {
+    return `We could not tell whether ${name} was saved: the connection dropped. Look on Vendors before adding it again.`
+  }
+  const status = getErrorStatus(cause)
+  if (status === 409) {
+    // The gateway names the vendor it already holds (a folded match: "ege  supply"
+    // against "Ege Supply"), so the sentence names that one, not what was typed.
+    const held = (cause as { response?: { data?: { existingName?: unknown } } })?.response?.data?.existingName
+    const known = typeof held === 'string' && held.trim() !== '' ? held.trim() : name
+    return `${known} is already on your vendors.`
+  }
+  if (status === 400 || status === 422) return 'That name could not be saved as it is. Try it shorter, or add the vendor on Vendors.'
+  if (status === 401 || status === 403) return 'This account cannot add vendors to this house. An owner or a manager can.'
+  return `We could not add ${name} just now. Try again, or add it on Vendors.`
 }
 
 export default function HouseContents() {
@@ -61,8 +85,8 @@ export default function HouseContents() {
       // house's onboarding row itself (providers.service.ts createProvider).
       await addCustomProvider({ name: supplier.trim() })
       setSaved(true)
-    } catch (cause: any) {
-      setError(cause?.response?.data?.message || cause?.message || 'We could not add that supplier yet.')
+    } catch (cause) {
+      setError(vendorNotSaved(cause, supplier.trim()))
     } finally {
       setSaving(false)
     }
@@ -110,12 +134,12 @@ export default function HouseContents() {
           </div>
 
           {saved ? (
-            <p className="py-6 font-serif text-2xl">{supplier.trim()} is saved as your supplier.</p>
+            <p className="py-6 font-serif text-2xl">{supplier.trim()} is saved as your vendor.</p>
           ) : supplierOnBook ? (
             <p className="py-6 font-serif text-2xl">
-              Your supplier is saved.{' '}
+              Your vendor is saved.{' '}
               <Link to="/vendors" className="font-sans text-sm underline underline-offset-4">
-                See suppliers
+                See vendors
               </Link>
             </p>
           ) : (
@@ -128,22 +152,30 @@ export default function HouseContents() {
             >
               <p className="text-xs uppercase tracking-wider text-[#1a5e6b]">Optional</p>
               <label className="mt-2 block">
-                <span className="font-serif text-2xl">Who supplies you?</span>
+                {/* "Vendor", as the sidebar, the setup checklist and /vendors say it (r28 gap 13). */}
+                <span className="font-serif text-2xl">Who is your first vendor?</span>
                 <input
-                  aria-label="Supplier"
+                  aria-label="Vendor"
                   value={supplier}
                   onChange={(event) => setSupplier(event.target.value)}
                   placeholder="A name is enough"
                   className="mt-3 block w-full border-b border-[#211f1b]/25 bg-transparent pb-2 text-lg outline-none"
                 />
               </label>
-              {error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
+              {error && (
+                <p role="alert" className="mt-3 text-sm text-red-700">
+                  {error}{' '}
+                  <Link to="/vendors" className="underline underline-offset-4">
+                    Open Vendors
+                  </Link>
+                </p>
+              )}
               <button
                 type="submit"
                 disabled={!supplier.trim() || saving}
                 className="mt-5 bg-[#1a5e6b] px-5 py-2.5 text-white disabled:opacity-40"
               >
-                {saving ? 'Adding…' : 'Add this supplier'}
+                {saving ? 'Adding…' : 'Add this vendor'}
               </button>
             </form>
           )}
