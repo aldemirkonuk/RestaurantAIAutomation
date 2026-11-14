@@ -183,6 +183,9 @@ function tree(qc: QueryClient, rid: string, documentId: string) {
   )
 }
 
+/** Answers after a short wait, as a network read does. */
+const later = <T,>(value: T) => new Promise<T>((r) => setTimeout(() => r(value), 10))
+
 const newClient = () => new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
 describe('CanonicalDocumentPage — one goods read per house, not per paper', () => {
@@ -223,8 +226,10 @@ describe('CanonicalDocumentPage — one goods read per house, not per paper', ()
     documentMock.mockImplementation((id: string) =>
       Promise.resolve(id === 'doc-1' ? paper(id, [naming('inv-1')]) : paper(id, [naming(null, 'inv-new')])),
     )
-    // The good is never in the list (taken off the shelves): one more read, not a loop.
-    inventoryMock.mockResolvedValue([good('inv-1', 'SYNTHETIC Red')])
+    // The good is never in the list (taken off the shelves): one more read, not a
+    // loop. The read takes a moment, as a network read does, so each answer
+    // lands in its own render.
+    inventoryMock.mockImplementation(() => later([good('inv-1', 'SYNTHETIC Red')]))
     const qc = newClient()
     const { rerender } = render(tree(qc, 'rest-A', 'doc-1'))
     await waitFor(() => expect(inventoryMock).toHaveBeenCalledTimes(1))
@@ -234,8 +239,26 @@ describe('CanonicalDocumentPage — one goods read per house, not per paper', ()
     rerender(tree(qc, 'rest-A', 'doc-2'))
     await waitFor(() => expect(documentMock).toHaveBeenCalledWith('doc-2'))
     await waitFor(() => expect(inventoryMock).toHaveBeenCalledTimes(2))
-    await new Promise((r) => setTimeout(r, 50))
+    await new Promise((r) => setTimeout(r, 150))
     expect(inventoryMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('a paper opened while a stale list is being read again waits for that read', async () => {
+    documentMock.mockImplementation((id: string) => Promise.resolve(paper(id, [naming('inv-new')])))
+    inventoryMock.mockImplementation(() =>
+      later([good('inv-1', 'SYNTHETIC Red'), good('inv-new', 'SYNTHETIC Added White')]),
+    )
+    const qc = newClient()
+    // A list read two minutes ago, before the good was added: stale, so the
+    // page reads it again on opening. That one read is enough.
+    qc.setQueryData(['canonical-document-items', 'rest-A'], [good('inv-1', 'SYNTHETIC Red')], {
+      updatedAt: Date.now() - 120_000,
+    })
+    render(tree(qc, 'rest-A', 'doc-1'))
+    await waitFor(() => expect(documentMock).toHaveBeenCalledWith('doc-1'))
+    await waitFor(() => expect(inventoryMock).toHaveBeenCalledTimes(1))
+    await new Promise((r) => setTimeout(r, 150))
+    expect(inventoryMock).toHaveBeenCalledTimes(1)
   })
 
   it('a good added since the list was read gets its name on the next paper', async () => {
