@@ -6,6 +6,7 @@ import { getErrorStatus, isUnconfirmedWrite } from '../services/api/client'
 import { getOnboardingProgress } from '../services/api/menus'
 import { proofStanding, readProof, type ProofStanding } from '../lib/firstProof'
 import { menuKept, type MenuKept } from '../lib/menuKept'
+import { settingsApi } from '../services/api/settings'
 
 /** The menu row's sentence for the first proof (r28 gap 6: never "in ink" over no drink). */
 function proofSaid(standing: ProofStanding): string {
@@ -81,6 +82,24 @@ export default function HouseContents() {
       .catch(() => {
         if (live) setMenuStanding('none')
       })
+    return () => {
+      live = false
+    }
+  }, [])
+
+  // r36 gap 6: a house whose money is not set cannot cost an invoice that
+  // names none and comes with no order (invoice-currency.ts withholds its
+  // money). Said only when the read answered that no money is set; a failed
+  // read says nothing, never "not set".
+  const [moneyUnset, setMoneyUnset] = useState(false)
+  useEffect(() => {
+    let live = true
+    settingsApi
+      .houseCurrency()
+      .then((money) => {
+        if (live && money?.readable === true && money.code == null) setMoneyUnset(true)
+      })
+      .catch(() => {})
     return () => {
       live = false
     }
@@ -244,6 +263,15 @@ export default function HouseContents() {
               </Link>
               .
             </span>
+            {moneyUnset && (
+              <span className="mt-2 block font-sans text-sm text-[#6d685f]" data-testid="house-money-unset">
+                The house’s money is not set yet. An invoice that names none, and comes with no order, waits for it
+                before its costs go on.{' '}
+                <Link to="/settings?tab=currency" className="text-[#1a5e6b] underline underline-offset-4">
+                  Set the money in Settings
+                </Link>
+              </span>
+            )}
           </p>
 
           <p className="py-6 font-serif text-2xl text-[#b7b2a8]">
