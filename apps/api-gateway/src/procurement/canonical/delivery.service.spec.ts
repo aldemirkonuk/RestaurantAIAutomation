@@ -1118,6 +1118,155 @@ describe("DeliveryService", () => {
   });
 
   // -------------------------------------------------------------------------
+  describe("r33 w2 F5 — a recount supersedes the first count's difference", () => {
+    /**
+     * The walk: the door counted 288 against a paper of 24, then the house
+     * recounted 24. The stock followed the recount, but the first count's
+     * "288 against 24" stayed a recorded difference, so AGREED was refused
+     * with nothing left to answer it.
+     */
+    const recounted = (firstQty = "288", recountQty = "24", opts: { orderId?: string | null } = {}) => {
+      db.honourIn = true;
+      db.answers.deliveries = {
+        data: deliveryRow({ state: "RECONCILING", order_id: opts.orderId ?? null }),
+        error: null,
+      };
+      db.answers.document_deliveries = {
+        data: [
+          { document_id: "doc-count-1", role: "door_count" },
+          { document_id: "doc-count-2", role: "door_count" },
+          { document_id: "doc-inv", role: "invoice" },
+        ],
+        error: null,
+      };
+      const docRow = (id: string, created_at: string, extra: Record<string, unknown>) => ({
+        id,
+        provider_id: "prov-1",
+        created_at,
+        extracted: {},
+        ...extra,
+      });
+      db.answers.procurement_documents = {
+        data: [
+          docRow("doc-count-1", "2026-11-13T10:00:00Z", { doc_type: "receiving_advice", direction: "issued_by_us" }),
+          docRow("doc-count-2", "2026-11-13T10:20:00Z", { doc_type: "receiving_advice", direction: "issued_by_us" }),
+          docRow("doc-inv", "2026-11-13T09:00:00Z", { doc_type: "invoice", direction: "issued_by_vendor" }),
+        ],
+        error: null,
+      };
+      const lineRow = (id: string, document_id: string, qty: string, price: string | null) => ({
+        id,
+        document_id,
+        line_no: 1,
+        inventory_id: "inv-raki",
+        vendor_sku: null,
+        description: "SYNTHETIC Raki 70cl",
+        vintage: null,
+        format_ml: 700,
+        qty_bottles: qty,
+        unit_price: price,
+      });
+      db.answers.procurement_document_lines = {
+        data: [
+          lineRow("dl-count-1", "doc-count-1", firstQty, null),
+          lineRow("dl-count-2", "doc-count-2", recountQty, null),
+          lineRow("dl-inv", "doc-inv", "24", "30"),
+        ],
+        error: null,
+      };
+      db.answers.procurement_order_items = {
+        data: [
+          {
+            id: "ol-1",
+            wine_name: "SYNTHETIC Raki 70cl",
+            vendor_sku: null,
+            vintage: null,
+            quantity: 24,
+            bottles_per_unit: 1,
+            total_bottles: 24,
+            quoted_unit_price: 30,
+            final_unit_price: null,
+          },
+        ],
+        error: null,
+      };
+      db.answers.delivery_proposals = { data: [], error: null };
+      db.answers.delivery_line_acceptances = { data: [], error: null };
+      db.updateAnswers.deliveries = {
+        data: deliveryRow({
+          state: "AGREED",
+          agreed_at: "2026-11-13T11:00:00Z",
+          agreed_rule: "both_sides_recorded",
+        }),
+        error: null,
+      };
+    };
+
+    it("agrees once the recount matches the paper: the first count's difference is gone", async () => {
+      recounted("288", "24");
+      const res = await service.agree(REST, DEL, "u1");
+      expect(res.ok).toBe(true);
+    });
+
+    it("still refuses when the RECOUNT differs, and names the recount's line, not the first's", async () => {
+      recounted("24", "288");
+      const res = await service.agree(REST, DEL, "u1");
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.status).toBe(409);
+        expect(res.error).toMatch(/1 recorded difference/);
+        expect(res.error).toMatch(/line 1 of document doc-count-2/);
+        expect(res.error).not.toMatch(/doc-count-1/);
+      }
+    });
+
+    it("on an ordered delivery the order comparison also reads only the recount", async () => {
+      recounted("288", "24", { orderId: "ord-1" });
+      // The two counts alone against the order (the count-and-invoice pairing
+      // against one order line is its own question, not this one's).
+      db.answers.document_deliveries = {
+        data: [
+          { document_id: "doc-count-1", role: "door_count" },
+          { document_id: "doc-count-2", role: "door_count" },
+        ],
+        error: null,
+      };
+      const res = await service.agree(REST, DEL, "u1");
+      // With no vendor paper there is no vendor side, so rule A does not fire;
+      // the point is that the refusal is no longer the difference gate's.
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error).not.toMatch(/recorded difference/);
+        expect(res.error).not.toMatch(/doc-count-1/);
+      }
+    });
+
+    it("says it could not tell which count is newest, rather than comparing every count (ADR 0067)", async () => {
+      recounted("288", "24");
+      const read = (service as unknown as {
+        withoutSupersededCounts: (ids: string[], lines: { id: string }[]) => Promise<{ ok: boolean; error?: string; value?: { id: string }[] }>;
+      }).withoutSupersededCounts.bind(service);
+      const lines = [{ id: "dl-count-1" }, { id: "dl-count-2" }];
+      // Answered: the first count's line is dropped.
+      const ok = await read(["doc-count-1", "doc-count-2"], lines);
+      expect(ok).toEqual({ ok: true, value: [{ id: "dl-count-2" }] });
+      // One count: nothing is read and nothing is dropped.
+      db.verbs = [];
+      expect(await read(["doc-count-1", "doc-count-1"], lines)).toEqual({ ok: true, value: lines });
+      expect(db.verbs).toEqual([]);
+      // Either read failing fails it.
+      db.answers.procurement_documents = { data: null, error: { message: "connection reset" } };
+      const docsFail = await read(["doc-count-1", "doc-count-2"], lines);
+      expect(docsFail.ok).toBe(false);
+      expect(docsFail.error).toMatch(/newest could not be read \(procurement_documents: connection reset\)/);
+      recounted("288", "24");
+      db.answers.procurement_document_lines = { data: null, error: { message: "timeout" } };
+      const linesFail = await read(["doc-count-1", "doc-count-2"], lines);
+      expect(linesFail.ok).toBe(false);
+      expect(linesFail.error).toMatch(/procurement_document_lines: timeout/);
+    });
+  });
+
   describe("A11 — accept as billed is a human decision with a reason", () => {
     /**
      * A delivery with ONE recorded difference: the order says 10 bottles, the

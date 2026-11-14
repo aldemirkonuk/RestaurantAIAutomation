@@ -2,9 +2,11 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { NotificationsService } from "../../notifications/notifications.service";
 import { DeliveryClockService } from "./delivery-clock.service";
+import { supersededCountLines, type CountDoc, type CountLine } from "./door-recount";
 import { ReadResult } from "./canonical-document.service";
 import { matchLines, MatchableLine } from "../documents/line-matcher";
 import { DeliveryStockService, CostReceipt } from "./delivery-stock.service";
+import { doorCountsOfPapers, withTheDoorsPack } from "./door-received";
 
 /**
  * DeliveryService — the delivery's own doors (ADR 0103 D1/D3/D5/D6/D7, A2, A4, A6).
@@ -1731,6 +1733,8 @@ export class DeliveryService {
         status: "not_comparable",
         reason: "no door count and no invoice is attached to this delivery",
       };
+    const packs = await this.doorPacks(delivery, links, ["invoice"]);
+    if (!packs.ok) return { status: "unreadable", reason: packs.error };
 
     const [orderRead, docLines] = await Promise.all([
       this.db
@@ -1750,7 +1754,7 @@ export class DeliveryService {
             "total_bottles, quoted_unit_price, final_unit_price, inventory_id",
         )
         .eq("order_id", delivery.order_id),
-      this.linesFor(comparable),
+      this.linesFor(comparable, packs.value),
     ]);
 
     if (orderRead.error)
@@ -1760,6 +1764,11 @@ export class DeliveryService {
       };
     if (!docLines.ok)
       return { status: "unreadable", reason: docLines.error };
+    const current = await this.withoutSupersededCounts(
+      links.filter((l) => l.role === "door_count").map((l) => l.document_id),
+      docLines.value.lines,
+    );
+    if (!current.ok) return { status: "unreadable", reason: current.error };
 
     const orderLines: MatchableLine[] = (
       (orderRead.data ?? []) as unknown as {
@@ -1794,7 +1803,7 @@ export class DeliveryService {
             : null,
     }));
 
-    if (!orderLines.length || !docLines.value.lines.length)
+    if (!orderLines.length || !current.value.length)
       return {
         status: "not_comparable",
         reason: "one side of the comparison has no lines",
@@ -1802,7 +1811,7 @@ export class DeliveryService {
 
     return this.gradePairing(
       "order",
-      docLines.value.lines,
+      current.value,
       orderLines,
       docLines.value.identify,
     );
@@ -1832,15 +1841,19 @@ export class DeliveryService {
           "this delivery has no order, and it does not carry both a door count and a vendor document to compare",
       };
 
+    const packs = await this.doorPacks(delivery, links, ["invoice", "despatch_advice"]);
+    if (!packs.ok) return { status: "unreadable", reason: packs.error };
     const [countLines, paperLines] = await Promise.all([
       this.linesFor(countIds),
-      this.linesFor(paperIds),
+      this.linesFor(paperIds, packs.value),
     ]);
     if (!countLines.ok)
       return { status: "unreadable", reason: countLines.error };
     if (!paperLines.ok)
       return { status: "unreadable", reason: paperLines.error };
-    if (!countLines.value.lines.length || !paperLines.value.lines.length)
+    const counted = await this.withoutSupersededCounts(countIds, countLines.value.lines);
+    if (!counted.ok) return { status: "unreadable", reason: counted.error };
+    if (!counted.value.length || !paperLines.value.lines.length)
       return {
         status: "not_comparable",
         reason: "one side of the comparison has no lines",
@@ -1848,7 +1861,7 @@ export class DeliveryService {
 
     return this.gradePairing(
       "vendor_document",
-      countLines.value.lines,
+      counted.value,
       paperLines.value.lines,
       countLines.value.identify,
     );
@@ -1899,10 +1912,73 @@ export class DeliveryService {
   }
 
   /**
+   * The door's lines as they stand now: a line of an earlier door count is
+   * dropped where a later count on this delivery names the same item (r33 w2
+   * F5; `door-recount.ts`). With one count there is nothing to supersede and
+   * nothing is read. A failed read fails the scan (ADR 0067): "could not tell
+   * which count is current" must never become "compare them all" or "none".
+   */
+  private async withoutSupersededCounts(
+    countIds: string[],
+    lines: MatchableLine[],
+  ): Promise<ReadResult<MatchableLine[]>> {
+    const ids = [...new Set(countIds)];
+    if (ids.length < 2) return { ok: true, value: lines };
+    const client = this.db.getClient();
+    const [docs, countLines] = await Promise.all([
+      client.from("procurement_documents").select("id, created_at, extracted").in("id", ids),
+      client
+        .from("procurement_document_lines")
+        .select("id, document_id, inventory_id, vendor_sku, description")
+        .in("document_id", ids),
+    ]);
+    if (docs.error)
+      return {
+        ok: false,
+        error: `which door count is the newest could not be read (procurement_documents: ${docs.error.message})`,
+      };
+    if (countLines.error)
+      return {
+        ok: false,
+        error: `which door count is the newest could not be read (procurement_document_lines: ${countLines.error.message})`,
+      };
+    const gone = supersededCountLines(
+      (docs.data ?? []) as unknown as CountDoc[],
+      (countLines.data ?? []) as unknown as CountLine[],
+    );
+    return { ok: true, value: lines.filter((l) => !gone.has(l.id)) };
+  }
+
+  /**
    * Document lines as the matcher wants them, plus the identity a person can
    * answer: which document, which line number, what it says it is.
    */
-  private async linesFor(documentIds: string[]): Promise<
+  /**
+   * The pack the door gave each paper line the paper sizes nowhere, keyed
+   * `document:line` (r31 w2 F1). Read only when the delivery carries both a
+   * door count and a paper; a failed read fails the scan (ADR 0067).
+   */
+  private async doorPacks(
+    delivery: DeliveryRow,
+    links: { document_id: string; role: string }[],
+    paperRoles: string[],
+  ): Promise<ReadResult<Map<string, number>>> {
+    const out = new Map<string, number>();
+    const paperIds = links.filter((l) => paperRoles.includes(l.role)).map((l) => l.document_id);
+    if (!paperIds.length || !links.some((l) => l.role === "door_count")) return { ok: true, value: out };
+    const read = await doorCountsOfPapers(this.db.getClient(), delivery.restaurant_id, paperIds);
+    if (!read.ok)
+      return { ok: false, error: `the comparison could not run — what the door counted of the paper ${read.error}` };
+    for (const [paper, count] of read.value)
+      for (const [lineNo, pack] of count.packs) out.set(`${paper}:${lineNo}`, pack);
+    return { ok: true, value: out };
+  }
+
+  private async linesFor(
+    documentIds: string[],
+    /** r31 w2 F1: the door's pack per `document:line`, for a paper that states none. */
+    doorPacks?: Map<string, number>,
+  ): Promise<
     ReadResult<{
       lines: MatchableLine[];
       identify: (id: string) => DifferenceLine | null;
@@ -1912,7 +1988,7 @@ export class DeliveryService {
       .getClient()
       .from("procurement_document_lines")
       .select(
-        "id, document_id, line_no, vendor_sku, description, vintage, format_ml, qty_bottles, unit_price",
+        "id, document_id, line_no, vendor_sku, description, vintage, format_ml, qty_bottles, unit_price, uom, pack_size, qty",
       )
       .in("document_id", documentIds);
     if (read.error)
@@ -1930,6 +2006,9 @@ export class DeliveryService {
       format_ml: number | null;
       qty_bottles: number | null;
       unit_price: number | null;
+      uom?: string | null;
+      pack_size?: number | null;
+      qty?: number | null;
     }[];
     const byId = new Map(rows.map((r) => [r.id, r]));
     return {
@@ -1941,7 +2020,10 @@ export class DeliveryService {
           description: l.description,
           vintage: l.vintage,
           formatMl: l.format_ml,
-          qtyBottles: Number(l.qty_bottles ?? 0),
+          qtyBottles: Number(
+            withTheDoorsPack(l, l.line_no == null ? undefined : doorPacks?.get(`${l.document_id}:${l.line_no}`))
+              .qty_bottles ?? 0,
+          ),
           unitPrice: l.unit_price == null ? null : Number(l.unit_price),
         })),
         identify: (id: string) => {

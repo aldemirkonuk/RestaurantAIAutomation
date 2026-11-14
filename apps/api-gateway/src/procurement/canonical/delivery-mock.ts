@@ -43,6 +43,13 @@ export interface MockDb {
    * these: the door's booking and the verification's cost posting are RPC
    * calls, and what they were CALLED WITH is the behaviour under test. */
   rpcCalls: { fn: string; args: Record<string, unknown> }[];
+  /**
+   * Opt-in: a read answer that is a list is narrowed by the chain's `.in(col,
+   * values)` calls, so two documents' lines can live in one answer and each
+   * read gets its own (r33 w2 F5, a recount beside its first count). Off by
+   * default: every older case keeps its one canned list for every read.
+   */
+  honourIn: boolean;
   reset(): void;
 }
 
@@ -64,6 +71,7 @@ export function makeMockDb(): MockDb {
     verbs: [],
     rpcAnswers: {},
     rpcCalls: [],
+    honourIn: false,
     reset() {
       state.answers = {};
       state.insertAnswers = {};
@@ -72,6 +80,7 @@ export function makeMockDb(): MockDb {
       state.verbs = [];
       state.rpcAnswers = {};
       state.rpcCalls = [];
+      state.honourIn = false;
     },
   };
 
@@ -79,8 +88,19 @@ export function makeMockDb(): MockDb {
     const chain: Record<string, unknown> = {};
     const self = () => chain;
     let verb: "read" | "insert" | "update" = "read";
+    const inFilters: [string, unknown[]][] = [];
+    const narrowed = (a: Answer): Answer => {
+      if (!state.honourIn || verb !== "read" || !inFilters.length || !Array.isArray(a.data)) return a;
+      return {
+        ...a,
+        data: (a.data as Record<string, unknown>[]).filter((r) =>
+          inFilters.every(([col, vals]) => !(col in (r ?? {})) || vals.includes(r[col])),
+        ),
+      };
+    };
 
-    const answer = (): Answer => {
+    const answer = (): Answer => narrowed(rawAnswer());
+    const rawAnswer = (): Answer => {
       if (verb === "insert")
         return state.insertAnswers[table] ?? { data: null, error: null };
       if (verb === "update")
@@ -119,6 +139,8 @@ export function makeMockDb(): MockDb {
     ]) {
       chain[v] = (...args: unknown[]) => {
         state.verbs.push(`${table}.${v}`);
+        if (v === "in" && typeof args[0] === "string" && Array.isArray(args[1]))
+          inFilters.push([args[0], args[1] as unknown[]]);
         if (
           v === "insert" ||
           v === "update" ||
