@@ -5,7 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from "@nestjs/common";
-import { LINE_SELECT, MenusService, newestCurrentFirst, parseMenuPrice } from "./menus.service";
+import { LINE_SELECT, MenusService, allInOrder, chunksTogether, newestCurrentFirst, parseMenuPrice } from "./menus.service";
 import { MEMBER_LINE_KEYS, seesRawLine } from "./menu-line-view";
 import { DatabaseService } from "../database/database.service";
 import { CsvParserService } from "./parsers/csv-parser.service";
@@ -2578,6 +2578,32 @@ describe("MenusService — the plan before a menu is chosen, and the locks it re
       await expect(service.planFor("rest-1", "menu-new")).rejects.toThrow(
         "the house's wines could not be read (inventory offline)",
       );
+    });
+
+    it("chunks are read four at a time, and their answers come back in chunk order", async () => {
+      const ids = Array.from({ length: 151 * 5 }, (_, i) => `id-${String(i).padStart(4, "0")}`);
+      let inFlight = 0;
+      let most = 0;
+      const out = await chunksTogether(ids, async (chunk) => {
+        inFlight += 1;
+        most = Math.max(most, inFlight);
+        // The first chunk answers last: the order kept is the chunks', not the answers'.
+        await new Promise((r) => setTimeout(r, chunk[0] === "id-0000" ? 30 : 5));
+        inFlight -= 1;
+        return chunk.length;
+      });
+      expect(most).toBe(4);
+      expect(out.map((o) => o.answer)).toEqual([150, 150, 150, 150, 150, 5]);
+      expect(out.map((o) => o.chunk[0])).toEqual(["id-0000", "id-0150", "id-0300", "id-0450", "id-0600", "id-0750"]);
+      expect(await chunksTogether([], async () => 1)).toEqual([]);
+    });
+
+    it("allInOrder waits for every read and throws the first failure in the order given", async () => {
+      const late = new Promise<number>((_, no) => setTimeout(() => no(new Error("first, late")), 20));
+      const soon = Promise.reject(new Error("second, soon"));
+      soon.catch(() => undefined);
+      await expect(allInOrder([Promise.resolve(1), late, soon] as const)).rejects.toThrow("first, late");
+      await expect(allInOrder([Promise.resolve(1), Promise.resolve("two")] as const)).resolves.toEqual([1, "two"]);
     });
 
     it("another house's menu is still a 404, though its lines were asked for together", async () => {
