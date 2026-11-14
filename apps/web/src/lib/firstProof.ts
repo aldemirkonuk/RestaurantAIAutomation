@@ -23,7 +23,16 @@ const VOCABULARY = new Set([
 ])
 
 // The same list as the gateway's KITCHEN_HINTS (menu-line-view.ts says why each course word is there).
-const KITCHEN = ['food', 'kitchen', 'dish', 'starter', 'dessert', 'entree', 'entrée', 'pasta', 'salad', 'mains', 'main course', 'appetizer', 'appetiser', 'sides', 'soup', 'meze', 'mezze', 'grill', 'small plate', 'snack', 'tapas', 'pizza', 'burger', 'sandwich']
+// The Turkish words are folded (r28 G3); the gateway's comment says why each is in or out.
+const KITCHEN = ['food', 'kitchen', 'dish', 'starter', 'dessert', 'entree', 'entrée', 'pasta', 'salad', 'mains', 'main course', 'appetizer', 'appetiser', 'sides', 'soup', 'meze', 'mezze', 'grill', 'small plate', 'snack', 'tapas', 'pizza', 'burger', 'sandwich', 'ana yemek', 'yemekler', 'ara sicak', 'corba', 'izgara', 'kebap', 'kebab', 'salata', 'baslangic', 'pide', 'lahmacun', 'makarna', 'kahvalti', 'aperatif', 'sandvic', 'kofte', 'manti', 'borek', 'doner']
+
+/** The gateway's DESSERT_SECTIONS: a section weighed like 'dessert' ("Tatlılar" is Turkish for desserts). */
+const DESSERT_SECTIONS = new Set(['dessert', 'desserts', 'tatli', 'tatlilar'])
+
+/** The gateway's foldForHints: lowercase, accents and dots off, the dotless ı read as i. */
+export function foldForHints(text: string): string {
+  return text.toLowerCase().normalize('NFD').replace(/\p{M}+/gu, '').replace(/ı/g, 'i')
+}
 
 /** ADR 0213: unmatched fallback, plus missing/unknown category. Never invent certainty. */
 export function lineNeedsPencil(item: Pick<MenuImportReviewItem, 'matched' | 'needsReview' | 'category'>) {
@@ -35,18 +44,20 @@ export function lineNeedsPencil(item: Pick<MenuImportReviewItem, 'matched' | 'ne
 }
 
 /** A hint as a whole word (plural allowed): "pasta" trips it, "Pastaio" and "dishwasher" do not. */
-const HINT_WORDS = new RegExp(`(^|[^\\p{L}\\p{N}])(${KITCHEN.join('|')})(s|es)?(?=$|[^\\p{L}\\p{N}])`, 'u')
+const HINT_WORDS = new RegExp(`(^|[^\\p{L}\\p{N}])(${KITCHEN.join('|')})(s|es|ler|lar|leri|lari|si|i)?(?=$|[^\\p{L}\\p{N}])`, 'u')
 
 /**
  * Words that make a line in the 'dessert' section a dessert wine and not a
  * course. The same list as the gateway's `DESSERT_WINE_CUES`
- * (menu-line-view.ts); a CLAIMS row keeps the two equal.
+ * (menu-line-view.ts); a CLAIMS row keeps the two equal. The last four are
+ * Turkish, folded (r28 G3): wine, "of wine", glass, bottle.
  */
 const DESSERT_WINE_CUES = [
   'wine', 'vin', 'vino', 'glass', 'bottle', 'sauternes', 'barsac', 'tokaji', 'tokay', 'port', 'porto',
   'moscato', 'muscat', 'moscatel', 'eiswein', 'icewine', 'ice wine', 'late harvest', 'vin santo',
   'vin doux', 'pedro ximenez', 'pedro ximénez', 'madeira', 'sherry', 'oloroso', 'banyuls', 'maury',
   'passito', 'recioto', 'auslese', 'beerenauslese', 'trockenbeerenauslese', 'noble rot',
+  'sarap', 'sarabi', 'kadeh', 'sise',
 ]
 
 /** A cue as a whole word, a vintage year, or a pour size ("75cl", "100 ml"). */
@@ -71,12 +82,12 @@ const filled = (v: string | null | undefined) => typeof v === 'string' && v.trim
  */
 export function isKitchenLine(item: KitchenTestLine) {
   const section = (item.category ?? '').toLowerCase().trim()
-  if (section === 'dessert') {
+  if (DESSERT_SECTIONS.has(foldForHints(section))) {
     if ([item.vintage, item.region, item.grapeVariety, item.producer].some(filled)) return false
-    return !DESSERT_WINE_WORDS.test(`${item.name ?? ''} ${item.rawText ?? ''}`.toLowerCase())
+    return !DESSERT_WINE_WORDS.test(foldForHints(`${item.name ?? ''} ${item.rawText ?? ''}`))
   }
   if (VOCABULARY.has(section)) return false
-  const hay = `${section} ${item.rawText ?? ''}`.toLowerCase()
+  const hay = foldForHints(`${section} ${item.rawText ?? ''}`)
   return HINT_WORDS.test(hay)
 }
 

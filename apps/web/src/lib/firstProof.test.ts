@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isKitchenLine, lineNeedsPencil, lineSourceCrop } from './firstProof'
+import { foldForHints, isKitchenLine, lineNeedsPencil, lineSourceCrop } from './firstProof'
 
 describe('lineNeedsPencil', () => {
   it('keeps the unmatched fallback', () => {
@@ -61,5 +61,32 @@ describe('isKitchenLine (the same test as the gateway\'s menu-line-view.ts)', ()
     expect(isKitchenLine({ category: 'dessert', rawText: null, name: 'Late Harvest Riesling' })).toBe(false)
     expect(isKitchenLine({ category: 'dessert', rawText: 'Royal Tokaji 5 Puttonyos 50cl 70' })).toBe(false)
     expect(isKitchenLine({ category: 'red', rawText: 'House 9' })).toBe(false)
+  })
+  it('r28 G3: a Turkish course section is a kitchen section, in any case and with its endings', () => {
+    expect(foldForHints('ÇORBALAR')).toBe('corbalar')
+    expect(foldForHints('Ara Sıcaklar')).toBe('ara sicaklar')
+    expect(isKitchenLine({ category: 'Çorbalar', rawText: null })).toBe(true)
+    expect(isKitchenLine({ category: 'ANA YEMEKLER', rawText: null })).toBe(true)
+    expect(isKitchenLine({ category: 'Ara Sıcaklar', rawText: null })).toBe(true)
+    expect(isKitchenLine({ category: 'Izgaralar', rawText: null })).toBe(true)
+    expect(isKitchenLine({ category: 'Kebaplar', rawText: null })).toBe(true)
+    expect(isKitchenLine({ category: 'Salatalar', rawText: null })).toBe(true)
+    expect(isKitchenLine({ category: 'Başlangıçlar', rawText: null })).toBe(true)
+    expect(isKitchenLine({ category: null, rawText: 'Mercimek Çorbası 120' })).toBe(true)
+    expect(isKitchenLine({ category: null, rawText: 'İskender Kebabı 450' })).toBe(true)
+    expect(isKitchenLine({ category: null, rawText: 'Çoban Salatası 140' })).toBe(true)
+    // Not hints: a wine or a raki whose name holds a hint's letters.
+    expect(isKitchenLine({ category: null, rawText: 'Mantinia, Peloponnese 2021' })).toBe(false)
+    expect(isKitchenLine({ category: null, rawText: 'Pidelux Rosé 2022' })).toBe(false)
+    expect(isKitchenLine({ category: null, rawText: 'Yeni Rakı 70cl' })).toBe(false)
+    expect(isKitchenLine({ category: 'Rakı', rawText: 'Tekirdağ Altın Seri' })).toBe(false)
+  })
+
+  it("r28 G3: 'Tatlılar' is weighed like 'dessert': a sweet is a course, a sweet wine stays a drink", () => {
+    expect(isKitchenLine({ category: 'Tatlılar', rawText: 'Künefe 180', name: 'Künefe' })).toBe(true)
+    expect(isKitchenLine({ category: 'TATLI', rawText: 'Baklava 160', name: 'Baklava' })).toBe(true)
+    expect(isKitchenLine({ category: 'Tatlılar', rawText: 'Tatlı şarap, kadeh 140', name: 'Ev usulü' })).toBe(false)
+    expect(isKitchenLine({ category: 'Tatlılar', rawText: null, name: 'Ev usulü', vintage: '2019' })).toBe(false)
+    expect(isKitchenLine({ category: 'Tatlılar', rawText: 'Bir şişe 600', name: 'Ev usulü' })).toBe(false)
   })
 })

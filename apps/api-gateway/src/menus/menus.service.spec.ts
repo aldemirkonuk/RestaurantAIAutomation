@@ -1586,6 +1586,19 @@ describe("MenusService — every menu read is kept as its own version", () => {
         expect(second.price_flag_note).toMatch(/kept the bottle price 64\.00/);
       });
 
+      it("r28 G3: a dish under a Turkish course is a kitchen line: no good, no price", async () => {
+        const calls: RpcCall[] = [];
+        const tables: Record<string, Row[]> = base();
+        const { service, menuId } = await readMenu(tables, [
+          { name: "Adana Kebap", category: "Kebaplar", bottle_price: 420 },
+          { name: "Künefe", category: "Tatlılar", bottle_price: 180 },
+          { name: "Barolo", category: "red", bottle_price: 900 },
+        ], calls);
+        const r = await service.makeCurrent("rest-1", menuId, "user-2", await fingerprintOf(service, menuId));
+        expect(r.priceSync).toEqual({ changed: 1, kitchen_line: 2 });
+        expect(tables.restaurant_inventory.some((i) => i.wine_name === "Adana Kebap" || i.wine_name === "Künefe")).toBe(false);
+      });
+
       it("r28 G1: a refusal after the switch says the menu IS current, never that nothing changed", async () => {
         const tables: Record<string, Row[]> = base();
         const { service, menuId } = await readMenu(tables, [{ name: "Barolo", bottle_price: 80 }]);
