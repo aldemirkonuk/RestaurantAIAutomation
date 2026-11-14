@@ -5,8 +5,9 @@ import React from 'react';
 
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), delete: vi.fn() }));
 vi.mock('../../../services/api/client', () => ({ apiClient: api }));
+const house = vi.hoisted(() => ({ current: 'house-1' }));
 vi.mock('../../../contexts/AuthContext', () => ({
-  useAuth: () => ({ activeRestaurantId: 'house-1', user: { restaurantId: 'house-1', role: 'owner' } }),
+  useAuth: () => ({ activeRestaurantId: house.current, user: { restaurantId: house.current, role: 'owner' } }),
 }));
 
 import {
@@ -126,6 +127,19 @@ describe('useMailListsFollowSummary', () => {
     hook.rerender({ s: SUMMARY });
     hook.rerender({ s: { ...SUMMARY, waitingPeople: 1 } });
     expect(invalidated(['mail-people', 'house-1', false, ''])).toBe(true);
+  });
+
+  it("switching house reads nothing: the other house's first summary is its first", () => {
+    const { invalidated, hook } = setup();
+    hook.rerender({ s: SUMMARY });
+    house.current = 'house-2';
+    try {
+      hook.rerender({ s: { ...SUMMARY, waitingPeople: 9 } });
+      expect(invalidated(['mail-people', 'house-2', false, ''])).toBe(false);
+      expect(invalidated(['mail-people', 'house-1', false, ''])).toBe(false);
+    } finally {
+      house.current = 'house-1';
+    }
   });
 
   it('a failed summary read (no data) reads nothing', () => {
