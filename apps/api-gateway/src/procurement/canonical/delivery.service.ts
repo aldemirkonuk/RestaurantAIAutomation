@@ -917,8 +917,16 @@ export class DeliveryService {
       if (!finish.ok) {
         this.logger.error(`delivery ${deliveryId} re-verify could not finish its cost: ${finish.error}`);
         costNote += ` The cost of the items still provisional could not be posted: ${finish.error}`;
-      } else if (finish.value.finalised.length) {
-        costNote += ` Cost posted now for ${finish.value.finalised.length} item(s) whose cost had not posted at the first verify.`;
+      } else {
+        if (finish.value.finalised.length)
+          costNote += ` Cost posted now for ${finish.value.finalised.length} item(s) whose cost had not posted at the first verify.`;
+        // r33 w2 F2: a lot the re-check still could not cost is said, with
+        // its reason, rather than left out of the answer.
+        const held = finish.value.stillProvisional;
+        if (held.length)
+          costNote += ` ${held.length} item(s) stay provisional. ${[...new Set(held.map((p) => p.reason))]
+            .map((r) => r.charAt(0).toUpperCase() + r.slice(1))
+            .join(" ")}`;
       }
       if (!fix.ok) {
         this.logger.error(`delivery ${deliveryId} re-verify could not repair its cost: ${fix.error}`);
@@ -929,9 +937,12 @@ export class DeliveryService {
           costNote += ` ${repaired.length} item(s) had been booked at the invoice's printed price and now carry their landed cost per bottle: the price of one bottle with its share of the invoice's charges and discount.`;
         for (const f of flagged) costNote += ` Item ${f.inventoryId}: ${f.reason}`;
       }
+      // r33 w2 F2: what the re-check posted, so the screen says "cost posted"
+      // instead of "nothing needed correcting" after it costed a lot that was
+      // still provisional (a door count booked after the first verify, #1431).
       return {
         ok: true,
-        value: { delivery, alreadyVerified: true, cost: null, costNote },
+        value: { delivery, alreadyVerified: true, cost: finish.ok ? finish.value : null, costNote },
       };
     }
 
