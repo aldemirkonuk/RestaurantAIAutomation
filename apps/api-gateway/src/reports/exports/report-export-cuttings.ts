@@ -317,7 +317,18 @@ function writePacing(payload: unknown): ExportDoc {
         : null,
     figures: [
       f("Paid out, the last 30 days", figure(last, spendWhy), "money"),
-      f("Paid out, the 30 days before", figure(prev, spendWhy), "money"),
+      f(
+        "Paid out, the 30 days before",
+        figure(
+          prev,
+          // The gateway withholds the earlier window when the house's first
+          // purchase order is inside it: those days are unknown, not zero.
+          !zoneUnset && last !== null && prev === null
+            ? "the house's purchase orders do not yet cover the 30 days before last"
+            : spendWhy,
+        ),
+        "money",
+      ),
       f("Pace", figure(pctOf(c.paceDeltaPct), zoneUnset ? HOUSE_ZONE_UNSET : "Needs two comparable 30-day windows"), "percent"),
       f("Committed, not yet delivered", figure(c.committedOpenOrders, "the cashflow register returned no figure"), "money"),
       f("Open orders", figure(c.openOrderCount, "the cashflow register returned no figure"), "count"),
@@ -1074,7 +1085,7 @@ function writeGoals(payload: unknown): ExportDoc {
  */
 export const EXPORT_CUTTINGS: Readonly<Record<ExportableCutting, CuttingSpec>> =
   Object.freeze({
-    reading: { title: "The reading", window: () => "the stored insight feed, recomputed hourly", takesWindow: false, write: writeReading },
+    reading: { title: "The reading", window: () => "the stored insight feed, computed once a day unless the house set another cadence", takesWindow: false, write: writeReading },
     till: { title: "Through the till", window: (days) => `the last ${days ?? 30} days of POS checks`, takesWindow: true, write: writeTill },
     goals: { title: "Goals", window: () => "each goal counted from the day it was set", takesWindow: false, write: writeGoals },
     bench: { title: "Against ourselves", window: () => "180 days of buying, 90 days of weekdays, each goal since it was set", takesWindow: false, write: writeBench },

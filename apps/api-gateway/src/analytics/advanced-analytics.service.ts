@@ -13,6 +13,7 @@ import {
   shiftHouseDay,
 } from "../common/house-day";
 import * as E from "./engine";
+import { pacingOver, pacingWords, purchasingSpan } from "./purchasing-span";
 import { AnalyticsService, SalesGate } from "./analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { GoalsService } from "./goals.service";
@@ -242,6 +243,47 @@ export class AdvancedAnalyticsService {
         .eq("restaurant_id", restaurantId)
         .or(`created_at.gte.${since},delivered_at.gte.${since}`),
     );
+  }
+
+  /**
+   * The house's first purchase record, of any status: the earlier of its
+   * first order placed and its first delivery (a delivery recorded today can
+   * be dated last month, and spend is filed on that date). Spend pacing
+   * starts there (purchasing-span.ts). Never throws; a failed read falls
+   * back to the whole window and the basis says so.
+   */
+  private async firstOrderAt(
+    restaurantId: string,
+  ): Promise<{ read: "read"; at: string | null } | { read: "could_not_read" }> {
+    const client = this.dbService.getClient();
+    // Ascending order puts nulls last, so a delivery date is read when any
+    // order has one.
+    const earliest = async (column: "created_at" | "delivered_at") => {
+      const { data, error } = await client
+        .from("procurement_orders")
+        .select(column)
+        .eq("restaurant_id", restaurantId)
+        .order(column, { ascending: true })
+        .limit(1);
+      if (error) throw error;
+      const v = Array.isArray(data) ? data[0]?.[column] : null;
+      return v ? String(v) : null;
+    };
+    try {
+      const firsts = (
+        await Promise.all([earliest("created_at"), earliest("delivered_at")])
+      ).filter((v): v is string => v != null);
+      if (firsts.length === 0) return { read: "read", at: null };
+      return {
+        read: "read",
+        at: firsts.reduce((a, b) => (Date.parse(a) <= Date.parse(b) ? a : b)),
+      };
+    } catch (err: any) {
+      this.logger.warn(
+        `first purchase order could not be read; spend pacing counts the whole window: ${err?.message ?? err}`,
+      );
+      return { read: "could_not_read" };
+    }
   }
 
   /**
@@ -711,9 +753,10 @@ export class AdvancedAnalyticsService {
   // =========================================================================
 
   async getCashflow(restaurantId: string) {
-    const [orders, zone] = await Promise.all([
+    const [orders, zone, firstAt] = await Promise.all([
       this.loadOrders(restaurantId, 182),
       this.houseZoneFor(restaurantId),
+      this.firstOrderAt(restaurantId),
     ]);
     // Committed outflow: orders placed but not delivered.
     //
@@ -768,7 +811,7 @@ export class AdvancedAnalyticsService {
         generatedAt: new Date().toISOString(),
       };
 
-    const { values: daily } = this.houseDaily(
+    const { dates, values: daily } = this.houseDaily(
       delivered.map((o: any) => ({
         at: o.delivered_at || o.created_at || null,
         value: Number(o.total_cost || o.final_price || 0),
@@ -777,31 +820,30 @@ export class AdvancedAnalyticsService {
       zone,
     );
 
-    const last30 = daily.slice(-30).reduce((a, b) => a + b, 0);
-    const prev30 = daily.slice(-60, -30).reduce((a, b) => a + b, 0);
-    const pace = E.periodOverPeriod(daily, 30);
-
-    // Weekly series → Holt projection 4 weeks out, on COMPLETE weeks only,
-    // newest-aligned to yesterday (audit G8). 180 days split from the oldest
-    // end left a 5-day newest week, the very point the projection leans on
-    // most, so it ran low. The oldest remainder (180 mod 7 days) is dropped.
-    const whole = daily.slice(daily.length % 7);
-    const weekly: number[] = [];
-    for (let i = 0; i < whole.length; i += 7)
-      weekly.push(whole.slice(i, i + 7).reduce((a, b) => a + b, 0));
-    const holt = weekly.length >= 4 ? E.holtLinear(weekly, 0.4, 0.2, 4) : null;
+    // The window starts at the house's first purchase order (r36 gap 1):
+    // days before it are unknown, not days without buying. The pace needs two
+    // full 30-day windows of records; the Holt projection runs on complete
+    // weeks inside the records, newest-aligned to yesterday (audit G8), and
+    // needs four. See purchasing-span.ts.
+    const span = purchasingSpan(
+      dates,
+      firstAt.read === "read"
+        ? { read: "read", day: houseDayOf(firstAt.at, zone) }
+        : { read: "could_not_read", day: null },
+    );
+    const paced = pacingOver(daily, span);
 
     return {
       zoneUnset: false,
       timezone: zone,
       basis: {
-        outflow: `delivered procurement_orders, filed on the house's day in ${zone} each was delivered (revenue inflow needs POS feed); the projection runs on ${weekly.length} complete weeks ending yesterday`,
+        outflow: `delivered procurement_orders, filed on the house's day in ${zone} each was delivered (revenue inflow needs POS feed); ${pacingWords(span, paced)}`,
         uncosted: uncostedNote,
       },
-      spendLast30d: last30,
-      spendPrev30d: prev30,
-      paceDeltaPct: pace?.deltaPct ?? null,
-      projectedNext4Weeks: holt?.forecast.map((v) => Math.max(0, v)) ?? null,
+      spendLast30d: paced.spendLast30d,
+      spendPrev30d: paced.spendPrev30d,
+      paceDeltaPct: paced.paceDeltaPct,
+      projectedNext4Weeks: paced.projectedNext4Weeks,
       committedOpenOrders: committed,
       openOrderCount: open.length,
       generatedAt: new Date().toISOString(),
