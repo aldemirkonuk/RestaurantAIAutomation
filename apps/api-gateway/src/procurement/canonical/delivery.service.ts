@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { NotificationsService } from "../../notifications/notifications.service";
 import { DeliveryClockService } from "./delivery-clock.service";
+import { supersededCountLines, type CountDoc, type CountLine } from "./door-recount";
 import { ReadResult } from "./canonical-document.service";
 import { matchLines, MatchableLine } from "../documents/line-matcher";
 import { DeliveryStockService, CostReceipt } from "./delivery-stock.service";
@@ -1752,6 +1753,11 @@ export class DeliveryService {
       };
     if (!docLines.ok)
       return { status: "unreadable", reason: docLines.error };
+    const current = await this.withoutSupersededCounts(
+      links.filter((l) => l.role === "door_count").map((l) => l.document_id),
+      docLines.value.lines,
+    );
+    if (!current.ok) return { status: "unreadable", reason: current.error };
 
     const orderLines: MatchableLine[] = (
       (orderRead.data ?? []) as unknown as {
@@ -1786,7 +1792,7 @@ export class DeliveryService {
             : null,
     }));
 
-    if (!orderLines.length || !docLines.value.lines.length)
+    if (!orderLines.length || !current.value.length)
       return {
         status: "not_comparable",
         reason: "one side of the comparison has no lines",
@@ -1794,7 +1800,7 @@ export class DeliveryService {
 
     return this.gradePairing(
       "order",
-      docLines.value.lines,
+      current.value,
       orderLines,
       docLines.value.identify,
     );
@@ -1834,7 +1840,9 @@ export class DeliveryService {
       return { status: "unreadable", reason: countLines.error };
     if (!paperLines.ok)
       return { status: "unreadable", reason: paperLines.error };
-    if (!countLines.value.lines.length || !paperLines.value.lines.length)
+    const counted = await this.withoutSupersededCounts(countIds, countLines.value.lines);
+    if (!counted.ok) return { status: "unreadable", reason: counted.error };
+    if (!counted.value.length || !paperLines.value.lines.length)
       return {
         status: "not_comparable",
         reason: "one side of the comparison has no lines",
@@ -1842,7 +1850,7 @@ export class DeliveryService {
 
     return this.gradePairing(
       "vendor_document",
-      countLines.value.lines,
+      counted.value,
       paperLines.value.lines,
       countLines.value.identify,
     );
@@ -1890,6 +1898,44 @@ export class DeliveryService {
     }
 
     return { status: "compared", basis, differing, unmatched };
+  }
+
+  /**
+   * The door's lines as they stand now: a line of an earlier door count is
+   * dropped where a later count on this delivery names the same item (r33 w2
+   * F5; `door-recount.ts`). With one count there is nothing to supersede and
+   * nothing is read. A failed read fails the scan (ADR 0067): "could not tell
+   * which count is current" must never become "compare them all" or "none".
+   */
+  private async withoutSupersededCounts(
+    countIds: string[],
+    lines: MatchableLine[],
+  ): Promise<ReadResult<MatchableLine[]>> {
+    const ids = [...new Set(countIds)];
+    if (ids.length < 2) return { ok: true, value: lines };
+    const client = this.db.getClient();
+    const [docs, countLines] = await Promise.all([
+      client.from("procurement_documents").select("id, created_at, extracted").in("id", ids),
+      client
+        .from("procurement_document_lines")
+        .select("id, document_id, inventory_id, vendor_sku, description")
+        .in("document_id", ids),
+    ]);
+    if (docs.error)
+      return {
+        ok: false,
+        error: `which door count is the newest could not be read (procurement_documents: ${docs.error.message})`,
+      };
+    if (countLines.error)
+      return {
+        ok: false,
+        error: `which door count is the newest could not be read (procurement_document_lines: ${countLines.error.message})`,
+      };
+    const gone = supersededCountLines(
+      (docs.data ?? []) as unknown as CountDoc[],
+      (countLines.data ?? []) as unknown as CountLine[],
+    );
+    return { ok: true, value: lines.filter((l) => !gone.has(l.id)) };
   }
 
   /**
