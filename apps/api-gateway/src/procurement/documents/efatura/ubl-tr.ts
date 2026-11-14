@@ -96,6 +96,33 @@ function num(
   return n;
 }
 
+/**
+ * BT-152: the KDV rate the file states for ONE line. UBL-TR puts it in the
+ * line's own `TaxTotal/TaxSubtotal`, keyed by tax type 0015 (KDV), beside any
+ * other tax on the line (ÖTV is 0071), so only the 0015 subtotal is the rate.
+ * A line with no type codes and exactly one subtotal (plain UBL) takes that
+ * one; failing both, `Item/ClassifiedTaxCategory/Percent`. Two KDV subtotals,
+ * or a figure that is not a rate, give no rate, and the latter is said.
+ */
+function lineTaxRate(le: XmlElement, lineNo: number, warnings: string[]): number | null {
+  const subs = all(le, "TaxTotal").flatMap((t) => all(t, "TaxSubtotal"));
+  const typed = subs.filter((st) => textAt(st, "TaxCategory/TaxScheme/TaxTypeCode") != null);
+  const kdv = typed.filter((st) => textAt(st, "TaxCategory/TaxScheme/TaxTypeCode") === "0015");
+  const el =
+    kdv.length === 1
+      ? at(kdv[0], "Percent")
+      : kdv.length === 0 && typed.length === 0 && subs.length === 1
+        ? at(subs[0], "Percent")
+        : subs.length === 0
+          ? at(le, "Item/ClassifiedTaxCategory/Percent")
+          : null;
+  const r = num(el, `line ${lineNo} tax rate`, warnings);
+  if (r == null) return null;
+  if (r >= 0 && r < 100) return r;
+  warnings.push(`The file's line ${lineNo} tax rate reads ${r} %, which is not a rate; it was left empty.`);
+  return null;
+}
+
 function sum(values: Array<number | null>): number | null {
   const kept = values.filter((v): v is number => v != null);
   return kept.length ? Math.round(kept.reduce((a, b) => a + b, 0) * 100) / 100 : null;
@@ -273,6 +300,7 @@ export function readUblTr(xml: string): ParsedDocument {
     const priceBaseUom: Uom | null =
       isMass(uom) && isMass(baseUnit) && baseUnit !== uom ? baseUnit : null;
     const item = at(le, "Item");
+    const vatRatePercent = despatch ? null : lineTaxRate(le, lineNo, warnings);
     return {
       lineNo,
       vendorSku:
@@ -290,6 +318,7 @@ export function readUblTr(xml: string): ParsedDocument {
       lineKind: "goods",
       priceBaseQty: baseQty != null && baseQty !== 1 ? baseQty : null,
       priceBaseUom,
+      ...(vatRatePercent != null ? { vatRatePercent } : {}),
       printed: linePrinted,
       poNumber: null,
     };
