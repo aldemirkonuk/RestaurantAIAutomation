@@ -41,6 +41,31 @@ export interface ReadingRow {
   category: string;
   score: number;
   entityLabel: string | null;
+  /** When the engine wrote it (`analytics_insights.computed_at`); null from a live compute. */
+  computedAt: string | null;
+}
+
+/**
+ * When the oldest of `rows` was computed, in words: "today at 6:00 AM",
+ * "yesterday at 6:00 AM", "on Nov 11 at 6:00 AM". Null when no row carries a
+ * time (a live compute, written as the page asked).
+ *
+ * The reading said "recomputed hourly"; the scheduler's default is once a day
+ * at 06:00 on the server's clock, so the page opened on a sentence up to a day
+ * older than the live registers under it, with no date (r36 reports gap 4).
+ */
+export function readingAge(rows: ReadonlyArray<Pick<ReadingRow, 'computedAt'>>, now = new Date()): string | null {
+  const times = rows
+    .map((r) => (r.computedAt ? Date.parse(r.computedAt) : NaN))
+    .filter((t) => Number.isFinite(t));
+  if (times.length === 0) return null;
+  const at = new Date(Math.min(...times));
+  const clock = at.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const dayOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((dayOf(now) - dayOf(at)) / 86400000);
+  if (days <= 0) return `today at ${clock}`;
+  if (days === 1) return `yesterday at ${clock}`;
+  return `on ${at.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at ${clock}`;
 }
 
 /**
@@ -60,7 +85,7 @@ const reading = analysis<ReadingRows>({
   title: 'The reading',
   register: 'insight register',
   answers: 'What the engine has noticed, in its own sentences',
-  window: () => 'the stored insight feed, recomputed hourly',
+  window: () => 'the stored insight feed, computed once a day unless the house set another cadence',
   path: (rid) => `/analytics/insights/${rid}?limit=40`,
   graphs: ['table', 'bars'],
   graphNote:
@@ -78,6 +103,7 @@ const reading = analysis<ReadingRows>({
           category: str(row.category) || UNFILED,
           score: num(row.score) ?? 0,
           entityLabel: (row.entity_label ?? row.entityLabel ?? null) as string | null,
+          computedAt: str(row.computed_at ?? row.computedAt) || null,
         };
       })
       .filter((r) => r.sentence !== '')
@@ -92,13 +118,14 @@ const reading = analysis<ReadingRows>({
         say:
           withheld > 0
             ? `Nothing here is written for your role. ${withheldSentences(withheld)}`
-            : 'The engine has produced no insight for this restaurant yet. It computes hourly and on demand — there is nothing to say, rather than nothing to show.',
+            : 'The engine has produced no insight for this restaurant yet. It computes once a day, and again whenever this page finds nothing stored — there is nothing to say, rather than nothing to show.',
         figures: [],
         notes: [],
         basis: [],
       };
     const counts = new Map<string, number>();
     for (const r of rows) counts.set(r.category, (counts.get(r.category) ?? 0) + 1);
+    const age = readingAge(rows);
     return {
       node: <ReadingList rows={rows} />,
       cats: {
@@ -113,10 +140,16 @@ const reading = analysis<ReadingRows>({
       figures: [
         { label: 'Sentences read', value: figure(rows.length) },
         { label: 'Categories with something to say', value: figure(counts.size) },
+        { label: 'Computed', value: age ?? 'as this page asked' },
       ],
       notes: [
         'Sentences are printed as the engine wrote them. This page never composes one.',
         ...(withheld > 0 ? [withheldSentences(withheld)] : []),
+        ...(age
+          ? [
+              `The oldest sentence here was computed ${age}. The registers below are read live, so a figure in a sentence can be older than the same figure below.`,
+            ]
+          : []),
       ],
       basis: [
         `${countOf(rows.length, 'sentence', 'sentences')} read from the stored insight feed; every number in them was computed by the engine from this restaurant's own rows.`,
@@ -614,29 +647,43 @@ const week = analysis<WeekRegister>({
       value: d.n > 0 ? Number(d.mean.toFixed(2)) : null,
       full: `${d.day} · ${countOf(d.n, 'observation', 'observations')}`,
     }));
-    // A tie is not a ranking. The server now withholds both days and sets
-    // `tie` (before 2026-09-03 it broke the tie by weekday order and reported
-    // Sunday as busiest AND quietest); an older gateway sends neither field,
-    // so the equality check stays as the fallback.
-    const ranked = w.tie === false || (w.tie === null && !!w.bestDay && w.bestDay !== w.worstDay);
+    // A tie is not a ranking. The server withholds only the extreme that is
+    // shared and sets `tie` when either is (`separableExtremes`), so a day it
+    // still names is a finding and is shown. Before 2026-09-03 it broke the
+    // tie by weekday order and reported Sunday as busiest AND quietest; an
+    // older gateway sends no `tie`, so the equality check stays the fallback.
+    const sent = w.tie !== null || (!!w.bestDay && w.bestDay !== w.worstDay);
+    const best = sent ? w.bestDay : null;
+    const worst = sent ? w.worstDay : null;
+    const shared = w.tie === true || !sent;
     const figures = [
       {
         label: 'Busiest day',
-        value: ranked && w.bestDay ? w.bestDay : EM,
+        value: best ?? EM,
         note: 'More than one weekday shares the highest mean',
       },
       {
         label: 'Quietest day',
-        value: ranked && w.worstDay ? w.worstDay : EM,
+        value: worst ?? EM,
         note: 'More than one weekday shares the lowest mean',
       },
       { label: '28-day trend, per day', value: pct(w.trendPerDayPct) },
     ];
-    const notes = ranked
+    const notes = !shared
       ? []
-      : [
-          'Busiest and quietest are left blank because more than one weekday shares the extreme, and naming one of them would be an arbitrary tie-break rather than a finding.',
-        ];
+      : !best && !worst
+        ? [
+            'Busiest and quietest are left blank because more than one weekday shares the extreme, and naming one of them would be an arbitrary tie-break rather than a finding.',
+          ]
+        : !best
+          ? [
+              'Busiest is left blank because more than one weekday shares the highest mean, and naming one of them would be an arbitrary tie-break rather than a finding.',
+            ]
+          : !worst
+            ? [
+                'Quietest is left blank because more than one weekday shares the lowest mean, and naming one of them would be an arbitrary tie-break rather than a finding.',
+              ]
+            : [];
     if (data.every((b) => (b.value ?? 0) === 0))
       return {
         say: 'Every weekday reads zero over the last 90 days — the consumption log recorded no movement, so the week has no shape to draw yet.',

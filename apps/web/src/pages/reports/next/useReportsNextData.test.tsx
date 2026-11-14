@@ -49,6 +49,19 @@ vi.mock('@/stores/authStore', () => ({
 // The two desks are their own seams with their own tests; held still here.
 vi.mock('./useGoalsDesk', () => ({ useGoalsDesk: () => ({}) }));
 vi.mock('./useReportExports', () => ({ useReportExports: () => ({}) }));
+// The role-aware default (r36 gap 3) is spied, not replaced: its own rules
+// are tested in rp-readable.test.ts; here only that the hook hands it the role.
+const readable = vi.hoisted(() => ({ calls: [] as unknown[] }));
+vi.mock('./rp-readable', async () => {
+  const actual = await vi.importActual<typeof import('./rp-readable')>('./rp-readable');
+  return {
+    ...actual,
+    defaultIdsFor: (role: unknown) => {
+      readable.calls.push(role);
+      return actual.defaultIdsFor(role as never);
+    },
+  };
+});
 
 import { defaultSheet, useReportsNextData } from './useReportsNextData';
 import type { AnalysisId } from './rp-sheet';
@@ -484,5 +497,24 @@ describe('useReportsNextData — the figures of record and the reorder lens (ADR
     await waitFor(() => expect(paths()).toContain(LEDGER));
     await waitFor(() => expect(result.current.registers.ledger!.loading).toBe(false));
     expect(result.current.registers.ledger!.failure).toBeNull();
+  });
+});
+
+describe('useReportsNextData — staff with no saved sheet (r36 reports gap 3)', () => {
+  beforeEach(() => {
+    auth.rid = 'r1';
+    api.get.mockReset();
+    api.get.mockResolvedValue({ data: [] });
+    readable.calls.length = 0;
+  });
+
+  it('builds the house sheet for the house role, and says which role that is', () => {
+    for (const role of ['staff', 'manager'] as const) {
+      auth.role = role;
+      readable.calls.length = 0;
+      const { result } = renderHook(() => useReportsNextData(30, () => {}), { wrapper: wrapper() });
+      expect(readable.calls).toContain(role);
+      expect(result.current.role).toBe(role);
+    }
   });
 });

@@ -1162,6 +1162,50 @@ describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
     // Sunday-as-both-busiest-and-quietest was the pre-fix payload.
     expect(within(week).queryByText('Sunday')).not.toBeInTheDocument();
   });
+
+  // Browser walk r33 (2026-11-13): the server named Saturday as busiest and
+  // withheld only the shared quietest day, and the page blanked both.
+  const oneSideTied = (bestDay: string | null, worstDay: string | null) =>
+    withRegister(
+      'week',
+      ok({
+        weekdayProfile: [
+          { day: 'Monday', mean: 5, stdev: 0, n: 13 },
+          { day: 'Tuesday', mean: 5, stdev: 0, n: 13 },
+          { day: 'Saturday', mean: 27, stdev: 4, n: 13 },
+        ],
+        bestDay,
+        worstDay,
+        tie: true,
+        trendPerDayPct: 0.002,
+        basis: { weekday: 'mean units per weekday over the last 90 days' },
+      }),
+    );
+  const fig = (week: HTMLElement, label: string) =>
+    within(week).getByText(label).closest('.rp-fig') as HTMLElement;
+
+  it('[REVERT-FAILS] names the busiest day the server names when only the quietest is shared', () => {
+    hook.current = oneSideTied('Saturday', null);
+    paint();
+    const week = screen.getByRole('region', { name: 'The week’s shape' });
+    expect(within(fig(week, 'Busiest day')).getByText('Saturday')).toBeInTheDocument();
+    expect(within(fig(week, 'Quietest day')).getByText('—')).toBeInTheDocument();
+    expect(
+      within(week).getByText(/^Quietest is left blank because more than one weekday shares the lowest mean/),
+    ).toBeInTheDocument();
+    expect(within(week).queryByText(/^Busiest and quietest are left blank/)).not.toBeInTheDocument();
+  });
+
+  it('[REVERT-FAILS] names the quietest day the server names when only the busiest is shared', () => {
+    hook.current = oneSideTied(null, 'Monday');
+    paint();
+    const week = screen.getByRole('region', { name: 'The week’s shape' });
+    expect(within(fig(week, 'Quietest day')).getByText('Monday')).toBeInTheDocument();
+    expect(within(fig(week, 'Busiest day')).getByText('—')).toBeInTheDocument();
+    expect(
+      within(week).getByText(/^Busiest is left blank because more than one weekday shares the highest mean/),
+    ).toBeInTheDocument();
+  });
 });
 
 describe('ReportsNext — honesty', () => {
@@ -2563,3 +2607,44 @@ describe('the till window is kept in the page link (audit gap 16)', () => {
     expect(till?.slot.h).toBe(SHEET_MIN_H);
   });
 });
+
+describe('staff are handed what they can read (r36 reports gap 3)', () => {
+  it('marks held analyses in both pickers, and "Before service" lays only readable ones', () => {
+    hook.current = { ...base(), role: 'staff' } as never;
+    paint();
+    arrange();
+    const till = screen.getByRole('region', { name: 'Through the till' });
+    const swap = within(till).getByLabelText('Show instead of Through the till');
+    expect(within(swap).getByText(/The room \(owners and managers\)/)).toBeInTheDocument();
+    expect(within(swap).getByText(/^The week’s shape/).textContent).not.toMatch(/owners/);
+    expect(screen.getByRole('button', { name: 'Who served it (owners and managers)' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Before service' }));
+    expect(screen.queryByRole('region', { name: 'The room' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Who served it' })).toBeNull();
+    expect(screen.getByRole('region', { name: 'The week’s shape' })).toBeInTheDocument();
+  });
+
+  it('a manager sees no marks', () => {
+    hook.current = { ...base(), role: 'manager' } as never;
+    paint();
+    arrange();
+    expect(screen.getByRole('button', { name: 'Who served it' })).toBeInTheDocument();
+    expect(screen.queryByText(/\(owners and managers\)/)).toBeNull();
+  });
+});
+
+describe('the opening line says when the engine wrote it (r36 reports gap 4)', () => {
+  it('dates the stored sentence under the opening; a live one carries no stamp', () => {
+    const computedAt = new Date().toISOString();
+    hook.current = { ...base(), reading: ok(READING.map((r) => ({ ...r, computedAt }))) } as never;
+    const page = paint();
+    expect(screen.getByTestId('rp-opening-age').textContent).toMatch(
+      /^Written by the engine today at .+\. The registers below are read live\.$/,
+    );
+    page.unmount();
+    hook.current = base();
+    paint();
+    expect(screen.queryByTestId('rp-opening-age')).toBeNull();
+  });
+});
+
