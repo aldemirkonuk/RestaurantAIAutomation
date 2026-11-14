@@ -97,6 +97,39 @@ function salesGateFor(user?: { role?: string | null }): SalesGate {
   return { withSales: policyFor(user?.role).sees.includes("sales") };
 }
 
+/**
+ * The till window as a reader without `sales` gets it: the route answers, every
+ * figure is `null` and `salesWithheld` says why. `null`, never `0` or `[]`: an
+ * empty series would read as "the house took nothing", and `posConnected:
+ * false` as "no till", which are claims about the house, not about the reader.
+ */
+function withheldPosRevenue(restaurantId: string, days: number) {
+  return {
+    restaurantId,
+    days,
+    salesWithheld: true as const,
+    from: null,
+    to: null,
+    timezone: null,
+    zoneUnset: null,
+    posConnected: null,
+    revenue: null,
+    checkCount: null,
+    dailySeries: null,
+    consumption: null,
+  };
+}
+
+/** The basket as a reader without `sales` gets it: no pair and no count. */
+function withheldBasket(restaurantId: string) {
+  return {
+    restaurantId,
+    salesWithheld: true as const,
+    transactionCount: null,
+    pairs: null,
+  };
+}
+
 function parseHorizon(raw?: string): number | undefined {
   if (raw === undefined || raw === "") return undefined;
   const n = Number.parseInt(raw, 10);
@@ -769,7 +802,14 @@ export class AnalyticsController {
     description:
       "Support/confidence/lift/χ² for item pairs on the same check — wine-wine now, food-wine when POS items land.",
   })
-  async getBasket(@Param("restaurantId") restaurantId: string) {
+  async getBasket(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string | null },
+  ) {
+    // Which items sell together is read off the till's checks, so it is a
+    // sales figure (ADR 0298 decision 9): staff keep the route and are told it
+    // is withheld; the checks are never read for them (ADR 0348 decision 3).
+    if (!salesGateFor(user).withSales) return withheldBasket(restaurantId);
     return this.tableAnalytics.getBasketAffinity(restaurantId);
   }
 
@@ -1189,7 +1229,8 @@ export class AnalyticsController {
       "are then `null`, NOT `0`, and every consumer must render an empty state rather than a figure. " +
       "Reuses the same query goal progress runs on, so the two can never disagree. " +
       "Days are the house's days (ADR 0296): each check is filed on the date its house's clock read when it closed, " +
-      "else when it opened. A house with no time zone answers `zoneUnset: true` with `null` figures and `consumption: null`.",
+      "else when it opened. A house with no time zone answers `zoneUnset: true` with `null` figures and `consumption: null`. " +
+      "A reader whose role does not see sales (staff) gets `salesWithheld: true` with every figure `null` (ADR 0298 decision 9).",
   })
   @ApiQuery({
     name: "days",
@@ -1200,11 +1241,17 @@ export class AnalyticsController {
   async getPosRevenue(
     @Param("restaurantId") restaurantId: string,
     @Query("days") days?: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     const parsed = Number.parseInt(days ?? "", 10);
     const span = Number.isFinite(parsed)
       ? Math.min(Math.max(parsed, 1), 365)
       : 30;
+    // The till's takings are a sales figure (ADR 0298 decision 9). Staff keep
+    // the route and are told the figures are withheld; neither the checks nor
+    // the house's clock are read for them (ADR 0348 decision 3).
+    if (!salesGateFor(user).withSales)
+      return withheldPosRevenue(restaurantId, span);
     try {
       const window = await this.goalsService.getPosRevenueWindow(
         restaurantId,

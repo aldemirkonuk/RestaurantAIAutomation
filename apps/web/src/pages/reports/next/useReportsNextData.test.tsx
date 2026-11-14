@@ -133,3 +133,39 @@ describe('useReportsNextData — registers a role is not sent (ADR 0348)', () =>
     expect(result.current.reading.failure).toBeNull();
   });
 });
+
+describe('useReportsNextData — the till is not sent for staff (ADR 0298 decision 9)', () => {
+  const TILL = '/analytics/pos-revenue/r1?days=30';
+
+  beforeEach(() => {
+    auth.rid = 'r1';
+    api.get.mockReset();
+    api.get.mockImplementation(async (path: string) => {
+      if (path === READING) return { data: { insights: [] } };
+      if (path === TILL) return { data: { posConnected: true, revenue: 10, checkCount: 1, dailySeries: [] } };
+      throw new Error(`unexpected GET ${path}`);
+    });
+  });
+
+  const mountTill = () =>
+    renderHook(() => useReportsNextData(30, () => {}, ['till']), { wrapper: wrapper() });
+
+  it('staff: no request to the till, and its register says it is held back', async () => {
+    auth.role = 'staff';
+    const { result } = mountTill();
+    await waitFor(() => expect(paths()).toContain(READING));
+    expect(paths()).not.toContain(TILL);
+    expect(result.current.registers.till!.failure).toMatchObject({
+      forbidden: true,
+      heldBack: { readers: ['owner', 'manager'], known: true },
+    });
+  });
+
+  it.each(['owner', 'manager'])('%s: the till is asked for and answered', async (role) => {
+    auth.role = role;
+    const { result } = mountTill();
+    await waitFor(() => expect(paths()).toContain(TILL));
+    await waitFor(() => expect(result.current.registers.till!.loading).toBe(false));
+    expect(result.current.registers.till!.failure).toBeNull();
+  });
+});

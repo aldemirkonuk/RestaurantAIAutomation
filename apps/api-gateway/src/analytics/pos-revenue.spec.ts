@@ -145,6 +145,8 @@ function makeClient(rowsByTable: Rows, errors: Record<string, string> = {}) {
 
 /** Tuzlu Rüzgar keeps Los Angeles time. */
 const LA = "America/Los_Angeles";
+/** A reader who sees sales: a staff reader gets the figures withheld (till-figures-withheld-from-staff.spec.ts). */
+const OWNER = { role: "owner" };
 const LA_HOUSE = { timezone: LA, country: "US" };
 
 /**
@@ -1151,7 +1153,7 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       dailySeries: [],
     });
 
-    const body = await controller.getPosRevenue("r1", "30");
+    const body = await controller.getPosRevenue("r1", "30", OWNER);
 
     expect(body.posConnected).toBe(false);
     expect(body.revenue).toBeNull();
@@ -1175,7 +1177,7 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       { wineName: "Malbec", bottlesSold: 2 },
     ]);
 
-    const body = await controller.getPosRevenue("r1", undefined);
+    const body = await controller.getPosRevenue("r1", undefined, OWNER);
 
     expect(body.revenue).toBe(4200);
     expect(body.consumption).toHaveLength(1);
@@ -1200,7 +1202,7 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       dailySeries: [],
     });
 
-    const body = await controller.getPosRevenue("r1", "30");
+    const body = await controller.getPosRevenue("r1", "30", OWNER);
 
     expect(body.zoneUnset).toBe(true);
     expect(body.consumption).toBeNull();
@@ -1218,15 +1220,15 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       dailySeries: [],
     });
 
-    await controller.getPosRevenue("r1", "99999");
+    await controller.getPosRevenue("r1", "99999", OWNER);
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 365);
 
-    await controller.getPosRevenue("r1", "banana");
+    await controller.getPosRevenue("r1", "banana", OWNER);
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 30);
 
     // A parseable-but-tiny window clamps to the floor rather than snapping back
     // to the default — `?days=0` asking for today is a coherent request.
-    await controller.getPosRevenue("r1", "0");
+    await controller.getPosRevenue("r1", "0", OWNER);
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 1);
   });
 });
