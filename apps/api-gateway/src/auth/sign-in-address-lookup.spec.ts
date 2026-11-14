@@ -215,6 +215,20 @@ describe("reset, sign-in-methods and the Google link find the row by the shared 
     expect(db.tables.password_resets[0].user_id).toBe("owner");
   });
 
+  it("R1: reset mails the stored address", async () => {
+    const { svc, db, mail } = service([account("owner", "Chef@Bistro.com")]);
+    await svc.requestPasswordReset("Chef@Bistro.com", null);
+    expect((mail.sendEmail.mock.calls[0] as any)[0].to).toEqual(["Chef@Bistro.com"]);
+    expect(db.tables.password_resets[0].email).toBe("Chef@Bistro.com");
+  });
+
+  it("R9: a twin's reset does not throttle", async () => {
+    const { svc, db, mail } = service([account("owner", "Chef@Bistro.com"), account("twin", "chef@bistro.com")]);
+    db.tables.password_resets.push({ user_id: "twin", email: "chef@bistro.com", created_at: new Date().toISOString() });
+    await svc.requestPasswordReset("Chef@Bistro.com", null);
+    expect(mail.sendEmail).toHaveBeenCalledTimes(1);
+  });
+
   it("sign-in-methods finds an unfolded row typed exactly (read 1) and reports its password", async () => {
     const { svc } = service([account("owner", "Chef@Bistro.com")]);
     const got = await svc.resolveSignInMethods("Chef@Bistro.com");
