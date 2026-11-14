@@ -303,17 +303,22 @@ function writePacing(payload: unknown): ExportDoc {
   const projection = Array.isArray(c.projectedNext4Weeks)
     ? (c.projectedNext4Weeks as unknown[])
     : null;
-  const bothZero = (last ?? 0) === 0 && (prev ?? 0) === 0;
+  // A window withheld over an order with no recorded cost is null, not zero:
+  // `?? 0` here read it as "nothing was bought" (order-cost.ts).
+  const bothZero = last === 0 && prev === 0;
+  const unread = obj(c.unread);
+  const why = (key: string, fallback: string) =>
+    unread[key] == null ? fallback : str(unread[key]);
 
   return doc({
     say: bothZero
       ? "No delivered purchase order falls in either 30-day window, so there is no pace to read."
       : null,
     figures: [
-      f("Paid out, the last 30 days", figure(last, "the cashflow register returned no figure"), "money"),
-      f("Paid out, the 30 days before", figure(prev, "the cashflow register returned no figure"), "money"),
+      f("Paid out, the last 30 days", figure(last, why("spendLast30d", "the cashflow register returned no figure")), "money"),
+      f("Paid out, the 30 days before", figure(prev, why("spendPrev30d", "the cashflow register returned no figure")), "money"),
       f("Pace", figure(pctOf(c.paceDeltaPct), "Needs two comparable 30-day windows"), "percent"),
-      f("Committed, not yet delivered", figure(c.committedOpenOrders, "the cashflow register returned no figure"), "money"),
+      f("Committed, not yet delivered", figure(c.committedOpenOrders, why("committedOpenOrders", "the cashflow register returned no figure")), "money"),
       f("Open orders", figure(c.openOrderCount, "the cashflow register returned no figure"), "count"),
     ],
     tables:
@@ -336,7 +341,9 @@ function writePacing(payload: unknown): ExportDoc {
     notes: [
       projection && projection.length > 0
         ? ""
-        : "Too few weeks of purchasing to project — withheld rather than a line drawn through two points.",
+        : unread.projectedNext4Weeks != null
+          ? `No projection: ${str(unread.projectedNext4Weeks)}`
+          : "Too few weeks of purchasing to project — withheld rather than a line drawn through two points.",
       bothZero
         ? 'Both windows came back at zero, and the zeros are ambiguous: the cashflow lens sums a loader that returns an empty list for a failed query as well as for a quiet month, so zero means "no delivered order was returned", not necessarily "nothing was bought".'
         : "",

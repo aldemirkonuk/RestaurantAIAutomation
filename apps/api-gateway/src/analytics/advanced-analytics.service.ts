@@ -6,6 +6,7 @@ import * as E from "./engine";
 import { AnalyticsService, SalesGate } from "./analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { GoalsService } from "./goals.service";
+import { UncostedOrdersError, orderCostOrNull } from "./order-cost";
 import {
   COST_BASIS_LABEL,
   costBasisSentence,
@@ -525,23 +526,35 @@ export class AdvancedAnalyticsService {
         }
       }
       const scored = counts.onTime + counts.late;
+      // An order with no recorded cost is unknown, never $0 (order-cost.ts).
+      // It gives no unit price (a $0 price dragged the mean and the trend
+      // down), and the vendor's spend is not summed short over it.
       const unitPrices = delivered
         .map((o) => {
           const bottles = o.bottles_total || o.quantity || 0;
-          const cost = o.total_cost || o.final_price || 0;
-          return bottles > 0 ? cost / bottles : null;
+          const cost = orderCostOrNull(o);
+          return bottles > 0 && cost != null ? cost / bottles : null;
         })
         .filter((p): p is number => p !== null && Number.isFinite(p));
-      const spend = delivered.reduce(
-        (s, o) => s + (o.total_cost || o.final_price || 0),
-        0,
-      );
+      const uncostedDelivered = delivered.filter(
+        (o) => orderCostOrNull(o) == null,
+      ).length;
+      const spend =
+        uncostedDelivered > 0
+          ? null
+          : delivered.reduce((s, o) => s + (orderCostOrNull(o) as number), 0);
       return {
         vendorId,
         vendorName: os[0]?.providers?.name || vendorId,
         orders: os.length,
         delivered: delivered.length,
         spend,
+        /** Delivered orders with no recorded cost; `spend` is null while any. */
+        uncostedDelivered,
+        spendUnread:
+          uncostedDelivered > 0
+            ? new UncostedOrdersError(uncostedDelivered, delivered.length).message
+            : null,
         leadTimeDays: {
           mean: E.mean(leadTimes),
           median: E.median(leadTimes),
@@ -559,8 +572,11 @@ export class AdvancedAnalyticsService {
       };
     });
 
-    vendors.sort((a, b) => b.spend - a.spend);
-    const spendShare = vendors.map((v) => v.spend);
+    // A vendor whose spend is unknown sorts last, and no share is drawn from
+    // a set that holds one: its share would be read as 0.
+    vendors.sort((a, b) => (b.spend ?? -1) - (a.spend ?? -1));
+    const spendKnown = vendors.every((v) => v.spend != null);
+    const spendShare = vendors.map((v) => v.spend as number);
     return {
       vendors,
       onTimeDeadline: {
@@ -569,10 +585,17 @@ export class AdvancedAnalyticsService {
         houseRecord: house.read,
         arrivalAnswers: overdue.ok ? "read" : "could_not_read",
       },
-      concentration: {
-        hhi: E.herfindahlIndex(spendShare),
-        effectiveVendors: E.effectiveCount(spendShare),
-      },
+      concentration: spendKnown
+        ? {
+            hhi: E.herfindahlIndex(spendShare),
+            effectiveVendors: E.effectiveCount(spendShare),
+          }
+        : {
+            hhi: null,
+            effectiveVendors: null,
+            unread:
+              "How concentrated buying is cannot be read while a vendor's spend rests on an order with no recorded cost.",
+          },
       note: "Lead-time stdev feeds the King safety-stock formula (leadTimeStdev param on /inventory-science).",
       generatedAt: new Date().toISOString(),
     };
@@ -701,21 +724,50 @@ export class AdvancedAnalyticsService {
     const delivered = orders.filter((o: any) =>
       hasStatus(o.status, ORDER_SPEND_STATUSES),
     );
-    const spendRows = delivered.map((o: any) => ({
+    // An order with no recorded cost is unknown, never $0 (order-cost.ts,
+    // the rule the purchases goal scores by). Summed as 0 it drew a pace and
+    // a projection beside a goal that refused the same window. Each figure
+    // whose window holds an uncosted order is withheld, with the count; a
+    // window with none is still summed.
+    const dated = delivered.map((o: any) => ({
       date: (o.delivered_at || o.created_at || "").substring(0, 10),
-      value: o.total_cost || o.final_price || 0,
+      cost: orderCostOrNull(o),
     }));
-    const daily = this.toDaily(spendRows, 180);
+    const daily = this.toDaily(
+      dated
+        .filter((r) => r.cost != null)
+        .map((r) => ({ date: r.date, value: r.cost as number })),
+      180,
+    );
+    const countIn = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+    const uncostedDaily = this.toDaily(
+      dated.filter((r) => r.cost == null).map((r) => ({ date: r.date, value: 1 })),
+      180,
+    );
+    const deliveredDaily = this.toDaily(
+      dated.map((r) => ({ date: r.date, value: 1 })),
+      180,
+    );
+    const uncosted = {
+      last30d: countIn(uncostedDaily.slice(-30)),
+      prev30d: countIn(uncostedDaily.slice(-60, -30)),
+      window180d: countIn(uncostedDaily),
+    };
 
-    const last30 = daily.slice(-30).reduce((a, b) => a + b, 0);
-    const prev30 = daily.slice(-60, -30).reduce((a, b) => a + b, 0);
-    const pace = E.periodOverPeriod(daily, 30);
+    const last30 = uncosted.last30d > 0 ? null : countIn(daily.slice(-30));
+    const prev30 = uncosted.prev30d > 0 ? null : countIn(daily.slice(-60, -30));
+    const pace =
+      last30 == null || prev30 == null ? null : E.periodOverPeriod(daily, 30);
 
-    // Weekly series → Holt projection 4 weeks out.
+    // Weekly series → Holt projection 4 weeks out. It reads every week of
+    // the 180 days, so one uncosted order anywhere in them withholds it.
     const weekly: number[] = [];
     for (let i = 0; i < daily.length; i += 7)
       weekly.push(daily.slice(i, i + 7).reduce((a, b) => a + b, 0));
-    const holt = weekly.length >= 4 ? E.holtLinear(weekly, 0.4, 0.2, 4) : null;
+    const holt =
+      uncosted.window180d === 0 && weekly.length >= 4
+        ? E.holtLinear(weekly, 0.4, 0.2, 4)
+        : null;
 
     // Committed outflow: orders placed but not delivered.
     //
@@ -733,10 +785,17 @@ export class AdvancedAnalyticsService {
     const open = orders.filter((o: any) =>
       hasStatus(o.status, ORDER_OUTSTANDING_STATUSES),
     );
-    const committed = open.reduce(
-      (s: number, o: any) => s + (o.total_cost || o.final_price || 0),
-      0,
-    );
+    // An open order with no price yet is not a $0 commitment either.
+    const uncostedOpen = open.filter((o: any) => orderCostOrNull(o) == null).length;
+    const committed =
+      uncostedOpen > 0
+        ? null
+        : open.reduce((s: number, o: any) => s + (orderCostOrNull(o) as number), 0);
+
+    // The sentence the house reads for each withheld figure: the purchases
+    // goal's own (UncostedOrdersError), so the card and the goal agree.
+    const unread = (n: number, of: number) =>
+      n > 0 ? new UncostedOrdersError(n, of).message : null;
 
     return {
       basis: {
@@ -748,6 +807,21 @@ export class AdvancedAnalyticsService {
       projectedNext4Weeks: holt?.forecast.map((v) => Math.max(0, v)) ?? null,
       committedOpenOrders: committed,
       openOrderCount: open.length,
+      /**
+       * Orders with no recorded cost, by the window they fall in. A figure
+       * whose window holds one is null, and `unread` says why in the house's
+       * words (null where the figure was summed whole).
+       */
+      uncostedOrders: { ...uncosted, open: uncostedOpen },
+      unread: {
+        spendLast30d: unread(uncosted.last30d, countIn(deliveredDaily.slice(-30))),
+        spendPrev30d: unread(uncosted.prev30d, countIn(deliveredDaily.slice(-60, -30))),
+        projectedNext4Weeks: unread(uncosted.window180d, countIn(deliveredDaily)),
+        committedOpenOrders:
+          uncostedOpen > 0
+            ? `${uncostedOpen} of the ${open.length} open order${open.length === 1 ? "" : "s"} ${uncostedOpen === 1 ? "carries" : "carry"} no price yet, so what is committed is not summed short. Record the price to read it.`
+            : null,
+      },
       generatedAt: new Date().toISOString(),
     };
   }

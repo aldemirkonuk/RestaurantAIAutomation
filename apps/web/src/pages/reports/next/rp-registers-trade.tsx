@@ -285,7 +285,20 @@ export interface PacingRegister {
   projectedNext4Weeks: number[] | null;
   committedOpenOrders: number | null;
   openOrderCount: number | null;
+  /**
+   * Why a figure is withheld: an order in its window carries no recorded cost
+   * (the purchases goal's own sentence). Null where it was summed whole.
+   */
+  unread?: {
+    spendLast30d: string | null;
+    spendPrev30d: string | null;
+    projectedNext4Weeks: string | null;
+    committedOpenOrders: string | null;
+  };
 }
+
+const unreadOf = (v: unknown): string | null =>
+  typeof v === 'string' && v.trim() !== '' ? v : null;
 
 const pacing = analysis<PacingRegister>({
   title: 'Spend pacing',
@@ -308,12 +321,22 @@ const pacing = analysis<PacingRegister>({
         : null,
       committedOpenOrders: num(d.committedOpenOrders),
       openOrderCount: num(d.openOrderCount),
+      unread: {
+        spendLast30d: unreadOf(obj(d.unread).spendLast30d),
+        spendPrev30d: unreadOf(obj(d.unread).spendPrev30d),
+        projectedNext4Weeks: unreadOf(obj(d.unread).projectedNext4Weeks),
+        committedOpenOrders: unreadOf(obj(d.unread).committedOpenOrders),
+      },
     };
   },
   view: (c) => {
     const figures = [
       { label: 'Pace', value: pct(c.paceDeltaPct), note: 'Needs two comparable 30-day windows' },
-      { label: 'Committed, not yet delivered', value: money(c.committedOpenOrders) },
+      {
+        label: 'Committed, not yet delivered',
+        value: money(c.committedOpenOrders),
+        note: c.unread?.committedOpenOrders ?? undefined,
+      },
       { label: 'Open orders', value: figure(c.openOrderCount) },
     ];
     const projection = c.projectedNext4Weeks;
@@ -326,6 +349,8 @@ const pacing = analysis<PacingRegister>({
           </span>{' '}
           — a Holt projection, not a measurement.
         </>
+      ) : c.unread?.projectedNext4Weeks ? (
+        <>No projection: {c.unread?.projectedNext4Weeks}</>
       ) : (
         <>
           Too few weeks of purchasing to project — {EM} rather than a line drawn through two points.
@@ -335,7 +360,22 @@ const pacing = analysis<PacingRegister>({
     const basis = [c.basis?.outflow ? `Outflow: ${c.basis.outflow}.` : null];
     // Two invisible bars are not a chart. When both windows are empty the
     // sentence is the honest rendering — and it names WHICH windows.
-    if ((c.spendLast30d ?? 0) === 0 && (c.spendPrev30d ?? 0) === 0)
+    // A window withheld over an order with no recorded cost is not drawn: a
+    // bar beside a missing one would read as a pace, and the purchases goal
+    // refuses the same window. The sentence says which window and why.
+    const withheld = c.unread?.spendLast30d ?? c.unread?.spendPrev30d;
+    if (withheld)
+      return {
+        say: withheld,
+        figures: [
+          { label: 'Last 30 days', value: money(c.spendLast30d), note: c.unread?.spendLast30d ?? undefined },
+          { label: 'The 30 before', value: money(c.spendPrev30d), note: c.unread?.spendPrev30d ?? undefined },
+          ...figures,
+        ],
+        notes,
+        basis,
+      };
+    if (c.spendLast30d === 0 && c.spendPrev30d === 0)
       return {
         say: 'No delivered purchase order falls in either 30-day window, so there is no pace to draw — two bars at zero would say the same thing less clearly.',
         figures,
