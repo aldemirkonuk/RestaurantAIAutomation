@@ -88,7 +88,7 @@ describe("days_of_inventory refuses rather than reporting zero", () => {
         targetValue: 9,
         direction: "at_most",
       }, { withSales: true }),
-    ).rejects.toThrow(/every wine on hand has a recorded cost/);
+    ).rejects.toThrow(/every such good on hand has a recorded cost/);
   });
 
   it("names which input is missing when the cost of what sold is withheld (batch review 2026-11-11)", async () => {
