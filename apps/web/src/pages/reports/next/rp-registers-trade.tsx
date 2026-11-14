@@ -533,29 +533,43 @@ const week = analysis<WeekRegister>({
       value: d.n > 0 ? Number(d.mean.toFixed(2)) : null,
       full: `${d.day} · ${countOf(d.n, 'observation', 'observations')}`,
     }));
-    // A tie is not a ranking. The server now withholds both days and sets
-    // `tie` (before 2026-09-03 it broke the tie by weekday order and reported
-    // Sunday as busiest AND quietest); an older gateway sends neither field,
-    // so the equality check stays as the fallback.
-    const ranked = w.tie === false || (w.tie === null && !!w.bestDay && w.bestDay !== w.worstDay);
+    // A tie is not a ranking. The server withholds only the extreme that is
+    // shared and sets `tie` when either is (`separableExtremes`), so a day it
+    // still names is a finding and is shown. Before 2026-09-03 it broke the
+    // tie by weekday order and reported Sunday as busiest AND quietest; an
+    // older gateway sends no `tie`, so the equality check stays the fallback.
+    const sent = w.tie !== null || (!!w.bestDay && w.bestDay !== w.worstDay);
+    const best = sent ? w.bestDay : null;
+    const worst = sent ? w.worstDay : null;
+    const shared = w.tie === true || !sent;
     const figures = [
       {
         label: 'Busiest day',
-        value: ranked && w.bestDay ? w.bestDay : EM,
+        value: best ?? EM,
         note: 'More than one weekday shares the highest mean',
       },
       {
         label: 'Quietest day',
-        value: ranked && w.worstDay ? w.worstDay : EM,
+        value: worst ?? EM,
         note: 'More than one weekday shares the lowest mean',
       },
       { label: '28-day trend, per day', value: pct(w.trendPerDayPct) },
     ];
-    const notes = ranked
+    const notes = !shared
       ? []
-      : [
-          'Busiest and quietest are left blank because more than one weekday shares the extreme, and naming one of them would be an arbitrary tie-break rather than a finding.',
-        ];
+      : !best && !worst
+        ? [
+            'Busiest and quietest are left blank because more than one weekday shares the extreme, and naming one of them would be an arbitrary tie-break rather than a finding.',
+          ]
+        : !best
+          ? [
+              'Busiest is left blank because more than one weekday shares the highest mean, and naming one of them would be an arbitrary tie-break rather than a finding.',
+            ]
+          : !worst
+            ? [
+                'Quietest is left blank because more than one weekday shares the lowest mean, and naming one of them would be an arbitrary tie-break rather than a finding.',
+              ]
+            : [];
     if (data.every((b) => (b.value ?? 0) === 0))
       return {
         say: 'Every weekday reads zero over the last 90 days — the consumption log recorded no movement, so the week has no shape to draw yet.',
