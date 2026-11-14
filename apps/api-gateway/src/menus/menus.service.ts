@@ -44,6 +44,34 @@ const PAGE_ROWS = 1000;
  * limits, and one row per house and wine keeps every chunk far below PAGE_ROWS.
  */
 const WINE_ID_CHUNK = 150;
+/** r41 R3: chunk reads in flight at once, as the wine library reads them. */
+const CHUNKS_AT_ONCE = 4;
+
+/**
+ * r41 R3: reads that need nothing from one another, run together. Every read
+ * is awaited, and the first failure IN THE ORDER GIVEN is thrown, so a page is
+ * refused with the same words it got when the reads ran one after another.
+ */
+export async function allInOrder<T extends readonly unknown[]>(
+  reads: { readonly [K in keyof T]: Promise<T[K]> },
+): Promise<T> {
+  const settled = await Promise.allSettled(reads as readonly Promise<unknown>[]);
+  for (const s of settled) if (s.status === "rejected") throw s.reason;
+  return settled.map((s) => (s as PromiseFulfilledResult<unknown>).value) as unknown as T;
+}
+
+/** r41 R3: `read` for each chunk of `ids`, CHUNKS_AT_ONCE in flight; answers in chunk order. */
+export async function chunksTogether<R>(ids: readonly string[], read: (chunk: string[]) => Promise<R>): Promise<Array<{ chunk: string[]; answer: R }>> {
+  const chunks: string[][] = [];
+  for (let at = 0; at < ids.length; at += WINE_ID_CHUNK) chunks.push(ids.slice(at, at + WINE_ID_CHUNK));
+  const out: Array<{ chunk: string[]; answer: R }> = [];
+  for (let at = 0; at < chunks.length; at += CHUNKS_AT_ONCE) {
+    const wave = chunks.slice(at, at + CHUNKS_AT_ONCE);
+    const answers = await Promise.all(wave.map((c) => read(c)));
+    wave.forEach((chunk, i) => out.push({ chunk, answer: answers[i] }));
+  }
+  return out;
+}
 const DEFAULT_THRESHOLD_MIN_FALLBACK = 3;
 const PRICE_FIELDS = new Set(["by_glass_price", "bottle_price"]);
 
@@ -1450,13 +1478,14 @@ export class MenusService {
     type Row = { id: string; menu_price_current: unknown; menu_price_glass: unknown; is_active: boolean | null; deleted_at: string | null };
     const byId = new Map<string, Row>();
     let unreadable: string | null = null;
-    for (let at = 0; at < ids.length; at += WINE_ID_CHUNK) {
-      const chunk = ids.slice(at, at + WINE_ID_CHUNK);
-      const { data, error } = await this.dbService.supabase
+    const read = await chunksTogether(ids, async (chunk) =>
+      this.dbService.supabase
         .from("restaurant_inventory")
         .select("id, menu_price_current, menu_price_glass, is_active, deleted_at")
         .eq("restaurant_id", restaurantId)
-        .in("id", chunk);
+        .in("id", chunk),
+    );
+    for (const { answer: { data, error } } of read) {
       if (error) {
         unreadable = `the house's own prices could not be read: ${error.message}`;
         continue;
@@ -1753,8 +1782,10 @@ export class MenusService {
    * saw (L25).
    */
   async planFor(restaurantId: string, menuId: string): Promise<MenuPlan> {
-    const row = await this.readVersionRow(restaurantId, menuId);
-    const lines = (await this.readLines(menuId, restaurantId)) as unknown as InsertedMenuItem[];
+    // r41 R3: the row and the lines are read together; the row's refusal (a
+    // menu of another house is a 404) is still the one said first.
+    const [row, read] = await allInOrder([this.readVersionRow(restaurantId, menuId), this.readLines(menuId, restaurantId)] as const);
+    const lines = read as unknown as InsertedMenuItem[];
     const plan = await this.computePlan(restaurantId, menuId, await this.isOnlyCurrent(restaurantId, menuId, row), lines, readMomentOf(row), carryMomentOf(row));
     // Names are for reading the plan; they never decide it (the fingerprint
     // leaves them out). A failed read is said.
@@ -1804,12 +1835,23 @@ export class MenusService {
       );
     };
 
-    // The house's wines, every one (keyset-paged): which line lands on which row.
+    // r41 R3: the four reads below need nothing from one another, so they run
+    // together. allInOrder says the first failure in this order, the same
+    // refusal the page got when they ran one after another.
     const house = new Map<string, Record<string, any>>();
     // Every row by its id too: a line linked to a good whose row names no
     // library wine (a house gin) is planned on that row, as the carry does.
     const byInventory = new Map<string, Record<string, any>>();
-    {
+    // Who set each price now in effect (the open version row).
+    const lastSet = new Map<string, { by: string | null; at: string | null; source: string | null }>();
+    // The wines on the menu being REPLACED (every other active menu), for L18's "returned".
+    const onReplaced = new Set<string>();
+    // Every drink line of the menu being replaced, for "not on this file" (2d).
+    const replacedLines: InsertedMenuItem[] = [];
+    let replacing = false;
+
+    // The house's wines, every one (keyset-paged): which line lands on which row.
+    const readHouse = async (): Promise<void> => {
       let after: string | null = null;
       for (;;) {
         let q = client
@@ -1827,16 +1869,15 @@ export class MenusService {
         if (rows.length < PAGE_ROWS) break;
         after = String(rows[rows.length - 1].id);
       }
-    }
+    };
 
-    const lockRead = await readOpenLocks(client, restaurantId);
-    if (lockRead.error !== null) fail("the house's price locks", lockRead.error);
-    const locks = new Map<string, OpenLock>(lockRead.locks.map((l) => [`${l.inventoryId}:${l.kind}`, l]));
-    const lockedWines = new Set(lockRead.locks.map((l) => l.inventoryId));
+    const readLocks = async (): Promise<OpenLock[]> => {
+      const lockRead = await readOpenLocks(client, restaurantId);
+      if (lockRead.error !== null) fail("the house's price locks", lockRead.error);
+      return lockRead.locks;
+    };
 
-    // Who set each price now in effect (the open version row).
-    const lastSet = new Map<string, { by: string | null; at: string | null; source: string | null }>();
-    {
+    const readLastSet = async (): Promise<void> => {
       let after: string | null = null;
       for (;;) {
         let q = client
@@ -1858,14 +1899,10 @@ export class MenusService {
         if (rows.length < PAGE_ROWS) break;
         after = String(rows[rows.length - 1].id);
       }
-    }
+    };
 
-    // The wines on the menu being REPLACED (every other active menu), for L18's "returned".
-    const onReplaced = new Set<string>();
-    // Every drink line of the menu being replaced, for "not on this file" (2d).
-    const replacedLines: InsertedMenuItem[] = [];
-    let replacing = false;
-    if (!current) {
+    const readReplaced = async (): Promise<void> => {
+      if (current) return;
       const { data: actives, error: activeErr } = await client
         .from("restaurant_menus")
         .select("id")
@@ -1887,7 +1924,11 @@ export class MenusService {
           if (!isKitchenItem(row)) replacedLines.push(row);
         }
       }
-    }
+    };
+
+    const [, openLocks] = await allInOrder([readHouse(), readLocks(), readLastSet(), readReplaced()] as const);
+    const locks = new Map<string, OpenLock>(openLocks.map((l) => [`${l.inventoryId}:${l.kind}`, l]));
+    const lockedWines = new Set(openLocks.map((l) => l.inventoryId));
 
     const counts = emptyPlanCounts();
     const onThisMenu = new Set<string>();
@@ -2012,7 +2053,7 @@ export class MenusService {
       }
     }
 
-    const dormantLocks: DormantLock[] = lockRead.locks
+    const dormantLocks: DormantLock[] = openLocks
       .filter((l) => !onThisMenu.has(l.inventoryId))
       .map((l) => {
         const w = byInventory.get(l.inventoryId) ?? null;
@@ -2189,8 +2230,9 @@ export class MenusService {
     // choosing it again answered "already_current" with zero lines: a switch
     // that could never be finished, reported as one that had been. Now a failed
     // read throws here and nothing is changed.
-    const lines = (await this.readLines(menuId, restaurantId)) as unknown as InsertedMenuItem[];
-    const version = await this.readVersionRow(restaurantId, menuId);
+    // r41 R3: both read together, the lines' failure said first as before.
+    const [read, version] = await allInOrder([this.readLines(menuId, restaurantId), this.readVersionRow(restaurantId, menuId)] as const);
+    const lines = read as unknown as InsertedMenuItem[];
     const plan = await this.computePlan(restaurantId, menuId, await this.isOnlyCurrent(restaurantId, menuId, version), lines, readMomentOf(version), carryMomentOf(version));
     if (plan.fingerprint !== fingerprint.trim()) {
       throw new ConflictException(
@@ -2853,13 +2895,17 @@ export class MenusService {
     const existingByWine = new Map<string, HouseRow>();
     const readFailed = new Map<string, string>();
     const HOUSE_ROW = "id, master_wine_id, kind, menu_price_current, menu_price_glass";
-    for (let at = 0; at < wineIds.length; at += WINE_ID_CHUNK) {
-      const chunk = wineIds.slice(at, at + WINE_ID_CHUNK);
-      const { data, error } = await client
-        .from("restaurant_inventory")
-        .select(HOUSE_ROW)
-        .eq("restaurant_id", restaurantId)
-        .in("master_wine_id", chunk);
+    // The goods named by their own row, by id and in this house only. A link to
+    // a row that is gone is said on its line, never taken for a new wine.
+    const goodIds = [...new Set(validItems.filter((i) => !i.wine_library_id).map((i) => String(i.inventory_item_id)))];
+    // r41 R3: the wine chunks and the good chunks are read together.
+    const houseRowsBy = (column: "master_wine_id" | "id") => async (chunk: string[]) =>
+      client.from("restaurant_inventory").select(HOUSE_ROW).eq("restaurant_id", restaurantId).in(column, chunk);
+    const [byWine, byGood] = await allInOrder([
+      chunksTogether(wineIds, houseRowsBy("master_wine_id")),
+      chunksTogether(goodIds, houseRowsBy("id")),
+    ] as const);
+    for (const { chunk, answer: { data, error } } of byWine) {
       if (error) {
         for (const w of chunk) readFailed.set(w, error.message);
         continue;
@@ -2867,16 +2913,7 @@ export class MenusService {
       // One row per house and wine (the UNIQUE), so a chunk never nears the 1000-row cap.
       for (const r of (data ?? []) as HouseRow[]) existingByWine.set(String(r.master_wine_id), r);
     }
-    // The goods named by their own row, by id and in this house only. A link to
-    // a row that is gone is said on its line, never taken for a new wine.
-    const goodIds = [...new Set(validItems.filter((i) => !i.wine_library_id).map((i) => String(i.inventory_item_id)))];
-    for (let at = 0; at < goodIds.length; at += WINE_ID_CHUNK) {
-      const chunk = goodIds.slice(at, at + WINE_ID_CHUNK);
-      const { data, error } = await client
-        .from("restaurant_inventory")
-        .select(HOUSE_ROW)
-        .eq("restaurant_id", restaurantId)
-        .in("id", chunk);
+    for (const { chunk, answer: { data, error } } of byGood) {
       if (error) {
         for (const g of chunk) readFailed.set(`good:${g}`, error.message);
         continue;
@@ -2996,13 +3033,11 @@ export class MenusService {
         }
       } else {
         const ids = [...new Set(round.map((x) => x.inventoryId))];
-        for (let at = 0; at < ids.length; at += WINE_ID_CHUNK) {
-          const chunk = ids.slice(at, at + WINE_ID_CHUNK);
-          const { data: again, error: againErr } = await client
-            .from("restaurant_inventory")
-            .select("id, menu_price_current, menu_price_glass")
-            .eq("restaurant_id", restaurantId)
-            .in("id", chunk);
+        // r41 R3: the chunks are read together.
+        const reread = await chunksTogether(ids, async (chunk) =>
+          client.from("restaurant_inventory").select("id, menu_price_current, menu_price_glass").eq("restaurant_id", restaurantId).in("id", chunk),
+        );
+        for (const { chunk, answer: { data: again, error: againErr } } of reread) {
           if (againErr) {
             for (const id of chunk) againFailed.set(id, againErr.message);
             continue;

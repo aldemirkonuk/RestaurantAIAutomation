@@ -2497,6 +2497,95 @@ describe("MenusService — the plan before a menu is chosen, and the locks it re
     return { calls, tables, service };
   };
 
+  /**
+   * r41 R3: every read answers after `ms` (per table when named), and the
+   * fake counts how many reads were in flight at once. A plan's reads that
+   * need nothing from one another run together; a failure is said as before.
+   */
+  function slowed(tables: Record<string, Row[]>, ms: number | Record<string, number>) {
+    const service = makeService(tables, { rpc: rpcFor(tables) });
+    const db = (service as any).dbService as { supabase: any };
+    const inner = db.supabase;
+    const stat = { inFlight: 0, most: 0, reads: 0 };
+    const wait = (table: string) => (typeof ms === "number" ? ms : (ms[table] ?? 5));
+    db.supabase = {
+      ...inner,
+      from(table: string) {
+        const api = inner.from(table);
+        const later = <T>(answer: () => T | Promise<T>) =>
+          new Promise<T>((resolve) => {
+            stat.reads += 1;
+            stat.inFlight += 1;
+            stat.most = Math.max(stat.most, stat.inFlight);
+            setTimeout(async () => {
+              stat.inFlight -= 1;
+              resolve(await answer());
+            }, wait(table));
+          });
+        const then = api.then.bind(api);
+        const maybe = api.maybeSingle;
+        api.then = (resolve: any, reject: any) => later(() => new Promise((r) => then(r))).then(resolve, reject);
+        api.maybeSingle = () => later(() => maybe());
+        return api;
+      },
+    };
+    return { service, stat };
+  }
+
+  describe("r41 R3: a plan's independent reads run together", () => {
+    it("the plan is the same, and its reads overlap instead of queuing", async () => {
+      const serial = setup();
+      const expected = await serial.service.planFor("rest-1", "menu-new");
+      const { service, stat } = slowed(house(), 20);
+      const t0 = Date.now();
+      const plan = await service.planFor("rest-1", "menu-new");
+      const took = Date.now() - t0;
+      expect(plan.fingerprint).toBe(expected.fingerprint);
+      expect(plan.lines).toEqual(expected.lines);
+      expect(plan.dormantLocks).toEqual(expected.dormantLocks);
+      // Row and lines together, then the house, the locks, the price versions
+      // and the current menu together: never fewer than four in flight.
+      expect(stat.most).toBeGreaterThanOrEqual(4);
+      // eslint-disable-next-line no-console
+      console.log(`R3TIME planFor reads=${stat.reads} mostInFlight=${stat.most} ms=${took}`);
+    });
+
+    it("make-current reads its lines and its row together, and still chooses", async () => {
+      const { service, stat } = slowed(house(), 20);
+      const fp = (await service.planFor("rest-1", "menu-new")).fingerprint;
+      stat.most = 0;
+      const t0 = Date.now();
+      const r = await service.makeCurrent("rest-1", "menu-new", "user-2", fp);
+      // eslint-disable-next-line no-console
+      console.log(`R3TIME makeCurrent reads=${stat.reads} mostInFlight=${stat.most} ms=${Date.now() - t0}`);
+      expect(r.outcome).toBe("made_current");
+      expect(stat.most).toBeGreaterThanOrEqual(4);
+    });
+
+    it("a lock read that fails is said as before, though the house's wines were read", async () => {
+      const tables = house();
+      (tables as any).__readFails = [{ house_price_locks: "locks offline" }];
+      const { service } = slowed(tables, 5);
+      await expect(service.planFor("rest-1", "menu-new")).rejects.toThrow(
+        "What choosing this menu would do could not be worked out, so nothing was changed: the house's price locks could not be read (locks offline).",
+      );
+    });
+
+    it("two failures: the house's wines are said first, though the lock read failed sooner", async () => {
+      const tables = house();
+      (tables as any).__readFails = [{ house_price_locks: "locks offline", restaurant_inventory: "inventory offline" }];
+      const { service } = slowed(tables, { restaurant_inventory: 40, house_price_locks: 2 });
+      await expect(service.planFor("rest-1", "menu-new")).rejects.toThrow(
+        "the house's wines could not be read (inventory offline)",
+      );
+    });
+
+    it("another house's menu is still a 404, though its lines were asked for together", async () => {
+      const { service } = slowed(house(), 5);
+      await expect(service.planFor("rest-2", "menu-new")).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
   it("L13: the plan says, per line and per kind, what choosing the menu would do -- and writes nothing", async () => {
     const { calls, tables, service } = setup();
     const plan = await service.planFor("rest-1", "menu-new");
