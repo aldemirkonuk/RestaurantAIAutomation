@@ -113,11 +113,20 @@ export function planSentence(
   if (plan.current) {
     // r28 G1: a carry cut off part-way can be finished from here, so "changes
     // nothing" is only true when no price on the house differs from the menu.
+    // r31 w1 F2: a price someone set since the choice is not one the carry
+    // sets (it is dated by the choice, so the newer price stands), and the
+    // sentence counts it apart, as the carry's own answer does.
     const differ = c.change + c.new_wine;
+    const kept = c.kept_newer ?? 0;
     const removed = removedClause(plan.lines);
     const tail = removed ? ` ${removed}.` : '';
-    if (differ === 0) return `This is the current menu, and every price on it already reached the house.${tail}`;
-    return `This is the current menu, and ${plural(differ, 'price on the house differs', 'prices on the house differ')} from it. Carrying its prices again sets the ones its choice did not reach; a price someone set since it was chosen stays.${tail}`;
+    const stays =
+      kept > 0
+        ? `${plural(kept, 'price', 'prices')} someone set since it was chosen ${kept === 1 ? 'stays' : 'stay'}, and carrying again leaves ${kept === 1 ? 'it' : 'them'} as ${kept === 1 ? 'it is' : 'they are'}`
+        : null;
+    if (differ === 0 && !stays) return `This is the current menu, and every price on it already reached the house.${tail}`;
+    if (differ === 0) return `This is the current menu, and every price its choice set reached the house; ${stays}.${tail}`;
+    return `This is the current menu, and ${plural(differ, 'price on the house differs', 'prices on the house differ')} from it. Carrying its prices again sets ${differ === 1 ? 'it' : 'them'}${stays ? `; ${stays}` : ''}.${tail}`;
   }
   const parts: string[] = [];
   if (c.change > 0) parts.push(`set ${plural(c.change, 'price', 'prices')} from this menu`);
@@ -181,7 +190,7 @@ function setWords(k: PlanKind): string {
 export function orderedRows(lines: PlanLine[]): Row[] {
   const rows: Row[] = lines
     .flatMap((line) => [line.bottle, line.glass].map((k) => ({ line, k })))
-    .filter((r) => r.k.result === 'change' || r.k.result === 'held_by_lock');
+    .filter((r) => r.k.result === 'change' || r.k.result === 'held_by_lock' || r.k.result === 'kept_newer');
   return [...rows.filter((r) => r.k.setAfterRead === true), ...rows.filter((r) => r.k.setAfterRead !== true)];
 }
 
@@ -190,6 +199,8 @@ export function kindWords(line: PlanLine, k: PlanKind, currency: string | null =
   switch (k.result) {
     case 'change':
       return `becomes ${money(k.menuPrice, currency)} (now ${money(k.housePrice, currency)})`;
+    case 'kept_newer':
+      return `stays ${money(k.housePrice, currency)}, set since this menu was chosen (the menu says ${money(k.menuPrice, currency)})`;
     case 'unchanged':
       return `already ${money(k.housePrice, currency)}`;
     case 'held_by_lock':
@@ -391,7 +402,9 @@ export function MenuPlan({
                     <td className="cl-dim">
                       {r.k.result === 'held_by_lock' && r.k.lock
                         ? `Stays ${money(r.k.lock.lockedPrice, currency)}: locked by ${r.k.lock.lockedBy.name ?? 'someone whose name is not on record'} on ${day(r.k.lock.lockedAt)}`
-                        : `Becomes ${money(r.k.menuPrice, currency)}${setWords(r.k) ? `; it was ${setWords(r.k)}` : ''}`}
+                        : r.k.result === 'kept_newer'
+                          ? `Stays ${money(r.k.housePrice, currency)}, set since this menu was chosen (the menu says ${money(r.k.menuPrice, currency)})${setWords(r.k) ? `; it was ${setWords(r.k)}` : ''}`
+                          : `Becomes ${money(r.k.menuPrice, currency)}${setWords(r.k) ? `; it was ${setWords(r.k)}` : ''}`}
                     </td>
                     <td>
                       <KeepSwitch
