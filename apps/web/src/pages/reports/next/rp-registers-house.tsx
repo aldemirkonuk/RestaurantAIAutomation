@@ -154,71 +154,147 @@ const quadrants = analysis<QuadrantRegister>({
 export interface LedgerRegister {
   basis?: Record<string, string>;
   costCoverage?: { total: number; priced: number; unpriced: number; complete: boolean };
+  /** Cost-math lane 3.1: how much of what sold carries its cost. */
+  cogsCoverage?: {
+    itemsMoved: number;
+    itemsCosted: number;
+    bottlesUncosted: number;
+  } | null;
+  salesWithheld?: boolean;
   inventoryValue: number | null;
   cogs: number | null;
+  cogsSettledAfterSale: number | null;
+  /** Late prices settled in the window on bottles sold before it: not in cogs, feeds no ratio. */
+  settledOnEarlierSales: number | null;
+  /** While cogs is withheld: the exact cost of the items whose every bottle is costed. Feeds no ratio. */
+  costOfCostedItems: { amount: number; items: number; of: number } | null;
   revenue: number | null;
+  grossMarginDollars: number | null;
   grossMargin: number | null;
   cogsRatio: number | null;
   inventoryTurnover: number | null;
   daysInventoryOutstanding: number | null;
   gmroi: number | null;
+  deliveredPurchases: number | null;
   deadStockCapital: number | null;
 }
 
 const ledger = analysis<LedgerRegister>({
   title: 'Figures of record',
   register: 'financial register',
-  answers: 'What the cellar is worth, and how hard that capital is working',
-  window: () => '365 days of COGS; the cellar as it stands today',
+  answers: 'What sold, what it cost, what was kept, and how hard the cellar works',
+  window: () => '365 days of the till; the cellar as it stands today',
   path: (rid) => `/analytics/financial/${rid}`,
   graphs: ['table', 'figure'],
   graphNote:
-    'No bars, line or area: these eight figures are in four different units — money, a ratio, a count of turns, a count of days — and one axis across them would compare dollars with days.',
+    'No bars, line or area: these figures are in four different units — money, a ratio, a count of turns, a count of days — and one axis across them would compare dollars with days.',
   select: (raw) => {
     const d = obj(raw);
+    const cg = d.cogsCoverage == null ? null : obj(d.cogsCoverage);
+    const kp = d.costOfCostedItems == null ? null : obj(d.costOfCostedItems);
+    const kpAmount = kp ? num(kp.amount) : null;
     return {
       basis: d.basis as Record<string, string>,
       costCoverage: d.costCoverage as LedgerRegister['costCoverage'],
+      cogsCoverage: cg
+        ? {
+            itemsMoved: num(cg.itemsMoved) ?? 0,
+            itemsCosted: num(cg.itemsCosted) ?? 0,
+            bottlesUncosted: num(cg.bottlesUncosted) ?? 0,
+          }
+        : null,
+      salesWithheld: d.salesWithheld === true,
       inventoryValue: num(d.inventoryValue),
       cogs: num(d.cogs),
+      cogsSettledAfterSale: num(d.cogsSettledAfterSale),
+      settledOnEarlierSales: num(d.settledOnEarlierSales),
+      costOfCostedItems:
+        kp && kpAmount != null
+          ? { amount: kpAmount, items: num(kp.items) ?? 0, of: num(kp.of) ?? 0 }
+          : null,
       revenue: num(d.revenue),
+      grossMarginDollars: num(d.grossMarginDollars),
       grossMargin: num(d.grossMargin),
       cogsRatio: num(d.cogsRatio),
       inventoryTurnover: num(d.inventoryTurnover),
       daysInventoryOutstanding: num(d.daysInventoryOutstanding),
       gmroi: num(d.gmroi),
+      deliveredPurchases: num(d.deliveredPurchases),
       deadStockCapital: num(d.deadStockCapital),
     };
   },
   view: (f) => {
     const cc = f.costCoverage;
+    const cg = f.cogsCoverage;
+    const withheld = 'Owners and managers see the till’s figures';
+    const costGap =
+      cg && cg.itemsMoved > 0 && cg.itemsCosted < cg.itemsMoved
+        ? `Cost known for ${figure(cg.itemsCosted)} of ${figure(cg.itemsMoved)} items sold`
+        : undefined;
     const figures = [
+      {
+        label: 'Sold, net (365d)',
+        value: money(f.revenue),
+        note: f.salesWithheld ? withheld : 'No closed check, or a till line could not be read',
+      },
+      {
+        label: 'What it cost (365d)',
+        value: money(f.cogs),
+        note: f.salesWithheld ? withheld : (costGap ?? 'The till moved no stocked item, or its movements could not be read'),
+      },
+      {
+        label: 'Kept',
+        value: money(f.grossMarginDollars),
+        note: 'Needs what sold and what it cost',
+      },
+      { label: 'Kept, of sales', value: ratioPct(f.grossMargin), note: 'Needs what sold and what it cost' },
+      { label: 'Cost of sales', value: ratioPct(f.cogsRatio), note: 'Needs what sold and what it cost' },
       {
         label: 'Cellar at cost',
         value: money(f.inventoryValue),
         note: 'Not every on-hand row carries a recorded cost',
       },
+      { label: 'Inventory turns', value: figure(f.inventoryTurnover), note: 'Needs the cellar at cost, what it cost, and 28 days of the till' },
+      { label: 'Days of inventory', value: figure(f.daysInventoryOutstanding), note: 'Needs the cellar at cost, what it cost, and 28 days of the till' },
+      { label: 'GMROI', value: figure(f.gmroi), note: 'Needs the cellar at cost, what was kept, and 28 days of the till' },
       {
-        label: 'Cost of goods (365d)',
-        value: money(f.cogs),
-        note: 'No delivered order came back for the window — which is either no buying or a read that failed',
+        label: 'Bought (365d)',
+        value: money(f.deliveredPurchases),
+        note: 'No delivered order came back, or one carries no recorded cost',
       },
-      {
-        label: 'Sell-price valuation',
-        value: money(f.revenue),
-        note: 'No inventory row came back',
-      },
-      { label: 'Gross margin', value: ratioPct(f.grossMargin), note: 'Needs a complete cost basis' },
-      { label: 'COGS ratio', value: ratioPct(f.cogsRatio) },
-      { label: 'Inventory turns', value: figure(f.inventoryTurnover) },
-      { label: 'Days of inventory', value: figure(f.daysInventoryOutstanding) },
-      { label: 'GMROI', value: figure(f.gmroi) },
       {
         label: 'Capital sitting still',
         value: money(f.deadStockCapital),
         note: 'No movement signal recorded, or an idle row has no cost',
       },
     ];
+    const notes: string[] = [];
+    if (costGap)
+      notes.push(
+        `${costGap}; ${figure(cg!.bottlesUncosted)} bottle${cg!.bottlesUncosted === 1 ? '' : 's'} left or came back with no invoice cost yet, so what it cost reads ${EM} rather than a smaller number.`,
+      );
+    // The known part, by name and apart: exact for those items, not what it
+    // cost, and divided into nothing (batch review 2026-11-11, finding 2).
+    const kp = f.costOfCostedItems;
+    if (costGap && kp && kp.items > 0)
+      notes.push(
+        `The ${figure(kp.items)} of ${figure(kp.of)} items sold whose every bottle carries its cost cost ${money(kp.amount)}. That is not what it cost, and no figure above divides by it.`,
+      );
+    if (f.cogsSettledAfterSale != null && f.cogsSettledAfterSale !== 0)
+      notes.push(`${money(f.cogsSettledAfterSale)} of what it cost is late prices on this window’s sales, settled when invoices were verified after the bottles sold.`);
+    if (f.settledOnEarlierSales != null && f.settledOnEarlierSales !== 0)
+      notes.push(
+        `${money(f.settledOnEarlierSales)} of late prices was settled in this window on bottles sold before it. It is not in what it cost: those sales are not in this window’s sales.`,
+      );
+    // Only the cellar-based figures wait on the cellar's cost; what sold,
+    // what it cost and what was kept come from the till (finding 3).
+    if (cc && !cc.complete)
+      notes.push(
+        cc.total === 0
+          ? `No on-hand wine carries a recorded cost, so the cellar at cost, inventory turns, days of inventory and GMROI read ${EM} rather than a total assembled from nothing.`
+          : `${figure(cc.priced)} of ${figure(cc.total)} on-hand wines carry a recorded cost, so the cellar at cost, inventory turns, days of inventory and GMROI read ${EM} rather than a total assembled from part of the cellar.`,
+      );
+    notes.push('Before tax. Bought is what was bought, not what sold: it feeds no ratio.');
     return {
       // The "table" of this register IS its figures — one label, one figure of
       // record — so it is rendered as the figure list rather than as a grid
@@ -231,18 +307,12 @@ const ledger = analysis<LedgerRegister>({
         </dl>
       ),
       figures,
-      notes:
-        cc && !cc.complete
-          ? [
-              cc.total === 0
-                ? `No on-hand wine carries a recorded cost, so every cost-derived figure above reads ${EM} rather than a total assembled from nothing.`
-                : `${figure(cc.priced)} of ${figure(cc.total)} on-hand wines carry a recorded cost, so every cost-derived figure above reads ${EM} rather than a total assembled from part of the cellar.`,
-            ]
-          : [],
+      notes,
       basis: [
         f.basis?.revenue,
         f.basis?.cogs,
         f.basis?.inventoryValue,
+        f.basis?.deliveredPurchases,
         f.basis?.deadStock,
         f.basis?.costDerived,
       ],

@@ -416,7 +416,7 @@ function base() {
       ledger: ok({
         basis: {
           revenue: 'unit_price × on-hand qty',
-          cogs: 'delivered procurement_orders (trailing 365d) — 4 orders summed',
+          cogs: 'cost of what the till sold (365d) — 4 items',
           inventoryValue: 'on-hand qty × unit cost',
         },
         costCoverage: { total: 10, priced: 4, unpriced: 6, complete: false },
@@ -501,7 +501,7 @@ describe('ReportsNext — the sheet', () => {
     ).toBeInTheDocument();
     expect(
       within(screen.getByRole('region', { name: 'Figures of record' })).getByText(
-        '365 days of COGS; the cellar as it stands today',
+        '365 days of the till; the cellar as it stands today',
       ),
     ).toBeInTheDocument();
     expect(
@@ -816,15 +816,51 @@ describe('ReportsNext — the palette never fabricates', () => {
   });
 });
 
+describe('ReportsNext — the costed part and earlier late prices, apart (batch review 2026-11-11)', () => {
+  it('says what the costed items cost and the late prices on earlier sales, neither as what it cost', () => {
+    hook.current = withRegister(
+      'ledger',
+      ok({
+        basis: { cogs: 'cost of what the till sold (365d) — withheld: cost known for 11 of 12 items sold' },
+        costCoverage: { total: 10, priced: 10, unpriced: 0, complete: true },
+        cogsCoverage: { itemsMoved: 12, itemsCosted: 11, bottlesUncosted: 1 },
+        costOfCostedItems: { amount: 4210.5, items: 11, of: 12 },
+        settledOnEarlierSales: 18,
+        inventoryValue: 9000,
+        cogs: null,
+        revenue: 15000,
+        grossMargin: null,
+        cogsRatio: null,
+        inventoryTurnover: null,
+        daysInventoryOutstanding: null,
+        gmroi: null,
+        deadStockCapital: null,
+      }),
+    );
+    paint();
+    const ledger = screen.getByRole('region', { name: 'Figures of record' });
+    const cogs = within(ledger).getByText('What it cost (365d)').closest('.rp-fig');
+    expect(within(cogs as HTMLElement).getByText('—')).toBeInTheDocument();
+    expect(
+      within(ledger).getByText(/The 11 of 12 items sold whose every bottle carries its cost cost \$4,210\.5\. That is not what it cost/),
+    ).toBeInTheDocument();
+    expect(
+      within(ledger).getByText(/of late prices was settled in this window on bottles sold before it\. It is not in what it cost/),
+    ).toBeInTheDocument();
+    expect(within(ledger).queryByText(/on-hand wines carry a recorded cost/)).not.toBeInTheDocument();
+  });
+});
+
 describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
   it('prints an em dash for a COGS the server withheld, never $0', () => {
     hook.current = withRegister(
       'ledger',
       ok({
         basis: {
-          cogs: 'delivered procurement_orders (trailing 365d) — null: no delivered order was returned for this window',
+          cogs: 'cost of what the till sold (365d) — withheld: cost known for 3 of 4 items sold',
         },
         costCoverage: { total: 0, priced: 0, unpriced: 0, complete: false },
+        cogsCoverage: { itemsMoved: 4, itemsCosted: 3, bottlesUncosted: 2 },
         inventoryValue: null,
         cogs: null,
         revenue: null,
@@ -839,11 +875,19 @@ describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
     paint();
     const ledger = screen.getByRole('region', { name: 'Figures of record' });
     expect(within(ledger).queryByText('$0')).not.toBeInTheDocument();
-    const cogs = within(ledger).getByText('Cost of goods (365d)').closest('.rp-fig');
+    const cogs = within(ledger).getByText('What it cost (365d)').closest('.rp-fig');
     expect(within(cogs as HTMLElement).getByText('—')).toBeInTheDocument();
+    // Cost-math lane 3.1: a cost gap says N of M, never prints a smaller sum.
+    expect(within(ledger).getByText(/Cost known for 3 of 4 items sold; 2 bottles/)).toBeInTheDocument();
+    // Batch review 2026-11-11: the cellar note names only the cellar-based
+    // figures, not what sold or what it cost.
+    expect(within(ledger).queryByText(/every cost-derived figure/)).not.toBeInTheDocument();
+    expect(
+      within(ledger).getByText(/so the cellar at cost, inventory turns, days of inventory and GMROI read —/),
+    ).toBeInTheDocument();
     // …and the server's own reason is one click away.
     fireEvent.click(within(ledger).getByText('Show the working'));
-    expect(within(ledger).getByText(/no delivered order was returned/)).toBeInTheDocument();
+    expect(within(ledger).getByText(/withheld: cost known for 3 of 4 items sold/)).toBeInTheDocument();
   });
 
   it('claims no forecast total when the server reports no model fitted', () => {

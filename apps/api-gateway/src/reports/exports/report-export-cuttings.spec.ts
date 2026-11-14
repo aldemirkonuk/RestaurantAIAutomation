@@ -90,22 +90,42 @@ describe("the exportable cuttings (OD-81)", () => {
 });
 
 describe("a figure the engine did not compute is written as withheld, never as 0 (OD-81)", () => {
-  it("figures of record: no delivered order and an incomplete cost basis withhold COGS and every cost-derived figure", () => {
+  it("figures of record: a cost gap and an incomplete cost basis withhold what it cost and every cost-derived figure", () => {
     const doc = EXPORT_CUTTINGS.ledger.write(PAYLOADS.ledger, { days: null });
     for (const label of [
+      "What it cost (365d)",
+      "Kept",
+      "Kept, of sales",
+      "Cost of sales",
       "Cellar at cost",
-      "Cost of goods (365d)",
-      "Gross margin",
-      "COGS ratio",
       "Inventory turns",
       "Days of inventory",
       "GMROI",
+      "Bought (365d)",
       "Capital sitting still",
     ])
       expect([label, isWithheld(figure(doc, label))]).toEqual([label, true]);
-    expect(figure(doc, "Sell-price valuation")).toBe(5400);
+    // Cost-math lane 3.1: sales are the till's, net; the shelf valuation is
+    // no longer printed as if it were sales.
+    expect(figure(doc, "Sold, net (365d)")).toBe(5400);
+    expect(doc.figures.map((x) => x.label)).not.toContain("Sell-price valuation");
+    expect(doc.notes.join(" ")).toContain("Cost known for 2 of 3 items sold; 4 bottles");
     expect(doc.notes.join(" ")).toContain("1 of 2 on-hand wines carry a recorded cost");
-    expect(countWithheld(doc)).toBe(8);
+    expect(countWithheld(doc)).toBe(10);
+    // Batch review 2026-11-11: the cellar note names only the figures that
+    // wait on the cellar; the costed part and the late prices on earlier
+    // sales are said apart and divide into nothing.
+    const notes = doc.notes.join(" ");
+    expect(notes).not.toContain("every cost-derived figure");
+    expect(notes).toContain("so the cellar at cost, inventory turns, days of inventory and GMROI are withheld");
+    expect(notes).toContain("The 2 of 3 items sold whose every bottle carries its cost cost 310.50. That is not what it cost");
+    expect(notes).toContain("7.25 of late prices was settled in this window on bottles sold before it. It is not in what it cost");
+  });
+
+  it("figures of record: a caller without sales sees the till's figures withheld by name", () => {
+    const doc = EXPORT_CUTTINGS.ledger.write({ ...(PAYLOADS.ledger as object), salesWithheld: true, revenue: null }, { days: null });
+    expect(isWithheld(figure(doc, "Sold, net (365d)"))).toBe(true);
+    expect(JSON.stringify(figure(doc, "What it cost (365d)"))).toContain("Owners and managers");
   });
 
   it("what's coming: an unfitted model projects nothing and claims no total", () => {
