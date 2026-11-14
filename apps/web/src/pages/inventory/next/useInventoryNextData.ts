@@ -550,7 +550,11 @@ export function readSentence(rows: InvRow[], currency: HouseCurrency, zonesReada
     const missing = n - priced.length;
     parts.push(
       `At cost the cellar holds ${cellMoney(total, currency)}, with ${fmtCount(priced.length)} of ${fmtCount(n)} titles priced${
-        missing > 0 ? `; the ${fmtCount(missing)} without a cost show —, never 0` : ''
+        missing === 1
+          ? '; the one without a cost shows —, never 0'
+          : missing > 1
+            ? `; the ${fmtCount(missing)} without a cost show —, never 0`
+            : ''
       }.`,
     );
   }
