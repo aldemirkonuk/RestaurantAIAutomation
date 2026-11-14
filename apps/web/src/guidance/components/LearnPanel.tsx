@@ -24,6 +24,12 @@ interface LearnPanelProps {
   anchorRef: RefObject<HTMLButtonElement | null>
   onClose: () => void
   onDismissChecklist?: () => void
+  /**
+   * Learn & Help only: show the steps to the house's costs while one is not
+   * done. The Sidebar passes it for an owner or a manager, never for staff
+   * (they cannot check invoices or connect the house's mail).
+   */
+  showNextSteps?: boolean
 }
 
 export function LearnPanel({
@@ -32,6 +38,7 @@ export function LearnPanel({
   anchorRef,
   onClose,
   onDismissChecklist,
+  showNextSteps = false,
 }: LearnPanelProps) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -64,18 +71,34 @@ export function LearnPanel({
       done: true,
       cta: null as null | { label: string; onClick: () => void },
     },
-    {
-      id: 'menu',
-      label: 'Upload your wine menu',
-      done: !!progress?.menu_uploaded,
-      cta: {
-        label: 'Upload Now',
-        onClick: () => {
-          navigate('/get-started')
-          onClose()
+    // Done = a CURRENT menu (OB-1: a read menu kept as a draft gives no
+    // stock and no prices). A read-but-not-current menu names that step and
+    // leads to /menu, where an owner or a manager chooses the current menu.
+    progress?.menu_uploaded && !progress?.menu_current
+      ? {
+          id: 'menu',
+          label: 'Make your menu the current one',
+          done: false,
+          cta: {
+            label: 'Choose it',
+            onClick: () => {
+              navigate('/menu')
+              onClose()
+            },
+          },
+        }
+      : {
+          id: 'menu',
+          label: 'Read your menu',
+          done: !!progress?.menu_current,
+          cta: {
+            label: 'Read it now',
+            onClick: () => {
+              navigate('/get-started')
+              onClose()
+            },
+          },
         },
-      },
-    },
     {
       id: 'vendor',
       label: 'Add your first vendor',
@@ -103,6 +126,65 @@ export function LearnPanel({
   ]
 
   const completedCount = tasks.filter((t) => t.done).length
+
+  // After the menu (r28 onboarding gap 3): the steps that lead to the
+  // house's costs. Read from the house (next_steps); none of them is part of
+  // setup, so they are not in the count above. `null` = that read failed: the
+  // step is said as not read, never ticked and never called not done.
+  const next = progress?.next_steps
+  const go = (path: string) => () => {
+    navigate(path)
+    onClose()
+  }
+  const nextSteps: Array<{
+    id: string
+    label: string
+    why: string
+    done: boolean
+    unread: boolean
+    cta: { label: string; onClick: () => void }
+  }> = next
+    ? [
+        {
+          id: 'goods',
+          label: 'Put your first goods on the list',
+          why: 'Stock, and what runs low, are read from it.',
+          done: next.goods_listed === true,
+          unread: next.goods_listed === null,
+          cta: { label: 'Count the first goods', onClick: go('/inventory') },
+        },
+        {
+          id: 'mailbox',
+          label: "Connect the house's Gmail",
+          why: "Orders to vendors leave from the house's own address.",
+          done: next.mailbox_connected === true,
+          unread: next.mailbox_connected === null,
+          cta: {
+            label: 'Connect it',
+            onClick: go(`/authorize/gmail_send?returnPath=${encodeURIComponent('/communications')}`),
+          },
+        },
+        {
+          id: 'invoice',
+          label: next.invoice === 'waiting' ? 'Check the invoice that came in' : 'Check your first invoice',
+          why: 'Costs come from the invoices you check.',
+          done: next.invoice === 'checked',
+          unread: next.invoice === null,
+          cta: {
+            label: next.invoice === 'waiting' ? 'Check it' : 'Open Receipts',
+            onClick: go('/receipts'),
+          },
+        },
+      ]
+    : []
+  // After setup (r32): once the menu, a vendor and an invite are in, or the
+  // checklist is put away, the panel is Learn & Help, and the steps to the
+  // costs used to go with the checklist. An owner or a manager keeps them
+  // there until each is done.
+  const nextStepsShown =
+    mode === 'get-started'
+      ? nextSteps.length > 0
+      : showNextSteps && nextSteps.some((step) => !step.done)
   const rect = anchorRef.current?.getBoundingClientRect()
   const isNarrow = typeof window !== 'undefined' && window.innerWidth < 768
   const top = rect ? Math.min(rect.top, window.innerHeight - 420) : 80
@@ -134,7 +216,7 @@ export function LearnPanel({
           </h3>
           <p className="text-xs text-gray-400">
             {mode === 'get-started'
-              ? `${completedCount}/4 complete`
+              ? `${completedCount}/${tasks.length} complete`
               : 'Replay tours & recover tips'}
           </p>
         </div>
@@ -183,6 +265,50 @@ export function LearnPanel({
           </div>
         )}
 
+        {nextStepsShown && (
+          <div className="space-y-1" data-testid="setup-next-steps">
+            <p className="px-2 mb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+              {mode === 'get-started' ? 'Then, to see your costs' : 'To see your costs'}
+            </p>
+            {nextSteps.map((step) => (
+              <div
+                key={step.id}
+                data-step={step.id}
+                className="flex items-start gap-3 p-2 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                {step.done ? (
+                  <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" aria-label="Done" />
+                ) : (
+                  <Circle className="w-5 h-5 text-gray-300 flex-shrink-0 mt-0.5" aria-hidden />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p
+                    className={cn(
+                      'text-sm font-medium',
+                      step.done ? 'text-gray-400 line-through' : 'text-gray-700',
+                    )}
+                  >
+                    {step.label}
+                  </p>
+                  {!step.done && (
+                    <>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {step.unread ? 'Not read just now, so not shown as done or not done.' : step.why}
+                      </p>
+                      <button
+                        onClick={step.cta.onClick}
+                        className="text-xs text-[#1A5E6B] hover:text-[#14515C] font-medium mt-0.5"
+                      >
+                        {step.cta.label} →
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div>
           <p className="px-2 mb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
             Page tours
@@ -217,7 +343,9 @@ export function LearnPanel({
           <button
             type="button"
             onClick={() => {
-              navigate('/get-started?tab=use')
+              // /get-started is the owner's first-house form, not a guide:
+              // the guides are on /help ("How this works").
+              navigate('/help')
               onClose()
             }}
             className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-gray-50 text-left text-sm text-gray-700"

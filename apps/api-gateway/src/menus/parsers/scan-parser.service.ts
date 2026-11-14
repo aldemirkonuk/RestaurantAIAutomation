@@ -17,8 +17,11 @@ import { PARSE_YIELD_BASIS } from "../../common/model-client/verdict-bases";
 import { menuScanVerdict } from "./menu-scan-verdict";
 import {
   MENU_CATEGORY_VOCABULARY,
+  MenuReadWarning,
   WineExtractItem,
 } from "../wine-extract-item.interface";
+
+type PageRange = { first: number; last: number };
 
 /**
  * The menu read is WAITING, not broken: the house's AI spend record could not
@@ -117,6 +120,10 @@ const WINE_EXTRACTION_PROMPT =
   'Examples: [{"name":"Merlot","producer":"Duckhorn","category":"red","vintage":"2019","region":"Napa Valley","bottle_price":120},' +
   '{"name":"Pale Ale","producer":"Sierra Nevada","category":"beer","by_glass_price":9}]';
 
+/** What a house is told when this gateway has no menu reader switched on. */
+export const MENU_READER_OFF =
+  "The menu reader is not switched on here, so nothing was read. Type the lines in instead, or try again later.";
+
 @Injectable()
 export class ScanParserService {
   private readonly logger = new Logger(ScanParserService.name);
@@ -126,6 +133,16 @@ export class ScanParserService {
     private readonly modelClient: ModelClientService,
     private readonly nfVerdicts: NfVerdictService,
   ) {}
+
+  /** `parse`, plus the page ranges that errored or were cut off (ADR 0213 #17). */
+  async parseWithWarnings(
+    imageBase64: string,
+    restaurantId?: string,
+  ): Promise<{ items: WineExtractItem[]; warnings: MenuReadWarning[] }> {
+    const warnings: MenuReadWarning[] = [];
+    const items = await this.parse(imageBase64, restaurantId, false, warnings);
+    return { items, warnings };
+  }
 
   /**
    * Extract wines from a menu image or PDF.
@@ -147,12 +164,14 @@ export class ScanParserService {
     imageBase64: string,
     restaurantId?: string,
     arrival = false,
+    warnings: MenuReadWarning[] = [],
   ): Promise<WineExtractItem[]> {
     const apiKey = this.configService.get<string>("ANTHROPIC_API_KEY");
     if (!apiKey) {
-      throw new ServiceUnavailableException(
-        "Anthropic API key not configured — set ANTHROPIC_API_KEY",
-      );
+      // The operator's fix goes to the log; the house is told what it can do.
+      // The sentence is stored as the read's failure and shown on /menu.
+      this.logger.error("Menu read refused: ANTHROPIC_API_KEY is not set on this gateway");
+      throw new ServiceUnavailableException(MENU_READER_OFF);
     }
 
     // Infer image media type from base64 prefix bytes
@@ -168,9 +187,21 @@ export class ScanParserService {
     // dense short menu and zero on everything else, without guessing a
     // density threshold the corpus would immediately violate.
     if (isPdf) {
-      const preSplit = await this.splitPdfIfLarge(imageBase64, { arrival });
+      const ranges: PageRange[] = [];
+      const preSplit = await this.splitPdfIfLarge(imageBase64, {
+        arrival,
+        ranges,
+        warnings,
+      });
       if (preSplit.length > 1)
-        return this.parseChunks(preSplit, restaurantId, 0, arrival);
+        return this.parseChunks(
+          preSplit,
+          restaurantId,
+          0,
+          arrival,
+          warnings,
+          ranges,
+        );
     }
 
     const first = await this.parseOne(
@@ -184,11 +215,22 @@ export class ScanParserService {
       throw new ServiceUnavailableException(
         "The menu reading was cut short. Use a clearer or smaller image; no items were imported.",
       );
-    if (!first.truncated || !isPdf) return first.items;
+    if (!first.truncated) {
+      if (first.unreadable) warnings.push({ kind: "unreadable_reply", pages: null });
+      return first.items;
+    }
+    if (!isPdf) {
+      warnings.push({ kind: "truncated", pages: null });
+      return first.items;
+    }
 
+    const ranges: PageRange[] = [];
+    const retryWarnings: MenuReadWarning[] = [];
     const chunks = await this.splitPdfIfLarge(imageBase64, {
       force: true,
       arrival,
+      ranges,
+      warnings: retryWarnings,
     });
     if (chunks.length <= 1) {
       if (arrival)
@@ -200,18 +242,29 @@ export class ScanParserService {
         `Menu truncated and could not be split — importing ` +
           `${first.items.length} partial item(s)`,
       );
+      warnings.push({ kind: "truncated", pages: null });
       return first.items;
     }
 
     this.logger.log(
       `Menu truncated on a single request — retrying as ${chunks.length} page-range chunk(s)`,
     );
-    const retried = await this.parseChunks(chunks, restaurantId, 0, arrival);
+    const retried = await this.parseChunks(
+      chunks,
+      restaurantId,
+      0,
+      arrival,
+      retryWarnings,
+      ranges,
+    );
     // Keep whichever run recovered more; a split should always win, but never
     // return less than the first attempt already proved was extractable.
-    return arrival || retried.length >= first.items.length
-      ? retried
-      : first.items;
+    if (arrival || retried.length >= first.items.length) {
+      warnings.push(...retryWarnings);
+      return retried;
+    }
+    warnings.push({ kind: "truncated", pages: null });
+    return first.items;
   }
 
   /**
@@ -229,6 +282,8 @@ export class ScanParserService {
     restaurantId?: string,
     depth = 0,
     arrival = false,
+    warnings: MenuReadWarning[] = [],
+    ranges: PageRange[] = [],
   ): Promise<WineExtractItem[]> {
     // Splitting once is not always enough. RL Restaurant packs ~27 wines per
     // page, so even a 6-page chunk overflows the output cap. Rather than guess
@@ -240,8 +295,9 @@ export class ScanParserService {
     const failed: number[] = [];
 
     for (let i = 0; i < chunks.length; i++) {
+      const pages = ranges[i] ?? null;
       try {
-        const { items, truncated } = await this.parseOne(
+        const { items, truncated, unreadable } = await this.parseOne(
           chunks[i],
           "application/pdf",
           true,
@@ -250,35 +306,53 @@ export class ScanParserService {
         );
 
         if (truncated && depth < MAX_SPLIT_DEPTH) {
+          const finerRanges: PageRange[] = [];
           const finer = await this.splitPdfIfLarge(chunks[i], {
             force: true,
             pagesPerChunk: 2,
             arrival,
+            ranges: finerRanges,
           });
           if (finer.length > 1) {
             this.logger.log(
               `Menu chunk ${i + 1}/${chunks.length} still truncated — ` +
                 `re-splitting into ${finer.length} (depth ${depth + 1})`,
             );
+            const deeperWarnings: MenuReadWarning[] = [];
             const deeper = await this.parseChunks(
               finer,
               restaurantId,
               depth + 1,
               arrival,
+              deeperWarnings,
+              pages
+                ? finerRanges.map((r) => ({
+                    first: r.first + pages.first - 1,
+                    last: r.last + pages.first - 1,
+                  }))
+                : [],
             );
             // Never regress: keep whichever pass recovered more.
-            all.push(
-              ...(arrival || deeper.length >= items.length ? deeper : items),
-            );
+            if (arrival || deeper.length >= items.length) {
+              all.push(...deeper);
+              warnings.push(...deeperWarnings);
+            } else {
+              all.push(...items);
+              warnings.push({ kind: "truncated", pages });
+            }
             continue;
           }
         }
 
-        if (truncated && arrival)
+        // Arrival keeps no warnings, so a range it could not read is refused,
+        // not dropped (an unreadable reply included).
+        if ((truncated || unreadable) && arrival)
           throw new ServiceUnavailableException(
             "A menu page range was incomplete.",
           );
         all.push(...items);
+        if (truncated) warnings.push({ kind: "truncated", pages });
+        else if (unreadable) warnings.push({ kind: "unreadable_reply", pages });
         this.logger.log(
           `Menu chunk ${i + 1}/${chunks.length}: ${items.length} item(s)` +
             (truncated ? " (still truncated — cannot split further)" : ""),
@@ -288,6 +362,7 @@ export class ScanParserService {
         // Not a gap in the menu: the whole read waits and says why.
         if (err instanceof MenuReadWaitingException) throw err;
         failed.push(i + 1);
+        warnings.push({ kind: "chunk_failed", pages });
         this.logger.error(
           `Menu chunk ${i + 1}/${chunks.length} failed: ${err?.message}`,
         );
@@ -348,7 +423,12 @@ export class ScanParserService {
     isPdf: boolean,
     restaurantId?: string,
     arrival = false,
-  ): Promise<{ items: WineExtractItem[]; truncated: boolean }> {
+  ): Promise<{
+    items: WineExtractItem[];
+    truncated: boolean;
+    /** The reply was not a list of lines (an empty list is not this). */
+    unreadable: boolean;
+  }> {
     // OD-59 / P3.0: an unreadable response and a menu page with no wines on it
     // are different outcomes that used to record identically — see
     // ./menu-scan-verdict.ts.
@@ -442,7 +522,10 @@ export class ScanParserService {
           responseChars: content.length,
         }),
       );
-      return { items, truncated };
+      const unreadable =
+        parsed.parseStatus === "unparseable" ||
+        parsed.parseStatus === "parsed_not_array";
+      return { items, truncated, unreadable };
     } catch (error) {
       // Scoped to arrival (codex-audit/C2-adopt.md #8): this used to convert
       // unconditionally, which turned the legacy /menus scan's 503 into a 429
@@ -473,7 +556,14 @@ export class ScanParserService {
    */
   private async splitPdfIfLarge(
     base64: string,
-    opts: { force?: boolean; pagesPerChunk?: number; arrival?: boolean } = {},
+    opts: {
+      force?: boolean;
+      pagesPerChunk?: number;
+      arrival?: boolean;
+      ranges?: PageRange[];
+      /** Gets a `page_cap` warning when pages past MAX_PAGES are dropped. */
+      warnings?: MenuReadWarning[];
+    } = {},
   ): Promise<string[]> {
     // `force` is used on the truncation retry, where page count already
     // proved to be the wrong signal — split whatever we have.
@@ -531,7 +621,14 @@ export class ScanParserService {
         );
         pages.forEach((p) => out.addPage(p));
         chunks.push(Buffer.from(await out.save()).toString("base64"));
+        opts.ranges?.push({ first: start + 1, last: end });
       }
+
+      if (pageCount > MAX_PAGES)
+        opts.warnings?.push({
+          kind: "page_cap",
+          pages: { first: MAX_PAGES + 1, last: pageCount },
+        });
 
       this.logger.log(
         `Menu PDF has ${pageCount} pages — split into ${chunks.length} chunk(s) ` +
@@ -540,6 +637,7 @@ export class ScanParserService {
       return chunks;
     } catch (err: any) {
       if (err instanceof HttpException) throw err;
+      opts.ranges?.splice(0); // the whole file goes back, unsplit
       // An unsplittable PDF (encrypted, malformed) still deserves a shot at
       // single-request extraction — truncation handling downstream covers it.
       this.logger.warn(

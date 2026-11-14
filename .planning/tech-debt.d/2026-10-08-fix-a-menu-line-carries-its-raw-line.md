@@ -1,4 +1,6 @@
-## The kept source file of a menu reaches every member, every CSV column included — OPEN — 2026-10-08
+## The kept source file of a menu reaches every member, every CSV column included — CLOSED on `fix/menu-discard-and-source-for-managers` (#1054) — 2026-11-11 (filed 2026-10-08)
+
+**Closed 2026-11-11.** `GET /menu-versions/:menuId/source` calls `assertCanManageRestaurant` (ADR 0358 D2: the kept source is an owner's or manager's), and the web draws "Open" for `canManage` only. Claim row 4 is resolved.
 
 Entry (i) of this branch. Filed by `fix/a-menu-line-carries-its-raw-line` (#655). Claim: `../decisions/claims.d/fix-a-menu-line-carries-its-raw-line.jsonl:4` (status open).
 
@@ -8,7 +10,9 @@ So this branch's line read withholds the raw line, but the kept file still reach
 
 **The rule for that lane, decided now by the coordinator under the founder's 2026-10-07T20:04:10Z delegation (not the founder's pick).** Refuse every kept source to a viewer whose ROLE_POLICY row does not see both `money` and `suppliers` (`seesRawLine` in `apps/api-gateway/src/menus/menu-line-view.ts`), whatever the file is: the gateway cannot tell a printed menu PDF from a costed list. Hide "Open file" when `!canManage`. It is its own lane, next, because it needs the web change too, and it is the same class as the money-policy synthesis M1 items (`p4-scratch/sim-run/fixes/audits/money-policy-2026-10-07.md`, "Build order").
 
-## A dessert wine counts as a kitchen line — OPEN — 2026-10-08
+## A dessert wine counts as a kitchen line — CLOSED on `fix/menu-dessert-wine-stays-a-drink` — 2026-11-11 (filed 2026-10-08)
+
+**Closed 2026-11-11.** A known drink section now wins in both tests, and the hints match whole words only (plurals allowed): `menu-line-view.ts` `isKitchenLine` and `firstProof.ts` `isKitchenLine`, with cases in `menu-line-view.spec.ts` and `firstProof.test.ts`. Claim row 5 is resolved. What stays true: with no known section, a raw line naming a hint as a word ("Dish Imports") is still set aside. **Amended 2026-11-11 (fix round of #1069):** 'dessert' is also a course, and the reader takes the category from the section heading, so "Tiramisu" under "Desserts" came back as 'dessert' and was kept as a drink. A 'dessert' line is now a drink only on evidence (a vintage, region, grape or producer, or a dessert-wine word, a year or a cl/ml size in its name or raw line), else a course; claim `A-DESSERT-LINE-IS-A-COURSE-WITHOUT-EVIDENCE`. Still open: a course whose raw line carries a cue ("tart with port reduction") is kept as a drink.
 
 Entry (ii) of this branch. Filed by `fix/a-menu-line-carries-its-raw-line` (#655). Claim: `../decisions/claims.d/fix-a-menu-line-carries-its-raw-line.jsonl:5` (status open).
 
@@ -18,7 +22,9 @@ Entry (ii) of this branch. Filed by `fix/a-menu-line-carries-its-raw-line` (#655
 
 A related limit, not a defect of this branch: a workbook (XLSX) import keeps no raw line (`parsers/csv-parser.service.ts:97-105` never sets `raw_text`), so the same menu splits by section alone as XLSX and by section plus row as CSV.
 
-## The import's reply sends each CSV row back to whoever uploaded the file — OPEN — 2026-10-08
+## The import's reply sends each CSV row back to whoever uploaded the file — CLOSED on `fix/menu-discard-and-source-for-managers` (#1054) — 2026-11-11 (filed 2026-10-08)
+
+**Closed 2026-11-11.** The import reply goes through `withheldRawText` (`apps/api-gateway/src/menus/import-reply-view.ts`): a viewer without `seesRawLine` gets every `rawText` as null. Claim row 3 names that file.
 
 Entry (iii) of this branch. Filed by `fix/a-menu-line-carries-its-raw-line` (#655).
 

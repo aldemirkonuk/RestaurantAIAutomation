@@ -7,21 +7,29 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  HttpException,
   InternalServerErrorException,
+  UnprocessableEntityException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
-import { CsvParserService } from "./parsers/csv-parser.service";
+import {
+  CsvParserService,
+  type CsvRowIssue,
+} from "./parsers/csv-parser.service";
 import { ScanParserService } from "./parsers/scan-parser.service";
+import { pagesToOneFile } from "./parsers/pages-to-pdf";
 import { WineSubmissionsService } from "../wines/wine-submissions.service";
 import { ImportMenuDto, type MenuCadence } from "./dto/import-menu.dto";
 import { AddMenuItemDto } from "./dto/add-menu-item.dto";
 import { ReviewMenuItemDto } from "./dto/review-menu-item.dto";
 import { UpdateOnboardingProgressDto } from "./dto/update-onboarding-progress.dto";
-import { WineExtractItem } from "./wine-extract-item.interface";
+import { MenuReadWarning, WineExtractItem } from "./wine-extract-item.interface";
 import { itemNeedsPencil } from "./pencil-rule";
-import { lineForViewer, type LineView } from "./menu-line-view";
+import { isKitchenLine, lineForViewer, type LineView } from "./menu-line-view";
+import { kindNoun, lineFamily, matchHouseGoods } from "./house-good-match";
 import {
   setHouseMenuPrice,
+  setHouseMenuPrices,
   type HeldKind,
   type HousePriceOutcome,
 } from "../pricing/house-menu-price";
@@ -34,6 +42,12 @@ const SOURCE_BUCKET = "vendor-attachments";
 const SOURCE_URL_SECONDS = 300;
 /** PostgREST's max_rows (supabase/config.toml): a page never holds more. */
 const PAGE_ROWS = 1000;
+/**
+ * Wine ids per `.in()` read of the house's rows (menu proposal 2e). Each id is
+ * 36 characters in the query string, so 150 keep a request well under URL
+ * limits, and one row per house and wine keeps every chunk far below PAGE_ROWS.
+ */
+const WINE_ID_CHUNK = 150;
 const DEFAULT_THRESHOLD_MIN_FALLBACK = 3;
 const PRICE_FIELDS = new Set(["by_glass_price", "bottle_price"]);
 
@@ -44,11 +58,30 @@ interface ResolvedItem {
   libraryTier: number | null;
   /** Best library-match score, 0-100. See LibraryResolutionResult. */
   confidence: number | null;
+  /** The house's own good this line named (house-good-match.ts); never sent to the library. */
+  houseItemId?: string | null;
+  /** Two or more of the house's goods fit the line: none was guessed. */
+  houseCandidates?: HouseCandidate[];
+  /**
+   * A kitchen line (menu-line-view.ts isKitchenLine): kept unlinked, never
+   * sent to the library. Carried on the line since r33, when resolving moved
+   * ahead of the version write (#773) and the write lost the local list.
+   */
+  kitchen?: boolean;
+}
+
+interface HouseCandidate {
+  inventoryItemId: string;
+  name: string;
+  kind: string | null;
 }
 
 interface InsertedMenuItem {
   id: string;
   wine_library_id: string | null;
+  // The house's own good, when the line named it (a good whose row names no
+  // library wine, a house gin say, is carried by this link alone).
+  inventory_item_id?: string | null;
   name: string;
   // The menu's own prices: ADR 0193 carries them to the house's price. Dated
   // by the moment the menu was CHOSEN (round 3, L11), never by the line.
@@ -57,6 +90,28 @@ interface InsertedMenuItem {
   created_at?: string | null;
   producer?: string | null;
   vintage?: string | null;
+  // What decides a kitchen line (menu-line-view.ts isKitchenLine). A line read
+  // through readLines already says `kitchen_line`, decided on the full row
+  // before its raw line was withheld; a freshly inserted line is decided here.
+  /** The section the line was read or set into (LINE_SELECT reads it). */
+  category?: string | null;
+  raw_extracted_text?: string | null;
+  region?: string | null;
+  grape_variety?: string | null;
+  kitchen_line?: boolean;
+}
+
+/**
+ * Whether a menu line is a kitchen line (a dish, not a drink). The view's
+ * `kitchen_line` when the line carries it, else the same test on the row. A
+ * kitchen line stays on the menu, and it is never carried to the house: no
+ * inventory row, no house price, no stock. Before this, the split was shown
+ * and nowhere enforced, so "Tiramisu 9" under Desserts became a bottle at 9.00
+ * when its menu was made current.
+ */
+export function isKitchenItem(line: InsertedMenuItem): boolean {
+  if (typeof line.kitchen_line === "boolean") return line.kitchen_line;
+  return isKitchenLine(line.category, line.raw_extracted_text, line as unknown as Record<string, unknown>);
 }
 
 /**
@@ -122,6 +177,8 @@ export interface PlanLine {
   menuItemId: string;
   /** As the menu reads. */
   name: string;
+  /** The line's section as read or set (red, cocktail, beer…): the plan names a line by its kind. */
+  category: string | null;
   producer: string | null;
   vintage: string | null;
   wineLibraryId: string | null;
@@ -149,6 +206,44 @@ export interface DormantLock {
   active: boolean | null;
 }
 
+/**
+ * A line on the menu being replaced that this menu does not carry (2d, "not on
+ * this file"). Shown, never acted on: choosing this menu leaves its wine, its
+ * house row and its prices exactly as they are (ADR 0193 L12, "Silence changes
+ * nothing"), and a lock on it stays (L16).
+ */
+export interface NotOnThisFile {
+  /** The line on the menu being replaced. */
+  menuItemId: string;
+  name: string;
+  producer: string | null;
+  vintage: string | null;
+  wineLibraryId: string | null;
+  /** The house's own row for this wine, when it has one. */
+  inventoryId: string | null;
+  /** The house's prices now, which stay. */
+  bottle: number | null;
+  glass: number | null;
+  /** Kinds an open lock holds; they stay locked. */
+  locked: Array<"bottle" | "glass">;
+  /** False when the house's row is deleted or inactive (it no longer sells it); null with no row. */
+  active: boolean | null;
+}
+
+/**
+ * A name folded for "is it on the other file": case, accents, spacing and the
+ * Turkish dotted/dotless i, so "RAKI" and "Rakı" are one name.
+ */
+export function foldMenuName(name: unknown): string {
+  return String(name ?? "")
+    .replace(/[İIı]/g, "i")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export interface MenuPlan {
   menuId: string;
   /** Whether this menu is already the current one (choosing it again changes nothing). */
@@ -169,6 +264,71 @@ export interface MenuPlan {
   /** Whether the people named in the plan could be named (L25). */
   namesReadable: boolean;
   namesReason: string | null;
+  /**
+   * Lines set aside as kitchen lines: they stay on the menu and are carried
+   * nowhere (no wine, price or stock). Not in `lines` or `counts`.
+   */
+  kitchenLines: Array<{ menuItemId: string; name: string }>;
+  /**
+   * Wines on the menu being replaced that this menu does not carry. Display
+   * only: they keep their price and their row (L12). Empty when this menu is
+   * already current or no menu is being replaced.
+   */
+  notOnThisFile: NotOnThisFile[];
+  /** The house's IANA zone, for saying its dates on its clock (never part of the fingerprint). */
+  timezone?: string | null;
+  /** Why there is no zone to say them in: not set, not a zone, or not readable. */
+  timezoneReason?: string | null;
+}
+
+/**
+ * The zone a house's menu dates are said in, or why there is none (menu r21:
+ * the founder's goal is "dates in the house time zone"; until now /menu named
+ * a read by the clock of whatever device looked at it, so a house in Istanbul
+ * read from a laptop in Detroit was told its 06:05 menu was read 22:05 the
+ * day before). Never a default: a missing zone is said, and the page falls
+ * back to the device's clock saying so (ADR 0067; venueTime.ts rule 2).
+ */
+export function houseZoneOf(
+  raw: unknown,
+  readError: string | null,
+): { timezone: string | null; timezoneReason: string | null } {
+  if (readError !== null) return { timezone: null, timezoneReason: `the house's time zone could not be read (${readError})` };
+  if (typeof raw !== "string" || raw.trim() === "") return { timezone: null, timezoneReason: "the house has no time zone set" };
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: raw.trim() });
+  } catch {
+    return { timezone: null, timezoneReason: `the house's time zone "${raw}" is not one this page knows` };
+  }
+  return { timezone: raw.trim(), timezoneReason: null };
+}
+
+/** An active menu row as getMenu reads it. */
+export interface CurrentMenuRow {
+  id: string;
+  name: string | null;
+  status: string | null;
+  made_current_at?: string | null;
+  created_at?: string | null;
+}
+
+/**
+ * Active menus, the one a person made current last first: by made_current_at
+ * (a menu never chosen, from before ADR 0193, has none and comes after every
+ * chosen one), then created_at, then id, so the same rows always give the same
+ * order (r28 G20).
+ */
+export function newestCurrentFirst(rows: CurrentMenuRow[]): CurrentMenuRow[] {
+  const t = (v: string | null | undefined): number => {
+    const n = v ? Date.parse(v) : NaN;
+    return Number.isFinite(n) ? n : -Infinity;
+  };
+  return [...rows].sort(
+    (a, b) =>
+      t(b.made_current_at) - t(a.made_current_at) ||
+      t(b.created_at) - t(a.created_at) ||
+      String(a.id).localeCompare(String(b.id)),
+  );
 }
 
 function emptyPlanCounts(): Record<PlanResult, number> {
@@ -195,6 +355,21 @@ function yearOf(v: unknown): number | null {
   if (typeof v === "number" && Number.isInteger(v) && v >= 1800 && v <= 2200) return v;
   const m = /\b(1[89]\d{2}|2[01]\d{2})\b/.exec(String(v ?? ""));
   return m ? Number(m[1]) : null;
+}
+
+/**
+ * Only a finished read has a plan or can be made current (the table says the
+ * same: restaurant_menus_only_a_finished_read_is_current). 409, nothing changed.
+ */
+function assertReadFinished(row: Record<string, unknown>): void {
+  const state = (row.read_state as string | undefined) ?? "done";
+  if (state === "reading") {
+    throw new ConflictException("This menu is still being read. Its plan can be shown once the read is done; nothing was changed.");
+  }
+  if (state === "failed") {
+    const why = typeof row.read_failure === "string" ? ` ${row.read_failure}` : "";
+    throw new ConflictException(`This read failed, so it has no lines to make current.${why}`);
+  }
 }
 
 /** When a kept menu was read: `extracted_at`, or, for a menu read before menus were kept, when its row was made. */
@@ -237,6 +412,15 @@ export interface MenuVersion {
   sourceMethod: "scan" | "csv" | "manual" | null;
   source: { kept: boolean; mime: string | null; bytes: number | null; failure: string | null };
   linesExtracted: number | null;
+  /** null = read before this was recorded. */
+  readWarnings: MenuReadWarning[] | null;
+  /**
+   * Where a read stands (founder 2026-11-07, "Background job"): reading,
+   * done, or failed with `readFailure` saying why. Every menu read before
+   * reads were backgrounded is done.
+   */
+  readState: MenuReadState;
+  readFailure: string | null;
   extractedAt: string | null;
   extractedBy: { userId: string; name: string | null } | null;
   madeCurrentAt: string | null;
@@ -246,20 +430,104 @@ export interface MenuVersion {
   createdAt: string | null;
 }
 
+export type MenuReadState = "reading" | "done" | "failed";
+
+/** What a background scan that found no line ends with (kept as its failure). */
+const EMPTY_SCAN_FAILED =
+  "No line could be read from this file. The file is kept with this read; nothing else changed. Try a clearer photo or the PDF itself.";
+
+/** What a read the server stopped hearing from ends with (the lazy sweep). */
+const STOPPED_READ_FAILED =
+  "The read stopped before it finished (the server restarted, or the read ran past half an hour). The file is kept; send it again.";
+
+/** A read still `reading` after this long is no longer being read by anyone. */
+const READ_STALE_MS = 30 * 60 * 1000;
+
+/** What `POST /menus/import` says when a read finds no line (422, nothing kept). */
+const EMPTY_READ_REFUSAL: Record<string, string> = {
+  scan: "No line could be read from this file, so no menu was kept. Try a clearer photo or the PDF itself.",
+  csv: "No line could be read from this file, so no menu was kept. Check that each row names a wine.",
+  manual: "No line was given, so no menu was kept.",
+};
+
+/** The labels a read is kept with; a reopened read must fit them (`sameFileRead`). */
+interface ReadLabels {
+  cadence: MenuCadence | null;
+  menuDate: { date: string; precision: "day" | "month" } | null;
+}
+
+/**
+ * The insert of a `reading` version met another read of the same file and
+ * labels still under way (uq_restaurant_menus_one_read_of_a_file_at_a_time).
+ */
+class SameFileReading extends Error {
+  constructor() {
+    super("the same file is already being read for this house");
+    this.name = "SameFileReading";
+  }
+}
+
+/** What `POST /menus/import` answers, and what a finished background read keeps (`read_reply`). */
+export interface MenuImportReply {
+  menuId: string;
+  /** Always false for a new read; a reopened read says whether it is current now. */
+  current: boolean;
+  /** A scan still being read: poll `GET /menu-versions/:menuId/read`. */
+  reading?: true;
+  /** The same bytes were read before: this is that read, not a new one. */
+  reopened?: { readAt: string | null };
+  /** How many photos the upload joined into this one menu. */
+  pages?: number;
+  itemsExtracted: number;
+  submissionsCreated: number;
+  items: MenuImportReviewItem[];
+  source: { kept: boolean; failure: string | null };
+  warnings: MenuReadWarning[];
+  /**
+   * Rows a CSV or spreadsheet read could not take whole, and why (a price
+   * left blank, a line with no name; csv-parser.service.ts). A scan says
+   * what it could not read in `warnings` instead.
+   */
+  notes?: CsvRowIssue[];
+}
+
+/** The sentence a failed background read is kept with. A refusal keeps its own words. */
+function failureWords(err: unknown): string {
+  if (err instanceof HttpException) {
+    const body = err.getResponse() as unknown;
+    const msg =
+      typeof body === "string"
+        ? body
+        : Array.isArray((body as { message?: unknown })?.message)
+          ? ((body as { message: string[] }).message).join(" ")
+          : (body as { message?: unknown })?.message;
+    if (typeof msg === "string" && msg.trim() !== "") return msg.trim();
+  }
+  const m = (err as Error)?.message;
+  return `The read stopped with an error, and nothing from it was kept but the file: ${m && m.trim() !== "" ? m.trim() : "no reason was given"}.`;
+}
+
+/**
+ * Why a menu's file was not kept, in the house's words. The storage error
+ * itself ("name resolution failed", a bucket name) goes to the log: it is the
+ * operator's to fix, and the house can do nothing with it.
+ */
+export const SOURCE_NOT_TAKEN = "the file store did not take it";
+
 const VERSION_SELECT =
-  "id, name, status, cadence, menu_date, menu_date_precision, source_method, source_path, source_mime, source_bytes, source_failure, lines_extracted, extracted_at, extracted_by, made_current_at, made_current_by, retired_at, retired_by, created_at";
+  "id, name, status, cadence, menu_date, menu_date_precision, source_method, source_path, source_mime, source_bytes, source_failure, lines_extracted, read_warnings, read_state, read_failure, extracted_at, extracted_by, made_current_at, made_current_by, retired_at, retired_by, created_at";
 
 /**
  * The columns every line read asks for. `raw_extracted_text` is read so
  * `lineForViewer` (menu-line-view.ts) can say `kitchen_line`; it leaves this
  * read only when the caller's view allows it (`MenuVersionsController.one`,
  * for a role that sees money and suppliers). A CSV line is the whole row
- * (csv-parser.service.ts:55), cost and supplier cells included, and no header
+ * (csv-parser.service.ts, `raw_text`), cost and supplier cells included, and no header
  * is kept to tell them apart. Other paths still carry the same text: the
  * import's reply and the kept source file (tech-debt.d, this branch's entries).
  */
 export const LINE_SELECT =
-  "id, name, producer, category, vintage, region, country, grape_variety, by_glass_price, bottle_price, wine_library_id, inventory_item_id, source, status, price_flag, price_flag_note, raw_extracted_text, created_at";
+  "id, name, producer, category, vintage, region, country, grape_variety, by_glass_price, bottle_price, wine_library_id, inventory_item_id, source, status, review_notes, price_flag, price_flag_note, raw_extracted_text, created_at";
 
 /** The kinds of file a menu read keeps, sniffed from the bytes, never trusted from a name. */
 function sniffMime(bytes: Buffer): { mime: string; ext: string } {
@@ -272,6 +540,82 @@ function sniffMime(bytes: Buffer): { mime: string; ext: string } {
   if (bytes[0] === 0x50 && bytes[1] === 0x4b)
     return { mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ext: "xlsx" };
   return { mime: "application/octet-stream", ext: "bin" };
+}
+
+/**
+ * A price a person typed for a menu line, as a number, or why it is not one.
+ *
+ * Menu r21 (2026-11-13): the correction route read a price by deleting every
+ * character that was not a digit or a dot, so a house that writes a decimal
+ * comma had "45,50" stored as 4550.00 and "1.250,00" as 1.25, and "-5" became
+ * 5 -- and on the current menu that number became the house's own price. Now:
+ *   - a currency mark at either end and spaces are dropped (45 TL, $70, ₺ 1 250);
+ *   - one separator followed by one or two digits is the decimal ("45,5", "45.50");
+ *   - with both marks, the last is the decimal and the other groups thousands
+ *     in threes ("1.250,00", "1,250.00");
+ *   - one mark followed by three digits ("1,250", "1.250") is refused: it is
+ *     1250 in one house and 1.25 in another, and a price is never guessed;
+ *   - anything else (a minus, letters, two decimals) is refused.
+ */
+export function parseMenuPrice(raw: string): { value: number } | { refused: string } {
+  const typed = String(raw ?? "");
+  const s = typed
+    .replace(/\s+/g, "")
+    .replace(/^(?:[₺$€£]|TL|TRY|USD|EUR|GBP)/i, "")
+    .replace(/(?:[₺$€£]|TL|TRY|USD|EUR|GBP)$/i, "");
+  const not = (why: string) => ({ refused: `"${typed}" is not a price: ${why}. Nothing was changed.` });
+  if (s === "") return not("there is no number in it");
+  if (!/^\d[\d.,]*$/.test(s)) return not("a price is written in digits, with no minus, no letters and at most one decimal mark");
+  const dot = s.lastIndexOf(".");
+  const comma = s.lastIndexOf(",");
+  const asNumber = (whole: string, frac: string) => ({ value: Number(`${whole}${frac ? `.${frac}` : ""}`) });
+  if (dot >= 0 && comma >= 0) {
+    const dec = dot > comma ? "." : ",";
+    const group = dec === "." ? "," : ".";
+    const at = s.lastIndexOf(dec);
+    const whole = s.slice(0, at);
+    const frac = s.slice(at + 1);
+    const grouped = new RegExp(`^\\d{1,3}(?:\\${group}\\d{3})*$`);
+    if (frac.length < 1 || frac.length > 2 || !grouped.test(whole)) return not("its marks do not read as one amount");
+    return asNumber(whole.split(group).join(""), frac);
+  }
+  const sep = dot >= 0 ? "." : comma >= 0 ? "," : null;
+  if (sep === null) return asNumber(s, "");
+  const parts = s.split(sep);
+  if (parts.length === 2 && parts[1].length >= 1 && parts[1].length <= 2 && parts[0] !== "") return asNumber(parts[0], parts[1]);
+  if (parts.length === 2 && parts[1].length === 3 && /^\d{1,3}$/.test(parts[0])) {
+    const whole = `${parts[0]}${parts[1]}`;
+    const small = String(Number(`${parts[0]}.${parts[1]}`));
+    return not(`it could be ${whole} or ${small}; write it as ${whole} or ${small}`);
+  }
+  if (parts.length > 2 && /^\d{1,3}$/.test(parts[0]) && parts.slice(1).every((p) => p.length === 3)) {
+    return asNumber(parts.join(""), "");
+  }
+  return not("its marks do not read as one amount");
+}
+
+/**
+ * The price a line added on /menu names (r28 G7): the number a caller sent, or
+ * the text the person typed, read by parseMenuPrice. The web's Add form used
+ * number boxes read with Number(): in a lira house "45,50" emptied the box in
+ * Chrome (the line went in unpriced) and "1.250" became 1.25. A text that is
+ * not a price is refused with the reason, and nothing is added.
+ */
+export function addedPrice(
+  sent: number | null | undefined,
+  typed: string | null | undefined,
+  label: "glass" | "bottle",
+): number | undefined {
+  const text = typeof typed === "string" ? typed.trim() : "";
+  if (text === "") return sent ?? undefined;
+  if (sent !== undefined && sent !== null) {
+    throw new BadRequestException(`The ${label} price was sent twice, as a number and as typed text. Nothing was added.`);
+  }
+  const read = parseMenuPrice(text);
+  if ("refused" in read) {
+    throw new BadRequestException(`The ${label} price ${read.refused.replace("Nothing was changed.", "Nothing was added.")}`);
+  }
+  return read.value;
 }
 
 /** A `YYYY-MM-DD` or `YYYY-MM` that is a real date, as the stored date and its precision. */
@@ -321,6 +665,7 @@ export type MenuPriceSync =
   | "no_price"
   | "not_linked"
   | "not_current"
+  | "kitchen_line"
   | "failed";
 
 /** What one line did to the house price, and whether it was flagged. */
@@ -333,6 +678,87 @@ interface PriceSyncEntry {
   held: HeldKind[];
   /** Set when the flag itself could not be written on the line. */
   flagError?: string;
+}
+
+/**
+ * The kind and unit of a good a menu line adds to the house (r28 G2), from the
+ * line's section the way the matcher reads it (`lineFamily`). A section that
+ * names no known drink says nothing here, and the insert trigger's wine and
+ * bottle stand: a library wine line with no section is most often a wine.
+ *
+ * A cocktail is counted in servings ('each'), not bottles: it is mixed, not
+ * stocked. Linking it to its recipe is not done here (left in the PR).
+ */
+export function newGoodIdentity(category: string | null | undefined): { kind?: string; uom?: string } {
+  const family = lineFamily(category);
+  const words = ` ${String(category ?? "").toLowerCase().replace(/[^a-z]+/g, " ")} `;
+  switch (family) {
+    case "beer":
+    case "cider":
+    case "sake":
+      return { kind: family, uom: "bottle" };
+    case "cocktail":
+      return { kind: "cocktail", uom: "each" };
+    case "spirit":
+      if (/ (whiskey|whisky|whiskies) /.test(words)) return { kind: "whiskey", uom: "bottle" };
+      if (/ (liqueur|liqueurs) /.test(words)) return { kind: "liqueur", uom: "bottle" };
+      return { kind: "spirit", uom: "bottle" };
+    case "soft":
+      if (/ (non alcoholic|alcohol free) /.test(words)) return { kind: "non_alcoholic", uom: "bottle" };
+      return { kind: "soft_drink", uom: "bottle" };
+    case "wine":
+      return { kind: "wine", uom: "bottle" };
+    default:
+      return {};
+  }
+}
+
+/** What one line will write, and the flag it carries, decided BEFORE the write. */
+interface CarryPlan {
+  bottle: number | null;
+  glass: number | null;
+  flag: PriceFlag | null;
+  flagNote: string | null;
+}
+
+/**
+ * One linked menu line's prices onto the house's own (see carryMenuPrice for
+ * the founder's rules): the prices it names, and its flag against the house's
+ * price just before this line is written.
+ */
+function carryPlanOf(
+  item: InsertedMenuItem,
+  house: { bottle: number | string | null; glass: number | string | null },
+  // The good's kind, for the sentence: a gin is not "this wine" (r21, D4).
+  kind: string | null = null,
+): CarryPlan {
+  const price = (v: unknown): number | null => {
+    if (v === null || v === undefined || v === "") return null;
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  };
+  const bottle = price(item.bottle_price);
+  const glass = price(item.by_glass_price);
+  const knownBottle = price(house.bottle);
+  const knownGlass = price(house.glass);
+  const kept: string[] = [];
+  if (bottle === null && knownBottle !== null) kept.push(`bottle price ${knownBottle.toFixed(2)}`);
+  if (glass === null && knownGlass !== null) kept.push(`glass price ${knownGlass.toFixed(2)}`);
+  const noPriceAnywhere =
+    bottle === null && glass === null && knownBottle === null && knownGlass === null;
+  const flag: PriceFlag | null =
+    kept.length > 0 ? "blank_kept_last_known" : noPriceAnywhere ? "blank_no_house_price" : null;
+  // Past tense on purpose (last-call review, 2026-09-21): the note stays on
+  // the line after a manager changes the price on Inventory, so it states
+  // what was kept when the line was carried -- true forever -- not what the
+  // house "keeps" now, which the first price change would make false.
+  const flagNote =
+    kept.length > 0
+      ? `The menu line shows no ${kept.map((k) => k.split(" ")[0]).join(" or ")} price, so the house kept the ${kept.join(" and ")} it already had. A manager can change it on Inventory, under Your price.`
+      : noPriceAnywhere
+        ? `The menu line shows no price, and the house had no price for this ${kindNoun(kind)} either, so it stands on the menu unpriced. A manager can set one on Inventory, under Your price.`
+        : null;
+  return { bottle, glass, flag, flagNote };
 }
 
 export interface MenuImportReviewItem {
@@ -359,6 +785,11 @@ export interface MenuImportReviewItem {
   priceFlagNote?: string | null;
   /** ADR 0193 round 3: the kinds a price lock held, with their locks. */
   priceHeld?: HeldKind[];
+  /**
+   * Set when two or more of the house's goods fit this line by name, kind,
+   * vintage and size: none was guessed, and the line went to the library.
+   */
+  houseCandidates?: HouseCandidate[];
 }
 
 @Injectable()
@@ -425,35 +856,30 @@ export class MenusService {
   async importMenu(
     dto: ImportMenuDto,
     userId: string,
-  ): Promise<{
-    menuId: string;
-    current: false;
-    itemsExtracted: number;
-    submissionsCreated: number;
-    items: MenuImportReviewItem[];
-    source: { kept: boolean; failure: string | null };
-  }> {
+  ): Promise<MenuImportReply> {
     const { restaurantId } = dto;
     // Checked before the billed read: a date that is not on the calendar
     // refuses the upload rather than failing after it was paid for.
     const menuDate = parseMenuDate(dto.menuDate);
 
-    // 1. Parse input → WineExtractItem[]. A scan is the billed read; its spend
-    // ceiling fails CLOSED (scan-parser.service.ts, ADR 0163 Q22).
+    // A scan (billed, slow) reads in the background; a sheet or typed lines at once.
+    if (dto.method === "scan") return this.beginScan(dto, userId, menuDate);
+
+    // 1. Parse input → WineExtractItem[].
     let items: WineExtractItem[];
+    const warnings: MenuReadWarning[] = [];
+    let notes: CsvRowIssue[] = [];
     let sourceBytes: Buffer | null = null;
     let sourceMime: { mime: string; ext: string } | null = null;
-    if (dto.method === "scan") {
-      items = await this.scanParser.parse(dto.data.imageBase64!, restaurantId);
-      sourceBytes = Buffer.from(dto.data.imageBase64!, "base64");
-      sourceMime = sniffMime(sourceBytes);
-    } else if (dto.method === "csv") {
+    if (dto.method === "csv") {
       if (dto.data.fileBase64) {
-        items = await this.csvParser.parseExcel(dto.data.fileBase64);
+        ({ items, issues: notes } = await this.csvParser.readExcel(
+          dto.data.fileBase64,
+        ));
         sourceBytes = Buffer.from(dto.data.fileBase64, "base64");
         sourceMime = sniffMime(sourceBytes);
       } else {
-        items = this.csvParser.parse(dto.data.csvContent!);
+        ({ items, issues: notes } = this.csvParser.read(dto.data.csvContent!));
         sourceBytes = Buffer.from(dto.data.csvContent!, "utf8");
         sourceMime = { mime: "text/csv", ext: "csv" };
       }
@@ -461,19 +887,44 @@ export class MenusService {
       items = dto.data.items ?? [];
     }
 
-    // 2. Keep the source, or say why it was not kept.
+    // 1b. A read with no line is refused BEFORE anything is written: no source
+    // upload, no draft version, no onboarding mark (QA B-5; ADR 0067, a failed
+    // read is never an empty one).
+    if (items.length === 0) {
+      throw new UnprocessableEntityException({
+        statusCode: 422,
+        error: "Unprocessable Entity",
+        message: EMPTY_READ_REFUSAL[dto.method] ?? EMPTY_READ_REFUSAL.scan,
+        warnings,
+      });
+    }
+
+    // 2. Resolve against the wine library BEFORE anything is written: a
+    // failed resolution throws here, with no version row and no source upload.
+    const resolved = await this.resolveLibrary(items, restaurantId);
+
+    // 3. Keep the source, or say why it was not kept.
     const kept =
       sourceBytes && sourceMime
         ? await this.keepSource(restaurantId, sourceBytes, sourceMime)
         : null;
 
-    // 3. A new version, in draft: kept whether or not it is ever made current.
-    const menu = await this.createVersion(restaurantId, userId, dto, items, kept, menuDate);
-
-    // 4-6: resolve against the wine library, insert menu_items, and create the
-    // governance submission trail. NOT current, so no inventory or price.
-    const reviewItems = await this.resolveAndPersistItems(
+    // 4. A new version, in draft: kept whether or not it is ever made current.
+    const menu = await this.createVersion(
+      restaurantId,
+      userId,
+      dto,
       items,
+      warnings,
+      kept,
+      menuDate,
+    );
+
+    // 5-6: insert menu_items and create the governance submission trail. NOT
+    // current, so no inventory or price. A failed line write removes the
+    // version it was writing into (`persistIntoNewVersion`).
+    const reviewItems = await this.persistIntoNewVersion(
+      resolved,
       restaurantId,
       menu.id,
       userId,
@@ -483,6 +934,8 @@ export class MenusService {
 
     // 7. Mark menu_uploaded for everyone on this restaurant (matches the
     // restaurant-scoped pattern used by vendor_added / team_member_invited).
+    // Only a read with a line gets here (1b): an empty read is not proof
+    // (ADR 0213 #17).
     await this.markMenuUploaded(restaurantId);
 
     return {
@@ -492,6 +945,399 @@ export class MenusService {
       submissionsCreated: reviewItems.filter((r) => r.submissionId).length,
       items: reviewItems,
       source: { kept: !!kept?.path, failure: kept?.failure ?? null },
+      warnings,
+      notes,
+    };
+  }
+
+  /** Background reads this process is running, by menu id (the sweep spares them). */
+  private readonly reading = new Map<string, Promise<void>>();
+
+  /** Resolves when this process's read of `menuId` has ended (tests, shutdown). */
+  async whenRead(menuId: string): Promise<void> {
+    await this.reading.get(menuId);
+  }
+
+  /**
+   * Start a scan read and answer at once (founder 2026-11-07: "Background
+   * job"; audit M12: a read past the web's 30 s "failed" while the server went
+   * on). The file and the draft are kept BEFORE the read, so a read that fails
+   * or is cut off still names its file and says why (ADR 0213 #17).
+   *
+   * Several photos sent together are one menu and one version (founder
+   * 2026-11-07, "One upload = one version"), joined into one PDF, one photo
+   * per page. The same bytes sent again reopen the read they made unless the
+   * person asks to read them again (`readAgain`): a resend is not billed
+   * twice. Two requests with the same bytes sent together (a double tap, a
+   * retry, two phones) make one read: the database keeps one `reading` row
+   * per house, file and labels (uq_restaurant_menus_one_read_of_a_file_at_a_time),
+   * and the request that loses the insert joins the read already under way.
+   */
+  private async beginScan(
+    dto: ImportMenuDto,
+    userId: string,
+    menuDate: { date: string; precision: "day" | "month" } | null,
+  ): Promise<MenuImportReply> {
+    const { restaurantId } = dto;
+    const pages = Array.isArray(dto.data?.images)
+      ? dto.data.images
+      : typeof dto.data?.imageBase64 === "string"
+        ? [dto.data.imageBase64]
+        : null;
+    if (!pages) {
+      throw new BadRequestException(
+        "A scan sends the photo or PDF it reads (data.imageBase64, or data.images for several pages). Nothing was kept.",
+      );
+    }
+    const file = await pagesToOneFile(pages);
+    const bytes = Buffer.from(file, "base64");
+    const sha256 = crypto.createHash("sha256").update(bytes).digest("hex");
+
+    const labels: ReadLabels = { cadence: dto.cadence ?? null, menuDate };
+    if (dto.readAgain !== true) {
+      const earlier = await this.sameFileRead(restaurantId, sha256, labels);
+      if (earlier) return earlier;
+    }
+
+    const kept = await this.keepSource(restaurantId, bytes, sniffMime(bytes));
+    let menu: { id: string };
+    try {
+      menu = await this.createVersion(restaurantId, userId, dto, [], [], kept, menuDate, "reading");
+    } catch (err) {
+      if (!(err instanceof SameFileReading)) throw err;
+      // Another request with these bytes and labels began its read first:
+      // this one joins it (readAgain too: reading the file twice at once
+      // would only pay twice for one answer). The source path is the file's
+      // own hash, so the upload above wrote the same object, not a second.
+      const joined = await this.sameFileRead(restaurantId, sha256, labels, { readingOnly: true });
+      if (joined) return joined;
+      // The read in the way is one nobody is reading any more: end it, then begin.
+      await this.sweepStaleReads(restaurantId);
+      try {
+        menu = await this.createVersion(restaurantId, userId, dto, [], [], kept, menuDate, "reading");
+      } catch (again) {
+        if (!(again instanceof SameFileReading)) throw again;
+        throw new ConflictException(
+          "This file is already being read for this house. Wait for that read, then look on the Menu page. Nothing new was kept.",
+        );
+      }
+    }
+    // Detached; must never reject (an unhandled rejection ends the process).
+    const run = this.finishScan(menu.id, restaurantId, file, dto, userId, kept)
+      .catch((err) => this.logger.error(`Menu read ${menu.id} could not record how it ended: ${(err as Error)?.message ?? err}`))
+      .finally(() => this.reading.delete(menu.id));
+    this.reading.set(menu.id, run);
+
+    return {
+      menuId: menu.id,
+      current: false,
+      reading: true,
+      pages: pages.length,
+      itemsExtracted: 0,
+      submissionsCreated: 0,
+      items: [],
+      source: { kept: !!kept?.path, failure: kept?.failure ?? null },
+      warnings: [],
+    };
+  }
+
+  /**
+   * The read these exact bytes already made for this house, if it is still
+   * worth reopening (founder 2026-11-07, "One upload = one version"; a resend
+   * is not billed twice). Reopened, it is said as it is NOW, never as it was
+   * frozen when the read finished (batch review of #1062):
+   *
+   * - only a read whose labels fit: a cadence or menu date the new upload
+   *   names must be the version's own. The same file for another day is its
+   *   own version, read again; an upload that names no label takes the
+   *   version's.
+   * - only a draft or the current menu. A retired menu sent again is read
+   *   as a new version, so its choice is made afresh and never rolls the
+   *   house back to an old menu under an "already read" banner.
+   * - its lines are the live ones (`reopenedReply`): a discarded line is not
+   *   offered again, a corrected name or price is the corrected one.
+   *
+   * `readingOnly` looks only for a read under way (the losing side of two
+   * imports of the same file at once).
+   */
+  private async sameFileRead(
+    restaurantId: string,
+    sha256: string,
+    labels: ReadLabels,
+    opts: { readingOnly?: boolean } = {},
+  ): Promise<MenuImportReply | null> {
+    const { data, error } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .select("id, status, read_state, read_reply, extracted_at, source_path, source_failure, cadence, menu_date, menu_date_precision")
+      .eq("restaurant_id", restaurantId)
+      .eq("source_sha256", sha256)
+      .eq("source_method", "scan");
+    if (error) {
+      // Not knowing costs one more read, never a lost one.
+      this.logger.warn(`Could not look for an earlier read of the same file: ${error.message}`);
+      return null;
+    }
+    const fits = (row: Record<string, any>) =>
+      (labels.cadence === null || (row.cadence ?? null) === labels.cadence) &&
+      (labels.menuDate === null ||
+        ((row.menu_date ?? null) === labels.menuDate.date && (row.menu_date_precision ?? null) === labels.menuDate.precision));
+    const rows = ((data ?? []) as Array<Record<string, any>>)
+      .filter(fits)
+      .sort((a, b) => String(b.extracted_at ?? "").localeCompare(String(a.extracted_at ?? "")));
+    const cutoff = Date.now() - READ_STALE_MS;
+    for (const row of rows) {
+      const state = (row.read_state as MenuReadState | undefined) ?? "done";
+      if (state === "reading" && (this.reading.has(row.id) || Date.parse(row.extracted_at) >= cutoff)) {
+        return {
+          menuId: row.id,
+          current: false,
+          reading: true,
+          itemsExtracted: 0,
+          submissionsCreated: 0,
+          items: [],
+          source: { kept: !!row.source_path, failure: row.source_failure ?? null },
+          warnings: [],
+        };
+      }
+      if (opts.readingOnly) continue;
+      if (
+        state === "done" &&
+        (row.status === "draft" || row.status === "active") &&
+        row.read_reply &&
+        typeof row.read_reply === "object"
+      ) {
+        const reopened = await this.reopenedReply(row, restaurantId);
+        if (reopened) return reopened;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * A finished read as it stands now: the reply it was kept with, its lines
+   * replaced by the version's live ones. A line discarded since is gone; a
+   * corrected field is the corrected value; a line added since is there. What
+   * the read did when it ran (its price-sync outcome, its match) stays as the
+   * read said it. A line read that fails gives null: the caller reads the
+   * file again rather than show lines it could not check.
+   */
+  private async reopenedReply(row: Record<string, any>, restaurantId: string): Promise<MenuImportReply | null> {
+    const reply = row.read_reply as MenuImportReply;
+    const live: Array<Record<string, any>> = [];
+    let after: string | null = null;
+    for (;;) {
+      let q = this.dbService.supabase
+        .from("menu_items")
+        .select(`${LINE_SELECT}, submission_id`)
+        .eq("menu_id", row.id)
+        .eq("restaurant_id", restaurantId)
+        .neq("status", "discarded");
+      if (after) q = q.gt("id", after);
+      const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
+      if (error) {
+        this.logger.warn(`Could not read the lines of earlier read ${row.id}; reading the file again: ${error.message}`);
+        return null;
+      }
+      const page = (data ?? []) as Array<Record<string, any>>;
+      live.push(...page);
+      if (page.length < PAGE_ROWS) break;
+      after = String(page[page.length - 1].id);
+    }
+    const asRead = new Map((Array.isArray(reply.items) ? reply.items : []).map((i) => [i.menuItemId, i]));
+    const money = (v: unknown): number | null => (v === null || v === undefined || v === "" ? null : Number(v));
+    const items: MenuImportReviewItem[] = live.map((line) => {
+      const was = asRead.get(line.id);
+      return {
+        ...(was ?? {
+          submissionId: line.submission_id ?? null,
+          matched: !!line.wine_library_id,
+          needsReview: false,
+          rawText: line.raw_extracted_text ?? null,
+        }),
+        menuItemId: line.id,
+        inventoryItemId: line.inventory_item_id ?? null,
+        name: line.name,
+        producer: line.producer ?? null,
+        category: line.category ?? null,
+        vintage: line.vintage ?? null,
+        region: line.region ?? null,
+        grapeVariety: line.grape_variety ?? null,
+        byGlassPrice: money(line.by_glass_price),
+        bottlePrice: money(line.bottle_price),
+        priceFlag: line.price_flag ?? null,
+        priceFlagNote: line.price_flag_note ?? null,
+      };
+    });
+    return {
+      ...reply,
+      items,
+      current: row.status === "active",
+      reopened: { readAt: row.extracted_at ?? null },
+    };
+  }
+
+  /** The background half of a scan. Never rejects: every ending is written on the version. */
+  private async finishScan(
+    menuId: string,
+    restaurantId: string,
+    file: string,
+    dto: ImportMenuDto,
+    userId: string,
+    kept: { path: string | null; failure: string | null } | null,
+  ): Promise<void> {
+    const sb = this.dbService.supabase;
+    try {
+      const { items, warnings } = await this.scanParser.parseWithWarnings(file, restaurantId);
+      if (items.length === 0) {
+        await this.endRead(menuId, { read_state: "failed", read_failure: EMPTY_SCAN_FAILED, read_warnings: warnings });
+        return;
+      }
+      const { error: linesError } = await sb
+        .from("restaurant_menus")
+        .update({ extraction: items, read_warnings: warnings, lines_extracted: items.length })
+        .eq("id", menuId)
+        .eq("restaurant_id", restaurantId);
+      if (linesError) throw new Error(`the lines read could not be kept: ${linesError.message}`);
+      const reviewItems = await this.resolveAndPersistItems(items, restaurantId, menuId, userId, dto.method, false);
+      await this.markMenuUploaded(restaurantId);
+      const reply: MenuImportReply = {
+        menuId,
+        current: false,
+        itemsExtracted: items.length,
+        submissionsCreated: reviewItems.filter((r) => r.submissionId).length,
+        items: reviewItems,
+        source: { kept: !!kept?.path, failure: kept?.failure ?? null },
+        warnings,
+      };
+      const ended = await this.endRead(menuId, { read_state: "done", read_reply: reply });
+      // The sweep already said this read stopped (it ran past half an hour, or
+      // another server took it for dead): it stays failed, so it keeps no line.
+      if (ended === "not_reading") await this.dropUnfinishedRead(menuId, restaurantId);
+    } catch (err) {
+      this.logger.error(`Menu read ${menuId} failed: ${(err as Error)?.message ?? err}`);
+      // A failed read keeps no half of what it wrote: its lines and the library
+      // submissions made for them go (dropUnfinishedRead); the version says why.
+      await this.dropUnfinishedRead(menuId, restaurantId);
+      await this.endRead(menuId, {
+        read_state: "failed",
+        read_failure: failureWords(err),
+        lines_extracted: 0,
+        extraction: [],
+      });
+    }
+  }
+
+  /**
+   * Ends a read that is still `reading`. A read the sweep has already ended
+   * is left as the sweep said (`not_reading`), never turned back into done.
+   */
+  private async endRead(
+    menuId: string,
+    patch: Record<string, unknown>,
+  ): Promise<"ended" | "not_reading" | "unknown"> {
+    const { data, error } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .update(patch)
+      .eq("id", menuId)
+      .eq("read_state", "reading")
+      .select("id");
+    if (error) {
+      this.logger.error(`Menu read ${menuId} ended but could not say so: ${error.message}`);
+      return "unknown";
+    }
+    return Array.isArray(data) && data.length > 0 ? "ended" : "not_reading";
+  }
+
+  /**
+   * What a read that did not finish wrote for its version goes: its lines, and
+   * the library submissions made for them. A submission names no menu, so it
+   * is found through the line that points at it, before the lines go. Library
+   * rows the resolver added stay: they are the shared library's, matched by
+   * signature and reused by the next read of the same wine (the synchronous
+   * path left them too; PR #773's register entry). A submission whose line was
+   * never pointed at it (the process died between the two writes) is not
+   * found here either; the transaction that would close both is still owed.
+   */
+  private async dropUnfinishedRead(menuId: string, restaurantId: string): Promise<void> {
+    const sb = this.dbService.supabase;
+    const { data: lines, error: readError } = await sb
+      .from("menu_items")
+      .select("id, submission_id")
+      .eq("menu_id", menuId)
+      .eq("restaurant_id", restaurantId);
+    if (readError) this.logger.error(`Lines of unfinished read ${menuId} could not be read: ${readError.message}`);
+    const submissionIds = ((lines ?? []) as Array<{ submission_id?: string | null }>)
+      .map((l) => l.submission_id)
+      .filter((id): id is string => typeof id === "string" && id !== "");
+    const { error: dropError } = await sb.from("menu_items").delete().eq("menu_id", menuId).eq("restaurant_id", restaurantId);
+    if (dropError) {
+      // The lines still point at their submissions; removing those now would
+      // only null the pointers (ON DELETE SET NULL) and hide what is left.
+      this.logger.error(`Lines of unfinished read ${menuId} were not removed: ${dropError.message}`);
+      return;
+    }
+    if (submissionIds.length === 0) return;
+    const { error: subError } = await sb
+      .from("master_wine_library_submissions")
+      .delete()
+      .eq("restaurant_id", restaurantId)
+      .in("id", submissionIds);
+    if (subError) this.logger.error(`Submissions of unfinished read ${menuId} were not removed: ${subError.message}`);
+  }
+
+  /** A read nobody is reading any more (a restart) is said to have failed, lazily, when someone looks. */
+  private async sweepStaleReads(restaurantId: string): Promise<void> {
+    const sb = this.dbService.supabase;
+    const { data, error } = await sb
+      .from("restaurant_menus")
+      .select("id, extracted_at")
+      .eq("restaurant_id", restaurantId)
+      .eq("read_state", "reading");
+    if (error) return void this.logger.warn(`Could not look for stopped menu reads: ${error.message}`);
+    const cutoff = Date.now() - READ_STALE_MS;
+    const stale = ((data ?? []) as Array<{ id: string; extracted_at: string | null }>)
+      .filter((r) => !this.reading.has(r.id) && !(Date.parse(String(r.extracted_at)) >= cutoff))
+      .map((r) => r.id);
+    if (stale.length === 0) return;
+    const { data: ended, error: upd } = await sb
+      .from("restaurant_menus")
+      .update({ read_state: "failed", read_failure: STOPPED_READ_FAILED, lines_extracted: 0, extraction: [] })
+      .eq("restaurant_id", restaurantId)
+      .eq("read_state", "reading")
+      .in("id", stale)
+      .select("id");
+    if (upd) return void this.logger.warn(`Could not end stopped menu reads: ${upd.message}`);
+    // A stopped read keeps no half of what it wrote, as a failed one does.
+    for (const row of (ended ?? []) as Array<{ id: string }>) await this.dropUnfinishedRead(row.id, restaurantId);
+  }
+
+  /** Where one read stands, and what it found once it is done (`GET /menu-versions/:id/read`). */
+  async readStatus(
+    restaurantId: string,
+    menuId: string,
+  ): Promise<{
+    menuId: string;
+    state: MenuReadState;
+    failure: string | null;
+    warnings: MenuReadWarning[];
+    reply: MenuImportReply | null;
+  }> {
+    await this.sweepStaleReads(restaurantId);
+    const { data, error } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .select("id, read_state, read_failure, read_warnings, read_reply")
+      .eq("id", menuId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error) throw new InternalServerErrorException(`The menu read could not be looked up: ${error.message}`);
+    if (!data) throw new NotFoundException("No menu of this restaurant by that id.");
+    const row = data as Record<string, any>;
+    return {
+      menuId,
+      state: (row.read_state as MenuReadState | undefined) ?? "done",
+      failure: row.read_failure ?? null,
+      warnings: Array.isArray(row.read_warnings) ? row.read_warnings.filter((w: unknown) => w && typeof w === "object") : [],
+      reply: row.read_reply && typeof row.read_reply === "object" ? (row.read_reply as MenuImportReply) : null,
     };
   }
 
@@ -527,16 +1373,19 @@ export class MenusService {
     method: "scan" | "csv" | "manual",
   ) {
     const dto = { restaurantId, method, data: { items } } as ImportMenuDto;
+    // Same order as `importMenu`: the library first, then the version.
+    const resolved = await this.resolveLibrary(items, restaurantId);
     const menu = await this.createVersion(
       restaurantId,
       userId,
       dto,
       items,
+      [], // arrival refuses a partial read
       null,
       null,
     );
-    const reviewItems = await this.resolveAndPersistItems(
-      items,
+    const reviewItems = await this.persistIntoNewVersion(
+      resolved,
       restaurantId,
       menu.id,
       userId,
@@ -570,16 +1419,18 @@ export class MenusService {
         .from(SOURCE_BUCKET)
         .upload(path, bytes, { contentType: type.mime, upsert: true });
       if (error) {
-        return { path: null, sha256, mime: type.mime, bytes: bytes.length, failure: `the source file was not kept: ${error.message}` };
+        this.logger.error(`Menu source ${path} was not kept: ${error.message}`);
+        return { path: null, sha256, mime: type.mime, bytes: bytes.length, failure: SOURCE_NOT_TAKEN };
       }
       return { path, sha256, mime: type.mime, bytes: bytes.length, failure: null };
     } catch (err: any) {
+      this.logger.error(`Menu source ${path} was not kept: ${err?.message ?? "unknown error"}`);
       return {
         path: null,
         sha256,
         mime: type.mime,
         bytes: bytes.length,
-        failure: `the source file was not kept: ${err?.message ?? "unknown error"}`,
+        failure: SOURCE_NOT_TAKEN,
       };
     }
   }
@@ -589,12 +1440,15 @@ export class MenusService {
     userId: string,
     dto: ImportMenuDto,
     items: WineExtractItem[],
+    warnings: MenuReadWarning[],
     kept: { path: string | null; sha256: string; mime: string; bytes: number; failure: string | null } | null,
     menuDate: { date: string; precision: "day" | "month" } | null,
+    readState: MenuReadState = "done",
   ): Promise<{ id: string }> {
     const { data, error } = await this.dbService.supabase
       .from("restaurant_menus")
       .insert({
+        read_state: readState,
         restaurant_id: restaurantId,
         name: "Wine List",
         menu_type: "beverage",
@@ -609,18 +1463,57 @@ export class MenusService {
         source_bytes: kept?.bytes ?? null,
         source_failure: kept?.failure ?? null,
         extraction: items,
+        read_warnings: warnings,
         lines_extracted: items.length,
         extracted_by: userId,
         extracted_at: new Date().toISOString(),
       })
       .select("id")
       .single();
+    if (error && (error as { code?: string }).code === "23505" && readState === "reading") {
+      // uq_restaurant_menus_one_read_of_a_file_at_a_time: the same file is already being read.
+      throw new SameFileReading();
+    }
     if (error || !data) {
       throw new InternalServerErrorException(
         `The menu was read but could not be kept, so nothing was saved: ${error?.message ?? "no row returned"}`,
       );
     }
     return data as { id: string };
+  }
+
+  /**
+   * Writes the lines of a version this request just created. If that write
+   * throws, the version row is deleted (its `menu_items` go with it, ON DELETE
+   * CASCADE) and the error is rethrown, so a failed line write leaves no
+   * empty draft. The source file is not deleted: it is content-addressed
+   * (`<house>/menus/<sha256>.<ext>`), so another version may name the same
+   * object. If the delete itself fails, the error says the draft remains.
+   */
+  private async persistIntoNewVersion(
+    resolved: ResolvedItem[],
+    restaurantId: string,
+    menuId: string,
+    userId: string,
+    method: "scan" | "csv" | "manual",
+    current: boolean,
+  ): Promise<MenuImportReviewItem[]> {
+    try {
+      return await this.persistItems(resolved, restaurantId, menuId, userId, method, current);
+    } catch (err: any) {
+      const { error } = await this.dbService.supabase
+        .from("restaurant_menus")
+        .delete()
+        .eq("id", menuId)
+        .eq("restaurant_id", restaurantId);
+      if (error) {
+        this.logger.error(`Could not remove menu version ${menuId} after a failed line write: ${error.message}`);
+        throw new InternalServerErrorException(
+          `The menu's lines could not be saved (${err?.message ?? "unknown error"}), and the empty draft version ${menuId} could not be removed: ${error.message}`,
+        );
+      }
+      throw err;
+    }
   }
 
   /**
@@ -658,6 +1551,10 @@ export class MenusService {
         "This session is not attached to a restaurant, so no line can be added to a menu.",
       );
     }
+    // A typed price is read before anything is read or written: a price
+    // that is not one refuses the whole line (r28 G7).
+    const byGlassPrice = addedPrice(dto.by_glass_price, dto.by_glass_typed, "glass");
+    const bottlePrice = addedPrice(dto.bottle_price, dto.bottle_typed, "bottle");
     const { data: menu, error: menuErr } = await this.dbService.supabase
       .from("restaurant_menus")
       .select("id, restaurant_id, status")
@@ -673,9 +1570,7 @@ export class MenusService {
     }
 
     const isCurrent = menu.status === "active";
-    const namesPrice =
-      (dto.by_glass_price !== undefined && dto.by_glass_price !== null) ||
-      (dto.bottle_price !== undefined && dto.bottle_price !== null);
+    const namesPrice = byGlassPrice !== undefined || bottlePrice !== undefined;
     if (isCurrent && namesPrice && !callerMayPrice) {
       throw new ForbiddenException(
         "Only managers and owners can put a price on the current menu: it sets the house's own price. Nothing was added.",
@@ -689,8 +1584,8 @@ export class MenusService {
       vintage: dto.vintage,
       region: dto.region,
       grape_variety: dto.grape_variety,
-      by_glass_price: dto.by_glass_price,
-      bottle_price: dto.bottle_price,
+      by_glass_price: byGlassPrice,
+      bottle_price: bottlePrice,
     };
 
     const [reviewItem] = await this.resolveAndPersistItems(
@@ -821,15 +1716,16 @@ export class MenusService {
 
     const oldValue = (menuItem as Record<string, unknown>)[dto.fieldName];
     const isPrice = PRICE_FIELDS.has(dto.fieldName);
-    const newValueTyped: string | number = isPrice
-      ? parseFloat(dto.newValue.replace(/[^0-9.]/g, ""))
-      : dto.newValue;
-
-    if (isPrice && Number.isNaN(newValueTyped as number)) {
-      throw new BadRequestException(
-        `Invalid numeric value for ${dto.fieldName}`,
-      );
+    let newValueTyped: string | number = dto.newValue;
+    if (isPrice) {
+      const price = parseMenuPrice(dto.newValue);
+      if ("refused" in price) throw new BadRequestException(price.refused);
+      newValueTyped = price.value;
     }
+    // r33 meet with #1418: a typed price is read by parseMenuPrice (the one
+    // reader /menu's add and correct share; it refuses a minus, letters and a
+    // two-way `1.250` in words). readMenuPrice stays the spreadsheet cell
+    // reader inside csv-parser.service.ts.
 
     const { error: updateErr } = await this.dbService.supabase
       .from("menu_items")
@@ -887,6 +1783,10 @@ export class MenusService {
     if (isPrice && priceSync === undefined) {
       if (!lineMenuCurrent) {
         priceSync = "not_current";
+      } else if (isKitchenItem(menuItem as InsertedMenuItem)) {
+        // A dish's price lives on its menu line only (#1085): there is no
+        // house price for it, and saying "not matched to a wine" was wrong.
+        priceSync = "kitchen_line";
       } else if (!menuItem.inventory_item_id) {
         priceSync = "not_linked";
       } else {
@@ -940,7 +1840,8 @@ export class MenusService {
     return {
       menuItemId,
       fieldName: dto.fieldName,
-      newValue: dto.newValue,
+      // What was stored, so a page says the price it now holds ("45,50" -> "45.5").
+      newValue: String(newValueTyped),
       ...(priceSync !== undefined ? { priceSync, priceSyncError, priceHeld } : {}),
     };
   }
@@ -951,6 +1852,14 @@ export class MenusService {
    * restaurant's active menu with its items, newest first within category.
    * A line's raw line is sent only when `view.rawLine` says so (default: not);
    * a reply without it says `rawLineWithheld: true`.
+   *
+   * SEVERAL CURRENT MENUS (r28 G20). Production can hold more than one active
+   * menu for a house (no unique index; see readCurrentMenus), and this read
+   * used `.maybeSingle()`, which PostgREST answers with an error for two rows,
+   * so the whole /menu page failed for that house. It now reads them all and
+   * shows the one made current last (then the one read last); `otherCurrent`
+   * says how many more are marked current, so the page can say so. Choosing a
+   * menu (make_menu_current) archives every other one, which settles it.
    */
   async getMenu(
     restaurantId: string,
@@ -961,17 +1870,24 @@ export class MenusService {
     status: string | null;
     items: Array<Record<string, unknown>>;
     rawLineWithheld?: true;
+    otherCurrent?: number;
   }> {
-    const { data: menu, error: menuErr } = await this.dbService.supabase
+    const { data: actives, error: menuErr } = await this.dbService.supabase
       .from("restaurant_menus")
-      .select("id, name, status")
+      .select("id, name, status, made_current_at, created_at")
       .eq("restaurant_id", restaurantId)
-      .eq("status", "active")
-      .maybeSingle();
+      .eq("status", "active");
 
     if (menuErr) throw new Error(`Failed to load menu: ${menuErr.message}`);
     const withheld = view.rawLine ? {} : { rawLineWithheld: true as const };
+    const ordered = newestCurrentFirst((actives ?? []) as CurrentMenuRow[]);
+    const menu = ordered[0] ?? null;
     if (!menu) return { menuId: null, name: null, status: null, items: [], ...withheld };
+    if (ordered.length > 1) {
+      this.logger.warn(
+        `Restaurant ${restaurantId} has ${ordered.length} active menus; /menu shows ${menu.id}, made current last`,
+      );
+    }
 
     // A discarded line (migration 20260922230100, ADR 0160 sec110 item 7) is
     // a soft remove: the row stays for the record, but this read path must
@@ -985,6 +1901,7 @@ export class MenusService {
       status: menu.status,
       items,
       ...withheld,
+      ...(ordered.length > 1 ? { otherCurrent: ordered.length - 1 } : {}),
     };
   }
 
@@ -1084,7 +2001,10 @@ export class MenusService {
     versions: MenuVersion[];
     namesReadable: boolean;
     namesReason: string | null;
+    timezone: string | null;
+    timezoneReason: string | null;
   }> {
+    await this.sweepStaleReads(restaurantId);
     const rows: Array<Record<string, any>> = [];
     let after: string | null = null;
     for (;;) {
@@ -1119,6 +2039,7 @@ export class MenusService {
       versions,
       namesReadable: namesError === null,
       namesReason: namesError === null ? null : `who read or chose these menus could not be named: ${namesError}`,
+      ...(await this.houseZone(restaurantId)),
     };
   }
 
@@ -1191,8 +2112,9 @@ export class MenusService {
    */
   async planFor(restaurantId: string, menuId: string): Promise<MenuPlan> {
     const row = await this.readVersionRow(restaurantId, menuId);
+    assertReadFinished(row);
     const lines = (await this.readLines(menuId, restaurantId)) as unknown as InsertedMenuItem[];
-    const plan = await this.computePlan(restaurantId, menuId, row.status === "active", lines, readMomentOf(row));
+    const plan = await this.computePlan(restaurantId, menuId, await this.isOnlyCurrent(restaurantId, menuId, row), lines, readMomentOf(row));
     // Names are for reading the plan; they never decide it (the fingerprint
     // leaves them out). A failed read is said.
     const ids = new Set<string>();
@@ -1216,6 +2138,7 @@ export class MenusService {
       ...plan,
       namesReadable: error === null,
       namesReason: error === null ? null : `the people named in this plan could not be named: ${error}`,
+      ...(await this.houseZone(restaurantId)),
     };
   }
 
@@ -1241,6 +2164,9 @@ export class MenusService {
 
     // The house's wines, every one (keyset-paged): which line lands on which row.
     const house = new Map<string, Record<string, any>>();
+    // Every row by its id too: a line linked to a good whose row names no
+    // library wine (a house gin) is planned on that row, as the carry does.
+    const byInventory = new Map<string, Record<string, any>>();
     {
       let after: string | null = null;
       for (;;) {
@@ -1252,13 +2178,14 @@ export class MenusService {
         const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
         if (error) fail("the house's wines", error.message);
         const rows = (data ?? []) as Array<Record<string, any>>;
-        for (const r of rows) if (r.master_wine_id) house.set(String(r.master_wine_id), r);
+        for (const r of rows) {
+          if (r.master_wine_id) house.set(String(r.master_wine_id), r);
+          byInventory.set(String(r.id), r);
+        }
         if (rows.length < PAGE_ROWS) break;
         after = String(rows[rows.length - 1].id);
       }
     }
-    const byInventory = new Map<string, Record<string, any>>();
-    for (const r of house.values()) byInventory.set(String(r.id), r);
 
     const lockRead = await readOpenLocks(client, restaurantId);
     if (lockRead.error !== null) fail("the house's price locks", lockRead.error);
@@ -1293,6 +2220,8 @@ export class MenusService {
 
     // The wines on the menu being REPLACED (every other active menu), for L18's "returned".
     const onReplaced = new Set<string>();
+    // Every drink line of the menu being replaced, for "not on this file" (2d).
+    const replacedLines: InsertedMenuItem[] = [];
     let replacing = false;
     if (!current) {
       const { data: actives, error: activeErr } = await client
@@ -1306,15 +2235,25 @@ export class MenusService {
         replacing = true;
         for (const line of await this.readLines(m.id, restaurantId)) {
           if (line.wine_library_id) onReplaced.add(String(line.wine_library_id));
+          else if (line.inventory_item_id) onReplaced.add(`good:${String(line.inventory_item_id)}`);
+          const row = line as unknown as InsertedMenuItem;
+          if (!isKitchenItem(row)) replacedLines.push(row);
         }
       }
     }
 
     const counts = emptyPlanCounts();
     const onThisMenu = new Set<string>();
-    const planLines: PlanLine[] = lines.map((line) => {
+    const kitchenLines = lines
+      .filter((line) => isKitchenItem(line))
+      .map((line) => ({ menuItemId: line.id, name: line.name }));
+    const planLines: PlanLine[] = lines.filter((line) => !isKitchenItem(line)).map((line) => {
       const wineId = line.wine_library_id ?? null;
-      const row = wineId ? (house.get(wineId) ?? null) : null;
+      const row = wineId
+        ? (house.get(wineId) ?? null)
+        : line.inventory_item_id
+          ? (byInventory.get(String(line.inventory_item_id)) ?? null)
+          : null;
       if (row) onThisMenu.add(String(row.id));
       const menuB = linePrice(line.bottle_price);
       const menuG = linePrice(line.by_glass_price);
@@ -1323,7 +2262,7 @@ export class MenusService {
       const kindPlan = (kind: "bottle" | "glass", menuPrice: number | null, housePrice: number | null): PlanKind => {
         const lock = row ? (locks.get(`${row.id}:${kind}`) ?? null) : null;
         let result: PlanResult;
-        if (!wineId) result = "not_linked";
+        if (!wineId && !row) result = "not_linked";
         else if (!row) result = menuPrice === null ? "blank_never_priced" : "new_wine";
         else if (menuPrice === null) result = housePrice === null ? "blank_never_priced" : "blank_kept";
         else if (lock) result = "held_by_lock";
@@ -1347,7 +2286,7 @@ export class MenusService {
       const glass = kindPlan("glass", menuG, houseG);
       // The same rule the carry writes (carryMenuPrice): answer 3, then answer 4.
       let flag: PriceFlag | null = null;
-      if (wineId) {
+      if (wineId || row) {
         if ((menuB === null && houseB !== null) || (menuG === null && houseG !== null)) flag = "blank_kept_last_known";
         else if (menuB === null && menuG === null && houseB === null && houseG === null) flag = "blank_no_house_price";
       }
@@ -1357,6 +2296,7 @@ export class MenusService {
       return {
         menuItemId: line.id,
         name: line.name,
+        category: typeof line.category === "string" && line.category.trim() ? line.category : null,
         producer: line.producer ?? null,
         vintage: line.vintage ?? null,
         wineLibraryId: wineId,
@@ -1371,7 +2311,10 @@ export class MenusService {
         bottle,
         glass,
         flag,
-        returned: !current && locked && (!replacing || !onReplaced.has(String(wineId))),
+        returned:
+          !current &&
+          locked &&
+          (!replacing || !onReplaced.has(wineId ? String(wineId) : `good:${String(line.inventory_item_id)}`)),
         vintageMismatch: locked && readYear !== null && typeof libVintage === "number" && readYear !== libVintage,
       };
     });
@@ -1392,6 +2335,53 @@ export class MenusService {
         };
       });
 
+    // NOT ON THIS FILE (2d). A replaced line is on this file when this menu
+    // carries its wine. A name stands in for the wine only when one side is
+    // unlinked: two lines that both name a wine are compared by the wine, so
+    // "Barolo" 2015 replaced by "Barolo" 2018 (another library wine, which
+    // choosing this menu does not carry onto the 2015 row) is listed. One
+    // entry per wine (or per name, unlinked), in the replaced menu's order.
+    // Nothing is written for them: L12.
+    const idsHere = new Set<string>();
+    const namesHere = new Set<string>();
+    const unlinkedNamesHere = new Set<string>();
+    for (const line of lines) {
+      if (isKitchenItem(line)) continue;
+      const name = foldMenuName(line.name);
+      if (line.wine_library_id) idsHere.add(String(line.wine_library_id));
+      else unlinkedNamesHere.add(name);
+      namesHere.add(name);
+    }
+    const notOnThisFile: NotOnThisFile[] = [];
+    const seen = new Set<string>();
+    for (const line of replacedLines) {
+      const wineId = line.wine_library_id ? String(line.wine_library_id) : null;
+      const name = foldMenuName(line.name);
+      const here = wineId ? idsHere.has(wineId) || unlinkedNamesHere.has(name) : namesHere.has(name);
+      if (here) continue;
+      const key = wineId ? `w:${wineId}` : `n:${name}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const row = wineId ? (house.get(wineId) ?? null) : null;
+      const locked = row
+        ? (["bottle", "glass"] as const).filter((k) => locks.has(`${row.id}:${k}`))
+        : [];
+      notOnThisFile.push({
+        menuItemId: line.id,
+        name: line.name,
+        producer: line.producer ?? null,
+        vintage: line.vintage ?? null,
+        wineLibraryId: wineId,
+        inventoryId: row ? String(row.id) : null,
+        bottle: row ? linePrice(row.menu_price_current) : null,
+        glass: row ? linePrice(row.menu_price_glass) : null,
+        locked: [...locked],
+        // A row the house deleted or set inactive still holds its prices, but
+        // the house no longer sells the wine: the page says so.
+        active: row ? row.is_active !== false && !row.deleted_at : null,
+      });
+    }
+
     const decisive = {
       menuId,
       lines: [...planLines]
@@ -1403,6 +2393,10 @@ export class MenusService {
           [l.glass.result, l.glass.menuPrice, l.glass.housePrice, l.glass.lock?.lockId ?? null],
         ]),
       dormant: dormantLocks.map((d) => d.lockId).sort(),
+      kitchen: kitchenLines.map((k) => k.menuItemId).sort(),
+      // The person is shown which wines stay as they are; a different list is
+      // a different plan (L13), though nothing is written for them.
+      notOnThisFile: notOnThisFile.map((n) => n.menuItemId).sort(),
     };
     return {
       menuId,
@@ -1415,6 +2409,8 @@ export class MenusService {
       dormantLocks,
       namesReadable: true,
       namesReason: null,
+      kitchenLines,
+      notOnThisFile,
     };
   }
 
@@ -1475,7 +2471,8 @@ export class MenusService {
     // read throws here and nothing is changed.
     const lines = (await this.readLines(menuId, restaurantId)) as unknown as InsertedMenuItem[];
     const version = await this.readVersionRow(restaurantId, menuId);
-    const plan = await this.computePlan(restaurantId, menuId, version.status === "active", lines, readMomentOf(version));
+    assertReadFinished(version);
+    const plan = await this.computePlan(restaurantId, menuId, await this.isOnlyCurrent(restaurantId, menuId, version), lines, readMomentOf(version));
     if (plan.fingerprint !== fingerprint.trim()) {
       throw new ConflictException(
         "What choosing this menu would do has changed since it was shown (a price or a lock moved). Nothing was changed; look at the plan again.",
@@ -1510,26 +2507,49 @@ export class MenusService {
       held: [],
       returned: [],
     };
-    if (r.outcome === "already_current") return { outcome: "already_current", ...empty };
+    // CHOOSING A CURRENT MENU AGAIN FINISHES ITS CARRY (r28 G1). It answered
+    // "already_current" with zero lines, so a carry cut off part-way (a deploy,
+    // a refused price call) could never be finished from any screen. Every
+    // price is written dated by the original choice, so the carry is safe to
+    // run again: a line already carried answers "unchanged", a price someone
+    // set after the choice answers "stale" and stands, a lock still holds.
+    const outcome = r.outcome;
+    if (outcome === "already_current" && !madeCurrentAt) return { outcome, ...empty };
 
     if (!madeCurrentAt) {
       // The menu IS current, and its prices cannot be dated by the choice. Said
       // on every line, never dated by something else.
       const why = "the menu switch did not say when it happened, so no price was dated or carried";
+      const wines = lines.filter((l) => !isKitchenItem(l));
+      const kitchen = lines.length - wines.length;
       return {
         outcome: "made_current",
         ...empty,
         lines: lines.length,
-        priceSync: lines.length ? { failed: lines.length } : {},
-        failed: lines.map((l) => ({ menuItemId: l.id, name: l.name, error: why })),
+        priceSync: {
+          ...(wines.length ? { failed: wines.length } : {}),
+          ...(kitchen ? { kitchen_line: kitchen } : {}),
+        },
+        failed: wines.map((l) => ({ menuItemId: l.id, name: l.name, error: why })),
       };
     }
 
-    const { inventoryMap, priceSync } = await this.addToInventory(lines, restaurantId, userId, {
-      effectiveFrom: madeCurrentAt,
-      menuId,
-    });
-    await this.backfillMenuItemColumn(inventoryMap, "inventory_item_id");
+    // addToInventory writes each line's house link and price flag back itself.
+    // The switch is already committed: a refusal from here on must never
+    // reach the page as "nothing changed".
+    let priceSync: Map<string, PriceSyncEntry>;
+    try {
+      ({ priceSync } = await this.addToInventory(lines, restaurantId, userId, {
+        effectiveFrom: madeCurrentAt,
+        menuId,
+      }));
+    } catch (err) {
+      const why = err instanceof Error ? err.message : String(err);
+      this.logger.error(`menu ${menuId} is current but its prices were not carried: ${why}`);
+      throw new InternalServerErrorException(
+        `This menu is now the current one, but its prices did not reach the house (${why}). Choose it again under Menus kept to carry them; a price set since it was chosen stays.`,
+      );
+    }
 
     const counts: Record<string, number> = {};
     const failed: Array<{ menuItemId: string; name: string; error: string }> = [];
@@ -1555,7 +2575,7 @@ export class MenusService {
     }
     const returned = plan.lines.filter((l) => l.returned).map((l) => ({ menuItemId: l.menuItemId, name: l.name }));
     return {
-      outcome: "made_current",
+      outcome,
       ...empty,
       lines: lines.length,
       priceSync: counts,
@@ -1564,6 +2584,27 @@ export class MenusService {
       held,
       returned,
     };
+  }
+
+  /**
+   * Whether this menu is the house's ONLY current menu (r28 G20). A menu marked
+   * current beside another one is planned as a menu being chosen: choosing it
+   * sets the others aside (make_menu_current archives every other active menu
+   * and answers made_current), so the plan lists what they carry and this one
+   * does not, and offers the choice. Planned as "already current", the plan
+   * offered no choice when no price differed, and the house could not settle
+   * which menu is current. A failed read is a 5xx, never a guess.
+   */
+  private async isOnlyCurrent(restaurantId: string, menuId: string, row: Record<string, any>): Promise<boolean> {
+    if (row.status !== "active") return false;
+    const { data, error } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "active")
+      .neq("id", menuId);
+    if (error) throw new InternalServerErrorException(`The house's current menus could not be read: ${error.message}`);
+    return ((data ?? []) as unknown[]).length === 0;
   }
 
   private async readVersionRow(restaurantId: string, menuId: string): Promise<Record<string, any>> {
@@ -1600,6 +2641,9 @@ export class MenusService {
         failure: r.source_failure ?? null,
       },
       linesExtracted: num(r.lines_extracted),
+      readWarnings: Array.isArray(r.read_warnings) ? r.read_warnings.filter((w: unknown) => w && typeof w === "object") : null,
+      readState: (r.read_state as MenuReadState | undefined) ?? "done",
+      readFailure: r.read_failure ?? null,
       extractedAt: r.extracted_at ?? null,
       extractedBy: who(r.extracted_by),
       madeCurrentAt: r.made_current_at ?? null,
@@ -1615,6 +2659,17 @@ export class MenusService {
    * (ADR 0193 round 3, L25: it used to be logged and dropped, so "read by X"
    * vanished without a word), never raw ids shown as names.
    */
+  /** The house's zone for its menu dates (houseZoneOf); a failed read is said, never a default. */
+  private async houseZone(restaurantId: string): Promise<{ timezone: string | null; timezoneReason: string | null }> {
+    const { data, error } = await this.dbService.supabase
+      .from("restaurants")
+      .select("timezone")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error) this.logger.warn(`The house's time zone could not be read: ${error.message}`);
+    return houseZoneOf((data as { timezone?: unknown } | null)?.timezone, error ? error.message : null);
+  }
+
   private async namesOf(
     ids: Array<string | null | undefined>,
   ): Promise<{ names: Map<string, string | null>; error: string | null }> {
@@ -1638,6 +2693,15 @@ export class MenusService {
     // versions); a kept menu's lines wait for `makeCurrent`.
     current: boolean,
   ): Promise<MenuImportReviewItem[]> {
+    const resolved = await this.resolveLibrary(items, restaurantId);
+    return this.persistItems(resolved, restaurantId, menuId, userId, method, current);
+  }
+
+  /** Every line resolved against the wine library; writes no menu row. */
+  private async resolveLibrary(
+    items: WineExtractItem[],
+    restaurantId: string,
+  ): Promise<ResolvedItem[]> {
     if (items.length === 0) return [];
 
     // Resolve every item against master_wine_library BEFORE inserting
@@ -1656,10 +2720,38 @@ export class MenusService {
     // import could report success while linking nothing; if the single call
     // covering every wine fails, the import genuinely cannot proceed and should
     // say so rather than write a menu of unlinked items.
-    let resolved: ResolvedItem[];
+    //
+    // A KITCHEN LINE NEVER REACHES THE LIBRARY (menu walk 2026-11-11). The
+    // resolver makes a provisional library row for every line it cannot match,
+    // so "Tiramisu 9" under Desserts became a wine in the shared library at
+    // import, whether or not its menu was ever chosen. A dish is not a wine:
+    // it is decided here with the same test the page and the carry use
+    // (menu-line-view.ts isKitchenLine), kept on the menu unlinked, and never
+    // sent to the resolver. No library row, so no submission either.
+    const kitchen = items.map((item) =>
+      isKitchenLine(item.category, item.raw_text, item as unknown as Record<string, unknown>),
+    );
+    //
+    // THE HOUSE'S OWN GOODS COME FIRST (r21 walk, D1). A drink line that names
+    // exactly one good the house already carries (house-good-match.ts: name,
+    // kind, vintage and size where stated) is linked to that good and never
+    // sent to the library, so it makes no library row and no second inventory
+    // row. Its library wine, if the good names one, comes with it. A line two
+    // goods fit goes the old way and says which. A failed read of the house's
+    // goods is fatal, like the library call below: taking it for "the house
+    // carries nothing" is exactly how the copies were made.
+    const house = await matchHouseGoods(
+      this.dbService.supabase,
+      restaurantId,
+      items.map((item, idx) => (kitchen[idx] ? null : item)),
+    ).catch((err: Error) => {
+      this.logger.error(`Menu import: ${err.message}`);
+      throw new Error(`Menu import failed: ${err.message}`);
+    });
+    const drinks = items.filter((_, idx) => !kitchen[idx] && house[idx].outcome !== "one");
     try {
-      const results = await this.wineSubmissions.resolveLibraryWinesBatch(
-        items.map((item) => ({
+      const drinkResults = drinks.length === 0 ? [] : await this.wineSubmissions.resolveLibraryWinesBatch(
+        drinks.map((item) => ({
           name: item.name,
           producer: item.producer,
           vintage: item.vintage,
@@ -1679,31 +2771,83 @@ export class MenusService {
         // whose menu this is.
         restaurantId,
       );
-      resolved = items.map((item, idx) => ({
-        item,
-        masterWineId: results[idx]?.masterWineId ?? null,
-        matched: results[idx]?.matched ?? false,
-        libraryTier: results[idx]?.libraryTier ?? null,
-        confidence: results[idx]?.confidence ?? null,
-      }));
+      // Back onto every line, in the menu's order: a kitchen line is unlinked,
+      // and a line that named the house's good takes that good.
+      let next = 0;
+      return items.map((item, idx) => {
+        const h = house[idx];
+        if (!kitchen[idx] && h.outcome === "one") {
+          return {
+            item,
+            masterWineId: h.good.master_wine_id ?? null,
+            matched: true,
+            libraryTier: null,
+            confidence: null,
+            houseItemId: h.good.id,
+          };
+        }
+        const r = kitchen[idx] ? undefined : drinkResults[next++];
+        return {
+          item,
+          kitchen: kitchen[idx],
+          masterWineId: r?.masterWineId ?? null,
+          matched: r?.matched ?? false,
+          libraryTier: r?.libraryTier ?? null,
+          confidence: r?.confidence ?? null,
+          ...(h.outcome === "many"
+            ? {
+                houseCandidates: h.goods.map((g) => ({
+                  inventoryItemId: g.id,
+                  name: g.display_name ?? g.wine_name ?? "",
+                  kind: g.kind ?? null,
+                })),
+              }
+            : {}),
+        };
+      });
     } catch (err) {
       this.logger.error(`Library resolution failed for menu: ${err.message}`);
       throw new Error(
         `Menu import failed during library resolution: ${err.message}`,
       );
     }
+  }
+
+  /** Inserts already-resolved lines into `menuId`; if `current`, also seeds the house's inventory and prices. */
+  private async persistItems(
+    resolved: ResolvedItem[],
+    restaurantId: string,
+    menuId: string,
+    userId: string,
+    method: "scan" | "csv" | "manual",
+    current: boolean,
+  ): Promise<MenuImportReviewItem[]> {
+    if (resolved.length === 0) return [];
 
     // Unlinked items are the ones a manager has to fix by hand, so say how
     // many there are rather than leaving it to be discovered in the UI.
-    const unlinked = resolved.filter((r) => !r.masterWineId).length;
+    // A kitchen line is unlinked on purpose and is not counted; nor is a line
+    // linked to the house's own good, library wine or not.
+    const unlinked = resolved.filter((r) => !r.masterWineId && !r.houseItemId && !r.kitchen).length;
+    // The lines that went to the library: not a kitchen line, not the house's own good.
+    const drinks = resolved.filter((r) => !r.kitchen && !r.houseItemId);
     if (unlinked > 0) {
       this.logger.error(
-        `Menu import: ${unlinked}/${resolved.length} item(s) could not be ` +
+        `Menu import: ${unlinked}/${drinks.length} drink line(s) could not be ` +
           `linked to the wine library and will have no inventory row`,
       );
     }
+    for (const r of resolved) {
+      if (r.houseCandidates) {
+        this.logger.warn(
+          `Menu import: "${r.item.name}" fits ${r.houseCandidates.length} of the house's goods ` +
+            `(${r.houseCandidates.map((c) => `${c.name} [${c.kind ?? "no kind"}] ${c.inventoryItemId}`).join("; ")}); ` +
+            `none was guessed, so it went to the library`,
+        );
+      }
+    }
 
-    const menuItemRows = resolved.map(({ item, masterWineId }, idx) => ({
+    const menuItemRows = resolved.map(({ item, masterWineId, houseItemId }, idx) => ({
       menu_id: menuId,
       restaurant_id: restaurantId,
       name: item.name,
@@ -1716,6 +2860,7 @@ export class MenusService {
       bottle_price: item.bottle_price ?? null,
       raw_extracted_text: item.raw_text ?? null,
       wine_library_id: masterWineId,
+      ...(houseItemId ? { inventory_item_id: houseItemId } : {}),
       source: method,
       status:
         method === "manual" && idx >= FREE_TIER_MANUAL_LIMIT
@@ -1730,7 +2875,9 @@ export class MenusService {
     const { data, error: menuItemsErr } = await this.dbService.supabase
       .from("menu_items")
       .insert(menuItemRows)
-      .select("id, wine_library_id, name, by_glass_price, bottle_price, created_at");
+      .select(
+        "id, wine_library_id, inventory_item_id, name, by_glass_price, bottle_price, created_at, producer, vintage, region, grape_variety, category, raw_extracted_text",
+      );
 
     if (menuItemsErr) {
       this.logger.error(`Failed to insert menu_items: ${menuItemsErr.message}`);
@@ -1761,7 +2908,7 @@ export class MenusService {
             ]),
           ),
         };
-    await this.backfillMenuItemColumn(inventoryMap, "inventory_item_id");
+    // (addToInventory wrote each carried line's house link back itself.)
 
     // Provenance trail for governance (awaited, non-fatal on failure so a
     // submissions-table hiccup never blocks the manager's own inventory).
@@ -1773,7 +2920,10 @@ export class MenusService {
         restaurantId,
         userId,
       );
-      await this.backfillMenuItemColumn(submissionMap, "submission_id");
+      await this.writeBackLines(
+        restaurantId,
+        [...submissionMap.entries()].map(([id, submissionId]) => ({ id, submission_id: submissionId })),
+      );
     } catch (err) {
       this.logger.warn(
         `wine library submission failed (non-fatal): ${err.message}`,
@@ -1785,7 +2935,7 @@ export class MenusService {
       return {
         menuItemId: menuItem?.id,
         inventoryItemId: menuItem
-          ? (inventoryMap.get(menuItem.id) ?? null)
+          ? (inventoryMap.get(menuItem.id) ?? r.houseItemId ?? null)
           : null,
         inventoryCreated: menuItem
           ? inventoryMap.created.has(menuItem.id)
@@ -1816,6 +2966,7 @@ export class MenusService {
         priceFlag: menuItem ? (priceSync.get(menuItem.id)?.flag ?? null) : null,
         priceFlagNote: menuItem ? (priceSync.get(menuItem.id)?.flagNote ?? null) : null,
         priceHeld: menuItem ? (priceSync.get(menuItem.id)?.held ?? []) : [],
+        ...(r.houseCandidates ? { houseCandidates: r.houseCandidates } : {}),
       };
     });
   }
@@ -1830,7 +2981,8 @@ export class MenusService {
     const correspondingMenuItemIds: string[] = [];
 
     resolved.forEach((r, idx) => {
-      if (!r.masterWineId) return;
+      // A line that named the house's own good never went to the library.
+      if (!r.masterWineId || r.houseItemId) return;
       const menuItem = insertedMenuItems[idx];
       if (!menuItem) return;
 
@@ -1908,91 +3060,299 @@ export class MenusService {
       created: new Set<string>(),
     });
     const priceSync = new Map<string, PriceSyncEntry>();
-    const validItems = menuItems.filter((i) => i.wine_library_id);
+    // A kitchen line is never carried: no inventory row, no price, no stock.
+    // Said on the line, never dropped (ADR 0193 round 3, L15).
+    for (const i of menuItems) {
+      if (isKitchenItem(i)) {
+        priceSync.set(i.id, { outcome: "kitchen_line", error: null, flag: null, flagNote: null, held: [] });
+      }
+    }
+    // A line is carried by its library wine, or -- when it names none -- by the
+    // house's own good it was linked to (a house gin whose row names no wine).
+    const validItems = menuItems.filter((i) => (i.wine_library_id || i.inventory_item_id) && !isKitchenItem(i));
     if (validItems.length === 0) return { inventoryMap: result, priceSync };
+    const keyOf = (i: InsertedMenuItem): string =>
+      i.wine_library_id ? String(i.wine_library_id) : `good:${String(i.inventory_item_id)}`;
 
+    const client = this.dbService.supabase;
     const thresholdMin = await this.getDefaultThresholdMin(restaurantId);
 
-    for (const item of validItems) {
-      const { data: existing, error: existingErr } = await this.dbService.supabase
-        .from("restaurant_inventory")
-        .select("id, menu_price_current, menu_price_glass")
-        .eq("restaurant_id", restaurantId)
-        .eq("master_wine_id", item.wine_library_id)
-        .maybeSingle();
+    // BATCHED (menu proposal 2e, M15). This was one read, maybe one insert,
+    // one flag write and one link write PER LINE -- about a third of a second
+    // each against the pooler, so minutes for a long list. Now: the house's
+    // rows read in chunks, one insert for the wines it lacks, and one write-back
+    // for every line's link and flag. The price stays one set_house_menu_price
+    // call per priced line: it is the writer that holds the locks (L4, L27).
 
+    // 1. The house's own row for every wine on these lines. A chunk that cannot
+    //    be read fails its lines, said on each, never taken for "no row".
+    const wineIds = [...new Set(validItems.filter((i) => i.wine_library_id).map((i) => String(i.wine_library_id)))];
+    type HouseRow = { id: string; master_wine_id: string | null; kind?: string | null; menu_price_current: number | string | null; menu_price_glass: number | string | null };
+    const existingByWine = new Map<string, HouseRow>();
+    const readFailed = new Map<string, string>();
+    const HOUSE_ROW = "id, master_wine_id, kind, menu_price_current, menu_price_glass";
+    for (let at = 0; at < wineIds.length; at += WINE_ID_CHUNK) {
+      const chunk = wineIds.slice(at, at + WINE_ID_CHUNK);
+      const { data, error } = await client
+        .from("restaurant_inventory")
+        .select(HOUSE_ROW)
+        .eq("restaurant_id", restaurantId)
+        .in("master_wine_id", chunk);
+      if (error) {
+        for (const w of chunk) readFailed.set(w, error.message);
+        continue;
+      }
+      // One row per house and wine (the UNIQUE), so a chunk never nears the 1000-row cap.
+      for (const r of (data ?? []) as HouseRow[]) existingByWine.set(String(r.master_wine_id), r);
+    }
+    // The goods named by their own row, by id and in this house only. A link to
+    // a row that is gone is said on its line, never taken for a new wine.
+    const goodIds = [...new Set(validItems.filter((i) => !i.wine_library_id).map((i) => String(i.inventory_item_id)))];
+    for (let at = 0; at < goodIds.length; at += WINE_ID_CHUNK) {
+      const chunk = goodIds.slice(at, at + WINE_ID_CHUNK);
+      const { data, error } = await client
+        .from("restaurant_inventory")
+        .select(HOUSE_ROW)
+        .eq("restaurant_id", restaurantId)
+        .in("id", chunk);
+      if (error) {
+        for (const g of chunk) readFailed.set(`good:${g}`, error.message);
+        continue;
+      }
+      for (const r of (data ?? []) as HouseRow[]) existingByWine.set(`good:${String(r.id)}`, r);
+    }
+
+    // 2. One insert for every wine the house has no row for, named by its first
+    //    line and WITHOUT a price on purpose: the price goes through
+    //    set_house_menu_price below, so its version row says 'import' and names
+    //    the person, instead of the trigger's "no person named". If the batch is
+    //    refused, each wine is tried on its own so one refusal does not fail the rest.
+    const firstLine = new Map<string, InsertedMenuItem>();
+    for (const i of validItems) if (i.wine_library_id && !firstLine.has(String(i.wine_library_id))) firstLine.set(String(i.wine_library_id), i);
+    const missing = wineIds.filter((w) => !readFailed.has(w) && !existingByWine.has(w));
+    const createdByWine = new Map<string, string>();
+    const createdKind = new Map<string, string | null>();
+    const insertFailed = new Map<string, string>();
+    if (missing.length > 0) {
+      const rowFor = (w: string) => ({
+        restaurant_id: restaurantId,
+        master_wine_id: w,
+        wine_name: firstLine.get(w)!.name,
+        threshold_min: thresholdMin,
+        is_active: true,
+        // The good's kind from its line's section (r28 G2). Without it the
+        // insert trigger files every good a menu adds as a bottle of wine
+        // (20260903171000:431), beer, gin, cola and cocktail alike.
+        ...newGoodIdentity(firstLine.get(w)!.category),
+      });
+      const { data, error } = await client
+        .from("restaurant_inventory")
+        .insert(missing.map(rowFor))
+        .select("id, master_wine_id, kind");
+      if (!error) {
+        for (const r of (data ?? []) as Array<{ id: string; master_wine_id: string; kind?: string | null }>) {
+          createdByWine.set(String(r.master_wine_id), String(r.id));
+          createdKind.set(String(r.master_wine_id), r.kind ?? null);
+        }
+      } else {
+        this.logger.warn(`adding ${missing.length} wine(s) to the house in one go was refused (${error.message}); adding them one by one`);
+        for (const w of missing) {
+          const { data: one, error: oneErr } = await client.from("restaurant_inventory").insert(rowFor(w)).select("id, kind").single();
+          if (oneErr || !one?.id) insertFailed.set(w, oneErr?.message ?? "no row came back");
+          else {
+            createdByWine.set(w, String(one.id));
+            createdKind.set(w, (one as { kind?: string | null }).kind ?? null);
+          }
+        }
+      }
+    }
+
+    // 3. Each line's row, then every price through the writer in ONE call per
+    //    round (r28 G1). Round r holds the r-th line of each wine, in menu
+    //    order: a second line of one wine must see the price the first just
+    //    set (what the per-line read used to see), so its round re-reads those
+    //    rows first. A plain menu is one round; a wine listed by the glass and
+    //    again by the bottle makes two. The price stays set_house_menu_price's,
+    //    run inside set_house_menu_prices (L4, L27).
+    const carried = new Set<string>();
+    const writeBacks: Array<{ id: string; inventory_item_id: string; price_flag: PriceFlag | null; price_flag_note: string | null }> = [];
+    const rounds: Array<Array<{ item: InsertedMenuItem; inventoryId: string; kind: string | null }>> = [];
+    const roundOf = new Map<string, number>();
+    for (const item of validItems) {
+      const w = keyOf(item);
       // A failed read is not "no row" (last-call review, 2026-09-21). Read as
       // one, it tried a duplicate INSERT (refused by the house+wine UNIQUE),
       // skipped the line in silence -- counted "not_linked" -- and decided the
       // blank-price flag (founder answer 3) from a price it never saw.
-      if (existingErr) {
-        const message = `the house's own row for this wine could not be read, so neither its price nor a blank-price flag was decided: ${existingErr.message}`;
+      const readErr = readFailed.get(w);
+      if (readErr !== undefined) {
+        const message = `the house's own row for this wine could not be read, so neither its price nor a blank-price flag was decided: ${readErr}`;
         this.logger.error(`menu line ${item.id} ("${item.name}"): ${message}`);
         priceSync.set(item.id, { outcome: "failed", error: message, flag: null, flagNote: null, held: [] });
         continue;
       }
-
-      let inventoryId: string | null = existing?.id ?? null;
+      const existing = existingByWine.get(w) ?? null;
+      const inventoryId = existing?.id ?? createdByWine.get(w) ?? null;
+      if (!inventoryId && !item.wine_library_id) {
+        const message = "the house's good this line was linked to is no longer in the house's inventory, so no price was set";
+        this.logger.warn(`menu line ${item.id} ("${item.name}"): ${message}`);
+        priceSync.set(item.id, { outcome: "failed", error: message, flag: null, flagNote: null, held: [] });
+        continue;
+      }
       if (!inventoryId) {
-        // Inserted WITHOUT a price on purpose: the price goes through
-        // set_house_menu_price below, so its version row says 'import' and
-        // names the person, instead of the trigger's "no person named".
-        const { data: created, error } = await this.dbService.supabase
-          .from("restaurant_inventory")
-          .insert({
-            restaurant_id: restaurantId,
-            master_wine_id: item.wine_library_id,
-            wine_name: item.name,
-            threshold_min: thresholdMin,
-            is_active: true,
-          })
-          .select("id")
-          .single();
+        // Still non-fatal for the menu, but said on the line: "not_linked"
+        // means the menu matched no wine, never that the house's row failed.
+        const why = insertFailed.get(w) ?? "no row came back";
+        const message = `the wine could not be added to the house's inventory, so no price was set: ${why}`;
+        this.logger.warn(`inventory seeding failed for "${item.name}" (non-fatal): ${why}`);
+        priceSync.set(item.id, { outcome: "failed", error: message, flag: null, flagNote: null, held: [] });
+        continue;
+      }
+      result.set(item.id, inventoryId);
+      // A row this call created is "created" on its first line only.
+      if (!existing && !carried.has(w)) result.created.add(item.id);
+      carried.add(w);
+      const r = roundOf.get(w) ?? 0;
+      roundOf.set(w, r + 1);
+      const kind = existing ? (existing.kind ?? null) : (createdKind.get(w) ?? null);
+      (rounds[r] ??= []).push({ item, inventoryId, kind });
+    }
 
-        if (error) {
-          // Still non-fatal for the menu, but said on the line: "not_linked"
-          // means the menu matched no wine, never that the house's row failed.
-          const message = `the wine could not be added to the house's inventory, so no price was set: ${error.message}`;
-          this.logger.warn(`inventory seeding failed for "${item.name}" (non-fatal): ${error.message}`);
+    for (let r = 0; r < rounds.length; r += 1) {
+      const round = rounds[r];
+      // The house's price before this round: as read (or none, for a row this
+      // call created) for the first, read again for every later round.
+      const before = new Map<string, { bottle: number | string | null; glass: number | string | null }>();
+      const againFailed = new Map<string, string>();
+      if (r === 0) {
+        for (const { item, inventoryId } of round) {
+          const existing = existingByWine.get(keyOf(item)) ?? null;
+          before.set(inventoryId, {
+            bottle: existing?.menu_price_current ?? null,
+            glass: existing?.menu_price_glass ?? null,
+          });
+        }
+      } else {
+        const ids = [...new Set(round.map((x) => x.inventoryId))];
+        for (let at = 0; at < ids.length; at += WINE_ID_CHUNK) {
+          const chunk = ids.slice(at, at + WINE_ID_CHUNK);
+          const { data: again, error: againErr } = await client
+            .from("restaurant_inventory")
+            .select("id, menu_price_current, menu_price_glass")
+            .eq("restaurant_id", restaurantId)
+            .in("id", chunk);
+          if (againErr) {
+            for (const id of chunk) againFailed.set(id, againErr.message);
+            continue;
+          }
+          for (const row of (again ?? []) as Array<{ id: string; menu_price_current: number | string | null; menu_price_glass: number | string | null }>) {
+            before.set(String(row.id), { bottle: row.menu_price_current ?? null, glass: row.menu_price_glass ?? null });
+          }
+        }
+      }
+      const toWrite: Array<{ item: InsertedMenuItem; inventoryId: string; plan: CarryPlan }> = [];
+      for (const { item, inventoryId, kind } of round) {
+        const againErr = againFailed.get(inventoryId);
+        if (againErr !== undefined) {
+          const message = `the house's own row for this wine could not be read, so neither its price nor a blank-price flag was decided: ${againErr}`;
+          this.logger.error(`menu line ${item.id} ("${item.name}"): ${message}`);
           priceSync.set(item.id, { outcome: "failed", error: message, flag: null, flagNote: null, held: [] });
           continue;
         }
-        inventoryId = created?.id ?? null;
+        const plan = carryPlanOf(item, before.get(inventoryId) ?? { bottle: null, glass: null }, kind);
+        writeBacks.push({ id: item.id, inventory_item_id: inventoryId, price_flag: plan.flag, price_flag_note: plan.flagNote });
+        if (plan.bottle === null && plan.glass === null) {
+          priceSync.set(item.id, { outcome: "no_price", error: null, flag: plan.flag, flagNote: plan.flagNote, held: [] });
+          continue;
+        }
+        toWrite.push({ item, inventoryId, plan });
       }
-      if (!inventoryId) continue;
-      result.set(item.id, inventoryId);
-      if (!existing) result.created.add(item.id);
-      const entry = await this.carryMenuPrice(
-        item,
-        restaurantId,
-        inventoryId,
-        userId,
+      if (toWrite.length === 0) continue;
+      const answers = await setHouseMenuPrices(
+        client,
         {
-          bottle: existing?.menu_price_current ?? null,
-          glass: existing?.menu_price_glass ?? null,
+          restaurantId,
+          source: "import",
+          changedBy: userId,
+          // Dated by the choice of the menu, or now for a line added to the
+          // current menu -- never by the line's own created_at (L11).
+          effectiveFrom: dating.effectiveFrom,
+          menuId: dating.menuId,
+          reason: "menu line",
         },
-        dating,
+        toWrite.map(({ item, inventoryId, plan }) => ({
+          key: String(item.id),
+          inventoryId,
+          ...(plan.bottle !== null ? { bottle: plan.bottle } : {}),
+          ...(plan.glass !== null ? { glass: plan.glass } : {}),
+        })),
       );
-      priceSync.set(item.id, entry);
-      await this.writeLineFlag(item.id, entry);
+      for (const { item, inventoryId, plan } of toWrite) {
+        if (answers === null) {
+          // The batch writer is not in this database yet: one call per line, as before.
+          priceSync.set(item.id, await this.carryMenuPrice(item, restaurantId, inventoryId, userId, plan, dating));
+          continue;
+        }
+        const a = answers.get(String(item.id));
+        if (a?.ok) {
+          priceSync.set(item.id, { outcome: a.result.outcome, error: null, flag: plan.flag, flagNote: plan.flagNote, held: a.result.held });
+        } else {
+          const message = a ? a.error : "The price writer's answer did not name this line; whether its price changed is unknown.";
+          this.logger.error(`menu line ${item.id} ("${item.name}"): the house price was not updated: ${message}`);
+          priceSync.set(item.id, { outcome: "failed", error: message, flag: plan.flag, flagNote: plan.flagNote, held: [] });
+        }
+      }
     }
+
+    // 4. Every carried line's house link and price flag (null clears a flag an
+    //    earlier choice left), in one call. A line whose write failed carries
+    //    the reason; the price outcome itself is already decided.
+    await this.writeBackLines(restaurantId, writeBacks, (id, message) => {
+      const entry = priceSync.get(id);
+      if (entry) entry.flagError = message;
+    });
 
     return { inventoryMap: result, priceSync };
   }
 
   /**
-   * The blank-price flag, written on the line (null clears a flag an earlier
-   * choice left). A failed write is logged loudly and returned on the entry;
-   * the price outcome itself is already decided.
+   * Writes back many lines of one house in one call (menu proposal 2e):
+   * `menu_items_write_back` sets only the keys each row names (house link,
+   * submission, price flag and note). If that call is refused or does not say
+   * how many rows it wrote -- the function not there yet, say -- each line is
+   * written on its own, and a line whose write fails is handed to `onFail`
+   * with the reason and logged loudly.
    */
-  private async writeLineFlag(menuItemId: string, entry: PriceSyncEntry): Promise<void> {
-    const { error } = await this.dbService.supabase
-      .from("menu_items")
-      .update({ price_flag: entry.flag, price_flag_note: entry.flagNote })
-      .eq("id", menuItemId);
-    if (error) {
-      this.logger.error(`menu line ${menuItemId}: its price flag was not written: ${error.message}`);
-      entry.flagError = error.message;
+  private async writeBackLines(
+    restaurantId: string,
+    rows: Array<{ id: string } & Record<string, unknown>>,
+    onFail?: (menuItemId: string, message: string) => void,
+  ): Promise<void> {
+    if (rows.length === 0) return;
+    const client = this.dbService.supabase;
+    const { data, error } = await client.rpc("menu_items_write_back", {
+      p_restaurant_id: restaurantId,
+      p_rows: rows,
+    });
+    if (!error && typeof data === "number") {
+      if (data !== rows.length) {
+        this.logger.warn(`${rows.length - data} of ${rows.length} menu line(s) were gone when written back`);
+      }
+      return;
+    }
+    this.logger.warn(
+      `menu lines were not written back in one call (${error?.message ?? "no count came back"}); writing them one by one`,
+    );
+    for (const { id, ...patch } of rows) {
+      const { error: oneErr } = await client
+        .from("menu_items")
+        .update(patch)
+        .eq("id", id)
+        .eq("restaurant_id", restaurantId);
+      if (oneErr) {
+        this.logger.error(`menu line ${id}: ${Object.keys(patch).join(", ")} not written: ${oneErr.message}`);
+        onFail?.(id, oneErr.message);
+      }
     }
   }
 
@@ -2020,35 +3380,10 @@ export class MenusService {
     restaurantId: string,
     inventoryId: string,
     userId: string,
-    house: { bottle: number | string | null; glass: number | string | null },
+    plan: CarryPlan,
     dating: CarryDating,
   ): Promise<PriceSyncEntry> {
-    const price = (v: unknown): number | null => {
-      if (v === null || v === undefined || v === "") return null;
-      const n = typeof v === "number" ? v : Number(v);
-      return Number.isFinite(n) && n >= 0 ? n : null;
-    };
-    const bottle = price(item.bottle_price);
-    const glass = price(item.by_glass_price);
-    const knownBottle = price(house.bottle);
-    const knownGlass = price(house.glass);
-    const kept: string[] = [];
-    if (bottle === null && knownBottle !== null) kept.push(`bottle price ${knownBottle.toFixed(2)}`);
-    if (glass === null && knownGlass !== null) kept.push(`glass price ${knownGlass.toFixed(2)}`);
-    const noPriceAnywhere =
-      bottle === null && glass === null && knownBottle === null && knownGlass === null;
-    const flag: PriceFlag | null =
-      kept.length > 0 ? "blank_kept_last_known" : noPriceAnywhere ? "blank_no_house_price" : null;
-    // Past tense on purpose (last-call review, 2026-09-21): the note stays on
-    // the line after a manager changes the price on Inventory, so it states
-    // what was kept when the line was carried -- true forever -- not what the
-    // house "keeps" now, which the first price change would make false.
-    const flagNote =
-      kept.length > 0
-        ? `The menu line shows no ${kept.map((k) => k.split(" ")[0]).join(" or ")} price, so the house kept the ${kept.join(" and ")} it already had. A manager can change it on Inventory, under Your price.`
-        : noPriceAnywhere
-          ? "The menu line shows no price, and the house had no price for this wine either, so it stands on the menu unpriced. A manager can set one on Inventory, under Your price."
-          : null;
+    const { bottle, glass, flag, flagNote } = plan;
     if (bottle === null && glass === null) return { outcome: "no_price", error: null, flag, flagNote, held: [] };
     try {
       const r = await setHouseMenuPrice(this.dbService.supabase, {
@@ -2081,24 +3416,6 @@ export class MenusService {
       .eq("id", restaurantId)
       .maybeSingle();
     return data?.default_threshold_min ?? DEFAULT_THRESHOLD_MIN_FALLBACK;
-  }
-
-  private async backfillMenuItemColumn(
-    menuItemToValue: Map<string, string>,
-    column: "inventory_item_id" | "submission_id",
-  ): Promise<void> {
-    for (const [menuItemId, value] of menuItemToValue.entries()) {
-      const { error } = await this.dbService.supabase
-        .from("menu_items")
-        .update({ [column]: value })
-        .eq("id", menuItemId);
-
-      if (error) {
-        this.logger.warn(
-          `Failed to backfill ${column} for menu_item ${menuItemId}: ${error.message}`,
-        );
-      }
-    }
   }
 
   private async markMenuUploaded(restaurantId: string): Promise<void> {
@@ -2145,61 +3462,224 @@ export class MenusService {
     }
   }
 
-  async getOnboardingProgress(userId: string) {
-    const { data, error } = await this.dbService.supabase
-      .from("user_onboarding_progress")
-      .select("*")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    if (error) throw error;
-    if (!data)
+  /**
+   * A person's setup, read from the house their session is in (OB-1, the
+   * session's call under the 2026-11-07 /goal). The house facts (a menu
+   * read, a menu made current, a supplier, an invite) come from the house's
+   * own tables every time; the person's row keeps only checklist_dismissed.
+   * A GET writes nothing; an invitee with no row still reads their house.
+   * "Activated" = a CURRENT menu with a live line (ADR 0193: a kept draft
+   * gives no stock and no prices); the threshold no longer gates it. This
+   * read does not make any menu current: that is the person's choice, on the
+   * first proof (#1053) or on /menu, and the web says which one is missing.
+   * `completed_at` = when the last of current menu, supplier and invite held.
+   * It is derived, not remembered: if the house loses its only supplier or
+   * its current menu, the step is undone again and the checklist says so
+   * (putting the checklist away, `checklist_dismissed`, is what is kept).
+   * An invite counts while it can still be used or once it was used; an
+   * expired, unused invite does not (a revoked one is deleted, so it never
+   * counts). A supplier counts whoever added it -- the person, a promoted
+   * prospect, or a seller read off the house's own invoice.
+   * A failed read throws; it is never taken for "not yet".
+   * `next_steps` (readNextSteps) are read alongside and never throw: each
+   * gives null when its own read fails.
+   */
+  async getOnboardingProgress(userId: string, restaurantId: string | null | undefined) {
+    if (!restaurantId) {
       throw new NotFoundException(
-        "Onboarding progress not found for this user",
+        "This session is in no house yet, so there is no house setup to read.",
+      );
+    }
+    const supabase = this.dbService.supabase;
+    const fail = (what: string, message: string) =>
+      new InternalServerErrorException(
+        `Could not read this house's ${what} for its setup: ${message}`,
       );
 
-    // Restaurant-scoped self-heal: user_onboarding_progress is keyed by
-    // user_id, so an invitee who joins after the owner already uploaded a
-    // menu would otherwise see "Upload your wine menu" as still pending.
-    // Auto-satisfy it from the restaurant's actual state instead.
-    let menuUploaded = !!data.menu_uploaded;
-    if (!menuUploaded) {
-      const { data: activeMenu } = await this.dbService.supabase
-        .from("restaurant_menus")
-        .select("id")
-        .eq("restaurant_id", data.restaurant_id)
-        .eq("status", "active")
-        .maybeSingle();
-
-      if (activeMenu) {
-        menuUploaded = true;
-        const { error: healErr } = await this.dbService.supabase
+    const [own, menuRead, menuCurrent, supplier, invite, house, nextSteps] =
+      await Promise.all([
+        supabase
           .from("user_onboarding_progress")
-          .update({ menu_uploaded: true })
-          .eq("id", data.id);
-        if (healErr) {
-          this.logger.warn(
-            `Failed to self-heal menu_uploaded for onboarding row ${data.id}: ${healErr.message}`,
-          );
-        }
-      }
-    }
+          .select("id, checklist_dismissed")
+          .eq("user_id", userId)
+          .maybeSingle(),
+        this.firstLiveMenuLine(restaurantId, "read"),
+        this.firstLiveMenuLine(restaurantId, "current"),
+        supabase
+          .from("providers")
+          .select("created_at")
+          .eq("restaurant_id", restaurantId)
+          .is("deleted_at", null)
+          .order("created_at", { ascending: true })
+          .limit(1),
+        supabase
+          .from("organization_invites")
+          .select("created_at")
+          .eq("restaurant_id", restaurantId)
+          .or(`used_at.not.is.null,expires_at.gt.${new Date().toISOString()}`)
+          .order("created_at", { ascending: true })
+          .limit(1),
+        supabase
+          .from("restaurants")
+          .select("threshold_configured")
+          .eq("id", restaurantId)
+          .maybeSingle(),
+        this.readNextSteps(restaurantId),
+      ]);
+    if (own.error) throw fail("setup row", own.error.message);
+    if (supplier.error) throw fail("suppliers", supplier.error.message);
+    if (invite.error) throw fail("invites", invite.error.message);
+    if (house.error) throw fail("settings", house.error.message);
 
-    const { data: restaurant } = await this.dbService.supabase
-      .from("restaurants")
-      .select("threshold_configured")
-      .eq("id", data.restaurant_id)
-      .maybeSingle();
-    const thresholdConfigured = !!restaurant?.threshold_configured;
+    // A fact holds when its first row exists; `since` is that row's time.
+    const supplierRow = (supplier.data ?? [])[0] ?? null;
+    const inviteRow = (invite.data ?? [])[0] ?? null;
+    const times = [menuCurrent?.since, supplierRow?.created_at, inviteRow?.created_at];
+    const completedAt =
+      menuCurrent && supplierRow && inviteRow && times.every(Boolean)
+        ? (times as string[]).reduce((a, b) =>
+            Date.parse(b) > Date.parse(a) ? b : a,
+          )
+        : null;
 
     return {
-      ...data,
-      menu_uploaded: menuUploaded,
-      threshold_configured: thresholdConfigured,
-      // "Activated" = the two soft-gate essentials — the manager has a
-      // working inventory and a low-stock signal. Vendor/team are optional.
-      activated: menuUploaded && thresholdConfigured,
+      id: own.data?.id ?? null,
+      user_id: userId,
+      restaurant_id: restaurantId,
+      menu_uploaded: menuRead !== null,
+      menu_current: menuCurrent !== null,
+      vendor_added: supplierRow !== null,
+      team_member_invited: inviteRow !== null,
+      checklist_dismissed: !!own.data?.checklist_dismissed,
+      completed_at: completedAt,
+      threshold_configured: !!house.data?.threshold_configured,
+      activated: menuCurrent !== null,
+      next_steps: nextSteps,
     };
+  }
+
+  /**
+   * What leads past the menu to the house's costs (r28 onboarding gap 3, the
+   * session's call under the 2026-11-07 /goal): the first goods on the list,
+   * the house's mailbox, and the first invoice checked. These are the next
+   * steps, not setup: they never decide `completed_at` or `activated`, so a
+   * house that finished setup is not sent back into it.
+   *
+   * Each fact is read on its own. A read that fails gives `null` (not read),
+   * never `false`: the setup above still answers, and the panel says the step
+   * could not be read instead of calling it not done (absence is not health,
+   * and a failed read is not absence).
+   *
+   * - goods_listed: an active good on the house's list (the desk's count).
+   * - mailbox_connected: a live Gmail grant held for this house, to send or
+   *   to read (the only mailbox a house can connect today).
+   * - invoice: "checked" once an invoice is verified (its costs are applied),
+   *   else "waiting" while one is in and not yet checked, else "none".
+   *   A rejected or superseded paper is neither.
+   */
+  private async readNextSteps(restaurantId: string): Promise<{
+    goods_listed: boolean | null;
+    mailbox_connected: boolean | null;
+    invoice: "none" | "waiting" | "checked" | null;
+  }> {
+    const supabase = this.dbService.supabase;
+    // A read that throws or rejects (a dropped connection) is a failed read
+    // like any other: it gives this fact `null` and never fails the setup.
+    const settle = (
+      query: () => PromiseLike<{ data: unknown[] | null; error: unknown }>,
+    ): Promise<{ data: unknown[] | null; error: unknown }> =>
+      new Promise<PromiseLike<{ data: unknown[] | null; error: unknown }>>(
+        (resolve) => resolve(query()),
+      ).then(
+        (read) => read,
+        (error: unknown) => ({ data: null, error: error ?? "rejected" }),
+      );
+    const [goods, mailbox, checked, waiting] = await Promise.all([
+      settle(() =>
+        supabase
+          .from("restaurant_inventory")
+          .select("id")
+          .eq("restaurant_id", restaurantId)
+          .is("deleted_at", null)
+          .eq("is_active", true)
+          .limit(1),
+      ),
+      settle(() =>
+        supabase
+          .from("integration_oauth_connections")
+          .select("id")
+          .eq("restaurant_id", restaurantId)
+          .in("integration_id", ["gmail_send", "gmail_read"])
+          .is("revoked_at", null)
+          .limit(1),
+      ),
+      settle(() =>
+        supabase
+          .from("procurement_documents")
+          .select("id")
+          .eq("restaurant_id", restaurantId)
+          .eq("doc_type", "invoice")
+          .eq("status", "verified")
+          .limit(1),
+      ),
+      settle(() =>
+        supabase
+          .from("procurement_documents")
+          .select("id")
+          .eq("restaurant_id", restaurantId)
+          .eq("doc_type", "invoice")
+          .in("status", ["received", "extracting", "needs_review"])
+          .limit(1),
+      ),
+    ]);
+    const held = (read: { data: unknown[] | null; error: unknown }) =>
+      read.error ? null : (read.data ?? []).length > 0;
+    const isChecked = held(checked);
+    const isWaiting = held(waiting);
+    let invoice: "none" | "waiting" | "checked" | null;
+    if (isChecked === true) invoice = "checked";
+    else if (isChecked === null) invoice = null;
+    else if (isWaiting === null) invoice = null;
+    else invoice = isWaiting ? "waiting" : "none";
+    return {
+      goods_listed: held(goods),
+      mailbox_connected: held(mailbox),
+      invoice,
+    };
+  }
+
+  /**
+   * The house's first live menu line (a `menu_items` row
+   * that is not discarded), on a version that is not archived ("read") or on
+   * the current version ("current"), with when it was written; null when
+   * there is none. Lines are
+   * counted where they live, whatever put them there -- a read, a CSV, lines
+   * typed in review -- never from `lines_extracted` (#770). A failed read
+   * throws.
+   */
+  private async firstLiveMenuLine(
+    restaurantId: string,
+    which: "read" | "current",
+  ): Promise<{ since: string | null } | null> {
+    let query = this.dbService.supabase
+      .from("menu_items")
+      .select("created_at, restaurant_menus!inner(status)")
+      .eq("restaurant_id", restaurantId)
+      .neq("status", "discarded");
+    query =
+      which === "current"
+        ? query.eq("restaurant_menus.status", "active")
+        : query.neq("restaurant_menus.status", "archived");
+    const { data, error } = await query
+      .order("created_at", { ascending: true })
+      .limit(1);
+    if (error) {
+      throw new InternalServerErrorException(
+        `Could not read this house's menus for its setup: ${error.message}`,
+      );
+    }
+    const first = (data ?? [])[0];
+    return first ? { since: first.created_at ?? null } : null;
   }
 
   async setDefaultThreshold(
@@ -2221,39 +3701,58 @@ export class MenusService {
     return { default_threshold_min: thresholdMin, threshold_configured: true };
   }
 
+  /**
+   * Only the person's own flag is written: putting the checklist away. The
+   * house facts (menu, supplier, invite) are read from the house in
+   * `getOnboardingProgress` and a client cannot set them; a body that names
+   * them changes nothing (older clients still send `vendor_added`). A person
+   * with no row gets one, in the session's house. Answers the progress read.
+   */
   async updateOnboardingProgress(
     userId: string,
+    restaurantId: string | null | undefined,
     dto: UpdateOnboardingProgressDto,
   ) {
-    const updates: Record<string, boolean | string> = {};
-    if (dto.menu_uploaded !== undefined)
-      updates.menu_uploaded = dto.menu_uploaded;
-    if (dto.vendor_added !== undefined) updates.vendor_added = dto.vendor_added;
-    if (dto.team_member_invited !== undefined)
-      updates.team_member_invited = dto.team_member_invited;
-    if (dto.checklist_dismissed !== undefined)
-      updates.checklist_dismissed = dto.checklist_dismissed;
-
-    // Auto-set completed_at when all three tasks become true
-    const current = await this.getOnboardingProgress(userId);
-    const merged = { ...current, ...updates };
-    if (
-      merged.menu_uploaded &&
-      merged.vendor_added &&
-      merged.team_member_invited &&
-      !current.completed_at
-    ) {
-      updates.completed_at = new Date().toISOString();
+    if (dto.checklist_dismissed !== undefined) {
+      if (!restaurantId) {
+        throw new NotFoundException(
+          "This session is in no house yet, so there is no checklist to put away.",
+        );
+      }
+      // Update the person's row (user_id is UNIQUE); with none, insert one.
+      // Two first-time PATCHes at once both find no row: the loser's insert
+      // hits the unique index (23505) and updates the winner's row instead
+      // of answering 500. Not an upsert: that would rewrite the row's
+      // restaurant_id, which the menu self-heal still keys on.
+      const dismissed = { checklist_dismissed: dto.checklist_dismissed };
+      const updateOwn = () =>
+        this.dbService.supabase
+          .from("user_onboarding_progress")
+          .update(dismissed)
+          .eq("user_id", userId)
+          .select("id");
+      const notPutAway = (message: string) =>
+        new InternalServerErrorException(
+          `The checklist was not put away: ${message}`,
+        );
+      const updated = await updateOwn();
+      if (updated.error) throw notPutAway(updated.error.message);
+      if ((updated.data ?? []).length === 0) {
+        const inserted = await this.dbService.supabase
+          .from("user_onboarding_progress")
+          .insert({
+            user_id: userId,
+            restaurant_id: restaurantId,
+            ...dismissed,
+          });
+        if (inserted.error?.code === "23505") {
+          const again = await updateOwn();
+          if (again.error) throw notPutAway(again.error.message);
+        } else if (inserted.error) {
+          throw notPutAway(inserted.error.message);
+        }
+      }
     }
-
-    const { data, error } = await this.dbService.supabase
-      .from("user_onboarding_progress")
-      .update(updates)
-      .eq("user_id", userId)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data;
+    return this.getOnboardingProgress(userId, restaurantId);
   }
 }

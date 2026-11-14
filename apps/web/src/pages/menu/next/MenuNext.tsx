@@ -8,6 +8,11 @@
  * WHAT THIS READS AND WRITES, both real, both wired in this build:
  *   GET   /menus/:restaurantId               the active menu and its lines
  *   PATCH /menus/:restaurantId/items/:id/discard   soft-remove one line
+ *   PATCH /menus/items/:id                    change one line's glass or bottle
+ *                                              price (owner or manager); on the
+ *                                              current menu it moves the house's
+ *                                              own price too, and the page says
+ *                                              what happened (priceChangeNote)
  *   POST  /menus/items                        add one line (existing route;
  *                                              its tenant check was a real
  *                                              gap — see menus.service.ts —
@@ -37,19 +42,42 @@
  * shown an empty add form that would 404 on submit.
  */
 
-import { useState, type FormEvent } from 'react';
+import { Fragment, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
-import { addMenuItem, discardMenuItem, getMenu, type MenuLine } from '../../../services/api/menus';
-import { housePriceNote } from './menu-price-note';
+import { addMenuItem, discardMenuItem, getMenu, reviewMenuItem, type MenuLine } from '../../../services/api/menus';
+import { housePriceNote, priceChangeNote, type PriceChange } from './menu-price-note';
 import { MenuVersions } from './MenuVersions';
 import { LockedPrices } from './LockedPrices';
 import { settingsApi } from '../../../services/api/settings';
 import { formatMoney } from '@/lib/currency';
+import { housePriceHint } from '@/lib/house-number';
 import { Wordmark } from '@/components/mudavym';
+import { isKitchenLine } from '../../../lib/firstProof';
+import { lineStatusWords } from './menu-line-status';
 import '../../cellar/next/cellar-next.css';
 
 const EM = '—';
+
+/**
+ * Whether a line on the current menu is a dish (a kitchen line): the gateway's
+ * own word when it sends one (menu-line-view.ts isKitchenLine), else the same
+ * test here. A kitchen line stays on the menu and is carried nowhere (#1085);
+ * the page sets it apart from the drinks instead of listing a dessert among
+ * the wines (menu walk 2026-11-11).
+ */
+export function isKitchenMenuLine(line: MenuLine): boolean {
+  if (typeof line.kitchen_line === 'boolean') return line.kitchen_line;
+  return isKitchenLine({
+    category: line.category,
+    rawText: null,
+    name: line.name,
+    producer: line.producer,
+    vintage: line.vintage,
+    region: line.region,
+    grapeVariety: line.grape_variety,
+  });
+}
 
 /**
  * Money, in the HOUSE's own reporting currency — never a hardcoded `$`.
@@ -105,8 +133,8 @@ function useActiveMenu(restaurantId: string | null) {
       vintage?: string
       region?: string
       grape_variety?: string
-      by_glass_price?: number
-      bottle_price?: number
+      by_glass_typed?: string
+      bottle_typed?: string
     }) => {
       if (!q.data?.menuId) throw new Error('No active menu to add to');
       return addMenuItem(q.data.menuId, fields);
@@ -117,17 +145,24 @@ function useActiveMenu(restaurantId: string | null) {
   return { q, discard, add };
 }
 
-function AddItemForm({ onAdd, adding, error }: {
+function AddItemForm({ onAdd, adding, error, canPrice }: {
   // The reset callback fires only on a SUCCESSFUL add. Clearing the form at
   // submit time (the prior behaviour) threw the person's typed entry away on
   // a failed POST, with no way to recover it — "a draft is not sent" cuts
   // both ways: a failure must not erase it either.
   onAdd: (
-    fields: { name: string; category?: string; by_glass_price?: number; bottle_price?: number },
+    fields: { name: string; category?: string; by_glass_typed?: string; bottle_typed?: string },
     opts: { onSuccess: () => void },
   ) => void
   adding: boolean
   error: string | null
+  /**
+   * Whether this person may put a price on the menu. The gateway refuses a
+   * priced add from staff ("Only managers and owners can put a price on the
+   * current menu"), so staff are not handed boxes that can only be refused
+   * (r21 production-build walk).
+   */
+  canPrice: boolean
 }) {
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
@@ -141,8 +176,12 @@ function AddItemForm({ onAdd, adding, error }: {
       {
         name: name.trim(),
         category: category.trim() || undefined,
-        by_glass_price: byGlass ? Number(byGlass) : undefined,
-        bottle_price: bottle ? Number(bottle) : undefined,
+        // Sent as typed: the gateway reads "45,50" and "1.250,00" the way the
+        // Change price boxes are read (parseMenuPrice), and refuses what is
+        // not a price instead of adding the line unpriced (r28 G7). Staff get
+        // no price boxes, and nothing typed before the role changed is sent.
+        by_glass_typed: canPrice ? byGlass.trim() || undefined : undefined,
+        bottle_typed: canPrice ? bottle.trim() || undefined : undefined,
       },
       {
         onSuccess: () => {
@@ -179,32 +218,34 @@ function AddItemForm({ onAdd, adding, error }: {
         placeholder="e.g. Reds"
         style={{ width: 120 }}
       />
-      <label className="cl-dim" style={{ fontSize: 12 }} htmlFor="menu-add-glass">
-        Glass
-      </label>
-      <input
-        id="menu-add-glass"
-        className="cl-field cl-focus cl-num"
-        type="number"
-        min={0}
-        step="0.01"
-        value={byGlass}
-        onChange={(e) => setByGlass(e.target.value)}
-        style={{ width: 80 }}
-      />
-      <label className="cl-dim" style={{ fontSize: 12 }} htmlFor="menu-add-bottle">
-        Bottle
-      </label>
-      <input
-        id="menu-add-bottle"
-        className="cl-field cl-focus cl-num"
-        type="number"
-        min={0}
-        step="0.01"
-        value={bottle}
-        onChange={(e) => setBottle(e.target.value)}
-        style={{ width: 80 }}
-      />
+      {canPrice ? (
+        <>
+          <label className="cl-dim" style={{ fontSize: 12 }} htmlFor="menu-add-glass">
+            Glass
+          </label>
+          <input
+            id="menu-add-glass"
+            className="cl-field cl-focus cl-num"
+            inputMode="decimal"
+            autoComplete="off"
+            value={byGlass}
+            onChange={(e) => setByGlass(e.target.value)}
+            style={{ width: 80 }}
+          />
+          <label className="cl-dim" style={{ fontSize: 12 }} htmlFor="menu-add-bottle">
+            Bottle
+          </label>
+          <input
+            id="menu-add-bottle"
+            className="cl-field cl-focus cl-num"
+            inputMode="decimal"
+            autoComplete="off"
+            value={bottle}
+            onChange={(e) => setBottle(e.target.value)}
+            style={{ width: 80 }}
+          />
+        </>
+      ) : null}
       <button type="submit" className="cl-btn cl-focus" disabled={adding || !name.trim()}>
         {adding ? 'Adding…' : 'Add to menu'}
       </button>
@@ -213,34 +254,240 @@ function AddItemForm({ onAdd, adding, error }: {
           {error}
         </span>
       ) : null}
+      {canPrice ? null : (
+        <span className="cl-said" data-testid="menu-add-unpriced" style={{ fontSize: 12 }}>
+          A line added here stands on the menu with no price; an owner or a manager sets it.
+        </span>
+      )}
     </form>
   );
 }
 
-function MenuRow({ line, currency, onDiscard, discarding }: {
+/**
+ * A price as the edit box starts it: the number the line holds, in the house's
+ * form ("45,50" in a lira house, which the gateway's parseMenuPrice reads), or
+ * empty. It was `String(v)`, so a lira owner opened "45.5" (r23 walk).
+ */
+function priceText(v: number | null, currency: string | null): string {
+  return v === null || v === undefined ? '' : housePriceHint(v, currency);
+}
+
+/**
+ * Why an add was refused, in the gateway's words ("Only managers and owners
+ * can put a price on the current menu…"), never "Request failed with status
+ * code 403". Not refusalOf: its 403 line is about changing a price.
+ */
+function addRefusal(err: unknown): string {
+  const m = (err as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+  if (typeof m === 'string' && m) return m;
+  if (Array.isArray(m) && m.length) return String(m[0]);
+  return err instanceof Error && err.message ? err.message : 'no reason given';
+}
+
+/**
+ * The gateway's own words for a refusal, never a bare status: a failed discard
+ * printed axios's "Request failed with status code 403" (r28 G15). `act` is
+ * what a 403 refused, in words.
+ */
+export function refusalOf(err: unknown, act = 'change a price'): string {
+  const e = err as { response?: { status?: number; data?: { message?: unknown } }; message?: string };
+  if (e?.response?.status === 403) return `only an owner or a manager can ${act}`;
+  const m = e?.response?.data?.message;
+  if (typeof m === 'string' && m) return m;
+  if (Array.isArray(m) && m.length) return String(m[0]);
+  return e?.message || 'no reason was given';
+}
+
+/** The glass and bottle boxes of a line being re-priced. Empty keeps the price. */
+interface PriceDraft {
+  glass: string
+  bottle: string
+}
+
+/**
+ * A dish keeps its one price in `bottle_price` (#1261, and the photo reader's
+ * dishes, #1379), so the kitchen table says "Price" and shows that one box. A
+ * dish that also holds a glass-column price (a file that had one) still shows
+ * it, and its box, so no stored price is hidden (r28 G13).
+ */
+function dishHasGlassPrice(line: MenuLine): boolean {
+  return line.by_glass_price !== null && line.by_glass_price !== undefined;
+}
+
+/**
+ * A house with more than one menu marked current (r28 G20), in words: which
+ * one this page shows, and how it is settled. Choosing a menu archives every
+ * other one (make_menu_current).
+ */
+export function otherCurrentWords(other: number): string {
+  const more = other === 1 ? '1 other menu is' : `${other} other menus are`;
+  return `${more} also marked current at this house, from before choosing a menu set the others aside. This page shows the one made current last. Open the one you sell from under Menus kept and make it current: the others are set aside, and nothing is deleted.`;
+}
+
+/** Columns of the drinks table (name, section, producer/region, glass, bottle, status, acts) and of the kitchen table (name, section, price, status, acts). */
+const DRINK_COLUMNS = 7;
+const KITCHEN_COLUMNS = 5;
+
+function MenuRow({ line, currency, onDiscard, discarding, testId = 'menu-row', edit, dish = false }: {
   line: MenuLine
   currency: string | null
-  onDiscard: () => void
+  testId?: string
+  /** A kitchen line: one Price column, no producer or region, no glass box unless it holds a glass price. */
+  dish?: boolean
+  /** Absent for a member who may not discard (ADR 0358 D2: owner or manager only). */
+  onDiscard?: () => void
   discarding: boolean
+  /** Absent for a member who may not change a price (owner or manager only, as the gateway checks). */
+  edit?: {
+    open: boolean
+    saving: boolean
+    onOpen: () => void
+    onCancel: () => void
+    onSave: (draft: PriceDraft) => void
+  }
 }) {
+  const [draft, setDraft] = useState<PriceDraft>({ glass: priceText(line.by_glass_price, currency), bottle: priceText(line.bottle_price, currency) });
+  const editing = !!edit?.open;
+  const firstBox = useRef<HTMLInputElement>(null);
+  const changeButton = useRef<HTMLButtonElement>(null);
+  const wasEditing = useRef(editing);
+  // r26: the boxes are not a <form> (they sit in two table cells), so Enter did
+  // nothing (r24 walk). Opening puts the cursor in the first box; closing (saved,
+  // cancelled, Escape) gives it back to "Change price" instead of dropping it on
+  // the page, so a keyboard user stays on the line they were changing.
+  // r33 walk: the box opens holding the price it has, so typing "150,50" after
+  // opening gave "140,00150,50", which was refused. The text is selected as the
+  // box opens, so what is typed replaces it; the arrows still edit it in place.
+  useEffect(() => {
+    if (editing && !wasEditing.current) {
+      firstBox.current?.focus();
+      firstBox.current?.select();
+    }
+    if (!editing && wasEditing.current) {
+      const lost = !document.activeElement || document.activeElement === document.body;
+      if (lost) changeButton.current?.focus();
+    }
+    wasEditing.current = editing;
+  }, [editing]);
+  const cancel = () => {
+    setDraft({ glass: priceText(line.by_glass_price, currency), bottle: priceText(line.bottle_price, currency) });
+    edit?.onCancel();
+  };
+  // Enter saves what both boxes hold, Escape puts both back and closes: the
+  // same two keys as every other price box on /menu (the add form and the lock
+  // forms submit on Enter; the lock forms close on Escape). A key pressed while
+  // an input method is composing belongs to that method, not to the page.
+  const onBoxKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.nativeEvent.isComposing) return;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (edit && !edit.saving) edit.onSave(draft);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      if (!edit?.saving) cancel();
+    }
+  };
+  const glassShown = !dish || dishHasGlassPrice(line);
+  const box = (kind: 'glass' | 'bottle') => (
+    <input
+      ref={kind === 'glass' || !glassShown ? firstBox : undefined}
+      className="cl-field cl-focus cl-num"
+      inputMode="decimal"
+      enterKeyHint="done"
+      aria-label={
+        dish
+          ? `${kind === 'glass' ? 'Glass-column price' : 'Price'} of ${line.name}`
+          : `${kind === 'glass' ? 'Glass' : 'Bottle'} price of ${line.name}`
+      }
+      data-testid={`menu-price-${kind}`}
+      value={draft[kind]}
+      placeholder="keep"
+      onChange={(e) => setDraft((d) => ({ ...d, [kind]: e.target.value }))}
+      onKeyDown={onBoxKey}
+      style={{ width: 80 }}
+    />
+  );
   return (
-    <tr data-testid="menu-row">
+    <tr data-testid={testId}>
       <td>{line.name}</td>
       <td className="cl-dim">{line.category ?? EM}</td>
-      <td className="cl-dim">{[line.producer, line.region].filter(Boolean).join(', ') || EM}</td>
-      <td className="cl-num">{money(line.by_glass_price, currency)}</td>
-      <td className="cl-num">{money(line.bottle_price, currency)}</td>
+      {dish ? (
+        <td className="cl-num" data-testid="menu-dish-price">
+          {editing ? box('bottle') : money(line.bottle_price, currency)}
+          {glassShown ? (
+            <span className="cl-note" style={{ display: 'block' }} data-testid="menu-dish-glass-price">
+              {editing ? box('glass') : `and ${money(line.by_glass_price, currency)} in the glass column`}
+            </span>
+          ) : null}
+        </td>
+      ) : (
+        <>
+          <td className="cl-dim">{[line.producer, line.region].filter(Boolean).join(', ') || EM}</td>
+          <td className="cl-num">{editing ? box('glass') : money(line.by_glass_price, currency)}</td>
+          <td className="cl-num">{editing ? box('bottle') : money(line.bottle_price, currency)}</td>
+        </>
+      )}
       <td>
-        <span className="cl-chip" data-seal={line.status === 'approved' ? 'true' : 'false'}>
-          {line.status.replace('_', ' ')}
-        </span>
+        {(() => {
+          const s = lineStatusWords(line, { dish });
+          return (
+            <>
+              <span className="cl-chip" data-seal={s.sealed ? 'true' : 'false'} title={s.why ?? undefined} data-testid="menu-line-status">
+                {s.words}
+              </span>
+              {s.noteShown && s.why ? (
+                <span className="cl-note" style={{ display: 'block' }} data-testid="menu-line-status-why">
+                  {s.why}
+                </span>
+              ) : null}
+            </>
+          );
+        })()}
         {line.price_flag ? (
           <span className="cl-note" style={{ display: 'block' }} data-testid="menu-price-flag" title={line.price_flag_note ?? undefined}>
             {line.price_flag_note ?? 'A blank price kept the last known one.'}
           </span>
         ) : null}
       </td>
-      <td>
+      <td style={{ whiteSpace: 'nowrap' }}>
+        {edit && editing ? (
+          <>
+            <button
+              type="button"
+              className="cl-btn cl-focus"
+              disabled={edit.saving}
+              onClick={() => edit.onSave(draft)}
+              data-testid="menu-price-save"
+            >
+              {edit.saving ? 'Saving…' : 'Save price'}
+            </button>{' '}
+            <button
+              type="button"
+              className="cl-btn cl-focus"
+              disabled={edit.saving}
+              onClick={cancel}
+            >
+              Cancel
+            </button>
+          </>
+        ) : edit ? (
+          <>
+            <button
+              ref={changeButton}
+              type="button"
+              className="cl-btn cl-focus"
+              onClick={() => {
+                setDraft({ glass: priceText(line.by_glass_price, currency), bottle: priceText(line.bottle_price, currency) });
+                edit.onOpen();
+              }}
+              aria-label={`Change the price of ${line.name}`}
+              data-testid="menu-price-edit"
+            >
+              Change price
+            </button>{' '}
+          </>
+        ) : null}
+        {onDiscard && !editing ? (
         <button
           type="button"
           className="cl-btn cl-focus"
@@ -251,6 +498,7 @@ function MenuRow({ line, currency, onDiscard, discarding }: {
         >
           {discarding ? 'Discarding…' : 'Discard'}
         </button>
+        ) : null}
       </td>
     </tr>
   );
@@ -265,6 +513,108 @@ export default function MenuNext() {
   const { q, discard, add } = useActiveMenu(activeRestaurantId);
   const currency = useHouseCurrency(activeRestaurantId);
   const [discardingId, setDiscardingId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const [pricing, setPricing] = useState<{ id: string; saving: boolean } | null>(null);
+  const [priceNote, setPriceNote] = useState<{ lineId: string; tone: 'alert' | 'said'; text: string } | null>(null);
+  const lines = q.data?.items ?? [];
+  // One price changed at a time, field by field (the gateway corrects one field
+  // per call), and the menu is read again after, so the row shows what was stored.
+  const savePrices = async (line: MenuLine, draft: PriceDraft) => {
+    setPricing({ id: line.id, saving: true });
+    const changes: PriceChange[] = [];
+    const fields = [
+      { kind: 'bottle' as const, field: 'bottle_price' as const, typed: draft.bottle.trim(), had: priceText(line.bottle_price, currency) },
+      { kind: 'glass' as const, field: 'by_glass_price' as const, typed: draft.glass.trim(), had: priceText(line.by_glass_price, currency) },
+    ];
+    for (const f of fields) {
+      if (f.typed === '' || f.typed === f.had) continue;
+      try {
+        const r = await reviewMenuItem(line.id, f.field, f.typed);
+        const stored = Number(r.newValue);
+        changes.push({ kind: f.kind, shown: Number.isFinite(stored) ? money(stored, currency) : r.newValue, result: r });
+      } catch (err) {
+        changes.push({ kind: f.kind, shown: f.typed, result: { refused: refusalOf(err) } });
+      }
+    }
+    const dish = isKitchenMenuLine(line);
+    const note =
+      changes.length === 0
+        ? { tone: 'said' as const, text: `${line.name}: no price was changed.` }
+        : priceChangeNote(line.name, dish, changes, (n) => money(n, currency));
+    setPriceNote(note ? { lineId: line.id, ...note } : null);
+    const refused = changes.some((c) => 'refused' in c.result);
+    setPricing(refused ? { id: line.id, saving: false } : null);
+    if (changes.some((c) => !('refused' in c.result))) {
+      await queryClient.invalidateQueries({ queryKey: ['menu', 'active', activeRestaurantId] });
+    }
+  };
+  const drinks = lines.filter((l) => !isKitchenMenuLine(l));
+  const kitchen = lines.filter(isKitchenMenuLine);
+  // The answer to a price change sits right under its line, where the person clicked.
+  const row = (line: MenuLine, testId?: string, dish = false) => (
+    <Fragment key={line.id}>
+    <MenuRow
+      line={line}
+      currency={currency}
+      testId={testId}
+      dish={dish}
+      discarding={discard.isPending && discardingId === line.id}
+      onDiscard={!canManage ? undefined : () => {
+        setDiscardingId(line.id);
+        discard.mutate(line.id, { onSettled: () => setDiscardingId(null) });
+      }}
+      edit={
+        !canManage
+          ? undefined
+          : {
+              open: pricing?.id === line.id,
+              saving: pricing?.id === line.id && pricing.saving,
+              onOpen: () => {
+                setPriceNote(null);
+                setPricing({ id: line.id, saving: false });
+              },
+              onCancel: () => setPricing(null),
+              onSave: (draft) => void savePrices(line, draft),
+            }
+      }
+    />
+    {priceNote?.lineId === line.id ? (
+      <tr>
+        <td colSpan={dish ? KITCHEN_COLUMNS : DRINK_COLUMNS} style={{ paddingTop: 0 }}>
+          <p
+            role={priceNote.tone === 'alert' ? 'alert' : 'status'}
+            className="cl-said"
+            style={{ fontSize: 12, margin: 0 }}
+            data-testid="menu-price-note"
+          >
+            {priceNote.text}
+          </p>
+        </td>
+      </tr>
+    ) : null}
+    </Fragment>
+  );
+  // A dish is sold by the plate, not by the glass or the bottle (r28 G13): the
+  // kitchen table has its own head, with one Price column.
+  const head = (dish: boolean) => (
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Section</th>
+        {dish ? (
+          <th>Price</th>
+        ) : (
+          <>
+            <th>Producer / region</th>
+            <th>Glass</th>
+            <th>Bottle</th>
+          </>
+        )}
+        <th>Status</th>
+        <th />
+      </tr>
+    </thead>
+  );
 
   return (
     <div
@@ -300,19 +650,31 @@ export default function MenuNext() {
           </p>
         ) : (
           <>
-            <p className="cl-standing" style={{ fontSize: 15.5 }}>
-              {q.data.items.length} {q.data.items.length === 1 ? 'line' : 'lines'} on{' '}
-              {q.data.name ?? 'the active menu'}.
+            {/* Every kept menu is stored as "Wine List" (the column's default), so
+                the name is not said: a menu with a dessert on it is not a wine
+                list, and the kept menus below are told apart by when they were read. */}
+            <p className="cl-standing" style={{ fontSize: 15.5 }} data-testid="menu-standing">
+              {drinks.length} {drinks.length === 1 ? 'drink' : 'drinks'} on the current menu
+              {kitchen.length > 0
+                ? `, and ${kitchen.length} ${kitchen.length === 1 ? 'line' : 'lines'} from the kitchen, set apart below`
+                : ''}
+              .
             </p>
+            {(q.data.otherCurrent ?? 0) > 0 ? (
+              <p className="cl-said" role="note" data-testid="menu-other-current">
+                {otherCurrentWords(q.data.otherCurrent ?? 0)}
+              </p>
+            ) : null}
 
             <div style={{ marginTop: 16 }}>
               <AddItemForm
                 adding={add.isPending}
-                error={add.isError ? (add.error instanceof Error ? add.error.message : 'no reason given') : null}
+                error={add.isError ? addRefusal(add.error) : null}
+                canPrice={canManage}
                 onAdd={(fields, opts) => add.mutate(fields, opts)}
               />
               {(() => {
-                const note = add.isSuccess ? housePriceNote(add.data) : null;
+                const note = add.isSuccess ? housePriceNote(add.data, currency) : null;
                 return note ? (
                   <p
                     role={note.tone === 'alert' ? 'alert' : 'status'}
@@ -327,46 +689,42 @@ export default function MenuNext() {
             </div>
 
             <div style={{ overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10, marginTop: 16 }}>
-              <table className="cl-table" style={{ width: '100%' }}>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Section</th>
-                    <th>Producer / region</th>
-                    <th>Glass</th>
-                    <th>Bottle</th>
-                    <th>Status</th>
-                    <th />
-                  </tr>
-                </thead>
+              <table className="cl-table" style={{ width: '100%' }} aria-label="Drinks on the current menu">
+                {head(false)}
                 <tbody>
-                  {q.data.items.length === 0 ? (
+                  {drinks.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="cl-said" style={{ padding: 14 }}>
-                        Nothing on the menu yet — add the first line above.
+                      <td colSpan={DRINK_COLUMNS} className="cl-said" style={{ padding: 14 }}>
+                        {kitchen.length === 0
+                          ? 'Nothing on the menu yet — add the first line above.'
+                          : 'No drink on the menu yet — only the kitchen lines below.'}
                       </td>
                     </tr>
                   ) : (
-                    q.data.items.map((line) => (
-                      <MenuRow
-                        key={line.id}
-                        line={line}
-                        currency={currency}
-                        discarding={discard.isPending && discardingId === line.id}
-                        onDiscard={() => {
-                          setDiscardingId(line.id);
-                          discard.mutate(line.id, { onSettled: () => setDiscardingId(null) });
-                        }}
-                      />
-                    ))
+                    drinks.map((line) => row(line))
                   )}
                 </tbody>
               </table>
             </div>
+            {kitchen.length > 0 ? (
+              <section aria-labelledby="menu-kitchen-h" style={{ marginTop: 20 }} data-testid="menu-kitchen">
+                <h2 id="menu-kitchen-h" className="cl-crumb">
+                  From the kitchen
+                </h2>
+                <p className="cl-note" style={{ marginTop: 4, fontSize: 12 }}>
+                  On the menu, and carried nowhere: no wine, no house price, no stock.
+                </p>
+                <div style={{ overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10, marginTop: 8 }}>
+                  <table className="cl-table" style={{ width: '100%' }} aria-label="Kitchen lines on the current menu">
+                    {head(true)}
+                    <tbody>{kitchen.map((line) => row(line, 'menu-kitchen-row', true))}</tbody>
+                  </table>
+                </div>
+              </section>
+            ) : null}
             {discard.isError ? (
-              <p role="alert" className="cl-said" style={{ marginTop: 8 }}>
-                That line was not discarded (
-                {discard.error instanceof Error ? discard.error.message : 'no reason given'}).
+              <p role="alert" className="cl-said" style={{ marginTop: 8 }} data-testid="menu-discard-refused">
+                That line was not discarded ({refusalOf(discard.error, 'discard a line')}).
               </p>
             ) : null}
           </>
@@ -387,8 +745,10 @@ export default function MenuNext() {
           }}
         >
           <p className="cl-note" style={{ margin: 0, fontSize: 11 }}>
-            Discard removes a line from what guests see. What it cost and who added it is kept —
-            nothing here is a delete.
+            Discard takes a line off the current menu. What it cost and who added it is kept —
+            nothing here is a delete. Change price sets a drink's glass or bottle price, or a dish's
+            one price; for a drink on the current menu the house's own price follows unless it is
+            locked. An empty box keeps its price.
           </p>
         </footer>
       </div>

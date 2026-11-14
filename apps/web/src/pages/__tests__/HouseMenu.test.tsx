@@ -11,8 +11,15 @@ const { reviewMenuItem, addMenuItem } = vi.hoisted(() => ({
   reviewMenuItem: vi.fn(),
   addMenuItem: vi.fn(),
 }))
-vi.mock('../../services/api/menus', () => ({ reviewMenuItem, addMenuItem }))
+vi.mock('../../services/api/menus', () => ({ reviewMenuItem, addMenuItem, readWarningSentence: (w: unknown) => String(w) }))
 vi.mock('../../components/brand/BrandMark', () => ({ BrandMark: () => <span>Mudavym</span> }))
+// r37 meet with the menu train: the proof now asks who reads it (the
+// current-menu choice) and reads the house money. Staff, and a money read
+// left pending, keep these tests on what they test.
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({ activeRole: 'staff', user: { role: 'staff' } }),
+}))
+vi.mock('../../services/api/settings', () => ({ settingsApi: { houseCurrency: vi.fn(() => new Promise(() => {})) } }))
 
 import HouseMenu from '../HouseMenu'
 import { FIRST_PROOF_KEY, readProof } from '../../lib/firstProof'

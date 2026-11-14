@@ -48,7 +48,7 @@ export interface MenuImportReviewItem {
    * a menu update changes the house price). `failed` carries the reason in
    * `priceSyncError`; the page says so rather than implying the price moved.
    */
-  priceSync?: 'changed' | 'unchanged' | 'stale' | 'locked' | 'no_price' | 'not_linked' | 'not_current' | 'failed'
+  priceSync?: 'changed' | 'unchanged' | 'stale' | 'locked' | 'no_price' | 'not_linked' | 'not_current' | 'kitchen_line' | 'failed'
   priceSyncError?: string | null
   /**
    * Set when a blank menu price kept the house's last known one (founder,
@@ -68,7 +68,12 @@ export interface MenuImportReviewItem {
  */
 export interface MenuImportResult {
   menuId: string
-  current?: false
+  /** False for a new read; a reopened read says whether it is current now. */
+  current?: boolean
+  /** The same file was read before: this is that read (gateway: same bytes reopen it). */
+  reopened?: { readAt: string | null }
+  /** How many photos this upload joined into the one menu. */
+  pages?: number
   itemsExtracted: number
   submissionsCreated: number
   items: MenuImportReviewItem[]
@@ -76,6 +81,64 @@ export interface MenuImportResult {
   sourceImage?: string | null
   /** Whether the source file (photo, PDF, CSV) was kept, and why not when it was not. */
   source?: { kept: boolean; failure: string | null }
+  /** The parts of the file a scan could not read (ADR 0213 #17). */
+  warnings?: MenuReadWarning[]
+  /** A file read's rows it could not take whole, and why (csv-parser.service.ts `CsvRowIssue`). */
+  notes?: MenuReadNote[]
+}
+
+/** One row a CSV/XLSX read could not take whole. `row` is 1-based; the header is row 1. */
+export interface MenuReadNote {
+  row: number
+  reason:
+    | 'no_name'
+    | 'no_name_column'
+    | 'price_column_not_read'
+    | 'price_column_read_as_bottle'
+    | 'cell_error'
+    | 'no_number'
+    | 'two_readings'
+    | 'unreadable'
+  field?: string
+  raw?: string
+}
+
+/**
+ * Why a scan holds fewer lines than its file (gateway `MenuReadWarning`).
+ * `pages` is 1-based, or null when no narrower range is known.
+ */
+export interface MenuReadWarning {
+  kind: 'truncated' | 'chunk_failed' | 'page_cap' | 'unreadable_reply' | string
+  pages: { first: number; last: number } | null
+}
+
+/** One plain sentence for one warning, naming its pages when they are known. */
+export function readWarningSentence(w: MenuReadWarning): string {
+  const p = w.pages
+  const one = !!p && p.first === p.last
+  const pages = p ? (one ? `Page ${p.first}` : `Pages ${p.first}–${p.last}`) : null
+  const was = one ? 'was' : 'were'
+  const them = one ? 'it' : 'them'
+  switch (w.kind) {
+    case 'chunk_failed':
+      return pages
+        ? `${pages} could not be read; send ${them} again.`
+        : 'Part of this file could not be read; send it again.'
+    case 'truncated':
+      return pages
+        ? `${pages} ${was} cut off partway, so some lines may be missing; send ${them} again as a smaller file.`
+        : 'The reading was cut off partway, so some lines may be missing; send the menu again in smaller files.'
+    case 'page_cap':
+      return pages
+        ? `${pages} ${was} not read, because only the first ${p!.first - 1} pages of a file are read; send ${them} as a file of ${them === 'it' ? 'its' : 'their'} own.`
+        : 'Pages past the first 120 were not read; send them as a file of their own.'
+    case 'unreadable_reply':
+      return pages
+        ? `${pages} came back in a form that could not be read; send ${them} again.`
+        : 'The reading came back in a form that could not be read; send the file again.'
+    default:
+      return 'Part of this file may not have been read; send it again.'
+  }
 }
 
 export const MENU_CADENCES = ['weekly', 'monthly', 'quarterly', 'yearly', 'none'] as const
@@ -86,6 +149,10 @@ export interface MenuReadLabels {
   cadence?: MenuCadence
   /** A day (YYYY-MM-DD) or just a month (YYYY-MM). */
   menuDate?: string
+  /** Read this file again even though the house already read the same bytes. */
+  readAgain?: boolean
+  /** Told once the server has the file and is reading it in the background. */
+  onReading?: (menuId: string) => void
 }
 
 export type MenuImportSuccess = (
@@ -103,26 +170,162 @@ export type EditableMenuItemField =
   | 'by_glass_price'
   | 'bottle_price'
 
+/**
+ * The setup of the house the session is in (OB-1). The house facts are read
+ * from the house's own tables on every GET; only `checklist_dismissed` is the
+ * person's own. An invitee with no row of their own still gets the house's
+ * facts (id null), never a 404.
+ */
 export interface OnboardingProgress {
-  id: string
+  /** The person's own row, or null when they have none yet (most invitees). */
+  id: string | null
   user_id: string
   restaurant_id: string
+  /** A kept menu (not archived) with at least one live line. */
   menu_uploaded: boolean
+  /** The house's CURRENT menu has at least one live line. */
+  menu_current: boolean
   vendor_added: boolean
   team_member_invited: boolean
   checklist_dismissed: boolean
+  /** When the last of current menu, supplier and invite held; null while one is missing (derived, not remembered). */
   completed_at: string | null
-  /** Whether restaurants.default_threshold_min has been explicitly confirmed. */
+  /** Reported only; it no longer gates activation (no screen sets it). */
   threshold_configured: boolean
-  /** menu_uploaded AND threshold_configured — the soft-gate "done enough" signal. */
+  /** The house has a current menu with a live line: stock and prices come from it. */
   activated: boolean
+  /**
+   * What leads past the menu to the house's costs (r28 gap 3). Never part of
+   * setup: they decide neither `completed_at` nor `activated`. `null` = that
+   * read failed (not "not done"). Absent from an older gateway.
+   */
+  next_steps?: OnboardingNextSteps
+}
+
+export interface OnboardingNextSteps {
+  /** An active good on the house's list. */
+  goods_listed: boolean | null
+  /** A live Gmail grant held for this house (sending or reading). */
+  mailbox_connected: boolean | null
+  /** "checked" once an invoice is verified, "waiting" while one is in, else "none". */
+  invoice: 'none' | 'waiting' | 'checked' | null
 }
 
 type MenuImportData =
   | { imageBase64: string; csvContent?: never; items?: never; fileBase64?: never }
+  /** Several photos of ONE menu, in page order: one menu, one version (at most 20). */
+  | { images: string[]; imageBase64?: never; csvContent?: never; items?: never; fileBase64?: never }
   | { csvContent: string; imageBase64?: never; items?: never; fileBase64?: never }
   | { items: WineExtractItem[]; imageBase64?: never; csvContent?: never; fileBase64?: never }
   | { fileBase64: string; imageBase64?: never; csvContent?: never; items?: never }
+
+/**
+ * A refused or failed read in words: the gateway's sentence, then one sentence
+ * per page it could not read (QA round 7a: the wizard said only the first).
+ */
+export function readRefusalWords(err: unknown, fallback: string): string {
+  const e = err as { response?: { data?: { message?: unknown; warnings?: unknown } }; message?: string }
+  const m = e?.response?.data?.message
+  const head = (typeof m === 'string' && m) || (Array.isArray(m) && m.length ? String(m[0]) : '') || e?.message || fallback
+  const w = e?.response?.data?.warnings
+  const tail = Array.isArray(w)
+    ? (w as unknown[]).filter((x): x is MenuReadWarning => !!x && typeof x === 'object').map(readWarningSentence)
+    : []
+  return [head, ...tail].join(' ')
+}
+
+/** Where a background read stands (`GET /menu-versions/:id/read`). */
+export interface MenuReadStatus {
+  menuId: string
+  state: 'reading' | 'done' | 'failed'
+  failure: string | null
+  warnings: MenuReadWarning[]
+  reply: MenuImportResult | null
+}
+
+export async function readMenuStatus(menuId: string): Promise<MenuReadStatus> {
+  const response = await apiClient.get<MenuReadStatus>(`/menu-versions/${menuId}/read`)
+  return response.data
+}
+
+/**
+ * A read that ended without a line, or with an error. Shaped like the
+ * gateway's own 422 so every caller that already says `response.data.message`
+ * and its `warnings` says this one too.
+ */
+export class MenuReadFailed extends Error {
+  readonly response: { status: number; data: { message: string; warnings: MenuReadWarning[]; menuId: string } }
+  constructor(menuId: string, message: string, warnings: MenuReadWarning[], status = 422) {
+    super(message)
+    this.name = 'MenuReadFailed'
+    this.response = { status, data: { message, warnings, menuId } }
+  }
+}
+
+/** How long the page waits on one read before it says the read goes on without it. */
+export const READ_WAIT_MS = 20 * 60 * 1000
+
+/** Polls in a row that may fail (network, 5xx, 408, 429) before the page stops waiting. */
+export const MAX_MISSED_POLLS = 8
+
+/**
+ * Whether a failed poll can never succeed by asking again: any 4xx but a
+ * timeout (408) or a throttle (429). A 401/403 (the session ended, or the
+ * person is no longer in this house) and a 404 (the read is gone) end the
+ * wait at once instead of leaving "Reading…" up for twenty minutes.
+ */
+function pollIsRefused(err: unknown): boolean {
+  const code = (err as { response?: { status?: unknown } })?.response?.status
+  return typeof code === 'number' && code >= 400 && code < 500 && code !== 408 && code !== 429
+}
+
+/** Wait on a background read until it is done or failed. Exported for tests. */
+export async function waitForRead(
+  menuId: string,
+  opts: { sleep?: (ms: number) => Promise<void>; now?: () => number } = {},
+): Promise<MenuImportResult> {
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
+  const now = opts.now ?? Date.now
+  const started = now()
+  let missed = 0
+  for (let i = 0; ; i++) {
+    // Quick at first (a one-page photo takes seconds), then every few seconds.
+    await sleep(i < 10 ? 1500 : 4000)
+    let status: MenuReadStatus
+    try {
+      status = await readMenuStatus(menuId)
+      missed = 0
+    } catch (err) {
+      // A refusal is said at once (the caller shows the gateway's words).
+      if (pollIsRefused(err)) throw err
+      // A missed poll is not the read's failure, but many in a row end the wait.
+      missed += 1
+      if (missed >= MAX_MISSED_POLLS || now() - started > READ_WAIT_MS) {
+        throw new MenuReadFailed(
+          menuId,
+          'Lost touch with the read: the server did not answer several times in a row. The read goes on; it shows on the menu page when it is done.',
+          [],
+          202,
+        )
+      }
+      continue
+    }
+    if (status.state === 'done') {
+      return status.reply ?? { menuId, itemsExtracted: 0, submissionsCreated: 0, items: [], warnings: status.warnings }
+    }
+    if (status.state === 'failed') {
+      throw new MenuReadFailed(menuId, status.failure ?? 'The read failed and gave no reason.', status.warnings)
+    }
+    if (now() - started > READ_WAIT_MS) {
+      throw new MenuReadFailed(
+        menuId,
+        'Still reading after 20 minutes. The read goes on; it shows on the menu page when it is done.',
+        [],
+        202,
+      )
+    }
+  }
+}
 
 export async function importMenu(
   method: 'scan' | 'csv' | 'manual',
@@ -133,29 +336,52 @@ export async function importMenu(
   // global forbidNonWhitelisted ValidationPipe — omitting it 400s before the
   // import ever runs. X-Restaurant-Id header alone is not read by the DTO.
   const restaurantId = getActiveRestaurantId()
-  const response = await apiClient.post<MenuImportResult>('/menus/import', {
+  const response = await apiClient.post<MenuImportResult & { reading?: true }>('/menus/import', {
     method,
     data,
     restaurantId,
     // Sent only when the person gave them: a missing tag stays missing.
     ...(labels.cadence ? { cadence: labels.cadence } : {}),
     ...(labels.menuDate ? { menuDate: labels.menuDate } : {}),
+    ...(labels.readAgain ? { readAgain: true } : {}),
   })
-  return response.data
+  // A scan is read in the background (founder 2026-11-07): the reply names the
+  // version being read, and the page waits on it in short polls, so no read
+  // is cut off by the client's 30-second timeout.
+  if (!response.data.reading) return response.data
+  labels.onReading?.(response.data.menuId)
+  const done = await waitForRead(response.data.menuId)
+  return { ...done, pages: response.data.pages ?? done.pages }
+}
+
+/**
+ * One field of one line, corrected. A price correction on the CURRENT menu also
+ * moves the house's own price (ADR 0193) and says what happened in `priceSync`;
+ * `newValue` is what was stored ("45,50" comes back "45.5").
+ */
+export interface MenuItemCorrection {
+  menuItemId: string
+  fieldName: string
+  newValue: string
+  priceSync?: MenuImportReviewItem['priceSync']
+  priceSyncError?: string | null
+  priceHeld?: HeldKind[]
 }
 
 export async function reviewMenuItem(
   menuItemId: string,
   fieldName: EditableMenuItemField,
   newValue: string
-): Promise<{ menuItemId: string; fieldName: string; newValue: string }> {
+): Promise<MenuItemCorrection> {
   const response = await apiClient.patch(`/menus/items/${menuItemId}`, { fieldName, newValue })
   return response.data
 }
 
 export async function addMenuItem(
   menuId: string,
-  item: WineExtractItem
+  // by_glass_typed / bottle_typed: a price as the person typed it, read by the
+  // gateway's parseMenuPrice (r28 G7). Send these or the numbers, not both.
+  item: WineExtractItem & { by_glass_typed?: string; bottle_typed?: string }
 ): Promise<MenuImportReviewItem> {
   const response = await apiClient.post<MenuImportReviewItem>('/menus/items', {
     menuId,
@@ -183,7 +409,20 @@ export interface MenuLine {
   /** Blank menu price: the house kept its last known one, or had none either; a manager can change it. */
   price_flag?: 'blank_kept_last_known' | 'blank_no_house_price' | null
   price_flag_note?: string | null
+  /**
+   * Why `status` is 'flagged', from the gateway's own notes (menu-line-view.ts
+   * `flagReasonOf`); null when it is not. Absent from an older gateway.
+   */
+  flag_reason?: 'corrected' | 'added_by_hand' | 'past_free_limit' | 'unknown' | null
+  /** For a correction: the field a manager corrected. */
+  flag_field?: string | null
   created_at: string
+  /**
+   * The gateway's kitchen split (menu-line-view.ts isKitchenLine), sent to every
+   * member: a dish on the menu, never carried to the house. Absent from an older
+   * gateway; the page then works it out with the same test.
+   */
+  kitchen_line?: boolean
 }
 
 export interface ActiveMenu {
@@ -191,6 +430,12 @@ export interface ActiveMenu {
   name: string | null
   status: string | null
   items: MenuLine[]
+  /**
+   * How many MORE menus of this house are marked current (r28 G20): a house
+   * can hold several from before choosing a menu archived the rest, and the
+   * gateway shows the one made current last. Absent when there is one.
+   */
+  otherCurrent?: number
 }
 
 /**
@@ -267,6 +512,11 @@ export interface MenuVersion {
   sourceMethod: 'scan' | 'csv' | 'manual' | null
   source: { kept: boolean; mime: string | null; bytes: number | null; failure: string | null }
   linesExtracted: number | null
+  /** null = read before warnings were recorded; [] = none of the four kinds happened. */
+  readWarnings?: MenuReadWarning[] | null
+  /** Where its read stands; absent from an older gateway = done. */
+  readState?: 'reading' | 'done' | 'failed'
+  readFailure?: string | null
   extractedAt: string | null
   extractedBy: MenuPerson | null
   madeCurrentAt: string | null
@@ -283,6 +533,9 @@ export interface MenuVersions {
   /** false = who read or chose these menus could not be named (the reason says why). */
   namesReadable?: boolean
   namesReason?: string | null
+  /** The house's IANA zone its menu dates are said in; null = none (the reason says why). Absent on an older gateway. */
+  timezone?: string | null
+  timezoneReason?: string | null
 }
 
 /** A kind a price lock held, and the lock (ADR 0193 round 3). */
@@ -345,6 +598,8 @@ export interface PlanKind {
 export interface PlanLine {
   menuItemId: string
   name: string
+  /** The line's section (red, cocktail, beer…). Absent from a gateway older than the field. */
+  category?: string | null
   producer: string | null
   vintage: string | null
   wineLibraryId: string | null
@@ -362,6 +617,9 @@ export interface MenuPlan {
   current: boolean
   /** When this menu was read; null when it is not recorded. Optional only for an older gateway. */
   readAt?: string | null
+  /** The house's IANA zone the plan's dates are said in; null = none (the reason says why). */
+  timezone?: string | null
+  timezoneReason?: string | null
   generatedAt: string
   /** make-current requires it, and refuses (409) when the plan changed since. */
   fingerprint: string
@@ -379,6 +637,29 @@ export interface MenuPlan {
   }>
   namesReadable: boolean
   namesReason: string | null
+  /**
+   * Lines set aside as kitchen lines: they stay on the menu and are carried
+   * nowhere (no wine, price or stock). Optional only for an older gateway.
+   */
+  kitchenLines?: Array<{ menuItemId: string; name: string }>
+  /**
+   * Wines on the menu being replaced that this menu does not carry ("not on this
+   * file"). Shown only: choosing the menu leaves their price, row and locks as
+   * they are (ADR 0193 L12). Optional only for an older gateway.
+   */
+  notOnThisFile?: Array<{
+    menuItemId: string
+    name: string
+    producer: string | null
+    vintage: string | null
+    wineLibraryId: string | null
+    inventoryId: string | null
+    bottle: number | null
+    glass: number | null
+    locked: Array<'bottle' | 'glass'>
+    /** False when the house deleted or set inactive its row; null with no row. Optional for an older gateway. */
+    active?: boolean | null
+  }>
 }
 
 /** What choosing this menu would do. Nothing is written. A failed read throws. */
@@ -401,12 +682,22 @@ export async function getMenuSourceUrl(
   return response.data
 }
 
+/** How long choosing a menu may take before the page stops waiting: two minutes. */
+export const MAKE_CURRENT_TIMEOUT_MS = 120_000
+
 /**
  * Make a kept menu the current one, naming the plan the person was shown.
  * Owner or manager; the gateway refuses anyone else (403), a missing
  * fingerprint (400) and a plan that changed since it was shown (409).
  */
 export async function makeMenuCurrent(menuId: string, fingerprint: string): Promise<MakeCurrentResult> {
-  const response = await apiClient.post<MakeCurrentResult>(`/menu-versions/${menuId}/make-current`, { fingerprint })
+  // The switch commits before the prices are carried, so this call is never
+  // cut off at the client's usual 30 s while the gateway is still writing
+  // (r28 G1): a long menu gets its answer, whatever it is.
+  const response = await apiClient.post<MakeCurrentResult>(
+    `/menu-versions/${menuId}/make-current`,
+    { fingerprint },
+    { timeout: MAKE_CURRENT_TIMEOUT_MS },
+  )
   return response.data
 }

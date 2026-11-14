@@ -5,10 +5,45 @@ import { BrandMark } from '../components/brand/BrandMark'
 import { NoProofInThisTab } from '../components/onboarding/NoProofInThisTab'
 import {
   addMenuItem,
+  readWarningSentence,
   reviewMenuItem,
   type MenuImportReviewItem,
 } from '../services/api/menus'
 import { isKitchenLine, lineNeedsPencil, lineSourceCrop, readProof } from '../lib/firstProof'
+import { useAuth } from '../contexts/AuthContext'
+import { MenuPlan } from './menu/next/MenuPlan'
+import { makeCurrentSentence } from './menu/next/MenuVersions'
+
+/**
+ * What the person chose for this read, kept for the browser session so a
+ * reload of the proof does not offer the choice again after it was made.
+ * Per menu id: a second read in the same session gets its own choice.
+ */
+const choiceKey = (menuId: string) => `mudavym:first-proof-choice:${menuId}`
+
+function readChoice(menuId: string | undefined): string | null {
+  if (!menuId) return null
+  try {
+    return sessionStorage.getItem(choiceKey(menuId))
+  } catch {
+    return null
+  }
+}
+
+function keepChoice(menuId: string, said: string) {
+  try {
+    sessionStorage.setItem(choiceKey(menuId), said)
+  } catch {
+    // A browser that refuses storage still shows the sentence on this screen.
+  }
+}
+
+const KEPT_NOT_CURRENT =
+  'Kept, not current. No price or stock changed. It waits on the menu page until an owner or a manager makes it current.'
+import { settingsApi } from '../services/api/settings'
+import { formatMoney } from '../lib/currency'
+import { formatHouseNumber } from '../lib/house-number'
+import { MenuReadNotes } from '../components/onboarding/MenuReadNotes'
 
 const sectionOrder = [
   'wine',
@@ -53,21 +88,60 @@ function sectionName(value: string) {
 }
 
 /**
- * A dish's one figure (r28 gap 1, slice 2). The readers keep a dish's price in
- * `bottlePrice`, and "24 bottle" beside grilled octopus says a thing that is
- * not so: a dish says its figure alone.
+ * The house's money, read once for the proof's prices. `read` is false until
+ * the answer is in, so a price is never said to have no currency while the
+ * currency is still being asked for.
  */
-export function dishPrice(item: Pick<MenuImportReviewItem, 'byGlassPrice' | 'bottlePrice'>) {
-  const n = item.bottlePrice ?? item.byGlassPrice
-  return n == null ? '' : String(n)
+type HouseMoney = { read: boolean; code: string | null }
+
+/** A figure in the house's money; before the answer is in, the figure alone. */
+function sayPrice(n: number, money: HouseMoney) {
+  return money.read ? formatMoney(n, money.code) : formatHouseNumber(n, null, { digits: 2 })
 }
 
-function price(item: MenuImportReviewItem) {
+/**
+ * A dish's one figure (r28 gap 1, slice 2). The readers keep a dish's price in
+ * `bottlePrice`, and "24 bottle" beside grilled octopus says a thing that is
+ * not so: a dish says its figure alone, in the house's money as a drink's is
+ * (r37 meet of #1469 with the menu train's proofPrice).
+ */
+export function dishPrice(item: Pick<MenuImportReviewItem, 'byGlassPrice' | 'bottlePrice'>, money: HouseMoney) {
+  const n = item.bottlePrice ?? item.byGlassPrice
+  return n == null ? '' : sayPrice(n, money)
+}
+
+/**
+ * A line's prices in the house's money: "glass ₺14,00 · bottle ₺1.250,00".
+ * It printed "1250 bottle" (r23 walk), a bare figure in a lira house. Before
+ * the answer is in, the figure stands alone; a house with no code says so.
+ */
+export function proofPrice(item: Pick<MenuImportReviewItem, 'byGlassPrice' | 'bottlePrice'>, money: HouseMoney) {
+  const say = (n: number) => sayPrice(n, money)
   const parts = [
-    item.byGlassPrice != null ? `${item.byGlassPrice} glass` : null,
-    item.bottlePrice != null ? `${item.bottlePrice} bottle` : null,
+    item.byGlassPrice != null ? `glass ${say(item.byGlassPrice)}` : null,
+    item.bottlePrice != null ? `bottle ${say(item.bottlePrice)}` : null,
   ].filter(Boolean)
   return parts.join(' · ')
+}
+
+/**
+ * Read with a plain request, not react-query: the page's tests (here and in
+ * ArrivalFlow) mount it with no query client, and one read is all it needs.
+ * A failed read is "no code": the price says so, never a sign.
+ */
+function useHouseMoney(): HouseMoney {
+  const [money, setMoney] = useState<HouseMoney>({ read: false, code: null })
+  useEffect(() => {
+    let live = true
+    settingsApi
+      .houseCurrency()
+      .then((c) => live && setMoney({ read: true, code: c.readable ? (c.code ?? null) : null }))
+      .catch(() => live && setMoney({ read: true, code: null }))
+    return () => {
+      live = false
+    }
+  }, [])
+  return money
 }
 
 export default function HouseMenu() {
@@ -82,6 +156,30 @@ export default function HouseMenu() {
   const [addSection, setAddSection] = useState('')
   const [placeError, setPlaceError] = useState<string | null>(null)
   const sourceImage = proof?.sourceImage ?? null
+  // ADR 0193 item 7 (Locked): after a read the person chooses whether it
+  // becomes the current menu; either way it is kept. The choice is an owner's
+  // or a manager's (the gateway refuses anyone else regardless of this page).
+  const { activeRole, user } = useAuth()
+  const role = (activeRole ?? user?.role ?? null) as string | null
+  const canManage = role === 'owner' || role === 'manager'
+  const [planning, setPlanning] = useState(false)
+  const [chosen, setChosen] = useState<string | null>(() => readChoice(proof?.menuId))
+  // A file read before reopens its version (one upload is one version), and
+  // that version may already be the current menu: then there is no choice to
+  // offer. Read through a wider type: the import reply says `current: true`
+  // only once the reopen path is on the branch.
+  const alreadyCurrent = (proof as { current?: boolean } | null)?.current === true
+  // Several files sent at once: each is read and kept as its own draft; the
+  // proof shows the first, and says how many others were kept.
+  const otherKeptRaw = (proof as { otherKept?: unknown } | null)?.otherKept
+  const otherKept = typeof otherKeptRaw === 'number' && otherKeptRaw > 0 ? Math.floor(otherKeptRaw) : 0
+
+  const choose = (said: string) => {
+    setPlanning(false)
+    setChosen(said)
+    if (proof) keepChoice(proof.menuId, said)
+  }
+  const money = useHouseMoney()
 
   // Every placed or added line is kept for a reload and for /house's count.
   useEffect(() => {
@@ -114,6 +212,7 @@ export default function HouseMenu() {
           <BrandMark size={24} alt="Mudavym" />
           <h1 className="mt-8 font-serif text-4xl">We couldn&apos;t read this file.</h1>
           <p className="mt-4 text-[#6d685f]">Nothing was set. Try a clearer photo or a PDF of the drinks list.</p>
+          <MenuReadNotes notes={proof.notes} className="mt-4 text-sm text-[#6d685f]" />
           <button onClick={() => navigate('/get-started')} className="mt-6 text-[#1a5e6b] underline">
             Try another menu
           </button>
@@ -252,6 +351,14 @@ export default function HouseMenu() {
             <li><span aria-hidden className="inline-block w-5 font-serif text-[#1a5e6b]">○</span>No section yet: tap the line to choose one.</li>
           )}
         </ul>
+        {proof.warnings?.length ? (
+          <ul data-testid="first-proof-warnings" className="mt-4 space-y-1 text-sm text-[#6d685f]">
+            {proof.warnings.map((w, i) => (
+              <li key={i}>{readWarningSentence(w)}</li>
+            ))}
+          </ul>
+        ) : null}
+        <MenuReadNotes notes={proof.notes} className="mt-4 text-sm text-[#6d685f]" />
 
         <div className="mt-12 space-y-12">
           {grouped.map(([category, rows]) => (
@@ -297,13 +404,13 @@ export default function HouseMenu() {
                               {expanded ? 'Close' : mark === 'ring' ? 'Choose its section' : 'Check this line'}
                             </span>
                           </span>
-                          <span className="font-mono text-sm">{price(item)}</span>
+                          <span className="font-mono text-sm">{proofPrice(item, money)}</span>
                         </button>
                       ) : (
                         <div className="grid w-full grid-cols-[24px_1fr_auto] items-start gap-3 py-5 text-left">
                           {markSpan}
                           <span>{nameSpan}</span>
-                          <span className="font-mono text-sm">{price(item)}</span>
+                          <span className="font-mono text-sm">{proofPrice(item, money)}</span>
                         </div>
                       )}
                       {expanded && (
@@ -390,7 +497,7 @@ export default function HouseMenu() {
                   className="grid grid-cols-[1fr_auto] items-baseline gap-3 border-b border-[#211f1b]/15 py-4"
                 >
                   <span className="font-serif text-xl">{item.name || item.rawText}</span>
-                  <span className="font-mono text-sm">{dishPrice(item)}</span>
+                  <span className="font-mono text-sm">{dishPrice(item, money)}</span>
                 </li>
               ))}
             </ul>
@@ -444,6 +551,67 @@ export default function HouseMenu() {
             )}
           </div>
         )}
+        <section
+          aria-labelledby="first-proof-choice-h"
+          data-testid="first-proof-choice"
+          className="mt-12 border-t border-[#211f1b]/20 pt-6"
+        >
+          <h2 id="first-proof-choice-h" className="font-serif text-2xl">
+            Is this the menu you pour from now?
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm text-[#6d685f]">
+            It is kept either way. Making it current sets the house&apos;s prices from it and puts its wines on the
+            stock list; keeping it changes nothing.
+          </p>
+          {otherKept > 0 ? (
+            <p data-testid="first-proof-other-kept" className="mt-2 max-w-2xl text-sm text-[#6d685f]">
+              {otherKept === 1
+                ? 'The other file you sent was read too and kept as its own draft, not current. It waits on the menu page.'
+                : `The ${otherKept} other files you sent were read too, each kept as its own draft, not current. They wait on the menu page.`}
+            </p>
+          ) : null}
+          {alreadyCurrent ? (
+            <p role="status" data-testid="first-proof-already-current" className="mt-4 max-w-2xl text-sm">
+              It is the current menu. This file was read before and is the menu you pour from now; nothing changed.
+            </p>
+          ) : chosen ? (
+            <p role="status" data-testid="first-proof-choice-said" className="mt-4 max-w-2xl text-sm">
+              {chosen}
+            </p>
+          ) : canManage ? (
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button
+                type="button"
+                disabled={planning}
+                onClick={() => setPlanning(true)}
+                className="border border-[#211f1b]/40 px-4 py-2 text-sm disabled:opacity-40"
+              >
+                Make this the current menu
+              </button>
+              <button
+                type="button"
+                onClick={() => choose(KEPT_NOT_CURRENT)}
+                className="border border-[#211f1b]/40 px-4 py-2 text-sm disabled:opacity-40"
+              >
+                Keep it, not current
+              </button>
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-[#6d685f]">
+              An owner or a manager chooses whether it becomes the current menu. It is kept either way.
+            </p>
+          )}
+          {planning && !chosen && !alreadyCurrent ? (
+            <div className="mudavym mt-4" data-testid="first-proof-plan">
+              <MenuPlan
+                menuId={proof.menuId}
+                canManage={canManage}
+                onCancel={() => setPlanning(false)}
+                onDone={(r, lines) => choose(makeCurrentSentence(r, undefined, lines, money.code))}
+              />
+            </div>
+          ) : null}
+        </section>
         <button type="button" onClick={() => navigate('/house')} className="mt-10 bg-[#1a5e6b] px-6 py-3 text-white">
           Open the house
         </button>

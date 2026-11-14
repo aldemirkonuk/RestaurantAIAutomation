@@ -9,11 +9,20 @@ import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('../../services/api/menus', () => ({ reviewMenuItem: vi.fn(), addMenuItem: vi.fn() }))
+vi.mock('../../services/api/menus', () => ({ reviewMenuItem: vi.fn(), addMenuItem: vi.fn(), readWarningSentence: (w: unknown) => String(w) }))
 vi.mock('../../components/brand/BrandMark', () => ({ BrandMark: () => <span>Mudavym</span> }))
+// r37 meet with the menu train: the proof now asks who reads it (the
+// current-menu choice) and reads the house money. Staff, and a money read
+// left pending, keep these tests on what they test.
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({ activeRole: 'staff', user: { role: 'staff' } }),
+}))
+vi.mock('../../services/api/settings', () => ({ settingsApi: { houseCurrency: vi.fn(() => new Promise(() => {})) } }))
 
 import HouseMenu, { dishPrice } from '../HouseMenu'
 import { FIRST_PROOF_KEY } from '../../lib/firstProof'
+import { formatMoney } from '../../lib/currency'
+import { formatHouseNumber } from '../../lib/house-number'
 
 const proof = (items: unknown[]) =>
   sessionStorage.setItem(
@@ -50,9 +59,9 @@ describe('HouseMenu lists the dishes it read', () => {
     page()
     const list = within(dishes())
     expect(list.getByText('Adana kebap')).toBeInTheDocument()
-    expect(list.getByText('420')).toBeInTheDocument()
+    expect(list.getByText(formatHouseNumber(420, null, { digits: 2 }))).toBeInTheDocument()
     expect(list.getByText('Mercimek çorbası')).toBeInTheDocument()
-    expect(list.getByText('160')).toBeInTheDocument()
+    expect(list.getByText(formatHouseNumber(160, null, { digits: 2 }))).toBeInTheDocument()
     expect(
       list.getByText('2 dishes kept on your menu as read, apart from the drinks. A dish is not carried to stock or prices yet.'),
     ).toBeInTheDocument()
@@ -64,7 +73,7 @@ describe('HouseMenu lists the dishes it read', () => {
   it('a dish never says "bottle": one figure, from either price box', () => {
     proof([dish('k1', 'Künefe', null, 180)])
     page()
-    expect(within(dishes()).getByText('180')).toBeInTheDocument()
+    expect(within(dishes()).getByText(formatHouseNumber(180, null, { digits: 2 }))).toBeInTheDocument()
     expect(within(dishes()).queryByText(/bottle|glass/)).toBeNull()
   })
 
@@ -97,11 +106,18 @@ describe('HouseMenu lists the dishes it read', () => {
 })
 
 describe('dishPrice', () => {
-  it('says the one figure a dish has, bottle box first', () => {
-    expect(dishPrice({ bottlePrice: 24, byGlassPrice: null })).toBe('24')
-    expect(dishPrice({ bottlePrice: null, byGlassPrice: 7.5 })).toBe('7.5')
-    expect(dishPrice({ bottlePrice: 24, byGlassPrice: 7 })).toBe('24')
-    expect(dishPrice({ bottlePrice: null, byGlassPrice: null })).toBe('')
-    expect(dishPrice({ bottlePrice: 0, byGlassPrice: 7 })).toBe('0')
+  // r37: the dish's figure is said in the house's money, as proofPrice says a
+  // drink's (it printed a bare "24" beside "bottle ₺24,00" in a lira house).
+  const lira = { read: true, code: 'TRY' }
+  it('says the one figure a dish has, bottle box first, in the house money', () => {
+    expect(dishPrice({ bottlePrice: 24, byGlassPrice: null }, lira)).toBe(formatMoney(24, 'TRY'))
+    expect(dishPrice({ bottlePrice: null, byGlassPrice: 7.5 }, lira)).toBe(formatMoney(7.5, 'TRY'))
+    expect(dishPrice({ bottlePrice: 24, byGlassPrice: 7 }, lira)).toBe(formatMoney(24, 'TRY'))
+    expect(dishPrice({ bottlePrice: null, byGlassPrice: null }, lira)).toBe('')
+    expect(dishPrice({ bottlePrice: 0, byGlassPrice: 7 }, lira)).toBe(formatMoney(0, 'TRY'))
+  })
+
+  it('before the house money is read, the figure stands alone', () => {
+    expect(dishPrice({ bottlePrice: 24, byGlassPrice: null }, { read: false, code: null })).toBe(formatHouseNumber(24, null, { digits: 2 }))
   })
 })

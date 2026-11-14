@@ -9,7 +9,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { LockedPrices, markerWords } from './LockedPrices';
+import { LockedPrices, adviceWords, markerWords } from './LockedPrices';
 import { housePriceNote } from './menu-price-note';
 import {
   changeLockedPrice,
@@ -20,6 +20,14 @@ import {
   type LockReadout,
   type PriceLock,
 } from '../../../services/api/pricing';
+import { formatMoney } from '../../../lib/currency';
+
+vi.mock('../../../hooks/queries/useHouseCurrencyCode', () => ({ useHouseCurrencyCode: () => 'TRY' }));
+/** A price as a lira house writes it: the page routes every price through formatMoney. */
+const m = (n: number) => formatMoney(n, 'TRY');
+/** The page's text as the DOM matcher reads it: Intl's no-break space read as a space. */
+const shown = (s: string) => s.replace(/\s+/g, ' ');
+
 
 vi.mock('../../../services/api/pricing', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/pricing')>('../../../services/api/pricing');
@@ -125,13 +133,13 @@ describe('Locked prices', () => {
     mount(true);
     expect(await screen.findByTestId('locked-prices-standing')).toHaveTextContent('2 prices locked at this house, 2 worth a look.');
     const onMenu = screen.getByTestId('locked-on-menu');
-    expect(onMenu).toHaveTextContent('Barolo 2019 (bottle) locked at 50.00');
+    expect(onMenu).toHaveTextContent(shown(`Barolo 2019 (bottle) locked at ${m(50)}`));
     expect(onMenu).toHaveTextContent('by Aylin, 12 days ago');
     expect(onMenu).toHaveTextContent('off your target margin: Raise the bottle to 57.14 (now 50.00).');
-    expect(onMenu).toHaveTextContent('the current menu reads 55.00');
+    expect(onMenu).toHaveTextContent(shown(`the current menu reads ${m(55)}`));
     const off = screen.getByTestId('locked-off-menu');
     expect(screen.getByText('Locked, not on the current menu')).toBeInTheDocument();
-    expect(off).toHaveTextContent('Soave (glass) locked at 9.00');
+    expect(off).toHaveTextContent(shown(`Soave (glass) locked at ${m(9)}`));
     expect(off).toHaveTextContent('the wine was removed from inventory');
     expect(off).toHaveTextContent('set by someone who no longer manages this house');
     expect(off).toHaveTextContent('no advice: Cannot advise: no recorded cost for this wine.');
@@ -151,8 +159,8 @@ describe('Locked prices', () => {
     mount(true);
     const group = await screen.findByTestId('locked-menu-unknown');
     expect(screen.getByText('Locked (whether on the current menu could not be read)')).toBeInTheDocument();
-    expect(group).toHaveTextContent('Barolo 2019 (bottle) locked at 50.00');
-    expect(group).toHaveTextContent('Soave (glass) locked at 9.00');
+    expect(group).toHaveTextContent(shown(`Barolo 2019 (bottle) locked at ${m(50)}`));
+    expect(group).toHaveTextContent(shown(`Soave (glass) locked at ${m(9)}`));
     expect(screen.queryByTestId('locked-on-menu')).not.toBeInTheDocument();
     expect(screen.queryByTestId('locked-off-menu')).not.toBeInTheDocument();
     expect(screen.getByText(/the current menu could not be read \(timeout\)/)).toBeInTheDocument();
@@ -198,6 +206,28 @@ describe('Locked prices', () => {
     fireEvent.click(within(row).getByRole('button', { name: 'Save, keep locked' }));
     await waitFor(() => expect(mockChange).toHaveBeenCalledWith('lock-a', 58));
     expect(await screen.findByTestId('locked-prices-said')).toHaveTextContent('The bottle price is now 58.00 (it was 50.00) and stays locked.');
+  });
+
+  it('r26: Enter in the new-price box saves; Escape closes the form, sends nothing and gives the cursor back', async () => {
+    mockList.mockResolvedValue(readout());
+    mockChange.mockResolvedValue({ ...act('The bottle price is now 58.00 (it was 50.00) and stays locked.'), outcome: 'changed_and_locked' });
+    mount(true);
+    const row = (await screen.findAllByTestId('locked-price-row'))[0];
+    const opener = within(row).getByRole('button', { name: 'Change and keep locked' });
+    fireEvent.click(opener);
+    const box = within(row).getByLabelText('New bottle price for Barolo');
+    expect(box).toHaveFocus();
+    fireEvent.change(box, { target: { value: '61' } });
+    fireEvent.keyDown(box, { key: 'Escape' });
+    expect(within(row).queryByLabelText('New bottle price for Barolo')).not.toBeInTheDocument();
+    expect(opener).toHaveFocus();
+    expect(mockChange).not.toHaveBeenCalled();
+    fireEvent.click(opener);
+    const again = within(row).getByLabelText('New bottle price for Barolo');
+    expect(again).toHaveValue('');
+    fireEvent.change(again, { target: { value: '58' } });
+    fireEvent.submit(again.closest('form')!);
+    await waitFor(() => expect(mockChange).toHaveBeenCalledWith('lock-a', 58));
   });
 
   it('L24: release is one tap, and its sentence (the price stays) is shown', async () => {
@@ -256,6 +286,36 @@ describe('Locked prices', () => {
     expect(screen.getByText(/Only an owner or a manager changes or releases a lock/)).toBeInTheDocument();
   });
 
+  it('the off-target advice is written in the house\'s numbers when its figures come (r26 walk)', () => {
+    const figures = {
+      state: 'raise',
+      sentence: 'Raise the bottle to 194.29 (now 58.00, 70.2% below it): today\'s margin is -17.2%, your target is 65%.',
+      advisedPrice: 194.29,
+      gapPct: -70.15,
+      price: 58,
+      currentMarginPct: -17.24,
+      targetPct: 65,
+    };
+    const words = markerWords(lock({ advice: figures }), 'TRY')[0];
+    const pc = (n: number, d: number) =>
+      new Intl.NumberFormat('tr-TR', { style: 'percent', minimumFractionDigits: d, maximumFractionDigits: d }).format(n / 100);
+    expect(shown(words)).toBe(
+      shown(
+        `off your target margin: Raise the bottle to ${m(194.29)} (now ${m(58)}, ${pc(70.15, 1)} below it): ` +
+          `today's margin is ${pc(-17.24, 1)}, your target is ${pc(65, 0)}.`,
+      ),
+    );
+    expect(words).not.toContain('70.2%');
+    const lower = adviceWords(lock({ kind: 'glass', advice: { ...figures, state: 'lower', advisedPrice: 9.5, price: 12, gapPct: 26.32, currentMarginPct: 72.4 } }), 'TRY');
+    expect(shown(lower!)).toBe(
+      shown(`Lower the glass to ${m(9.5)} (now ${m(12)}, ${pc(26.32, 1)} above it): today's margin is ${pc(72.4, 1)}, above your ${pc(65, 0)} target.`),
+    );
+  });
+
+  it('an advice without its figures (an older gateway) is printed as the gateway wrote it', () => {
+    expect(adviceWords(lock(), 'TRY')).toBe('Raise the bottle to 57.14 (now 50.00).');
+  });
+
   it('markerWords says nothing for a lock that fits', () => {
     expect(markerWords(lock({ markers: [] }))).toEqual([]);
   });
@@ -264,11 +324,11 @@ describe('Locked prices', () => {
 describe('the add-a-line note names a held kind (L5)', () => {
   it('a line whose price a lock held says so -- never "now matches"', () => {
     expect(
-      housePriceNote({ priceSync: 'locked', priceHeld: [{ kind: 'bottle', lockId: 'k', lockedPrice: 95, lockedBy: 'u', lockedAt: 't' }] })?.text,
-    ).toBe("Added to the menu, but the bottle price is locked at 95.00, so the house's price was not changed. An owner or a manager changes it under Locked prices.");
+      housePriceNote({ priceSync: 'locked', priceHeld: [{ kind: 'bottle', lockId: 'k', lockedPrice: 95, lockedBy: 'u', lockedAt: 't' }] }, 'TRY')?.text,
+    ).toBe(`Added to the menu, but the bottle price is locked at ${m(95)}, so the house's price was not changed. An owner or a manager changes it under Locked prices.`);
     expect(
-      housePriceNote({ priceSync: 'changed', priceHeld: [{ kind: 'glass', lockId: 'k', lockedPrice: 9, lockedBy: 'u', lockedAt: 't' }] })?.text,
-    ).toBe("This wine's own price on Inventory was updated where it could be; the glass price is locked at 9.00, so that one was not changed.");
+      housePriceNote({ priceSync: 'changed', priceHeld: [{ kind: 'glass', lockId: 'k', lockedPrice: 9, lockedBy: 'u', lockedAt: 't' }] }, 'TRY')?.text,
+    ).toBe(`This wine's own price on Inventory was updated where it could be; the glass price is locked at ${m(9)}, so that one was not changed.`);
     expect(housePriceNote({ priceSync: 'changed', priceHeld: [] })?.text).toBe("This wine's own price on Inventory now matches the line.");
   });
 });

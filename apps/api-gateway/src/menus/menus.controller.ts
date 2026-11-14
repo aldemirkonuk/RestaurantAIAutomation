@@ -19,6 +19,7 @@ import { TenantGuard } from "../common/tenant/tenant.guard";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { MenusService } from "./menus.service";
 import { seesRawLine } from "./menu-line-view";
+import { withheldRawText } from "./import-reply-view";
 import { ImportMenuDto } from "./dto/import-menu.dto";
 import { AddMenuItemDto } from "./dto/add-menu-item.dto";
 import { ReviewMenuItemDto } from "./dto/review-menu-item.dto";
@@ -57,13 +58,18 @@ export class MenusController {
     summary:
       "Read a menu (scan, CSV or manual) and keep it as its own version, in draft",
     description:
-      "ADR 0193 (menu versions): every read is kept -- the source file, the extracted lines, who read it and when, and the optional cadence tag and date. It does NOT become the current menu or touch the house's prices; an owner or manager chooses that with POST /menu-versions/:menuId/make-current. A scan's AI spend ceiling fails CLOSED: if the spend record cannot be read, the read waits (503) and says why.",
+      "ADR 0193 (menu versions): every read with a line is kept -- the source file, the extracted lines, who read it and when, and the optional cadence tag and date. It does NOT become the current menu or touch the house's prices; an owner or manager chooses that with POST /menu-versions/:menuId/make-current. A SCAN is read in the background (founder 2026-11-07): the file and a draft version are kept at once and the reply says reading: true; poll GET /menu-versions/:menuId/read. Several photos in data.images are one menu, one version. The same bytes sent again reopen the read they made (reopened, its lines as they are now), unless readAgain is true, the upload names a cadence or menu date the earlier version does not carry, or that version is retired; two sends of the same file at once make one read. A scan that finds no line, or whose AI spend record cannot be read, ends as a failed read with its sentence. A spreadsheet or typed lines are read at once; one with no line is refused (422) and nothing is kept.",
   })
   async importMenu(
     @Body() dto: ImportMenuDto,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser() user: { userId: string; restaurantId: string; role?: string | null },
   ) {
-    return this.menusService.importMenu(dto, user.userId);
+    const read = await this.menusService.importMenu(dto, user.userId);
+    // ADR 0358 D2: any member may read a menu in, but a line's raw text is the
+    // row as the file had it -- for a spreadsheet, the cost and supplier cells
+    // too -- so only a role that sees money and suppliers is sent it (the same
+    // ROLE_POLICY rule GET /menu-versions/:id follows, menu-line-view.ts).
+    return withheldRawText(read, seesRawLine(user.role));
   }
 
   @Post("items")
@@ -132,12 +138,26 @@ export class MenusController {
   @Patch(":restaurantId/items/:id/discard")
   @ApiOperation({
     summary:
-      "Discard one line from the active menu (ADR 0160 sec110 item 7). Soft remove — status becomes 'discarded', the row is kept",
+      "Discard one line from the active menu (ADR 0160 sec110 item 7) -- owner or manager only (ADR 0358 D2). Soft remove — status becomes 'discarded', the row is kept",
   })
   async discardMenuItem(
     @Param("restaurantId") restaurantId: string,
     @Param("id") id: string,
+    @CurrentUser() user: { userId?: string },
   ) {
+    // ADR 0358 D2: taking a line off the menu is an owner's or a manager's.
+    // Checked before anything is read or written. The path's house is the
+    // session's own (JwtAuthGuard asserts the tenant match).
+    if (!user?.userId) {
+      throw new ForbiddenException(
+        "Discarding a menu line names the person, and this session names nobody. Nothing was changed.",
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(
+      user.userId,
+      restaurantId,
+      "discard a line from the menu",
+    );
     return this.menusService.discardMenuItem(restaurantId, id);
   }
 }
@@ -194,16 +214,37 @@ export class MenuVersionsController {
     return this.menusService.getVersion(this.house(restaurantId), menuId, { rawLine: seesRawLine(role) });
   }
 
+  @Get(":menuId/read")
+  @ApiOperation({
+    summary: "Where a background menu read stands, and what it found once done",
+    description:
+      "state is reading, done or failed (failure says why, in words). When done, reply is what POST /menus/import would have answered had it waited; a line's raw text is sent only to a role that sees money and suppliers (ADR 0358 D2). A read the server stopped hearing from for half an hour is said to have failed.",
+  })
+  async read(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("role") role: string | null,
+    @Param("menuId", new ParseUUIDPipe()) menuId: string,
+  ) {
+    const status = await this.menusService.readStatus(this.house(restaurantId), menuId);
+    return status.reply ? { ...status, reply: withheldRawText(status.reply, seesRawLine(role)) } : status;
+  }
+
   @Get(":menuId/source")
   @ApiOperation({
-    summary: "A five-minute link to the kept source file (photo, PDF or CSV)",
-    description: "404 with the stored reason when the source was not kept.",
+    summary: "A five-minute link to the kept source file (photo, PDF or CSV) -- owner or manager only",
+    description: "403 for anyone but an owner or a manager of the house (ADR 0358 D2). 404 with the stored reason when the source was not kept.",
   })
   async source(
     @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
     @Param("menuId", new ParseUUIDPipe()) menuId: string,
   ) {
-    return this.menusService.sourceUrl(this.house(restaurantId), menuId);
+    // ADR 0358 D2: the kept file is the whole menu as sent -- a spreadsheet
+    // carries cost and supplier columns -- so a link to it is an owner's or a
+    // manager's.
+    const house = this.house(restaurantId);
+    await this.organizations.assertCanManageRestaurant(userId, house, "open a kept menu file");
+    return this.menusService.sourceUrl(house, menuId);
   }
 
   @Get(":menuId/plan")
@@ -251,31 +292,69 @@ export class OnboardingController {
   constructor(
     private readonly menusService: MenusService,
     private readonly inboundAddress: InboundAddressService,
+    private readonly organizations: OrganizationsService,
   ) {}
 
   @Get("progress")
-  @ApiOperation({ summary: "Get the authenticated user's onboarding progress" })
-  async getProgress(@CurrentUser() user: { userId: string }) {
-    return this.menusService.getOnboardingProgress(user.userId);
+  @ApiOperation({
+    summary: "The setup of the house this session is in",
+    description:
+      "Read from the house's own tables every time: a menu read, a menu made current, a supplier, an invite. A GET writes nothing. activated = the house has a current menu with a live line. next_steps (goods_listed, mailbox_connected, invoice: none/waiting/checked) lead past the menu to the house's costs; they never decide completed_at or activated, and a fact whose read failed is null, not false. 404 when the session is in no house.",
+  })
+  async getProgress(
+    @CurrentUser() user: { userId: string; restaurantId?: string },
+  ) {
+    return this.menusService.getOnboardingProgress(
+      user.userId,
+      user.restaurantId,
+    );
   }
 
   @Patch("progress")
-  @ApiOperation({ summary: "Update onboarding progress fields" })
+  @ApiOperation({
+    summary: "Put the setup checklist away (the person's own flag)",
+    description:
+      "Only checklist_dismissed is written. menu_uploaded, vendor_added and team_member_invited are read from the house and a body that names them changes nothing. Answers the progress read.",
+  })
   async updateProgress(
     @Body() dto: UpdateOnboardingProgressDto,
-    @CurrentUser() user: { userId: string },
+    @CurrentUser() user: { userId: string; restaurantId?: string },
   ) {
-    return this.menusService.updateOnboardingProgress(user.userId, dto);
+    return this.menusService.updateOnboardingProgress(
+      user.userId,
+      user.restaurantId,
+      dto,
+    );
   }
 
   @Patch("threshold")
   @ApiOperation({
     summary:
-      "Set the restaurant's default low-stock threshold (get-started step 3)",
+      "Set the house's default low-stock threshold (an owner or a manager, in the session's house)",
   })
-  async setThreshold(@Body() dto: SetThresholdDto) {
+  async setThreshold(
+    @Body() dto: SetThresholdDto,
+    @CurrentUser() user: { userId: string; restaurantId?: string },
+  ) {
+    // The house is the session's. A body that names another house is refused,
+    // never followed (it used to be taken from the body alone).
+    if (!user.restaurantId) {
+      throw new ForbiddenException(
+        "This session is in no house, so no threshold was set.",
+      );
+    }
+    if (dto.restaurantId && dto.restaurantId !== user.restaurantId) {
+      throw new ForbiddenException(
+        "That is not the house this session is in. No threshold was set.",
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(
+      user.userId,
+      user.restaurantId,
+      "set the low-stock threshold",
+    );
     return this.menusService.setDefaultThreshold(
-      dto.restaurantId,
+      user.restaurantId,
       dto.thresholdMin,
     );
   }

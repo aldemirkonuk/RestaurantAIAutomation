@@ -1,6 +1,7 @@
 /**
  * The finish-setup nudge asks only for the menu (proposal F1, F20): it no
- * longer waits on a threshold no screen sets (verdict G8).
+ * longer waits on a threshold no screen sets (verdict G8). Its words and its
+ * read-but-not-current case are the menu train's (missingStep test).
  */
 import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
@@ -44,16 +45,14 @@ beforeEach(() => {
 })
 
 describe('SetupNudgeBanner', () => {
-  it('stays hidden once a menu is read, even though activated is still false', () => {
-    state.progress = { menu_uploaded: true, threshold_configured: false, activated: false }
-    banner()
-    expect(screen.queryByRole('button', { name: 'Finish setup' })).toBeNull()
-  })
-
+  // r37 meet with the menu train: "stays hidden once a menu is read" is gone.
+  // OB-1 (ADR 0193) moved "activated" to a CURRENT menu, so a read menu that
+  // is not current is nudged to be chosen (SetupNudgeBanner.missingStep.test).
+  // The primary button now names the missing step ("Read your menu").
   it('shows while no menu is read, keeps snooze and dismiss, and asks in plain words', () => {
     state.progress = { menu_uploaded: false, threshold_configured: false, activated: false }
     banner()
-    fireEvent.click(screen.getByRole('button', { name: 'Finish setup' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Read your menu' }))
     expect(navigate).toHaveBeenCalledWith('/get-started')
     fireEvent.click(screen.getByRole('button', { name: 'Later' }))
     expect(guidance.snoozeSetupNudge).toHaveBeenCalled()
@@ -68,7 +67,7 @@ describe('SetupNudgeBanner', () => {
     state.role = 'manager'
     state.progress = { menu_uploaded: false, threshold_configured: false, activated: false }
     banner()
-    fireEvent.click(screen.getByRole('button', { name: 'Finish setup' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Read your menu' }))
     expect(navigate).toHaveBeenCalledWith('/menu')
   })
 
@@ -76,6 +75,6 @@ describe('SetupNudgeBanner', () => {
     state.role = 'staff'
     state.progress = { menu_uploaded: false, threshold_configured: false, activated: false }
     banner()
-    expect(screen.queryByRole('button', { name: 'Finish setup' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Read your menu' })).toBeNull()
   })
 })
