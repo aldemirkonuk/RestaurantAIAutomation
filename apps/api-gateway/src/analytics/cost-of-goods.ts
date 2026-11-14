@@ -474,7 +474,7 @@ export function tillFigures(input: {
       revenue: revenueBasis,
       costDerived:
         COST_DERIVED_RATIOS +
-        `Inventory turns, days of inventory and GMROI scale the days the till covers to a year (left blank under ${MIN_SPAN_DAYS} days) and set that against today's stock at cost of the goods the till reaches (mapped to a till item, or sold or moved by it in the window), which is left blank unless every one of them on hand carries a recorded cost (a row whose invoiced cost covers only part of its bottles is valued at that cost, as the cellar's working says)` +
+        `Inventory turns, days of inventory and the return on stock scale the days the till covers to a year (left blank under ${MIN_SPAN_DAYS} days) and set that against today's stock at cost of the goods the till reaches (mapped to a till item, or sold or moved by it in the window), which is left blank unless every one of them on hand carries a recorded cost (a row whose invoiced cost covers only part of its bottles is valued at that cost, as the cellar's working says)` +
         tillStockSentence(tillStock) +
         ". " +
         COST_DERIVED_APART,
