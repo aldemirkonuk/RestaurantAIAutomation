@@ -2,7 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { queueResearchIfLibraryLacks } from "../../inventory/house-item-research";
 import { closeDeliveryItemToNameBookedElsewhere } from "../delivery-item-to-name";
-import { inItemUnit, isImperial, isMass, isVolumeItemUnit, massFactor, volumeFactor, withStatedUnit } from "../documents/document-types";
+import { inItemUnit, isImperial, isMass, isVolumeItemUnit, isVolumeLineUnit, massFactor, volumeFactor, withStatedUnit } from "../documents/document-types";
 import { LotUnitCost, perBottleLotCost, proposalPerBottle, toCentsAsBooked } from "./lot-unit-cost";
 import {
   LandedBlock,
@@ -232,14 +232,16 @@ function volumeShelf(
   line: { uom?: string | null; format_ml?: unknown },
   itemUom: string | null | undefined,
 ): { ok: true; qty: number } | { ok: false; reason: string } | null {
-  const measured = line.uom === "liter";
+  // R4: a US gallon or fluid ounce is measured too, as a liter is.
+  const measured = isVolumeLineUnit(line.uom);
+  const unitSaid = measured ? (line.uom === "floz" ? "fl oz" : String(line.uom)) : "";
   if (!isVolumeItemUnit(itemUom)) {
     if (!measured) return null;
     return {
       ok: false,
       reason: itemUom
-        ? `this line is measured in liters, but the item it names is kept in ${itemUom}s, and a liter is not a number of ${itemUom}s. It is NOT booked; keep the item in ml, or link the line to one that is.`
-        : `this line is measured in liters, and the item it names states no unit, so how much of it this is cannot be put on the shelf`,
+        ? `this line is measured in ${unitSaid}, but the item it names is kept in ${itemUom}s, and a ${unitSaid} is not a number of ${itemUom}s. It is NOT booked; keep the item in ml, or link the line to one that is.`
+        : `this line is measured in ${unitSaid}, and the item it names states no unit, so how much of it this is cannot be put on the shelf`,
     };
   }
   if (isMass(line.uom))
@@ -248,8 +250,11 @@ function volumeShelf(
   let exact: number;
   let said: string;
   if (measured) {
-    exact = n * (volumeFactor("liter", itemUom) as number);
-    said = `${n} liter`;
+    // R4: a US volume into ml rounds to the nearest ml; see `inItemUnit`.
+    const put = inItemUnit(n, String(line.uom), itemUom);
+    if (put.ok) return { ok: true, qty: put.qty };
+    exact = put.exact as number;
+    said = `${n} ${unitSaid}`;
   } else if (fmt != null) {
     exact = n * fmt * (volumeFactor("ml", itemUom) as number);
     said = `${n} of ${fmt} ml`;
@@ -271,7 +276,7 @@ function volumeShelf(
 function itemScale(line: LineRow): { factor: number; volume: boolean } | null {
   if (!line.item_uom) return null;
   if (isVolumeItemUnit(line.item_uom)) {
-    if (line.uom === "liter") return { factor: volumeFactor("liter", line.item_uom) as number, volume: true };
+    if (isVolumeLineUnit(line.uom)) return { factor: volumeFactor(String(line.uom), line.item_uom) as number, volume: true };
     if (isMass(line.uom)) return null;
     const fmt = sizeMl(line.format_ml);
     return fmt == null ? null : { factor: fmt * (volumeFactor("ml", line.item_uom) as number), volume: true };

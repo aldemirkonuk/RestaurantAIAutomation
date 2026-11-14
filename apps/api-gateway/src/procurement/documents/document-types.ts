@@ -88,6 +88,8 @@ export const UOMS = [
   "g",
   "lb",
   "oz",
+  "gal",
+  "floz",
 ] as const;
 export type Uom = (typeof UOMS)[number];
 
@@ -115,9 +117,9 @@ export function isMass(u: unknown): u is MassUom {
  * US units (r36 invoices R4). A US food invoice prints `10 LB`, `16 OZ`,
  * `4 GAL` or `64 FL OZ`; the vocabulary had none of them, so the reader filed
  * the line as `each` and the door booked `10 LB` of chicken into an item kept
- * in grams as 10 g. A line may now say `lb` or `oz` (weights);
- * `procurement_document_lines.uom` and `price_base_uom` accept them, and the US
- * volumes `gal` and `floz` the next change reads (migration 20271114203700). The ITEM stays metric (ADR 0070):
+ * in grams as 10 g. A line may now say `lb` or `oz` (weights) and `gal` or
+ * `floz` (volumes); `procurement_document_lines.uom` and `price_base_uom`
+ * accept them (migration 20271114203700). The ITEM stays metric (ADR 0070):
  * these convert, by the exact legal definitions below, into the item's g, kg,
  * mg, ml or l, and never into bottles.
  *
@@ -126,7 +128,7 @@ export function isMass(u: unknown): u is MassUom {
  * volume), never read as fluid ounces. `gal` is the US gallon: the houses that
  * print it are US houses, and the imperial gallon is not a unit any of them buys in.
  */
-export const IMPERIAL_UOMS = ["lb", "oz"] as const;
+export const IMPERIAL_UOMS = ["lb", "oz", "gal", "floz"] as const;
 
 export function isImperial(u: unknown): boolean {
   return (IMPERIAL_UOMS as readonly unknown[]).includes(u);
@@ -162,10 +164,13 @@ const MILLILITRES: Readonly<Record<string, number>> = {
   liter: 1000,
   l: 1000,
   ml: 1,
+  // The US gallon is exactly 231 cubic inches; a US fluid ounce is 1/128 of it.
+  gal: 3785.411784,
+  floz: 29.5735295625,
 };
 
-/** The units a LINE may measure a volume in. */
-export const VOLUME_LINE_UOMS = ["liter"] as const;
+/** The units a LINE may measure a volume in: `liter`, and the US `gal` and `floz` (R4). */
+export const VOLUME_LINE_UOMS = ["liter", "gal", "floz"] as const;
 
 export function isVolumeLineUnit(u: unknown): u is (typeof VOLUME_LINE_UOMS)[number] {
   return (VOLUME_LINE_UOMS as readonly unknown[]).includes(u);
@@ -402,6 +407,17 @@ export function normalizeUom(raw?: string | null): Uom | null {
     case "ounce":
     case "ounces":
       return "oz";
+    case "gal":
+    case "gals":
+    case "gll": // UN/ECE Rec 20 `GLL`, US gallon.
+    case "gallon":
+    case "gallons":
+      return "gal";
+    case "floz": // `fl oz`, `fl. oz.`, `FL-OZ`: spaces, dots and dashes folded above.
+    case "oza": // UN/ECE Rec 20 `OZA`, US fluid ounce.
+    case "fluidounce":
+    case "fluidounces":
+      return "floz";
     default:
       return null;
   }
@@ -439,6 +455,8 @@ export function toBottles(qty: number, uom: Uom, packSize = 1): number {
     case "g":
     case "lb":
     case "oz":
+    case "gal":
+    case "floz":
       return n;
   }
 }
