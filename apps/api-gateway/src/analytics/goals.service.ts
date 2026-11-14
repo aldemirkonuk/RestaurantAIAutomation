@@ -3,7 +3,10 @@ import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
 import { AnalyticsService, SalesGate } from "./analytics.service";
 import * as E from "./engine";
-import { InsightGeneratorService } from "./insights/insight-generator.service";
+import {
+  InsightGeneratorService,
+  readHouseCurrency,
+} from "./insights/insight-generator.service";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
 import { WholeReadError, readWholeWindow } from "../common/read-whole-window";
 import {
@@ -30,7 +33,13 @@ import {
   bottlesOf,
   unitsLabel,
 } from "./consumption-units";
-import { UncostedOrdersError, orderCostOrNull } from "./order-cost";
+import {
+  HouseMoneyUnreadError,
+  UncostedOrdersError,
+  anyOrderNamesCurrency,
+  orderHouseCostOrNull,
+  otherMoneyOf,
+} from "./order-cost";
 import {
   ModelClientService,
   NfEventRef,
@@ -376,9 +385,10 @@ export class GoalsService {
     const house = await readHouseZone(this.dbService.getClient(), restaurantId);
     // A purchases goal is a running total from its first day: the scorer
     // never reads its baseline (goal-score.ts), and the baseline window is
-    // the period before the goal existed. An uncosted order there stores the
-    // goal unread with the reason; the first live reading scores it. Every
-    // other refusal still refuses here.
+    // the period before the goal existed. An uncosted order there (or one not
+    // in house currency, or a house currency that could not be read) stores
+    // the goal unread with the reason; the first live reading scores it.
+    // Every other refusal still refuses here.
     let baseline: number | null;
     let baselineUnread: string | null = null;
     try {
@@ -390,7 +400,11 @@ export class GoalsService {
         gate,
       );
     } catch (err) {
-      if (!(err instanceof UncostedOrdersError)) throw err;
+      if (
+        !(err instanceof UncostedOrdersError) &&
+        !(err instanceof HouseMoneyUnreadError)
+      )
+        throw err;
       baseline = null;
       baselineUnread = err.message;
     }
@@ -1218,7 +1232,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
             let q = client
               .from("procurement_orders")
               .select(
-                "id, total_cost, final_price, delivered_at, created_at, status",
+                "id, total_cost, final_price, currency, delivered_at, created_at, status",
                 { count: "exact" },
               )
               .eq("restaurant_id", restaurantId)
@@ -1233,16 +1247,40 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
           (o) => o.delivered_at || o.created_at,
         );
         rowCount = orders.length;
+        // The goal is in the house's money. An order in another currency
+        // added to it mixed two monies into one figure (a TRY house with one
+        // EUR order read lira plus euros as lira), and left out it made a
+        // "keep purchases under" goal read short, so as met. Nothing here
+        // converts. The house's currency is read only when an order names
+        // one; a failed read refuses the reading (rethrown below).
+        const house = anyOrderNamesCurrency(orders.map((o) => o.row))
+          ? await readHouseCurrency(client, restaurantId).catch((e) => {
+              throw new HouseMoneyUnreadError(e);
+            })
+          : null;
         // An order with no recorded cost is unknown, never $0: summed as 0 it
         // made a "keep purchases under" goal read lower than the truth, and
         // so read as met (order-cost.ts). The whole window refuses instead,
-        // and the goal says how many orders wait on a cost.
+        // and the goal says how many orders wait on a cost, and how many are
+        // not in house currency, by code.
+        const otherMoney = otherMoneyOf(
+          orders.map((o) => o.row),
+          house,
+        );
         const costed = orders.map(({ row, day }) => ({
           day,
-          cost: orderCostOrNull(row),
+          cost: orderHouseCostOrNull(row, house),
         }));
-        const uncosted = costed.filter((o) => o.cost == null).length;
-        if (uncosted > 0) throw new UncostedOrdersError(uncosted, orders.length);
+        const unsummed = costed.filter((o) => o.cost == null).length;
+        if (unsummed > 0) {
+          const other = Object.values(otherMoney).reduce((a, b) => a + b, 0);
+          throw new UncostedOrdersError(
+            unsummed - other,
+            orders.length,
+            otherMoney,
+            house,
+          );
+        }
         for (const o of costed) add(o.day, o.cost as number);
       } else if (metricKey === "bottles_sold") {
         // Read whole or refused (ADR 0292): an unranged select stopped at
@@ -1376,6 +1414,8 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       if (err instanceof UncountedConsumptionError) throw err;
       // And for a spend that would rest on an order with no recorded cost.
       if (err instanceof UncostedOrdersError) throw err;
+      // And for a spend whose orders' money could not be placed.
+      if (err instanceof HouseMoneyUnreadError) throw err;
       this.logger.warn(`computeMetric(${metricKey}) failed: ${err?.message}`);
     }
 

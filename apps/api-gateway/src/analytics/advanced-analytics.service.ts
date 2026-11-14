@@ -14,10 +14,23 @@ import {
   shiftHouseDay,
 } from "../common/house-day";
 import * as E from "./engine";
-import { AnalyticsService, SalesGate } from "./analytics.service";
-import { InsightGeneratorService } from "./insights/insight-generator.service";
+import {
+  AnalyticsService,
+  SalesGate,
+  houseItemName,
+} from "./analytics.service";
+import {
+  InsightGeneratorService,
+  readHouseCurrency,
+} from "./insights/insight-generator.service";
 import { GoalsService } from "./goals.service";
-import { UncostedOrdersError, orderCostOrNull } from "./order-cost";
+import {
+  HouseMoneyUnreadError,
+  anyOrderNamesCurrency,
+  orderHouseCostOrNull,
+  otherMoneyOf,
+  unsummedOrdersSentence,
+} from "./order-cost";
 import {
   COST_BASIS_LABEL,
   costBasisSentence,
@@ -87,7 +100,7 @@ export class AdvancedAnalyticsService {
         // Same schema-drift fix as AnalyticsService.loadInventory: a single
         // unknown column 42703s the whole PostgREST query.
         .select(
-          "id, wine_name, stock_live, menu_price_current, last_purchase_price, master_wine_id, master_wine_library(primary_type)",
+          "id, wine_name, display_name, stock_live, menu_price_current, last_purchase_price, master_wine_id, master_wine_library(primary_type, name)",
           { count: "exact" },
         )
         .eq("restaurant_id", restaurantId)
@@ -121,7 +134,10 @@ export class AdvancedAnalyticsService {
       return {
         id: i.id,
         masterWineId: i.master_wine_id,
-        name: i.wine_name || i.master_wine_id || i.id,
+        // The house's own name, then a good's `display_name`, then the
+        // library's: a beer or a spirit has no wine_name, and an id is never
+        // a name (`houseItemName`, as the dead-stock card names a row).
+        name: houseItemName(i),
         type: i.master_wine_library?.primary_type || "unknown",
         qty: lot?.live_qty ?? i.stock_live ?? 0,
         unitCost,
@@ -257,7 +273,7 @@ export class AdvancedAnalyticsService {
       client
         .from("procurement_orders")
         .select(
-          "id, provider_id, providers(name), total_cost, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status, cancel_reason_code, cancelled_from_status",
+          "id, provider_id, providers(name), total_cost, final_price, currency, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status, cancel_reason_code, cancelled_from_status",
           { count: "exact" },
         )
         .eq("restaurant_id", restaurantId)
@@ -277,6 +293,25 @@ export class AdvancedAnalyticsService {
       throw new ServiceUnavailableException(
         `${err?.message ?? err}. Nothing is filed on a guessed day.`,
       );
+    }
+  }
+
+  /**
+   * The house's currency, for orders that name theirs: every spend figure
+   * here is in the house's money, and nothing converts, so an order in
+   * another currency is withheld from a total like an uncosted one
+   * (order-cost.ts). Read only when an order names a currency; a failed
+   * read refuses the lens rather than summing every order as the house's.
+   */
+  private async houseMoneyFor(
+    restaurantId: string,
+    orders: Array<{ currency?: unknown }>,
+  ): Promise<string | null> {
+    if (!anyOrderNamesCurrency(orders)) return null;
+    try {
+      return await readHouseCurrency(this.dbService.getClient(), restaurantId);
+    } catch (e) {
+      throw new HouseMoneyUnreadError(e);
     }
   }
 
@@ -342,16 +377,25 @@ export class AdvancedAnalyticsService {
       this.loadInventoryWithCost(restaurantId),
       this.loadConsumption(restaurantId, sinceDays),
     ]);
-    const soldByWine = new Map<string, number>();
-    const standInWines = new Set<string>();
+    // Sales are keyed by the inventory row each line was poured from, the row
+    // the menu prices. Keyed by master wine, a beer, a spirit or a soft drink
+    // (no master wine) sold nothing and read "candidate to delist", and two
+    // rows of one wine each took both rows' sales.
+    const soldByItem = new Map<string, number>();
+    const standInItems = new Set<string>();
+    const unmeasuredItems = new Set<string>();
     for (const c of consumption) {
-      if (!c.wineId || c.qty == null) continue;
-      soldByWine.set(c.wineId, (soldByWine.get(c.wineId) || 0) + c.qty);
-      if (c.how === "stand_in") standInWines.add(c.wineId);
+      if (!c.inventoryId) continue;
+      // A row with any line that carries no bottle figure has no velocity:
+      // summing the rest would report it slower than it sold (ADR 0297).
+      if (c.how === "uncounted") unmeasuredItems.add(c.inventoryId);
+      if (c.qty == null) continue;
+      soldByItem.set(
+        c.inventoryId,
+        (soldByItem.get(c.inventoryId) || 0) + c.qty,
+      );
+      if (c.how === "stand_in") standInItems.add(c.inventoryId);
     }
-    // A wine with any line that carries no bottle figure has no velocity:
-    // summing the rest would report it slower than it sold (ADR 0297).
-    const unmeasuredWines = this.uncountedWines(consumption);
     const unitsCoverage = summarizeUnits(consumption);
     const priced = inventory.filter((i) => i.unitPrice > 0);
     const costCoverage = summarizeCostBasis(priced);
@@ -359,10 +403,10 @@ export class AdvancedAnalyticsService {
       id: i.id,
       name: i.name,
       type: i.type,
-      velocityPerDay: unmeasuredWines.has(i.masterWineId)
+      velocityPerDay: unmeasuredItems.has(i.id)
         ? null
-        : (soldByWine.get(i.masterWineId) || 0) / sinceDays,
-      sizeStandIn: standInWines.has(i.masterWineId),
+        : (soldByItem.get(i.id) || 0) / sinceDays,
+      sizeStandIn: standInItems.has(i.id),
       marginPerBottle: i.marginPerBottle,
       costBasis: i.costBasis,
       marginPct:
@@ -468,6 +512,8 @@ export class AdvancedAnalyticsService {
   async getVendorScorecard(restaurantId: string) {
     const orders = await this.loadOrders(restaurantId, 365);
     const house = await this.loadHouseFrame(restaurantId);
+    const money = await this.houseMoneyFor(restaurantId, orders);
+    const costOf = (o: any) => orderHouseCostOrNull(o, money);
     const nowMs = Date.now();
     // Which orders still out with a vendor are CONFIRMED late — the house
     // answered "Not yet" — or closed with a credit (procurement/overdue-order.ts).
@@ -593,21 +639,27 @@ export class AdvancedAnalyticsService {
       const scored = counts.onTime + counts.late;
       // An order with no recorded cost is unknown, never $0 (order-cost.ts).
       // It gives no unit price (a $0 price dragged the mean and the trend
-      // down), and the vendor's spend is not summed short over it.
+      // down), and the vendor's spend is not summed short over it. An order
+      // not in house currency is the same: its price is in other money, so
+      // it joins neither the unit price nor the spend.
       const unitPrices = delivered
         .map((o) => {
           const bottles = o.bottles_total || o.quantity || 0;
-          const cost = orderCostOrNull(o);
+          const cost = costOf(o);
           return bottles > 0 && cost != null ? cost / bottles : null;
         })
         .filter((p): p is number => p !== null && Number.isFinite(p));
-      const uncostedDelivered = delivered.filter(
-        (o) => orderCostOrNull(o) == null,
-      ).length;
+      const otherMoney = otherMoneyOf(delivered, money);
+      const notInHouseCurrency = Object.values(otherMoney).reduce(
+        (a, b) => a + b,
+        0,
+      );
+      const uncostedDelivered =
+        delivered.filter((o) => costOf(o) == null).length - notInHouseCurrency;
       const spend =
-        uncostedDelivered > 0
+        uncostedDelivered + notInHouseCurrency > 0
           ? null
-          : delivered.reduce((s, o) => s + (orderCostOrNull(o) as number), 0);
+          : delivered.reduce((s, o) => s + (costOf(o) as number), 0);
       return {
         vendorId,
         vendorName: os[0]?.providers?.name || vendorId,
@@ -616,10 +668,14 @@ export class AdvancedAnalyticsService {
         spend,
         /** Delivered orders with no recorded cost; `spend` is null while any. */
         uncostedDelivered,
-        spendUnread:
-          uncostedDelivered > 0
-            ? new UncostedOrdersError(uncostedDelivered, delivered.length).message
-            : null,
+        /** Delivered orders not in house currency; `spend` is null while any. */
+        notInHouseCurrency,
+        spendUnread: unsummedOrdersSentence(
+          uncostedDelivered,
+          delivered.length,
+          otherMoney,
+          money,
+        ),
         leadTimeDays: {
           mean: E.mean(leadTimes),
           median: E.median(leadTimes),
@@ -659,7 +715,9 @@ export class AdvancedAnalyticsService {
             hhi: null,
             effectiveVendors: null,
             unread:
-              "How concentrated buying is cannot be read while a vendor's spend rests on an order with no recorded cost.",
+              vendors.some((v) => v.notInHouseCurrency > 0)
+                ? "How concentrated buying is cannot be read while a vendor's spend holds an order not in house currency: nothing here converts one currency into another."
+                : "How concentrated buying is cannot be read while a vendor's spend rests on an order with no recorded cost.",
           },
       note: "How much a vendor's delivery time varies widens the safety stock on the restock list.",
       generatedAt: new Date().toISOString(),
@@ -764,6 +822,12 @@ export class AdvancedAnalyticsService {
       this.loadOrders(restaurantId, 182),
       this.houseZoneFor(restaurantId),
     ]);
+    // The house's money, read only when an order names a currency: an
+    // order in another currency is withheld like an uncosted one, counted
+    // by its code, since nothing here converts (order-cost.ts, #1369). An
+    // unknown cost is never summed as 0 (r21's money rule, kept in r33).
+    const money = await this.houseMoneyFor(restaurantId, orders);
+    const costOf = (o: any) => orderHouseCostOrNull(o, money);
     // Committed outflow: orders placed but not delivered.
     //
     // This was `["pending", "awaiting_approval", "ordered", "in_transit"]`.
@@ -780,21 +844,32 @@ export class AdvancedAnalyticsService {
     const open = orders.filter((o: any) =>
       hasStatus(o.status, ORDER_OUTSTANDING_STATUSES),
     );
-    // An open order with no price yet is not a $0 commitment either.
-    const uncostedOpen = open.filter((o: any) => orderCostOrNull(o) == null).length;
+    // An open order with no price yet is not a $0 commitment either, and an
+    // open order in another currency is not a commitment in the house's.
+    const otherOpen = otherMoneyOf(open, money);
+    const otherOpenCount = Object.values(otherOpen).reduce((a, b) => a + b, 0);
+    const uncostedOpen =
+      open.filter((o: any) => costOf(o) == null).length - otherOpenCount;
     const committed =
-      uncostedOpen > 0
+      uncostedOpen + otherOpenCount > 0
         ? null
-        : open.reduce((s: number, o: any) => s + (orderCostOrNull(o) as number), 0);
+        : open.reduce((s: number, o: any) => s + (costOf(o) as number), 0);
     const committedUnread =
-      uncostedOpen > 0
-        ? `${uncostedOpen} of the ${open.length} open order${open.length === 1 ? "" : "s"} ${uncostedOpen === 1 ? "carries" : "carry"} no price yet, so what is committed is not summed short. Record the price to read it.`
-        : null;
+      otherOpenCount > 0
+        ? `${otherOpenCount} of the ${open.length} open order${open.length === 1 ? "" : "s"} ${otherOpenCount === 1 ? "is" : "are"} not in house currency (${Object.entries(
+            otherOpen,
+          )
+            .sort(([a, x], [b, y]) => y - x || (a < b ? -1 : 1))
+            .map(([c, n]) => `${n} in ${c}`)
+            .join(", ")}${money ? `; the house keeps ${money}` : ""}), and nothing here converts one currency into another, so what is committed is not summed.${uncostedOpen > 0 ? ` ${uncostedOpen} more ${uncostedOpen === 1 ? "carries" : "carry"} no price yet.` : ""}`
+        : uncostedOpen > 0
+          ? `${uncostedOpen} of the ${open.length} open order${open.length === 1 ? "" : "s"} ${uncostedOpen === 1 ? "carries" : "carry"} no price yet, so what is committed is not summed short. Record the price to read it.`
+          : null;
 
     // The sentence the house reads for each withheld figure: the purchases
     // goal's own (UncostedOrdersError), so the card and the goal agree.
-    const unread = (n: number, of: number) =>
-      n > 0 ? new UncostedOrdersError(n, of).message : null;
+    const unread = (n: number, of: number, other: Record<string, number>) =>
+      unsummedOrdersSentence(n, of, other, money);
 
     // Money question: PARTIALLY_RECEIVED carries PO-value columns, not
     // received-value ones, so it is excluded here. See order-status.ts.
@@ -817,6 +892,7 @@ export class AdvancedAnalyticsService {
         committedOpenOrders: committed,
         openOrderCount: open.length,
         uncostedOrders: null,
+        notInHouseCurrency: null,
         unread: {
           spendLast30d: null,
           spendPrev30d: null,
@@ -833,7 +909,8 @@ export class AdvancedAnalyticsService {
     // window with none is still summed.
     const dated = delivered.map((o: any) => ({
       at: (o.delivered_at || o.created_at || null) as string | null,
-      cost: orderCostOrNull(o),
+      cost: costOf(o),
+      other: otherMoneyOf([o], money),
     }));
     const onHouseDays = (rows: Array<{ at: string | null; value: number }>) =>
       this.houseDaily(rows, 180, zone).values;
@@ -844,17 +921,50 @@ export class AdvancedAnalyticsService {
     );
     const countIn = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
     const uncostedDaily = onHouseDays(
-      dated.filter((r) => r.cost == null).map((r) => ({ at: r.at, value: 1 })),
+      dated
+        .filter((r) => r.cost == null && Object.keys(r.other).length === 0)
+        .map((r) => ({ at: r.at, value: 1 })),
     );
     const deliveredDaily = onHouseDays(dated.map((r) => ({ at: r.at, value: 1 })));
+    // One daily count per currency the house does not keep, on house days.
+    const otherDaily = new Map<string, number[]>();
+    for (const code of new Set(dated.flatMap((r) => Object.keys(r.other))))
+      otherDaily.set(
+        code,
+        onHouseDays(
+          dated
+            .filter((r) => r.other[code])
+            .map((r) => ({ at: r.at, value: 1 })),
+        ),
+      );
+    const otherIn = (cut: (xs: number[]) => number[]) => {
+      const out: Record<string, number> = {};
+      for (const [code, xs] of otherDaily) {
+        const n = countIn(cut(xs));
+        if (n > 0) out[code] = n;
+      }
+      return out;
+    };
+    const otherMoney = {
+      last30d: otherIn((xs) => xs.slice(-30)),
+      prev30d: otherIn((xs) => xs.slice(-60, -30)),
+      window180d: otherIn((xs) => xs),
+    };
+    const anyOther = (m: Record<string, number>) => Object.keys(m).length > 0;
     const uncosted = {
       last30d: countIn(uncostedDaily.slice(-30)),
       prev30d: countIn(uncostedDaily.slice(-60, -30)),
       window180d: countIn(uncostedDaily),
     };
 
-    const last30 = uncosted.last30d > 0 ? null : countIn(daily.slice(-30));
-    const prev30 = uncosted.prev30d > 0 ? null : countIn(daily.slice(-60, -30));
+    const last30 =
+      uncosted.last30d > 0 || anyOther(otherMoney.last30d)
+        ? null
+        : countIn(daily.slice(-30));
+    const prev30 =
+      uncosted.prev30d > 0 || anyOther(otherMoney.prev30d)
+        ? null
+        : countIn(daily.slice(-60, -30));
     const pace =
       last30 == null || prev30 == null ? null : E.periodOverPeriod(daily, 30);
 
@@ -869,7 +979,9 @@ export class AdvancedAnalyticsService {
     for (let i = 0; i < whole.length; i += 7)
       weekly.push(whole.slice(i, i + 7).reduce((a, b) => a + b, 0));
     const holt =
-      uncosted.window180d === 0 && weekly.length >= 4
+      uncosted.window180d === 0 &&
+      !anyOther(otherMoney.window180d) &&
+      weekly.length >= 4
         ? E.holtLinear(weekly, 0.4, 0.2, 4)
         : null;
 
@@ -893,10 +1005,24 @@ export class AdvancedAnalyticsService {
        * words (null where the figure was summed whole).
        */
       uncostedOrders: { ...uncosted, open: uncostedOpen },
+      /** Orders not in house currency, by window and by code. */
+      notInHouseCurrency: { ...otherMoney, open: otherOpen },
       unread: {
-        spendLast30d: unread(uncosted.last30d, countIn(deliveredDaily.slice(-30))),
-        spendPrev30d: unread(uncosted.prev30d, countIn(deliveredDaily.slice(-60, -30))),
-        projectedNext4Weeks: unread(uncosted.window180d, countIn(deliveredDaily)),
+        spendLast30d: unread(
+          uncosted.last30d,
+          countIn(deliveredDaily.slice(-30)),
+          otherMoney.last30d,
+        ),
+        spendPrev30d: unread(
+          uncosted.prev30d,
+          countIn(deliveredDaily.slice(-60, -30)),
+          otherMoney.prev30d,
+        ),
+        projectedNext4Weeks: unread(
+          uncosted.window180d,
+          countIn(deliveredDaily),
+          otherMoney.window180d,
+        ),
         committedOpenOrders: committedUnread,
       },
       generatedAt: new Date().toISOString(),
