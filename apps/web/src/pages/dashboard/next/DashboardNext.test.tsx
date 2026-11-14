@@ -518,6 +518,131 @@ describe('DashboardNext', () => {
     });
   });
 
+  // r36 onboarding gap 1 (desk half): a menu made current lists its drinks
+  // at stock 0. A list nobody has counted is not a cellar that holds: the
+  // desk says the goods are not counted and leads to the count.
+  describe('a list nobody has counted', () => {
+    const listed = (over: Record<string, unknown> = {}) => ({
+      totalWines: 12, totalBottles: 0, lowStockItems: 0, pendingOrders: 0, totalVolumeMl: 0, totalVolumeOz: 0,
+      countedGoods: 0, goodsNotCounted: 12,
+      ...over,
+    });
+    const tile = (label: string) => screen.getByText(label, { selector: 'p' }).closest('a')!;
+
+    it('says none of the goods is counted, never "nothing is waiting" or "the cellar holds"', async () => {
+      routeGets({ '/dashboard/stats/': listed() });
+
+      mount();
+
+      expect(
+        await screen.findByText('No approvals are waiting. None of the 12 goods on the house’s list has been counted yet.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Nothing is waiting on you.')).not.toBeInTheDocument();
+      expect(screen.queryByText(/The cellar holds/)).not.toBeInTheDocument();
+      expect(screen.queryByTestId('dn-no-goods-yet')).not.toBeInTheDocument();
+      const panel = screen.getByTestId('dn-not-counted-yet');
+      expect(panel).toHaveTextContent(
+        'None of the 12 goods on the house’s list has been counted yet, so nothing can be read as running low.',
+      );
+      expect(within(panel).getByRole('link', { name: 'Count the goods on your list' })).toHaveAttribute('href', '/inventory');
+    });
+
+    it('says the one good in the singular', async () => {
+      routeGets({ '/dashboard/stats/': listed({ totalWines: 1, goodsNotCounted: 1 }) });
+
+      mount();
+
+      expect(
+        await screen.findByText('No approvals are waiting. The one good on the house’s list has not been counted yet.'),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId('dn-not-counted-yet')).toHaveTextContent(
+        'The one good on the house’s list has been counted yet',
+      );
+    });
+
+    it('reads the cellar and the low tile as not known yet, not as 0', async () => {
+      routeGets({ '/dashboard/stats/': listed() });
+
+      mount();
+
+      await screen.findByTestId('dn-not-counted-yet');
+      const cellar = tile('In the cellar');
+      expect(cellar).toHaveTextContent('across 12 items, none counted yet');
+      expect(cellar.textContent).toMatch(/^In the cellar—across/);
+      const low = tile('Running low');
+      expect(low.textContent).toMatch(/^Running low—read once goods are counted$/);
+    });
+
+    it('keeps a figure that receipts gave, and says it is not a count', async () => {
+      routeGets({ '/dashboard/stats/': listed({ totalBottles: 24 }) });
+
+      mount();
+
+      await screen.findByTestId('dn-not-counted-yet');
+      const cellar = tile('In the cellar');
+      expect(cellar).toHaveTextContent('across 12 items, none counted yet');
+      expect(cellar.textContent).not.toMatch(/^In the cellar—/);
+    });
+
+    it('names the approvals waiting beside the uncounted list', async () => {
+      routeGets({
+        '/dashboard/stats/': listed(),
+        '/orders/pending': [
+          { id: 'o-1', orderNumber: 'ORD-2026-00042', quantity: 1, unitType: 'case', totalCost: 90, status: 'APPROVAL_NEEDED', requestedAt: '2026-09-01T10:00:00Z' },
+        ],
+      });
+
+      mount();
+
+      expect(
+        await screen.findByText('1 approval is waiting on you. None of the 12 goods on the house’s list has been counted yet.'),
+      ).toBeInTheDocument();
+    });
+
+    it('keeps the stock list when receipts put an uncounted good below its minimum', async () => {
+      routeGets({
+        '/dashboard/stats/': listed(),
+        '/low-stock': [{ id: 'inv-1', wine_name: 'Peroni', vintage: null, stock_live: 2, threshold_min: 24 }],
+      });
+
+      mount();
+
+      expect(
+        await screen.findByText('1 low-stock item is waiting on you. None of the 12 goods on the house’s list has been counted yet.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByTestId('dn-not-counted-yet')).not.toBeInTheDocument();
+    });
+
+    it('says nothing about counting once one good is counted', async () => {
+      routeGets({ '/dashboard/stats/': listed({ countedGoods: 1, goodsNotCounted: 11, totalBottles: 6 }) });
+
+      mount();
+
+      expect(await screen.findByText('Nothing is waiting on you.')).toBeInTheDocument();
+      expect(screen.queryByTestId('dn-not-counted-yet')).not.toBeInTheDocument();
+      expect(tile('In the cellar')).not.toHaveTextContent('none counted yet');
+    });
+
+    it('says nothing about counting when the only uncounted goods are cocktails', async () => {
+      routeGets({ '/dashboard/stats/': listed({ totalWines: 3, goodsNotCounted: 0 }) });
+
+      mount();
+
+      expect(await screen.findByText('Nothing is waiting on you.')).toBeInTheDocument();
+      expect(screen.queryByTestId('dn-not-counted-yet')).not.toBeInTheDocument();
+    });
+
+    it('says nothing about counting on a gateway that does not send the counts', async () => {
+      routeGets({ '/dashboard/stats/': listed({ countedGoods: undefined, goodsNotCounted: undefined }) });
+
+      mount();
+
+      expect(await screen.findByText('Nothing is waiting on you.')).toBeInTheDocument();
+      expect(screen.queryByTestId('dn-not-counted-yet')).not.toBeInTheDocument();
+      expect(tile('In the cellar')).not.toHaveTextContent('none counted yet');
+    });
+  });
+
   it('offers Try again on a month whose figures could not be read', async () => {
     let fail = true;
     routeGets();

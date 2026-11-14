@@ -14,6 +14,7 @@ import type { DashboardStats } from '@/services/api/types';
 import { formatNumber } from '@/lib/utils';
 import CountUp from './CountUp';
 import { heldBackSaid, useHouseMoney } from './format';
+import { noneCountedYet } from './notCounted';
 
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
 
@@ -77,7 +78,11 @@ export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true 
   const s = stats ?? null;
 
   const wines = s ? s.totalWines : null;
-  const bottles = s ? s.totalBottles : null;
+  // r36 onboarding gap 1: a list nobody has counted holds no known stock. Its
+  // 0 is said as unknown (the dash), and the tiles say why.
+  const waitingForCount = noneCountedYet(s);
+  const notCounted = waitingForCount !== null;
+  const bottles = s ? (notCounted && s.totalBottles === 0 ? null : s.totalBottles) : null;
   // Deployed gateways predating the honest rename still send the spend
   // figures as `todaySales`/`monthSales` (same numbers, old misnomer — see
   // the DashboardStats doc comment in services/api/types.ts). Read both.
@@ -120,15 +125,25 @@ export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true 
         label="In the cellar"
         value={bottles}
         format={(n) => formatNumber(Math.round(n))}
-        sub={wines != null ? `across ${formatNumber(wines)} ${wines === 1 ? 'item' : 'items'}` : undefined}
+        sub={
+          wines != null
+            ? `across ${formatNumber(wines)} ${wines === 1 ? 'item' : 'items'}${notCounted ? ', none counted yet' : ''}`
+            : undefined
+        }
         to="/inventory"
         loading={loading}
       />
       <KpiTile
         label="Running low"
-        value={lowStockCount === undefined ? null : lowStockCount}
+        value={lowStockCount === undefined || (notCounted && lowStockCount === 0) ? null : lowStockCount}
         format={(n) => formatNumber(Math.round(n))}
-        sub={lowStockCount != null && lowStockCount > 0 ? 'below their minimum' : 'items below minimum'}
+        sub={
+          lowStockCount != null && lowStockCount > 0
+            ? 'below their minimum'
+            : notCounted && lowStockCount === 0
+              ? 'read once goods are counted'
+              : 'items below minimum'
+        }
         to="/inventory"
         loading={lowStockCount === undefined}
         accent
