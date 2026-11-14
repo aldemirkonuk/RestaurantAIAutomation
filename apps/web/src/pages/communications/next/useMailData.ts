@@ -170,3 +170,24 @@ export function useIntakeReadAgain() {
     },
   });
 }
+
+/**
+ * POST / DELETE /mail/letters/:id/no-reply-needed (r28 mail gap 4). On
+ * success every read that says who is waiting is read again: the thread, the
+ * person's threads, the people list and the header with its tab badge.
+ */
+export function useNoReplyMark() {
+  const house = useHouse();
+  const qc = useQueryClient();
+  return useMutation<{ id: string; marked: boolean }, unknown, { id: string; marked: boolean }>({
+    mutationFn: async ({ id, marked }) => {
+      const url = `/mail/letters/${encodeURIComponent(id)}/no-reply-needed`;
+      return (marked ? await apiClient.post<{ id: string; marked: boolean }>(url) : await apiClient.delete<{ id: string; marked: boolean }>(url)).data;
+    },
+    onSuccess: () => {
+      for (const root of ['mail-thread', 'mail-threads', 'mail-people', 'mail-summary']) {
+        void qc.invalidateQueries({ queryKey: [root, house] });
+      }
+    },
+  });
+}
