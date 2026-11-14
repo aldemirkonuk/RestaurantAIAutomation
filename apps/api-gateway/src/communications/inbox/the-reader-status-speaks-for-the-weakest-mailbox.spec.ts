@@ -118,7 +118,8 @@ describe("the reader status speaks for the weakest mailbox", () => {
   });
 
   it("a failing mailbox is never hidden by a working one, whichever comes back first", async () => {
-    const failing = cursor("g-b", "2026-11-10T09:00:00Z", "invalid_grant: Token has been expired or revoked.");
+    // Read more recently than the working one: only the error puts it first.
+    const failing = cursor("g-b", "2026-11-13T10:00:00Z", "invalid_grant: Token has been expired or revoked.");
     for (const order of [[A, B], [B, A]]) {
       const s = await status(order, [cursor("g-a", "2026-11-13T09:00:00Z"), failing]);
       expect(s.mailbox).toBe("manager@house.test");
