@@ -543,6 +543,28 @@ export async function listMenuVersions(): Promise<MenuVersions> {
   return response.data
 }
 
+/**
+ * One kept menu of this house and its lines, as `GET /menu-versions/:menuId`
+ * returns them (the house comes from the token; another house's id is a 404).
+ * The lines are the stored row: a line's library match and its crop box are
+ * not kept on it. Its raw line is kept and sent only to an owner or a
+ * manager; `kitchen_line` is sent to every member. A reply that held raw
+ * lines back says `rawLineWithheld: true`.
+ */
+export interface MenuVersionDetail {
+  version: MenuVersion
+  items: MenuLine[]
+  namesReadable?: boolean
+  namesReason?: string | null
+  rawLineWithheld?: boolean
+}
+
+/** One kept menu and its lines. A failed read throws. */
+export async function getMenuVersion(menuId: string): Promise<MenuVersionDetail> {
+  const response = await apiClient.get<MenuVersionDetail>(`/menu-versions/${menuId}`)
+  return response.data
+}
+
 /** A five-minute link to a kept menu's source file. 404 (with why) when none was kept. */
 export async function getMenuSourceUrl(
   menuId: string
