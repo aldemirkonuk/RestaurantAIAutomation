@@ -99,6 +99,7 @@ import { TimeZoneSection } from './TimeZoneSection';
 import { MailReadingSection } from './MailReadingSection';
 import { HoursSection } from './HoursSection';
 import { TargetMarginSection } from './TargetMarginSection';
+import { TaxBasisSection } from './TaxBasisSection';
 import { DigestRow } from './DigestRow';
 import { AskTrainingSection } from './AskTrainingSection';
 import { ConsentPanelOpener } from './ConsentPanel';
@@ -481,6 +482,19 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
                       {KEPT_NOTE.restaurant}
                     </p>
                     <TargetMarginSection canManage={data.canManage} />
+                  </div>
+                )}
+
+                {/* Whether tax sits in the house's prices and in its stock's cost (ADR 0359 C2/C3). */}
+                {group.id === 'house' && (
+                  <div id="st-section-tax-basis" data-testid="st-section-tax-basis" style={{ margin: '0 0 28px' }}>
+                    <h3 style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 600, letterSpacing: '-0.005em', margin: 0 }}>
+                      Does tax sit in its prices?
+                    </h3>
+                    <p style={{ fontFamily: SANS, fontSize: 11, lineHeight: 1.5, color: 'var(--ink-4)', margin: '4px 0 14px' }}>
+                      {KEPT_NOTE.restaurant}
+                    </p>
+                    <TaxBasisSection canManage={data.canManage} />
                   </div>
                 )}
 
