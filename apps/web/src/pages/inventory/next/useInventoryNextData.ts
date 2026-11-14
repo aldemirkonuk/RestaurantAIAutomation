@@ -60,9 +60,11 @@ export const EM = '—';
  * Where a title stands against its par. `out` is counted apart from `below`
  * (founder, INV-W4 F-2), and `below` is strictly stock < par (ADR 0129).
  * `nopar` is a par of 0: there is nothing to be below. `unknown` is a stock
- * that was not read.
+ * that was not read. `uncounted` is a 0 that nothing ever moved: never
+ * counted, received, sold or written off (inventory r36, gap 1). The books
+ * start every good at 0, so that 0 is not a count, and the good is not out.
  */
-export type Standing = 'out' | 'below' | 'at' | 'above' | 'nopar' | 'unknown';
+export type Standing = 'out' | 'below' | 'at' | 'above' | 'nopar' | 'unknown' | 'uncounted';
 
 export interface ZoneQty {
   locationId: string | null;
@@ -130,13 +132,34 @@ export interface InvRow {
   active: boolean | null;
 }
 
-export function standingOf(stock: number | null, par: number | null): Standing {
+/**
+ * `neverMoved` is the gateway's word that this good was never counted and has
+ * no ledger row (`inventory_never_moved`). Only `true` makes a 0 "not counted
+ * yet": `false`, `null` (the read failed) and absent (an older gateway) all
+ * keep a 0 as out, as before.
+ */
+export function standingOf(stock: number | null, par: number | null, neverMoved: boolean | null = null): Standing {
   if (stock === null) return 'unknown';
-  if (stock <= 0) return 'out';
+  if (stock <= 0) return neverMoved === true ? 'uncounted' : 'out';
   if (par === null || par <= 0) return 'nopar';
   if (stock < par) return 'below';
   if (stock === par) return 'at';
   return 'above';
+}
+
+/**
+ * The goods at a 0 nothing ever moved, said as what to do, never as "out"
+ * (inventory r36, gap 1).
+ */
+export function uncountedSaid(uncounted: number, n: number): string {
+  if (uncounted === n) {
+    return n === 1
+      ? 'It has not been counted or received yet, so its stock is not known; count it to start.'
+      : `None of the ${fmtCount(n)} has been counted or received yet, so their stock is not known; count them to start.`;
+  }
+  return uncounted === 1
+    ? 'One has not been counted or received yet, so its stock is not known.'
+    : `${fmtCount(uncounted)} have not been counted or received yet, so their stock is not known.`;
 }
 
 /** The map's legend in this page's words: the chips say Out / Below par / Reconcile (INV-W19). */
@@ -145,13 +168,14 @@ export const MAP_WORDS: Record<MapTone, string> = {
   amber: 'Below par',
   rose: 'Out',
   violet: 'Reconcile',
-  neutral: 'Not read, or no par set',
+  neutral: 'Not read, no par set, or not counted yet',
 };
 
 /** A map tile's tint by the same standing the table and chips use. */
 export function mapTone(item: LegacyItem): MapTone {
   if ((item.shadowStock ?? 0) > 0) return 'violet';
-  switch (standingOf(item.liveStock ?? null, item.threshold ?? null)) {
+  const neverMoved = (item as unknown as { neverMoved?: unknown }).neverMoved === true;
+  switch (standingOf(item.liveStock ?? null, item.threshold ?? null, neverMoved)) {
     case 'out':
       return 'rose';
     case 'below':
@@ -252,7 +276,7 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
     zones,
     providerId: text(r.providerId),
     providerName: text(r.providerName),
-    standing: standingOf(stock, par),
+    standing: standingOf(stock, par, r.neverMoved === true && text(r.lastCountedAt) === null),
     active: typeof r.is_active === 'boolean' ? r.is_active : null,
   };
 }
@@ -529,8 +553,12 @@ export function readSentence(rows: InvRow[], currency: HouseCurrency, zonesReada
   const below = rows.filter((r) => r.standing === 'below').length;
   const dry = rows.filter(dryTomorrow).length;
   const lead = read.length < n ? 'Of the titles read, nothing' : 'Nothing';
+  const uncounted = rows.filter((r) => r.standing === 'uncounted').length;
   if (read.length === 0) {
     // No stock was read, so nothing can be said to be out or fine.
+  } else if (uncounted === read.length) {
+    // Every 0 read is a 0 nothing ever moved: "nothing is out" would be a
+    // reading of goods nobody has looked at.
   } else if (out === 0 && below === 0) {
     parts.push(dry === 0 ? `${lead} is out or below par.` : `${lead} is out or below par, but ${dry === 1 ? 'one runs' : `${fmtCount(dry)} run`} dry tomorrow.`);
   } else {
@@ -541,6 +569,7 @@ export function readSentence(rows: InvRow[], currency: HouseCurrency, zonesReada
     if (dry > 0) s += `; ${dry === 1 ? 'one runs' : `${fmtCount(dry)} run`} dry tomorrow`;
     parts.push(`${s}.`);
   }
+  if (uncounted > 0) parts.push(uncountedSaid(uncounted, n));
 
   const priced = rows.filter((r) => r.value !== null);
   if (priced.length === 0) {
