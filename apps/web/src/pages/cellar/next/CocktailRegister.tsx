@@ -39,7 +39,8 @@ import {
 import RecipeSheet from './recipe/RecipeSheet';
 import { PRICE_UNREAD, priceText, readPrice } from './recipe/price-text';
 import { pourCostShare } from './recipe/DrinkCards';
-import { useCanEditRecipe, useDrinkFigures, useHouseMoney } from './recipe/useRecipe';
+import { useCanEditRecipe, useDrinkFigures, useHouseMoney, useMenuPrices } from './recipe/useRecipe';
+import { MENU_PRICES_UNREAD, MenuPriceCell } from './recipe/MenuPriceCell';
 import { useHousePercent, type SayPercent } from './recipe/useHousePercent';
 import type { DrinkFigureRow } from '../../../services/api/recipes';
 import {
@@ -155,6 +156,9 @@ export default function CocktailRegister({
   // role that may change a recipe (the same rule as the dish list).
   const seesCost = useCanEditRecipe();
   const figures = useDrinkFigures(seesCost);
+  // The current menu's price beside the drink's own (r28 recipes audit, gap 2).
+  const menu = useMenuPrices('drink', seesCost);
+  const showMenu = Boolean(seesCost && menu.byId && (menu.currentMenus ?? 0) > 0);
   const sayPct = useHousePercent();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
@@ -354,6 +358,12 @@ export default function CocktailRegister({
             </p>
           ) : null}
 
+          {seesCost && menu.error ? (
+            <p className="cl-said" role="status" style={{ marginTop: 12 }} data-testid="cocktails-menu-unread">
+              {MENU_PRICES_UNREAD}
+            </p>
+          ) : null}
+
           {seesCost && figures.error ? (
             <p className="cl-said" role="status" style={{ marginTop: 12 }} data-testid="cocktails-costs-unread">
               {DRINK_COSTS_UNREAD}
@@ -377,6 +387,7 @@ export default function CocktailRegister({
                     <th scope="col">Glass</th>
                     <th scope="col">Garnish</th>
                     <th scope="col" style={{ textAlign: 'right' }}>Price</th>
+                    {showMenu ? <th scope="col" style={{ textAlign: 'right' }}>Menu</th> : null}
                     {seesCost ? <th scope="col" style={{ textAlign: 'right' }}>Cost per serve</th> : null}
                     {seesCost ? <th scope="col" style={{ textAlign: 'right' }}>Pour cost</th> : null}
                     <th scope="col" style={{ textAlign: 'right' }}>Kept</th>
@@ -410,6 +421,11 @@ export default function CocktailRegister({
                       <td>{c.glass ?? <span className="cl-dim">{EM}</span>}</td>
                       <td>{c.garnish ?? <span className="cl-dim">{EM}</span>}</td>
                       <td className="cl-num" style={{ textAlign: 'right' }}>{money(c.price)}</td>
+                      {showMenu ? (
+                        <td className="cl-num" style={{ textAlign: 'right' }} data-testid={`drink-menu-${c.id}`}>
+                          <MenuPriceCell id={c.id} menu={menu.byId?.get(c.id)} say={money} />
+                        </td>
+                      ) : null}
                       {fc ? (
                         <td className="cl-num" style={{ textAlign: 'right' }} data-testid={`drink-cost-${c.id}`}>{fc.cost}</td>
                       ) : null}

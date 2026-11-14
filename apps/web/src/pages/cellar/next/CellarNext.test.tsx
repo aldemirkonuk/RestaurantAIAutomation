@@ -90,6 +90,7 @@ vi.mock('./recipe/useRecipe', async (orig) => ({
   useHouseMoney: () => (n: number | null | undefined) => (n == null ? '—' : `₺${n.toFixed(2)}`),
   useCanEditRecipe: () => false,
   useDrinkFigures: () => ({ byId: null, loading: false, error: null }),
+  useMenuPrices: () => ({ byId: null, currentMenus: null, error: null }),
 }));
 vi.mock('./recipe/useHousePercent', () => ({ useHousePercent: () => (p: number) => `%${p}` }));
 vi.mock('./useCellarNextData', async (orig) => ({
