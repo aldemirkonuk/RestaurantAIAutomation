@@ -25,4 +25,13 @@ describe('makeMenuCurrent', () => {
     expect(http.post).toHaveBeenCalledWith('/menu-versions/menu-1/make-current', { fingerprint: 'fp-1' }, { timeout: 120_000 })
     expect(MAKE_CURRENT_TIMEOUT_MS).toBeGreaterThan(30_000)
   })
+
+  it('names the drinks to take off sale only when some were ticked (r35 G10)', async () => {
+    http.post.mockReset()
+    http.post.mockResolvedValue({ data: { outcome: 'made_current' } })
+    await makeMenuCurrent('menu-1', 'fp-1', ['old-2'])
+    expect(http.post).toHaveBeenCalledWith('/menu-versions/menu-1/make-current', { fingerprint: 'fp-1', takeOff: ['old-2'] }, { timeout: 120_000 })
+    await makeMenuCurrent('menu-1', 'fp-1', [])
+    expect(http.post).toHaveBeenLastCalledWith('/menu-versions/menu-1/make-current', { fingerprint: 'fp-1' }, { timeout: 120_000 })
+  })
 })

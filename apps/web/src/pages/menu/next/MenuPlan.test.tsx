@@ -209,6 +209,7 @@ describe('2d: not on this file -- shown, never acted on (L12)', () => {
     it('offers a tick only for a drink the house holds, with a price a lock does not hold', () => {
       expect(canTakeOff(BAROLO_GONE)).toBe(true); // the glass is free
       expect(canTakeOff(HOUSE_RED)).toBe(false); // no row
+      expect(canTakeOff({ ...BAROLO_GONE, inventoryId: null })).toBe(false); // a price but no row to clear it on
       expect(canTakeOff({ ...BAROLO_GONE, bottle: null, glass: null, locked: [] })).toBe(false); // no price
       expect(canTakeOff({ ...BAROLO_GONE, glass: null })).toBe(false); // its one price is locked
       expect(canTakeOff({ ...BAROLO_GONE, locked: ['bottle', 'glass'] })).toBe(false);
