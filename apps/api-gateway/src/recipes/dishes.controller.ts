@@ -7,6 +7,7 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RecipesService } from "./recipes.service";
 import { DishesService } from "./dishes.service";
 import { CreateDishDto, PreviewCostDto, SaveRecipeDto, ShelfMatchDto, UpdateDishDto } from "./dto/recipes.dto";
+import { AddMenuDishesDto } from "./dto/menu-dishes.dto";
 
 /**
  * A dish and its recipe (ADR 0366), on the drinks' recipe routes. Every route
@@ -35,6 +36,22 @@ export class DishesController {
   @ApiOperation({ summary: "Add a dish (owner/manager); 409 when the house already has one by that name" })
   createDish(@Param("restaurantId", ParseUUIDPipe) restaurantId: string, @Body() dto: CreateDishDto) {
     return this.dishes.createDish(restaurantId, dto);
+  }
+
+  @Get(":restaurantId/dishes/from-menu")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({ summary: "The current menu's dishes not on the list yet, with the menu's section and price (owner/manager)" })
+  menuDishes(@Param("restaurantId", ParseUUIDPipe) restaurantId: string) {
+    return this.dishes.menuDishes(restaurantId);
+  }
+
+  @Post(":restaurantId/dishes/from-menu")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({ summary: "Put the named menu dishes on the list (owner/manager); a name no longer offered is said, never made" })
+  addMenuDishes(@Param("restaurantId", ParseUUIDPipe) restaurantId: string, @Body() dto: AddMenuDishesDto) {
+    return this.dishes.addMenuDishes(restaurantId, dto.names);
   }
 
   @Patch(":restaurantId/dishes/:dishId")

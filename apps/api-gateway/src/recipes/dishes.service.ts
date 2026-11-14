@@ -15,11 +15,13 @@ import { DISH_NOT_THIS_HOUSE, RecipesService } from "./recipes.service";
 import { foldName } from "./name-fold";
 import { readCurrentMenuLines } from "../menus/current-menu-lines";
 import { menuIndex, menuPriceFor, type MenuLine } from "./menu-price-match";
+import { menuDishesNotListed, type MenuDish } from "./menu-dishes";
 
 export const DISHES_UNREAD = "Your dishes could not be read just now. Nothing is shown rather than a wrong list.";
 export const DISH_USE_UNREAD = "Which dishes use this item could not be read just now.";
 export const DRINK_USE_UNREAD = "Which drinks use this item could not be read just now.";
 export const MENU_PRICES_UNREAD = "Your menu's prices could not be read just now, so none is shown beside your list.";
+export const MENU_DISHES_UNREAD = "Your menu's dishes could not be read just now, so none is offered.";
 export const DRINK_FIGURES_UNREAD = "Your drinks' costs could not be read just now, so none is shown.";
 
 /** Whose recipe: a dish (recipe_current_dish) or a house drink (recipe_current). */
@@ -483,6 +485,75 @@ export class DishesService {
       currentMenus: menu.currentMenus,
       dishes: dishes.map((d) => ({ dishId: d.id, menu: menuPriceFor([d.name], "dish", d.price, index) })),
       drinks: drinks.map((d) => ({ cocktailId: d.id, menu: menuPriceFor([d.display_name, d.name], "drink", d.price, index) })),
+    };
+  }
+
+  /**
+   * The current menu's dishes that have no dish of their name on the list
+   * yet (r28 onboarding audit, gap 1, slice 3; the rule is in
+   * menu-dishes.ts). The list and the menu are read at once, each paged past
+   * the 1,000-row cap. `currentMenus` 0 is "no current menu", and then
+   * nothing is offered. A failed read is a 503 with a sentence, never an
+   * empty offer.
+   */
+  async menuDishes(restaurantId: string): Promise<{ currentMenus: number; dishes: MenuDish[] }> {
+    const client = this.db.getClient();
+    const [listed, menu] = await Promise.all([
+      this.all<any>("dish list read", MENU_DISHES_UNREAD, (from, to) =>
+        client
+          .from("dishes")
+          .select("id, name")
+          .eq("restaurant_id", restaurantId)
+          .is("deleted_at", null)
+          .order("id", { ascending: true })
+          .range(from, to),
+      ),
+      readCurrentMenuLines(client, restaurantId).catch((e: unknown) => this.failed("current menu read", e, MENU_DISHES_UNREAD)),
+    ]);
+    if (menu.currentMenus === 0) return { currentMenus: 0, dishes: [] };
+    return {
+      currentMenus: menu.currentMenus,
+      dishes: menuDishesNotListed(menu.rows as unknown as MenuLine[], listed.map((d) => d.name)),
+    };
+  }
+
+  /**
+   * Puts the named menu dishes on the list, each as `createDish` would, with
+   * the menu's name, section and price. `names` are the ones the person was
+   * shown; the offer is read again here, so only a name still offered is
+   * made (one listed since, or gone from the menu, is `notOffered`). A name
+   * the database already holds (another tab, a double click) is `already`,
+   * not an error. The first other failure stops the run: what was made
+   * stays made and is said, and the rest are `notAdded`, never half-said.
+   */
+  async addMenuDishes(restaurantId: string, names: string[]) {
+    const { dishes } = await this.menuDishes(restaurantId);
+    const asked = new Set(names.map(foldName));
+    const offered = new Set(dishes.map((d) => foldName(d.name)));
+    const take = dishes.filter((d) => asked.has(foldName(d.name)));
+    const added: Array<{ id: string; name: string }> = [];
+    const already: string[] = [];
+    let notAdded: string[] = [];
+    for (let i = 0; i < take.length; i++) {
+      const d = take[i];
+      try {
+        const made = await this.createDish(restaurantId, { name: d.name, section: d.section, price: d.price });
+        added.push({ id: made.id, name: made.name });
+      } catch (e) {
+        if (e instanceof ConflictException) {
+          already.push(d.name);
+          continue;
+        }
+        this.logger.error(`dishes: menu dish "${d.name}" was not added: ${(e as { message?: string })?.message ?? String(e)}`);
+        notAdded = take.slice(i).map((x) => x.name);
+        break;
+      }
+    }
+    return {
+      added,
+      already,
+      notAdded,
+      notOffered: names.filter((n) => !offered.has(foldName(n))),
     };
   }
 
