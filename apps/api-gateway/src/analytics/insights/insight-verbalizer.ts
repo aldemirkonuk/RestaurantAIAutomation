@@ -100,6 +100,20 @@ export function fmtMoney(v: number, currency: string | null): string {
   return /^[A-Za-z]/.test(mark) ? `${mark} ${amount}` : `${mark}${amount}`;
 }
 
+/**
+ * A whole amount in the house's money, every digit kept ("₺12,345",
+ * "CHF 12,345"), for a sentence that states one figure rather than a
+ * comparison: the recommendations feed's dead stock and spend pace. The mark
+ * is `fmtMoney`'s. With no stated currency the amount is bare and the caller
+ * closes the sentence with `CURRENCY_NOT_RECORDED_SENTENCE`.
+ */
+export function fmtMoneyWhole(v: number, currency: string | null): string {
+  const amount = Math.round(v).toLocaleString("en-US");
+  if (currency === null || !/^[A-Z]{3}$/.test(currency)) return amount;
+  const mark = currencyMark(currency);
+  return /^[A-Za-z]/.test(mark) ? `${mark} ${amount}` : `${mark}${amount}`;
+}
+
 const fmtNum = (v: number) =>
   Math.abs(v) >= 100
     ? v.toFixed(0)
