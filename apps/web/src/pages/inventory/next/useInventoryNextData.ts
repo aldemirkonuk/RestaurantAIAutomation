@@ -96,6 +96,13 @@ export interface InvRow {
   vintage: number | null;
   grape: string | null;
   bottleSizeMl: number | null;
+  /**
+   * The bottle size the house or the library actually recorded; null when
+   * neither did. The gateway's `bottleSizeMl` falls back to 750 for an unsized
+   * good, so a margin read from it would cost a bottle no one measured (r33
+   * walk). Absent on a row not built by toRow: read `bottleSizeMl` then.
+   */
+  bottleSizeRecordedMl?: number | null;
   stock: number | null;
   shadow: number | null;
   par: number | null;
@@ -240,6 +247,7 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
     vintage: num(r.wineVintage) ?? num(w?.vintage),
     grape: text(w?.grapeVariety),
     bottleSizeMl: num(r.bottleSizeMl) ?? num(w?.bottleSizeMl),
+    bottleSizeRecordedMl: ('bottle_size_ml' in r ? num(r.bottle_size_ml) : num(r.bottleSizeMl)) ?? num(w?.bottleSizeMl),
     stock,
     shadow: num(r.shadowStock),
     par,

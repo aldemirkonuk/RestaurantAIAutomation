@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cellMoney, EM, type InvRow } from './useInventoryNextData';
+import { cellMoney, EM, toRow, type InvRow } from './useInventoryNextData';
 import type { Provider } from '../../../services/api/providers';
 
 // Per-test overrides for the stubbed reads (INV-W8 / INV-W9).
@@ -729,6 +729,30 @@ describe('the cost column says per what, and to whom (inventory r28 gaps 9, 10)'
     const text = screen.getByTestId('row-dropdown').textContent ?? '';
     expect(text).toContain(`Margin on your bottle price${EM} the bottle size is not recorded`);
     expect(text).not.toContain('100%');
+  });
+
+  it('a spirit whose size only the gateway filled in (750) still gives no margin', () => {
+    // The live row: bottleSizeMl 750 is the gateway's fallback; nothing was recorded.
+    renderDrop({ row: row({ kind: 'spirit', bottleSizeMl: 750, bottleSizeRecordedMl: null, bottle: 60, wac: 0.03 }), uom: 'ml', kind: 'spirit' });
+    const text = screen.getByTestId('row-dropdown').textContent ?? '';
+    expect(text).toContain(`Margin on your bottle price${EM} the bottle size is not recorded`);
+    expect(text).not.toContain('63%');
+  });
+
+  it('a recorded size wins over the field the gateway fills in', () => {
+    renderDrop({ row: row({ kind: 'spirit', bottleSizeMl: 750, bottleSizeRecordedMl: 700, bottle: 60, wac: 0.03 }), uom: 'ml', kind: 'spirit' });
+    expect(screen.getByTestId('row-dropdown').textContent ?? '').toContain('Margin on your bottle price65%');
+  });
+
+  it('toRow keeps the size the house recorded apart from the gateway fallback', () => {
+    const base = { id: 'x', wineName: 'Vodka', uom: 'ml' } as Record<string, unknown>;
+    expect(toRow({ ...base, bottle_size_ml: null, bottleSizeMl: 750 } as never).bottleSizeRecordedMl).toBeNull();
+    expect(toRow({ ...base, bottle_size_ml: null, bottleSizeMl: 750 } as never).bottleSizeMl).toBe(750);
+    expect(toRow({ ...base, bottle_size_ml: 700, bottleSizeMl: 700 } as never).bottleSizeRecordedMl).toBe(700);
+    // A wine the house left unsized takes the library's size, as before.
+    expect(toRow({ ...base, bottle_size_ml: null, bottleSizeMl: 750 } as never, { bottleSizeMl: 1500 } as never).bottleSizeRecordedMl).toBe(1500);
+    // A caller that sends only the camel field keeps reading it.
+    expect(toRow({ ...base, bottleSizeMl: 500 } as never).bottleSizeRecordedMl).toBe(500);
   });
 
   it('a wine kept in bottles keeps its cost a bottle', () => {

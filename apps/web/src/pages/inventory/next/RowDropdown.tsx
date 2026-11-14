@@ -787,7 +787,9 @@ function WhatItHasCost({
     last && before && last.unitCost !== null && before.unitCost !== null && before.unitCost > 0
       ? ((last.unitCost - before.unitCost) / before.unitCost) * 100
       : null;
-  const oneBottle = row.wac === null ? null : bottleCost(row.wac, uom, row.bottleSizeMl);
+  // The recorded size, not the gateway's 750 for an unsized good (r33 walk).
+  const sizeForCost = row.bottleSizeRecordedMl !== undefined ? row.bottleSizeRecordedMl : row.bottleSizeMl;
+  const oneBottle = row.wac === null ? null : bottleCost(row.wac, uom, sizeForCost);
   const margin = row.bottle !== null && row.bottle > 0 && oneBottle !== null ? ((row.bottle - oneBottle) / row.bottle) * 100 : null;
   const noMarginWhy =
     row.bottle === null || !(row.bottle > 0)
