@@ -41,6 +41,12 @@ export interface DeliveryGatesProps {
   /** What the last re-check did to the cost; rendered, never discarded. */
   repair?: CostRepair | null
   /**
+   * A first verify's sentence about the cost, in the gateway's words
+   * (`verifyCostNoteOf`): what it posted, what stayed provisional and why,
+   * and what was done with the invoice's tax (r34 walk w2 F2).
+   */
+  verifyNote?: string | null
+  /**
    * The house's currency. No longer read here: the re-check's button and note
    * are said in the page's language, not the house's (r33 w2 F1). Kept so
    * callers need not change.
@@ -83,6 +89,7 @@ export function DeliveryGates({
   error,
   onRecheck,
   repair,
+  verifyNote,
   settlesMoney = true,
 }: DeliveryGatesProps) {
   const agreed = !!delivery.agreedAt
@@ -222,6 +229,15 @@ export function DeliveryGates({
                 ? 'Checking…'
                 : 'Check the cost again'}
             </button>
+          )}
+          {verifyNote && (
+            <p
+              data-testid="verify-cost-note"
+              role="status"
+              style={{ margin: '5px 0 0', fontSize: 11, color: 'var(--ink-2, #4F473C)' }}
+            >
+              {verifyNote}
+            </p>
           )}
           {repair && (
             <div data-testid="cost-repair-notice" role="status" style={{ marginTop: 5 }}>
