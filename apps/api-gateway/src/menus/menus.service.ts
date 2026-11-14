@@ -2164,6 +2164,13 @@ export class MenusService {
    * read does not make any menu current: that is the person's choice, on the
    * first proof (#1053) or on /menu, and the web says which one is missing.
    * `completed_at` = when the last of current menu, supplier and invite held.
+   * A person who answered "No team yet" (`no_team_yet_at`, r36 onboarding
+   * gap 12) has the team step settled from that answer while the house has
+   * no invite: a house run by its owner alone finishes its setup. The answer
+   * is the person's, like `checklist_dismissed`; an invite, once there,
+   * settles the step for everyone and is what `completed_at` reads. It is
+   * read on its own: a failed read (or a database the column has not reached
+   * yet) is no answer, and never fails the setup read.
    * It is derived, not remembered: if the house loses its only supplier or
    * its current menu, the step is undone again and the checklist says so
    * (putting the checklist away, `checklist_dismissed`, is what is kept).
@@ -2187,7 +2194,7 @@ export class MenusService {
         `Could not read this house's ${what} for its setup: ${message}`,
       );
 
-    const [own, menuRead, menuCurrent, supplier, invite, house, nextSteps] =
+    const [own, menuRead, menuCurrent, supplier, invite, house, nextSteps, noTeam] =
       await Promise.all([
         supabase
           .from("user_onboarding_progress")
@@ -2216,6 +2223,7 @@ export class MenusService {
           .eq("id", restaurantId)
           .maybeSingle(),
         this.readNextSteps(restaurantId),
+        this.readNoTeamYet(userId),
       ]);
     if (own.error) throw fail("setup row", own.error.message);
     if (supplier.error) throw fail("suppliers", supplier.error.message);
@@ -2225,9 +2233,11 @@ export class MenusService {
     // A fact holds when its first row exists; `since` is that row's time.
     const supplierRow = (supplier.data ?? [])[0] ?? null;
     const inviteRow = (invite.data ?? [])[0] ?? null;
-    const times = [menuCurrent?.since, supplierRow?.created_at, inviteRow?.created_at];
+    const noTeamYet = inviteRow === null && noTeam !== null;
+    const teamSince = inviteRow ? inviteRow.created_at : noTeam;
+    const times = [menuCurrent?.since, supplierRow?.created_at, teamSince];
     const completedAt =
-      menuCurrent && supplierRow && inviteRow && times.every(Boolean)
+      menuCurrent && supplierRow && (inviteRow || noTeamYet) && times.every(Boolean)
         ? (times as string[]).reduce((a, b) =>
             Date.parse(b) > Date.parse(a) ? b : a,
           )
@@ -2241,12 +2251,34 @@ export class MenusService {
       menu_current: menuCurrent !== null,
       vendor_added: supplierRow !== null,
       team_member_invited: inviteRow !== null,
+      no_team_yet: noTeamYet,
       checklist_dismissed: !!own.data?.checklist_dismissed,
       completed_at: completedAt,
       threshold_configured: !!house.data?.threshold_configured,
       activated: menuCurrent !== null,
       next_steps: nextSteps,
     };
+  }
+
+  /**
+   * When this person answered "No team yet" on the setup's invite step, or
+   * null: not answered, taken back, or not read. Read on its own and never
+   * thrown: the answer only settles a step, so a failed read leaves the step
+   * open as it was before the answer existed.
+   */
+  private async readNoTeamYet(userId: string): Promise<string | null> {
+    try {
+      const { data, error } = await this.dbService.supabase
+        .from("user_onboarding_progress")
+        .select("no_team_yet_at")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (error || !data) return null;
+      const at = (data as { no_team_yet_at?: unknown }).no_team_yet_at;
+      return typeof at === "string" && at !== "" ? at : null;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -2486,10 +2518,22 @@ export class MenusService {
     restaurantId: string | null | undefined,
     dto: UpdateOnboardingProgressDto,
   ) {
+    // The person's own answers: putting the checklist away, and "No team
+    // yet" on the invite step (true stamps when it was said, false takes it
+    // back). Both go in one write of the person's row.
+    const answers: Record<string, unknown> = {};
     if (dto.checklist_dismissed !== undefined) {
+      answers.checklist_dismissed = dto.checklist_dismissed;
+    }
+    if (dto.no_team_yet !== undefined) {
+      answers.no_team_yet_at = dto.no_team_yet ? new Date().toISOString() : null;
+    }
+    if (Object.keys(answers).length > 0) {
       if (!restaurantId) {
         throw new NotFoundException(
-          "This session is in no house yet, so there is no checklist to put away.",
+          dto.checklist_dismissed !== undefined
+            ? "This session is in no house yet, so there is no checklist to put away."
+            : "This session is in no house yet, so there is no setup to answer.",
         );
       }
       // Update the person's row (user_id is UNIQUE); with none, insert one.
@@ -2497,7 +2541,7 @@ export class MenusService {
       // hits the unique index (23505) and updates the winner's row instead
       // of answering 500. Not an upsert: that would rewrite the row's
       // restaurant_id, which the menu self-heal still keys on.
-      const dismissed = { checklist_dismissed: dto.checklist_dismissed };
+      const dismissed = answers;
       const updateOwn = () =>
         this.dbService.supabase
           .from("user_onboarding_progress")
@@ -2506,7 +2550,9 @@ export class MenusService {
           .select("id");
       const notPutAway = (message: string) =>
         new InternalServerErrorException(
-          `The checklist was not put away: ${message}`,
+          dto.checklist_dismissed !== undefined
+            ? `The checklist was not put away: ${message}`
+            : `The answer "No team yet" was not kept: ${message}`,
         );
       const updated = await updateOwn();
       if (updated.error) throw notPutAway(updated.error.message);
