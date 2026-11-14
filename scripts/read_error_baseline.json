@@ -111,7 +111,6 @@
     "apps/api-gateway/src/team/schedule.service.ts::coverage_templates::templates": 1,
     "apps/api-gateway/src/team/schedule.service.ts::schedules::data": 1,
     "apps/api-gateway/src/team/schedule.service.ts::schedules::existing": 1,
-    "apps/api-gateway/src/team/schedule.service.ts::team_members::me": 1,
     "apps/api-gateway/src/team/schedule.service.ts::team_members::members": 1,
     "apps/api-gateway/src/team/team.service.ts::team_members::existing": 1,
     "apps/api-gateway/src/team/team.service.ts::team_members::me": 1,

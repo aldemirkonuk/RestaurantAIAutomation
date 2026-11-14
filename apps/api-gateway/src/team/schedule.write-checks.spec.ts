@@ -14,7 +14,12 @@ import {
   CreateShiftDto,
   CreateTeamMemberDto,
 } from "./dto/team.dto";
-import { isCalendarDate, timeOffRefusal, weekStartFromQuery } from "./shift-input";
+import {
+  claimRefusal,
+  isCalendarDate,
+  timeOffRefusal,
+  weekStartFromQuery,
+} from "./shift-input";
 import { asDatabaseService, makeStubDb, StubDb } from "./testing/supabase-stub";
 
 /** QA round 4 team items: what a /team write checks before it saves. */
@@ -42,9 +47,10 @@ function seed(opts: { weekStatus?: string; doubleBooking?: boolean } = {}): Stub
       { user_id: KIM, restaurant_id: RID, role: "staff", email: "kim@example.test" },
     ],
     team_members: [
-      { id: "m-sam", restaurant_id: RID, user_id: SAM, display_name: "Sam", hourly_wage: 20 },
-      { id: "m-kim", restaurant_id: RID, user_id: KIM, display_name: "Kim", hourly_wage: 20 },
+      { id: "m-sam", restaurant_id: RID, user_id: SAM, display_name: "Sam", hourly_wage: 20, position: "Server", skills: [] },
+      { id: "m-kim", restaurant_id: RID, user_id: KIM, display_name: "Kim", hourly_wage: 20, position: "Server", skills: [] },
     ],
+    team_certifications: [],
     team_settings: [
       {
         restaurant_id: RID,
@@ -296,6 +302,245 @@ describe("B5 — an open shift is claimed once, by rules", () => {
     db.tables.team_settings[0].allow_double_booking = true;
     const got = await build(db).svc.assignCover(SAM, RID, "sh-open", { memberId: "m-sam" } as any);
     expect(got.member_id).toBe("m-sam");
+  });
+});
+
+describe("B5 — a staff claim matches the shift's role and the person's certificates", () => {
+  const kim = (db: StubDb) => db.tables.team_members.find((m) => m.id === "m-kim")!;
+  const openShift = (db: StubDb) => db.tables.shifts.find((s) => s.id === "sh-open")!;
+  const claim = (db: StubDb) =>
+    build(db).svc.assignCover(KIM, RID, "sh-open", { memberId: "m-kim" } as any);
+  const cert = (expires_at: string | null, extra: Record<string, unknown> = {}) => ({
+    id: `c-${expires_at}`,
+    restaurant_id: RID,
+    member_id: "m-kim",
+    cert_type: "food_handler",
+    issued_at: null,
+    expires_at,
+    status: "valid",
+    ...extra,
+  });
+
+  it("a role the person's position and skills do not list is refused, in words", async () => {
+    const db = seed();
+    kim(db).position = "Bartender";
+    const err = await claim(db).catch((e) => e);
+    expect(err).toBeInstanceOf(ForbiddenException);
+    expect(err.message).toBe(
+      "This shift is for server, and your position and skills on the team do not list it. " +
+        "A manager can still give it to you. Nothing was changed.",
+    );
+    expect(openShift(db).member_id).toBeNull();
+    expect(openShift(db).state).toBe("open");
+  });
+
+  it("a skill that names the role is enough; case and spaces do not count", async () => {
+    const db = seed();
+    kim(db).position = "Bartender";
+    kim(db).skills = ["  SERVER "];
+    await claim(db);
+    expect(openShift(db).member_id).toBe("m-kim");
+  });
+
+  it("reads the shift's role (the shift read names the column)", async () => {
+    const db = seed();
+    await claim(db);
+    const read = db.ops.find(
+      (o: any) => o.table === "shifts" && o.op === "select" && /member_id/.test(o.columns ?? ""),
+    );
+    expect(String(read?.columns).split(",").map((c) => c.trim())).toContain("role");
+  });
+
+  it("a station no one on the roster lists is anyone's", async () => {
+    const db = seed();
+    openShift(db).role = "Main bar";
+    kim(db).position = "Staff";
+    await claim(db);
+    expect(openShift(db).member_id).toBe("m-kim");
+  });
+
+  it("a failed read of the roster's roles claims nothing and says so", async () => {
+    const db = seed();
+    const realFrom = db.supabase.from.bind(db.supabase);
+    (db.supabase as any).from = (t: string) => {
+      const b: any = realFrom(t);
+      if (t !== "team_members") return b;
+      const realThen = b.then?.bind(b);
+      if (realThen)
+        b.then = (ok: any, bad: any) =>
+          b.columns === "position, skills"
+            ? Promise.resolve({ data: null, error: { message: "timeout" } }).then(ok, bad)
+            : realThen(ok, bad);
+      return b;
+    };
+    const err = await claim(db).catch((e) => e);
+    expect(err).toBeInstanceOf(InternalServerErrorException);
+    expect(err.message).toBe("Could not read the team's roles, so the shift was not claimed.");
+    expect(openShift(db).member_id).toBeNull();
+  });
+
+  it("a renewal added as a new row keeps the certificate good", async () => {
+    const db = seed();
+    db.tables.team_certifications.push(cert("2098-01-01"), cert("2100-01-01", { id: "c-renewed", cert_type: "Food_Handler " }));
+    await claim(db);
+    expect(openShift(db).member_id).toBe("m-kim");
+  });
+
+  it("a role listed only as someone else's skill is still a qualification", async () => {
+    const db = seed();
+    const sam = db.tables.team_members.find((m) => m.id === "m-sam")!;
+    sam.position = "Staff";
+    sam.skills = ["Sommelier"];
+    kim(db).position = "Staff";
+    openShift(db).role = "sommelier";
+    const err = await claim(db).catch((e) => e);
+    expect(err).toBeInstanceOf(ForbiddenException);
+    expect(openShift(db).member_id).toBeNull();
+  });
+
+  it("another house's roster does not count", async () => {
+    const db = seed();
+    openShift(db).role = "Main bar";
+    kim(db).position = "Staff";
+    db.tables.team_members.push({
+      id: "m-far", restaurant_id: "other-house", user_id: "user-far",
+      display_name: "Far", position: "Main bar", skills: [],
+    });
+    await claim(db);
+    expect(openShift(db).member_id).toBe("m-kim");
+  });
+
+  it("a shift that names no role is anyone's", async () => {
+    const db = seed();
+    kim(db).position = null;
+    openShift(db).role = "  ";
+    await claim(db);
+    expect(openShift(db).member_id).toBe("m-kim");
+  });
+
+  it("a manager assigning by hand is not held to the role", async () => {
+    const db = seed();
+    kim(db).position = "Bartender";
+    await build(db).svc.assignCover(MANAGER, RID, "sh-open", { memberId: "m-kim" } as any);
+    expect(openShift(db).member_id).toBe("m-kim");
+  });
+
+  it("a certificate that runs out before the shift's day is refused, naming it and its date", async () => {
+    const db = seed();
+    db.tables.team_certifications.push(cert("2099-01-05"));
+    const err = await claim(db).catch((e) => e);
+    expect(err).toBeInstanceOf(ForbiddenException);
+    expect(err.message).toBe(
+      "Your food handler certificate on file runs out on 2099-01-05, before this shift on 2099-01-06. " +
+        "A manager can still give it to you. Nothing was changed.",
+    );
+    expect(openShift(db).member_id).toBeNull();
+  });
+
+  it("a certificate good through the shift's day, or with no expiry, does not stop it", async () => {
+    const db = seed();
+    db.tables.team_certifications.push(
+      cert("2099-01-06"),
+      cert(null, { id: "c-none", cert_type: "allergen" }),
+      cert("2100-01-01", { id: "c-later", cert_type: "alcohol_service" }),
+    );
+    await claim(db);
+    expect(openShift(db).member_id).toBe("m-kim");
+  });
+
+  it("the stored status is not read", async () => {
+    const db = seed();
+    db.tables.team_certifications.push(cert("2100-01-01", { status: "expired" }));
+    await claim(db);
+    expect(openShift(db).member_id).toBe("m-kim");
+  });
+
+  it("only this person's certificates in this house count", async () => {
+    const db = seed();
+    db.tables.team_certifications.push(
+      cert("2000-01-01", { id: "c-other-house", restaurant_id: "other-house" }),
+      cert("2000-01-01", { id: "c-sam", member_id: "m-sam" }),
+    );
+    await claim(db);
+    expect(openShift(db).member_id).toBe("m-kim");
+  });
+
+  it("a failed read of the certificates claims nothing and says so", async () => {
+    const db = seed();
+    db.errors["team_certifications:select"] = { message: "timeout" };
+    const err = await claim(db).catch((e) => e);
+    expect(err).toBeInstanceOf(InternalServerErrorException);
+    expect(err.message).toBe("Could not read your certificates, so the shift was not claimed.");
+    expect(openShift(db).member_id).toBeNull();
+  });
+
+  it("a failed read of the person's own profile is not 'only for yourself'", async () => {
+    const db = seed();
+    const realFrom = db.supabase.from.bind(db.supabase);
+    (db.supabase as any).from = (t: string) => {
+      const b: any = realFrom(t);
+      if (t !== "team_members") return b;
+      const realMaybe = b.maybeSingle.bind(b);
+      b.maybeSingle = async () =>
+        b.columns === "id, position, skills"
+          ? { data: null, error: { message: "timeout" } }
+          : realMaybe();
+      return b;
+    };
+    const err = await claim(db).catch((e) => e);
+    expect(err).toBeInstanceOf(InternalServerErrorException);
+    expect(err.message).toBe("Could not read your team profile, so the shift was not claimed.");
+  });
+});
+
+describe("claimRefusal", () => {
+  const shift = { shift_date: "2099-01-06", role: "Server" };
+  const server = { position: "server", skills: [] };
+  const house = ["Server", "Bartender"];
+
+  it("names the earliest lapsed certificate when there are several", () => {
+    expect(
+      claimRefusal(shift, server, [
+        { cert_type: "alcohol-service", expires_at: "2099-01-04" },
+        { cert_type: "allergen", expires_at: "2098-06-01" },
+      ], house),
+    ).toMatch(/^Your allergen certificate on file runs out on 2098-06-01,/);
+  });
+
+  it("a certificate with no name still reads as a sentence", () => {
+    expect(claimRefusal(shift, server, [{ cert_type: " ", expires_at: "2099-01-01" }], house)).toMatch(
+      /^A certificate of yours on file runs out on 2099-01-01, before this shift on 2099-01-06\./,
+    );
+  });
+
+  it("a date that is not a date is not read as a lapse", () => {
+    expect(claimRefusal(shift, server, [{ cert_type: "x", expires_at: "1999-02-30" }], house)).toBeNull();
+  });
+
+  it("the role is asked before the certificates", () => {
+    expect(
+      claimRefusal(shift, { position: "cook" }, [{ cert_type: "x", expires_at: "2000-01-01" }], house),
+    ).toMatch(/^This shift is for Server,/);
+  });
+
+  it("a role only the house's roster lists is a qualification; one it does not is a station", () => {
+    expect(claimRefusal(shift, { position: "Staff" }, [], ["Staff"])).toBeNull();
+    expect(claimRefusal(shift, { position: "Staff" }, [], [" server "])).toMatch(/^This shift is for Server,/);
+  });
+
+  it("no expiry on any row of a type means the type never runs out", () => {
+    expect(
+      claimRefusal(shift, server, [
+        { cert_type: "allergen", expires_at: "2000-01-01" },
+        { cert_type: "Allergen", expires_at: null },
+      ], house),
+    ).toBeNull();
+    expect(
+      claimRefusal(shift, server, [
+        { cert_type: "allergen", expires_at: null },
+        { cert_type: "allergen", expires_at: "2000-01-01" },
+      ], house),
+    ).toBeNull();
   });
 });
 

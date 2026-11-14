@@ -3,6 +3,7 @@
  * (QA round 4 B6, B7, B8). Pure, so each rule is tested on its own.
  */
 import { BadRequestException } from "@nestjs/common";
+import { listsRole } from "./pay-rules";
 
 /** "HH:MM", or "HH:MM:SS" as Postgres prints a `time` back. */
 export const CLOCK_TIME = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
@@ -93,6 +94,76 @@ export function timeOffRefusal(startDate: string, endDate: string): string | nul
     1;
   if (days > TIME_OFF_MAX_DAYS) {
     return `One request can cover at most ${TIME_OFF_MAX_DAYS} days; this one covers ${days}. Nothing was saved.`;
+  }
+  return null;
+}
+
+/** A certificate as the claim check reads it. */
+export interface ClaimCertificate {
+  cert_type: string;
+  expires_at?: string | null;
+}
+
+const fold = (v: unknown) => String(v ?? "").trim().toLowerCase();
+
+/**
+ * Why a staff member may not take an open shift for themselves, or `null`
+ * (QA round 4 B5). A manager can still assign it; the sentence says so.
+ *
+ * role: refused when the shift's role is one some roster row in the house
+ *   lists (position or skill) and the person's own do not. /team labels the
+ *   field "Station" and auto-added rows read "Staff", so a station nobody
+ *   lists is a place, not a qualification.
+ * certificate: refused when a type's latest expiry on file is before the
+ *   shift's day (good through its expiry day; no expiry never lapses; a
+ *   renewal row keeps the type good). Stored `status` goes stale; not read.
+ *   Shifts record no certificate they need, so only a lapse can be asked.
+ */
+export function claimRefusal(
+  shift: { shift_date: string; role?: string | null },
+  member: { position?: string | null; skills?: readonly string[] | null },
+  certificates: readonly ClaimCertificate[],
+  houseRoles: Iterable<string | null | undefined>,
+): string | null {
+  const askManager = "A manager can still give it to you. Nothing was changed.";
+  const role = fold(shift.role);
+  const qualification =
+    role !== "" && [...houseRoles].some((r) => fold(r) === role);
+  if (qualification && !listsRole(member, shift.role)) {
+    return (
+      `This shift is for ${String(shift.role).trim()}, and your position and ` +
+      `skills on the team do not list it. ${askManager}`
+    );
+  }
+  const day = String(shift.shift_date ?? "").slice(0, 10);
+  // The latest expiry on file per certificate type; no expiry never runs out.
+  const latest = new Map<string, { name: string; until: string | null }>();
+  for (const c of certificates ?? []) {
+    const key = fold(c?.cert_type);
+    const raw = c?.expires_at == null ? null : String(c.expires_at).slice(0, 10);
+    if (raw !== null && !isCalendarDate(raw)) continue; // not a date: not read as a lapse
+    const prev = latest.get(key);
+    const until =
+      prev === undefined
+        ? raw
+        : prev.until === null || raw === null
+          ? null
+          : prev.until > raw
+            ? prev.until
+            : raw;
+    latest.set(key, { name: String(c?.cert_type ?? ""), until });
+  }
+  const lapsed = [...latest.values()]
+    .filter((c): c is { name: string; until: string } => c.until !== null && c.until < day)
+    .sort((a, b) => a.until.localeCompare(b.until));
+  if (lapsed.length > 0) {
+    const c = lapsed[0];
+    const name = c.name.replace(/_/g, " ").trim();
+    return (
+      (name ? `Your ${name} certificate` : "A certificate of yours") +
+      ` on file runs out on ${c.until}, before this shift on ${day}. ` +
+      askManager
+    );
   }
   return null;
 }
