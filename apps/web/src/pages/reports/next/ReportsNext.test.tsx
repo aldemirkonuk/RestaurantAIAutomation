@@ -48,6 +48,7 @@ const asked = vi.hoisted(() => ({
   showing: undefined as unknown,
   place: undefined as unknown,
   days: undefined as unknown,
+  alsoRead: undefined as unknown,
 }));
 
 vi.mock('./useReportsNextData', async () => {
@@ -60,6 +61,7 @@ vi.mock('./useReportsNextData', async () => {
       asked.days = args[0];
       asked.showing = args[2];
       asked.place = args[3];
+      asked.alsoRead = args[4];
       return hook.current;
     },
   };
@@ -2447,3 +2449,88 @@ describe('the opening line says when the engine wrote it (r36 reports gap 4)', (
   });
 });
 
+describe('a full-screen link opens what it names, on the sheet or not (r36 reports gap 9)', () => {
+  const withoutTill = () => ({
+    ...base(),
+    sheet: { cuttings: defaultSheet().cuttings.filter((c) => c.id !== 'till') },
+  });
+
+  it('[REVERT-FAILS] opens an analysis that is not on the reader’s sheet, and says so', () => {
+    hook.current = withoutTill() as never;
+    paint('/reports?flat=till');
+    expect(asked.alsoRead).toBe('till');
+    expect(screen.queryByRole('region', { name: CATALOGUE.till.title })).toBeNull();
+    const view = screen.getByRole('dialog', { name: CATALOGUE.till.title });
+    expect(within(view).getByText(/It is not on your sheet: this view was opened by a link/)).toBeInTheDocument();
+  });
+
+  it('closing the visit takes the parameter off the link and leaves the sheet as it was', () => {
+    hook.current = withoutTill() as never;
+    paint('/reports?flat=till&days=90');
+    fireEvent.click(within(screen.getByRole('dialog')).getAllByRole('button')[0]);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByTestId('link').textContent).toBe('?days=90');
+    expect(saveSheet).not.toHaveBeenCalled();
+  });
+
+  it('a cutting on the sheet opens once, as before, with no visit beside it', () => {
+    hook.current = base();
+    paint('/reports?flat=till');
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    expect(screen.queryByText(/It is not on your sheet/)).toBeNull();
+  });
+
+  it('opens nothing before the reader’s sheet is decided', () => {
+    hook.current = { ...withoutTill(), sheetKnown: false, sheetUnread: null } as never;
+    paint('/reports?flat=till');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(asked.alsoRead).toBe('till');
+  });
+
+  it('opens once the reader’s sheet is known unreadable and the house sheet is drawn', () => {
+    hook.current = {
+      ...withoutTill(),
+      sheetKnown: false,
+      sheetUnread: 'Your own arrangement of this sheet could not be read (boom), so the house sheet is shown.',
+    } as never;
+    paint('/reports?flat=till');
+    expect(screen.getByRole('dialog', { name: CATALOGUE.till.title })).toBeInTheDocument();
+  });
+
+  it('a held analysis opens and says who it is written for', () => {
+    hook.current = {
+      ...withoutTill(),
+      role: 'staff',
+      registers: {
+        ...base().registers,
+        till: {
+          data: undefined,
+          loading: false,
+          failure: heldBackFailure(['owner', 'manager'], 'staff'),
+          refetch: vi.fn(),
+        },
+      },
+    } as never;
+    paint('/reports?flat=till');
+    expect(within(screen.getByRole('dialog')).getAllByText(/owners and managers/).length).toBeGreaterThan(0);
+  });
+
+  it('a link naming nothing this page lays flat says so, and can be cleared', () => {
+    hook.current = base();
+    paint('/reports?flat=ledgr');
+    expect(asked.alsoRead).toBeNull();
+    expect(
+      screen.getByText(/The link asked to show “ledgr” full screen, and this page has no analysis by that name\./),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear it from the link' }));
+    expect(screen.getByTestId('link').textContent).toBe('');
+    expect(screen.queryByText(/The link asked to show/)).toBeNull();
+  });
+
+  it('the writing desk has no full-screen view, and the page says why', () => {
+    hook.current = base();
+    paint('/reports?flat=writing');
+    expect(screen.getByText(/It is a desk, not a register, so it has no full-screen view\./)).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});

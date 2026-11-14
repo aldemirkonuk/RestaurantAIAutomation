@@ -364,3 +364,43 @@ describe('useReportsNextData — staff with no saved sheet (r36 reports gap 3)',
     }
   });
 });
+
+describe('useReportsNextData — a full-screen link’s analysis is read off the sheet (r36 reports gap 9)', () => {
+  beforeEach(() => {
+    auth.rid = 'r1';
+    auth.role = 'owner';
+    prefs.isPlaceholderData = false;
+    prefs.error = null;
+    prefs.userId = 'u1';
+    api.get.mockReset();
+    api.get.mockImplementation(async (path: string) => {
+      if (path === READING) return { data: { insights: [] } };
+      if (path === SEATS) return { data: { tables: [] } };
+      return { data: {} };
+    });
+  });
+
+  it('[REVERT-FAILS] reads the linked analysis though the sheet does not hold it', async () => {
+    const { result } = renderHook(() => useReportsNextData(30, () => {}, ['reading'], () => {}, 'seats'), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => expect(paths()).toContain(SEATS));
+    await waitFor(() => expect(result.current.registers.seats?.loading).toBe(false));
+  });
+
+  it('reads nothing extra without a link', async () => {
+    renderHook(() => useReportsNextData(30, () => {}, ['reading']), { wrapper: wrapper() });
+    await waitFor(() => expect(paths()).toContain(READING));
+    expect(paths()).not.toContain(SEATS);
+  });
+
+  it('a held analysis is not asked for, and is handed back as held', async () => {
+    auth.role = 'staff';
+    const { result } = renderHook(() => useReportsNextData(30, () => {}, ['reading'], () => {}, 'seats'), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => expect(paths()).toContain(READING));
+    expect(paths()).not.toContain(SEATS);
+    expect(result.current.registers.seats?.failure).toBeTruthy();
+  });
+});

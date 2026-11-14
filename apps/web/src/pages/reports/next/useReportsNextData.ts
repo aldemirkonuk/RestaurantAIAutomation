@@ -312,6 +312,12 @@ export function useReportsNextData(
   showing: AnalysisId[] | null = null,
   /** Puts a cutting the goals desk proposed onto the page's draft sheet. */
   placeCutting: (cut: { id: AnalysisId; graph: GraphType; days: number | null }) => void = () => {},
+  /**
+   * The analysis a full-screen link names (`flatAsked`, rp-flat-visit.ts). It
+   * is read even when it is not on the sheet, so the link opens it; the sheet
+   * itself is not changed.
+   */
+  alsoRead: AnalysisId | null = null,
 ): ReportsNextData {
   const { activeRestaurantId, activeRole } = useAuth();
   const rid = activeRestaurantId;
@@ -362,8 +368,11 @@ export function useReportsNextData(
     const ids = (showing ?? sheet.cuttings.map((c) => c.id)).filter(
       (id) => readsRegister(CATALOGUE[id]),
     );
-    return ids.includes('reading') ? ids : ['reading', ...ids];
-  }, [sheet, showing]);
+    const withReading = ids.includes('reading') ? ids : ['reading' as AnalysisId, ...ids];
+    return alsoRead && !withReading.includes(alsoRead) && readsRegister(CATALOGUE[alsoRead])
+      ? [...withReading, alsoRead]
+      : withReading;
+  }, [sheet, showing, alsoRead]);
 
   /**
    * The registers this reader is not sent (ADR 0348). A spec that names its
