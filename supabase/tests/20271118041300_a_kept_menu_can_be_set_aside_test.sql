@@ -62,6 +62,17 @@ exception when check_violation then null;
 end
 $$;
 
+-- S3b: the person is a real user of the system.
+do $$
+begin
+  update public.restaurant_menus
+     set set_aside_by = 'a9400000-0000-4000-8000-0000000000ff'
+   where id = 'a9400000-0000-4000-8000-0000000000e1';
+  raise exception 'S3b: a set-aside person who is no user was kept';
+exception when foreign_key_violation then null;
+end
+$$;
+
 -- S4: make_menu_current refuses a menu set aside, and nothing changes.
 do $$
 begin
