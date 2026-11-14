@@ -77,6 +77,10 @@ vi.mock('@/services/api/pricing', () => ({
   setTargetMargin: vi.fn(),
   confirmPourSize: vi.fn(),
 }));
+// The tax section reads its own route; its own spec covers it (TaxBasisSection.test.tsx).
+vi.mock('./TaxBasisSection', () => ({
+  TaxBasisSection: ({ canManage }: { canManage: boolean }) => <p>tax answer stub, can manage: {String(canManage)}</p>,
+}));
 vi.mock('@/components/team/InviteTeamDialog', () => ({ InviteTeamDialog: () => null }));
 vi.mock('@/components/team/TeamLaborSettings', () => ({ TeamLaborSettings: () => null }));
 vi.mock('@/components/team/TeamGoalsSettings', () => ({ TeamGoalsSettings: () => null }));
@@ -684,6 +688,14 @@ describe('SettingsNext — the editorial spine', () => {
     expect(within(block).getByRole('button', { name: /Confirm/ })).toBeInTheDocument();
     expect(within(block).queryByText(/Only managers and owners can state the margin/)).not.toBeInTheDocument();
     expect(pricing.getTargetMargin).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks the house whether tax sits in its prices, under "The house"', () => {
+    mount('/settings');
+    const block = screen.getByTestId('st-section-tax-basis');
+    expect(within(block).getByRole('heading', { name: 'Does tax sit in its prices?' })).toBeInTheDocument();
+    expect(document.getElementById('a-house')?.contains(block)).toBe(true);
+    expect(within(block).getByText('tax answer stub, can manage: true')).toBeInTheDocument();
   });
 
   it('every link that promises the target in Settings names a register that exists', () => {
