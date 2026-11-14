@@ -111,4 +111,22 @@ describe("figures: a long list read in waves", () => {
       expect([d.name, d.cost?.complete, d.cost?.perServeExact]).toEqual([d.name, true, expect.closeTo(((100 + i) / 1000) * 2 / ((i % 5) + 1), 6)]);
     });
   });
+
+  it("prices goods past the first 100, read in their own chunks", async () => {
+    const rows = manyDishes();
+    // Each plate's line names its own good, priced at (i + 1) a kg: 130 goods, two pricing chunks.
+    rows.recipe_lines.forEach((l, k) => {
+      if (!String(l.id).startsWith("9")) return;
+      const good = `6${String(l.id).slice(1)}`;
+      l.inventory_id = good;
+      rows.restaurant_inventory.push({ id: good, restaurant_id: HOUSE_A, display_name: `Good ${k}`, kind: "food", uom: "kg", bottle_size_ml: null, last_purchase_price: Number(String(l.id).slice(-12)) + 1, is_active: true, deleted_at: null });
+    });
+    const { dishes } = slowServices(rows);
+    const out = (await dishes.listDishes(HOUSE_A, "owner")).filter((d) => d.name.startsWith("Plate "));
+    expect(out).toHaveLength(130);
+    out.forEach((d) => {
+      const i = Number(d.name.slice(6));
+      expect([d.name, d.cost?.complete, d.cost?.perServeExact]).toEqual([d.name, true, expect.closeTo(((100 + i) / 1000) * (i + 1) / ((i % 5) + 1), 6)]);
+    });
+  });
 });
