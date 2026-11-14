@@ -115,25 +115,30 @@ function sources(over: Partial<Record<string, jest.Mock>> = {}) {
           capped: false,
         })),
     },
-    conversations: {
-      getPendingConversations:
-        over.getPendingConversations ??
-        jest.fn(async () => [
-          {
-            id: "c-1",
-            providers: { name: "Revel Wine" },
-            procurement_orders: {
-              id: "o-3",
-              order_number: "ORD-3",
-              negotiated_price: 41,
+    mail: {
+      waitingVendors:
+        over.waitingVendors ??
+        jest.fn(async () => ({
+          count: 1,
+          people: [
+            {
+              key: "vendor:v-3",
+              kind: "vendor",
+              providerId: "v-3",
+              name: "Revel Wine",
+              lastAt: "2026-09-21T07:00:00Z",
+              lastLine: "We can do $41.00 a bottle",
+              lastDirection: "inbound",
+              waiting: true,
+              waitingSince: "2026-09-21T07:00:00Z",
+              openThreads: 1,
+              channels: ["email"],
+              newestOpenOrderId: "o-3",
+              newestOpenOrderNumber: "ORD-3",
+              unsentStatus: null,
             },
-            message_text: "We can do $41.00 a bottle",
-            channel: "email",
-            detected_intent: "price_offer",
-            ai_generated: true,
-            created_at: "2026-09-21T07:00:00Z",
-          },
-        ]),
+          ],
+        })),
     },
     identity: {
       pending: over.pending ?? jest.fn(async () => []),
@@ -192,7 +197,7 @@ function build(
     db as any,
     src.procurement as any,
     src.receiving as any,
-    src.conversations as any,
+    src.mail as any,
     src.identity as any,
     src.members as any,
     src.askAi as any,
@@ -312,9 +317,7 @@ describe("the counter answers per register (answered)", () => {
     await svc.read(HOUSE, USER, "owner");
     expect(src.procurement.listPendingOrders).toHaveBeenCalledWith(HOUSE);
     expect(src.receiving.listUnverifiedCapped).toHaveBeenCalledWith(HOUSE);
-    expect(src.conversations.getPendingConversations).toHaveBeenCalledWith(
-      HOUSE,
-    );
+    expect(src.mail.waitingVendors).toHaveBeenCalledWith(HOUSE, "owner", 5);
     expect(src.identity.pending).toHaveBeenCalledWith(HOUSE, 50);
     expect(src.members.getInvites).toHaveBeenCalledWith(USER, HOUSE);
     expect(src.askAi.listOpen).toHaveBeenCalledWith(HOUSE);
@@ -454,7 +457,7 @@ describe("a register that could not be read is never a zero (unreadable)", () =>
             `The candidate queue could not be read (${DB_TEXT}). This is unknown, not an empty queue.`,
           );
         }),
-        getPendingConversations: jest.fn(async () => {
+        waitingVendors: jest.fn(async () => {
           throw new Error(DB_TEXT);
         }),
       }),
@@ -548,9 +551,55 @@ describe("the controller takes the house and the role from the token only", () =
     expect(read).toHaveBeenCalledWith(HOUSE, USER, "staff");
   });
 
-  it("names the order a waiting reply is about, so the counter can open it (DASH-W16e)", async () => {
+});
+
+describe("Vendor replies waiting is Mail's own count (r36 mail gap 7)", () => {
+  it("counts by Mail's waiting rule and names the person Mail opens", async () => {
     const { svc } = build();
     const threads = reg(await svc.read(HOUSE, USER, "owner"), "threads") as any;
-    expect(threads.rows[0]).toMatchObject({ id: "c-1", orderId: "o-3" });
+    expect(threads).toMatchObject({ state: "answered", count: 1, complete: true });
+    expect(threads.rows).toEqual([
+      {
+        id: "vendor:v-3",
+        vendor: "Revel Wine",
+        orderNumber: "ORD-3",
+        orderId: "o-3",
+        channel: "email",
+        waitingSince: "2026-09-21T07:00:00Z",
+      },
+    ]);
+    // No letter text travels to the counter.
+    expect(JSON.stringify(threads)).not.toContain("41.00");
+  });
+
+  it("the count is Mail's whole count, not the rows carried", async () => {
+    const people = Array.from({ length: 5 }, (_, i) => ({
+      key: `vendor:v-${i}`,
+      name: `Vendor ${i}`,
+      waitingSince: null,
+      channels: [],
+      newestOpenOrderId: null,
+      newestOpenOrderNumber: null,
+    }));
+    const { svc } = build(
+      sources({ waitingVendors: jest.fn(async () => ({ count: 12, people })) }),
+    );
+    const threads = reg(await svc.read(HOUSE, USER, "owner"), "threads") as any;
+    expect(threads.count).toBe(12);
+    expect(threads.rows).toHaveLength(5);
+    expect(threads.rows[4]).toEqual({
+      id: "vendor:v-4",
+      vendor: "Vendor 4",
+      orderNumber: null,
+      orderId: null,
+      channel: null,
+      waitingSince: null,
+    });
+  });
+
+  it("reads Mail as the person's role, so staff see what Mail shows staff", async () => {
+    const { svc, src } = build();
+    await svc.read(HOUSE, USER, "staff");
+    expect(src.mail.waitingVendors).toHaveBeenCalledWith(HOUSE, "staff", 5);
   });
 });

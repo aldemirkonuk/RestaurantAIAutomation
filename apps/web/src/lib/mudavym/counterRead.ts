@@ -59,16 +59,20 @@ export interface CounterCreditRow {
   promisedAt: string | null;
 }
 
+/**
+ * A vendor waiting on the house's reply, as Mail counts it (r36 mail gap 7).
+ * No letter text and no price.
+ */
 export interface CounterThreadRow {
+  /** Mail's key for the person (`vendor:<id>`): `?tab=mail&with=` opens it. */
   id: string;
   vendor: string | null;
+  /** The vendor's newest open order, when there is one. */
   orderNumber: string | null;
-  channel: string | null;
-  intent: string | null;
-  aiGenerated: boolean;
-  createdAt: string | null;
-  /** The order the thread is about — the key Communications opens a reply by. */
   orderId: string | null;
+  channel: string | null;
+  /** The oldest letter of theirs the house has not answered. */
+  waitingSince: string | null;
 }
 
 export interface CounterIdentityRow {
@@ -188,7 +192,8 @@ export const REGISTER_ROOM: Record<CounterRegisterKey, { name: string; path: str
   orders: { name: 'Orders', path: '/orders' },
   deliveries: { name: 'Receiving', path: '/receiving' },
   credits: { name: 'Receipts & Credits', path: '/receipts?tab=credits' },
-  threads: { name: 'Communications', path: '/communications' },
+  // Mail, not bare /communications, which opens Letters (r36 mail gap 8).
+  threads: { name: 'Mail', path: '/communications?tab=mail' },
   identities: null,
   invitations: { name: 'Team', path: '/team' },
   proposals: null,
@@ -215,10 +220,9 @@ export function roomForAct(
       return { ...room, path: `/receiving?order=${q((row as CounterDeliveryRow).orderId)}` };
     case 'credits':
       return { ...room, path: `/receipts?tab=credits&credit=${q((row as CounterCreditRow).id)}` };
-    case 'threads': {
-      const orderId = (row as CounterThreadRow).orderId;
-      return orderId ? { ...room, path: `/communications?reply=${q(orderId)}` } : room;
-    }
+    case 'threads':
+      // The vendor's page in Mail: their letters, and the reply act there.
+      return { ...room, path: `/communications?tab=mail&with=${q((row as CounterThreadRow).id)}` };
     default:
       return room;
   }

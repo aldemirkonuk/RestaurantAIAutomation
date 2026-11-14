@@ -95,15 +95,20 @@ export interface CounterCreditRow {
   promisedAt: string | null;
 }
 
+/**
+ * A vendor waiting on the house's reply, as Mail counts it (r36 mail gap 7).
+ * No letter text and no price.
+ */
 export interface CounterThreadRow {
+  /** Mail's key for the person (`vendor:<id>`): `?tab=mail&with=` opens it. */
   id: string;
   vendor: string | null;
+  /** The vendor's newest open order, when there is one. */
   orderNumber: string | null;
-  channel: string | null;
-  intent: string | null;
-  aiGenerated: boolean;
-  createdAt: string | null;
   orderId: string | null;
+  channel: string | null;
+  /** The oldest letter of theirs the house has not answered. */
+  waitingSince: string | null;
 }
 
 export interface CounterIdentityRow {

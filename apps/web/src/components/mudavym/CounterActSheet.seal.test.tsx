@@ -257,12 +257,13 @@ describe('"Open in <Room>" opens the record the act names (DASH-W16e)', () => {
     mount(orderTarget('not_yours'));
     expect(href()).toBe('/orders?order=o-1');
   });
-  it('a reply waiting opens its thread', () => {
+  it('a vendor waiting opens their page in Mail (r36 mail gaps 7 and 8)', () => {
     const register: CounterRegisterAnswered = {
       key: 'threads', verb: 'reply', state: 'answered', readAt: READ.readAt, ms: 4, count: 1, complete: true, act: 'yours',
-      rows: [{ id: 't-1', vendor: 'Revel Wine', orderNumber: 'ORD-3', channel: 'email', intent: 'price_offer', aiGenerated: true, createdAt: null, orderId: 'o-9' }],
+      rows: [{ id: 'vendor:v-9', vendor: 'Revel Wine', orderNumber: 'ORD-3', channel: 'email', waitingSince: null, orderId: 'o-9' }],
     };
     mount({ register, row: register.rows[0] });
-    expect(href()).toBe('/communications?reply=o-9');
+    expect(href()).toBe('/communications?tab=mail&with=vendor%3Av-9');
+    expect(screen.getByRole('link', { name: /open in mail/i })).toBeTruthy();
   });
 });

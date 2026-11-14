@@ -714,3 +714,78 @@ describe("a failed read says it failed", () => {
     );
   });
 });
+
+describe("waitingVendors: the counter's count is Mail's (r36 mail gap 7)", () => {
+  const answer = (people: unknown[], waiting = 3) => (q: Query): Result =>
+    q.name === "mail_inbox_summary"
+      ? { data: [{ ...SUMMARY_ROW, waiting_people: waiting }], error: null }
+      : { data: people, error: null };
+
+  it("counts Mail's waiting people and lists only waiting ones, with no zone read", async () => {
+    resolve = answer([person(1), person(2)]);
+    const r = await service().waitingVendors(HOUSE, "owner", 5);
+    expect(r.count).toBe(3);
+    expect(r.people.map((p) => p.name)).toEqual(["Vendor 1", "Vendor 2"]);
+    // No zone: the count does not depend on the house's day, and a house with
+    // no zone is still counted. The house row is never read for it.
+    expect(queries.map((q) => q.name).sort()).toEqual([
+      "list_mail_people",
+      "mail_inbox_summary",
+    ]);
+    const sum = queries.find((q) => q.name === "mail_inbox_summary")!;
+    expect(sum.payload).toEqual({
+      p_restaurant_id: HOUSE,
+      p_withhold_house_letters: false,
+      p_zone: null,
+    });
+    const list = queries.find((q) => q.name === "list_mail_people")!;
+    expect(list.payload).toMatchObject({
+      p_restaurant_id: HOUSE,
+      p_waiting_only: true,
+      p_withhold_house_letters: false,
+      // one row more than asked, which says whether another page exists
+      p_limit: 6,
+    });
+  });
+
+  it("staff are counted without the house's own letters, as Mail shows them", async () => {
+    resolve = answer([]);
+    await service().waitingVendors(HOUSE, "staff", 5);
+    for (const q of queries) {
+      expect((q.payload as any).p_withhold_house_letters).toBe(true);
+    }
+  });
+
+  it("never says fewer than the rows it carries", async () => {
+    resolve = answer([person(1), person(2)], 1);
+    const r = await service().waitingVendors(HOUSE, "owner", 5);
+    expect(r.count).toBe(2);
+  });
+
+  it("a failed count, or no row, is a failure, never 0", async () => {
+    resolve = (q) =>
+      q.name === "mail_inbox_summary"
+        ? { data: null, error: { message: "connection reset" } }
+        : { data: [], error: null };
+    await expect(
+      service().waitingVendors(HOUSE, "owner", 5),
+    ).rejects.toThrow(ServiceUnavailableException);
+    resolve = (q) =>
+      q.name === "mail_inbox_summary"
+        ? { data: [], error: null }
+        : { data: [], error: null };
+    await expect(
+      service().waitingVendors(HOUSE, "owner", 5),
+    ).rejects.toThrow(ServiceUnavailableException);
+  });
+
+  it("a failed list is a failure too", async () => {
+    resolve = (q) =>
+      q.name === "list_mail_people"
+        ? { data: null, error: { message: "connection reset" } }
+        : { data: [SUMMARY_ROW], error: null };
+    await expect(
+      service().waitingVendors(HOUSE, "owner", 5),
+    ).rejects.toThrow(ServiceUnavailableException);
+  });
+});
