@@ -578,4 +578,111 @@ DO $$ DECLARE ks text[]; BEGIN
   PERFORM pg_temp.ok(ks = ARRAY['vendor:c6000000-0000-4000-8000-000000000005'], 'S9d "PLÂİN" typed with accents finds Plain Dairy');
 END $$;
 
+-- ── The list line is worked out for the shown rows only (r35 mail, gap 12) ──
+-- The thread states carry the newest visible letter's id, not its text; the
+-- people list reads that one letter's preview after paging. These pin that the
+-- id is the right letter and that the preview reads exactly as before.
+
+-- P1: the thread's last letter is its vendor's letter, the first copy stored:
+-- not the second copy, not the bounce or auto-reply, not the queued letter.
+DO $$ DECLARE r record; BEGIN
+  SELECT * INTO r FROM public.mail_thread_states('33333333-3333-4333-8333-333333333333', true, NULL)
+   WHERE thread_key = 'mid:v3';
+  PERFORM pg_temp.ok(r.last_id = 'd3000000-0000-4000-8000-000000000001'::uuid,
+    'P1 the thread''s last letter is the vendor''s letter, not automatic mail or a queued letter');
+END $$;
+
+-- P2: the preview drops a leading Subject line, folds whitespace, keeps 160.
+DO $$ BEGIN
+  PERFORM pg_temp.ok(public.mail_preview(E'Subject: Order 12\n  Please   send\t\t6\n cases ') = 'Please send 6 cases',
+    'P2 a leading Subject line is removed and whitespace folded');
+  PERFORM pg_temp.ok(public.mail_preview(E'  subject: lower case\nBody') = 'Body',
+    'P2b the Subject line is removed whatever its case and leading space');
+  PERFORM pg_temp.ok(public.mail_preview(E'Hello\nSubject: not first') = 'Hello Subject: not first',
+    'P2c only a leading Subject line is removed');
+  PERFORM pg_temp.ok(public.mail_preview(repeat('x', 300)) = repeat('x', 160),
+    'P2d the line is cut to 160 characters');
+  PERFORM pg_temp.ok(public.mail_preview(NULL) IS NULL, 'P2e no text is no line');
+  PERFORM pg_temp.ok(public.mail_preview('Subject: only') = '', 'P2f a letter of only a Subject line has an empty line');
+  PERFORM pg_temp.ok(NOT has_function_privilege('anon', 'public.mail_preview(text)', 'EXECUTE')
+                 AND NOT has_function_privilege('authenticated', 'public.mail_preview(text)', 'EXECUTE'),
+    'P2g the preview is not granted to anon or signed-in callers');
+END $$;
+
+-- P3: a house draft written after the vendor's letter is never staff's line.
+--   House A, vendor VA1: its letter at 09:00, a house draft at 10:00.
+INSERT INTO public.procurement_conversations
+  (id, restaurant_id, provider_id, direction, channel, message_text, status, thread_key, received_at, sent_at, created_at, email_headers) VALUES
+  ('5e000000-0000-4000-8000-0000000000e1', '5e5e5e5e-5e5e-45e5-85e5-5e5e5e5e5e5e', '5e000000-0000-4000-8000-0000000000c1',
+   'inbound', 'email', E'Subject: Prices\nHello there', 'DELIVERED', 'gm:p3', '2027-02-01 09:00+00', NULL, '2027-02-01 09:00+00', '{}'),
+  ('5e000000-0000-4000-8000-0000000000e2', '5e5e5e5e-5e5e-45e5-85e5-5e5e5e5e5e5e', '5e000000-0000-4000-8000-0000000000c1',
+   'outbound', 'email', 'Secret draft', 'HOUSE_DRAFT', 'gm:p3', NULL, NULL, '2027-02-01 10:00+00', '{}');
+DO $$ DECLARE r record; BEGIN
+  SELECT * INTO r FROM public.list_mail_people('5e5e5e5e-5e5e-45e5-85e5-5e5e5e5e5e5e', true)
+   WHERE provider_id = '5e000000-0000-4000-8000-0000000000c1';
+  PERFORM pg_temp.ok(r.last_line = 'Hello there', 'P3 a withheld draft is never staff''s line');
+END $$;
+
+-- P4: every row of a short page carries its own line, not its neighbour's.
+DO $$ DECLARE ls text[]; BEGIN
+  SELECT array_agg(last_line ORDER BY provider_id) INTO ls FROM public.list_mail_people(
+    '33333333-3333-4333-8333-333333333333', true, false, NULL, NULL, 50)
+   WHERE provider_id IN ('c0000000-0000-4000-8000-000000000003', 'c0000000-0000-4000-8000-000000000004');
+  PERFORM pg_temp.ok(ls = ARRAY['Our prices', 'Please send 6 cases'], 'P4 each listed person carries their own line');
+END $$;
+
+-- P5-P7: a second vendor of house A, VA2, with three threads, all on 31 Jan
+-- (older than VA1's letter of 1 Feb):
+--   gm:p5a  its letter 09:00 (header key "Subject"), the house's reply 10:00
+--   gm:p5b  its letter 08:00, the subject only in the letter's first line
+--   gm:p5c  a house draft alone, 07:00
+INSERT INTO public.procurement_conversations
+  (id, restaurant_id, provider_id, direction, channel, message_text, status, thread_key, received_at, sent_at, created_at, email_headers) VALUES
+  ('5e000000-0000-4000-8000-0000000000e3', '5e5e5e5e-5e5e-45e5-85e5-5e5e5e5e5e5e', '5e000000-0000-4000-8000-0000000000c2',
+   'inbound', 'email', 'First', 'DELIVERED', 'gm:p5a', '2027-01-31 09:00+00', NULL, '2027-01-31 09:00+00', '{"Subject":"Capital key"}'),
+  ('5e000000-0000-4000-8000-0000000000e4', '5e5e5e5e-5e5e-45e5-85e5-5e5e5e5e5e5e', '5e000000-0000-4000-8000-0000000000c2',
+   'outbound', 'email', 'Second', 'SENT', 'gm:p5a', NULL, '2027-01-31 10:00+00', '2027-01-31 10:00+00', '{}'),
+  ('5e000000-0000-4000-8000-0000000000e5', '5e5e5e5e-5e5e-45e5-85e5-5e5e5e5e5e5e', '5e000000-0000-4000-8000-0000000000c2',
+   'inbound', 'email', E'Subject: From the letter\nOld thread', 'DELIVERED', 'gm:p5b', '2027-01-31 08:00+00', NULL, '2027-01-31 08:00+00', '{}'),
+  ('5e000000-0000-4000-8000-0000000000e6', '5e5e5e5e-5e5e-45e5-85e5-5e5e5e5e5e5e', '5e000000-0000-4000-8000-0000000000c2',
+   'outbound', 'email', 'Draft alone', 'HOUSE_DRAFT', 'gm:p5c', NULL, NULL, '2027-01-31 07:00+00', '{}');
+
+-- P5: a thread's last letter is its newest one; a draft-only thread has none.
+DO $$ DECLARE a uuid; b uuid; c_found boolean; c uuid; BEGIN
+  SELECT last_id INTO a FROM public.mail_thread_states('5e5e5e5e-5e5e-45e5-85e5-5e5e5e5e5e5e', true, NULL) WHERE thread_key = 'gm:p5a';
+  PERFORM pg_temp.ok(a = '5e000000-0000-4000-8000-0000000000e4'::uuid, 'P5 a thread''s last letter is its newest, not its first');
+  SELECT last_id INTO b FROM public.mail_thread_states('5e5e5e5e-5e5e-45e5-85e5-5e5e5e5e5e5e', true, NULL) WHERE thread_key = 'gm:p5b';
+  PERFORM pg_temp.ok(b = '5e000000-0000-4000-8000-0000000000e5'::uuid, 'P5b a one-letter thread''s last letter is that letter');
+  SELECT true, last_id INTO c_found, c FROM public.mail_thread_states('5e5e5e5e-5e5e-45e5-85e5-5e5e5e5e5e5e', false, NULL) WHERE thread_key = 'gm:p5c';
+  PERFORM pg_temp.ok(c_found AND c IS NULL, 'P5c a draft-only thread, read by an owner, names no last letter');
+END $$;
+
+-- P6: the line is the newest thread's newest letter; the page is the newest
+-- people first, cut at the limit, and the line still read after the cut.
+DO $$ DECLARE r record; ks text[]; ls text[]; BEGIN
+  SELECT * INTO r FROM public.list_mail_people('5e5e5e5e-5e5e-45e5-85e5-5e5e5e5e5e5e', true)
+   WHERE provider_id = '5e000000-0000-4000-8000-0000000000c2';
+  PERFORM pg_temp.ok(r.last_line = 'Second' AND r.last_direction = 'outbound', 'P6 the line is the newest thread''s newest letter');
+  SELECT array_agg(key), array_agg(last_line) INTO ks, ls FROM public.list_mail_people('5e5e5e5e-5e5e-45e5-85e5-5e5e5e5e5e5e', true);
+  PERFORM pg_temp.ok(ks = ARRAY['vendor:5e000000-0000-4000-8000-0000000000c1', 'vendor:5e000000-0000-4000-8000-0000000000c2']
+                 AND ls = ARRAY['Hello there', 'Second'], 'P6b newest person first, each with their own line');
+  SELECT array_agg(key), array_agg(last_line) INTO ks, ls FROM public.list_mail_people(
+    '5e5e5e5e-5e5e-45e5-85e5-5e5e5e5e5e5e', true, false, NULL, NULL, 1);
+  PERFORM pg_temp.ok(ks = ARRAY['vendor:5e000000-0000-4000-8000-0000000000c1'] AND ls = ARRAY['Hello there'],
+    'P6c a page of one is the newest person, with their line');
+  SELECT array_agg(key), array_agg(last_line) INTO ks, ls FROM public.list_mail_people(
+    '5e5e5e5e-5e5e-45e5-85e5-5e5e5e5e5e5e', true, false, '2027-02-01 09:00+00', 'vendor:5e000000-0000-4000-8000-0000000000c1', 1);
+  PERFORM pg_temp.ok(ks = ARRAY['vendor:5e000000-0000-4000-8000-0000000000c2'] AND ls = ARRAY['Second'],
+    'P6d the next page carries the next person''s line');
+END $$;
+
+-- P7: a thread's subject comes from a header keyed "Subject", or else from
+-- the letter's own first line.
+DO $$ DECLARE a text; b text; BEGIN
+  SELECT subject INTO a FROM public.mail_thread_states('5e5e5e5e-5e5e-45e5-85e5-5e5e5e5e5e5e', true, NULL) WHERE thread_key = 'gm:p5a';
+  SELECT subject INTO b FROM public.mail_thread_states('5e5e5e5e-5e5e-45e5-85e5-5e5e5e5e5e5e', true, NULL) WHERE thread_key = 'gm:p5b';
+  PERFORM pg_temp.ok(a = 'Capital key', 'P7 a header keyed "Subject" names the thread');
+  PERFORM pg_temp.ok(b = 'From the letter', 'P7b a Subject line in the letter names the thread');
+END $$;
+
 rollback;
