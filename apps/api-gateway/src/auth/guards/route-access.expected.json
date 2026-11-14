@@ -223,6 +223,23 @@
   ],
   "GET /communications/letters/templates (HouseLettersController.templates)": "open",
   "POST /communications/letters/templates (HouseLettersController.upsertTemplate)": "open",
+  "GET /communications/letters/templates/order-request (HouseLettersController.orderLetter)": "open",
+  "POST /communications/letters/templates/order-request/preview (HouseLettersController.previewOrderLetter)": [
+    "owner",
+    "manager"
+  ],
+  "POST /communications/letters/templates/order-request/publish (HouseLettersController.publishOrderLetter)": [
+    "owner",
+    "manager"
+  ],
+  "POST /communications/letters/templates/order-request/reset (HouseLettersController.resetOrderLetter)": [
+    "owner",
+    "manager"
+  ],
+  "POST /communications/letters/templates/order-request/restore (HouseLettersController.restoreOrderLetter)": [
+    "owner",
+    "manager"
+  ],
   "POST /communications/letters (HouseLettersController.queue)": "open",
   "POST /communications/letters/:id/cancel (HouseLettersController.cancel)": "open",
   "POST /communications/letters/seal-challenge (HouseLettersController.issueQueueSeal)": "open",
