@@ -604,7 +604,21 @@ export function storedKindsLine(storedKinds: readonly string[] | null): string {
   if (storedKinds && storedKinds.some((k) => k !== 'vendor')) {
     return `Mail from ${storedKinds.join(', ')} reaches Mudavym.`;
   }
-  return "Vendor mail is listed here by person and thread. A stranger's letter, and a letter held because its sender could not be confirmed, are under Who is writing, below. Mail from your team and guests is not read yet.";
+  // r28 gap 6: a letter from an unknown sender is kept (as a prospect, under
+  // Who is writing) only when it carries an attachment or reads as an offer;
+  // a plain one is read and not kept (rabbitmq-bridge.service.ts, the
+  // no-provider branch logs and returns). The line said every stranger's
+  // letter was there.
+  return 'Vendor mail is listed here by person and thread. A letter from someone Mudavym does not know is under Who is writing, below, only when it carries an attachment or reads as an offer; a plain one is not kept. A letter held because its sender could not be confirmed is there too. Mail from your team and guests is not read yet.';
+}
+
+/**
+ * The words on the Mail tab's way into Mail setup (r28 gap 15). An owner or a
+ * manager sets mail up there; staff can only read it, so they are not told
+ * to set up what they cannot change.
+ */
+export function setupLinkWords(canChange: boolean): string {
+  return canChange ? 'Set up how mail reaches the house' : 'See how mail reaches the house';
 }
 
 /**

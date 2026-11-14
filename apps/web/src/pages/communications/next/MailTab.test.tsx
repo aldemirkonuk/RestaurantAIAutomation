@@ -175,7 +175,7 @@ describe('the list', () => {
     expect(within(rows[0]).getByRole('img', { name: 'waiting on you' })).toBeInTheDocument();
     expect(within(rows[1]).queryByRole('img', { name: 'waiting on you' })).toBeNull();
     expect(within(rows[0]).getByRole('img', { name: 'mail' })).toBeInTheDocument();
-    expect(screen.getByTestId('stored-kinds')).toHaveTextContent('are under Who is writing, below');
+    expect(screen.getByTestId('stored-kinds')).toHaveTextContent('is under Who is writing, below, only when it carries an attachment or reads as an offer');
     // Two chips only: All and Waiting on you.
     expect(within(screen.getByRole('group', { name: 'Show' })).getAllByRole('button').map((b) => b.textContent)).toEqual([
       'All',
@@ -585,6 +585,28 @@ describe('the setup path', () => {
     await waitFor(() =>
       expect(screen.getByTestId('mail-status')).toHaveTextContent(/^Connected · the test letter arrived 2 min ago$/),
     );
+  });
+
+  it('staff are shown how mail reaches the house, never told to set it up (r28 gap 15)', async () => {
+    auth.current = { user: { role: 'staff', restaurantId: 'r1' }, activeRestaurantId: 'r1', activeRole: 'staff' };
+    routes['/communications/letters/sender'] = () => ({ ...SENDER, reader: { ...SENDER.reader, granted: false } });
+    routes['/mail/summary'] = () => ({ ...SUMMARY, address: { configured: true, address: null } });
+    routes['/mail/people'] = () => ({ people: [], next: null, storedKinds: ['vendor'] });
+    mount();
+    expect(await screen.findByTestId('status-setup')).toHaveTextContent(/^See how mail reaches the house$/);
+    expect(await screen.findByTestId('empty-setup')).toHaveTextContent(/^See how mail reaches the house$/);
+    expect(screen.queryByText('Set up how mail reaches the house')).toBeNull();
+    fireEvent.click(screen.getByTestId('empty-setup'));
+    expect(await screen.findByTestId('mail-setup')).toBeInTheDocument();
+  });
+
+  it('an owner or a manager is offered to set it up, on both ways in', async () => {
+    routes['/communications/letters/sender'] = () => ({ ...SENDER, reader: { ...SENDER.reader, granted: false } });
+    routes['/mail/summary'] = () => ({ ...SUMMARY, address: { configured: true, address: null } });
+    routes['/mail/people'] = () => ({ people: [], next: null, storedKinds: ['vendor'] });
+    mount();
+    expect(await screen.findByTestId('status-setup')).toHaveTextContent(/^Set up how mail reaches the house$/);
+    expect(await screen.findByTestId('empty-setup')).toHaveTextContent(/^Set up how mail reaches the house$/);
   });
 
   it('an empty list offers the setup', async () => {
