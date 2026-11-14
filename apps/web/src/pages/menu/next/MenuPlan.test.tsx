@@ -10,7 +10,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MenuPlan, chooseFailedSentence, kindWords, notOnFileWords, orderedRows, planSentence } from './MenuPlan';
 import { canTakeOff, takenOffSentence } from './menu-take-off';
-import { getMenuPlan, linkMenuLineToHouseGood, makeMenuCurrent, type MenuPlan as Plan, type PlanLine } from '../../../services/api/menus';
+import { getMenuPlan, getMenuVersion, linkMenuLineToHouseGood, makeMenuCurrent, type MenuPlan as Plan, type PlanLine } from '../../../services/api/menus';
 import { lockPrice, releasePriceLock } from '../../../services/api/pricing';
 import { formatMoney } from '../../../lib/currency';
 
@@ -23,7 +23,7 @@ const shown = (s: string) => s.replace(/\s+/g, ' ');
 
 vi.mock('../../../services/api/menus', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/menus')>('../../../services/api/menus');
-  return { ...actual, getMenuPlan: vi.fn(), makeMenuCurrent: vi.fn(), linkMenuLineToHouseGood: vi.fn() };
+  return { ...actual, getMenuPlan: vi.fn(), makeMenuCurrent: vi.fn(), linkMenuLineToHouseGood: vi.fn(), getMenuVersion: vi.fn() };
 });
 vi.mock('../../../services/api/pricing', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/pricing')>('../../../services/api/pricing');
@@ -108,6 +108,9 @@ function mount(canManage: boolean, onDone = vi.fn()) {
 }
 
 beforeEach(() => {
+  // r36 N2: the correction panel reads the menu's lines.
+  vi.mocked(getMenuVersion).mockReset();
+  vi.mocked(getMenuVersion).mockResolvedValue({ version: {} as never, items: [{ id: 'n1', name: 'Chianti', category: 'red' } as never] });
   mockPlan.mockReset();
   mockMake.mockReset();
   mockLock.mockReset();
@@ -622,5 +625,29 @@ describe('a line whose house row was removed is said (r28 G9)', () => {
     expect(within(chianti).queryByTestId('menu-plan-removed')).not.toBeInTheDocument();
     const every = screen.getAllByTestId('menu-plan-line');
     expect(every.filter((r) => within(r).queryByTestId('menu-plan-removed'))).toHaveLength(1);
+  });
+});
+
+// r36 audit N2: a read menu's lines are corrected before it is current, by an owner or a manager only.
+describe('correcting a line before the menu is current', () => {
+  it('an owner or a manager is offered it on a menu that is not current; its tables say Drink', async () => {
+    mockPlan.mockResolvedValue(plan());
+    mount(true);
+    expect(await screen.findByRole('button', { name: 'Correct Chianti' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Leave Chianti out of this menu' })).toBeTruthy();
+    expect(vi.mocked(getMenuVersion)).toHaveBeenCalledWith('menu-new');
+    expect(within(screen.getByTestId('menu-plan-prices')).getByRole('columnheader', { name: 'Drink' })).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: 'Wine' })).toBeNull();
+  });
+
+  it.each([
+    ['staff', false, false],
+    ['the current menu', true, true],
+  ])('%s is not offered it', async (_who, canManage, current) => {
+    mockPlan.mockResolvedValue(plan({ current }));
+    mount(canManage);
+    await screen.findByTestId('menu-plan');
+    expect(screen.queryByTestId('menu-line-fix')).toBeNull();
+    expect(vi.mocked(getMenuVersion)).not.toHaveBeenCalled();
   });
 });
