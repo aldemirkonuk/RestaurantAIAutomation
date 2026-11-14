@@ -122,3 +122,58 @@ describe('GetStarted: a house that already has a menu', () => {
     expect(readHouseMenuStanding).not.toHaveBeenCalled()
   })
 })
+
+// r41 onboarding gap 9: the menu step painted, then vanished, for an owner
+// whose menu is current. It now waits for the one read.
+describe('GetStarted: the menu step waits for where the menu stands', () => {
+  const pending = () => {
+    let answer!: (standing: string) => void
+    readHouseMenuStanding.mockReturnValue(new Promise((resolve) => (answer = resolve)))
+    return (standing: string) => answer(standing)
+  }
+
+  it('a returning owner sees no drop zone while the house is read', async () => {
+    pending()
+    render(page())
+    await waitFor(() => expect(readHouseMenuStanding).toHaveBeenCalled())
+    expect(screen.getByTestId('menu-standing-reading')).toHaveTextContent('Looking at your house’s menu…')
+    expect(screen.queryByText('Drop the menu here')).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Your menu' })).toBeNull()
+  })
+
+  it('a current menu goes on to /house without the menu step ever painting', async () => {
+    const answer = pending()
+    render(page())
+    await waitFor(() => expect(readHouseMenuStanding).toHaveBeenCalled())
+    answer('current')
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/house', { replace: true }))
+    expect(screen.queryByText('Drop the menu here')).toBeNull()
+  })
+
+  it('no menu, or a read that failed, shows the step once the answer is in', async () => {
+    for (const standing of ['none', 'unread']) {
+      const answer = pending()
+      const view = render(page())
+      await waitFor(() => expect(readHouseMenuStanding).toHaveBeenCalled())
+      answer(standing)
+      expect(await screen.findByText('Drop the menu here')).toBeInTheDocument()
+      expect(screen.queryByTestId('menu-standing-reading')).toBeNull()
+      view.unmount()
+      readHouseMenuStanding.mockClear()
+    }
+  })
+
+  it('a house opened on this visit never waits', async () => {
+    auth.user = { name: 'Selin Kaya', restaurantId: '', role: null, emailVerified: true }
+    createFirstHouse.mockResolvedValue({ detailsLoaded: true })
+    pending()
+    render(page())
+    fireEvent.change(screen.getByLabelText('Restaurant name'), { target: { value: 'Meyhane' } })
+    fireEvent.change(screen.getByLabelText('Address'), { target: { value: '1 House Street' } })
+    fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Istanbul' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Choose Türkiye' }))
+    fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
+    expect(await screen.findByText('Drop the menu here')).toBeInTheDocument()
+    expect(screen.queryByTestId('menu-standing-reading')).toBeNull()
+  })
+})

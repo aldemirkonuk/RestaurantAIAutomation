@@ -61,7 +61,7 @@ beforeEach(() => {
 })
 
 describe('GetStarted entry rule', () => {
-  it('(t1) an owner with a house resumes at the menu step, with no Welcome while auth loads', () => {
+  it('(t1) an owner with a house resumes at the menu step, with no Welcome while auth loads', async () => {
     auth.loading = true
     const view = render(page())
     expect(screen.queryByText('Welcome')).toBeNull()
@@ -70,14 +70,14 @@ describe('GetStarted entry rule', () => {
     auth.loading = false
     auth.user = owner
     view.rerender(page())
-    expect(screen.getByRole('heading', { name: 'Your menu' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Your menu' })).toBeInTheDocument()
     expect(screen.queryByText('Welcome')).toBeNull()
   })
 
-  it('(t1) a house with no role named is treated as the owner', () => {
+  it('(t1) a house with no role named is treated as the owner', async () => {
     auth.user = { ...owner, role: null }
     render(page())
-    expect(screen.getByRole('heading', { name: 'Your menu' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Your menu' })).toBeInTheDocument()
   })
 
   it('(t2) staff with a house goes to the desk, never owner onboarding', () => {
@@ -154,7 +154,7 @@ describe('GetStarted menu step', () => {
     importMenu.mockRejectedValue({ response: { status: 500, data: { message: 'parser exploded: idx_menu' } } })
     render(page())
     const photo = new File(['x'], 'menu.png', { type: 'image/png' })
-    fireEvent.drop(screen.getByText('Drop the menu here'), { dataTransfer: { files: [photo] } })
+    fireEvent.drop(await screen.findByText('Drop the menu here'), { dataTransfer: { files: [photo] } })
 
     const alert = await screen.findByRole('alert')
     // r21: every refusal names a way on (a 503 is also the reader switched off).
@@ -178,7 +178,7 @@ describe('GetStarted menu step', () => {
   it('(t7) a finished read opens the first proof at once, with no timer', async () => {
     auth.user = owner
     render(page())
-    fireEvent.click(screen.getByRole('button', { name: /Type a few lines/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /Type a few lines/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Send these lines' }))
     // No timer advance: it has already happened.
     expect(navigate).toHaveBeenCalledWith('/house/menu', { replace: true })

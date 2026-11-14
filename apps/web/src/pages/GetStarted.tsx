@@ -692,6 +692,21 @@ export default function GetStarted() {
     )
   }
 
+  // r41 onboarding gap 9: an owner who comes back here (a guide link, the
+  // rail) saw the whole menu step (the drop zone and three ways in) paint
+  // and then vanish when the house's menu turned out to be current. The step
+  // waits for that one read. A house opened on this visit is not read, so it
+  // never waits; a read that fails ('unread') shows the step as before.
+  if (step === 'menu' && !openedHere.current && menuStanding === null) {
+    return (
+      <ArrivalShell step={step} onSignOut={signOut}>
+        <p role="status" className="font-mono text-xs uppercase tracking-[0.16em] text-[#6d685f]" data-testid="menu-standing-reading">
+          Looking at your house’s menu…
+        </p>
+      </ArrivalShell>
+    )
+  }
+
   if (step === 'menu') {
     return (
       <ArrivalShell step={step} onSignOut={signOut}>
