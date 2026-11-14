@@ -20,6 +20,7 @@
  *   POST /prospects/:id/promote   owner/manager
  *   POST /prospects/:id/dismiss   any member
  *   POST /prospects/:id/restore   any member
+ *   POST /prospects/:id/file-under-vendor   owner/manager (r35 mail, gap 9)
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -95,4 +96,34 @@ export function usePutAwayStranger() {
 }
 export function useRestoreStranger() {
   return useStrangerMutation<{ restored: boolean }>((id) => `/prospects/${id}/restore`);
+}
+
+/** What filing a held letter answers (`ProspectsService.fileHeldLetter`). */
+export interface FiledHeldLetter {
+  filed: true;
+  conversationId: string;
+  threadKey: string | null;
+  providerId: string;
+  providerName: string;
+  alreadyStored: boolean;
+}
+
+/**
+ * File a held letter under the vendor its address belongs to (r35 mail,
+ * gap 9). The letter leaves the strangers and joins the vendor's mail, so
+ * every Mail read that lists or counts letters is read again too.
+ */
+export function useFileHeldLetter() {
+  const restaurantId = useRid();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiClient.post(`/prospects/${encodeURIComponent(id)}/file-under-vendor`).then((r) => r.data as FiledHeldLetter),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['comms-strangers', restaurantId] });
+      for (const root of ['mail-people', 'mail-threads', 'mail-thread', 'mail-summary']) {
+        qc.invalidateQueries({ queryKey: [root, restaurantId] });
+      }
+    },
+  });
 }

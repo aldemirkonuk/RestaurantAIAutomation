@@ -134,6 +134,44 @@ export function heldNote(p: Pick<ProspectDto, 'held_reason'>): string | null {
   return null;
 }
 
+/**
+ * Where a held letter can go (r35 mail, gap 9), for a `sender_unconfirmed`
+ * row only: `file` names the vendor a person may file it under; `none` and
+ * `unread` say in words why there is no such act. Null for any other row,
+ * and for a gateway that does not name the vendor yet.
+ */
+export type HeldFiling =
+  | { kind: 'file'; vendor: { id: string; name: string } }
+  | { kind: 'none'; words: string }
+  | { kind: 'unread'; words: string };
+
+export function heldFiling(
+  p: Pick<ProspectDto, 'held_reason' | 'sender_email' | 'held_vendor' | 'held_vendor_unread'>,
+): HeldFiling | null {
+  if (p.held_reason !== 'sender_unconfirmed' || !p.sender_email) return null;
+  if (p.held_vendor_unread === true)
+    return { kind: 'unread', words: `Which vendor lists ${p.sender_email} could not be read just now, so it cannot be filed yet.` };
+  if (p.held_vendor) return { kind: 'file', vendor: p.held_vendor };
+  if (p.held_vendor === null)
+    return { kind: 'none', words: `No single vendor in your book lists ${p.sender_email}, so it cannot be filed under one.` };
+  return null;
+}
+
+/** The sentence a person reads before filing a held letter: what they vouch for, and what follows. */
+export function heldFilingWarning(sender: string, vendor: string): string {
+  return (
+    `The receiving mail server could not confirm ${sender} sent this letter. Filing it under ${vendor} says you know it is theirs: ` +
+    `it joins their mail, and its files go where their files go, so an invoice in it is read as theirs.`
+  );
+}
+
+/** A vendor's letter in Mail, as the gateway's notices link it: `?tab=mail&with=vendor:<id>`, and `&thread=` when known. */
+export function mailLetterUrl(providerId: string, threadKey: string | null): string {
+  const q = new URLSearchParams({ tab: 'mail', with: `vendor:${providerId}` });
+  if (threadKey && threadKey.trim()) q.set('thread', threadKey.trim());
+  return `/communications?${q.toString()}`;
+}
+
 /** The name a stranger's row shows: its name, its address, its domain, or says it has none. */
 export function strangerName(p: Pick<ProspectDto, 'sender_name' | 'sender_email' | 'domain'>): string {
   return p.sender_name || p.sender_email || p.domain || 'no sender named';

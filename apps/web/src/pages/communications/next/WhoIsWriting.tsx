@@ -32,12 +32,16 @@ import {
   senderState,
   strangerChips,
   strangerName,
+  heldFiling,
+  heldFilingWarning,
   heldNote,
+  mailLetterUrl,
   whoIsWritingSummary,
   writeFailureSentence,
 } from './senders-format';
 import {
   SENDERS_SERVER_WINDOWS,
+  useFileHeldLetter,
   usePromoteStranger,
   usePutAwayStranger,
   useRestoreStranger,
@@ -259,7 +263,11 @@ function Strangers({
   const promote = usePromoteStranger();
   const putAway = usePutAwayStranger();
   const restore = useRestoreStranger();
+  const fileHeld = useFileHeldLetter();
   const [adding, setAdding] = useState<ProspectDto | null>(null);
+  // r35 mail, gap 9: the held letter whose "file it there" is asking to be confirmed, and the last one filed.
+  const [confirmFile, setConfirmFile] = useState<string | null>(null);
+  const [filed, setFiled] = useState<{ name: string; vendor: string; url: string } | null>(null);
   const [undo, setUndo] = useState<{ id: string; name: string } | null>(null);
   const [actFailure, setActFailure] = useState<string | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -274,7 +282,19 @@ function Strangers({
       </button>
     </>
   );
-  const busy = promote.isPending || putAway.isPending || restore.isPending;
+  const busy = promote.isPending || putAway.isPending || restore.isPending || fileHeld.isPending;
+
+  const onFile = async (p: ProspectDto, vendor: string) => {
+    setActFailure(null);
+    const name = strangerName(p);
+    try {
+      const r = await fileHeld.mutateAsync(p.id);
+      setConfirmFile(null);
+      setFiled({ name, vendor: r.providerName || vendor, url: mailLetterUrl(r.providerId, r.threadKey) });
+    } catch (err) {
+      setActFailure(writeFailureSentence(`Filing ${name} under ${vendor}`, readFailure(err)));
+    }
+  };
 
   const onPutAway = async (p: ProspectDto) => {
     setActFailure(null);
@@ -322,6 +342,16 @@ function Strangers({
           ' It also holds letters whose sender could not be read or confirmed — even from an address in your vendor book — until a person checks them.'}{' '}
         Nothing here is trusted, and Mudavym never answers it on its own.
       </p>
+      {filed && (
+        <p role="status" style={{ ...LEDE, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span>
+            {filed.name} — filed under {filed.vendor}.
+          </span>
+          <a href={filed.url} style={{ ...BTN_QUIET, textDecoration: 'none' }}>
+            Open it in Mail
+          </a>
+        </p>
+      )}
       {undo && (
         <p role="status" style={{ ...LEDE, display: 'flex', alignItems: 'center', gap: 10 }}>
           <span>{undo.name} — put away</span>
@@ -347,6 +377,8 @@ function Strangers({
           {data.map((p) => {
             const elsewhere = !!p.restaurant_id && !!activeRestaurantId && p.restaurant_id !== activeRestaurantId;
             const name = strangerName(p);
+            const filing = heldFiling(p);
+            const asking = filing?.kind === 'file' && confirmFile === p.id;
             return (
               <div key={p.id} style={ROW}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
@@ -363,6 +395,26 @@ function Strangers({
                 </div>
                 {p.subject && <p style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '0 0 6px' }}>{p.subject}</p>}
                 {heldNote(p) && <Quiet>{heldNote(p)}</Quiet>}
+                {!elsewhere && filing && filing.kind !== 'file' && <Quiet>{filing.words}</Quiet>}
+                {!elsewhere && asking && filing?.kind === 'file' && (
+                  <div role="group" aria-label={`File it under ${filing.vendor.name}`} style={{ margin: '4px 0 8px', maxWidth: '62ch' }}>
+                    <p style={{ ...LEDE, margin: '0 0 6px' }}>{heldFilingWarning(p.sender_email ?? name, filing.vendor.name)}</p>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        style={BTN_PRIMARY}
+                        disabled={fileHeld.isPending}
+                        aria-busy={fileHeld.isPending || undefined}
+                        onClick={() => onFile(p, filing.vendor.name)}
+                      >
+                        {fileHeld.isPending ? 'Filing…' : `File it under ${filing.vendor.name}`}
+                      </button>
+                      <button type="button" style={BTN_QUIET} disabled={fileHeld.isPending} onClick={() => setConfirmFile(null)}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {elsewhere ? (
                   <Quiet>Belongs to another house — switch to it to add or put it away.</Quiet>
                 ) : (
@@ -381,9 +433,29 @@ function Strangers({
                       Add as a vendor…
                     </button>
                     )}
+                    {/* r35 mail, gap 9: a person may vouch that an unconfirmed letter is the vendor's. */}
+                    {filing?.kind === 'file' && !asking && (
+                      <button
+                        type="button"
+                        style={manages ? BTN_PRIMARY : { ...BTN_PRIMARY, opacity: 0.5, cursor: 'not-allowed' }}
+                        disabled={busy || !manages}
+                        aria-describedby={manages ? undefined : `file-why-${p.id}`}
+                        onClick={() => {
+                          setActFailure(null);
+                          setConfirmFile(p.id);
+                        }}
+                      >
+                        It is from {filing.vendor.name}: file it there…
+                      </button>
+                    )}
                     <button type="button" style={BTN_QUIET} disabled={busy} aria-label={`Put ${name} away`} onClick={() => onPutAway(p)}>
                       Put away
                     </button>
+                    {filing?.kind === 'file' && !manages && (
+                      <span id={`file-why-${p.id}`} style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
+                        Only an owner or manager can file it under {filing.vendor.name}.
+                      </span>
+                    )}
                     {!manages && !p.held_reason && (
                       <span id={`add-why-${p.id}`} style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
                         Only an owner or manager can add a vendor.

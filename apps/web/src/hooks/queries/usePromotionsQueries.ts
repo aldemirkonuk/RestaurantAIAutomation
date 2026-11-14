@@ -84,6 +84,15 @@ export interface ProspectDto {
    * Absent from a gateway that predates it.
    */
   held_reason?: 'sender_unreadable' | 'sender_unconfirmed' | null
+  /**
+   * For a `sender_unconfirmed` letter: the vendor the house's book names for
+   * its address, the one "file it there" would file it under (r35 mail, gap
+   * 9); null when no single live vendor lists it. `held_vendor_unread` is
+   * true when the book could not be read, which is not "no vendor". Both
+   * absent on any other row, and from a gateway that predates them.
+   */
+  held_vendor?: { id: string; name: string } | null
+  held_vendor_unread?: boolean
   has_attachments: boolean
   attachments: ProspectAttachmentMetaDto[]
   message_count: number

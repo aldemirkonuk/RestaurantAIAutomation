@@ -40,6 +40,7 @@ vi.mock('./useSendersDeskData', () => ({
   usePromoteStranger: () => h.promote,
   usePutAwayStranger: () => h.putAway,
   useRestoreStranger: () => h.restore,
+  useFileHeldLetter: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 vi.mock('../../../contexts/AuthContext', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../contexts/AuthContext')>()),
