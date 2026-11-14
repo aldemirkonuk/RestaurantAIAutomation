@@ -34,6 +34,7 @@ import {
   waitingChipWords,
   waitingOn,
   searchEmptyWords,
+  NOTHING_TO_READ_FOR,
   type MailboxReader,
   type MailMessage,
   type MailSummary,
@@ -191,6 +192,56 @@ describe('the today line and the tab label', () => {
     expect(spanWords(30_000)).toBe('less than a minute');
     expect(spanWords(5 * MIN)).toBe('5 minutes');
     expect(spanWords(25 * 60 * MIN)).toBe('1 day');
+  });
+});
+
+describe('a connected mailbox with an empty vendor book (r36 mail gap 5)', () => {
+  const empty = () => reader({ bookAddresses: 0 });
+
+  it('the door says there is nothing to read for, not that it is reading', () => {
+    expect(houseMailboxStatus(empty(), { readFailed: false, now: NOW })).toEqual({
+      state: 'nothing_to_read',
+      words: NOTHING_TO_READ_FOR,
+      tone: 'warn',
+    });
+    // Before a read is recorded, too: it is not "cannot tell".
+    expect(houseMailboxStatus(reader({ bookAddresses: 0, lastReadAt: null }), { readFailed: false, now: NOW }).state).toBe(
+      'nothing_to_read',
+    );
+  });
+
+  it('a failing read still speaks first, and switched off still says switched off', () => {
+    expect(houseMailboxStatus(reader({ bookAddresses: 0, lastError: 'invalid_grant' }), { readFailed: false, now: NOW }).state).toBe(
+      'failing',
+    );
+    expect(houseMailboxStatus(reader({ bookAddresses: 0, enabled: false }), { readFailed: false, now: NOW }).state).toBe(
+      'switched_off',
+    );
+  });
+
+  it('an unknown count makes no claim: null and absent read as before', () => {
+    expect(houseMailboxStatus(reader({ bookAddresses: null }), { readFailed: false, now: NOW }).state).toBe('reading');
+    expect(houseMailboxStatus(reader(), { readFailed: false, now: NOW }).state).toBe('reading');
+    expect(houseMailboxStatus(reader({ bookAddresses: 3 }), { readFailed: false, now: NOW }).state).toBe('reading');
+  });
+
+  it('the status line says it on its own, and as a note beside other proof', () => {
+    const none = summary({ address: { configured: true, address: null } });
+    expect(mailStatusLine(empty(), none, { readerFailed: false, summaryFailed: false, now: NOW })).toEqual({
+      state: 'nothing_to_read',
+      words: 'Not reading yet · your mailbox is connected, but no vendor has an email address to read for',
+      tone: 'warn',
+    });
+    const withAddress = summary({ address: { configured: true, address: 'house@in.mudavym.test' } });
+    expect(mailStatusLine(empty(), withAddress, { readerFailed: false, summaryFailed: false, now: NOW }).words).toBe(
+      'Address made, no letter yet · your mailbox has nothing to read for until a vendor has an email address',
+    );
+  });
+
+  it('the empty list does not say Mail is read from a mailbox with nothing to read for', () => {
+    const words = emptyListWords(empty(), summary(), { waitingOnly: false, on: 'you' });
+    expect(words).not.toContain('Mail is read from your mailbox');
+    expect(words).toContain('Your mailbox is connected, but no vendor has an email address for it to read for');
   });
 });
 
