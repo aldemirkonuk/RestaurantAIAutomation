@@ -2,7 +2,10 @@
  * What is in one serve, from the figures each linked item states
  * (item_nutrition, #922). Pure, beside recipe-cost.ts, and as honest:
  * - a line counts only when linked to an item stating figures on its own
- *   basis (ml against per 100 ml, g against per 100 g; never converted);
+ *   basis (ml against per 100 ml, g against per 100 g), or when the house
+ *   stated, for that very good, the weight that joins the two: what one piece
+ *   weighs (a piece against per 100 g) or what one ml weighs (ml against per
+ *   100 g, g against per 100 ml). Never a usual weight (r28 gap 7);
  * - any other line is named in notCounted and in each figure's missing,
  *   so it reads "unknown for <label>", never 0;
  * - a figure no counted line states is null; one some lines lack is atLeast;
@@ -11,7 +14,8 @@
  * - alcohol is a figure like the others: the item's stated ABV (item_nutrition
  *   .abv_pct, per 100 ml) is millilitres of pure alcohol per 100 ml, so a
  *   line with no stated strength is "unknown for" it, never 0, and a weighed
- *   line never counts (a strength is a share of a volume);
+ *   line counts only through the good's stated weight of one ml (a strength
+ *   is a share of a volume);
  * - the one exception to "not counted is unknown": a line linked to an item
  *   that states 0% alcohol adds 0 alcohol whatever its amount or unit (zero
  *   of anything is zero, nothing is converted). "Top with tonic" with no
@@ -57,6 +61,10 @@ export interface NutritionLineInput {
   baseUnit: BaseUnit;
   /** null: the item states nothing (or the line is not linked). */
   figures: ItemFigures | null;
+  /** What one piece of the linked good weighs, in g, as the house stated it; null when not stated. */
+  pieceGrams?: number | null;
+  /** What one ml of the linked good weighs, in g, as the house stated it; null when not stated. */
+  mlGrams?: number | null;
   /** The item's stated allergens; an allergen absent here is not stated. */
   allergens: ReadonlyArray<{ allergen: string; status: string }>;
 }
@@ -83,20 +91,32 @@ export interface ServeNutrition {
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
+/** A stated weight (g) a bridge may use: finite and above 0, else none. */
+const statedG = (v: number | null | undefined): number | null =>
+  v !== null && v !== undefined && Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null;
+
 /** The line's amount in ml or g (the per-100 figure's own unit), or why it cannot count. */
 function amountOf(line: NutritionLineInput): { amount: number } | { why: string } {
   if (line.role === "untracked") return { why: "it is not counted from the shelf" };
   if (!line.inventoryId) return { why: "it is not linked to anything on the shelf" };
-  if (line.baseUnit === "each_milli") return { why: "it is counted in pieces, not by weight or volume" };
   if (!line.figures) return { why: "nothing is recorded about what is in it" };
   const qty = Number(line.qtyBase);
   if (!Number.isFinite(qty) || qty <= 0) return { why: "the recipe does not say how much" };
-  if (line.baseUnit === "ml10") {
-    if (line.figures.basis !== "100ml") return { why: "it is measured by volume, but its figures are per 100 g" };
-    return { amount: qty / 10 };
+  const pieceG = statedG(line.pieceGrams);
+  const mlG = statedG(line.mlGrams);
+  if (line.baseUnit === "each_milli") {
+    if (line.figures.basis !== "100g") return { why: "it is counted in pieces, not by weight or volume" };
+    if (pieceG === null) return { why: "it is counted in pieces, and what one weighs is not stated" };
+    return { amount: (qty / 1000) * pieceG };
   }
-  if (line.figures.basis !== "100g") return { why: "it is weighed, but its figures are per 100 ml" };
-  return { amount: qty / 1000 };
+  if (line.baseUnit === "ml10") {
+    if (line.figures.basis === "100ml") return { amount: qty / 10 };
+    if (mlG === null) return { why: "it is measured by volume, but its figures are per 100 g and what one ml weighs is not stated" };
+    return { amount: (qty / 10) * mlG };
+  }
+  if (line.figures.basis === "100g") return { amount: qty / 1000 };
+  if (mlG === null) return { why: "it is weighed, but its figures are per 100 ml and what one ml weighs is not stated" };
+  return { amount: qty / 1000 / mlG };
 }
 
 /** Linked to an item that states 0% alcohol (a strength is per 100 ml by the schema's CHECK). */

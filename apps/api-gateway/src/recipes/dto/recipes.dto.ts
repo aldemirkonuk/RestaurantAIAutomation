@@ -182,3 +182,19 @@ export class ShelfMatchDto {
   @MaxLength(200, { each: true })
   labels!: string[];
 }
+
+/**
+ * What one piece of a good weighs and what one ml of it weighs, in g (r28
+ * gap 7). Left out: kept as it is. null: taken off. The service bounds each.
+ */
+export class StateWeightsDto {
+  @ApiPropertyOptional({ nullable: true, description: "What one piece weighs, in g" })
+  @IsOptional()
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  pieceGrams?: number | null;
+
+  @ApiPropertyOptional({ nullable: true, description: "What one ml weighs, in g" })
+  @IsOptional()
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  mlGrams?: number | null;
+}
