@@ -159,7 +159,8 @@ describe('GetStarted: no dead ends', () => {
     auth.user = owner
     render(page())
     expect(await screen.findByRole('heading', { name: 'Your menu' })).toBeInTheDocument()
-    expect(screen.getByText('One last step')).toBeInTheDocument()
+    expect(screen.getByText('Next')).toBeInTheDocument()
+    expect(screen.queryByText('One last step')).not.toBeInTheDocument()
     expect(document.body.textContent).not.toMatch(/first inscription|Not a step now|last invoice/i)
   })
 
