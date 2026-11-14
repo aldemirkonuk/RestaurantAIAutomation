@@ -9,6 +9,7 @@ import {
   forwardRef,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { readViewWhole } from "./read-view-whole";
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
 import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
 import { WineSubmissionsService } from "../wines/wine-submissions.service";
@@ -181,13 +182,20 @@ export class InventoryService {
     const map = new Map<string, any>();
     try {
       const client = this.dbService.getClient();
-      const { data } = await client
-        .from("inventory_lot_rollup")
-        .select(
-          "inventory_id, live_qty, shadow_qty, wac, has_invoice_cost, live_location_count, open_ml",
-        )
-        .eq("restaurant_id", restaurantId);
-      for (const r of data || []) map.set(r.inventory_id, r);
+      // Paged to the end (H-1): one unranged read stopped at 1,000 goods.
+      const data = await readViewWhole(
+        "The lot rollup",
+        () =>
+          client
+            .from("inventory_lot_rollup")
+            .select(
+              "inventory_id, live_qty, shadow_qty, wac, has_invoice_cost, live_location_count, open_ml",
+              { count: "exact" },
+            )
+            .eq("restaurant_id", restaurantId),
+        ["inventory_id"],
+      );
+      for (const r of data) map.set(r.inventory_id, r);
     } catch (err: any) {
       this.logger.warn(`fetchLotRollup failed: ${err?.message}`);
     }
@@ -201,12 +209,20 @@ export class InventoryService {
     const map = new Map<string, any[]>();
     try {
       const client = this.dbService.getClient();
-      const { data } = await client
-        .from("inventory_location_breakdown")
-        .select("inventory_id, location_id, qty, wac")
-        .eq("restaurant_id", restaurantId)
-        .eq("stock_state", "live");
-      for (const r of data || []) {
+      // Paged to the end (H-1): one row per good per place, so one unranged
+      // read stopped at about 333 goods held in three places. The order is
+      // the view's whole grouping key, so every offset lands on the same row.
+      const data = await readViewWhole(
+        "The stock-by-place breakdown",
+        () =>
+          client
+            .from("inventory_location_breakdown")
+            .select("inventory_id, location_id, qty, wac", { count: "exact" })
+            .eq("restaurant_id", restaurantId)
+            .eq("stock_state", "live"),
+        ["inventory_id", "location_id", "master_wine_id"],
+      );
+      for (const r of data) {
         const arr = map.get(r.inventory_id) ?? [];
         arr.push({ locationId: r.location_id, qty: r.qty, wac: r.wac });
         map.set(r.inventory_id, arr);
@@ -236,14 +252,21 @@ export class InventoryService {
     const map = new Map<string, any>();
     try {
       const client = this.dbService.getClient();
-      const { data, error } = await client
-        .from("inventory_analytics")
-        .select(
-          "inventory_id, velocity_per_day, days_of_cover, reorder_point, reorder_suggested, abc_class, dead_stock, days_since_sale",
-        )
-        .eq("restaurant_id", restaurantId);
-      if (error) throw error;
-      for (const r of data || []) map.set(r.inventory_id, r);
+      // Paged to the end (H-1); a read that cannot be made whole throws into
+      // the catch below and says `ok: false`, never a part read as the whole.
+      const data = await readViewWhole(
+        "The sales pace read",
+        () =>
+          client
+            .from("inventory_analytics")
+            .select(
+              "inventory_id, velocity_per_day, days_of_cover, reorder_point, reorder_suggested, abc_class, dead_stock, days_since_sale",
+              { count: "exact" },
+            )
+            .eq("restaurant_id", restaurantId),
+        ["inventory_id"],
+      );
+      for (const r of data) map.set(r.inventory_id, r);
       return { map, ok: true };
     } catch (err: any) {
       this.logger.warn(`fetchAnalytics failed: ${err?.message}`);
@@ -1051,8 +1074,11 @@ export class InventoryService {
       master_wine_id: dto.wineId,
       provider_id: dto.providerId || null,
       stock_live: 0, // initial stock applied as a lot via apply_stock_movement below (lots = source of truth)
-      threshold_min: dto.thresholdMin || 6,
-      threshold_max: dto.thresholdMax || 24,
+      // `??`, not `||`: a par of 0 is the house saying "do not stock this"
+      // (a garnish, a wine being run down), and `|| 6` turned it into 6 (QA
+      // round 2, U-3). Only a par the caller left out gets the default.
+      threshold_min: dto.thresholdMin ?? 6,
+      threshold_max: dto.thresholdMax ?? 24,
       toast_item_guid: dto.toastItemGuid || null,
       is_active: true,
       wine_name: masterWineName,
