@@ -324,10 +324,16 @@ export function DoorFrame({
             </p>
           )}
           {booking && <BookingNote booking={booking} />}
-          <p style={{ margin: 0, fontSize: 9.5, color: 'var(--ink-4, #665D50)' }}>
-            {touched === 0
-              ? 'Nothing counted yet. A line you do not touch is not a zero — it stays “not counted”, and the delivery says so.'
-              : `${touched} of ${doc.layer1.lines.length} line(s) counted. The rest stay “not counted”.`}
+          <p data-testid="door-count-hint" style={{ margin: 0, fontSize: 9.5, color: 'var(--ink-4, #665D50)' }}>
+            {touched > 0
+              ? `${touched} of ${doc.layer1.lines.length} line(s) counted. The rest stay “not counted”.`
+              : /* r33 F3: after a count is recorded the boxes are empty again,
+                   and "Nothing counted yet" beside "The count is recorded"
+                   contradicted it. Any booking answer means the count itself
+                   was recorded (a failed booking says so above). */
+                anyCounted || booking != null
+                ? 'Nothing new is being counted. A line counted again replaces its earlier count; a line you do not touch keeps the count it has.'
+                : 'Nothing counted yet. A line you do not touch is not a zero — it stays “not counted”, and the delivery says so.'}
           </p>
           <button
             type="button"
@@ -360,17 +366,33 @@ export function DoorFrame({
 }
 
 /** What the last count put on the shelf (r24). Every line not booked says why. */
+/**
+ * r33 F3: a lower recount takes stock OFF the shelf (a negative delta), so it
+ * is said as that, never as lines that "went on the shelf".
+ */
+function bookingSentence(booking: DoorBooking): string {
+  if (booking.failed)
+    return `The count is recorded, but nothing was put on the shelf: ${booking.error ?? 'the booking failed'}.`
+  const lines = (n: number) => `${n} line${n === 1 ? '' : 's'}`
+  const added = booking.booked.filter((b) => b.delta > 0).length
+  const taken = booking.booked.filter((b) => b.delta < 0).length
+  if (added === 0 && taken === 0)
+    return booking.notBooked.length === 0
+      ? 'The count is recorded. The shelf already held it, so nothing moved.'
+      : 'The count is recorded, but nothing went on the shelf.'
+  const parts = [
+    added ? `${lines(added)} went on the shelf.` : '',
+    taken
+      ? `${lines(taken)} came off it, since ${taken === 1 ? 'its new count is' : 'their new counts are'} lower than the ${taken === 1 ? 'one it replaces' : 'ones they replace'}.`
+      : '',
+  ].filter(Boolean)
+  return `The count is recorded. ${parts.join(' ')}`
+}
+
 function BookingNote({ booking }: { booking: DoorBooking }) {
-  const moved = booking.booked.filter((b) => b.delta !== 0).length
   return (
     <div data-testid="door-booking" role="status" style={{ fontSize: 10.5, color: 'var(--ink-2, #4F473C)' }}>
-      <p style={{ margin: 0 }}>
-        {booking.failed
-          ? `The count is recorded, but nothing was put on the shelf: ${booking.error ?? 'the booking failed'}.`
-          : moved === 0 && booking.notBooked.length === 0
-            ? 'The count is recorded. The shelf already held it, so nothing moved.'
-            : `The count is recorded. ${moved} line${moved === 1 ? '' : 's'} went on the shelf.`}
-      </p>
+      <p style={{ margin: 0 }}>{bookingSentence(booking)}</p>
       {booking.notBooked.map((n) => (
         <p key={`${n.lineNo}-${n.label}`} style={{ margin: '2px 0 0', color: '#94661A' }}>
           Not on the shelf: {n.label} — {n.reason}
