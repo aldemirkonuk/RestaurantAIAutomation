@@ -126,7 +126,6 @@ export function useMailThread(key: string | null) {
  * `conversation` and `reader`, which the composer's type does not name.
  */
 export interface SenderWithReader extends SenderIdentity {
-  conversation?: { where: string; words: string };
   reader?: MailboxReader & { lastRun?: unknown };
 }
 
