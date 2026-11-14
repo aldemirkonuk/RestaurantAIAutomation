@@ -10,7 +10,7 @@ import {
   BadRequestException,
   ServiceUnavailableException,
 } from "@nestjs/common";
-import { MailService } from "./mail.service";
+import { MailService, WAITING_COUNTED_IN_ONE_READ } from "./mail.service";
 import {
   MAIL_THREAD_PAGE,
   decodeMailCursor,
@@ -715,65 +715,87 @@ describe("a failed read says it failed", () => {
   });
 });
 
-describe("waitingVendors: the counter's count is Mail's (r36 mail gap 7)", () => {
-  const answer = (people: unknown[], waiting = 3) => (q: Query): Result =>
+describe("waitingVendors: the counter's count is Mail's, in one read (r36 mail gap 7, r41 gap 2)", () => {
+  const people = (n: number) => Array.from({ length: n }, (_, i) => person(i + 1));
+  const answer = (rows: unknown[], waiting = 3) => (q: Query): Result =>
     q.name === "mail_inbox_summary"
       ? { data: [{ ...SUMMARY_ROW, waiting_people: waiting }], error: null }
-      : { data: people, error: null };
+      : { data: rows, error: null };
 
-  it("counts Mail's waiting people and lists only waiting ones, with no zone read", async () => {
-    resolve = answer([person(1), person(2)]);
+  it("counts the waiting-only list in one read: no summary, no zone, one snapshot", async () => {
+    resolve = answer(people(7), 99);
     const r = await service().waitingVendors(HOUSE, "owner", 5);
-    expect(r.count).toBe(3);
-    expect(r.people.map((p) => p.name)).toEqual(["Vendor 1", "Vendor 2"]);
-    // No zone: the count does not depend on the house's day, and a house with
-    // no zone is still counted. The house row is never read for it.
-    expect(queries.map((q) => q.name).sort()).toEqual([
+    // The list ended inside one read, so its length is the count; the
+    // summary's 99 is never asked for.
+    expect(r.count).toBe(7);
+    expect(r.people.map((p) => p.name)).toEqual([
+      "Vendor 1",
+      "Vendor 2",
+      "Vendor 3",
+      "Vendor 4",
+      "Vendor 5",
+    ]);
+    expect(queries.map((q) => q.name)).toEqual(["list_mail_people"]);
+    expect(queries[0].payload).toMatchObject({
+      p_restaurant_id: HOUSE,
+      p_waiting_only: true,
+      p_withhold_house_letters: false,
+      // Mail's page cap, plus the one row that says whether more exist.
+      p_limit: WAITING_COUNTED_IN_ONE_READ + 1,
+    });
+    expect(WAITING_COUNTED_IN_ONE_READ).toBe(100);
+  });
+
+  it("a house with no one waiting reads 0 from that one read", async () => {
+    resolve = answer([], 4);
+    const r = await service().waitingVendors(HOUSE, "owner", 5);
+    expect(r).toEqual({ count: 0, people: [] });
+    expect(queries.map((q) => q.name)).toEqual(["list_mail_people"]);
+  });
+
+  it("staff are counted without the house's own letters, as Mail shows them", async () => {
+    resolve = answer(people(WAITING_COUNTED_IN_ONE_READ + 1), 150);
+    await service().waitingVendors(HOUSE, "staff", 5);
+    expect(queries.map((q) => q.name)).toEqual([
       "list_mail_people",
       "mail_inbox_summary",
     ]);
+    for (const q of queries) {
+      expect((q.payload as any).p_withhold_house_letters).toBe(true);
+    }
+  });
+
+  it("past one read, the summary counts the whole house, with no zone", async () => {
+    resolve = answer(people(WAITING_COUNTED_IN_ONE_READ + 1), 150);
+    const r = await service().waitingVendors(HOUSE, "owner", 5);
+    expect(r.count).toBe(150);
+    expect(r.people).toHaveLength(5);
     const sum = queries.find((q) => q.name === "mail_inbox_summary")!;
     expect(sum.payload).toEqual({
       p_restaurant_id: HOUSE,
       p_withhold_house_letters: false,
       p_zone: null,
     });
-    const list = queries.find((q) => q.name === "list_mail_people")!;
-    expect(list.payload).toMatchObject({
-      p_restaurant_id: HOUSE,
-      p_waiting_only: true,
-      p_withhold_house_letters: false,
-      // one row more than asked, which says whether another page exists
-      p_limit: 6,
-    });
   });
 
-  it("staff are counted without the house's own letters, as Mail shows them", async () => {
-    resolve = answer([]);
-    await service().waitingVendors(HOUSE, "staff", 5);
-    for (const q of queries) {
-      expect((q.payload as any).p_withhold_house_letters).toBe(true);
-    }
-  });
-
-  it("never says fewer than the rows it carries", async () => {
-    resolve = answer([person(1), person(2)], 1);
+  it("past one read, never says fewer than the list already holds", async () => {
+    resolve = answer(people(WAITING_COUNTED_IN_ONE_READ + 1), 3);
     const r = await service().waitingVendors(HOUSE, "owner", 5);
-    expect(r.count).toBe(2);
+    expect(r.count).toBe(WAITING_COUNTED_IN_ONE_READ);
   });
 
   it("a failed count, or no row, is a failure, never 0", async () => {
     resolve = (q) =>
       q.name === "mail_inbox_summary"
         ? { data: null, error: { message: "connection reset" } }
-        : { data: [], error: null };
+        : { data: people(WAITING_COUNTED_IN_ONE_READ + 1), error: null };
     await expect(
       service().waitingVendors(HOUSE, "owner", 5),
     ).rejects.toThrow(ServiceUnavailableException);
     resolve = (q) =>
       q.name === "mail_inbox_summary"
         ? { data: [], error: null }
-        : { data: [], error: null };
+        : { data: people(WAITING_COUNTED_IN_ONE_READ + 1), error: null };
     await expect(
       service().waitingVendors(HOUSE, "owner", 5),
     ).rejects.toThrow(ServiceUnavailableException);
@@ -783,13 +805,13 @@ describe("waitingVendors: the counter's count is Mail's (r36 mail gap 7)", () =>
     resolve = (q) =>
       q.name === "mail_inbox_summary"
         ? { data: [SUMMARY_ROW], error: { message: "statement timeout" } }
-        : { data: [], error: null };
+        : { data: people(WAITING_COUNTED_IN_ONE_READ + 1), error: null };
     await expect(
       service().waitingVendors(HOUSE, "owner", 5),
     ).rejects.toThrow(ServiceUnavailableException);
   });
 
-  it("a failed list is a failure too", async () => {
+  it("a failed list is a failure, and the summary is not asked", async () => {
     resolve = (q) =>
       q.name === "list_mail_people"
         ? { data: null, error: { message: "connection reset" } }
@@ -797,5 +819,6 @@ describe("waitingVendors: the counter's count is Mail's (r36 mail gap 7)", () =>
     await expect(
       service().waitingVendors(HOUSE, "owner", 5),
     ).rejects.toThrow(ServiceUnavailableException);
+    expect(queries.map((q) => q.name)).toEqual(["list_mail_people"]);
   });
 });
