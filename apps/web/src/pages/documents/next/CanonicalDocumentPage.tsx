@@ -54,7 +54,7 @@
  * confident about something it did not read.
  */
 
-import { useContext, useMemo, useState } from 'react'
+import { useContext, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Wordmark } from '@/components/mudavym'
@@ -156,9 +156,16 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
    * id. A FAILED read here leaves the names unknown and the shelf rows fall
    * back to the id — the proposal itself still stands, because the memory and
    * the item list are two different facts.
+   *
+   * The key names the house and NOT the paper (r41 invoices audit, gap 1): it
+   * is the house's whole list of goods, the same for every paper, and keying it
+   * by the paper read that whole list again for every paper opened. Papers in
+   * one house now share one read per minute; a write here still refreshes it
+   * (ReceiptsNext `refreshSheet`), and a paper naming a good the shared list
+   * does not have reads it again once (`namesAGoodTheListLacks` below).
    */
   const itemsQ = useQuery({
-    queryKey: ['canonical-document-items', rid, id],
+    queryKey: ['canonical-document-items', rid],
     queryFn: () => getInventory(),
     staleTime: 60_000,
   })
@@ -211,6 +218,28 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
   const fetchedAt = q.dataUpdatedAt || Date.now()
   const res = q.data
   const doc = res?.canonical
+
+  /**
+   * The shared list was read before this paper opened, and this paper names a
+   * good it does not have — one added since (a pairing on another paper, a new
+   * good on /inventory). Read the list again, ONCE: a list read after the
+   * paper opened is final for this paper, so a good the list will never hold
+   * (one taken off the shelves) cannot make it read in a loop.
+   */
+  const openedAt = useMemo(() => Date.now(), [id])
+  const namesAGoodTheListLacks =
+    !!doc &&
+    !!itemsQ.data &&
+    !itemsQ.isFetching &&
+    itemsQ.dataUpdatedAt < openedAt &&
+    doc.layer2.lines.some((l) =>
+      [l.inventoryId, l.proposedInventoryId].some(
+        (gid) => !!gid && !itemsQ.data!.some((x) => x.id === gid),
+      ),
+    )
+  useEffect(() => {
+    if (namesAGoodTheListLacks) void itemsQ.refetch()
+  }, [namesAGoodTheListLacks])
 
   /**
    * The delivery this document sits on — the FIRST one, and only when there is
