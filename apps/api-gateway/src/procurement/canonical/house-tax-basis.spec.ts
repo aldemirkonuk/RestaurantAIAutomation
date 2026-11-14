@@ -109,6 +109,25 @@ describe("DeliveryStockService at VERIFIED — the house's tax and the cost's st
 
   it("hands the landed rule the house's own answers, read beside its currency", async () => {
     const spy = jest.spyOn(paper, "landDelivery");
+    // Record what the house read ASKS for: the mock answers any select alike.
+    const asked: string[] = [];
+    const real = db.client.getClient;
+    db.client.getClient = () => {
+      const c = real();
+      return {
+        ...c,
+        from: (t: string) => {
+          const chain = c.from(t) as { select: (...a: unknown[]) => unknown };
+          if (t !== "restaurants") return chain;
+          const select = chain.select;
+          chain.select = (...a: unknown[]) => {
+            asked.push(String(a[0]));
+            return select(...a);
+          };
+          return chain;
+        },
+      };
+    };
     db.answers.restaurants = {
       data: { currency: "TRY", tax_basis: "prices_include_tax", reclaims_input_tax: true },
       error: null,
@@ -117,6 +136,7 @@ describe("DeliveryStockService at VERIFIED — the house's tax and the cost's st
     expect(spy).toHaveBeenCalledTimes(1);
     expect(spy.mock.calls[0][0].houseTax).toEqual({ tax_basis: "prices_include_tax", reclaims_input_tax: true });
     expect(spy.mock.calls[0][0].houseCurrency).toBe("TRY");
+    expect(asked).toEqual(["currency, tax_basis, reclaims_input_tax"]);
   });
 
   it("a house that has not answered is costed as printed, as before", async () => {
