@@ -59,6 +59,7 @@ describe("insight verbalizer", () => {
       baseline: 1000,
       deltaPct: -0.12,
       direction: "below",
+      currency: "USD",
     });
     expect(s).toContain("Tuesday sales");
     expect(s).toContain("12% lower");
@@ -74,6 +75,7 @@ describe("insight verbalizer", () => {
       peerCount: 12,
       deltaPct: 0.31,
       attributeReading: "Likely helped by being closest to the bar.",
+      currency: "USD",
     });
     expect(s).toContain("Table 4 ranks #1 of 12");
     expect(s).toContain("31% above");
