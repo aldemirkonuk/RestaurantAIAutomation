@@ -284,10 +284,14 @@ function addRefusal(err: unknown): string {
   return err instanceof Error && err.message ? err.message : 'no reason given';
 }
 
-/** The gateway's own words for a refusal, never a bare status. */
-function refusalOf(err: unknown): string {
+/**
+ * The gateway's own words for a refusal, never a bare status: a failed discard
+ * printed axios's "Request failed with status code 403" (r28 G15). `act` is
+ * what a 403 refused, in words.
+ */
+export function refusalOf(err: unknown, act = 'change a price'): string {
   const e = err as { response?: { status?: number; data?: { message?: unknown } }; message?: string };
-  if (e?.response?.status === 403) return 'only an owner or a manager can change a price';
+  if (e?.response?.status === 403) return `only an owner or a manager can ${act}`;
   const m = e?.response?.data?.message;
   if (typeof m === 'string' && m) return m;
   if (Array.isArray(m) && m.length) return String(m[0]);
@@ -300,10 +304,26 @@ interface PriceDraft {
   bottle: string
 }
 
-function MenuRow({ line, currency, onDiscard, discarding, testId = 'menu-row', edit }: {
+/**
+ * A dish keeps its one price in `bottle_price` (#1261, and the photo reader's
+ * dishes, #1379), so the kitchen table says "Price" and shows that one box. A
+ * dish that also holds a glass-column price (a file that had one) still shows
+ * it, and its box, so no stored price is hidden (r28 G13).
+ */
+function dishHasGlassPrice(line: MenuLine): boolean {
+  return line.by_glass_price !== null && line.by_glass_price !== undefined;
+}
+
+/** Columns of the drinks table (name, section, producer/region, glass, bottle, status, acts) and of the kitchen table (name, section, price, status, acts). */
+const DRINK_COLUMNS = 7;
+const KITCHEN_COLUMNS = 5;
+
+function MenuRow({ line, currency, onDiscard, discarding, testId = 'menu-row', edit, dish = false }: {
   line: MenuLine
   currency: string | null
   testId?: string
+  /** A kitchen line: one Price column, no producer or region, no glass box unless it holds a glass price. */
+  dish?: boolean
   /** Absent for a member who may not discard (ADR 0358 D2: owner or manager only). */
   onDiscard?: () => void
   discarding: boolean
@@ -325,8 +345,14 @@ function MenuRow({ line, currency, onDiscard, discarding, testId = 'menu-row', e
   // nothing (r24 walk). Opening puts the cursor in the first box; closing (saved,
   // cancelled, Escape) gives it back to "Change price" instead of dropping it on
   // the page, so a keyboard user stays on the line they were changing.
+  // r33 walk: the box opens holding the price it has, so typing "150,50" after
+  // opening gave "140,00150,50", which was refused. The text is selected as the
+  // box opens, so what is typed replaces it; the arrows still edit it in place.
   useEffect(() => {
-    if (editing && !wasEditing.current) firstBox.current?.focus();
+    if (editing && !wasEditing.current) {
+      firstBox.current?.focus();
+      firstBox.current?.select();
+    }
     if (!editing && wasEditing.current) {
       const lost = !document.activeElement || document.activeElement === document.body;
       if (lost) changeButton.current?.focus();
@@ -351,13 +377,18 @@ function MenuRow({ line, currency, onDiscard, discarding, testId = 'menu-row', e
       if (!edit?.saving) cancel();
     }
   };
+  const glassShown = !dish || dishHasGlassPrice(line);
   const box = (kind: 'glass' | 'bottle') => (
     <input
-      ref={kind === 'glass' ? firstBox : undefined}
+      ref={kind === 'glass' || !glassShown ? firstBox : undefined}
       className="cl-field cl-focus cl-num"
       inputMode="decimal"
       enterKeyHint="done"
-      aria-label={`${kind === 'glass' ? 'Glass' : 'Bottle'} price of ${line.name}`}
+      aria-label={
+        dish
+          ? `${kind === 'glass' ? 'Glass-column price' : 'Price'} of ${line.name}`
+          : `${kind === 'glass' ? 'Glass' : 'Bottle'} price of ${line.name}`
+      }
       data-testid={`menu-price-${kind}`}
       value={draft[kind]}
       placeholder="keep"
@@ -370,12 +401,25 @@ function MenuRow({ line, currency, onDiscard, discarding, testId = 'menu-row', e
     <tr data-testid={testId}>
       <td>{line.name}</td>
       <td className="cl-dim">{line.category ?? EM}</td>
-      <td className="cl-dim">{[line.producer, line.region].filter(Boolean).join(', ') || EM}</td>
-      <td className="cl-num">{editing ? box('glass') : money(line.by_glass_price, currency)}</td>
-      <td className="cl-num">{editing ? box('bottle') : money(line.bottle_price, currency)}</td>
+      {dish ? (
+        <td className="cl-num" data-testid="menu-dish-price">
+          {editing ? box('bottle') : money(line.bottle_price, currency)}
+          {glassShown ? (
+            <span className="cl-note" style={{ display: 'block' }} data-testid="menu-dish-glass-price">
+              {editing ? box('glass') : `and ${money(line.by_glass_price, currency)} in the glass column`}
+            </span>
+          ) : null}
+        </td>
+      ) : (
+        <>
+          <td className="cl-dim">{[line.producer, line.region].filter(Boolean).join(', ') || EM}</td>
+          <td className="cl-num">{editing ? box('glass') : money(line.by_glass_price, currency)}</td>
+          <td className="cl-num">{editing ? box('bottle') : money(line.bottle_price, currency)}</td>
+        </>
+      )}
       <td>
         {(() => {
-          const s = lineStatusWords(line);
+          const s = lineStatusWords(line, { dish });
           return (
             <>
               <span className="cl-chip" data-seal={s.sealed ? 'true' : 'false'} title={s.why ?? undefined} data-testid="menu-line-status">
@@ -497,12 +541,13 @@ export default function MenuNext() {
   const drinks = lines.filter((l) => !isKitchenMenuLine(l));
   const kitchen = lines.filter(isKitchenMenuLine);
   // The answer to a price change sits right under its line, where the person clicked.
-  const row = (line: MenuLine, testId?: string) => (
+  const row = (line: MenuLine, testId?: string, dish = false) => (
     <Fragment key={line.id}>
     <MenuRow
       line={line}
       currency={currency}
       testId={testId}
+      dish={dish}
       discarding={discard.isPending && discardingId === line.id}
       onDiscard={!canManage ? undefined : () => {
         setDiscardingId(line.id);
@@ -525,7 +570,7 @@ export default function MenuNext() {
     />
     {priceNote?.lineId === line.id ? (
       <tr>
-        <td colSpan={7} style={{ paddingTop: 0 }}>
+        <td colSpan={dish ? KITCHEN_COLUMNS : DRINK_COLUMNS} style={{ paddingTop: 0 }}>
           <p
             role={priceNote.tone === 'alert' ? 'alert' : 'status'}
             className="cl-said"
@@ -539,14 +584,22 @@ export default function MenuNext() {
     ) : null}
     </Fragment>
   );
-  const head = (
+  // A dish is sold by the plate, not by the glass or the bottle (r28 G13): the
+  // kitchen table has its own head, with one Price column.
+  const head = (dish: boolean) => (
     <thead>
       <tr>
         <th>Name</th>
         <th>Section</th>
-        <th>Producer / region</th>
-        <th>Glass</th>
-        <th>Bottle</th>
+        {dish ? (
+          <th>Price</th>
+        ) : (
+          <>
+            <th>Producer / region</th>
+            <th>Glass</th>
+            <th>Bottle</th>
+          </>
+        )}
         <th>Status</th>
         <th />
       </tr>
@@ -622,11 +675,11 @@ export default function MenuNext() {
 
             <div style={{ overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10, marginTop: 16 }}>
               <table className="cl-table" style={{ width: '100%' }} aria-label="Drinks on the current menu">
-                {head}
+                {head(false)}
                 <tbody>
                   {drinks.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="cl-said" style={{ padding: 14 }}>
+                      <td colSpan={DRINK_COLUMNS} className="cl-said" style={{ padding: 14 }}>
                         {kitchen.length === 0
                           ? 'Nothing on the menu yet — add the first line above.'
                           : 'No drink on the menu yet — only the kitchen lines below.'}
@@ -648,16 +701,15 @@ export default function MenuNext() {
                 </p>
                 <div style={{ overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10, marginTop: 8 }}>
                   <table className="cl-table" style={{ width: '100%' }} aria-label="Kitchen lines on the current menu">
-                    {head}
-                    <tbody>{kitchen.map((line) => row(line, 'menu-kitchen-row'))}</tbody>
+                    {head(true)}
+                    <tbody>{kitchen.map((line) => row(line, 'menu-kitchen-row', true))}</tbody>
                   </table>
                 </div>
               </section>
             ) : null}
             {discard.isError ? (
-              <p role="alert" className="cl-said" style={{ marginTop: 8 }}>
-                That line was not discarded (
-                {discard.error instanceof Error ? discard.error.message : 'no reason given'}).
+              <p role="alert" className="cl-said" style={{ marginTop: 8 }} data-testid="menu-discard-refused">
+                That line was not discarded ({refusalOf(discard.error, 'discard a line')}).
               </p>
             ) : null}
           </>
@@ -678,9 +730,10 @@ export default function MenuNext() {
           }}
         >
           <p className="cl-note" style={{ margin: 0, fontSize: 11 }}>
-            Discard removes a line from what guests see. What it cost and who added it is kept —
-            nothing here is a delete. Change price sets the line's glass or bottle price; on the
-            current menu the house's own price follows unless it is locked. An empty box keeps its price.
+            Discard takes a line off the current menu. What it cost and who added it is kept —
+            nothing here is a delete. Change price sets a drink's glass or bottle price, or a dish's
+            one price; for a drink on the current menu the house's own price follows unless it is
+            locked. An empty box keeps its price.
           </p>
         </footer>
       </div>

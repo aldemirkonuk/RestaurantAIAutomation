@@ -14,7 +14,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MenuNext from './MenuNext';
 import { housePriceNote } from './menu-price-note';
@@ -471,7 +471,7 @@ describe('MenuNext — a price changes on its line', () => {
     mockReview.mockResolvedValue({ menuItemId: 'k1', fieldName: 'bottle_price', newValue: '11', priceSync: 'kitchen_line', priceSyncError: null, priceHeld: [] });
     mount();
     await openEditor('Tiramisu');
-    fireEvent.change(screen.getByLabelText('Bottle price of Tiramisu'), { target: { value: '11' } });
+    fireEvent.change(screen.getByLabelText('Price of Tiramisu'), { target: { value: '11' } });
     fireEvent.click(screen.getByTestId('menu-price-save'));
     const note = await screen.findByTestId('menu-price-note');
     expect(note.textContent).toMatch(/^Tiramisu: the price is now .*11\.00 on the menu\. A dish has no house price and no stock, so nothing else changed\.$/);
@@ -606,5 +606,125 @@ describe('MenuNext — a price changes on its line', () => {
     mount();
     await screen.findAllByTestId('menu-row');
     expect(screen.queryByTestId('menu-price-edit')).not.toBeInTheDocument();
+  });
+});
+
+// r28 G13: the kitchen table reused the drinks head, so a dish's one price sat
+// under "Bottle" and Change price opened a Glass and a Bottle box.
+describe('MenuNext — a dish has one price (r28 G13)', () => {
+  const tiramisu = (over: Partial<MenuLine> = {}) =>
+    line({ id: 'k1', name: 'Tiramisu', category: 'Tatlılar', by_glass_price: null, bottle_price: 9, kitchen_line: true, ...over });
+  const chianti = () => line({ id: 'w1', name: 'Chianti', category: 'red', by_glass_price: 12, bottle_price: 48, kitchen_line: false });
+  const heads = (table: HTMLElement) => within(table).getAllByRole('columnheader').map((h) => h.textContent);
+
+  it('the kitchen table says Price, and the drinks table keeps Glass and Bottle', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [chianti(), tiramisu()] }));
+    mount();
+    await screen.findAllByTestId('menu-kitchen-row');
+    expect(heads(screen.getByRole('table', { name: 'Kitchen lines on the current menu' }))).toEqual([
+      'Name', 'Section', 'Price', 'Status', '',
+    ]);
+    expect(heads(screen.getByRole('table', { name: 'Drinks on the current menu' }))).toEqual([
+      'Name', 'Section', 'Producer / region', 'Glass', 'Bottle', 'Status', '',
+    ]);
+    const dish = screen.getByTestId('menu-kitchen-row');
+    expect(within(dish).getAllByRole('cell')).toHaveLength(5);
+    await waitFor(() => expect(within(dish).getByTestId('menu-dish-price')).toHaveTextContent(/^(₺|TRY\s?)9[.,]00$/));
+    expect(within(dish).queryByTestId('menu-dish-glass-price')).not.toBeInTheDocument();
+  });
+
+  it('Change price on a dish opens one Price box, and saves it as the dish\'s price', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [tiramisu()] }));
+    mockReview.mockResolvedValue({ menuItemId: 'k1', fieldName: 'bottle_price', newValue: '11', priceSync: 'kitchen_line', priceSyncError: null, priceHeld: [] });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Change the price of Tiramisu' }));
+    const dish = screen.getByTestId('menu-kitchen-row');
+    expect(within(dish).getAllByRole('textbox')).toHaveLength(1);
+    const box = within(dish).getByLabelText('Price of Tiramisu') as HTMLInputElement;
+    expect(box).toHaveFocus();
+    // r33 walk: the price it holds is selected, so what is typed replaces it.
+    expect(box.value).not.toBe('');
+    expect([box.selectionStart, box.selectionEnd]).toEqual([0, box.value.length]);
+    expect(within(dish).queryByLabelText(/Glass/)).not.toBeInTheDocument();
+    expect(within(dish).queryByLabelText(/Bottle/)).not.toBeInTheDocument();
+    fireEvent.change(box, { target: { value: '11' } });
+    fireEvent.click(screen.getByTestId('menu-price-save'));
+    await waitFor(() => expect(mockReview).toHaveBeenCalledWith('k1', 'bottle_price', '11'));
+    expect(mockReview).toHaveBeenCalledTimes(1);
+  });
+
+  it('a dish set by hand says "its price" on its line, a drink keeps "its bottle price" (r33 walk)', async () => {
+    const hand = { status: 'flagged', flag_reason: 'corrected', flag_field: 'bottle_price' } as Partial<MenuLine>;
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ ...chianti(), ...hand }), tiramisu(hand)] }));
+    mount();
+    const dish = await screen.findByTestId('menu-kitchen-row');
+    expect(within(dish).getByTestId('menu-line-status')).toHaveTextContent(/^set by hand: its price$/);
+    expect(within(screen.getByTestId('menu-row')).getByTestId('menu-line-status')).toHaveTextContent(/^set by hand: its bottle price$/);
+  });
+
+  it('a dish that holds a glass-column price still shows it, and its box, named apart', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [tiramisu({ by_glass_price: 4 })] }));
+    mockReview.mockResolvedValue({ menuItemId: 'k1', fieldName: 'by_glass_price', newValue: '5', priceSync: 'kitchen_line', priceSyncError: null, priceHeld: [] });
+    mount();
+    const dish = await screen.findByTestId('menu-kitchen-row');
+    await waitFor(() => expect(within(dish).getByTestId('menu-dish-glass-price')).toHaveTextContent(/^and (₺|TRY\s?)4[.,]00 in the glass column$/));
+    fireEvent.click(screen.getByRole('button', { name: 'Change the price of Tiramisu' }));
+    expect(within(dish).getAllByRole('textbox')).toHaveLength(2);
+    fireEvent.change(within(dish).getByLabelText('Glass-column price of Tiramisu'), { target: { value: '5' } });
+    fireEvent.click(screen.getByTestId('menu-price-save'));
+    const note = await screen.findByTestId('menu-price-note');
+    expect(note.textContent).toMatch(/^Tiramisu: the glass-column price is now /);
+    expect(mockReview).toHaveBeenCalledWith('k1', 'by_glass_price', '5');
+  });
+
+  it('the answer under a dish spans the kitchen table, not the drinks table', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [tiramisu()] }));
+    mockReview.mockResolvedValue({ menuItemId: 'k1', fieldName: 'bottle_price', newValue: '11', priceSync: 'kitchen_line', priceSyncError: null, priceHeld: [] });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Change the price of Tiramisu' }));
+    fireEvent.change(screen.getByLabelText('Price of Tiramisu'), { target: { value: '11' } });
+    fireEvent.click(screen.getByTestId('menu-price-save'));
+    const note = await screen.findByTestId('menu-price-note');
+    expect(note.closest('td')).toHaveAttribute('colspan', '5');
+  });
+});
+
+// r28 G15 + G17: a failed discard printed axios's own text, and the footer
+// promised guests a menu no guest can open.
+describe('MenuNext — discard words (r28 G15, G17)', () => {
+  it('a refused discard says who may discard, never "Request failed with status code 403"', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'l9', name: 'Raki' })] }));
+    mockDiscard.mockRejectedValue(
+      Object.assign(new Error('Request failed with status code 403'), { response: { status: 403, data: {} } }),
+    );
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
+    const said = await screen.findByTestId('menu-discard-refused');
+    expect(said).toHaveTextContent('That line was not discarded (only an owner or a manager can discard a line).');
+    expect(said).not.toHaveTextContent('status code');
+  });
+
+  it('a failed discard says the gateway\'s own sentence', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'l9', name: 'Raki' })] }));
+    mockDiscard.mockRejectedValue(
+      Object.assign(new Error('Request failed with status code 500'), {
+        response: { status: 500, data: { message: 'The menu line could not be read.' } },
+      }),
+    );
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
+    expect(await screen.findByTestId('menu-discard-refused')).toHaveTextContent(
+      'That line was not discarded (The menu line could not be read.).',
+    );
+  });
+
+  it('the footer says what Discard does, and promises no guest-facing menu', async () => {
+    mockGetMenu.mockResolvedValue(menu());
+    mount();
+    await screen.findAllByTestId('menu-row');
+    const foot = document.querySelector('footer') as HTMLElement;
+    expect(foot).toHaveTextContent('Discard takes a line off the current menu.');
+    expect(foot).not.toHaveTextContent(/guest/i);
+    expect(foot).toHaveTextContent("a dish's one price");
   });
 });

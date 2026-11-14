@@ -78,7 +78,8 @@ export function priceChangeNote(
   if (changes.length === 0) return null;
   let alert = false;
   const parts = changes.map((c) => {
-    const what = dish ? 'the price' : `the ${c.kind} price`;
+    // A dish has one price (bottle_price); a glass-column price is named apart (r28 G13).
+    const what = dish ? (c.kind === 'glass' ? 'the glass-column price' : 'the price') : `the ${c.kind} price`;
     if ('refused' in c.result) {
       alert = true;
       return `${what} was not changed (${c.result.refused})`;
