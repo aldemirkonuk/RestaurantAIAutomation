@@ -1135,6 +1135,11 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     dailySeries: number[];
     dailyDates: string[];
     rowCount: number;
+    /**
+     * `pos_revenue` only: how many checks each day of `dailyDates` holds, in
+     * the same order. The till's daily bars and its average check read it.
+     */
+    dailyCounts?: number[];
     /** Bottles sold only: the bottle basis of the window (ADR 0297). */
     units?: UnitsLabel;
   }> {
@@ -1243,6 +1248,8 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     };
 
     const daily = new Map<string, number>();
+    // Checks per house day, filled only by `pos_revenue`.
+    const counts = new Map<string, number>();
     let rowCount = 0;
     let units: UnitsLabel | undefined;
     const add = (date: string, v: number) => {
@@ -1391,7 +1398,10 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
           // The whole check total — the tender the restaurant actually booked,
           // which is the denominator a COGS ratio needs. `wine_revenue` below
           // deliberately sums only itemised wine lines and is NOT a substitute.
-          for (const { row: c, day } of checks) add(day, Number(c.total) || 0);
+          for (const { row: c, day } of checks) {
+            add(day, Number(c.total) || 0);
+            counts.set(day, (counts.get(day) || 0) + 1);
+          }
         } else if (metricKey === "checks") {
           for (const { day } of checks) add(day, 1);
         } else if (metricKey === "avg_check") {
@@ -1450,6 +1460,10 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     const dates = Array.from(daily.keys()).sort();
     const dailySeries = dates.map((d) => daily.get(d) || 0);
     const current = dailySeries.reduce((a, b) => a + b, 0);
+    if (metricKey === "pos_revenue") {
+      const dailyCounts = dates.map((d) => counts.get(d) ?? 0);
+      return { current, dailySeries, dailyDates: dates, rowCount, dailyCounts };
+    }
     return { current, dailySeries, dailyDates: dates, rowCount, units };
   }
 
@@ -1522,7 +1536,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     if (!connected) return { ...unread, posConnected: false };
     if (!zone || !from || !to) return { ...unread, posConnected: true };
 
-    const { current, dailySeries, dailyDates, rowCount } =
+    const { current, dailySeries, dailyDates, rowCount, dailyCounts } =
       await this.computeMetricWithSeries(
         restaurantId,
         "pos_revenue",
@@ -1544,6 +1558,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       dailySeries: dailyDates.map((date, i) => ({
         date,
         revenue: dailySeries[i] ?? 0,
+        checks: dailyCounts?.[i] ?? null,
       })),
     };
   }
@@ -1579,6 +1594,10 @@ export interface PosRevenueWindow {
   revenue: number | null;
   /** Non-voided checks filed in the window. `null` when `posConnected` is false or `zoneUnset`. */
   checkCount: number | null;
-  /** Sparse — only days that actually had revenue appear. */
-  dailySeries: Array<{ date: string; revenue: number }>;
+  /**
+   * Sparse — only days that had a check appear. `checks` is how many
+   * non-voided checks that day holds; across the series they add up to
+   * `checkCount`. `null` only if the count could not be kept.
+   */
+  dailySeries: Array<{ date: string; revenue: number; checks: number | null }>;
 }

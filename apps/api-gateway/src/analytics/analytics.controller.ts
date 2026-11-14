@@ -52,6 +52,15 @@ import {
 } from "./insights/insight-implementations";
 import { DataRequirement } from "./insights/insight-catalog";
 import { DayExclusionsService } from "./insights/day-exclusions.service";
+import {
+  insightReadable,
+  insightsForRole,
+  lensHidden,
+  reorderCostReadable,
+  riskForRole,
+  seesFor,
+  withheldLens,
+} from "./role-reads";
 import { Persona } from "./metric-registry";
 
 /**
@@ -95,6 +104,39 @@ const MAX_FORECAST_HORIZON = 365;
  */
 function salesGateFor(user?: { role?: string | null }): SalesGate {
   return { withSales: policyFor(user?.role).sees.includes("sales") };
+}
+
+/**
+ * The till window as a reader without `sales` gets it: the route answers, every
+ * figure is `null` and `salesWithheld` says why. `null`, never `0` or `[]`: an
+ * empty series would read as "the house took nothing", and `posConnected:
+ * false` as "no till", which are claims about the house, not about the reader.
+ */
+function withheldPosRevenue(restaurantId: string, days: number) {
+  return {
+    restaurantId,
+    days,
+    salesWithheld: true as const,
+    from: null,
+    to: null,
+    timezone: null,
+    zoneUnset: null,
+    posConnected: null,
+    revenue: null,
+    checkCount: null,
+    dailySeries: null,
+    consumption: null,
+  };
+}
+
+/** The basket as a reader without `sales` gets it: no pair and no count. */
+function withheldBasket(restaurantId: string) {
+  return {
+    restaurantId,
+    salesWithheld: true as const,
+    transactionCount: null,
+    pairs: null,
+  };
 }
 
 function parseHorizon(raw?: string): number | undefined {
@@ -204,6 +246,11 @@ export class AnalyticsController {
     @Query("labor") laborStr?: string,
     @CurrentUser() user?: { role?: string | null },
   ) {
+    // Every figure of record is money, the till or vendor spend: a role that
+    // does not see them is told so, and the lens is never read (ADR 0348
+    // decision 3, slice 4).
+    const hidden = lensHidden("financial", seesFor(user));
+    if (hidden.length) return withheldLens(restaurantId, hidden);
     try {
       const labor = laborStr ? parseFloat(laborStr) : 0;
       return await this.analyticsService.getFinancialSummary(
@@ -237,11 +284,15 @@ export class AnalyticsController {
     @Param("restaurantId") restaurantId: string,
     @Query("serviceLevel") serviceLevelStr?: string,
     @Query("leadTimeDays") leadTimeStr?: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     try {
+      // Staff restock from this lens, so it stays open; its cost columns are
+      // withheld from a role that does not see money (ADR 0348, slice 4).
       return await this.analyticsService.getInventoryScience(restaurantId, {
         serviceLevel: serviceLevelStr ? parseFloat(serviceLevelStr) : undefined,
         leadTimeDays: leadTimeStr ? parseFloat(leadTimeStr) : undefined,
+        withCost: reorderCostReadable(seesFor(user)),
       });
     } catch (error) {
       throw lensFailure(error, "Failed to compute inventory science");
@@ -260,9 +311,14 @@ export class AnalyticsController {
     @CurrentUser() user?: { role?: string | null },
   ) {
     try {
-      return await this.analyticsService.getRiskProfile(
-        restaurantId,
-        salesGateFor(user),
+      // The concentration parts are spend and value shares; demand risk is
+      // volumes and stays open (ADR 0348, slice 4).
+      return riskForRole(
+        await this.analyticsService.getRiskProfile(
+          restaurantId,
+          salesGateFor(user),
+        ),
+        seesFor(user),
       );
     } catch (error) {
       throw lensFailure(error, "Failed to compute risk profile");
@@ -455,16 +511,40 @@ export class AnalyticsController {
     @Query("categories") categoriesStr?: string,
     @Query("limit") limitStr?: string,
     @Query("candidateKey") candidateKey?: string,
-    @CurrentUser() user?: { userId?: string },
+    @CurrentUser() user?: { userId?: string; role?: string | null },
   ) {
+    const sees = seesFor(user);
+    // A forced compute of one type the caller may not read is not run: the
+    // type is named by the caller, so its sentence would be theirs alone.
+    if (candidateKey?.trim() && !insightReadable(candidateKey.trim(), sees))
+      return { source: "withheld", insights: [], withheldForRole: 1 };
     try {
-      const answer = await this.readInsights(
+      const raw = await this.readInsights(
         restaurantId,
         refresh,
         categoriesStr,
         limitStr,
         candidateKey,
       );
+      // Staff read the sentences of the classes they see (ADR 0348 decision
+      // 3): never a named server's ranking, the till, a spend or a margin.
+      const answer = Array.isArray((raw as { insights?: unknown }).insights)
+        ? (() => {
+            const held = insightsForRole(
+              (raw as { insights: unknown[] }).insights,
+              sees,
+            );
+            // Said only when something was withheld: a holder's answer is
+            // the one it always was.
+            return held.withheldForRole > 0
+              ? {
+                  ...raw,
+                  insights: held.kept,
+                  withheldForRole: held.withheldForRole,
+                }
+              : raw;
+          })()
+        : raw;
       return await this.forViewer(restaurantId, user, answer);
     } catch (error) {
       throw new HttpException(
@@ -772,7 +852,14 @@ export class AnalyticsController {
     description:
       "Support/confidence/lift/χ² for item pairs on the same check — wine-wine now, food-wine when POS items land.",
   })
-  async getBasket(@Param("restaurantId") restaurantId: string) {
+  async getBasket(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string | null },
+  ) {
+    // Which items sell together is read off the till's checks, so it is a
+    // sales figure (ADR 0298 decision 9): staff keep the route and are told it
+    // is withheld; the checks are never read for them (ADR 0348 decision 3).
+    if (!salesGateFor(user).withSales) return withheldBasket(restaurantId);
     return this.tableAnalytics.getBasketAffinity(restaurantId);
   }
 
@@ -1130,7 +1217,12 @@ export class AnalyticsController {
     description:
       "Stars / Plowhorses / Puzzles / Dogs from margin (unit_price − WAC) × velocity, with a concrete action per quadrant.",
   })
-  async getMenuEngineering(@Param("restaurantId") restaurantId: string) {
+  async getMenuEngineering(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string | null },
+  ) {
+    const hidden = lensHidden("menuEngineering", seesFor(user));
+    if (hidden.length) return withheldLens(restaurantId, hidden);
     return this.advanced.getMenuEngineering(restaurantId);
   }
 
@@ -1140,7 +1232,12 @@ export class AnalyticsController {
     description:
       "Per-vendor lead-time distribution (mean/median/p90/σ), on-time rate, unit-price trend, spend share + HHI.",
   })
-  async getVendorScorecard(@Param("restaurantId") restaurantId: string) {
+  async getVendorScorecard(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string | null },
+  ) {
+    const hidden = lensHidden("vendorScorecard", seesFor(user));
+    if (hidden.length) return withheldLens(restaurantId, hidden);
     return this.advanced.getVendorScorecard(restaurantId);
   }
 
@@ -1160,7 +1257,12 @@ export class AnalyticsController {
     description:
       "30-day purchasing spend vs prior, Holt 4-week projection, committed open-order exposure.",
   })
-  async getCashflow(@Param("restaurantId") restaurantId: string) {
+  async getCashflow(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string | null },
+  ) {
+    const hidden = lensHidden("cashflow", seesFor(user));
+    if (hidden.length) return withheldLens(restaurantId, hidden);
     return this.advanced.getCashflow(restaurantId);
   }
 
@@ -1173,7 +1275,10 @@ export class AnalyticsController {
   async getWine360(
     @Param("restaurantId") restaurantId: string,
     @Param("masterWineId") masterWineId: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
+    const hidden = lensHidden("wine360", seesFor(user));
+    if (hidden.length) return withheldLens(restaurantId, hidden);
     return this.advanced.getWine360(restaurantId, masterWineId);
   }
 
@@ -1190,7 +1295,8 @@ export class AnalyticsController {
       "are then `null`, NOT `0`, and every consumer must render an empty state rather than a figure. " +
       "Reuses the same query goal progress runs on, so the two can never disagree. " +
       "Days are the house's days (ADR 0296): each check is filed on the date its house's clock read when it closed, " +
-      "else when it opened. A house with no time zone answers `zoneUnset: true` with `null` figures and `consumption: null`.",
+      "else when it opened. A house with no time zone answers `zoneUnset: true` with `null` figures and `consumption: null`. " +
+      "A reader whose role does not see sales (staff) gets `salesWithheld: true` with every figure `null` (ADR 0298 decision 9).",
   })
   @ApiQuery({
     name: "days",
@@ -1201,11 +1307,17 @@ export class AnalyticsController {
   async getPosRevenue(
     @Param("restaurantId") restaurantId: string,
     @Query("days") days?: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     const parsed = Number.parseInt(days ?? "", 10);
     const span = Number.isFinite(parsed)
       ? Math.min(Math.max(parsed, 1), 365)
       : 30;
+    // The till's takings are a sales figure (ADR 0298 decision 9). Staff keep
+    // the route and are told the figures are withheld; neither the checks nor
+    // the house's clock are read for them (ADR 0348 decision 3).
+    if (!salesGateFor(user).withSales)
+      return withheldPosRevenue(restaurantId, span);
     try {
       const window = await this.goalsService.getPosRevenueWindow(
         restaurantId,
@@ -1246,7 +1358,11 @@ export class AnalyticsController {
     @Param("restaurantId") restaurantId: string,
     @CurrentUser() user?: { role?: string | null },
   ) {
-    return this.advanced.getOverview(restaurantId, salesGateFor(user));
+    return this.advanced.getOverview(
+      restaurantId,
+      salesGateFor(user),
+      seesFor(user),
+    );
   }
 
   @Get("recommendations/:restaurantId")

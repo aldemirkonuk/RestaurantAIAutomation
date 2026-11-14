@@ -54,6 +54,13 @@ import { overdueStanding } from "../procurement/overdue-order";
 import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
 import { readOverdueContext } from "../procurement/overdue-order-reads";
 import { HouseFrame, houseFrame } from "../common/house-frame";
+import { DataClass } from "../ask-readings/reading-data-classes";
+import {
+  insightsForRole,
+  lensHidden,
+  reorderCostReadable,
+  riskForRole,
+} from "./role-reads";
 
 /**
  * AdvancedAnalyticsService — the second wave of catalogue features.
@@ -1123,8 +1130,21 @@ export class AdvancedAnalyticsService {
   // 6. Overview — every lens in one call (API-bus pattern, #207)
   // =========================================================================
 
-  async getOverview(restaurantId: string, gate: SalesGate = {}) {
+  /**
+   * `sees` is the caller's ROLE_POLICY row (ADR 0348 decision 3). A lens of a
+   * class it does not see is not read, and answers `withheldForRole` in its
+   * place, so `null` keeps meaning "the lens failed". Omitted, the overview
+   * reads as the full row (the internal callers: the digest and MCP).
+   */
+  async getOverview(
+    restaurantId: string,
+    gate: SalesGate = {},
+    sees?: readonly DataClass[],
+  ) {
     const startedAt = Date.now();
+    const finHidden = sees ? lensHidden("financial", sees) : [];
+    const menuHidden = sees ? lensHidden("menuEngineering", sees) : [];
+    const cashHidden = sees ? lensHidden("cashflow", sees) : [];
     const [
       financial,
       risk,
@@ -1135,12 +1155,16 @@ export class AdvancedAnalyticsService {
       insights,
       goals,
     ] = await Promise.allSettled([
-      this.analyticsService.getFinancialSummary(restaurantId, 0, gate),
+      finHidden.length
+        ? null
+        : this.analyticsService.getFinancialSummary(restaurantId, 0, gate),
       this.analyticsService.getRiskProfile(restaurantId, gate),
-      this.analyticsService.getInventoryScience(restaurantId),
-      this.getMenuEngineering(restaurantId),
+      this.analyticsService.getInventoryScience(restaurantId, {
+        withCost: sees ? reorderCostReadable(sees) : true,
+      }),
+      menuHidden.length ? null : this.getMenuEngineering(restaurantId),
       this.getSeasonality(restaurantId),
-      this.getCashflow(restaurantId),
+      cashHidden.length ? null : this.getCashflow(restaurantId),
       this.insightGenerator.getStored(restaurantId, { limit: 8 }),
       this.goalsService.listGoals(restaurantId, "active", gate),
     ]);
@@ -1148,9 +1172,12 @@ export class AdvancedAnalyticsService {
       r.status === "fulfilled" ? r.value : null;
     const inventoryScience = ok(invSci);
     const menuFull = ok(menu);
+    const riskRead = ok(risk);
     return {
-      financial: ok(financial),
-      risk: ok(risk),
+      financial: finHidden.length
+        ? { withheldForRole: finHidden }
+        : ok(financial),
+      risk: riskRead && sees ? riskForRole(riskRead, sees) : riskRead,
       inventory: inventoryScience
         ? {
             reorderCount: inventoryScience.reorderCount,
@@ -1158,12 +1185,18 @@ export class AdvancedAnalyticsService {
             skuCount: inventoryScience.skuCount,
           }
         : null,
-      menuEngineering: menuFull
-        ? { counts: menuFull.counts, top: menuFull.items?.slice(0, 5) }
-        : null,
+      menuEngineering: menuHidden.length
+        ? { withheldForRole: menuHidden }
+        : menuFull
+          ? { counts: menuFull.counts, top: menuFull.items?.slice(0, 5) }
+          : null,
       seasonality: ok(seasonality),
-      cashflow: ok(cashflow),
-      insights: ok(insights) ?? [],
+      cashflow: cashHidden.length
+        ? { withheldForRole: cashHidden }
+        : ok(cashflow),
+      insights: sees
+        ? insightsForRole(ok(insights) ?? [], sees).kept
+        : (ok(insights) ?? []),
       // Each goal carries its metric's unit, so a page prints a baseline as
       // money, a percent or days rather than a bare number. A key outside the
       // catalogue says no unit (null) instead of borrowing one.
@@ -1171,6 +1204,7 @@ export class AdvancedAnalyticsService {
         ...g,
         unit: GoalsService.SUPPORTED_METRICS[g?.metric_key]?.unit ?? null,
       })),
+
       computedIn: Date.now() - startedAt,
       generatedAt: new Date().toISOString(),
     };

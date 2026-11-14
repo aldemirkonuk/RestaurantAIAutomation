@@ -1,4 +1,5 @@
 import { readFileSync } from "fs";
+import { policyFor } from "../../ask-readings/reading-data-classes";
 import { join } from "path";
 import { AnalyticsController } from "../../analytics/analytics.controller";
 import { RecommendationActionsService } from "../../analytics/recommendation-actions.service";
@@ -128,21 +129,22 @@ const BENCH_SOURCES = {
 };
 
 const PAGE: Record<ExportableCutting, PageRead> = {
-  reading: { path: "`/analytics/insights/${rid}?limit=40`", call: (c) => c.getInsights(RID, undefined, undefined, "40") },
-  till: { path: "`/analytics/pos-revenue/${rid}?days=${ctx.days}`", call: (c, d) => c.getPosRevenue(RID, String(d)) },
+  reading: { path: "`/analytics/insights/${rid}?limit=40`", call: (c) => c.getInsights(RID, undefined, undefined, "40", undefined, HOLDER) },
+  till: { path: "`/analytics/pos-revenue/${rid}?days=${ctx.days}`", call: (c, d) => c.getPosRevenue(RID, String(d), HOLDER) },
   goals: { path: "`/analytics/goals/${rid}/progress`", call: (c) => c.listGoalsWithProgress(RID, undefined, HOLDER) },
   bench: {
     sources: BENCH_SOURCES,
     call: async (c) => ({
-      cashflow: await c.getCashflow(RID),
+      cashflow: await c.getCashflow(RID, HOLDER),
       seasonality: await c.getSeasonality(RID),
       goals: await c.listGoals(RID, "active", HOLDER),
     }),
   },
-  pacing: { path: "`/analytics/cashflow/${rid}`", call: (c) => c.getCashflow(RID) },
+  pacing: { path: "`/analytics/cashflow/${rid}`", call: (c) => c.getCashflow(RID, HOLDER) },
+
   week: { path: "`/analytics/seasonality/${rid}`", call: (c) => c.getSeasonality(RID) },
   ahead: { path: "`/analytics/forecast/${rid}?horizon=14`", call: (c) => c.getForecast(RID, undefined, "14") },
-  quadrants: { path: "`/analytics/menu-engineering/${rid}`", call: (c) => c.getMenuEngineering(RID) },
+  quadrants: { path: "`/analytics/menu-engineering/${rid}`", call: (c) => c.getMenuEngineering(RID, HOLDER) },
   ledger: { path: "`/analytics/financial/${rid}`", call: (c) => c.getFinancial(RID, undefined, HOLDER) },
   seats: { path: "`/analytics/table-performance/${rid}?sinceDays=90`", call: (c) => c.getTablePerformance(RID, "90") },
   service: { path: "`/analytics/waiters/${rid}?sinceDays=90`", call: (c) => c.getWaiters(RID, "90") },
@@ -249,7 +251,8 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
       expect([user, fin.args, overview.args, goals.args]).toEqual([
         user,
         [RID, 0, gate],
-        [RID, gate],
+        // ADR 0348 decision 3: the overview is also told the role's classes.
+        [RID, gate, policyFor(user?.role).sees],
         [RID, "active", gate],
       ]);
     }

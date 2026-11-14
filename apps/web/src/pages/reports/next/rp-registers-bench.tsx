@@ -102,6 +102,10 @@ export const bench = analysis<BenchRegister>({
     seasonality: (rid) => `/analytics/seasonality/${rid}`,
     goals: (rid) => `/analytics/goals/${rid}?status=active`,
   },
+  // Every pair here is the house's spend, its weekday trade or a goal's
+  // figure (ADR 0348): staff keep the page, and this register is held back.
+  readers: ['owner', 'manager'],
+
   graphs: ['bars', 'table', 'figure'],
   graphNote:
     'Bars draw the one pair that shares a unit — money paid to vendors this month against last. No line or area: two windows are not a sequence. No scatter and no heat map: there is no second axis and no second dimension to lay one out on.',

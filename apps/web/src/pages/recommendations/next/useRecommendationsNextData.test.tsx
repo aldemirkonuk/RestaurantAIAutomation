@@ -370,6 +370,29 @@ describe('useRecommendationsNextData — goals', () => {
     expect(result.current.posProblem).toBe('Failed to load POS revenue');
   });
 
+  it('a till withheld from this reader is null with the reason, never a month of empty days', async () => {
+    api.get.mockImplementation(async (url: string) => {
+      if (url.includes('/pos-revenue/'))
+        return {
+          data: {
+            salesWithheld: true,
+            posConnected: null,
+            from: null,
+            to: null,
+            dailySeries: null,
+          },
+        };
+      if (url.includes('/analytics/goals/')) return { data: [] };
+      if (url.includes('/digest')) return { data: null };
+      if (url.includes('/exclusions'))
+        return { data: { items: [], readable: true, problem: null } };
+      return { data: FEED };
+    });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.pos).toBeNull());
+    expect(result.current.posProblem).toBe('the till is read by owners and managers');
+  });
+
   it('an unreadable goal list is null, not an empty list', async () => {
     api.get.mockImplementation(async (url: string) => {
       if (url.includes('/analytics/goals/')) throw { response: { status: 500 }, message: 'boom' };

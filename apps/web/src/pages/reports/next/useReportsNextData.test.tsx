@@ -159,6 +159,42 @@ describe('useReportsNextData — registers a role is not sent (ADR 0348)', () =>
   });
 });
 
+describe('useReportsNextData — the till is not sent for staff (ADR 0298 decision 9)', () => {
+  const TILL = '/analytics/pos-revenue/r1?days=30';
+
+  beforeEach(() => {
+    auth.rid = 'r1';
+    api.get.mockReset();
+    api.get.mockImplementation(async (path: string) => {
+      if (path === READING) return { data: { insights: [] } };
+      if (path === TILL) return { data: { posConnected: true, revenue: 10, checkCount: 1, dailySeries: [] } };
+      throw new Error(`unexpected GET ${path}`);
+    });
+  });
+
+  const mountTill = () =>
+    renderHook(() => useReportsNextData(30, () => {}, ['till']), { wrapper: wrapper() });
+
+  it('staff: no request to the till, and its register says it is held back', async () => {
+    auth.role = 'staff';
+    const { result } = mountTill();
+    await waitFor(() => expect(paths()).toContain(READING));
+    expect(paths()).not.toContain(TILL);
+    expect(result.current.registers.till!.failure).toMatchObject({
+      forbidden: true,
+      heldBack: { readers: ['owner', 'manager'], known: true },
+    });
+  });
+
+  it.each(['owner', 'manager'])('%s: the till is asked for and answered', async (role) => {
+    auth.role = role;
+    const { result } = mountTill();
+    await waitFor(() => expect(paths()).toContain(TILL));
+    await waitFor(() => expect(result.current.registers.till!.loading).toBe(false));
+    expect(result.current.registers.till!.failure).toBeNull();
+  });
+});
+
 describe('useReportsNextData — the house’s money (audit G5)', () => {
   const answer = (body: unknown | Error) => {
     auth.rid = 'r1';
@@ -328,5 +364,123 @@ describe('useReportsNextData — whose sheet this is', () => {
     const { result } = mount();
     expect(result.current.sheetKnown).toBe(false);
     expect(result.current.sheetUnread).toMatch(/signed in/);
+  });
+});
+
+describe('useReportsNextData — the money lenses are not sent for staff (ADR 0348 decision 3)', () => {
+  const QUADRANTS = '/analytics/menu-engineering/r1';
+  const PACING = '/analytics/cashflow/r1';
+  // The bench reads cashflow, seasonality and the active goals directly
+  // (audit G9); seasonality is the source only it asks for here.
+  const BENCH = '/analytics/seasonality/r1';
+  const MONEY: AnalysisId[] = ['quadrants', 'pacing', 'bench'];
+  let answer: Record<string, unknown>;
+
+  beforeEach(() => {
+    auth.rid = 'r1';
+    answer = {};
+    api.get.mockReset();
+    api.get.mockImplementation(async (path: string) => {
+      if (path === READING) return { data: { insights: [] } };
+      if (path in answer) return { data: answer[path] };
+      if ([QUADRANTS, PACING, BENCH].includes(path)) return { data: {} };
+      throw new Error(`unexpected GET ${path}`);
+    });
+  });
+
+  const mountMoney = () =>
+    renderHook(() => useReportsNextData(30, () => {}, MONEY), { wrapper: wrapper() });
+
+  it('[REVERT-FAILS] staff: no request to menu engineering, cashflow or the overview, and each says it is held back', async () => {
+    auth.role = 'staff';
+    const { result } = mountMoney();
+    await waitFor(() => expect(paths()).toContain(READING));
+    for (const p of [QUADRANTS, PACING, BENCH]) expect(paths()).not.toContain(p);
+    for (const id of MONEY)
+      expect(result.current.registers[id]!.failure).toMatchObject({
+        forbidden: true,
+        heldBack: { readers: ['owner', 'manager'], known: true },
+      });
+  });
+
+  it('[REVERT-FAILS] a lens the gateway withheld for the role reads as held back, never as an empty register', async () => {
+    auth.role = 'manager';
+    answer[QUADRANTS] = { restaurantId: 'r1', withheldForRole: ['money', 'sales'] };
+    const { result } = mountMoney();
+    await waitFor(() => expect(result.current.registers.quadrants!.loading).toBe(false));
+    expect(result.current.registers.quadrants!.data).toBeUndefined();
+    expect(result.current.registers.quadrants!.failure).toMatchObject({
+      forbidden: true,
+      heldBack: { readers: ['owner', 'manager'], known: true },
+    });
+    await waitFor(() => expect(result.current.registers.pacing!.loading).toBe(false));
+    expect(result.current.registers.pacing!.failure).toBeNull();
+  });
+
+  it('[REVERT-FAILS] the bench is held back when one of its sources is withheld, never read as an empty register (r33 meet)', async () => {
+    auth.role = 'manager';
+    answer[BENCH] = { restaurantId: 'r1', withheldForRole: ['sales'] };
+    const { result } = mountMoney();
+    await waitFor(() => expect(result.current.registers.bench!.loading).toBe(false));
+    expect(result.current.registers.bench!.data).toBeUndefined();
+    expect(result.current.registers.bench!.failure).toMatchObject({
+      forbidden: true,
+      heldBack: { readers: ['owner', 'manager'], known: true },
+    });
+  });
+});
+
+describe('useReportsNextData — the figures of record and the reorder lens (ADR 0348, slice 4)', () => {
+  const LEDGER = '/analytics/financial/r1';
+  const RESTOCK = '/analytics/inventory-science/r1';
+  const RESTOCK_WITHOUT_COST = {
+    params: { serviceLevel: 0.95, leadTimeDays: 7, demandWindowDays: 90 },
+    basis: {},
+    costWithheld: true,
+    skuCount: 1,
+    reorderCount: 1,
+    reorderList: [{ id: 'g1', name: 'Rakı', onHand: 2, daysOfCover: 1, reorderPoint: 4, safetyStock: 1, stockoutProbability: 0.6, unitCost: null }],
+  };
+
+  beforeEach(() => {
+    auth.rid = 'r1';
+    api.get.mockReset();
+    api.get.mockImplementation(async (path: string) => {
+      if (path === READING) return { data: { insights: [] } };
+      if (path === LEDGER) return { data: {} };
+      if (path === RESTOCK) return { data: RESTOCK_WITHOUT_COST };
+      throw new Error(`unexpected GET ${path}`);
+    });
+  });
+
+  const mountBoth = () =>
+    renderHook(() => useReportsNextData(30, () => {}, ['ledger', 'restock']), { wrapper: wrapper() });
+
+  it('[REVERT-FAILS] staff: no request to the figures of record, and the ledger says it is held back', async () => {
+    auth.role = 'staff';
+    const { result } = mountBoth();
+    await waitFor(() => expect(paths()).toContain(RESTOCK));
+    expect(paths()).not.toContain(LEDGER);
+    expect(result.current.registers.ledger!.failure).toMatchObject({
+      forbidden: true,
+      heldBack: { readers: ['owner', 'manager'], known: true },
+    });
+  });
+
+  it('staff: the reorder lens is asked for and read, its withheld cost is not the whole lens withheld', async () => {
+    auth.role = 'staff';
+    const { result } = mountBoth();
+    await waitFor(() => expect(result.current.registers.restock!.loading).toBe(false));
+    expect(result.current.registers.restock!.failure).toBeNull();
+    const data = result.current.registers.restock!.data as { reorderList: Array<{ name: string; onHand: number }> };
+    expect(data.reorderList.map((r) => [r.name, r.onHand])).toEqual([['Rakı', 2]]);
+  });
+
+  it.each(['owner', 'manager'])('%s: the figures of record are asked for', async (role) => {
+    auth.role = role;
+    const { result } = mountBoth();
+    await waitFor(() => expect(paths()).toContain(LEDGER));
+    await waitFor(() => expect(result.current.registers.ledger!.loading).toBe(false));
+    expect(result.current.registers.ledger!.failure).toBeNull();
   });
 });

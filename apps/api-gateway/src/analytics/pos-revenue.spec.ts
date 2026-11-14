@@ -145,6 +145,8 @@ function makeClient(rowsByTable: Rows, errors: Record<string, string> = {}) {
 
 /** Tuzlu Rüzgar keeps Los Angeles time. */
 const LA = "America/Los_Angeles";
+/** A reader who sees sales: a staff reader gets the figures withheld (till-figures-withheld-from-staff.spec.ts). */
+const OWNER = { role: "owner" };
 const LA_HOUSE = { timezone: LA, country: "US" };
 
 /**
@@ -357,7 +359,9 @@ describe("GoalsService.getPosRevenueWindow", () => {
     expect(result.posConnected).toBe(true);
     expect(result.revenue).toBeCloseTo(200);
     expect(result.checkCount).toBe(2);
-    expect(result.dailySeries).toEqual([{ date: LA_TODAY, revenue: 200 }]);
+    expect(result.dailySeries).toEqual([
+      { date: LA_TODAY, revenue: 200, checks: 2 },
+    ]);
 
     // The void filter is not optional: a voided check never happened.
     const voidFilter = client.calls.find(
@@ -387,6 +391,53 @@ describe("GoalsService.getPosRevenueWindow", () => {
     expect(
       client.calls.some((c) => c.table === "pos_checks" && c.method === "lte"),
     ).toBe(true);
+  });
+
+  it("[REVERT-FAILS] each day carries its own count of checks, and the days add up to the window's checks", async () => {
+    // Noon in Los Angeles on the house's today and on the day before.
+    const today = `${LA_TODAY}T19:00:00Z`;
+    const yesterday = "2026-08-31T19:00:00Z";
+    const { service } = makeGoals({
+      pos_checks: (call) =>
+        call === 0
+          ? [{ id: "c1" }]
+          : [
+              { total: 40, opened_at: yesterday, closed_at: yesterday, items: [] },
+              { total: 60, opened_at: today, closed_at: today, items: [] },
+              { total: 30, opened_at: today, closed_at: today, items: [] },
+              { total: 10, opened_at: today, closed_at: today, items: [] },
+            ],
+    });
+
+    const result = await service.getPosRevenueWindow("r1", 7);
+
+    expect(result.dailySeries).toEqual([
+      { date: "2026-08-31", revenue: 40, checks: 1 },
+      { date: LA_TODAY, revenue: 100, checks: 3 },
+    ]);
+    const counted = result.dailySeries.reduce((n, d) => n + (d.checks ?? 0), 0);
+    expect(counted).toBe(result.checkCount);
+  });
+
+  it("a check that came to nothing is still a check on its day", async () => {
+    // A comped table: no takings, but a table was served and an average
+    // check must divide by it.
+    const day = `${LA_TODAY}T19:00:00Z`;
+    const { service } = makeGoals({
+      pos_checks: (call) =>
+        call === 0
+          ? [{ id: "c1" }]
+          : [
+              { total: 0, opened_at: day, closed_at: day, items: [] },
+              { total: 90, opened_at: day, closed_at: day, items: [] },
+            ],
+    });
+
+    const result = await service.getPosRevenueWindow("r1", 7);
+
+    expect(result.dailySeries).toEqual([
+      { date: LA_TODAY, revenue: 90, checks: 2 },
+    ]);
   });
 
   it("distinguishes 'POS connected, nothing sold this window' from 'no POS'", async () => {
@@ -1154,7 +1205,7 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       dailySeries: [],
     });
 
-    const body = await controller.getPosRevenue("r1", "30");
+    const body = await controller.getPosRevenue("r1", "30", OWNER);
 
     expect(body.posConnected).toBe(false);
     expect(body.revenue).toBeNull();
@@ -1178,7 +1229,7 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       { wineName: "Malbec", bottlesSold: 2 },
     ]);
 
-    const body = await controller.getPosRevenue("r1", undefined);
+    const body = await controller.getPosRevenue("r1", undefined, OWNER);
 
     expect(body.revenue).toBe(4200);
     expect(body.consumption).toHaveLength(1);
@@ -1203,7 +1254,7 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       dailySeries: [],
     });
 
-    const body = await controller.getPosRevenue("r1", "30");
+    const body = await controller.getPosRevenue("r1", "30", OWNER);
 
     expect(body.zoneUnset).toBe(true);
     expect(body.consumption).toBeNull();
@@ -1221,15 +1272,15 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       dailySeries: [],
     });
 
-    await controller.getPosRevenue("r1", "99999");
+    await controller.getPosRevenue("r1", "99999", OWNER);
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 365);
 
-    await controller.getPosRevenue("r1", "banana");
+    await controller.getPosRevenue("r1", "banana", OWNER);
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 30);
 
     // A parseable-but-tiny window clamps to the floor rather than snapping back
     // to the default — `?days=0` asking for today is a coherent request.
-    await controller.getPosRevenue("r1", "0");
+    await controller.getPosRevenue("r1", "0", OWNER);
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 1);
   });
 });

@@ -42,7 +42,20 @@ export interface ReadingRow {
   entityLabel: string | null;
 }
 
-const reading = analysis<ReadingRow[]>({
+/**
+ * The sentences, and how many the gateway withheld for the reader's role (ADR
+ * 0348: staff are never shown the till, a spend, a margin or a named server's
+ * ranking). `withheldForRole` rides on the list so every reader of the rows
+ * (Ask the book, the sentence list) keeps reading an array.
+ */
+export type ReadingRows = ReadingRow[] & { withheldForRole?: number };
+
+/** The sentence a reader is told about the ones written for owners and managers. */
+export function withheldSentences(n: number): string {
+  return `${countOf(n, 'sentence is', 'sentences are')} about money, the till or a named person, and ${n === 1 ? 'is' : 'are'} written for owners and managers.`;
+}
+
+const reading = analysis<ReadingRows>({
   title: 'The reading',
   register: 'insight register',
   answers: 'What the engine has noticed, in its own sentences',
@@ -51,8 +64,9 @@ const reading = analysis<ReadingRow[]>({
   graphs: ['table', 'bars'],
   graphNote:
     'Bars count the sentences in each category — nothing more. There is no line, area or heat map here because a sentence has no magnitude and no date to plot it against.',
-  select: (raw) =>
-    arr(obj(raw).insights)
+  select: (raw) => {
+    const withheld = num(obj(raw).withheldForRole);
+    const rows: ReadingRows = arr(obj(raw).insights)
       .map((row) => {
         const candidate = str(row.candidate_key ?? row.candidateKey);
         const entity = str(row.entity_key ?? row.entityKey);
@@ -65,11 +79,18 @@ const reading = analysis<ReadingRow[]>({
         };
       })
       .filter((r) => r.sentence !== '')
-      .sort((a, b) => b.score - a.score),
+      .sort((a, b) => b.score - a.score);
+    if (withheld !== null && withheld > 0) rows.withheldForRole = withheld;
+    return rows;
+  },
   view: (rows) => {
+    const withheld = rows.withheldForRole ?? 0;
     if (rows.length === 0)
       return {
-        say: 'The engine has produced no insight for this restaurant yet. It computes hourly and on demand — there is nothing to say, rather than nothing to show.',
+        say:
+          withheld > 0
+            ? `Nothing here is written for your role. ${withheldSentences(withheld)}`
+            : 'The engine has produced no insight for this restaurant yet. It computes hourly and on demand — there is nothing to say, rather than nothing to show.',
         figures: [],
         notes: [],
         basis: [],
@@ -93,6 +114,7 @@ const reading = analysis<ReadingRow[]>({
       ],
       notes: [
         'Sentences are printed as the engine wrote them. This page never composes one.',
+        ...(withheld > 0 ? [withheldSentences(withheld)] : []),
       ],
       basis: [
         `${countOf(rows.length, 'sentence', 'sentences')} read from the stored insight feed; every number in them was computed by the engine from this restaurant's own rows.`,
@@ -117,6 +139,9 @@ export interface TillWindow {
   zoneUnset: boolean;
   /** Sparse; a `null` revenue is a day the server could not state. */
   dailySeries: Array<{ date: string; revenue: number | null }>;
+  /** True when the gateway withheld the till from this reader (ADR 0298 decision 9). */
+  salesWithheld: boolean;
+
 }
 
 /** Week columns spanning [from, to] — so a week with no takings is a BLANK
@@ -156,6 +181,9 @@ const till = analysis<TillWindow>({
   answers: 'What guests actually paid, day by day',
   window: (ctx) => `the last ${ctx.days} days of POS checks`,
   path: (rid, ctx) => `/analytics/pos-revenue/${rid}?days=${ctx.days}`,
+  // The till's takings are a sales figure (ADR 0298 decision 9, ADR 0348):
+  // staff keep the page, and this register is held back for them, never asked.
+  readers: ['owner', 'manager'],
   graphs: ['area', 'line', 'bars', 'heatmap', 'table', 'figure'],
   graphNote:
     'This is the one register with a date on every row, so it is the one that can be a heat map: weekday against week. No scatter — there is only one measure per day, and a scatter needs two.',
@@ -171,6 +199,7 @@ const till = analysis<TillWindow>({
       days: num(d.days) ?? 0,
       timezone: str(d.timezone) || null,
       zoneUnset: d.zoneUnset === true,
+      salesWithheld: d.salesWithheld === true,
       // A day the server sent with no figure stays unknown (null), never 0.
       dailySeries: arr(d.dailySeries).map((r) => ({
         date: str(r.date),
@@ -179,7 +208,18 @@ const till = analysis<TillWindow>({
     };
   },
   view: (w, ctx) => {
+    // A role the page took for a manager, which the gateway reads as staff
+    // (a demotion mid-session): the answer carries no figure, and saying "no
+    // till" here would be a claim about the house, not about the reader.
+    if (w.salesWithheld)
+      return {
+        say: 'The till register is written for owners and managers. Nothing below is claimed.',
+        figures: [],
+        notes: [],
+        basis: [],
+      };
     const money = moneyIn(ctx.currency);
+
     if (!w.posConnected)
       return {
         say: (
@@ -338,6 +378,9 @@ const pacing = analysis<PacingRegister>({
   answers: 'Whether buying is running hot or cold against the month before',
   window: () => '180 days of purchasing, compared in two 30-day windows',
   path: (rid) => `/analytics/cashflow/${rid}`,
+  // What the house paid its vendors is money and suppliers (ADR 0348): staff
+  // keep the page, and this register is held back for them, never asked.
+  readers: ['owner', 'manager'],
   graphs: ['bars', 'table', 'figure'],
   graphNote:
     'Two windows are two bars; a line through two points would draw a trend that has not been measured. The four-week projection is printed rather than plotted — a weekly figure and a 30-day total do not share an axis.',
