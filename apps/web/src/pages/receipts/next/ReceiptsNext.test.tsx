@@ -956,7 +956,8 @@ describe('ReceiptsNext — a correction refreshes the sheet above it', () => {
     );
     // The sheet's keys name the house (W47), so the refresh must name it too:
     // a house-less prefix would no longer reach the sheet's buckets.
-    expect(spy).toHaveBeenCalledWith({ queryKey: ['canonical-document-items', 'rest-A', 'd1'] });
+    // The goods list is keyed by the house alone (r41 gap 1), so its refresh is too.
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['canonical-document-items', 'rest-A'] });
     expect(spy).toHaveBeenCalledWith({ queryKey: ['canonical-document-mappings', 'rest-A', 'd1'] });
   });
 });

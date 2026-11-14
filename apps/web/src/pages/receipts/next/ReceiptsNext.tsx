@@ -838,9 +838,11 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
    * document disagreeing on screen. Every write that touches lines refreshes it.
    */
   const refreshSheet = () => {
-    for (const k of ['canonical-document', 'canonical-document-items', 'canonical-document-mappings']) {
+    for (const k of ['canonical-document', 'canonical-document-mappings']) {
       void qc.invalidateQueries({ queryKey: [k, rid, doc.id] });
     }
+    // The goods list is the house's, shared by every paper (r41 gap 1).
+    void qc.invalidateQueries({ queryKey: ['canonical-document-items', rid] });
   };
   const detailQ = useQuery({
     queryKey: detailKey,
