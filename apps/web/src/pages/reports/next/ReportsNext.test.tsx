@@ -2487,6 +2487,16 @@ describe('a full-screen link opens what it names, on the sheet or not (r36 repor
     expect(asked.alsoRead).toBe('till');
   });
 
+  it('opens once the reader’s sheet is known unreadable and the house sheet is drawn', () => {
+    hook.current = {
+      ...withoutTill(),
+      sheetKnown: false,
+      sheetUnread: 'Your own arrangement of this sheet could not be read (boom), so the house sheet is shown.',
+    } as never;
+    paint('/reports?flat=till');
+    expect(screen.getByRole('dialog', { name: CATALOGUE.till.title })).toBeInTheDocument();
+  });
+
   it('a held analysis opens and says who it is written for', () => {
     hook.current = {
       ...withoutTill(),
