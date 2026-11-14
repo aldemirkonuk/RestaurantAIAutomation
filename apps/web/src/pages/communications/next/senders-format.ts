@@ -165,6 +165,20 @@ export function heldFilingWarning(sender: string, vendor: string): string {
   );
 }
 
+/**
+ * The accessible name of a held row's "file it there" button (r37 walk w3
+ * M-F3). Two held letters from one vendor gave two buttons named alike; the
+ * name now carries the letter's subject and day after the visible words, so
+ * it still starts with what the button shows.
+ */
+export function heldFileAskLabel(
+  p: Pick<ProspectDto, 'subject' | 'last_seen_at' | 'first_seen_at'>,
+  vendor: string,
+): string {
+  const subject = p.subject && p.subject.trim() ? p.subject.trim() : 'no subject';
+  return `It is from ${vendor}: file it there… (${subject}, ${fmtDay(p.last_seen_at ?? p.first_seen_at)})`;
+}
+
 /** A vendor's letter in Mail, as the gateway's notices link it: `?tab=mail&with=vendor:<id>`, and `&thread=` when known. */
 export function mailLetterUrl(providerId: string, threadKey: string | null): string {
   const q = new URLSearchParams({ tab: 'mail', with: `vendor:${providerId}` });

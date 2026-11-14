@@ -33,6 +33,7 @@ import {
   strangerChips,
   strangerName,
   heldFiling,
+  heldFileAskLabel,
   heldFilingWarning,
   heldNote,
   mailLetterUrl,
@@ -267,6 +268,24 @@ function Strangers({
   const [adding, setAdding] = useState<ProspectDto | null>(null);
   // r35 mail, gap 9: the held letter whose "file it there" is asking to be confirmed, and the last one filed.
   const [confirmFile, setConfirmFile] = useState<string | null>(null);
+  // r37 walk w3 M-F3: the ask takes focus when it opens, and gives it back
+  // to the button that opened it when it is cancelled (that button is
+  // re-drawn once the ask closes, so focus waits for it).
+  const confirmRef = useRef<HTMLButtonElement | null>(null);
+  const openers = useRef(new Map<string, HTMLButtonElement>());
+  const [returnFocus, setReturnFocus] = useState<string | null>(null);
+  useEffect(() => {
+    if (confirmFile) confirmRef.current?.focus();
+  }, [confirmFile]);
+  useEffect(() => {
+    if (!returnFocus || confirmFile) return;
+    openers.current.get(returnFocus)?.focus();
+    setReturnFocus(null);
+  }, [returnFocus, confirmFile]);
+  const cancelFile = (id: string) => {
+    setReturnFocus(id);
+    setConfirmFile(null);
+  };
   const [filed, setFiled] = useState<{ name: string; vendor: string; url: string } | null>(null);
   const [undo, setUndo] = useState<{ id: string; name: string } | null>(null);
   const [actFailure, setActFailure] = useState<string | null>(null);
@@ -397,10 +416,18 @@ function Strangers({
                 {heldNote(p) && <Quiet>{heldNote(p)}</Quiet>}
                 {!elsewhere && filing && filing.kind !== 'file' && <Quiet>{filing.words}</Quiet>}
                 {!elsewhere && asking && filing?.kind === 'file' && (
-                  <div role="group" aria-label={`File it under ${filing.vendor.name}`} style={{ margin: '4px 0 8px', maxWidth: '62ch' }}>
+                  <div
+                    role="group"
+                    aria-label={`File it under ${filing.vendor.name}`}
+                    style={{ margin: '4px 0 8px', maxWidth: '62ch' }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape' && !fileHeld.isPending) cancelFile(p.id);
+                    }}
+                  >
                     <p style={{ ...LEDE, margin: '0 0 6px' }}>{heldFilingWarning(p.sender_email ?? name, filing.vendor.name)}</p>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       <button
+                        ref={confirmRef}
                         type="button"
                         style={BTN_PRIMARY}
                         disabled={fileHeld.isPending}
@@ -409,7 +436,7 @@ function Strangers({
                       >
                         {fileHeld.isPending ? 'Filing…' : `File it under ${filing.vendor.name}`}
                       </button>
-                      <button type="button" style={BTN_QUIET} disabled={fileHeld.isPending} onClick={() => setConfirmFile(null)}>
+                      <button type="button" style={BTN_QUIET} disabled={fileHeld.isPending} onClick={() => cancelFile(p.id)}>
                         Cancel
                       </button>
                     </div>
@@ -436,9 +463,14 @@ function Strangers({
                     {/* r35 mail, gap 9: a person may vouch that an unconfirmed letter is the vendor's. */}
                     {filing?.kind === 'file' && !asking && (
                       <button
+                        ref={(el) => {
+                          if (el) openers.current.set(p.id, el);
+                          else openers.current.delete(p.id);
+                        }}
                         type="button"
                         style={manages ? BTN_PRIMARY : { ...BTN_PRIMARY, opacity: 0.5, cursor: 'not-allowed' }}
                         disabled={busy || !manages}
+                        aria-label={heldFileAskLabel(p, filing.vendor.name)}
                         aria-describedby={manages ? undefined : `file-why-${p.id}`}
                         onClick={() => {
                           setActFailure(null);
