@@ -20,7 +20,11 @@ import { analysis, arr, obj, str } from './rp-spec';
 export interface QuadrantItem {
   id: string;
   name: string;
-  velocityPerDay: number;
+  /**
+   * null when a line of this good carries no bottle figure (ADR 0297): its
+   * movement is not measured, so it is not drawn at 0 and has no quadrant.
+   */
+  velocityPerDay: number | null;
   /** null when the row has no recorded cost — it has NO quadrant, not "dog". */
   marginPerBottle: number | null;
   marginPct: number | null;
@@ -33,6 +37,46 @@ export interface QuadrantRegister {
   medians: { velocityPerDay: number | null; marginPerBottle: number | null };
   counts: Record<string, number>;
   items: QuadrantItem[];
+}
+
+/** The quadrant table lists this many rows, and says so when there are more. */
+const QUADRANT_ROWS = 40;
+/** The rows a register's table prints; the seats and service tables too. */
+const TABLE_ROWS = QUADRANT_ROWS;
+
+/** Said under a table that prints only part of its register (r28 gap 14). */
+export function cutShort(total: number, shown = TABLE_ROWS): string | undefined {
+  return total > shown
+    ? `Showing ${figure(shown)} of ${figure(total)}, in the register's own order.`
+    : undefined;
+}
+
+/**
+ * What the seats note says of the mapped tables that took no check: they are
+ * never on the bars, and they are in the table only if its rows reach them.
+ */
+export function unservedNote(unserved: number, listed: number): string {
+  const one = unserved === 1;
+  const head = one
+    ? '1 mapped table took no check in the window. It is left off the bars'
+    : `${figure(unserved)} mapped tables took no check in the window. They are left off the bars`;
+  if (listed >= unserved) return `${head}, and ${one ? 'it is' : 'they are'} listed in the table.`;
+  if (listed === 0)
+    return `${head}, and the table’s first ${figure(TABLE_ROWS)} rows do not reach ${one ? 'it' : 'them'}.`;
+  return `${head}; ${figure(listed)} of them ${listed === 1 ? 'is' : 'are'} listed in the table, and the rest fall past its first ${figure(TABLE_ROWS)} rows.`;
+}
+
+/** The engine's quadrant key in the words the figures above it use. */
+const QUADRANT_WORDS: Record<string, string> = {
+  star: 'Star',
+  plowhorse: 'Plowhorse',
+  puzzle: 'Puzzle',
+  dog: 'Dog',
+};
+
+/** A quadrant key the page knows by its word; an unknown one or none is the dash. */
+export function quadrantWord(key: string | null): string {
+  return key != null && Object.prototype.hasOwnProperty.call(QUADRANT_WORDS, key) ? QUADRANT_WORDS[key] : EM;
 }
 
 const quadrants = analysis<QuadrantRegister>({
@@ -58,7 +102,7 @@ const quadrants = analysis<QuadrantRegister>({
       items: arr(d.items).map((i) => ({
         id: str(i.id),
         name: str(i.name),
-        velocityPerDay: num(i.velocityPerDay) ?? 0,
+        velocityPerDay: num(i.velocityPerDay),
         marginPerBottle: num(i.marginPerBottle),
         marginPct: num(i.marginPct),
         quadrant: (i.quadrant ?? null) as string | null,
@@ -68,14 +112,20 @@ const quadrants = analysis<QuadrantRegister>({
   view: (q, ctx) => {
     const money = moneyIn(ctx.currency);
     const unclassified = q.counts.unclassified ?? 0;
+    // A costed good whose movement is not measured: its own count, apart
+    // from "no recorded cost", so neither reason is claimed for the other.
+    const unmeasured = q.counts.unmeasured ?? 0;
     const priced = q.items.filter((i) => i.marginPerBottle != null);
+    // Only a good with BOTH measures has a point: an unmeasured movement is
+    // not a movement of 0, and drawing it at 0 reads absence as a slow seller.
+    const plotted = priced.filter((i) => i.velocityPerDay != null);
     const basis = [q.basis?.velocity, q.basis?.margin];
     const figures = [
       { label: 'Stars', value: figure(q.counts.star ?? 0) },
       { label: 'Plowhorses', value: figure(q.counts.plowhorse ?? 0) },
       { label: 'Puzzles', value: figure(q.counts.puzzle ?? 0) },
       { label: 'Dogs', value: figure(q.counts.dog ?? 0) },
-      { label: 'No quadrant', value: figure(unclassified) },
+      { label: 'No quadrant', value: figure(unclassified + unmeasured) },
     ];
     if (priced.length === 0)
       return {
@@ -98,8 +148,8 @@ const quadrants = analysis<QuadrantRegister>({
     );
     return {
       points: {
-        data: priced.map((i) => ({
-          x: Number(i.velocityPerDay.toFixed(3)),
+        data: plotted.map((i) => ({
+          x: Number((i.velocityPerDay as number).toFixed(3)),
           y: Number((i.marginPerBottle as number).toFixed(2)),
           name: i.name,
         })),
@@ -132,23 +182,38 @@ const quadrants = analysis<QuadrantRegister>({
           { key: 'm', label: 'Margin', numeric: true },
           { key: 'q', label: 'Quadrant' },
         ],
-        rows: q.items.slice(0, 40).map((i) => ({
+        rows: q.items.slice(0, QUADRANT_ROWS).map((i) => ({
           key: i.id,
           cells: [
             i.name,
             figure(i.velocityPerDay),
             money(i.marginPerBottle, 'table'),
-            i.quadrant ?? EM,
+            quadrantWord(i.quadrant),
           ],
         })),
         more:
-          unclassified > 0
-            ? `${countOf(unclassified, 'wine has', 'wines have')} no quadrant because no cost was ever recorded for them.`
-            : undefined,
+          [
+            q.items.length > QUADRANT_ROWS
+              ? `Showing ${figure(QUADRANT_ROWS)} of ${figure(q.items.length)}, in the register's own order.`
+              : null,
+            unclassified > 0
+              ? `${countOf(unclassified, 'wine has', 'wines have')} no quadrant because no cost was ever recorded for them.`
+              : null,
+            unmeasured > 0
+              ? `${countOf(unmeasured, 'wine has', 'wines have')} no quadrant because a pour of it carries no bottle figure, so how fast it moves is not measured.`
+              : null,
+          ]
+            .filter((x): x is string => x !== null)
+            .join(' ') || undefined,
       },
       figures,
       notes: [
         `Fast is right of the vertical rule, fat-margin is above the horizontal one; both rules are the engine’s own medians. ${countOf(unclassified, 'wine is', 'wines are')} off the plot for want of a recorded cost — an uncosted wine is unknown, not a dog.`,
+        ...(unmeasured > 0
+          ? [
+              `${countOf(unmeasured, 'wine is', 'wines are')} off the plot because how fast it moves is not measured — it is not drawn at 0 bottles a day.`,
+            ]
+          : []),
       ],
       basis,
     };
@@ -208,7 +273,7 @@ const ledger = analysis<LedgerRegister>({
   path: (rid) => `/analytics/financial/${rid}`,
   graphs: ['table', 'figure'],
   graphNote:
-    'No bars, line or area: these figures are in four different units — money, a ratio, a count of turns, a count of days — and one axis across them would compare dollars with days.',
+    'No bars, line or area: these figures are in four different units — money, a ratio, a count of turns, a count of days — and one axis across them would compare money with days.',
   select: (raw) => {
     const d = obj(raw);
     const cg = d.cogsCoverage == null ? null : obj(d.cogsCoverage);
@@ -291,7 +356,9 @@ const ledger = analysis<LedgerRegister>({
       },
       { label: 'Inventory turns', value: figureTo(f.inventoryTurnover, 2), note: 'Needs the till’s goods at cost, what it cost, and 28 days of the till' },
       { label: 'Days of inventory', value: figureTo(f.daysInventoryOutstanding, 1), note: 'Needs the till’s goods at cost, what it cost, and 28 days of the till' },
-      { label: 'GMROI', value: figureTo(f.gmroi, 2), note: 'Needs the till’s goods at cost, what was kept, and 28 days of the till' },
+      // GMROI, said in words (r28 gap 14): what was kept for each 1 of goods
+      // held at cost.
+      { label: 'Return on stock', value: figureTo(f.gmroi, 2), note: 'What was kept for each 1 held in stock at cost. Needs the till’s goods at cost, what was kept, and 28 days of the till' },
       {
         label: 'Bought (last 365 days)',
         value: money(f.deliveredPurchases),
@@ -327,11 +394,11 @@ const ledger = analysis<LedgerRegister>({
     const ts = f.tillStock;
     if (ts && ts.goodsOffTill > 0)
       notes.push(
-        `Inventory turns, days of inventory and GMROI count the ${figure(ts.goodsOnTill)} of ${figure(ts.goodsOnHand)} goods on hand the till sells. The ${figure(ts.goodsOffTill)} not on the till${ts.offTillValue != null ? `, ${money(ts.offTillValue)} at cost,` : ''} ${ts.goodsOffTill === 1 ? 'is' : 'are'} left out: nothing ${ts.goodsOffTill === 1 ? 'it sells reaches' : 'they sell reaches'} what it cost.`,
+        `Inventory turns, days of inventory and the return on stock count the ${figure(ts.goodsOnTill)} of ${figure(ts.goodsOnHand)} goods on hand the till sells. The ${figure(ts.goodsOffTill)} not on the till${ts.offTillValue != null ? `, ${money(ts.offTillValue)} at cost,` : ''} ${ts.goodsOffTill === 1 ? 'is' : 'are'} left out: nothing ${ts.goodsOffTill === 1 ? 'it sells reaches' : 'they sell reaches'} what it cost.`,
       );
     if (ts && ts.uncostedOnTill > 0)
       notes.push(
-        `${figure(ts.uncostedOnTill)} of the ${figure(ts.goodsOnTill)} goods on hand the till sells carry no recorded cost, so inventory turns, days of inventory and GMROI read ${EM}.`,
+        `${figure(ts.uncostedOnTill)} of the ${figure(ts.goodsOnTill)} goods on hand the till sells carry no recorded cost, so inventory turns, days of inventory and the return on stock read ${EM}.`,
       );
     // A mapped good that sold nothing stays in the base, since the till can
     // sell it; named so a long days of inventory reads for what it is.
@@ -606,7 +673,7 @@ const seats = analysis<SeatsRegister>({
           { key: 'a', label: 'Avg check', numeric: true },
           { key: 'w', label: 'Wine attach', numeric: true },
         ],
-        rows: s.tables.slice(0, 40).map((t) => ({
+        rows: s.tables.slice(0, TABLE_ROWS).map((t) => ({
           key: t.tableId,
           cells: [
             t.label,
@@ -616,12 +683,16 @@ const seats = analysis<SeatsRegister>({
             ratioPct(t.wineAttachRate),
           ],
         })),
+        more: cutShort(s.tables.length),
       },
       figures,
       notes: [
         ...(s.tables.length > served.length
           ? [
-              `${countOf(s.tables.length - served.length, 'mapped table', 'mapped tables')} took no check in the window, and is drawn at no height rather than left off the chart.`,
+              unservedNote(
+                s.tables.length - served.length,
+                s.tables.slice(0, TABLE_ROWS).filter((t) => t.checks <= 0).length,
+              ),
             ]
           : []),
         ...roomNotes,
@@ -761,7 +832,7 @@ const service = analysis<ServiceRegister>({
           { key: 'w', label: 'Wine attach', numeric: true },
           { key: 't', label: 'Tip', numeric: true },
         ],
-        rows: s.waiters.slice(0, 40).map((w) => ({
+        rows: s.waiters.slice(0, TABLE_ROWS).map((w) => ({
           key: w.name,
           cells: [
             w.name,
@@ -771,6 +842,7 @@ const service = analysis<ServiceRegister>({
             ratioPct(w.tipPct),
           ],
         })),
+        more: cutShort(s.waiters.length),
       },
       figures,
       notes: [
@@ -791,7 +863,8 @@ export interface RestockRegister {
   reorderList: Array<{
     id: string;
     name: string;
-    onHand: number;
+    /** null when the register sends no on-hand: unknown, never 0. */
+    onHand: number | null;
     daysOfCover: number | null;
     reorderPoint: number | null;
     safetyStock: number | null;
@@ -852,7 +925,7 @@ const restock = analysis<RestockRegister>({
       reorderList: arr(d.reorderList).map((s) => ({
         id: str(s.id),
         name: str(s.name),
-        onHand: num(s.onHand) ?? 0,
+        onHand: num(s.onHand),
         daysOfCover: num(s.daysOfCover),
         reorderPoint: num(s.reorderPoint),
         safetyStock: num(s.safetyStock),
@@ -863,21 +936,21 @@ const restock = analysis<RestockRegister>({
   view: (r) => {
     const basis = [r.basis?.demand, r.basis?.reorderScience, r.basis?.costDerived];
     const figures = [
-      { label: 'Wines on the register', value: figure(r.skuCount) },
+      { label: 'Goods on the register', value: figure(r.skuCount) },
       { label: 'Below their reorder point', value: figure(r.reorderCount) },
       { label: 'Service level', value: ratioPct(r.params.serviceLevel, 0) },
       { label: 'Lead time assumed', value: figure(r.params.leadTimeDays) },
     ];
     if (r.skuCount === 0)
       return {
-        say: 'No wine came back from the inventory register, so there is nothing to reorder and nothing to say about cover.',
+        say: 'No good came back from the inventory register, so there is nothing to reorder and nothing to say about cover.',
         figures,
         notes: [],
         basis,
       };
     if (r.reorderList.length === 0)
       return {
-        say: `Nothing is below its reorder point. That is a real answer about ${countOf(r.skuCount, 'wine', 'wines')}, not an empty register.`,
+        say: `Nothing is below its reorder point. That is a real answer about ${countOf(r.skuCount, 'good', 'goods')}, not an empty register.`,
         figures,
         notes: [],
         basis,
@@ -892,9 +965,9 @@ const restock = analysis<RestockRegister>({
         data: restock.map((s, k) => ({
           label: restockLabels[k],
           value: s.stockoutProbability,
-          full: `${s.name} · ${figure(s.onHand)} on hand`,
+          full: s.onHand === null ? `${s.name} · on hand not known` : `${s.name} · ${figure(s.onHand)} on hand`,
         })),
-        xLabel: 'wine',
+        xLabel: 'good',
         yLabel: 'stockout risk',
         unit: 'chance of running out before the delivery',
         format: (v) => ratioPct(v, 0),
@@ -912,7 +985,7 @@ const restock = analysis<RestockRegister>({
       },
       table: {
         cols: [
-          { key: 'n', label: 'Wine' },
+          { key: 'n', label: 'Good' },
           { key: 'o', label: 'On hand', numeric: true },
           { key: 'd', label: 'Days of cover', numeric: true },
           { key: 'r', label: 'Reorder at', numeric: true },
@@ -930,12 +1003,12 @@ const restock = analysis<RestockRegister>({
         })),
         more:
           r.reorderCount > r.reorderList.length
-            ? `${figure(r.reorderCount)} wines are below their reorder point; the ${figure(r.reorderList.length)} at the highest risk are listed.`
+            ? `${countOf(r.reorderCount, 'good is', 'goods are')} below their reorder point; the ${figure(r.reorderList.length)} at the highest risk are listed.`
             : undefined,
       },
       figures,
       notes: [
-        'A days-of-cover em dash means the wine has no measured demand — it cannot run out on a rate nobody has observed.',
+        'A days-of-cover em dash means the good has no measured demand — it cannot run out on a rate nobody has observed.',
       ],
       basis,
     };

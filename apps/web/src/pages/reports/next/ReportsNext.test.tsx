@@ -869,7 +869,7 @@ describe('ReportsNext — days of inventory counts the goods the till sells (rep
     const ledger = screen.getByRole('region', { name: 'Figures of record' });
     expect(
       within(ledger).getByText(
-        'Inventory turns, days of inventory and GMROI count the 8 of 12 goods on hand the till sells. The 4 not on the till are left out: nothing they sell reaches what it cost.',
+        'Inventory turns, days of inventory and the return on stock count the 8 of 12 goods on hand the till sells. The 4 not on the till are left out: nothing they sell reaches what it cost.',
       ),
     ).toBeInTheDocument();
     // The whole cellar's missing cost withholds only the cellar at cost now.
@@ -975,8 +975,8 @@ describe('ReportsNext — turns, days and GMROI read to the export\'s places (co
     expect(value('Days of inventory')).toContain('312.1');
     expect(value('Days of inventory')).not.toContain('312.067');
     expect(value('Inventory turns')).toContain('1.17');
-    expect(value('GMROI')).toContain('2.26');
-    expect(value('GMROI')).not.toContain('2.261');
+    expect(value('Return on stock')).toContain('2.26');
+    expect(value('Return on stock')).not.toContain('2.261');
   });
 });
 
