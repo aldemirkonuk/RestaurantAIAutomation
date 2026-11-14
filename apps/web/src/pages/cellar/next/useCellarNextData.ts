@@ -1005,7 +1005,8 @@ export interface CocktailInput {
   method?: string;
   glass?: string;
   garnish?: string;
-  price?: number;
+  /** Absent: not sent. null (amend only): the price is taken off. */
+  price?: number | null;
   description?: string;
 }
 
