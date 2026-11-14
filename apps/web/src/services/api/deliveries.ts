@@ -56,6 +56,15 @@ export interface DeliveryEvent {
   amendedAt: string | null;
 }
 
+/**
+ * Whether a closed delivery's door stock went back (r28 G2, gateway #1388).
+ * `bottlesReturned` sums each good's quantity in its own unit, so it is only
+ * read as "more than nothing", never printed as a count.
+ */
+export type StockReturn =
+  | { returned: true; bottlesReturned: number }
+  | { returned: false; error: string };
+
 export interface Proposal {
   id: string;
   delivery_id: string;
@@ -94,6 +103,16 @@ function toEvent(row: Record<string, unknown>): DeliveryEvent {
     lapseDeemed: (row.lapse_deemed as string) ?? null,
     amendedAt: (row.amended_at as string) ?? null,
   };
+}
+
+/**
+ * What a RE-VERIFY did to the cost (QA 10a). `repaired` lots had been booked at
+ * the invoice's printed price and now carry one bottle's cost; a `flagged` lot
+ * kept its cost, and `reason` is the gateway's own sentence for why.
+ */
+export interface CostRepair {
+  repaired: { inventoryId: string; unitCost: number; bottlesFinalised: number }[];
+  flagged: { inventoryId: string; kind: 'refused' | 'line_changed'; reason: string }[];
 }
 
 export interface DoorCountLine {
@@ -177,16 +196,36 @@ export const deliveriesApi = {
   },
 
   async proposals(id: string): Promise<Proposal[]> {
+    return (await deliveriesApi.proposalThread(id)).proposals;
+  },
+
+  /**
+   * The thread with the gateway's `moneyWithheld` flag (r28 G3): true when the
+   * person does not hold the house's money, so `unit_price_proposed` and
+   * `money_at_risk` arrive null on purpose. Absent on an older gateway reads
+   * as false.
+   */
+  async proposalThread(
+    id: string,
+  ): Promise<{ proposals: Proposal[]; moneyWithheld: boolean }> {
     const { data } = await apiClient.get(
       `/procurement/deliveries/${id}/proposals`,
     );
-    return data.proposals as Proposal[];
+    return {
+      proposals: (data?.proposals ?? []) as Proposal[],
+      moneyWithheld: data?.moneyWithheld === true,
+    };
   },
 
   async propose(
     id: string,
     body: ProposalBody,
-  ): Promise<{ proposalId: string; delivery: Record<string, unknown> }> {
+  ): Promise<{
+    proposalId: string;
+    delivery: Record<string, unknown>;
+    /** Only on a rejection: whether the door's stock went back. */
+    stockReturn?: StockReturn;
+  }> {
     const { data } = await apiClient.post(
       `/procurement/deliveries/${id}/proposals`,
       body,
@@ -208,6 +247,20 @@ export const deliveriesApi = {
   async accept(proposalId: string): Promise<{ status: string }> {
     const { data } = await apiClient.post(
       `/procurement/deliveries/proposals/${proposalId}/accept`,
+      {},
+    );
+    return data;
+  },
+
+  /**
+   * Give a REJECTED or CANCELLED delivery's door stock back again (r28 G2).
+   * Safe to repeat; 409 for a delivery that is still open.
+   */
+  async returnStock(
+    id: string,
+  ): Promise<{ deliveryId: string; stockReturn: StockReturn }> {
+    const { data } = await apiClient.post(
+      `/procurement/deliveries/${id}/return-stock`,
       {},
     );
     return data;
@@ -246,6 +299,8 @@ export const deliveriesApi = {
       }[];
       stillProvisional: { inventoryId: string; reason: string }[];
     } | null;
+    /** A re-verify's cost check (QA 10a): absent on a first verify. */
+    repair?: CostRepair | null;
     delivery: Record<string, unknown>;
   }> {
     const { data } = await apiClient.post(

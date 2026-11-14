@@ -17,13 +17,14 @@
  * re-implements D3: the gateway decides, this reports.
  *
  * WHAT A LAPSE SAYS. A LAPSED delivery prints what the LAW deems, in words, and
- * the sentence that inventory did not move — because a lapse is a measurable
+ * the sentence that the lapse moved no inventory and settled no cost (what the
+ * door count booked stays booked, unpriced) — because a lapse is a measurable
  * failure of the venue's process (D9 clause 6) and the product must say so
  * rather than absorb it.
  */
 
-import type { DeliveryEvent } from '../../services/api/deliveries'
-import { MONO, SERIF, fmtStamp } from './canonical-format'
+import type { CostRepair, DeliveryEvent } from '../../services/api/deliveries'
+import { MONO, SERIF, costRepairSentences, fmtStamp } from './canonical-format'
 
 export interface DeliveryGatesProps {
   delivery: DeliveryEvent
@@ -32,6 +33,35 @@ export interface DeliveryGatesProps {
   busy?: boolean
   /** The gateway's own words when it refused. Never paraphrased. */
   error?: string | null
+  /**
+   * QA 10a (5): run verify again on a VERIFIED delivery. The gateway does not
+   * verify twice; it re-checks a cost booked at the printed price.
+   */
+  onRecheck?: () => Promise<void>
+  /** What the last re-check did to the cost; rendered, never discarded. */
+  repair?: CostRepair | null
+  /** With `delivery.jurisdiction`, picks Turkish or English (canonical-format). */
+  currency?: string | null
+  /**
+   * Whether the person looking holds the house's money (`settlesDeliveryMoney`).
+   * False hides Agree, Verify and the re-check, and says who does them, because
+   * the gateway refuses all three to anyone else (r28 invoices audit, G3).
+   */
+  settlesMoney?: boolean
+}
+
+/**
+ * WHO SETTLES WHAT A DELIVERY COST (r30, the web half of r28's G3).
+ *
+ * The gateway's `assertSettlesDeliveryMoney` admits the roles whose policy row
+ * sees money: owner, manager, and admin (which reads the owner row). Staff, an
+ * unknown role and no role do not. This mirrors that rule so the screen does
+ * not offer a button the server will refuse. It is cosmetic: the gateway still
+ * decides.
+ */
+export function settlesDeliveryMoney(role: string | null | undefined): boolean {
+  const r = (role ?? '').trim().toLowerCase()
+  return r === 'owner' || r === 'manager' || r === 'admin'
 }
 
 const AGREE_RULES: Record<string, string> = {
@@ -47,7 +77,13 @@ export function DeliveryGates({
   onVerify,
   busy,
   error,
+  onRecheck,
+  repair,
+  currency,
+  settlesMoney = true,
 }: DeliveryGatesProps) {
+  const turkish =
+    delivery.jurisdiction === 'TR' || (delivery.jurisdiction !== 'US-CA' && currency === 'TRY')
   const agreed = !!delivery.agreedAt
   const verified = !!delivery.verifiedAt
   const lapsed = delivery.state === 'LAPSED' || delivery.state === 'LAPSED_AMENDED'
@@ -95,7 +131,8 @@ export function DeliveryGates({
         >
           {delivery.lapseDeemed ??
             'A clock on this delivery expired and what the law deems was not recorded.'}{' '}
-          Nothing was posted to inventory or cost.
+          The lapse itself posted nothing to inventory or cost: anything counted
+          at the door stays on the shelf with its cost unsettled.
           {delivery.amendedAt
             ? ' A later document has amended it; what was deemed on the lapse date still stands.'
             : ''}
@@ -126,7 +163,7 @@ export function DeliveryGates({
               </>
             )}
           </p>
-          {!agreed && onAgree && (
+          {!agreed && settlesMoney && onAgree && (
             <button
               type="button"
               data-testid="agree-button"
@@ -148,8 +185,10 @@ export function DeliveryGates({
             {verified ? (
               <>
                 Verified {fmtStamp(delivery.verifiedAt, delivery.jurisdiction)} by a
-                named person. Nothing was posted to inventory or cost by this step
-                on this build.
+                named person. Verifying moved no stock: the goods went on the shelf
+                at the door count. It is the step that settles their cost — the
+                agreed price became the cost of what this delivery booked, and an
+                item with no usable price stays provisional.
               </>
             ) : agreed ? (
               'A named person asserts the goods arrived. This is not the same act as agreeing the document, and the two are never collapsed.'
@@ -157,7 +196,7 @@ export function DeliveryGates({
               'Only an agreed delivery can be verified. Agreement is about the document; verification is about the goods.'
             )}
           </p>
-          {agreed && !verified && onVerify && (
+          {agreed && !verified && settlesMoney && onVerify && (
             <button
               type="button"
               data-testid="verify-button"
@@ -169,8 +208,41 @@ export function DeliveryGates({
               {busy ? 'Recording…' : 'I received these goods'}
             </button>
           )}
+          {verified && settlesMoney && onRecheck && (
+            <button
+              type="button"
+              data-testid="recheck-cost-button"
+              className="cd-no-print"
+              disabled={busy}
+              onClick={() => void onRecheck()}
+              style={primary}
+            >
+              {busy
+                ? turkish ? 'Denetleniyor…' : 'Checking…'
+                : turkish ? 'Maliyeti yeniden denetle' : 'Check the cost again'}
+            </button>
+          )}
+          {repair && (
+            <div data-testid="cost-repair-notice" role="status" style={{ marginTop: 5 }}>
+              {costRepairSentences(repair, delivery.jurisdiction, currency).map((line) => (
+                <p key={line} style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--ink-2, #4F473C)' }}>
+                  {line}
+                </p>
+              ))}
+            </div>
+          )}
         </div>
       </div>
+
+      {!settlesMoney && !(agreed && verified) && (
+        <p
+          data-testid="gates-need-a-manager"
+          style={{ margin: '7px 0 0', fontSize: 11, color: 'var(--ink-2, #4F473C)' }}
+        >
+          Agreeing and verifying decide what the house pays for this delivery, so an
+          owner or a manager does them. Counting the goods at the door is still yours.
+        </p>
+      )}
 
       {error && (
         <p

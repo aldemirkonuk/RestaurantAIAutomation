@@ -131,10 +131,12 @@ export interface CostFlag {
   reason: string;
 }
 
-/** What `repairPrintedCost` did. */
+/** What `repairPrintedCost` did, or in a dry run would do. */
 export interface CostRepair {
   repaired: FinalisedItem[];
   flagged: CostFlag[];
+  /** Every correction, posted or (dry run) not: booked cost to per-bottle cost. */
+  changes: { inventoryId: string; from: number; to: number; source: FinalisedItem["source"] }[];
 }
 
 export interface CostReceipt {
@@ -835,11 +837,15 @@ export class DeliveryStockService {
    * keeps the cost and returns why. QA 10a (6): an invoice lot that no longer
    * matches its line is FLAGGED, never revalued (ADR 0103). Lines that name no
    * item are not repaired.
+   *
+   * `dryRun` posts nothing and reports in `changes` what it would correct; the
+   * one-off repair job uses it (QA 10a (7)).
    */
   async repairPrintedCost(
     restaurantId: string,
     deliveryId: string,
     userId: string | null,
+    opts: { dryRun?: boolean } = {},
   ): Promise<StockResult<CostRepair>> {
     const delivery = await this.deliveryFor(restaurantId, deliveryId);
     if (!delivery.ok) return delivery;
@@ -867,7 +873,7 @@ export class DeliveryStockService {
     // costed from a line that names no item is not flagged as changed.
     const sole = new Set(live.map((l) => l.inventory_id)).size === 1 && unattached.length === 1 ? unattached[0] : undefined;
 
-    const out: CostRepair = { repaired: [], flagged: [] };
+    const out: CostRepair = { repaired: [], flagged: [], changes: [] };
     const done = new Set<string>();
     for (const lot of live) {
       const id = lot.inventory_id;
@@ -892,6 +898,9 @@ export class DeliveryStockService {
           continue;
         }
         if (fix.unitCost === booked) continue;
+        // #1409 (QA 10a): every correction is listed, and a dry run posts none.
+        out.changes.push({ inventoryId: id, from: booked, to: fix.unitCost, source: fix.source });
+        if (opts.dryRun) continue;
         const posted = await this.post(restaurantId, deliveryId, id, fix, userId, `delivery ${deliveryId} re-verified: the printed ${booked} was booked as a bottle's cost (QA 7c B1)`);
         if (!posted.ok)
           return { ok: false, status: 503, error: `the cost of item ${id} could not be corrected: ${posted.error}. This is safe to retry.` };

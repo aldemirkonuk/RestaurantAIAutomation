@@ -62,6 +62,12 @@ export interface ProposalThreadProps {
   selectedLine?: number | null
   busy?: boolean
   error?: string | null
+  /**
+   * The gateway withheld the amounts (`moneyWithheld`, r28 G3): the person does
+   * not hold the house's money. Said once, so a missing amount is never read as
+   * "no amount was proposed".
+   */
+  moneyWithheld?: boolean
 }
 
 const KICK: React.CSSProperties = {
@@ -85,6 +91,7 @@ export function ProposalThread({
   selectedLine,
   busy,
   error,
+  moneyWithheld = false,
 }: ProposalThreadProps) {
   const [open, setOpen] = useState(false)
   const [counteringId, setCounteringId] = useState<string | null>(null)
@@ -140,6 +147,15 @@ export function ProposalThread({
       <span style={KICK}>
         Positions on the record · {proposals.length}
       </span>
+
+      {moneyWithheld && proposals.length > 0 && (
+        <p
+          data-testid="thread-money-withheld"
+          style={{ margin: '3px 0 0', fontSize: 11, color: 'var(--ink-2, #4F473C)' }}
+        >
+          The amounts on these positions are shown to an owner or a manager only.
+        </p>
+      )}
 
       {proposals.length === 0 && (
         <p

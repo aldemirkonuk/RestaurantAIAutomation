@@ -5,7 +5,7 @@ import { DeliveryClockService } from "./delivery-clock.service";
 import { supersededCountLines, type CountDoc, type CountLine } from "./door-recount";
 import { ReadResult } from "./canonical-document.service";
 import { matchLines, MatchableLine } from "../documents/line-matcher";
-import { DeliveryStockService, CostReceipt } from "./delivery-stock.service";
+import { DeliveryStockService, CostReceipt, CostRepair } from "./delivery-stock.service";
 import { doorCountsOfPapers, withTheDoorsPack } from "./door-received";
 
 /**
@@ -125,6 +125,11 @@ const DELIVERY_COLUMNS =
   "id, restaurant_id, provider_id, order_id, state, provenance, jurisdiction, " +
   "delivered_at, agreed_at, agreed_rule, verified_at, verified_by, " +
   "lapsed_at, lapse_deemed, amended_at, owner_user_id, deputy_user_id";
+
+/** Whether a closed delivery's door stock went back to the vendor's side. */
+export type StockReturn =
+  | { returned: true; bottlesReturned: number }
+  | { returned: false; error: string };
 
 @Injectable()
 export class DeliveryService {
@@ -472,7 +477,14 @@ export class DeliveryService {
       note?: string | null;
       countersProposalId?: string | null;
     },
-  ): Promise<WriteResult<{ proposalId: string; delivery: DeliveryRow }>> {
+  ): Promise<
+    WriteResult<{
+      proposalId: string;
+      delivery: DeliveryRow;
+      /** Only on a rejection: whether the door's stock went back, in words when not. */
+      stockReturn?: StockReturn;
+    }>
+  > {
     if (input.side !== "restaurant" && input.side !== "vendor")
       return {
         ok: false,
@@ -558,6 +570,7 @@ export class DeliveryService {
           : null;
 
     let delivery = found.value;
+    let stockReturn: StockReturn | undefined;
     if (nextState) {
       const upd = await this.db
         .getClient()
@@ -578,16 +591,12 @@ export class DeliveryService {
         // D1's exit: a rejected delivery gives back whatever the door booked.
         // A reversal is a MOVEMENT, not a deletion — the ledger keeps both the
         // arrival and the return, because "these bottles were here" is true.
-        const back = await this.stock.reverse(
+        stockReturn = await this.returnTheDoorStock(
           restaurantId,
           deliveryId,
           userId,
           `rejected: ${input.reason}`,
         );
-        if (!back.ok)
-          this.logger.error(
-            `delivery ${deliveryId} was rejected but its stock was not returned: ${back.error}`,
-          );
       }
     }
 
@@ -613,7 +622,84 @@ export class DeliveryService {
         { dedupeWithinMinutes: 60 },
       );
 
-    return { ok: true, value: { proposalId, delivery } };
+    return {
+      ok: true,
+      value: { proposalId, delivery, ...(stockReturn ? { stockReturn } : {}) },
+    };
+  }
+
+  /**
+   * GIVE BACK A CLOSED DELIVERY'S STOCK, AND SAY SO WHEN IT DID NOT GO
+   * (r28 invoices audit, G2).
+   *
+   * A failed reversal used to be logged and nothing else: the delivery read
+   * REJECTED, the response was a success, the door's bottles stayed on the
+   * shelf, and no route could try again (a REJECTED delivery takes no new
+   * proposal). Now the caller is told in `stockReturn`, the house gets one
+   * high-priority notice per delivery, and `returnStock` tries again.
+   *
+   * Retrying is safe: `reverse` reads what the delivery still holds on the
+   * ledger (arrivals minus returns) and keys each item's return, so an item
+   * already given back moves nothing and only what failed is retried.
+   */
+  private async returnTheDoorStock(
+    restaurantId: string,
+    deliveryId: string,
+    userId: string | null,
+    why: string,
+  ): Promise<StockReturn> {
+    const back = await this.stock.reverse(restaurantId, deliveryId, userId, why);
+    if (back.ok)
+      return { returned: true, bottlesReturned: back.value.bottlesReturned };
+    this.logger.error(
+      `delivery ${deliveryId} is closed but its stock was not returned: ${back.error}`,
+    );
+    const sentence =
+      `The delivery is closed, but what its door count put on the shelf was not given back: ${back.error}. ` +
+      "Those bottles still count as stock. Fix the cause, then give the stock back from the delivery.";
+    await this.notifications.persistForRestaurant(
+      restaurantId,
+      {
+        type: "delivery_stock_not_returned",
+        title: "A closed delivery's stock is still on the shelf",
+        message: sentence,
+        priority: "high",
+        actionUrl: `/deliveries/${deliveryId}`,
+        actionLabel: "Open the delivery",
+        groupKey: `delivery-stock-not-returned:${deliveryId}`,
+        metadata: { deliveryId },
+      },
+      { dedupeWithinMinutes: 60 },
+    );
+    return { returned: false, error: sentence };
+  }
+
+  /**
+   * Try again to give back a REJECTED or CANCELLED delivery's stock (r28 G2).
+   * Refused for a delivery that is still open: its stock is the house's.
+   */
+  async returnStock(
+    restaurantId: string,
+    deliveryId: string,
+    userId: string | null,
+  ): Promise<WriteResult<{ deliveryId: string; stockReturn: StockReturn }>> {
+    const found = await this.byId(restaurantId, deliveryId);
+    if (!found.ok) return { ok: false, status: 500, error: found.error };
+    if (!found.value)
+      return { ok: false, status: 404, error: "Delivery not found" };
+    if (found.value.state !== "REJECTED" && found.value.state !== "CANCELLED")
+      return {
+        ok: false,
+        status: 409,
+        error: `This delivery is ${found.value.state}, so its stock stays: only a rejected or cancelled delivery gives back what its door count booked. Nothing was moved.`,
+      };
+    const stockReturn = await this.returnTheDoorStock(
+      restaurantId,
+      deliveryId,
+      userId,
+      `${found.value.state.toLowerCase()}: stock given back again`,
+    );
+    return { ok: true, value: { deliveryId, stockReturn } };
   }
 
   /** Answer one proposal with another (D7). The thread keeps both. */
@@ -875,10 +961,10 @@ export class DeliveryService {
    * IDEMPOTENT. A second verify returns the first one's stamp unchanged. Writing
    * again would move `verified_at` to a moment at which nobody decided anything.
    *
-   * NO STOCK, NO COST — MEASURED. See the class header: `cost_state` and
-   * `inventory_transactions.delivery_id` have zero writers on this tree, so
-   * setting `cost_state = final` here would be this code asserting a cost state
-   * about a booking it never made. Filed as the next stop, not half-done.
+   * NO STOCK, BUT THE COST. The door count booked the goods, provisional and
+   * unpriced; verifying moves no quantity. It settles the cost: the agreed
+   * price is written onto the lots this delivery booked (`finaliseAtVerified`)
+   * and an item with no usable price stays provisional, named in `costNote`.
    */
   async verify(
     restaurantId: string,
@@ -890,6 +976,8 @@ export class DeliveryService {
       alreadyVerified: boolean;
       cost: CostReceipt | null;
       costNote: string;
+      /** A re-verify's cost check (QA 10a (5)); absent on a first verify. */
+      repair?: Pick<CostRepair, "repaired" | "flagged"> | null;
     }>
   > {
     if (!userId)
@@ -942,9 +1030,11 @@ export class DeliveryService {
       // r33 w2 F2: what the re-check posted, so the screen says "cost posted"
       // instead of "nothing needed correcting" after it costed a lot that was
       // still provisional (a door count booked after the first verify, #1431).
+      // QA 10a (5, #1409): the repair itself, so the screen can say what changed.
+      const repair = fix.ok ? { repaired: fix.value.repaired, flagged: fix.value.flagged } : null;
       return {
         ok: true,
-        value: { delivery, alreadyVerified: true, cost: finish.ok ? finish.value : null, costNote },
+        value: { delivery, alreadyVerified: true, cost: finish.ok ? finish.value : null, costNote, repair },
       };
     }
 

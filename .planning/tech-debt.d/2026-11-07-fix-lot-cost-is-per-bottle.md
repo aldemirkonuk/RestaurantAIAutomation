@@ -27,7 +27,9 @@ QA round 12b K. `2 bottle @ 264, pack 12, total 528` is self-consistent, so the 
 
 ## Lots already finalised at a printed price stay wrong until re-verified — OPEN — 2026-11-07
 
-Production was not queried and nothing was backfilled. Since QA round 9a (2) (below), a lot is only corrected when someone re-verifies its delivery. **A one-off correction for the existing lots needs the founder's word.** Candidates are invoice lines with `uom in ('case','pack','split_case')` or `price_base_qty > 1` whose revaluation reason has no basis suffix. Two ways to correct them: call `repairPrintedCost` once per VERIFIED delivery, or count and revalue each lot through `revalue_lot`. **Closes when** that correction is run, or declined on the record.
+Production was not queried and nothing was backfilled. Since QA round 9a (2) (below), a lot is only corrected when someone re-verifies its delivery. **A one-off correction for the existing lots needs the founder's word.** Candidates are invoice lines with `uom in ('case','pack','split_case')` or `price_base_qty > 1` whose revaluation reason has no basis suffix. QA round 10a (7), branch `fix/cost-repair-job`: `repair-printed-cost.job.ts` walks every VERIFIED delivery through `repairPrintedCost`. It is a dry run unless `--apply` is passed, and reports each change (booked cost to per-bottle cost) and each flag as JSON. **It has not been run against production; running it is the founder's call.** **Closes when** the job is run with `--apply`, or declined on the record.
+
+1. The repair job is a script, dry run by default. Rejected: an admin endpoint (a write path over every house, reachable from the web). The session's call under the 2026-11-07 /goal.
 
 ## A re-verify kept a lot finalised at the printed price — CLOSED — 2026-11-07
 
@@ -42,6 +44,13 @@ Not covered: unattached lines, meaning the one-item fallback. Their price is not
 QA round 10a (1)+(6), same branch. An accepted proposal's raw price now counts as printed, so a lot an earlier build booked at it is repaired. A final `invoice` lot whose cost is not a printed price and no longer matches its line is flagged `line_changed` with the current per-bottle cost; nothing is posted. Each flag carries a `kind`. Claim `QA-R10A-REVERIFY-PROPOSAL-AND-EDITED-LINE`. Forks, the session's call:
 
 4. A lot whose line was edited after it was costed is FLAGGED, not revalued. Rejected: revaluing from the current line; the lot does not say whether its line changed or a person revalued it, and a re-verify is not a second verification (ADR 0103).
+
+## A re-verify's correction was invisible on the page — CLOSED — 2026-11-07
+
+QA round 10a (5), branch `fix/reverify-cost-notice`. `verify` now returns the repair itself (`repaired`, `flagged`); a VERIFIED delivery shows a "Check the cost again" button, and the page states the result in a `role="status"` notice: "Cost corrected", "Refused" with its reason, "Not corrected" for an edited line, or "nothing needed correcting". Turkish or English by the canonical-format fork. QA round 12b: a FIRST verify that leaves a lot provisional now shows each reason the same way (`costNoticeOf`); before, the page discarded the response. Claim `QA-R10A-REVERIFY-NOTICE`. Forks, the session's call:
+
+1. The notice is built on the page from the structured repair; `costNote` keeps its sentence for other callers. Rejected: rendering `costNote` (English only, not structured).
+2. A re-check button on a VERIFIED delivery, because the page had no way to re-verify one. Rejected: no button (the notice could never show).
 
 ## An unmapped unit, or a total that contradicts the price, reached the lot — CLOSED — 2026-11-07
 

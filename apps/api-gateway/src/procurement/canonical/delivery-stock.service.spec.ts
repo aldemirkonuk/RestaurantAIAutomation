@@ -675,6 +675,16 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
     }
   });
 
+  it("QA 10a (7): a dry run reports the correction and posts nothing", async () => {
+    db.rpcCalls.length = 0;
+    db.answers.inventory_lots = { data: [lot(264)], error: null };
+    db.answers.procurement_document_lines = { data: [invoiceLine({})], error: null };
+    const r = await service.repairPrintedCost(REST, DEL, null, { dryRun: true });
+    expect(r.ok && r.value.changes).toEqual([{ inventoryId: ITEM, from: 264, to: 22, source: "invoice_line" }]);
+    expect(r.ok && r.value.repaired).toEqual([]);
+    expect(posted()).toEqual([]);
+  });
+
   it("QA 10a (3)+(4): `24 pcs @ 22` posts 22; a credit-note row at a case price stays PROVISIONAL", async () => {
     await run({ uom: "each", pack_size: 1, qty: 24, unit_price: 22, line_total: 528, printed: { uom: "pcs" } });
     expect(posted()[0].args.p_unit_cost).toBe(22);

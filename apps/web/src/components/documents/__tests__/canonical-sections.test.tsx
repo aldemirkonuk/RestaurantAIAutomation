@@ -25,6 +25,7 @@ import { DegradedNotice, degradedReasons } from '../DegradedNotice'
 import { DoorFrame } from '../DoorFrame'
 import { ProposalThread } from '../ProposalThread'
 import { DeliveryGates } from '../DeliveryGates'
+import { costNoticeOf } from '../canonical-format'
 import type { DeliveryEvent, Proposal } from '../../../services/api/deliveries'
 import type {
   AdjudicatedLine,
@@ -917,6 +918,64 @@ describe('DeliveryGates — the two gates, explained before they are pressed', (
     )
   })
 
+  it('QA 10a (5): a re-check of a VERIFIED delivery says what it did to the cost, in the house’s language', async () => {
+    let rechecked = 0
+    const verified = event({
+      state: 'VERIFIED',
+      agreedAt: '2026-08-15T10:00:00Z',
+      agreedRule: 'both_sides_recorded',
+      verifiedAt: '2026-08-15T11:00:00Z',
+      jurisdiction: 'TR',
+    })
+    const repair = {
+      repaired: [{ inventoryId: 'inv-1', unitCost: 22, bottlesFinalised: 24 }],
+      flagged: [
+        { inventoryId: 'inv-2', kind: 'refused' as const, reason: 'the invoice prints its unit as "kutu"' },
+        { inventoryId: 'inv-3', kind: 'line_changed' as const, reason: 'its invoice line now makes 30 a bottle' },
+      ],
+    }
+    const { rerender } = render(
+      <DeliveryGates delivery={verified} onRecheck={async () => { rechecked++ }} repair={repair} />,
+    )
+    await userEvent.click(screen.getByTestId('recheck-cost-button'))
+    expect(rechecked).toBe(1)
+    const tr = screen.getByTestId('cost-repair-notice')
+    expect(tr.getAttribute('role')).toBe('status')
+    expect(tr.textContent).toMatch(/Maliyet düzeltildi: 1 kalem/)
+    expect(tr.textContent).toContain('Reddedildi: the invoice prints its unit as "kutu"')
+    expect(tr.textContent).toContain('Düzeltilmedi: its invoice line now makes 30 a bottle')
+
+    rerender(
+      <DeliveryGates delivery={{ ...verified, jurisdiction: 'US-CA' }} onRecheck={async () => {}} repair={repair} />,
+    )
+    const en = screen.getByTestId('cost-repair-notice').textContent ?? ''
+    expect(en).toMatch(/Cost corrected: 1 item had been booked at the invoice's printed price/)
+    expect(en).toContain('Refused: the invoice prints its unit as "kutu"')
+
+    rerender(
+      <DeliveryGates delivery={{ ...verified, jurisdiction: 'US-CA' }} repair={{ repaired: [], flagged: [] }} />,
+    )
+    expect(screen.getByTestId('cost-repair-notice').textContent).toMatch(/nothing needed correcting/)
+  })
+
+  it('QA 10a (5): the page keeps the verify response instead of discarding it', () => {
+    const src = readFileSync(join(__dirname, '../../../pages/documents/next/CanonicalDocumentPage.tsx'), 'utf8')
+    expect(src).toMatch(/const result = await fn\(\)/)
+    expect(src).toMatch(/costNoticeOf\(result\)/)
+    expect(src).toMatch(/setCostRepair\(repair\)/)
+    expect(src).toMatch(/repair=\{costRepair\}/)
+  })
+
+  it('QA 12b: a first verify that leaves a lot provisional says why on screen', () => {
+    const held = { inventoryId: 'i2', reason: 'the accepted proposal names no invoice line' }
+    expect(costNoticeOf({ cost: { finalised: [], stillProvisional: [held] } })).toEqual({
+      repaired: [],
+      flagged: [{ ...held, kind: 'refused' }],
+    })
+    expect(costNoticeOf({ cost: { finalised: [], stillProvisional: [] } })).toBeNull()
+    expect(costNoticeOf({ repair: { repaired: [], flagged: [] } })).toEqual({ repaired: [], flagged: [] })
+  })
+
   it('marks an UNORDERED delivery permanently, not as a step to complete', () => {
     render(<DeliveryGates delivery={event({ provenance: 'UNORDERED', orderId: null })} />)
     expect(screen.getByTestId('unordered-mark').textContent).toMatch(
@@ -936,7 +995,31 @@ describe('DeliveryGates — the two gates, explained before they are pressed', (
     )
     const text = screen.getByTestId('lapse-notice').textContent ?? ''
     expect(text).toMatch(/accepted IN FULL/)
-    expect(text).toMatch(/Nothing was posted to inventory or cost/)
+    // The lapse moved nothing, but the door count may already have booked
+    // stock: the sentence says the first without denying the second.
+    expect(text).toMatch(/The lapse itself posted nothing to inventory or cost/)
+    expect(text).toMatch(/counted at the door stays on the shelf with its cost unsettled/)
+  })
+
+  it('r24 B2: a VERIFIED delivery says verifying settled its cost and moved no stock', () => {
+    render(
+      <DeliveryGates
+        delivery={event({
+          state: 'VERIFIED',
+          agreedAt: '2026-08-15T10:00:00Z',
+          agreedRule: 'both_sides_recorded',
+          verifiedAt: '2026-08-15T11:00:00Z',
+        })}
+      />,
+    )
+    const text = screen.getByTestId('delivery-gates').textContent ?? ''
+    // Verifying is where the cost is settled (finaliseAtVerified), so the
+    // screen must not say the step posted nothing to cost.
+    expect(text).not.toMatch(/Nothing was posted to inventory or cost/)
+    expect(text).toMatch(/Verifying moved no stock: the goods went on the shelf\s+at the door count/)
+    expect(text).toMatch(/settles their cost/)
+    expect(text).toMatch(/agreed price became the cost of what this delivery booked/)
+    expect(text).toMatch(/no usable price stays provisional/)
   })
 })
 

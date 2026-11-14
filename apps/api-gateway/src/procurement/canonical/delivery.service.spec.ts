@@ -789,6 +789,18 @@ describe("DeliveryService", () => {
       expect(res.ok && res.value.cost).toBeNull();
     });
 
+    it("QA 10a (5): a re-verify returns the repair itself, not only a sentence", async () => {
+      db.answers.deliveries = { data: deliveryRow({ state: "VERIFIED", verified_at: "2026-08-15T11:00:00Z" }), error: null };
+      const flagged = [{ inventoryId: "i2", kind: "refused", reason: "why" }];
+      const spy = jest.spyOn(DeliveryStockService.prototype, "repairPrintedCost").mockResolvedValueOnce({
+        ok: true,
+        value: { repaired: [{ inventoryId: "i1", unitCost: 22 }], flagged, changes: [] },
+      } as never);
+      const res = await service.verify(REST, DEL, "u1");
+      spy.mockRestore();
+      expect(res.ok && res.value.repair).toEqual({ repaired: [{ inventoryId: "i1", unitCost: 22 }], flagged });
+    });
+
     it("is a 404 for another tenant's delivery", async () => {
       db.answers.deliveries = { data: null, error: null };
       const res = await service.verify("rest-2", DEL, "u1");
