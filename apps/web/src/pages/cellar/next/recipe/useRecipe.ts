@@ -28,6 +28,32 @@ export const recipeKey = (rid: string | null | undefined, owner: string | Recipe
 
 export const dishesKey = (rid: string | null | undefined) => ['recipes', rid ?? null, 'dishes'] as const;
 
+/**
+ * The cocktail list's figures. Under the list's own key, so a drink added,
+ * amended or retired refreshes its cost with it.
+ */
+export const drinkFiguresKey = (rid: string | null | undefined) => ['cellar', 'cocktails', rid ?? null, 'figures'] as const;
+
+/**
+ * Every drink's cost a serve, for the cost and pour cost columns of
+ * /cocktails. Read only for a role that sees the house's money.
+ */
+export function useDrinkFigures(enabled: boolean) {
+  const { activeRestaurantId } = useAuth();
+  const q = useQuery({
+    queryKey: drinkFiguresKey(activeRestaurantId),
+    enabled: Boolean(enabled && activeRestaurantId),
+    queryFn: () => dishesApi.drinkFigures(activeRestaurantId as string),
+  });
+  return {
+    // A failed re-read keeps the last figures in the cache; they are not shown
+    // beside the sentence that says none is shown, so an error blanks them.
+    byId: q.data && !q.isError ? new Map(q.data.map((d) => [d.cocktailId, d])) : null,
+    loading: q.isLoading,
+    error: q.isError ? reason(q.error) : null,
+  };
+}
+
 /** The house's dishes, by name. */
 export function useDishes() {
   const { activeRestaurantId } = useAuth();
@@ -186,6 +212,8 @@ export function useSaveRecipe(cocktailId: string | RecipeOwner) {
       dropDraft(storeKey);
       // A dish's save moves its list row too (has a recipe, its cost).
       if (ownerOf(cocktailId).kind === 'dish') void qc.invalidateQueries({ queryKey: dishesKey(activeRestaurantId) });
+      // A drink's save moves its cost on the cocktail list.
+      else void qc.invalidateQueries({ queryKey: drinkFiguresKey(activeRestaurantId) });
       return qc.invalidateQueries({ queryKey: recipeKey(activeRestaurantId, cocktailId) });
     },
   });
