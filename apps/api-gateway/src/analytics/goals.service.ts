@@ -1,3 +1,4 @@
+import { GoalReadingRefused, goalUnreadInWords } from "./goal-unread";
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
@@ -628,7 +629,9 @@ export class GoalsService {
           return {
             goal: { ...g, current_value: null },
             unreadable: true,
-            reason: String(err?.message ?? ""),
+            // In the house's words: a raw database message is not one
+            // (r34 walk w3, R-F7). The raw text is in the warning above.
+            reason: goalUnreadInWords(err),
             zoneUnset: err?.message === HOUSE_ZONE_UNSET,
           };
         }
@@ -720,7 +723,9 @@ export class GoalsService {
     } catch (err: any) {
       if (!callerRefused)
         await this.recordReading(restaurantId, goalId, {
-          current_unread: String(err?.message ?? "the reading failed"),
+          // Every later reader of the row shows this, so it is in the
+          // house's words, never the raw error (r34 walk w3, R-F7).
+          current_unread: goalUnreadInWords(err),
           current_read_at: new Date().toISOString(),
         });
       throw err;
@@ -1203,7 +1208,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
         const span = financial?.cogsWindow?.spanDays;
         if (typeof span === "number" && span < 28)
           missing.push(`the till covers ${span} of the 28 days it needs`);
-        throw new Error(
+        throw new GoalReadingRefused(
           gate.withSales === true
             ? "Days of stock cannot be read for this restaurant yet: it is today's stock at cost of the goods the till sells over the cost of what the till sold, so it is only known when every such good on hand has a recorded cost, every bottle sold carries its cost, and the till covers 28 days." +
               (missing.length ? ` Here ${missing.join("; ")}.` : "")
