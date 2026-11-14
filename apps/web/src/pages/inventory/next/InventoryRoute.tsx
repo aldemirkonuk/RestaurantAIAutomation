@@ -3,29 +3,27 @@
  *
  * `inventory` is in LIVE_PAGES, so the route's PageGate always renders its
  * `next` side — that gate is what carries the house header. This picks the
- * page inside it: InventoryNext when the house's `mudavym_design_inventory_next`
- * is ON, the command page when it is OFF or failed to read (the hook resolves
- * every failure to `false`). A plain branch, not a second PageGate: a nested
- * gate would mount a second header and a second sheet stack.
+ * page inside it: InventoryNext unless the house's
+ * `mudavym_design_inventory_next` answers OFF, then the command page. A plain
+ * branch, not a second PageGate: a nested gate would mount a second header
+ * and a second sheet stack.
  *
- * While the flag is still being read, neither page mounts: drawing the command
- * page first would start its reads and consume `?highlight=` / `?wine=` before
- * InventoryNext replaced it (#677 gate plan, 2026-10-31).
+ * [2026-11-13, inventory r28 audit gap 5: the flag is ON by default (founder
+ * 2026-10-31) and ON for every house measured, so InventoryNext no longer
+ * waits on the flag read before it starts its own reads, and a failed read
+ * keeps InventoryNext instead of quietly handing the house the command page.
+ * Only an explicit OFF swaps pages. The session's call; rejected: putting
+ * `inventory_next` in LIVE_PAGES (drops the per-house switch ADR 0315 kept),
+ * and keeping the wait with failure read as ON (still one round trip on every
+ * first visit).]
  */
-import { useMudavymDesignVerdict } from '../../../lib/mudavym/useMudavymDesign';
+import { useMudavymDesignOnUnlessOff } from '../../../lib/mudavym/useMudavymDesign';
 import { InventoryCommandPage } from '../command/InventoryCommandPage';
 import InventoryNext from './InventoryNext';
 
 export function InventoryRoute() {
-  const verdict = useMudavymDesignVerdict('inventory_next');
-  if (verdict === null) {
-    return (
-      <main aria-busy="true" data-testid="inventory-route-reading">
-        <p className="sr-only">Reading this house’s inventory…</p>
-      </main>
-    );
-  }
-  return verdict ? <InventoryNext /> : <InventoryCommandPage />;
+  const next = useMudavymDesignOnUnlessOff('inventory_next');
+  return next ? <InventoryNext /> : <InventoryCommandPage />;
 }
 
 export default InventoryRoute;

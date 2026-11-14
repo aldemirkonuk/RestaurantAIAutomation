@@ -8,7 +8,7 @@ Filed by `docs/inventory-677-gate-and-flip-record` (#702), from its review.
 
 **Not decided.** What a failed read should do instead (retry, say it in the house's words, or fall back as now with a mark) is not decided; it is filed as OD-231 (`OPEN-DECISIONS.md`, the section filed 2026-10-31 at the end).
 
-**Re-check.** CLAIMS `DESIGN-FLAG-READ-FAILURE-IS-NOT-CACHED-AS-OFF` (status `open`) fails to hold while `.catch(() => false)` is in `useMudavymDesign.ts`.
+**Re-check.** CLAIMS `DESIGN-FLAG-READ-FAILURE-IS-NOT-CACHED-AS-OFF` (status `open`) fails to hold while `.catch(() => false)` is in `useMudavymDesign.ts`. [CLOSED 2026-11-13 on `fix/inventory-opens-without-waiting-on-its-flag` (#1404): a failed flag read is no longer cached, and `/inventory` reads a failure as on; the claim is now `resolved`.]
 
 ## New houses still get the command page until the default-on change lands — CLOSED on `feat/inventory-next-default-on` — 2026-10-31
 

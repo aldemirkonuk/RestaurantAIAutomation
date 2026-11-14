@@ -259,19 +259,30 @@ function readOverride(page: MudavymPage): boolean | null {
  * One in-flight/settled promise per restaurant+flag for the session, so ten
  * gated components cost one request. Cleared by clearMudavymDesignCache().
  */
-const flagCache = new Map<string, Promise<boolean>>();
+const flagCache = new Map<string, Promise<boolean | null>>();
 
-function fetchFlag(restaurantId: string, page: MudavymPage): Promise<boolean> {
+function readFlag(restaurantId: string, page: MudavymPage): Promise<boolean | null> {
   const key = `${restaurantId}:${flagKeyFor(page)}`;
   let cached = flagCache.get(key);
   if (!cached) {
     cached = settingsApi
       .checkFeatureFlag(restaurantId, flagKeyFor(page))
       .then((res) => res.active && res.enabled)
-      .catch(() => false); // network/API failure → legacy, never a broken page
+      .catch(() => {
+        // The flag's answer is `null` when it could not be read, and a failed
+        // read is not kept: the next mount asks again rather than carrying a
+        // 429 for the whole session (inventory r28 audit, gap 5).
+        flagCache.delete(key);
+        return null;
+      });
     flagCache.set(key, cached);
   }
   return cached;
+}
+
+/** network/API failure → legacy, never a broken page */
+function fetchFlag(restaurantId: string, page: MudavymPage): Promise<boolean> {
+  return readFlag(restaurantId, page).then((enabled) => enabled ?? false);
 }
 
 /** Test/dev helper: forget cached flag results (e.g. after switching branch). */
@@ -325,14 +336,18 @@ export function useMudavymDesign(page: MudavymPage): boolean {
 }
 
 /**
- * `useMudavymDesign` with the wait made visible: `null` while a held-back
- * page's flag is still being read, then the same verdict. For a caller that
- * chooses between two whole pages (`InventoryRoute`), where drawing the OFF
- * side first would start its reads and consume its deep links before the
- * ON side replaced it. A missing house, an override and LIVE_PAGES answer at
- * once; a failed read is `false`, as above.
+ * For a held-back page whose flag is ON by default (`inventory_next`, founder
+ * 2026-10-31 "Default ON"): `true` at once, while the flag is read and when the
+ * read fails; `false` only when the house's flag answers OFF. A house on the
+ * default never waits a round trip before its page starts reading, and a
+ * failed read (a 429, a dropped connection) can no longer swap in the other
+ * page in silence (inventory r28 audit, gap 5). The cost, the session's call:
+ * a house that turned the flag OFF sees the ON page until the answer comes,
+ * and a deep link that page reads first is not handed on. With no house
+ * chosen it is `false`. [Replaces `useMudavymDesignVerdict`, whose `null`
+ * made InventoryRoute wait on the read; it had no other caller.]
  */
-export function useMudavymDesignVerdict(page: MudavymPage): boolean | null {
+export function useMudavymDesignOnUnlessOff(page: MudavymPage): boolean {
   const override = typeof window === 'undefined' ? null : readOverride(page);
   const live = LIVE_PAGES.has(page);
   const activeRestaurantId = useContext(AuthContext)?.activeRestaurantId ?? null;
@@ -345,13 +360,13 @@ export function useMudavymDesignVerdict(page: MudavymPage): boolean | null {
     }
   }
   const asked = override === null && !live && restaurantId ? `${restaurantId}:${page}` : null;
-  const [answer, setAnswer] = useState<{ asked: string; enabled: boolean } | null>(null);
+  const [off, setOff] = useState<string | null>(null);
 
   useEffect(() => {
     if (!asked || !restaurantId) return;
     let cancelled = false;
-    fetchFlag(restaurantId, page).then((enabled) => {
-      if (!cancelled) setAnswer({ asked, enabled });
+    readFlag(restaurantId, page).then((enabled) => {
+      if (!cancelled && enabled === false) setOff(asked);
     });
     return () => {
       cancelled = true;
@@ -360,6 +375,6 @@ export function useMudavymDesignVerdict(page: MudavymPage): boolean | null {
 
   if (override !== null) return override;
   if (live) return true;
-  if (!asked) return false;
-  return answer && answer.asked === asked ? answer.enabled : null;
+  if (!asked) return false; // no house chosen: nothing to read either page for
+  return off !== asked;
 }
