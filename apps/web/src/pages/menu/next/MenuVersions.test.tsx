@@ -620,6 +620,16 @@ describe('r36 N9: a kept menu can be put away, and brought back', () => {
     expect(screen.queryByRole('button', { name: /Bring .* back/, hidden: true })).toBeNull();
   });
 
+  it('putting away the menu whose plan is open closes the plan', async () => {
+    mockList.mockResolvedValue(list([CUR, MISREAD]));
+    mockAside.mockResolvedValue({ menuId: 'mis', setAside: true, setAsideAt: '2026-11-14T09:00:00Z', changed: true, said: '' });
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Make the menu read 2026-11-02 current' }));
+    expect(await screen.findByTestId('menu-plan')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('menu-version-put-away'));
+    await waitFor(() => expect(screen.queryByTestId('menu-plan')).toBeNull());
+  });
+
   it('a refusal is said with its reason, and nothing changed', async () => {
     mockList.mockResolvedValue(list([CUR, MISREAD]));
     mockAside.mockRejectedValue({ response: { status: 409, data: { message: 'This is the current menu, so it cannot be set aside.' } } });
