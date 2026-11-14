@@ -99,6 +99,15 @@ describe("CeilingHeldProducer", () => {
     expect(call.type).toBe("goal_reached");
   });
 
+  it("[REVERT-FAILS] reads the goal as a sales holder, since an absent gate withholds a spend reading (ADR 0348)", async () => {
+    const { db, goals, producer } = build(HELD);
+    db.tables.analytics_goals.push(ceiling());
+    seedShift(db);
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    expect(goals.getGoalProgress.calls).toHaveLength(1);
+    expect(goals.getGoalProgress.calls[0][3]).toEqual({ withSales: true });
+  });
+
   it("[REVERT-FAILS] carries the same provenance keys the crossing producer does", async () => {
     const { db, notifications, producer } = build(HELD);
     db.tables.analytics_goals.push(ceiling());
