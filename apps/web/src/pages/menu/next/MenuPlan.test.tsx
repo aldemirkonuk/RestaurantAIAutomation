@@ -487,3 +487,46 @@ describe('a line whose house row was removed is said (r28 G9)', () => {
     expect(every.filter((r) => within(r).queryByTestId('menu-plan-removed'))).toHaveLength(1);
   });
 });
+
+// r34 walk w2 F7: with only kept_newer rows the table was still headed "Prices
+// this menu would change. Keep one to hold it…" — a change that is not coming.
+describe('the price table is headed for what it shows (r34 w2 F7)', () => {
+  const kept = line({
+    bottle: {
+      kind: 'bottle',
+      menuPrice: 480,
+      housePrice: 520,
+      result: 'kept_newer',
+      lastSet: { by: person('Deniz'), at: '2026-09-12T08:00:00Z', source: 'manual' },
+      lock: null,
+    },
+  });
+  const keptOnly = () =>
+    plan({ current: true, lines: [kept], counts: { ...plan().counts, change: 0, new_wine: 0, kept_newer: 1 } });
+
+  it.each([true, false])('[REVERT-FAILS] only prices set since: headed as such, never "would change" (canManage %s)', async (canManage) => {
+    mockPlan.mockResolvedValue(keptOnly());
+    mount(canManage);
+    const heading = await screen.findByTestId('menu-plan-prices-heading');
+    expect(heading).toHaveTextContent('Prices set since this menu was chosen. Choosing it again leaves them as they are.');
+    expect(heading).not.toHaveTextContent('would change');
+  });
+
+  it('a price this menu would change beside one set since keeps the change heading', async () => {
+    mockPlan.mockResolvedValue(
+      plan({ current: true, lines: [kept, line({ menuItemId: 'n9' })], counts: { ...plan().counts, change: 1, new_wine: 0, kept_newer: 1 } }),
+    );
+    mount(true);
+    expect(await screen.findByTestId('menu-plan-prices-heading')).toHaveTextContent(
+      'Prices this menu would change. Keep one to hold it at the house price',
+    );
+  });
+
+  it('a held price alone keeps the heading that names the hold', async () => {
+    mockPlan.mockResolvedValue(plan({ lines: [BAROLO] }));
+    mount(false);
+    expect(await screen.findByTestId('menu-plan-prices-heading')).toHaveTextContent(
+      'Prices this menu would change. An owner or a manager can keep one as it is.',
+    );
+  });
+});

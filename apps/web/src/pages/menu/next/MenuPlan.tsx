@@ -361,10 +361,15 @@ export function MenuPlan({
 
       {replacing.length > 0 ? (
         <>
-          <p className="cl-said" style={{ marginTop: 12 }}>
-            {canManage
-              ? 'Prices this menu would change. Keep one to hold it at the house price: no menu changes it until an owner or a manager does.'
-              : 'Prices this menu would change. An owner or a manager can keep one as it is.'}
+          {/* r34 walk w2 F7: with only prices set since the menu was chosen,
+              nothing here would change, so the table is headed for what it
+              shows rather than for a change that is not coming. */}
+          <p className="cl-said" style={{ marginTop: 12 }} data-testid="menu-plan-prices-heading">
+            {!replacing.some((r) => r.k.result === 'change' || r.k.result === 'held_by_lock')
+              ? 'Prices set since this menu was chosen. Choosing it again leaves them as they are.'
+              : canManage
+                ? 'Prices this menu would change. Keep one to hold it at the house price: no menu changes it until an owner or a manager does.'
+                : 'Prices this menu would change. An owner or a manager can keep one as it is.'}
           </p>
           {typedAfter > 0 ? (
             <p className="cl-said" style={{ marginTop: 6 }} data-testid="menu-plan-typed-after">
