@@ -17,7 +17,7 @@ const SOUR = '22222222-2222-4222-8222-222222222222';
 const FIGURES = `/recipes/${RID}/drinks/figures`;
 const MENU = `/recipes/${RID}/menu-prices`;
 
-const h = vi.hoisted(() => ({ get: vi.fn(), amend: vi.fn(), role: 'manager' }));
+const h = vi.hoisted(() => ({ get: vi.fn(), amend: vi.fn(), role: 'manager', currentMenus: 1 }));
 
 vi.mock('../../../services/api/client', () => ({
   apiClient: { get: h.get, put: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
@@ -50,6 +50,7 @@ import CocktailRegister from './CocktailRegister';
 
 beforeEach(() => {
   h.role = 'manager';
+  h.currentMenus = 1;
   h.amend.mockReset().mockResolvedValue({});
   h.get.mockReset().mockImplementation(async (url: string) => {
     if (url === '/settings/currency') return { data: { restaurantId: RID, code: 'TRY', country: null, readable: true, reason: null, statedAt: null } };
@@ -58,7 +59,7 @@ beforeEach(() => {
       return {
         data: {
           amountsWithheld: false,
-          currentMenus: 1,
+          currentMenus: h.currentMenus,
           dishes: [],
           drinks: [
             { cocktailId: GT, menu: { found: 'one', prices: [12], agrees: true } },
@@ -114,6 +115,16 @@ describe('/cocktails: use the menu\'s price', () => {
     await openDrink('Gin Sour');
     expect(screen.getByTestId('use-menu-price')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /^Amend/ }));
+    expect(screen.queryByTestId('use-menu-price')).toBeNull();
+  });
+
+  it('with no current menu nothing is offered, as no Menu column shows', async () => {
+    h.currentMenus = 0;
+    mount();
+    await waitFor(() => expect(h.get).toHaveBeenCalledWith(MENU));
+    fireEvent.click(screen.getByText('Gin Sour'));
+    await screen.findByTestId('cocktail-leaf');
+    expect(screen.queryByRole('columnheader', { name: 'Menu' })).toBeNull();
     expect(screen.queryByTestId('use-menu-price')).toBeNull();
   });
 

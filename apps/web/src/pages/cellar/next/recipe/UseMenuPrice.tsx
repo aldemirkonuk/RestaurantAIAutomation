@@ -18,7 +18,7 @@ import { reason } from './useRecipe';
 
 /** The menu's prices a row can take: none unless they would change it. */
 export function menuPriceOffer(menu: MenuPrice | undefined, own: number | null | undefined): number[] {
-  if (!menu || menu.found !== 'one' || menu.prices.length === 0) return [];
+  if (!menu || menu.found !== 'one') return [];
   const ownPrice = own ?? null;
   if (ownPrice !== null && menu.agrees !== false) return [];
   return menu.prices.filter((p) => p !== ownPrice);

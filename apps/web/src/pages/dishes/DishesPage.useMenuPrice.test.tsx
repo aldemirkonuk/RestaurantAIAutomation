@@ -14,7 +14,7 @@ const B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const MENU = `/recipes/${RID}/menu-prices`;
 
-const h = vi.hoisted(() => ({ get: vi.fn(), patch: vi.fn(), role: 'manager', price: 500 as number | null, menuPrice: 550 }));
+const h = vi.hoisted(() => ({ get: vi.fn(), patch: vi.fn(), role: 'manager', price: 500 as number | null, currentMenus: 1 }));
 vi.mock('../../services/api/client', () => ({
   apiClient: { get: h.get, post: vi.fn(), put: vi.fn(), patch: h.patch, delete: vi.fn() },
   getErrorStatus: () => null,
@@ -34,6 +34,7 @@ const row = (id: string, name: string, price: number | null) => ({
 beforeEach(() => {
   h.role = 'manager';
   h.price = 500;
+  h.currentMenus = 1;
   h.patch.mockReset();
   h.get.mockReset().mockImplementation(async (url: string) => {
     if (url === '/settings/currency') return { data: { restaurantId: RID, code: 'TRY', country: 'Turkey', readable: true, reason: null, statedAt: null } };
@@ -42,7 +43,7 @@ beforeEach(() => {
       return {
         data: {
           amountsWithheld: false,
-          currentMenus: 1,
+          currentMenus: h.currentMenus,
           dishes: [
             { dishId: B, menu: { found: 'one', prices: [550], agrees: h.price == null ? null : h.price === 550 } },
             { dishId: A, menu: { found: 'one', prices: [900], agrees: true } },
@@ -102,6 +103,16 @@ describe('/dishes: use the menu\'s price', () => {
     fireEvent.click(await screen.findByTestId(`dish-row-${A}`));
     await screen.findByTestId(`dish-details-${A}`);
     await waitFor(() => expect(h.get).toHaveBeenCalledWith(MENU));
+    expect(screen.queryByTestId('use-menu-price')).toBeNull();
+  });
+
+  it('with no current menu nothing is offered, as no Menu column shows', async () => {
+    h.currentMenus = 0;
+    mount();
+    fireEvent.click(await screen.findByTestId(`dish-row-${B}`));
+    await screen.findByTestId(`dish-details-${B}`);
+    await waitFor(() => expect(h.get).toHaveBeenCalledWith(MENU));
+    expect(screen.queryByRole('columnheader', { name: 'Menu' })).toBeNull();
     expect(screen.queryByTestId('use-menu-price')).toBeNull();
   });
 
