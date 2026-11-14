@@ -134,6 +134,12 @@ describe("the week's shape reads only the weekdays recorded", () => {
     );
   });
 
+  it("a weekday whose lines read 0 bottles was recorded: it is measured, and the quietest", async () => {
+    const out = await seasonality(byWeekday((w) => (w === "Monday" ? 0 : 4)));
+    expect(out.weekdayProfile).toHaveLength(7);
+    expect(out.worstDay).toBe("Monday");
+  });
+
   it("a house that records every weekday keeps all seven and adds no clause", async () => {
     const out = await seasonality(byWeekday((w) => (w === "Friday" ? 8 : 3)));
     expect(out.weekdayProfile).toHaveLength(7);
