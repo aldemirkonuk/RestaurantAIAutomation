@@ -204,6 +204,8 @@ describe('the seats and service tables say when they stop short (r28 gap 14)', (
     expect(v.table!.rows).toHaveLength(40);
     expect(v.table!.more).toBe("Showing 40 of 44, in the register's own order.");
     expect(serviceView([server(1)]).table!.more).toBeUndefined();
+    // Exactly 40 is the whole list: nothing is left out, so nothing is said.
+    expect(serviceView(Array.from({ length: 40 }, (_, i) => server(i))).table!.more).toBeUndefined();
   });
 
   it('[REVERT-FAILS] never says an unserved table is listed when the table stops before it', () => {
