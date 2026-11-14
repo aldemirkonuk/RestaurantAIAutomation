@@ -140,10 +140,16 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
     // follow-up after PR #617, the way #617 withholds them, not refused here
     // (ADR 0348 §Decision 3; its §Decision 5 names the four role-less writes).
     // Pinned end to end by analytics/analytics-money-needs-a-manager.spec.ts.
+    // BeveragesController (r34 walk w1 F13, 2026-11-13): its four cocktail
+    // writes (record, amend, retire, replace the recipe) now name owner AND
+    // manager; a staff member could put a drink on the house's list or take
+    // one off. Its five reads stay "open". Pinned end to end by
+    // beverages/cocktail-writes-need-a-manager.spec.ts.
     expect(controllersWithRoles()).toEqual([
       "analytics/analytics.controller.ts",
       "ask-ai/ask-ai.controller.ts",
       "auth/auth.controller.ts",
+      "beverages/beverages.controller.ts",
       "commodity/commodity.controller.ts",
       "common/orchestrator/prospects.controller.ts",
       "common/orchestrator/sender-trust.controller.ts",
