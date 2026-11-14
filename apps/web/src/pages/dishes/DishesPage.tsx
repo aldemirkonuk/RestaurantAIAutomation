@@ -8,7 +8,7 @@
  * `?open=<id>` opens that dish (the inventory drawer links here); the query
  * follows the open row with `replace`, so Back leaves the page.
  */
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AlertTriangle, Plus } from 'lucide-react';
 import RecipeSheet from '../cellar/next/recipe/RecipeSheet';
@@ -37,6 +37,9 @@ function AddDish({ onAdded }: { onAdded: (id: string) => void }) {
   const [section, setSection] = useState('');
   const [price, setPrice] = useState('');
   const [said, setSaid] = useState<string | null>(null);
+  // Each field names itself by `for`/`id`, not only by sitting inside its label:
+  // some readers and voice-control tools name a wrapped input as a bare "textbox".
+  const id = useId();
   const priceNum = price.trim() === '' ? undefined : Number(price);
   const priceBad = priceNum !== undefined && !(Number.isFinite(priceNum) && priceNum >= 0);
   const blocked = name.trim() === '' || priceBad || create.isPending;
@@ -63,23 +66,25 @@ function AddDish({ onAdded }: { onAdded: (id: string) => void }) {
     <form
       className="cl-panel"
       data-testid="dish-add"
+      aria-label="Add a dish"
       style={{ marginTop: 12, display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}
       onSubmit={(e) => {
         e.preventDefault();
         void submit();
       }}
     >
-      <label>
+      <label htmlFor={`${id}-name`}>
         Dish name
-        <input className="cl-field cl-focus" value={name} maxLength={200} onChange={(e) => setName(e.target.value)} />
+        <input id={`${id}-name`} className="cl-field cl-focus" aria-required="true" value={name} maxLength={200} onChange={(e) => setName(e.target.value)} />
       </label>
-      <label>
+      <label htmlFor={`${id}-section`}>
         Section
-        <input className="cl-field cl-focus" value={section} maxLength={100} onChange={(e) => setSection(e.target.value)} />
+        <input id={`${id}-section`} className="cl-field cl-focus" value={section} maxLength={100} onChange={(e) => setSection(e.target.value)} />
       </label>
-      <label>
+      <label htmlFor={`${id}-price`}>
         Price
         <input
+          id={`${id}-price`}
           className="cl-field cl-focus cl-num"
           type="number"
           min={0}

@@ -135,6 +135,22 @@ describe('DishesPage', () => {
     expect(within(leaf).getByTestId('recipe-sheet')).toBeInTheDocument();
   });
 
+  it('names every field of the add form by for/id, and the form itself', async () => {
+    list = [];
+    mount();
+    await screen.findByText('No dishes yet.');
+    const form = screen.getByRole('form', { name: 'Add a dish' });
+    const fields = within(form).getAllByRole('textbox').concat(within(form).getAllByRole('spinbutton'));
+    expect(fields).toHaveLength(3);
+    for (const f of fields) {
+      expect(f.id).not.toBe('');
+      expect(form.querySelector(`label[for="${f.id}"]`)).not.toBeNull();
+    }
+    expect(screen.getByRole('textbox', { name: 'Dish name' })).toHaveAttribute('aria-required', 'true');
+    expect(screen.getByRole('textbox', { name: 'Section' })).toBeInTheDocument();
+    expect(screen.getByRole('spinbutton', { name: 'Price' })).toBeInTheDocument();
+  });
+
   it('shows the gateway sentence for a duplicate name', async () => {
     h.post.mockRejectedValue(Object.assign(new Error('Conflict'), { response: { status: 409, data: { message: 'A dish named Lamb shank is already on your list.' } } }));
     mount();
