@@ -21,6 +21,7 @@ import { housePriceNote } from './menu-price-note';
 import { formatMoney } from '../../../lib/currency';
 import { getMenu, discardMenuItem, addMenuItem, reviewMenuItem, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
 import { settingsApi, type HouseCurrency } from '../../../services/api/settings';
+import { getHousePriceHistory } from '../../../services/api/priceHistory';
 
 // ADR 0358 D2: discarding a line is an owner's or a manager's, so the page
 // offers it only to them. A manager reads by default; one case reads as staff.
@@ -69,6 +70,11 @@ vi.mock('../../../services/api/pricing', async () => {
     }),
   };
 });
+
+// The price history panel (PriceHistory.tsx, its own test file) reads only when opened.
+vi.mock('../../../services/api/priceHistory', () => ({
+  getHousePriceHistory: vi.fn().mockResolvedValue({ inventoryId: 'g1', goodName: 'Chianti', versions: [], more: false, namesReadable: true, namesReason: null }),
+}));
 
 vi.mock('../../../services/api/settings', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/settings')>(
@@ -829,5 +835,34 @@ describe("MenuNext — a kept price in the flag note is house money (r28 G19)", 
       ),
     );
     expect(note.textContent).not.toContain('1250.00');
+  });
+});
+
+// r36 menu audit N6: when, and by whom, a house price changed is one tap away
+// for an owner or a manager, on a line carried as a house good.
+describe('MenuNext — a line shows its price history (r36 N6)', () => {
+  const carried = line({ id: 'w1', name: 'Chianti', category: 'red', bottle_price: 52, inventory_item_id: 'g1', kitchen_line: false });
+  const loose = line({ id: 'w2', name: 'House red', category: 'red', bottle_price: 30, inventory_item_id: null, kitchen_line: false });
+
+  it('a manager opens and hides it under the line; a line with no house good offers none', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [carried, loose] }));
+    mount();
+    const buttons = await screen.findAllByTestId('menu-price-history-button');
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]).toHaveAccessibleName('Show the price history of Chianti');
+    fireEvent.click(buttons[0]);
+    expect(await screen.findByText('Chianti has no recorded price change yet.')).toBeInTheDocument();
+    expect(getHousePriceHistory).toHaveBeenCalledWith('g1');
+    expect(screen.getByTestId('menu-price-history-button')).toHaveTextContent('Hide history');
+    fireEvent.click(screen.getByTestId('menu-price-history-button'));
+    expect(screen.queryByText('Chianti has no recorded price change yet.')).not.toBeInTheDocument();
+  });
+
+  it('staff are offered no price history', async () => {
+    role = 'staff';
+    mockGetMenu.mockResolvedValue(menu({ items: [carried] }));
+    mount();
+    await screen.findAllByTestId('menu-row');
+    expect(screen.queryByTestId('menu-price-history-button')).not.toBeInTheDocument();
   });
 });
