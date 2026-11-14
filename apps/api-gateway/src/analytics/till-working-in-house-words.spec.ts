@@ -105,7 +105,9 @@ describe("the till's working names no field, table, null, $ or Nd (r11)", () => 
   it("names each figure by its label on the page", () => {
     const d = run().basis.costDerived;
     expect(d).toContain("Kept, kept of sales, cost of sales and prime cost divide");
-    expect(d).toContain("Inventory turns, days of inventory and GMROI");
+    expect(d).toContain("Inventory turns, days of inventory and the return on stock");
+    // The page labels it "Return on stock" (r28 gap 14); the working never says GMROI.
+    expect(d).not.toMatch(/GMROI/);
     expect(d).toContain("the 2 goods the till does not reach, 840.00 at cost, are left out, since");
     expect(d).toContain("are each shown apart and feed no ratio");
     expect(run().basis.cogs).toContain("Cost of what the till sold (365 days)");
