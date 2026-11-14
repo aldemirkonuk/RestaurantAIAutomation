@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,100..900,0..100,0..1;1,9..144,100..900,0..100,0..1&family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-/* Layout: a single column of seven "reels" on Warm Charcoal, each with a live miniature of its motion technique. Dark-first by choice (ADR 0042 Warm Charcoal ground). */
+/* Layout: a single column of nine "reels" on Warm Charcoal, each with a live miniature of its motion technique. Dark-first by choice (ADR 0042 Warm Charcoal ground). */
 :root{
   --ground:#15130F; --ground-1:#1D1813; --ground-2:#262019;
   --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-4:#ABA294;
@@ -128,10 +128,25 @@ footer a{color:var(--ink-2)}
 .book .leaf{position:absolute;right:0;top:0;bottom:0;width:50%;background:repeating-linear-gradient(180deg,transparent 0 13px,rgba(33,28,22,.10) 13px 14px),linear-gradient(90deg,#e9e1d1,#FAF7F1);transform-origin:left center;border-radius:0 4px 4px 0;animation:turn 3.6s cubic-bezier(.6,0,.3,1) infinite;opacity:.97;box-shadow:0 0 18px rgba(33,28,22,.15)}
 .book .leaf:nth-child(4){animation-delay:1.2s}
 @keyframes turn{0%{transform:rotateY(-2deg)}55%,100%{transform:rotateY(-178deg)}}
+
+/* ── B3 · drawn house: ink lines on paper ── */
+.drawn{background:#F3EFE6}
+.drawn svg{position:absolute;inset:0;width:100%;height:100%}
+.drawn .ink{fill:none;stroke:#211C16;stroke-width:1.4;stroke-linecap:round;stroke-dasharray:600;stroke-dashoffset:600;animation:draw 6s ease-in-out infinite}
+.drawn .teal{fill:none;stroke:#1A5E6B;stroke-width:2;stroke-dasharray:300;stroke-dashoffset:300;animation:draw 6s ease-in-out infinite;animation-delay:1.2s}
+@keyframes draw{0%{stroke-dashoffset:600}45%,85%{stroke-dashoffset:0}100%{stroke-dashoffset:0;opacity:0}}
+/* ── F2 · read back: a chart drawing itself ── */
+.readback{background:#FAF7F1}
+.readback svg{position:absolute;inset:0;width:100%;height:100%}
+.readback .ln{fill:none;stroke:#1A5E6B;stroke-width:2.2;stroke-dasharray:500;stroke-dashoffset:500;animation:draw 5s ease-out infinite}
+.readback .ax{stroke:rgba(33,28,22,.25);stroke-width:1}
+.readback .goal{stroke:#211C16;stroke-width:1;stroke-dasharray:4 4}
+.readback .tag{position:absolute;right:8%;top:14%;font-family:var(--mono);font-size:10px;color:#211C16;border:1px solid rgba(26,94,107,.5);background:#fff;padding:5px 8px;border-radius:999px}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
   .film .title,.film .sub,.cellar .scan,.pass .tix i{opacity:1}
   .ask .typed{width:28ch}
+  .drawn .ink,.drawn .teal,.readback .ln{stroke-dashoffset:0}
 }
 </style>
 </head>
@@ -142,9 +157,9 @@ footer a{color:var(--ink-2)}
       <svg viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="22" fill="#1A5E6B"/><g transform="translate(22.2,17) scale(0.115)" fill="#FAF7F1"><path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/><path d="M80 150V192H108Z"/><path d="M142 346H206L174 292Z"/><path d="M404 138L376 157L404 176Z"/><path d="M383 430H404V470Z"/></g></svg>
       <span>Mudavym<span class="dot">.</span></span>
     </div>
-    <p class="eyebrow">Sketch 130 · mudavym.com · round 2 added B2 and F, none chosen yet</p>
-    <h1>The landing page, <em>seven ways.</em></h1>
-    <p class="lede">Same product, same brand, different ways of moving. Round 2 put the Cellar inside a whole restaurant (B2) and added a day in the life of the house (F). Open each one, scroll it, play with it, and pick the one that feels like the house.</p>
+    <p class="eyebrow">Sketch 130 · mudavym.com · rounds 2–3 added B2, B3, F and F2; none chosen yet</p>
+    <h1>The landing page, <em>nine ways.</em></h1>
+    <p class="lede">Same product, same brand, different ways of moving. Round 2 put the Cellar inside a whole restaurant (B2) and added a day in the life of the house (F). Round 3 redrew the House as line art (B3) and gave the day an analytics ending (F2). Open each one, scroll it, play with it, and pick the one that feels like the house.</p>
   </header>
 
   <nav class="reels" aria-label="Five landing concepts">
@@ -252,10 +267,44 @@ footer a{color:var(--ink-2)}
         <span class="open">Open the book →</span>
       </div>
     </a>
+    <a class="reel" href="./b3-house-drawn.html">
+      <div class="stage drawn" aria-hidden="true">
+        <svg viewBox="0 0 320 200" preserveAspectRatio="xMidYMid meet">
+          <path class="ink" d="M40 160 L40 70 L160 40 L280 70 L280 160 Z M40 110 L280 110 M100 160 L100 125 L130 125 L130 160 M180 95 l0 -20 m40 20 l0 -20"/>
+          <path class="ink" d="M190 160 c0-20 6-30 12-30 c6 0 12 10 12 30 M202 122 a6 6 0 1 0 0.1 0 M60 160 c0-16 5-24 10-24 c5 0 10 8 10 24 M70 130 a5 5 0 1 0 0.1 0"/>
+          <path class="teal" d="M150 150 C 170 120, 200 130, 240 100 S 270 80, 262 70"/>
+        </svg>
+      </div>
+      <div class="meta">
+        <span class="num">B3 · round 3</span>
+        <h2>The House, drawn</h2>
+        <p>The House as ink on tracing paper. The same walk through the restaurant, with drawn people, calm camera moves and lines that draw themselves in, and teal only where Mudavym is at work.</p>
+        <div class="tags"><span>WebGL ink shader</span><span>drawn figures</span><span>self-drawing lines</span><span>tap any bottle</span></div>
+        <span class="open">Walk in →</span>
+      </div>
+    </a>
+
+    <a class="reel" href="./f2-day-analytics.html">
+      <div class="stage readback" aria-hidden="true">
+        <svg viewBox="0 0 320 200" preserveAspectRatio="xMidYMid meet">
+          <line class="ax" x1="30" y1="170" x2="300" y2="170"/><line class="ax" x1="30" y1="30" x2="30" y2="170"/>
+          <line class="goal" x1="30" y1="70" x2="300" y2="70"/>
+          <path class="ln" d="M30 160 L70 150 L110 120 L150 132 L190 96 L230 104 L270 78 L300 72"/>
+        </svg>
+        <div class="tag">Tomorrow's focus · set</div>
+      </div>
+      <div class="meta">
+        <span class="num">F2 · round 3</span>
+        <h2>A Day, read back</h2>
+        <p>A Day in the Life with an analytics ending. When the day is done, its results become a ledger with recommendations, you set tomorrow's goal, and the focus moves there.</p>
+        <div class="tags"><span>F's engine</span><span>self-drawing charts</span><span>recommendations</span><span>set your goal</span></div>
+        <span class="open">Read it back →</span>
+      </div>
+    </a>
   </nav>
 
   <footer>
-    <span>All seven run on sample data from a demo house. Nothing here is a live claim.</span>
+    <span>All nine run on sample data from a demo house. Nothing here is a live claim.</span>
     <span><a href="https://mudavym.com/get-started">Get started</a> · <a href="https://mudavym.com/login">Sign in</a></span>
   </footer>
 </main>
