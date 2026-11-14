@@ -486,6 +486,32 @@ describe('The Tools row offers only what this session can do (INV-W18)', () => {
   });
 });
 
+describe('Count many (inventory r36 gap 6)', () => {
+  it('Tools counts the listed titles, each in its own unit', () => {
+    mock.data = data({
+      canManage: false,
+      rows: [row({ id: 'a', name: 'Barolo' }), row({ id: 'f', name: 'Flour', kind: 'food', type: null })],
+      rawItems: [{ id: 'f', kind: 'food', uom: 'g' }],
+    });
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Count the listed titles' }));
+    expect(screen.getAllByText('Count the 2 listed titles').length).toBeGreaterThan(0);
+    expect(screen.getByRole('textbox', { name: /^Barolo/ })).toBeTruthy();
+    fireEvent.change(screen.getByRole('textbox', { name: /^Flour/ }), { target: { value: '2.5' } });
+    expect(document.body.textContent).toContain('Reads as 2.5 kg.');
+  });
+
+  it('the selection bar counts only the selected titles', () => {
+    mock.data = data({ rows: [row({ id: 'a', name: 'Alpha' }), row({ id: 'b', name: 'Beta' })] });
+    renderPage();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Beta' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Count selected' }));
+    expect(screen.getAllByText('Count the selected title').length).toBeGreaterThan(0);
+    expect(screen.getByRole('textbox', { name: /^Beta/ })).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: /^Alpha/ })).toBeNull();
+  });
+});
+
 describe('The Cellar map speaks the page\'s words (INV-W19)', () => {
   it('hands the map the table\'s tint rule and the chips\' words', () => {
     mock.mapProps = null;

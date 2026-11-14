@@ -1,0 +1,44 @@
+/* Count many (inventory r36 gap 6): one box per title, wrapping on a phone. */
+.cm-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.cm-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 9rem;
+  grid-template-areas:
+    'name input'
+    'said said';
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 2px;
+}
+
+.cm-name {
+  grid-area: name;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cm-input {
+  grid-area: input;
+  width: 100%;
+}
+
+.cm-said {
+  grid-area: said;
+}
+
+.cm-said:empty {
+  display: none;
+}
+
+@media (max-width: 420px) {
+  .cm-row {
+    grid-template-columns: minmax(0, 1fr) 6.5rem;
+  }
+}
