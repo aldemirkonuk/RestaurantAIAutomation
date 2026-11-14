@@ -269,19 +269,23 @@ type Client = { from: (table: string) => any };
  * Every line's match against this house's live goods. `lines[i] === null`
  * (a kitchen line) is never matched and costs no read. Throws when a read
  * fails: a failed read is not "the house carries nothing".
+ *
+ * `liveGoods`, when given, is every live good of this house already read by
+ * the caller (the plan reads them all; r35 G21), and step 1 is skipped.
  */
 export async function matchHouseGoods(
   client: Client,
   restaurantId: string,
   lines: Array<MatchableLine | null>,
+  liveGoods?: HouseGood[],
 ): Promise<HouseMatch[]> {
   const none: HouseMatch = { outcome: "none" };
   if (lines.every((l) => l === null)) return lines.map(() => none);
 
   // 1. The house's live goods, keyset-paged past the 1000-row cap.
-  const goods: HouseGood[] = [];
+  const goods: HouseGood[] = liveGoods ? [...liveGoods] : [];
   let after: string | null = null;
-  for (;;) {
+  for (; !liveGoods; ) {
     let q = client
       .from("restaurant_inventory")
       .select("id, display_name, wine_name, kind, master_wine_id, bottle_size_ml")

@@ -27,7 +27,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getMenuPlan,
+  linkMenuLineToHouseGood,
   makeMenuCurrent,
+  type HouseCandidate,
   type MakeCurrentResult,
   type MenuPlan as Plan,
   type PlanKind,
@@ -235,6 +237,12 @@ export function planSentence(
     );
   const removed = removedClause(plan.lines);
   if (removed) more.push(removed);
+  // r35 G21: a line that fits the house's own goods and is linked to none is carried as a good of its own.
+  const fits = plan.lines.filter((l) => (l.houseCandidates?.length ?? 0) > 0).length;
+  if (fits > 0)
+    more.push(
+      `${plural(fits, 'line fits', 'lines fit')} the house's own goods and ${fits === 1 ? 'is' : 'are'} linked to none, so ${fits === 1 ? 'it is' : 'each is'} carried as a good of its own unless the good is chosen below`,
+    );
   const gone = plan.notOnThisFile ?? [];
   const off = Math.min(takingOff, gone.length);
   const stay = gone.length - off;
@@ -626,6 +634,17 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
         </details>
       ) : null}
 
+      <PlanFits
+        menuId={menuId}
+        lines={plan.current ? [] : plan.lines}
+        canManage={canManage}
+        onLinked={(s) => {
+          setSaid(s);
+          setMoved(false);
+          refresh();
+        }}
+      />
+
       {(plan.notOnThisFile ?? []).length > 0 ? (
         <div style={{ marginTop: 12 }} data-testid="menu-plan-not-on-file">
           <p className="cl-said">
@@ -714,6 +733,80 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
         </p>
       ) : null}
     </section>
+  );
+}
+
+/**
+ * The lines that fit the house's own goods and are linked to none (r35 G21),
+ * matched again each time the plan is read, so a reload does not lose them.
+ * An owner or a manager links each to the good it is (the route r28 G21
+ * built); the plan is read again, and its new fingerprint is the one chosen.
+ */
+function PlanFits({
+  menuId,
+  lines,
+  canManage,
+  onLinked,
+}: {
+  menuId: string;
+  lines: PlanLine[];
+  canManage: boolean;
+  onLinked: (said: string) => void;
+}) {
+  const fits = lines.filter((l) => (l.houseCandidates?.length ?? 0) > 0);
+  const link = useMutation({
+    mutationFn: (v: { line: PlanLine; good: HouseCandidate }) =>
+      linkMenuLineToHouseGood(menuId, v.line.menuItemId, v.good.inventoryItemId),
+    onSuccess: (r, v) =>
+      onLinked(`${v.line.name} is linked to ${r.goodName || v.good.name}: choosing this menu carries its price there.`),
+  });
+  if (fits.length === 0) return null;
+  const goodWords = (g: HouseCandidate) => `${g.name}${g.kind ? ` (${g.kind})` : ''}`;
+  return (
+    <div style={{ marginTop: 12 }} data-testid="menu-plan-fits">
+      <p className="cl-said">
+        Fits the house&apos;s own goods, linked to none: choosing this menu carries each as a good of its own beside
+        them.{' '}
+        {canManage ? 'Choose the good each one is first.' : 'An owner or a manager chooses the good each one is.'}
+      </p>
+      <ul className="cl-said" style={{ paddingLeft: 18, marginTop: 4 }}>
+        {fits.map((l) => {
+          const goods = l.houseCandidates ?? [];
+          return (
+            <li key={l.menuItemId} data-testid="menu-plan-fits-line" style={{ marginTop: 4 }}>
+              {goods.length === 1
+                ? `${l.name} fits the house's ${goodWords(goods[0])}.`
+                : `${l.name} fits ${goods.length} of the house's goods.`}
+              <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                {goods.map((g) =>
+                  canManage ? (
+                    <button
+                      key={g.inventoryItemId}
+                      type="button"
+                      className="cl-btn cl-focus"
+                      disabled={link.isPending}
+                      onClick={() => link.mutate({ line: l, good: g })}
+                      aria-label={`Link ${l.name} to ${g.name}`}
+                    >
+                      It is {goodWords(g)}
+                    </button>
+                  ) : (
+                    <span key={g.inventoryItemId} className="cl-chip">
+                      {goodWords(g)}
+                    </span>
+                  ),
+                )}
+              </span>
+              {link.isError && link.variables?.line.menuItemId === l.menuItemId ? (
+                <span role="alert" className="cl-note" style={{ display: 'block' }} data-testid="menu-plan-fits-refused">
+                  It was not linked: {reasonOf(link.error).replace(/\.$/, '')}.
+                </span>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 

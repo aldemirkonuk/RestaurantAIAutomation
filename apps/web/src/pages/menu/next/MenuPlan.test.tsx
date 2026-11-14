@@ -10,7 +10,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MenuPlan, chooseFailedSentence, kindWords, notOnFileWords, orderedRows, planSentence } from './MenuPlan';
 import { canTakeOff, takenOffSentence } from './menu-take-off';
-import { getMenuPlan, makeMenuCurrent, type MenuPlan as Plan, type PlanLine } from '../../../services/api/menus';
+import { getMenuPlan, linkMenuLineToHouseGood, makeMenuCurrent, type MenuPlan as Plan, type PlanLine } from '../../../services/api/menus';
 import { lockPrice, releasePriceLock } from '../../../services/api/pricing';
 import { formatMoney } from '../../../lib/currency';
 
@@ -23,7 +23,7 @@ const shown = (s: string) => s.replace(/\s+/g, ' ');
 
 vi.mock('../../../services/api/menus', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/menus')>('../../../services/api/menus');
-  return { ...actual, getMenuPlan: vi.fn(), makeMenuCurrent: vi.fn() };
+  return { ...actual, getMenuPlan: vi.fn(), makeMenuCurrent: vi.fn(), linkMenuLineToHouseGood: vi.fn() };
 });
 vi.mock('../../../services/api/pricing', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/pricing')>('../../../services/api/pricing');
@@ -304,6 +304,73 @@ describe('2d: not on this file -- shown, never acted on (L12)', () => {
     mount(true);
     await screen.findAllByTestId('menu-plan-row');
     expect(screen.queryByTestId('menu-plan-not-on-file')).not.toBeInTheDocument();
+  });
+});
+
+describe('r35 G21: a line that fits the house\'s own goods and is linked to none', () => {
+  const RED = line({
+    menuItemId: 'n7',
+    name: 'House Red',
+    wineLibraryId: 'mw-new',
+    inventoryId: null,
+    house: null,
+    bottle: { kind: 'bottle', menuPrice: 40, housePrice: null, result: 'new_wine', lastSet: null, lock: null },
+    houseCandidates: [
+      { inventoryItemId: 'inv-a', name: 'House Red', kind: 'wine' },
+      { inventoryItemId: 'inv-b', name: 'House red.', kind: null },
+    ],
+  });
+  const ROSE = line({ ...RED, menuItemId: 'n8', name: 'Rosé', houseCandidates: [{ inventoryItemId: 'inv-r', name: 'House Rosé', kind: 'wine' }] });
+  const mockLink = vi.mocked(linkMenuLineToHouseGood);
+
+  it('the sentence says it is carried as a good of its own unless the good is chosen', () => {
+    expect(planSentence(plan({ lines: [line(), BAROLO, RED], dormantLocks: [] }))).toBe(
+      "Choosing this menu will set 1 price from this menu, leave 1 locked price as it is. 1 line fits the house's own goods and is linked to none, so it is carried as a good of its own unless the good is chosen below.",
+    );
+    expect(planSentence(plan({ lines: [RED, ROSE], dormantLocks: [] }))).toContain(
+      "2 lines fit the house's own goods and are linked to none, so each is carried as a good of its own unless the good is chosen below",
+    );
+  });
+
+  it('a manager links one to the good it is, and the plan is read again', async () => {
+    mockPlan.mockResolvedValue(plan({ lines: [line(), RED, ROSE] }));
+    mockLink.mockResolvedValue({ menuItemId: 'n7', inventoryItemId: 'inv-b', goodName: 'House red.' });
+    mount(true);
+    const box = await screen.findByTestId('menu-plan-fits');
+    expect(box).toHaveTextContent('Choose the good each one is first.');
+    expect(screen.getAllByTestId('menu-plan-fits-line').map((l) => l.firstChild?.textContent)).toEqual([
+      'House Red fits 2 of the house\'s goods.',
+      "Rosé fits the house's House Rosé (wine).",
+    ]);
+    const reads = mockPlan.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Link House Red to House red.' }));
+    await waitFor(() => expect(mockLink).toHaveBeenCalledWith('menu-new', 'n7', 'inv-b'));
+    expect(await screen.findByText('House Red is linked to House red.: choosing this menu carries its price there.')).toBeInTheDocument();
+    await waitFor(() => expect(mockPlan.mock.calls.length).toBeGreaterThan(reads));
+  });
+
+  it('a refused link is said on its line', async () => {
+    mockPlan.mockResolvedValue(plan({ lines: [RED] }));
+    mockLink.mockRejectedValue({ response: { status: 409, data: { message: 'This is the current menu.' } } });
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Link House Red to House Red' }));
+    expect(await screen.findByTestId('menu-plan-fits-refused')).toHaveTextContent('It was not linked: This is the current menu.');
+  });
+
+  it('staff see the goods named, with no button', async () => {
+    mockPlan.mockResolvedValue(plan({ lines: [RED] }));
+    mount(false);
+    const box = await screen.findByTestId('menu-plan-fits');
+    expect(box).toHaveTextContent('An owner or a manager chooses the good each one is.');
+    expect(box.querySelectorAll('button')).toHaveLength(0);
+    expect(box).toHaveTextContent('House red.');
+  });
+
+  it('a current menu shows none', async () => {
+    mockPlan.mockResolvedValue(plan({ current: true, lines: [RED], counts: { ...plan().counts, change: 1 } }));
+    mount(true);
+    await screen.findByTestId('menu-plan-sentence');
+    expect(screen.queryByTestId('menu-plan-fits')).not.toBeInTheDocument();
   });
 });
 

@@ -363,6 +363,35 @@ describe('MenuNext — discard', () => {
     expect(screen.queryByRole('button', { name: 'Discard Raki' })).not.toBeInTheDocument();
   });
 
+  // r35 G14: a line added to the current menu joins the house's own goods,
+  // and staff could not take it back.
+  it('offers staff no add form on the current menu, and says who adds', async () => {
+    role = 'staff';
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ name: 'Raki' })] }));
+    mount();
+    expect(await screen.findByText('Raki')).toBeInTheDocument();
+    expect(screen.queryByTestId('menu-add-form')).not.toBeInTheDocument();
+    expect(screen.getByTestId('menu-add-staff-note')).toHaveTextContent(
+      "An owner or a manager adds a line to the current menu: it joins the house's own goods at once.",
+    );
+  });
+
+  it('an empty current menu does not tell staff to add the first line', async () => {
+    role = 'staff';
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    mount();
+    expect(await screen.findByText('Nothing on the menu yet.')).toBeInTheDocument();
+    expect(screen.queryByText(/add the first line above/)).not.toBeInTheDocument();
+  });
+
+  it('a manager keeps the add form and the empty-menu prompt', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    mount();
+    expect(await screen.findByText('Nothing on the menu yet — add the first line above.')).toBeInTheDocument();
+    expect(screen.getByTestId('menu-add-form')).toBeInTheDocument();
+    expect(screen.queryByTestId('menu-add-staff-note')).not.toBeInTheDocument();
+  });
+
   it('names the line it discards, for a screen reader', async () => {
     mockGetMenu.mockResolvedValue(menu({ items: [line({ name: 'Raki' })] }));
     mount();
@@ -545,26 +574,10 @@ describe('MenuNext — a price changes on its line', () => {
 
   // r21 production-build walk: staff were handed Glass/Bottle boxes on the
   // add form, and a priced add came back "Request failed with status code 403".
-  it('staff add a line with no price boxes, and are told it stands unpriced', async () => {
-    role = 'staff';
-    mockGetMenu.mockResolvedValue(menu({ items: [] }));
-    mockAdd.mockResolvedValue({} as never);
-    mount();
-    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Raki' } });
-    expect(screen.queryByLabelText('Glass')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Bottle')).not.toBeInTheDocument();
-    expect(screen.getByTestId('menu-add-unpriced').textContent).toMatch(/no price; an owner or a manager sets it/);
-    fireEvent.click(screen.getByRole('button', { name: /Add to menu/ }));
-    await waitFor(() => expect(mockAdd).toHaveBeenCalled());
-    // The add form sends a price as typed (r28 G7): staff send neither form.
-    const sent = mockAdd.mock.calls[0][1] as { by_glass_price?: number; bottle_price?: number; by_glass_typed?: string; bottle_typed?: string };
-    expect(sent.by_glass_price).toBeUndefined();
-    expect(sent.bottle_price).toBeUndefined();
-    expect(sent.by_glass_typed).toBeUndefined();
-    expect(sent.bottle_typed).toBeUndefined();
-  });
-
-  it('a price typed before the role became staff is not sent', async () => {
+  // r21 let staff add an unpriced line; r35 G14 (#1517) closed the add to
+  // staff on the current menu (a line joins the house's goods at once). The
+  // r21 intent that survives: a role that turns to staff mid-typing sends nothing.
+  it('a role that turns to staff takes the add form away, and nothing is sent', async () => {
     mockGetMenu.mockResolvedValue(menu({ items: [] }));
     mockAdd.mockResolvedValue({} as never);
     const view = mount();
@@ -576,11 +589,10 @@ describe('MenuNext — a price changes on its line', () => {
         <MenuNext />
       </QueryClientProvider>,
     );
-    fireEvent.click(await screen.findByRole('button', { name: /Add to menu/ }));
-    await waitFor(() => expect(mockAdd).toHaveBeenCalled());
-    const sent = mockAdd.mock.calls[0][1] as { bottle_price?: number; bottle_typed?: string };
-    expect(sent.bottle_price).toBeUndefined();
-    expect(sent.bottle_typed).toBeUndefined();
+    await screen.findByTestId('menu-add-staff-note');
+    expect(screen.queryByRole('button', { name: /Add to menu/ })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Bottle')).not.toBeInTheDocument();
+    expect(mockAdd).not.toHaveBeenCalled();
   });
 
   it('a manager keeps the price boxes', async () => {

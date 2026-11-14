@@ -682,12 +682,20 @@ export default function MenuNext() {
             ) : null}
 
             <div style={{ marginTop: 16 }}>
-              <AddItemForm
-                adding={add.isPending}
-                error={add.isError ? addRefusal(add.error) : null}
-                canPrice={canManage}
-                onAdd={(fields, opts) => add.mutate(fields, opts)}
-              />
+              {/* r35 G14: a line added here joins the house's own goods at once, and
+                  only an owner or a manager can discard it again, so only they add. */}
+              {canManage ? (
+                <AddItemForm
+                  adding={add.isPending}
+                  error={add.isError ? addRefusal(add.error) : null}
+                  canPrice={canManage}
+                  onAdd={(fields, opts) => add.mutate(fields, opts)}
+                />
+              ) : (
+                <p className="cl-said" role="note" data-testid="menu-add-staff-note">
+                  An owner or a manager adds a line to the current menu: it joins the house&apos;s own goods at once.
+                </p>
+              )}
               {(() => {
                 const note = add.isSuccess ? housePriceNote(add.data, currency) : null;
                 return note ? (
@@ -711,7 +719,9 @@ export default function MenuNext() {
                     <tr>
                       <td colSpan={DRINK_COLUMNS} className="cl-said" style={{ padding: 14 }}>
                         {kitchen.length === 0
-                          ? 'Nothing on the menu yet — add the first line above.'
+                          ? canManage
+                            ? 'Nothing on the menu yet — add the first line above.'
+                            : 'Nothing on the menu yet.'
                           : 'No drink on the menu yet — only the kitchen lines below.'}
                       </td>
                     </tr>

@@ -128,11 +128,19 @@ export class MenusController {
         "correct a price on the menu",
       );
     }
+    // r35 G14: any other field of the CURRENT menu, and renaming the house's
+    // good, is an owner's or a manager's too; the service, which reads the
+    // line's menu, decides with the role resolved here.
+    const role =
+      user.restaurantId && user.userId
+        ? await this.organizations.resolveRestaurantRole(user.userId, user.restaurantId)
+        : null;
     return this.menusService.reviewMenuItem(
       id,
       user.userId,
       user.restaurantId ?? null,
       dto,
+      role === "owner" || role === "manager",
     );
   }
 
