@@ -114,6 +114,14 @@ describe('fmtWhen: as few words as still place a moment (r36 mail gap 13)', () =
     expect(fmtWhen('2026-11-13T09:00:00Z', { zone: 'Mars/Olympus', now })).toBe(
       fmtWhen('2026-11-13T09:00:00Z', { zone: null, now }),
     );
+    // The browser's own zone (the suite's New York), not UTC: 09:00 UTC is 04:00 there.
+    expect(fmtWhen('2026-11-13T09:00:00Z', { zone: 'Mars/Olympus', now, withTime: true })).toBe('13 Nov, 04:00');
+  });
+
+  it('"today" is the day of the `now` given, so the words do not depend on when the test runs', () => {
+    const later = new Date('2031-03-02T12:00:00Z');
+    expect(fmtWhen('2031-03-02T09:00:00Z', { zone: 'UTC', now: later })).toBe('09:00');
+    expect(fmtWhen('2031-03-01T09:00:00Z', { zone: 'UTC', now: later })).toBe('1 Mar');
   });
 
   it('nothing, or not a time, is the em dash', () => {
