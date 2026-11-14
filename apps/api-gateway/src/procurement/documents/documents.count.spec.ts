@@ -26,7 +26,9 @@ describe("DocumentsController.count", () => {
       ok: (v: unknown) => unknown,
       no: (e: unknown) => unknown,
     ) => Promise.resolve(answer).then(ok, no);
-    const c = Object.create(DocumentsController.prototype) as DocumentsController;
+    const c = Object.create(
+      DocumentsController.prototype,
+    ) as DocumentsController;
     (c as unknown as { db: unknown }).db = { getClient: () => query };
     return c;
   };
@@ -37,7 +39,9 @@ describe("DocumentsController.count", () => {
   });
 
   it("answers the number of this house's documents in the status asked, and nothing else", async () => {
-    await expect(controller().count(user, "needs_review")).resolves.toEqual({ count: 7 });
+    await expect(controller().count(user, "needs_review")).resolves.toEqual({
+      count: 7,
+    });
     expect(calls).toEqual([
       { method: "from", args: ["procurement_documents"] },
       { method: "select", args: ["id", { count: "exact", head: true }] },
@@ -67,7 +71,10 @@ describe("DocumentsController.count", () => {
   });
 
   it("says a failed read failed, never 0, and keeps the driver's words out", async () => {
-    answer = { count: null, error: { message: 'relation "procurement_documents" does not exist' } };
+    answer = {
+      count: null,
+      error: { message: 'relation "procurement_documents" does not exist' },
+    };
     const err = await controller()
       .count(user, "needs_review")
       .catch((e: HttpException) => e);
@@ -89,7 +96,10 @@ describe("DocumentsController.count", () => {
     const order = Object.getOwnPropertyNames(DocumentsController.prototype);
     expect(order.indexOf("count")).toBeGreaterThan(-1);
     expect(order.indexOf("count")).toBeLessThan(order.indexOf("detail"));
-    const path = Reflect.getMetadata("path", DocumentsController.prototype.count);
+    const path = Reflect.getMetadata(
+      "path",
+      DocumentsController.prototype.count,
+    );
     expect(path).toBe("count");
   });
 });

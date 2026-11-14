@@ -1478,7 +1478,10 @@ export class DocumentsController {
    * "no invoices wait" over a failed read would call a failure health.
    */
   @Get("count")
-  @ApiOperation({ summary: "How many vendor documents the house has, optionally in one status" })
+  @ApiOperation({
+    summary:
+      "How many vendor documents the house has, optionally in one status",
+  })
   @ApiQuery({ name: "status", required: false })
   async count(
     @CurrentUser() user: AuthedUser,
