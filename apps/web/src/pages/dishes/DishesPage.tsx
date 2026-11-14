@@ -22,6 +22,10 @@
  * A "Menu" column beside the price shows what the house's current menu gives
  * a line of the dish's name, and "differs" when the two disagree (gap 2).
  * Only while a menu is current; an unread menu is said once above the list.
+ *
+ * Above the add form, an owner or manager is offered the current menu's
+ * dishes that are not on the list yet, all in one step (MenuDishesOffer;
+ * r28 onboarding audit, gap 1, slice 3).
  */
 import { useId, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -32,6 +36,7 @@ import { PRICE_UNREAD, priceText, readPrice } from '../cellar/next/recipe/price-
 import { useHousePercent, type SayPercent } from '../cellar/next/recipe/useHousePercent';
 import { reason, useCanEditRecipe, useCreateDish, useDishes, useHouseMoney, useMenuPrices, useRemoveDish, useUpdateDish } from '../cellar/next/recipe/useRecipe';
 import { MENU_PRICES_UNREAD, MenuPriceCell } from '../cellar/next/recipe/MenuPriceCell';
+import MenuDishesOffer from './MenuDishesOffer';
 import type { DishListRow } from '../../services/api/recipes';
 import { EM, SANS } from '../cellar/next/cellar-format';
 import '../cellar/next/cellar-next.css';
@@ -296,6 +301,7 @@ export default function DishesPage() {
           Each dish has a recipe, costed from your shelf the way a drink is.
         </p>
 
+        {canEdit ? <MenuDishesOffer /> : null}
         {canEdit ? <AddDish onAdded={open} /> : null}
 
         {say && menu.error ? (
