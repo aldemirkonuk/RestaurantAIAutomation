@@ -172,6 +172,25 @@ describe('a tab whose address was verified elsewhere', () => {
     expect(await screen.findByText('menu page')).toBeInTheDocument()
   })
 
+  it('two looks at once move on once, never two sign-ins', async () => {
+    h.auth.signInWithSession.mockReturnValue(new Promise(() => undefined))
+    mount()
+    h.get.mockResolvedValue({ data: said })
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'))
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await waitFor(() => expect(h.get).toHaveBeenCalledTimes(2))
+    expect(h.auth.signInWithSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('a link to a verified account keeps its own answer; this session is not borrowed', async () => {
+    h.auth.user = { email: 'owner@house.test', emailVerified: true }
+    mount('/verify-email?token=abc')
+    expect(await screen.findByText('This address is already verified.')).toBeInTheDocument()
+    expect(h.auth.signInWithSession).not.toHaveBeenCalled()
+  })
+
   it('stops asking once it has moved on', async () => {
     mount()
     h.get.mockResolvedValue({ data: said })
