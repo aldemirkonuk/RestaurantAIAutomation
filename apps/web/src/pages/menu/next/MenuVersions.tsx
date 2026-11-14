@@ -121,9 +121,15 @@ export function sourceWords(v: MenuVersion): string {
  * The words for each line outcome the gateway reports. A key the page does
  * not know is still printed (ADR 0193 round 3, L15): an outcome the page
  * drops is a price change -- or a hold -- nobody hears about.
+ *
+ * Every count here is of LINES (the sentence opens "N lines"), never of
+ * prices: the gateway reports one outcome per line, and a line can carry a
+ * bottle and a glass price. Saying "1 price set" after the plan said "set 2
+ * prices" read as one of them lost (r33 w1 F2); "1 priced" is the same
+ * line with both its prices.
  */
 const OUTCOME_WORDS: Record<string, (n: number) => string> = {
-  changed: (n) => `${n} price${n === 1 ? '' : 's'} set from this menu`,
+  changed: (n) => `${n === 0 ? 'none' : n} priced from this menu`,
   unchanged: (n) => `${n} already at the menu's price`,
   stale: (n) => `${n} kept a price someone set after this menu was chosen`,
   locked: (n) => `${n} held by a lock`,

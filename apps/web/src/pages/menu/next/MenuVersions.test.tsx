@@ -147,7 +147,7 @@ describe('the words the panel uses', () => {
         failed: [{ menuItemId: 'l9', name: 'Barolo', error: 'timeout' }],
       }),
     ).toBe(
-      'This is now the current menu: 3 lines, 1 price set from this menu, 1 kept a price someone set after this menu was chosen, 1 not matched to a wine, so no price, 1 flagged for a blank price. 1 could not be priced: Barolo (timeout).',
+      'This is now the current menu: 3 lines, 1 priced from this menu, 1 kept a price someone set after this menu was chosen, 1 not matched to a wine, so no price, 1 flagged for a blank price. 1 could not be priced: Barolo (timeout).',
     );
   });
 
@@ -157,8 +157,36 @@ describe('the words the panel uses', () => {
     expect(
       makeCurrentSentence({ ...base, lines: 3, priceSync: { changed: 1, unchanged: 1, stale: 1 }, failed: [] }),
     ).toBe(
-      "That menu was already the current one; its prices were carried again: 3 lines, 1 price set from this menu, 1 already at the menu's price, 1 kept a price someone set after this menu was chosen.",
+      "That menu was already the current one; its prices were carried again: 3 lines, 1 priced from this menu, 1 already at the menu's price, 1 kept a price someone set after this menu was chosen.",
     );
+  });
+
+  it('r33 w1 F2: the result counts LINES, so a line with a bottle and a glass price is one, not "1 price"', () => {
+    // Walked: the plan said "set 2 prices…, find 2 prices already the same"
+    // (one line, both its prices) and the result said "1 price set".
+    const s = makeCurrentSentence({
+      outcome: 'made_current',
+      menuId: 'm1',
+      previousMenuIds: ['m0'],
+      lines: 2,
+      priceSync: { changed: 1, unchanged: 1 },
+      flagged: 0,
+      failed: [],
+    });
+    expect(s).toBe("This is now the current menu: 2 lines, 1 priced from this menu, 1 already at the menu's price.");
+    expect(s).not.toMatch(/\bprices? set\b/);
+    // Nothing priced is said as none, not as "0 prices".
+    expect(
+      makeCurrentSentence({
+        outcome: 'made_current',
+        menuId: 'm1',
+        previousMenuIds: [],
+        lines: 2,
+        priceSync: { unchanged: 2 },
+        flagged: 0,
+        failed: [],
+      }),
+    ).toBe("This is now the current menu: 2 lines, none priced from this menu, 2 already at the menu's price.");
   });
 
   it('says how many kitchen lines stay on the menu and are carried nowhere', () => {
@@ -172,7 +200,7 @@ describe('the words the panel uses', () => {
         flagged: 0,
         failed: [],
       }),
-    ).toBe('This is now the current menu: 4 lines, 3 prices set from this menu, 1 kitchen line, on the menu and carried nowhere.');
+    ).toBe('This is now the current menu: 4 lines, 3 priced from this menu, 1 kitchen line, on the menu and carried nowhere.');
   });
 
   it('ADR 0193 round 3 (L15): a held kind is counted AND named, a returned lock is named, and an outcome the page does not know is still printed', () => {
@@ -191,7 +219,7 @@ describe('the words the panel uses', () => {
       returned: [{ menuItemId: 'l1', name: 'Barolo' }],
     }, 'TRY');
     expect(s).toBe(
-      `This is now the current menu: 4 lines, 2 prices set from this menu, 1 held by a lock, 1 something new. Held by a lock, not changed: Barolo (bottle, locked at ${m(95)}); Soave (glass, locked at ${m(9)}). Back on the menu with its lock still holding: Barolo.`,
+      `This is now the current menu: 4 lines, 2 priced from this menu, 1 held by a lock, 1 something new. Held by a lock, not changed: Barolo (bottle, locked at ${m(95)}); Soave (glass, locked at ${m(9)}). Back on the menu with its lock still holding: Barolo.`,
     );
   });
 });
@@ -350,7 +378,7 @@ describe('MenuVersions', () => {
     expect(mockMake).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Make it current' }));
     await waitFor(() => expect(mockMake).toHaveBeenCalledWith('m1', 'fp-m1'));
-    expect(await screen.findByText(/This is now the current menu: 42 lines, 40 prices set from this menu, 2 flagged/)).toBeInTheDocument();
+    expect(await screen.findByText(/This is now the current menu: 42 lines, 40 priced from this menu, 2 flagged/)).toBeInTheDocument();
   });
 
   it('staff see every kept menu but are offered no choice of the current one', async () => {
