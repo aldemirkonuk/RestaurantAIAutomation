@@ -84,6 +84,23 @@ export interface SalesGate {
   withSales?: boolean;
 }
 
+/**
+ * The days of the till the figures of record speak about (r36 invoices R2).
+ * They were a fixed trailing 365 days, so one bottle sold with no cost
+ * withheld what it cost for a year, and an owner could not read a month.
+ * /reports now passes its till window. A caller that names none keeps 365
+ * (goals, recommendations, the MCP reader, the consultants), so nothing that
+ * reads the year changes under it.
+ */
+export const FINANCIAL_TILL_DAYS_DEFAULT = 365;
+
+/** A whole number of days from 1 to 365, or the year when none is given or it is not a number. */
+export function financialTillDays(v: unknown): number {
+  const n = typeof v === "string" ? Number.parseInt(v, 10) : typeof v === "number" ? Math.trunc(v) : NaN;
+  if (!Number.isFinite(n)) return FINANCIAL_TILL_DAYS_DEFAULT;
+  return Math.min(Math.max(n, 1), FINANCIAL_TILL_DAYS_DEFAULT);
+}
+
 /** A recorded money figure above 0, else null (never a fabricated 0). */
 function positiveOrNull(v: unknown): number | null {
   const n = typeof v === "string" ? Number(v) : (v as number);
@@ -533,14 +550,16 @@ export class AnalyticsService {
   async getFinancialSummary(
     restaurantId: string,
     labor = 0,
-    opts: SalesGate = {},
+    opts: SalesGate & { tillDays?: number } = {},
   ) {
     const DEAD_STOCK_WINDOW_DAYS = 90;
-    const TILL_WINDOW_DAYS = 365;
+    // What sold, what it cost and what was bought all speak about the same
+    // days, so "Bought" and "What it cost" are never two windows side by side.
+    const TILL_WINDOW_DAYS = financialTillDays(opts.tillDays);
     const withSales = opts.withSales === true;
     const [inventory, orders, consumption, till] = await Promise.all([
       this.loadInventory(restaurantId),
-      this.loadDeliveredOrders(restaurantId, 365),
+      this.loadDeliveredOrders(restaurantId, TILL_WINDOW_DAYS),
       this.loadConsumption(restaurantId, DEAD_STOCK_WINDOW_DAYS),
       // ADR 0298 d9: the till is not read at all for a caller without sales.
       withSales ? this.loadTill(restaurantId, TILL_WINDOW_DAYS) : null,
@@ -674,6 +693,7 @@ export class AnalyticsService {
         ? E.stats.sum(deadStock.map((d) => d.value as number))
         : null;
 
+    const boughtOver = `Delivered orders over the last ${TILL_WINDOW_DAYS === 1 ? "day" : `${TILL_WINDOW_DAYS} days`}`;
     return {
       // These three sentences are read by the house: /reports prints them
       // under "Show the working" and the report export prints them in the
@@ -685,10 +705,10 @@ export class AnalyticsService {
         revenue: t.basis.revenue,
         deliveredPurchases:
           orders.length === 0
-            ? "Delivered orders over the last 365 days — left blank: no delivered order was returned for this window, which is either no purchasing or a read that failed, and a zero would claim the first"
+            ? `${boughtOver} — left blank: no delivered order was returned for this window, which is either no purchasing or a read that failed, and a zero would claim the first`
             : ordersUncosted > 0
-              ? `Delivered orders over the last 365 days — left blank: ${ordersUncosted} of ${orders.length} delivered order${orders.length === 1 ? "" : "s"} carry no recorded cost, and counting them as zero would understate what was bought`
-              : `Delivered orders over the last 365 days — ${orders.length} order${orders.length === 1 ? "" : "s"} summed. What was bought, not what sold: it feeds no ratio`,
+              ? `${boughtOver} — left blank: ${ordersUncosted} of ${orders.length} delivered order${orders.length === 1 ? "" : "s"} carry no recorded cost, and counting them as zero would understate what was bought`
+              : `${boughtOver} — ${orders.length} order${orders.length === 1 ? "" : "s"} summed. What was bought, not what sold: it feeds no ratio`,
         shelfValueAtMenuPrice:
           inventory.length === 0
             ? "The menu price × the bottles on hand — left blank: no inventory row was returned, which is either an empty cellar or a read that failed, and a zero would claim the first"
@@ -729,6 +749,9 @@ export class AnalyticsService {
       shelfValueAtMenuPrice,
       deadStockCapital,
       deadStockTop: deadStock.slice(0, 10),
+      // The days of the till these figures speak about, so the page labels
+      // them by what was computed, not by what it asked for.
+      tillWindowDays: TILL_WINDOW_DAYS,
       generatedAt: new Date().toISOString(),
     };
   }

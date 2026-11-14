@@ -21,7 +21,11 @@ import {
   ApiQuery,
   ApiResponse,
 } from "@nestjs/swagger";
-import { AnalyticsService, SalesGate } from "./analytics.service";
+import {
+  AnalyticsService,
+  SalesGate,
+  financialTillDays,
+} from "./analytics.service";
 import { policyFor } from "../ask-readings/reading-data-classes";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { RecommendationsService } from "./recommendations.service";
@@ -184,17 +188,26 @@ export class AnalyticsController {
     required: false,
     description: "Labor $ for prime-cost calc (optional)",
   })
+  @ApiQuery({
+    name: "days",
+    required: false,
+    description:
+      "Days of the till that what sold, what it cost and what was bought speak about (1–365, default 365). /reports sends its till window.",
+  })
   async getFinancial(
     @Param("restaurantId") restaurantId: string,
     @Query("labor") laborStr?: string,
     @CurrentUser() user?: { role?: string | null },
+    @Query("days") days?: string,
   ) {
     try {
       const labor = laborStr ? parseFloat(laborStr) : 0;
+      // No `days` keeps the year every other reader of this summary reads.
+      const gate = salesGateFor(user);
       return await this.analyticsService.getFinancialSummary(
         restaurantId,
         Number.isFinite(labor) ? labor : 0,
-        salesGateFor(user),
+        days === undefined ? gate : { ...gate, tillDays: financialTillDays(days) },
       );
     } catch (error) {
       throw new HttpException(
