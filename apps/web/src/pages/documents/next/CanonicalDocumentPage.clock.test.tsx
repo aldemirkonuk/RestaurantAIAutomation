@@ -253,6 +253,21 @@ describe('the document page reads every moment on the house’s clock', () => {
     },
   )
 
+  it('[REVERT-FAILS] a door count with no jurisdiction of its own stamps the count in its delivery’s shape', async () => {
+    // What the gateway writes for a door count: a receiving advice, no
+    // jurisdiction, an empty currency. The delivery it belongs to is TR.
+    const base = response()
+    const r = {
+      ...base,
+      canonical: { ...base.canonical, jurisdiction: null, layer1: { ...base.canonical.layer1, currency: env('') } },
+    }
+    documentMock.mockResolvedValue(r)
+    zoneMock.mockResolvedValue(readout('Europe/Istanbul'))
+    mount()
+    await waitFor(() => expect(screen.getByTestId('door-frame')).toHaveTextContent('· 14.11 06:28'))
+    expect(screen.getByTestId('door-frame')).not.toHaveTextContent('Nov 14')
+  })
+
   it('[REVERT-FAILS] a house with no time zone set keeps ONE clock, the device’s, and says so', async () => {
     zoneMock.mockResolvedValue(readout(null))
     mount()

@@ -96,6 +96,13 @@ export interface DoorFrameProps {
   booking?: DoorBooking | null
   /** The house's clock (IANA zone); absent = the reader's. r34 w2 F1. */
   zone?: string | null
+  /**
+   * The delivery's jurisdiction, which shapes the count's stamp. A door count
+   * the gateway writes is a receiving advice with no jurisdiction and no
+   * currency of its own, so the paper alone would print `Nov 14, 10:39` while
+   * the gate and the spine beside it say `14.11 10:39` (r39 walk-w2).
+   */
+  jurisdiction?: string | null
 }
 
 export function DoorFrame({
@@ -107,6 +114,7 @@ export function DoorFrame({
   error,
   booking,
   zone,
+  jurisdiction,
 }: DoorFrameProps) {
   const adjudicated = new Map(doc.layer3.lines.map((l) => [l.lineIndex, l]))
   /** r24: each line's own row and pairing on the paper, by index. */
@@ -207,7 +215,7 @@ export function DoorFrame({
             ? 'Counted at the door'
             : 'Nobody has counted this yet'}
         {countedAt
-          ? ` · ${fmtStamp(countedAt, doc.jurisdiction, doc.layer1.currency.value, zone)}`
+          ? ` · ${fmtStamp(countedAt, jurisdiction ?? doc.jurisdiction, doc.layer1.currency.value, zone)}`
           : ''}
       </p>
 

@@ -750,6 +750,7 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
               error={deliveryError}
               countedAt={lastCountedAt(doorDelivery)}
               zone={houseZone}
+              jurisdiction={doorDelivery?.jurisdiction ?? null}
               booking={doorBooking}
               /* The count is a WRITE — unless this document IS a door count, in
                  which case the frame shows what was counted and correcting it
