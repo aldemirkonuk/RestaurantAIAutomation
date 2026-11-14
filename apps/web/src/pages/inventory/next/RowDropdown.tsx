@@ -39,7 +39,7 @@ import { useRowRecord } from '../../cellar/next/useCellarNextData';
 import { velocity, whenItSells, type TillLine } from '../../cellar/next/rowSeries';
 import { CountSheet, OrderSheet, PourSheet, TransferSheet, WriteOffSheet } from './InventorySheets';
 import { amountUnit, isPoured } from './iv-amount';
-import { fmtQty, NOT_DRAWN_BY_SALES, perUnit, usageWords as usageWordsOf } from './ItemCards';
+import { fmtQty, lastDays, NOT_DRAWN_BY_SALES, perUnit, usageWords as usageWordsOf } from './ItemCards';
 import { writeFailure } from './iv-failure';
 import { costColumnsFor, oneLine, rowFilename, runExport, valuationColumns } from './iv-export';
 import {
@@ -639,6 +639,19 @@ function HowFastItPours({ row, uom, kind }: { row: InvRow; uom: string | null; k
     row.usageSince && row.usageUntil
       ? `between the counts of ${shortDate(row.usageSince)} and ${shortDate(row.usageUntil)}`
       : 'between its last counts';
+  // Where the pace came from, for the note under it when no day chart is
+  // drawn: a counted good's pace is not sales, and a good carried a few days
+  // was not paced over 30 (r39 walk on #1602).
+  const salesDays =
+    row.usageSource === 'sales' && row.usageSince && row.usageUntil
+      ? Math.max(1, Math.round((Date.parse(row.usageUntil) - Date.parse(row.usageSince)) / 86_400_000))
+      : null;
+  const paceFrom =
+    row.usageSource === 'counts'
+      ? 'That pace is read from the counts above, not from sales.'
+      : salesDays !== null && salesDays < 30
+        ? `That pace is the sales on the books in ${lastDays(salesDays)}.`
+        : 'That pace is the last 30 days of sales on the books.';
   const sentence = !row.analyticsReadable
     ? 'Selling pace could not be read — the sales figures did not answer for this read. This is a read error, not a title with nothing sold.'
     : row.usageSource === 'counts'
@@ -651,8 +664,8 @@ function HowFastItPours({ row, uom, kind }: { row: InvRow; uom: string | null; k
       ? 'Selling pace: unmeasured — the analytics have nothing for this title yet.'
       : row.velocity === 0
         ? 'Nothing sold lately, so there is no runway to give.'
-        : row.usageSource === 'sales' && row.usageQty !== null && row.usageSince && row.usageUntil
-          ? `About ${fmtPace(row.velocity)} a day (${fmtQty(row.usageQty, uom)} sold in the last ${fmtCount(Math.max(1, Math.round((Date.parse(row.usageUntil) - Date.parse(row.usageSince)) / 86_400_000)))} days, less voids)${lasts}`
+        : salesDays !== null && row.usageQty !== null
+          ? `About ${fmtPace(row.velocity)} a day (${fmtQty(row.usageQty, uom)} sold in ${lastDays(salesDays)}, less voids)${lasts}`
           : `About ${fmtPace(row.velocity)} a day (${fmtCount(sold30(row.velocity))} sold in the last 30 days)${lasts}`;
 
   return (
@@ -672,7 +685,7 @@ function HowFastItPours({ row, uom, kind }: { row: InvRow; uom: string | null; k
           {pos?.readable === false
             ? 'The till could not be read. This is unread, not a quiet night.'
             : row.velocity !== null && row.velocity > 0
-              ? 'That pace is the last 30 days of sales on the books. The day-by-day chart is not drawn for this title yet.'
+              ? `${paceFrom} The day-by-day chart is not drawn for this title yet.`
               : row.velocity === 0
                 ? 'No day-by-day chart either: no sales on the books in the last 30 days.'
                 : 'No day-by-day chart either.'}

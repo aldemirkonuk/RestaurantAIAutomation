@@ -53,7 +53,12 @@ select pg_temp.item(l), pg_temp.u('1'), k, uom, n, n, 'house_declared', 0, par, 
   ('k', 'food', 'g', 'DOS rice', 0, 200),
   ('l', 'wine', 'bottle', 'DOS slow red', 0, 200),
   ('m', 'food', 'g', 'DOS beans', 0, 200),
-  ('n', 'food', 'g', 'DOS lentils', 0, 200)
+  ('n', 'food', 'g', 'DOS lentils', 0, 200),
+  -- a_kitchen_goods_use_reads_its_counts (20271117090000):
+  ('o', 'food', 'g', 'DOS lime', 0, 200),
+  ('p', 'wine', 'bottle', 'DOS two-day red', 0, 2),
+  ('q', 'wine', 'bottle', 'DOS first-night white', 0, 0),
+  ('r', 'food', 'g', 'DOS mint', 0, 200)
 ) v(l, k, uom, n, par, age);
 
 -- a: one sold a day for 20 days.
@@ -116,6 +121,24 @@ select pg_temp.buy('n', 5000, '25 days', 0.002);
 select pg_temp.cnt('n', 5000, 'n-c1', '20 days');
 select pg_temp.cnt('n', 3000, 'n-c2', '10 days');
 select pg_temp.mv('n', -500, 'waste', 'manual', 'n-w', '5 days');
+-- o: lime, drawn by cocktails (booked as 'sale') and used by dishes (not
+-- drawn): 500 drawn between counts that show 3000 gone, 100 drawn since.
+select pg_temp.buy('o', 6000, '20 days', 0.004);
+select pg_temp.cnt('o', 5000, 'o-c1', '12 days');
+select pg_temp.mv('o', -100, 'sale', 'pos', 'o-s' || g, (g + 2 || ' days')::interval) from generate_series(1, 5) g;
+select pg_temp.cnt('o', 2000, 'o-c2', '2 days');
+select pg_temp.mv('o', -100, 'sale', 'pos', 'o-s-late', '1 day');
+-- p: carried 2 days, 2 sold.
+select pg_temp.buy('p', 12, '2 days', 15);
+select pg_temp.mv('p', -1, 'sale', 'pos', 'p-s' || g, (g || ' hours')::interval) from generate_series(1, 2) g;
+-- q: carried 3 hours, 3 sold on its first night.
+select pg_temp.buy('q', 12, '3 hours', 15);
+select pg_temp.mv('q', -1, 'sale', 'pos', 'q-s' || g, (g || ' hours')::interval) from generate_series(1, 2) g;
+select pg_temp.mv('q', -1, 'sale', 'pos', 'q-s3', '30 minutes');
+-- r: mint, drawn by cocktails and counted once.
+select pg_temp.buy('r', 1000, '20 days', 0.01);
+select pg_temp.cnt('r', 900, 'r-c1', '5 days');
+select pg_temp.mv('r', -50, 'sale', 'pos', 'r-s' || g, (g || ' days')::interval) from generate_series(1, 4) g;
 
 do $$
 declare r public.inventory_analytics;
@@ -198,6 +221,32 @@ begin
     format('T14 %s %s %s', r.usage_source, r.velocity_per_day, r.on_hand);
   assert r.days_of_cover = 5 and r.reorder_point = 2000 and r.reorder_suggested = true,
     format('T14 cover %s point %s suggested %s', r.days_of_cover, r.reorder_point, r.reorder_suggested);
+
+  -- a_kitchen_goods_use_reads_its_counts:
+  -- T15 counts win over a kitchen good's till draws: 5000 - 2000 = 3000 over
+  -- 10 days = 300/day (the draws alone said 600 / 20 = 30). Since the last
+  -- count 2 days of use, 100 booked: 1900 - (600 - 100) = 1400, 5 days.
+  r := pg_temp.a('o');
+  assert r.usage_source = 'counts' and r.usage_qty = 3000 and r.velocity_per_day = 300.000,
+    format('T15 %s %s %s', r.usage_source, r.usage_qty, r.velocity_per_day);
+  assert r.on_hand = 1900 and r.days_of_cover = 5, format('T15 on hand %s cover %s', r.on_hand, r.days_of_cover);
+  assert r.sold_30d = 600 and r.dead_stock = false, format('T15 sold %s', r.sold_30d);
+
+  -- T16 carried 2 days, 2 sold: 1/day over 2 days (the 7-day floor said 0.286).
+  r := pg_temp.a('p');
+  assert r.usage_source = 'sales' and r.velocity_per_day = 1.000, format('T16 %s %s', r.usage_source, r.velocity_per_day);
+  assert r.usage_since between now() - interval '2 days 1 minute' and now() - interval '1 day 23 hours', format('T16 since %s', r.usage_since);
+  assert r.days_of_cover = 10, format('T16 cover %s', r.days_of_cover);
+
+  -- T17 carried 3 hours, 3 sold: read over 1 day, 3/day, never over 3 hours.
+  r := pg_temp.a('q');
+  assert r.velocity_per_day = 3.000, format('T17 velocity %s', r.velocity_per_day);
+  assert r.usage_since between now() - interval '1 day 1 minute' and now() - interval '23 hours 59 minutes', format('T17 since %s', r.usage_since);
+  assert r.days_of_cover = 3 and r.reorder_suggested = true, format('T17 cover %s', r.days_of_cover);
+
+  -- T18 one count is no window: the till's draws still measure it.
+  r := pg_temp.a('r');
+  assert r.usage_source = 'sales' and r.sold_30d = 200, format('T18 %s %s', r.usage_source, r.sold_30d);
 end $$;
 
 rollback;
