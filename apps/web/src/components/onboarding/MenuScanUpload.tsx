@@ -1,8 +1,18 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { RotateCcw } from 'lucide-react'
-import { CameraCapture } from '../scanner/CameraCapture'
 import { importMenu, type MenuImportSuccess } from '../../services/api/menus'
 import { fitPhotoForReading } from '../../lib/fitPhoto'
+
+/**
+ * The camera loads when the person asks for it (r41 onboarding gap 4).
+ * Imported statically, it brought the camera and framer-motion's animation,
+ * gesture and layout code into /get-started's first paint: about 70% of
+ * what that page adds over the shared entry, for a camera that opens only
+ * after "Photo" is pressed at the menu step. `loadCamera` is kept so a
+ * caller can start the fetch ahead of the press.
+ */
+export const loadCamera = () => import('../scanner/CameraCapture')
+const CameraCapture = lazy(() => loadCamera().then((module) => ({ default: module.CameraCapture })))
 
 interface MenuScanUploadProps {
   onSuccess: MenuImportSuccess
@@ -61,15 +71,23 @@ export function MenuScanUpload({ onSuccess }: MenuScanUploadProps) {
         </div>
       )}
       <div className="rounded-xl overflow-hidden bg-white min-h-[400px]">
-        <CameraCapture
-          onCapture={handleImage}
-          onFileUpload={handleImage}
-          enableLiveDetection={false}
-          useCameraModal={true}
-          heading="Photograph the menu"
-          intro="Take a photo of the printed menu, or choose a photo or a PDF of it. Mudavym reads every line, drinks and dishes."
-          showPipeline={false}
-        />
+        <Suspense
+          fallback={
+            <p role="status" className="flex min-h-[400px] items-center justify-center text-sm text-gray-500">
+              Opening the camera…
+            </p>
+          }
+        >
+          <CameraCapture
+            onCapture={handleImage}
+            onFileUpload={handleImage}
+            enableLiveDetection={false}
+            useCameraModal={true}
+            heading="Photograph the menu"
+            intro="Take a photo of the printed menu, or choose a photo or a PDF of it. Mudavym reads every line, drinks and dishes."
+            showPipeline={false}
+          />
+        </Suspense>
       </div>
       <p className="mt-3 text-xs text-center text-gray-400">
         Take a photo with your camera or upload an image of your printed menu
