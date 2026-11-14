@@ -275,6 +275,19 @@ export class DashboardStatsDto {
     description:
       "The IANA zone every figure above was bucketed in: the house's own, or UTC when none is recorded",
   })
+  /**
+   * r36 invoices R3: verified deliveries with no order, per spend window,
+   * whose papers are in the spend figures above. `uncosted` and
+   * `notInHouseCurrency` say why a window's figure is withheld because of
+   * them; the order counts above stay orders only.
+   */
+  @ApiPropertyOptional()
+  scannedDeliveries?: {
+    today: { counted: number; uncosted: number; notInHouseCurrency: Record<string, number> };
+    week: { counted: number; uncosted: number; notInHouseCurrency: Record<string, number> };
+    month: { counted: number; uncosted: number; notInHouseCurrency: Record<string, number> };
+  };
+
   timezone: string;
 }
 

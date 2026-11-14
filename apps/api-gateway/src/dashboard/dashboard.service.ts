@@ -31,6 +31,7 @@ import {
 } from "../notifications/producers/service-day";
 import { readAll } from "../providers/vendor-menu-supply";
 import { bucketSpend, spendHouseFor, SPEND_UNREAD } from "./uncosted-spend";
+import { readPaperSpend, withPaperSpend } from "./paper-spend";
 
 /**
  * The rows of a settled read, or a throw. Supabase reports most failures in
@@ -1285,15 +1286,22 @@ export class DashboardService {
       );
       // Summed in the house's money only; an order in another withholds the
       // window's figure and is counted by its code.
-      const house = await spendHouseFor(client, restaurantId, deliveredOrders);
+      // r36 invoices R3: a verified delivery with no order is spend too, by
+      // its papers. Read beside the orders; a failed read withholds the
+      // figures with its reason, never reads as no papers.
+      const papers = await readPaperSpend(client, restaurantId);
+      const house = await spendHouseFor(client, restaurantId, [
+        ...deliveredOrders,
+        ...papers.rows,
+      ]);
+      const onDayOf = (onDay: (day: string) => boolean) => (o: { delivered_at?: string | null }) =>
+        !!o.delivered_at && onDay(localDateIn(new Date(o.delivered_at), zone));
       const spendWhere = (items: any[], onDay: (day: string) => boolean) =>
-        bucketSpend(
-          items.filter(
-            (o) =>
-              o.delivered_at &&
-              onDay(localDateIn(new Date(o.delivered_at), zone)),
-          ),
+        withPaperSpend(
+          bucketSpend(items.filter(onDayOf(onDay)), house),
+          papers.rows.filter(onDayOf(onDay)),
           house,
+          papers.unread,
         );
       // DASH-W22: the counts staff read in place of the two money cards, on
       // the same days and the same orders as the spend.
@@ -1304,15 +1312,18 @@ export class DashboardService {
             onDay(localDateIn(new Date(o.delivered_at), zone)),
         );
 
-      const todayRead = spendWhere(deliveredOrders, (day) => day === todayLocal);
-      const weekRead = spendWhere(
+      const today = spendWhere(deliveredOrders, (day) => day === todayLocal);
+      const week = spendWhere(
         deliveredOrders,
         (day) => day >= weekStartLocal && day <= todayLocal,
       );
-      const monthRead = spendWhere(
+      const month = spendWhere(
         deliveredOrders,
         (day) => day.slice(0, 7) === monthLocal,
       );
+      const todayRead = today.read;
+      const weekRead = week.read;
+      const monthRead = month.read;
 
       return {
         totalWines,
@@ -1335,6 +1346,11 @@ export class DashboardService {
           month: monthRead.notInHouseCurrency,
         },
         houseCurrencyUnread: house.unread,
+        scannedDeliveries: {
+          today: today.papers,
+          week: week.papers,
+          month: month.papers,
+        },
         unread: {
           todayProcurementSpend: todayRead.unread,
           weekProcurementSpend: weekRead.unread,
