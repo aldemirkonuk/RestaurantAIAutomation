@@ -106,6 +106,9 @@ describe('Type the menu on /menu', () => {
     fireEvent.change(screen.getByLabelText('Line 1 bottle price'), { target: { value: '40' } });
     expect(screen.getByTestId('menu-typed-refused')).toHaveTextContent('Line 1 has no name. Give it one, or leave it out.');
     expect(screen.getByRole('button', { name: 'Read this menu' })).toBeDisabled();
+    // Enter in a box submits the form however the button stands: still nothing is sent.
+    fireEvent.submit(screen.getByTestId('menu-read-form').querySelector('form')!);
+    expect(await screen.findByTestId('menu-read-error')).toHaveTextContent('The menu was not read: Line 1 has no name. Give it one, or leave it out.');
     expect(mockImport).not.toHaveBeenCalled();
   });
 
