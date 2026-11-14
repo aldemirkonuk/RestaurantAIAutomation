@@ -816,6 +816,65 @@ describe('ReportsNext — the palette never fabricates', () => {
   });
 });
 
+describe('ReportsNext — days of inventory counts the goods the till sells (reports lane r2)', () => {
+  it('names the goods left out of turns, days and GMROI, with their value at cost', () => {
+    hook.current = withRegister(
+      'ledger',
+      ok({
+        basis: {},
+        costCoverage: { total: 12, priced: 11, unpriced: 1, complete: false },
+        cogsCoverage: { itemsMoved: 6, itemsCosted: 6, bottlesUncosted: 0 },
+        tillStock: { value: 4000, goodsOnHand: 12, goodsOnTill: 8, uncostedOnTill: 0, goodsOffTill: 4, offTillValue: null },
+        inventoryValue: null,
+        cogs: 3000,
+        revenue: 9000,
+        inventoryTurnover: 0.75,
+        daysInventoryOutstanding: 486.7,
+        gmroi: 1.5,
+      }),
+    );
+    paint();
+    const ledger = screen.getByRole('region', { name: 'Figures of record' });
+    expect(
+      within(ledger).getByText(
+        'Inventory turns, days of inventory and GMROI count the 8 of 12 goods on hand the till sells. The 4 not on the till are left out: nothing they sell reaches what it cost.',
+      ),
+    ).toBeInTheDocument();
+    // The whole cellar's missing cost withholds only the cellar at cost now.
+    expect(
+      within(ledger).getByText(/11 of 12 on-hand goods carry a recorded cost, so the cellar at cost reads/),
+    ).toBeInTheDocument();
+    expect(within(ledger).getByText('486.7')).toBeInTheDocument();
+    // None of the counted goods sold nothing, so no idle note.
+    expect(within(ledger).queryByText(/sold nothing in this window/)).not.toBeInTheDocument();
+  });
+
+  it('names the counted goods that sold nothing, with their value at cost (fix round 2026-11-12)', () => {
+    hook.current = withRegister(
+      'ledger',
+      ok({
+        basis: {},
+        costCoverage: { total: 12, priced: 12, unpriced: 0, complete: true },
+        cogsCoverage: { itemsMoved: 6, itemsCosted: 6, bottlesUncosted: 0 },
+        tillStock: { value: 4000, goodsOnHand: 12, goodsOnTill: 8, uncostedOnTill: 0, idleOnTill: 3, idleOnTillValue: 900, goodsOffTill: 4, offTillValue: 200 },
+        inventoryValue: 4200,
+        cogs: 3000,
+        revenue: 9000,
+        inventoryTurnover: 0.75,
+        daysInventoryOutstanding: 486.7,
+        gmroi: 1.5,
+      }),
+    );
+    paint();
+    const ledger = screen.getByRole('region', { name: 'Figures of record' });
+    expect(
+      within(ledger).getByText(
+        '3 of the 8 goods on hand the till sells sold nothing in this window ($900 at cost). They are counted: the till can sell them, so they lengthen days of inventory.',
+      ),
+    ).toBeInTheDocument();
+  });
+});
+
 describe('ReportsNext — the costed part and earlier late prices, apart (batch review 2026-11-11)', () => {
   it('says what the costed items cost and the late prices on earlier sales, neither as what it cost', () => {
     hook.current = withRegister(
@@ -842,12 +901,12 @@ describe('ReportsNext — the costed part and earlier late prices, apart (batch 
     const cogs = within(ledger).getByText('What it cost (365d)').closest('.rp-fig');
     expect(within(cogs as HTMLElement).getByText('—')).toBeInTheDocument();
     expect(
-      within(ledger).getByText(/The 11 of 12 items sold whose every bottle carries its cost cost \$4,210\.5\. That is not what it cost/),
+      within(ledger).getByText(/The 11 of 12 items sold whose every bottle carries its cost came to \$4,210\.5 at cost\. That is not the cost of everything sold/),
     ).toBeInTheDocument();
     expect(
       within(ledger).getByText(/of late prices was settled in this window on bottles sold before it\. It is not in what it cost/),
     ).toBeInTheDocument();
-    expect(within(ledger).queryByText(/on-hand wines carry a recorded cost/)).not.toBeInTheDocument();
+    expect(within(ledger).queryByText(/on-hand goods carry a recorded cost/)).not.toBeInTheDocument();
   });
 });
 
@@ -913,11 +972,10 @@ describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
     // Cost-math lane 3.1: a cost gap says N of M, never prints a smaller sum.
     expect(within(ledger).getByText(/Cost known for 3 of 4 items sold; 2 bottles/)).toBeInTheDocument();
     // Batch review 2026-11-11: the cellar note names only the cellar-based
-    // figures, not what sold or what it cost.
+    // figures, not what sold or what it cost; since reports lane r2 turns,
+    // days and GMROI divide by the till's goods, so it names the cellar alone.
     expect(within(ledger).queryByText(/every cost-derived figure/)).not.toBeInTheDocument();
-    expect(
-      within(ledger).getByText(/so the cellar at cost, inventory turns, days of inventory and GMROI read —/),
-    ).toBeInTheDocument();
+    expect(within(ledger).getByText(/so the cellar at cost reads —/)).toBeInTheDocument();
     // …and the server's own reason is one click away.
     fireEvent.click(within(ledger).getByText('Show the working'));
     expect(within(ledger).getByText(/withheld: cost known for 3 of 4 items sold/)).toBeInTheDocument();
@@ -981,7 +1039,7 @@ describe('ReportsNext — honesty', () => {
     expect(within(ledger).queryByText('$0')).not.toBeInTheDocument();
     // …and it says WHY they are dashes, in the engine's own coverage numbers.
     expect(
-      within(ledger).getByText(/4 of 10 on-hand wines carry a recorded cost/),
+      within(ledger).getByText(/4 of 10 on-hand goods carry a recorded cost/),
     ).toBeInTheDocument();
   });
 
@@ -1686,6 +1744,31 @@ describe('ReportsNext — a signed change is a fraction, printed in percent (A-0
     expect(week?.cells[3]).toBe('+20.7% a day');
     expect(view.figures.find((f) => f.label === 'Trend per day, last 28 days')?.value).toBe(
       '+20.7%',
+    );
+  });
+
+  it('a goal whose latest reading was refused shows no "now", and says why (reports lane r2)', () => {
+    const view = CATALOGUE.bench.view(
+      decode('bench', {
+        ...BENCH,
+        activeGoals: [
+          {
+            name: 'Days of stock under 30',
+            metric_key: 'days_of_inventory',
+            baseline_value: 45,
+            current_value: null,
+            current_unread: 'Days of stock cannot be read for this restaurant yet.',
+            target_value: 30,
+            direction: 'at_most',
+          },
+        ],
+      }),
+      { days: 30 },
+    );
+    const row = view.table?.rows.find((r) => r.key === 'goal-Days of stock under 30');
+    expect(row?.cells[2]).toBe('—');
+    expect(view.notes).toContain(
+      'Days of stock under 30: its latest reading was refused, so it has no figure for now (Days of stock cannot be read for this restaurant yet).',
     );
   });
 });

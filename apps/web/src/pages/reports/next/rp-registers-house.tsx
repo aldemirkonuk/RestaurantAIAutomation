@@ -162,6 +162,21 @@ export interface LedgerRegister {
   } | null;
   salesWithheld?: boolean;
   inventoryValue: number | null;
+  /**
+   * The stock base of turns, days of inventory and GMROI: the goods the till
+   * reaches (reports lane r2). Null without sales or an unread till.
+   */
+  tillStock: {
+    value: number | null;
+    goodsOnHand: number;
+    goodsOnTill: number;
+    uncostedOnTill: number;
+    /** Of those the till sells, how many sold nothing in the window: counted, and named. */
+    idleOnTill: number;
+    idleOnTillValue: number | null;
+    goodsOffTill: number;
+    offTillValue: number | null;
+  } | null;
   cogs: number | null;
   cogsSettledAfterSale: number | null;
   /** Late prices settled in the window on bottles sold before it: not in cogs, feeds no ratio. */
@@ -193,6 +208,7 @@ const ledger = analysis<LedgerRegister>({
     const cg = d.cogsCoverage == null ? null : obj(d.cogsCoverage);
     const kp = d.costOfCostedItems == null ? null : obj(d.costOfCostedItems);
     const kpAmount = kp ? num(kp.amount) : null;
+    const ts = d.tillStock == null ? null : obj(d.tillStock);
     return {
       basis: d.basis as Record<string, string>,
       costCoverage: d.costCoverage as LedgerRegister['costCoverage'],
@@ -205,6 +221,18 @@ const ledger = analysis<LedgerRegister>({
         : null,
       salesWithheld: d.salesWithheld === true,
       inventoryValue: num(d.inventoryValue),
+      tillStock: ts
+        ? {
+            value: num(ts.value),
+            goodsOnHand: num(ts.goodsOnHand) ?? 0,
+            goodsOnTill: num(ts.goodsOnTill) ?? 0,
+            uncostedOnTill: num(ts.uncostedOnTill) ?? 0,
+            idleOnTill: num(ts.idleOnTill) ?? 0,
+            idleOnTillValue: num(ts.idleOnTillValue),
+            goodsOffTill: num(ts.goodsOffTill) ?? 0,
+            offTillValue: num(ts.offTillValue),
+          }
+        : null,
       cogs: num(d.cogs),
       cogsSettledAfterSale: num(d.cogsSettledAfterSale),
       settledOnEarlierSales: num(d.settledOnEarlierSales),
@@ -254,9 +282,9 @@ const ledger = analysis<LedgerRegister>({
         value: money(f.inventoryValue),
         note: 'Not every on-hand row carries a recorded cost',
       },
-      { label: 'Inventory turns', value: figureTo(f.inventoryTurnover, 2), note: 'Needs the cellar at cost, what it cost, and 28 days of the till' },
-      { label: 'Days of inventory', value: figureTo(f.daysInventoryOutstanding, 1), note: 'Needs the cellar at cost, what it cost, and 28 days of the till' },
-      { label: 'GMROI', value: figureTo(f.gmroi, 2), note: 'Needs the cellar at cost, what was kept, and 28 days of the till' },
+      { label: 'Inventory turns', value: figureTo(f.inventoryTurnover, 2), note: 'Needs the till’s goods at cost, what it cost, and 28 days of the till' },
+      { label: 'Days of inventory', value: figureTo(f.daysInventoryOutstanding, 1), note: 'Needs the till’s goods at cost, what it cost, and 28 days of the till' },
+      { label: 'GMROI', value: figureTo(f.gmroi, 2), note: 'Needs the till’s goods at cost, what was kept, and 28 days of the till' },
       {
         label: 'Bought (365d)',
         value: money(f.deliveredPurchases),
@@ -278,7 +306,7 @@ const ledger = analysis<LedgerRegister>({
     const kp = f.costOfCostedItems;
     if (costGap && kp && kp.items > 0)
       notes.push(
-        `The ${figure(kp.items)} of ${figure(kp.of)} items sold whose every bottle carries its cost cost ${money(kp.amount)}. That is not what it cost, and no figure above divides by it.`,
+        `The ${figure(kp.items)} of ${figure(kp.of)} items sold whose every bottle carries its cost came to ${money(kp.amount)} at cost. That is not the cost of everything sold, and no figure above divides by it.`,
       );
     if (f.cogsSettledAfterSale != null && f.cogsSettledAfterSale !== 0)
       notes.push(`${money(f.cogsSettledAfterSale)} of what it cost is late prices on this window’s sales, settled when invoices were verified after the bottles sold.`);
@@ -286,13 +314,31 @@ const ledger = analysis<LedgerRegister>({
       notes.push(
         `${money(f.settledOnEarlierSales)} of late prices was settled in this window on bottles sold before it. It is not in what it cost: those sales are not in this window’s sales.`,
       );
+    // Turns, days and GMROI divide by the goods the till reaches, not the
+    // whole cellar: a good the till cannot sell has no cost of what sold to
+    // set against it (reports lane r2). Said whenever some are left out.
+    const ts = f.tillStock;
+    if (ts && ts.goodsOffTill > 0)
+      notes.push(
+        `Inventory turns, days of inventory and GMROI count the ${figure(ts.goodsOnTill)} of ${figure(ts.goodsOnHand)} goods on hand the till sells. The ${figure(ts.goodsOffTill)} not on the till${ts.offTillValue != null ? `, ${money(ts.offTillValue)} at cost,` : ''} ${ts.goodsOffTill === 1 ? 'is' : 'are'} left out: nothing ${ts.goodsOffTill === 1 ? 'it sells reaches' : 'they sell reaches'} what it cost.`,
+      );
+    if (ts && ts.uncostedOnTill > 0)
+      notes.push(
+        `${figure(ts.uncostedOnTill)} of the ${figure(ts.goodsOnTill)} goods on hand the till sells carry no recorded cost, so inventory turns, days of inventory and GMROI read ${EM}.`,
+      );
+    // A mapped good that sold nothing stays in the base, since the till can
+    // sell it; named so a long days of inventory reads for what it is.
+    if (ts && ts.idleOnTill > 0)
+      notes.push(
+        `${figure(ts.idleOnTill)} of the ${figure(ts.goodsOnTill)} goods on hand the till sells sold nothing in this window${ts.idleOnTillValue != null ? ` (${money(ts.idleOnTillValue)} at cost)` : ''}. ${ts.idleOnTill === 1 ? 'It is' : 'They are'} counted: the till can sell ${ts.idleOnTill === 1 ? 'it' : 'them'}, so ${ts.idleOnTill === 1 ? 'it lengthens' : 'they lengthen'} days of inventory.`,
+      );
     // Only the cellar-based figures wait on the cellar's cost; what sold,
     // what it cost and what was kept come from the till (finding 3).
     if (cc && !cc.complete)
       notes.push(
         cc.total === 0
-          ? `No on-hand wine carries a recorded cost, so the cellar at cost, inventory turns, days of inventory and GMROI read ${EM} rather than a total assembled from nothing.`
-          : `${figure(cc.priced)} of ${figure(cc.total)} on-hand wines carry a recorded cost, so the cellar at cost, inventory turns, days of inventory and GMROI read ${EM} rather than a total assembled from part of the cellar.`,
+          ? `No on-hand good carries a recorded cost, so the cellar at cost reads ${EM} rather than a total assembled from nothing.`
+          : `${figure(cc.priced)} of ${figure(cc.total)} on-hand goods carry a recorded cost, so the cellar at cost reads ${EM} rather than a total assembled from part of the cellar.`,
       );
     notes.push('Before tax. Bought is what was bought, not what sold: it feeds no ratio.');
     return {
