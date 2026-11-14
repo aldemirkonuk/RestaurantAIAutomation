@@ -35,7 +35,7 @@ import { apiClient } from '@/services/api/client';
 import { settingsApi } from '@/services/api/settings';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
 import { useAuthStore } from '@/stores/authStore';
-import { failureOf, heldBackFailure, num, type Failure } from './rp-format';
+import { failureOf, failureReason, heldBackFailure, num, type Failure } from './rp-format';
 import { CATALOGUE, defaultGraph, graphOrDefault, type ReadingRow } from './rp-catalogue';
 import { readsRegister } from './rp-spec';
 import type { ComboPick } from './rp-combo';
@@ -49,6 +49,8 @@ import {
   IDS_ADDED_IN_V3,
   isAnalysisId,
   isGraphType,
+  SHEET_MIN_H,
+  SHEET_MIN_W,
   type AnalysisId,
   type Cutting,
   type GraphType,
@@ -181,7 +183,7 @@ export function decodeSheet(stored: unknown): SheetState {
     const h = num(b?.h);
     const slot =
       x !== null && y !== null && w !== null && h !== null
-        ? { x, y, w: Math.max(2, w), h: Math.max(2, h) }
+        ? { x, y, w: Math.max(SHEET_MIN_W, w), h: Math.max(SHEET_MIN_H, h) }
         : DEFAULT_SLOTS[id];
     const graph = isGraphType(b?.g) ? graphOrDefault(id, b.g) : defaultGraph(id);
     const combo = decodeCombo(b?.c);
@@ -356,9 +358,9 @@ export function useReportsNextData(
     userId === null
       ? 'No one is signed in, so there is no arrangement of yours to read: the house sheet is shown, and arranging is off.'
       : prefsError && !hadGoodAnswer
-        ? `Your own arrangement of this sheet could not be read (${
-            failureOf(prefsError)?.message ?? 'the request failed'
-          }), so the house sheet is shown. Arranging is off until it can be read.`
+        ? `Your own arrangement of this sheet could not be read (${failureReason(
+            failureOf(prefsError) ?? { status: null, message: '' },
+          )}), so the house sheet is shown. Arranging is off until it can be read.`
         : null;
 
   const sheet = useMemo(() => decodeSheet(preferences?.[SHEET_PREF_KEY]), [preferences]);

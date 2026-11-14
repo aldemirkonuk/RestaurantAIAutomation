@@ -24,6 +24,7 @@ import { deadlineWords, goals, paceCaption, type GoalsRegister } from './rp-regi
 
 import type { GoalsDesk } from './useGoalsDesk';
 import { paceOf, toProgressRow } from '@/pages/recommendations/next/rec-masthead';
+import { CATALOGUE } from './rp-catalogue';
 
 const ctx = { days: 30 };
 
@@ -401,5 +402,24 @@ describe("a goal's deadline is written as a date (r28 gap 21)", () => {
       expect(screen.getByText(/by 31 Dec 2026/)).toBeInTheDocument();
       expect(screen.queryByText(/2026-12-31/)).toBeNull();
     }
+  });
+});
+
+describe('a sentence with no category (r28 gap 20)', () => {
+  it('[REVERT-FAILS] is counted as not filed, never as sales', () => {
+    const rows = CATALOGUE.reading.select!({
+      insights: [
+        { candidate_key: 'overall.bottles.vs_prev_period_7d', sentence: 'Bottles are up 4.', score: 2 },
+        { candidate_key: 'overall.revenue.vs_prev_period_7d', sentence: 'Sales are up.', category: 'sales', score: 1 },
+      ],
+    }) as Array<{ category: string }>;
+    expect(rows.map((r) => r.category)).toEqual(['unfiled', 'sales']);
+    const view = CATALOGUE.reading.view!(rows as never, {} as never) as {
+      cats: { data: Array<{ label: string; value: number }> };
+    };
+    expect(view.cats.data.map((d) => [d.label, d.value]).sort()).toEqual([
+      ['Not filed', 1],
+      ['Sales', 1],
+    ]);
   });
 });

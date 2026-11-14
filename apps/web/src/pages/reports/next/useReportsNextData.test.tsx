@@ -335,7 +335,9 @@ describe('useReportsNextData — whose sheet this is', () => {
     prefs.error = new Error('Request failed with status code 500');
     const { result } = mount();
     expect(result.current.sheetKnown).toBe(false);
-    expect(result.current.sheetUnread).toMatch(/could not be read \(Request failed with status code 500\)/);
+    expect(result.current.sheetUnread).toBe(
+      'Your own arrangement of this sheet could not be read (Mudavym’s side failed while reading it), so the house sheet is shown. Arranging is off until it can be read.',
+    );
   });
 
   it('keeps the last good sheet, stays arrangeable and says the refresh failed when a refetch fails after a good load', () => {

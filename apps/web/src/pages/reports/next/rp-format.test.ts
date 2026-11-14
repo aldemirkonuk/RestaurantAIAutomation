@@ -8,7 +8,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { EM, READING, failureLine, failureOf, money, moneyIn, pct, shortLabels } from './rp-format';
+import { EM, READING, UNFILED, categoryLabel, failureLine, failureOf, failureReason, money, moneyIn, pct, shortLabels } from './rp-format';
+
 
 describe('pct — a 0–1 fraction, printed as a signed percentage', () => {
   it('multiplies by 100: the measured trend reads +20.7%, not +0.21%', () => {
@@ -92,7 +93,7 @@ describe('a refusal is said in the gateway’s words (audit G11)', () => {
 
   it('a bare transport error still says what it can, and Nest’s generic words are not a sentence', () => {
     expect(failureLine('cashflow register', failureOf(new Error('Network Error'))!)).toBe(
-      'The cashflow register could not be read (Network Error). Nothing below is claimed.',
+      'The cashflow register could not be read (Mudavym could not be reached from this device). Nothing below is claimed.',
     );
     expect(failureOf(refusal('Internal server error', 500))!.said).toBeUndefined();
   });
@@ -127,5 +128,50 @@ describe('shortLabels', () => {
 
   it('numbers names that are identical outright', () => {
     expect(shortLabels(['Ben', 'Ben'], 12)).toEqual(['Ben', 'Ben 2']);
+  });
+});
+
+describe('a failed read says what happened, never the transport’s sentence (r28 gap 17)', () => {
+  const http = (status: number, data: unknown = {}) => ({
+    message: `Request failed with status code ${status}`,
+    response: { status, data },
+  });
+
+  it.each([
+    [http(502), 'Mudavym’s side failed while reading it'],
+    [http(500, { message: 'column wine_consumption_log.qty does not exist' }), 'Mudavym’s side failed while reading it'],
+    [http(404), 'Mudavym did not find it'],
+    [http(429), 'too many reads were asked for at once; it can be read again in a minute'],
+    [http(400), 'Mudavym refused the request'],
+    [new Error('Network Error'), 'Mudavym could not be reached from this device'],
+    [new Error('timeout of 30000ms exceeded'), 'Mudavym took too long to answer'],
+    [new Error('canceled'), 'the request was stopped before it was answered'],
+  ])('%#: the line carries no status code and no client words', (err, words) => {
+    const line = failureLine('till register', failureOf(err)!);
+    expect(line).toBe(`The till register could not be read (${words}). Nothing below is claimed.`);
+    expect(line).not.toMatch(/status code|Network Error|timeout of|ms exceeded|canceled|wine_consumption_log/);
+  });
+
+  it('a 500’s thrown message is never said as the gateway’s sentence', () => {
+    expect(failureOf(http(500, { message: 'relation "pos_checks" does not exist' }))!.said).toBeUndefined();
+  });
+
+  it('a refusal the gateway words on purpose is still said', () => {
+    const f = failureOf(http(503, { message: 'The till could not be read whole.' }))!;
+    expect(failureLine('till register', f)).toBe('The till register could not be read. The till could not be read whole. Nothing below is claimed.');
+  });
+
+  it('keeps a reason that is not the transport’s, as the export shelf hands it', () => {
+    expect(failureReason({ status: 500, message: 'permission denied' })).toBe('permission denied');
+    expect(failureReason({ status: null, message: '' })).toBe('Mudavym could not be reached from this device');
+  });
+});
+
+describe('a sentence with no category (r28 gap 20)', () => {
+  it('is not filed under Sales, and an unknown key is said plainly', () => {
+    expect(categoryLabel(UNFILED)).toBe('Not filed');
+    expect(categoryLabel('')).toBe('Not filed');
+    expect(categoryLabel('sales')).toBe('Sales');
+    expect(categoryLabel('price_watch')).toBe('Price watch');
   });
 });
