@@ -442,6 +442,9 @@ export class WineSubmissionsService {
    */
   private static readonly AUTO_LINK_CONFIDENCE = 85;
 
+  /** Signatures read back per request: 50 × 64 hex keeps the URL near 3.5 KB (r31 w1 F1). */
+  static readonly READ_BACK_CHUNK = 50;
+
   /**
    * Synchronous match-or-create against master_wine_library, used by the menu
    * importer so it can populate menu_items.wine_library_id and
@@ -929,20 +932,29 @@ export class WineSubmissionsService {
     // Read back by signature rather than trusting the insert's RETURNING:
     // ignoreDuplicates omits rows a concurrent import already created, and
     // those rows are exactly the ones we still need ids for.
+    //
+    // IN CHUNKS (r31 walk w1, F1). `.in()` puts every hash in the GET URL, and
+    // a signature is 64 hex characters: a menu of 120 or more new wines made a
+    // URL the gateway in front of PostgREST refused ("URI too long"), and the
+    // whole import failed. 50 a read keeps the URL near 3.5 KB.
     const signatures = [...rowBySignature.keys()];
-    const { data: created, error: readError } = await this.dbService.supabase
-      .from("master_wine_library")
-      .select("id, library_tier, signature_hash")
-      .in("signature_hash", signatures);
+    const created: Array<{ id: string; library_tier: number | null; signature_hash: string }> = [];
+    for (let i = 0; i < signatures.length; i += WineSubmissionsService.READ_BACK_CHUNK) {
+      const { data, error: readError } = await this.dbService.supabase
+        .from("master_wine_library")
+        .select("id, library_tier, signature_hash")
+        .in("signature_hash", signatures.slice(i, i + WineSubmissionsService.READ_BACK_CHUNK));
 
-    if (readError) {
-      throw new Error(
-        `Failed to read back provisional library wines: ${readError.message}`,
-      );
+      if (readError) {
+        throw new Error(
+          `Failed to read back provisional library wines: ${readError.message}`,
+        );
+      }
+      created.push(...((data ?? []) as typeof created));
     }
 
     const idBySignature = new Map(
-      (created ?? []).map((r) => [r.signature_hash, r]),
+      created.map((r) => [r.signature_hash, r]),
     );
 
     for (const idx of needsCreate) {
