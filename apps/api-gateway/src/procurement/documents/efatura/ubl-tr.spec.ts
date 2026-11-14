@@ -309,6 +309,11 @@ describe("an e-Fatura line keeps its own KDV rate (r35, BT-152)", () => {
     expect(doc.lines[3].vatRatePercent).toBe(20);
   });
 
+  it("any other tax on the line is not its KDV either (a 4080 communications tax beside KDV 10)", () => {
+    const doc = read(line(3, `<cac:TaxTotal>${sub("10", "0015")}${sub("7.5", "4080")}</cac:TaxTotal>`));
+    expect(doc.lines[2].vatRatePercent).toBe(10);
+  });
+
   it("a plain UBL line with one untyped subtotal takes it; with none, its item's tax category", () => {
     const doc = read(
       line(3, `<cac:TaxTotal>${sub("8")}</cac:TaxTotal>`) +
