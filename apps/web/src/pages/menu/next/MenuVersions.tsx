@@ -43,6 +43,22 @@ import { useHouseCurrencyCode } from '../../../hooks/queries/useHouseCurrencyCod
 
 const EM = '—';
 
+/**
+ * What this box reads (r28 G18): photos, PDFs, CSV and .xlsx. An older .xls
+ * workbook (Excel 97-2003) cannot be read (exceljs reads .xlsx only), and the
+ * box offered it, so the house was told "check that each row names a wine".
+ */
+export const MENU_FILE_ACCEPT = 'image/*,application/pdf,.csv,.xlsx';
+
+/** Why a chosen file cannot be read here, in the house's words; null when it can be sent. */
+export function menuFileRefusal(file: { name: string; type?: string } | null): string | null {
+  if (!file) return null;
+  const name = file.name.toLowerCase();
+  if (name.endsWith('.xls') || file.type === 'application/vnd.ms-excel')
+    return 'This is an older Excel file (.xls), which cannot be read here. Save it as .xlsx or CSV and choose that.';
+  return null;
+}
+
 /** The gateway's own words for a refusal, never a bare status. */
 export function reasonOf(err: unknown): string {
   const e = err as { response?: { status?: number; data?: { message?: unknown } }; message?: string };
@@ -167,6 +183,7 @@ function fileToBase64(file: File): Promise<string> {
 function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () => void }) {
   const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
+  const [fileRefusal, setFileRefusal] = useState<string | null>(null);
   const [cadence, setCadence] = useState<MenuCadence | ''>('');
   const [date, setDate] = useState('');
   const [result, setResult] = useState<MenuImportResult | null>(null);
@@ -183,7 +200,7 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
       if (name.endsWith('.csv') || file.type === 'text/csv') {
         return importMenu('csv', { csvContent: await file.text() }, labels);
       }
-      if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+      if (name.endsWith('.xlsx')) {
         return importMenu('csv', { fileBase64: await fileToBase64(file) }, labels);
       }
       return importMenu('scan', { imageBase64: await fileToBase64(file) }, labels);
@@ -209,10 +226,21 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
           Menu to read
           <input
             type="file"
-            accept="image/*,application/pdf,.csv,.xlsx,.xls"
+            accept={MENU_FILE_ACCEPT}
             aria-label="Menu to read"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => {
+              const picked = e.target.files?.[0] ?? null;
+              // A file this box cannot read is said at once and never sent.
+              const why = menuFileRefusal(picked);
+              setFileRefusal(why);
+              setFile(why ? null : picked);
+            }}
           />
+          {fileRefusal ? (
+            <span role="alert" className="cl-note" data-testid="menu-file-refused">
+              {fileRefusal}
+            </span>
+          ) : null}
         </label>
         <label className="cl-said" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           How often it changes (optional)
