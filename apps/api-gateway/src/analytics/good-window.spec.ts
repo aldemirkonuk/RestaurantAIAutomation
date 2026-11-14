@@ -60,12 +60,12 @@ describe("addedWords", () => {
   });
   it("names one good in the singular", () => {
     expect(addedWords(1)).toBe(
-      "; 1 good was added to the house's list inside the window and is read from the day it was added (skus[].demandSince), not over days it was not on it",
+      "; 1 good was added to the house's list inside the window and is read from the day it was added, not over days it was not on it",
     );
   });
   it("names several in the plural", () => {
     expect(addedWords(2)).toBe(
-      "; 2 goods were added to the house's list inside the window and are read from the day they were added (skus[].demandSince), not over days they were not on it",
+      "; 2 goods were added to the house's list inside the window and are read from the day they were added, not over days they were not on it",
     );
   });
 });

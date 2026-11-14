@@ -42,5 +42,5 @@ export function goodWindow(
 /** The clause the restock basis adds when some goods are read from their added day. */
 export function addedWords(count: number): string {
   if (count === 0) return "";
-  return `; ${count} ${count === 1 ? "good was" : "goods were"} added to the house's list inside the window and ${count === 1 ? "is" : "are"} read from the day ${count === 1 ? "it was" : "they were"} added (skus[].demandSince), not over days ${count === 1 ? "it was" : "they were"} not on it`;
+  return `; ${count} ${count === 1 ? "good was" : "goods were"} added to the house's list inside the window and ${count === 1 ? "is" : "are"} read from the day ${count === 1 ? "it was" : "they were"} added, not over days ${count === 1 ? "it was" : "they were"} not on it`;
 }
