@@ -145,7 +145,7 @@ function useActiveMenu(restaurantId: string | null) {
   return { q, discard, add };
 }
 
-function AddItemForm({ onAdd, adding, error }: {
+function AddItemForm({ onAdd, adding, error, canPrice }: {
   // The reset callback fires only on a SUCCESSFUL add. Clearing the form at
   // submit time (the prior behaviour) threw the person's typed entry away on
   // a failed POST, with no way to recover it — "a draft is not sent" cuts
@@ -156,6 +156,13 @@ function AddItemForm({ onAdd, adding, error }: {
   ) => void
   adding: boolean
   error: string | null
+  /**
+   * Whether this person may put a price on the menu. The gateway refuses a
+   * priced add from staff ("Only managers and owners can put a price on the
+   * current menu"), so staff are not handed boxes that can only be refused
+   * (r21 production-build walk).
+   */
+  canPrice: boolean
 }) {
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
@@ -171,9 +178,10 @@ function AddItemForm({ onAdd, adding, error }: {
         category: category.trim() || undefined,
         // Sent as typed: the gateway reads "45,50" and "1.250,00" the way the
         // Change price boxes are read (parseMenuPrice), and refuses what is
-        // not a price instead of adding the line unpriced (r28 G7).
-        by_glass_typed: byGlass.trim() || undefined,
-        bottle_typed: bottle.trim() || undefined,
+        // not a price instead of adding the line unpriced (r28 G7). Staff send
+        // no price at all: they are handed no boxes (r21 walk).
+        by_glass_typed: canPrice ? byGlass.trim() || undefined : undefined,
+        bottle_typed: canPrice ? bottle.trim() || undefined : undefined,
       },
       {
         onSuccess: () => {
@@ -210,30 +218,34 @@ function AddItemForm({ onAdd, adding, error }: {
         placeholder="e.g. Reds"
         style={{ width: 120 }}
       />
-      <label className="cl-dim" style={{ fontSize: 12 }} htmlFor="menu-add-glass">
-        Glass
-      </label>
-      <input
-        id="menu-add-glass"
-        className="cl-field cl-focus cl-num"
-        inputMode="decimal"
-        autoComplete="off"
-        value={byGlass}
-        onChange={(e) => setByGlass(e.target.value)}
-        style={{ width: 80 }}
-      />
-      <label className="cl-dim" style={{ fontSize: 12 }} htmlFor="menu-add-bottle">
-        Bottle
-      </label>
-      <input
-        id="menu-add-bottle"
-        className="cl-field cl-focus cl-num"
-        inputMode="decimal"
-        autoComplete="off"
-        value={bottle}
-        onChange={(e) => setBottle(e.target.value)}
-        style={{ width: 80 }}
-      />
+      {canPrice ? (
+        <>
+          <label className="cl-dim" style={{ fontSize: 12 }} htmlFor="menu-add-glass">
+            Glass
+          </label>
+          <input
+            id="menu-add-glass"
+            className="cl-field cl-focus cl-num"
+            inputMode="decimal"
+            autoComplete="off"
+            value={byGlass}
+            onChange={(e) => setByGlass(e.target.value)}
+            style={{ width: 80 }}
+          />
+          <label className="cl-dim" style={{ fontSize: 12 }} htmlFor="menu-add-bottle">
+            Bottle
+          </label>
+          <input
+            id="menu-add-bottle"
+            className="cl-field cl-focus cl-num"
+            inputMode="decimal"
+            autoComplete="off"
+            value={bottle}
+            onChange={(e) => setBottle(e.target.value)}
+            style={{ width: 80 }}
+          />
+        </>
+      ) : null}
       <button type="submit" className="cl-btn cl-focus" disabled={adding || !name.trim()}>
         {adding ? 'Adding…' : 'Add to menu'}
       </button>
@@ -242,6 +254,11 @@ function AddItemForm({ onAdd, adding, error }: {
           {error}
         </span>
       ) : null}
+      {canPrice ? null : (
+        <span className="cl-said" data-testid="menu-add-unpriced" style={{ fontSize: 12 }}>
+          A line added here stands on the menu with no price; an owner or a manager sets it.
+        </span>
+      )}
     </form>
   );
 }
@@ -253,6 +270,18 @@ function AddItemForm({ onAdd, adding, error }: {
  */
 function priceText(v: number | null, currency: string | null): string {
   return v === null || v === undefined ? '' : housePriceHint(v, currency);
+}
+
+/**
+ * Why an add was refused, in the gateway's words ("Only managers and owners
+ * can put a price on the current menu…"), never "Request failed with status
+ * code 403". Not refusalOf: its 403 line is about changing a price.
+ */
+function addRefusal(err: unknown): string {
+  const m = (err as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+  if (typeof m === 'string' && m) return m;
+  if (Array.isArray(m) && m.length) return String(m[0]);
+  return err instanceof Error && err.message ? err.message : 'no reason given';
 }
 
 /**
@@ -640,7 +669,8 @@ export default function MenuNext() {
             <div style={{ marginTop: 16 }}>
               <AddItemForm
                 adding={add.isPending}
-                error={add.isError ? refusalOf(add.error) : null}
+                error={add.isError ? addRefusal(add.error) : null}
+                canPrice={canManage}
                 onAdd={(fields, opts) => add.mutate(fields, opts)}
               />
               {(() => {
