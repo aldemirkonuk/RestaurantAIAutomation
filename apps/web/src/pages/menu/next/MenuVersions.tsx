@@ -43,6 +43,8 @@ import { useAuthStore } from '../../../stores';
 import { MenuPlan } from './MenuPlan';
 import { formatMoney } from '../../../lib/currency';
 import { useHouseCurrencyCode } from '../../../hooks/queries/useHouseCurrencyCode';
+import { fitPhotoForReading } from '../../../lib/fitPhoto';
+import { fittedPhotoRefusal, pickedSizeRefusal } from './menu-read-size';
 
 const EM = '—';
 
@@ -195,13 +197,28 @@ export function readMenuDate(raw: string): { ok: boolean; value: string | undefi
   return { ok: false, value: undefined, error: 'A date is a day (2026-10-15) or just a month (2026-10).' };
 }
 
-function fileToBase64(file: File): Promise<string> {
+function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
-    r.onload = () => resolve(String(r.result).split(',', 2)[1] ?? '');
+    r.onload = () => resolve(String(r.result));
     r.onerror = () => reject(r.error ?? new Error('the file could not be read'));
     r.readAsDataURL(file);
   });
+}
+
+async function fileToBase64(file: File): Promise<string> {
+  return (await fileToDataUrl(file)).split(',', 2)[1] ?? '';
+}
+
+/**
+ * A photo or PDF as the reader takes it (r36 N3): a photo fitted the way
+ * /get-started fits it, and what is still too big refused here, never sent.
+ */
+export async function scanPayload(file: File): Promise<string> {
+  const fitted = await fitPhotoForReading(await fileToDataUrl(file));
+  const why = fittedPhotoRefusal(fitted);
+  if (why) throw new Error(why);
+  return fitted.base64;
 }
 
 function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () => void }) {
@@ -228,7 +245,7 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
       if (name.endsWith('.xlsx')) {
         return importMenu('csv', { fileBase64: await fileToBase64(file) }, labels);
       }
-      return importMenu('scan', { imageBase64: await fileToBase64(file) }, labels);
+      return importMenu('scan', { imageBase64: await scanPayload(file) }, labels);
     },
     onSuccess: (r) => {
       setResult(r);
@@ -257,7 +274,7 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
             onChange={(e) => {
               const picked = e.target.files?.[0] ?? null;
               // A file this box cannot read is said at once and never sent.
-              const why = menuFileRefusal(picked);
+              const why = menuFileRefusal(picked) ?? pickedSizeRefusal(picked);
               setFileRefusal(why);
               setFile(why ? null : picked);
             }}
