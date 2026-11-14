@@ -149,6 +149,16 @@ describe('the words the panel uses', () => {
     );
   });
 
+  it('r28 G1: the current menu chosen again says its prices were carried again; with no line it changed nothing', () => {
+    const base = { outcome: 'already_current' as const, menuId: 'm1', previousMenuIds: [], flagged: 0 };
+    expect(makeCurrentSentence({ ...base, lines: 0, priceSync: {}, failed: [] })).toBe('That menu was already the current one. Nothing changed.');
+    expect(
+      makeCurrentSentence({ ...base, lines: 3, priceSync: { changed: 1, unchanged: 1, stale: 1 }, failed: [] }),
+    ).toBe(
+      "That menu was already the current one; its prices were carried again: 3 lines, 1 price set from this menu, 1 already at the menu's price, 1 kept a price someone set after this menu was chosen.",
+    );
+  });
+
   it('says how many kitchen lines stay on the menu and are carried nowhere', () => {
     expect(
       makeCurrentSentence({
@@ -306,8 +316,11 @@ describe('MenuVersions', () => {
     expect(rows).toHaveLength(3);
     expect(rows[1]).toHaveTextContent('current since 2026-09-01, chosen by Bo');
     expect(rows[2]).toHaveTextContent('last one used, used until 2026-09-01');
-    // The current menu offers no "Make current"; the others do.
+    // The current menu offers no "Make current"; the others do. It offers to
+    // check -- and finish -- its own carry instead (r28 G1).
     expect(screen.getAllByRole('button', { name: /^Make .* current$/ })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: /^Carry the prices of .* again$/ })).toHaveLength(1);
+    expect(rows[1]).toHaveTextContent('Check its prices');
   });
 
   it('a failed read of the kept menus says so -- not "none kept"', async () => {

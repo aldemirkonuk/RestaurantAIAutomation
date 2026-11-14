@@ -493,12 +493,22 @@ export async function getMenuSourceUrl(
   return response.data
 }
 
+/** How long choosing a menu may take before the page stops waiting: two minutes. */
+export const MAKE_CURRENT_TIMEOUT_MS = 120_000
+
 /**
  * Make a kept menu the current one, naming the plan the person was shown.
  * Owner or manager; the gateway refuses anyone else (403), a missing
  * fingerprint (400) and a plan that changed since it was shown (409).
  */
 export async function makeMenuCurrent(menuId: string, fingerprint: string): Promise<MakeCurrentResult> {
-  const response = await apiClient.post<MakeCurrentResult>(`/menu-versions/${menuId}/make-current`, { fingerprint })
+  // The switch commits before the prices are carried, so this call is never
+  // cut off at the client's usual 30 s while the gateway is still writing
+  // (r28 G1): a long menu gets its answer, whatever it is.
+  const response = await apiClient.post<MakeCurrentResult>(
+    `/menu-versions/${menuId}/make-current`,
+    { fingerprint },
+    { timeout: MAKE_CURRENT_TIMEOUT_MS },
+  )
   return response.data
 }

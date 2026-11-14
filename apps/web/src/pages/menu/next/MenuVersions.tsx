@@ -117,7 +117,7 @@ const OUTCOME_WORDS: Record<string, (n: number) => string> = {
 
 /** What making a menu current did, in one sentence -- every outcome it was told, and every lock by name. */
 export function makeCurrentSentence(r: MakeCurrentResult, currency: string | null = null): string {
-  if (r.outcome === 'already_current') return 'That menu was already the current one. Nothing changed.';
+  if (r.outcome === 'already_current' && r.lines === 0) return 'That menu was already the current one. Nothing changed.';
   const parts = [`${r.lines} line${r.lines === 1 ? '' : 's'}`];
   const keys = Object.keys(r.priceSync);
   if (!keys.includes('changed')) parts.push(OUTCOME_WORDS.changed(0));
@@ -142,6 +142,8 @@ export function makeCurrentSentence(r: MakeCurrentResult, currency: string | nul
   const failed = r.failed.length
     ? ` ${r.failed.length} could not be priced: ${r.failed.map((f) => `${f.name} (${f.error})`).join('; ')}.`
     : '';
+  // r28 G1: choosing the current menu again carries its prices again.
+  if (r.outcome === 'already_current') return `That menu was already the current one; its prices were carried again: ${parts.join(', ')}.${held}${failed}`;
   return `This is now the current menu: ${parts.join(', ')}.${held}${returned}${failed}`;
 }
 
@@ -339,15 +341,16 @@ function VersionRow({ v, canManage, lastUsedId, planning, onPlan }: {
         ) : null}
       </td>
       <td>
-        {!v.current && canManage ? (
+        {canManage ? (
           <button
             type="button"
             className="cl-btn cl-focus"
             data-on={planning ? 'true' : 'false'}
             onClick={() => onPlan(v.menuId)}
-            aria-label={`Make ${versionLabel(v)} current`}
+            aria-label={v.current ? `Carry the prices of ${versionLabel(v)} again` : `Make ${versionLabel(v)} current`}
           >
-            {planning ? 'See below' : 'Make current'}
+            {/* r28 G1: a carry cut off part-way is finished from the current menu's own row. */}
+            {planning ? 'See below' : v.current ? 'Check its prices' : 'Make current'}
           </button>
         ) : null}
       </td>
