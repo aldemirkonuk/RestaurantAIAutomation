@@ -4,9 +4,18 @@ import { readWholeWindow } from "../common/read-whole-window";
 import { readByIds } from "../common/read-by-ids";
 import * as E from "./engine";
 import { AnalyticsService, SalesGate } from "./analytics.service";
-import { InsightGeneratorService } from "./insights/insight-generator.service";
+import {
+  InsightGeneratorService,
+  readHouseCurrency,
+} from "./insights/insight-generator.service";
 import { GoalsService } from "./goals.service";
-import { UncostedOrdersError, orderCostOrNull } from "./order-cost";
+import {
+  HouseMoneyUnreadError,
+  anyOrderNamesCurrency,
+  orderHouseCostOrNull,
+  otherMoneyOf,
+  unsummedOrdersSentence,
+} from "./order-cost";
 import {
   COST_BASIS_LABEL,
   costBasisSentence,
@@ -227,12 +236,31 @@ export class AdvancedAnalyticsService {
       client
         .from("procurement_orders")
         .select(
-          "id, provider_id, providers(name), total_cost, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status, cancel_reason_code, cancelled_from_status",
+          "id, provider_id, providers(name), total_cost, final_price, currency, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status, cancel_reason_code, cancelled_from_status",
           { count: "exact" },
         )
         .eq("restaurant_id", restaurantId)
         .gte("created_at", since),
     );
+  }
+
+  /**
+   * The house's currency, for orders that name theirs: every spend figure
+   * here is in the house's money, and nothing converts, so an order in
+   * another currency is withheld from a total like an uncosted one
+   * (order-cost.ts). Read only when an order names a currency; a failed
+   * read refuses the lens rather than summing every order as the house's.
+   */
+  private async houseMoneyFor(
+    restaurantId: string,
+    orders: Array<{ currency?: unknown }>,
+  ): Promise<string | null> {
+    if (!anyOrderNamesCurrency(orders)) return null;
+    try {
+      return await readHouseCurrency(this.dbService.getClient(), restaurantId);
+    } catch (e) {
+      throw new HouseMoneyUnreadError(e);
+    }
   }
 
   /**
@@ -403,6 +431,8 @@ export class AdvancedAnalyticsService {
   async getVendorScorecard(restaurantId: string) {
     const orders = await this.loadOrders(restaurantId, 365);
     const house = await this.loadHouseFrame(restaurantId);
+    const money = await this.houseMoneyFor(restaurantId, orders);
+    const costOf = (o: any) => orderHouseCostOrNull(o, money);
     const nowMs = Date.now();
     // Which orders still out with a vendor are CONFIRMED late — the house
     // answered "Not yet" — or closed with a credit (procurement/overdue-order.ts).
@@ -528,21 +558,27 @@ export class AdvancedAnalyticsService {
       const scored = counts.onTime + counts.late;
       // An order with no recorded cost is unknown, never $0 (order-cost.ts).
       // It gives no unit price (a $0 price dragged the mean and the trend
-      // down), and the vendor's spend is not summed short over it.
+      // down), and the vendor's spend is not summed short over it. An order
+      // not in house currency is the same: its price is in other money, so
+      // it joins neither the unit price nor the spend.
       const unitPrices = delivered
         .map((o) => {
           const bottles = o.bottles_total || o.quantity || 0;
-          const cost = orderCostOrNull(o);
+          const cost = costOf(o);
           return bottles > 0 && cost != null ? cost / bottles : null;
         })
         .filter((p): p is number => p !== null && Number.isFinite(p));
-      const uncostedDelivered = delivered.filter(
-        (o) => orderCostOrNull(o) == null,
-      ).length;
+      const otherMoney = otherMoneyOf(delivered, money);
+      const notInHouseCurrency = Object.values(otherMoney).reduce(
+        (a, b) => a + b,
+        0,
+      );
+      const uncostedDelivered =
+        delivered.filter((o) => costOf(o) == null).length - notInHouseCurrency;
       const spend =
-        uncostedDelivered > 0
+        uncostedDelivered + notInHouseCurrency > 0
           ? null
-          : delivered.reduce((s, o) => s + (orderCostOrNull(o) as number), 0);
+          : delivered.reduce((s, o) => s + (costOf(o) as number), 0);
       return {
         vendorId,
         vendorName: os[0]?.providers?.name || vendorId,
@@ -551,10 +587,14 @@ export class AdvancedAnalyticsService {
         spend,
         /** Delivered orders with no recorded cost; `spend` is null while any. */
         uncostedDelivered,
-        spendUnread:
-          uncostedDelivered > 0
-            ? new UncostedOrdersError(uncostedDelivered, delivered.length).message
-            : null,
+        /** Delivered orders not in house currency; `spend` is null while any. */
+        notInHouseCurrency,
+        spendUnread: unsummedOrdersSentence(
+          uncostedDelivered,
+          delivered.length,
+          otherMoney,
+          money,
+        ),
         leadTimeDays: {
           mean: E.mean(leadTimes),
           median: E.median(leadTimes),
@@ -594,7 +634,9 @@ export class AdvancedAnalyticsService {
             hhi: null,
             effectiveVendors: null,
             unread:
-              "How concentrated buying is cannot be read while a vendor's spend rests on an order with no recorded cost.",
+              vendors.some((v) => v.notInHouseCurrency > 0)
+                ? "How concentrated buying is cannot be read while a vendor's spend holds an order not in house currency: nothing here converts one currency into another."
+                : "How concentrated buying is cannot be read while a vendor's spend rests on an order with no recorded cost.",
           },
       note: "How much a vendor's delivery time varies widens the safety stock on the restock list.",
       generatedAt: new Date().toISOString(),
@@ -729,9 +771,16 @@ export class AdvancedAnalyticsService {
     // a projection beside a goal that refused the same window. Each figure
     // whose window holds an uncosted order is withheld, with the count; a
     // window with none is still summed.
+    //
+    // An order not in house currency is withheld the same way, counted by
+    // its code: nothing converts, and a pace drawn in lira over a euro
+    // order would mix two monies (order-cost.ts).
+    const money = await this.houseMoneyFor(restaurantId, orders);
+    const costOf = (o: any) => orderHouseCostOrNull(o, money);
     const dated = delivered.map((o: any) => ({
       date: (o.delivered_at || o.created_at || "").substring(0, 10),
-      cost: orderCostOrNull(o),
+      cost: costOf(o),
+      other: otherMoneyOf([o], money),
     }));
     const daily = this.toDaily(
       dated
@@ -741,21 +790,58 @@ export class AdvancedAnalyticsService {
     );
     const countIn = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
     const uncostedDaily = this.toDaily(
-      dated.filter((r) => r.cost == null).map((r) => ({ date: r.date, value: 1 })),
+      dated
+        .filter((r) => r.cost == null && Object.keys(r.other).length === 0)
+        .map((r) => ({ date: r.date, value: 1 })),
       180,
     );
     const deliveredDaily = this.toDaily(
       dated.map((r) => ({ date: r.date, value: 1 })),
       180,
     );
+    // One daily count per currency the house does not keep.
+    const otherDaily = new Map<string, number[]>();
+    for (const code of new Set(dated.flatMap((r) => Object.keys(r.other))))
+      otherDaily.set(
+        code,
+        this.toDaily(
+          dated
+            .filter((r) => r.other[code])
+            .map((r) => ({ date: r.date, value: 1 })),
+          180,
+        ),
+      );
+    const otherIn = (cut: (xs: number[]) => number[]) => {
+      const out: Record<string, number> = {};
+      for (const [code, xs] of otherDaily) {
+        const n = countIn(cut(xs));
+        if (n > 0) out[code] = n;
+      }
+      return out;
+    };
+    const last30Cut = (xs: number[]) => xs.slice(-30);
+    const prev30Cut = (xs: number[]) => xs.slice(-60, -30);
+    const allCut = (xs: number[]) => xs;
+    const otherMoney = {
+      last30d: otherIn(last30Cut),
+      prev30d: otherIn(prev30Cut),
+      window180d: otherIn(allCut),
+    };
+    const anyOther = (m: Record<string, number>) => Object.keys(m).length > 0;
     const uncosted = {
       last30d: countIn(uncostedDaily.slice(-30)),
       prev30d: countIn(uncostedDaily.slice(-60, -30)),
       window180d: countIn(uncostedDaily),
     };
 
-    const last30 = uncosted.last30d > 0 ? null : countIn(daily.slice(-30));
-    const prev30 = uncosted.prev30d > 0 ? null : countIn(daily.slice(-60, -30));
+    const last30 =
+      uncosted.last30d > 0 || anyOther(otherMoney.last30d)
+        ? null
+        : countIn(daily.slice(-30));
+    const prev30 =
+      uncosted.prev30d > 0 || anyOther(otherMoney.prev30d)
+        ? null
+        : countIn(daily.slice(-60, -30));
     const pace =
       last30 == null || prev30 == null ? null : E.periodOverPeriod(daily, 30);
 
@@ -765,7 +851,9 @@ export class AdvancedAnalyticsService {
     for (let i = 0; i < daily.length; i += 7)
       weekly.push(daily.slice(i, i + 7).reduce((a, b) => a + b, 0));
     const holt =
-      uncosted.window180d === 0 && weekly.length >= 4
+      uncosted.window180d === 0 &&
+      !anyOther(otherMoney.window180d) &&
+      weekly.length >= 4
         ? E.holtLinear(weekly, 0.4, 0.2, 4)
         : null;
 
@@ -785,17 +873,21 @@ export class AdvancedAnalyticsService {
     const open = orders.filter((o: any) =>
       hasStatus(o.status, ORDER_OUTSTANDING_STATUSES),
     );
-    // An open order with no price yet is not a $0 commitment either.
-    const uncostedOpen = open.filter((o: any) => orderCostOrNull(o) == null).length;
+    // An open order with no price yet is not a $0 commitment either, and an
+    // open order in another currency is not a commitment in the house's.
+    const otherOpen = otherMoneyOf(open, money);
+    const otherOpenCount = Object.values(otherOpen).reduce((a, b) => a + b, 0);
+    const uncostedOpen =
+      open.filter((o: any) => costOf(o) == null).length - otherOpenCount;
     const committed =
-      uncostedOpen > 0
+      uncostedOpen + otherOpenCount > 0
         ? null
-        : open.reduce((s: number, o: any) => s + (orderCostOrNull(o) as number), 0);
+        : open.reduce((s: number, o: any) => s + (costOf(o) as number), 0);
 
     // The sentence the house reads for each withheld figure: the purchases
     // goal's own (UncostedOrdersError), so the card and the goal agree.
-    const unread = (n: number, of: number) =>
-      n > 0 ? new UncostedOrdersError(n, of).message : null;
+    const unread = (n: number, of: number, other: Record<string, number>) =>
+      unsummedOrdersSentence(n, of, other, money);
 
     return {
       basis: {
@@ -815,14 +907,35 @@ export class AdvancedAnalyticsService {
        * words (null where the figure was summed whole).
        */
       uncostedOrders: { ...uncosted, open: uncostedOpen },
+      /** Orders not in house currency, by window and by code. */
+      notInHouseCurrency: { ...otherMoney, open: otherOpen },
       unread: {
-        spendLast30d: unread(uncosted.last30d, countIn(deliveredDaily.slice(-30))),
-        spendPrev30d: unread(uncosted.prev30d, countIn(deliveredDaily.slice(-60, -30))),
-        projectedNext4Weeks: unread(uncosted.window180d, countIn(deliveredDaily)),
+        spendLast30d: unread(
+          uncosted.last30d,
+          countIn(deliveredDaily.slice(-30)),
+          otherMoney.last30d,
+        ),
+        spendPrev30d: unread(
+          uncosted.prev30d,
+          countIn(deliveredDaily.slice(-60, -30)),
+          otherMoney.prev30d,
+        ),
+        projectedNext4Weeks: unread(
+          uncosted.window180d,
+          countIn(deliveredDaily),
+          otherMoney.window180d,
+        ),
         committedOpenOrders:
-          uncostedOpen > 0
-            ? `${uncostedOpen} of the ${open.length} open order${open.length === 1 ? "" : "s"} ${uncostedOpen === 1 ? "carries" : "carry"} no price yet, so what is committed is not summed short. Record the price to read it.`
-            : null,
+          otherOpenCount > 0
+            ? `${otherOpenCount} of the ${open.length} open order${open.length === 1 ? "" : "s"} ${otherOpenCount === 1 ? "is" : "are"} not in house currency (${Object.entries(
+                otherOpen,
+              )
+                .sort(([a, x], [b, y]) => y - x || (a < b ? -1 : 1))
+                .map(([c, n]) => `${n} in ${c}`)
+                .join(", ")}${money ? `; the house keeps ${money}` : ""}), and nothing here converts one currency into another, so what is committed is not summed.${uncostedOpen > 0 ? ` ${uncostedOpen} more ${uncostedOpen === 1 ? "carries" : "carry"} no price yet.` : ""}`
+            : uncostedOpen > 0
+              ? `${uncostedOpen} of the ${open.length} open order${open.length === 1 ? "" : "s"} ${uncostedOpen === 1 ? "carries" : "carry"} no price yet, so what is committed is not summed short. Record the price to read it.`
+              : null,
       },
       generatedAt: new Date().toISOString(),
     };
