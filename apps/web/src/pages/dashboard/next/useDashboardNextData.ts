@@ -74,6 +74,8 @@ export interface RawDayEvent {
 export interface DayLedger {
   date: string; // YYYY-MM-DD, the HOUSE's date
   procurement_spend: number | null;
+  /** Delivered orders that day with no recorded cost: why the spend is null. */
+  uncosted_orders: number;
   bottles_sold: number | null; // bottles DELIVERED by vendors (frozen misnomer)
   events: RawDayEvent[];
   order_count: number | null;
@@ -99,6 +101,8 @@ export interface MonthLedger {
   month: number;
   daily: DayLedger[];
   monthlySpend: number | null;
+  /** Delivered orders in the month with no recorded cost. */
+  monthlyUncosted: number;
   monthlyBottles: number | null;
   /** The begun days the register counted, summed (founder 2026-10-05: "Sum, say N of M days"). */
   monthlyNetSales: number | null;
@@ -335,6 +339,7 @@ export function useMonthLedger(
               raw.procurement_spend !== undefined
                 ? num(raw.procurement_spend)
                 : num(raw.revenue),
+            uncosted_orders: typeof raw.uncosted_orders === "number" ? raw.uncosted_orders : 0,
             bottles_sold: num(raw.bottles_sold),
             events: raw.events ?? [],
             order_count: num(raw.order_count),
@@ -357,6 +362,8 @@ export function useMonthLedger(
               : legacyTotals.monthly_total !== undefined
                 ? num(legacyTotals.monthly_total)
                 : summedSpend,
+          monthlyUncosted:
+            typeof res.monthly_uncosted_orders === "number" ? res.monthly_uncosted_orders : 0,
           monthlyBottles: num(res.monthly_bottles),
           monthlyNetSales: num(res.monthly_net_sales),
           monthlyChecks: num(res.monthly_checks),

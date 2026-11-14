@@ -13,6 +13,7 @@ import { Link } from 'react-router-dom';
 import type { DashboardStats } from '@/services/api/types';
 import { formatMoney, formatNumber } from '@/lib/utils';
 import CountUp from './CountUp';
+import { uncostedSaid } from './format';
 
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
 
@@ -97,6 +98,11 @@ export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true 
   // Counts the gateway adds beside the spend (DASH-W22); a gateway older than
   // that sends neither, and an absent count is unknown, never zero.
   const counts = (s ?? {}) as { todayDeliveries?: number; monthBottlesIn?: number };
+  // A null spend with uncosted orders behind it reads as why, not as a bare
+  // dash: the gateway withholds a figure it cannot sum whole.
+  const uncosted = s?.uncostedOrders;
+  const monthWhy = monthSpend === null ? uncostedSaid(uncosted?.month) : null;
+  const todayWhy = todaySpend === null ? uncostedSaid(uncosted?.today) : null;
   const todayDeliveries = typeof counts.todayDeliveries === 'number' ? counts.todayDeliveries : null;
   const monthBottlesIn = typeof counts.monthBottlesIn === 'number' ? counts.monthBottlesIn : null;
 
@@ -136,7 +142,7 @@ export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true 
             label="Paid to vendors · today"
             value={todaySpend}
             format={(n) => formatMoney(n, 'compact')}
-            sub="delivered purchase orders"
+            sub={todayWhy ?? 'delivered purchase orders'}
             to="/orders?station=delivered"
             loading={loading}
           />
@@ -144,7 +150,7 @@ export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true 
             label="Paid to vendors · month"
             value={monthSpend}
             format={(n) => formatMoney(n, 'compact')}
-            sub="procurement, not sales"
+            sub={monthWhy ?? 'procurement, not sales'}
             to="/reports"
             loading={loading}
           />

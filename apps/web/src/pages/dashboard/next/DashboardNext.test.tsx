@@ -645,6 +645,79 @@ describe('DashboardNext', () => {
     }
   });
 
+  // An order delivered with no recorded cost is unknown, never $0: the gateway
+  // sends a null spend with the count of orders behind it, and the page says so.
+  describe('a spend figure withheld for want of a recorded cost', () => {
+    it('says why on the two spend tiles, and draws no $0', async () => {
+      routeGets({
+        '/dashboard/stats/': {
+          totalWines: 4,
+          totalBottles: 40,
+          lowStockItems: 0,
+          pendingOrders: 0,
+          totalVolumeMl: 0,
+          totalVolumeOz: 0,
+          todayProcurementSpend: null,
+          weekProcurementSpend: null,
+          monthProcurementSpend: null,
+          uncostedOrders: { today: 1, week: 2, month: 3 },
+          todayDeliveries: 1,
+          monthBottlesIn: 18,
+          amounts: 'shown',
+          timezone: 'UTC',
+        },
+      });
+
+      mount();
+
+      expect(await screen.findByText('1 delivered order has no recorded cost')).toBeInTheDocument();
+      expect(screen.getByText('3 delivered orders have no recorded cost')).toBeInTheDocument();
+      for (const label of ['Paid to vendors · today', 'Paid to vendors · month']) {
+        const tile = screen.getByText(label).closest('a') as HTMLElement;
+        expect(within(tile).queryByText(/\$0/)).not.toBeInTheDocument();
+      }
+    });
+
+    it('names the day, the day panel and the month in words, and leaves the bar a stub', async () => {
+      vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 8, 10, 12, 0, 0) });
+      try {
+        const ledger = monthLedger();
+        const daily: Array<Record<string, unknown>> = ledger.daily;
+        daily[0] = {
+          ...daily[0],
+          procurement_spend: null,
+          uncosted_orders: 2,
+          order_count: 2,
+          bottles_sold: 12,
+        };
+        routeGets({
+          '/dashboard/calendar-revenue/': {
+            ...ledger,
+            monthly_procurement_spend: null,
+            monthly_uncosted_orders: 2,
+          },
+        });
+
+        mount();
+
+        const day = await screen.findByRole('button', {
+          name: /^Tuesday, September 1: paid to vendors unknown, 2 delivered orders have no recorded cost/,
+        });
+        expect(await screen.findByTestId('dn-month-uncosted')).toHaveTextContent(
+          '(2 delivered orders have no recorded cost)',
+        );
+        fireEvent.click(day);
+        const panel = await screen.findByTestId('dn-day-figures');
+        expect(within(panel).getByText('2 delivered orders have no recorded cost')).toBeInTheDocument();
+        expect(within(panel).queryByText('$0')).not.toBeInTheDocument();
+        // The tape draws the unknown day as a stub, not a measured bar.
+        expect(document.querySelectorAll('.dn-tape-bar[data-unknown="true"]').length).toBeGreaterThan(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
   // DASH-W33 (P8): ADR 0042 / OD-112 — ink-3 is decorative only, never a
   // caption. The shared guard reads `color` keys, not Tailwind classes, so
   // this page holds the rule for its own files.
@@ -1026,6 +1099,31 @@ describe('DashboardNext — the month calendar (ADR 0290)', () => {
     fireEvent.click(dayCell('2026-10-03'));
     expect(await screen.findByText('No deliveries landed this day.')).toBeInTheDocument();
     expect(screen.queryByText('Yakut')).not.toBeInTheDocument();
+  });
+
+  it('a delivery with no recorded cost says so, never "× $0 · $0"', async () => {
+    browserAt('2026-10-05T19:00:00Z');
+    routeMonth(() => houseMonth({ today: '2026-10-05', days: TRADING_DAY }), {
+      '/orders/history': {
+        orders: [
+          { id: 'o0', wineName: 'Uncosted Rose', deliveredAt: '2026-10-02T16:00:00Z', quantity: 12, unitType: 'bottle', finalPrice: 0, totalCost: 0 },
+          { id: 'o1', wineName: 'Costed Rioja', deliveredAt: '2026-10-02T17:00:00Z', quantity: 6, unitType: 'bottle', finalPrice: 21, totalCost: 126 },
+        ],
+        total: 2,
+        page: 1,
+        limit: 100,
+        hasMore: false,
+      },
+    });
+    mount();
+
+    await waitFor(() => expect(cellFig('2026-10-02')).toBe('$800'));
+    fireEvent.click(dayCell('2026-10-02'));
+    const uncosted = (await screen.findByText('Uncosted Rose')).closest('a')!;
+    expect(uncosted).toHaveTextContent('no recorded cost');
+    expect(uncosted).not.toHaveTextContent('$0');
+    const costed = screen.getByText('Costed Rioja').closest('a')!;
+    expect(costed).toHaveTextContent('× $21 · $126');
   });
 
   it('no longer says every figure on the page is procurement', async () => {

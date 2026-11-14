@@ -241,6 +241,8 @@ export interface CalendarMonthDay {
   date: string;
   /** Delivered orders' value — money paid to vendors. Null: not known. */
   procurement_spend: number | null;
+  /** Delivered orders that day with no recorded cost; any makes the spend null. */
+  uncosted_orders?: number;
   /** Bottles DELIVERED by vendors (frozen misnomer). Null: not known. */
   bottles_sold: number | null;
   order_count: number | null;
@@ -301,6 +303,8 @@ export async function getCalendarRevenue(
   restaurant_id: string;
   daily: CalendarMonthDay[];
   monthly_procurement_spend: number | null;
+  /** Delivered orders in the month with no recorded cost. */
+  monthly_uncosted_orders?: number;
   monthly_bottles: number | null;
   monthly_net_sales?: number | null;
   monthly_checks?: number | null;
