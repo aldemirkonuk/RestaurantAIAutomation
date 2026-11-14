@@ -45,10 +45,26 @@ export interface InventoryTableProps extends Omit<RowDropdownProps, 'row'> {
   onSelectAll?: () => void;
 }
 
-const COLUMNS = ['Title', 'Type', 'Zone', 'Live / shadow · par', 'Vel/day', 'Runway', 'Your price', 'Value', 'Status'];
+// Plain words, not the trade's shorthand (inventory r28, gap 4): what is on hand
+// beside what still waits to be reconciled into it and the par, how much is
+// used a day, and how many days that lasts.
+export const STOCK_HEADER = 'On hand / to reconcile · par';
+export const PACE_HEADER = 'Used a day';
+export const DAYS_HEADER = 'Days left';
+const COLUMNS = ['Title', 'Type', 'Zone', STOCK_HEADER, PACE_HEADER, DAYS_HEADER, 'Your price', 'Value', 'Status'];
+
+/**
+ * Staff read quantities, not what the house paid: the value-at-cost column
+ * is an owner's and a manager's, as the drawer's value card is (ItemCards).
+ * The gateway withholds the cost from staff as well (inventory-cost-for-role.ts),
+ * so this is the wording, not the lock.
+ */
+function columnsFor(canManage: boolean): string[] {
+  return canManage ? COLUMNS : COLUMNS.filter((c) => c !== 'Value');
+}
 
 /** The headers that sort, and the sort each one sets. */
-const HEADER_SORT: Partial<Record<string, SortId>> = { Title: 'name', 'Vel/day': 'pace', Value: 'value' };
+const HEADER_SORT: Partial<Record<string, SortId>> = { Title: 'name', [PACE_HEADER]: 'pace', Value: 'value' };
 
 /**
  * How the list says a good's unit (stored as whole g, ml or each, ADR 0070):
@@ -67,13 +83,29 @@ export function goodUnit(uom: string): { factor: number; kept: string; per: stri
   return { factor: 1, kept: `kept by the ${uom}`, per: `a ${uom}` };
 }
 
+const COUNTED_MANY: Record<string, string> = { case: 'cases', keg: 'kegs', pack: 'packs', glass: 'glasses', shot: 'shots' };
+
+/**
+ * Used a day, in the good's own unit, as the stock beside it is (inventory r28,
+ * gap 4): flour reads "290 g" or "1.2 kg", never a bare "290.0" next to
+ * "12.4 kg". A bottle and a counted item stay bare, as their stock does.
+ */
+export function paceWords(v: number, uom: string | null): string {
+  if (uom === null || uom === 'bottle' || uom === 'each') return fmtPace(v);
+  if (uom === 'g' || uom === 'ml' || uom === 'mg') return v >= 1000 ? fmtQty(v, uom) : `${fmtPace(v)} ${uom}`;
+  if (uom === 'kg' || uom === 'l') return `${fmtPace(v)} ${uom}`;
+  return `${fmtPace(v)} ${v === 1 ? uom : (COUNTED_MANY[uom] ?? uom)}`;
+}
+
 /** The line that says what unit a good is kept in. */
 function unitWord(uom: string | null): string {
   return uom === null ? EM : goodUnit(uom).kept;
 }
 
 /** A food or supply is costed, not priced: the average cost a unit, or a dash when none is known (ADR 0051/0053). */
-function costCell(row: InvRow, uom: string | null, currency: RowDropdownProps['currency']) {
+function costCell(row: InvRow, uom: string | null, currency: RowDropdownProps['currency'], canManage: boolean) {
+  // Staff read no cost; said as withheld, never as a dash that reads "unknown".
+  if (!canManage) return <span className="iv-dim">not shown</span>;
   // No recorded unit means no way to say what the cost is a: a dash, never a guessed bottle.
   if (row.wac === null || uom === null) return EM;
   const u = goodUnit(uom);
@@ -137,7 +169,10 @@ export default function InventoryTable(props: InventoryTableProps) {
   const counts = [0, 0, 0, 0];
   for (const r of rows) counts[severity(r)] += 1;
   const selecting = props.selected !== undefined && props.onSelect !== undefined;
-  const priceHead = mixed ? (
+  const columns = columnsFor(canManage);
+  const priceHead = mixed && !canManage ? (
+    <>Price</>
+  ) : mixed ? (
     <>
       Price <span className="iv-dim">or cost a unit</span>
     </>
@@ -146,7 +181,7 @@ export default function InventoryTable(props: InventoryTableProps) {
       Your price <span className="iv-dim">btl · glass</span>
     </>
   );
-  const span = COLUMNS.length + (selecting ? 1 : 0);
+  const span = columns.length + (selecting ? 1 : 0);
   const allSelected = selecting && rows.length > 0 && rows.every((r) => props.selected!.has(r.id));
   const someSelected = selecting && !allSelected && rows.some((r) => props.selected!.has(r.id));
 
@@ -172,7 +207,7 @@ export default function InventoryTable(props: InventoryTableProps) {
                 />
               </th>
             ) : null}
-            {COLUMNS.map((c) => {
+            {columns.map((c) => {
               // The legacy column-header sort (InventoryCommandPage.tsx:496,1337):
               // a header that has a sort sets it; clicking the active one goes
               // back to Needs you first. Each sort reads one direction.
@@ -271,7 +306,7 @@ export default function InventoryTable(props: InventoryTableProps) {
                       }}
                     >
                       <span className="iv-name">
-                        {row.name ?? 'Unnamed title'}
+                        {row.name ?? (row.kind === 'food' || row.kind === 'supply' ? 'Unnamed good' : 'Unnamed title')}
                         {row.abc ? (
                           <span className="iv-abc" data-testid="inv-abc" title={`ABC class ${row.abc}`}>
                             {row.abc}
@@ -294,7 +329,7 @@ export default function InventoryTable(props: InventoryTableProps) {
                     <td data-label="Type">{good === 'food' ? 'Food' : 'Supply'}</td>
                   )}
                   <td data-label="Zone">{zoneCell(row, zoneName, props.locationsUnavailable)}</td>
-                  <td data-label="Live / shadow · par" className="iv-r iv-num">
+                  <td data-label={STOCK_HEADER} className="iv-r iv-num">
                     <span>
                       {row.stock === null ? EM : qty(row.stock)}
                       <span className="iv-dim"> / {row.shadow === null ? EM : qty(row.shadow)}</span>
@@ -303,15 +338,15 @@ export default function InventoryTable(props: InventoryTableProps) {
                     </span>
                     <ParBar row={row} />
                   </td>
-                  <td data-label="Vel/day" className="iv-r iv-num">
-                    {row.velocity === null ? EM : fmtPace(row.velocity)}
+                  <td data-label={PACE_HEADER} className="iv-r iv-num">
+                    {row.velocity === null ? EM : paceWords(row.velocity, uom)}
                   </td>
-                  <td data-label="Runway" className="iv-r iv-num">
+                  <td data-label={DAYS_HEADER} className="iv-r iv-num">
                     {row.runway === null ? EM : `${fmtCount(Math.round(row.runway))}d`}
                   </td>
                   <td data-label="Your price" className="iv-r iv-num" onClick={(e) => e.stopPropagation()}>
                     {good !== 'drink' ? (
-                      costCell(row, uom, currency)
+                      costCell(row, uom, currency, canManage)
                     ) : canManage ? (
                       <HousePriceCell
                         inventoryId={row.id}
@@ -331,9 +366,11 @@ export default function InventoryTable(props: InventoryTableProps) {
                       </>
                     )}
                   </td>
-                  <td data-label="Value at cost" className="iv-r iv-num">
-                    {cellMoney(row.value, currency)}
-                  </td>
+                  {canManage ? (
+                    <td data-label="Value at cost" className="iv-r iv-num">
+                      {cellMoney(row.value, currency)}
+                    </td>
+                  ) : null}
                   <td data-label="Status" className="iv-status" data-standing={row.standing}>
                     {statusWord(row)}
                   </td>

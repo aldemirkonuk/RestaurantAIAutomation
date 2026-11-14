@@ -50,7 +50,7 @@ import ItemDrawer from './ItemDrawer';
 import CarryThis from './CarryThis';
 import { removeBlocked, removeTarget } from './RowDropdown';
 import { RemoveFromInventoryModal } from '../../../components/inventory/RemoveFromInventoryModal';
-import { blank, daysSinceCountedCell, oneLine, runExport, today, valuationColumns } from './iv-export';
+import { blank, bottleSizeCell, countUnit, daysSinceCountedCell, inCountUnit, oneLine, paceInCountUnit, runExport, today, valuationColumns, wacInCountUnit } from './iv-export';
 import { COUNT_DUE_DAYS } from '../command/bits';
 import {
   CHIPS,
@@ -179,7 +179,9 @@ export default function InventoryNext() {
   // INV-W38: the view is the URL (iv-url.ts), so a reload, Back or a sent
   // link keeps it, and the links other pages send here land where they say.
   const [params, setParams] = useSearchParams();
-  const { chip, q: query, zone, type, sort, view, kind, open: openParam } = useMemo(() => readView(params), [params]);
+  const { chip, q: query, zone, type, sort: askedSort, view, kind, open: openParam } = useMemo(() => readView(params), [params]);
+  // Staff read no cost, so a link asking for the value sort lands on Needs you first.
+  const sort: SortId = askedSort === 'value' && !data.canManage ? 'needs' : askedSort;
   const setV = useCallback(
     (patch: Partial<IvView>) => setParams((cur) => writeView(cur, { ...readView(cur), ...patch }), { replace: true }),
     [setParams],
@@ -581,27 +583,35 @@ export default function InventoryNext() {
         { header: 'Producer', value: (r) => r.producer ?? '' },
         { header: 'Vintage', value: (r) => blank(r.vintage) },
         { header: 'Type', value: (r) => (r.type === null ? '' : typeLabel(r.type)) },
-        { header: 'Bottle size (ml)', value: (r) => blank(r.bottleSizeMl) },
-        { header: 'System qty (live)', value: (r) => blank(r.stock) },
-        { header: 'System qty (shadow)', value: (r) => blank(r.shadow) },
-        { header: 'Par', value: (r) => blank(r.par) },
+        // Every quantity below is in this row's Unit (kg, l, bottle…), so a
+        // counter writes the count in the unit printed beside it (r28, gap 3).
+        { header: 'Unit', value: (r) => countUnit(uomOf(r)).unit },
+        { header: 'Bottle size (ml)', value: (r) => bottleSizeCell(r, uomOf(r)) },
+        { header: 'System qty (live)', value: (r) => inCountUnit(r.stock, uomOf(r)) },
+        { header: 'System qty (shadow)', value: (r) => inCountUnit(r.shadow, uomOf(r)) },
+        { header: 'Par', value: (r) => inCountUnit(r.par, uomOf(r)) },
         { header: 'Counted qty', value: () => '' },
         { header: 'Variance', value: () => '' },
         // Legacy's columns (InventoryCommandPage.tsx:605-660), with Last counted kept
         // beside Days since counted. An unread figure stays blank, never a 0.
         { header: 'Days since counted', value: (r) => daysSinceCountedCell(r.lastCountedAt) },
         { header: 'Last counted', value: (r) => r.lastCountedAt ?? '' },
-        { header: 'Velocity/day', value: (r) => (r.velocity === null ? '' : r.velocity.toFixed(2)) },
+        { header: 'Velocity/day', value: (r) => paceInCountUnit(r.velocity, uomOf(r)) },
         { header: 'Runway d', value: (r) => (r.runway === null ? '' : Math.round(r.runway)) },
-        { header: 'WAC', value: (r) => blank(r.wac) },
-        { header: 'Value', value: (r) => (r.value === null ? '' : r.value.toFixed(2)) },
+        // Cost is an owner's and a manager's; staff export the counts alone.
+        ...(data.canManage
+          ? [
+              { header: 'WAC', value: (r: InvRow) => wacInCountUnit(r.wac, uomOf(r)) },
+              { header: 'Value', value: (r: InvRow) => (r.value === null ? '' : r.value.toFixed(2)) },
+            ]
+          : []),
         { header: 'Observation', value: (r) => countObservation(r) },
       ],
       `inventory-count-${today()}`,
       'Inventory count sheet',
     );
 
-  const valuation = valuationColumns(data.currency.code ?? null);
+  const valuation = valuationColumns(data.currency.code ?? null, uomOf);
 
   const exportValuation = () =>
     runExport(visible, valuation, `inventory-valuation-${today()}`, 'Inventory valuation');
@@ -724,7 +734,7 @@ export default function InventoryNext() {
           /* ── the book ───────────────────────────────────────────────── */
           <>
             <p className="iv-read" data-testid="inventory-read-sentence">
-              {readSentence(rows, data.currency, !locs.unavailable, alerted, uomOf)}
+              {readSentence(rows, data.currency, !locs.unavailable, alerted, uomOf, data.canManage)}
             </p>
             {data.stale ? (
               <p className="iv-note" role="status">
@@ -840,7 +850,7 @@ export default function InventoryNext() {
                 options={[
                   { value: 'needs', label: 'Needs you first' },
                   { value: 'name', label: 'Name' },
-                  { value: 'value', label: 'Value at cost' },
+                  ...(data.canManage ? [{ value: 'value', label: 'Value at cost' }] : []),
                   { value: 'pace', label: 'Fastest moving' },
                 ]}
               />
@@ -1037,9 +1047,11 @@ export default function InventoryNext() {
                 <button type="button" className="iv-btn iv-focus" onClick={() => void exportCountSheet()}>
                   Export count sheet
                 </button>
-                <button type="button" className="iv-btn iv-focus" onClick={() => void exportValuation()}>
-                  Export valuation
-                </button>
+                {data.canManage ? (
+                  <button type="button" className="iv-btn iv-focus" onClick={() => void exportValuation()}>
+                    Export valuation
+                  </button>
+                ) : null}
                 {/* INV-W18: "Export all locations" read every house from this one session; since
                     ADR 0164 a session reads only its own house, so it failed on the first other
                     house every time. A cross-house export is gateway work (F-10). */}

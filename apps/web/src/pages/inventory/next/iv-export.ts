@@ -48,17 +48,76 @@ export async function runExport<T>(rows: T[], columns: TableExportColumn<T>[], f
   }
 }
 
-export function valuationColumns(currencyCode: string | null): TableExportColumn<InvRow>[] {
+/**
+ * The unit a person counts a good in, and how many of the book's units make one
+ * of it (inventory r28, gap 3). The book keeps whole grams and millilitres
+ * (ADR 0070), so flour is 12400 there. Written into a count sheet as 12400
+ * under "System qty", with no unit, a counter who weighs in kilograms writes
+ * 12.1 beside it: a thousandfold slip. The files say kg and l instead, as the
+ * page does, and name the unit on every row. Saffron kept in mg reads in g.
+ */
+export function countUnit(uom: string | null | undefined): { unit: string; per: number } {
+  switch (uom) {
+    case 'g':
+      return { unit: 'kg', per: 1000 };
+    case 'mg':
+      return { unit: 'g', per: 1000 };
+    case 'ml':
+      return { unit: 'l', per: 1000 };
+    case null:
+    case undefined:
+    case '':
+      return { unit: 'bottle', per: 1 };
+    default:
+      return { unit: uom, per: 1 };
+  }
+}
+
+/** Units a bottle size means something for: a weighed, poured or loose good has none. */
+const NO_BOTTLE = new Set(['g', 'kg', 'mg', 'ml', 'l', 'each']);
+
+/** A book quantity in the counted unit: 12400 g is 12.4 (kg). Blank when it was not read. */
+export function inCountUnit(v: number | null, uom: string | null | undefined): number | string {
+  if (v === null) return '';
+  const { per } = countUnit(uom);
+  return per === 1 ? v : Number((v / per).toFixed(3));
+}
+
+/** A pace a day in the counted unit: two places for a count, three for kg or l. */
+export function paceInCountUnit(v: number | null, uom: string | null | undefined): string {
+  if (v === null) return '';
+  const { per } = countUnit(uom);
+  return per === 1 ? v.toFixed(2) : (v / per).toFixed(3);
+}
+
+/** The average cost of one counted unit: per kg, not per gram. Blank when unknown. */
+export function wacInCountUnit(v: number | null, uom: string | null | undefined): number | string {
+  if (v === null) return '';
+  const { per } = countUnit(uom);
+  return per === 1 ? v : Number((v * per).toFixed(4));
+}
+
+/** A bottle size only where the good is kept in containers; blank for flour, oil or loose items. */
+export function bottleSizeCell(r: InvRow, uom: string | null | undefined): number | string {
+  return uom && NO_BOTTLE.has(uom) ? '' : blank(r.bottleSizeMl);
+}
+
+export function valuationColumns(
+  currencyCode: string | null,
+  // Each row's own unit; absent means every row is a bottle, as the file always assumed.
+  uomOf: (r: InvRow) => string | null = () => null,
+): TableExportColumn<InvRow>[] {
   return [
     { header: 'Title', value: (r) => r.name ?? '' },
     { header: 'Producer', value: (r) => r.producer ?? '' },
     { header: 'Type', value: (r) => (r.type === null ? '' : typeLabel(r.type)) },
-    { header: 'Live', value: (r) => blank(r.stock) },
-    { header: 'Shadow', value: (r) => blank(r.shadow) },
-    { header: 'Par', value: (r) => blank(r.par) },
-    { header: 'Velocity/day', value: (r) => (r.velocity === null ? '' : r.velocity.toFixed(2)) },
+    { header: 'Unit', value: (r) => countUnit(uomOf(r)).unit },
+    { header: 'Live', value: (r) => inCountUnit(r.stock, uomOf(r)) },
+    { header: 'Shadow', value: (r) => inCountUnit(r.shadow, uomOf(r)) },
+    { header: 'Par', value: (r) => inCountUnit(r.par, uomOf(r)) },
+    { header: 'Velocity/day', value: (r) => paceInCountUnit(r.velocity, uomOf(r)) },
     { header: 'Runway d', value: (r) => (r.runway === null ? '' : Math.round(r.runway)) },
-    { header: 'WAC', value: (r) => blank(r.wac) },
+    { header: 'WAC', value: (r) => wacInCountUnit(r.wac, uomOf(r)) },
     { header: 'Your bottle price', value: (r) => blank(r.bottle) },
     { header: 'Your glass price', value: (r) => blank(r.glass) },
     { header: 'Value at cost', value: (r) => (r.value === null ? '' : r.value.toFixed(2)) },

@@ -660,6 +660,9 @@ export function onHandByUnit(rows: InvRow[], uomOf: (r: InvRow) => string | null
  * The one read sentence at the top (no KPI tiles). Every number in it is a
  * count of what was read; what was not read is named, never folded into a 0.
  * `uomOf` names each row's own unit, so no total adds grams to bottles.
+ * `seesCost` false (staff) leaves out what the stock cost and the market
+ * line: staff read quantities, not what the house paid, so the sentence says
+ * nothing about cost rather than calling a withheld cost "not on the books".
  */
 export function readSentence(
   rows: InvRow[],
@@ -667,6 +670,7 @@ export function readSentence(
   zonesReadable: boolean,
   alerted: ReadonlySet<string> | null,
   uomOf: (r: InvRow) => string | null = () => null,
+  seesCost = true,
 ): string {
   const n = rows.length;
   const read = rows.filter((r) => r.stock !== null);
@@ -674,13 +678,19 @@ export function readSentence(
   const zoneIds = new Set<string>();
   for (const r of rows) for (const z of r.zones ?? []) if (z.locationId !== null && z.qty > 0) zoneIds.add(z.locationId);
   const parts: string[] = [];
+  // A list that carries a food or a supply is a house's goods, not a cellar's
+  // titles (inventory r28 audit, gap 12); a wine list keeps its own words.
+  const goods = rows.some((r) => r.kind === 'food' || r.kind === 'supply');
+  const [one, many] = goods ? ['good', 'goods'] : ['title', 'titles'];
 
   let first =
     read.length === 0
-      ? `${plural(n, 'title', 'titles')}; no title's stock could be read, so the bottle count is unknown`
+      ? goods
+        ? `${plural(n, one, many)}; no good's stock could be read, so what is on hand is unknown`
+        : `${plural(n, 'title', 'titles')}; no title's stock could be read, so the bottle count is unknown`
       : read.length < n
-        ? `${plural(n, 'title', 'titles')}, ${onHand} on the ${fmtCount(read.length)} whose stock was read (${fmtCount(n - read.length)} could not be read)`
-        : `${plural(n, 'title', 'titles')}, ${onHand}`;
+        ? `${plural(n, one, many)}, ${onHand} on the ${fmtCount(read.length)} whose stock was read (${fmtCount(n - read.length)} could not be read)`
+        : `${plural(n, one, many)}, ${onHand}`;
   if (zonesReadable && zoneIds.size > 0) first += ` across ${plural(zoneIds.size, 'zone', 'zones')}`;
   parts.push(`${first}.`);
 
@@ -692,7 +702,12 @@ export function readSentence(
   // A never-counted 0 is neither out nor fine, so it is said in words and the
   // sentence never claims "Nothing is out or below par" past it (QA 9c).
   const unc = rows.filter((r) => r.standing === 'uncounted').length;
-  const lead = read.length < n ? 'Of the titles read, nothing' : 'Nothing';
+  // A good with no par is never below it: an all-clear must not count it as
+  // fine (inventory r28 audit, gap 12). Out still counts it.
+  const noPar = rows.filter((r) => r.standing === 'nopar').length;
+  const withPar = rows.filter((r) => r.standing === 'at' || r.standing === 'above' || r.standing === 'below').length;
+  const lead = read.length < n ? `Of the ${many} read, nothing` : 'Nothing';
+  const clear = withPar === 0 ? 'is out' : 'is out or below par';
   if (read.length === 0) {
     // No stock was read, so nothing can be said to be out or fine.
   } else if (belowN === null) {
@@ -700,14 +715,14 @@ export function readSentence(
     const said = [`${out === 0 ? 'None' : fmtCount(out)} ${out <= 1 ? 'is' : 'are'} out`];
     if (unc > 0) said.push(`${fmtCount(unc)} more ${unc === 1 ? 'is' : 'are'} not counted yet`);
     if (dry > 0) said.push(`${dry === 1 ? 'one runs' : `${fmtCount(dry)} run`} dry tomorrow`);
-    parts.push(`${said.join('; ')}; which titles are below par has not been read yet.`);
+    parts.push(`${said.join('; ')}; which ${many} are below par has not been read yet.`);
   } else if (out === 0 && below === 0 && unc > 0) {
     const one = unc === 1;
-    let s = `${fmtCount(unc)} ${one ? 'is' : 'are'} not counted yet, so whether ${one ? 'it is' : 'they are'} out is not known until ${one ? 'it is' : 'they are'} counted; ${read.length < n ? 'of the other titles read, none' : 'nothing else'} is out or below par`;
+    let s = `${fmtCount(unc)} ${one ? 'is' : 'are'} not counted yet, so whether ${one ? 'it is' : 'they are'} out is not known until ${one ? 'it is' : 'they are'} counted; ${read.length < n ? `of the other ${many} read, none` : 'nothing else'} ${clear}`;
     if (dry > 0) s += `, but ${dry === 1 ? 'one runs' : `${fmtCount(dry)} run`} dry tomorrow`;
     parts.push(`${s}.`);
   } else if (out === 0 && below === 0) {
-    parts.push(dry === 0 ? `${lead} is out or below par.` : `${lead} is out or below par, but ${dry === 1 ? 'one runs' : `${fmtCount(dry)} run`} dry tomorrow.`);
+    parts.push(dry === 0 ? `${lead} ${clear}.` : `${lead} ${clear}, but ${dry === 1 ? 'one runs' : `${fmtCount(dry)} run`} dry tomorrow.`);
   } else {
     let s =
       out === 0
@@ -717,15 +732,23 @@ export function readSentence(
     if (dry > 0) s += `; ${dry === 1 ? 'one runs' : `${fmtCount(dry)} run`} dry tomorrow`;
     parts.push(`${s}.`);
   }
+  if (noPar > 0) {
+    parts.push(
+      noPar === 1
+        ? `One ${one} has no par, so nothing here says when it runs low.`
+        : `${fmtCount(noPar)} ${many} have no par, so nothing here says when they run low.`,
+    );
+  }
 
+  if (!seesCost) return parts.join(' ');
   const priced = rows.filter((r) => r.value !== null);
   if (priced.length === 0) {
-    parts.push('No title has a cost on the books yet, so the value at cost reads —, not 0.');
+    parts.push(`No ${one} has a cost on the books yet, so the value at cost reads —, not 0.`);
   } else {
     const total = priced.reduce((sum, r) => sum + (r.value ?? 0), 0);
     const missing = n - priced.length;
     parts.push(
-      `At cost the cellar holds ${cellMoney(total, currency)}, with ${fmtCount(priced.length)} of ${fmtCount(n)} titles priced${
+      `At cost ${goods ? 'the house holds' : 'the cellar holds'} ${cellMoney(total, currency)}, with ${fmtCount(priced.length)} of ${fmtCount(n)} ${many} priced${
         missing > 0 ? `; the ${fmtCount(missing)} without a cost show —, never 0` : ''
       }.`,
     );

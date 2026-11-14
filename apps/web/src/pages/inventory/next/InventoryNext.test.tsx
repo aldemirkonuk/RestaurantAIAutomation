@@ -336,10 +336,12 @@ describe('unknown is never zero', () => {
     const tr = screen.getByTestId('inv-row-u');
     const cells = within(tr);
     expect(cells.getByText('Stock not read')).toBeTruthy();
-    const live = tr.querySelector('td[data-label="Live / shadow · par"]')!;
+    const live = tr.querySelector('td[data-label="On hand / to reconcile · par"]')!;
     expect(live.textContent).toContain('—');
     expect(live.textContent).not.toMatch(/^0/);
-    expect(tr.querySelector('td[data-label="Value at cost"]')!.textContent).toBe('—');
+    // Staff are not drawn the value column at all (InventoryTable.staff.test.tsx
+    // holds the owner's dash for an unknown value).
+    expect(tr.querySelector('td[data-label="Value at cost"]')).toBeNull();
     expect(tr.querySelector('td[data-label="Zone"]')!.textContent).toBe('—');
     expect(tr.querySelector('td[data-label="Your price"]')!.textContent).toBe('— · —');
   });
@@ -467,6 +469,49 @@ describe('chips', () => {
     expect(screen.queryByTestId('house-price')).toBeNull();
     expect(screen.getByTestId('inv-row-i1').querySelector('td[data-label="Your price"]')!.textContent).toContain('€');
   });
+
+  function renderSorted(url: string) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={[url]}>
+          <InventoryNext />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  it('staff read quantities, not cost: no value sort, no valuation export, no cost in the count sheet', async () => {
+    exportSpy.mockClear();
+    mock.data = data({ rows: [row()], canManage: false });
+    renderSorted('/inventory?sort=value');
+    expect(screen.getByTestId('inventory-read-sentence').textContent).not.toContain('At cost');
+    expect(screen.queryByRole('option', { name: 'Value at cost' })).toBeNull();
+    expect(screen.getByTestId('inventory-footer').textContent).toContain('sorted Needs you first');
+    expect(screen.queryByRole('button', { name: 'Export valuation' })).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export count sheet' }));
+    });
+    const cols = (exportSpy.mock.calls[0][0] as { columns: { header: string }[] }).columns.map((c) => c.header);
+    expect(cols).toContain('System qty (live)');
+    expect(cols).not.toContain('WAC');
+    expect(cols).not.toContain('Value');
+  });
+
+  it('an owner keeps the value sort, the valuation export and the cost in the count sheet', async () => {
+    exportSpy.mockClear();
+    mock.data = data({ rows: [row()], canManage: true });
+    renderSorted('/inventory?sort=value');
+    expect(screen.getByTestId('inventory-read-sentence').textContent).toContain('At cost');
+    expect(screen.getByRole('option', { name: 'Value at cost' })).toBeTruthy();
+    expect(screen.getByTestId('inventory-footer').textContent).toContain('sorted Value at cost');
+    expect(screen.getByRole('button', { name: 'Export valuation' })).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export count sheet' }));
+    });
+    const cols = (exportSpy.mock.calls[0][0] as { columns: { header: string }[] }).columns.map((c) => c.header);
+    expect(cols).toEqual(expect.arrayContaining(['WAC', 'Value']));
+  });
 });
 
 describe('The table says what was read (INV-W13, W14, W15)', () => {
@@ -486,7 +531,7 @@ describe('The table says what was read (INV-W13, W14, W15)', () => {
       ],
     });
     renderPage();
-    const vel = (id: string) => screen.getByTestId(`inv-row-${id}`).querySelector('td[data-label="Vel/day"]')!.textContent;
+    const vel = (id: string) => screen.getByTestId(`inv-row-${id}`).querySelector('td[data-label="Used a day"]')!.textContent;
     expect(vel('once')).toBe('0.03');
     expect(vel('never')).toBe('0');
   });
@@ -929,6 +974,53 @@ describe('counts read with grouped digits, as money does (INV-W33)', () => {
     expect(half).toContain('the 1,200 without a cost');
   });
 
+  describe('a house of goods hears no all-clear for what has no par (inventory r28 gap 12)', () => {
+    const cur = { state: 'recorded', code: 'EUR' } as const;
+    const flour = (id: string, over: Partial<InvRow> = {}) =>
+      row({ id, kind: 'food', name: 'Flour', stock: 12400, par: null, standing: 'nopar', runway: null, value: 10, zones: null, ...over });
+
+    it('never says nothing is below par when no good has a par', () => {
+      const s = readSentence([flour('a'), flour('b')], cur, false);
+      expect(s).toContain('Nothing is out.');
+      expect(s).not.toContain('below par');
+      expect(s).toContain('2 goods have no par, so nothing here says when they run low.');
+    });
+
+    it('says the all-clear for those with a par, and names the one without', () => {
+      const s = readSentence([flour('a'), flour('b', { par: 5000, standing: 'above' })], cur, false);
+      expect(s).toContain('Nothing is out or below par.');
+      expect(s).toContain('One good has no par, so nothing here says when it runs low.');
+    });
+
+    it('names the goods without a par beside what is below par too', () => {
+      const s = readSentence([flour('a'), flour('b', { stock: 100, par: 5000, standing: 'below' })], cur, false);
+      expect(s).toContain('None is out; 1 is below par.');
+      expect(s).toContain('One good has no par');
+    });
+
+    it('speaks of goods and the house, not titles and the cellar, once a food is on the list', () => {
+      const s = readSentence([flour('a'), row({ id: 'w', stock: 3, standing: 'above', value: 20, zones: null })], cur, false);
+      expect(s).toContain('2 goods,');
+      expect(s).toContain('At cost the house holds');
+      expect(s).toContain('of 2 goods priced');
+      expect(s).not.toContain('title');
+      expect(s).not.toContain('cellar');
+    });
+
+    it('keeps a wine list’s words', () => {
+      const s = readSentence([row({ id: 'w', stock: 3, par: 2, standing: 'above', value: 20, zones: null })], cur, false);
+      expect(s).toContain('1 title,');
+      expect(s).toContain('At cost the cellar holds');
+      expect(s).not.toContain('no par');
+    });
+
+    it('a food with no name reads "Unnamed good" on the list', () => {
+      mock.data = data({ rows: [flour('a', { name: null })] });
+      renderPage();
+      expect(screen.getByText('Unnamed good')).toBeTruthy();
+    });
+  });
+
   it('groups the out, below-par and dry-tomorrow counts', () => {
     const cur = { state: 'recorded', code: 'EUR' } as const;
     const big = (id: string, over: Partial<InvRow>) => Array.from({ length: 1000 }, (_, i) => row({ id: `${id}${i}`, zones: null, ...over }));
@@ -943,8 +1035,8 @@ describe('counts read with grouped digits, as money does (INV-W33)', () => {
     mock.data = data({ rows: [row({ id: 'big', stock: 1240, shadow: 1250, par: 1200, runway: 1500, standing: 'at' }), row({ id: 'small' })] });
     renderPage();
     const cell = (label: string) => screen.getByTestId('inv-row-big').querySelector(`td[data-label="${label}"]`)!.textContent;
-    expect(cell('Live / shadow · par')).toBe('1,240 / 1,250 · 1,200');
-    expect(cell('Runway')).toBe('1,500d');
+    expect(cell('On hand / to reconcile · par')).toBe('1,240 / 1,250 · 1,200');
+    expect(cell('Days left')).toBe('1,500d');
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Export valuation' }));
     });
@@ -1182,9 +1274,78 @@ describe('INV-W38 — the view is the URL', () => {
     const said = screen.getByTestId('inventory-read-sentence').textContent ?? '';
     expect(said).toContain('2 titles, 10 bottles and 12.4 kg');
     expect(said).not.toContain('12,410');
-    const live = (id: string) => screen.getByTestId(`inv-row-${id}`).querySelector('td[data-label="Live / shadow · par"]')!.textContent;
+    const live = (id: string) => screen.getByTestId(`inv-row-${id}`).querySelector('td[data-label="On hand / to reconcile · par"]')!.textContent;
     expect(live('f')).toContain('12.4 kg / 12.4 kg · 5 kg');
     expect(live('a')).toContain('10 / 10 · 6');
+  });
+
+  // Inventory r28, gap 4: the daily use beside a stock in kg says its unit too.
+  it('says the daily use of a weighed good in its own unit, and a bottle stays bare', () => {
+    mock.data = data({
+      rows: [
+        row({ id: 'a', name: 'Ankara Red', velocity: 0.5 }),
+        row({ id: 'f', wineId: null, name: 'Un', type: null, kind: null, stock: 12400, velocity: 290 }),
+        row({ id: 'b', wineId: null, name: 'Butter', type: null, kind: null, stock: 9000, velocity: 1250 }),
+      ],
+      rawItems: [
+        { id: 'f', kind: 'food', uom: 'g', display_name: 'Un' },
+        { id: 'b', kind: 'food', uom: 'g', display_name: 'Butter' },
+      ],
+    });
+    renderAt('/inventory');
+    const used = (id: string) => screen.getByTestId(`inv-row-${id}`).querySelector('td[data-label="Used a day"]')!.textContent;
+    expect(used('f')).toBe('290.0 g');
+    expect(used('b')).toBe('1.3 kg');
+    expect(used('a')).toBe('0.5');
+    const headers = screen.getAllByRole('columnheader').map((h) => h.textContent);
+    expect(headers).toEqual(expect.arrayContaining(['On hand / to reconcile · par', 'Used a day', 'Days left']));
+    for (const jargon of ['Vel/day', 'Runway', 'Live / shadow · par']) expect(headers).not.toContain(jargon);
+  });
+
+  // Inventory r28, gap 3: a count sheet says each row's unit, and a weighed
+  // good is in kg, so nobody writes 12.1 (kg) beside 12400 (g).
+  it('writes the count sheet in each good\'s counted unit, with a Unit column', async () => {
+    exportSpy.mockClear();
+    mock.data = data({
+      rows: [
+        row({ id: 'a', name: 'Ankara Red', stock: 10, shadow: 2, par: 6, velocity: 0.5, wac: 12, bottleSizeMl: 750 }),
+        row({ id: 'f', wineId: null, name: 'Flour', type: null, kind: null, stock: 12400, shadow: 0, par: 5000, velocity: 290, wac: 0.0125, bottleSizeMl: 750 }),
+        row({ id: 'z', wineId: null, name: 'Saffron', type: null, kind: null, stock: 4500, shadow: 0, par: 1000, velocity: 50, wac: 0.2, bottleSizeMl: null }),
+      ],
+      rawItems: [
+        { id: 'f', kind: 'food', uom: 'g', display_name: 'Flour' },
+        { id: 'z', kind: 'food', uom: 'mg', display_name: 'Saffron' },
+      ],
+      canManage: true,
+    });
+    renderAt('/inventory');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export count sheet' }));
+    });
+    const file = exportSpy.mock.calls[0][0] as { rows: InvRow[]; columns: { header: string; value: (r: InvRow) => unknown }[] };
+    const headers = file.columns.map((c) => c.header);
+    expect(headers.indexOf('Unit')).toBeLessThan(headers.indexOf('System qty (live)'));
+    const cell = (name: string, h: string) => file.columns.find((c) => c.header === h)!.value(file.rows.find((r) => r.name === name)!);
+    const cols = ['Unit', 'Bottle size (ml)', 'System qty (live)', 'Par', 'Velocity/day', 'WAC'];
+    expect(cols.map((h) => cell('Flour', h))).toEqual(['kg', '', 12.4, 5, '0.290', 12.5]);
+    expect(cols.map((h) => cell('Saffron', h))).toEqual(['g', '', 4.5, 1, '0.050', 200]);
+    expect(cols.map((h) => cell('Ankara Red', h))).toEqual(['bottle', 750, 10, 6, '0.50', 12]);
+  });
+
+  it('writes the valuation file in each good\'s counted unit too', async () => {
+    exportSpy.mockClear();
+    mock.data = data({
+      rows: [row({ id: 'f', wineId: null, name: 'Flour', type: null, kind: null, stock: 12400, wac: 0.0125 })],
+      rawItems: [{ id: 'f', kind: 'food', uom: 'g', display_name: 'Flour' }],
+      canManage: true,
+    });
+    renderAt('/inventory');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export valuation' }));
+    });
+    const file = exportSpy.mock.calls[0][0] as { rows: InvRow[]; columns: { header: string; value: (r: InvRow) => unknown }[] };
+    const cell = (h: string) => file.columns.find((c) => c.header === h)!.value(file.rows[0]);
+    expect([cell('Unit'), cell('Live'), cell('WAC')]).toEqual(['kg', 12.4, 12.5]);
   });
 
   const closeDrawer = () => fireEvent.click(document.querySelector('.iv-drawer .mdv-ovl__close') as HTMLElement);
@@ -1771,9 +1932,9 @@ describe('the legacy velocity sort and column-header sort (round 4)', () => {
   it('a sortable header sets its sort, and clicking it again goes back to Needs you first', () => {
     mock.data = data({ rows: [row({ id: 'a', name: 'Beta', velocity: 0.1 }), row({ id: 'b', name: 'Alpha', velocity: 3 })] });
     renderPage();
-    fireEvent.click(screen.getByRole('button', { name: 'Vel/day' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Used a day' }));
     expect(screen.getByTestId('inventory-footer').textContent).toContain('sorted Fastest moving');
-    expect(screen.getByRole('columnheader', { name: 'Vel/day' }).getAttribute('aria-sort')).toBe('descending');
+    expect(screen.getByRole('columnheader', { name: 'Used a day' }).getAttribute('aria-sort')).toBe('descending');
     fireEvent.click(screen.getByRole('button', { name: 'Title' }));
     expect(screen.getByTestId('inventory-footer').textContent).toContain('sorted Name');
     fireEvent.click(screen.getByRole('button', { name: 'Title' }));
@@ -1815,7 +1976,7 @@ describe('A title nobody counted says "Not counted yet", never Out (OD-161)', ()
     renderPage();
     const tr = screen.getByTestId('inv-row-n');
     expect(within(tr).getByText('Not counted yet')).toBeTruthy();
-    expect(tr.querySelector('td[data-label="Live / shadow · par"]')!.textContent).toMatch(/^0/);
+    expect(tr.querySelector('td[data-label="On hand / to reconcile · par"]')!.textContent).toMatch(/^0/);
     expect(tr.textContent).not.toMatch(/\bOut\b/);
   });
 
