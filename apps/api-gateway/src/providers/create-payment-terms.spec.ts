@@ -109,6 +109,11 @@ function makeService(capture: { insert?: Record<string, unknown> }) {
     if (table === "providers") {
       const q: Record<string, unknown> = {};
       q.select = () => q;
+      q.eq = () => q;
+      q.is = () => q;
+      q.order = () => q;
+      // The same-name check (r34 w1 F1): the house has no vendors yet.
+      q.range = async () => ({ data: [], error: null });
       q.insert = (payload: Record<string, unknown>) => {
         capture.insert = payload;
         return q;
