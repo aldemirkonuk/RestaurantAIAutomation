@@ -104,3 +104,39 @@ describe('the sheet and a kept weight', () => {
     expect(screen.queryByText(weighNote)).toBeNull();
   });
 });
+
+describe('the sheet and a weight a line was priced through', () => {
+  const weighedSour = (grams: number, cost: number): CocktailRecipe => {
+    const r = sour(true);
+    const [g, e] = r.current!.lines;
+    return {
+      ...r,
+      current: { ...r.current!, lines: [g, { ...e, costPerServe: cost, weighed: { by: 'piece_grams', grams } }] },
+    };
+  };
+
+  it('says the weight in the house\'s form, and reads the line back at the new weight once it is changed', async () => {
+    recipe = weighedSour(62.5, 3.13);
+    mount();
+    expect(await screen.findByText(/Priced from one piece of Eggs at 62,5 g\./)).toBeTruthy();
+    h.put.mockImplementation(async () => {
+      recipe = weighedSour(55, 2.75);
+      return { data: { id: EGG, pieceGrams: 55, mlGrams: null } };
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Change what one piece of Eggs weighs' }));
+    fireEvent.change(screen.getByLabelText('Eggs: one piece weighs'), { target: { value: '55' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Keep' }));
+    expect(await screen.findByText(/Priced from one piece of Eggs at 55 g\./)).toBeTruthy();
+    expect(h.put).toHaveBeenCalledWith(`/recipes/${RID}/items/${EGG}/weights`, { pieceGrams: 55 });
+    expect(screen.queryByTestId('recipe-line-weigh')).toBeNull();
+  });
+
+  it('staff see no weight and no Change', async () => {
+    h.auth = { activeRestaurantId: RID, activeRole: 'staff', user: { userId: 'u2', role: 'staff' } };
+    recipe = weighedSour(60, 3);
+    mount();
+    await screen.findAllByTestId('recipe-line');
+    expect(screen.queryByText(/Priced from one piece/)).toBeNull();
+    expect(screen.queryByRole('button', { name: /Change what one/ })).toBeNull();
+  });
+});

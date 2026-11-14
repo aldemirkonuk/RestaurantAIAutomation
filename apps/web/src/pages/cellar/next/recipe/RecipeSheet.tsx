@@ -83,6 +83,7 @@ import { parseLine, parseSpec, type ProposedLine } from './parseSpec';
 import { amountWithUnit, qtyText, readsAsThousandAmbiguous } from './units';
 import DrinkCards, { type DraftCost } from './DrinkCards';
 import { useHousePercent } from './useHousePercent';
+import { useSayGrams } from './WeighBox';
 import WhatIsInAServe from './WhatIsInAServe';
 import { recipeWords, type RecipeWords } from './recipeWords';
 import {
@@ -139,6 +140,7 @@ function fromServer(l: RecipeLine): DraftRow {
       costPerServeExact: l.costPerServeExact ?? null,
       costBasis: l.costBasis,
       needs: l.needs ?? null,
+      weighed: l.weighed ?? null,
     },
   };
 }
@@ -442,6 +444,7 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
   const canEdit = useCanEditRecipe();
   const sayMoney = useHouseMoney();
   const sayPct = useHousePercent();
+  const sayGrams = useSayGrams();
   const save = useSaveRecipe(owner);
   const { user, activeRestaurantId } = useAuth();
   const storeKey = draftKey(user?.userId, activeRestaurantId, dId);
@@ -734,6 +737,7 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
                 onRemove={() => edit((rs) => rs.filter((x) => x.key !== r.key))}
                 kind={owner.kind}
                 onWeighed={weighed}
+                sayGrams={sayGrams}
               />
             ) : (
               <LineRowRead key={r.key} row={r} />
