@@ -41,6 +41,7 @@ import {
 import RecipeSheet from './recipe/RecipeSheet';
 import MenuDrinksOffer from './MenuDrinksOffer';
 import { PRICE_UNREAD, priceText, readPrice } from './recipe/price-text';
+import { foldName } from './recipe/name-fold';
 import { pourCostShare } from './recipe/DrinkCards';
 import { useCanEditRecipe, useDrinkFigures, useHouseMoney, useMenuPrices } from './recipe/useRecipe';
 import { AllergenCell, AllergenCheck, keptFor } from './recipe/ListAllergens';
@@ -228,11 +229,11 @@ export default function CocktailRegister({
   const linkedRow = openParam ? (data?.rows ?? []).find((c) => c.id === openParam) ?? null : null;
   const linkedMissing = Boolean(openParam && data && !linkedRow);
 
+  // Folded as the shelf search and the menu match fold: "RAKI" finds "Rakı".
   const searched = (data?.rows ?? []).filter((c) => {
-    const q = query.trim().toLowerCase();
+    const q = foldName(query);
     if (!q) return true;
-    return [c.name, c.display_name, c.menu_section, c.method, c.glass]
-      .filter(Boolean).join(' ').toLowerCase().includes(q);
+    return foldName([c.name, c.display_name, c.menu_section, c.method, c.glass].filter(Boolean).join(' ')).includes(q);
   });
   const byAllergen = searched.filter((c) => keptFor(figures.byId?.get(c.id)?.allergens, allergen));
   // Which drinks have no recipe: known only once the figures are read.
