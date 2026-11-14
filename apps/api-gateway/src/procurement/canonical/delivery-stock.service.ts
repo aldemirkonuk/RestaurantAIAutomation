@@ -4,6 +4,7 @@ import { queueResearchIfLibraryLacks } from "../../inventory/house-item-research
 import { closeDeliveryItemToNameBookedElsewhere } from "../delivery-item-to-name";
 import { isMass, isVolumeItemUnit, massFactor, volumeFactor } from "../documents/document-types";
 import { LotUnitCost, perBottleLotCost, proposalPerBottle, toCentsAsBooked } from "./lot-unit-cost";
+import { doorCountsOfPapers, withTheDoorsPack } from "./door-received";
 import {
   LandedBlock,
   landDelivery,
@@ -147,6 +148,7 @@ interface LineRow {
   vendor_sku: string | null;
   uom?: string | null;
   pack_size?: number | string | null;
+  qty?: number | string | null;
   price_base_qty?: number | string | null;
   price_base_uom?: string | null;
   line_total?: number | string | null;
@@ -1309,12 +1311,27 @@ export class DeliveryStockService {
     const lineByKey = new Map<string, LineRow>();
     const invoiceLines: LineRow[] = [];
     const invoiceSet = new Set(invoiceIds);
+    // r31 w2 F1: the pack the door gave a case the invoice sizes nowhere, per
+    // `invoice:line`, and the items whose cost is read through it.
+    const doorPacks = new Map<string, number>();
+    const doorPacked = new Map<string, string>();
+    if (invoiceIds.length && attached.some((r) => r.role === "door_count")) {
+      const door = await doorCountsOfPapers(this.db.getClient(), restaurantId, invoiceIds);
+      if (!door.ok)
+        return {
+          ok: false,
+          status: 500,
+          error: `what the door counted of the invoices on delivery ${deliveryId} ${door.error}, so no cost was settled`,
+        };
+      for (const [paper, count] of door.value)
+        for (const [lineNo, pack] of count.packs) doorPacks.set(`${paper}:${lineNo}`, pack);
+    }
     if (allIds.length) {
       const read = await this.db
         .getClient()
         .from("procurement_document_lines")
         .select(
-          "document_id, line_no, inventory_id, qty_bottles, free_goods_qty, unit_price, uom, pack_size, price_base_qty, price_base_uom, line_total, allowance, deposit, printed, description, vendor_sku, format_ml",
+          "document_id, line_no, inventory_id, qty, qty_bottles, free_goods_qty, unit_price, uom, pack_size, price_base_qty, price_base_uom, line_total, allowance, deposit, printed, description, vendor_sku, format_ml",
         )
         .eq("restaurant_id", restaurantId)
         .in("document_id", allIds)
@@ -1326,7 +1343,16 @@ export class DeliveryStockService {
           status: 500,
           error: `the lines of the documents on delivery ${deliveryId} could not be read: ${read.error.message}`,
         };
-      const rows = (read.data ?? []) as unknown as LineRow[];
+      const rows = ((read.data ?? []) as unknown as LineRow[]).map((line) => {
+        if (!invoiceSet.has(line.document_id) || line.line_no == null) return line;
+        const withPack = withTheDoorsPack(line, doorPacks.get(`${line.document_id}:${line.line_no}`));
+        if (withPack.pack_from_door != null && line.inventory_id)
+          doorPacked.set(
+            line.inventory_id,
+            `the invoice does not say how many bottles a ${String(line.uom).replace("_", " ")} holds; ${withPack.pack_from_door} is what the door counted`,
+          );
+        return withPack;
+      });
       // R8: a weighed line is costed per one of its ITEM's unit.
       const units = await this.itemUnits(restaurantId, rows.map((l) => l.inventory_id));
       if (!units.ok) return units;
@@ -1369,8 +1395,15 @@ export class DeliveryStockService {
       else
         p.basis = `${p.basis}. The invoice's charges and discount are not in this cost, because its landed cost cannot be said: ${why.replace(/ The lot stays provisional.*$/, "")}`;
     }
-    for (const [id, p] of landed.byItem)
-      byItem.set(id, { ...p, provenance: "invoice", source: "invoice_line" });
+    for (const [id, p] of landed.byItem) {
+      const door = doorPacked.get(id);
+      byItem.set(id, {
+        ...p,
+        provenance: "invoice",
+        source: "invoice_line",
+        ...(door ? { basis: p.basis ? `${p.basis} (${door})` : door } : {}),
+      });
+    }
     // Before the proposals: a price both sides settled still wins.
     for (const id of refused.keys()) byItem.delete(id);
 

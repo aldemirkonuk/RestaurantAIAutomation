@@ -115,6 +115,11 @@ export interface MapOptions {
       ordered?: number | null;
       shipped?: number | null;
       received?: ReceivedQuantity;
+      /**
+       * The paper's billed bottles when the caller read them through the
+       * pack the door gave a case the paper sizes nowhere (r31 w2 F1).
+       */
+      billed?: number | null;
     }
   >;
 }
@@ -841,7 +846,7 @@ export function canonicalFromParsedDocument(
         : null;
       const received: ReceivedQuantity = s?.received ?? counted ?? "not_counted";
       // NULL, not the counted number: nothing has billed us for this line.
-      const billed = weCountedThis ? null : (l.qtyBottles ?? null);
+      const billed = weCountedThis ? null : (s?.billed ?? l.qtyBottles ?? null);
       return {
         lineIndex: i,
         ordered: s?.ordered ?? null,
