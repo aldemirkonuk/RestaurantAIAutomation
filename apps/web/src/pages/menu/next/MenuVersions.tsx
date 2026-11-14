@@ -38,6 +38,8 @@ import {
 } from '../../../services/api/menus';
 import { useAuthStore } from '../../../stores';
 import { MenuPlan } from './MenuPlan';
+import { formatMoney } from '../../../lib/currency';
+import { useHouseCurrencyCode } from '../../../hooks/queries/useHouseCurrencyCode';
 
 const EM = '—';
 
@@ -114,7 +116,7 @@ const OUTCOME_WORDS: Record<string, (n: number) => string> = {
 };
 
 /** What making a menu current did, in one sentence -- every outcome it was told, and every lock by name. */
-export function makeCurrentSentence(r: MakeCurrentResult): string {
+export function makeCurrentSentence(r: MakeCurrentResult, currency: string | null = null): string {
   if (r.outcome === 'already_current') return 'That menu was already the current one. Nothing changed.';
   const parts = [`${r.lines} line${r.lines === 1 ? '' : 's'}`];
   const keys = Object.keys(r.priceSync);
@@ -131,7 +133,7 @@ export function makeCurrentSentence(r: MakeCurrentResult): string {
   if (r.flagged > 0) parts.push(`${r.flagged} flagged for a blank price`);
   const held = r.held?.length
     ? ` Held by a lock, not changed: ${r.held
-        .map((h) => `${h.name} (${h.kind}${h.lockedPrice === null ? '' : `, locked at ${h.lockedPrice.toFixed(2)}`})`)
+        .map((h) => `${h.name} (${h.kind}${h.lockedPrice === null ? '' : `, locked at ${formatMoney(h.lockedPrice, currency)}`})`)
         .join('; ')}.`
     : '';
   const returned = r.returned?.length
@@ -168,6 +170,7 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
   const [result, setResult] = useState<MenuImportResult | null>(null);
   const [chosen, setChosen] = useState<string | null>(null);
   const [planning, setPlanning] = useState(false);
+  const currency = useHouseCurrencyCode();
   const dateRead = readMenuDate(date);
 
   const read = useMutation({
@@ -273,7 +276,7 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
               onCancel={() => setPlanning(false)}
               onDone={(r) => {
                 setPlanning(false);
-                setChosen(makeCurrentSentence(r));
+                setChosen(makeCurrentSentence(r, currency));
                 void queryClient.invalidateQueries({ queryKey: ['menu'] });
                 onRead();
               }}
@@ -360,6 +363,7 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
   // another's name (MENU-01).
   const house = useAuthStore((s) => s.activeRestaurantId) ?? null;
   const q = useQuery({ queryKey: ['menu', 'versions', house], queryFn: listMenuVersions });
+  const currency = useHouseCurrencyCode();
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu'] });
 
   return (
@@ -432,7 +436,7 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
                 onCancel={() => setPlanFor(null)}
                 onDone={(r) => {
                   setPlanFor(null);
-                  setSaid(makeCurrentSentence(r));
+                  setSaid(makeCurrentSentence(r, currency));
                   refresh();
                 }}
               />

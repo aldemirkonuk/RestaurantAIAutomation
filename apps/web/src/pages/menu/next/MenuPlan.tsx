@@ -34,13 +34,21 @@ import {
   type PlanLine,
 } from '../../../services/api/menus';
 import { lockPrice, releasePriceLock } from '../../../services/api/pricing';
+import { formatMoney } from '../../../lib/currency';
+import { useHouseCurrencyCode } from '../../../hooks/queries/useHouseCurrencyCode';
 // Drawn with the cellar's classes wherever it is shown (/menu and onboarding).
 import '../../cellar/next/cellar-next.css';
 
 const EM = '—';
 
-function money(n: number | null | undefined): string {
-  return n === null || n === undefined ? EM : n.toFixed(2);
+/**
+ * A price in the house's own money (lib/currency formatMoney): "₺80,00" in a
+ * lira house, never the bare "80.00" the r23 walk read beside "₺80,00" on the
+ * same page. No code yet (still reading, or none recorded) prints the number
+ * with "(currency not recorded)", as /menu's rows do.
+ */
+function money(n: number | null | undefined, currency: string | null): string {
+  return n === null || n === undefined ? EM : formatMoney(n, currency);
 }
 
 function day(iso: string | null | undefined): string {
@@ -100,12 +108,12 @@ export function planSentence(
 
 /** Who set the price that would be replaced, in words. */
 /** One drink that is not on this file, in a line: what it is and what the house keeps. */
-export function notOnFileWords(n: NonNullable<Plan['notOnThisFile']>[number]): string {
+export function notOnFileWords(n: NonNullable<Plan['notOnThisFile']>[number], currency: string | null = null): string {
   const name = [n.name, n.vintage].filter(Boolean).join(' ');
   if (!n.inventoryId) return `${name}: not on the house's list, so nothing is kept for it`;
   const kept = [
-    n.bottle !== null ? `bottle ${money(n.bottle)}` : null,
-    n.glass !== null ? `glass ${money(n.glass)}` : null,
+    n.bottle !== null ? `bottle ${money(n.bottle, currency)}` : null,
+    n.glass !== null ? `glass ${money(n.glass, currency)}` : null,
   ].filter(Boolean);
   const locked = n.locked.length ? `, ${n.locked.join(' and ')} locked` : '';
   const gone = n.active === false ? 'the house no longer sells it; its row ' : '';
@@ -132,22 +140,22 @@ export function orderedRows(lines: PlanLine[]): Row[] {
 }
 
 /** One kind of one line, in the words of what choosing the menu does to it. */
-export function kindWords(line: PlanLine, k: PlanKind): string {
+export function kindWords(line: PlanLine, k: PlanKind, currency: string | null = null): string {
   switch (k.result) {
     case 'change':
-      return `becomes ${money(k.menuPrice)} (now ${money(k.housePrice)})`;
+      return `becomes ${money(k.menuPrice, currency)} (now ${money(k.housePrice, currency)})`;
     case 'unchanged':
-      return `already ${money(k.housePrice)}`;
+      return `already ${money(k.housePrice, currency)}`;
     case 'held_by_lock':
-      return `stays ${money(k.lock?.lockedPrice ?? k.housePrice)}, locked`;
+      return `stays ${money(k.lock?.lockedPrice ?? k.housePrice, currency)}, locked`;
     case 'blank_kept':
-      return `blank on the menu; the house keeps ${money(k.housePrice)} (flagged)`;
+      return `blank on the menu; the house keeps ${money(k.housePrice, currency)} (flagged)`;
     case 'blank_never_priced':
       return line.flag === 'blank_no_house_price' ? 'no price on the menu or at the house (flagged)' : EM;
     case 'not_linked':
       return 'not matched to a wine, so no price';
     case 'new_wine':
-      return k.menuPrice === null ? EM : `new to the house at ${money(k.menuPrice)}`;
+      return k.menuPrice === null ? EM : `new to the house at ${money(k.menuPrice, currency)}`;
     default:
       // A result this page does not know is still shown, never dropped.
       return String(k.result).replace(/_/g, ' ');
@@ -224,6 +232,7 @@ export function MenuPlan({
   const [said, setSaid] = useState<string | null>(null);
   const [moved, setMoved] = useState(false);
   const q = useQuery({ queryKey: ['menu', 'plan', menuId], queryFn: () => getMenuPlan(menuId) });
+  const currency = useHouseCurrencyCode();
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu', 'plan', menuId] });
 
   const choose = useMutation({
@@ -315,12 +324,12 @@ export function MenuPlan({
                   >
                     <td>{r.line.name}</td>
                     <td className="cl-dim">{r.k.kind}</td>
-                    <td>{money(r.k.housePrice)}</td>
-                    <td>{money(r.k.menuPrice)}</td>
+                    <td>{money(r.k.housePrice, currency)}</td>
+                    <td>{money(r.k.menuPrice, currency)}</td>
                     <td className="cl-dim">
                       {r.k.result === 'held_by_lock' && r.k.lock
-                        ? `Stays ${money(r.k.lock.lockedPrice)}: locked by ${r.k.lock.lockedBy.name ?? 'someone whose name is not on record'} on ${day(r.k.lock.lockedAt)}`
-                        : `Becomes ${money(r.k.menuPrice)}${setWords(r.k) ? `; it was ${setWords(r.k)}` : ''}`}
+                        ? `Stays ${money(r.k.lock.lockedPrice, currency)}: locked by ${r.k.lock.lockedBy.name ?? 'someone whose name is not on record'} on ${day(r.k.lock.lockedAt)}`
+                        : `Becomes ${money(r.k.menuPrice, currency)}${setWords(r.k) ? `; it was ${setWords(r.k)}` : ''}`}
                     </td>
                     <td>
                       <KeepSwitch
@@ -379,8 +388,8 @@ export function MenuPlan({
                       {l.name}
                       {l.vintage ? ` ${l.vintage}` : ''}
                     </td>
-                    <td className="cl-dim">{kindWords(l, l.bottle)}</td>
-                    <td className="cl-dim">{kindWords(l, l.glass)}</td>
+                    <td className="cl-dim">{kindWords(l, l.bottle, currency)}</td>
+                    <td className="cl-dim">{kindWords(l, l.glass, currency)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -399,7 +408,7 @@ export function MenuPlan({
           <ul className="cl-said" style={{ paddingLeft: 18, marginTop: 4 }}>
             {(plan.notOnThisFile ?? []).map((n) => (
               <li key={n.menuItemId} data-testid="menu-plan-not-on-file-line">
-                {notOnFileWords(n)}
+                {notOnFileWords(n, currency)}
               </li>
             ))}
           </ul>
@@ -412,7 +421,7 @@ export function MenuPlan({
           <ul className="cl-said" style={{ paddingLeft: 18, marginTop: 4 }}>
             {plan.dormantLocks.map((d) => (
               <li key={d.lockId}>
-                {d.wineName ?? 'A wine'} ({d.kind}) at {money(d.lockedPrice)}
+                {d.wineName ?? 'A wine'} ({d.kind}) at {money(d.lockedPrice, currency)}
                 {d.active === false ? ', removed from inventory' : ''}
               </li>
             ))}

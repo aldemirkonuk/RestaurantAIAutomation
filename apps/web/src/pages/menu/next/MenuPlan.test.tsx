@@ -11,6 +11,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MenuPlan, kindWords, notOnFileWords, orderedRows, planSentence } from './MenuPlan';
 import { getMenuPlan, makeMenuCurrent, type MenuPlan as Plan, type PlanLine } from '../../../services/api/menus';
 import { lockPrice, releasePriceLock } from '../../../services/api/pricing';
+import { formatMoney } from '../../../lib/currency';
+
+vi.mock('../../../hooks/queries/useHouseCurrencyCode', () => ({ useHouseCurrencyCode: () => 'TRY' }));
+/** A price as a lira house writes it: the page routes every price through formatMoney. */
+const m = (n: number) => formatMoney(n, 'TRY');
+/** The page's text as the DOM matcher reads it: Intl's no-break space read as a space. */
+const shown = (s: string) => s.replace(/\s+/g, ' ');
+
 
 vi.mock('../../../services/api/menus', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/menus')>('../../../services/api/menus');
@@ -148,13 +156,13 @@ describe('2d: not on this file -- shown, never acted on (L12)', () => {
   });
 
   it('says each one in a line: what the house keeps, its locks, or that the house never had it', () => {
-    expect(notOnFileWords(BAROLO_GONE)).toBe('Barolo 2016: keeps bottle 80.00, glass 14.00, bottle locked');
-    expect(notOnFileWords(HOUSE_RED)).toBe("House red: not on the house's list, so nothing is kept for it");
-    expect(notOnFileWords({ ...BAROLO_GONE, bottle: null, glass: null, locked: [] })).toBe('Barolo 2016: keeps no price (it had none)');
-    expect(notOnFileWords({ ...BAROLO_GONE, active: false })).toBe(
-      'Barolo 2016: the house no longer sells it; its row keeps bottle 80.00, glass 14.00, bottle locked',
+    expect(notOnFileWords(BAROLO_GONE, 'TRY')).toBe(`Barolo 2016: keeps bottle ${m(80)}, glass ${m(14)}, bottle locked`);
+    expect(notOnFileWords(HOUSE_RED, 'TRY')).toBe("House red: not on the house's list, so nothing is kept for it");
+    expect(notOnFileWords({ ...BAROLO_GONE, bottle: null, glass: null, locked: [] }, 'TRY')).toBe('Barolo 2016: keeps no price (it had none)');
+    expect(notOnFileWords({ ...BAROLO_GONE, active: false }, 'TRY')).toBe(
+      `Barolo 2016: the house no longer sells it; its row keeps bottle ${m(80)}, glass ${m(14)}, bottle locked`,
     );
-    expect(notOnFileWords({ ...BAROLO_GONE, active: true })).toBe('Barolo 2016: keeps bottle 80.00, glass 14.00, bottle locked');
+    expect(notOnFileWords({ ...BAROLO_GONE, active: true }, 'TRY')).toBe(`Barolo 2016: keeps bottle ${m(80)}, glass ${m(14)}, bottle locked`);
   });
 
   it('lists them on the plan, with no control that would act on them', async () => {
@@ -164,7 +172,7 @@ describe('2d: not on this file -- shown, never acted on (L12)', () => {
     expect(box).toHaveTextContent('Not on this file');
     expect(box).toHaveTextContent('the price, the house\'s row and any lock stay');
     expect(screen.getAllByTestId('menu-plan-not-on-file-line').map((l) => l.textContent)).toEqual([
-      'Barolo 2016: keeps bottle 80.00, glass 14.00, bottle locked',
+      `Barolo 2016: keeps bottle ${m(80)}, glass ${m(14)}, bottle locked`,
       "House red: not on the house's list, so nothing is kept for it",
     ]);
     expect(box.querySelectorAll('button, input')).toHaveLength(0);
@@ -185,12 +193,12 @@ describe('MenuPlan -- the section before the choice (L13)', () => {
     const rows = await screen.findAllByTestId('menu-plan-row');
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveTextContent('Chianti');
-    expect(rows[0]).toHaveTextContent('Becomes 55.00; it was set by hand by Deniz on 2026-09-10');
-    expect(rows[1]).toHaveTextContent('Stays 60.00: locked by Aylin on 2026-09-01');
+    expect(rows[0]).toHaveTextContent(shown(`Becomes ${m(55)}; it was set by hand by Deniz on 2026-09-10`));
+    expect(rows[1]).toHaveTextContent(shown(`Stays ${m(60)}: locked by Aylin on 2026-09-01`));
     const back = screen.getByTestId('menu-plan-returned');
     expect(back).toHaveTextContent("Barolo comes back with this menu and its lock still holds (the house's Barolo 2019).");
     expect(back).toHaveTextContent('Check this one: the menu reads Barolo 2020, and the locked wine it is linked to is the 2019 vintage.');
-    expect(screen.getByTestId('menu-plan-dormant')).toHaveTextContent('Old Rioja (bottle) at 80.00, removed from inventory');
+    expect(screen.getByTestId('menu-plan-dormant')).toHaveTextContent(shown(`Old Rioja (bottle) at ${m(80)}, removed from inventory`));
   });
 
   it('Keep locks that price there and then, and the plan is read again', async () => {
@@ -287,7 +295,7 @@ describe("the founder's L11 confirmation: a price a person set after the menu wa
     const rows = await screen.findAllByTestId('menu-plan-row');
     expect(rows[0]).toHaveTextContent('Rioja');
     expect(rows[0]).toHaveAttribute('data-after-read', 'true');
-    expect(rows[0]).toHaveTextContent('Becomes 42.00; it was set by hand by Deniz on 2026-09-12, after this menu was read');
+    expect(rows[0]).toHaveTextContent(shown(`Becomes ${m(42)}; it was set by hand by Deniz on 2026-09-12, after this menu was read`));
     expect(within(rows[0]).getByRole('button', { name: 'Keep the bottle price of Rioja' })).toBeInTheDocument();
     expect(rows[1]).toHaveAttribute('data-after-read', 'false');
     expect(screen.getByTestId('menu-plan-typed-after')).toHaveTextContent(
@@ -312,9 +320,9 @@ describe('every line of the menu, per kind (L13)', () => {
     const all = await screen.findByTestId('menu-plan-every-line');
     expect(all).toHaveTextContent('Every line on this menu (4)');
     const lines = within(all).getAllByTestId('menu-plan-line');
-    expect(lines[0]).toHaveTextContent('becomes 55.00 (now 50.00)');
+    expect(lines[0]).toHaveTextContent(shown(`becomes ${m(55)} (now ${m(50)})`));
     expect(lines[1]).toHaveTextContent('Barolo 2020');
-    expect(lines[1]).toHaveTextContent('stays 60.00, locked');
+    expect(lines[1]).toHaveTextContent(shown(`stays ${m(60)}, locked`));
     expect(lines[2]).toHaveTextContent('not matched to a wine, so no price');
     expect(lines[3]).toHaveTextContent('no price on the menu or at the house (flagged)');
   });
@@ -322,11 +330,11 @@ describe('every line of the menu, per kind (L13)', () => {
   it('each result has its words, and one it does not know is still printed', () => {
     const l = line();
     const k = (over: Partial<PlanLine['bottle']>) => ({ ...l.bottle, ...over });
-    expect(kindWords(l, k({ result: 'unchanged', housePrice: 50 }))).toBe('already 50.00');
-    expect(kindWords(l, k({ result: 'blank_kept', housePrice: 30 }))).toBe('blank on the menu; the house keeps 30.00 (flagged)');
-    expect(kindWords(l, k({ result: 'new_wine', menuPrice: 40 }))).toBe('new to the house at 40.00');
-    expect(kindWords(l, k({ result: 'blank_never_priced' }))).toBe('—');
-    expect(kindWords(l, k({ result: 'held_somewhere_else' as never }))).toBe('held somewhere else');
+    expect(kindWords(l, k({ result: 'unchanged', housePrice: 50 }), 'TRY')).toBe(`already ${m(50)}`);
+    expect(kindWords(l, k({ result: 'blank_kept', housePrice: 30 }), 'TRY')).toBe(`blank on the menu; the house keeps ${m(30)} (flagged)`);
+    expect(kindWords(l, k({ result: 'new_wine', menuPrice: 40 }), 'TRY')).toBe(`new to the house at ${m(40)}`);
+    expect(kindWords(l, k({ result: 'blank_never_priced' }), 'TRY')).toBe('—');
+    expect(kindWords(l, k({ result: 'held_somewhere_else' as never }), 'TRY')).toBe('held somewhere else');
   });
 });
 
