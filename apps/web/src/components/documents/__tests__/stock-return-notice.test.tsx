@@ -90,6 +90,20 @@ describe('StockReturnNotice', () => {
     render(<StockReturnNotice state="REJECTED" stockReturn={null} settlesMoney onReturn={async () => {}} />)
     expect(screen.getByTestId('stock-return-unknown').textContent).toMatch(/rejected/)
     expect(screen.getByTestId('stock-return-retry').textContent).toBe('Make sure its stock went back')
+    expect(screen.queryByTestId('stock-return-who')).toBeNull()
+  })
+
+  it('staff on a rejected delivery with no answer are told who can give it back, with no button', () => {
+    render(<StockReturnNotice state="REJECTED" stockReturn={null} settlesMoney={false} onReturn={async () => {}} />)
+    expect(screen.getByTestId('stock-return-unknown')).toBeTruthy()
+    expect(screen.getByTestId('stock-return-who').textContent).toBe('An owner or a manager can give it back from this page.')
+    expect(screen.queryByTestId('stock-return-retry')).toBeNull()
+  })
+
+  it('staff on a cancelled delivery read the same', () => {
+    render(<StockReturnNotice state="CANCELLED" stockReturn={null} settlesMoney={false} />)
+    expect(screen.getByTestId('stock-return-unknown').textContent).toMatch(/cancelled/)
+    expect(screen.getByTestId('stock-return-who')).toBeTruthy()
   })
 })
 

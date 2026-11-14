@@ -116,6 +116,13 @@ export function StockReturnNotice({
         This delivery is {state === 'CANCELLED' ? 'cancelled' : 'rejected'}, so what its door
         count put on the shelf should have gone back. This page cannot read whether it did.
       </p>
+      {/* Staff only ever see this branch (a rejection or a retry is a holder's
+          act, so they never hold an answer): say who can check (r33 walk). */}
+      {settlesMoney ? null : (
+        <p data-testid="stock-return-who" style={{ margin: '3px 0 0', color: 'var(--ink-2, #4F473C)' }}>
+          An owner or a manager can give it back from this page.
+        </p>
+      )}
       {button('Make sure its stock went back')}
     </section>
   )
