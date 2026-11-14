@@ -1011,6 +1011,50 @@ describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
     // Sunday-as-both-busiest-and-quietest was the pre-fix payload.
     expect(within(week).queryByText('Sunday')).not.toBeInTheDocument();
   });
+
+  // Browser walk r33 (2026-11-13): the server named Saturday as busiest and
+  // withheld only the shared quietest day, and the page blanked both.
+  const oneSideTied = (bestDay: string | null, worstDay: string | null) =>
+    withRegister(
+      'week',
+      ok({
+        weekdayProfile: [
+          { day: 'Monday', mean: 5, stdev: 0, n: 13 },
+          { day: 'Tuesday', mean: 5, stdev: 0, n: 13 },
+          { day: 'Saturday', mean: 27, stdev: 4, n: 13 },
+        ],
+        bestDay,
+        worstDay,
+        tie: true,
+        trendPerDayPct: 0.002,
+        basis: { weekday: 'mean units per weekday over the last 90 days' },
+      }),
+    );
+  const fig = (week: HTMLElement, label: string) =>
+    within(week).getByText(label).closest('.rp-fig') as HTMLElement;
+
+  it('[REVERT-FAILS] names the busiest day the server names when only the quietest is shared', () => {
+    hook.current = oneSideTied('Saturday', null);
+    paint();
+    const week = screen.getByRole('region', { name: 'The week’s shape' });
+    expect(within(fig(week, 'Busiest day')).getByText('Saturday')).toBeInTheDocument();
+    expect(within(fig(week, 'Quietest day')).getByText('—')).toBeInTheDocument();
+    expect(
+      within(week).getByText(/^Quietest is left blank because more than one weekday shares the lowest mean/),
+    ).toBeInTheDocument();
+    expect(within(week).queryByText(/^Busiest and quietest are left blank/)).not.toBeInTheDocument();
+  });
+
+  it('[REVERT-FAILS] names the quietest day the server names when only the busiest is shared', () => {
+    hook.current = oneSideTied(null, 'Monday');
+    paint();
+    const week = screen.getByRole('region', { name: 'The week’s shape' });
+    expect(within(fig(week, 'Quietest day')).getByText('Monday')).toBeInTheDocument();
+    expect(within(fig(week, 'Busiest day')).getByText('—')).toBeInTheDocument();
+    expect(
+      within(week).getByText(/^Busiest is left blank because more than one weekday shares the highest mean/),
+    ).toBeInTheDocument();
+  });
 });
 
 describe('ReportsNext — honesty', () => {
