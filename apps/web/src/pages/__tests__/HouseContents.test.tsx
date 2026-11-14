@@ -44,7 +44,7 @@ describe('HouseContents', () => {
 
   it('adds a supplier with one request; the gateway marks vendor_added itself', async () => {
     page()
-    fireEvent.change(screen.getByLabelText('Vendor'), { target: { value: 'Suvla' } })
+    fireEvent.change(await screen.findByLabelText('Vendor'), { target: { value: 'Suvla' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add this vendor' }))
     expect(await screen.findByText('Suvla is saved as your vendor.')).toBeInTheDocument()
     await waitFor(() => expect(addCustomProvider).toHaveBeenCalledTimes(1))
@@ -67,7 +67,7 @@ describe('HouseContents', () => {
     const refuse = async (cause: unknown) => {
       addCustomProvider.mockRejectedValue(cause)
       page()
-      fireEvent.change(screen.getByLabelText('Vendor'), { target: { value: 'Suvla' } })
+      fireEvent.change(await screen.findByLabelText('Vendor'), { target: { value: 'Suvla' } })
       fireEvent.click(screen.getByRole('button', { name: 'Add this vendor' }))
       return screen.findByRole('alert')
     }
@@ -114,7 +114,7 @@ describe('HouseContents', () => {
     getOnboardingProgress.mockRejectedValue(new Error('offline'))
     page()
     await waitFor(() => expect(getOnboardingProgress).toHaveBeenCalled())
-    expect(screen.getByLabelText('Vendor')).toBeInTheDocument()
+    expect(await screen.findByLabelText('Vendor')).toBeInTheDocument()
   })
 
   it('counts the pencilled lines from the proof as it now stands', () => {
@@ -189,7 +189,7 @@ describe('HouseContents', () => {
 describe('HouseContents: the vendor address and the invoice', () => {
   it('sends the email with the name when one is typed, and asks for nothing more', async () => {
     page()
-    fireEvent.change(screen.getByLabelText('Vendor'), { target: { value: 'Suvla' } })
+    fireEvent.change(await screen.findByLabelText('Vendor'), { target: { value: 'Suvla' } })
     fireEvent.change(screen.getByLabelText('Vendor email'), { target: { value: ' orders@suvla.com ' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add this vendor' }))
     expect(await screen.findByText('Suvla is saved as your vendor.')).toBeInTheDocument()
@@ -199,7 +199,7 @@ describe('HouseContents: the vendor address and the invoice', () => {
 
   it('a name alone is saved, and the page says what an address would do', async () => {
     page()
-    fireEvent.change(screen.getByLabelText('Vendor'), { target: { value: 'Suvla' } })
+    fireEvent.change(await screen.findByLabelText('Vendor'), { target: { value: 'Suvla' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add this vendor' }))
     expect(await screen.findByText('Suvla is saved as your vendor.')).toBeInTheDocument()
     expect(addCustomProvider).toHaveBeenCalledWith({ name: 'Suvla' })
@@ -207,9 +207,9 @@ describe('HouseContents: the vendor address and the invoice', () => {
     expect(screen.getByRole('link', { name: 'Add it on Vendors' })).toHaveAttribute('href', '/vendors')
   })
 
-  it('an email that is not whole is said, and nothing is sent', () => {
+  it('an email that is not whole is said, and nothing is sent', async () => {
     page()
-    fireEvent.change(screen.getByLabelText('Vendor'), { target: { value: 'Suvla' } })
+    fireEvent.change(await screen.findByLabelText('Vendor'), { target: { value: 'Suvla' } })
     fireEvent.change(screen.getByLabelText('Vendor email'), { target: { value: 'orders@suvla' } })
     expect(screen.getByText('That email is not complete yet.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add this vendor' })).toBeDisabled()
