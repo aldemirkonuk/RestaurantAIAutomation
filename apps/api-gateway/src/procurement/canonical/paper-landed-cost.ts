@@ -44,7 +44,7 @@ import {
   landedCost,
 } from "../landed-cost";
 import { snapshotLineKinds } from "./from-document-rows";
-import { paperTaxFacts } from "./paper-tax-facts";
+import { paperTaxFacts, snapshotLineRates } from "./paper-tax-facts";
 import { LotUnitCost } from "./lot-unit-cost";
 
 /** The two `restaurants` columns a lot cost reads (ADR 0359 C2). */
@@ -103,7 +103,7 @@ export interface PaperHeaderRow {
   einvoice?: unknown;
   /** `procurement_documents.currency`: the vendor's money, as the paper says. */
   currency?: string | null;
-  /** `extracted->lines`: the intake snapshot, read only for each line's kind. */
+  /** `extracted->lines`: the intake snapshot, read for each line's kind and printed tax rate. */
   extracted_lines?: unknown;
 }
 
@@ -532,6 +532,12 @@ export function landDelivery(input: {
   );
   const kindOf = (r: PaperLineRow) =>
     kindsOf.get(r.document_id)?.get(Number(r.line_no ?? 0)) ?? null;
+  // r35: the tax rate the reader saw printed beside each line, by paper.
+  const ratesOf = new Map(
+    input.papers.map((p) => [p.id, snapshotLineRates({ lines: p.extracted_lines })]),
+  );
+  const printedRateOf = (r: PaperLineRow) =>
+    ratesOf.get(r.document_id)?.get(Number(r.line_no ?? 0)) ?? null;
 
   // #838's pairing, kept: ONE booked item, no line naming it, and ONE stock
   // line naming nothing → that line is the item's. Any other shape is not.
@@ -648,7 +654,12 @@ export function landDelivery(input: {
     // ADR 0359 C3: what this paper proves about its own tax, for every line.
     const facts = paperTaxFacts(
       row,
-      mine.map((f) => ({ kind: f.kind, printedTotal: num(f.row.line_total), input: f.input })),
+      mine.map((f) => ({
+        kind: f.kind,
+        printedTotal: num(f.row.line_total),
+        input: f.input,
+        printedRatePercent: printedRateOf(f.row),
+      })),
     );
     const result = landedCost({
       header: {
@@ -657,10 +668,11 @@ export function landDelivery(input: {
         charges_vat_rate_percent: facts.ratePercent,
       },
       house,
-      lines: mine.map((f) => ({
+      lines: mine.map((f, i) => ({
         ...f.input,
         price_tax_basis: facts.basis,
-        vat_rate_percent: facts.ratePercent,
+        // r35: each line's own printed rate, when the paper proves them.
+        vat_rate_percent: facts.lineRates ? facts.lineRates[i] : facts.ratePercent,
         // The item's unit, so a free weighed line is said in it too.
         ...(f.key && perOf.has(f.key) ? { unit: perOf.get(f.key) } : {}),
         accepted_bottles: accepted.get(f) ?? 0,
