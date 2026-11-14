@@ -5,7 +5,7 @@
  * a menu is current; an unread menu is said once.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { fmtMoney } from '../receipts/next/rc2-format';
@@ -59,8 +59,7 @@ beforeEach(() => {
   });
 });
 
-function mount() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function mount(qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={['/dishes']}>
@@ -115,6 +114,17 @@ describe('/dishes Menu column', () => {
     mount();
     await waitFor(() => expect(screen.getByTestId('dishes-menu-unread')).toHaveTextContent('could not be read just now'));
     expect(screen.queryByRole('columnheader', { name: 'Menu' })).toBeNull();
+  });
+
+  it('a later read that fails drops the earlier answer: no column beside the notice', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    mount(qc);
+    await waitFor(() => expect(cell(C)).toBe('Not on the menu'));
+    h.menu = new Error('boom');
+    await act(() => qc.invalidateQueries());
+    await waitFor(() => expect(screen.getByTestId('dishes-menu-unread')).toHaveTextContent('could not be read just now'));
+    expect(screen.queryByRole('columnheader', { name: 'Menu' })).toBeNull();
+    expect(screen.queryByTestId(`dish-menu-${C}`)).toBeNull();
   });
 
   it('staff never read the menu prices and see no column', async () => {

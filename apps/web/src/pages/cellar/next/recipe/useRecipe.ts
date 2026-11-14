@@ -74,7 +74,9 @@ export function useMenuPrices(side: 'dish' | 'drink', enabled: boolean) {
     enabled: Boolean(enabled && activeRestaurantId),
     queryFn: () => dishesApi.menuPrices(activeRestaurantId as string),
   });
-  const d = q.data;
+  // A read that fails after an earlier one answered leaves that older answer
+  // in the cache. It is not shown: the page says the menu could not be read.
+  const d = q.isError ? undefined : q.data;
   // An answer without its lists (an older gateway, a stub) compares nothing.
   const rows = d ? (side === 'dish' ? d.dishes : d.drinks) : null;
   const byId: Map<string, MenuPrice> | null = Array.isArray(rows)

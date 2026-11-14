@@ -4,7 +4,7 @@
  * "differs" when they disagree. Owner and manager only, while a menu is current.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import type { ReactNode } from 'react';
@@ -81,8 +81,7 @@ beforeEach(() => {
   });
 });
 
-function mount() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+function mount(qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })) {
   const wrap = ({ children }: { children: ReactNode }) => (
     <MemoryRouter initialEntries={['/cocktails']}>
       <QueryClientProvider client={qc}>{children}</QueryClientProvider>
@@ -116,6 +115,17 @@ describe('/cocktails Menu column', () => {
     mount();
     await waitFor(() => expect(screen.getByTestId('cocktails-menu-unread')).toBeInTheDocument());
     expect(screen.queryByRole('columnheader', { name: 'Menu' })).toBeNull();
+  });
+
+  it('a later read that fails drops the earlier answer: no column beside the notice', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    mount(qc);
+    await waitFor(() => expect(cell(BARE)).toBe('Not on the menu'));
+    h.menu = new Error('boom');
+    await act(() => qc.invalidateQueries());
+    await waitFor(() => expect(screen.getByTestId('cocktails-menu-unread')).toBeInTheDocument());
+    expect(screen.queryByRole('columnheader', { name: 'Menu' })).toBeNull();
+    expect(screen.queryByTestId(`drink-menu-${BARE}`)).toBeNull();
   });
 
   it('staff never read the menu prices and see no column', async () => {
