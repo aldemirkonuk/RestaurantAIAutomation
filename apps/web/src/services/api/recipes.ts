@@ -319,6 +319,29 @@ export interface MenuPricesAnswer {
   drinks: Array<{ cocktailId: string; menu: MenuPrice }>;
 }
 
+/**
+ * A dish the current menu holds that is not on the list yet
+ * (GET /recipes/:rid/dishes/from-menu; r28 onboarding audit, gap 1, slice 3).
+ * `price` is null when the menu gives none, or gives two (`pricesDiffer`).
+ */
+export interface MenuDishOffer {
+  name: string;
+  section: string | null;
+  price: number | null;
+  pricesDiffer: boolean;
+}
+
+/** What POST /recipes/:rid/dishes/from-menu did with the names it was sent. */
+export interface MenuDishesAdded {
+  added: Array<{ id: string; name: string }>;
+  /** Already on the list when written (another tab, a double click). */
+  already: string[];
+  /** Not written: the run stopped at a failed write. */
+  notAdded: string[];
+  /** No longer offered: listed since, or gone from the menu. */
+  notOffered: string[];
+}
+
 export interface DishBody {
   name: string;
   section?: string;
@@ -358,6 +381,18 @@ export const dishesApi = {
   /** The current menu's price beside each dish and drink, in one read (r28 recipes audit, gap 2). */
   async menuPrices(restaurantId: string): Promise<MenuPricesAnswer> {
     const r = await apiClient.get<MenuPricesAnswer>(`${base(restaurantId)}/menu-prices`);
+    return r.data;
+  },
+
+  /** The current menu's dishes not on the list yet; owner and manager only (gap 1 slice 3). */
+  async menuDishes(restaurantId: string): Promise<{ currentMenus: number; dishes: MenuDishOffer[] }> {
+    const r = await apiClient.get<{ currentMenus: number; dishes: MenuDishOffer[] }>(`${base(restaurantId)}/dishes/from-menu`);
+    return r.data;
+  },
+
+  /** Puts the named menu dishes on the list, with the menu's section and price. */
+  async addMenuDishes(restaurantId: string, names: string[]): Promise<MenuDishesAdded> {
+    const r = await apiClient.post<MenuDishesAdded>(`${base(restaurantId)}/dishes/from-menu`, { names });
     return r.data;
   },
 
