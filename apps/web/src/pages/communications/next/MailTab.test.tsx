@@ -600,6 +600,33 @@ describe('the setup path', () => {
     expect(await screen.findByTestId('mail-setup')).toBeInTheDocument();
   });
 
+  it('staff are told a vendor waits on the house, never on them (r36 mail gap 14)', async () => {
+    auth.current = { user: { role: 'staff', restaurantId: 'r1' }, activeRestaurantId: 'r1', activeRole: 'staff' };
+    mount();
+    expect(await screen.findByText('2 vendors are waiting on the house. The oldest has been waiting 2 days.')).toBeInTheDocument();
+    const rows = await screen.findAllByTestId('mail-person');
+    expect(within(rows[0]).getByRole('img', { name: 'waiting on the house' })).toBeInTheDocument();
+    expect(within(screen.getByRole('group', { name: 'Show' })).getAllByRole('button').map((b) => b.textContent)).toEqual([
+      'All',
+      'Waiting on the house',
+    ]);
+    expect(screen.getByTestId('mail-tab').textContent).not.toMatch(/waiting on you/i);
+    expect(screen.queryByRole('img', { name: 'waiting on you' })).toBeNull();
+  });
+
+  it('a person\'s threads mark a waiting thread in the reader\'s words', async () => {
+    auth.current = { user: { role: 'staff', restaurantId: 'r1' }, activeRestaurantId: 'r1', activeRole: 'staff' };
+    routes['/mail/threads'] = (p) => ({
+      person: { key: p.with, kind: 'vendor', name: 'Bodega Álvaro' },
+      threads: [
+        { key: 'gm:abc', subject: 'Standing order', messageCount: 3, lastAt: '2026-11-06T09:00:00Z', lastDirection: 'inbound', waiting: true, orderId: 'o1', orderNumber: 'PO-014' },
+      ],
+      next: null,
+    });
+    mount('/communications?tab=mail&with=vendor%3Ap1');
+    expect(await screen.findByRole('img', { name: 'waiting on the house' })).toBeInTheDocument();
+  });
+
   it('an owner or a manager is offered to set it up, on both ways in', async () => {
     routes['/communications/letters/sender'] = () => ({ ...SENDER, reader: { ...SENDER.reader, granted: false } });
     routes['/mail/summary'] = () => ({ ...SUMMARY, address: { configured: true, address: null } });

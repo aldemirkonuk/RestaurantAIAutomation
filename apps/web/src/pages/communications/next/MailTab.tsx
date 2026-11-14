@@ -38,6 +38,9 @@ import {
   channelWords,
   emptyListWords,
   headerSentence,
+  waitingChipWords,
+  waitingOn,
+  type WaitingOn,
   lastWriterWords,
   houseMailboxStatus,
   MAIL_SEARCH_MAX,
@@ -81,17 +84,17 @@ function Glyphs({ channels }: { channels: string[] }) {
   );
 }
 
-function WaitingDot() {
+function WaitingDot({ on }: { on: WaitingOn }) {
   return (
     <span
       role="img"
-      aria-label="waiting on you"
+      aria-label={`waiting on ${on}`}
       style={{ width: 8, height: 8, borderRadius: 999, background: 'var(--seal, #1A5E6B)', flex: 'none', alignSelf: 'center' }}
     />
   );
 }
 
-function PersonRow({ p, onOpen }: { p: MailPersonRow; onOpen: () => void }) {
+function PersonRow({ p, on, onOpen }: { p: MailPersonRow; on: WaitingOn; onOpen: () => void }) {
   return (
     <li style={{ borderBottom: '1px solid var(--paper-2, #EAE4D8)' }}>
       <button
@@ -102,7 +105,7 @@ function PersonRow({ p, onOpen }: { p: MailPersonRow; onOpen: () => void }) {
         style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: SANS }}
       >
         <span className="flex flex-wrap items-baseline gap-2">
-          {p.waiting && <WaitingDot />}
+          {p.waiting && <WaitingDot on={on} />}
           <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink-1, #211C16)', overflowWrap: 'anywhere' }}>
             {p.name ?? 'A vendor with no name on file'}
           </span>
@@ -145,10 +148,12 @@ function PersonRow({ p, onOpen }: { p: MailPersonRow; onOpen: () => void }) {
 }
 
 function PersonThreads({
+  on,
   withKey,
   onBack,
   onOpenThread,
 }: {
+  on: WaitingOn;
   withKey: string;
   onBack: () => void;
   onOpenThread: (key: string) => void;
@@ -188,7 +193,7 @@ function PersonThreads({
                   style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: SANS }}
                 >
                   <span className="flex flex-wrap items-baseline gap-2">
-                    {t.waiting && <WaitingDot />}
+                    {t.waiting && <WaitingDot on={on} />}
                     <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink-1, #211C16)', overflowWrap: 'anywhere' }}>
                       {t.subject ?? 'No subject'}
                     </span>
@@ -229,6 +234,7 @@ function PersonThreads({
 }
 
 function People({
+  on,
   waitingOnly,
   search,
   onClearSearch,
@@ -238,6 +244,8 @@ function People({
   onSetup,
   setupWords,
 }: {
+  /** Who a waiting vendor waits on, in this reader's words (r36 mail gap 14). */
+  on: WaitingOn;
   waitingOnly: boolean;
   /** The trimmed search term, '' for none (r28 mail gap 16). */
   search: string;
@@ -267,14 +275,14 @@ function People({
         <p style={{ margin: 0, ...QUIET }}>Reading the mail…</p>
 ) : people.length === 0 && search ? (
         <p data-testid="search-empty" role="status" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', maxWidth: '68ch', overflowWrap: 'anywhere' }}>
-          {searchEmptyWords(search, { waitingOnly })}{' '}
+          {searchEmptyWords(search, { waitingOnly, on })}{' '}
           <button type="button" data-testid="search-clear-empty" onClick={onClearSearch} style={LINK_BUTTON}>
             Clear the search
           </button>
         </p>
       ) : people.length === 0 ? (
         <p data-testid="people-empty" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', maxWidth: '68ch' }}>
-          {emptyListWords(reader, summary, { waitingOnly })}{' '}
+          {emptyListWords(reader, summary, { waitingOnly, on })}{' '}
           {!waitingOnly && (
             <button type="button" data-testid="empty-setup" onClick={onSetup} style={LINK_BUTTON}>
               {setupWords}
@@ -284,7 +292,7 @@ function People({
       ) : (
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
           {people.map((p) => (
-            <PersonRow key={p.key} p={p} onOpen={() => onOpenPerson(p.key)} />
+            <PersonRow key={p.key} p={p} on={on} onOpen={() => onOpenPerson(p.key)} />
           ))}
         </ul>
       )}
@@ -367,6 +375,9 @@ export function MailTab({
   // (ADR 0357 answer 3, proposal F6) — read as the rest of this page reads it.
   const { user, activeRole } = useAuth();
   const canReply = managesHouse(activeRole, user?.role);
+  // Staff cannot answer a vendor from Mail, so they are told who waits on the
+  // house, never "on you" (r36 mail gap 14).
+  const on = waitingOn(canReply);
   const [params, setParams] = useSearchParams();
   const [waitingOnly, setWaitingOnly] = useState(false);
   // r28 mail gap 16: what is typed, and the term sent 300 ms after typing stops.
@@ -450,6 +461,7 @@ export function MailTab({
             failed: summaryQ.isError,
             reason: summaryQ.isError ? failedReadWords(summaryQ.error) : undefined,
             now,
+            on,
           })}
         </p>
         <p data-testid="mail-today" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
@@ -520,6 +532,7 @@ export function MailTab({
         />
       ) : withKey ? (
         <PersonThreads
+          on={on}
           withKey={withKey}
           onBack={() => back({ with: null })}
           onOpenThread={(key) => go({ thread: key })}
@@ -561,10 +574,11 @@ export function MailTab({
               All
             </Chip>
             <Chip on={waitingOnly} onClick={() => setWaitingOnly(true)}>
-              Waiting on you
+              {waitingChipWords(on)}
             </Chip>
           </div>
           <People
+            on={on}
             waitingOnly={waitingOnly}
             search={search}
             onClearSearch={clearSearch}

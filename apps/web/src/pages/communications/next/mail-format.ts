@@ -202,20 +202,38 @@ export function nothingArrivedYet(summary: MailSummary): boolean {
 
 export const NOTHING_ARRIVED_YET = 'No vendor letter has reached Mail yet.';
 
+/**
+ * Who a waiting vendor waits on, in the reader's own words (r36 mail gap 14).
+ * Only an owner or a manager can answer a vendor from Mail (MailThread's
+ * `canReply`), so staff and an unknown role are told a vendor is waiting on
+ * the house, never on them: they could not act on "waiting on you".
+ */
+export type WaitingOn = 'you' | 'the house';
+
+export function waitingOn(canReply: boolean): WaitingOn {
+  return canReply === true ? 'you' : 'the house';
+}
+
+/** The chip that keeps only the waiting people: "Waiting on you" / "Waiting on the house". */
+export function waitingChipWords(on: WaitingOn): string {
+  return `Waiting on ${on}`;
+}
+
 export function headerSentence(
   summary: MailSummary | null,
-  opts: { failed: boolean; reason?: string; now: number },
+  opts: { failed: boolean; reason?: string; now: number; on: WaitingOn },
 ): string {
+  const on = opts.on;
   if (!summary) {
     return opts.failed
-      ? `${EM} Who is waiting on you could not be read (${opts.reason || 'no reason was given'}). That does not mean no one is.`
-      : `${EM} Reading who is waiting on you…`;
+      ? `${EM} Who is waiting on ${on} could not be read (${opts.reason || 'no reason was given'}). That does not mean no one is.`
+      : `${EM} Reading who is waiting on ${on}…`;
   }
   const n = summary.waitingPeople;
   // Day 1 is not "healthy": with no letter ever stored, the honest news is
   // that nothing has come in, and the status line under it says why.
-  if (n === 0) return nothingArrivedYet(summary) ? NOTHING_ARRIVED_YET : 'No one is waiting on you.';
-  const lead = n === 1 ? '1 vendor is waiting on you.' : `${n} vendors are waiting on you.`;
+  if (n === 0) return nothingArrivedYet(summary) ? NOTHING_ARRIVED_YET : `No one is waiting on ${on}.`;
+  const lead = n === 1 ? `1 vendor is waiting on ${on}.` : `${n} vendors are waiting on ${on}.`;
   const since = at(summary.oldestWaitAt);
   if (since === null) return lead;
   const span = spanWords(opts.now - since);
@@ -672,9 +690,9 @@ export function setupLinkWords(canChange: boolean): string {
 export function emptyListWords(
   reader: MailboxReader | null,
   summary: MailSummary | null,
-  opts: { waitingOnly: boolean },
+  opts: { waitingOnly: boolean; on: WaitingOn },
 ): string {
-  if (opts.waitingOnly) return 'No vendor is waiting on you.';
+  if (opts.waitingOnly) return `No vendor is waiting on ${opts.on}.`;
   const open: string[] = [];
   const shut: string[] = [];
   if (reader?.granted === true && reader.enabled) open.push('your mailbox');
@@ -727,9 +745,9 @@ export function mailSearchTerm(typed: string): string {
 }
 
 /** A search that found no one, in words, never "no mail is stored". */
-export function searchEmptyWords(term: string, opts: { waitingOnly: boolean }): string {
+export function searchEmptyWords(term: string, opts: { waitingOnly: boolean; on: WaitingOn }): string {
   return opts.waitingOnly
-    ? `No one waiting on you matches “${term}”. The search reads names, subjects, order numbers and the words of each letter.`
+    ? `No one waiting on ${opts.on} matches “${term}”. The search reads names, subjects, order numbers and the words of each letter.`
     : `No one in this house's mail matches “${term}”. The search reads names, subjects, order numbers and the words of each letter.`;
 }
 

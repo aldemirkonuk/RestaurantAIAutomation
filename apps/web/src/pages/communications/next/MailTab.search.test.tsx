@@ -145,7 +145,7 @@ describe('the Mail search (gap 16)', () => {
     expect(mailSearchTerm('  po 12  ')).toBe('po 12');
     expect(mailSearchTerm('   ')).toBe('');
     expect(mailSearchTerm('a'.repeat(150))).toHaveLength(100);
-    expect(searchEmptyWords('ali', { waitingOnly: true })).toMatch(/^No one waiting on you matches “ali”\./);
+    expect(searchEmptyWords('ali', { waitingOnly: true, on: 'you' })).toMatch(/^No one waiting on you matches “ali”\./);
   });
 });
 
