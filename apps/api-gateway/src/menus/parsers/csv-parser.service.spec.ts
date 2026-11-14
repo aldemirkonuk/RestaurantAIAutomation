@@ -19,6 +19,8 @@ describe("CsvParserService.parse: Turkish and EU spreadsheets", () => {
         grape_variety: "Kalecik Karası",
         by_glass_price: 145.5,
         bottle_price: 1250,
+        // The glass header names TL; the unmarked bottle cell is in the line's money (r40 N1).
+        currency: "TL",
         raw_text:
           "Kalecik Karası;Kavaklıdere;2021;Ankara;Kalecik Karası;145,50;1.250,00",
       },
@@ -97,8 +99,8 @@ describe("CsvParserService.read: notes", () => {
   it("reads a bare Price / Fiyat column as each line's one price (the bottle price), and says so once", () => {
     const { items, issues } = parser().read("Ad;Fiyat (TL)\nNarince;450\nMercimek Çorbası;85,50\n");
     expect(items).toEqual([
-      { name: "Narince", bottle_price: 450, raw_text: "Narince;450" },
-      { name: "Mercimek Çorbası", bottle_price: 85.5, raw_text: "Mercimek Çorbası;85,50" },
+      { name: "Narince", bottle_price: 450, currency: "TL", raw_text: "Narince;450" },
+      { name: "Mercimek Çorbası", bottle_price: 85.5, currency: "TL", raw_text: "Mercimek Çorbası;85,50" },
     ]);
     expect(issues).toEqual([
       { row: 1, reason: "price_column_read_as_bottle", raw: "Fiyat (TL)" },
@@ -231,6 +233,71 @@ describe("CsvParserService.parseExcel", () => {
         by_glass_price: 90,
         raw_text: "Emir,Kocabağ,1.250,90",
       },
+    ]);
+  });
+});
+
+describe("CsvParserService: the money a file prices a line in (r40, r36 N1)", () => {
+  it("names a cell's own money on the line, and reads the number as before", () => {
+    const [chianti, soave] = parser().parse("Name,Bottle,Glass\nChianti,€48,€12\nSoave,40,\n");
+    expect(chianti).toEqual({ name: "Chianti", bottle_price: 48, by_glass_price: 12, currency: "€", raw_text: "Chianti,€48,€12" });
+    // A line that names no money carries no currency: it is the house's, as before.
+    expect(soave).toEqual({ name: "Soave", bottle_price: 40, raw_text: "Soave,40," });
+  });
+
+  it("names a header's money for every unmarked cell under it; a cell's own mark comes first", () => {
+    const items = parser().parse("Ad;Şişe Fiyatı (EUR)\nBarolo;64\nRakı;₺450\n");
+    expect(items.map((i) => [i.name, i.bottle_price, i.currency])).toEqual([
+      ["Barolo", 64, "EUR"],
+      ["Rakı", 450, "₺"],
+    ]);
+  });
+
+  it("keeps a price in another money in also_priced, never in the line's own prices", () => {
+    // Two bottle columns: before, the second was passed over without a word.
+    const [line] = parser().parse("Ad;Şişe (TL);Bottle (EUR)\nBrunello;3.250,00;95\n");
+    expect(line).toEqual({
+      name: "Brunello",
+      bottle_price: 3250,
+      currency: "TL",
+      also_priced: [{ currency: "EUR", bottle_price: 95 }],
+      raw_text: "Brunello;3.250,00;95",
+    });
+    // A glass in euros beside a bottle in lira: each keeps its own money.
+    const [mixed] = parser().parse("Ad;Kadeh (EUR);Şişe (TL)\nSoave;9;1.200,00\n");
+    expect(mixed).toEqual(
+      expect.objectContaining({ by_glass_price: 9, currency: "EUR", also_priced: [{ currency: "TL", bottle_price: 1200 }] }),
+    );
+    expect(mixed.bottle_price).toBeUndefined();
+    // Two columns in the same money: the second is passed over, as before.
+    const [same] = parser().parse("Ad;Şişe (TL);Şişe (₺)\nSoave;1.200,00;1.300,00\n");
+    expect(same).toEqual({ name: "Soave", bottle_price: 1200, currency: "TL", raw_text: "Soave;1.200,00;1.300,00" });
+  });
+
+  it("never splits a family mark from a code it may name", () => {
+    const [line] = parser().parse("Name,Bottle ($),Glass (USD)\nMerlot,40,9\n");
+    expect(line).toEqual({ name: "Merlot", bottle_price: 40, by_glass_price: 9, currency: "$", raw_text: "Merlot,40,9" });
+  });
+
+  it("says a second-money cell it cannot read, like any price", () => {
+    const { items, issues } = parser().read("Ad;Şişe (TL);Bottle (EUR)\nBrunello;3.250,00;12 / 15\n");
+    expect(items[0].also_priced).toBeUndefined();
+    expect(issues).toEqual([{ row: 2, reason: "two_readings", field: "bottle_price", raw: "12 / 15" }]);
+  });
+
+  it("reads an Excel cell's money from its number format, before the header's", async () => {
+    const ExcelJS = await import("exceljs");
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Menu");
+    ws.addRow(["Ürün", "Fiyat (TL)", "Kadeh"]);
+    ws.addRow(["Chianti", 48, 12]);
+    ws.addRow(["Narince", 1250, null]);
+    ws.getCell("B2").numFmt = "[$€-x-euro2] #,##0.00";
+    ws.getCell("C2").numFmt = "[$€-x-euro2] #,##0.00";
+    const { items } = await parser().readExcel(Buffer.from(await wb.xlsx.writeBuffer()).toString("base64"));
+    expect(items.map((i) => [i.name, i.bottle_price, i.by_glass_price, i.currency])).toEqual([
+      ["Chianti", 48, 12, "€"],
+      ["Narince", 1250, undefined, "TL"],
     ]);
   });
 });

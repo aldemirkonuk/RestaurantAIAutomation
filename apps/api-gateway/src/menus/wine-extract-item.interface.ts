@@ -47,5 +47,13 @@ export interface WineExtractItem {
   grape_variety?: string; // e.g. 'Pinot Noir', 'Chardonnay'
   by_glass_price?: number;
   bottle_price?: number;
+  /**
+   * The money the two prices above are printed in, as printed: an ISO code or
+   * a mark ("₺", "€", "$"). Absent when the menu prints none. Read by
+   * menus/menu-money.ts; nothing converts (r36 menu audit N1).
+   */
+  currency?: string;
+  /** The same line's prices in each other money the menu prints ("₺450 / €12"). */
+  also_priced?: Array<{ currency?: string; by_glass_price?: number; bottle_price?: number }>;
   raw_text?: string; // original text line from scan/csv
 }
