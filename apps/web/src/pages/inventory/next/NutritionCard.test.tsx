@@ -80,6 +80,23 @@ describe('what is in it', () => {
     expect(screen.getByTestId('ivn-source').textContent).toContain('From the pack’s label, stated by Ayşe');
   });
 
+  it('shows saturates under fat and sugars under carbohydrate, as a label has them, and an unstated one as not known', async () => {
+    api.read.mockResolvedValue(answer(stored({ fatG: 28, saturatesG: 17.5, carbohydrateG: 2, sugarsG: null })));
+    show();
+    const figs = await screen.findByTestId('ivn-figures');
+    const labels = within(figs)
+      .getAllByRole('term')
+      .map((dt) => dt.textContent);
+    expect(labels).toEqual(['Energy', 'Protein', 'Fat', 'of which saturates', 'Carbohydrate', 'of which sugars', 'Salt']);
+    const sat = within(figs).getByText('of which saturates').parentElement!;
+    expect(sat.textContent).toContain('17.5 g');
+    expect(sat.className).toContain('ivn-fig-sub');
+    const sugars = within(figs).getByText('of which sugars').parentElement!;
+    expect(sugars.textContent).toContain('not known');
+    expect(sugars.className).toContain('ivn-fig-sub');
+    expect(within(figs).getByText('Fat').parentElement!.className).not.toContain('ivn-fig-sub');
+  });
+
   it('says per 100 ml for a drink, and that energy from the ABV is the alcohol alone', async () => {
     api.read.mockResolvedValue(
       answer(stored({ basis: '100ml', energyKcal: 220.9, fatG: null, proteinG: null, abvPct: 40, energyFromAbv: true, source: 'house' })),

@@ -25,6 +25,15 @@ describe('RecipeNutrition', () => {
     expect(screen.getByTestId('recipe-nutrition-saltG').textContent).toBe('Salt: unknown for Gin, Campari');
   });
 
+  it('sums saturates under fat, and names the line that does not state them', () => {
+    const cream = { ...per100ml, fatG: 35, saturatesG: 22 };
+    render(<RecipeNutrition lines={[line('Cream', cream, 20), line('Campari', per100ml)]} />);
+    expect(screen.getByTestId('recipe-nutrition-saturatesG').textContent).toBe('of which saturates: at least 4.4 g, unknown for Campari');
+    expect(screen.getByTestId('recipe-nutrition-sugarsG').textContent).toMatch(/^of which sugars: /);
+    const keys = [...document.querySelectorAll('[data-testid^="recipe-nutrition-"]')].map((el) => el.getAttribute('data-testid'));
+    expect(keys.indexOf('recipe-nutrition-saturatesG')).toBe(keys.indexOf('recipe-nutrition-fatG') + 1);
+  });
+
   it('says unknown for every line when none has figures', () => {
     render(<RecipeNutrition lines={[line('Gin', null), line('Orange peel', null, null)]} />);
     const t = screen.getByTestId('recipe-nutrition-energyKcal').textContent;
