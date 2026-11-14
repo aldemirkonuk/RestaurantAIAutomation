@@ -40,6 +40,7 @@ import {
   type MailMessage,
 } from './mail-format';
 import { LetterFiles } from './LetterFiles';
+import { LetterText } from './LetterText';
 import { QueuedPullBack } from './QueuedPullBack';
 import { useMailThread, useNoReplyMark } from './useMailData';
 
@@ -112,18 +113,7 @@ function Letter({
         )}
       </div>
       {m.text ? (
-        <p
-          style={{
-            margin: 0,
-            fontSize: 12.5,
-            lineHeight: 1.5,
-            color: 'var(--ink-2, #4F473C)',
-            whiteSpace: 'pre-wrap',
-            overflowWrap: 'anywhere',
-          }}
-        >
-          {m.text}
-        </p>
+        <LetterText text={m.text} />
       ) : (
         <p style={{ ...QUIET, margin: 0 }}>{look.removed ? '' : 'No text was recorded for this letter.'}</p>
       )}
