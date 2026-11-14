@@ -43,7 +43,8 @@ function lazyWithRefresh<T extends ComponentType<any>>(
   )
 }
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { createAppQueryClient } from './lib/appQueryClient'
 import { AppToaster } from './components/mudavym/AppToaster'
 import { AuthProvider } from './contexts/AuthContext'
 import { GroundChoiceSync } from './lib/mudavym/GroundChoiceSync'
@@ -154,20 +155,9 @@ const StudioApprovalQueue = lazyWithRefresh(() => import('./pages/studio/StudioA
 const StudioCertify = lazyWithRefresh(() => import('./pages/studio/StudioCertify'))
 const StudioInviteRedeem = lazyWithRefresh(() => import('./pages/studio/StudioInviteRedeem'))
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 5_000, // 5s - short enough that page navigations trigger background refetch
-      refetchOnWindowFocus: true, // Refetch when user tabs back
-      refetchOnMount: 'always', // Always refetch on component mount for fresh data
-      retry: 1, // Only retry once
-      throwOnError: false, // Don't throw errors to error boundary
-    },
-    mutations: {
-      throwOnError: false, // Don't throw errors to error boundary
-    },
-  },
-})
+// The defaults, and the reads that keep their own fresh window, live in
+// lib/appQueryClient.ts (r41 inventory audit gap 5).
+const queryClient = createAppQueryClient()
 
 function App() {
   return (
