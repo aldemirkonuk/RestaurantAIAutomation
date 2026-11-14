@@ -67,50 +67,54 @@ describe("pending conversations: a failed read is not an empty queue", () => {
   });
 });
 
-describe("unverified deliveries: a failed orders read is not 'none closed'", () => {
-  const EVENTS = {
-    data: [
-      {
-        order_id: "o-closed",
-        counted_qty_bottles: 12,
-        occurred_at: "2026-09-21T08:00:00Z",
-        stage: "case_count",
-      },
-    ],
-    error: null,
-  };
-
-  function svc(orders: { data: unknown; error: { message: string } | null }) {
+describe("unverified deliveries: a failed read is not 'none open'", () => {
+  // The open counts are one read of `procurement_door_counts_open` now
+  // (the_door_strip_reads_every_open_count): the database drops COMPLETED and
+  // CANCELLED orders, so the second read whose failure let closed orders
+  // through is gone. What must still hold: a failed read throws, it is never
+  // an empty queue, and a real empty queue is still [].
+  function svc(result: { data: unknown; error: { message: string } | null }) {
+    const tables: string[] = [];
     const db = {
       getClient: () => ({
-        from: (table: string) =>
-          query(table === "procurement_receipt_events" ? EVENTS : orders),
+        from: (table: string) => {
+          tables.push(table);
+          const q: any = query(result);
+          q.gt = () => q;
+          return q;
+        },
       }),
     };
-    return new ReceivingService(db as any);
+    return { service: new ReceivingService(db as any), tables };
   }
 
-  it("rejects when the orders read fails, rather than listing a closed order", async () => {
+  it("rejects when the read fails, rather than answering an empty queue", async () => {
     await expect(
-      svc({ data: null, error: { message: DB_TEXT } }).listUnverified(HOUSE),
+      svc({ data: null, error: { message: DB_TEXT } }).service.listUnverified(HOUSE),
     ).rejects.toThrow(DB_TEXT);
   });
 
-  it("still drops an order the read says is closed", async () => {
+  it("a queue that WAS read and is empty still answers []", async () => {
     await expect(
-      svc({
-        data: [{ id: "o-closed", order_number: "ORD-1", status: "COMPLETED" }],
-        error: null,
-      }).listUnverified(HOUSE),
+      svc({ data: [], error: null }).service.listUnverified(HOUSE),
     ).resolves.toEqual([]);
   });
 
-  it("still lists an open one", async () => {
-    const out = await svc({
-      data: [{ id: "o-closed", order_number: "ORD-1", status: "DELIVERED" }],
+  it("lists an open one, read from the open-counts view", async () => {
+    const { service, tables } = svc({
+      data: [
+        {
+          id: "o-open",
+          order_number: "ORD-1",
+          counted_qty_bottles: 12,
+          counted_at: "2026-09-21T08:00:00Z",
+        },
+      ],
       error: null,
-    }).listUnverified(HOUSE);
+    });
+    const out = await service.listUnverified(HOUSE);
     expect(out.map((d) => d.orderNumber)).toEqual(["ORD-1"]);
+    expect(tables).toEqual(["procurement_door_counts_open"]);
   });
 });
 
