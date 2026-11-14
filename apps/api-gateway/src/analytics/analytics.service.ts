@@ -11,6 +11,7 @@ import {
   trimToObserved,
   windowWords,
 } from "./observed-window";
+import { addedWords, goodWindow } from "./good-window";
 import { METRIC_REGISTRY, MetricDefinition, Persona } from "./metric-registry";
 import {
   costBasisSentence,
@@ -201,7 +202,7 @@ export class AnalyticsService {
         // the reorder trigger is `threshold_min`, and the varietal/type
         // lives on master_wine_library.
         .select(
-          "id, wine_name, stock_live, menu_price_current, last_purchase_price, threshold_min, master_wine_id, provider_id, master_wine_library(primary_type)",
+          "id, wine_name, stock_live, menu_price_current, last_purchase_price, threshold_min, master_wine_id, provider_id, created_at, master_wine_library(primary_type)",
         )
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true),
@@ -254,6 +255,9 @@ export class AnalyticsService {
         reorderPoint: i.threshold_min || 0,
         masterWineId: i.master_wine_id,
         providerId: (i.provider_id ?? null) as string | null,
+        // The day the row was added, dated as consumption lines are dated
+        // (the stored timestamp's first ten characters), so the two compare.
+        addedAt: ((i.created_at || "") as string).substring(0, 10) || null,
         // A row we cannot cost has no value we can state. `qty × null` must
         // not become 0 — that is the fabrication ADR 0051 names, wearing an
         // arithmetic costume.
@@ -749,12 +753,24 @@ export class AnalyticsService {
     const unknownDemand = this.uncountedWines(consumption);
     const unitsCoverage = summarizeUnits(consumption);
 
+    const lastDay = new Date().toISOString().substring(0, 10);
     const skus = inventory.map((i) => {
       const lead = leadOf((i as { providerId?: string | null }).providerId);
       const rows = demandByWine.get(i.masterWineId || "") || [];
+      // A good added inside the window is read from the day it was added,
+      // not over the weeks it was not on the list (./good-window.ts).
+      const own = goodWindow(
+        observed,
+        lastDay,
+        (i as { addedAt?: string | null }).addedAt ?? null,
+        rows.reduce<string | null>(
+          (m, r) => (r.date && (m == null || r.date < m) ? r.date : m),
+          null,
+        ),
+      );
       const { values } = trimToObserved(
         this.toDailySeries(rows, sinceDays),
-        observed,
+        own,
       );
       const profile = E.inventory.demandProfile(values) || {
         mean: 0,
@@ -800,6 +816,9 @@ export class AnalyticsService {
         needsReorder: rop ? i.qty <= rop.reorderPoint : false,
         leadTimeDays: lead.days,
         leadTimeSource: lead.source,
+        // The good's own first counted day, when it was added inside the
+        // house's window; null when it reads the house's window.
+        demandSince: own === observed ? null : own.since,
         unitCost: i.unitCost,
         costBasis: i.costBasis,
         inventoryValue: i.inventoryValue,
@@ -822,6 +841,7 @@ export class AnalyticsService {
       };
     });
     const unassessed = skus.filter((s) => s.demandUnknown).length;
+    const readFromAdded = skus.filter((s) => s.demandSince != null).length;
     const assumedLead = skus.filter((s) => s.leadTimeSource === "assumed").length;
     const leadWords =
       opts.leadTimeDays != null
@@ -865,7 +885,7 @@ export class AnalyticsService {
       // This endpoint carried no `basis` at all, which made its cost-derived
       // columns unreadable: nothing said where `inventoryValue` came from.
       basis: {
-        demand: `bottles/day ${windowWords(observed, "consumption line")} — ${unitsBasisSentence(unitsCoverage)}${unassessed > 0 ? `; ${unassessed} row(s) are unassessed (skus[].demandUnknown): their demand, cover, reorder point and stockout risk are null and they are never put on the reorder list` : ""}`,
+        demand: `bottles/day ${windowWords(observed, "consumption line")} — ${unitsBasisSentence(unitsCoverage)}${addedWords(readFromAdded)}${unassessed > 0 ? `; ${unassessed} row(s) are unassessed (skus[].demandUnknown): their demand, cover, reorder point and stockout risk are null and they are never put on the reorder list` : ""}`,
         reorderScience: `King safety stock at serviceLevel ${serviceLevel}, ${leadWords} — demand-derived, unaffected by cost`,
         inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
         costDerived:
