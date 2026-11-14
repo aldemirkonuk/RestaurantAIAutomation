@@ -977,8 +977,9 @@ export class MenusService {
     }
 
     // 2. Resolve against the wine library BEFORE anything is written: a
-    // failed resolution throws here, with no version row and no source upload.
-    const resolved = await this.resolveLibrary(items, restaurantId);
+    // failed resolution throws here, with no version row and no source upload,
+    // and says nothing was kept (r31 w1 F1, #1486).
+    const resolved = await this.resolveOrKeepNothing(items, restaurantId);
 
     // 3. Keep the source, or say why it was not kept.
     const kept =
@@ -1451,7 +1452,7 @@ export class MenusService {
   ) {
     const dto = { restaurantId, method, data: { items } } as ImportMenuDto;
     // Same order as `importMenu`: the library first, then the version.
-    const resolved = await this.resolveLibrary(items, restaurantId);
+    const resolved = await this.resolveOrKeepNothing(items, restaurantId);
     const menu = await this.createVersion(
       restaurantId,
       userId,
@@ -1509,6 +1510,54 @@ export class MenusService {
         bytes: bytes.length,
         failure: SOURCE_NOT_TAKEN,
       };
+    }
+  }
+
+  /**
+   * A FAILED IMPORT KEEPS NO MENU (r31 walk w1, F1). The version row is written
+   * before its lines are resolved, so a library failure ("URI too long" at 120
+   * new wines) used to leave a kept menu of 126, 206 or 430 lines with no line
+   * behind it, listed under Menus kept and offered to be made current. The
+   * draft this import made is taken back (its lines go with it, ON DELETE
+   * CASCADE), and the refusal says nothing was kept. Only a draft is ever
+   * taken back, and only this import's own. A take-back that itself fails is
+   * said: the menu is then kept unread and can be discarded by hand.
+   */
+  /**
+   * The library first, before anything is written (#773): a failed resolution
+   * keeps no version, and the refusal says so in the words #1486 gave a failed
+   * import (r37 meet of the two).
+   */
+  private async resolveOrKeepNothing(items: WineExtractItem[], restaurantId: string): Promise<ResolvedItem[]> {
+    try {
+      return await this.resolveLibrary(items, restaurantId);
+    } catch (err: any) {
+      throw new InternalServerErrorException(`${err?.message ?? String(err)}. Nothing was kept; import the menu again.`);
+    }
+  }
+
+  private async persistOrDropVersion<T>(
+    restaurantId: string,
+    menuId: string,
+    persist: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await persist();
+    } catch (err: any) {
+      const why = err?.message ?? String(err);
+      const { error } = await this.dbService.supabase
+        .from("restaurant_menus")
+        .delete()
+        .eq("id", menuId)
+        .eq("restaurant_id", restaurantId)
+        .eq("status", "draft");
+      if (error) {
+        this.logger.error(`Menu import: the failed draft ${menuId} could not be taken back: ${error.message}`);
+        throw new InternalServerErrorException(
+          `${why}. The menu was kept, but with none of its lines: discard it under Menus kept, then import it again.`,
+        );
+      }
+      throw new InternalServerErrorException(`${why}. Nothing was kept; import the menu again.`);
     }
   }
 
@@ -1575,22 +1624,11 @@ export class MenusService {
     method: "scan" | "csv" | "manual",
     current: boolean,
   ): Promise<MenuImportReviewItem[]> {
-    try {
-      return await this.persistItems(resolved, restaurantId, menuId, userId, method, current);
-    } catch (err: any) {
-      const { error } = await this.dbService.supabase
-        .from("restaurant_menus")
-        .delete()
-        .eq("id", menuId)
-        .eq("restaurant_id", restaurantId);
-      if (error) {
-        this.logger.error(`Could not remove menu version ${menuId} after a failed line write: ${error.message}`);
-        throw new InternalServerErrorException(
-          `The menu's lines could not be saved (${err?.message ?? "unknown error"}), and the empty draft version ${menuId} could not be removed: ${error.message}`,
-        );
-      }
-      throw err;
-    }
+    // r37 meet: one take-back, #1486's (only this import's own draft, and the
+    // refusal in the house's words).
+    return this.persistOrDropVersion(restaurantId, menuId, () =>
+      this.persistItems(resolved, restaurantId, menuId, userId, method, current),
+    );
   }
 
   /**
