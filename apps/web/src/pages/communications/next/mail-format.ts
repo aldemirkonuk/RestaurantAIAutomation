@@ -86,6 +86,21 @@ export interface MailMessage {
    * 4). Absent from a gateway that predates the mark: read as not marked.
    */
   noReplyMarkedAt?: string | null;
+  /**
+   * The files the letter carried (r28 mail gap 13). Absent from a gateway
+   * that predates them: read as none known, never as "carried none".
+   */
+  attachments?: MailAttachment[];
+}
+
+/** One file a letter carried, as GET /mail/thread lists it. */
+export interface MailAttachment {
+  id: string;
+  filename: string;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  /** When the file itself was removed under the retention rule; the name stays. */
+  removedAt: string | null;
 }
 
 export interface MailThreadPage {
@@ -100,6 +115,8 @@ export interface MailThreadPage {
    * gateway that predates it: then the page offers no "No reply needed".
    */
   waiting?: boolean;
+  /** False when the letters' files could not be read with this page (gap 13). */
+  attachmentsRead?: boolean;
 }
 
 export interface MailSummary {
@@ -692,6 +709,34 @@ export function searchEmptyWords(term: string, opts: { waitingOnly: boolean }): 
   return opts.waitingOnly
     ? `No one waiting on you matches “${term}”. The search reads names, subjects, order numbers and the words of each letter.`
     : `No one in this house's mail matches “${term}”. The search reads names, subjects, order numbers and the words of each letter.`;
+}
+
+/** A file's size in words: "880 bytes", "120 KB", "1.2 MB"; null when not recorded. */
+export function fileSizeWords(bytes: number | null | undefined): string | null {
+  if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes < 0) return null;
+  if (bytes < 1024) return `${bytes} bytes`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  const mb = bytes / (1024 * 1024);
+  return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`;
+}
+
+/** What kind of file, in words, from its type; null when it says nothing useful. */
+export function fileKindWords(mimeType: string | null | undefined): string | null {
+  const t = (mimeType ?? '').toLowerCase();
+  if (t === 'application/pdf') return 'PDF';
+  if (t.startsWith('image/')) return 'photo';
+  if (t.includes('spreadsheet') || t.includes('excel') || t === 'text/csv') return 'spreadsheet';
+  if (t.includes('word')) return 'document';
+  return null;
+}
+
+/** Why a file did not open, from GET /mail/attachments/:id/link's answer. */
+export function fileOpenFailWords(err: unknown): string {
+  const res = (err as { response?: { status?: unknown; data?: { message?: unknown } } } | null)?.response;
+  if (typeof res?.status !== 'number') return 'No answer. Check the connection and try again.';
+  const said = typeof res.data?.message === 'string' ? res.data.message.trim() : '';
+  if ((res.status === 404 || res.status === 410) && said) return said;
+  return 'The file could not be opened just now. Try again in a moment.';
 }
 
 /** Channel glyph names, in words, for an accessible label. */
