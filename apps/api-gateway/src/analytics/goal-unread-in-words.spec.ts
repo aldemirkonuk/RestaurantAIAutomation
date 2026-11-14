@@ -1,5 +1,6 @@
 import { HOUSE_ZONE_UNSET } from "../common/house-day";
 import { WholeReadError } from "../common/read-whole-window";
+import { UncountedConsumptionError } from "./consumption-units";
 import { UncostedOrdersError } from "./order-cost";
 import {
   GOAL_UNREAD_ON_OUR_SIDE,
@@ -118,6 +119,15 @@ describe("goalUnreadInWords", () => {
     expect(goalUnreadInWords(new Error(HOUSE_ZONE_UNSET))).toBe(HOUSE_ZONE_UNSET);
     const uncosted = new UncostedOrdersError(2, 9);
     expect(goalUnreadInWords(uncosted)).toBe(uncosted.message);
+    const uncounted = new UncountedConsumptionError({
+      lines: 4,
+      glassLines: 2,
+      standInLines: 0,
+      standInItems: 0,
+      uncountedLines: 1,
+      uncountedItems: 1,
+    } as any);
+    expect(goalUnreadInWords(uncounted)).toBe(uncounted.message);
     expect(goalUnreadInWords(new GoalReadingRefused("Said for the house."))).toBe(
       "Said for the house.",
     );
