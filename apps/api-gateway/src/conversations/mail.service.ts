@@ -45,6 +45,7 @@ import type {
 
 import {
   BAD_CURSOR,
+  MAIL_PAGE_MAX,
   MAIL_THREAD_PAGE,
   PERSON_KEY_RE,
   READ_FAILED,
@@ -98,6 +99,13 @@ export const SEEN_NOT_FOUND = "That thread is not in this house's mail.";
 export const SEEN_NO_PERSON = "This session names no person, so nothing can be kept as seen.";
 export const SEEN_FAILED =
   "What you have read could not be kept just now. The letters are unchanged.";
+
+/**
+ * How many waiting people the counter counts with the waiting-only list alone
+ * (r41 mail audit, gap 2). A house with more waiting than this is counted by
+ * the summary. Mail's own page cap, so the list is one read.
+ */
+export const WAITING_COUNTED_IN_ONE_READ = MAIL_PAGE_MAX;
 
 @Injectable()
 export class MailService {
@@ -697,39 +705,53 @@ export class MailService {
    *
    * That register counted `procurement_conversations.delivery_status =
    * 'pending'`, a value no writer sets, so it read 0 while Mail said "3
-   * vendors are waiting on you". It now reads the two things Mail itself
-   * reads: the count is `mail_inbox_summary.waiting_people` (the Mail header
-   * and the tab badge), and the rows are the first `rows` people of
-   * `list_mail_people` with `p_waiting_only`. Both come from
+   * vendors are waiting on you". It now reads what Mail itself reads: the
+   * people of `list_mail_people` with `p_waiting_only`, which come from
    * `mail_thread_states`, so "waiting" means one thing everywhere, "No reply
    * needed" marks included.
    *
-   * No zone is passed: the waiting count does not depend on the house's day,
-   * and a house with no zone must still be counted. Either read failing fails
-   * the whole answer; the counter shows that register as not read, never 0.
+   * One read (r41 mail audit, gap 2). The counter polls every minute in every
+   * signed-in tab, and it used to run `mail_inbox_summary` beside the list:
+   * the summary reads the house's whole letter history twice, so the counter
+   * cost about three times the list alone, on every page. The waiting-only
+   * list IS the count when it ends inside one read of
+   * {@link WAITING_COUNTED_IN_ONE_READ} people: the summary's `waiting_people`
+   * counts exactly the people that list returns, and one read is one
+   * snapshot. Only a house with more people waiting than that asks the
+   * summary for the whole count (no zone: the count does not depend on the
+   * house's day).
+   *
+   * Either read failing fails the whole answer; the counter shows that
+   * register as not read, never 0.
    */
   async waitingVendors(
     houseId: string,
     callerRole: string | null | undefined,
     rows: number,
   ): Promise<{ count: number; people: MailPersonRow[] }> {
-    const [sumRes, page] = await Promise.all([
-      this.db.rpc("mail_inbox_summary", {
-        p_restaurant_id: houseId,
-        p_withhold_house_letters: withholdsHouseLetters(callerRole),
-        p_zone: null,
-      }),
-      this.listPeople(houseId, callerRole, { waitingOnly: true, limit: rows }),
-    ]);
+    const page = await this.listPeople(houseId, callerRole, {
+      waitingOnly: true,
+      limit: WAITING_COUNTED_IN_ONE_READ,
+    });
+    const people = page.people.slice(0, Math.max(0, rows));
+    if (page.next === null) {
+      return { count: page.people.length, people };
+    }
+    const sumRes = await this.db.rpc("mail_inbox_summary", {
+      p_restaurant_id: houseId,
+      p_withhold_house_letters: withholdsHouseLetters(callerRole),
+      p_zone: null,
+    });
     if (sumRes.error) this.failed("waiting count", sumRes.error);
     const s = (
       Array.isArray(sumRes.data) ? sumRes.data[0] : sumRes.data
     ) as any;
     if (!s) this.failed("waiting count", { message: "no summary row" });
     const count = Number(s.waiting_people ?? 0);
-    // The two reads are not one snapshot. A vendor who wrote between them is
-    // in the rows but not the count; the count is never fewer than the rows.
-    return { count: Math.max(count, page.people.length), people: page.people };
+    // The two reads are not one snapshot. A vendor whose letter came between
+    // them is in the list but not the count; the count is never fewer than
+    // the people the list already holds.
+    return { count: Math.max(count, page.people.length), people };
   }
 
   async summary(
