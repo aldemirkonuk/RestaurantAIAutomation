@@ -136,16 +136,6 @@ function requireUuid(value: string, label: string): void {
   );
 }
 
-/** procurement_documents_status_check (baseline). */
-const DOCUMENT_STATUSES: ReadonlySet<string> = new Set([
-  "received",
-  "extracting",
-  "needs_review",
-  "verified",
-  "rejected",
-  "superseded",
-]);
-
 /**
  * Vendor documents — upload, review, and the four-way match's evidence base.
  *
@@ -1487,6 +1477,15 @@ export class DocumentsController {
     @CurrentUser() user: AuthedUser,
     @Query("status") status?: string,
   ): Promise<{ count: number }> {
+    // procurement_documents_status_check (baseline).
+    const DOCUMENT_STATUSES: ReadonlySet<string> = new Set([
+      "received",
+      "extracting",
+      "needs_review",
+      "verified",
+      "rejected",
+      "superseded",
+    ]);
     if (status !== undefined && !DOCUMENT_STATUSES.has(status))
       throw new HttpException(
         `"${status}" is not a document status. It is one of: ${[...DOCUMENT_STATUSES].join(", ")}.`,

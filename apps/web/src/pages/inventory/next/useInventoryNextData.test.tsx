@@ -108,6 +108,38 @@ describe('useInventoryNextData — the vendor book failure in house words (INV-W
   });
 });
 
+describe('useInventoryNextData — the invoices count is a number, not the invoices (r41 gap 2)', () => {
+  it('asks the count for needs_review once and prints the whole number, with no cap', async () => {
+    m.docs.mockResolvedValue(250);
+    const { result } = mount();
+    await waitFor(() => expect(result.current.waiting.invoices.n).toBe(250));
+    expect(m.docs).toHaveBeenCalledWith({ status: 'needs_review' });
+    expect(result.current.waiting.invoices.capped).not.toBe(true);
+    expect(result.current.waiting.invoices.failed).toBe(false);
+  });
+
+  it('keeps a real zero as zero', async () => {
+    m.docs.mockResolvedValue(0);
+    const { result } = mount();
+    await waitFor(() => expect(result.current.waiting.invoices.n).toBe(0));
+  });
+
+  it('reads a failed count as unread, never as none waiting', async () => {
+    m.docs.mockRejectedValue(new Error('500'));
+    const { result } = mount();
+    await waitFor(() => expect(result.current.waiting.invoices.failed).toBe(true));
+    expect(result.current.waiting.invoices.n).toBeNull();
+  });
+
+  it('asks the same for a waiter as for an owner: a number, no documents', async () => {
+    m.role = 'staff';
+    m.docs.mockResolvedValue(3);
+    const { result } = mount();
+    await waitFor(() => expect(result.current.waiting.invoices.n).toBe(3));
+    expect(m.docs).toHaveBeenCalledWith({ status: 'needs_review' });
+  });
+});
+
 describe('useInventoryNextData — side reads that did not answer (INV-W28)', () => {
   it('names each read still in flight as pending, never as answered', async () => {
     m.currency.mockReturnValue(new Promise(() => undefined));
@@ -223,37 +255,5 @@ describe('useInventoryNextData — side reads that did not answer (INV-W28)', ()
     await waitFor(() => expect(m.docs.mock.calls.length).toBe(before.docs + 1));
     // The delivered lines answered, so they are not read again.
     expect(m.deliveries.mock.calls.length).toBe(before.deliveries);
-  });
-});
-
-describe('useInventoryNextData — the invoices count is a number, not the invoices (r41 gap 2)', () => {
-  it('asks the count for needs_review once and prints the whole number, with no cap', async () => {
-    m.docs.mockResolvedValue(250);
-    const { result } = mount();
-    await waitFor(() => expect(result.current.waiting.invoices.n).toBe(250));
-    expect(m.docs).toHaveBeenCalledWith({ status: 'needs_review' });
-    expect(result.current.waiting.invoices.capped).not.toBe(true);
-    expect(result.current.waiting.invoices.failed).toBe(false);
-  });
-
-  it('keeps a real zero as zero', async () => {
-    m.docs.mockResolvedValue(0);
-    const { result } = mount();
-    await waitFor(() => expect(result.current.waiting.invoices.n).toBe(0));
-  });
-
-  it('reads a failed count as unread, never as none waiting', async () => {
-    m.docs.mockRejectedValue(new Error('500'));
-    const { result } = mount();
-    await waitFor(() => expect(result.current.waiting.invoices.failed).toBe(true));
-    expect(result.current.waiting.invoices.n).toBeNull();
-  });
-
-  it('asks the same for a waiter as for an owner: a number, no documents', async () => {
-    m.role = 'staff';
-    m.docs.mockResolvedValue(3);
-    const { result } = mount();
-    await waitFor(() => expect(result.current.waiting.invoices.n).toBe(3));
-    expect(m.docs).toHaveBeenCalledWith({ status: 'needs_review' });
   });
 });
