@@ -9,28 +9,14 @@ import { SettingsAuditService } from "../settings-audit/settings-audit.service";
 
 /**
  * Whether this house's prices hold tax, and whether it reclaims the tax it
- * pays — read, and stated by a person (ADR 0359 C2/C3, lane 3.5a).
+ * pays (ADR 0359 C2/C3, lane 3.5a). Every house reads `unset` until a person
+ * answers here; until then every lot is costed as its paper prints it.
  *
- * `20271022140500_a_house_says_if_it_reclaims_tax.sql` added the columns, and
- * every house reads `unset` until someone answers. Without this route nobody
- * could: a house that reclaims KDV/VAT kept every lot costed as printed, tax
- * and all, and its margins read too thin by the tax rate.
- *
- * THE RULES
- *   1. Explicit, never derived. No basis is guessed from the country, and a
- *      read never writes. `unset` cannot be sent back: un-answering the
- *      question every lot cost depends on is not the same act as answering it.
- *   2. Both answers at once. A house that charges VAT says whether it reclaims
- *      it; a house that charges none reclaims none, and saying "yes" there is
- *      refused rather than quietly stored as "no".
- *   3. The switch date never moves (founder F2, 2026-10-12: no backfill). The
- *      database sets `tax_basis_since` at the first answer and keeps it;
- *      lots that were already final keep the cost they were posted at.
- *   4. Audited, or the caller is told it was not; a failed read is never an
- *      empty one (`readable: false` with the reason).
- *
- * The role check is `assertCanManageRestaurant` on the controller, the same
- * helper the currency route calls.
+ * Explicit, never derived: no basis from the country, no write on a read, no
+ * way back to `unset`. Both answers at once, and a no-VAT house reclaims none.
+ * `tax_basis_since` is the database trigger's (founder F2: no backfill).
+ * Audited, or the caller is told it was not. The role check is the
+ * controller's `assertCanManageRestaurant`.
  */
 
 export const TAX_BASES = ["prices_include_tax", "prices_exclude_tax", "not_vat_charging"] as const;

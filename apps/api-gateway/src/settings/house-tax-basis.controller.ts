@@ -35,7 +35,7 @@ export class HouseTaxBasisController {
   @ApiOperation({
     summary: "Whether the house's prices hold tax, whether it reclaims the tax it pays, and who said so",
     description:
-      "`basis: \"unset\"` means nobody has answered, and every delivery is costed as its paper prints it. `readable: false` means the row could not be READ, which is a different state and says so in words. `since` is the first answer's moment: deliveries verified before it keep the cost they were posted at.",
+      "`basis: \"unset\"`: nobody has answered. `readable: false`: the row could not be read. `since`: the first answer's moment.",
   })
   @ApiResponse({ status: 200, description: "The tax-basis readout" })
   async read(@CurrentUser("restaurantId") restaurantId: string): Promise<HouseTaxBasisReadout> {
@@ -52,13 +52,12 @@ export class HouseTaxBasisController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: "State whether the house's prices hold tax and whether it reclaims it — owner or manager only",
-    description:
-      "Both answers are sent together. A house that charges no VAT reclaims none, and `reclaimsInputTax: true` beside `not_vat_charging` is refused. The response carries `audited` and `auditReason`.",
+    description: "Both answers together; a no-VAT house reclaims none. Carries `audited` and `auditReason`.",
   })
   @ApiResponse({ status: 200, description: "The readout after the write" })
   @ApiResponse({
     status: 403,
-    description: "The caller is not an owner or manager of this restaurant. What the house's stock costs is not a per-person setting.",
+    description: "The caller is not an owner or manager of this restaurant.",
   })
   async write(
     @CurrentUser("restaurantId") restaurantId: string,
