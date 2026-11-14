@@ -1144,6 +1144,34 @@ describe('INV-W38 — the view is the URL', () => {
     expect(screen.queryByRole('button', { name: 'Carry a food or supply' })).toBeNull();
   });
 
+  // Inventory r40: a list of goods, one a line, from Tools or from Carry this.
+  it('offers Carry many to an owner or manager, from Tools and from Carry this, leaving out what is listed', () => {
+    mock.data = data({ rows: two(), canManage: true });
+    renderAt('/inventory');
+    fireEvent.click(screen.getByRole('button', { name: 'Carry many at once' }));
+    expect(screen.getAllByText('Goods the library does not hold').length).toBeGreaterThan(0);
+    const listed = two()[0].name as string;
+    fireEvent.change(screen.getByRole('textbox', { name: 'The list' }), { target: { value: `${listed}\nLemons` } });
+    expect(document.body.textContent).toContain('Already on the list; left out.');
+    expect(screen.getByRole('button', { name: 'Carry 1 good' })).toBeTruthy();
+  });
+
+  it('Carry this hands a list over to Carry many', () => {
+    mock.data = data({ rows: two(), canManage: true });
+    renderAt('/inventory');
+    fireEvent.click(screen.getByRole('button', { name: 'Carry a food or supply' }));
+    const link = screen.getByTestId('ivc-many').querySelector('button') as HTMLButtonElement;
+    fireEvent.click(link);
+    expect(screen.queryByTestId('ivc-many')).toBeNull();
+    expect(screen.getByRole('textbox', { name: 'The list' })).toBeTruthy();
+  });
+
+  it('offers no Carry many to staff', () => {
+    mock.data = data({ rows: two(), canManage: false });
+    renderAt('/inventory');
+    expect(screen.queryByRole('button', { name: 'Carry many at once' })).toBeNull();
+  });
+
   // Inventory r28, gap 6: a mapping decides what a sale takes off the shelf.
   it('offers Map POS buttons to an owner or manager, and not to staff', () => {
     mock.data = data({ rows: two(), canManage: true });
