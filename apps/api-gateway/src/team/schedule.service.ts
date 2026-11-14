@@ -254,16 +254,33 @@ export class ScheduleService {
   }
 
   /**
-   * Read-only week for a staff member: only their own shifts.
+   * Read-only week for one person: their own shifts and the open ones.
    *
    * FAILS CLOSED (QA round 4, B1). Every read here used to take `{ data }`
    * alone, so a failed shifts read came back as `mine: []` and the page
    * printed "Off" for seven days: a week reported as free because a query
    * failed. A read that fails now raises, and the page says the week could
    * not be loaded.
+   *
+   * ONLY A PUBLISHED WEEK REACHES STAFF (QA round 4, H2). A schedule row is
+   * created as `draft` the first time a manager touches the week, and every
+   * shift a manager adds after that used to reach staff at once, moving as
+   * the manager edited, with nothing saying it was not final. A staff caller
+   * now gets a shift only when the schedule it belongs to is published,
+   * decided here on the server, per shift, from the shift's own
+   * `schedule_id` (a range that straddles two weeks is judged week by week).
+   * A shift whose `schedule_id` is null is judged by the schedules row of the
+   * week its `shift_date` falls in: `release_leaving_shifts` (and so a call-out
+   * of its rest) writes a null id when the cut rest of a shift lands in a week
+   * that had no schedules row yet, and nothing attaches it later. Hiding it
+   * would show that person's real shift as a day off once the week is
+   * published. Only when that week has no row, or its row is a draft, is the
+   * shift unpublished. An owner or manager still sees every shift, each
+   * marked `draft` when its week is not published.
    */
   async getMyWeek(userId: string, restaurantId: string, weekStart: string) {
-    await this.team.assertAccess(userId, restaurantId);
+    const { role } = await this.team.assertAccess(userId, restaurantId);
+    const seesDrafts = role === "owner" || role === "manager";
     const weekEnd = addDays(weekStart, 6);
     const refuse = (what: string, err: { message: string }): never => {
       this.logger.error(
@@ -283,7 +300,7 @@ export class ScheduleService {
       .maybeSingle();
     if (memberErr) refuse("your place on the team", memberErr);
 
-    const { data: schedule, error: scheduleErr } = await this.sb
+    const { data: weekSchedule, error: scheduleErr } = await this.sb
       .from("schedules")
       .select("*")
       .eq("restaurant_id", restaurantId)
@@ -300,30 +317,101 @@ export class ScheduleService {
       .order("shift_date", { ascending: true });
     if (shiftsErr) refuse("this week's shifts", shiftsErr);
 
+    // Which of the schedules these shifts belong to are published.
+    const scheduleIds = Array.from(
+      new Set(
+        (shifts ?? [])
+          .map((s: any) => s.schedule_id as string | null)
+          .filter((id): id is string => !!id),
+      ),
+    );
+    const published = new Set<string>();
+    if (weekSchedule?.status === "published") published.add(weekSchedule.id);
+    if (scheduleIds.length > 0) {
+      const { data: rows, error: statusErr } = await this.sb
+        .from("schedules")
+        .select("id, status")
+        .eq("restaurant_id", restaurantId)
+        .in("id", scheduleIds);
+      if (statusErr) refuse("whether this week is published", statusErr);
+      for (const r of (rows ?? []) as Array<{ id: string; status: string }>) {
+        if (r.status === "published") published.add(r.id);
+      }
+    }
+    // A shift with no schedule_id belongs to the week of its shift_date.
+    const publishedWeeks = new Set<string>();
+    if (weekSchedule?.status === "published")
+      publishedWeeks.add(weekSchedule.week_start);
+    const loneWeeks = Array.from(
+      new Set(
+        (shifts ?? [])
+          .filter((s: any) => !s.schedule_id)
+          .map((s: any) => mondayOf(s.shift_date as string)),
+      ),
+    ).filter((w) => w !== weekSchedule?.week_start);
+    if (loneWeeks.length > 0) {
+      const { data: rows, error: weeksErr } = await this.sb
+        .from("schedules")
+        .select("id, week_start, status")
+        .eq("restaurant_id", restaurantId)
+        .in("week_start", loneWeeks);
+      if (weeksErr) refuse("whether this week is published", weeksErr);
+      for (const r of (rows ?? []) as Array<{
+        week_start: string;
+        status: string;
+      }>) {
+        if (r.status === "published") publishedWeeks.add(r.week_start);
+      }
+    }
+    const isPublished = (s: any) =>
+      s.schedule_id
+        ? published.has(s.schedule_id)
+        : publishedWeeks.has(mondayOf(s.shift_date as string));
+
     // Staff must never see labor cost. Strip it from every row.
     const strip = (s: any) => {
       const { labor_cost: _omit, ...rest } = s;
-      return rest;
+      return { ...rest, draft: !isPublished(s) };
     };
-    const all = (shifts ?? []).map(strip);
+    const all = (shifts ?? [])
+      .filter((s: any) => seesDrafts || isPublished(s))
+      .map(strip);
     const mine = member
       ? all.filter((s: any) => s.member_id === member.id)
       : [];
     const open = all.filter((s: any) => s.state === "open" || !s.member_id);
 
+    const weekPublished = weekSchedule?.status === "published";
+    // Staff are not shown an unpublished schedule row either: its id is what
+    // "I have seen it" confirms, and there is nothing yet to confirm.
+    const schedule = weekPublished || seesDrafts ? weekSchedule : null;
+
     let acknowledged = false;
-    if (member && schedule) {
+    if (member && weekSchedule && weekPublished) {
       const { data: receipt, error: receiptErr } = await this.sb
         .from("schedule_receipts")
         .select("id")
-        .eq("schedule_id", schedule.id)
+        .eq("schedule_id", weekSchedule.id)
         .eq("member_id", member.id)
         .maybeSingle();
       if (receiptErr)
         refuse("whether you have confirmed this week", receiptErr);
       acknowledged = !!receipt;
     }
-    return { member, schedule, mine, open, acknowledged };
+    return {
+      member,
+      schedule,
+      mine,
+      open,
+      acknowledged,
+      /** The week the caller asked for is published. */
+      published: weekPublished,
+      /**
+       * True only for staff on an unpublished week: shifts may exist, and are
+       * withheld until the manager publishes. Never true for owner/manager.
+       */
+      draftsWithheld: !seesDrafts && !weekPublished,
+    };
   }
 
   /**
@@ -633,7 +721,7 @@ export class ScheduleService {
     await this.team.assertAccess(userId, restaurantId);
     const { data: schedule, error: scheduleErr } = await this.sb
       .from("schedules")
-      .select("id")
+      .select("id, status")
       .eq("id", scheduleId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
@@ -646,6 +734,12 @@ export class ScheduleService {
       );
     }
     if (!schedule) throw new NotFoundException("Schedule not found");
+    // A week still being built has nothing final to confirm, and staff are
+    // not shown it (getMyWeek); a receipt on it would count as "seen".
+    if (schedule.status !== "published")
+      throw new ConflictException(
+        "This week is not published yet, so there is nothing to confirm.",
+      );
 
     const { data: member, error: memberErr } = await this.sb
       .from("team_members")
