@@ -94,6 +94,25 @@ describe("fileHeldLetter: a held letter is filed under the vendor a person vouch
     expect(t.procurement_conversations).toHaveLength(1);
   });
 
+  it("files the snippet as the letter's words when the held row kept no body (walk r37 w3)", async () => {
+    const t = world({ held: [heldRow({ body_preview: null })] });
+    await svc(store(t)).fileHeldLetter(HOUSE, HELD, USER);
+    expect(t.procurement_conversations[0].message_text).toBe(
+      "Subject: Invoice 2211\n\nPlease find the invoice",
+    );
+  });
+
+  it("files an empty kept body as the snippet too, and no words when it has neither", async () => {
+    const t = world({ held: [heldRow({ body_preview: "" })] });
+    await svc(store(t)).fileHeldLetter(HOUSE, HELD, USER);
+    expect(t.procurement_conversations[0].message_text).toBe(
+      "Subject: Invoice 2211\n\nPlease find the invoice",
+    );
+    const u = world({ held: [heldRow({ body_preview: null, snippet: null })] });
+    await svc(store(u)).fileHeldLetter(HOUSE, HELD, USER);
+    expect(u.procurement_conversations[0].message_text).toBe("Subject: Invoice 2211\n\n");
+  });
+
   it("says the kept words were cut when the held row kept 4,000 characters", async () => {
     const t = world({ held: [heldRow({ body_preview: "x".repeat(4000) })] });
     await svc(store(t)).fileHeldLetter(HOUSE, HELD, USER);

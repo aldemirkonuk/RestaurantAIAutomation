@@ -789,7 +789,7 @@ export class ProspectsService {
     const { data: row, error: rowError } = await db
       .from("email_prospects")
       .select(
-        "id, sender_email, subject, body_preview, attachments, held_reason, status, gmail_message_id, gmail_thread_id, first_seen_at",
+        "id, sender_email, subject, body_preview, snippet, attachments, held_reason, status, gmail_message_id, gmail_thread_id, first_seen_at",
       )
       .eq("restaurant_id", restaurantId)
       .eq("id", prospectId)
@@ -900,7 +900,11 @@ export class ProspectsService {
       }
     }
 
-    const words = String(held.body_preview ?? "");
+    // The words the held card showed: the kept body, else the snippet. A row
+    // held before body_preview was kept (or held with no body text) has only
+    // the snippet, and filing it must not turn that into "No text was
+    // recorded for this letter" (walk r37 w3, M-F1).
+    const words = String(held.body_preview || held.snippet || "");
     const subject = String(held.subject ?? "");
     const { data: inserted, error: insertError } = await db
       .from("procurement_conversations")
