@@ -1450,6 +1450,62 @@ export class DocumentsController {
     };
   }
 
+  /**
+   * HOW MANY documents the house has, optionally in one status: a number,
+   * never the documents.
+   *
+   * [2026-11-14, r41 inventory audit gap 2: /inventory's quiet line printed
+   * "N invoices wait for a match" from `GET /procurement/documents?status=
+   * needs_review&limit=100`, so every visit, for every role, downloaded up to
+   * 100 whole invoices (raw mail text, extracted line prices, a tie-out check
+   * per document) to print one number. The session's call: a head-only count
+   * (`count: "exact", head: true`, idx_pd_restaurant) that carries no row and
+   * no money. Rejected: `limit=1` on the list (no total comes back) and
+   * reading the total off the list's headers (the list carries no count).]
+   *
+   * Declared before `@Get(":id")` so Nest matches `count` here, not as an id.
+   * A failed or missing count is a 500 in words, never `0`: a page that read
+   * "no invoices wait" over a failed read would call a failure health.
+   */
+  @Get("count")
+  @ApiOperation({
+    summary:
+      "How many vendor documents the house has, optionally in one status",
+  })
+  @ApiQuery({ name: "status", required: false })
+  async count(
+    @CurrentUser() user: AuthedUser,
+    @Query("status") status?: string,
+  ): Promise<{ count: number }> {
+    // procurement_documents_status_check (baseline).
+    const DOCUMENT_STATUSES: ReadonlySet<string> = new Set([
+      "received",
+      "extracting",
+      "needs_review",
+      "verified",
+      "rejected",
+      "superseded",
+    ]);
+    if (status !== undefined && !DOCUMENT_STATUSES.has(status))
+      throw new HttpException(
+        `"${status}" is not a document status. It is one of: ${[...DOCUMENT_STATUSES].join(", ")}.`,
+        HttpStatus.BAD_REQUEST,
+      );
+    let q = this.db
+      .getClient()
+      .from("procurement_documents")
+      .select("id", { count: "exact", head: true })
+      .eq("restaurant_id", user.restaurantId);
+    if (status) q = q.eq("status", status);
+    const { count, error } = await q;
+    if (error || typeof count !== "number")
+      throw new HttpException(
+        "The house's documents could not be counted just now.",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    return { count };
+  }
+
   @Get(":id")
   @ApiOperation({ summary: "One document with its lines and linked orders" })
   async detail(@Param("id") id: string, @CurrentUser() user: AuthedUser) {

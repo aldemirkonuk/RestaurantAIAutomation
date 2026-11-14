@@ -56,7 +56,7 @@ vi.mock('../../../services/api/settings', () => ({ settingsApi: { houseCurrency:
 vi.mock('../../../services/api/pricing', () => ({ getPriceAdvice: m.advice }));
 vi.mock('../../../services/api/documents', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
-  documentsApi: { list: m.docs },
+  documentsApi: { count: m.docs },
 }));
 vi.mock('../../../services/api/orders', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
@@ -87,7 +87,7 @@ beforeEach(() => {
   for (const f of [m.winesRefetch, m.listRefetch, m.currency, m.advice, m.docs, m.deliveries]) f.mockReset();
   m.currency.mockResolvedValue({ readable: true, code: 'EUR' });
   m.advice.mockResolvedValue({ wines: [], target: { set: false }, locks: { readable: true } });
-  m.docs.mockResolvedValue([]);
+  m.docs.mockResolvedValue(0);
   m.deliveries.mockResolvedValue({ deliveries: [] });
 });
 
@@ -105,6 +105,38 @@ describe('useInventoryNextData — the vendor book failure in house words (INV-W
     await waitFor(() => expect(result.current.advice.status).toBe('error'), { timeout: 4000 });
     const advice = result.current.advice as { message: string };
     expect(advice.message).toBe('the price advice could not be read — the server failed before it could answer');
+  });
+});
+
+describe('useInventoryNextData — the invoices count is a number, not the invoices (r41 gap 2)', () => {
+  it('asks the count for needs_review once and prints the whole number, with no cap', async () => {
+    m.docs.mockResolvedValue(250);
+    const { result } = mount();
+    await waitFor(() => expect(result.current.waiting.invoices.n).toBe(250));
+    expect(m.docs).toHaveBeenCalledWith({ status: 'needs_review' });
+    expect(result.current.waiting.invoices.capped).not.toBe(true);
+    expect(result.current.waiting.invoices.failed).toBe(false);
+  });
+
+  it('keeps a real zero as zero', async () => {
+    m.docs.mockResolvedValue(0);
+    const { result } = mount();
+    await waitFor(() => expect(result.current.waiting.invoices.n).toBe(0));
+  });
+
+  it('reads a failed count as unread, never as none waiting', async () => {
+    m.docs.mockRejectedValue(new Error('500'));
+    const { result } = mount();
+    await waitFor(() => expect(result.current.waiting.invoices.failed).toBe(true));
+    expect(result.current.waiting.invoices.n).toBeNull();
+  });
+
+  it('asks the same for a waiter as for an owner: a number, no documents', async () => {
+    m.role = 'staff';
+    m.docs.mockResolvedValue(3);
+    const { result } = mount();
+    await waitFor(() => expect(result.current.waiting.invoices.n).toBe(3));
+    expect(m.docs).toHaveBeenCalledWith({ status: 'needs_review' });
   });
 });
 
