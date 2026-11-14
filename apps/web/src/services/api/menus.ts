@@ -474,6 +474,13 @@ export interface PlanLine {
   flag: 'blank_kept_last_known' | 'blank_no_house_price' | null
   returned: boolean
   vintageMismatch: boolean
+  /**
+   * r35 G21: the house's live goods a line linked to none of them fits by
+   * name, matched when the plan is read. Choosing the menu carries such a line
+   * as a good of its own; an owner or a manager links it first. Absent when
+   * none fits, on a current menu, and from an older gateway.
+   */
+  houseCandidates?: HouseCandidate[]
 }
 
 export interface MenuPlan {

@@ -183,6 +183,14 @@ export interface PlanLine {
   returned: boolean;
   /** Both vintages are years and they differ: look before trusting the link (L18). */
   vintageMismatch: boolean;
+  /**
+   * r35 G21: a line linked to none of the house's goods that fits one or more
+   * of its live goods by name, matched now (the read's own candidates are not
+   * kept). Choosing the menu carries such a line as a good of its own beside
+   * them, so the plan names them and a manager links it first. Absent when no
+   * good fits, and on the current menu (its lines were carried already).
+   */
+  houseCandidates?: HouseCandidate[];
 }
 
 export interface DormantLock {
@@ -1764,7 +1772,7 @@ export class MenusService {
       for (;;) {
         let q = client
           .from("restaurant_inventory")
-          .select("id, master_wine_id, wine_name, is_active, deleted_at, menu_price_current, menu_price_glass, master_wine_library(vintage)")
+          .select("id, master_wine_id, wine_name, display_name, kind, bottle_size_ml, is_active, deleted_at, menu_price_current, menu_price_glass, master_wine_library(vintage)")
           .eq("restaurant_id", restaurantId);
         if (after) q = q.gt("id", after);
         const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
@@ -1911,6 +1919,52 @@ export class MenusService {
       };
     });
 
+    // r35 G21: which unlinked drink lines fit the house's own live goods,
+    // matched now with the read's own matcher. The read's candidates are in
+    // its reply only, so after a reload the plan is where they are seen again.
+    if (!current) {
+      const loose = planLines.filter((l) => l.inventoryId === null);
+      if (loose.length > 0) {
+        const byId = new Map(lines.map((l) => [l.id, l]));
+        let fits: Awaited<ReturnType<typeof matchHouseGoods>> = [];
+        // The live goods are the rows read above: no second read of the house.
+        const live = [...byInventory.values()]
+          .filter((r) => r.is_active === true && !r.deleted_at)
+          .map((r) => ({
+            id: String(r.id),
+            display_name: r.display_name ?? null,
+            wine_name: r.wine_name ?? null,
+            kind: r.kind ?? null,
+            master_wine_id: r.master_wine_id ?? null,
+            bottle_size_ml: r.bottle_size_ml ?? null,
+          }));
+        try {
+          fits = await matchHouseGoods(
+            client,
+            restaurantId,
+            loose.map((l) => {
+              const line = byId.get(l.menuItemId)!;
+              return { name: line.name, producer: line.producer ?? null, category: line.category ?? null, vintage: line.vintage ?? null };
+            }),
+            live,
+          );
+        } catch (err) {
+          fail("the house's goods each line may be", err instanceof Error ? err.message : String(err));
+        }
+        loose.forEach((l, i) => {
+          const m = fits[i];
+          const goods = m?.outcome === "one" ? [m.good] : m?.outcome === "many" ? m.goods : [];
+          if (goods.length > 0) {
+            l.houseCandidates = goods.map((g) => ({
+              inventoryItemId: String(g.id),
+              name: g.display_name ?? g.wine_name ?? "",
+              kind: g.kind ?? null,
+            }));
+          }
+        });
+      }
+    }
+
     const dormantLocks: DormantLock[] = lockRead.locks
       .filter((l) => !onThisMenu.has(l.inventoryId))
       .map((l) => {
@@ -1999,6 +2053,11 @@ export class MenusService {
       // The person is shown which wines stay as they are; a different list is
       // a different plan (L13), though nothing is written for them.
       notOnThisFile: notOnThisFile.map((n) => n.menuItemId).sort(),
+      // r35 G21: the goods each loose line fits; a new one is a different plan.
+      fits: planLines
+        .filter((l) => l.houseCandidates)
+        .map((l) => [l.menuItemId, l.houseCandidates!.map((c) => c.inventoryItemId).sort()])
+        .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
     };
     return {
       menuId,

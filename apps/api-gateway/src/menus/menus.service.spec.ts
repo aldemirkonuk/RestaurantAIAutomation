@@ -2909,6 +2909,45 @@ describe("a menu line finds the house's own good before the library (r21 D1)", (
       return { r, red, dish };
     }
 
+    // r35 G21: the read's candidates are in its reply only; the plan matches again.
+    it("the plan names the goods a loose line fits, after any reload, and none once it is linked", async () => {
+      const { tables, service } = twoReds();
+      const { r, red } = await read(service, tables);
+      const plan = await service.planFor("rest-1", r.menuId);
+      expect(plan.lines.find((l) => l.menuItemId === red.id)!.houseCandidates).toEqual([
+        { inventoryItemId: "inv-a", name: "House Red", kind: "wine" },
+        { inventoryItemId: "inv-b", name: "House red.", kind: "wine" },
+      ]);
+      // Only a loose line is matched: no other line carries candidates.
+      expect(plan.lines.filter((l) => l.houseCandidates).map((l) => l.menuItemId)).toEqual([red.id]);
+      await service.linkLineToHouseGood("rest-1", r.menuId, red.id, "inv-b");
+      const after = await service.planFor("rest-1", r.menuId);
+      expect(after.lines.find((l) => l.menuItemId === red.id)).toMatchObject({ inventoryId: "inv-b" });
+      expect(after.lines.find((l) => l.menuItemId === red.id)!.houseCandidates).toBeUndefined();
+    });
+
+    it("a good removed since the read is no candidate, so one good may be left; a good added since is one, and moves the plan", async () => {
+      const { tables, service } = twoReds();
+      const { r, red } = await read(service, tables);
+      tables.restaurant_inventory.find((g) => g.id === "inv-b")!.is_active = false;
+      const before = await service.planFor("rest-1", r.menuId);
+      expect(before.lines.find((l) => l.menuItemId === red.id)!.houseCandidates?.map((c) => c.inventoryItemId)).toEqual(["inv-a"]);
+      tables.restaurant_inventory.push(good({ id: "inv-c", master_wine_id: null, display_name: "House Red", kind: "wine" }));
+      const plan = await service.planFor("rest-1", r.menuId);
+      expect(plan.lines.find((l) => l.menuItemId === red.id)!.houseCandidates?.map((c) => c.inventoryItemId)).toEqual(["inv-a", "inv-c"]);
+      expect(plan.fingerprint).not.toBe(before.fingerprint);
+      await expect(service.makeCurrent("rest-1", r.menuId, "user-2", before.fingerprint)).rejects.toMatchObject({ status: 409 });
+    });
+
+    it("the current menu's plan names no candidates: its lines were carried already", async () => {
+      const { tables, service } = twoReds();
+      const { r, red } = await read(service, tables);
+      for (const m of tables.restaurant_menus) m.status = m.id === r.menuId ? "active" : "archived";
+      const plan = await service.planFor("rest-1", r.menuId);
+      expect(plan.current).toBe(true);
+      expect(plan.lines.find((l) => l.menuItemId === red.id)!.houseCandidates).toBeUndefined();
+    });
+
     it("links the line to the picked good and its library wine; the plan and the choice carry it there, and no second good is made", async () => {
       const { tables, service, calls } = twoReds();
       const { r, red } = await read(service, tables);
