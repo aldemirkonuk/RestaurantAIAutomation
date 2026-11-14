@@ -4,6 +4,7 @@ import { AuthModule } from "../auth/auth.module";
 import { OrganizationsModule } from "../organizations/organizations.module";
 import { SettingsAuditModule } from "../settings-audit/settings-audit.module";
 import { PricingController } from "./pricing.controller";
+import { PriceHistoryController } from "./price-history.controller";
 import { TargetMarginService } from "./target-margin.service";
 import { MarginAdviceService } from "./margin-advice.service";
 import { PriceLocksService } from "./price-locks.service";
@@ -22,7 +23,7 @@ import { PriceLocksService } from "./price-locks.service";
  */
 @Module({
   imports: [DatabaseModule, AuthModule, OrganizationsModule, SettingsAuditModule],
-  controllers: [PricingController],
+  controllers: [PricingController, PriceHistoryController],
   providers: [TargetMarginService, MarginAdviceService, PriceLocksService],
   exports: [TargetMarginService, MarginAdviceService, PriceLocksService],
 })
