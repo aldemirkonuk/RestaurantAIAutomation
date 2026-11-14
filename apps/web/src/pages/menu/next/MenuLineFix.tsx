@@ -1,22 +1,10 @@
 /**
- * Correct a line of a read menu, or leave it out, BEFORE the menu is made
- * current (r36 audit N2).
- *
- * A read menu used to be read-only until it was current: a misread name made a
- * second good beside the house's own when the menu was chosen, a misread price
- * went to Inventory, and a drink read as a dish (or a dish read as a drink)
- * could not be moved. The only ways out were to choose the menu and repair the
- * prices afterwards, or to read the file again.
- *
- * Here an owner or a manager corrects the name, the section, the producer, the
- * vintage or a price of any line of a menu that is not current, through the
- * same `PATCH /menus/items/:id` the current menu uses (on a kept menu it moves
- * no house price), or leaves a line out (`PATCH .../discard`, a soft remove:
- * the row stays on record and is never carried). The plan above is read again
- * after each change, so what choosing the menu would do is always the plan for
- * the lines as they now stand. A corrected name is matched to the house's goods
- * again by that plan ("fits the house's own goods"), so a misread wine can be
- * linked to the house's own before it becomes a twin.
+ * Correct a line of a read menu, or leave it out, BEFORE it is made current
+ * (r36 audit N2). A misread name used to become a twin good at the choice, a
+ * misread price went to Inventory, and a drink read as a dish could not be
+ * moved. Corrections use `PATCH /menus/items/:id`; leaving out is the soft
+ * discard. The plan is read again after each change, so a corrected name is
+ * matched to the house's goods again before a twin is made.
  */
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -34,70 +22,47 @@ import { useAuthStore } from '../../../stores';
 /** The section a dish is filed under: the gateway's kitchen test reads "food" as a dish. */
 export const DISH_SECTION = 'food';
 
-/**
- * The drink sections a reader files a line under (the gateway's
- * MENU_CATEGORY_VOCABULARY), with the words a person reads.
- */
-export const DRINK_SECTIONS: ReadonlyArray<{ value: string; label: string }> = [
-  { value: 'red', label: 'Red wine' },
-  { value: 'white', label: 'White wine' },
-  { value: 'rose', label: 'Rosé wine' },
-  { value: 'sparkling', label: 'Sparkling wine' },
-  { value: 'orange', label: 'Orange wine' },
-  { value: 'dessert', label: 'Dessert wine' },
-  { value: 'fortified', label: 'Fortified wine' },
-  { value: 'beer', label: 'Beer' },
-  { value: 'cider', label: 'Cider' },
-  { value: 'sake', label: 'Sake' },
-  { value: 'cocktail', label: 'Cocktail' },
-  { value: 'spirit', label: 'Spirit' },
-  { value: 'whiskey', label: 'Whiskey' },
-  { value: 'soft drink', label: 'Soft drink' },
-  { value: 'non-alcoholic', label: 'Non-alcoholic drink' },
-];
-
-/** The fields a person corrects here, in the order they are sent. */
-const FIELDS: ReadonlyArray<{ field: EditableMenuItemField; words: string }> = [
-  { field: 'name', words: 'name' },
-  { field: 'category', words: 'section' },
-  { field: 'producer', words: 'producer' },
-  { field: 'vintage', words: 'vintage' },
-  { field: 'bottle_price', words: 'bottle price' },
-  { field: 'by_glass_price', words: 'glass price' },
-];
+/** The gateway's MENU_CATEGORY_VOCABULARY, in a person's words. */
+export const DRINK_SECTIONS: ReadonlyArray<{ value: string; label: string }> = (
+  [
+    ['red', 'Red wine'], ['white', 'White wine'], ['rose', 'Rosé wine'], ['sparkling', 'Sparkling wine'],
+    ['orange', 'Orange wine'], ['dessert', 'Dessert wine'], ['fortified', 'Fortified wine'], ['beer', 'Beer'],
+    ['cider', 'Cider'], ['sake', 'Sake'], ['cocktail', 'Cocktail'], ['spirit', 'Spirit'], ['whiskey', 'Whiskey'],
+    ['soft drink', 'Soft drink'], ['non-alcoholic', 'Non-alcoholic drink'],
+  ] as const
+).map(([value, label]) => ({ value, label }));
 
 export type Draft = Record<'name' | 'category' | 'producer' | 'vintage' | 'bottle_price' | 'by_glass_price', string>;
 
+type Change = { field: EditableMenuItemField; value: string; words: string };
+
+/** The fields a person corrects here, in the order they are sent. */
+const FIELDS: ReadonlyArray<{ field: keyof Draft; words: string; label: string; width: number; num?: 'numeric' | 'decimal' }> = [
+  { field: 'name', words: 'name', label: 'Name', width: 160 },
+  { field: 'category', words: 'section', label: 'Section', width: 0 },
+  { field: 'producer', words: 'producer', label: 'Producer', width: 140 },
+  { field: 'vintage', words: 'vintage', label: 'Vintage', width: 70, num: 'numeric' },
+  { field: 'bottle_price', words: 'bottle price', label: 'Bottle price', width: 80, num: 'decimal' },
+  { field: 'by_glass_price', words: 'glass price', label: 'Glass price', width: 80, num: 'decimal' },
+];
+
 const text = (v: unknown) => (v === null || v === undefined ? '' : String(v));
 
-/** The line as the form starts: what is stored, a price as its plain number. */
 export function draftOf(line: MenuLine): Draft {
-  return {
-    name: text(line.name),
-    category: text(line.category),
-    producer: text(line.producer),
-    vintage: text(line.vintage),
-    bottle_price: text(line.bottle_price),
-    by_glass_price: text(line.by_glass_price),
-  };
+  return Object.fromEntries(FIELDS.map(({ field }) => [field, text(line[field])])) as Draft;
 }
 
-/**
- * What a save sends: each field whose value changed, trimmed. A field that
- * held a value and is now empty cannot be sent (the gateway takes no empty
- * value), and is refused in words before anything is sent.
- */
+/** Each changed field, trimmed. The gateway takes no empty value, so an emptied field refuses the save. */
 export function changesOf(
   line: MenuLine,
   draft: Draft,
-): { changes: Array<{ field: EditableMenuItemField; value: string; words: string }>; refused: string | null } {
+): { changes: Change[]; refused: string | null } {
   const was = draftOf(line);
-  const changes: Array<{ field: EditableMenuItemField; value: string; words: string }> = [];
+  const changes: Change[] = [];
   const emptied: string[] = [];
   for (const { field, words } of FIELDS) {
-    const key = field as keyof Draft;
-    const now = draft[key].trim();
-    if (now === was[key].trim()) continue;
+    const now = draft[field].trim();
+    if (now === was[field].trim()) continue;
     if (now === '') {
       emptied.push(words);
       continue;
@@ -113,7 +78,6 @@ export function changesOf(
   return { changes, refused: null };
 }
 
-/** A line's section in words: a dish, a drink section, or as the reader wrote it. */
 export function sectionWords(line: MenuLine): string {
   if (line.kitchen_line) return 'Dish';
   const known = DRINK_SECTIONS.find((s) => s.value === text(line.category).toLowerCase().trim());
@@ -148,8 +112,7 @@ function LineForm({
   const [draft, setDraft] = useState<Draft>(() => draftOf(line));
   const [refused, setRefused] = useState<string | null>(null);
   const save = useMutation({
-    mutationFn: async (changes: Array<{ field: EditableMenuItemField; value: string; words: string }>) => {
-      // One field at a time, in order: a refusal names what was already saved.
+    mutationFn: async (changes: Change[]) => {
       const done: string[] = [];
       for (const c of changes) {
         try {
@@ -168,11 +131,11 @@ function LineForm({
     },
     onError: (err) => {
       setRefused((err as Error).message);
-      // A field saved before the refusal is on the line: the plan is read again.
       onSaved('');
     },
   });
   const id = (f: string) => `fix-${line.id}-${f}`;
+  const was = draftOf(line);
   const sectionKnown = draft.category === DISH_SECTION || DRINK_SECTIONS.some((s) => s.value === draft.category);
   const set = (k: keyof Draft) => (e: { target: { value: string } }) => setDraft((d) => ({ ...d, [k]: e.target.value }));
   return (
@@ -189,54 +152,34 @@ function LineForm({
         save.mutate(changes);
       }}
     >
-      <label className="cl-dim" style={{ fontSize: 12 }} htmlFor={id('name')}>
-        Name
-      </label>
-      <input id={id('name')} className="cl-field cl-focus" value={draft.name} onChange={set('name')} style={{ minWidth: 160 }} />
-      <label className="cl-dim" style={{ fontSize: 12 }} htmlFor={id('category')}>
-        Section
-      </label>
-      <select id={id('category')} className="cl-field cl-focus" value={draft.category} onChange={set('category')}>
-        {!sectionKnown ? <option value={draftOf(line).category}>{draftOf(line).category ? `As read: ${draftOf(line).category}` : 'No section'}</option> : null}
-        <option value={DISH_SECTION}>Dish (kitchen)</option>
-        {DRINK_SECTIONS.map((s) => (
-          <option key={s.value} value={s.value}>
-            {s.label}
-          </option>
-        ))}
-      </select>
-      <label className="cl-dim" style={{ fontSize: 12 }} htmlFor={id('producer')}>
-        Producer
-      </label>
-      <input id={id('producer')} className="cl-field cl-focus" value={draft.producer} onChange={set('producer')} style={{ width: 140 }} />
-      <label className="cl-dim" style={{ fontSize: 12 }} htmlFor={id('vintage')}>
-        Vintage
-      </label>
-      <input id={id('vintage')} className="cl-field cl-focus cl-num" inputMode="numeric" value={draft.vintage} onChange={set('vintage')} style={{ width: 70 }} />
-      <label className="cl-dim" style={{ fontSize: 12 }} htmlFor={id('bottle_price')}>
-        Bottle price
-      </label>
-      <input
-        id={id('bottle_price')}
-        className="cl-field cl-focus cl-num"
-        inputMode="decimal"
-        autoComplete="off"
-        value={draft.bottle_price}
-        onChange={set('bottle_price')}
-        style={{ width: 80 }}
-      />
-      <label className="cl-dim" style={{ fontSize: 12 }} htmlFor={id('by_glass_price')}>
-        Glass price
-      </label>
-      <input
-        id={id('by_glass_price')}
-        className="cl-field cl-focus cl-num"
-        inputMode="decimal"
-        autoComplete="off"
-        value={draft.by_glass_price}
-        onChange={set('by_glass_price')}
-        style={{ width: 80 }}
-      />
+      {FIELDS.map(({ field: key, label, width, num }) => (
+        <span key={key} style={{ display: 'contents' }}>
+          <label className="cl-dim" style={{ fontSize: 12 }} htmlFor={id(key)}>
+            {label}
+          </label>
+          {key === 'category' ? (
+            <select id={id(key)} className="cl-field cl-focus" value={draft.category} onChange={set('category')}>
+              {!sectionKnown ? <option value={was.category}>{was.category ? `As read: ${was.category}` : 'No section'}</option> : null}
+              <option value={DISH_SECTION}>Dish (kitchen)</option>
+              {DRINK_SECTIONS.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              id={id(key)}
+              className={`cl-field cl-focus${num ? ' cl-num' : ''}`}
+              inputMode={num}
+              autoComplete="off"
+              value={draft[key]}
+              onChange={set(key)}
+              style={{ width }}
+            />
+          )}
+        </span>
+      ))}
       <button type="submit" className="cl-btn cl-ink cl-focus" disabled={save.isPending}>
         {save.isPending ? 'Saving…' : 'Save'}
       </button>
@@ -376,5 +319,3 @@ export function MenuLineFix({ menuId, onChanged }: { menuId: string; onChanged: 
     </details>
   );
 }
-
-export default MenuLineFix;

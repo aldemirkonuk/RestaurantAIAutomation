@@ -1,8 +1,4 @@
-/**
- * r36 audit N2: a read menu's line is corrected, or left out, before the menu
- * is made current. The API module is replaced (the gateway is not the unit
- * here); the panel itself runs for real.
- */
+/** r36 audit N2: a read menu's line is corrected, or left out, before it is current. */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -16,41 +12,16 @@ vi.mock('../../../services/api/menus', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/menus')>('../../../services/api/menus');
   return { ...actual, getMenuVersion: vi.fn(), reviewMenuItem: vi.fn(), discardMenuItem: vi.fn() };
 });
-
 const mockVersion = vi.mocked(getMenuVersion);
 const mockReview = vi.mocked(reviewMenuItem);
 const mockDiscard = vi.mocked(discardMenuItem);
 
-function menuLine(over: Partial<MenuLine> = {}): MenuLine {
-  return {
-    id: 'li-1',
-    name: 'Chiantti',
-    producer: null,
-    category: 'red',
-    vintage: null,
-    region: null,
-    country: null,
-    grape_variety: null,
-    by_glass_price: null,
-    bottle_price: 48,
-    wine_library_id: 'mw-x',
-    inventory_item_id: null,
-    source: 'scan',
-    status: 'approved',
-    created_at: '2026-11-13T10:00:00Z',
-    kitchen_line: false,
-    ...over,
-  };
-}
+const ml = (over: Partial<MenuLine> = {}): MenuLine =>
+  ({ id: 'li-1', name: 'Chiantti', producer: null, category: 'red', vintage: null, by_glass_price: null, bottle_price: 48, kitchen_line: false, ...over }) as MenuLine;
+const TIRAMISU = ml({ id: 'li-2', name: 'Tiramisu', category: 'food', bottle_price: 9, kitchen_line: true });
 
-const TIRAMISU = menuLine({ id: 'li-2', name: 'Tiramisu', category: 'food', bottle_price: 9, kitchen_line: true });
-const SAUTERNES = menuLine({ id: 'li-3', name: 'Sauternes', category: 'Desserts', bottle_price: null, kitchen_line: true });
-
-function mount(lines: MenuLine[] = [menuLine(), TIRAMISU]) {
-  mockVersion.mockResolvedValue({
-    version: { menuId: 'menu-new' } as never,
-    items: lines,
-  });
+function mount(lines: MenuLine[] | null = [ml(), TIRAMISU]) {
+  if (lines) mockVersion.mockResolvedValue({ version: {} as never, items: lines });
   const onChanged = vi.fn();
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -59,6 +30,13 @@ function mount(lines: MenuLine[] = [menuLine(), TIRAMISU]) {
     </QueryClientProvider>,
   );
   return { onChanged };
+}
+async function correct(name: string, typed: Record<string, string>) {
+  fireEvent.click(await screen.findByRole('button', { name: `Correct ${name}` }));
+  const form = screen.getByTestId('menu-line-fix-form');
+  for (const [label, value] of Object.entries(typed)) fireEvent.change(within(form).getByLabelText(label), { target: { value } });
+  fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+  return form;
 }
 
 beforeEach(() => {
@@ -69,10 +47,9 @@ beforeEach(() => {
 });
 
 describe('what a save sends', () => {
-  it('sends only the fields that changed, trimmed, in order', () => {
-    const l = menuLine();
-    const d = { ...draftOf(l), name: ' Chianti ', bottle_price: '52' };
-    expect(changesOf(l, d)).toEqual({
+  it('only the changed fields, trimmed, in order; an emptied field refuses the save', () => {
+    const l = ml();
+    expect(changesOf(l, { ...draftOf(l), name: ' Chianti ', bottle_price: '52' })).toEqual({
       changes: [
         { field: 'name', value: 'Chianti', words: 'name' },
         { field: 'bottle_price', value: '52', words: 'bottle price' },
@@ -80,109 +57,76 @@ describe('what a save sends', () => {
       refused: null,
     });
     expect(changesOf(l, draftOf(l))).toEqual({ changes: [], refused: null });
+    expect(changesOf(l, { ...draftOf(l), name: 'Chianti', bottle_price: ' ' })).toEqual({
+      changes: [],
+      refused: 'The bottle price cannot be emptied here. Leave the line out instead, or type what the menu says. Nothing was changed.',
+    });
   });
 
-  it('refuses an emptied field before anything is sent', () => {
-    const l = menuLine();
-    const r = changesOf(l, { ...draftOf(l), name: 'Chianti', bottle_price: '  ' });
-    expect(r.changes).toEqual([]);
-    expect(r.refused).toBe(
-      'The bottle price cannot be emptied here. Leave the line out instead, or type what the menu says. Nothing was changed.',
-    );
-    // A field that was empty and stays empty is no change.
-    expect(changesOf(l, { ...draftOf(l), producer: '' }).refused).toBeNull();
-  });
-
-  it('names a line by its section in words', () => {
-    expect(sectionWords(menuLine())).toBe('Red wine');
-    expect(sectionWords(TIRAMISU)).toBe('Dish');
-    expect(sectionWords(menuLine({ category: 'Reds' }))).toBe('"Reds"');
-    expect(sectionWords(menuLine({ category: null }))).toBe('No section');
+  it('names a section in words', () => {
+    expect([ml(), TIRAMISU, ml({ category: 'Reds' }), ml({ category: null })].map(sectionWords)).toEqual([
+      'Red wine',
+      'Dish',
+      '"Reds"',
+      'No section',
+    ]);
   });
 });
 
 describe('the panel', () => {
-  it('lists every line of the read menu, dishes too, with what it holds', async () => {
-    mount([menuLine(), TIRAMISU]);
+  it('lists every line, dishes too, with what it holds and why a price is held', async () => {
+    mount([ml(), TIRAMISU, ml({ id: 'li-4', name: 'Rioja', bottle_price: null, price_flag_note: 'Printed at 12.00 EUR.' })]);
     const items = await screen.findAllByTestId('menu-line-fix-line');
-    expect(items).toHaveLength(2);
-    expect(items[0].textContent).toContain('Chiantti');
-    expect(items[0].textContent).toContain('Red wine');
-    expect(items[0].textContent).toContain(`bottle ${formatMoney(48, 'TRY')}`);
-    expect(items[1].textContent).toContain('Dish');
-    expect(screen.getByText('Correct a line before this menu is made current (2)')).toBeTruthy();
+    expect(items.map((i) => i.textContent)).toEqual([
+      `Chiantti · Red wine · bottle ${formatMoney(48, 'TRY')}CorrectLeave out`,
+      `Tiramisu · Dish · bottle ${formatMoney(9, 'TRY')}CorrectLeave out`,
+      'Rioja · Red wine · no pricePrinted at 12.00 EUR.CorrectLeave out',
+    ]);
+    expect(screen.getByText('Correct a line before this menu is made current (3)')).toBeTruthy();
   });
 
-  it('shows why a line holds no price', async () => {
-    mount([menuLine({ bottle_price: null, price_flag_note: 'The menu prints this line at 12.00 EUR.' as never })]);
-    expect((await screen.findByTestId('menu-line-fix-note')).textContent).toBe('The menu prints this line at 12.00 EUR.');
-  });
-
-  it('corrects a misread name and price, one field at a time, and says so', async () => {
-    mockReview.mockResolvedValue({ menuItemId: 'li-1', fieldName: 'name', newValue: 'x' });
+  it('corrects a misread name and price one field at a time, says so, and reads the lines again', async () => {
+    mockReview.mockResolvedValue({} as never);
     const { onChanged } = mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Correct Chiantti' }));
-    const form = screen.getByTestId('menu-line-fix-form');
-    fireEvent.change(within(form).getByLabelText('Name'), { target: { value: 'Chianti' } });
-    fireEvent.change(within(form).getByLabelText('Bottle price'), { target: { value: '52' } });
-    fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(onChanged).toHaveBeenCalledWith('Chianti: name and bottle price corrected. What choosing this menu would do is read again.'));
+    await correct('Chiantti', { Name: 'Chianti', 'Bottle price': '52' });
+    await waitFor(() =>
+      expect(onChanged).toHaveBeenCalledWith('Chianti: name and bottle price corrected. What choosing this menu would do is read again.'),
+    );
     expect(mockReview.mock.calls).toEqual([
       ['li-1', 'name', 'Chianti'],
       ['li-1', 'bottle_price', '52'],
     ]);
-    // The lines are read again.
     expect(mockVersion).toHaveBeenCalledTimes(2);
     expect(screen.queryByTestId('menu-line-fix-form')).toBeNull();
   });
 
-  it('moves a drink read as a dish to its drink section', async () => {
-    mockReview.mockResolvedValue({ menuItemId: 'li-3', fieldName: 'category', newValue: 'dessert' });
-    mount([SAUTERNES]);
+  it('moves a line between a dish and a drink section, keeping the section as read until changed', async () => {
+    mockReview.mockResolvedValue({} as never);
+    mount([ml({ id: 'li-3', name: 'Sauternes', category: 'Desserts', kitchen_line: true }), ml({ name: 'Mezze' })]);
     fireEvent.click(await screen.findByRole('button', { name: 'Correct Sauternes' }));
-    const form = screen.getByTestId('menu-line-fix-form');
-    const section = within(form).getByLabelText('Section') as HTMLSelectElement;
-    // The section the reader wrote is kept as it was until it is changed.
-    expect(section.value).toBe('Desserts');
-    fireEvent.change(section, { target: { value: 'dessert' } });
-    fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+    expect((screen.getByLabelText('Section') as HTMLSelectElement).value).toBe('Desserts');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await correct('Sauternes', { Section: 'dessert' });
     await waitFor(() => expect(mockReview).toHaveBeenCalledWith('li-3', 'category', 'dessert'));
-    expect(mockReview).toHaveBeenCalledTimes(1);
-  });
-
-  it('a dish is set with the kitchen section the gateway reads as a dish', async () => {
-    mockReview.mockResolvedValue({ menuItemId: 'li-1', fieldName: 'category', newValue: 'food' });
-    mount([menuLine({ name: 'Mezze' })]);
-    fireEvent.click(await screen.findByRole('button', { name: 'Correct Mezze' }));
-    const form = screen.getByTestId('menu-line-fix-form');
-    fireEvent.change(within(form).getByLabelText('Section'), { target: { value: 'food' } });
-    fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+    await correct('Mezze', { Section: 'food' });
     await waitFor(() => expect(mockReview).toHaveBeenCalledWith('li-1', 'category', 'food'));
+    expect(mockReview).toHaveBeenCalledTimes(2);
   });
 
-  it('says what was saved when a later field is refused, and reads the plan again', async () => {
-    mockReview
-      .mockResolvedValueOnce({ menuItemId: 'li-1', fieldName: 'name', newValue: 'Chianti' })
-      .mockRejectedValueOnce({ response: { status: 400, data: { message: '"12x" is not a price.' } } });
+  it('says what was saved when a later field is refused, and keeps the form', async () => {
+    mockReview.mockResolvedValueOnce({} as never).mockRejectedValueOnce({ response: { status: 400, data: { message: '"12x" is not a price.' } } });
     const { onChanged } = mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Correct Chiantti' }));
-    const form = screen.getByTestId('menu-line-fix-form');
-    fireEvent.change(within(form).getByLabelText('Name'), { target: { value: 'Chianti' } });
-    fireEvent.change(within(form).getByLabelText('Bottle price'), { target: { value: '12x' } });
-    fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+    await correct('Chiantti', { Name: 'Chianti', 'Bottle price': '12x' });
     expect((await screen.findByTestId('menu-line-fix-refused')).textContent).toBe(
       'The bottle price was not corrected: "12x" is not a price. The name was corrected.',
     );
     expect(onChanged).toHaveBeenCalledWith('');
-    // The form stays open with what was typed.
     expect(screen.getByTestId('menu-line-fix-form')).toBeTruthy();
   });
 
   it('sends nothing when nothing changed, or a field was emptied', async () => {
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Correct Chiantti' }));
-    const form = screen.getByTestId('menu-line-fix-form');
-    fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+    const form = await correct('Chiantti', {});
     expect(screen.getByTestId('menu-line-fix-refused').textContent).toBe('Nothing differs from the line as read, so nothing was changed.');
     fireEvent.change(within(form).getByLabelText('Name'), { target: { value: '' } });
     fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
@@ -190,27 +134,22 @@ describe('the panel', () => {
     expect(mockReview).not.toHaveBeenCalled();
   });
 
-  it('leaves a line out after a second tap, and says it is not carried', async () => {
+  it('leaves a line out only after a second tap; Keep it sends nothing', async () => {
     mockDiscard.mockResolvedValue({ menuItemId: 'li-2', status: 'discarded' });
     const { onChanged } = mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Leave Tiramisu out of this menu' }));
-    expect(mockDiscard).not.toHaveBeenCalled();
+    const leave = 'Leave Tiramisu out of this menu';
+    fireEvent.click(await screen.findByRole('button', { name: leave }));
     expect(screen.getByText('Leave Tiramisu out? It is not carried, and it cannot be brought back on this menu.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep it' }));
+    expect(mockDiscard).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: leave }));
     fireEvent.click(screen.getByRole('button', { name: 'Leave it out' }));
     await waitFor(() => expect(mockDiscard).toHaveBeenCalledWith('house-1', 'li-2'));
     await waitFor(() => expect(onChanged).toHaveBeenCalledWith('Tiramisu is left out of this menu. It will not be carried.'));
   });
 
-  it('Keep it sends nothing', async () => {
-    mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Leave Tiramisu out of this menu' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Keep it' }));
-    expect(mockDiscard).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Leave Tiramisu out of this menu' })).toBeTruthy();
-  });
-
-  it('says a refused leave-out in the gateway words', async () => {
-    mockDiscard.mockRejectedValue({ response: { status: 403, data: { message: 'x' } } });
+  it('says a refused leave-out in words', async () => {
+    mockDiscard.mockRejectedValue({ response: { status: 403 } });
     mount();
     fireEvent.click(await screen.findByRole('button', { name: 'Leave Tiramisu out of this menu' }));
     fireEvent.click(screen.getByRole('button', { name: 'Leave it out' }));
@@ -221,12 +160,7 @@ describe('the panel', () => {
 
   it('a failed read of the lines is said, never an empty list', async () => {
     mockVersion.mockRejectedValue(new Error('network down'));
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(
-      <QueryClientProvider client={client}>
-        <MenuLineFix menuId="menu-new" onChanged={vi.fn()} />
-      </QueryClientProvider>,
-    );
+    mount(null);
     expect((await screen.findByTestId('menu-line-fix-error')).textContent).toBe(
       "This menu's lines could not be read (network down), so none can be corrected here yet.",
     );

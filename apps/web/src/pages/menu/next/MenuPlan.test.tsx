@@ -108,12 +108,9 @@ function mount(canManage: boolean, onDone = vi.fn()) {
 }
 
 beforeEach(() => {
-  // r36 N2: the correction panel reads the menu's lines; one line unless a test says otherwise.
+  // r36 N2: the correction panel reads the menu's lines.
   vi.mocked(getMenuVersion).mockReset();
-  vi.mocked(getMenuVersion).mockResolvedValue({
-    version: { menuId: 'menu-new' } as never,
-    items: [{ id: 'n1', name: 'Chianti', producer: null, category: 'red', vintage: null, region: null, country: null, grape_variety: null, by_glass_price: null, bottle_price: 55, wine_library_id: 'mw-2', inventory_item_id: 'inv-2', source: 'csv', status: 'approved', created_at: '2026-09-21T10:00:00Z', kitchen_line: false }],
-  });
+  vi.mocked(getMenuVersion).mockResolvedValue({ version: {} as never, items: [{ id: 'n1', name: 'Chianti', category: 'red' } as never] });
   mockPlan.mockReset();
   mockMake.mockReset();
   mockLock.mockReset();
@@ -633,36 +630,24 @@ describe('a line whose house row was removed is said (r28 G9)', () => {
 
 // r36 audit N2: a read menu's lines are corrected before it is current, by an owner or a manager only.
 describe('correcting a line before the menu is current', () => {
-  it('an owner or a manager is offered it on a menu that is not current, and a correction reads the plan again', async () => {
+  it('an owner or a manager is offered it on a menu that is not current; its tables say Drink', async () => {
     mockPlan.mockResolvedValue(plan());
     mount(true);
-    expect(await screen.findByTestId('menu-line-fix')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Correct Chianti' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Correct Chianti' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Leave Chianti out of this menu' })).toBeTruthy();
     expect(vi.mocked(getMenuVersion)).toHaveBeenCalledWith('menu-new');
-  });
-
-  it('staff are not offered it', async () => {
-    mockPlan.mockResolvedValue(plan());
-    mount(false);
-    await screen.findByTestId('menu-plan');
-    expect(screen.queryByTestId('menu-line-fix')).toBeNull();
-    expect(vi.mocked(getMenuVersion)).not.toHaveBeenCalled();
-  });
-
-  it('the current menu is not offered it: its lines are corrected on the menu itself', async () => {
-    mockPlan.mockResolvedValue(plan({ current: true }));
-    mount(true);
-    await screen.findByTestId('menu-plan');
-    expect(screen.queryByTestId('menu-line-fix')).toBeNull();
-    expect(vi.mocked(getMenuVersion)).not.toHaveBeenCalled();
-  });
-
-  it('heads the plan tables by drink, not wine', async () => {
-    mockPlan.mockResolvedValue(plan());
-    mount(true);
-    const table = await screen.findByTestId('menu-plan-prices');
-    expect(within(table).getByRole('columnheader', { name: 'Drink' })).toBeTruthy();
+    expect(within(screen.getByTestId('menu-plan-prices')).getByRole('columnheader', { name: 'Drink' })).toBeTruthy();
     expect(screen.queryByRole('columnheader', { name: 'Wine' })).toBeNull();
+  });
+
+  it.each([
+    ['staff', false, false],
+    ['the current menu', true, true],
+  ])('%s is not offered it', async (_who, canManage, current) => {
+    mockPlan.mockResolvedValue(plan({ current }));
+    mount(canManage);
+    await screen.findByTestId('menu-plan');
+    expect(screen.queryByTestId('menu-line-fix')).toBeNull();
+    expect(vi.mocked(getMenuVersion)).not.toHaveBeenCalled();
   });
 });
