@@ -208,13 +208,26 @@ export class GoalsService {
    * Nothing is read for such a caller and nothing is recorded: the refusal is
    * about the caller, not the goal. The levers (stored insights) are not sent
    * either; they are sentences about the same money.
+   *
+   * `daysLeft` is sent (r37 walk w3 R-F9). It is counted from the deadline
+   * and the house's clock, not from the reading, so it tells staff nothing
+   * the deadline on the card does not; it is counted the way the desk counts
+   * it for an owner (`goalSchedule`, then whole days to the deadline's
+   * midnight), so the two never disagree. With no zone or no deadline it is
+   * null, as it is for an owner.
    */
   static withheldProgress(
     goal: Record<string, any>,
     withheldForRole: string[],
     gate: SalesGate = {},
+    schedule: { start: number | null; end: number | null } = { start: null, end: null },
+    at: number = Date.now(),
   ) {
     const spec = GoalsService.SUPPORTED_METRICS[goal.metric_key];
+    const daysLeft =
+      schedule.start !== null && schedule.end !== null
+        ? Math.max(0, Math.ceil((schedule.end - at) / 86_400_000))
+        : null;
     return {
       goal: GoalsService.presentGoalRow(goal, gate),
       metricLabel: spec?.label ?? goal.metric_key,
@@ -225,7 +238,7 @@ export class GoalsService {
       met: null,
       expectedByNow: null,
       onTrack: null,
-      daysLeft: null,
+      daysLeft,
       paceUnread: null,
       projectedAtDeadline: null,
       projectionHitsTarget: null,
@@ -679,13 +692,6 @@ export class GoalsService {
     ]);
     if (error || !goal) throw new Error(error?.message || "Goal not found");
 
-    // ADR 0348 item 3: a reading this caller may not read is not computed,
-    // not recorded and not sent (`withheldProgress`).
-    const withheldForRole = goalReadingWithheldFor(goal.metric_key, gate);
-    if (withheldForRole.length > 0)
-      return GoalsService.withheldProgress(goal, withheldForRole, gate);
-
-    const spec = GoalsService.SUPPORTED_METRICS[goal.metric_key];
     // The goal's window opens on the house date it was created (ADR 0296),
     // not the UTC date: a goal set at 22:00 in Los Angeles was set that day.
     const zone = house.zone;
@@ -693,6 +699,19 @@ export class GoalsService {
       ? (houseDayOf(goal.created_at, zone) ??
         this.periodStart(goal.period, zone))
       : null;
+    // ADR 0348 item 3: a reading this caller may not read is not computed,
+    // not recorded and not sent (`withheldProgress`). The days to the
+    // deadline are not a reading, so they are sent (r37 w3 R-F9).
+    const withheldForRole = goalReadingWithheldFor(goal.metric_key, gate);
+    if (withheldForRole.length > 0)
+      return GoalsService.withheldProgress(
+        goal,
+        withheldForRole,
+        gate,
+        goalSchedule(periodStart, goal.deadline, zone),
+      );
+
+    const spec = GoalsService.SUPPORTED_METRICS[goal.metric_key];
     // The live reading, and what the stored row records about it (reports
     // lane r2). A reading refused because of the house's data (no zone, a
     // good without a cost, a read that failed) is recorded as refused, so no

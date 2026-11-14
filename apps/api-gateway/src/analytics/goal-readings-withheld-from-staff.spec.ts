@@ -149,6 +149,24 @@ describe("a staff caller is sent the goal, not its reading", () => {
     });
   });
 
+  it("r37 w3 R-F9: staff are sent the days to the deadline, counted as an owner's are", async () => {
+    jest.useFakeTimers({ now: new Date("2026-11-14T09:00:00Z"), doNotFake: ["nextTick", "setImmediate"] });
+    try {
+      const staff: any = await harness(REVENUE).service.getGoalProgress("r1", "g1", ZONE, { withSales: false });
+      const owner: any = await harness(REVENUE).service.getGoalProgress("r1", "g1", ZONE, { withSales: true });
+      // The deadline day opens at Istanbul midnight, 2026-12-30T21:00Z: 46.5 days on.
+      expect(owner.daysLeft).toBe(47);
+      expect(staff.daysLeft).toBe(owner.daysLeft);
+      expect(staff.current).toBeNull();
+      const open: any = await harness({ ...REVENUE, deadline: null }).service.getGoalProgress("r1", "g1", ZONE, { withSales: false });
+      expect(open.daysLeft).toBeNull();
+      const noZone: any = await harness(REVENUE).service.getGoalProgress("r1", "g1", { zone: null, source: "unset" } as any, { withSales: false });
+      expect(noZone.daysLeft).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("progress: an absent gate is closed", async () => {
     const { service, computed } = harness(REVENUE);
     const out: any = await service.getGoalProgress("r1", "g1", ZONE);
