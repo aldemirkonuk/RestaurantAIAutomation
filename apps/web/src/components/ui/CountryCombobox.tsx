@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useId, type KeyboardEvent } from 'react'
 import { Globe, ChevronDown, Check } from 'lucide-react'
 import { COUNTRY_NAMES as COUNTRIES } from '../../lib/countries'
+import { matchCountries } from '../../lib/countrySearch'
 
 interface CountryComboboxProps {
   value: string
@@ -31,7 +32,7 @@ export function CountryCombobox({ value, onChange, className, id, ariaLabel }: C
 
   const filtered = query.trim() === ''
     ? COUNTRIES
-    : COUNTRIES.filter((c) => c.toLowerCase().includes(query.toLowerCase()))
+    : matchCountries(query)
   const shown = open && filtered.length > 0
   const optionId = (i: number) => `${listId}-opt-${i}`
 
