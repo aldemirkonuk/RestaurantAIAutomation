@@ -28,11 +28,14 @@ import {
   MENU_CADENCES,
   getMenuSourceUrl,
   importMenu,
+  linkMenuLineToHouseGood,
   listMenuVersions,
   readWarningSentence,
   type MakeCurrentResult,
   type MenuCadence,
+  type HouseCandidate,
   type MenuImportResult,
+  type MenuImportReviewItem,
   type MenuReadWarning,
   type MenuVersion,
   type PlanLine,
@@ -491,6 +494,17 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
               Read it again
             </button>
           ) : null}
+          {/* Once the menu is current its lines were carried, and a link is refused.
+              (r37 meet: "current" is the read's own flag, set when it is chosen.) */}
+          {isCurrent ? null : (
+            <SeveralGoods
+              key={result.menuId}
+              menuId={result.menuId}
+              items={result.items ?? []}
+              canManage={canManage}
+              onLinked={() => setPlanning(false)}
+            />
+          )}
           {isCurrent ? null : canManage ? (
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
               <button
@@ -749,3 +763,85 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
 }
 
 export default MenuVersions;
+
+/**
+ * The lines of a read that fit two or more of the house's own goods (r28
+ * G21). The read guessed none, so each went to the library, and choosing the
+ * menu would carry it as a good of its own beside the house's. An owner or a
+ * manager links each to the good it is; anyone else is told who can. Said
+ * right after the read: the goods are named in the read's reply only.
+ */
+export function SeveralGoods({
+  menuId,
+  items,
+  canManage,
+  onLinked,
+}: {
+  menuId: string
+  items: MenuImportReviewItem[]
+  canManage: boolean
+  onLinked: () => void
+}) {
+  const several = items.filter((i) => (i.houseCandidates?.length ?? 0) > 1);
+  const [linked, setLinked] = useState<Record<string, string>>({});
+  const link = useMutation({
+    mutationFn: async (v: { item: MenuImportReviewItem; good: HouseCandidate }) =>
+      linkMenuLineToHouseGood(menuId, v.item.menuItemId, v.good.inventoryItemId),
+    onSuccess: (r, v) => {
+      setLinked((m) => ({ ...m, [v.item.menuItemId]: r.goodName || v.good.name }));
+      onLinked();
+    },
+  });
+  // The last refusal, said on its own line until another link is tried.
+  const refusedLine = link.isError ? link.variables?.item.menuItemId : undefined;
+  if (several.length === 0) return null;
+  const n = several.length;
+  return (
+    <div style={{ marginTop: 8 }} data-testid="menu-read-several-goods">
+      <p className="cl-said">
+        {n === 1 ? '1 line fits' : `${n} lines fit`} more than one of the house&apos;s goods, so none was linked.
+        {canManage
+          ? ' Choose the good each one is, before this menu is made current; otherwise it is carried as a good of its own.'
+          : ' An owner or a manager chooses which good each one is; otherwise it is carried as a good of its own.'}
+      </p>
+      <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+        {several.map((item) => (
+          <li key={item.menuItemId} data-testid="menu-read-several-line" style={{ marginTop: 4 }}>
+            <span>{item.name}</span>
+            {linked[item.menuItemId] ? (
+              <span role="status" className="cl-note" style={{ display: 'block' }} data-testid="menu-read-linked">
+                Linked to {linked[item.menuItemId]}: choosing this menu carries its price there.
+              </span>
+            ) : (
+              <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                {(item.houseCandidates ?? []).map((good) =>
+                  canManage ? (
+                    <button
+                      key={good.inventoryItemId}
+                      type="button"
+                      className="cl-btn cl-focus"
+                      disabled={link.isPending}
+                      onClick={() => link.mutate({ item, good })}
+                      aria-label={`Link ${item.name} to ${good.name}`}
+                    >
+                      It is {good.name}{good.kind ? ` (${good.kind})` : ''}
+                    </button>
+                  ) : (
+                    <span key={good.inventoryItemId} className="cl-chip">
+                      {good.name}{good.kind ? ` (${good.kind})` : ''}
+                    </span>
+                  ),
+                )}
+              </span>
+            )}
+            {refusedLine === item.menuItemId ? (
+              <span role="alert" className="cl-note" style={{ display: 'block' }} data-testid="menu-read-link-refused">
+                It was not linked: {reasonOf(link.error).replace(/\.$/, '')}.
+              </span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}

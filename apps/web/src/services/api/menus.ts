@@ -59,6 +59,19 @@ export interface MenuImportReviewItem {
   priceFlagNote?: string | null
   /** ADR 0193 round 3: every kind a price lock held, with its lock. */
   priceHeld?: HeldKind[]
+  /**
+   * Set when two or more of the house's own goods fit this line (name, kind,
+   * vintage and size): none was guessed, and the line went to the library
+   * (r28 G21). An owner or a manager links it with linkMenuLineToHouseGood.
+   */
+  houseCandidates?: HouseCandidate[]
+}
+
+/** One of the house's own goods a read line fits (gateway `HouseCandidate`). */
+export interface HouseCandidate {
+  inventoryItemId: string
+  name: string
+  kind: string | null
 }
 
 /**
@@ -423,6 +436,14 @@ export interface MenuLine {
    * gateway; the page then works it out with the same test.
    */
   kitchen_line?: boolean
+  /**
+   * The house's own price for the good this line is linked to (Inventory, Your
+   * price), sent with the current menu only (r28 G11). It can differ from the
+   * menu's printed price: changed on Inventory since, held by a lock, or not
+   * carried. `removed`: the good is removed or inactive on Inventory. Absent on
+   * a line with no link, and from an older gateway.
+   */
+  house_price?: { bottle: number | null; glass: number | null; removed: boolean }
 }
 
 export interface ActiveMenu {
@@ -436,6 +457,8 @@ export interface ActiveMenu {
    * gateway shows the one made current last. Absent when there is one.
    */
   otherCurrent?: number
+  /** Set when the house's own prices could not be read: no line then carries `house_price`. */
+  housePricesUnreadable?: string
 }
 
 /**
@@ -690,6 +713,23 @@ export const MAKE_CURRENT_TIMEOUT_MS = 120_000
  * Owner or manager; the gateway refuses anyone else (403), a missing
  * fingerprint (400) and a plan that changed since it was shown (409).
  */
+/**
+ * Link one line of a kept (not current) menu to one of the house's own goods
+ * (r28 G21) -- owner or manager only. The menu's plan changes, so a plan shown
+ * before is refused at make-current and is read again.
+ */
+export async function linkMenuLineToHouseGood(
+  menuId: string,
+  menuItemId: string,
+  inventoryItemId: string,
+): Promise<{ menuItemId: string; inventoryItemId: string; goodName: string }> {
+  const response = await apiClient.patch<{ menuItemId: string; inventoryItemId: string; goodName: string }>(
+    `/menu-versions/${menuId}/items/${menuItemId}/house-good`,
+    { inventoryItemId },
+  )
+  return response.data
+}
+
 export async function makeMenuCurrent(menuId: string, fingerprint: string): Promise<MakeCurrentResult> {
   // The switch commits before the prices are carried, so this call is never
   // cut off at the client's usual 30 s while the gateway is still writing

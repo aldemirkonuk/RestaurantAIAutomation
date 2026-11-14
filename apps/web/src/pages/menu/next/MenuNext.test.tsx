@@ -18,6 +18,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MenuNext from './MenuNext';
 import { housePriceNote } from './menu-price-note';
+import { formatMoney } from '../../../lib/currency';
 import { getMenu, discardMenuItem, addMenuItem, reviewMenuItem, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
 import { settingsApi, type HouseCurrency } from '../../../services/api/settings';
 
@@ -555,9 +556,12 @@ describe('MenuNext — a price changes on its line', () => {
     expect(screen.getByTestId('menu-add-unpriced').textContent).toMatch(/no price; an owner or a manager sets it/);
     fireEvent.click(screen.getByRole('button', { name: /Add to menu/ }));
     await waitFor(() => expect(mockAdd).toHaveBeenCalled());
-    // The add sends prices as typed (r28 G7); staff send none of either form.
-    const sent = mockAdd.mock.calls[0][1] as unknown as Record<string, unknown>;
-    for (const k of ['by_glass_price', 'bottle_price', 'by_glass_typed', 'bottle_typed']) expect(sent[k]).toBeUndefined();
+    // The add form sends a price as typed (r28 G7): staff send neither form.
+    const sent = mockAdd.mock.calls[0][1] as { by_glass_price?: number; bottle_price?: number; by_glass_typed?: string; bottle_typed?: string };
+    expect(sent.by_glass_price).toBeUndefined();
+    expect(sent.bottle_price).toBeUndefined();
+    expect(sent.by_glass_typed).toBeUndefined();
+    expect(sent.bottle_typed).toBeUndefined();
   });
 
   it('a price typed before the role became staff is not sent', async () => {
@@ -574,9 +578,9 @@ describe('MenuNext — a price changes on its line', () => {
     );
     fireEvent.click(await screen.findByRole('button', { name: /Add to menu/ }));
     await waitFor(() => expect(mockAdd).toHaveBeenCalled());
-    const sent = mockAdd.mock.calls[0][1] as unknown as Record<string, unknown>;
-    expect(sent.bottle_typed).toBeUndefined();
+    const sent = mockAdd.mock.calls[0][1] as { bottle_price?: number; bottle_typed?: string };
     expect(sent.bottle_price).toBeUndefined();
+    expect(sent.bottle_typed).toBeUndefined();
   });
 
   it('a manager keeps the price boxes', async () => {
@@ -747,5 +751,71 @@ describe('MenuNext — more than one menu marked current (r28 G20)', () => {
     mount();
     await screen.findAllByTestId('menu-row');
     expect(screen.queryByTestId('menu-other-current')).not.toBeInTheDocument();
+  });
+});
+
+// r28 G11: the house's own price beside the printed one, when they differ.
+describe("MenuNext — the house's own price beside the menu's (r28 G11)", () => {
+  it("says the house's price in house money under a line whose price differs, and nothing under one that matches", async () => {
+    mockGetMenu.mockResolvedValue(
+      menu({
+        items: [
+          line({ id: 'l1', name: 'Chianti', category: 'Red', by_glass_price: 12, bottle_price: 48, inventory_item_id: 'inv-1', house_price: { bottle: 1250, glass: 12, removed: false } }),
+          line({ id: 'l2', name: 'Barolo', category: 'Red', by_glass_price: null, bottle_price: 90, inventory_item_id: 'inv-2', house_price: { bottle: 90, glass: null, removed: false } }),
+        ],
+      }),
+    );
+    mount();
+    const notes = await screen.findAllByTestId('menu-house-price');
+    expect(notes).toHaveLength(1);
+    // House money, through the one formatter (this test runtime's ICU may write "TRY 1,250.00").
+    await waitFor(() =>
+      expect(notes[0].textContent).toBe(`The house's own price on Inventory (Your price) is not the menu's: bottle ${formatMoney(1250, 'TRY')}.`),
+    );
+    expect(notes[0].textContent).not.toContain('1250.00');
+    expect(notes[0].closest('tr')).toHaveTextContent('Chianti');
+  });
+
+  it('hides the note while the line is being re-priced', async () => {
+    mockGetMenu.mockResolvedValue(
+      menu({ items: [line({ id: 'l1', name: 'Chianti', category: 'Red', bottle_price: 48, inventory_item_id: 'inv-1', house_price: { bottle: 55, glass: null, removed: false } })] }),
+    );
+    mount();
+    await screen.findByTestId('menu-house-price');
+    fireEvent.click(screen.getByTestId('menu-price-edit'));
+    expect(screen.queryByTestId('menu-house-price')).not.toBeInTheDocument();
+  });
+
+  it('says once when the house prices could not be read', async () => {
+    mockGetMenu.mockResolvedValue(menu({ housePricesUnreadable: "the house's own prices could not be read: pooler timeout" }));
+    mount();
+    expect(await screen.findByTestId('menu-house-prices-unreadable')).toHaveTextContent(
+      "The house's own prices on Inventory could not be read (pooler timeout), so no line below says whether Inventory holds another price.",
+    );
+  });
+});
+
+// r28 G19: a kept price in the flag note was printed as the gateway stored it.
+describe("MenuNext — a kept price in the flag note is house money (r28 G19)", () => {
+  it('writes the kept price through the house formatter, never as stored', async () => {
+    mockGetMenu.mockResolvedValue(
+      menu({
+        items: [
+          line({
+            id: 'l1', name: 'Chianti', category: 'Red', bottle_price: null, by_glass_price: 12, inventory_item_id: 'inv-1',
+            price_flag: 'blank_kept_last_known',
+            price_flag_note: 'The menu line shows no bottle price, so the house kept the bottle price 1250.00 it already had. A manager can change it on Inventory, under Your price.',
+          }),
+        ],
+      }),
+    );
+    mount();
+    const note = await screen.findByTestId('menu-price-flag');
+    await waitFor(() =>
+      expect(note.textContent).toBe(
+        `The menu line shows no bottle price, so the house kept the bottle price ${formatMoney(1250, 'TRY')} it already had. A manager can change it on Inventory, under Your price.`,
+      ),
+    );
+    expect(note.textContent).not.toContain('1250.00');
   });
 });

@@ -26,6 +26,7 @@ import { ReviewMenuItemDto } from "./dto/review-menu-item.dto";
 import { SetThresholdDto } from "./dto/set-threshold.dto";
 import { UpdateOnboardingProgressDto } from "./dto/update-onboarding-progress.dto";
 import { MakeMenuCurrentDto } from "./dto/make-menu-current.dto";
+import { LinkHouseGoodDto } from "./dto/link-house-good.dto";
 import { InboundAddressService } from "../common/orchestrator/inbound-address.service";
 
 /** The two fields of a menu line that are prices (ADR 0193). */
@@ -282,6 +283,25 @@ export class MenuVersionsController {
       "choose the current menu",
     );
     return this.menusService.makeCurrent(house, menuId, userId, dto?.fingerprint ?? null);
+  }
+
+  @Patch(":menuId/items/:itemId/house-good")
+  @ApiOperation({
+    summary: "Link a line of a kept menu to one of the house's own goods -- owner or manager only (r28 G21)",
+    description:
+      "For a line the read found to fit two or more of the house's goods (houseCandidates) and so linked to none. 409 on the current menu (its lines were carried when it was chosen) and for a good removed on Inventory; 400 for a dish; 404 for a menu, line or good that is not this house's. The plan of this menu changes, so a plan shown before the link is refused at make-current.",
+  })
+  @ApiResponse({ status: 403, description: "The caller is not an owner or manager of this restaurant." })
+  async linkHouseGood(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+    @Param("menuId", new ParseUUIDPipe()) menuId: string,
+    @Param("itemId", new ParseUUIDPipe()) itemId: string,
+    @Body() dto: LinkHouseGoodDto,
+  ) {
+    const house = this.house(restaurantId);
+    await this.organizations.assertCanManageRestaurant(userId, house, "link a menu line to a house good");
+    return this.menusService.linkLineToHouseGood(house, menuId, itemId, dto.inventoryItemId);
   }
 }
 

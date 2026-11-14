@@ -1,4 +1,4 @@
-import type { MenuImportReviewItem, MenuItemCorrection } from '../../../services/api/menus';
+import type { MenuImportReviewItem, MenuItemCorrection, MenuLine } from '../../../services/api/menus';
 import { formatMoney } from '../../../lib/currency';
 
 /**
@@ -110,4 +110,50 @@ export function priceChangeNote(
     }
   });
   return { tone: alert ? 'alert' : 'said', text: `${name}: ${parts.join('; ')}.` };
+}
+
+/** A menu price and the house's own differ when they are a half-cent or more apart. */
+const SAME_PRICE = 0.005;
+
+/**
+ * The house's own price beside a current-menu line, when it is not the
+ * menu's (r21 defect 7, r28 G11). /menu showed only the printed price, so a
+ * price changed on Inventory after the menu, held by a lock, or never carried
+ * read as the price the house sells at. Null when there is nothing to say:
+ * no link, or every price the menu prints is the house's too. A kind the menu
+ * prints no price for is the price flag's to say, not this note's.
+ */
+export function housePriceBesideWords(
+  line: Pick<MenuLine, 'bottle_price' | 'by_glass_price' | 'house_price'>,
+  money: (n: number) => string,
+): string | null {
+  const house = line.house_price;
+  if (!house) return null;
+  if (house.removed) {
+    return 'The good this line sells is removed on Inventory, so the house no longer lists it. Bring it back on Inventory, or discard this line.';
+  }
+  const parts: string[] = [];
+  const kinds = [
+    { kind: 'bottle', menu: line.bottle_price, own: house.bottle },
+    { kind: 'glass', menu: line.by_glass_price, own: house.glass },
+  ] as const;
+  for (const k of kinds) {
+    if (k.menu === null || k.menu === undefined) continue;
+    if (k.own === null) parts.push(`no ${k.kind} price of its own`);
+    else if (Math.abs(k.own - k.menu) >= SAME_PRICE) parts.push(`${k.kind} ${money(k.own)}`);
+  }
+  if (parts.length === 0) return null;
+  return `The house's own price on Inventory (Your price) is not the menu's: ${parts.join('; ')}.`;
+}
+
+/**
+ * A line's price-flag note in the house's money (r28 G19). The gateway writes
+ * the price a blank menu price kept as a plain number ("the house kept the
+ * bottle price 1250.00 it already had", menus.service.ts carryPlanOf), and
+ * the note is stored on the line, so /menu printed "1250.00" in a lira house.
+ * The page now writes each such price through the house's formatter. Old rows
+ * and new ones hold the same plain form, so one reading covers both.
+ */
+export function flagNoteInHouseMoney(note: string, money: (n: number) => string): string {
+  return note.replace(/\b(bottle|glass) price (\d+(?:\.\d+)?)\b/g, (_, kind: string, n: string) => `${kind} price ${money(Number(n))}`);
 }

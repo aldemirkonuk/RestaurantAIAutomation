@@ -35,7 +35,6 @@ import {
 } from "../pricing/house-menu-price";
 import { readOpenLocks, readPeople, type OpenLock } from "../pricing/price-locks";
 
-const FREE_TIER_MANUAL_LIMIT = 25;
 /** The private bucket the gateway already keeps original bytes in (document intake). */
 const SOURCE_BUCKET = "vendor-attachments";
 /** How long a link to a kept menu source lives. */
@@ -1871,6 +1870,7 @@ export class MenusService {
     items: Array<Record<string, unknown>>;
     rawLineWithheld?: true;
     otherCurrent?: number;
+    housePricesUnreadable?: string;
   }> {
     const { data: actives, error: menuErr } = await this.dbService.supabase
       .from("restaurant_menus")
@@ -1894,14 +1894,66 @@ export class MenusService {
     // not keep serving it as live. Read in pages: PostgREST stops at 1000
     // rows without saying so, and a long wine list is exactly that long.
     const items = await this.readLines(menu.id, restaurantId, view);
+    const house = await this.housePricesOf(restaurantId, items);
 
     return {
       menuId: menu.id,
       name: menu.name,
       status: menu.status,
-      items,
+      items: house.items,
       ...withheld,
       ...(ordered.length > 1 ? { otherCurrent: ordered.length - 1 } : {}),
+      ...(house.unreadable ? { housePricesUnreadable: house.unreadable } : {}),
+    };
+  }
+
+  /**
+   * The house's own price beside each linked line of the current menu (r21
+   * defect 7, r28 G11). The menu line keeps the price the menu printed; the
+   * house's own price (`restaurant_inventory.menu_price_current` / `_glass`,
+   * Inventory "Your price") can differ: changed there after the menu was made
+   * current, held by a price lock, or not carried. Each line linked to a house
+   * good gets `house_price: { bottle, glass, removed }`, read in chunks of 150
+   * ids and in this house only. A line with no link gets nothing. A chunk that
+   * cannot be read is said once on the reply (`housePricesUnreadable`), never
+   * taken for "no house price".
+   */
+  private async housePricesOf(
+    restaurantId: string,
+    items: Array<Record<string, unknown>>,
+  ): Promise<{ items: Array<Record<string, unknown>>; unreadable: string | null }> {
+    const ids = [...new Set(items.map((i) => i.inventory_item_id).filter((v) => v !== null && v !== undefined && v !== "").map(String))];
+    if (ids.length === 0) return { items, unreadable: null };
+    type Row = { id: string; menu_price_current: unknown; menu_price_glass: unknown; is_active: boolean | null; deleted_at: string | null };
+    const byId = new Map<string, Row>();
+    let unreadable: string | null = null;
+    for (let at = 0; at < ids.length; at += WINE_ID_CHUNK) {
+      const chunk = ids.slice(at, at + WINE_ID_CHUNK);
+      const { data, error } = await this.dbService.supabase
+        .from("restaurant_inventory")
+        .select("id, menu_price_current, menu_price_glass, is_active, deleted_at")
+        .eq("restaurant_id", restaurantId)
+        .in("id", chunk);
+      if (error) {
+        unreadable = `the house's own prices could not be read: ${error.message}`;
+        continue;
+      }
+      for (const r of (data ?? []) as Row[]) byId.set(String(r.id), r);
+    }
+    return {
+      unreadable,
+      items: items.map((line) => {
+        const row = line.inventory_item_id ? byId.get(String(line.inventory_item_id)) : undefined;
+        if (!row) return line;
+        return {
+          ...line,
+          house_price: {
+            bottle: linePrice(row.menu_price_current),
+            glass: linePrice(row.menu_price_glass),
+            removed: row.is_active === false || !!row.deleted_at,
+          },
+        };
+      }),
     };
   }
 
@@ -1985,6 +2037,75 @@ export class MenusService {
         key(a.category).localeCompare(key(b.category)) || key(a.name).localeCompare(key(b.name)),
     );
     return out.map((row) => lineForViewer(row, view));
+  }
+
+  /**
+   * Link one line of a kept menu to one of the house's own goods (r28 G21).
+   *
+   * A read whose line fits two or more of the house's goods (name, kind,
+   * vintage and size) guesses none: the line goes to the library and the reply
+   * names the goods (`houseCandidates`). Choosing that menu then carried the
+   * line by its library wine, which adds a second good beside the house's own
+   * when the house's row names another library wine or none. An owner or a
+   * manager now picks the good, and the line is linked as a single fit would
+   * have linked it: its good, and the good's library wine (or none).
+   *
+   * Only a menu that is not current: the current menu's lines were already
+   * carried, so a new link there would not move what was carried. A kitchen
+   * line is never linked (it is never carried). The good must be this house's
+   * and live. Every read and the write are scoped to the house.
+   */
+  async linkLineToHouseGood(
+    restaurantId: string,
+    menuId: string,
+    menuItemId: string,
+    inventoryItemId: string,
+  ): Promise<{ menuItemId: string; inventoryItemId: string; goodName: string }> {
+    const db = this.dbService.supabase;
+    const { data: menu, error: menuErr } = await db
+      .from("restaurant_menus")
+      .select("id, status")
+      .eq("id", menuId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (menuErr) throw new InternalServerErrorException(`The menu could not be read: ${menuErr.message}. Nothing was changed.`);
+    if (!menu) throw new NotFoundException("No menu of this restaurant by that id. Nothing was changed.");
+    if (menu.status === "active") {
+      throw new ConflictException(
+        "This is the current menu: its lines were carried to the house when it was chosen, so a line is not linked here. Nothing was changed.",
+      );
+    }
+    const { data: line, error: lineErr } = await db
+      .from("menu_items")
+      .select("id, name, category, raw_extracted_text, status")
+      .eq("id", menuItemId)
+      .eq("menu_id", menuId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (lineErr) throw new InternalServerErrorException(`The menu line could not be read: ${lineErr.message}. Nothing was changed.`);
+    if (!line || line.status === "discarded") throw new NotFoundException("No line of this menu by that id. Nothing was changed.");
+    if (isKitchenItem(line as unknown as InsertedMenuItem)) {
+      throw new BadRequestException("This is a dish: it is never carried to the house's goods, so it is not linked to one. Nothing was changed.");
+    }
+    const { data: good, error: goodErr } = await db
+      .from("restaurant_inventory")
+      .select("id, master_wine_id, wine_name, display_name, is_active, deleted_at")
+      .eq("id", inventoryItemId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (goodErr) throw new InternalServerErrorException(`The house's good could not be read: ${goodErr.message}. Nothing was changed.`);
+    if (!good) throw new NotFoundException("No good of this house by that id. Nothing was changed.");
+    if (good.is_active === false || good.deleted_at) {
+      throw new ConflictException("That good is removed on Inventory. Bring it back there first. Nothing was changed.");
+    }
+    const { error: writeErr } = await db
+      .from("menu_items")
+      .update({ inventory_item_id: good.id, wine_library_id: good.master_wine_id ?? null })
+      .eq("id", menuItemId)
+      .eq("menu_id", menuId)
+      .eq("restaurant_id", restaurantId);
+    if (writeErr) throw new InternalServerErrorException(`The line was not linked: ${writeErr.message}. Nothing was changed.`);
+    return { menuItemId, inventoryItemId: String(good.id), goodName: String(good.display_name ?? good.wine_name ?? "") };
   }
 
   // ── Menu versions (ADR 0193; founder 2026-09-21, answer 7) ────────────────
@@ -2847,7 +2968,7 @@ export class MenusService {
       }
     }
 
-    const menuItemRows = resolved.map(({ item, masterWineId, houseItemId }, idx) => ({
+    const menuItemRows = resolved.map(({ item, masterWineId, houseItemId }) => ({
       menu_id: menuId,
       restaurant_id: restaurantId,
       name: item.name,
@@ -2862,14 +2983,13 @@ export class MenusService {
       wine_library_id: masterWineId,
       ...(houseItemId ? { inventory_item_id: houseItemId } : {}),
       source: method,
-      status:
-        method === "manual" && idx >= FREE_TIER_MANUAL_LIMIT
-          ? "flagged"
-          : "approved",
-      review_notes:
-        method === "manual" && idx >= FREE_TIER_MANUAL_LIMIT
-          ? "Free tier: exceeds 25 item limit"
-          : null,
+      // Every line is kept as read (r28 G16). A typed line past the 25th used
+      // to be flagged "Free tier: exceeds 25 item limit": no plan holds such a
+      // cap (pricing is undecided, OD-23; every house runs on the default
+      // tier), the flag gated nothing, and a new house typing its menu was told
+      // it was over a limit. menu-line-view still reads that note on old rows.
+      status: "approved",
+      review_notes: null,
     }));
 
     const { data, error: menuItemsErr } = await this.dbService.supabase
