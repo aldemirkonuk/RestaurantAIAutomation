@@ -24,6 +24,12 @@ export const DRINK_USE_UNREAD = "Which drinks use this item could not be read ju
 export const MENU_PRICES_UNREAD = "Your menu's prices could not be read just now, so none is shown beside your list.";
 export const MENU_DISHES_UNREAD = "Your menu's dishes could not be read just now, so none is offered.";
 export const MENU_DRINKS_UNREAD = "Your menu's cocktails could not be read just now, so none is offered.";
+/**
+ * Menu dishes written in one insert (r36 recipes audit, gap 14): one awaited
+ * insert per dish made a 500-dish menu 500 round trips in one request. 100
+ * rows is a small body, and a 500-dish menu is five inserts.
+ */
+export const MENU_DISH_BATCH = 100;
 export const MENU_DRINKS_NOT_ADDED = "The menu's cocktails could not be saved just now. None was added; try again.";
 export const DRINK_FIGURES_UNREAD = "Your drinks' costs could not be read just now, so none is shown.";
 
@@ -528,6 +534,13 @@ export class DishesService {
    * the database already holds (another tab, a double click) is `already`,
    * not an error. The first other failure stops the run: what was made
    * stays made and is said, and the rest are `notAdded`, never half-said.
+   *
+   * MENU_DISH_BATCH dishes an insert, not one insert a dish (r36 gap 14).
+   * An insert is all or nothing, so each batch is made whole, or none of it
+   * is. A batch refused for a name already listed (23505: listed since the
+   * offer was read) is put on one dish at a time, so that name is `already`
+   * and the others are made, exactly as before. Every name asked and offered
+   * ends in one of added, already or notAdded.
    */
   async addMenuDishes(restaurantId: string, names: string[]) {
     const { dishes } = await this.menuDishes(restaurantId);
@@ -537,19 +550,38 @@ export class DishesService {
     const added: Array<{ id: string; name: string }> = [];
     const already: string[] = [];
     let notAdded: string[] = [];
-    for (let i = 0; i < take.length; i++) {
-      const d = take[i];
-      try {
-        const made = await this.createDish(restaurantId, { name: d.name, section: d.section, price: d.price });
-        added.push({ id: made.id, name: made.name });
-      } catch (e) {
-        if (e instanceof ConflictException) {
-          already.push(d.name);
-          continue;
-        }
-        this.logger.error(`dishes: menu dish "${d.name}" was not added: ${(e as { message?: string })?.message ?? String(e)}`);
-        notAdded = take.slice(i).map((x) => x.name);
+    const client = this.db.getClient();
+    const stop = (at: number, d: { name: string }, why: unknown) => {
+      this.logger.error(`dishes: menu dish "${d.name}" was not added: ${(why as { message?: string })?.message ?? String(why)}`);
+      notAdded = take.slice(at).map((x) => x.name);
+    };
+    batches: for (let c = 0; c < take.length; c += MENU_DISH_BATCH) {
+      const batch = take.slice(c, c + MENU_DISH_BATCH);
+      const { data, error } = await client
+        .from("dishes")
+        .insert(batch.map((d) => this.dishRow(restaurantId, { name: d.name, section: d.section, price: d.price })))
+        .select("id, name");
+      if (!error) {
+        for (const r of (data ?? []) as Array<{ id: string; name: string }>) added.push({ id: r.id, name: r.name });
+        continue;
+      }
+      if (error.code !== "23505") {
+        stop(c, batch[0], error);
         break;
+      }
+      for (let i = c; i < c + batch.length; i++) {
+        const d = take[i];
+        try {
+          const made = await this.createDish(restaurantId, { name: d.name, section: d.section, price: d.price });
+          added.push({ id: made.id, name: made.name });
+        } catch (e) {
+          if (e instanceof ConflictException) {
+            already.push(d.name);
+            continue;
+          }
+          stop(i, d, e);
+          break batches;
+        }
       }
     }
     return {
@@ -697,19 +729,26 @@ export class DishesService {
     return t ? t : null;
   }
 
-  async createDish(restaurantId: string, dto: CreateDishDto) {
+  /** The row a new dish is written as, by `createDish` and by the menu's batch alike. */
+  private dishRow(restaurantId: string, dto: CreateDishDto) {
     const name = (dto.name ?? "").trim().replace(/\s+/g, " ");
     if (!name) throw new BadRequestException(DISH_NAME_NEEDED);
+    return {
+      restaurant_id: restaurantId,
+      name,
+      menu_section: DishesService.text(dto.section),
+      price: dto.price ?? null,
+      description: DishesService.text(dto.description),
+    };
+  }
+
+  async createDish(restaurantId: string, dto: CreateDishDto) {
+    const row = this.dishRow(restaurantId, dto);
+    const name = row.name;
     const { data, error } = await this.db
       .getClient()
       .from("dishes")
-      .insert({
-        restaurant_id: restaurantId,
-        name,
-        menu_section: DishesService.text(dto.section),
-        price: dto.price ?? null,
-        description: DishesService.text(dto.description),
-      })
+      .insert(row)
       .select("id, name, menu_section, price, description")
       .single();
     if (error) this.writeFailed(error, name);
