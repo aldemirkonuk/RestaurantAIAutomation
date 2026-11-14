@@ -7,16 +7,16 @@
  * those. Owner and manager only: writing a recipe, and its cost, are theirs.
  */
 import { useId } from 'react';
-import type { DishListRow } from '../../../../services/api/recipes';
+import type { ListCost } from '../../../../services/api/recipes';
 
 /** Under a "Not known" cost: what it waits for; null when the cost is known or absent. */
-export function costWaits(cost: DishListRow['cost'] | undefined): string | null {
+export function costWaits(cost: ListCost | undefined): string | null {
   if (!cost || cost.complete) return null;
   if (cost.of === 0) return 'no ingredient from the shelf yet';
   return `${cost.priced} of ${cost.of} ingredients priced`;
 }
 
-export function CostWaits({ id, cost }: { id: string; cost: DishListRow['cost'] | undefined }) {
+export function CostWaits({ id, cost }: { id: string; cost: ListCost | undefined }) {
   const said = costWaits(cost);
   return said ? (
     <span className="cl-dim" style={{ display: 'block', fontSize: 11 }} data-testid={`cost-waits-${id}`}>

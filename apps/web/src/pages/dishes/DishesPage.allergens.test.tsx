@@ -39,6 +39,7 @@ const list = [
 beforeEach(() => {
   h.get.mockReset().mockImplementation(async (url: string) => {
     if (url === '/settings/currency') return { data: { restaurantId: RID, code: 'TRY', country: 'Turkey', readable: true, reason: null, statedAt: null } };
+    if (url === `/recipes/${RID}/dishes/figures`) return { data: { costsUnread: false, dishes: (list as Array<{ id: string }>).map((r) => ({ dishId: r.id, ...r })) } };
     if (url === `/recipes/${RID}/dishes`) return { data: list };
     throw new Error(`unexpected GET ${url}`);
   });

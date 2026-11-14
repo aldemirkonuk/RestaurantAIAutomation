@@ -30,6 +30,11 @@
  * Every role sees an Allergens column, and can check one allergen: the rows
  * that state it free are hidden, every other row stays (ListAllergens; r36
  * recipes audit, gap 8).
+ *
+ * The names and the figures are two reads (r41 recipes audit, gaps 2 and 3),
+ * as on /cocktails: the list shows as soon as the names are read, its cost
+ * cells say "…" while the figures are read, and a failed figures read blanks
+ * only the figures and says so once above the list, never the names.
  */
 import { useId, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -38,12 +43,12 @@ import RecipeSheet from '../cellar/next/recipe/RecipeSheet';
 import { pourCostShare } from '../cellar/next/recipe/DrinkCards';
 import { PRICE_UNREAD, priceText, readPrice } from '../cellar/next/recipe/price-text';
 import { useHousePercent, type SayPercent } from '../cellar/next/recipe/useHousePercent';
-import { reason, useCanEditRecipe, useCreateDish, useDishes, useHouseMoney, useMenuPrices, useRemoveDish, useUpdateDish } from '../cellar/next/recipe/useRecipe';
+import { reason, useCanEditRecipe, useCreateDish, useDishFigures, useDishes, useHouseMoney, useMenuPrices, useRemoveDish, useUpdateDish } from '../cellar/next/recipe/useRecipe';
 import { MENU_PRICES_UNREAD, MenuPriceCell } from '../cellar/next/recipe/MenuPriceCell';
 import MenuDishesOffer from './MenuDishesOffer';
 import { AllergenCell, AllergenCheck, keptFor } from '../cellar/next/recipe/ListAllergens';
 import { CostWaits, NoRecipeYet } from '../cellar/next/recipe/ListCostWaits';
-import type { DishListRow } from '../../services/api/recipes';
+import type { DishFigureRow, DishListRow } from '../../services/api/recipes';
 import { EM, SANS } from '../cellar/next/cellar-format';
 import '../cellar/next/cellar-next.css';
 
@@ -52,21 +57,40 @@ type Say = (n: number | null | undefined) => string;
 /** Said under a cost some of whose lines are priced from part of the stock only. */
 const PARTLY_INVOICED = 'partly invoiced';
 
-function cells(d: DishListRow, say: Say, sayPct: SayPercent) {
+/** Said once above the list when its costs could not be read; the names stay. */
+export const DISH_COSTS_UNREAD = 'The dishes’ costs could not be read just now, so none is shown.';
+
+/** Said once above the list, to every role, when the figures that carry the allergens could not be read. */
+export const DISH_ALLERGENS_UNREAD = 'The dishes’ allergens could not be read just now, so none is shown.';
+
+/** Where the figures stand: being read, read, or not readable just now. */
+export type FiguresState = 'reading' | 'read' | 'unread';
+
+function cells(d: DishListRow, f: DishFigureRow | undefined, state: FiguresState, say: Say, sayPct: SayPercent) {
   const dim = <span className="cl-dim">{EM}</span>;
-  if (!d.hasRecipe) return { price: d.price != null ? say(d.price) : 'No price', cost: dim, share: dim };
-  const share = pourCostShare(d.cost, d.price);
-  const per = d.cost?.complete ? d.cost.perServe : null;
+  const price = d.price != null ? say(d.price) : 'No price';
+  // While the figures are read the cell says so; "—" is a dish with no recipe.
+  if (state === 'reading') {
+    const reading = (cell: 'cost' | 'share') => (
+      <span className="cl-dim" title="Reading the costs" data-testid={`dish-${cell}-reading-${d.id}`}>
+        …
+      </span>
+    );
+    return { price, cost: reading('cost'), share: reading('share') };
+  }
+  if (state === 'unread' || !f || !f.hasRecipe) return { price, cost: dim, share: dim };
+  const share = pourCostShare(f.cost, d.price);
+  const per = f.cost?.complete ? f.cost.perServe : null;
   // `partial` counts priced lines whose invoice cost covers only part of the
   // stock (bought another way, invoiced at 0, or not yet verified).
-  const part = d.cost?.partial ?? 0;
+  const part = f.cost?.partial ?? 0;
   return {
-    price: d.price != null ? say(d.price) : 'No price',
+    price,
     cost:
       per == null ? (
         <>
           Not known
-          <CostWaits id={d.id} cost={d.cost} />
+          <CostWaits id={d.id} cost={f.cost} />
         </>
       ) : part > 0 ? (
         <>
@@ -278,6 +302,7 @@ function DishDetails({ dish, onRemoved }: { dish: DishListRow; onRemoved: () => 
 
 export default function DishesPage() {
   const dishes = useDishes();
+  const figures = useDishFigures();
   const canEdit = useCanEditRecipe();
   const sayMoney = useHouseMoney();
   const sayPct = useHousePercent();
@@ -289,9 +314,12 @@ export default function DishesPage() {
   const [allergen, setAllergen] = useState('');
   const all = dishes.data ?? [];
   const [onlyBare, setOnlyBare] = useState(false);
-  const byAllergen = all.filter((d) => keptFor(d.allergens, allergen));
-  const bare = all.filter((d) => !d.hasRecipe).length;
-  const rows = canEdit && onlyBare ? byAllergen.filter((d) => !d.hasRecipe) : byAllergen;
+  const fig = (id: string) => figures.byId?.get(id);
+  const figState: FiguresState = figures.loading ? 'reading' : !figures.byId || figures.costsUnread ? 'unread' : 'read';
+  const byAllergen = all.filter((d) => keptFor(fig(d.id)?.allergens, allergen));
+  // Which dishes have no recipe is known only once the figures are read.
+  const bareIds = figures.byId ? all.filter((d) => !fig(d.id)?.hasRecipe).map((d) => d.id) : [];
+  const rows = canEdit && onlyBare ? byAllergen.filter((d) => bareIds.includes(d.id)) : byAllergen;
   const openId = rows.some((d) => d.id === asked) ? asked : null;
 
   const open = (id: string | null) =>
@@ -340,7 +368,17 @@ export default function DishesPage() {
           <p className="cl-said" style={{ marginTop: 12 }} data-testid="dishes-empty">No dishes yet.</p>
         ) : (
           <>
-          {canEdit ? <NoRecipeYet bare={bare} of={all.length} noun="dishes" only={onlyBare} onOnly={setOnlyBare} /> : null}
+          {say && (figures.error || figures.costsUnread) ? (
+            <p className="cl-said" role="status" style={{ marginTop: 12 }} data-testid="dishes-costs-unread">
+              {DISH_COSTS_UNREAD}
+            </p>
+          ) : null}
+          {figures.error ? (
+            <p className="cl-said" role="status" style={{ marginTop: 12 }} data-testid="dishes-allergens-unread">
+              {DISH_ALLERGENS_UNREAD}
+            </p>
+          ) : null}
+          {canEdit ? <NoRecipeYet bare={bareIds.length} of={all.length} noun="dishes" only={onlyBare} onOnly={setOnlyBare} /> : null}
           <AllergenCheck value={allergen} onChange={setAllergen} hidden={all.length - byAllergen.length} noun="dishes" />
           <div style={{ marginTop: 12, overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10 }}>
             <table className="cl-table">
@@ -357,7 +395,8 @@ export default function DishesPage() {
               </thead>
               <tbody>
                 {rows.map((d) => {
-                  const c = say ? cells(d, say, sayPct) : null;
+                  const f = fig(d.id);
+                  const c = say ? cells(d, f, figState, say, sayPct) : null;
                   return [
                     <tr
                       key={d.id}
@@ -375,7 +414,7 @@ export default function DishesPage() {
                     >
                       <td>
                         <span className="cl-serif" style={{ display: 'block', fontWeight: 600, fontSize: 13.5 }}>{d.name}</span>
-                        {d.hasRecipe ? null : <span className="cl-dim" style={{ fontSize: 11 }}>No recipe yet</span>}
+                        {figures.byId && !f?.hasRecipe ? <span className="cl-dim" style={{ fontSize: 11 }}>No recipe yet</span> : null}
                       </td>
                       <td>{d.section ?? <span className="cl-dim">{EM}</span>}</td>
                       {c ? <td className="cl-num" style={{ textAlign: 'right' }}>{c.price}</td> : null}
@@ -386,7 +425,7 @@ export default function DishesPage() {
                       ) : null}
                       {c ? <td className="cl-num" style={{ textAlign: 'right' }}>{c.cost}</td> : null}
                       {c ? <td className="cl-num" style={{ textAlign: 'right' }}>{c.share}</td> : null}
-                      <AllergenCell id={d.id} a={d.allergens} />
+                      <AllergenCell id={d.id} a={f?.allergens} />
                     </tr>,
                     d.id === openId ? (
                       <tr key={`${d.id}-leaf`} data-testid={`dish-leaf-${d.id}`}>

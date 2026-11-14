@@ -280,25 +280,44 @@ export type RowAllergens =
   | { readable: true; status: Record<string, AllergenStatus>; unstatedBy: string[] }
   | { readable: false };
 
-/** One row of GET /dishes. Price and cost are null for staff. */
+/** A list row's cost a serve (or plate); null for staff, or when it could not be read. */
+export type ListCost = null | {
+  perServe: number | null;
+  perServeExact: number | null;
+  priced: number;
+  of: number;
+  complete: boolean;
+  partial: number;
+};
+
+/**
+ * One row of GET /dishes: the dish by name, nothing priced, so the list shows
+ * after one read (r41 recipes audit, gap 2). Price is null for staff.
+ */
 export interface DishListRow {
   id: string;
   name: string;
   section: string | null;
   price: number | null;
+}
+
+/** A dish on the house's list with its figures (GET /recipes/:rid/dishes/figures). */
+export interface DishFigureRow {
+  dishId: string;
+  /** Null for a role that does not see the house's money. */
+  price: number | null;
   hasRecipe: boolean;
   yieldServes: number | null;
   lineCount: number;
-  cost: null | {
-    perServe: number | null;
-    perServeExact: number | null;
-    priced: number;
-    of: number;
-    complete: boolean;
-    partial: number;
-  };
-  /** Null when the dish has no recipe; absent from an older gateway. */
+  cost: ListCost;
+  /** Null when the dish has no recipe. */
   allergens?: RowAllergens | null;
+}
+
+/** GET /recipes/:rid/dishes/figures. `costsUnread`: the pricing read failed, every cost is null. */
+export interface DishFiguresAnswer {
+  costsUnread: boolean;
+  dishes: DishFigureRow[];
 }
 
 /** A drink on the house's list with its figures (GET /recipes/:rid/drinks/figures). */
@@ -309,7 +328,7 @@ export interface DrinkFigureRow {
   hasRecipe: boolean;
   yieldServes: number | null;
   lineCount: number;
-  cost: DishListRow['cost'];
+  cost: ListCost;
   /** Null when the drink has no recipe; absent from an older gateway. */
   allergens?: RowAllergens | null;
 }
@@ -385,6 +404,14 @@ export const dishesApi = {
   async list(restaurantId: string): Promise<DishListRow[]> {
     const r = await apiClient.get<DishListRow[]>(`${base(restaurantId)}/dishes`);
     return r.data;
+  },
+
+  /** Every dish's cost a plate and allergens, read beside the names (r41 recipes audit, gaps 2 and 3). */
+  async dishFigures(restaurantId: string): Promise<DishFiguresAnswer> {
+    const r = await apiClient.get<DishFiguresAnswer>(`${base(restaurantId)}/dishes/figures`);
+    // An answer without its rows is unread, never a list of dishes with no figures.
+    if (!Array.isArray(r.data?.dishes)) throw new Error('The dishes’ figures came back without their rows.');
+    return { costsUnread: r.data.costsUnread === true, dishes: r.data.dishes };
   },
 
   /** Every drink on the list with its cost a serve, in one read (r28 recipes audit, gap 9). */

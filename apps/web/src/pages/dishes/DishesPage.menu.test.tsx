@@ -50,7 +50,9 @@ beforeEach(() => {
   ]);
   h.get.mockReset().mockImplementation(async (url: string) => {
     if (url === '/settings/currency') return { data: { restaurantId: RID, code: 'TRY', country: 'Turkey', readable: true, reason: null, statedAt: null } };
-    if (url === `/recipes/${RID}/dishes`) return { data: [row(A, 'Lamb shank', 900), row(B, 'Mezze', 500), row(C, 'Soup', 300), row(D, 'Bread', 50), row(E, 'Tea', 40), row(F, 'Pilaf', null)] };
+    const list = [row(A, 'Lamb shank', 900), row(B, 'Mezze', 500), row(C, 'Soup', 300), row(D, 'Bread', 50), row(E, 'Tea', 40), row(F, 'Pilaf', null)];
+    if (url === `/recipes/${RID}/dishes/figures`) return { data: { costsUnread: false, dishes: (list as Array<{ id: string }>).map((r) => ({ dishId: r.id, ...r })) } };
+    if (url === `/recipes/${RID}/dishes`) return { data: list };
     if (url === MENU) {
       if (h.menu instanceof Error) throw h.menu;
       return { data: h.menu };
