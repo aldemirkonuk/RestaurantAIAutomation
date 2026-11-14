@@ -46,7 +46,7 @@ import { Fragment, useEffect, useRef, useState, type FormEvent, type KeyboardEve
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import { addMenuItem, discardMenuItem, getMenu, reviewMenuItem, type MenuLine } from '../../../services/api/menus';
-import { housePriceBesideWords, housePriceNote, priceChangeNote, type PriceChange } from './menu-price-note';
+import { flagNoteInHouseMoney, housePriceBesideWords, housePriceNote, priceChangeNote, type PriceChange } from './menu-price-note';
 import { MenuVersions } from './MenuVersions';
 import { LockedPrices } from './LockedPrices';
 import { settingsApi } from '../../../services/api/settings';
@@ -444,8 +444,10 @@ function MenuRow({ line, currency, onDiscard, discarding, testId = 'menu-row', e
           );
         })()}
         {line.price_flag ? (
-          <span className="cl-note" style={{ display: 'block' }} data-testid="menu-price-flag" title={line.price_flag_note ?? undefined}>
-            {line.price_flag_note ?? 'A blank price kept the last known one.'}
+          <span className="cl-note" style={{ display: 'block' }} data-testid="menu-price-flag">
+            {line.price_flag_note
+              ? flagNoteInHouseMoney(line.price_flag_note, (n) => money(n, currency))
+              : 'A blank price kept the last known one.'}
           </span>
         ) : null}
         {(() => {

@@ -794,3 +794,28 @@ describe("MenuNext — the house's own price beside the menu's (r28 G11)", () =>
     );
   });
 });
+
+// r28 G19: a kept price in the flag note was printed as the gateway stored it.
+describe("MenuNext — a kept price in the flag note is house money (r28 G19)", () => {
+  it('writes the kept price through the house formatter, never as stored', async () => {
+    mockGetMenu.mockResolvedValue(
+      menu({
+        items: [
+          line({
+            id: 'l1', name: 'Chianti', category: 'Red', bottle_price: null, by_glass_price: 12, inventory_item_id: 'inv-1',
+            price_flag: 'blank_kept_last_known',
+            price_flag_note: 'The menu line shows no bottle price, so the house kept the bottle price 1250.00 it already had. A manager can change it on Inventory, under Your price.',
+          }),
+        ],
+      }),
+    );
+    mount();
+    const note = await screen.findByTestId('menu-price-flag');
+    await waitFor(() =>
+      expect(note.textContent).toBe(
+        `The menu line shows no bottle price, so the house kept the bottle price ${formatMoney(1250, 'TRY')} it already had. A manager can change it on Inventory, under Your price.`,
+      ),
+    );
+    expect(note.textContent).not.toContain('1250.00');
+  });
+});

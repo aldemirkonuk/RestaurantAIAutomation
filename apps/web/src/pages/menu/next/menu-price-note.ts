@@ -145,3 +145,15 @@ export function housePriceBesideWords(
   if (parts.length === 0) return null;
   return `The house's own price on Inventory (Your price) is not the menu's: ${parts.join('; ')}.`;
 }
+
+/**
+ * A line's price-flag note in the house's money (r28 G19). The gateway writes
+ * the price a blank menu price kept as a plain number ("the house kept the
+ * bottle price 1250.00 it already had", menus.service.ts carryPlanOf), and
+ * the note is stored on the line, so /menu printed "1250.00" in a lira house.
+ * The page now writes each such price through the house's formatter. Old rows
+ * and new ones hold the same plain form, so one reading covers both.
+ */
+export function flagNoteInHouseMoney(note: string, money: (n: number) => string): string {
+  return note.replace(/\b(bottle|glass) price (\d+(?:\.\d+)?)\b/g, (_, kind: string, n: string) => `${kind} price ${money(Number(n))}`);
+}
