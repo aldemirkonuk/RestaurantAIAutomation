@@ -173,6 +173,14 @@ describe("r37 w3 R-F10: a weekday with no counted line is said to have none", ()
     expect(out.basis.extremes).toBe(EXTREMES_NO_LINE);
   });
 
+  it("[REVERT-FAILS] a single quietest weekday with no line is named, and said to have recorded nothing", async () => {
+    const out: any = await advanced({ wine_consumption_log: onWeekdays([0, 2, 3, 4, 5, 6]) }).getSeasonality(RESTAURANT);
+    expect(out.worstDay).toBe("Monday");
+    expect(out.basis.extremes).toBe(
+      `${EXTREMES_BUSIEST_SHARED} Monday has no counted line in this window, so it reads 0.`,
+    );
+  });
+
   it("a quietest shared by measured days alone gets no such sentence", async () => {
     const qty = [1, 1, 3, 4, 5, 6, 7];
     const out: any = await advanced({
@@ -187,8 +195,11 @@ describe("r37 w3 R-F10: a weekday with no counted line is said to have none", ()
     expect(extremesBasis({ best: null, worst: null }, 7, { withoutLine: 2, quietWithoutLine: ["Monday", "Tuesday"] })).toBe(
       `${EXTREMES_BOTH_SHARED}. Monday and Tuesday have no counted line in this window, so each reads 0.`,
     );
-    // A named quietest day is never followed by the sentence.
-    expect(extremesBasis({ best: {}, worst: {} }, 7, { withoutLine: 1, quietWithoutLine: ["Monday"] })).toBe(EXTREMES_BOTH_NAMED);
+    // A named quietest day that recorded nothing is said to, too.
+    expect(extremesBasis({ best: {}, worst: {} }, 7, { withoutLine: 1, quietWithoutLine: ["Monday"] })).toBe(
+      `${EXTREMES_BOTH_NAMED}. Monday has no counted line in this window, so it reads 0.`,
+    );
+    expect(extremesBasis({ best: {}, worst: {} }, 7, { withoutLine: 1, quietWithoutLine: [] })).toBe(EXTREMES_BOTH_NAMED);
     expect(extremesBasis({ best: null, worst: null }, 7, { withoutLine: 7 })).toBe(EXTREMES_NO_LINE);
     // Too few still wins: there is nothing to rank either way.
     expect(extremesBasis({ best: null, worst: null }, 1, { withoutLine: 1 })).toBe(EXTREMES_TOO_FEW);

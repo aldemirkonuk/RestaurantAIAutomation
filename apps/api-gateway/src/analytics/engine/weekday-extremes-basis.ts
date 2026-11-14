@@ -40,8 +40,8 @@ export const EXTREMES_NO_LINE =
  * Saturdays was told six weekdays "share the lowest mean", as if they had
  * been measured equally quiet. The busiest day stays named (Saturday did
  * sell more than the days that recorded nothing), and the line now says
- * which of the quietest have no line at all, so the 0 is read as "nothing
- * recorded", not as a measured quiet night.
+ * which of the quietest, shared or named, have no line at all, so the 0 is
+ * read as "nothing recorded", not as a measured quiet night.
  */
 export function noLineSentence(days: readonly string[]): string {
   if (days.length === 0) return "";
@@ -72,12 +72,16 @@ export function extremesBasis(
     return EXTREMES_NO_LINE;
   const best = extremes.best !== null && extremes.best !== undefined;
   const worst = extremes.worst !== null && extremes.worst !== undefined;
-  if (best && worst) return EXTREMES_BOTH_NAMED;
-  const head = !best && !worst
-    ? EXTREMES_BOTH_SHARED
-    : best
-      ? EXTREMES_QUIETEST_SHARED
-      : EXTREMES_BUSIEST_SHARED;
-  const tail = worst ? "" : noLineSentence(lines.quietWithoutLine ?? []);
+  const head =
+    best && worst
+      ? EXTREMES_BOTH_NAMED
+      : !best && !worst
+        ? EXTREMES_BOTH_SHARED
+        : best
+          ? EXTREMES_QUIETEST_SHARED
+          : EXTREMES_BUSIEST_SHARED;
+  // Said whether the quietest is named or shared: a named quietest day that
+  // recorded nothing is "quietest" only by the zero-fill, too.
+  const tail = noLineSentence(lines.quietWithoutLine ?? []);
   return tail ? `${head}${head.endsWith(".") ? "" : "."} ${tail}` : head;
 }
