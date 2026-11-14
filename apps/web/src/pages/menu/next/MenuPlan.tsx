@@ -424,7 +424,9 @@ export function MenuPlan({
                     <td className="cl-dim">
                       {r.k.result === 'held_by_lock' && r.k.lock
                         ? `Stays ${money(r.k.lock.lockedPrice, currency)}: locked by ${r.k.lock.lockedBy.name ?? 'someone whose name is not on record'} on ${day(r.k.lock.lockedAt)}`
-                        : `Becomes ${money(r.k.menuPrice, currency)}${setWords(r.k) ? `; it was ${setWords(r.k)}` : ''}`}
+                        : r.k.result === 'kept_newer'
+                          ? `Stays ${money(r.k.housePrice, currency)}, set since this menu was chosen (the menu says ${money(r.k.menuPrice, currency)})${setWords(r.k) ? `; it was ${setWords(r.k)}` : ''}`
+                          : `Becomes ${money(r.k.menuPrice, currency)}${setWords(r.k) ? `; it was ${setWords(r.k)}` : ''}`}
                     </td>
                     <td>
                       <KeepSwitch
