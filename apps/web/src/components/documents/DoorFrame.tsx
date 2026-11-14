@@ -32,7 +32,7 @@
 import { useState } from 'react'
 import type { CanonicalDocument } from '../../services/api/canonical'
 import type { DoorBooking, DoorCountLine } from '../../services/api/deliveries'
-import { EM, MONO, SERIF, fmtQty, fmtReceived } from './canonical-format'
+import { EM, MONO, SERIF, fmtQty, fmtReceived, fmtStamp } from './canonical-format'
 
 /** Units whose bottles depend on the pack, as the gateway names them. */
 const PACKED_UNITS = new Set(['case', 'pack', 'split_case'])
@@ -94,6 +94,15 @@ export interface DoorFrameProps {
   error?: string | null
   /** What the last count put on the shelf, and what it did not, with why (r24). */
   booking?: DoorBooking | null
+  /** The house's clock (IANA zone); absent = the reader's. r34 w2 F1. */
+  zone?: string | null
+  /**
+   * The delivery's jurisdiction, which shapes the count's stamp. A door count
+   * the gateway writes is a receiving advice with no jurisdiction and no
+   * currency of its own, so the paper alone would print `Nov 14, 10:39` while
+   * the gate and the spine beside it say `14.11 10:39` (r39 walk-w2).
+   */
+  jurisdiction?: string | null
 }
 
 export function DoorFrame({
@@ -104,6 +113,8 @@ export function DoorFrame({
   busy,
   error,
   booking,
+  zone,
+  jurisdiction,
 }: DoorFrameProps) {
   const adjudicated = new Map(doc.layer3.lines.map((l) => [l.lineIndex, l]))
   /** r24: each line's own row and pairing on the paper, by index. */
@@ -203,7 +214,9 @@ export function DoorFrame({
           : countedAt || anyCounted
             ? 'Counted at the door'
             : 'Nobody has counted this yet'}
-        {countedAt ? ` · ${countedAt.slice(0, 16).replace('T', ' ')}` : ''}
+        {countedAt
+          ? ` · ${fmtStamp(countedAt, jurisdiction ?? doc.jurisdiction, doc.layer1.currency.value, zone)}`
+          : ''}
       </p>
 
       <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 6 }}>

@@ -86,6 +86,7 @@ import { canonicalApi } from '../../../services/api/canonical'
 import { getInventory } from '../../../services/api/inventory'
 import { deliveriesApi, type DoorBooking, type ProposalBody } from '../../../services/api/deliveries'
 import { lastCountedAt, paperCountBody, showsTheDoor } from './door-paper'
+import { deviceClockNote, houseZoneOf, readHouseClock } from './house-clock'
 import './canonical-document.css'
 
 type Tab = 'sheet' | 'door'
@@ -263,6 +264,18 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
    */
   const soleDelivery =
     res?.deliveries && res.deliveries.length === 1 ? res.deliveries[0] : null
+
+  /**
+   * The house's clock (r34 w2 F1): every moment on this page — counted,
+   * agreed, verified, put, delivered — reads on it, so the page keeps one.
+   */
+  const clockQ = useQuery({
+    queryKey: ['house-time-zone', rid],
+    queryFn: readHouseClock,
+    staleTime: 5 * 60_000,
+  })
+  const houseZone = houseZoneOf(clockQ) ?? null
+  const clockNote = deviceClockNote(clockQ)
 
   const eventQ = useQuery({
     queryKey: ['delivery-event', soleDelivery?.deliveryId],
@@ -567,6 +580,15 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
       {/* B on top — the verdict, before anything else. */}
       <VerdictBlock doc={doc} states={states} />
 
+      {clockNote && (
+        <p
+          data-testid="doc-clock-note"
+          style={{ margin: '8px 0 0', fontFamily: MONO, fontSize: 9.5, color: 'var(--ink-4, #665D50)' }}
+        >
+          {clockNote}
+        </p>
+      )}
+
       {/* C's spine — collapsed at ≤ 2 documents, absent at none. */}
       <div style={{ marginTop: 10 }}>
         <DeliverySpine
@@ -574,6 +596,7 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
           failedRead={res.failedRead}
           selectedDocumentId={doc.documentId}
           onOpenDocument={(other) => navigate(`/documents/${other}`)}
+          zone={houseZone}
         />
       </div>
 
@@ -592,6 +615,7 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
           {eventQ.data ? (
             <DeliveryGates
               delivery={eventQ.data}
+              zone={houseZone}
               busy={writing}
               error={deliveryError}
               onAgree={() =>
@@ -614,6 +638,7 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
             failedRead={proposalsQ.isError ? messageFrom(proposalsQ.error) : null}
             jurisdiction={doc.jurisdiction}
             currency={doc.layer1.currency.value}
+            zone={houseZone}
             selectedLine={selectedLine}
             busy={writing}
             error={deliveryError}
@@ -724,6 +749,8 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
               busy={writing}
               error={deliveryError}
               countedAt={lastCountedAt(doorDelivery)}
+              zone={houseZone}
+              jurisdiction={doorDelivery?.jurisdiction ?? null}
               booking={doorBooking}
               /* The count is a WRITE — unless this document IS a door count, in
                  which case the frame shows what was counted and correcting it
