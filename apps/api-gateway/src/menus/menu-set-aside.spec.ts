@@ -200,3 +200,25 @@ describe("make-current refuses a menu set aside (r36 N9)", () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 });
+
+describe("a kept menu says whether it is set aside, and by whom (r36 N9)", () => {
+  it("reads both columns and names the person", async () => {
+    const service = Object.create(MenusService.prototype) as MenusService & Record<string, any>;
+    const db = fakeDb([{ id: "m-1", status: "draft", set_aside_at: AT, set_aside_by: "u-7", extracted_by: "u-1" }]);
+    service.dbService = { supabase: db };
+    service.readLines = jest.fn(async () => []);
+    service.namesOf = jest.fn(async (ids: Array<string | null | undefined>) => ({
+      names: new Map(ids.filter((id): id is string => !!id).map((id) => [id, id === "u-7" ? "Aylin" : "Deniz"])),
+      error: null,
+    }));
+    const { version } = await service.getVersion("rest-1", "m-1");
+    expect(String(db.calls[0][0].args[0])).toMatch(/\bset_aside_at\b.*\bset_aside_by\b/);
+    expect(version.setAsideAt).toBe(AT);
+    expect(version.setAsideBy).toEqual({ userId: "u-7", name: "Aylin" });
+    // A menu that is not set aside says so with nulls, never a guess.
+    const plain = fakeDb([{ id: "m-2", status: "draft" }]);
+    service.dbService = { supabase: plain };
+    const two = (await service.getVersion("rest-1", "m-2")).version;
+    expect([two.setAsideAt, two.setAsideBy]).toEqual([null, null]);
+  });
+});
