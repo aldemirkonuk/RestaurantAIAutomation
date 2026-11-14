@@ -32,7 +32,7 @@ type Read = { kind: "rpc" | "from"; name: string; filters: Filter[] };
 let reads: Read[] = [];
 let failTable: string | null = null;
 let signed: string[] = [];
-let signFails = false;
+let signFails: false | "no-url" | "with-url" = false;
 
 const letters = [
   { id: L1, restaurant_id: HOUSE, status: "RECEIVED" },
@@ -105,7 +105,11 @@ const db = {
       from: (bucket: string) => ({
         createSignedUrl: async (path: string, seconds: number) => {
           signed.push(`${bucket}:${path}:${seconds}`);
-          if (signFails) return { data: null, error: { message: "storage down" } };
+          if (signFails === "no-url") return { data: null, error: { message: "storage down" } };
+          // An error is an error, whatever else the answer carries.
+          if (signFails === "with-url") {
+            return { data: { signedUrl: "https://files.test/half" }, error: { message: "object missing" } };
+          }
           return { data: { signedUrl: `https://files.test/${path}?t=1` }, error: null };
         },
       }),
@@ -240,8 +244,8 @@ describe("GET /mail/attachments/:id/link", () => {
     expect(signed).toEqual([]);
   });
 
-  it("a storage failure is 503 in words, never a link that does not work", async () => {
-    signFails = true;
+  it.each(["no-url", "with-url"] as const)("a storage failure (%s) is 503 in words, never a link that does not work", async (how) => {
+    signFails = how;
     const res = await get(`/attachments/${F1}/link`);
     expect(res.status).toBe(503);
     expect(res.body.message).toBe(
