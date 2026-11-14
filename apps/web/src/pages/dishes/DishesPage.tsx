@@ -22,6 +22,7 @@
  * A "Menu" column beside the price shows what the house's current menu gives
  * a line of the dish's name, and "differs" when the two disagree (gap 2).
  * Only while a menu is current; an unread menu is said once above the list.
+ * The opened dish offers to take the menu's price, after a confirm.
  */
 import { useId, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -32,7 +33,8 @@ import { PRICE_UNREAD, priceText, readPrice } from '../cellar/next/recipe/price-
 import { useHousePercent, type SayPercent } from '../cellar/next/recipe/useHousePercent';
 import { reason, useCanEditRecipe, useCreateDish, useDishes, useHouseMoney, useMenuPrices, useRemoveDish, useUpdateDish } from '../cellar/next/recipe/useRecipe';
 import { MENU_PRICES_UNREAD, MenuPriceCell } from '../cellar/next/recipe/MenuPriceCell';
-import type { DishListRow } from '../../services/api/recipes';
+import UseMenuPrice from '../cellar/next/recipe/UseMenuPrice';
+import type { DishListRow, MenuPrice } from '../../services/api/recipes';
 import { EM, SANS } from '../cellar/next/cellar-format';
 import '../cellar/next/cellar-next.css';
 
@@ -155,7 +157,18 @@ function AddDish({ onAdded }: { onAdded: (id: string) => void }) {
  * The open dish's own name, section and price, and taking it off the list.
  * Mounted with `key={dish.id}`, so one dish's draft never saves into another.
  */
-function DishDetails({ dish, onRemoved }: { dish: DishListRow; onRemoved: () => void }) {
+function DishDetails({
+  dish,
+  onRemoved,
+  menu,
+  say,
+}: {
+  dish: DishListRow;
+  onRemoved: () => void;
+  /** What the current menu says for this dish, while a menu is current and read. */
+  menu?: MenuPrice;
+  say?: ((n: number | null | undefined) => string) | null;
+}) {
   const update = useUpdateDish(dish.id);
   const remove = useRemoveDish(dish.id);
   const [name, setName] = useState(dish.name);
@@ -235,6 +248,22 @@ function DishDetails({ dish, onRemoved }: { dish: DishListRow; onRemoved: () => 
         <p className="cl-note" style={{ gridColumn: '1 / -1' }}>{PRICE_UNREAD}</p>
       ) : price.trim() === '' && dish.price != null ? (
         <p className="cl-note" style={{ gridColumn: '1 / -1' }}>A blank price saves the dish with no price.</p>
+      ) : null}
+      {menu && say ? (
+        <div style={{ gridColumn: '1 / -1' }}>
+          <UseMenuPrice
+            name={dish.name}
+            own={dish.price}
+            menu={menu}
+            say={say}
+            share="food cost"
+            onUse={async (p) => {
+              await update.mutateAsync({ price: p });
+              // The box shows the price now kept, so Save has nothing left to send.
+              setPrice(priceText(p));
+            }}
+          />
+        </div>
       ) : null}
       <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         {asking ? (
@@ -366,7 +395,15 @@ export default function DishesPage() {
                     d.id === openId ? (
                       <tr key={`${d.id}-leaf`} data-testid={`dish-leaf-${d.id}`}>
                         <td colSpan={cols}>
-                          {canEdit ? <DishDetails key={d.id} dish={d} onRemoved={() => open(null)} /> : null}
+                          {canEdit ? (
+                            <DishDetails
+                              key={d.id}
+                              dish={d}
+                              onRemoved={() => open(null)}
+                              menu={showMenu ? menu.byId?.get(d.id) : undefined}
+                              say={say}
+                            />
+                          ) : null}
                           <RecipeSheet dishId={d.id} />
                         </td>
                       </tr>
