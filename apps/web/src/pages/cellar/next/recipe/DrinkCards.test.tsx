@@ -1,7 +1,8 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import type { CocktailRecipe, CostPreview, RecipeLine, WhatIsIn } from '../../../../services/api/recipes';
-import DrinkCards, { POUR_COST_BASIS, pourCostShare, type DraftCost } from './DrinkCards';
+import DrinkCards, { POUR_COST_BASIS, marginPerServe, pourCostShare, type DraftCost } from './DrinkCards';
+import WhatIsInAServe from './WhatIsInAServe';
 import { formatHousePercent } from '../../../../lib/house-number';
 
 const fig = (value: number | null, missing: string[] = [], atLeast = false) => ({ value, atLeast, missing });
@@ -303,5 +304,111 @@ describe('DrinkCards on a dish (ADR 0366)', () => {
     const card = screen.getByTestId('drink-card-pour-cost');
     expect(card).toHaveAttribute('data-known', 'false');
     expect(card.textContent).not.toMatch(/%/);
+  });
+});
+
+describe('the margin card (r36 recipes audit, gap 9)', () => {
+  it('is the price less the cost a serve, in money, with the pour cost’s basis', () => {
+    render(<DrinkCards data={gAndT({}, readable(fig(20)))} sayMoney={say} unsaved={false} />);
+    const card = screen.getByTestId('drink-card-margin');
+    expect(card.textContent).toBe(`Margin a serve$9.53Your price less the cost a serve. ${POUR_COST_BASIS}`);
+    expect(card).toHaveAttribute('data-known', 'true');
+    expect(card).toHaveAttribute('data-warn', 'false');
+  });
+
+  it('says a plate on a dish', () => {
+    render(<DrinkCards data={{ ...gAndT({}, readable(fig(20))), kind: 'dish' }} sayMoney={say} unsaved={false} />);
+    expect(screen.getByTestId('drink-card-margin').textContent).toBe(`Margin a plate$9.53Your price less the cost a plate. ${POUR_COST_BASIS}`);
+  });
+
+  it('reads a drink that costs more than its price as a minus, and marks it', () => {
+    render(<DrinkCards data={gAndT({ cocktail: { ...gAndT().cocktail, price: 2 } })} sayMoney={say} unsaved={false} />);
+    const card = screen.getByTestId('drink-card-margin');
+    expect(card.textContent).toBe(`Margin a serve\u2212$0.47It costs more to make than your list charges for it. ${POUR_COST_BASIS}`);
+    expect(card).toHaveAttribute('data-warn', 'true');
+  });
+
+  it.each([
+    ['an incomplete cost', { cost: { perServe: null, perServeExact: 2.47, priced: 1, of: 2, complete: false, partial: 0 } }, 'The cost is not complete.'],
+    ['no price', { cocktail: { ...gAndT().cocktail, price: null } }, 'Your list has no price for it.'],
+    ['a price of 0', { cocktail: { ...gAndT().cocktail, price: 0 } }, 'The price on your list is 0.'],
+  ] as const)('is not known with %s, and says why', (_n, over, said) => {
+    render(<DrinkCards data={gAndT(over as Partial<CocktailRecipe>)} sayMoney={say} unsaved={false} />);
+    const card = screen.getByTestId('drink-card-margin');
+    expect(card.textContent).toBe(`Margin a serveNot known${said}`);
+    expect(card).toHaveAttribute('data-known', 'false');
+  });
+
+  it('is not shown to a role that does not see money', () => {
+    render(<DrinkCards data={gAndT()} sayMoney={null} unsaved={false} />);
+    expect(screen.queryByTestId('drink-card-margin')).toBeNull();
+  });
+
+  it('follows the unsaved lines’ cost when the cost card does', () => {
+    const preview: CostPreview = {
+      lines: [{ costPerServe: 4, status: 'linked' }] as CostPreview['lines'],
+      perServe: 4,
+      perServeExact: 4,
+      priced: 1,
+      of: 1,
+      complete: true,
+      partial: 0,
+    } as CostPreview;
+    render(<DrinkCards data={gAndT()} sayMoney={say} unsaved draftCost={{ cost: preview, labels: ['Gin'] }} />);
+    expect(screen.getByTestId('drink-card-margin')).toHaveTextContent('$8.00');
+  });
+
+  it('works from the exact cost, to the cent', () => {
+    expect(marginPerServe({ perServe: 2.47, perServeExact: 2.471429, priced: 2, of: 2, complete: true, partial: 0 }, 12)).toEqual({ margin: 9.53 });
+    expect(marginPerServe({ perServe: null, priced: 1, of: 2, complete: false, partial: 0 }, 12)).toEqual({ missing: ['the cost is not complete'] });
+  });
+});
+
+describe('the energy and alcohol cards open what is in a serve (r36 recipes audit, gap 9)', () => {
+  const data = gAndT({}, readable(fig(20, ['Angostura'], true)));
+
+  it('opens the card below and puts the focus on it', () => {
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    render(
+      <>
+        <DrinkCards data={data} sayMoney={say} unsaved={false} nutritionId="n-1" />
+        <WhatIsInAServe data={data} unsaved={false} id="n-1" />
+      </>,
+    );
+    const section = screen.getByTestId('recipe-whatisin');
+    expect(section).toHaveAttribute('id', 'n-1');
+    expect(section).toHaveAttribute('tabindex', '-1');
+    const energy = screen.getByTestId('drink-card-energy-open');
+    expect(energy).toHaveAttribute('aria-controls', 'n-1');
+    expect(energy).toHaveAttribute('title', 'See what is in a serve');
+    fireEvent.click(energy);
+    expect(document.activeElement).toBe(section);
+    expect(scroll).toHaveBeenCalledTimes(1);
+    (document.activeElement as HTMLElement).blur();
+    fireEvent.click(screen.getByTestId('drink-card-alcohol-open'));
+    expect(document.activeElement).toBe(section);
+    // The card still reads as before: the button is its face, not new words.
+    expect(screen.getByTestId('drink-card-energy').textContent).toBe('Energy a serveat least 178.5 kcalUnknown for Angostura.');
+  });
+
+  it('opens the sentence that says it could not be read, when it could not', () => {
+    const unread = gAndT();
+    render(
+      <>
+        <DrinkCards data={unread} sayMoney={say} unsaved={false} nutritionId="n-2" />
+        <WhatIsInAServe data={unread} unsaved={false} id="n-2" />
+      </>,
+    );
+    fireEvent.click(screen.getByTestId('drink-card-energy-open'));
+    expect(document.activeElement).toBe(screen.getByTestId('recipe-whatisin-unread'));
+  });
+
+  it('leaves the money cards, and every card when no card is named, as plain cards', () => {
+    const { unmount } = render(<DrinkCards data={data} sayMoney={say} unsaved={false} nutritionId="n-3" />);
+    for (const id of ['cost', 'price', 'pour-cost', 'margin', 'ingredients']) expect(screen.queryByTestId(`drink-card-${id}-open`)).toBeNull();
+    unmount();
+    render(<DrinkCards data={data} sayMoney={say} unsaved={false} />);
+    expect(screen.queryByRole('button')).toBeNull();
   });
 });

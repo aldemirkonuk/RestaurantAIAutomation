@@ -16,6 +16,17 @@
  * which side is missing, never a % of a partial cost. The house's tax basis
  * is still open (ADR 0359, #784), so the card says the % is of the price as
  * the list has it, and that whether that price includes tax is not recorded.
+ *
+ * The margin card (r36 recipes audit, gap 9) is the same two figures as
+ * money: the price less the cost a serve, under the same rule (a complete
+ * cost and a price above 0, or "Not known"). A drink that costs more than its
+ * price reads as a minus and is marked.
+ *
+ * The energy and pure-alcohol cards open the full card of what is in a serve
+ * (`WhatIsInAServe`, below the cards) when the sheet names it: a click moves
+ * to it and puts the focus there, so a reader of the figure gets its
+ * allergens and every other figure in one step (the goal's "KPI card ->
+ * nutrition card").
  */
 import type { SayPercent } from './useHousePercent';
 import type { CocktailRecipe, CostPreview, RecipeCost, RecipeLine } from '../../../../services/api/recipes';
@@ -112,6 +123,33 @@ export function pourCostShare(cost: RecipeCost | null, price: number | null): { 
   return { pct: Math.round((exact / price) * 1000) / 10 };
 }
 
+/**
+ * The price less the cost a serve, to the cent; or what is missing. The same
+ * rule as `pourCostShare`: only a complete cost and a price above 0.
+ */
+export function marginPerServe(cost: RecipeCost | null, price: number | null): { margin: number } | { missing: string[] } {
+  const share = pourCostShare(cost, price);
+  if (!('pct' in share)) return share;
+  const exact = (cost?.perServeExact ?? cost?.perServe) as number;
+  return { margin: Math.round(((price as number) - exact) * 100) / 100 };
+}
+
+function marginCard(cost: RecipeCost | null, price: number | null, sayMoney: (n: number) => string, words: RecipeWords): Card {
+  const m = marginPerServe(cost, price);
+  const base = { id: 'margin', label: `Margin a ${words.unit}` };
+  if (!('margin' in m)) return { ...base, figure: 'Not known', known: false, said: `${capital(m.missing.join(' and '))}.` };
+  if (m.margin < 0) {
+    return {
+      ...base,
+      figure: `\u2212${sayMoney(-m.margin)}`,
+      known: true,
+      warn: true,
+      said: `It costs more to make than your list charges for it. ${POUR_COST_BASIS}`,
+    };
+  }
+  return { ...base, figure: sayMoney(m.margin), known: true, said: `Your price less the cost a ${words.unit}. ${POUR_COST_BASIS}` };
+}
+
 /** A share in the reader's own form, for a caller that does not know the house's. */
 const readerPercent: SayPercent = (points) => `${points.toFixed(1)}%`;
 
@@ -185,8 +223,44 @@ function nutritionCards(data: CocktailRecipe, words: RecipeWords): Card[] {
   return out;
 }
 
+/** The cards that open the full card of what is in a serve. */
+const OPENS_NUTRITION = new Set(['energy', 'alcohol']);
+
+/** The card's own face, as a button: the card's column, no button chrome, a pointer. */
+const OPEN_STYLE = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 2,
+  width: '100%',
+  padding: 0,
+  border: 0,
+  background: 'none',
+  font: 'inherit',
+  color: 'inherit',
+  textAlign: 'left',
+  cursor: 'pointer',
+} as const;
+
+/** Moves to the card of what is in a serve and puts the focus on it. */
+function openNutrition(id: string) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+  el.focus({ preventScroll: true });
+}
+
 /** A dish says plate and food cost, and has no alcohol card (ADR 0366). */
 const DISH_LABELS: Record<string, string> = { cost: 'Cost per plate', 'pour-cost': 'Food cost', energy: 'Energy a plate' };
+
+function CardFace({ c }: { c: Card }) {
+  return (
+    <>
+      <span className="cl-rcp-card-label">{c.label}</span>
+      <span className="cl-rcp-card-fig cl-num">{c.figure}</span>
+      <span className="cl-rcp-card-said">{c.said}</span>
+    </>
+  );
+}
 
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -196,6 +270,7 @@ export default function DrinkCards({
   unsaved,
   draftCost,
   sayPct = readerPercent,
+  nutritionId,
 }: {
   data: CocktailRecipe;
   /** Null for a role that does not see money: then no cost or price card. */
@@ -213,6 +288,11 @@ export default function DrinkCards({
    * gap 15). The reader's own form when not given.
    */
   sayPct?: SayPercent;
+  /**
+   * The id of the sheet's card of what is in a serve. When given, the energy
+   * and pure-alcohol cards open it (r36 recipes audit, gap 9).
+   */
+  nutritionId?: string;
 }) {
   const isDish = data.kind === 'dish';
   const words = recipeWords(data.kind);
@@ -239,6 +319,7 @@ export default function DrinkCards({
     cost,
     sayMoney ? priceCard(data, sayMoney, words) : null,
     sayMoney ? pourCostCard(shownCost, data.cocktail.price, sayPct) : null,
+    sayMoney ? marginCard(shownCost, data.cocktail.price, sayMoney, words) : null,
     ingredientsCard(data),
     ...nutritionCards(data, words),
   ]
@@ -265,9 +346,21 @@ export default function DrinkCards({
             data-known={c.known ? 'true' : 'false'}
             data-warn={c.warn ? 'true' : 'false'}
           >
-            <span className="cl-rcp-card-label">{c.label}</span>
-            <span className="cl-rcp-card-fig cl-num">{c.figure}</span>
-            <span className="cl-rcp-card-said">{c.said}</span>
+            {nutritionId && OPENS_NUTRITION.has(c.id) ? (
+              <button
+                type="button"
+                className="cl-rcp-card-open cl-focus"
+                aria-controls={nutritionId}
+                title={`See what is in a ${words.unit}`}
+                data-testid={`drink-card-${c.id}-open`}
+                onClick={() => openNutrition(nutritionId)}
+                style={OPEN_STYLE}
+              >
+                <CardFace c={c} />
+              </button>
+            ) : (
+              <CardFace c={c} />
+            )}
           </li>
         ))}
       </ul>
