@@ -838,7 +838,7 @@ describe('ReportsNext — days of inventory counts the goods the till sells (rep
     const ledger = screen.getByRole('region', { name: 'Figures of record' });
     expect(
       within(ledger).getByText(
-        'Inventory turns, days of inventory and GMROI count the 8 of 12 goods on hand the till sells. The 4 not on the till are left out: nothing they sell reaches what it cost.',
+        'Inventory turns, days of inventory and the return on stock count the 8 of 12 goods on hand the till sells. The 4 not on the till are left out: nothing they sell reaches what it cost.',
       ),
     ).toBeInTheDocument();
     // The whole cellar's missing cost withholds only the cellar at cost now.
@@ -899,8 +899,13 @@ describe('ReportsNext — the costed part and earlier late prices, apart (batch 
     );
     paint();
     const ledger = screen.getByRole('region', { name: 'Figures of record' });
-    const cogs = within(ledger).getByText('What it cost (365d)').closest('.rp-fig');
+    const cogs = within(ledger).getByText('What it cost (last 365 days)').closest('.rp-fig');
     expect(within(cogs as HTMLElement).getByText('—')).toBeInTheDocument();
+    // r12: the window is said in words, never "(365d)".
+    expect(within(ledger).getByText('Sold, net (last 365 days)')).toBeInTheDocument();
+    expect(within(ledger).getByText('Bought (last 365 days)')).toBeInTheDocument();
+    for (const old of ['Sold, net (365d)', 'What it cost (365d)', 'Bought (365d)'])
+      expect(within(ledger).queryByText(old)).not.toBeInTheDocument();
     expect(
       within(ledger).getByText(/The 11 of 12 items sold whose every bottle carries its cost came to \$4,210\.5 at cost\. That is not the cost of everything sold/),
     ).toBeInTheDocument();
@@ -939,8 +944,8 @@ describe('ReportsNext — turns, days and GMROI read to the export\'s places (co
     expect(value('Days of inventory')).toContain('312.1');
     expect(value('Days of inventory')).not.toContain('312.067');
     expect(value('Inventory turns')).toContain('1.17');
-    expect(value('GMROI')).toContain('2.26');
-    expect(value('GMROI')).not.toContain('2.261');
+    expect(value('Return on stock')).toContain('2.26');
+    expect(value('Return on stock')).not.toContain('2.261');
   });
 });
 
@@ -1008,7 +1013,7 @@ describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
     paint();
     const ledger = screen.getByRole('region', { name: 'Figures of record' });
     expect(within(ledger).queryByText('$0')).not.toBeInTheDocument();
-    const cogs = within(ledger).getByText('What it cost (365d)').closest('.rp-fig');
+    const cogs = within(ledger).getByText('What it cost (last 365 days)').closest('.rp-fig');
     expect(within(cogs as HTMLElement).getByText('—')).toBeInTheDocument();
     // Cost-math lane 3.1: a cost gap says N of M, never prints a smaller sum.
     expect(within(ledger).getByText(/Cost known for 3 of 4 items sold; 2 bottles/)).toBeInTheDocument();
