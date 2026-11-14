@@ -1416,6 +1416,31 @@ describe('CellarNext — the registers that are not wines', () => {
     expect(within(leaf).queryByRole('button', { name: /Write the recipe/ })).toBeNull();
   });
 
+  it('staff opening a cocktail with no recipe are not offered to write one', () => {
+    mock.manages = false;
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: registerVM({ register: 'cocktails', rows: [], counts: { total: 0, houseRows: 0, matched: 0, matchedLoosely: 0, catalogueOnly: 0 } }), loading: false, error: null, refetch: () => {} };
+    mock.recipe = { data: { cocktailId: 'c1', rows: [], count: 0, writable: true }, loading: false, error: null };
+    mock.writes = {
+      create: { mutateAsync: vi.fn(), isPending: false },
+      amend: { mutateAsync: vi.fn(), isPending: false },
+      retire: { mutateAsync: vi.fn(), isPending: false },
+      setRecipe: { mutateAsync: vi.fn(), isPending: false },
+    };
+    mock.cocktails = {
+      loading: false, error: null,
+      data: {
+        rows: [{ id: 'c1', name: 'Negroni', display_name: null, menu_section: null, method: null, glass: null, garnish: null, price: null, description: null }],
+        count: 1, truncated: false, referenceRows: 0, recipesAvailable: false, scopeNote: 'Only cocktails this restaurant owns.',
+      },
+    };
+    draw({ category: 'cocktails' });
+    fireEvent.click(screen.getByText('Negroni'));
+    const leaf = screen.getByTestId('cocktail-leaf');
+    expect(within(leaf).getByTestId('recipe-empty')).toBeInTheDocument();
+    expect(within(leaf).queryByRole('button', { name: /Write the recipe/ })).toBeNull();
+  });
+
   it('staff on an empty list are not told to add one', () => {
     mock.manages = false;
     mock.current = { ...base, registers: readout() };
