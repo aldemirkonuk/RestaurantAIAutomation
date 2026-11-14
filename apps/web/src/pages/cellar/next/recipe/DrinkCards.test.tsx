@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { CocktailRecipe, CostPreview, RecipeLine, WhatIsIn } from '../../../../services/api/recipes';
-import DrinkCards, { type DraftCost } from './DrinkCards';
+import DrinkCards, { POUR_COST_BASIS, pourCostShare, type DraftCost } from './DrinkCards';
 
 const fig = (value: number | null, missing: string[] = [], atLeast = false) => ({ value, atLeast, missing });
 const say = (n: number) => `$${n.toFixed(2)}`;
@@ -216,5 +216,48 @@ describe('DrinkCards: the cost of unsaved lines', () => {
     expect(screen.getByTestId('drink-card-cost').textContent).toBe(
       "Cost a serve$3.10Your unsaved lines, at today's prices; 1 ingredient is priced from the bottles with an invoice only.",
     );
+  });
+});
+
+describe('pour cost (ADR 0366 item 6)', () => {
+  const cost = { perServe: 2.47, perServeExact: 2.471429, priced: 2, of: 2, complete: true, partial: 0 };
+
+  it('is the complete cost a serve over the listed price, and says what the % is of', () => {
+    render(<DrinkCards data={gAndT()} sayMoney={say} unsaved={false} />);
+    expect(screen.getByTestId('drink-card-pour-cost').textContent).toBe(`Pour cost20.6%${POUR_COST_BASIS}`);
+    expect(POUR_COST_BASIS).toContain('whether that price includes tax is not recorded');
+  });
+
+  it('is not known, and says which side is missing, when the cost is partial or there is no price', () => {
+    render(
+      <DrinkCards
+        data={gAndT({ cocktail: { ...gAndT().cocktail, price: null }, cost: { perServe: null, priced: 1, of: 2, complete: false } })}
+        sayMoney={say}
+        unsaved={false}
+      />,
+    );
+    const card = screen.getByTestId('drink-card-pour-cost');
+    expect(card.textContent).toBe('Pour costNot knownThe cost is not complete and your list has no price for it.');
+    expect(card).toHaveAttribute('data-known', 'false');
+  });
+
+  it("an unsaved draft's priced cost is the one divided", () => {
+    const draftCost: DraftCost = { cost: { perServe: 6, perServeExact: 6, priced: 1, of: 1, complete: true, partial: 0, lines: [] } as CostPreview, labels: ['gin'] };
+    render(<DrinkCards data={gAndT()} sayMoney={say} unsaved draftCost={draftCost} />);
+    expect(screen.getByTestId('drink-card-pour-cost').textContent).toContain('50.0%');
+  });
+
+  it('a role without money gets no pour-cost card', () => {
+    render(<DrinkCards data={gAndT()} sayMoney={null} unsaved={false} />);
+    expect(screen.queryByTestId('drink-card-pour-cost')).toBeNull();
+  });
+
+  it('only a complete cost and a price above 0 make a %', () => {
+    expect(pourCostShare(cost, 12)).toEqual({ pct: 20.6 });
+    expect(pourCostShare({ ...cost, perServeExact: null }, 10)).toEqual({ pct: 24.7 });
+    expect(pourCostShare({ ...cost, complete: false }, 12)).toEqual({ missing: ['the cost is not complete'] });
+    expect(pourCostShare(cost, 0)).toEqual({ missing: ['the price on your list is 0'] });
+    expect(pourCostShare(cost, null)).toEqual({ missing: ['your list has no price for it'] });
+    expect(pourCostShare(null, 12)).toEqual({ missing: ['the cost is not complete'] });
   });
 });
