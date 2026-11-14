@@ -25,7 +25,23 @@ export type LineCostBasis = CostBasis | "size_not_known" | "pack_size_not_known"
 export interface CostItem extends InventoryCostRow {
   uom: string;
   bottle_size_ml?: number | string | null;
+  /** What one piece of the good weighs, in g, as the house stated it (r28 gap 7). */
+  piece_grams?: number | string | null;
+  /** What one ml of the good weighs, in g, as the house stated it (r28 gap 7). */
+  ml_grams?: number | string | null;
 }
+
+/**
+ * The statement a line waits for when it is measured one way and the good is
+ * kept another, and only the house can say how the two meet (r28 gap 7):
+ * - piece_grams: a piece against a weighed good, or a weight against a good
+ *   counted in pieces: what one weighs;
+ * - ml_grams: a volume against a weighed good, or a weight against a good
+ *   kept by volume: what one ml weighs.
+ * The cost basis stays `unit_mismatch` beside it, so a reader that does not
+ * know this field still says the line is measured another way.
+ */
+export type BridgeNeeded = "piece_grams" | "ml_grams";
 
 export interface CostLineInput {
   role: "stocked" | "untracked";
@@ -51,6 +67,8 @@ export interface LineCost {
   /** The same cost at six places, unrounded by the display; null as above. */
   costPerServeExact: number | null;
   costBasis: LineCostBasis | null;
+  /** Set only on a unit_mismatch the house can close by stating a weight. */
+  needs?: BridgeNeeded;
 }
 
 export interface RecipeCost {
@@ -71,13 +89,21 @@ const CONTAINERS = new Set(["bottle", "keg"]);
 // unrecorded volume. They are counted in pieces, so their size is not known.
 const PACKS = new Set(["case", "pack", "glass", "shot"]);
 
-/** Cost of one base unit of the line, or why it cannot be had. Never guessed. */
-export function baseUnitCost(
-  item: CostItem,
-  unitCost: number,
-  baseUnit: BaseUnit,
-): { perBase: number } | { why: "size_not_known" | "pack_size_not_known" | "unit_mismatch" } {
-  const uom = String(item.uom ?? "").toLowerCase();
+type Why = "size_not_known" | "pack_size_not_known" | "unit_mismatch";
+type BaseCost = { perBase: number } | { why: Why; needs?: BridgeNeeded };
+
+const WEIGHTS = new Set(["mg", "g", "kg"]);
+
+/** A stated weight (g) the bridge may use: a finite number above 0, else none. */
+function stated(v: number | string | null | undefined): number | null {
+  if (v === null || v === undefined) return null;
+  // "" reads as 0, so it is not stated either.
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** The cost of one base unit by the good's own unit alone, with no stated weight. */
+function directCost(uom: string, item: CostItem, unitCost: number, baseUnit: BaseUnit): BaseCost {
   if (baseUnit === "ml10") {
     if (CONTAINERS.has(uom)) {
       const size = Number(item.bottle_size_ml);
@@ -100,6 +126,61 @@ export function baseUnitCost(
   // would cost the case.
   if (uom === "each") return { perBase: unitCost / 1000 };
   return { why: "unit_mismatch" };
+}
+
+/**
+ * Cost of one base unit of the line, or why it cannot be had. Never guessed.
+ *
+ * Where the line and the good are measured differently, the line is priced
+ * through a weight the house stated for that very good, and through nothing
+ * else: no table of what an egg or a lemon usually weighs (r28 gap 7).
+ * - a piece (each_milli) of a weighed good: one piece is `piece_grams` g;
+ * - a weight (mg) of a good counted in pieces: the same, the other way;
+ * - a volume (ml10) of a weighed good: one ml is `ml_grams` g;
+ * - a weight (mg) of a good kept by volume (ml, l, or a bottle or keg of
+ *   known size): the same, the other way.
+ * Each missing statement is named in `needs`. A piece of a liquid, or a
+ * volume of a good counted in pieces, is still a mismatch: what closes it is
+ * a pack size, not a weight.
+ */
+export function baseUnitCost(item: CostItem, unitCost: number, baseUnit: BaseUnit): BaseCost {
+  const uom = String(item.uom ?? "").toLowerCase();
+  const direct = directCost(uom, item, unitCost, baseUnit);
+  // Only a mismatch is bridged; a pack or a bottle of no stated size keeps
+  // its own reason, since no branch below takes a pack, and a bottle of no
+  // size is answered before any weight is read.
+  if ("perBase" in direct) return direct;
+
+  if (baseUnit === "each_milli" && WEIGHTS.has(uom)) {
+    const pieceG = stated(item.piece_grams);
+    if (pieceG === null) return { why: "unit_mismatch", needs: "piece_grams" };
+    // One thousandth of a piece weighs pieceG mg.
+    const perMg = directCost(uom, item, unitCost, "mg") as { perBase: number };
+    return { perBase: perMg.perBase * pieceG };
+  }
+  if (baseUnit === "mg" && uom === "each") {
+    const pieceG = stated(item.piece_grams);
+    if (pieceG === null) return { why: "unit_mismatch", needs: "piece_grams" };
+    // One piece is pieceG x 1,000 mg.
+    return { perBase: unitCost / (pieceG * 1000) };
+  }
+  if (baseUnit === "ml10" && WEIGHTS.has(uom)) {
+    const mlG = stated(item.ml_grams);
+    if (mlG === null) return { why: "unit_mismatch", needs: "ml_grams" };
+    // A tenth of a ml weighs mlG x 100 mg.
+    const perMg = directCost(uom, item, unitCost, "mg") as { perBase: number };
+    return { perBase: perMg.perBase * mlG * 100 };
+  }
+  if (baseUnit === "mg" && (uom === "ml" || uom === "l" || CONTAINERS.has(uom))) {
+    const perMl10 = directCost(uom, item, unitCost, "ml10");
+    // A bottle of no stated size says so first: a weight cannot help it.
+    if (!("perBase" in perMl10)) return perMl10;
+    const mlG = stated(item.ml_grams);
+    if (mlG === null) return { why: "unit_mismatch", needs: "ml_grams" };
+    // One mg is 1 / (mlG x 100) tenths of a ml.
+    return { perBase: perMl10.perBase / (mlG * 100) };
+  }
+  return direct;
 }
 
 /** Cost of one base unit of the line, from the item's cost per inventory unit; null when the sizes do not meet. */
@@ -127,7 +208,11 @@ export function recipeCost(lines: CostLineInput[], yieldServes: number): RecipeC
     const { unitCost, costBasis } = resolveUnitCost(line.item, line.lot);
     if (unitCost == null) return { status: "linked", costPerServe: null, costPerServeExact: null, costBasis };
     const base = baseUnitCost(line.item, unitCost, line.baseUnit);
-    if ("why" in base) return { status: "linked", costPerServe: null, costPerServeExact: null, costBasis: base.why };
+    if ("why" in base) {
+      const out: LineCost = { status: "linked", costPerServe: null, costPerServeExact: null, costBasis: base.why };
+      if (base.needs) out.needs = base.needs;
+      return out;
+    }
     const cost = (Number(line.qtyBase) * base.perBase) / serves;
     if (!Number.isFinite(cost)) return { status: "linked", costPerServe: null, costPerServeExact: null, costBasis: "unknown" };
     exact[exact.length - 1] = cost;
