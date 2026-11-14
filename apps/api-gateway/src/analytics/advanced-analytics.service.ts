@@ -961,7 +961,13 @@ export class AdvancedAnalyticsService {
       seasonality: ok(seasonality),
       cashflow: ok(cashflow),
       insights: ok(insights) ?? [],
-      activeGoals: ok(goals) ?? [],
+      // Each goal carries its metric's unit, so a page prints a baseline as
+      // money, a percent or days rather than a bare number. A key outside the
+      // catalogue says no unit (null) instead of borrowing one.
+      activeGoals: (ok(goals) ?? []).map((g: any) => ({
+        ...g,
+        unit: GoalsService.SUPPORTED_METRICS[g?.metric_key]?.unit ?? null,
+      })),
       computedIn: Date.now() - startedAt,
       generatedAt: new Date().toISOString(),
     };
