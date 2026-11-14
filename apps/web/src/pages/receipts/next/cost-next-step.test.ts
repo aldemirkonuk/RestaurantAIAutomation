@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { costNextStep, type SpineState } from './cost-next-step';
+import { costNextStep, settlesDeliveryCost, type SpineState } from './cost-next-step';
 
 const d = (over: Partial<SpineState> = {}): SpineState => ({
   deliveryId: 'del-1',
@@ -66,6 +66,31 @@ describe('costNextStep', () => {
     const c = costNextStep('doc-1', [d({ state: 'CANCELLED', verifiedAt: '2026-08-12T10:00:00Z' })])!;
     expect(c.kind).toBe('closed');
     expect(c.sentence).toMatch(/cancelled/);
+  });
+
+  it('staff are told who agrees and verifies, with no link to buttons they lack (r36 R10)', () => {
+    const agree = costNextStep('doc-1', [d()], false)!;
+    expect(agree.kind).toBe('agree');
+    expect(agree.sentence).toMatch(/An owner or a manager agrees and verifies this delivery/);
+    expect(agree.link).toBeNull();
+    const verify = costNextStep('doc-1', [d({ state: 'AGREED', agreedAt: '2026-08-12T09:00:00Z' })], false)!;
+    expect(verify.kind).toBe('verify');
+    expect(verify.sentence).toMatch(/An owner or a manager verifies it/);
+    expect(verify.link).toBeNull();
+  });
+
+  it('the door is still everyone\'s: staff with no delivery are sent to count', () => {
+    expect(costNextStep('doc-1', [], false)!.link?.to).toBe('/documents/doc-1?view=door');
+  });
+
+  it('owner, manager and admin settle; staff, an unknown role and no role do not', () => {
+    expect(settlesDeliveryCost('owner', null)).toBe(true);
+    expect(settlesDeliveryCost(' Manager ', null)).toBe(true);
+    expect(settlesDeliveryCost('admin', null)).toBe(true);
+    expect(settlesDeliveryCost('staff', 'owner')).toBe(false);
+    expect(settlesDeliveryCost(null, 'manager')).toBe(true);
+    expect(settlesDeliveryCost('waiter', null)).toBe(false);
+    expect(settlesDeliveryCost(null, null)).toBe(false);
   });
 
   it('a paper on several deliveries says each is settled on its own', () => {
