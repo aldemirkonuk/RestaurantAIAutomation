@@ -314,6 +314,16 @@ function dishHasGlassPrice(line: MenuLine): boolean {
   return line.by_glass_price !== null && line.by_glass_price !== undefined;
 }
 
+/**
+ * A house with more than one menu marked current (r28 G20), in words: which
+ * one this page shows, and how it is settled. Choosing a menu archives every
+ * other one (make_menu_current).
+ */
+export function otherCurrentWords(other: number): string {
+  const more = other === 1 ? '1 other menu is' : `${other} other menus are`;
+  return `${more} also marked current at this house, from before choosing a menu set the others aside. This page shows the one made current last. Open the one you sell from under Menus kept and make it current: the others are set aside, and nothing is deleted.`;
+}
+
 /** Columns of the drinks table (name, section, producer/region, glass, bottle, status, acts) and of the kitchen table (name, section, price, status, acts). */
 const DRINK_COLUMNS = 7;
 const KITCHEN_COLUMNS = 5;
@@ -650,6 +660,11 @@ export default function MenuNext() {
                 : ''}
               .
             </p>
+            {(q.data.otherCurrent ?? 0) > 0 ? (
+              <p className="cl-said" role="note" data-testid="menu-other-current">
+                {otherCurrentWords(q.data.otherCurrent ?? 0)}
+              </p>
+            ) : null}
 
             <div style={{ marginTop: 16 }}>
               <AddItemForm

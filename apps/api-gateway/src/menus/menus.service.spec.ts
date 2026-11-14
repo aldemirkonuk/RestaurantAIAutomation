@@ -5,7 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from "@nestjs/common";
-import { LINE_SELECT, MenusService, parseMenuPrice } from "./menus.service";
+import { LINE_SELECT, MenusService, newestCurrentFirst, parseMenuPrice } from "./menus.service";
 import { MEMBER_LINE_KEYS, seesRawLine } from "./menu-line-view";
 import { DatabaseService } from "../database/database.service";
 import { CsvParserService } from "./parsers/csv-parser.service";
@@ -1174,6 +1174,77 @@ describe("MenusService — every menu read is kept as its own version", () => {
     /** The plan the page showed, then the choice naming it (L13). */
     const choose = async (service: MenusService, menuId: string, house = "rest-1", user = "user-2") =>
       service.makeCurrent(house, menuId, user, (await service.planFor(house, menuId)).fingerprint);
+
+    // r28 G20: a house can hold two menus marked current (no unique index).
+    // getMenu's maybeSingle failed the whole /menu page, and an active menu was
+    // planned as "already current", so the house could not settle it.
+    describe("two menus marked current (r28 G20)", () => {
+      /** As 20260922230700 runs it: an active menu with another active beside it is made current, and the other archived. */
+      const faithfulRpc = (tables: Record<string, Row[]>) => (fn: string, args: Row) => {
+        if (fn === "make_menu_current") {
+          const menu = tables.restaurant_menus.find((m) => m.id === args.p_menu_id && m.restaurant_id === args.p_restaurant_id)!;
+          const others = tables.restaurant_menus.filter((m) => m.restaurant_id === args.p_restaurant_id && m.status === "active" && m.id !== menu.id);
+          if (menu.status === "active" && others.length === 0)
+            return { data: { outcome: "already_current", previous_menu_ids: [], made_current_at: menu.made_current_at ?? null }, error: null };
+          for (const m of others) Object.assign(m, { status: "archived", retired_by: args.p_actor });
+          Object.assign(menu, { status: "active", made_current_at: "2026-11-13T12:00:00Z" });
+          return { data: { outcome: "made_current", previous_menu_ids: others.map((m) => m.id), made_current_at: "2026-11-13T12:00:00Z" }, error: null };
+        }
+        return makeCurrentRpc(tables)(fn, args);
+      };
+
+      async function twoCurrent() {
+        const tables: Record<string, Row[]> = base();
+        const calls: RpcCall[] = [];
+        const service = makeService(tables, {
+          wineSubmissions,
+          rpcCalls: calls,
+          rpc: faithfulRpc(tables),
+          scanParser: { parseWithWarnings: async () => ({ items: [{ name: "Opus One", bottle_price: 64 }], warnings: [] }) },
+        });
+        const read = await service.importMenu(
+          { method: "scan", data: { imageBase64: Buffer.from("%PDF").toString("base64") }, restaurantId: "rest-1" } as any,
+          "user-1",
+        );
+        // The old menu lists a drink the new one does not.
+        tables.menu_items.push({ id: "mi-old", menu_id: "menu-old", restaurant_id: "rest-1", name: "Old Rioja", category: "red", status: "approved" });
+        // Both marked current: the old one chosen in September, the new one in October.
+        Object.assign(tables.restaurant_menus.find((m) => m.id === "menu-old")!, { name: "September", made_current_at: "2026-09-01T10:00:00Z" });
+        Object.assign(tables.restaurant_menus.find((m) => m.id === read.menuId)!, { status: "active", made_current_at: "2026-10-01T10:00:00Z" });
+        return { tables, calls, service, read };
+      }
+
+      it("/menu reads the one made current last and says how many more are marked current", async () => {
+        const { tables, service, read } = await twoCurrent();
+        // Listed first, so a single-row read would have taken the September menu.
+        expect(tables.restaurant_menus[0].id).toBe("menu-old");
+        const r = await service.getMenu("rest-1");
+        expect(r.menuId).toBe(read.menuId);
+        expect(r.otherCurrent).toBe(1);
+        expect(r.items.map((i: any) => i.name)).toEqual(["Opus One"]);
+      });
+
+      it("one current menu says nothing more", async () => {
+        const { tables, service } = await twoCurrent();
+        tables.restaurant_menus.find((m) => m.id === "menu-old")!.status = "archived";
+        const r = await service.getMenu("rest-1");
+        expect(r).not.toHaveProperty("otherCurrent");
+      });
+
+      it("each is planned as a menu being chosen: it lists what the other carries, and choosing it sets the other aside", async () => {
+        const { tables, calls, service, read } = await twoCurrent();
+        const plan = await service.planFor("rest-1", read.menuId);
+        expect(plan.current).toBe(false);
+        expect(plan.notOnThisFile.map((n) => n.name)).toEqual(["Old Rioja"]);
+        const r = await service.makeCurrent("rest-1", read.menuId, "user-2", plan.fingerprint);
+        expect(r).toMatchObject({ outcome: "made_current", previousMenuIds: ["menu-old"], lines: 1 });
+        expect(tables.restaurant_menus.find((m) => m.id === "menu-old")).toMatchObject({ status: "archived", retired_by: "user-2" });
+        expect(calls.some(([fn]) => fn === "set_house_menu_price" || fn === "set_house_menu_prices")).toBe(true);
+        // Now the only current menu: planned as current again.
+        expect((await service.planFor("rest-1", read.menuId)).current).toBe(true);
+        expect((await service.getMenu("rest-1")).otherCurrent).toBeUndefined();
+      });
+    });
 
     it("switches the current menu, archives the old one, and carries the lines' prices by the chooser", async () => {
       const { calls, tables, service, read } = await readThenChoose([{ name: "Opus One", bottle_price: 64, by_glass_price: 15 }]);
@@ -2448,5 +2519,20 @@ describe("a menu line finds the house's own good before the library (r21 D1)", (
     expect(price).toHaveLength(1);
     expect(price[0][1]).toMatchObject({ p_inventory_id: "inv-gin", p_bottle_price: 40 });
     expect(tables.restaurant_inventory).toHaveLength(1);
+  });
+});
+
+describe("newestCurrentFirst (r28 G20)", () => {
+  it("puts the menu made current last first, a never-chosen menu after every chosen one, then by when it was kept, then by id", () => {
+    const rows = [
+      { id: "c", name: null, status: "active", made_current_at: null, created_at: "2026-11-01T00:00:00Z" },
+      { id: "a", name: null, status: "active", made_current_at: "2026-09-01T00:00:00Z", created_at: "2026-08-01T00:00:00Z" },
+      { id: "b", name: null, status: "active", made_current_at: "2026-10-01T00:00:00Z", created_at: "2026-07-01T00:00:00Z" },
+      { id: "e", name: null, status: "active", made_current_at: null, created_at: null },
+      { id: "d", name: null, status: "active", made_current_at: null, created_at: "2026-10-15T00:00:00Z" },
+      { id: "f", name: null, status: "active", made_current_at: null, created_at: null },
+    ];
+    expect(newestCurrentFirst(rows).map((r) => r.id)).toEqual(["b", "a", "c", "d", "e", "f"]);
+    expect(newestCurrentFirst([...rows].reverse()).map((r) => r.id)).toEqual(["b", "a", "c", "d", "e", "f"]);
   });
 });
