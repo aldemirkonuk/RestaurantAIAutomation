@@ -865,6 +865,8 @@ describe('counts read with grouped digits, as money does (INV-W33)', () => {
     const cur = { state: 'recorded', code: 'EUR' } as const;
     const s = readSentence([row({ id: 'a', value: 10 }), row({ id: 'b', value: null })], cur, true);
     expect(s).toContain('with 1 of 2 titles priced; the one without a cost shows —, never 0.');
+    const two = readSentence([row({ id: 'a', value: 10 }), row({ id: 'b', value: null }), row({ id: 'c', value: null })], cur, true);
+    expect(two).toContain('with 1 of 3 titles priced; the 2 without a cost show —, never 0.');
     const none = readSentence([row({ id: 'a', value: 10 })], cur, true);
     expect(none).toContain('with 1 of 1 titles priced.');
   });
