@@ -75,7 +75,7 @@ const CURRENCY = /€|EUR|\$|£|₺|TRY|USD/;
 
 function open(
   r: InvRow | null,
-  opts: { canManage?: boolean; house?: HouseFields; NutritionCard?: (p: NutritionCardProps) => JSX.Element } = {},
+  opts: { canManage?: boolean; house?: HouseFields; NutritionCard?: (p: NutritionCardProps) => JSX.Element; code?: string } = {},
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -84,7 +84,7 @@ function open(
         row={r}
         house={opts.house ?? NO_HOUSE}
         canManage={opts.canManage ?? true}
-        currency={{ state: 'recorded', code: 'EUR' }}
+        currency={{ state: 'recorded', code: opts.code ?? 'EUR' }}
         zoneName={() => 'Cave'}
         locations={[]}
         locationsUnavailable={false}
@@ -112,6 +112,13 @@ beforeEach(() => {
 });
 
 describe('the item drawer', () => {
+  it('a lira house says the cost change the way it writes its money: "Up %8", never "8%" (r23 walk)', async () => {
+    open(row(), { code: 'TRY' });
+    await waitFor(() => expect(screen.getByTestId('ivd-card-cost').textContent).toContain('Up %8 since August'));
+    expect(screen.getByTestId('ivd-card-cost').textContent).not.toContain('8%');
+  });
+
+
   it('(a) shows the eight cards, in order, from the row and the figures read', async () => {
     open(row());
     const ids = [...screen.getByTestId('ivd-cards').querySelectorAll('[data-testid^="ivd-card-"]')].map((c) => c.getAttribute('data-testid'));

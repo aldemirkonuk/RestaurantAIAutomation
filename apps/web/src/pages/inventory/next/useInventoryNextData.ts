@@ -51,6 +51,7 @@ import { houseLocale } from '../../team/next/tm-format';
 import type { MapTone } from '../command/CellarMapView';
 import type { InventoryItem as LegacyItem } from '../useInventoryPage';
 import { COUNT_DUE_DAYS } from '../command/bits';
+import { ivNumber, setInventoryNumberCurrency } from './iv-number';
 import type { AdviceLoad } from '../command/HousePriceCell';
 
 export const EM = '—';
@@ -569,7 +570,7 @@ export type HouseCurrency =
  */
 export function fmtPace(v: number): string {
   if (v === 0) return '0';
-  return v < 0.1 ? v.toFixed(2) : v.toFixed(1);
+  return v < 0.1 ? ivNumber(v, { digits: 2 }) : ivNumber(v, { digits: 1 });
 }
 
 /**
@@ -608,7 +609,7 @@ export function cellUnitCost(v: number | null, currency: HouseCurrency): string 
  * the bare number.
  */
 export function fmtCount(n: number): string {
-  return n.toLocaleString('en-GB', { maximumFractionDigits: 1 });
+  return ivNumber(n, { max: 1 }); // the house's form (iv-number.ts)
 }
 
 function plural(n: number, one: string, many: string): string {
@@ -827,6 +828,10 @@ export function useInventoryNextData() {
       : currencyQ.data.code
         ? { state: 'recorded', code: currencyQ.data.code }
         : { state: 'not_recorded', code: null };
+  // Counts follow the money's form (iv-number.ts): set during render so this
+  // render's helpers already read it, and put back when the page goes.
+  setInventoryNumberCurrency(currency.code);
+  useEffect(() => () => setInventoryNumberCurrency(null), []);
 
   const storage = useStorageLocations();
   const providersQ = useProviders(rid ?? '');

@@ -535,10 +535,21 @@ describe('Ported acts in the More menu: Mark inactive and Remove from inventory'
     expect(within(wine).getByRole('menuitem', { name: 'Record a pour' })).toBeTruthy();
   });
 
-  it('both acts are reachable from More, for staff as well as managers (legacy gates neither)', async () => {
-    const m = await menu({ canManage: false });
+  // Inventory r28, gap 2: legacy gated neither, and so Remove (which counts a
+  // good to zero and soft-deletes it) let staff do what Write off refuses them.
+  // Both are now an owner's or a manager's, here and at the gateway.
+  it('both acts are reachable from More for a manager, and neither for staff, who are told why', async () => {
+    const m = await menu({ canManage: true });
     expect(within(m).getByRole('menuitem', { name: 'Mark inactive' })).toBeTruthy();
     expect(within(m).getByRole('menuitem', { name: 'Remove from inventory' })).toBeTruthy();
+    expect(within(m).queryByTestId('remove-is-a-managers')).toBeNull();
+    cleanup();
+    const s = await menu({ canManage: false, row: row({ active: true, stock: 0, shadow: 0, openMl: 0 }) });
+    expect(within(s).queryByRole('menuitem', { name: 'Mark inactive' })).toBeNull();
+    expect(within(s).queryByRole('menuitem', { name: 'Remove from inventory' })).toBeNull();
+    expect(within(s).getByTestId('remove-is-a-managers').textContent).toBe(
+      'Removing a good or marking it inactive is for owners and managers.',
+    );
   });
 
   it('Mark inactive sends the legacy PATCH body to updateInventoryItem for this row and house', async () => {
@@ -973,6 +984,19 @@ describe('a food or supply is costed in its own unit, with no price, margin, mar
     cleanup();
     renderDrop({ row: food, kind: 'supply', uom: null });
     expect(screen.getByTestId('row-dropdown').textContent).toContain(`Weighted average cost${EM}`);
+  });
+
+  it('a lira house writes the cost change and the margin the way it writes its money (r23 walk)', () => {
+    const tl = { state: 'recorded', code: 'TRY' } as const;
+    renderDrop({ row: food, kind: 'food', uom: 'g', currency: tl });
+    expect(screen.getByTestId('row-dropdown').textContent).toContain('(+%20)');
+    cleanup();
+    // 92 a bottle on a cost of 40: a margin of 57 in a hundred.
+    renderDrop({ currency: tl });
+    expect(screen.getByTestId('row-dropdown').textContent).toContain('Margin over cost%57');
+    cleanup();
+    renderDrop({ currency: { state: 'recorded', code: 'GBP' } });
+    expect(screen.getByTestId('row-dropdown').textContent).toContain('Margin over cost57%');
   });
 
   it('a drink is drawn as before', () => {

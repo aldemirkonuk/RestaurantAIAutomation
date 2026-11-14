@@ -889,9 +889,13 @@ export default function InventoryNext() {
             ) : posOpen > 0 ? (
               <p className="iv-note" data-testid="inv-pos-queue">
                 {fmtCount(posOpen)} POS {posOpen === 1 ? 'line rang up and moved' : 'lines rang up and moved'} no stock.{' '}
-                <button type="button" className="iv-linkish iv-focus" onClick={() => setPanel('pos')}>
-                  Map them
-                </button>
+                {data.canManage ? (
+                  <button type="button" className="iv-linkish iv-focus" onClick={() => setPanel('pos')}>
+                    Map them
+                  </button>
+                ) : (
+                  'An owner or a manager maps them.'
+                )}
               </p>
             ) : null}
             {/* The insights rail: the legacy page's only mount
@@ -951,19 +955,21 @@ export default function InventoryNext() {
                   <button type="button" className="iv-btn iv-focus" onClick={() => void copySelectedNames()}>
                     Copy names
                   </button>
-                  <button
-                    type="button"
-                    className="iv-btn iv-focus"
-                    disabled={selBlocked > 0}
-                    aria-describedby={selBlocked > 0 ? 'iv-selbar-why' : undefined}
-                    onClick={() => setRemoveSel(selectedRows)}
-                  >
-                    Remove selected
-                  </button>
+                  {data.canManage ? (
+                    <button
+                      type="button"
+                      className="iv-btn iv-focus"
+                      disabled={selBlocked > 0}
+                      aria-describedby={selBlocked > 0 ? 'iv-selbar-why' : undefined}
+                      onClick={() => setRemoveSel(selectedRows)}
+                    >
+                      Remove selected
+                    </button>
+                  ) : null}
                   <button type="button" className="iv-linkish iv-focus" onClick={clearSelect}>
                     Clear selection
                   </button>
-                  {selBlocked > 0 ? (
+                  {data.canManage && selBlocked > 0 ? (
                     <p className="iv-note" id="iv-selbar-why" data-testid="selbar-remove-blocked">
                       Remove waits: {fmtCount(selBlocked)} selected {selBlocked === 1 ? 'title' : 'titles'} cannot be
                       zeroed first. Open {selBlocked === 1 ? 'it' : 'each'} and look under More to see why.
@@ -1025,9 +1031,13 @@ export default function InventoryNext() {
                 <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('locations')}>
                   Storage locations
                 </button>
-                <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('pos')}>
-                  Map POS buttons
-                </button>
+                {/* A mapping decides what a sale takes off the shelf: a manager's,
+                    as the gateway now says too (inventory r28, gap 6). */}
+                {data.canManage ? (
+                  <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('pos')}>
+                    Map POS buttons
+                  </button>
+                ) : null}
                 <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('receipt')}>
                   A delivery without an order
                 </button>
@@ -1127,7 +1137,7 @@ export default function InventoryNext() {
           onConfirm={(selected) => void confirmAutoLocate(selected)}
         />
       ) : null}
-      {removeSel ? (
+      {removeSel && data.canManage ? (
         <RemoveFromInventoryModal
           isOpen
           items={removeSel.map(removeTarget)}
@@ -1158,7 +1168,7 @@ export default function InventoryNext() {
       {panel === 'auction' ? (
         <AuctionLotStart open onClose={() => setPanel(null)} onCarry={carryAuctionLot} />
       ) : null}
-      {panel === 'pos' ? (
+      {panel === 'pos' && data.canManage ? (
         <PosMappingPanel
           isOpen
           onClose={() => setPanel(null)}

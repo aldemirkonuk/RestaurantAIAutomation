@@ -304,8 +304,10 @@ describe('In dish recipes', () => {
     mount(ready(dish()));
     const link = within(screen.getByTestId('ivd-dish-d1')).getByRole('link', { name: 'Pide' });
     expect(link.getAttribute('href')).toBe('/dishes?open=d1');
+    expect(t('per-plate')).toContain('Used per plate');
     expect(t('per-plate')).toContain('31.25 g');
     expect(t('per-plate')).toContain('in a batch of 8');
+    expect(t('cost')).toContain('Cost per plate');
     expect(t('cost')).toContain('2.50');
     expect(t('price')).toContain('10');
     expect(t('food-cost')).toContain('25.0%');
@@ -369,7 +371,7 @@ const drink = (over: Partial<ItemDrink> = {}): ItemDrink => ({
 });
 const drinksReady = (...drinks: ItemDrink[]): DrinksLoad => ({ status: 'ready', data: { drinks } });
 const textLine = { cocktailId: 'c1', name: 'House G&T', label: 'Gin', qtyEntered: 50, unitCode: 'ml' };
-const mountDrinks = (drinks: DrinksLoad | undefined, opts: { canManage?: boolean; over?: Partial<UsedIn>; onRetryDrinks?: () => void } = {}) =>
+const mountDrinks = (drinks: DrinksLoad | undefined, opts: { canManage?: boolean; over?: Partial<UsedIn>; onRetryDrinks?: () => void; code?: string } = {}) =>
   render(
     <MemoryRouter>
       <ItemUsedIn
@@ -377,7 +379,7 @@ const mountDrinks = (drinks: DrinksLoad | undefined, opts: { canManage?: boolean
         dishes={NO_DISHES}
         drinks={drinks}
         canManage={opts.canManage ?? true}
-        currency={EUR}
+        currency={opts.code ? { state: 'recorded', code: opts.code } : EUR}
         onRetry={vi.fn()}
         onRetryDishes={vi.fn()}
         onRetryDrinks={opts.onRetryDrinks}
@@ -392,15 +394,28 @@ describe('In drink recipes, with their cards (the same as a dish)', () => {
     const g = screen.getByTestId('ivd-used-drink-recipes');
     expect(g.textContent).toContain(DRINKS_DO_NOT_DRAW);
     expect(within(screen.getByTestId('ivd-drink-c1')).getByRole('link', { name: 'House G&T' }).getAttribute('href')).toBe(drinkHref('c1'));
-    expect(dt('per-serve')).toContain('This good a serve');
+    // r21 walk D5: "per", never "a" — the titles are drawn in capitals.
+    expect(dt('per-serve')).toContain('Used per serve');
     expect(dt('per-serve')).toContain('50 ml');
-    expect(dt('cost')).toContain('Cost a serve');
+    expect(dt('cost')).toContain('Cost per serve');
+    expect(screen.getByTestId('ivd-drink-c1').textContent).not.toMatch(/\b(Cost|good) a serve\b/);
     expect(dt('cost')).toMatch(/1\.50/);
     expect(dt('price')).toContain('€12');
     expect(dt('pour-cost')).toContain('Pour cost');
     expect(dt('pour-cost')).toContain('12.5%');
     // The used-in line is not drawn a second time under the cards.
     expect(g.textContent).not.toContain('House G&T — 50 ml (Gin)');
+  });
+
+  it('a lira house writes the pour cost the way it writes its money: "%12,5", never "12.5%" (r23 walk)', () => {
+    mountDrinks(drinksReady(drink()), { code: 'TRY' });
+    expect(dt('pour-cost')).toContain('%12,5');
+    expect(dt('pour-cost')).not.toContain('12.5%');
+  });
+
+  it('a pound house writes it the English way', () => {
+    mountDrinks(drinksReady(drink()), { code: 'GBP' });
+    expect(dt('pour-cost')).toContain('12.5%');
   });
 
   it('a batch drink says a serve of it and the batch', () => {

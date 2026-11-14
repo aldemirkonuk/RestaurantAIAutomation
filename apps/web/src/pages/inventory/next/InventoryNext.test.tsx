@@ -1226,6 +1226,35 @@ describe('INV-W38 — the view is the URL', () => {
     expect(live('a')).toContain('10 / 10 · 6');
   });
 
+  // Inventory r28, gap 6: a mapping decides what a sale takes off the shelf.
+  it('offers Map POS buttons to an owner or manager, and not to staff', () => {
+    mock.data = data({ rows: two(), canManage: true });
+    const { unmount } = renderPage();
+    expect(screen.getByRole('button', { name: 'Map POS buttons' })).toBeTruthy();
+    unmount();
+    mock.data = data({ rows: two(), canManage: false });
+    renderPage();
+    expect(screen.queryByRole('button', { name: 'Map POS buttons' })).toBeNull();
+  });
+
+  it('tells staff who maps the POS lines that moved no stock, with no button to map them', async () => {
+    pos.lines.mockImplementation(async () => ({ summary: { open_lines: 4 } }));
+    mock.data = data({ rows: [row({ id: 'a', name: 'Alpha' }), row({ id: 'b', name: 'Beta' })], canManage: false });
+    renderPage();
+    const said = await screen.findByTestId('inv-pos-queue');
+    expect(said.textContent).toContain('An owner or a manager maps them.');
+    expect(within(said).queryByRole('button', { name: 'Map them' })).toBeNull();
+  });
+
+  // Inventory r28, gap 2: removing many goods at once is a manager's too.
+  it('offers staff no Remove selected', () => {
+    mock.data = data({ rows: [row({ id: 'a', name: 'Alpha' }), row({ id: 'b', name: 'Beta' })], canManage: false });
+    renderPage();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Alpha' }));
+    expect(screen.getByRole('button', { name: 'Export selected' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Remove selected' })).toBeNull();
+  });
+
   const closeDrawer = () => fireEvent.click(document.querySelector('.iv-drawer .mdv-ovl__close') as HTMLElement);
 
   it('(f) Close on a row opened here steps back, so the next Back leaves the page', () => {

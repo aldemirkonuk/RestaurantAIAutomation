@@ -16,6 +16,8 @@ import { figureWords, PER } from './nutrition-words';
 import { cellMoney, EM, fmtCount, fmtPace, type HouseCurrency, type InvRow } from './useInventoryNextData';
 import { fmtWhen } from '../../../lib/mudavym/format';
 import { shortDate } from '../../cellar/next/cellar-format';
+import { formatHousePercent } from '../../../lib/house-number';
+import { ivNumber } from './iv-number';
 
 export type CardId = 'onhand' | 'value' | 'usage' | 'cover' | 'cost' | 'waste' | 'gap' | 'inside';
 
@@ -70,7 +72,7 @@ const UNIT_WORDS: Record<string, [string, string]> = {
  * right after the count sheet said "now reads 1.75 kg".
  */
 function fmtScaled(n: number): string {
-  return n.toLocaleString('en-GB', { maximumFractionDigits: 3 });
+  return ivNumber(n, { max: 3 });
 }
 
 /**
@@ -140,7 +142,7 @@ export function Sparkline({ points }: { points: number[] }) {
   );
 }
 
-function trendWords(f: ItemFigures['costTrend']): string {
+function trendWords(f: ItemFigures['costTrend'], currency: string | null): string {
   if (!f.readable) return `What each delivery cost ${UNREAD}.`;
   // No points is the server saying why there is no trend, not "too few receipts".
   if (f.points === null) return f.source;
@@ -149,7 +151,10 @@ function trendWords(f: ItemFigures['costTrend']): string {
   const month = new Date(pts[0].receivedAt).toLocaleDateString('en-GB', { month: 'long' });
   const pct = Math.abs(f.changePct);
   if (f.changePct === 0) return `Unchanged since ${month}.`;
-  return `${f.changePct > 0 ? 'Up' : 'Down'} ${fmtCount(pct)}% since ${month}.`;
+  // The share in the house's form, as its money is: "Up %12 since March" in a
+  // lira house. Whole when it is whole, one place otherwise, as before.
+  const digits = Number.isInteger(Math.round(pct * 10) / 10) ? 0 : 1;
+  return `${f.changePct > 0 ? 'Up' : 'Down'} ${formatHousePercent(pct, currency, { digits })} since ${month}.`;
 }
 
 interface CardProps {
@@ -287,7 +292,7 @@ export default function ItemCards({ row, uom, kind, canManage, currency, figures
     ) : f ? (
       <>
         <Sparkline points={(f.costTrend.points ?? []).map((p) => p.unitCost)} />
-        <span>{trendWords(f.costTrend)}</span>
+        <span>{trendWords(f.costTrend, currency.code)}</span>
       </>
     ) : (
       `What each delivery cost ${UNREAD}.`
