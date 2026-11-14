@@ -31,8 +31,8 @@ const base: ReportExport = {
   id: 'e1',
   cutting: 'ledger',
   title: 'Figures of record',
-  windowLabel: '365 days of the till; the cellar as it stands today',
-  windowDays: null,
+  windowLabel: 'the last 30 days of the till; the cellar as it stands today',
+  windowDays: 30,
   status: 'ready',
   failureReason: null,
   withheldCount: 8,
@@ -191,9 +191,18 @@ describe('ExportsShelf — every status looks like what it is (OD-81)', () => {
     shelf(d);
     const picker = screen.getByLabelText('Cutting to write up') as HTMLSelectElement;
     expect(Array.from(picker.options).map((o) => o.value)).toEqual(['reading', 'till', 'ledger']);
-    fireEvent.change(picker, { target: { value: 'ledger' } });
+    fireEvent.change(picker, { target: { value: 'reading' } });
     fireEvent.click(screen.getByRole('button', { name: 'Write it up' }));
-    expect(d.request).toHaveBeenCalledWith('ledger', null);
+    expect(d.request).toHaveBeenCalledWith('reading', null);
+  });
+
+  it('asks for the figures of record over the till window, as the page shows them (r36 invoices R2)', () => {
+    const d = desk();
+    shelf(d);
+    fireEvent.change(screen.getByLabelText('Cutting to write up'), { target: { value: 'ledger' } });
+    expect(screen.getByText('over the last 30 days, as the till is set')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Write it up' }));
+    expect(d.request).toHaveBeenCalledWith('ledger', 30);
   });
 
   it('a role that cannot export is told so, and is offered no control and no list', () => {

@@ -101,14 +101,13 @@ export class ReportCuttingReader {
       // GET /analytics/menu-engineering/:rid
       case "quadrants":
         return this.advanced.getMenuEngineering(restaurantId);
-      // GET /analytics/financial/:rid — no `labor` on the page's path, which
-      // the handler reads as 0.
+      // GET /analytics/financial/:rid?days= — no `labor` on the page's path,
+      // which the handler reads as 0. The window is the till's, as on the page.
       case "ledger":
-        return this.analytics.getFinancialSummary(
-          restaurantId,
-          0,
-          EXPORT_READS_SALES,
-        );
+        return this.analytics.getFinancialSummary(restaurantId, 0, {
+          ...EXPORT_READS_SALES,
+          tillDays: days ?? 30,
+        });
       // GET /analytics/table-performance/:rid?sinceDays=90
       case "seats":
         return this.tables.getTablePerformance(restaurantId, 90);
