@@ -51,7 +51,7 @@ vi.mock('../../../hooks/queries/useProviderQueries', async (orig) => ({
 }));
 
 import { AxiosError, AxiosHeaders, type AxiosResponse } from 'axios';
-import { CountSheet, MERGE_AGE_MS, freshKey, OrderSheet, PourSheet, TransferSheet, WriteOffSheet, countGapSentence, orderWasMerged, placedSentence } from './InventorySheets';
+import { CountSheet, MERGE_AGE_MS, freshKey, measuredBy, OrderSheet, PourSheet, TransferSheet, WriteOffSheet, countGapSentence, orderWasMerged, placedSentence } from './InventorySheets';
 
 function row(over: Partial<InvRow> = {}): InvRow {
   return {
@@ -413,14 +413,43 @@ describe('a good kept in grams, millilitres or items (all goods, foods included)
     expect(document.body.textContent).not.toMatch(/bottle/i);
   });
 
-  it('a good kept in grams is not ordered in bottles from here', () => {
+  // Inventory r36 gap 2: no order states a weight, so Orders was a dead end.
+  it('a good kept by weight is sent the way it comes in: the vendor, a count, and its invoice on Receipts', () => {
     mount(<OrderSheet row={flour()} uom="g" onClose={() => {}} providers={ROSSI} providersError={null} restaurantId="r1" />);
-    expect(document.body.textContent).toContain('This good is kept in grams, and an order from here is placed in bottles, kegs or items');
+    expect(screen.getByTestId('iv-order-unit-blocked').textContent).toBe(
+      'Un is kept by weight, and an order from Mudavym is placed in bottles, kegs, items or litres, never by weight, so it is not ordered from here. Order it from the vendor as you do now; when it comes, count it here and put the vendor\'s invoice on Receipts. Go to Receipts',
+    );
+    expect(screen.getByRole('link', { name: 'Go to Receipts' }).getAttribute('href')).toBe('/receipts');
+    // Orders cannot take a weight either, so it is not offered.
+    expect(screen.queryByRole('link', { name: 'Go to Orders' })).toBeNull();
+    expect(document.body.textContent).not.toContain('vendor\'s own unit');
     // No form it could never use: no vendor picker, no amount box, no hold.
     expect(screen.queryByRole('combobox')).toBeNull();
     expect(screen.queryByRole('textbox')).toBeNull();
     expect(screen.queryByRole('button', { name: /Hold to place|Not ready to place/ })).toBeNull();
+  });
+
+  it('a good kept by volume is sent to Orders, which takes litres, and told its stock comes from a count or the invoice', () => {
+    mount(<OrderSheet row={row({ wineId: null, name: 'Olive oil', kind: 'food' })} uom="ml" onClose={() => {}} providers={ROSSI} providersError={null} restaurantId="r1" />);
+    expect(screen.getByTestId('iv-order-unit-blocked').textContent).toBe(
+      'Olive oil is kept by volume, and an order from here is placed in bottles, kegs or items, so it is not ordered from this sheet. Orders can place it in litres; when it comes, count it here and put the vendor\'s invoice on Receipts. Go to Orders',
+    );
     expect(screen.getByRole('link', { name: 'Go to Orders' }).getAttribute('href')).toBe('/orders');
+    expect(screen.queryByRole('link', { name: 'Go to Receipts' })).toBeNull();
+  });
+
+  it('a good kept in cases is sent to Orders, which asks what one holds', () => {
+    mount(<OrderSheet row={row({ wineId: null, name: 'Tonic', kind: 'soft_drink' })} uom="case" onClose={() => {}} providers={ROSSI} providersError={null} restaurantId="r1" />);
+    expect(screen.getByTestId('iv-order-unit-blocked').textContent).toBe(
+      'This good is kept in cases, and an order from here does not ask how much one of them holds, so it is not ordered from this sheet. Orders asks it. Go to Orders',
+    );
+    expect(screen.getByRole('link', { name: 'Go to Orders' }).getAttribute('href')).toBe('/orders');
+  });
+
+  it('measuredBy tells weight and volume from a count', () => {
+    expect([measuredBy('g'), measuredBy('kg'), measuredBy('mg')]).toEqual(['weight', 'weight', 'weight']);
+    expect([measuredBy('ml'), measuredBy('l')]).toEqual(['volume', 'volume']);
+    expect([measuredBy('case'), measuredBy('each'), measuredBy('bottle'), measuredBy(null), measuredBy(undefined)]).toEqual([null, null, null, null, null]);
   });
 
   it('a good kept as items is ordered as items', async () => {
