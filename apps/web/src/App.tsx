@@ -63,6 +63,7 @@ import { AppOfflineBanner } from './components/mudavym/AppOfflineBanner'
 // Layout
 import { DashboardLayout } from './components/layout/DashboardLayout'
 import { ProtectedRoute } from './components/ProtectedRoute'
+import { HouseSetupOnly } from './components/HouseSetupOnly'
 
 // Critical pages (loaded immediately)
 import { Login } from './pages/Login'
@@ -238,7 +239,9 @@ function App() {
                   path="/house"
                   element={
                     <ProtectedRoute>
-                      <HouseContents />
+                      <HouseSetupOnly>
+                        <HouseContents />
+                      </HouseSetupOnly>
                     </ProtectedRoute>
                   }
                 />
@@ -246,7 +249,9 @@ function App() {
                   path="/house/menu"
                   element={
                     <ProtectedRoute>
-                      <HouseMenu />
+                      <HouseSetupOnly>
+                        <HouseMenu />
+                      </HouseSetupOnly>
                     </ProtectedRoute>
                   }
                 />
