@@ -280,6 +280,35 @@ describe('the words the panel uses', () => {
 });
 
 describe('the sentence for each part of a file that was not read (ADR 0213 #17)', () => {
+  it('r33 w1 F2: the result counts LINES, so a line with a bottle and a glass price is one, not "1 price"', () => {
+    // Walked: the plan said "set 2 prices…, find 2 prices already the same"
+    // (one line, both its prices) and the result said "1 price set". (#1511,
+    // in the chain's line nouns since the r37 meet.)
+    const s = makeCurrentSentence({
+      outcome: 'made_current',
+      menuId: 'm1',
+      previousMenuIds: ['m0'],
+      lines: 2,
+      priceSync: { changed: 1, unchanged: 1 },
+      flagged: 0,
+      failed: [],
+    });
+    expect(s).toBe("This is now the current menu: 2 lines, 1 line priced from this menu, 1 line already at the menu's price.");
+    expect(s).not.toMatch(/\bprices? set\b/);
+    // Nothing priced is said as none, not as "0 lines".
+    expect(
+      makeCurrentSentence({
+        outcome: 'made_current',
+        menuId: 'm1',
+        previousMenuIds: [],
+        lines: 2,
+        priceSync: { unchanged: 2 },
+        flagged: 0,
+        failed: [],
+      }),
+    ).toBe("This is now the current menu: 2 lines, none priced from this menu, 2 lines already at the menu's price.");
+  });
+
   it('names the pages when they are known, one sentence per warning', () => {
     expect(readWarningSentence({ kind: 'chunk_failed', pages: { first: 13, last: 14 } })).toBe(
       'Pages 13–14 could not be read; send them again.',

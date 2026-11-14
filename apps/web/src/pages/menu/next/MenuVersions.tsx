@@ -193,7 +193,8 @@ const OUTCOME_WORDS: Record<string, (n: number, noun: KindNoun) => string> = {
   // bottle and a glass price. Every count names its unit, and the plan counts
   // the same lines in the same words (MenuPlan.tsx `lineOutcome`), named by
   // menu-line-kind `oneNounFor`.
-  changed: (n, k) => `${n} ${k[n === 1 ? 0 : 1]} priced from this menu`,
+  // Nothing priced is said as none, not as "0 lines" (r33 w1 F2, #1511).
+  changed: (n, k) => `${n === 0 ? 'none' : `${n} ${k[n === 1 ? 0 : 1]}`} priced from this menu`,
   unchanged: (n, k) => `${n} ${k[n === 1 ? 0 : 1]} already at the menu's price`,
   stale: (n, k) => `${n} ${k[n === 1 ? 0 : 1]} kept a price someone set after this menu was chosen`,
   locked: (n, k) => `${n} ${k[n === 1 ? 0 : 1]} at ${n === 1 ? 'its' : 'their'} locked price`,
