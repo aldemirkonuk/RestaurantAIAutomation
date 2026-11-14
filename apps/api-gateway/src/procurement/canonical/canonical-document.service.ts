@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { receivedAtTheDoor } from "./door-received";
+import { doorCountsOfPapers, withTheDoorsPack } from "./door-received";
+import { UNIT_WORDS } from "../documents/door-count-lines";
 import { DatabaseService } from "../../database/database.service";
 import { normalizeUom, Uom } from "../documents/document-types";
 import { ParsedDocument } from "../documents/parsed-document";
@@ -327,16 +328,26 @@ export class CanonicalDocumentService {
 
     // r24: the door's count of THIS paper, by its own line numbers. A failed
     // read is said, never shown as "nobody counted" without a word.
-    let spine: Record<number, { received: number }> | undefined;
+    let spine: Record<number, { received?: number; billed?: number }> | undefined;
+    // r31 w2 F1: the pack the door gave a case the paper sizes nowhere, per line index.
+    let doorPacks: Map<number, number> | undefined;
     if (opts?.door) {
-      const door = await receivedAtTheDoor(this.db.getClient(), restaurantId, documentId);
-      if (!door.ok)
-        notes.push(`What the door counted of this paper ${door.error}, so Received may read "not counted" where it was counted.`);
-      else if (door.value.size) {
+      const doors = await doorCountsOfPapers(this.db.getClient(), restaurantId, [documentId]);
+      const door = doors.ok ? doors.value.get(documentId) : undefined;
+      if (!doors.ok)
+        notes.push(`What the door counted of this paper ${doors.error}, so Received may read "not counted" where it was counted.`);
+      else if (door?.received.size) {
         spine = {};
         lineRows.forEach((l, i) => {
-          const n = l.line_no == null ? undefined : door.value.get(l.line_no);
+          const n = l.line_no == null ? undefined : door.received.get(l.line_no);
           if (n !== undefined) spine![i] = { received: n };
+        });
+      }
+      if (door?.packs.size) {
+        doorPacks = new Map();
+        lineRows.forEach((l, i) => {
+          const p = l.line_no == null ? undefined : door.packs.get(l.line_no);
+          if (p !== undefined) doorPacks!.set(i, p);
         });
       }
     }
@@ -377,6 +388,22 @@ export class CanonicalDocumentService {
       rl.canonicalUom = normalizeUom(line.uom);
       rl.qtyBottles = line.qtyBottles;
       rl.vintage = line.vintage ?? null;
+      // r31 w2 F1: a case the paper (as corrected) sizes nowhere is read with
+      // the pack the door gave it, on layer 2 and on layer 3's billed side.
+      // Layer 1 stays what the paper printed; the stored line is not written.
+      const door = withTheDoorsPack(
+        { uom: line.uom, pack_size: line.packSize, qty: line.qty, qty_bottles: line.qtyBottles },
+        doorPacks?.get(rl.lineIndex),
+      );
+      if (door.pack_from_door != null) {
+        rl.packSize = door.pack_from_door;
+        rl.qtyBottles = Number(door.qty_bottles);
+        spine ??= {};
+        spine[rl.lineIndex] = { ...spine[rl.lineIndex], billed: rl.qtyBottles };
+        notes.push(
+          `Line ${lineRows[rl.lineIndex]?.line_no ?? rl.lineIndex + 1} is read as ${line.qty} ${UNIT_WORDS[line.uom] ?? line.uom} of ${door.pack_from_door} (${rl.qtyBottles} bottles): the paper does not say how many bottles one holds, and ${door.pack_from_door} is what the door counted.`,
+        );
+      }
     }
 
     const parties = await this.resolveParties(restaurantId, row.provider_id);

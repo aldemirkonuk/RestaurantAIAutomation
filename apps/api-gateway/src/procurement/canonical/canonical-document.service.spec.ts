@@ -3,11 +3,19 @@ import { DatabaseService } from "../../database/database.service";
 import { CanonicalDocumentService } from "./canonical-document.service";
 import { LineMappingService } from "./line-mapping.service";
 import { VendorResolutionService } from "../vendor-identity/vendor-resolution.service";
-import { receivedAtTheDoor } from "./door-received";
+import { doorCountsOfPapers } from "./door-received";
 
 // r24: the door's count of a paper is read by its own helper (door-received.spec.ts).
-jest.mock("./door-received", () => ({ receivedAtTheDoor: jest.fn() }));
-const doorRead = receivedAtTheDoor as jest.MockedFunction<typeof receivedAtTheDoor>;
+// r31 w2 F1: the reader also gives the door's pack; the overlay itself is real.
+jest.mock("./door-received", () => ({
+  ...jest.requireActual("./door-received"),
+  doorCountsOfPapers: jest.fn(),
+}));
+const doorRead = doorCountsOfPapers as jest.MockedFunction<typeof doorCountsOfPapers>;
+const counted = (received: [number, number][], packs: [number, number][] = []) => ({
+  ok: true as const,
+  value: new Map([["doc-1", { received: new Map(received), packs: new Map(packs) }]]),
+});
 
 /**
  * Mocked supabase. All ids and numbers are SYNTHETIC.
@@ -613,9 +621,9 @@ describe("CanonicalDocumentService — what the columns cannot hold", () => {
 
   describe("what the door counted of this paper (r24)", () => {
     it("puts the count on its own line as received; an uncounted line stays not counted", async () => {
-      doorRead.mockResolvedValueOnce({ ok: true, value: new Map([[2, 5]]) });
+      doorRead.mockResolvedValueOnce(counted([[2, 5]]));
       const res = await service.buildFromDocumentId("rest-1", "doc-1", { door: true });
-      expect(doorRead).toHaveBeenCalledWith(expect.anything(), "rest-1", "doc-1");
+      expect(doorRead).toHaveBeenCalledWith(expect.anything(), "rest-1", ["doc-1"]);
       expect(res.ok && res.value.layer3.lines.map((l) => l.received)).toEqual(["not_counted", 5]);
     });
 
@@ -623,6 +631,39 @@ describe("CanonicalDocumentService — what the columns cannot hold", () => {
       doorRead.mockResolvedValueOnce({ ok: false, error: "could not be read (boom)" });
       const res = await service.buildFromDocumentId("rest-1", "doc-1", { door: true });
       expect(res.ok && res.notes?.join(" ")).toContain("could not be read (boom)");
+    });
+
+    it("a case the paper sizes nowhere is billed through the door's pack (r31 w2 F1)", async () => {
+      answers.procurement_document_lines = {
+        data: [
+          { ...LINE_ROWS[0] },
+          { ...LINE_ROWS[1], qty: "2", uom: "case", pack_size: 1, qty_bottles: "2", unit_price: "1800.0000", line_total: "3600.00" },
+        ],
+        error: null,
+      };
+      doorRead.mockResolvedValueOnce(counted([[2, 24]], [[2, 12]]));
+      const res = await service.buildFromDocumentId("rest-1", "doc-1", { door: true });
+      expect(res.ok).toBe(true);
+      if (!res.ok) return;
+      expect(res.value.layer3.lines[1]).toMatchObject({ received: 24, billed: 24, verdict: "ok" });
+      expect(res.value.layer2.lines[1]).toMatchObject({ packSize: 12, qtyBottles: 24 });
+      // A line the door gave no pack is billed as stored.
+      expect(res.value.layer3.lines[0].billed).toBe(24);
+      expect(res.notes?.join(" ")).toContain("Line 2 is read as 2 cases of 12 (24 bottles)");
+    });
+
+    it("a pack the paper states is never replaced by the door's (r31 w2 F1)", async () => {
+      answers.procurement_document_lines = {
+        data: [
+          { ...LINE_ROWS[0] },
+          { ...LINE_ROWS[1], qty: "2", uom: "case", pack_size: 6, qty_bottles: "12", unit_price: "900.0000", line_total: "1800.00" },
+        ],
+        error: null,
+      };
+      doorRead.mockResolvedValueOnce(counted([[2, 24]], [[2, 12]]));
+      const res = await service.buildFromDocumentId("rest-1", "doc-1", { door: true });
+      expect(res.ok && res.value.layer3.lines[1]).toMatchObject({ received: 24, billed: 12, verdict: "over_ship" });
+      expect((res.ok && res.notes?.join(" ")) || "").not.toContain("is what the door counted");
     });
 
     it("is not read unless asked", async () => {
