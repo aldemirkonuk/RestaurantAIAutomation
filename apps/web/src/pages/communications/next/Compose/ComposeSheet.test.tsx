@@ -684,6 +684,42 @@ describe('a reply opened from Mail (r28 gap 3)', () => {
     expect(mockPost.mock.calls[1][1].answers).toBeUndefined();
   });
 
+  it('closed unwritten, a reply holds nothing (so the next new letter is blank)', async () => {
+    mockData.current = { ...base, sender: HOUSE_MAILBOX };
+    const onHold = vi.fn();
+    render(<ComposeSheet open onClose={() => {}} onHold={onHold} prefill={REPLY} />);
+    await waitFor(() => expect(screen.getByText('fikri@fikritarim.com')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Close'));
+    expect(onHold).not.toHaveBeenCalled();
+  });
+
+  it('closed with words in it, a reply is held still addressed and still answering', async () => {
+    mockData.current = { ...base, sender: HOUSE_MAILBOX };
+    const onHold = vi.fn();
+    render(<ComposeSheet open onClose={() => {}} onHold={onHold} prefill={REPLY} />);
+    await waitFor(() => expect(screen.getByText('fikri@fikritarim.com')).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText('The letter'), { target: { value: 'Thursday is fine.' } });
+    fireEvent.click(screen.getByText('Close'));
+    expect(onHold).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: expect.objectContaining({ providerId: 'p1' }),
+        subject: 'Re: Standing order',
+        body: 'Thursday is fine.',
+        answers: 'm6',
+      }),
+    );
+  });
+
+  it('a reply whose subject was edited is held', async () => {
+    mockData.current = { ...base, sender: HOUSE_MAILBOX };
+    const onHold = vi.fn();
+    render(<ComposeSheet open onClose={() => {}} onHold={onHold} prefill={REPLY} />);
+    await waitFor(() => expect(screen.getByText('fikri@fikritarim.com')).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText('Subject'), { target: { value: 'Re: Standing order, Thursday' } });
+    fireEvent.click(screen.getByText('Close'));
+    expect(onHold).toHaveBeenCalledTimes(1);
+  });
+
   it('a plain letter names nothing it answers', async () => {
     mockData.current = { ...base, sender: HOUSE_MAILBOX };
     sealThenQueue();
