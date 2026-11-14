@@ -45,6 +45,36 @@ export function uncostedSaid(n: number | null | undefined): string | null {
     : `${n} delivered orders have no recorded cost`;
 }
 
+/**
+ * Why a spend figure is not stated, in a few words for a tile or a cell: the
+ * delivered orders with no recorded cost, and the ones placed in money other
+ * than the house's, by code. The gateway withholds such a figure rather than
+ * add two monies together or leave an order out (nothing converts one into
+ * the other). `houseUnread`: an order named a currency and the house's own
+ * could not be read. Null when nothing is held back.
+ */
+export function heldBackSaid(
+  uncosted: number | null | undefined,
+  other?: Record<string, number> | null,
+  houseUnread = false,
+): string | null {
+  const codes = Object.entries(other ?? {})
+    .filter(([, n]) => typeof n === 'number' && n > 0)
+    .sort(([a, x], [b, y]) => y - x || (a < b ? -1 : 1));
+  const n = codes.reduce((sum, [, k]) => sum + k, 0);
+  if (n === 0) return uncostedSaid(uncosted);
+  const head = `${n} delivered ${n === 1 ? 'order is' : 'orders are'}`;
+  const where =
+    codes.length === 1
+      ? `in ${codes[0][0]}`
+      : `in other currencies (${codes.map(([c, k]) => `${k} ${c}`).join(', ')})`;
+  const money = houseUnread
+    ? `${head} ${where} and the house’s currency could not be read`
+    : `${head} ${where}, not the house’s money`;
+  if (!uncosted || uncosted < 1) return money;
+  return `${money}; ${uncosted} ${uncosted === 1 ? 'has' : 'have'} no recorded cost`;
+}
+
 /** Plain figure or the dash. */
 export function figure(v: number | null | undefined, mode: 'compact' | 'full' = 'full'): string {
   return v == null || Number.isNaN(v) ? DASH : formatNumber(v, mode);

@@ -26,7 +26,7 @@ import {
   type DayOrdersState,
   type MonthSales,
 } from './useDashboardNextData';
-import { DASH, dateIn, eventKindWords, eventTime, figure, longDay, timeAgo, uncostedSaid, useHouseMoney, type Money } from './format';
+import { DASH, dateIn, eventKindWords, eventTime, figure, heldBackSaid, longDay, timeAgo, useHouseMoney, type Money } from './format';
 import { SERIF } from './fonts';
 
 /** A delivered order's money figure is a recorded cost only when it is above 0 (as the gateway reads it). */
@@ -326,7 +326,11 @@ export function DayDetail({
           <MiniFig
             label="Paid to vendors"
             value={money(day.procurement_spend)}
-            note={day.procurement_spend == null ? uncostedSaid(day.uncosted_orders) : null}
+            note={
+              day.procurement_spend == null
+                ? heldBackSaid(day.uncosted_orders, day.not_in_house_currency, day.house_currency_unread)
+                : null
+            }
           />
         )}
         <MiniFig label="Deliveries" value={figure(day.order_count)} />
