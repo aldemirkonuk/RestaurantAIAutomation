@@ -72,6 +72,17 @@ export interface HouseCandidate {
   inventoryItemId: string
   name: string
   kind: string | null
+  /**
+   * What tells two goods of one name apart (r37 walk w1 M-F1). Optional: an
+   * older gateway sends none, and the page then tells them apart by order.
+   */
+  bottleSizeMl?: number | null
+  vintage?: string | null
+  producer?: string | null
+  bottlePrice?: number | null
+  glassPrice?: number | null
+  /** wine_library, beverage_catalogue, house_declared or backfill. */
+  source?: string | null
 }
 
 /**

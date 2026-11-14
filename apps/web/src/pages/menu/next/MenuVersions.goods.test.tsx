@@ -79,12 +79,12 @@ describe('a read line that fits more than one of the house goods (r28 G21)', () 
     );
     expect(screen.getAllByTestId('menu-read-several-line')).toHaveLength(1);
     expect(screen.getByRole('button', { name: 'Link House Red to House red.' })).toHaveTextContent('It is House red.');
-    expect(screen.getByRole('button', { name: 'Link House Red to House Red' })).toHaveTextContent('It is House Red (wine)');
+    expect(screen.getByRole('button', { name: 'Link House Red to House Red (wine)' })).toHaveTextContent('It is House Red (wine)');
     // A plan open before the link is a plan of the old line: it is closed, to be read again.
     planShown();
     fireEvent.click(screen.getByRole('button', { name: 'Make this the current menu' }));
     await screen.findByRole('button', { name: 'Make it current' });
-    fireEvent.click(screen.getByRole('button', { name: 'Link House Red to House Red' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Link House Red to House Red (wine)' }));
     expect(await screen.findByTestId('menu-read-linked')).toHaveTextContent('Linked to House Red: choosing this menu carries its price there.');
     expect(mockLink).toHaveBeenCalledWith('m9', 'mi-red', 'inv-a');
     expect(screen.queryByRole('button', { name: /^Link House Red to/ })).not.toBeInTheDocument();
@@ -99,13 +99,31 @@ describe('a read line that fits more than one of the house goods (r28 G21)', () 
         <SeveralGoods menuId="m9" canManage onLinked={onLinked} items={[item({ houseCandidates: two })]} />
       </QueryClientProvider>,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Link House Red to House Red' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Link House Red to House Red (wine)' }));
     expect(await screen.findByTestId('menu-read-link-refused')).toHaveTextContent(
       'It was not linked: That good is removed on Inventory. Bring it back there first. Nothing was changed.',
     );
     await waitFor(() => expect(screen.getByRole('button', { name: 'Link House Red to House red.' })).toBeEnabled());
     expect(screen.queryByTestId('menu-read-linked')).not.toBeInTheDocument();
     expect(onLinked).not.toHaveBeenCalled();
+  });
+
+  // r37 walk w1 M-F1: two goods of one name gave two identical buttons.
+  it('two goods of one name get two buttons that say what tells them apart', async () => {
+    const twins = [
+      { inventoryItemId: 'inv-w1', name: 'House White', kind: 'wine', bottleSizeMl: 750, source: 'house_declared' },
+      { inventoryItemId: 'inv-w2', name: 'House White', kind: 'wine', bottleSizeMl: 1000, source: 'house_declared' },
+    ];
+    mockLink.mockResolvedValue({ menuItemId: 'mi-red', inventoryItemId: 'inv-w2', goodName: 'House White' });
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <SeveralGoods menuId="m9" canManage onLinked={vi.fn()} items={[item({ name: 'House White', houseCandidates: twins })]} />
+      </QueryClientProvider>,
+    );
+    const names = screen.getAllByRole('button').map((b) => b.getAttribute('aria-label'));
+    expect(names).toEqual(['Link House White to House White (wine, 750 ml)', 'Link House White to House White (wine, 1000 ml)']);
+    fireEvent.click(screen.getByRole('button', { name: 'Link House White to House White (wine, 1000 ml)' }));
+    await waitFor(() => expect(mockLink).toHaveBeenCalledWith('m9', 'mi-red', 'inv-w2'));
   });
 
   it('names the goods to staff without a button', async () => {

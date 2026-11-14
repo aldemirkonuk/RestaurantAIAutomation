@@ -37,6 +37,14 @@ export interface HouseGood {
   kind: string | null;
   master_wine_id: string | null;
   bottle_size_ml: number | null;
+  /**
+   * What tells two goods of one name apart for a person choosing between them
+   * (r37 walk w1 M-F1): the house's own prices and where the good came from.
+   * Read with the goods; never used to match.
+   */
+  menu_price_current?: number | string | null;
+  menu_price_glass?: number | string | null;
+  identity_provenance?: string | null;
   /** The library wine's vintage and producer, when the good names one. */
   vintage?: string | number | null;
   producer?: string | null;
@@ -288,7 +296,7 @@ export async function matchHouseGoods(
   for (; !liveGoods; ) {
     let q = client
       .from("restaurant_inventory")
-      .select("id, display_name, wine_name, kind, master_wine_id, bottle_size_ml")
+      .select("id, display_name, wine_name, kind, master_wine_id, bottle_size_ml, menu_price_current, menu_price_glass, identity_provenance")
       .eq("restaurant_id", restaurantId)
       .eq("is_active", true)
       .is("deleted_at", null);

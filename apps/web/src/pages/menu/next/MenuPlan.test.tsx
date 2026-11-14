@@ -325,8 +325,34 @@ describe('r35 G21: a line that fits the house\'s own goods and is linked to none
     mockPlan.mockResolvedValue(plan({ lines: [RED] }));
     mockLink.mockRejectedValue({ response: { status: 409, data: { message: 'This is the current menu.' } } });
     mount(true);
-    fireEvent.click(await screen.findByRole('button', { name: 'Link House Red to House Red' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Link House Red to House Red (wine)' }));
     expect(await screen.findByTestId('menu-plan-fits-refused')).toHaveTextContent('It was not linked: This is the current menu.');
+  });
+
+  // r37 walk w1 M-F1: two goods of one name gave two identical buttons.
+  it('two goods of one name get two buttons that say what tells them apart', async () => {
+    const WHITE = line({
+      ...RED,
+      menuItemId: 'n9',
+      name: 'House White',
+      houseCandidates: [
+        { inventoryItemId: 'inv-w1', name: 'House White', kind: 'wine', bottleSizeMl: 750, bottlePrice: 30, glassPrice: null, source: 'house_declared' },
+        { inventoryItemId: 'inv-w2', name: 'House White', kind: 'wine', bottleSizeMl: 750, bottlePrice: null, glassPrice: null, source: 'beverage_catalogue' },
+      ],
+    });
+    mockPlan.mockResolvedValue(plan({ lines: [WHITE] }));
+    mockLink.mockResolvedValue({ menuItemId: 'n9', inventoryItemId: 'inv-w2', goodName: 'House White' });
+    mount(true);
+    const buttons = within(await screen.findByTestId('menu-plan-fits')).getAllByRole('button');
+    const names = buttons.map((b) => b.getAttribute('aria-label'));
+    expect(new Set(names).size).toBe(2);
+    expect(names).toEqual([
+      `Link House White to House White (wine, ${m(30)} a bottle, added by hand)`,
+      'Link House White to House White (wine, no bottle price, from the drinks catalogue)',
+    ]);
+    expect(buttons[1]).toHaveTextContent('It is House White (wine, no bottle price, from the drinks catalogue)');
+    fireEvent.click(buttons[1]);
+    await waitFor(() => expect(mockLink).toHaveBeenCalledWith('menu-new', 'n9', 'inv-w2'));
   });
 
   it('staff see the goods named, with no button', async () => {
