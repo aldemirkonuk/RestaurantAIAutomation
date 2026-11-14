@@ -38,6 +38,12 @@ import {
   PublishScheduleDto,
   UpdateShiftDto,
 } from "./dto/team.dto";
+import {
+  CLOCK_TIME,
+  shiftSpan,
+  shiftTimesRefusal,
+  spansOverlap,
+} from "./shift-input";
 
 /** Minutes since midnight from an "HH:MM" string. */
 function toMinutes(t: string): number {
@@ -847,6 +853,18 @@ export class ScheduleService {
     );
     if (dto.memberId)
       await this.team.assertMemberInRestaurant(restaurantId, dto.memberId);
+    // Clock times only, and a shift that lasts some time (QA round 4 B6).
+    const timesRefusal = shiftTimesRefusal(dto.startTime, dto.endTime);
+    if (timesRefusal) throw new BadRequestException(timesRefusal);
+    // One person, two overlapping shifts: refused unless the owner allows
+    // double booking (ADR 0215 item 27). Only hand-over used to ask.
+    if (dto.memberId)
+      await this.refuseDoubleBooking(restaurantId, dto.memberId, {
+        date: dto.shiftDate,
+        start: dto.startTime,
+        end: dto.endTime,
+        excludeShiftId: null,
+      });
     // The break whoever writes the shift records, if they record one (ADR
     // 0215). Omitted, nothing is recorded, and the shift — any length,
     // founder round 6y — is counted with the Art. 68 minimum and shown as
@@ -926,7 +944,7 @@ export class ScheduleService {
     const { data: cur, error: curErr } = await this.sb
       .from("shifts")
       .select(
-        "member_id, start_time, end_time, shift_date, recorded_break_min, shift_breaks(*)",
+        "member_id, start_time, end_time, shift_date, state, recorded_break_min, shift_breaks(*)",
       )
       .eq("id", shiftId)
       .eq("restaurant_id", restaurantId)
@@ -950,6 +968,40 @@ export class ScheduleService {
     // the shift is counted with the Art. 68 minimum for its length again.
     const nextStart = dto.startTime ?? cur.start_time;
     const nextEnd = dto.endTime ?? cur.end_time;
+    // Only the times this edit sends are judged (the columns are text).
+    for (const sent of [dto.startTime, dto.endTime]) {
+      if (sent !== undefined && !CLOCK_TIME.test(sent)) {
+        throw new BadRequestException(
+          `Shift times must be clock times like 09:00; got "${sent}". Nothing was saved.`,
+        );
+      }
+    }
+    if (
+      (dto.startTime !== undefined || dto.endTime !== undefined) &&
+      CLOCK_TIME.test(String(nextStart)) &&
+      CLOCK_TIME.test(String(nextEnd))
+    ) {
+      const timesRefusal = shiftTimesRefusal(nextStart, nextEnd);
+      if (timesRefusal) throw new BadRequestException(timesRefusal);
+    }
+    // Who, when: re-checked against their other shifts when either moves.
+    const nextMember =
+      dto.memberId !== undefined ? dto.memberId : cur.member_id;
+    if (
+      nextMember &&
+      (dto.state ?? cur.state) !== "callout" &&
+      (dto.memberId !== undefined ||
+        dto.shiftDate !== undefined ||
+        dto.startTime !== undefined ||
+        dto.endTime !== undefined)
+    ) {
+      await this.refuseDoubleBooking(restaurantId, nextMember, {
+        date: dto.shiftDate ?? cur.shift_date,
+        start: nextStart,
+        end: nextEnd,
+        excludeShiftId: shiftId,
+      });
+    }
     const recordedBreak = this.recordedBreakFrom(
       dto.breakMinutes,
       nextStart,
@@ -1532,6 +1584,61 @@ export class ScheduleService {
    * nothing — quietly file the shift into the current week the caller never
    * named. A supplied id that does not resolve is an error, not a default.
    */
+  /**
+   * Refuse two shifts at once for one person unless the owner allows double
+   * booking (ADR 0215 item 27), before anything is written. A called-out
+   * shift does not count; one past midnight does (hence the days around).
+   */
+  private async refuseDoubleBooking(
+    restaurantId: string,
+    memberId: string,
+    next: { date: string; start: string; end: string; excludeShiftId: string | null },
+  ): Promise<void> {
+    if (!CLOCK_TIME.test(String(next.start)) || !CLOCK_TIME.test(String(next.end)))
+      return;
+    const { data, error } = await this.sb
+      .from("shifts")
+      .select("id, shift_date, start_time, end_time, state")
+      .eq("restaurant_id", restaurantId)
+      .eq("member_id", memberId)
+      .gte("shift_date", addDays(next.date, -1))
+      .lte("shift_date", addDays(next.date, 1));
+    if (error) {
+      this.logger.error(
+        `refuseDoubleBooking: could not read member ${memberId}'s shifts in ` +
+          `${restaurantId}: ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read this person's other shifts, so the shift was not saved.",
+      );
+    }
+    const mine = shiftSpan(next.date, next.start, next.end);
+    const clash = (data ?? []).find(
+      (s: any) =>
+        s.id !== next.excludeShiftId &&
+        s.state !== "callout" &&
+        CLOCK_TIME.test(String(s.start_time)) &&
+        CLOCK_TIME.test(String(s.end_time)) &&
+        spansOverlap(mine, shiftSpan(s.shift_date, s.start_time, s.end_time)),
+    );
+    if (!clash) return;
+    const allowed = await this.team.doubleBookingAllowed(
+      restaurantId,
+      (what, err) => {
+        this.logger.error(`refuseDoubleBooking: could not ${what}: ${err.message}`);
+        throw new InternalServerErrorException(
+          "Could not read whether double booking is allowed, so the shift was not saved.",
+        );
+      },
+    );
+    if (allowed) return;
+    throw new ConflictException(
+      `This person already works ${clash.shift_date} ` +
+        `${String(clash.start_time).slice(0, 5)}–${String(clash.end_time).slice(0, 5)}, ` +
+        `which overlaps this shift. Only the owner can allow double booking. Nothing was saved.`,
+    );
+  }
+
   private async weekStartOfSchedule(
     restaurantId: string,
     scheduleId: string,

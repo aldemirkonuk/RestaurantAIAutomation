@@ -701,6 +701,8 @@ describe("R6 — an OWNER's pay is the owners': a manager never sees or sets it,
       expect(row.labor_cost).toBeNull();
     }
     // Reassigned to a colleague, it is priced at the colleague's wage.
+    // About pay, not booking: this shift overlaps the person's own, which the owner allows here.
+    db.tables.team_settings[0].allow_double_booking = true;
     const moved = await svc.updateShift(MANAGER, RID, "sh4", { memberId: "m-staff" } as any);
     expect(moved.labor_cost).toBe(150);
   });
