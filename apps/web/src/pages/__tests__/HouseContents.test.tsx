@@ -87,6 +87,22 @@ describe('HouseContents', () => {
       expect(alert.textContent).not.toMatch(/constraint/)
     })
 
+    it('a folded duplicate names the vendor the house already keeps, not the typed spelling', async () => {
+      const cause = Object.assign(new Error('Request failed'), {
+        response: { status: 409, data: { message: 'A vendor with this name is already on this house.', existingId: 'p-1', existingName: 'Suvla Wines' } },
+      })
+      const alert = await refuse(cause)
+      expect(alert.textContent).toMatch(/^Suvla Wines is already on your vendors\./)
+    })
+
+    it('a duplicate refusal without a stored name falls back to the typed one', async () => {
+      const cause = Object.assign(new Error('Request failed'), {
+        response: { status: 409, data: { message: 'conflict', existingName: '   ' } },
+      })
+      const alert = await refuse(cause)
+      expect(alert.textContent).toMatch(/^Suvla is already on your vendors\./)
+    })
+
     it('a session that may not add vendors is told who can', async () => {
       const alert = await refuse(status(403, 'Forbidden resource'))
       expect(alert.textContent).toMatch(/^This account cannot add vendors to this house\. An owner or a manager can\./)

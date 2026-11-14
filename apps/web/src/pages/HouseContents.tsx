@@ -31,7 +31,13 @@ function vendorNotSaved(cause: unknown, name: string): string {
     return `We could not tell whether ${name} was saved: the connection dropped. Look on Vendors before adding it again.`
   }
   const status = getErrorStatus(cause)
-  if (status === 409) return `${name} is already on your vendors.`
+  if (status === 409) {
+    // The gateway names the vendor it already holds (a folded match: "ege  supply"
+    // against "Ege Supply"), so the sentence names that one, not what was typed.
+    const held = (cause as { response?: { data?: { existingName?: unknown } } })?.response?.data?.existingName
+    const known = typeof held === 'string' && held.trim() !== '' ? held.trim() : name
+    return `${known} is already on your vendors.`
+  }
   if (status === 400 || status === 422) return 'That name could not be saved as it is. Try it shorter, or add the vendor on Vendors.'
   if (status === 401 || status === 403) return 'This account cannot add vendors to this house. An owner or a manager can.'
   return `We could not add ${name} just now. Try again, or add it on Vendors.`
