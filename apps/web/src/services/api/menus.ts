@@ -55,7 +55,7 @@ export interface MenuImportReviewItem {
    * 2026-09-21), or when the line shows no price for a wine the house has no
    * price for either (round 6c: "Flag it").
    */
-  priceFlag?: 'blank_kept_last_known' | 'blank_no_house_price' | null
+  priceFlag?: 'blank_kept_last_known' | 'blank_no_house_price' | 'other_currency' | null
   priceFlagNote?: string | null
   /** ADR 0193 round 3: every kind a price lock held, with its lock. */
   priceHeld?: HeldKind[]
@@ -250,7 +250,7 @@ export interface MenuLine {
   source: 'scan' | 'csv' | 'manual'
   status: 'approved' | 'flagged' | 'in_review'
   /** Blank menu price: the house kept its last known one, or had none either; a manager can change it. */
-  price_flag?: 'blank_kept_last_known' | 'blank_no_house_price' | null
+  price_flag?: 'blank_kept_last_known' | 'blank_no_house_price' | 'other_currency' | null
   price_flag_note?: string | null
   /**
    * Why `status` is 'flagged', from the gateway's own notes (menu-line-view.ts
@@ -471,7 +471,14 @@ export interface PlanLine {
   house: { wineName: string | null; vintage: number | null; active: boolean } | null
   bottle: PlanKind
   glass: PlanKind
-  flag: 'blank_kept_last_known' | 'blank_no_house_price' | null
+  /**
+   * `other_currency` (r36 N1, needs the gateway's #1543): the menu prints this
+   * line's price only in a money that is not the house's, so no price is taken
+   * from it and nothing converts. `flagNote` says which money and price.
+   */
+  flag: 'blank_kept_last_known' | 'blank_no_house_price' | 'other_currency' | null
+  /** The gateway's sentence for an `other_currency` line; absent otherwise and from an older gateway. */
+  flagNote?: string
   returned: boolean
   vintageMismatch: boolean
   /**
