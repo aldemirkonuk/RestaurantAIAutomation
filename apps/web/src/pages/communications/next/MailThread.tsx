@@ -26,6 +26,7 @@
  * read with the page, it says so, never that the letters carried none.
  */
 
+import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { EM, MONO, SANS, SERIF, failedReadWords, fmtWhen, heldBecause } from './cm-format';
@@ -35,12 +36,13 @@ import {
   letterLook,
   noReplyFailWords,
   noReplyTarget,
+  seenMarkFor,
   type MailAnswer,
   type MailMessage,
 } from './mail-format';
 import { LetterFiles } from './LetterFiles';
 import { QueuedPullBack } from './QueuedPullBack';
-import { useMailThread, useNoReplyMark } from './useMailData';
+import { useMailThread, useMarkThreadSeen, useNoReplyMark } from './useMailData';
 
 const QUIET = { fontSize: 11, color: 'var(--ink-4, #665D50)' } as const;
 
@@ -220,6 +222,20 @@ export function MailThread({
   const undoId = canReply
     ? (letters.filter((m) => m.direction === 'inbound' && m.noReplyMarkedAt).slice(-1)[0]?.id ?? null)
     : null;
+
+  // "New to you" (r36 mail gap 6): a thread on screen is read by this person
+  // through the newest vendor letter it shows. Once per letter: a poll that
+  // brings nothing new sends nothing; a letter that arrives while the thread
+  // is open is marked when it is drawn. Every member keeps their own mark.
+  const seen = useMarkThreadSeen();
+  const mark = seenMarkFor(head);
+  const markId = mark ? `${mark.with}|${mark.key}|${mark.through}` : null;
+  const marked = useRef<string | null>(null);
+  useEffect(() => {
+    if (!mark || !markId || marked.current === markId) return;
+    marked.current = markId;
+    seen.mutate(mark);
+  }, [markId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <section aria-label="Thread" className="grid gap-3" style={{ fontFamily: SANS }}>

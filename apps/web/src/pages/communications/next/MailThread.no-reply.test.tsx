@@ -218,7 +218,9 @@ describe('a marked letter', () => {
     expect(screen.queryByTestId('thread-no-reply')).toBeNull();
     fireEvent.click(within(line).getByTestId('letter-no-reply-undo'));
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/mail/letters/v1/no-reply-needed'));
-    expect(api.post).not.toHaveBeenCalled();
+    // Taking the mark back never sets one. (The thread on screen also tells
+    // the gateway it was read, r36 mail gap 6: that POST is not a mark.)
+    expect(api.post.mock.calls.filter(([u]) => String(u).includes('no-reply-needed'))).toEqual([]);
   });
 
   it('staff read the mark but cannot take it back', async () => {

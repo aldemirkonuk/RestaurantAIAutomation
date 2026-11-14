@@ -25,6 +25,7 @@ import type {
   MailSummary,
   MailThreadPage,
   MailThreadsPage,
+  SeenMark,
 } from './mail-format';
 
 export const MAIL_POLL_MS = 30_000;
@@ -204,6 +205,28 @@ export function useNoReplyMark() {
         void qc.invalidateQueries({ queryKey: [root, house] });
       }
       return qc.invalidateQueries({ queryKey: ['mail-thread', house] });
+    },
+  });
+}
+
+/**
+ * POST /mail/thread/seen (r36 mail gap 6): this person was shown this thread
+ * through its newest vendor letter. On success the people list and the
+ * person's threads are read again, so "New" leaves the rows behind it. A
+ * failed mark changes nothing on screen: the row stays "New", which is the
+ * side to err on.
+ */
+export function useMarkThreadSeen() {
+  const house = useHouse();
+  const qc = useQueryClient();
+  return useMutation<unknown, unknown, SeenMark>({
+    mutationFn: async (mark) =>
+      (await apiClient.post('/mail/thread/seen', null, { params: { key: mark.key, with: mark.with, through: mark.through } }))
+        .data,
+    onSuccess: () => {
+      for (const root of ['mail-people', 'mail-threads']) {
+        void qc.invalidateQueries({ queryKey: [root, house] });
+      }
     },
   });
 }
