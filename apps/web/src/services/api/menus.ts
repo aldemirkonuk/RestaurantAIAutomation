@@ -414,6 +414,11 @@ export interface MakeCurrentResult {
 /** What choosing a menu WOULD do, per line and per kind (ADR 0193 round 3, L13). */
 export type PlanResult =
   | 'change'
+  /**
+   * A price someone set after this (current) menu was chosen: carrying the menu
+   * again keeps it, because the carry is dated by the choice (L14; r31 w1 F2).
+   */
+  | 'kept_newer'
   | 'unchanged'
   | 'held_by_lock'
   | 'blank_kept'
@@ -466,7 +471,8 @@ export interface MenuPlan {
   /** make-current requires it, and refuses (409) when the plan changed since. */
   fingerprint: string
   lines: PlanLine[]
-  counts: Record<PlanResult, number>
+  /** `kept_newer` is absent from an older gateway: read it as 0. */
+  counts: Record<Exclude<PlanResult, 'kept_newer'>, number> & { kept_newer?: number }
   dormantLocks: Array<{
     lockId: string
     inventoryId: string

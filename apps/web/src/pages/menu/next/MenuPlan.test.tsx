@@ -125,11 +125,28 @@ describe('the plan in one sentence', () => {
     ).toBe('Choosing this menu changes no price. 1 line shows no price and the house has none either (flagged); 1 line is not matched to a wine, so no price.');
     // r28 G1: "changes nothing" only when no price on the house differs from the current menu.
     expect(planSentence(plan({ current: true }))).toBe(
-      'This is the current menu, and 1 price on the house differs from it. Carrying its prices again sets the ones its choice did not reach; a price someone set since it was chosen stays.',
+      'This is the current menu, and 1 price on the house differs from it. Carrying its prices again sets it.',
     );
     expect(planSentence(plan({ current: true, counts: { ...plan().counts, change: 0, new_wine: 0 } }))).toBe(
       'This is the current menu, and every price on it already reached the house.',
     );
+  });
+
+  // r31 w1 F2: the walk's plan said "3 prices on the house differ … becomes
+  // 501.00", and the carry then set 0 and kept 3 set since the choice.
+  it('a price set since the current menu was chosen is counted apart: the carry keeps it (r31 w1 F2)', () => {
+    expect(planSentence(plan({ current: true, counts: { ...plan().counts, change: 0, new_wine: 0, kept_newer: 3 } }))).toBe(
+      'This is the current menu, and every price its choice set reached the house; 3 prices someone set since it was chosen stay, and carrying again leaves them as they are.',
+    );
+    expect(planSentence(plan({ current: true, counts: { ...plan().counts, change: 2, new_wine: 0, kept_newer: 1 } }))).toBe(
+      'This is the current menu, and 2 prices on the house differ from it. Carrying its prices again sets them; 1 price someone set since it was chosen stays, and carrying again leaves it as it is.',
+    );
+  });
+
+  it('a kept-newer kind reads as staying, and is listed with who set it (r31 w1 F2)', () => {
+    const kept = line({ menuItemId: 'k9', bottle: { ...line().bottle, result: 'kept_newer', menuPrice: 501, housePrice: 480, setAfterRead: false } });
+    expect(kindWords(kept, kept.bottle, 'TRY')).toBe(`stays ${m(480)}, set since this menu was chosen (the menu says ${m(501)})`);
+    expect(orderedRows([kept]).map((r) => r.k.result)).toContain('kept_newer');
   });
 
   it('names the kitchen lines it leaves on the menu and carries nowhere', () => {

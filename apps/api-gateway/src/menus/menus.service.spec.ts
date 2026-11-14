@@ -1359,6 +1359,56 @@ describe("MenusService — every menu read is kept as its own version", () => {
       expect(tables.menu_items[0].inventory_item_id).toBe("inv-1");
     });
 
+    // r31 walk w1, F2: "Check its prices" said 3 prices would become 501.00,
+    // and "Carry again" then set 0 and kept 3. The carry of a current menu is
+    // dated by its choice, and the writer keeps a price that took effect
+    // after it (stale, L14); the plan now reads the same moment.
+    describe("Check its prices says what Carry again does (r31 w1 F2)", () => {
+      const CHOSEN = "2026-11-13T12:00:00Z";
+      async function withAPriceSetAt(at: string, current = true) {
+        const { tables, service, read } = await readThenChoose([{ name: "Opus One", bottle_price: 64 }]);
+        const menu = tables.restaurant_menus.find((m) => m.id === read.menuId)!;
+        menu.extracted_at = "2026-11-13T09:00:00Z";
+        if (current) {
+          Object.assign(menu, { status: "active", made_current_at: CHOSEN });
+          tables.restaurant_menus.find((m) => m.id === "menu-old")!.status = "archived";
+        }
+        tables.menu_price_versions = [
+          { id: "v1", restaurant_id: "rest-1", inventory_id: "inv-1", changed_by: "user-3", effective_from: at, change_source: "manual" },
+        ];
+        return { tables, service, read };
+      }
+
+      it("a price set after the menu was chosen stays: kept_newer, never a change", async () => {
+        const { service, read } = await withAPriceSetAt("2026-11-13T15:00:00Z");
+        const plan = await service.planFor("rest-1", read.menuId);
+        expect(plan.current).toBe(true);
+        expect(plan.lines[0].bottle).toMatchObject({ result: "kept_newer", menuPrice: 64, housePrice: 60, setAfterRead: false });
+        expect(plan.lines[0].bottle.lastSet).toMatchObject({ by: { userId: "user-3" }, at: "2026-11-13T15:00:00Z", source: "manual" });
+        expect(plan.counts).toMatchObject({ change: 0, kept_newer: 1 });
+      });
+
+      it("a price set after the read but before the choice is replaced by the carry: a change, set after read", async () => {
+        const { service, read } = await withAPriceSetAt("2026-11-13T10:00:00Z");
+        const plan = await service.planFor("rest-1", read.menuId);
+        expect(plan.lines[0].bottle).toMatchObject({ result: "change", setAfterRead: true });
+        expect(plan.counts).toMatchObject({ change: 1, kept_newer: 0 });
+      });
+
+      it("a menu not yet chosen is chosen now: a price set after its read is replaced (L11)", async () => {
+        const { service, read } = await withAPriceSetAt("2026-11-13T15:00:00Z", false);
+        const plan = await service.planFor("rest-1", read.menuId);
+        expect(plan.current).toBe(false);
+        expect(plan.lines[0].bottle).toMatchObject({ result: "change", setAfterRead: true });
+      });
+
+      it("Carry again on that plan is accepted (the fingerprints agree)", async () => {
+        const { service, read } = await withAPriceSetAt("2026-11-13T15:00:00Z");
+        const plan = await service.planFor("rest-1", read.menuId);
+        await expect(service.makeCurrent("rest-1", read.menuId, "user-2", plan.fingerprint)).resolves.toBeDefined();
+      });
+    });
+
     it("a kitchen line stays on the menu and is carried nowhere: not in the plan's prices, no house row, no price", async () => {
       const { calls, tables, service, read } = await readThenChoose([
         { name: "Opus One", bottle_price: 64, by_glass_price: 15 },
