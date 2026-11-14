@@ -5,7 +5,7 @@ import { addCustomProvider } from '../services/api/vendors'
 import { getErrorStatus, isUnconfirmedWrite } from '../services/api/client'
 import { getOnboardingProgress } from '../services/api/menus'
 import { proofStanding, readProof, type ProofStanding } from '../lib/firstProof'
-import { menuKept, type MenuKept } from '../lib/menuKept'
+import { menuKept, moneySetIn, type MenuStandingRead } from '../lib/menuKept'
 import { settingsApi } from '../services/api/settings'
 
 /** The menu row's sentence for the first proof (r28 gap 6: never "in ink" over no drink). */
@@ -63,47 +63,61 @@ export default function HouseContents() {
   const [error, setError] = useState<string | null>(null)
   // The supplier asked here is on the house's row (vendor_added), not in this
   // page's state: after a reload it asked "Who supplies you?" again (walk
-  // 2026-11-11). A failed or absent read leaves the ask, as before.
-  const [supplierOnBook, setSupplierOnBook] = useState(false)
+  // 2026-11-11). r41 onboarding gap 1: the ask waits for that read. It was
+  // drawn before the read landed and folded into one line when the house
+  // already had a vendor, so the page jumped, typed text was lost, and a fast
+  // owner could save a second vendor. A failed read still leaves the ask
+  // (the gateway refuses the same name twice, 409).
+  const [vendorRead, setVendorRead] = useState<'reading' | 'on-book' | 'ask'>('reading')
   // The same read answers the menu row when this tab holds no first proof
   // (r21): "No menu read yet." was said, with nothing to press, to a house
   // whose menu was read in another tab, and after "Skip for now" the row
   // had no way back to reading one. Null until the read is in. A menu kept
   // as a draft is said as not current yet (r36 gap 3), never as done.
-  const [menuStanding, setMenuStanding] = useState<MenuKept | null>(null)
+  // r41 onboarding gap 2: a read that FAILED is 'unread', never "No menu
+  // read yet": that sentence sent a house whose menu is current to
+  // /get-started, which saw the current menu and sent it back here.
+  const [menuStanding, setMenuStanding] = useState<MenuStandingRead | null>(null)
+  // r36 gap 6: a house whose money is not set cannot cost an invoice that
+  // names none and comes with no order (invoice-currency.ts withholds its
+  // money). Said only when a read answered that no money is set; a failed
+  // read says nothing, never "not set". r41 onboarding gap 8: the setup read
+  // carries that fact (`next_steps.money_set`, #1593), so the money is asked
+  // on its own only when the setup read did not answer it.
+  const [moneyUnset, setMoneyUnset] = useState(false)
+  const [readCount, setReadCount] = useState(0)
   useEffect(() => {
     let live = true
+    const askMoney = () =>
+      settingsApi
+        .houseCurrency()
+        .then((money) => {
+          if (live && money?.readable === true && money.code == null) setMoneyUnset(true)
+        })
+        .catch(() => {})
     getOnboardingProgress()
       .then((progress) => {
         if (!live) return
-        if (progress?.vendor_added) setSupplierOnBook(true)
+        setVendorRead(progress?.vendor_added ? 'on-book' : 'ask')
         setMenuStanding(menuKept(progress))
+        const moneySet = moneySetIn(progress)
+        if (moneySet === null) void askMoney()
+        else setMoneyUnset(!moneySet)
       })
       .catch(() => {
-        if (live) setMenuStanding('none')
+        if (!live) return
+        setVendorRead((now) => (now === 'on-book' ? now : 'ask'))
+        setMenuStanding('unread')
+        void askMoney()
       })
     return () => {
       live = false
     }
-  }, [])
-
-  // r36 gap 6: a house whose money is not set cannot cost an invoice that
-  // names none and comes with no order (invoice-currency.ts withholds its
-  // money). Said only when the read answered that no money is set; a failed
-  // read says nothing, never "not set".
-  const [moneyUnset, setMoneyUnset] = useState(false)
-  useEffect(() => {
-    let live = true
-    settingsApi
-      .houseCurrency()
-      .then((money) => {
-        if (live && money?.readable === true && money.code == null) setMoneyUnset(true)
-      })
-      .catch(() => {})
-    return () => {
-      live = false
-    }
-  }, [])
+  }, [readCount])
+  const lookAgain = () => {
+    setMenuStanding(null)
+    setReadCount((count) => count + 1)
+  }
 
   const saveSupplier = async () => {
     if (!supplier.trim() || email === null) return
@@ -145,7 +159,31 @@ export default function HouseContents() {
               >
                 {standing && proofSaid(standing)}
               </button>
-            ) : menuStanding === null ? null : menuStanding === 'current' ? (
+            ) : menuStanding === null ? (
+              <p className="mt-2 font-serif text-2xl text-[#b7b2a8]" role="status">
+                Looking at your menu…
+              </p>
+            ) : menuStanding === 'unread' ? (
+              <>
+                <p className="mt-2 font-serif text-2xl text-[#6d685f]" data-testid="house-menu-unread">
+                  We could not see where your menu stands just now.{' '}
+                  <button
+                    type="button"
+                    onClick={lookAgain}
+                    className="font-sans text-sm text-[#1a5e6b] underline underline-offset-4"
+                  >
+                    Look again
+                  </button>
+                </p>
+                <p className="mt-1 text-sm text-[#6d685f]">
+                  Or{' '}
+                  <Link to="/menu" className="underline underline-offset-4">
+                    open Menu
+                  </Link>
+                  , which shows the house&apos;s menus.
+                </p>
+              </>
+            ) : menuStanding === 'current' ? (
               <p className="mt-2 font-serif text-2xl">
                 Your menu is the current one.{' '}
                 <Link to="/menu" className="font-sans text-sm underline underline-offset-4">
@@ -192,7 +230,11 @@ export default function HouseContents() {
                 </p>
               )}
             </div>
-          ) : supplierOnBook ? (
+          ) : vendorRead === 'reading' ? (
+            <p className="py-6 font-serif text-2xl text-[#b7b2a8]" role="status" data-testid="house-vendor-reading">
+              Looking for your vendor…
+            </p>
+          ) : vendorRead === 'on-book' ? (
             <p className="py-6 font-serif text-2xl">
               Your vendor is saved.{' '}
               <Link to="/vendors" className="font-sans text-sm underline underline-offset-4">

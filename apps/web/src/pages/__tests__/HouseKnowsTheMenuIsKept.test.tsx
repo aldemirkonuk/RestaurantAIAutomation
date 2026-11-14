@@ -48,14 +48,21 @@ describe('/house/menu with no first proof in this tab', () => {
     expect(screen.getByRole('link', { name: 'Go to the desk' })).toHaveAttribute('href', '/')
   })
 
-  it('keeps the old ask when the house cannot be read, or has no record', async () => {
-    for (const answer of [Promise.reject(new Error('down')), Promise.resolve(null)]) {
-      answer.catch(() => undefined)
-      getOnboardingProgress.mockReturnValueOnce(answer)
-      const view = at(<HouseMenu />)
-      expect(await screen.findByRole('link', { name: 'Read your menu' })).toHaveAttribute('href', '/get-started')
-      view.unmount()
-    }
+  it('keeps the old ask when the house has no record', async () => {
+    getOnboardingProgress.mockResolvedValueOnce(null)
+    at(<HouseMenu />)
+    expect(await screen.findByRole('link', { name: 'Read your menu' })).toHaveAttribute('href', '/get-started')
+  })
+
+  // r41 onboarding gap 2: a failed read is not "no menu".
+  it('a read that fails never sends the house to read its menu again', async () => {
+    getOnboardingProgress.mockRejectedValueOnce(new Error('down'))
+    at(<HouseMenu />)
+    expect(
+      await screen.findByRole('heading', { name: 'We could not see where your menu stands just now.' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Read your menu' })).toBeNull()
+    expect(screen.getByRole('link', { name: 'Open the menu' })).toHaveAttribute('href', '/menu')
   })
 
   it('says nothing until the answer is in', () => {
