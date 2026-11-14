@@ -107,6 +107,8 @@ describe('OpeningCost', () => {
       <OpeningCost restaurantId="r1" inventoryId="i1" title="Ribolla" uom={null} currency={EUR} canManage />,
     );
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/inventory/r1/item/i1/opening-cost'));
+    // let the answer land before reading what was drawn
+    await new Promise((r) => setTimeout(r, 30));
     expect(container.textContent).toBe('');
   });
 
@@ -154,7 +156,9 @@ describe('OpeningCost', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'State what it cost' }));
     fireEvent.change(screen.getByLabelText('Cost a bottle'), { target: { value: '1,234' } });
     expect(screen.getByTestId('opening-cost-blocked').textContent).toContain('without guessing');
-    holdByKeyboard(screen.getByRole('button', { name: 'Not ready to state a cost' }));
+    const hold = screen.getByRole('button', { name: 'Not ready to state a cost' }) as HTMLButtonElement;
+    expect(hold.disabled).toBe(true);
+    holdByKeyboard(hold);
     expect(api.post).not.toHaveBeenCalled();
   });
 
