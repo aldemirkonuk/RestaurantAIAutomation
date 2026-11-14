@@ -531,4 +531,51 @@ DO $$ DECLARE ks text[]; BEGIN
     'S7c the searching list is not granted to authenticated');
 END $$;
 
+-- S8: what was typed is matched as plain text, never as a pattern; each plain
+-- letter stands for its accented and Turkish forms in upper and lower case.
+DO $$ DECLARE ks text[]; ok_paren boolean; BEGIN
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, 'fish.co');
+  PERFORM pg_temp.ok(ks IS NULL, 'S8 a dot is a dot: "fish.co" does not find Fish Co');
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, 'süt');
+  PERFORM pg_temp.ok(ks = ARRAY['vendor:c6000000-0000-4000-8000-000000000001'], 'S8b "süt" typed with its accent finds Süt Evi');
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, 'İSTANBUL');
+  PERFORM pg_temp.ok(ks = ARRAY['vendor:c6000000-0000-4000-8000-000000000002'], 'S8c "İSTANBUL" typed in capitals finds the letter');
+  BEGIN
+    SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+      '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, 'bread (50');
+    ok_paren := ks IS NULL;
+  EXCEPTION WHEN OTHERS THEN ok_paren := false;
+  END;
+  PERFORM pg_temp.ok(ok_paren, 'S8d an open bracket is searched plainly and does not fail');
+  PERFORM pg_temp.ok('âçéğñöşıü' ~* public.mail_search_pattern('acegnosiu')
+                 AND 'ÂÇÉĞÑÖŞİÜ' ~* public.mail_search_pattern('ACEGNOSIU'),
+    'S8e every plain letter stands for its accented forms, both cases');
+  PERFORM pg_temp.ok(public.mail_search_pattern('  ') IS NULL AND public.mail_search_pattern(NULL) IS NULL,
+    'S8f a blank search is no search');
+  PERFORM pg_temp.ok(NOT has_function_privilege('anon', 'public.mail_search_pattern(text)', 'EXECUTE'),
+    'S8g the search pattern is not granted to anon');
+END $$;
+
+-- S9: the search does not care about case, in names, subjects and letters,
+-- and an accented letter typed finds the plain one written.
+UPDATE public.procurement_conversations SET email_headers = '{"subject":"Spring Prices"}'
+ WHERE id = 'f6000000-0000-4000-8000-000000000001';
+DO $$ DECLARE ks text[]; BEGIN
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, 'fish co');
+  PERFORM pg_temp.ok(ks = ARRAY['vendor:c6000000-0000-4000-8000-000000000002'], 'S9 "fish co" finds Fish Co by name');
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, 'spring prices');
+  PERFORM pg_temp.ok(ks = ARRAY['vendor:c6000000-0000-4000-8000-000000000001'], 'S9b "spring prices" finds the subject Spring Prices');
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, 'the istanbul');
+  PERFORM pg_temp.ok(ks = ARRAY['vendor:c6000000-0000-4000-8000-000000000002'], 'S9c "the istanbul" finds a letter that begins The İstanbul');
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, 'PLÂİN');
+  PERFORM pg_temp.ok(ks = ARRAY['vendor:c6000000-0000-4000-8000-000000000005'], 'S9d "PLÂİN" typed with accents finds Plain Dairy');
+END $$;
+
 rollback;
