@@ -43,6 +43,7 @@
 
 import { EM, countOf, figure, moneyIn, num, pct } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
+import { inUnit } from './rp-registers-goals';
 
 export interface BenchGoalRow {
   name: string;
@@ -51,6 +52,11 @@ export interface BenchGoalRow {
   current: number | null;
   target: number | null;
   direction: string;
+  /**
+   * The metric's unit, carried on the overview (`currency`, `percent`,
+   * `days`, ...); empty from an older gateway, which prints a bare figure.
+   */
+  unit: string;
   /** Why the latest reading was refused (the gateway then sends no current). */
   unread: string | null;
 }
@@ -134,6 +140,7 @@ export const bench = analysis<BenchRegister>({
         current: num(g.current_value),
         target: num(g.target_value),
         direction: str(g.direction) || 'at_least',
+        unit: str(g.unit),
         unread: str(g.current_unread) || null,
       })),
       // A source whose read failed arrives as `null` (useReportsNextData):
@@ -222,8 +229,9 @@ export const bench = analysis<BenchRegister>({
       key: 'buying',
       cells: [
         'Buying, 30 days against the 30 before',
-        money(b.spendLast30d, 'table'),
+        // "Then" is the earlier window and "Now" the latest, as the header says.
         money(b.spendPrev30d, 'table'),
+        money(b.spendLast30d, 'table'),
         b.paceDeltaPct === null ? EM : pct(b.paceDeltaPct),
       ],
     });
@@ -255,9 +263,9 @@ export const bench = analysis<BenchRegister>({
         key: `goal-${g.name}`,
         cells: [
           `${g.name} — since it was set`,
-          g.baseline === null ? EM : figure(g.baseline, 'compact'),
-          g.current === null ? EM : figure(g.current, 'compact'),
-          g.target === null ? EM : figure(g.target, 'compact'),
+          inUnit(g.baseline, g.unit, ctx.currency),
+          inUnit(g.current, g.unit, ctx.currency),
+          inUnit(g.target, g.unit, ctx.currency),
         ],
       });
 

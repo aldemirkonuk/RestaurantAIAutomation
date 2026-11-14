@@ -946,6 +946,9 @@ function writeBench(payload: unknown): ExportDoc {
     baseline: num(g.baseline_value),
     current: num(g.current_value),
     target: num(g.target_value),
+    // The metric's unit, carried on the overview: money, a ratio or days,
+    // never a bare count for a goal that is none of those.
+    unit: goalUnit(str(g.unit) || "count"),
     // Set when the goal's latest reading was refused; current is then null.
     unread: typeof g.current_unread === "string" && g.current_unread ? g.current_unread : null,
   }));
@@ -957,8 +960,9 @@ function writeBench(payload: unknown): ExportDoc {
   const rows: Cell[][] = [
     [
       "Buying, the last 30 days against the 30 before",
-      typed(last, "money", cfWhy),
+      // "Then" is the earlier window and "Now" the latest, as the columns say.
       typed(prev, "money", cfWhy),
+      typed(last, "money", cfWhy),
       typed(pctOf(cf.paceDeltaPct), "percent", cashflowMissing ? cfMissing : "the server withholds a pace when the two windows are not comparable"),
     ],
     [
@@ -975,15 +979,15 @@ function writeBench(payload: unknown): ExportDoc {
     ]),
     ...goals.map((g): Cell[] => [
       `${g.name} — baseline, now, target`,
-      typed(g.baseline, "count", "no baseline recorded when the goal was set"),
+      typed(g.baseline, g.unit, "no baseline recorded when the goal was set"),
       typed(
         g.current,
-        "count",
+        g.unit,
         g.unread
           ? `its latest reading was refused: ${g.unread.replace(/\.$/, "")}`
           : "the goal's current value was not recorded",
       ),
-      typed(g.target, "count", "no target recorded"),
+      typed(g.target, g.unit, "no target recorded"),
     ]),
   ];
 
