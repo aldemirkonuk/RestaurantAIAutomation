@@ -45,6 +45,7 @@ import { isIso4217, notACurrencyBecause } from "../../common/iso-4217";
 import { documentMoneyState } from "./invoice-currency";
 import { DeliveryService } from "../canonical/delivery.service";
 import { DeliveryStockService } from "../canonical/delivery-stock.service";
+import { costAfterVerify } from "./door-count-after-verify";
 import { LineMappingService } from "../canonical/line-mapping.service";
 import { DoorCountDto } from "../dto/deliveries.dto";
 import { paperForTheDoor, PaperForDoor } from "./door-count-paper";
@@ -541,6 +542,7 @@ export class DocumentsController {
     const built = await this.canonical.buildFromDocumentId(
       user.restaurantId,
       id,
+      { door: true },
     );
     if (!built.ok) {
       // "not found" is a 404; anything else is a read that broke.
@@ -1081,6 +1083,21 @@ export class DocumentsController {
         this.logger.error(
           `door count ${result.documentId} was recorded and attached to delivery ${deliveryId} but booked no stock: ${booked.error}`,
         );
+      // r28 G9: a count onto a delivery already VERIFIED is costed now for a
+      // holder of the house's money, or says that its cost waits for one.
+      const doneDelivery = deliveryId;
+      const after = await costAfterVerify({
+        deliveryState: (delivery as { state?: string } | null)?.state ?? null,
+        booking: booked,
+        role: user.role ?? null,
+        finish: () =>
+          this.deliveryStock.finishProvisional(
+            user.restaurantId,
+            doneDelivery,
+            user.userId,
+          ),
+      });
+      if (after && booked.ok) booking = { ...booked.value, afterVerify: after };
     }
 
     return {

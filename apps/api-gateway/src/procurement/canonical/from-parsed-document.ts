@@ -569,6 +569,32 @@ function typeCodeFor(docType: string): string | null {
   return null;
 }
 
+/**
+ * THE DOOR AGAINST THE PAPER (r24 walk, 2026-11-13). Once the read puts the
+ * door's count of a paper in `received`, the line HAS been compared: left at
+ * `not_adjudicated`, the sheet said "1 line differs from the delivery" and
+ * printed "not_adjudicated" about a 5 L count of a 5 L invoice. Both numbers
+ * are the paper's own bottle-equivalents (the door copies the paper line's
+ * unit and size), so they compare directly.
+ *
+ * Only when the door is the line's ONLY comparison: with an order or a despatch
+ * line in the spine, "ok" here would hide an ordered-vs-billed difference that
+ * nothing adjudicates yet, so that line stays `not_adjudicated`.
+ */
+export function doorAgainstPaper(
+  received: ReceivedQuantity,
+  billed: number | null,
+  spine: { ordered?: number | null; shipped?: number | null } | undefined,
+): string {
+  if (typeof received !== "number" || billed == null) return "not_adjudicated";
+  if (spine?.ordered != null || spine?.shipped != null) return "not_adjudicated";
+  const r = Number(received);
+  const b = Number(billed);
+  if (!Number.isFinite(r) || !Number.isFinite(b)) return "not_adjudicated";
+  if (Math.abs(r - b) < 1e-9) return "ok";
+  return r < b ? "short_ship" : "over_ship";
+}
+
 export function canonicalFromParsedDocument(
   parsed: ParsedDocument,
   opts: MapOptions,
@@ -813,14 +839,16 @@ export function canonicalFromParsedDocument(
       const counted: ReceivedQuantity | null = weCountedThis
         ? (l.qtyBottles ?? null)
         : null;
+      const received: ReceivedQuantity = s?.received ?? counted ?? "not_counted";
+      // NULL, not the counted number: nothing has billed us for this line.
+      const billed = weCountedThis ? null : (l.qtyBottles ?? null);
       return {
         lineIndex: i,
         ordered: s?.ordered ?? null,
         shipped: s?.shipped ?? null,
-        received: s?.received ?? counted ?? "not_counted",
-        // NULL, not the counted number: nothing has billed us for this line.
-        billed: weCountedThis ? null : (l.qtyBottles ?? null),
-        verdict: "not_adjudicated",
+        received,
+        billed,
+        verdict: doorAgainstPaper(received, billed, s),
         reason: null,
         moneyAtRisk: null,
       };

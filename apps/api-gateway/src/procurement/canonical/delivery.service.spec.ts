@@ -755,6 +755,40 @@ describe("DeliveryService", () => {
       );
     });
 
+    it("r33 w2 F2: a re-verify returns the lots it posted and names a lot it still could not cost", async () => {
+      db.answers.deliveries = { data: deliveryRow({ state: "VERIFIED", verified_at: "2026-08-15T11:00:00Z" }), error: null };
+      const receipt = {
+        deliveryId: DEL,
+        finalised: [{ inventoryId: "i-late" }],
+        stillProvisional: [{ inventoryId: "i-x", reason: "no agreed price for this item." }],
+      };
+      const finish = jest.spyOn(DeliveryStockService.prototype, "finishProvisional").mockResolvedValueOnce({ ok: true, value: receipt } as never);
+      const repair = jest.spyOn(DeliveryStockService.prototype, "repairPrintedCost").mockResolvedValueOnce({
+        ok: true,
+        value: { repaired: [], flagged: [] },
+      } as never);
+      const res = await service.verify(REST, DEL, "u1");
+      finish.mockRestore();
+      repair.mockRestore();
+      expect(res.ok && res.value.cost).toEqual(receipt);
+      expect(res.ok && res.value.costNote).toBe(
+        "This delivery was already verified; a cost already posted is not posted twice. Cost posted now for 1 item(s) whose cost had not posted at the first verify. 1 item(s) stay provisional. No agreed price for this item.",
+      );
+    });
+
+    it("r33 w2 F2: a re-verify whose finish failed returns no cost, not an empty one", async () => {
+      db.answers.deliveries = { data: deliveryRow({ state: "VERIFIED", verified_at: "2026-08-15T11:00:00Z" }), error: null };
+      const finish = jest.spyOn(DeliveryStockService.prototype, "finishProvisional").mockResolvedValueOnce({ ok: false, status: 500, error: "lots read failed" } as never);
+      const repair = jest.spyOn(DeliveryStockService.prototype, "repairPrintedCost").mockResolvedValueOnce({
+        ok: true,
+        value: { repaired: [], flagged: [] },
+      } as never);
+      const res = await service.verify(REST, DEL, "u1");
+      finish.mockRestore();
+      repair.mockRestore();
+      expect(res.ok && res.value.cost).toBeNull();
+    });
+
     it("is a 404 for another tenant's delivery", async () => {
       db.answers.deliveries = { data: null, error: null };
       const res = await service.verify("rest-2", DEL, "u1");
