@@ -13,6 +13,11 @@
  * A price is typed as text: "12,50" and "12.50" both read as 12.5, and a
  * price that cannot be read is said, never dropped (a number field read
  * "12,50" as empty and saved the dish with no price).
+ *
+ * A cost a plate priced partly from stock without a verified invoice says so
+ * under the figure ("partly invoiced"), as the dish's own cost card does; the
+ * food cost share is written in the house's form ("%33,3" in a lira house),
+ * as the inventory drawer writes it (r28 recipes audit, gaps 13 and 15).
  */
 import { useId, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -20,6 +25,7 @@ import { AlertTriangle, Plus } from 'lucide-react';
 import RecipeSheet from '../cellar/next/recipe/RecipeSheet';
 import { pourCostShare } from '../cellar/next/recipe/DrinkCards';
 import { PRICE_UNREAD, priceText, readPrice } from '../cellar/next/recipe/price-text';
+import { useHousePercent, type SayPercent } from '../cellar/next/recipe/useHousePercent';
 import { reason, useCanEditRecipe, useCreateDish, useDishes, useHouseMoney, useRemoveDish, useUpdateDish } from '../cellar/next/recipe/useRecipe';
 import type { DishListRow } from '../../services/api/recipes';
 import { EM, SANS } from '../cellar/next/cellar-format';
@@ -27,14 +33,33 @@ import '../cellar/next/cellar-next.css';
 
 type Say = (n: number | null | undefined) => string;
 
-function cells(d: DishListRow, say: Say) {
+/** Said under a cost some of whose lines are priced from part of the stock only. */
+const PARTLY_INVOICED = 'partly invoiced';
+
+function cells(d: DishListRow, say: Say, sayPct: SayPercent) {
   const dim = <span className="cl-dim">{EM}</span>;
   if (!d.hasRecipe) return { price: d.price != null ? say(d.price) : 'No price', cost: dim, share: dim };
   const share = pourCostShare(d.cost, d.price);
+  const per = d.cost?.complete ? d.cost.perServe : null;
+  // `partial` counts priced lines whose invoice cost covers only part of the
+  // stock (bought another way, invoiced at 0, or not yet verified).
+  const part = d.cost?.partial ?? 0;
   return {
     price: d.price != null ? say(d.price) : 'No price',
-    cost: d.cost?.complete && d.cost.perServe != null ? say(d.cost.perServe) : 'Not known',
-    share: 'pct' in share ? `${share.pct.toFixed(1)}%` : 'Not known',
+    cost:
+      per == null ? (
+        'Not known'
+      ) : part > 0 ? (
+        <>
+          {say(per)}
+          <span className="cl-dim" style={{ display: 'block', fontSize: 11 }} data-testid={`dish-partly-${d.id}`}>
+            {PARTLY_INVOICED}
+          </span>
+        </>
+      ) : (
+        say(per)
+      ),
+    share: 'pct' in share ? sayPct(share.pct) : 'Not known',
   };
 }
 
@@ -236,6 +261,7 @@ export default function DishesPage() {
   const dishes = useDishes();
   const canEdit = useCanEditRecipe();
   const sayMoney = useHouseMoney();
+  const sayPct = useHousePercent();
   const say = canEdit ? sayMoney : null;
   const [params, setParams] = useSearchParams();
   const asked = params.get('open');
@@ -287,13 +313,13 @@ export default function DishesPage() {
                   <th scope="col">Dish</th>
                   <th scope="col">Section</th>
                   {say ? <th scope="col" style={{ textAlign: 'right' }}>Price</th> : null}
-                  {say ? <th scope="col" style={{ textAlign: 'right' }}>Cost a plate</th> : null}
+                  {say ? <th scope="col" style={{ textAlign: 'right' }}>Cost per plate</th> : null}
                   {say ? <th scope="col" style={{ textAlign: 'right' }}>Food cost</th> : null}
                 </tr>
               </thead>
               <tbody>
                 {rows.map((d) => {
-                  const c = say ? cells(d, say) : null;
+                  const c = say ? cells(d, say, sayPct) : null;
                   return [
                     <tr
                       key={d.id}

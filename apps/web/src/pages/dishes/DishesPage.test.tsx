@@ -75,7 +75,10 @@ describe('DishesPage', () => {
     expect(a).toHaveTextContent('Lamb shank');
     expect(a).toHaveTextContent('₺900.00');
     expect(a).toHaveTextContent('₺300.00');
-    expect(a).toHaveTextContent('33.3%');
+    // The share in the house's form, as the drawer writes it: a lira house reads "%33,3".
+    expect(a).toHaveTextContent('%33,3');
+    expect(a.textContent).not.toContain('33.3%');
+    expect(screen.getByRole('columnheader', { name: 'Cost per plate' })).toBeInTheDocument();
     // An incomplete cost has no cost and no %, even with a price.
     expect(screen.getByTestId(`dish-row-${B}`).textContent).toMatch(/Not knownNot known/);
     expect(screen.getByTestId(`dish-row-${B}`).textContent).not.toMatch(/%/);
@@ -83,6 +86,48 @@ describe('DishesPage', () => {
     expect(screen.getByTestId(`dish-row-${D}`)).toHaveTextContent('No price');
     expect(screen.getByTestId(`dish-row-${D}`).textContent).not.toMatch(/%/);
     expect(screen.getByTestId(`dish-row-${C}`)).toHaveTextContent('No recipe yet');
+  });
+
+  it('a cost priced partly from stock without a verified invoice says so; a whole one does not (r28 gap 13)', async () => {
+    list = [row(A, 'Lamb shank', { cost: { ...full, partial: 1 } }), row(B, 'Mezze')];
+    mount();
+    const a = await screen.findByTestId(`dish-row-${A}`);
+    expect(a).toHaveTextContent('₺300.00');
+    expect(within(a).getByTestId(`dish-partly-${A}`)).toHaveTextContent('partly invoiced');
+    expect(within(screen.getByTestId(`dish-row-${B}`)).queryByTestId(`dish-partly-${B}`)).toBeNull();
+  });
+
+  it('an unknown cost is never marked partly invoiced', async () => {
+    list = [row(A, 'Lamb shank', { cost: { ...full, perServe: null, complete: false, partial: 1 } })];
+    mount();
+    const a = await screen.findByTestId(`dish-row-${A}`);
+    expect(a.textContent).toMatch(/Not known/);
+    expect(within(a).queryByTestId(`dish-partly-${A}`)).toBeNull();
+  });
+
+  it('a pound house writes the share its own way: "33.3%"', async () => {
+    const lira = h.get.getMockImplementation();
+    h.get.mockImplementation(async (url: string) =>
+      url === '/settings/currency'
+        ? { data: { restaurantId: RID, code: 'GBP', country: 'United Kingdom', readable: true, reason: null, statedAt: null } }
+        : (lira as (u: string) => unknown)(url),
+    );
+    mount();
+    const a = await screen.findByTestId(`dish-row-${A}`);
+    await waitFor(() => expect(a).toHaveTextContent('33.3%'));
+  });
+
+  it('a currency that could not be read leaves the share in the reader\'s form, never a guessed house form', async () => {
+    const lira = h.get.getMockImplementation();
+    h.get.mockImplementation(async (url: string) =>
+      url === '/settings/currency'
+        ? { data: { restaurantId: RID, code: 'TRY', country: 'Turkey', readable: false, reason: 'not readable', statedAt: null } }
+        : (lira as (u: string) => unknown)(url),
+    );
+    mount();
+    const a = await screen.findByTestId(`dish-row-${A}`);
+    await waitFor(() => expect(a).toHaveTextContent('33.3%'));
+    expect(a.textContent).not.toContain('%33,3');
   });
 
   it('staff read the list with no money, even if a figure reached them', async () => {
