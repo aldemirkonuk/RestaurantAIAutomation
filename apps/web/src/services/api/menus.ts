@@ -585,6 +585,20 @@ export interface MakeCurrentResult {
   held?: Array<HeldKind & { menuItemId: string; name: string }>
   /** Locked wines that came back with this menu. */
   returned?: Array<{ menuItemId: string; name: string }>
+  /**
+   * r35 G10: each drink named to take off sale -- the price writer's outcome
+   * per kind ("changed" is cleared), the locks that held, or why nothing is
+   * known. Optional for an older gateway.
+   */
+  takenOff?: Array<{
+    menuItemId: string
+    name: string
+    inventoryId: string
+    bottle: string | null
+    glass: string | null
+    held: HeldKind[]
+    error: string | null
+  }>
 }
 
 /** What choosing a menu WOULD do, per line and per kind (ADR 0193 round 3, L13). */
@@ -736,13 +750,22 @@ export async function linkMenuLineToHouseGood(
   return response.data
 }
 
-export async function makeMenuCurrent(menuId: string, fingerprint: string): Promise<MakeCurrentResult> {
+/**
+ * Make a kept menu current, naming the plan it was shown. `takeOff` names
+ * drinks from the plan's "Not on this file" whose price is cleared once it is
+ * current (r35 G10); none named, none changed (L12).
+ */
+export async function makeMenuCurrent(
+  menuId: string,
+  fingerprint: string,
+  takeOff: readonly string[] = [],
+): Promise<MakeCurrentResult> {
   // The switch commits before the prices are carried, so this call is never
   // cut off at the client's usual 30 s while the gateway is still writing
   // (r28 G1): a long menu gets its answer, whatever it is.
   const response = await apiClient.post<MakeCurrentResult>(
     `/menu-versions/${menuId}/make-current`,
-    { fingerprint },
+    takeOff.length ? { fingerprint, takeOff: [...takeOff] } : { fingerprint },
     { timeout: MAKE_CURRENT_TIMEOUT_MS },
   )
   return response.data

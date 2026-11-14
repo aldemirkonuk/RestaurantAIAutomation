@@ -45,6 +45,7 @@ import { useAuthStore } from '../../../stores';
 import { MenuPlan } from './MenuPlan';
 import { deviceClockNote, houseDay, houseMoment } from './menu-clock';
 import { isPhoto, pagesProblem, photoToJpegBase64, photosToPages } from '../../../lib/menuPhotos';
+import { takenOffSentence } from './menu-take-off';
 import { formatMoney } from '../../../lib/currency';
 import { useHouseCurrencyCode } from '../../../hooks/queries/useHouseCurrencyCode';
 import { MenuReadNotes } from '../../../components/onboarding/MenuReadNotes';
@@ -529,7 +530,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
               onCancel={() => setPlanning(false)}
               onDone={(r, lines) => {
                 setPlanning(false);
-                setChosen(makeCurrentSentence(r, undefined, lines, currency));
+                setChosen(makeCurrentSentence(r, undefined, lines, currency) + takenOffSentence(r, currency));
                 // The read's own line said "not the current menu" and offered the
                 // choice again under "This is now the current menu" (browser walk
                 // 2026-11-12). Once it is chosen, the read says so.
@@ -736,7 +737,7 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
                 onDone={(r, lines) => {
                   const chosenOne = q.data?.versions.find((v) => v.menuId === r.menuId);
                   setPlanFor(null);
-                  setSaid(makeCurrentSentence(r, chosenOne ? nameOf(chosenOne) : undefined, lines, currency));
+                  setSaid(makeCurrentSentence(r, chosenOne ? nameOf(chosenOne) : undefined, lines, currency) + takenOffSentence(r, currency));
                   refresh();
                 }}
               />

@@ -38,6 +38,7 @@ import { countByKind, oneNounFor } from './menu-line-kind';
 import { deviceClockNote, houseDay } from './menu-clock';
 import { formatMoney } from '../../../lib/currency';
 import { useHouseCurrencyCode } from '../../../hooks/queries/useHouseCurrencyCode';
+import { canTakeOff } from './menu-take-off';
 // Drawn with the cellar's classes wherever it is shown (/menu and onboarding).
 import '../../cellar/next/cellar-next.css';
 
@@ -161,6 +162,8 @@ export function lineOutcome(line: PlanLine): LineOutcome {
  */
 export function planSentence(
   plan: Pick<Plan, 'counts' | 'dormantLocks' | 'current' | 'lines' | 'kitchenLines' | 'notOnThisFile'>,
+  /** r35 G10: how many of the drinks not on this file are ticked to come off sale. */
+  takingOff = 0,
 ): string {
   const c = plan.counts;
   if (plan.current) {
@@ -233,10 +236,16 @@ export function planSentence(
   const removed = removedClause(plan.lines);
   if (removed) more.push(removed);
   const gone = plan.notOnThisFile ?? [];
-  if (gone.length > 0)
+  const off = Math.min(takingOff, gone.length);
+  const stay = gone.length - off;
+  if (gone.length > 0 && off === 0)
     more.push(
       // A kitchen line is never in this list (computePlan keeps drinks only), and a drink is not always a wine.
       `${plural(gone.length, 'drink on the current menu is', 'drinks on the current menu are')} not on this file and ${gone.length === 1 ? 'keeps its' : 'keep their'} price`,
+    );
+  else if (off > 0)
+    more.push(
+      `${plural(gone.length, 'drink on the current menu is', 'drinks on the current menu are')} not on this file: ${plural(off, 'is', 'are')} taken off sale, ${off === 1 ? 'its' : 'their'} price cleared${stay > 0 ? `, and ${plural(stay, 'keeps its', 'keep their')} price` : ''}`,
     );
   if (plan.dormantLocks.length > 0)
     more.push(
@@ -418,6 +427,8 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
   const queryClient = useQueryClient();
   const [said, setSaid] = useState<string | null>(null);
   const [moved, setMoved] = useState(false);
+  // r35 G10: the dropped drinks an owner or a manager ticked to take off sale.
+  const [off, setOff] = useState<ReadonlySet<string>>(new Set());
   const q = useQuery({ queryKey: ['menu', 'plan', menuId], queryFn: () => getMenuPlan(menuId) });
   const ready = !!q.data;
   useEffect(() => {
@@ -429,7 +440,8 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu', 'plan', menuId] });
 
   const choose = useMutation({
-    mutationFn: (fingerprint: string) => makeMenuCurrent(menuId, fingerprint),
+    mutationFn: ({ fingerprint, takeOff }: { fingerprint: string; takeOff: string[] }) =>
+      takeOff.length ? makeMenuCurrent(menuId, fingerprint, takeOff) : makeMenuCurrent(menuId, fingerprint),
     onSuccess: (r) => {
       void queryClient.invalidateQueries({ queryKey: ['menu'] });
       void queryClient.invalidateQueries({ queryKey: ['pricing', 'locks'] });
@@ -467,6 +479,16 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
   const typedAfter = replacing.filter((r) => r.k.setAfterRead === true).length;
   const returned = plan.lines.filter((l) => l.returned);
   const mismatched = plan.lines.filter((l) => l.vintageMismatch);
+  // Only a drink this plan still offers is sent: a tick from a plan read before is dropped.
+  const offerable = canManage && !plan.current ? (plan.notOnThisFile ?? []).filter(canTakeOff) : [];
+  const takeOff = offerable.filter((n) => off.has(n.menuItemId)).map((n) => n.menuItemId);
+  const tick = (id: string, on: boolean) =>
+    setOff((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
 
   return (
     <section className="cl-panel" style={{ marginTop: 12 }} aria-labelledby={`plan-h-${menuId}`} data-testid="menu-plan">
@@ -474,7 +496,7 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
         {plan.current ? 'Before its prices are carried again' : 'Before it becomes current'}
       </h3>
       <p className="cl-standing" style={{ marginTop: 6 }} data-testid="menu-plan-sentence">
-        {planSentence(plan)}
+        {planSentence(plan, takeOff.length)}
       </p>
       {moved ? (
         <p role="status" className="cl-said" style={{ marginTop: 6 }} data-testid="menu-plan-moved">
@@ -610,11 +632,28 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
             Not on this file: what the current menu lists and this one does not. Choosing it leaves{' '}
             {(plan.notOnThisFile ?? []).length === 1 ? 'it as it is' : 'them as they are'}: the price, the
             house&apos;s row and any lock stay.
+            {offerable.length > 0
+              ? ' Tick one the house no longer sells to take it off sale: its price is cleared when this menu becomes current. Its row and stock stay, and a lock still holds.'
+              : ''}
           </p>
           <ul className="cl-said" style={{ paddingLeft: 18, marginTop: 4 }}>
             {(plan.notOnThisFile ?? []).map((n) => (
               <li key={n.menuItemId} data-testid="menu-plan-not-on-file-line">
                 {notOnFileWords(n, currency)}
+                {offerable.includes(n) ? (
+                  <label className="cl-dim" style={{ marginLeft: 8, whiteSpace: 'nowrap' }}>
+                    <input
+                      type="checkbox"
+                      className="cl-focus"
+                      checked={off.has(n.menuItemId)}
+                      disabled={choose.isPending}
+                      onChange={(e) => tick(n.menuItemId, e.target.checked)}
+                      aria-label={`Take ${n.name} off sale`}
+                      data-testid="menu-plan-take-off"
+                    />{' '}
+                    Take off sale
+                  </label>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -647,7 +686,7 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
             type="button"
             className="cl-btn cl-ink cl-focus"
             disabled={choose.isPending}
-            onClick={() => choose.mutate(plan.fingerprint)}
+            onClick={() => choose.mutate({ fingerprint: plan.fingerprint, takeOff })}
           >
             {plan.current
               ? choose.isPending

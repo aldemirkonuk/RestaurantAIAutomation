@@ -282,7 +282,7 @@ export class MenuVersionsController {
       house,
       "choose the current menu",
     );
-    return this.menusService.makeCurrent(house, menuId, userId, dto?.fingerprint ?? null);
+    return this.menusService.makeCurrent(house, menuId, userId, dto?.fingerprint ?? null, dto?.takeOff ?? []);
   }
 
   @Patch(":menuId/items/:itemId/house-good")

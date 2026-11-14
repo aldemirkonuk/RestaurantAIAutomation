@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MenuPlan, chooseFailedSentence, kindWords, notOnFileWords, orderedRows, planSentence } from './MenuPlan';
+import { canTakeOff, takenOffSentence } from './menu-take-off';
 import { getMenuPlan, makeMenuCurrent, type MenuPlan as Plan, type PlanLine } from '../../../services/api/menus';
 import { lockPrice, releasePriceLock } from '../../../services/api/pricing';
 import { formatMoney } from '../../../lib/currency';
@@ -216,17 +217,86 @@ describe('2d: not on this file -- shown, never acted on (L12)', () => {
     expect(notOnFileWords({ ...BAROLO_GONE, active: true }, 'TRY')).toBe(`Barolo 2016: keeps bottle ${m(80)}, glass ${m(14)}, bottle locked`);
   });
 
-  it('lists them on the plan, with no control that would act on them', async () => {
+  it('lists them on the plan; staff get no control that would act on them', async () => {
     mockPlan.mockResolvedValue(plan({ notOnThisFile: [BAROLO_GONE, HOUSE_RED] }));
-    mount(true);
+    mount(false);
     const box = await screen.findByTestId('menu-plan-not-on-file');
     expect(box).toHaveTextContent('Not on this file');
     expect(box).toHaveTextContent('the price, the house\'s row and any lock stay');
+    expect(box).not.toHaveTextContent('Tick one');
     expect(screen.getAllByTestId('menu-plan-not-on-file-line').map((l) => l.textContent)).toEqual([
       `Barolo 2016: keeps bottle ${m(80)}, glass ${m(14)}, bottle locked`,
       "House red: not on the house's list, so nothing is kept for it",
     ]);
     expect(box.querySelectorAll('button, input')).toHaveLength(0);
+  });
+
+  describe('r35 G10: a manager may take one off sale', () => {
+    const CHIANTI_GONE = { ...BAROLO_GONE, menuItemId: 'old-4', name: 'Chianti', vintage: null, inventoryId: 'inv-4', bottle: 40, glass: null, locked: [] };
+
+    it('offers a tick only for a drink the house holds, with a price a lock does not hold', () => {
+      expect(canTakeOff(BAROLO_GONE)).toBe(true); // the glass is free
+      expect(canTakeOff(HOUSE_RED)).toBe(false); // no row
+      expect(canTakeOff({ ...BAROLO_GONE, inventoryId: null })).toBe(false); // a price but no row to clear it on
+      expect(canTakeOff({ ...BAROLO_GONE, bottle: null, glass: null, locked: [] })).toBe(false); // no price
+      expect(canTakeOff({ ...BAROLO_GONE, glass: null })).toBe(false); // its one price is locked
+      expect(canTakeOff({ ...BAROLO_GONE, locked: ['bottle', 'glass'] })).toBe(false);
+    });
+
+    it('the sentence counts what a tick takes off', () => {
+      expect(planSentence(plan({ dormantLocks: [], notOnThisFile: [BAROLO_GONE, HOUSE_RED] }), 1)).toBe(
+        'Choosing this menu will change the price of 1 wine the house already has and leave 1 wine at its locked price. 2 drinks on the current menu are not on this file: 1 is taken off sale, its price cleared, and 1 keeps its price.',
+      );
+      expect(planSentence(plan({ dormantLocks: [], notOnThisFile: [CHIANTI_GONE] }), 1)).toBe(
+        'Choosing this menu will change the price of 1 wine the house already has and leave 1 wine at its locked price. 1 drink on the current menu is not on this file: 1 is taken off sale, its price cleared.',
+      );
+    });
+
+    it('sends only the ticked drinks with the choice, and nothing when the tick is taken back', async () => {
+      mockPlan.mockResolvedValue(plan({ notOnThisFile: [BAROLO_GONE, HOUSE_RED, CHIANTI_GONE] }));
+      mockMake.mockResolvedValue({ outcome: 'made_current', menuId: 'menu-new', previousMenuIds: [], lines: 2, priceSync: {}, flagged: 0, failed: [] });
+      mount(true);
+      const box = await screen.findByTestId('menu-plan-not-on-file');
+      expect(box).toHaveTextContent('Tick one the house no longer sells to take it off sale');
+      // House red has no row: no tick.
+      expect(screen.getAllByTestId('menu-plan-take-off')).toHaveLength(2);
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Take Chianti off sale' }));
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Take Barolo off sale' }));
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Take Barolo off sale' }));
+      expect(screen.getByTestId('menu-plan-sentence')).toHaveTextContent('1 is taken off sale, its price cleared, and 2 keep their price');
+      fireEvent.click(screen.getByRole('button', { name: 'Make it current' }));
+      await waitFor(() => expect(mockMake).toHaveBeenCalledWith('menu-new', 'fp-1', ['old-4']));
+    });
+
+    it('no tick on a menu already current', async () => {
+      mockPlan.mockResolvedValue(plan({ current: true, notOnThisFile: [CHIANTI_GONE] }));
+      mount(true);
+      await screen.findByTestId('menu-plan-not-on-file');
+      expect(screen.queryByTestId('menu-plan-take-off')).not.toBeInTheDocument();
+    });
+
+    it('says what was taken off, held, kept, and refused, by name', () => {
+      const t = (over: Record<string, unknown>) => ({ menuItemId: 'x', name: 'X', inventoryId: 'i', bottle: null, glass: null, held: [], error: null, ...over });
+      expect(takenOffSentence({}, 'TRY')).toBe('');
+      expect(takenOffSentence({ takenOff: [] }, 'TRY')).toBe('');
+      expect(
+        takenOffSentence(
+          {
+            takenOff: [
+              t({ name: 'Chianti', bottle: 'changed', glass: 'unchanged' }),
+              t({ name: 'Barolo', bottle: 'locked', glass: 'changed', held: [{ kind: 'bottle', lockId: 'l1', lockedPrice: 80, lockedBy: null, lockedAt: null }] }),
+              t({ name: 'Rioja', bottle: 'stale', glass: 'unchanged' }),
+              t({ name: 'Soave', bottle: 'unchanged', glass: 'unchanged' }),
+              t({ name: 'Gavi', error: 'no such wine' }),
+              t({ name: 'Fiano', bottle: 'reshelved', glass: 'unchanged' }),
+            ],
+          },
+          'TRY',
+        ),
+      ).toBe(
+        ` Taken off sale, its price cleared: Chianti; Barolo (glass). Held by a lock, so the price stays: Barolo (bottle, locked at ${m(80)}). Kept a price someone set after this menu was chosen: Rioja (bottle). Had no price to take off: Soave. Whether the price was taken off is not known: Fiano (the price writer answered reshelved and unchanged). Not taken off sale, so the price stays: Gavi (no such wine). Take it off on Inventory.`,
+      );
+    });
   });
 
   it('an older gateway that sends no list shows nothing', async () => {

@@ -440,6 +440,31 @@ describe('MenuVersions', () => {
     );
   });
 
+  // r35 G10: what taking dropped drinks off sale did follows the choice's own sentence, at both places a menu is chosen.
+  const TAKEN = [{ menuItemId: 'old-4', name: 'Chianti', inventoryId: 'inv-4', bottle: 'changed', glass: 'unchanged', held: [], error: null }];
+  it('says which dropped drinks were taken off sale, after a kept menu is chosen (r35 G10)', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [version()] });
+    mockMake.mockResolvedValue({ outcome: 'made_current', menuId: 'm1', previousMenuIds: [], lines: 1, priceSync: {}, flagged: 0, failed: [], takenOff: TAKEN });
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Make the menu read 2026-09-20 10:00 current' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
+    // Named and said under the list since the menu walk 2026-11-12 (r37 meet).
+    expect(await screen.findByTestId('menu-list-choice-said')).toHaveTextContent(/is now the current menu: .* Taken off sale, its price cleared: Chianti\./);
+  });
+
+  it('says which dropped drinks were taken off sale, after a menu just read is chosen (r35 G10)', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mockImport.mockResolvedValue({ menuId: 'm9', current: false, itemsExtracted: 1, submissionsCreated: 0, items: [], source: { kept: true, failure: null } });
+    mockMake.mockResolvedValue({ outcome: 'made_current', menuId: 'm9', previousMenuIds: [], lines: 1, priceSync: {}, flagged: 0, failed: [], takenOff: TAKEN });
+    mount(true);
+    const file = new File(['name,bottle_price\nOpus,60\n'], 'menu.csv', { type: 'text/csv' });
+    fireEvent.change(await screen.findByLabelText('Menu to read'), { target: { files: [file] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Make this the current menu' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
+    await waitFor(() => expect(screen.getByTestId('menu-choice-said')).toHaveTextContent('Taken off sale, its price cleared: Chianti.'));
+  });
+
   it('staff see every kept menu but are offered no choice of the current one', async () => {
     mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [version()] });
     mount(false);

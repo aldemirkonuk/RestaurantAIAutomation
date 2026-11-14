@@ -32,6 +32,8 @@ import {
   setHouseMenuPrices,
   type HeldKind,
   type HousePriceOutcome,
+  type HousePriceRowAnswer,
+  type KindOutcome,
 } from "../pricing/house-menu-price";
 import { readOpenLocks, readPeople, type OpenLock } from "../pricing/price-locks";
 
@@ -214,6 +216,26 @@ export interface DormantLock {
  * house row and its prices exactly as they are (ADR 0193 L12, "Silence changes
  * nothing"), and a lock on it stays (L16).
  */
+/**
+ * What taking one dropped drink off sale did (r35 G10): per kind, the
+ * writer's own outcome ("changed" is cleared, "unchanged" had no price,
+ * "locked" is held and named in `held`, "stale" a price set after the
+ * choice stands), or the sentence for why nothing is known.
+ */
+export interface TakenOff {
+  menuItemId: string;
+  name: string;
+  inventoryId: string;
+  bottle: KindOutcome | null;
+  glass: KindOutcome | null;
+  held: HeldKind[];
+  error: string | null;
+}
+
+function takenOffFailed(n: NotOnThisFile, error: string): TakenOff {
+  return { menuItemId: n.menuItemId, name: n.name, inventoryId: n.inventoryId ?? "", bottle: null, glass: null, held: [], error };
+}
+
 export interface NotOnThisFile {
   /** The line on the menu being replaced. */
   menuItemId: string;
@@ -2511,8 +2533,18 @@ export class MenusService {
       if (here) continue;
       const key = wineId ? `w:${wineId}` : `n:${name}`;
       if (seen.has(key)) continue;
+      // The house's row: by the wine, or by the good an unlinked line named
+      // (r35 G10: a good-linked drink used to read "nothing is kept for it"
+      // whatever price it held).
+      const row = wineId
+        ? (house.get(wineId) ?? null)
+        : line.inventory_item_id
+          ? (byInventory.get(String(line.inventory_item_id)) ?? null)
+          : null;
+      // A good this menu carries under another line is on this file: listed
+      // here, taking its price off would undo the price this menu sets.
+      if (row && onThisMenu.has(String(row.id))) continue;
       seen.add(key);
-      const row = wineId ? (house.get(wineId) ?? null) : null;
       const locked = row
         ? (["bottle", "glass"] as const).filter((k) => locks.has(`${row.id}:${k}`))
         : [];
@@ -2583,12 +2615,23 @@ export class MenusService {
    * its line was carried wins (`stale`, L14). A blank price keeps the house's
    * price and flags the line; a line with no price for a wine the house has
    * no price for is flagged too (answers 3 and 4).
+   *
+   * TAKING A DROPPED DRINK OFF SALE (r35 G10, MU-12). Silence still changes
+   * nothing (L12): a drink the current menu lists and this one does not keeps
+   * its price unless the person names it in `takeOff` (its line id from the
+   * plan's `notOnThisFile`). A named drink's bottle and glass price are
+   * cleared through the one writer, dated by the choice and naming the menu,
+   * so the version trail keeps what it was sold at. Its row, stock and kind
+   * stay: the bottles are still in the cellar. A lock still holds its kind
+   * (L16), said by name. An id the plan does not offer is refused (400)
+   * before the switch, and nothing is changed.
    */
   async makeCurrent(
     restaurantId: string,
     menuId: string,
     userId: string,
     fingerprint?: string | null,
+    takeOff: readonly string[] = [],
   ): Promise<{
     outcome: "made_current" | "already_current";
     menuId: string;
@@ -2608,6 +2651,7 @@ export class MenusService {
       lockedAt: string | null;
     }>;
     returned: Array<{ menuItemId: string; name: string }>;
+    takenOff: TakenOff[];
   }> {
     if (typeof fingerprint !== "string" || fingerprint.trim() === "") {
       throw new BadRequestException(
@@ -2628,6 +2672,17 @@ export class MenusService {
         "What choosing this menu would do has changed since it was shown (a price or a lock moved). Nothing was changed; look at the plan again.",
       );
     }
+    // Every drink named to take off is one the plan offers: a drink the
+    // current menu lists, this one does not, and the house holds a row for.
+    const offered = new Map((plan.notOnThisFile ?? []).filter((n) => n.inventoryId).map((n) => [n.menuItemId, n]));
+    const named = [...new Set(takeOff.map(String))];
+    const notOffered = named.filter((id) => !offered.has(id));
+    if (notOffered.length > 0) {
+      throw new BadRequestException(
+        `${notOffered.length === 1 ? "One drink" : `${notOffered.length} drinks`} named to take off sale ${notOffered.length === 1 ? "is" : "are"} not a drink the current menu lists, this one leaves out and the house holds. Nothing was changed; look at the plan again.`,
+      );
+    }
+    const toTakeOff = named.map((id) => offered.get(id)!);
     const { data, error } = await this.dbService.supabase.rpc("make_menu_current", {
       p_restaurant_id: restaurantId,
       p_menu_id: menuId,
@@ -2656,6 +2711,7 @@ export class MenusService {
       failed: [],
       held: [],
       returned: [],
+      takenOff: [] as TakenOff[],
     };
     // CHOOSING A CURRENT MENU AGAIN FINISHES ITS CARRY (r28 G1). It answered
     // "already_current" with zero lines, so a carry cut off part-way (a deploy,
@@ -2681,6 +2737,7 @@ export class MenusService {
           ...(kitchen ? { kitchen_line: kitchen } : {}),
         },
         failed: wines.map((l) => ({ menuItemId: l.id, name: l.name, error: why })),
+        takenOff: toTakeOff.map((n) => takenOffFailed(n, why)),
       };
     }
 
@@ -2697,7 +2754,7 @@ export class MenusService {
       const why = err instanceof Error ? err.message : String(err);
       this.logger.error(`menu ${menuId} is current but its prices were not carried: ${why}`);
       throw new InternalServerErrorException(
-        `This menu is now the current one, but its prices did not reach the house (${why}). Choose it again under Menus kept to carry them; a price set since it was chosen stays.`,
+        `This menu is now the current one, but its prices did not reach the house (${why}). Choose it again under Menus kept to carry them; a price set since it was chosen stays.${toTakeOff.length ? " No price was taken off the drinks it leaves out: take them off on Inventory." : ""}`,
       );
     }
 
@@ -2724,6 +2781,7 @@ export class MenusService {
       }
     }
     const returned = plan.lines.filter((l) => l.returned).map((l) => ({ menuItemId: l.menuItemId, name: l.name }));
+    const takenOff = toTakeOff.length ? await this.takeOffSale(restaurantId, menuId, userId, madeCurrentAt, toTakeOff) : [];
     return {
       outcome,
       ...empty,
@@ -2733,7 +2791,73 @@ export class MenusService {
       failed,
       held,
       returned,
+      takenOff,
     };
+  }
+
+  /**
+   * Clear the bottle and glass price of each drink named (r35 G10), dated by
+   * the choice and naming the menu, through the one batch writer (per row on
+   * a database without it). The switch is committed: a refusal is said on
+   * its drink, never thrown.
+   */
+  private async takeOffSale(
+    restaurantId: string,
+    menuId: string,
+    userId: string,
+    at: string,
+    drinks: NotOnThisFile[],
+  ): Promise<TakenOff[]> {
+    const client = this.dbService.supabase;
+    const common = {
+      restaurantId,
+      source: "manual" as const,
+      changedBy: userId,
+      effectiveFrom: at,
+      menuId,
+      reason: "taken off sale: not on the menu made current",
+    };
+    let answers: Map<string, HousePriceRowAnswer> | null;
+    try {
+      answers = await setHouseMenuPrices(
+        client,
+        common,
+        drinks.map((n) => ({ key: n.menuItemId, inventoryId: n.inventoryId!, bottle: null, glass: null })),
+      );
+    } catch (err) {
+      const why = err instanceof Error ? err.message : String(err);
+      return drinks.map((n) => takenOffFailed(n, why));
+    }
+    const out: TakenOff[] = [];
+    for (const n of drinks) {
+      let a: HousePriceRowAnswer | undefined;
+      if (answers === null) {
+        try {
+          a = { ok: true, result: await setHouseMenuPrice(client, { ...common, inventoryId: n.inventoryId!, bottle: null, glass: null }) };
+        } catch (err) {
+          a = { ok: false, error: err instanceof Error ? err.message : String(err) };
+        }
+      } else {
+        a = answers.get(n.menuItemId);
+      }
+      if (!a) {
+        out.push(takenOffFailed(n, "The price writer's answer did not name this drink; whether its price was taken off is unknown."));
+      } else if (!a.ok) {
+        this.logger.error(`menu ${menuId}: the price of "${n.name}" was not taken off: ${a.error}`);
+        out.push(takenOffFailed(n, a.error));
+      } else {
+        out.push({
+          menuItemId: n.menuItemId,
+          name: n.name,
+          inventoryId: n.inventoryId!,
+          bottle: a.result.kinds.bottle,
+          glass: a.result.kinds.glass,
+          held: a.result.held,
+          error: null,
+        });
+      }
+    }
+    return out;
   }
 
   /**

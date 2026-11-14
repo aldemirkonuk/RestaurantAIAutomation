@@ -84,7 +84,13 @@ describe("POST /menu-versions/:menuId/make-current — owner or manager only", (
   it.each(["owner", "manager"])("a %s may choose the current menu, naming the plan it was shown (L13)", async (role) => {
     const { c, make } = controller(role);
     await c.makeCurrent("rest-1", "u-1", MENU, { fingerprint: "fp-1" });
-    expect(make).toHaveBeenCalledWith("rest-1", MENU, "u-1", "fp-1");
+    expect(make).toHaveBeenCalledWith("rest-1", MENU, "u-1", "fp-1", []);
+  });
+
+  it("passes the drinks named to take off sale on to the choice (r35 G10)", async () => {
+    const { c, make } = controller("manager");
+    await c.makeCurrent("rest-1", "u-1", MENU, { fingerprint: "fp-1", takeOff: ["old-2"] });
+    expect(make).toHaveBeenCalledWith("rest-1", MENU, "u-1", "fp-1", ["old-2"]);
   });
 
   it.each(["staff", null])("%s is refused, and nothing is switched", async (role) => {
