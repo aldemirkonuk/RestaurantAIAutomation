@@ -70,7 +70,7 @@
  * what is persisted.
  */
 
-import { isMass, normalizeUom, Uom } from "./documents/document-types";
+import { isMass, isVolumeLineUnit, normalizeUom, Uom } from "./documents/document-types";
 
 export type MatchVerdict =
   | "matched"
@@ -560,7 +560,8 @@ export function toBottleOperands(input: MatchInput): {
   // pieces as clean. It is compared only with the very same weight unit; no
   // kg-to-g conversion is made here, because an order is never placed by
   // weight, so a weighed operand always meets an order it cannot be read as.
-  const opaque = participating.filter(([, u]) => OPAQUE.has(u.uom) || isMass(u.uom));
+  // A US gallon or fluid ounce is opaque as a liter is (r36 R4).
+  const opaque = participating.filter(([, u]) => OPAQUE.has(u.uom) || isMass(u.uom) || isVolumeLineUnit(u.uom));
   if (opaque.length > 0) {
     const mismatch = participating.find(([, u]) => u.uom !== opaque[0][1].uom);
     if (mismatch) {

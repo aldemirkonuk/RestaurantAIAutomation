@@ -2,7 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { queueResearchIfLibraryLacks } from "../../inventory/house-item-research";
 import { closeDeliveryItemToNameBookedElsewhere } from "../delivery-item-to-name";
-import { isMass, isVolumeItemUnit, massFactor, volumeFactor } from "../documents/document-types";
+import { inItemUnit, isImperial, isMass, isVolumeItemUnit, isVolumeLineUnit, massFactor, volumeFactor, withStatedUnit } from "../documents/document-types";
 import { LotUnitCost, perBottleLotCost, proposalPerBottle, toCentsAsBooked } from "./lot-unit-cost";
 import { doorCountsOfPapers, withTheDoorsPack } from "./door-received";
 import {
@@ -220,14 +220,12 @@ export function shelfQuantity(
   if (!weighed && PLAIN_COUNT.has(line.uom ?? "")) return { ok: true, qty: Math.round(n) };
   if (!weighed)
     return { ok: false, reason: `the item this line names is kept in ${itemUom}, but the line counts ${String(line.uom).replace("_", " ")}s, and what one weighs is not known. It is NOT booked; state the line's weight, or count it in ${itemUom}.` };
-  const f = massFactor(String(line.uom), String(itemUom));
-  if (f == null)
+  // R4: a US weight (lb, oz) into g or mg rounds to the nearest one; see `inItemUnit`.
+  const put = inItemUnit(n, String(line.uom), String(itemUom));
+  if (put.ok) return { ok: true, qty: put.qty };
+  if (put.exact == null)
     return { ok: false, reason: `${line.uom} does not convert into ${itemUom}` };
-  const exact = n * f;
-  const whole = Math.round(exact);
-  if (Math.abs(exact - whole) > 1e-9)
-    return { ok: false, reason: `${n} ${line.uom} is ${exact} ${itemUom}, not a whole number of ${itemUom}, the unit the item is kept in. It is NOT rounded; keep the item in a finer unit (g), or count the line in one.` };
-  return { ok: true, qty: whole };
+  return { ok: false, reason: `${n} ${line.uom} is ${put.exact} ${itemUom}, not a whole number of ${itemUom}, the unit the item is kept in. It is NOT rounded; keep the item in a finer unit (g), or count the line in one.` };
 }
 
 /** What one bottle or keg of a line holds in ml, or null when not stated (r21). */
@@ -248,14 +246,16 @@ function volumeShelf(
   line: { uom?: string | null; format_ml?: unknown },
   itemUom: string | null | undefined,
 ): { ok: true; qty: number } | { ok: false; reason: string } | null {
-  const measured = line.uom === "liter";
+  // R4: a US gallon or fluid ounce is measured too, as a liter is.
+  const measured = isVolumeLineUnit(line.uom);
+  const unitSaid = measured ? (line.uom === "floz" ? "fl oz" : String(line.uom)) : "";
   if (!isVolumeItemUnit(itemUom)) {
     if (!measured) return null;
     return {
       ok: false,
       reason: itemUom
-        ? `this line is measured in liters, but the item it names is kept in ${itemUom}s, and a liter is not a number of ${itemUom}s. It is NOT booked; keep the item in ml, or link the line to one that is.`
-        : `this line is measured in liters, and the item it names states no unit, so how much of it this is cannot be put on the shelf`,
+        ? `this line is measured in ${unitSaid}, but the item it names is kept in ${itemUom}s, and a ${unitSaid} is not a number of ${itemUom}s. It is NOT booked; keep the item in ml, or link the line to one that is.`
+        : `this line is measured in ${unitSaid}, and the item it names states no unit, so how much of it this is cannot be put on the shelf`,
     };
   }
   if (isMass(line.uom))
@@ -264,8 +264,11 @@ function volumeShelf(
   let exact: number;
   let said: string;
   if (measured) {
-    exact = n * (volumeFactor("liter", itemUom) as number);
-    said = `${n} liter`;
+    // R4: a US volume into ml rounds to the nearest ml; see `inItemUnit`.
+    const put = inItemUnit(n, String(line.uom), itemUom);
+    if (put.ok) return { ok: true, qty: put.qty };
+    exact = put.exact as number;
+    said = `${n} ${unitSaid}`;
   } else if (fmt != null) {
     exact = n * fmt * (volumeFactor("ml", itemUom) as number);
     said = `${n} of ${fmt} ml`;
@@ -287,7 +290,7 @@ function volumeShelf(
 function itemScale(line: LineRow): { factor: number; volume: boolean } | null {
   if (!line.item_uom) return null;
   if (isVolumeItemUnit(line.item_uom)) {
-    if (line.uom === "liter") return { factor: volumeFactor("liter", line.item_uom) as number, volume: true };
+    if (isVolumeLineUnit(line.uom)) return { factor: volumeFactor(String(line.uom), line.item_uom) as number, volume: true };
     if (isMass(line.uom)) return null;
     const fmt = sizeMl(line.format_ml);
     return fmt == null ? null : { factor: fmt * (volumeFactor("ml", line.item_uom) as number), volume: true };
@@ -307,7 +310,12 @@ function inItemUnits(line: LineRow): LineRow {
   const scaled = itemScale(line);
   if (!scaled) return line;
   const f = scaled.factor;
-  const scale = (v: unknown) => (v == null || v === "" || !Number.isFinite(Number(v)) ? v : Number(v) * f);
+  // R4: a US line lists what the door booked from it, rounded the same way
+  // (`inItemUnit`), so 10 lb is 4536 g on both sides and the paper's money is
+  // spread over the grams that are on the shelf.
+  const round = isImperial(line.uom) && line.item_uom != null && inItemUnit(1, String(line.uom), line.item_uom).ok;
+  const scale = (v: unknown) =>
+    v == null || v === "" || !Number.isFinite(Number(v)) ? v : round ? Math.round(Number(v) * f) : Number(v) * f;
   return {
     ...line,
     ...(scaled.volume ? { in_item_unit: true } : {}),
@@ -477,7 +485,7 @@ export class DeliveryStockService {
       .getClient()
       .from("procurement_document_lines")
       .select(
-        "document_id, line_no, inventory_id, qty_bottles, unit_price, description, vendor_sku, uom, format_ml",
+        "document_id, line_no, inventory_id, qty_bottles, unit_price, description, vendor_sku, uom, format_ml, printed",
       )
       .eq("restaurant_id", restaurantId)
       .eq("document_id", documentId);
@@ -489,7 +497,8 @@ export class DeliveryStockService {
         status: 500,
         error: `the counted lines of document ${documentId} could not be read (${read.error.message}), so nothing was booked. Retry is safe — every booking is keyed on (delivery, document, line).`,
       };
-    const lines = (read.data ?? []) as unknown as LineRow[];
+    // R4: a line stored as `each` whose paper printed a weight or volume counts in it.
+    const lines = ((read.data ?? []) as unknown as LineRow[]).map(withStatedUnit);
     if (!lines.length)
       return {
         ok: false,
@@ -1399,7 +1408,9 @@ export class DeliveryStockService {
           status: 500,
           error: `the lines of the documents on delivery ${deliveryId} could not be read: ${read.error.message}`,
         };
-      const rows = ((read.data ?? []) as unknown as LineRow[]).map((line) => {
+      // R4 (#1550): a line stored as `each` whose paper printed a weight or volume
+      // counts in it; then a case line takes the door's pack (#1366 chain).
+      const rows = ((read.data ?? []) as unknown as LineRow[]).map(withStatedUnit).map((line) => {
         if (!invoiceSet.has(line.document_id) || line.line_no == null) return line;
         const withPack = withTheDoorsPack(line, doorPacks.get(`${line.document_id}:${line.line_no}`));
         if (withPack.pack_from_door != null && line.inventory_id)

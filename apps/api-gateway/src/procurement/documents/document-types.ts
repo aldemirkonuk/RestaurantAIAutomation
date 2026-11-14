@@ -86,6 +86,10 @@ export const UOMS = [
   "liter",
   "kg",
   "g",
+  "lb",
+  "oz",
+  "gal",
+  "floz",
 ] as const;
 export type Uom = (typeof UOMS)[number];
 
@@ -102,15 +106,45 @@ export type Uom = (typeof UOMS)[number];
  * to another weight, by `massFactor`, into the unit the house item is kept in
  * (ADR 0070: integer quantities, the unit belongs to the item).
  */
-export const MASS_UOMS = ["kg", "g"] as const;
+export const MASS_UOMS = ["kg", "g", "lb", "oz"] as const;
 export type MassUom = (typeof MASS_UOMS)[number];
 
 export function isMass(u: unknown): u is MassUom {
-  return u === "kg" || u === "g";
+  return (MASS_UOMS as readonly unknown[]).includes(u);
 }
 
-/** Grams in one of a weight unit, the item's `mg` included (`restaurant_inventory.uom`). */
-const GRAMS: Readonly<Record<string, number>> = { kg: 1000, g: 1, mg: 0.001 };
+/**
+ * US units (r36 invoices R4). A US food invoice prints `10 LB`, `16 OZ`,
+ * `4 GAL` or `64 FL OZ`; the vocabulary had none of them, so the reader filed
+ * the line as `each` and the door booked `10 LB` of chicken into an item kept
+ * in grams as 10 g. A line may now say `lb` or `oz` (weights) and `gal` or
+ * `floz` (volumes); `procurement_document_lines.uom` and `price_base_uom`
+ * accept them (migration 20271114203700). The ITEM stays metric (ADR 0070):
+ * these convert, by the exact legal definitions below, into the item's g, kg,
+ * mg, ml or l, and never into bottles.
+ *
+ * `oz` alone is the avoirdupois ounce, a weight; a fluid ounce is `floz`. An
+ * `oz` line into an item kept in ml is refused by name (a weight is not a
+ * volume), never read as fluid ounces. `gal` is the US gallon: the houses that
+ * print it are US houses, and the imperial gallon is not a unit any of them buys in.
+ */
+export const IMPERIAL_UOMS = ["lb", "oz", "gal", "floz"] as const;
+
+export function isImperial(u: unknown): boolean {
+  return (IMPERIAL_UOMS as readonly unknown[]).includes(u);
+}
+
+/**
+ * Grams in one of a weight unit, the item's `mg` included (`restaurant_inventory.uom`).
+ * `lb` is the international avoirdupois pound, exactly 453.59237 g; `oz` is 1/16 of it.
+ */
+const GRAMS: Readonly<Record<string, number>> = {
+  kg: 1000,
+  g: 1,
+  mg: 0.001,
+  lb: 453.59237,
+  oz: 28.349523125,
+};
 
 /**
  * How many `to` make one `from`, both weights, or null when either is not a
@@ -126,7 +160,63 @@ export function massFactor(from: string, to: string): number | null {
  * Volumes (r21): an item is kept in `ml` (or `l` on an older row); a line
  * measures in `liter`. `5 liter @ 120` into ml was booked as 5 ml at 120.
  */
-const MILLILITRES: Readonly<Record<string, number>> = { liter: 1000, l: 1000, ml: 1 };
+const MILLILITRES: Readonly<Record<string, number>> = {
+  liter: 1000,
+  l: 1000,
+  ml: 1,
+  // The US gallon is exactly 231 cubic inches; a US fluid ounce is 1/128 of it.
+  gal: 3785.411784,
+  floz: 29.5735295625,
+};
+
+/** The units a LINE may measure a volume in: `liter`, and the US `gal` and `floz` (R4). */
+export const VOLUME_LINE_UOMS = ["liter", "gal", "floz"] as const;
+
+export function isVolumeLineUnit(u: unknown): u is (typeof VOLUME_LINE_UOMS)[number] {
+  return (VOLUME_LINE_UOMS as readonly unknown[]).includes(u);
+}
+
+/**
+ * A line converted into the item's unit. A metric line is booked only when it
+ * is a whole number of the item's unit (ADR 0070: `2.5 kg` into kg is refused,
+ * not rounded). A US line can never be whole (1 lb is 453.59237 g), so into
+ * the FINEST unit a house keeps (g, mg, ml) it is rounded to the nearest one
+ * and says so: half a gram or half a millilitre is below what any kitchen
+ * scale or jug reads, and the lot's cost is still the paper's money over what
+ * was booked. Into kg or l it is refused unless whole, as a metric line is:
+ * `10 lb` is 4.536 kg, and 5 kg would be 10% wrong.
+ */
+export function inItemUnit(
+  n: number,
+  lineUom: string,
+  itemUom: string,
+): { ok: true; qty: number; exact: number; rounded: boolean } | { ok: false; exact: number | null } {
+  const f = massFactor(lineUom, itemUom) ?? volumeFactor(lineUom, itemUom);
+  if (f == null) return { ok: false, exact: null };
+  const exact = n * f;
+  const whole = Math.round(exact);
+  if (Math.abs(exact - whole) <= 1e-9) return { ok: true, qty: whole, exact, rounded: false };
+  if (isImperial(lineUom) && FINEST.has(itemUom)) return { ok: true, qty: whole, exact, rounded: true };
+  return { ok: false, exact };
+}
+
+/** The finest weight and volume a house item is kept in (`restaurant_inventory_uom_check`). */
+const FINEST: ReadonlySet<string> = new Set(["g", "mg", "ml"]);
+
+/**
+ * The unit a stored line really counts in (R4). Before the US units existed the
+ * reader filed `10 LB` as `each` and kept the paper's glyph in `printed.uom`
+ * (audit D1). Such a line is read by its printed weight or volume, so a row
+ * stored before this change books 10 lb, not 10 pieces or 10 g. Any other line
+ * is returned unchanged; an unmapped glyph is still left to the refusals that
+ * already read it.
+ */
+export function withStatedUnit<T extends { uom?: string | null; printed?: unknown }>(line: T): T {
+  if (line.uom !== "each") return line;
+  const p = line.printed && typeof line.printed === "object" ? (line.printed as Record<string, unknown>).uom : null;
+  const said = typeof p === "string" ? normalizeUom(p) : null;
+  return said && (isMass(said) || isVolumeLineUnit(said)) ? { ...line, uom: said } : line;
+}
 
 /** True for an item unit that is a volume: `ml` or `l` (`restaurant_inventory.uom`). */
 export function isVolumeItemUnit(u: unknown): u is "ml" | "l" {
@@ -303,6 +393,31 @@ export function normalizeUom(raw?: string | null): Uom | null {
     case "gramm":
     case "gramme":
       return "g";
+    // US units (R4). `#` is how a US produce or meat invoice prints a pound.
+    case "lb":
+    case "lbs":
+    case "lbr": // UN/ECE Rec 20 `LBR`, pound.
+    case "pound":
+    case "pounds":
+    case "#":
+      return "lb";
+    case "oz":
+    case "ozs":
+    case "onz": // UN/ECE Rec 20 `ONZ`, ounce (avoirdupois).
+    case "ounce":
+    case "ounces":
+      return "oz";
+    case "gal":
+    case "gals":
+    case "gll": // UN/ECE Rec 20 `GLL`, US gallon.
+    case "gallon":
+    case "gallons":
+      return "gal";
+    case "floz": // `fl oz`, `fl. oz.`, `FL-OZ`: spaces, dots and dashes folded above.
+    case "oza": // UN/ECE Rec 20 `OZA`, US fluid ounce.
+    case "fluidounce":
+    case "fluidounces":
+      return "floz";
     default:
       return null;
   }
@@ -338,13 +453,17 @@ export function toBottles(qty: number, uom: Uom, packSize = 1): number {
     case "liter":
     case "kg":
     case "g":
+    case "lb":
+    case "oz":
+    case "gal":
+    case "floz":
       return n;
   }
 }
 
 /** True when two quantities are in units that can be meaningfully compared. */
 export function comparableUnits(a: Uom, b: Uom): boolean {
-  const opaque = (u: Uom) => u === "keg" || u === "liter" || isMass(u);
+  const opaque = (u: Uom) => u === "keg" || isVolumeLineUnit(u) || isMass(u);
   if (opaque(a) || opaque(b)) return a === b;
   return true;
 }

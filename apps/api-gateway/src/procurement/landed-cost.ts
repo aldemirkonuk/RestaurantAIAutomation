@@ -214,6 +214,16 @@ export function unitNoun(unit: string | null | undefined): string {
       return "keg";
     case "liter":
       return "liter";
+    // A volume item is costed per one of ITS unit (r21), and a US volume
+    // line per gallon or fluid ounce (r36 R4); none of them is a bottle.
+    case "ml":
+      return "milliliter";
+    case "l":
+      return "liter";
+    case "gal":
+      return "gallon";
+    case "floz":
+      return "fluid ounce";
     default:
       return "bottle";
   }
