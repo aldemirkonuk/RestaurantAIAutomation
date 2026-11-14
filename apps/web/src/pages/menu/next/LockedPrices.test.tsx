@@ -208,6 +208,28 @@ describe('Locked prices', () => {
     expect(await screen.findByTestId('locked-prices-said')).toHaveTextContent('The bottle price is now 58.00 (it was 50.00) and stays locked.');
   });
 
+  it('r26: Enter in the new-price box saves; Escape closes the form, sends nothing and gives the cursor back', async () => {
+    mockList.mockResolvedValue(readout());
+    mockChange.mockResolvedValue({ ...act('The bottle price is now 58.00 (it was 50.00) and stays locked.'), outcome: 'changed_and_locked' });
+    mount(true);
+    const row = (await screen.findAllByTestId('locked-price-row'))[0];
+    const opener = within(row).getByRole('button', { name: 'Change and keep locked' });
+    fireEvent.click(opener);
+    const box = within(row).getByLabelText('New bottle price for Barolo');
+    expect(box).toHaveFocus();
+    fireEvent.change(box, { target: { value: '61' } });
+    fireEvent.keyDown(box, { key: 'Escape' });
+    expect(within(row).queryByLabelText('New bottle price for Barolo')).not.toBeInTheDocument();
+    expect(opener).toHaveFocus();
+    expect(mockChange).not.toHaveBeenCalled();
+    fireEvent.click(opener);
+    const again = within(row).getByLabelText('New bottle price for Barolo');
+    expect(again).toHaveValue('');
+    fireEvent.change(again, { target: { value: '58' } });
+    fireEvent.submit(again.closest('form')!);
+    await waitFor(() => expect(mockChange).toHaveBeenCalledWith('lock-a', 58));
+  });
+
   it('L24: release is one tap, and its sentence (the price stays) is shown', async () => {
     mockList.mockResolvedValue(readout());
     mockRelease.mockResolvedValue(act('The lock is released. The current menu reads 55.00; the house price stays 50.00 until a menu is chosen or a manager changes it.'));

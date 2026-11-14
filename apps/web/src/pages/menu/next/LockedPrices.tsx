@@ -17,7 +17,7 @@
  *   GET  /pricing/advice                  the house's wines, to choose a move target
  * The gateway refuses staff whatever this page offers.
  */
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   changeLockedPrice,
@@ -105,6 +105,29 @@ function LockRow({ l, canManage, onSaid }: { l: PriceLock; canManage: boolean; o
   const busy = change.isPending || release.isPending || move.isPending;
   const failed = change.error ?? release.error ?? move.error;
 
+  // r26: Enter already saves (each is a <form>); Escape now closes the open
+  // form without saving, as it does in the menu's own price boxes, and the
+  // cursor goes back to the button that opened it. Opening "Change and keep
+  // locked" puts the cursor in its price box (a move starts at its wine list).
+  const changeButton = useRef<HTMLButtonElement>(null);
+  const moveButton = useRef<HTMLButtonElement>(null);
+  const priceBox = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (mode === 'change') priceBox.current?.focus();
+  }, [mode]);
+  const close = () => {
+    const back = mode === 'move' ? moveButton.current : changeButton.current;
+    setMode('none');
+    setPrice('');
+    setTarget('');
+    setFormError(null);
+    back?.focus();
+  };
+  const onFormKey = (e: KeyboardEvent<HTMLFormElement>) => {
+    if (e.key !== 'Escape' || e.nativeEvent.isComposing || busy) return;
+    e.preventDefault();
+    close();
+  };
   const submitChange = (e: FormEvent) => {
     e.preventDefault();
     const p = readPrice(price);
@@ -143,11 +166,11 @@ function LockRow({ l, canManage, onSaid }: { l: PriceLock; canManage: boolean; o
       ) : null}
       {canManage ? (
         <div className="cl-row-controls" style={{ marginTop: 6 }}>
-          <button type="button" className="cl-btn cl-focus" disabled={busy} onClick={() => setMode(mode === 'change' ? 'none' : 'change')}>
+          <button ref={changeButton} type="button" className="cl-btn cl-focus" disabled={busy} onClick={() => setMode(mode === 'change' ? 'none' : 'change')}>
             Change and keep locked
           </button>
           {l.dormant === true ? (
-            <button type="button" className="cl-btn cl-focus" disabled={busy} onClick={() => setMode(mode === 'move' ? 'none' : 'move')}>
+            <button ref={moveButton} type="button" className="cl-btn cl-focus" disabled={busy} onClick={() => setMode(mode === 'move' ? 'none' : 'move')}>
               Move to another wine
             </button>
           ) : null}
@@ -163,10 +186,10 @@ function LockRow({ l, canManage, onSaid }: { l: PriceLock; canManage: boolean; o
         </div>
       ) : null}
       {mode === 'change' ? (
-        <form onSubmit={submitChange} className="cl-row-controls" style={{ marginTop: 6 }}>
+        <form onSubmit={submitChange} onKeyDown={onFormKey} className="cl-row-controls" style={{ marginTop: 6 }}>
           <label className="cl-said">
             New {l.kind} price{' '}
-            <input className="cl-field" inputMode="decimal" aria-label={`New ${l.kind} price for ${l.wine.name ?? 'this wine'}`} value={price} onChange={(e) => setPrice(e.target.value)} />
+            <input ref={priceBox} className="cl-field" inputMode="decimal" enterKeyHint="done" aria-label={`New ${l.kind} price for ${l.wine.name ?? 'this wine'}`} value={price} onChange={(e) => setPrice(e.target.value)} />
           </label>
           <button type="submit" className="cl-btn cl-ink cl-focus" disabled={busy}>
             {change.isPending ? 'Saving…' : 'Save, keep locked'}
@@ -174,7 +197,7 @@ function LockRow({ l, canManage, onSaid }: { l: PriceLock; canManage: boolean; o
         </form>
       ) : null}
       {mode === 'move' ? (
-        <form onSubmit={submitMove} className="cl-row-controls" style={{ marginTop: 6 }}>
+        <form onSubmit={submitMove} onKeyDown={onFormKey} className="cl-row-controls" style={{ marginTop: 6 }}>
           {wines.isLoading ? (
             <span className="cl-note">Reading this house's wines…</span>
           ) : wines.isError ? (
@@ -196,7 +219,7 @@ function LockRow({ l, canManage, onSaid }: { l: PriceLock; canManage: boolean; o
           )}
           <label className="cl-said">
             at{' '}
-            <input className="cl-field" inputMode="decimal" aria-label="Price the moved lock holds" value={price} onChange={(e) => setPrice(e.target.value)} />
+            <input className="cl-field" inputMode="decimal" enterKeyHint="done" aria-label="Price the moved lock holds" value={price} onChange={(e) => setPrice(e.target.value)} />
           </label>
           <button type="submit" className="cl-btn cl-ink cl-focus" disabled={busy || wines.isLoading}>
             {move.isPending ? 'Moving…' : 'Move the lock'}
