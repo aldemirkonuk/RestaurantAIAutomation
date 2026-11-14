@@ -413,6 +413,16 @@ describe('chips', () => {
     expect(screen.queryByTestId('house-price')).toBeNull();
     expect(screen.getByTestId('inv-row-i1').querySelector('td[data-label="Your price"]')!.textContent).toContain('€');
   });
+
+  it('offers the POS mapping only to owners and managers (R11-06)', () => {
+    mock.data = data({ rows: [row()], canManage: true });
+    const { unmount } = renderPage();
+    expect(screen.getByRole('button', { name: 'Map POS buttons' })).toBeTruthy();
+    unmount();
+    mock.data = data({ rows: [row()], canManage: false });
+    renderPage();
+    expect(screen.queryByRole('button', { name: 'Map POS buttons' })).toBeNull();
+  });
 });
 
 describe('The table says what was read (INV-W13, W14, W15)', () => {

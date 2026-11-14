@@ -28,6 +28,8 @@ import { VendorSendAuthorityModule } from "../organizations/vendor-send-authorit
 import { IntegrationsOauthService } from "../integrations/integrations-oauth.service";
 import { HouseLettersController } from "./letters/house-letters.controller";
 import { HouseLettersService } from "./letters/house-letters.service";
+import { LetterDesignsController } from "./designs/letter-designs.controller";
+import { LetterDesignsService } from "./designs/letter-designs.service";
 import { HouseLettersCron } from "./letters/house-letters.cron";
 import { HouseSenderService } from "./letters/house-sender.service";
 // W25 / ADR 0313 (4a-i) — the order-request letter's renderer and its service door.
@@ -66,6 +68,8 @@ import { OrganizationsService } from "../organizations/organizations.service";
   controllers: [
     CommunicationsController,
     HouseLettersController,
+    // ADR 0357 — the house's letter designs.
+    LetterDesignsController,
     // ADR 0149 #19 — POST /communications/email, two locked doors.
     RelayEmailController,
     // W25 / ADR 0313 — POST /internal/letters/order-request, ServiceKeyGuard only.
@@ -118,6 +122,7 @@ import { OrganizationsService } from "../organizations/organizations.service";
     // ADR 0118 — the house's own letters.
     HouseSenderService,
     HouseLettersService,
+    LetterDesignsService,
     HouseLettersCron,
     /**
      * ADR 0118, receive half — the house's own inbox reaches the book.

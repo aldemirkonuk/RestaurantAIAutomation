@@ -434,6 +434,87 @@
     "admin",
     "null"
   ],
+  "GET /pos-hub/providers (PosHubController.getProviders)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "GET /pos-hub/status/:restaurantId (PosHubController.getStatus)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "POST /pos-hub/webhook/:provider/:restaurantId (PosHubController.webhook)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "POST /pos-hub/import/:restaurantId (PosHubController.importChecks)": [
+    "owner",
+    "manager"
+  ],
+  "GET /pos-hub/mappings/:restaurantId (PosHubController.listMappings)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "POST /pos-hub/mappings/:restaurantId (PosHubController.upsertMapping)": [
+    "owner",
+    "manager"
+  ],
+  "GET /pos-hub/mappings/:restaurantId/sale-unit-review (PosHubController.saleUnitReview)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "POST /pos-hub/mappings/:restaurantId/sale-unit (PosHubController.setSaleUnitBatch)": [
+    "owner",
+    "manager"
+  ],
+  "POST /pos-hub/mappings/:restaurantId/:mappingId/sale-unit (PosHubController.setSaleUnit)": [
+    "owner",
+    "manager"
+  ],
+  "POST /pos-hub/catalog-match/:restaurantId (PosHubController.catalogMatch)": [
+    "owner",
+    "manager"
+  ],
+  "GET /pos-hub/catalog-match/:restaurantId/proposals (PosHubController.listProposals)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "POST /pos-hub/catalog-match/:restaurantId/proposals/approve (PosHubController.approveProposals)": [
+    "owner",
+    "manager"
+  ],
+  "POST /pos-hub/catalog-match/:restaurantId/proposals/:proposalId/approve (PosHubController.approveProposal)": [
+    "owner",
+    "manager"
+  ],
+  "POST /pos-hub/catalog-match/:restaurantId/proposals/:proposalId/reject (PosHubController.rejectProposal)": [
+    "owner",
+    "manager"
+  ],
+  "GET /pos-hub/unresolved/:restaurantId (PosHubController.listUnresolved)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
   "GET /price-index/status (PriceIndexController.status)": [
     "owner",
     "manager"
@@ -506,6 +587,47 @@
     "manager"
   ],
   "POST /promotions/:id/restore (PromotionsController.restore)": [
+    "owner",
+    "manager"
+  ],
+  "GET /recipes/:restaurantId/cocktails/:cocktailId (RecipesController.getRecipe)": "open",
+  "GET /recipes/:restaurantId/cocktails/:cocktailId/versions (RecipesController.listVersions)": "open",
+  "GET /recipes/:restaurantId/cocktails/:cocktailId/versions/:versionId (RecipesController.readVersion)": "open",
+  "PUT /recipes/:restaurantId/cocktails/:cocktailId (RecipesController.saveRecipe)": [
+    "owner",
+    "manager"
+  ],
+  "POST /recipes/:restaurantId/cocktails/:cocktailId/cost-preview (RecipesController.previewCost)": [
+    "owner",
+    "manager"
+  ],
+  "GET /recipes/:restaurantId/shelf (RecipesController.shelf)": "open",
+  "GET /recipes/:restaurantId/dishes (DishesController.listDishes)": "open",
+  "POST /recipes/:restaurantId/dishes (DishesController.createDish)": [
+    "owner",
+    "manager"
+  ],
+  "PATCH /recipes/:restaurantId/dishes/:dishId (DishesController.updateDish)": [
+    "owner",
+    "manager"
+  ],
+  "DELETE /recipes/:restaurantId/dishes/:dishId (DishesController.removeDish)": [
+    "owner",
+    "manager"
+  ],
+  "GET /recipes/:restaurantId/dishes/:dishId (DishesController.getDishRecipe)": "open",
+  "GET /recipes/:restaurantId/dishes/:dishId/versions (DishesController.listDishVersions)": "open",
+  "GET /recipes/:restaurantId/dishes/:dishId/versions/:versionId (DishesController.readDishVersion)": "open",
+  "PUT /recipes/:restaurantId/dishes/:dishId (DishesController.saveDishRecipe)": [
+    "owner",
+    "manager"
+  ],
+  "POST /recipes/:restaurantId/dishes/:dishId/cost-preview (DishesController.previewDishCost)": [
+    "owner",
+    "manager"
+  ],
+  "GET /recipes/:restaurantId/items/:itemId/dishes (DishesController.dishesUsingItem)": "open",
+  "POST /recipes/:restaurantId/shelf/match (DishesController.matchShelf)": [
     "owner",
     "manager"
   ],
@@ -631,6 +753,34 @@
     "owner",
     "manager",
     "staff"
+  ],
+  "GET /communications/designs/blocks (LetterDesignsController.blocks)": "open",
+  "GET /communications/designs (LetterDesignsController.list)": "open",
+  "POST /communications/designs (LetterDesignsController.create)": [
+    "owner",
+    "manager"
+  ],
+  "GET /communications/designs/:id (LetterDesignsController.one)": "open",
+  "PATCH /communications/designs/:id (LetterDesignsController.update)": [
+    "owner",
+    "manager"
+  ],
+  "POST /communications/designs/:id/publish (LetterDesignsController.publish)": [
+    "owner",
+    "manager"
+  ],
+  "GET /communications/designs/:id/versions (LetterDesignsController.versions)": "open",
+  "POST /communications/designs/:id/restore (LetterDesignsController.restore)": [
+    "owner",
+    "manager"
+  ],
+  "POST /communications/designs/:id/duplicate (LetterDesignsController.duplicate)": [
+    "owner",
+    "manager"
+  ],
+  "DELETE /communications/designs/:id (LetterDesignsController.remove)": [
+    "owner",
+    "manager"
   ],
   "GET /floor/me/notes (FloorStaffController.notes)": [
     "owner",

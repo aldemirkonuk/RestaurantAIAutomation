@@ -68,6 +68,7 @@ describe('the header names the page by its room, or not at all', () => {
   it('names rooms, records and the cellar registers', () => {
     expect(roomNameFor('/')).toBe('Dashboard');
     expect(roomNameFor('/orders')).toBe('Orders');
+    expect(roomNameFor('/dishes')).toBe('Dishes');
     expect(roomNameFor('/documents/123')).toBe('Document');
     expect(roomNameFor('/wines')).toBe('Wines');
     expect(roomNameFor('/documents-reports')).toBe('Documents & Reports');
