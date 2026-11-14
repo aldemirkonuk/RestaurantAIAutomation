@@ -57,6 +57,7 @@ import {
   type PurchaseLine,
 } from './useInventoryNextData';
 import { NameThisWine } from './NameThisWine';
+import { OpeningCost } from './OpeningCost';
 
 type ReconcileFigures = { live: number; shadow: number };
 const HOLDS = new WeakMap<QueryClient, Map<string, ReconcileFigures[]>>();
@@ -374,6 +375,7 @@ export default function RowDropdown(props: RowDropdownProps) {
             kind={props.kind ?? null}
             canManage={canManage}
             settled={props.settled ?? null}
+            restaurantId={props.restaurantId}
           />
         ) : null}
         </div>
@@ -766,6 +768,7 @@ function WhatItHasCost({
   kind,
   canManage,
   settled,
+  restaurantId = null,
 }: {
   row: InvRow;
   currency: HouseCurrency;
@@ -774,6 +777,8 @@ function WhatItHasCost({
   kind: string | null;
   canManage: boolean;
   settled: SettledProp;
+  /** The house, for "What did these cost?" (stock from no delivery, r36 R1). */
+  restaurantId?: string | null;
 }) {
   // A food or supply is costed, not priced (ADR 0051/0053): no btl · glass price,
   // margin, market or auction lots, and its costs, stored a g, ml or piece
@@ -936,6 +941,7 @@ function WhatItHasCost({
           </KV>
         )}
       </dl>
+      <OpeningCost restaurantId={restaurantId} inventoryId={row.id} title={row.name ?? 'this good'} uom={uom} currency={currency} canManage={canManage} />
     </section>
   );
 }
