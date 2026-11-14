@@ -6,7 +6,7 @@
  * in the house's money and the house's way of writing a share.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import type { ReactNode } from 'react';
@@ -56,7 +56,7 @@ vi.mock('./useCellarNextData', () => ({
   }),
 }));
 
-import CocktailRegister from './CocktailRegister';
+import CocktailRegister, { DRINK_ALLERGENS_UNREAD } from './CocktailRegister';
 
 const figures = [
   { cocktailId: GT, price: 12, hasRecipe: true, yieldServes: 1, lineCount: 2, cost: cost({}) },
@@ -157,13 +157,67 @@ describe('the cocktail list cost columns', () => {
     expect(text(`drink-share-${GT}`)).toBe('—');
   });
 
-  it('staff see neither column and the figures are never read', async () => {
+  it('staff see neither column; the figures are read only for their allergens', async () => {
     h.role = 'staff';
     mount();
     expect(screen.queryByRole('columnheader', { name: 'Cost per serve' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: 'Pour cost' })).toBeNull();
     expect(screen.queryByTestId(`drink-cost-${GT}`)).toBeNull();
-    await waitFor(() => expect(h.get).toHaveBeenCalledWith('/settings/currency'));
-    expect(h.get.mock.calls.map((c) => c[0])).not.toContain(FIGURES);
+    // The gateway sends staff no price and no cost; the read carries the allergens (gap 8).
+    await waitFor(() => expect(h.get).toHaveBeenCalledWith(FIGURES));
+    expect(screen.queryByTestId(`drink-share-${GT}`)).toBeNull();
+  });
+});
+
+/** r36 recipes audit, gap 8: the drinks' allergens, for every role. */
+describe('the cocktail list allergens', () => {
+  const free = { gluten: 'free', crustaceans: 'free', eggs: 'free', fish: 'free', peanuts: 'free', soy: 'free', milk: 'free', tree_nuts: 'free', celery: 'free', mustard: 'free', sesame: 'free', sulphites: 'free', lupin: 'free', molluscs: 'free' };
+  const withAllergens = [
+    { ...figures[0], price: null, cost: null, allergens: { readable: true, status: free, unstatedBy: [] } },
+    { ...figures[1], price: null, cost: null, allergens: { readable: true, status: { ...free, eggs: 'contains' }, unstatedBy: [] } },
+    { ...figures[2], price: null, cost: null, allergens: null },
+    { ...figures[3], price: null, cost: null, allergens: { readable: true, status: { ...free, eggs: 'not_stated' }, unstatedBy: ['Grapefruit soda'] } },
+  ];
+  const serveWith = (rows: unknown) =>
+    h.get.mockImplementation(async (url: string) => {
+      if (url === '/settings/currency') return { data: { restaurantId: RID, code: 'TRY', country: null, readable: true, reason: null, statedAt: null } };
+      if (url === FIGURES) return { data: { drinks: rows } };
+      throw new Error(`unexpected GET ${url}`);
+    });
+
+  it('staff see each drink’s allergens', async () => {
+    h.role = 'staff';
+    serveWith(withAllergens);
+    mount();
+    expect(screen.getByRole('columnheader', { name: 'Allergens' })).toBeInTheDocument();
+    await waitFor(() => expect(text(`allergens-${SOUR}`)).toBe('Contains eggs'));
+    expect(text(`allergens-${GT}`)).toBe('Free of all 14');
+    expect(text(`allergens-${BARE}`)).toBe('—');
+    expect(text(`allergens-${PART}`)).toBe('Not known: Grapefruit soda says nothing');
+  });
+
+  it('checking eggs hides only the drink that states it free', async () => {
+    h.role = 'staff';
+    serveWith(withAllergens);
+    mount();
+    await waitFor(() => expect(text(`allergens-${SOUR}`)).toBe('Contains eggs'));
+    fireEvent.change(screen.getByLabelText(/Check an allergen/), { target: { value: 'eggs' } });
+    expect(screen.queryByTestId(`allergens-${GT}`)).toBeNull();
+    expect(screen.getByTestId(`allergens-${SOUR}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`allergens-${BARE}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`allergens-${PART}`)).toBeInTheDocument();
+    expect(screen.getByTestId('allergen-check-said')).toHaveTextContent('1 drink says it is free of eggs and is hidden.');
+  });
+
+  it('a failed read is said to staff, and no row is hidden as free', async () => {
+    h.role = 'staff';
+    h.get.mockImplementation(async (url: string) => {
+      if (url === '/settings/currency') return { data: { restaurantId: RID, code: 'TRY', country: null, readable: true, reason: null, statedAt: null } };
+      throw new Error('boom');
+    });
+    mount();
+    expect(await screen.findByTestId('cocktails-allergens-unread')).toHaveTextContent(DRINK_ALLERGENS_UNREAD);
+    fireEvent.change(screen.getByLabelText(/Check an allergen/), { target: { value: 'eggs' } });
+    expect(screen.getByTestId(`allergens-${GT}`)).toBeInTheDocument();
   });
 });

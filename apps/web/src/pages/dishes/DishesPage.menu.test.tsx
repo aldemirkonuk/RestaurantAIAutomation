@@ -97,7 +97,7 @@ describe('/dishes Menu column', () => {
   it('the column sits right after Price', async () => {
     mount();
     await waitFor(() => expect(screen.getByRole('columnheader', { name: 'Menu' })).toBeInTheDocument());
-    expect(screen.getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['Dish', 'Section', 'Price', 'Menu', 'Cost per plate', 'Food cost']);
+    expect(screen.getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['Dish', 'Section', 'Price', 'Menu', 'Cost per plate', 'Food cost', 'Allergens']);
   });
 
   it('with no current menu there is no column and nothing is said', async () => {

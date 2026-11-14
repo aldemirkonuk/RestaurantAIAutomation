@@ -269,6 +269,17 @@ export const recipesApi = {
   },
 };
 
+export type AllergenStatus = 'contains' | 'may_contain' | 'free' | 'not_stated';
+
+/**
+ * What a list row says of its recipe's allergens (dishes.service.ts
+ * RowAllergens; r36 recipes audit, gap 8). Every role reads it: allergens are
+ * not money. `readable: false` is a failed read, never allergen-free.
+ */
+export type RowAllergens =
+  | { readable: true; status: Record<string, AllergenStatus>; unstatedBy: string[] }
+  | { readable: false };
+
 /** One row of GET /dishes. Price and cost are null for staff. */
 export interface DishListRow {
   id: string;
@@ -286,6 +297,8 @@ export interface DishListRow {
     complete: boolean;
     partial: number;
   };
+  /** Null when the dish has no recipe; absent from an older gateway. */
+  allergens?: RowAllergens | null;
 }
 
 /** A drink on the house's list with its figures (GET /recipes/:rid/drinks/figures). */
@@ -297,6 +310,8 @@ export interface DrinkFigureRow {
   yieldServes: number | null;
   lineCount: number;
   cost: DishListRow['cost'];
+  /** Null when the drink has no recipe; absent from an older gateway. */
+  allergens?: RowAllergens | null;
 }
 
 /**
