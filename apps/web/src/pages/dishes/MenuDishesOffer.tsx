@@ -37,6 +37,12 @@ export const MENU_DISHES_UNREAD = 'Your menu’s dishes could not be read just n
  */
 export const NO_CURRENT_MENU = 'No menu is current yet, so none of its dishes is offered here. Choose your menu on';
 
+/**
+ * The most names one run sends: the gateway takes 500 at a time. A menu with
+ * more is added 500 at a time, and the offer comes back with the rest.
+ */
+export const PER_RUN = 500;
+
 /** How many names are shown before "and N more". */
 const SHOWN = 3;
 
@@ -91,7 +97,7 @@ export default function MenuDishesOffer() {
   const run = async () => {
     setSaid(null);
     try {
-      const out = await add.mutateAsync(names);
+      const out = await add.mutateAsync(names.slice(0, PER_RUN));
       setSaid({ text: addedWords(out), alert: out.notAdded.length > 0 });
     } catch (e) {
       setSaid(

@@ -92,6 +92,17 @@ describe('/dishes offers the menu’s dishes', () => {
     expect(screen.queryByRole('button', { name: /from the menu|menu’s/ })).toBeNull();
   });
 
+  it('sends at most 500 names in one run, the gateway’s limit', async () => {
+    h.offer = Array.from({ length: 501 }, (_, i) => dish(`Plate ${i}`, null, 1));
+    h.post.mockResolvedValue({ data: { added: [], already: [], notAdded: [], notOffered: [] } });
+    mount();
+    await userEvent.click(await screen.findByRole('button', { name: 'Add the menu’s 501 dishes' }));
+    await waitFor(() => expect(h.post).toHaveBeenCalledTimes(1));
+    const sent = h.post.mock.calls[0][1].names as string[];
+    expect(sent).toHaveLength(500);
+    expect(sent[499]).toBe('Plate 499');
+  });
+
   it('names a single dish as one', async () => {
     h.offer = [dish('Adana kebap', 'Mains', 420)];
     mount();
