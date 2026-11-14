@@ -39,6 +39,7 @@ import { lockPrice, releasePriceLock } from '../../../services/api/pricing';
 import { formatMoney } from '../../../lib/currency';
 import { useHouseCurrencyCode } from '../../../hooks/queries/useHouseCurrencyCode';
 import { canTakeOff } from './menu-take-off';
+import { MenuLineFix } from './MenuLineFix';
 // Drawn with the cellar's classes wherever it is shown (/menu and onboarding).
 import '../../cellar/next/cellar-next.css';
 
@@ -407,7 +408,7 @@ export function MenuPlan({
             <table className="cl-table" style={{ width: '100%' }} data-testid="menu-plan-prices">
               <thead>
                 <tr>
-                  <th>Wine</th>
+                  <th>Drink</th>
                   <th>Price</th>
                   <th>House now</th>
                   <th>This menu</th>
@@ -481,7 +482,7 @@ export function MenuPlan({
             <table className="cl-table" style={{ width: '100%' }}>
               <thead>
                 <tr>
-                  <th>Wine</th>
+                  <th>Drink</th>
                   <th>Bottle</th>
                   <th>Glass</th>
                 </tr>
@@ -502,6 +503,17 @@ export function MenuPlan({
             </table>
           </div>
         </details>
+      ) : null}
+
+      {canManage && !plan.current ? (
+        <MenuLineFix
+          menuId={menuId}
+          onChanged={(s) => {
+            setSaid(s || null);
+            setMoved(false);
+            refresh();
+          }}
+        />
       ) : null}
 
       <PlanFits
