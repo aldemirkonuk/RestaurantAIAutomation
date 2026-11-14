@@ -834,14 +834,26 @@ export class HouseInboxService {
     startedAt: string | null;
     lastReadAt: string | null;
     lastError: string | null;
+    /**
+     * The address of the mailbox this status is about, as its reading grant
+     * recorded it; null when it recorded none or nothing is read (r36 mail
+     * audit, gap 3). Absent from older gateways.
+     */
+    mailbox: string | null;
+    /** How many live reading grants this house has; the status speaks for the weakest. */
+    mailboxes: number;
   }> {
     const enabled = await this.isEnabled(restaurantId);
     const { data, error } = await this.db.client
       .from("integration_oauth_connections")
-      .select("id, user_id, scopes")
+      .select("id, user_id, scopes, account_email, connected_at")
       .eq("restaurant_id", restaurantId)
       .eq("integration_id", GMAIL_READ_INTEGRATION_ID)
-      .is("revoked_at", null);
+      .is("revoked_at", null)
+      // A fixed order (r36 mail audit, gap 3): two reads of the same house
+      // must speak of the same mailbox, never whichever row came back first.
+      .order("connected_at", { ascending: true })
+      .order("id", { ascending: true });
 
     if (error) {
       return {
@@ -851,16 +863,19 @@ export class HouseInboxService {
         startedAt: null,
         lastReadAt: null,
         lastError: `The reading grants could not be read (${error.message}).`,
+        mailbox: null,
+        mailboxes: 0,
       };
     }
 
-    const rows = (data ?? []) as unknown as Record<string, unknown>[];
-    const withRead = rows.find((r) =>
+    const rows = ((data ?? []) as unknown as Record<string, unknown>[]).filter((r) =>
       (Array.isArray(r.scopes) ? (r.scopes as string[]) : []).includes(
         GMAIL_READ_SCOPE,
       ),
     );
-    if (!withRead) {
+    const addressOf = (r: Record<string, unknown>): string | null =>
+      typeof r.account_email === "string" && r.account_email.trim() ? r.account_email.trim() : null;
+    if (rows.length === 0) {
       return {
         granted: false,
         enabled,
@@ -868,42 +883,70 @@ export class HouseInboxService {
         startedAt: null,
         lastReadAt: null,
         lastError: null,
+        mailbox: null,
+        mailboxes: 0,
       };
     }
 
-    const { data: cursor, error: cursorError } = await this.db.client
+    const { data: cursorData, error: cursorError } = await this.db.client
       .from("house_inbox_cursors")
-      .select("started_at, last_read_at, last_error")
-      .eq("connection_id", String(withRead.id))
-      .maybeSingle();
+      .select("connection_id, started_at, last_read_at, last_error")
+      .in(
+        "connection_id",
+        rows.map((r) => String(r.id)),
+      );
 
     // supabase-js RESOLVES with { data, error }; a discarded error here would
     // make "this grant has never been read" and "the cursor table could not be
     // read" the same three nulls. `granted` stays true — the grant WAS read —
     // and the failure is stated on the line the surface prints.
     if (cursorError) {
+      const first = rows[0];
       this.logger.error(
-        `House inbox: the cursor could not be read for ${withRead.id} — ${cursorError.message}`,
+        `House inbox: the cursors could not be read for ${restaurantId} — ${cursorError.message}`,
       );
       return {
         granted: true,
         enabled,
-        grantOwnerUserId: String(withRead.user_id),
+        grantOwnerUserId: String(first.user_id),
         startedAt: null,
         lastReadAt: null,
         lastError: `Where this grant has been read to could not be read (${cursorError.message}), so "never read" below is unknown rather than an answer.`,
+        mailbox: rows.length === 1 ? addressOf(first) : null,
+        mailboxes: rows.length,
       };
     }
 
-    const c = (cursor ?? {}) as Record<string, unknown>;
+    // THE WEAKEST MAILBOX SPEAKS FOR THE HOUSE (r36 mail audit, gap 3). With
+    // two reading grants, a working one must never hide a failing one: the
+    // line is a health line, and the mailbox that needs a person is the one
+    // it names. A failing read first, then one never read, then the one read
+    // longest ago; the oldest grant breaks a tie.
+    const cursors = new Map<string, Record<string, unknown>>();
+    for (const c of (cursorData ?? []) as unknown as Record<string, unknown>[]) {
+      cursors.set(String(c.connection_id), c);
+    }
+    const rank = (r: Record<string, unknown>): [number, number] => {
+      const c = cursors.get(String(r.id));
+      if (c && typeof c.last_error === "string" && c.last_error) return [0, 0];
+      const read = c && typeof c.last_read_at === "string" ? Date.parse(c.last_read_at) : NaN;
+      if (!Number.isFinite(read)) return [1, 0];
+      return [2, read];
+    };
+    const weakest = rows
+      .map((r, i) => ({ r, i, k: rank(r) }))
+      .sort((a, b) => a.k[0] - b.k[0] || a.k[1] - b.k[1] || a.i - b.i)[0].r;
+    const c = cursors.get(String(weakest.id)) ?? {};
 
     return {
       granted: true,
       enabled,
-      grantOwnerUserId: String(withRead.user_id),
+      grantOwnerUserId: String(weakest.user_id),
       startedAt: (c.started_at as string | null) ?? null,
       lastReadAt: (c.last_read_at as string | null) ?? null,
       lastError: (c.last_error as string | null) ?? null,
+      mailbox: addressOf(weakest),
+      mailboxes: rows.length,
     };
   }
 }
