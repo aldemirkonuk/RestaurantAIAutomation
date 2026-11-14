@@ -5,9 +5,10 @@
  * build". The API modules are replaced (the gateway is not the unit here); the
  * section itself runs for real.
  */
+import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { MenuPlan, chooseFailedSentence, kindWords, notOnFileWords, orderedRows, planSentence } from './MenuPlan';
 import { getMenuPlan, makeMenuCurrent, type MenuPlan as Plan, type PlanLine } from '../../../services/api/menus';
 import { lockPrice, releasePriceLock } from '../../../services/api/pricing';
@@ -485,5 +486,70 @@ describe('a line whose house row was removed is said (r28 G9)', () => {
     expect(within(chianti).queryByTestId('menu-plan-removed')).not.toBeInTheDocument();
     const every = screen.getAllByTestId('menu-plan-line');
     expect(every.filter((r) => within(r).queryByTestId('menu-plan-removed'))).toHaveLength(1);
+  });
+});
+
+describe('r41 R2: the plan just chosen is not worked out again; another open plan is', () => {
+  function Two({ onDone }: { onDone: () => void }) {
+    const [open, setOpen] = useState(true);
+    return (
+      <>
+        {open ? (
+          <MenuPlan
+            menuId="menu-new"
+            canManage
+            onCancel={vi.fn()}
+            onDone={() => {
+              onDone();
+              setOpen(false);
+            }}
+          />
+        ) : null}
+        <MenuPlan menuId="menu-other" canManage onDone={vi.fn()} onCancel={vi.fn()} />
+        <Locks />
+      </>
+    );
+  }
+  const readLocks = vi.fn(async () => ({ locks: [] }));
+  function Locks() {
+    useQuery({ queryKey: ['pricing', 'locks'], queryFn: readLocks });
+    return null;
+  }
+
+  it('making one menu current drops its own plan, and reads the other open plan again', async () => {
+    readLocks.mockClear();
+    mockPlan.mockImplementation(async (id: string) => plan({ menuId: id, fingerprint: `fp-${id}` }));
+    mockMake.mockResolvedValue({ outcome: 'made_current', menuId: 'menu-new', previousMenuIds: [], lines: 2, priceSync: { changed: 1 }, flagged: 0, failed: [] });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const onDone = vi.fn();
+    render(
+      <QueryClientProvider client={client}>
+        <Two onDone={onDone} />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Make it current' })).toHaveLength(2));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Make it current' })[0]);
+    await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
+    // The other menu's plan names what it would replace, which just changed.
+    await waitFor(() => expect(mockPlan.mock.calls.filter(([id]) => id === 'menu-other')).toHaveLength(2));
+    await new Promise((r) => setTimeout(r, 60));
+    expect(mockMake).toHaveBeenCalledWith('menu-new', 'fp-menu-new');
+    // The chosen plan is read once, for the choice, and its answer is dropped.
+    expect(mockPlan.mock.calls.filter(([id]) => id === 'menu-new')).toHaveLength(1);
+    expect(client.getQueryData(['menu', 'plan', 'menu-new'])).toBeUndefined();
+    expect(mockPlan.mock.calls.filter(([id]) => id === 'menu-other')).toHaveLength(2);
+    // The locks a choice may have released are read again.
+    expect(readLocks).toHaveBeenCalledTimes(2);
+  });
+
+  it('a plan a parent keeps on screen is read once more, for what it now shows', async () => {
+    mockPlan.mockImplementation(async (id: string) => plan({ menuId: id, fingerprint: `fp-${id}` }));
+    mockMake.mockResolvedValue({ outcome: 'made_current', menuId: 'menu-new', previousMenuIds: [], lines: 2, priceSync: { changed: 1 }, flagged: 0, failed: [] });
+    const { onDone } = mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
+    await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockPlan).toHaveBeenCalledTimes(2));
+    await new Promise((r) => setTimeout(r, 60));
+    expect(mockPlan).toHaveBeenCalledTimes(2);
   });
 });

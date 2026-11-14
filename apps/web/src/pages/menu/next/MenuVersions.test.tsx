@@ -647,3 +647,47 @@ describe('r36 N9: a kept menu can be put away, and brought back', () => {
     expect(screen.queryByText('No menu has been read yet.')).toBeNull();
   });
 });
+
+/**
+ * r41 R2: one Make it current reads each menu read once more, and never works
+ * out the plan it just chose again. Before this, the plan, the parent and the
+ * read box each invalidated every ['menu'] read, so the gateway recomputed the
+ * plan (8+ database trips, a full inventory read among them) for a menu that
+ * was already current, and re-read the kept list two or three times.
+ */
+describe('r41 R2: a menu made current is read once, and its plan is not worked out again', () => {
+  const settle = () => new Promise((r) => setTimeout(r, 60));
+
+  it('from Menus kept: one plan read, one more list read', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [version()] });
+    mockMake.mockResolvedValue({ outcome: 'made_current', menuId: 'm1', previousMenuIds: [], lines: 42, priceSync: { changed: 40 }, flagged: 2, failed: [] });
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Make the menu read 2026-09-20 current' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
+    expect(await screen.findByText(/This is now the current menu: 42 lines/)).toBeInTheDocument();
+    await waitFor(() => expect(mockList.mock.calls.length).toBeGreaterThanOrEqual(2));
+    await settle();
+    expect(mockMake).toHaveBeenCalledTimes(1);
+    expect(mockPlan).toHaveBeenCalledTimes(1);
+    expect(mockList).toHaveBeenCalledTimes(2);
+  });
+
+  it('from the read box: one plan read, one more list read after the one the read itself caused', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mockImport.mockResolvedValue({ menuId: 'm9', current: false, itemsExtracted: 12, submissionsCreated: 0, items: [], source: { kept: true, failure: null } });
+    mockMake.mockResolvedValue({ outcome: 'made_current', menuId: 'm9', previousMenuIds: [], lines: 12, priceSync: { changed: 12 }, flagged: 0, failed: [] });
+    mount(true);
+    const file = new File(['name,bottle_price\nOpus,60\n'], 'menu.csv', { type: 'text/csv' });
+    fireEvent.change(await screen.findByLabelText('Menu to read'), { target: { files: [file] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Make this the current menu' }));
+    await waitFor(() => expect(mockList.mock.calls.length).toBeGreaterThanOrEqual(2));
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
+    expect(await screen.findByTestId('menu-choice-said')).toHaveTextContent('This is now the current menu: 12 lines');
+    await waitFor(() => expect(mockList.mock.calls.length).toBeGreaterThanOrEqual(3));
+    await settle();
+    expect(mockMake).toHaveBeenCalledTimes(1);
+    expect(mockPlan).toHaveBeenCalledTimes(1);
+    expect(mockList).toHaveBeenCalledTimes(3);
+  });
+});
