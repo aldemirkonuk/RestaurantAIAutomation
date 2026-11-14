@@ -364,8 +364,15 @@ export function nameCarriesYear(description: string | null, vintage: number | nu
 export function costRepairSentences(repair: {
   repaired: readonly unknown[]
   flagged: readonly { kind: 'refused' | 'line_changed'; reason: string }[]
+  /** Items the re-check took from provisional to the agreed price (r33 w2 F2). */
+  posted?: number
 }): string[] {
   const out: string[] = []
+  const p = repair.posted ?? 0
+  if (p > 0)
+    out.push(
+      `Cost posted: ${p} item${p === 1 ? '' : 's'} still provisional ${p === 1 ? 'is' : 'are'} now costed at the agreed price.`,
+    )
   const n = repair.repaired.length
   if (n)
     out.push(
@@ -380,16 +387,33 @@ export function costRepairSentences(repair: {
 /**
  * What a verify response puts on screen (QA 12b): a re-verify's repair, or a
  * first verify's lots that stayed provisional, each with the gateway's reason.
+ *
+ * A re-verify ("Check the cost again") also posts the cost of lots that were
+ * still provisional, such as a door count booked after the first verify
+ * (r33 w2 F2). Those come back in `cost.finalised` and are said as posted,
+ * never as "nothing needed correcting"; a lot it still could not cost is
+ * named with its reason.
  */
+type CostFlagOut = { inventoryId: string; kind: 'refused' | 'line_changed'; reason: string }
 export function costNoticeOf(result: unknown): {
   repaired: readonly unknown[]
-  flagged: { inventoryId: string; kind: 'refused' | 'line_changed'; reason: string }[]
+  flagged: CostFlagOut[]
+  posted?: number
 } | null {
   const r = result as {
-    repair?: { repaired: unknown[]; flagged: { inventoryId: string; kind: 'refused' | 'line_changed'; reason: string }[] } | null
-    cost?: { stillProvisional?: { inventoryId: string; reason: string }[] } | null
+    alreadyVerified?: boolean
+    repair?: { repaired: unknown[]; flagged: CostFlagOut[] } | null
+    cost?: { finalised?: unknown[]; stillProvisional?: { inventoryId: string; reason: string }[] } | null
   } | null | undefined
+  const held = (r?.cost?.stillProvisional ?? []).map((h) => ({ ...h, kind: 'refused' as const }))
+  if (r?.alreadyVerified) {
+    const posted = r.cost?.finalised?.length ?? 0
+    const base = r.repair ?? (posted > 0 || held.length > 0 ? { repaired: [], flagged: [] } : null)
+    if (!base) return null
+    const named = new Set(base.flagged.map((f) => f.inventoryId))
+    const flagged = [...base.flagged, ...held.filter((h) => !named.has(h.inventoryId))]
+    return posted > 0 ? { ...base, flagged, posted } : { ...base, flagged }
+  }
   if (r?.repair) return r.repair
-  const held = r?.cost?.stillProvisional ?? []
-  return held.length ? { repaired: [], flagged: held.map((h) => ({ ...h, kind: 'refused' as const })) } : null
+  return held.length ? { repaired: [], flagged: held } : null
 }
