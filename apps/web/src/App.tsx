@@ -43,8 +43,7 @@ function lazyWithRefresh<T extends ComponentType<any>>(
   )
 }
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
-import { QueryClientProvider } from '@tanstack/react-query'
-import { createAppQueryClient } from './lib/appQueryClient'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppToaster } from './components/mudavym/AppToaster'
 import { AuthProvider } from './contexts/AuthContext'
 import { GroundChoiceSync } from './lib/mudavym/GroundChoiceSync'
@@ -58,6 +57,7 @@ import { RouteHead } from './lib/seo/RouteHead'
 import { RootDoor } from './pages/landing/RootDoor'
 import { RegisterDoor } from './pages/landing/RegisterDoor'
 import { RenamedRoute } from './lib/renamedRoute'
+import { keepFreshWindows } from './lib/freshWindows'
 // SyncStatus disabled — floating bottom-right sync widget (re-enable when needed)
 import { AppOfflineBanner } from './components/mudavym/AppOfflineBanner'
 
@@ -155,9 +155,22 @@ const StudioApprovalQueue = lazyWithRefresh(() => import('./pages/studio/StudioA
 const StudioCertify = lazyWithRefresh(() => import('./pages/studio/StudioCertify'))
 const StudioInviteRedeem = lazyWithRefresh(() => import('./pages/studio/StudioInviteRedeem'))
 
-// The defaults, and the reads that keep their own fresh window, live in
-// lib/appQueryClient.ts (r41 inventory audit gap 5).
-const queryClient = createAppQueryClient()
+// The reads that keep their own fresh window despite 'always' below:
+// lib/freshWindows.ts (r41 inventory audit gap 5).
+const queryClient = keepFreshWindows(new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5_000, // 5s - short enough that page navigations trigger background refetch
+      refetchOnWindowFocus: true, // Refetch when user tabs back
+      refetchOnMount: 'always', // Always refetch on component mount for fresh data
+      retry: 1, // Only retry once
+      throwOnError: false, // Don't throw errors to error boundary
+    },
+    mutations: {
+      throwOnError: false, // Don't throw errors to error boundary
+    },
+  },
+}))
 
 function App() {
   return (

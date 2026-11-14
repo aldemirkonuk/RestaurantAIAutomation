@@ -1,7 +1,7 @@
-import { QueryClient, type QueryKey } from '@tanstack/react-query';
+import type { QueryClient, QueryKey } from '@tanstack/react-query';
 
 /**
- * The app's one QueryClient, and the reads that keep their own fresh window.
+ * The reads that keep their own fresh window on the app's QueryClient.
  *
  * The app refetches every read when a component mounts (`refetchOnMount:
  * 'always'`), so a page never shows a number older than the last screen. That
@@ -39,21 +39,12 @@ export const KEYS_THAT_KEEP_THEIR_FRESH_WINDOW: readonly QueryKey[] = [
   ['inventory', 'research'],
 ];
 
-export function createAppQueryClient(): QueryClient {
-  const client = new QueryClient({
-    defaultOptions: {
-      queries: {
-        staleTime: 5_000, // 5s - short enough that page navigations trigger background refetch
-        refetchOnWindowFocus: true, // Refetch when user tabs back
-        refetchOnMount: 'always', // Always refetch on component mount for fresh data
-        retry: 1, // Only retry once
-        throwOnError: false, // Don't throw errors to error boundary
-      },
-      mutations: {
-        throwOnError: false, // Don't throw errors to error boundary
-      },
-    },
-  });
+/**
+ * Gives each key above `refetchOnMount: true` and returns the same client.
+ * App.tsx wraps its client in this, so its defaults stay where they were. A
+ * query's own `refetchOnMount` still wins over the key's.
+ */
+export function keepFreshWindows(client: QueryClient): QueryClient {
   for (const queryKey of KEYS_THAT_KEEP_THEIR_FRESH_WINDOW) {
     client.setQueryDefaults(queryKey, { refetchOnMount: true });
   }
