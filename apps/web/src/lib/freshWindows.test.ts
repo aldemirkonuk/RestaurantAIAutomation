@@ -50,7 +50,9 @@ describe('keepFreshWindows', () => {
     expect(keepFreshWindows(raw)).toBe(raw);
     expect(raw.getDefaultOptions().queries).toEqual({ staleTime: 5_000, refetchOnMount: 'always' });
     expect(raw.getQueryDefaults(['inventory', 'list', 'rest-1'])).toEqual({});
-    expect(raw.getQueryDefaults(['inventory', 'item', 'rest-1', 'item-1', 'figures'])).toMatchObject({ refetchOnMount: true });
+    // Only when to re-read on mount: each query keeps its own staleTime.
+    expect(raw.getQueryDefaults(['inventory', 'item', 'rest-1', 'item-1', 'figures'])).toEqual({ refetchOnMount: true });
+    expect(raw.getQueryDefaults(['inventory', 'research'])).toEqual({ refetchOnMount: true });
   });
 
   it('names the drawer reads and the item research, and nothing wider', () => {
