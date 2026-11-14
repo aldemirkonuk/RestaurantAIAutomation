@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { failedReadWords, failedReadsSentence, fmtAsOf, readAgainFailed } from './cm-format';
+import { EM, failedReadWords, failedReadsSentence, fmtAsOf, fmtWhen, readAgainFailed } from './cm-format';
 
 /**
  * The same wall-clock time `n` calendar days back. Subtracting n × 86,400,000
@@ -76,5 +76,56 @@ describe('the banner sentence', () => {
     ).toBe(
       'Part of this page could not be read: the conversation book, the letters waiting for a manager and the drafted letters. What you see is as it was at 08:00. That does not mean there is nothing there.',
     );
+  });
+});
+
+describe('fmtWhen: as few words as still place a moment (r36 mail gap 13)', () => {
+  // 14 Nov 2026, 10:00 in Istanbul (UTC+3).
+  const now = new Date('2026-11-14T07:00:00Z');
+
+  it('today is the time, in the zone given', () => {
+    expect(fmtWhen('2026-11-14T06:05:00Z', { zone: 'Europe/Istanbul', now })).toBe('09:05');
+  });
+
+  it('another day this year is the date, with no year', () => {
+    expect(fmtWhen('2026-11-13T09:00:00Z', { zone: 'Europe/Istanbul', now })).toBe('13 Nov');
+  });
+
+  it('another year says the year, so last year never reads as this year', () => {
+    expect(fmtWhen('2025-11-14T09:00:00Z', { zone: 'Europe/Istanbul', now })).toBe('14 Nov 2025');
+  });
+
+  it('withTime adds the time to an earlier day, so a thread\'s letters of one day can be told apart', () => {
+    expect(fmtWhen('2026-11-13T09:00:00Z', { zone: 'Europe/Istanbul', now, withTime: true })).toBe('13 Nov, 12:00');
+    expect(fmtWhen('2025-11-14T21:30:00Z', { zone: 'Europe/Istanbul', now, withTime: true })).toBe('15 Nov 2025, 00:30');
+    // Today is still the time alone.
+    expect(fmtWhen('2026-11-14T06:05:00Z', { zone: 'Europe/Istanbul', now, withTime: true })).toBe('09:05');
+  });
+
+  it("'today' is the house's day, not the browser's or UTC's", () => {
+    // 22:30 UTC on 13 Nov is already 14 Nov, 01:30 in Istanbul: today there.
+    expect(fmtWhen('2026-11-13T22:30:00Z', { zone: 'Europe/Istanbul', now })).toBe('01:30');
+    // In New York it is still 13 Nov, and "now" there is 14 Nov 02:00: another day.
+    expect(fmtWhen('2026-11-13T22:30:00Z', { zone: 'America/New_York', now })).toBe('13 Nov');
+  });
+
+  it('a zone the browser does not know reads in the browser\'s own, never throws', () => {
+    expect(() => fmtWhen('2026-11-13T09:00:00Z', { zone: 'Mars/Olympus', now })).not.toThrow();
+    expect(fmtWhen('2026-11-13T09:00:00Z', { zone: 'Mars/Olympus', now })).toBe(
+      fmtWhen('2026-11-13T09:00:00Z', { zone: null, now }),
+    );
+    // The browser's own zone (the suite's New York), not UTC: 09:00 UTC is 04:00 there.
+    expect(fmtWhen('2026-11-13T09:00:00Z', { zone: 'Mars/Olympus', now, withTime: true })).toBe('13 Nov, 04:00');
+  });
+
+  it('"today" is the day of the `now` given, so the words do not depend on when the test runs', () => {
+    const later = new Date('2031-03-02T12:00:00Z');
+    expect(fmtWhen('2031-03-02T09:00:00Z', { zone: 'UTC', now: later })).toBe('09:00');
+    expect(fmtWhen('2031-03-01T09:00:00Z', { zone: 'UTC', now: later })).toBe('1 Mar');
+  });
+
+  it('nothing, or not a time, is the em dash', () => {
+    expect(fmtWhen(null)).toBe(EM);
+    expect(fmtWhen('soon')).toBe(EM);
   });
 });

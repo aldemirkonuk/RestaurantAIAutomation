@@ -20,15 +20,70 @@ export const SERIF = '"Fraunces", Georgia, "Times New Roman", serif';
 export const MONO = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
 export const SANS = '"DM Sans", "Plus Jakarta Sans", system-ui, sans-serif';
 
+// fmtAsOf's: a read's time is the browser's clock, not a letter's.
 const day = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
 const time = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' });
 
-export function fmtWhen(iso: string | null | undefined): string {
+/** Formatters per zone ('' = the browser's), made once each. */
+const formats = new Map<string, { parts: Intl.DateTimeFormat; time: Intl.DateTimeFormat }>();
+
+function formatsFor(zone: string | null | undefined) {
+  let key = zone ?? '';
+  if (key) {
+    try {
+      new Intl.DateTimeFormat('en-GB', { timeZone: key });
+    } catch {
+      // A zone this browser does not know is read in the browser's own.
+      key = '';
+    }
+  }
+  let f = formats.get(key);
+  if (!f) {
+    const tz = key ? { timeZone: key } : {};
+    f = {
+      parts: new Intl.DateTimeFormat('en-GB', { ...tz, year: 'numeric', month: 'short', day: 'numeric' }),
+      time: new Intl.DateTimeFormat('en-GB', { ...tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }),
+    };
+    formats.set(key, f);
+  }
+  return f;
+}
+
+function dayParts(f: Intl.DateTimeFormat, d: Date): { day: string; month: string; year: string } {
+  const out = { day: '', month: '', year: '' };
+  for (const p of f.formatToParts(d)) {
+    if (p.type === 'day' || p.type === 'month' || p.type === 'year') out[p.type] = p.value;
+  }
+  return out;
+}
+
+/**
+ * When something happened, in as few words as still place it (r36 mail gap
+ * 13):
+ * - today: the time, "14:05";
+ * - another day this year: "13 Nov";
+ * - another year: "13 Nov 2025", so last year never reads as this year.
+ *
+ * `zone` is the house's time zone when the caller has it (Mail's summary
+ * carries it), so "today" is the house's day, as Mail's "Today" line counts
+ * it; without one, or with one this browser does not know, the browser's.
+ * `withTime` adds the time to an earlier day ("13 Nov, 14:05"): a thread's
+ * letters of one earlier day can then be told apart. `now` is for tests.
+ */
+export function fmtWhen(
+  iso: string | null | undefined,
+  opts: { zone?: string | null; withTime?: boolean; now?: Date } = {},
+): string {
   if (!iso) return EM;
   const d = new Date(iso);
   if (!Number.isFinite(d.getTime())) return EM;
-  const sameDay = new Date().toDateString() === d.toDateString();
-  return sameDay ? time.format(d) : day.format(d);
+  const f = formatsFor(opts.zone);
+  const at = dayParts(f.parts, d);
+  const today = dayParts(f.parts, opts.now ?? new Date());
+  const clock = f.time.format(d);
+  if (at.year === today.year && at.month === today.month && at.day === today.day) return clock;
+  const date = at.year === today.year ? `${at.day} ${at.month}` : `${at.day} ${at.month} ${at.year}`;
+  return opts.withTime ? `${date}, ${clock}` : date;
 }
 
 /**
