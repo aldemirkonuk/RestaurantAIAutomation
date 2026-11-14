@@ -33,6 +33,7 @@ import { decodeSheet, defaultSheet, encodeSheet } from './useReportsNextData';
 import { CATALOGUE } from './rp-catalogue';
 import { DEFAULT_SLOTS } from './rp-sheet';
 import { heldBackFailure } from './rp-format';
+import { ledger as ledgerSpec } from './rp-registers-house';
 
 /**
  * The two registers added in the fourth pass decode heavily on the way in
@@ -559,6 +560,20 @@ describe('ReportsNext — the sheet', () => {
     expect(within(ledger).getByText('What it cost (last 30 days)')).toBeInTheDocument();
     expect(within(ledger).getByText('Bought (last 30 days)')).toBeInTheDocument();
     expect(within(ledger).queryByText(/last 365 days/)).toBeNull();
+  });
+
+  it('says one day in the singular', () => {
+    const b = base();
+    const ledgerData = (b.registers.ledger as { data: Record<string, unknown> }).data;
+    hook.current = withRegister('ledger', ok({ ...ledgerData, tillWindowDays: 1 }));
+    paint();
+    const ledger = screen.getByRole('region', { name: 'Figures of record' });
+    expect(within(ledger).getByText('What it cost (last day)')).toBeInTheDocument();
+  });
+
+  it('asks the gateway for the figures of record over the page’s till window', () => {
+    expect(ledgerSpec.path?.('rid-1', { days: 30 } as never)).toBe('/analytics/financial/rid-1?days=30');
+    expect(ledgerSpec.takesWindow).toBe(true);
   });
 
   it('asks nothing while you are reading: no drawing or subject control until Arrange', () => {
