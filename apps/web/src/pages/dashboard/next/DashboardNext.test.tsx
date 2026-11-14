@@ -415,8 +415,107 @@ describe('DashboardNext', () => {
     expect(retries.length).toBeGreaterThanOrEqual(2); // the opening line and the approvals panel
     fail = false;
     retries[0].click();
-    await waitFor(() => expect(screen.getByText('Nothing is waiting on you.')).toBeInTheDocument());
+    // The default house holds no goods, so the settled line says that
+    // rather than "Nothing is waiting on you." (r28 onboarding gap 2).
+    await waitFor(() =>
+      expect(screen.getByText('No approvals are waiting, and the house has no goods on its list yet.')).toBeInTheDocument(),
+    );
     expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+  });
+
+  // r28 onboarding gap 2: the first screen after /get-started read an empty
+  // house as a healthy one ("Nothing is waiting on you." and "Nothing is
+  // running low."). With no goods, nothing can run low; the page says so and
+  // leads to the first count.
+  describe('a house with no goods yet', () => {
+    const goods = (n: number) => ({
+      totalWines: n, totalBottles: n * 6, lowStockItems: 0, pendingOrders: 0, totalVolumeMl: 0, totalVolumeOz: 0,
+    });
+
+    it('says the house has no goods and leads to the first count, never "nothing is running low"', async () => {
+      routeGets({ '/dashboard/stats/': goods(0) });
+
+      mount();
+
+      expect(
+        await screen.findByText('No approvals are waiting, and the house has no goods on its list yet.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Nothing is waiting on you.')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Nothing is running low/)).not.toBeInTheDocument();
+      const panel = screen.getByTestId('dn-no-goods-yet');
+      expect(panel).toHaveTextContent('The house has no goods on its list yet, so nothing can run low.');
+      expect(within(panel).getByRole('link', { name: 'Count the first goods' })).toHaveAttribute('href', '/inventory');
+    });
+
+    it('still names the approvals waiting in a house with no goods', async () => {
+      routeGets({
+        '/dashboard/stats/': goods(0),
+        '/orders/pending': [
+          { id: 'o-1', orderNumber: 'ORD-2026-00042', quantity: 1, unitType: 'case', totalCost: 90, status: 'APPROVAL_NEEDED', requestedAt: '2026-09-01T10:00:00Z' },
+        ],
+      });
+
+      mount();
+
+      expect(
+        await screen.findByText('1 approval is waiting on you. The house has no goods on its list yet.'),
+      ).toBeInTheDocument();
+    });
+
+    it('says the house has no goods, and names the approvals it could not read', async () => {
+      routeGets({ '/dashboard/stats/': goods(0) });
+      const base = api.get.getMockImplementation()!;
+      api.get.mockImplementation((url: string, ...rest: unknown[]) =>
+        url.includes('/orders/pending')
+          ? Promise.reject(Object.assign(new Error('Network Error'), { response: undefined }))
+          : base(url, ...rest),
+      );
+
+      mount();
+
+      expect(
+        await screen.findByText(/^The house has no goods on its list yet\. The approvals couldn’t be reached just now\./),
+      ).toBeInTheDocument();
+    });
+
+    it('keeps "Nothing is waiting on you." and the stock list for a house that holds goods', async () => {
+      routeGets({ '/dashboard/stats/': goods(4) });
+
+      mount();
+
+      expect(await screen.findByText('Nothing is waiting on you.')).toBeInTheDocument();
+      expect(screen.queryByTestId('dn-no-goods-yet')).not.toBeInTheDocument();
+      expect(screen.queryByText(/no goods on its list/)).not.toBeInTheDocument();
+    });
+
+    it('never takes a totals read that failed for an empty house', async () => {
+      routeGets();
+      const base = api.get.getMockImplementation()!;
+      api.get.mockImplementation((url: string, ...rest: unknown[]) =>
+        // The stats read and the summary it falls back to both fail.
+        url.includes('/dashboard/stats/') || url.includes('/summary')
+          ? Promise.reject(Object.assign(new Error('Network Error'), { response: undefined }))
+          : base(url, ...rest),
+      );
+
+      mount();
+
+      expect(await screen.findByText(/The totals couldn’t be reached just now\./)).toBeInTheDocument();
+      expect(screen.queryByTestId('dn-no-goods-yet')).not.toBeInTheDocument();
+      expect(screen.queryByText(/no goods on its list/)).not.toBeInTheDocument();
+    });
+
+    it('shows the stock list, not the empty-house panel, when the list holds a good below its minimum', async () => {
+      routeGets({
+        '/dashboard/stats/': goods(0),
+        '/low-stock': [{ id: 'inv-1', wine_name: 'Peroni', vintage: null, stock_live: 2, threshold_min: 24 }],
+      });
+
+      mount();
+
+      expect(await screen.findByText('1 low-stock item is waiting on you.')).toBeInTheDocument();
+      expect(screen.queryByTestId('dn-no-goods-yet')).not.toBeInTheDocument();
+    });
   });
 
   it('offers Try again on a month whose figures could not be read', async () => {
