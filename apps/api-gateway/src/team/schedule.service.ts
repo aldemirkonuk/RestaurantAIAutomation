@@ -127,8 +127,11 @@ export class ScheduleService {
     );
     const weekEnd = addDays(weekStart, 6);
 
-    const [{ data: schedule }, { data: shifts, error: shiftsErr }, settings] =
-      await Promise.all([
+    const [
+      { data: schedule, error: scheduleErr },
+      { data: shifts, error: shiftsErr },
+      settings,
+    ] = await Promise.all([
         this.sb
           .from("schedules")
           .select("*")
@@ -155,6 +158,17 @@ export class ScheduleService {
         "Could not read this week's shifts, so the week is not shown.",
       );
     }
+    // Nor is a week whose schedule row could not be read a week never drafted:
+    // `schedule: null` printed it unpublished and dropped every receipt.
+    if (scheduleErr) {
+      this.logger.error(
+        `getWeek: could not read the schedule of ${weekStart} for ` +
+          `restaurant ${restaurantId}: ${scheduleErr.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read whether this week is drafted or published, so the week is not shown.",
+      );
+    }
 
     // A removed person's shifts are kept five years, not shown (ADR 0215 item
     // 20, `onTheRoster`): read as they were before the removal stopped
@@ -162,12 +176,7 @@ export class ScheduleService {
     const roster = await this.team.rosterMemberIds(restaurantId);
     const shiftRows = onTheRoster(shifts ?? [], roster);
     const receipts = schedule
-      ? ((
-          await this.sb
-            .from("schedule_receipts")
-            .select("member_id, seen_at")
-            .eq("schedule_id", schedule.id)
-        ).data ?? [])
+      ? await this.weekReceipts(restaurantId, weekStart, schedule.id)
       : [];
 
     const coverage = await this.computeCoverage(
@@ -197,6 +206,31 @@ export class ScheduleService {
         ? { money: await this.houseMoney(restaurantId) }
         : {}),
     };
+  }
+
+  /**
+   * Who has confirmed this week. A failed read is not "nobody has seen it":
+   * `[]` told the manager every person still had to be chased.
+   */
+  private async weekReceipts(
+    restaurantId: string,
+    weekStart: string,
+    scheduleId: string,
+  ): Promise<{ member_id: string; seen_at: string }[]> {
+    const { data, error } = await this.sb
+      .from("schedule_receipts")
+      .select("member_id, seen_at")
+      .eq("schedule_id", scheduleId);
+    if (error) {
+      this.logger.error(
+        `getWeek: could not read who confirmed ${weekStart} for ` +
+          `restaurant ${restaurantId}: ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read who has confirmed this week, so the week is not shown.",
+      );
+    }
+    return data ?? [];
   }
 
   /**

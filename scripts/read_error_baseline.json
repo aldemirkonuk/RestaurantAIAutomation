@@ -114,7 +114,6 @@
     "apps/api-gateway/src/team/schedule.service.ts::team_members::members": 1,
     "apps/api-gateway/src/team/team.service.ts::team_members::existing": 1,
     "apps/api-gateway/src/team/team.service.ts::team_members::me": 1,
-    "apps/api-gateway/src/team/team.service.ts::team_settings::data": 1,
     "apps/api-gateway/src/team/team.service.ts::user_restaurant_access::access": 3,
     "apps/api-gateway/src/team/team.service.ts::users::user": 1,
     "apps/api-gateway/src/team/team.service.ts::users::users": 1,
