@@ -5,7 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from "@nestjs/common";
-import { LINE_SELECT, MenusService, newestCurrentFirst, parseMenuPrice } from "./menus.service";
+import { LINE_SELECT, MenusService, allInOrder, chunksTogether, newestCurrentFirst, parseMenuPrice } from "./menus.service";
 import { MEMBER_LINE_KEYS, seesRawLine } from "./menu-line-view";
 import { DatabaseService } from "../database/database.service";
 import { CsvParserService } from "./parsers/csv-parser.service";
@@ -2497,6 +2497,131 @@ describe("MenusService — the plan before a menu is chosen, and the locks it re
     return { calls, tables, service };
   };
 
+  /**
+   * r41 R3: every read answers after `ms` (per table when named), and the
+   * fake counts how many reads were in flight at once. A plan's reads that
+   * need nothing from one another run together; a failure is said as before.
+   */
+  function slowed(tables: Record<string, Row[]>, ms: number | Record<string, number>) {
+    const service = makeService(tables, { rpc: rpcFor(tables) });
+    const db = (service as any).dbService as { supabase: any };
+    const inner = db.supabase;
+    const stat = { inFlight: 0, most: 0, reads: 0 };
+    const wait = (table: string) => (typeof ms === "number" ? ms : (ms[table] ?? 5));
+    db.supabase = {
+      ...inner,
+      from(table: string) {
+        const api = inner.from(table);
+        const later = <T>(answer: () => T | Promise<T>) =>
+          new Promise<T>((resolve) => {
+            stat.reads += 1;
+            stat.inFlight += 1;
+            stat.most = Math.max(stat.most, stat.inFlight);
+            setTimeout(async () => {
+              stat.inFlight -= 1;
+              resolve(await answer());
+            }, wait(table));
+          });
+        const then = api.then.bind(api);
+        const maybe = api.maybeSingle;
+        api.then = (resolve: any, reject: any) => later(() => new Promise((r) => then(r))).then(resolve, reject);
+        api.maybeSingle = () => later(() => maybe());
+        return api;
+      },
+    };
+    return { service, stat };
+  }
+
+  describe("r41 R3: a plan's independent reads run together", () => {
+    it("the plan is the same, and its reads overlap instead of queuing", async () => {
+      const serial = setup();
+      const expected = await serial.service.planFor("rest-1", "menu-new");
+      const { service, stat } = slowed(house(), 20);
+      const t0 = Date.now();
+      const plan = await service.planFor("rest-1", "menu-new");
+      const took = Date.now() - t0;
+      // eslint-disable-next-line no-console
+      console.log(`R3TIME planFor reads=${stat.reads} mostInFlight=${stat.most} ms=${took}`);
+      expect(plan.fingerprint).toBe(expected.fingerprint);
+      expect(plan.lines).toEqual(expected.lines);
+      expect(plan.dormantLocks).toEqual(expected.dormantLocks);
+      // Row and lines together, then the house, the locks, the price versions
+      // and the current menu together: never fewer than four in flight.
+      expect(stat.most).toBeGreaterThanOrEqual(4);
+    });
+
+    it("the current menu's own plan reads no menu it would replace: seven reads, no more", async () => {
+      const tables = house();
+      tables.restaurant_menus = [{ id: "menu-new", restaurant_id: "rest-1", status: "active" }];
+      const { service, stat } = slowed(tables, 2);
+      const plan = await service.planFor("rest-1", "menu-new");
+      expect(plan.current).toBe(true);
+      // Row, lines, the other current menus, wines, locks, price versions, names.
+      expect(stat.reads).toBe(7);
+    });
+
+    it("make-current reads its lines and its row together, and still chooses", async () => {
+      const { service, stat } = slowed(house(), 20);
+      const fp = (await service.planFor("rest-1", "menu-new")).fingerprint;
+      stat.most = 0;
+      const t0 = Date.now();
+      const r = await service.makeCurrent("rest-1", "menu-new", "user-2", fp);
+      // eslint-disable-next-line no-console
+      console.log(`R3TIME makeCurrent reads=${stat.reads} mostInFlight=${stat.most} ms=${Date.now() - t0}`);
+      expect(r.outcome).toBe("made_current");
+      expect(stat.most).toBeGreaterThanOrEqual(4);
+    });
+
+    it("a lock read that fails is said as before, though the house's wines were read", async () => {
+      const tables = house();
+      (tables as any).__readFails = [{ house_price_locks: "locks offline" }];
+      const { service } = slowed(tables, 5);
+      await expect(service.planFor("rest-1", "menu-new")).rejects.toThrow(
+        "What choosing this menu would do could not be worked out, so nothing was changed: the house's price locks could not be read (locks offline).",
+      );
+    });
+
+    it("two failures: the house's wines are said first, though the lock read failed sooner", async () => {
+      const tables = house();
+      (tables as any).__readFails = [{ house_price_locks: "locks offline", restaurant_inventory: "inventory offline" }];
+      const { service } = slowed(tables, { restaurant_inventory: 40, house_price_locks: 2 });
+      await expect(service.planFor("rest-1", "menu-new")).rejects.toThrow(
+        "the house's wines could not be read (inventory offline)",
+      );
+    });
+
+    it("chunks are read four at a time, and their answers come back in chunk order", async () => {
+      const ids = Array.from({ length: 151 * 5 }, (_, i) => `id-${String(i).padStart(4, "0")}`);
+      let inFlight = 0;
+      let most = 0;
+      const out = await chunksTogether(ids, async (chunk) => {
+        inFlight += 1;
+        most = Math.max(most, inFlight);
+        // The first chunk answers last: the order kept is the chunks', not the answers'.
+        await new Promise((r) => setTimeout(r, chunk[0] === "id-0000" ? 30 : 5));
+        inFlight -= 1;
+        return chunk.length;
+      });
+      expect(most).toBe(4);
+      expect(out.map((o) => o.answer)).toEqual([150, 150, 150, 150, 150, 5]);
+      expect(out.map((o) => o.chunk[0])).toEqual(["id-0000", "id-0150", "id-0300", "id-0450", "id-0600", "id-0750"]);
+      expect(await chunksTogether([], async () => 1)).toEqual([]);
+    });
+
+    it("allInOrder waits for every read and throws the first failure in the order given", async () => {
+      const late = new Promise<number>((_, no) => setTimeout(() => no(new Error("first, late")), 20));
+      const soon = Promise.reject(new Error("second, soon"));
+      soon.catch(() => undefined);
+      await expect(allInOrder([Promise.resolve(1), late, soon] as const)).rejects.toThrow("first, late");
+      await expect(allInOrder([Promise.resolve(1), Promise.resolve("two")] as const)).resolves.toEqual([1, "two"]);
+    });
+
+    it("another house's menu is still a 404, though its lines were asked for together", async () => {
+      const { service } = slowed(house(), 5);
+      await expect(service.planFor("rest-2", "menu-new")).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
   it("L13: the plan says, per line and per kind, what choosing the menu would do -- and writes nothing", async () => {
     const { calls, tables, service } = setup();
     const plan = await service.planFor("rest-1", "menu-new");
@@ -2966,6 +3091,44 @@ describe("a menu line finds the house's own good before the library (r21 D1)", (
     const price = calls.filter(([fn]) => fn === "set_house_menu_price");
     expect(price).toHaveLength(1);
     expect(price[0][1]).toMatchObject({ p_inventory_id: "inv-gin", p_bottle_price: 40 });
+    expect(tables.restaurant_inventory).toHaveLength(1);
+  });
+
+  it("r41 R3: a good's row that cannot be read while carrying fails its line, never taken for a good the house lacks", async () => {
+    const lib = spyLibrary();
+    const calls: RpcCall[] = [];
+    const tables: Record<string, Row[]> = {
+      restaurant_menus: [{ id: "menu-old", restaurant_id: "rest-1", status: "active" }],
+      restaurants: [{ id: "rest-1", default_threshold_min: 3 }],
+      restaurant_inventory: [good({ id: "inv-gin", master_wine_id: null, display_name: "House London Dry Gin", kind: "spirit" })],
+      menu_items: [],
+      user_onboarding_progress: [],
+      master_wine_library_submissions: [],
+    };
+    const service = makeService(tables, {
+      wineSubmissions: lib,
+      rpcCalls: calls,
+      rpc: (fn: string, args: Row) => {
+        if (fn === "make_menu_current") {
+          for (const m of tables.restaurant_menus) m.status = m.id === args.p_menu_id ? "active" : "archived";
+          // The house's rows cannot be read from here on: the carry's read fails.
+          (tables as any).__readFails = [{ restaurant_inventory: "connection reset" }];
+          return { data: { outcome: "made_current", previous_menu_ids: ["menu-old"], made_current_at: "2026-11-13T12:00:00Z" }, error: null };
+        }
+        return priceRpc(fn);
+      },
+      scanParser: { parseWithWarnings: async () => ({ items: [{ name: "House London Dry Gin", category: "spirit", bottle_price: 40 }], warnings: [] }) },
+    });
+    const read = await service.importMenu(
+      { method: "scan", data: { imageBase64: Buffer.from("%PDF").toString("base64") }, restaurantId: "rest-1" } as any,
+      "user-1",
+    );
+    await (service as any).whenRead?.(read.menuId);
+    const plan = await service.planFor("rest-1", read.menuId);
+    const r = await service.makeCurrent("rest-1", read.menuId, "user-2", plan.fingerprint);
+    expect(r.outcome).toBe("made_current");
+    expect(r.failed).toEqual([expect.objectContaining({ name: "House London Dry Gin", error: expect.stringMatching(/could not be read.*connection reset/) })]);
+    expect(calls.filter(([fn]) => fn === "set_house_menu_price")).toHaveLength(0);
     expect(tables.restaurant_inventory).toHaveLength(1);
   });
 
