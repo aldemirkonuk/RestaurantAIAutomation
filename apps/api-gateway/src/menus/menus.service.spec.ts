@@ -1179,6 +1179,19 @@ describe("MenusService — every menu read is kept as its own version", () => {
     expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(true);
   });
 
+  // r28 G16: a typed line past the 25th was flagged "Free tier: exceeds 25 item
+  // limit". No plan holds that cap, the flag gated nothing, and a new house
+  // typing its menu was told it was over a limit.
+  it("keeps every typed line as typed, the 26th and after included: no free-plan flag", async () => {
+    const tables: Record<string, Row[]> = { ...base() };
+    const service = makeService(tables, { wineSubmissions });
+    const items = Array.from({ length: 30 }, (_, n) => ({ name: `Typed wine ${n + 1}`, bottle_price: 40 + n }));
+    const r = await service.importMenu({ method: "manual", data: { items }, restaurantId: "rest-1" } as any, "user-1");
+    const lines = tables.menu_items.filter((m) => m.menu_id === r.menuId);
+    expect(lines).toHaveLength(30);
+    for (const l of lines) expect(l).toMatchObject({ status: "approved", review_notes: null, source: "manual" });
+  });
+
   // QA B-5: a read with no line used to make a "Wine List" draft and answer 200
   // with itemsExtracted 0. It is refused, and nothing is written.
   it("a read that found no line is REFUSED with a sentence, and keeps no version, no file and no onboarding mark", async () => {

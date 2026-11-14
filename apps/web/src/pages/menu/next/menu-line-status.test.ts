@@ -24,10 +24,12 @@ describe('lineStatusWords', () => {
       'set by hand: its bottle price',
     );
     expect(lineStatusWords({ status: 'flagged', source: 'scan', flag_reason: 'added_by_hand' })).toMatchObject({ words: 'added by hand', sealed: true });
-    expect(lineStatusWords({ status: 'flagged', source: 'manual', flag_reason: 'past_free_limit' })).toMatchObject({
-      words: "past the free plan's typed lines",
-      sealed: false,
-      noteShown: true,
+    // r28 G16: no plan holds a 25-line cap; an old mark reads as typed, said on hover only.
+    expect(lineStatusWords({ status: 'flagged', source: 'manual', flag_reason: 'past_free_limit' })).toEqual({
+      words: 'as typed',
+      sealed: true,
+      why: 'An older read marked this line past a 25-line cap that no plan holds. Nothing about it is limited.',
+      noteShown: false,
     });
     // An older gateway sends no reason: still no bare "flagged".
     expect(lineStatusWords({ status: 'flagged', source: 'scan' }).words).toBe('marked for a second look');

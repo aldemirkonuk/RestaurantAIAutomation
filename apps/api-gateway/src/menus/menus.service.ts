@@ -30,7 +30,6 @@ import {
 } from "../pricing/house-menu-price";
 import { readOpenLocks, readPeople, type OpenLock } from "../pricing/price-locks";
 
-const FREE_TIER_MANUAL_LIMIT = 25;
 /** The private bucket the gateway already keeps original bytes in (document intake). */
 const SOURCE_BUCKET = "vendor-attachments";
 /** How long a link to a kept menu source lives. */
@@ -2352,7 +2351,7 @@ export class MenusService {
       }
     }
 
-    const menuItemRows = resolved.map(({ item, masterWineId, houseItemId }, idx) => ({
+    const menuItemRows = resolved.map(({ item, masterWineId, houseItemId }) => ({
       menu_id: menuId,
       restaurant_id: restaurantId,
       name: item.name,
@@ -2367,14 +2366,13 @@ export class MenusService {
       wine_library_id: masterWineId,
       ...(houseItemId ? { inventory_item_id: houseItemId } : {}),
       source: method,
-      status:
-        method === "manual" && idx >= FREE_TIER_MANUAL_LIMIT
-          ? "flagged"
-          : "approved",
-      review_notes:
-        method === "manual" && idx >= FREE_TIER_MANUAL_LIMIT
-          ? "Free tier: exceeds 25 item limit"
-          : null,
+      // Every line is kept as read (r28 G16). A typed line past the 25th used
+      // to be flagged "Free tier: exceeds 25 item limit": no plan holds such a
+      // cap (pricing is undecided, OD-23; every house runs on the default
+      // tier), the flag gated nothing, and a new house typing its menu was told
+      // it was over a limit. menu-line-view still reads that note on old rows.
+      status: "approved",
+      review_notes: null,
     }));
 
     const { data, error: menuItemsErr } = await this.dbService.supabase
