@@ -522,11 +522,16 @@ export class AnalyticsController {
       });
     }
     if (refresh === "true") {
+      // A refresh always computes. Its own clean "nothing to say" is then
+      // what the next plain read carries, instead of a second compute of the
+      // same nothing (r39 walk w6); any other answer is stored or retried.
       this.coldStart.clear(restaurantId);
-      return await this.insightGenerator.generate(restaurantId, {
+      const fresh = await this.insightGenerator.generate(restaurantId, {
         categories,
         persist: true,
       });
+      this.coldStart.hold(ColdStartMemo.keyOf(restaurantId, categories), fresh);
+      return fresh;
     }
     const stored = await this.insightGenerator.readStored(restaurantId, {
       categories,

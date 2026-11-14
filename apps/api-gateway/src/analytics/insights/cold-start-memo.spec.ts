@@ -60,13 +60,32 @@ describe("a house with nothing to say is not recomputed on every load (r36 gap 8
     expect(second.insights).toEqual([]);
   });
 
-  it("refresh=true computes again, and clears what was held", async () => {
-    const { read, generate } = controller([{ ...EMPTY }, { ...EMPTY }, { ...EMPTY }]);
+  it("refresh=true computes again, and the next plain read carries the refresh's answer (r39 walk w6)", async () => {
+    const { read, generate } = controller([
+      { ...EMPTY, generatedAt: "first" },
+      { ...EMPTY, generatedAt: "refreshed" },
+      { ...EMPTY, generatedAt: "third" },
+    ]);
+    await read();
+    const refreshed: any = await read("true");
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(refreshed.generatedAt).toBe("refreshed");
+    const next: any = await read();
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(next.generatedAt).toBe("refreshed");
+  });
+
+  it("a refresh whose answer is not clean clears what was held, and the next read computes", async () => {
+    const { read, generate } = controller([
+      { ...EMPTY, generatedAt: "first" },
+      { insights: [], sourcesUnread: ["the till"], persisted: true, generatedAt: "unclean" },
+      { ...EMPTY, generatedAt: "third" },
+    ]);
     await read();
     await read("true");
-    expect(generate).toHaveBeenCalledTimes(2);
-    await read();
+    const next: any = await read();
     expect(generate).toHaveBeenCalledTimes(3);
+    expect(next.generatedAt).toBe("third");
   });
 
   it("a compute whose read failed is not held: the next load tries again", async () => {

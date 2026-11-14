@@ -70,6 +70,22 @@ export class ColdStartMemo<T extends ColdAnswer> {
       if (k.startsWith(`${restaurantId}|`)) this.held.delete(k);
   }
 
+  /**
+   * Hold an answer computed outside `run` (a `refresh=true` compute) when it
+   * is a clean empty, so the next plain read carries it rather than
+   * computing the same nothing again (r39 walk w6). Anything else is not held.
+   */
+  hold(key: string, answer: T): void {
+    if (!isCleanEmpty(answer)) return;
+    this.held.delete(key);
+    if (this.held.size >= this.max) {
+      // The oldest entry goes first: a Map iterates in insertion order.
+      const oldest = this.held.keys().next().value;
+      if (oldest !== undefined) this.held.delete(oldest);
+    }
+    this.held.set(key, { at: this.now(), answer });
+  }
+
   async run(key: string, compute: () => Promise<T>): Promise<T> {
     const hit = this.held.get(key);
     if (hit && this.now() - hit.at < this.ttlMs) return hit.answer;
@@ -79,14 +95,7 @@ export class ColdStartMemo<T extends ColdAnswer> {
     const p = (async () => {
       try {
         const answer = await compute();
-        if (isCleanEmpty(answer)) {
-          if (this.held.size >= this.max) {
-            // The oldest entry goes first: a Map iterates in insertion order.
-            const oldest = this.held.keys().next().value;
-            if (oldest !== undefined) this.held.delete(oldest);
-          }
-          this.held.set(key, { at: this.now(), answer });
-        }
+        this.hold(key, answer);
         return answer;
       } finally {
         this.inFlight.delete(key);
