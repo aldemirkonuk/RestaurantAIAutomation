@@ -58,6 +58,9 @@ import { localMidnight, shiftLocalDate } from "./service-day";
 
 const PRODUCER = "ceiling_held";
 
+/** The gate this producer reads a goal under (see `getGoalProgress`). */
+const PRODUCER_READS_AS_A_SALES_HOLDER = { withSales: true } as const;
+
 @Injectable()
 export class CeilingHeldProducer {
   private readonly logger = new Logger(CeilingHeldProducer.name);
@@ -161,7 +164,16 @@ export class CeilingHeldProducer {
 
       let progress: any;
       try {
-        progress = await this.goals.getGoalProgress(restaurantId, goal.id);
+        // The producer scores the goal for the house as a sales holder
+        // does (it skips days of stock above, ADR 0298 d9). An absent gate
+        // is closed, and since ADR 0348 item 3 a closed gate withholds every
+        // money and till goal's reading, so it is named here.
+        progress = await this.goals.getGoalProgress(
+          restaurantId,
+          goal.id,
+          undefined,
+          PRODUCER_READS_AS_A_SALES_HOLDER,
+        );
       } catch (e: any) {
         tally.failed += 1;
         this.logger.warn(

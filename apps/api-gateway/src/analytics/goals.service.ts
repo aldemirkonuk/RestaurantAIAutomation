@@ -16,7 +16,7 @@ import {
   shiftHouseDay,
   type HouseZone,
 } from "../common/house-day";
-import { isSalesGatedGoal } from "./sales-gated-goals";
+import { goalReadingWithheldFor, isSalesGatedGoal } from "./sales-gated-goals";
 import {
   figureOrNull,
   goalSchedule,
@@ -178,18 +178,62 @@ export class GoalsService {
    * `current_value` 312.07 under "cannot be read here"). With cellar at cost
    * on the stock routes, days of stock gives the cost of what sold. So both
    * are withheld (null) for such a caller; the target and the dates are the
-   * house's own setting and stay. Which metrics are gated is
-   * `isSalesGatedGoal`, the test the goal producers already use; every other
-   * metric is answered as before (the gate covers only what ADR 0298 moved
-   * onto the till).
+   * house's own setting and stay.
+   *
+   * ADR 0348 item 3 widened it from days of stock to every goal whose reading
+   * is money, the till or what was paid to suppliers
+   * (`goalReadingWithheldFor`): a revenue, spend, checks, average-check or
+   * attach-rate goal reached staff with its stored reading (walk r33 R-F4).
+   * A bottles-sold goal is a volume and is answered as before. The goal
+   * producers still skip only `isSalesGatedGoal`; they read as a sales holder.
    */
   static withholdTillGoalValues<T extends Record<string, any> | null>(
     row: T,
     gate: SalesGate = {},
   ): T {
     if (!row || gate.withSales === true) return row;
-    if (!isSalesGatedGoal(row.metric_key)) return row;
+    if (goalReadingWithheldFor(row.metric_key, gate).length === 0) return row;
     return { ...row, current_value: null, baseline_value: null };
+  }
+
+  /**
+   * A goal's progress for a caller its reading is withheld from (ADR 0348
+   * item 3, the withhold shape: the route stays, the figures do not). The
+   * name, the metric, the target, the direction and the dates are the
+   * house's own setting and stay; the title a person typed often carries the
+   * target anyway, so hiding the target too would hide nothing. The reading
+   * and everything scored from it (progress, pace, projection) are null, and
+   * `withheldForRole` names the classes, so the page says the reading is
+   * written for owners and managers rather than "could not be scored".
+   * Nothing is read for such a caller and nothing is recorded: the refusal is
+   * about the caller, not the goal. The levers (stored insights) are not sent
+   * either; they are sentences about the same money.
+   */
+  static withheldProgress(
+    goal: Record<string, any>,
+    withheldForRole: string[],
+    gate: SalesGate = {},
+  ) {
+    const spec = GoalsService.SUPPORTED_METRICS[goal.metric_key];
+    return {
+      goal: GoalsService.presentGoalRow(goal, gate),
+      metricLabel: spec?.label ?? goal.metric_key,
+      unit: spec?.unit ?? "count",
+      current: null,
+      target: figureOrNull(goal.target_value),
+      progressPct: null,
+      met: null,
+      expectedByNow: null,
+      onTrack: null,
+      daysLeft: null,
+      paceUnread: null,
+      projectedAtDeadline: null,
+      projectionHitsTarget: null,
+      units: null,
+      suggestedActions: [],
+      withheldForRole,
+      generatedAt: new Date().toISOString(),
+    };
   }
 
   /** `goal-score.ts` `presentStoredReading`, where the insight feed reads it too. */
@@ -405,7 +449,11 @@ export class GoalsService {
       .select()
       .single();
     if (error) throw new Error(error.message);
-    return data;
+    // The baseline is stored for the house, and goes back to the caller under
+    // the same rules as every other route that returns a goal: a staff login
+    // that sets a revenue goal is not answered the house's revenue (ADR 0348
+    // item 3, "POST goals ... a baseline revenue, spend or average check").
+    return GoalsService.presentGoalRow(data, gate);
   }
 
   async updateGoalStatus(
@@ -630,6 +678,12 @@ export class GoalsService {
         : readHouseZone(this.dbService.getClient(), restaurantId),
     ]);
     if (error || !goal) throw new Error(error?.message || "Goal not found");
+
+    // ADR 0348 item 3: a reading this caller may not read is not computed,
+    // not recorded and not sent (`withheldProgress`).
+    const withheldForRole = goalReadingWithheldFor(goal.metric_key, gate);
+    if (withheldForRole.length > 0)
+      return GoalsService.withheldProgress(goal, withheldForRole, gate);
 
     const spec = GoalsService.SUPPORTED_METRICS[goal.metric_key];
     // The goal's window opens on the house date it was created (ADR 0296),
