@@ -251,13 +251,35 @@ export class InventoryService {
     }
   }
 
+  /**
+   * The house's goods at 0 that nothing ever counted, received, sold or wrote
+   * off (inventory r36, gap 1). `stock_live` defaults to 0, so without this a
+   * title read in from a menu scan reads "Out" on day 1. `null` is a FAILED
+   * read, never "none": the caller then says nothing about any good, and the
+   * page keeps reading a 0 as out, as it did before.
+   */
+  private async fetchNeverMoved(restaurantId: string): Promise<Set<string> | null> {
+    try {
+      const { data, error } = await this.dbService
+        .getClient()
+        .rpc("inventory_never_moved", { p_restaurant_id: restaurantId });
+      if (error) throw error;
+      if (!Array.isArray(data)) throw new Error("inventory_never_moved did not return a list");
+      return new Set(data.map(String));
+    } catch (err: any) {
+      this.logger.warn(`fetchNeverMoved failed: ${err?.message}`);
+      return null;
+    }
+  }
+
   async getRestaurantInventory(restaurantId: string) {
     this.logger.log(`Fetching inventory for restaurant: ${restaurantId}`);
-    const [data, rollup, locations, analytics] = await Promise.all([
+    const [data, rollup, locations, analytics, neverMoved] = await Promise.all([
       this.dbService.getRestaurantInventory(restaurantId),
       this.fetchLotRollup(restaurantId),
       this.fetchLocationBreakdown(restaurantId),
       this.fetchAnalytics(restaurantId),
+      this.fetchNeverMoved(restaurantId),
     ]);
     return (data || []).map((row) => ({
       ...this.mapInventoryItem(
@@ -270,6 +292,9 @@ export class InventoryService {
       // ignores it. `false` means the analytics join itself could not be
       // read for this batch — not that this row has no analytics row.
       analyticsReadable: analytics.ok,
+      // True: at 0, never counted, nothing ever booked to it. False: it has a
+      // count or a movement. Null: that could not be read, so say nothing.
+      neverMoved: neverMoved === null ? null : neverMoved.has(String(row.id)),
     }));
   }
 

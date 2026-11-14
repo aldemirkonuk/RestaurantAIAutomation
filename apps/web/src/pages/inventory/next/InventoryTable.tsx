@@ -47,7 +47,7 @@ const COLUMNS = ['Title', 'Type', 'Zone', 'Live / shadow · par', 'Vel/day', 'Ru
 const HEADER_SORT: Partial<Record<string, SortId>> = { Title: 'name', 'Vel/day': 'pace', Value: 'value' };
 
 /** The status word, never a colour alone. */
-function statusWord(row: InvRow): string {
+export function statusWord(row: InvRow): string {
   const dry = row.runway !== null && row.runway < 1.5;
   switch (row.standing) {
     case 'out':
@@ -56,6 +56,8 @@ function statusWord(row: InvRow): string {
       return dry ? 'Below par · dry tomorrow' : 'Below par';
     case 'unknown':
       return 'Stock not read';
+    case 'uncounted':
+      return 'Not counted yet';
     case 'nopar':
       return dry ? 'Dry tomorrow' : 'No par set';
     default:
