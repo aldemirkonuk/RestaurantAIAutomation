@@ -2697,6 +2697,8 @@ describe("a menu line finds the house's own good before the library (r21 D1)", (
       await expect(service.linkLineToHouseGood("rest-1", r.menuId, red.id, "inv-del")).rejects.toMatchObject({ status: 409 });
       await expect(service.linkLineToHouseGood("rest-1", r.menuId, "mi-old", "inv-a")).rejects.toMatchObject({ status: 404 });
       await expect(service.linkLineToHouseGood("rest-2", r.menuId, red.id, "inv-x")).rejects.toMatchObject({ status: 404 });
+      // Another house's menu is not found, before it is ever said to be current.
+      await expect(service.linkLineToHouseGood("rest-2", "menu-old", "mi-old", "inv-x")).rejects.toMatchObject({ status: 404 });
       red.status = "discarded";
       await expect(service.linkLineToHouseGood("rest-1", r.menuId, red.id, "inv-a")).rejects.toMatchObject({ status: 404 });
       red.status = "approved";
