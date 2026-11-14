@@ -26,6 +26,14 @@ import {
   type HousePriceOutcome,
 } from "../pricing/house-menu-price";
 import { readOpenLocks, readPeople, type OpenLock } from "../pricing/price-locks";
+import {
+  GMAIL_READ_SCOPE,
+  HOUSE_INBOX_FLAG,
+} from "../communications/inbox/house-inbox-flag";
+import {
+  FEATURE_FLAGS_TABLE,
+  SETTINGS_ROW_FLAG_NAME,
+} from "../settings/feature-flag-registry";
 
 const FREE_TIER_MANUAL_LIMIT = 25;
 /** The private bucket the gateway already keeps original bytes in (document intake). */
@@ -2261,9 +2269,22 @@ export class MenusService {
    *   (r36 onboarding gap 1).
    * - mailbox_connected: a live Gmail grant held for this house, to send or
    *   to read (the only mailbox a house can connect today).
-   * - mailbox_sends: a live Gmail grant to SEND, held for this house. The
-   *   step says orders leave from the house's address, and a reading grant
-   *   sends nothing, so the step ticks on this one (r36 onboarding gap 2).
+   * - mailbox_sends: a live Gmail grant to SEND, held for this house. A
+   *   letter written in Mail leaves from the house's address only with it
+   *   (r36 onboarding gap 2). Orders do not: they leave from Mudavym's own
+   *   mailbox in the house's name (procurement sends through GmailService,
+   *   never through the house's grant).
+   * - mailbox_reads: the house's mailbox IS read: a live grant holding the
+   *   Gmail reading scope, held for this house, AND the house's switch
+   *   `enable_house_inbox_read` on. These are the two facts the sender line
+   *   (house-sender.service.ts) and the reader (house-inbox.service.ts)
+   *   require; neither implies the other. False when no reading grant is
+   *   held (the switch does not matter then) or the switch is off or has no
+   *   row; null when the grants, or with a grant held the switch, could not
+   *   be read. The mailbox step ticks on sends AND reads: the founder's
+   *   condition for the send grant (2026-09-04) is that the house also
+   *   receives on its own mailbox, the whole conversation here (r36 mail
+   *   gap 4, r36 onboarding gap 2).
    * - invoice: "checked" once an invoice is verified (its costs are applied),
    *   else "waiting" while one is in and not yet checked, else "none".
    *   A rejected or superseded paper is neither.
@@ -2278,6 +2299,7 @@ export class MenusService {
     goods_counted: boolean | null;
     mailbox_connected: boolean | null;
     mailbox_sends: boolean | null;
+    mailbox_reads: boolean | null;
     invoice: "none" | "waiting" | "checked" | null;
     money_set: boolean | null;
   }> {
@@ -2293,7 +2315,7 @@ export class MenusService {
         (read) => read,
         (error: unknown) => ({ data: null, error: error ?? "rejected" }),
       );
-    const [goods, counted, mailbox, checked, waiting, money] = await Promise.all([
+    const [goods, counted, mailbox, checked, waiting, money, readSwitch] = await Promise.all([
       settle(() =>
         supabase
           .from("restaurant_inventory")
@@ -2316,7 +2338,7 @@ export class MenusService {
       settle(() =>
         supabase
           .from("integration_oauth_connections")
-          .select("integration_id")
+          .select("integration_id, scopes")
           .eq("restaurant_id", restaurantId)
           .in("integration_id", ["gmail_send", "gmail_read"])
           .is("revoked_at", null),
@@ -2346,6 +2368,17 @@ export class MenusService {
           .eq("id", restaurantId)
           .limit(1),
       ),
+      // The house's reading switch, read as house-inbox-flag.ts reads it (the
+      // settings row of an EAV table). Not that helper: it answers false on a
+      // failed read, and a failed read here is null, never "off".
+      settle(() =>
+        supabase
+          .from(FEATURE_FLAGS_TABLE)
+          .select(HOUSE_INBOX_FLAG)
+          .eq("restaurant_id", restaurantId)
+          .eq("flag_name", SETTINGS_ROW_FLAG_NAME)
+          .limit(1),
+      ),
     ]);
     const held = (read: { data: unknown[] | null; error: unknown }) =>
       read.error ? null : (read.data ?? []).length > 0;
@@ -2365,6 +2398,19 @@ export class MenusService {
         : ((mailbox.data ?? []) as Array<{ integration_id?: unknown }>).some(
             (grant) => grant.integration_id === "gmail_send",
           ),
+      mailbox_reads: (() => {
+        if (mailbox.error) return null;
+        const grants = (mailbox.data ?? []) as Array<{ scopes?: unknown }>;
+        const readGrant = grants.some(
+          (grant) =>
+            Array.isArray(grant.scopes) &&
+            grant.scopes.includes(GMAIL_READ_SCOPE),
+        );
+        if (!readGrant) return false;
+        if (readSwitch.error) return null;
+        const row = ((readSwitch.data ?? []) as Array<Record<string, unknown>>)[0];
+        return row?.[HOUSE_INBOX_FLAG] === true;
+      })(),
       invoice,
       money_set: (() => {
         if (money.error) return null;
