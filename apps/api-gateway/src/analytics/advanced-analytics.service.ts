@@ -357,15 +357,15 @@ export class AdvancedAnalyticsService {
 
     return {
       basis: {
-        velocity: `bottles/day over ${sinceDays}d — ${unitsBasisSentence(unitsCoverage)}`,
+        velocity: `Bottles a day over the last ${sinceDays} days — ${unitsBasisSentence(unitsCoverage)}`,
         // Was "unit_price − WAC (lot rollup)" unconditionally, for a margin
         // that came from WAC on ~2 rows in 72 and from a fabricated
         // 0.6 × menu price on the rest.
-        margin: `menu_price_current − unit cost — ${costBasisSentence(costCoverage)}`,
+        margin: `Menu price less what the bottle cost — ${costBasisSentence(costCoverage)}`,
         costDerived:
-          "items[].marginPerBottle, items[].marginPct, items[].quadrant, items[].action and medians.marginPerBottle are null for rows with no recorded cost; those rows are counted under counts.unclassified (ADR 0051)",
+          "A wine with no recorded cost shows no margin, no square on the chart and no suggestion, and is counted as not yet placed; the middle margin is taken over priced wines only",
         unitsDerived:
-          "items[].velocityPerDay, items[].quadrant and items[].action are null for a costed wine with any line that carries no bottle figure; those rows are counted under counts.unmeasured, and medians.velocityPerDay is over the known velocities only (ADR 0297)",
+          "A priced wine with any line that carries no bottle figure shows no pace, no square and no suggestion, and is counted as not measured; the middle pace is taken over the wines whose pace is known",
       },
       costCoverage,
       unitsCoverage,
@@ -596,7 +596,7 @@ export class AdvancedAnalyticsService {
             unread:
               "How concentrated buying is cannot be read while a vendor's spend rests on an order with no recorded cost.",
           },
-      note: "Lead-time stdev feeds the King safety-stock formula (leadTimeStdev param on /inventory-science).",
+      note: "How much a vendor's delivery time varies widens the safety stock on the restock list.",
       generatedAt: new Date().toISOString(),
     };
   }
@@ -698,11 +698,11 @@ export class AdvancedAnalyticsService {
       /** True when an extreme is shared, so `bestDay`/`worstDay` are withheld. */
       tie: extremes.tie,
       basis: {
-        weekday: `mean bottles per weekday over the last ${sinceDays} days of wine_consumption_log; a weekday with no observation is absent from weekdayProfile rather than reported as 0`,
+        weekday: `The average bottles poured or sold on each weekday over the last ${sinceDays} days; a weekday with nothing recorded is left out rather than shown as 0`,
         units: unitsBasisSentence(unitsCoverage, "series"),
         extremes: extremes.tie
-          ? "bestDay/worstDay are null: more than one weekday shares the extreme, and naming one of them would be an arbitrary tie-break, not a finding"
-          : "bestDay/worstDay are the single weekdays holding the highest and lowest mean",
+          ? "No best or worst day: more than one weekday shares the top or the bottom, and naming one would be a coin toss, not a finding"
+          : "The best and worst days are the single weekdays with the highest and lowest average",
       },
       weeklySeasonalFactors: decomposition
         ? decomposition.seasonal.slice(0, 7)
@@ -880,11 +880,11 @@ export class AdvancedAnalyticsService {
       // This endpoint carried no `basis` at all, so `unitCost` arrived with no
       // way to tell an invoiced number from the 0.6 × menu price fabrication.
       basis: {
-        demand: `bottles/day over 90d — ${unitsBasisSentence(myUnits)}`,
+        demand: `Bottles a day over the last 90 days — ${unitsBasisSentence(myUnits)}`,
         unitCost: item
-          ? `${COST_BASIS_LABEL[item.costBasis]}${item.unitCost == null ? " — unitCost and marginPerBottle are null (ADR 0051)" : ""}`
-          : "wine not found in active inventory",
-        unitPrice: "restaurant_inventory.menu_price_current",
+          ? `${COST_BASIS_LABEL[item.costBasis]}${item.unitCost == null ? " — so the cost and the margin are left blank" : ""}`
+          : "This wine is not in the cellar's active stock",
+        unitPrice: "The wine's menu price",
       },
       onHand: item?.qty ?? null,
       unitPrice: item?.unitPrice ?? null,

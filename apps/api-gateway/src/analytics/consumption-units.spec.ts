@@ -367,7 +367,7 @@ describe("menu engineering counts bottles, not pours", () => {
     }).getMenuEngineering(RESTAURANT, 90);
     const row = out.items.find((i: any) => i.id === "inv-1");
     expect(row.velocityPerDay).toBeCloseTo(2 / 90, 12);
-    expect(out.basis.velocity).toMatch(/^bottles\/day over 90d/);
+    expect(out.basis.velocity).toMatch(/^Bottles a day over the last 90 days/);
     expect(out.unitsCoverage).toMatchObject({ lines: 10, glassLines: 10 });
   });
 
@@ -638,7 +638,7 @@ describe("Wine 360 counts bottles, not pours", () => {
     }).getWine360(RESTAURANT, "mw-1");
     expect(out.demand.mean).toBeCloseTo(2 / 90, 12);
     expect(out.daysOfCover).toBeCloseTo(6 / (2 / 90), 9);
-    expect(out.basis.demand).toMatch(/^bottles\/day over 90d/);
+    expect(out.basis.demand).toMatch(/^Bottles a day over the last 90 days/);
   });
 
   it("a wine with a line that carries no bottle figure has no demand, and says why", async () => {
@@ -1161,7 +1161,7 @@ describe("the demand forecast does not project one wine from a history it cannot
     expect(out.basis.model).toContain("carry no bottle figure");
     // Its demand basis does not read as a short projection (ADR 0297).
     expect(out.basis.demand).toContain(
-      "nothing is projected from this short series",
+      "nothing is projected from this short history",
     );
   });
 
