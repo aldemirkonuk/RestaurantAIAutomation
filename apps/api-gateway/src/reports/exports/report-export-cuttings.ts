@@ -867,6 +867,15 @@ function writeRestock(payload: unknown): ExportDoc {
       figures,
       basis,
     });
+  // No consumption line in the window: no demand, no reorder point, so
+  // "nothing is below its reorder point" would not be an answer (r40, as the
+  // page says it). Only a register that sends the count takes this branch.
+  if (num(obj(r.unitsCoverage).lines) === 0)
+    return doc({
+      say: `No consumption line was recorded in the last ${num(p.demandWindowDays) ?? 90} days, so no wine has a demand to set a reorder point from, and nothing here can say what will run out.`,
+      figures,
+      basis,
+    });
   if (list.length === 0)
     return doc({
       say: `Nothing is below its reorder point. That is a real answer about ${nounCount(skuCount, "wine", "wines")}, not an empty register.`,

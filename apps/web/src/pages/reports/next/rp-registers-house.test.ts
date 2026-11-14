@@ -14,6 +14,9 @@
  *  - Figures of record: "compare dollars with days" in a house of any money.
  */
 import { describe, expect, it } from 'vitest';
+import { createElement, type ReactNode } from 'react';
+import { render } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import {
   ledger,
   quadrants,
@@ -155,7 +158,11 @@ describe('what to buy back — goods, and an unknown on-hand is unknown', () => 
     expect(view({ ...BASE, reorderList: [] }).say).toBe(
       'Nothing is below its reorder point. That is a real answer about 3 goods, not an empty register.',
     );
-    expect(view({ ...BASE, skuCount: 0, reorderList: [] }).say).toMatch(/^No good came back/);
+    // The empty sentence now ends with a link (r40), so it is read as text.
+    const { container } = render(
+      createElement(MemoryRouter, null, view({ ...BASE, skuCount: 0, reorderList: [] }).say as ReactNode),
+    );
+    expect(container.textContent).toMatch(/^No good came back/);
   });
 
   it('says how many are below the point when the list is cut', () => {

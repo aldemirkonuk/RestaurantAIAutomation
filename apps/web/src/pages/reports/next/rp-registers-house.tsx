@@ -14,6 +14,7 @@ import { Link } from 'react-router-dom';
 import { FigureRow } from './rp-plot';
 import { EM, MONO, countOf, figure, figureTo, moneyIn, num, ratioPct } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
+import { withStep } from './rp-next-step';
 
 /* ────────────────────────────────────────── 6. margin against movement ── */
 
@@ -129,11 +130,14 @@ const quadrants = analysis<QuadrantRegister>({
     ];
     if (priced.length === 0)
       return {
-        say: `No wine on the list carries both a recorded cost and a menu price, so there is no margin axis to plot against.${
-          unclassified > 0
-            ? ` ${countOf(unclassified, 'wine is', 'wines are')} unclassified for that reason — not because they sell badly.`
-            : ' Nothing is filed in a quadrant, and nothing is guessed into one.'
-        }`,
+        say: withStep(
+          `No wine on the list carries both a recorded cost and a menu price, so there is no margin axis to plot against.${
+            unclassified > 0
+              ? ` ${countOf(unclassified, 'wine is', 'wines are')} unclassified for that reason — not because they sell badly.`
+              : ' Nothing is filed in a quadrant, and nothing is guessed into one.'
+          }`,
+          'margin',
+        ),
         figures,
         notes: [],
         basis,
@@ -804,6 +808,11 @@ export interface RestockRegister {
   basis?: Record<string, string>;
   skuCount: number;
   reorderCount: number;
+  /**
+   * Consumption lines the register read in its window (`unitsCoverage.lines`).
+   * null when the payload does not say: then nothing is claimed from it.
+   */
+  consumptionLines: number | null;
   reorderList: Array<{
     id: string;
     name: string;
@@ -866,6 +875,7 @@ const restock = analysis<RestockRegister>({
       basis: d.basis as Record<string, string>,
       skuCount: num(d.skuCount) ?? 0,
       reorderCount: num(d.reorderCount) ?? 0,
+      consumptionLines: num(obj(d.unitsCoverage).lines),
       reorderList: arr(d.reorderList).map((s) => ({
         id: str(s.id),
         name: str(s.name),
@@ -887,7 +897,25 @@ const restock = analysis<RestockRegister>({
     ];
     if (r.skuCount === 0)
       return {
-        say: 'No good came back from the inventory register, so there is nothing to reorder and nothing to say about cover.',
+        say: withStep(
+          'No good came back from the inventory register, so there is nothing to reorder and nothing to say about cover.',
+          'goods',
+        ),
+        figures,
+        notes: [],
+        basis,
+      };
+    // No consumption line in the window: no good has a demand, so no reorder
+    // point is set, and "nothing is below its reorder point" would not be an
+    // answer (r40, gap 5 house slice). Only a register that SAYS it read no
+    // line takes this branch; an older payload without the count keeps the
+    // sentences below.
+    if (r.consumptionLines === 0)
+      return {
+        say: withStep(
+          `No consumption line was recorded in the last ${figure(r.params.demandWindowDays ?? 90)} days, so no good has a demand to set a reorder point from, and nothing here can say what will run out.`,
+          'consumption',
+        ),
         figures,
         notes: [],
         basis,
