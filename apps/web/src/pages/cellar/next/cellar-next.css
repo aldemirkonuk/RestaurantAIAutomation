@@ -912,6 +912,20 @@ textarea.cl-field {
 .cl-rcp-link[data-linked='true'] svg { color: var(--seal); }
 .cl-rcp-link[data-linked='false'] { color: var(--warn); }
 .cl-rcp-flag { color: var(--warn); }
+/* A linked line leads to its good's drawer on /inventory. */
+.cl-rcp-good {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  font-size: 11.5px;
+  /* --ink-4, not --ink-3: the higher-contrast caption token (see .cl-note). */
+  color: var(--ink-4);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+.cl-rcp-good:hover { color: var(--ink-1); }
+.cl-rcp-read .cl-rcp-good { margin-left: auto; }
 .cl-rcp-note { margin: 6px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--ink-3); }
 .cl-rcp-note-warn {
   padding: 4px 8px;
@@ -1020,6 +1034,7 @@ textarea.cl-field {
   .cl-rcp .cl-btn,
   .cl-rcp .cl-linkish,
   .cl-rcp-link,
+  .cl-rcp-good,
   .cl-rcp-pick { min-height: 44px; }
   .cl-rcp .cl-field { font-size: 16px; }
   .cl-rcp .cl-btn { font-size: 14px; }
