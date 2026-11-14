@@ -31,7 +31,19 @@ const FIELD_WORDS: Record<string, string> = {
   bottle_price: 'its bottle price',
 };
 
-export function lineStatusWords(line: Pick<MenuLine, 'status' | 'source' | 'flag_reason' | 'flag_field'>): LineStatusWords {
+/**
+ * A dish keeps its one price in `bottle_price` (r28 G13), so "set by hand: its
+ * bottle price" on a dish named a bottle the dish does not have (r33 walk).
+ */
+const DISH_FIELD_WORDS: Record<string, string> = {
+  bottle_price: 'its price',
+  by_glass_price: 'its glass-column price',
+};
+
+export function lineStatusWords(
+  line: Pick<MenuLine, 'status' | 'source' | 'flag_reason' | 'flag_field'>,
+  opts: { dish?: boolean } = {},
+): LineStatusWords {
   if (line.status === 'approved') {
     const words = line.source === 'manual' ? 'as typed' : line.source === 'csv' ? 'as imported' : 'as read';
     return { words, sealed: true, why: null, noteShown: false };
@@ -42,7 +54,8 @@ export function lineStatusWords(line: Pick<MenuLine, 'status' | 'source' | 'flag
   if (line.status === 'flagged') {
     switch (line.flag_reason) {
       case 'corrected': {
-        const what = (line.flag_field && FIELD_WORDS[line.flag_field]) || 'a detail';
+        const field = line.flag_field ?? '';
+        const what = (opts.dish && DISH_FIELD_WORDS[field]) || FIELD_WORDS[field] || 'a detail';
         return {
           words: `set by hand: ${what}`,
           sealed: true,
