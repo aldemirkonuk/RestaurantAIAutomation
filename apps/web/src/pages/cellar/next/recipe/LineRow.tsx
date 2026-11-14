@@ -10,11 +10,11 @@
 import { useId, useState } from 'react';
 import { Link, useInRouterContext } from 'react-router-dom';
 import { Link2, Trash2 } from 'lucide-react';
-import type { RecipeLineRole, RecipeLineStatus, ShelfItem, StatedWeights, WeightNeeded } from '../../../../services/api/recipes';
+import type { RecipeLineRole, RecipeLineStatus, ShelfItem, StatedWeights, WeighedBy, WeightNeeded } from '../../../../services/api/recipes';
 import { amountWithUnit, qtyText, readQty, unitChoices, unitWord, type RecipeUnit } from './units';
 import ShelfPicker, { kindWords } from './ShelfPicker';
 import { recipeWords, type RecipeKind, type RecipeWords } from './recipeWords';
-import WeighBox from './WeighBox';
+import WeighBox, { plainGrams, type SayGrams } from './WeighBox';
 
 export interface DraftRow {
   key: string;
@@ -45,6 +45,8 @@ export interface DraftRow {
     costBasis: string | null;
     /** The weight the house can state so this line is priced (r28 gap 7). */
     needs?: WeightNeeded | null;
+    /** The stated weight this line's price went through, if any. */
+    weighed?: WeighedBy | null;
   } | null;
 }
 
@@ -53,6 +55,23 @@ export function weightNeeded(row: DraftRow): WeightNeeded | null {
   if (row.role !== 'stocked' || !row.inventoryId || row.itemGone || !row.saved) return null;
   if (row.saved.costBasis !== 'unit_mismatch' || row.saved.costPerServe != null) return null;
   return row.saved.needs ?? null;
+}
+
+/**
+ * The stated weight a saved, priced line went through, when the person can
+ * change it: a line edited since the read has no `saved`, so a weight is never
+ * shown beside a price it no longer makes.
+ */
+export function weighedBy(row: DraftRow): WeighedBy | null {
+  if (row.role !== 'stocked' || !row.inventoryId || row.itemGone || !row.saved) return null;
+  if (row.saved.costPerServe == null) return null;
+  const w = row.saved.weighed;
+  return w && Number.isFinite(w.grams) && w.grams > 0 ? w : null;
+}
+
+/** "Priced from one piece of Eggs at 60 g." / "Priced from one ml of Flour at 0,53 g." */
+export function weighedWords(w: WeighedBy, item: string, sayGrams: SayGrams = plainGrams): string {
+  return `Priced from one ${w.by === 'piece_grams' ? 'piece' : 'ml'} of ${item} at ${sayGrams(w.grams)} g.`;
 }
 
 /** The line's amount: the stored number while the box is as loaded, else what was typed. */
@@ -216,6 +235,65 @@ export function LineRowRead({ row }: { row: DraftRow }) {
   );
 }
 
+/**
+ * The weight a priced line went through, said under its price, with a way to
+ * change it (r28 gap 7): a mistyped weight (600 g for one egg) otherwise shows
+ * only as a price that looks wrong. The weight belongs to the good, so the
+ * box says that every recipe with it is priced again.
+ */
+function WeighedNote({
+  row,
+  w,
+  sayGrams,
+  open,
+  setOpen,
+  onWeighed,
+  thing,
+}: {
+  row: DraftRow;
+  w: WeighedBy;
+  sayGrams: SayGrams;
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  onWeighed?: (itemId: string, weights: StatedWeights) => void | Promise<void>;
+  thing: string;
+}) {
+  const item = row.itemName ?? rowName(row);
+  return (
+    <>
+      <p className="cl-rcp-note" data-testid="recipe-line-weighed">
+        {weighedWords(w, item, sayGrams)}{' '}
+        {open ? null : (
+          <button
+            type="button"
+            className="cl-btn cl-focus"
+            aria-label={`Change what one ${w.by === 'piece_grams' ? 'piece' : 'ml'} of ${item} weighs`}
+            onClick={() => setOpen(true)}
+          >
+            Change
+          </button>
+        )}
+      </p>
+      {open ? (
+        <>
+          <p className="cl-rcp-note">{`A new weight prices every ${thing} with ${item} again.`}</p>
+          <WeighBox
+            itemId={row.inventoryId as string}
+            item={item}
+            needs={w.by}
+            now={sayGrams(w.grams)}
+            onCancel={() => setOpen(false)}
+            onWeighed={async (itemId, weights) => {
+              await onWeighed?.(itemId, weights);
+              setOpen(false);
+            }}
+          />
+        </>
+      ) : null}
+    </>
+  );
+}
+
 export default function LineRow({
   row,
   say,
@@ -223,6 +301,7 @@ export default function LineRow({
   onRemove,
   kind,
   onWeighed,
+  sayGrams = plainGrams,
 }: {
   row: DraftRow;
   say: ((n: number) => string) | null;
@@ -230,12 +309,15 @@ export default function LineRow({
   onRemove: () => void;
   /** What the recipe is for; a dish's notes and examples say plate, not serve. */
   kind?: RecipeKind;
-  /** Told when a weight this line waited for is kept. */
+  /** Told when a weight this line waited for, or one it was priced through, is kept. */
   onWeighed?: (itemId: string, weights: StatedWeights) => void | Promise<void>;
+  /** Writes a stated weight in the house's form. */
+  sayGrams?: SayGrams;
 }) {
   const words = recipeWords(kind);
   const id = useId();
   const [picking, setPicking] = useState(false);
+  const [reweighing, setReweighing] = useState(false);
   const stocked = row.role === 'stocked';
   const qty = rowQty(row);
 
@@ -366,6 +448,17 @@ export default function LineRow({
           item={row.itemName ?? rowName(row)}
           needs={weightNeeded(row) as WeightNeeded}
           onWeighed={onWeighed}
+        />
+      ) : null}
+      {say && weighedBy(row) && row.inventoryId ? (
+        <WeighedNote
+          row={row}
+          w={weighedBy(row) as WeighedBy}
+          sayGrams={sayGrams}
+          open={reweighing}
+          setOpen={setReweighing}
+          onWeighed={onWeighed}
+          thing={words.thing}
         />
       ) : null}
     </li>

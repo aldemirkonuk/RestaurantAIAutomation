@@ -10,9 +10,37 @@
  * is said before it is sent.
  */
 import { useId, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import type { StatedWeights, WeightNeeded } from '../../../../services/api/recipes';
-import { readQty } from './units';
+import { useAuth } from '../../../../contexts/AuthContext';
+import { settingsApi } from '../../../../services/api/settings';
+import { formatHouseNumber } from '../../../../lib/house-number';
+import { qtyText, readQty } from './units';
 import { reason, useStateWeights } from './useRecipe';
+
+/** Writes a weight in grams as a number in the house's form. */
+export type SayGrams = (grams: number) => string;
+
+/** Until the house's form is read, a weight is written plainly ("0.53"). */
+export const plainGrams: SayGrams = (g) => qtyText(g);
+
+/**
+ * A stated weight written the way the house writes its numbers ("0,53" in a
+ * lira house, "0.53" in a pound house), from the same currency query the
+ * sheet's share reads, so the two never disagree about the house. Up to four
+ * places: one ml's weight is kept to four (ml_grams numeric(8,4)).
+ */
+export function useSayGrams(): SayGrams {
+  const { activeRestaurantId } = useAuth();
+  const q = useQuery({
+    queryKey: ['settings', 'currency', activeRestaurantId ?? null],
+    enabled: Boolean(activeRestaurantId),
+    queryFn: () => settingsApi.houseCurrency(),
+    staleTime: 5 * 60_000,
+  });
+  const code = q.data?.readable ? q.data.code : null;
+  return code ? (g) => formatHouseNumber(g, code, { max: 4 }) : plainGrams;
+}
 
 /** The gateway's bounds (recipes.service.ts MAX_PIECE_GRAMS, MAX_ML_GRAMS). */
 export const MOST_GRAMS: Record<WeightNeeded, number> = { piece_grams: 50_000, ml_grams: 5 };
@@ -43,11 +71,17 @@ export default function WeighBox({
   item,
   needs,
   onWeighed,
+  now,
+  onCancel,
 }: {
   itemId: string;
   item: string;
   needs: WeightNeeded;
   onWeighed?: (itemId: string, weights: StatedWeights) => void | Promise<void>;
+  /** The weight already stated, written for the reader, when the box changes one. */
+  now?: string;
+  /** Closes a box opened to change a weight; a box a line waits on has none. */
+  onCancel?: () => void;
 }) {
   const id = useId();
   const [text, setText] = useState('');
@@ -97,6 +131,17 @@ export default function WeighBox({
       <button type="submit" className="cl-btn cl-focus" disabled={keep.isPending}>
         {keep.isPending ? 'Keeping…' : 'Keep'}
       </button>
+      {onCancel ? (
+        <button type="button" className="cl-btn cl-focus" onClick={onCancel} disabled={keep.isPending}>
+          Cancel
+        </button>
+      ) : null}
+      {now ? (
+        <span className="cl-dim" data-testid="recipe-line-weigh-now">
+          {' '}
+          Now {now} g.
+        </span>
+      ) : null}
       {said ? (
         <p id={`${id}-said`} className="cl-rcp-note cl-rcp-note-warn" role="alert">
           {said}

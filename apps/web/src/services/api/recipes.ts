@@ -48,6 +48,11 @@ export interface RecipeLine {
    * linked good so the line is priced (r28 gap 7). Absent from an older gateway.
    */
   needs?: WeightNeeded | null;
+  /**
+   * The stated weight this line's price went through, when it went through
+   * one (2 eggs against eggs kept by the kg). Absent from an older gateway.
+   */
+  weighed?: WeighedBy | null;
   /** What one piece of the linked good weighs, in g, as the house stated it. */
   itemPieceGrams?: number | null;
   /** What one ml of the linked good weighs, in g, as the house stated it. */
@@ -56,6 +61,12 @@ export interface RecipeLine {
 
 /** piece_grams: what one piece weighs; ml_grams: what one ml weighs. */
 export type WeightNeeded = 'piece_grams' | 'ml_grams';
+
+/** A stated weight a line was priced through: which one, and its grams. */
+export interface WeighedBy {
+  by: WeightNeeded;
+  grams: number;
+}
 
 /** PUT .../items/:itemId/weights: a field left out is kept, null takes it off. */
 export interface StateWeightsBody {
