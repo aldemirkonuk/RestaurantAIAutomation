@@ -789,13 +789,8 @@ export class MenusService {
 
     // 4-6: resolve against the wine library, insert menu_items, and create the
     // governance submission trail. NOT current, so no inventory or price.
-    const reviewItems = await this.resolveAndPersistItems(
-      items,
-      restaurantId,
-      menu.id,
-      userId,
-      dto.method,
-      false,
+    const reviewItems = await this.persistOrDropVersion(restaurantId, menu.id, () =>
+      this.resolveAndPersistItems(items, restaurantId, menu.id, userId, dto.method, false),
     );
 
     // 7. Mark menu_uploaded for everyone on this restaurant (matches the
@@ -856,13 +851,8 @@ export class MenusService {
       null,
       null,
     );
-    const reviewItems = await this.resolveAndPersistItems(
-      items,
-      restaurantId,
-      menu.id,
-      userId,
-      method,
-      false,
+    const reviewItems = await this.persistOrDropVersion(restaurantId, menu.id, () =>
+      this.resolveAndPersistItems(items, restaurantId, menu.id, userId, method, false),
     );
     return {
       menuId: menu.id,
@@ -902,6 +892,41 @@ export class MenusService {
         bytes: bytes.length,
         failure: `the source file was not kept: ${err?.message ?? "unknown error"}`,
       };
+    }
+  }
+
+  /**
+   * A FAILED IMPORT KEEPS NO MENU (r31 walk w1, F1). The version row is written
+   * before its lines are resolved, so a library failure ("URI too long" at 120
+   * new wines) used to leave a kept menu of 126, 206 or 430 lines with no line
+   * behind it, listed under Menus kept and offered to be made current. The
+   * draft this import made is taken back (its lines go with it, ON DELETE
+   * CASCADE), and the refusal says nothing was kept. Only a draft is ever
+   * taken back, and only this import's own. A take-back that itself fails is
+   * said: the menu is then kept unread and can be discarded by hand.
+   */
+  private async persistOrDropVersion<T>(
+    restaurantId: string,
+    menuId: string,
+    persist: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await persist();
+    } catch (err: any) {
+      const why = err?.message ?? String(err);
+      const { error } = await this.dbService.supabase
+        .from("restaurant_menus")
+        .delete()
+        .eq("id", menuId)
+        .eq("restaurant_id", restaurantId)
+        .eq("status", "draft");
+      if (error) {
+        this.logger.error(`Menu import: the failed draft ${menuId} could not be taken back: ${error.message}`);
+        throw new InternalServerErrorException(
+          `${why}. The menu was kept, but with none of its lines: discard it under Menus kept, then import it again.`,
+        );
+      }
+      throw new InternalServerErrorException(`${why}. Nothing was kept; import the menu again.`);
     }
   }
 

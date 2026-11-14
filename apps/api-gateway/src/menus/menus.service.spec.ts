@@ -42,6 +42,10 @@ function makeFakeSupabase(
     // later read sees them, same as the real write.
     let inserted: Row[] | null = null;
     let insertError: { code: string; message: string } | null = null;
+    // r31 w1 F1: a DELETE removes the matching rows; a menu takes its lines
+    // with it (menu_items_menu_id_fkey ON DELETE CASCADE).
+    // `tables.__deleteFails = { <table>: "<message>" }` refuses it.
+    let deleting = false;
     const extra: Array<(r: Row) => boolean> = [];
     // `tables.__readFails = [{ <table>: "<message>" }]` makes every READ of
     // that table fail with the message (writes still land), so a test can
@@ -91,6 +95,10 @@ function makeFakeSupabase(
         updatePatch = patch;
         return api;
       },
+      delete() {
+        deleting = true;
+        return api;
+      },
       insert(rows: Row | Row[]) {
         const list = Array.isArray(rows) ? rows : [rows];
         // `tables.__insertFails = { <table>: (rows) => "<message>" | undefined }`
@@ -122,6 +130,15 @@ function makeFakeSupabase(
         return { data: rows[0] ?? null, error: null };
       },
       then(resolve: any) {
+        if (deleting) {
+          const fails = (tables as any).__deleteFails?.[table];
+          if (fails) return resolve({ data: null, error: { message: fails } });
+          const gone = matching();
+          tables[table] = (tables[table] || []).filter((r) => !gone.includes(r));
+          if (table === "restaurant_menus")
+            tables.menu_items = (tables.menu_items || []).filter((l) => !gone.some((m) => m.id === l.menu_id));
+          return resolve({ data: gone, error: null });
+        }
         if (insertError) return resolve({ data: null, error: insertError });
         if (inserted) return resolve({ data: inserted, error: null });
         if (!updatePatch && readFails()) return resolve({ data: null, error: { message: readFails() } });
@@ -2732,5 +2749,65 @@ describe("newestCurrentFirst (r28 G20)", () => {
     ];
     expect(newestCurrentFirst(rows).map((r) => r.id)).toEqual(["b", "a", "c", "d", "e", "f"]);
     expect(newestCurrentFirst([...rows].reverse()).map((r) => r.id)).toEqual(["b", "a", "c", "d", "e", "f"]);
+  });
+});
+
+/**
+ * r31 walk w1, F1: an import that fails at the library keeps no menu. The walk
+ * left kept menus of 126, 206 and 430 lines with no line behind any of them.
+ */
+describe("MenusService — a failed import keeps no menu (r31 w1 F1)", () => {
+  const failing = {
+    resolveLibraryWinesBatch: async () => {
+      throw new Error("Failed to read back provisional library wines: URI too long");
+    },
+    normalizeText: (t: string | null | undefined) => (t ? t.toLowerCase() : null),
+  };
+  const base = () => ({
+    restaurant_menus: [{ id: "menu-old", restaurant_id: "rest-1", status: "active" }] as Row[],
+    restaurants: [{ id: "rest-1", default_threshold_min: 3 }] as Row[],
+    restaurant_inventory: [] as Row[],
+    menu_items: [{ id: "mi-old", menu_id: "menu-old", restaurant_id: "rest-1", name: "Kept" }] as Row[],
+    user_onboarding_progress: [] as Row[],
+  });
+  const csv = "name,producer,bottle_price\nOpus One,Opus,62\nSassicaia,Tenuta San Guido,90\n";
+
+  it("the library fails: the draft it made is taken back, the sentence says nothing was kept, the current menu stands", async () => {
+    const tables: Record<string, Row[]> = base();
+    const service = makeService(tables, { wineSubmissions: failing, csvParser: new CsvParserService() });
+    await expect(
+      service.importMenu({ method: "csv", data: { csvContent: csv }, restaurantId: "rest-1" } as any, "user-1"),
+    ).rejects.toThrow("URI too long. Nothing was kept; import the menu again.");
+    expect(tables.restaurant_menus.map((m) => m.id)).toEqual(["menu-old"]);
+    expect(tables.menu_items.map((l) => l.id)).toEqual(["mi-old"]);
+    // An empty read is not proof a menu was uploaded, and nor is a failed one.
+    expect(tables.user_onboarding_progress).toEqual([]);
+  });
+
+  it("the take-back itself fails: it says the menu was kept without its lines", async () => {
+    const tables: Record<string, Row[]> = base();
+    (tables as any).__deleteFails = { restaurant_menus: "boom" };
+    const service = makeService(tables, { wineSubmissions: failing, csvParser: new CsvParserService() });
+    await expect(
+      service.importMenu({ method: "csv", data: { csvContent: csv }, restaurantId: "rest-1" } as any, "user-1"),
+    ).rejects.toThrow("The menu was kept, but with none of its lines: discard it under Menus kept");
+  });
+
+  it("only a draft is taken back, never the house's current menu", async () => {
+    const tables: Record<string, Row[]> = base();
+    const service = makeService(tables, { wineSubmissions: failing });
+    await (service as any).persistOrDropVersion("rest-1", "menu-old", async () => {
+      throw new Error("boom");
+    }).catch(() => undefined);
+    expect(tables.restaurant_menus.map((m) => m.id)).toEqual(["menu-old"]);
+  });
+
+  it("Arrival's kept version is taken back the same way", async () => {
+    const tables: Record<string, Row[]> = base();
+    const service = makeService(tables, { wineSubmissions: failing });
+    await expect(
+      service.importParsedItems([{ name: "Opus One", producer: "Opus" } as any], "rest-1", "user-1", "manual"),
+    ).rejects.toThrow("Nothing was kept");
+    expect(tables.restaurant_menus.map((m) => m.id)).toEqual(["menu-old"]);
   });
 });
