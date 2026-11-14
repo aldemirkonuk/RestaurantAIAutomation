@@ -62,6 +62,9 @@ export function MenuScanUpload({ onSuccess }: MenuScanUploadProps) {
           onFileUpload={handleImage}
           enableLiveDetection={false}
           useCameraModal={true}
+          heading="Photograph the menu"
+          intro="Take a photo of the printed menu, or choose a photo or a PDF of it. Mudavym reads every line, drinks and dishes."
+          showPipeline={false}
         />
       </div>
       <p className="mt-3 text-xs text-center text-gray-400">
