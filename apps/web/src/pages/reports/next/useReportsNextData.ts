@@ -35,7 +35,7 @@ import { apiClient } from '@/services/api/client';
 import { settingsApi } from '@/services/api/settings';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
 import { useAuthStore } from '@/stores/authStore';
-import { failureOf, heldBackFailure, num, type Failure } from './rp-format';
+import { failureOf, failureReason, heldBackFailure, num, type Failure } from './rp-format';
 import { CATALOGUE, defaultGraph, graphOrDefault, type ReadingRow } from './rp-catalogue';
 import { readsRegister } from './rp-spec';
 import type { ComboPick } from './rp-combo';
@@ -339,9 +339,9 @@ export function useReportsNextData(
     userId === null
       ? 'No one is signed in, so there is no arrangement of yours to read: the house sheet is shown, and arranging is off.'
       : prefsError && !hadGoodAnswer
-        ? `Your own arrangement of this sheet could not be read (${
-            failureOf(prefsError)?.message ?? 'the request failed'
-          }), so the house sheet is shown. Arranging is off until it can be read.`
+        ? `Your own arrangement of this sheet could not be read (${failureReason(
+            failureOf(prefsError) ?? { status: null, message: '' },
+          )}), so the house sheet is shown. Arranging is off until it can be read.`
         : null;
 
   const sheet = useMemo(() => decodeSheet(preferences?.[SHEET_PREF_KEY]), [preferences]);
