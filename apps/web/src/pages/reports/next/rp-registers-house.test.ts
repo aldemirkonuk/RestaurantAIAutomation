@@ -20,9 +20,12 @@ import {
   quadrantWord,
   restock,
   seats,
+  service,
+  unservedNote,
   type QuadrantRegister,
   type RestockRegister,
   type SeatsRegister,
+  type ServiceRegister,
 } from './rp-registers-house';
 
 const ctx = { days: 30, currency: 'TRY' } as never;
@@ -165,5 +168,74 @@ describe('figures of record — no currency is named in the graph note', () => {
   it('[REVERT-FAILS] compares money with days, not dollars', () => {
     expect(ledger.graphNote).toContain('would compare money with days');
     expect(ledger.graphNote).not.toMatch(/dollar/);
+  });
+});
+
+describe('the seats and service tables say when they stop short (r28 gap 14)', () => {
+  const table = (id: string, checks: number) => ({
+    tableId: id,
+    label: `T${id}`,
+    zone: null,
+    seats: 4,
+    checks,
+    revenue: checks * 100,
+    covers: checks * 2,
+    avgCheck: checks > 0 ? 100 : null,
+    revenuePerSeat: null,
+    seatUtilization: null,
+    wineAttachRate: null,
+  });
+  const seatsView = (tables: unknown[]) =>
+    seats.view(seats.select({ sinceDays: 90, checksInWindow: 9, tables }) as SeatsRegister, ctx);
+  const server = (i: number) => ({ name: `Server ${i}`, checks: 3, revenue: 300, avgCheck: 100, wineAttachRate: null, tipPct: null, revenuePerCover: null });
+  const serviceView = (waiters: unknown[]) =>
+    service.view(service.select({ sinceDays: 90, checksInWindow: 9, dataStatus: '', waiters }) as ServiceRegister, ctx);
+
+  it('[REVERT-FAILS] a room of 45 tables prints 40 and says so', () => {
+    const tables = Array.from({ length: 45 }, (_, i) => table(String(i), 5));
+    const v = seatsView(tables);
+    expect(v.table!.rows).toHaveLength(40);
+    expect(v.table!.more).toBe("Showing 40 of 45, in the register's own order.");
+    expect(seatsView(tables.slice(0, 3)).table!.more).toBeUndefined();
+  });
+
+  it('[REVERT-FAILS] 44 servers print 40 and say so', () => {
+    const v = serviceView(Array.from({ length: 44 }, (_, i) => server(i)));
+    expect(v.table!.rows).toHaveLength(40);
+    expect(v.table!.more).toBe("Showing 40 of 44, in the register's own order.");
+    expect(serviceView([server(1)]).table!.more).toBeUndefined();
+  });
+
+  it('[REVERT-FAILS] never says an unserved table is listed when the table stops before it', () => {
+    const tables = [...Array.from({ length: 40 }, (_, i) => table(String(i), 5)), table('x', 0), table('y', 0)];
+    expect(seatsView(tables).notes).toContain(
+      '2 mapped tables took no check in the window. They are left off the bars, and the table’s first 40 rows do not reach them.',
+    );
+  });
+
+  it('says how many are listed when the cut falls among them', () => {
+    expect(unservedNote(3, 1)).toBe(
+      '3 mapped tables took no check in the window. They are left off the bars; 1 of them is listed in the table, and the rest fall past its first 40 rows.',
+    );
+    expect(unservedNote(1, 0)).toBe(
+      '1 mapped table took no check in the window. It is left off the bars, and the table’s first 40 rows do not reach it.',
+    );
+    expect(unservedNote(1, 1)).toBe('1 mapped table took no check in the window. It is left off the bars, and it is listed in the table.');
+  });
+});
+
+describe('figures of record — GMROI is said in words (r28 gap 14)', () => {
+  const LEDGER = {
+    basis: {},
+    cogsCoverage: null,
+    costOfCostedItems: null,
+    gmroi: 2.4,
+    tillStock: { goodsOnHand: 10, goodsOnTill: 8, goodsOffTill: 2, offTillValue: null, uncostedOnTill: 1 },
+  };
+  it('[REVERT-FAILS] names the figure "Return on stock", and no sentence says GMROI', () => {
+    const v = ledger.view(ledger.select(LEDGER) as never, ctx);
+    const labels = v.figures.map((f) => f.label);
+    expect(labels).toContain('Return on stock');
+    expect(JSON.stringify({ figures: v.figures, notes: v.notes, say: v.say ?? null })).not.toMatch(/GMROI/);
   });
 });

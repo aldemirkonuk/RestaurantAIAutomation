@@ -41,6 +41,30 @@ export interface QuadrantRegister {
 
 /** The quadrant table lists this many rows, and says so when there are more. */
 const QUADRANT_ROWS = 40;
+/** The rows a register's table prints; the seats and service tables too. */
+const TABLE_ROWS = QUADRANT_ROWS;
+
+/** Said under a table that prints only part of its register (r28 gap 14). */
+export function cutShort(total: number, shown = TABLE_ROWS): string | undefined {
+  return total > shown
+    ? `Showing ${figure(shown)} of ${figure(total)}, in the register's own order.`
+    : undefined;
+}
+
+/**
+ * What the seats note says of the mapped tables that took no check: they are
+ * never on the bars, and they are in the table only if its rows reach them.
+ */
+export function unservedNote(unserved: number, listed: number): string {
+  const one = unserved === 1;
+  const head = one
+    ? '1 mapped table took no check in the window. It is left off the bars'
+    : `${figure(unserved)} mapped tables took no check in the window. They are left off the bars`;
+  if (listed >= unserved) return `${head}, and ${one ? 'it is' : 'they are'} listed in the table.`;
+  if (listed === 0)
+    return `${head}, and the table’s first ${figure(TABLE_ROWS)} rows do not reach ${one ? 'it' : 'them'}.`;
+  return `${head}; ${figure(listed)} of them ${listed === 1 ? 'is' : 'are'} listed in the table, and the rest fall past its first ${figure(TABLE_ROWS)} rows.`;
+}
 
 /** The engine's quadrant key in the words the figures above it use. */
 const QUADRANT_WORDS: Record<string, string> = {
@@ -327,7 +351,9 @@ const ledger = analysis<LedgerRegister>({
       },
       { label: 'Inventory turns', value: figureTo(f.inventoryTurnover, 2), note: 'Needs the till’s goods at cost, what it cost, and 28 days of the till' },
       { label: 'Days of inventory', value: figureTo(f.daysInventoryOutstanding, 1), note: 'Needs the till’s goods at cost, what it cost, and 28 days of the till' },
-      { label: 'GMROI', value: figureTo(f.gmroi, 2), note: 'Needs the till’s goods at cost, what was kept, and 28 days of the till' },
+      // GMROI, said in words (r28 gap 14): what was kept for each 1 of goods
+      // held at cost.
+      { label: 'Return on stock', value: figureTo(f.gmroi, 2), note: 'What was kept for each 1 held in stock at cost. Needs the till’s goods at cost, what was kept, and 28 days of the till' },
       {
         label: 'Bought (last 365 days)',
         value: money(f.deliveredPurchases),
@@ -363,11 +389,11 @@ const ledger = analysis<LedgerRegister>({
     const ts = f.tillStock;
     if (ts && ts.goodsOffTill > 0)
       notes.push(
-        `Inventory turns, days of inventory and GMROI count the ${figure(ts.goodsOnTill)} of ${figure(ts.goodsOnHand)} goods on hand the till sells. The ${figure(ts.goodsOffTill)} not on the till${ts.offTillValue != null ? `, ${money(ts.offTillValue)} at cost,` : ''} ${ts.goodsOffTill === 1 ? 'is' : 'are'} left out: nothing ${ts.goodsOffTill === 1 ? 'it sells reaches' : 'they sell reaches'} what it cost.`,
+        `Inventory turns, days of inventory and the return on stock count the ${figure(ts.goodsOnTill)} of ${figure(ts.goodsOnHand)} goods on hand the till sells. The ${figure(ts.goodsOffTill)} not on the till${ts.offTillValue != null ? `, ${money(ts.offTillValue)} at cost,` : ''} ${ts.goodsOffTill === 1 ? 'is' : 'are'} left out: nothing ${ts.goodsOffTill === 1 ? 'it sells reaches' : 'they sell reaches'} what it cost.`,
       );
     if (ts && ts.uncostedOnTill > 0)
       notes.push(
-        `${figure(ts.uncostedOnTill)} of the ${figure(ts.goodsOnTill)} goods on hand the till sells carry no recorded cost, so inventory turns, days of inventory and GMROI read ${EM}.`,
+        `${figure(ts.uncostedOnTill)} of the ${figure(ts.goodsOnTill)} goods on hand the till sells carry no recorded cost, so inventory turns, days of inventory and the return on stock read ${EM}.`,
       );
     // A mapped good that sold nothing stays in the base, since the till can
     // sell it; named so a long days of inventory reads for what it is.
@@ -624,7 +650,7 @@ const seats = analysis<SeatsRegister>({
           { key: 'a', label: 'Avg check', numeric: true },
           { key: 'w', label: 'Wine attach', numeric: true },
         ],
-        rows: s.tables.slice(0, 40).map((t) => ({
+        rows: s.tables.slice(0, TABLE_ROWS).map((t) => ({
           key: t.tableId,
           cells: [
             t.label,
@@ -634,14 +660,16 @@ const seats = analysis<SeatsRegister>({
             ratioPct(t.wineAttachRate),
           ],
         })),
+        more: cutShort(s.tables.length),
       },
       figures,
       notes: [
         ...(s.tables.length > served.length
           ? [
-              s.tables.length - served.length === 1
-                ? '1 mapped table took no check in the window. It is left off the bars, and it is listed in the table.'
-                : `${figure(s.tables.length - served.length)} mapped tables took no check in the window. They are left off the bars, and they are listed in the table.`,
+              unservedNote(
+                s.tables.length - served.length,
+                s.tables.slice(0, TABLE_ROWS).filter((t) => t.checks <= 0).length,
+              ),
             ]
           : []),
         ...roomNotes,
@@ -748,7 +776,7 @@ const service = analysis<ServiceRegister>({
           { key: 'w', label: 'Wine attach', numeric: true },
           { key: 't', label: 'Tip', numeric: true },
         ],
-        rows: s.waiters.slice(0, 40).map((w) => ({
+        rows: s.waiters.slice(0, TABLE_ROWS).map((w) => ({
           key: w.name,
           cells: [
             w.name,
@@ -758,6 +786,7 @@ const service = analysis<ServiceRegister>({
             ratioPct(w.tipPct),
           ],
         })),
+        more: cutShort(s.waiters.length),
       },
       figures,
       notes: [
