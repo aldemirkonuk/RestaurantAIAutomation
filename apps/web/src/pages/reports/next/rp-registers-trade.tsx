@@ -19,6 +19,7 @@ import {
   MONO,
   WEEKDAY_SHORT,
   categoryLabel,
+  UNFILED,
   countOf,
   figure,
   moneyIn,
@@ -59,7 +60,8 @@ const reading = analysis<ReadingRow[]>({
         return {
           ruleKey: `insight:${candidate}${entity ? `:${entity}` : ''}`,
           sentence: str(row.sentence),
-          category: str(row.category) || 'sales',
+          // A sentence with no category is not filed under Sales (r28 gap 20).
+          category: str(row.category) || UNFILED,
           score: num(row.score) ?? 0,
           entityLabel: (row.entity_label ?? row.entityLabel ?? null) as string | null,
         };
