@@ -346,6 +346,8 @@ describe("analytics selects only columns that exist (42703 regression)", () => {
       const out = await svc.getCashflow(RESTAURANT);
       expect(client.schemaErrors).toEqual([]);
       expect(out.spendLast30d).toBe(2000);
+      // Printed as "Outflow: …" on /reports and in the export (r11).
+      expect(out.basis.outflow).toBe("delivered orders (money coming in needs the till connected)");
     });
 
     // ADR 0058 fixed the nine `=== "delivered"` sites and the four literals on

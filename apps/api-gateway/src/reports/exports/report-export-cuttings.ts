@@ -287,8 +287,8 @@ function writeTill(payload: unknown, ctx: { days: number | null }): ExportDoc {
           ],
     basis: [
       timezone
-        ? `Non-voided pos_checks.total between ${from || "—"} and ${to || "—"}, each check filed on the house's day in ${timezone} by when it closed, else when it opened.`
-        : `Non-voided pos_checks.total between ${from || "—"} and ${to || "—"}.`,
+        ? `The total of every till check, voided ones left out, between ${from || "—"} and ${to || "—"}, each check filed on the house's day in ${timezone} by when it closed, else when it opened.`
+        : `The total of every till check, voided ones left out, between ${from || "—"} and ${to || "—"}.`,
       "The series is sparse on purpose: a day with no check is absent, not written as zero.",
     ],
   });
@@ -675,7 +675,7 @@ function writeSeats(payload: unknown): ExportDoc {
   const s = obj(payload);
   const sinceDays = num(s.sinceDays) ?? 90;
   const basis = sentences(
-    `Non-voided pos_checks the till attributed to a shown table over the last ${sinceDays} days.`,
+    `Till checks, voided ones left out, that the till attributed to a shown table over the last ${sinceDays} days.`,
     str(s.dataStatus) ? `Feed: ${str(s.dataStatus)}.` : null,
   );
   const tables = arr(s.tables).map((t) => ({
@@ -775,7 +775,7 @@ function writeService(payload: unknown): ExportDoc {
   const sinceDays = num(s.sinceDays) ?? 90;
   const adj = s.adjusted == null ? null : obj(s.adjusted);
   const basis = sentences(
-    `Non-voided pos_checks grouped by server name over the last ${sinceDays} days.`,
+    `Till checks, voided ones left out, grouped by server name over the last ${sinceDays} days.`,
     str(s.dataStatus) ? `Feed: ${str(s.dataStatus)}.` : null,
     adj ? adj.method : null,
   );
