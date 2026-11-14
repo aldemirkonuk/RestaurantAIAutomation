@@ -32,6 +32,8 @@ export interface TillSalesRead {
   items?: Array<{
     inventory_id: string;
     sales: number | string;
+    /** A mapping of this house points at the item (listed even if it never sold). */
+    mapped?: boolean;
     in_house?: boolean;
   }>;
   checks?: number;
@@ -183,20 +185,124 @@ export function cogsCoverageOf(read: TillCostRead): CogsCoverage {
 }
 
 /**
+ * Today's stock at cost of the goods the till reaches (reports lane r2,
+ * 2026-11-11; the #1088 residual "turns and days of stock compare unlike
+ * bases").
+ *
+ * Turns, days of stock and GMROI divide the cost of what the till sold by the
+ * stock it sold from. The cost of what sold holds only goods the till reaches:
+ * a sale on a line that names no stocked good moves no bottle and carries no
+ * cost. Divided into the whole cellar, every good the till cannot sell (a wine
+ * not mapped to a till item, a kitchen good) added days of stock that no sale
+ * could ever take away, so an unmapped wine read as idle stock.
+ *
+ * A good the till reaches: one the sales read lists for this house (a mapping
+ * points at it, or a line named it, or the till moved it in the window), or
+ * one the cost read lists. The rest are named apart, with their value at cost,
+ * and feed no ratio. The invariant ADR 0051 set for the whole cellar holds
+ * here: the value is null unless every on-hand good the till reaches carries a
+ * recorded cost, never a total of the costed part. An unpriced good the till
+ * does not reach no longer withholds it.
+ *
+ * Null when the sales read failed: without it the mapped goods that did not
+ * sell are unknown, and a smaller stock would shorten days of stock.
+ */
+export interface TillStock {
+  value: number | null;
+  /** On-hand goods (rows holding a bottle or more). */
+  goodsOnHand: number;
+  /** Of those, the goods the till reaches. */
+  goodsOnTill: number;
+  /** Of those the till reaches, how many carry no recorded cost. */
+  uncostedOnTill: number;
+  /**
+   * Of those the till reaches, how many sold nothing in the window (a mapped
+   * item no line named with a sale, no bottle moved). They stay in the base:
+   * a slow or idle seller is stock the till can sell, and leaving it out
+   * would shorten days of stock. Named so the reader can tell them apart.
+   */
+  idleOnTill: number;
+  /** Their value at cost, or null when one of them has no recorded cost. */
+  idleOnTillValue: number | null;
+  /** On-hand goods the till does not reach: left out of every ratio. */
+  goodsOffTill: number;
+  /** Their value at cost, or null when one of them has no recorded cost. */
+  offTillValue: number | null;
+}
+
+export function tillStockOf(input: {
+  onHand: Array<{ id: string; inventoryValue: number | null }>;
+  sales: TillSalesRead | null;
+  cost: TillCostRead | null;
+}): TillStock | null {
+  const { onHand, sales, cost } = input;
+  if (sales == null) return null;
+  const reached = new Set<string>();
+  for (const i of sales.items ?? []) if (i.in_house !== false) reached.add(String(i.inventory_id));
+  for (const i of cost?.items ?? []) if (i.in_house !== false) reached.add(String(i.inventory_id));
+  const on = onHand.filter((g) => reached.has(String(g.id)));
+  const off = onHand.filter((g) => !reached.has(String(g.id)));
+  const known = (v: number | null): v is number => typeof v === "number" && Number.isFinite(v);
+  const uncostedOnTill = on.filter((g) => !known(g.inventoryValue)).length;
+  const sum = (gs: typeof onHand) =>
+    gs.reduce((a, g) => a + (g.inventoryValue as number), 0);
+  // Sold in the window: a sale on the till, or a bottle the till moved.
+  const sold = new Set<string>();
+  for (const i of sales.items ?? []) if (num(i.sales) > 0) sold.add(String(i.inventory_id));
+  for (const i of cost?.items ?? [])
+    if (num(i.bottles_out) > 0 || num(i.bottles_back) > 0) sold.add(String(i.inventory_id));
+  const idle = on.filter((g) => !sold.has(String(g.id)));
+  return {
+    // No on-hand good the till reaches is "none, or no answer" (the loader
+    // degrades a failed read to []), so null, never 0 days.
+    value: on.length > 0 && uncostedOnTill === 0 ? sum(on) : null,
+    goodsOnHand: onHand.length,
+    goodsOnTill: on.length,
+    uncostedOnTill,
+    idleOnTill: idle.length,
+    idleOnTillValue: idle.every((g) => known(g.inventoryValue)) ? round2(sum(idle)) : null,
+    goodsOffTill: off.length,
+    offTillValue: off.every((g) => known(g.inventoryValue)) ? round2(sum(off)) : null,
+  };
+}
+
+/** What the stock base of turns, days of stock and GMROI covered. */
+function tillStockSentence(t: TillStock | null): string {
+  if (t == null) return ": null, since the till's sales could not be read and the goods it reaches are unknown";
+  const parts = [`: ${t.goodsOnTill} of ${plural(t.goodsOnHand, "good")} on hand`];
+  if (t.uncostedOnTill > 0)
+    parts.push(`, ${t.uncostedOnTill} of them with no recorded cost`);
+  if (t.idleOnTill > 0)
+    parts.push(
+      `, ${t.idleOnTill} of them sold nothing in the window` +
+        (t.idleOnTillValue != null ? ` (${t.idleOnTillValue.toFixed(2)} at cost)` : "") +
+        ` and ${t.idleOnTill === 1 ? "stays" : "stay"} in, since the till can sell ${t.idleOnTill === 1 ? "it" : "them"}`,
+    );
+  if (t.goodsOffTill > 0)
+    parts.push(
+      `; the ${plural(t.goodsOffTill, "good")} the till does not reach` +
+        (t.offTillValue != null ? `, ${t.offTillValue.toFixed(2)} at cost,` : "") +
+        " are left out (tillStock), since nothing they sell reaches the cost of what sold",
+    );
+  return parts.join("");
+}
+
+/**
  * The till's figures for one house. `sales` / `cost` are the two reads, or
  * `null` when that read failed (a failed read is null, never 0: ADR 0067).
- * `inventoryValue` is today's stock at cost, null unless every on-hand row is
- * costed (ADR 0051).
+ * `tillStock` is today's stock at cost of the goods the till reaches
+ * (`tillStockOf`), the base turns, days of stock and GMROI divide by.
  */
 export function tillFigures(input: {
   sales: TillSalesRead | null;
   cost: TillCostRead | null;
-  inventoryValue: number | null;
+  tillStock: TillStock | null;
   labor: number;
   now: Date;
   windowDays: number;
 }): TillFigures {
-  const { sales, cost, inventoryValue, labor, now, windowDays } = input;
+  const { sales, cost, tillStock, labor, now, windowDays } = input;
+  const inventoryValue = tillStock?.value ?? null;
 
   // ---- cost of what sold -------------------------------------------------
   let cogs: number | null = null;
@@ -239,7 +345,7 @@ export function tillFigures(input: {
           items: c.itemsCosted,
           of: c.itemsMoved,
         };
-        cogsBasis += ` The ${plural(c.itemsCosted, "item")} whose every bottle carries its cost cost ${costOfCostedItems.amount.toFixed(2)} (costOfCostedItems): exact for those items, not the cost of goods, and divided by nothing.`;
+        cogsBasis += ` The ${plural(c.itemsCosted, "item")} whose every bottle carries its cost came to ${costOfCostedItems.amount.toFixed(2)} at cost (costOfCostedItems): exact for those items, not the cost of goods, and divided by nothing.`;
       }
     } else {
       const total = num(cost.cost);
@@ -354,7 +460,9 @@ export function tillFigures(input: {
       revenue: revenueBasis,
       costDerived:
         "grossMarginDollars, grossMargin, cogsRatio and primeCostRatio divide the cost of what the till sold by its net sales of the same items, and are null when either is; " +
-        `inventoryTurnover, daysInventoryOutstanding and gmroi annualise the span the till covers (null under ${MIN_SPAN_DAYS} days) against today's stock at cost, which is null unless every on-hand row carries a recorded cost (ADR 0051; a row whose invoiced cost covers only part of its bottles is valued at that cost, as the cellar's basis names). ` +
+        `inventoryTurnover, daysInventoryOutstanding and gmroi annualise the span the till covers (null under ${MIN_SPAN_DAYS} days) against today's stock at cost of the goods the till reaches (mapped to a till item, or sold or moved by it in the window), which is null unless every one of them on hand carries a recorded cost (ADR 0051; a row whose invoiced cost covers only part of its bottles is valued at that cost, as the cellar's basis names)` +
+        tillStockSentence(tillStock) +
+        ". " +
         "settledOnEarlierSales (late prices settled in the window on bottles sold before it), costOfCostedItems, deliveredPurchases and shelfValueAtMenuPrice keep their own names and feed no ratio.",
     },
   };

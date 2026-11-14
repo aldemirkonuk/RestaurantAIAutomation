@@ -592,7 +592,8 @@ function writeLedger(payload: unknown): ExportDoc {
   const cg = d.cogsCoverage == null ? null : obj(d.cogsCoverage);
   const withheld = d.salesWithheld === true ? "Owners and managers see the till's figures" : null;
   const both = withheld ?? "Needs what sold and what it cost";
-  const span = "Needs the cellar at cost, what it cost, and 28 days of the till";
+  const span = "Needs the till's goods at cost, what it cost, and 28 days of the till";
+  const ts = d.tillStock == null ? null : obj(d.tillStock);
   const moved = num(cg?.itemsMoved);
   const costed = num(cg?.itemsCosted);
   const costGap =
@@ -629,7 +630,7 @@ function writeLedger(payload: unknown): ExportDoc {
       // prices on earlier sales apart (finding 1), the cellar note scoped to
       // the figures that wait on the cellar (finding 3).
       costGap && kpAmount != null && kpItems > 0
-        ? `The ${kpItems} of ${num(kp?.of) ?? 0} items sold whose every bottle carries its cost cost ${kpAmount.toFixed(2)}. That is not what it cost, and no figure above divides by it.`
+        ? `The ${kpItems} of ${num(kp?.of) ?? 0} items sold whose every bottle carries its cost came to ${kpAmount.toFixed(2)} at cost. That is not the cost of everything sold, and no figure above divides by it.`
         : "",
       settled != null && settled !== 0
         ? `${settled.toFixed(2)} of what it cost is late prices on this window's sales, settled when invoices were verified after the bottles sold.`
@@ -637,10 +638,23 @@ function writeLedger(payload: unknown): ExportDoc {
       earlier != null && earlier !== 0
         ? `${earlier.toFixed(2)} of late prices was settled in this window on bottles sold before it. It is not in what it cost: those sales are not in this window's sales.`
         : "",
+      // Turns, days and GMROI divide by the goods the till reaches (reports
+      // lane r2); the whole cellar's cost gates only the cellar at cost.
+      ts && (num(ts.goodsOffTill) ?? 0) > 0
+        ? `Inventory turns, days of inventory and GMROI count the ${num(ts.goodsOnTill) ?? 0} of ${num(ts.goodsOnHand) ?? 0} goods on hand the till sells. The ${num(ts.goodsOffTill)} not on the till${num(ts.offTillValue) != null ? `, ${(num(ts.offTillValue) as number).toFixed(2)} at cost,` : ""} are left out: nothing they sell reaches what it cost.`
+        : "",
+      ts && (num(ts.uncostedOnTill) ?? 0) > 0
+        ? `${num(ts.uncostedOnTill)} of the ${num(ts.goodsOnTill) ?? 0} goods on hand the till sells carry no recorded cost, so inventory turns, days of inventory and GMROI are withheld.`
+        : "",
+      // A mapped good that sold nothing stays in the base (the till can sell
+      // it), and is named so a long days of stock can be read for what it is.
+      ts && (num(ts.idleOnTill) ?? 0) > 0
+        ? `${num(ts.idleOnTill)} of the ${num(ts.goodsOnTill) ?? 0} goods on hand the till sells sold nothing in this window${num(ts.idleOnTillValue) != null ? ` (${(num(ts.idleOnTillValue) as number).toFixed(2)} at cost)` : ""}. They are counted: the till can sell them, so they lengthen days of inventory.`
+        : "",
       cc && cc.complete === false
         ? num(cc.total) === 0
-          ? "No on-hand wine carries a recorded cost, so the cellar at cost, inventory turns, days of inventory and GMROI are withheld rather than a total assembled from nothing."
-          : `${num(cc.priced) ?? 0} of ${num(cc.total) ?? 0} on-hand wines carry a recorded cost, so the cellar at cost, inventory turns, days of inventory and GMROI are withheld rather than a total assembled from part of the cellar.`
+          ? "No on-hand good carries a recorded cost, so the cellar at cost is withheld rather than a total assembled from nothing."
+          : `${num(cc.priced) ?? 0} of ${num(cc.total) ?? 0} on-hand goods carry a recorded cost, so the cellar at cost is withheld rather than a total assembled from part of the cellar.`
         : "",
       "Before tax. Bought is what was bought, not what sold: it feeds no ratio.",
     ],
@@ -901,6 +915,8 @@ function writeBench(payload: unknown): ExportDoc {
     baseline: num(g.baseline_value),
     current: num(g.current_value),
     target: num(g.target_value),
+    // Set when the goal's latest reading was refused; current is then null.
+    unread: typeof g.current_unread === "string" && g.current_unread ? g.current_unread : null,
   }));
   const last = num(cf.spendLast30d);
   const prev = num(cf.spendPrev30d);
@@ -929,7 +945,13 @@ function writeBench(payload: unknown): ExportDoc {
     ...goals.map((g): Cell[] => [
       `${g.name} — baseline, now, target`,
       typed(g.baseline, "count", "no baseline recorded when the goal was set"),
-      typed(g.current, "count", "the goal's current value was not recorded"),
+      typed(
+        g.current,
+        "count",
+        g.unread
+          ? `its latest reading was refused: ${g.unread.replace(/\.$/, "")}`
+          : "the goal's current value was not recorded",
+      ),
       typed(g.target, "count", "no target recorded"),
     ]),
   ];
