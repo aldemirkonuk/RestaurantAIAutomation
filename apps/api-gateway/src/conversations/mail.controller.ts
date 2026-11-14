@@ -80,17 +80,25 @@ export class MailController {
     required: false,
     description: "1..100, default 50",
   })
+  @ApiQuery({
+    name: "q",
+    required: false,
+    description:
+      "Only the people whose name, a thread subject or order number, or a letter the caller may read holds this (accents folded, at most 100 characters)",
+  })
   people(
     @CurrentUser() user: AuthUser,
     @CurrentUser("role") role: string | null,
     @Query("waiting") waiting?: string,
     @Query("after") after?: string,
     @Query("limit") limit?: string,
+    @Query("q") q?: unknown,
   ): Promise<MailPeoplePage> {
     return this.mail.listPeople(houseOf(user), role, {
       waitingOnly: waiting === "1" || waiting === "true",
       after,
       limit,
+      query: q,
     });
   }
 

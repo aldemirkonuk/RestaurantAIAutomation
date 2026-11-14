@@ -92,6 +92,26 @@ export function decodeMailCursor(raw: string): MailCursor {
   return { at: parsed[0], key: parsed[1] };
 }
 
+/** The most a Mail search reads of what was typed (r28 mail gap 16). */
+export const MAIL_SEARCH_MAX = 100;
+export const SEARCH_TOO_LONG = `A search is at most ${MAIL_SEARCH_MAX} characters.`;
+
+/**
+ * What was typed into the Mail search, trimmed; null for no search. A
+ * repeated `q` (an array) or one past the limit is a 400 in words, never a
+ * search the caller did not ask for.
+ */
+export function mailSearchOf(raw: unknown): string | null {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== "string") {
+    throw new BadRequestException("Search for one thing at a time.");
+  }
+  const q = raw.trim();
+  if (!q) return null;
+  if (q.length > MAIL_SEARCH_MAX) throw new BadRequestException(SEARCH_TOO_LONG);
+  return q;
+}
+
 /** Default 50, clamped to 1..100. Anything that is not a whole number is a 400. */
 export function clampMailLimit(
   raw: string | number | undefined | null,
