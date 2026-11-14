@@ -238,7 +238,8 @@ describe("a goal's pace in a house with no time zone (ADR 0296)", () => {
       'No deadline, so there is no schedule to be ahead or behind of.',
     );
     expect(paceCaption(book({ ...STOCK, onTrack: true, daysLeft: 29, paceUnread: null }).goals[0])).toBe(
-      'On the pace this goal needs, 29 days left. There is not enough history to project the deadline, so none is drawn.',
+      // STOCK is a ceiling (keep at most), read in a ceiling's words (R-F6).
+      'Within the schedule this limit allows, 29 days left. There is not enough history to project the deadline, so none is drawn.',
     );
   });
 
