@@ -739,6 +739,37 @@ describe('MenuNext — discard words (r28 G15, G17)', () => {
     expect(foot).toHaveTextContent('Discard takes a line off the current menu.');
     expect(foot).not.toHaveTextContent(/guest/i);
     expect(foot).toHaveTextContent("a dish's one price");
+    // r36 N5: the footer says a drink's house price outlives a discard.
+    expect(foot).toHaveTextContent("A drink's house price stays on Inventory until a manager changes it there");
+  });
+
+  // r36 N5: a discarded drink still carried its house price on Inventory and
+  // the page said nothing after the tap.
+  it('a discarded drink says its house price stays on Inventory', async () => {
+    mockGetMenu.mockResolvedValue(
+      menu({ items: [line({ id: 'l9', name: 'Raki', house_price: { bottle: 900, glass: 120, removed: false } })] }),
+    );
+    mockDiscard.mockResolvedValue({ menuItemId: 'l9', status: 'discarded' } as never);
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
+    const said = await screen.findByTestId('menu-discard-said');
+    expect(said).toHaveTextContent('Raki is off the current menu.');
+    expect(said).toHaveTextContent('stays on Inventory');
+    expect(said).toHaveAttribute('role', 'status');
+    expect(screen.queryByTestId('menu-discard-refused')).toBeNull();
+  });
+
+  it('a refused discard says nothing was taken off', async () => {
+    mockGetMenu.mockResolvedValue(
+      menu({ items: [line({ id: 'l9', name: 'Raki', house_price: { bottle: 900, glass: null, removed: false } })] }),
+    );
+    mockDiscard.mockRejectedValue(
+      Object.assign(new Error('Request failed with status code 403'), { response: { status: 403, data: {} } }),
+    );
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
+    await screen.findByTestId('menu-discard-refused');
+    expect(screen.queryByTestId('menu-discard-said')).toBeNull();
   });
 });
 
