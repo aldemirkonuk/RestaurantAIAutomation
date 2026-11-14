@@ -1,3 +1,4 @@
+import * as crypto from "crypto";
 import {
   BadRequestException,
   ConflictException,
@@ -92,12 +93,24 @@ function makeFakeSupabase(
         updatePatch = patch;
         return api;
       },
-      // A failed background read drops the lines it had kept (`.delete().eq()`).
+      // `.delete().eq(...)`: applied lazily in `then`, like `update`. A failed
+      // background read drops the lines it had kept; a failed line write drops
+      // the version (#773). `tables.__deleteFails = [{ <table>: "<message>" }]`
+      // makes it fail.
+
       delete() {
         deleting = true;
         return api;
       },
       insert(rows: Row | Row[]) {
+        // `tables.__insertFails = [{ <table>: "<message>" }]` makes every
+        // INSERT into that table fail with the message and land nothing.
+        const insertFails = ((tables as any).__insertFails?.[0] ?? {})[table];
+        if (insertFails) {
+          inserted = [];
+          insertError = { code: "XX000", message: insertFails };
+          return api;
+        }
         const list = Array.isArray(rows) ? rows : [rows];
         // uq_restaurant_menus_one_read_of_a_file_at_a_time: one read under way
         // per house, file and labels (migration 20270722100000).
@@ -147,6 +160,13 @@ function makeFakeSupabase(
       then(resolve: any) {
         if (insertError) return resolve({ data: null, error: insertError });
         if (inserted) return resolve({ data: inserted, error: null });
+        if (deleting) {
+          const deleteFails = ((tables as any).__deleteFails?.[0] ?? {})[table];
+          if (deleteFails) return resolve({ data: null, error: { message: deleteFails } });
+          const gone = new Set(matching());
+          tables[table] = (tables[table] || []).filter((r) => !gone.has(r));
+          return resolve({ data: null, error: null });
+        }
         if (!updatePatch && readFails()) return resolve({ data: null, error: { message: readFails() } });
         const rows = matching();
         if (updatePatch) for (const row of rows) Object.assign(row, updatePatch);
@@ -199,6 +219,10 @@ function makeFakeSupabase(
         if (tables.__storageFails) return { data: null, error: { message: String(tables.__storageFails[0]) } };
         (tables.__storage = tables.__storage || []).push({ bucket, path, bytes: bytes.length, ...o });
         return { data: { path }, error: null };
+      },
+      remove: async (paths: string[]) => {
+        (tables.__storageRemoved = tables.__storageRemoved || []).push(...paths.map((path) => ({ bucket, path })));
+        return { data: paths.map((name) => ({ name })), error: null };
       },
       createSignedUrl: async (path: string, seconds: number) => ({
         data: { signedUrl: `https://signed.test/${bucket}/${path}?e=${seconds}` },
@@ -1167,6 +1191,71 @@ describe("MenusService — every menu read is kept as its own version", () => {
     expect(read).toMatchObject({ state: "failed", warnings, reply: null });
     expect(read.failure).toMatch(/^No line could be read from this file\./);
     expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(false);
+  });
+
+  describe("a failed import leaves no orphan version (M8)", () => {
+    // A sibling draft already names the content-addressed object these bytes
+    // hash to, so a cleanup that deleted "its" source would delete theirs.
+    const sha = crypto.createHash("sha256").update(Buffer.from(csv, "utf8")).digest("hex");
+    const sharedPath = `rest-1/menus/${sha}.csv`;
+    const withSibling = (): Record<string, Row[]> => {
+      const t: Record<string, Row[]> = base();
+      t.restaurant_menus.push({ id: "menu-sibling", restaurant_id: "rest-1", status: "draft", source_path: sharedPath, source_sha256: sha });
+      (t as any).__storage = [{ bucket: "vendor-attachments", path: sharedPath, bytes: csv.length }];
+      return t;
+    };
+    const failingLibrary = {
+      ...wineSubmissions,
+      resolveLibraryWinesBatch: async () => {
+        throw new Error("pooler unavailable");
+      },
+    };
+
+    it("a library-resolve throw writes no version, uploads nothing, and leaves the shared source", async () => {
+      const tables = withSibling();
+      const service = makeService(tables, { wineSubmissions: failingLibrary, csvParser: new CsvParserService() });
+      await expect(
+        service.importMenu({ method: "csv", data: { csvContent: csv }, restaurantId: "rest-1" } as any, "user-1"),
+      ).rejects.toThrow(/library resolution: pooler unavailable/);
+      expect(tables.restaurant_menus.map((m) => m.id)).toEqual(["menu-old", "menu-sibling"]);
+      expect(tables.menu_items).toHaveLength(0);
+      expect((tables as any).__storage).toEqual([{ bucket: "vendor-attachments", path: sharedPath, bytes: csv.length }]);
+      expect((tables as any).__storageRemoved).toBeUndefined();
+    });
+
+    it("a failed line write removes the version it made, and never the source another version names", async () => {
+      const tables = withSibling();
+      (tables as any).__insertFails = [{ menu_items: "insert or update on table menu_items violates a check" }];
+      const service = makeService(tables, { wineSubmissions, csvParser: new CsvParserService() });
+      await expect(
+        service.importMenu({ method: "csv", data: { csvContent: csv }, restaurantId: "rest-1" } as any, "user-1"),
+      ).rejects.toThrow(/menu_items insert failed: insert or update on table menu_items violates a check/);
+      expect(tables.restaurant_menus.map((m) => m.id)).toEqual(["menu-old", "menu-sibling"]);
+      expect(tables.restaurant_menus.find((m) => m.id === "menu-sibling")!.source_path).toBe(sharedPath);
+      expect((tables as any).__storageRemoved).toBeUndefined();
+      expect(tables.user_onboarding_progress).toHaveLength(0);
+    });
+
+    it("if that removal also fails, the error says the empty draft remains", async () => {
+      const tables = withSibling();
+      (tables as any).__insertFails = [{ menu_items: "check violated" }];
+      (tables as any).__deleteFails = [{ restaurant_menus: "permission denied" }];
+      const service = makeService(tables, { wineSubmissions, csvParser: new CsvParserService() });
+      const err = await service
+        .importMenu({ method: "csv", data: { csvContent: csv }, restaurantId: "rest-1" } as any, "user-1")
+        .catch((e) => e);
+      expect(err).toBeInstanceOf(InternalServerErrorException);
+      expect(err.message).toMatch(/lines could not be saved \(menu_items insert failed: check violated\), and the empty draft version \S+ could not be removed: permission denied/);
+    });
+
+    it("Arrival's kept version follows the same order: a library throw writes no version", async () => {
+      const tables = base();
+      const service = makeService(tables, { wineSubmissions: failingLibrary });
+      await expect(
+        service.importParsedItems([{ name: "Opus One" } as any], "rest-1", "user-1", "scan"),
+      ).rejects.toThrow(/library resolution/);
+      expect(tables.restaurant_menus.map((m) => m.id)).toEqual(["menu-old"]);
+    });
   });
 
   describe("makeCurrent — the person's choice, then the menu's prices reach the house", () => {
