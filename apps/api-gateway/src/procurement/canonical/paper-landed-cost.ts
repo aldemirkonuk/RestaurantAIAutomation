@@ -44,6 +44,7 @@ import {
   landedCost,
 } from "../landed-cost";
 import { snapshotLineKinds } from "./from-document-rows";
+import { paperTaxFacts } from "./paper-tax-facts";
 import { LotUnitCost } from "./lot-unit-cost";
 
 /** The two `restaurants` columns a lot cost reads (ADR 0359 C2). */
@@ -94,6 +95,12 @@ export interface PaperHeaderRow {
   other_charges?: number | string | null;
   deposit_total?: number | string | null;
   tax?: number | string | null;
+  /** `procurement_documents.total`: what the paper says it comes to. */
+  total?: number | string | null;
+  /** `extracted->taxBreakdown`: the rates the paper prints (paper-tax-facts). */
+  tax_breakdown?: unknown;
+  /** `extracted->einvoice`: set when the paper was read from its e-invoice file. */
+  einvoice?: unknown;
   /** `procurement_documents.currency`: the vendor's money, as the paper says. */
   currency?: string | null;
   /** `extracted->lines`: the intake snapshot, read only for each line's kind. */
@@ -234,7 +241,7 @@ function header(row: PaperHeaderRow): LandedCostHeader {
     other_charges: num(row.other_charges),
     deposit_total: num(row.deposit_total),
     tax: num(row.tax),
-    // No column says either yet (ADR 0359 C3, lane 3.5a).
+    // Filled per paper from what it proves (paper-tax-facts.ts).
     charges_tax_basis: null,
     charges_vat_rate_percent: null,
   };
@@ -638,11 +645,22 @@ export function landDelivery(input: {
     for (const f of mine)
       if (f.key && money)
         moneyOf.set(f.key, (moneyOf.get(f.key) ?? new Set<string>()).add(money));
+    // ADR 0359 C3: what this paper proves about its own tax, for every line.
+    const facts = paperTaxFacts(
+      row,
+      mine.map((f) => ({ kind: f.kind, printedTotal: num(f.row.line_total), input: f.input })),
+    );
     const result = landedCost({
-      header: header(row),
+      header: {
+        ...header(row),
+        charges_tax_basis: facts.basis,
+        charges_vat_rate_percent: facts.ratePercent,
+      },
       house,
       lines: mine.map((f) => ({
         ...f.input,
+        price_tax_basis: facts.basis,
+        vat_rate_percent: facts.ratePercent,
         // The item's unit, so a free weighed line is said in it too.
         ...(f.key && perOf.has(f.key) ? { unit: perOf.get(f.key) } : {}),
         accepted_bottles: accepted.get(f) ?? 0,
@@ -662,7 +680,7 @@ export function landDelivery(input: {
       leftOut: own.length
         ? `${result.left_out} Also not cost: ${own.join("; ")}.`
         : result.left_out,
-      taxSaid: result.tax_said,
+      taxSaid: [facts.said, result.tax_said].filter(Boolean).join(" "),
     });
     result.lines.forEach((l) => {
       const key = l.item_key;
