@@ -133,8 +133,8 @@ function useActiveMenu(restaurantId: string | null) {
       vintage?: string
       region?: string
       grape_variety?: string
-      by_glass_price?: number
-      bottle_price?: number
+      by_glass_typed?: string
+      bottle_typed?: string
     }) => {
       if (!q.data?.menuId) throw new Error('No active menu to add to');
       return addMenuItem(q.data.menuId, fields);
@@ -151,7 +151,7 @@ function AddItemForm({ onAdd, adding, error, canPrice }: {
   // a failed POST, with no way to recover it — "a draft is not sent" cuts
   // both ways: a failure must not erase it either.
   onAdd: (
-    fields: { name: string; category?: string; by_glass_price?: number; bottle_price?: number },
+    fields: { name: string; category?: string; by_glass_typed?: string; bottle_typed?: string },
     opts: { onSuccess: () => void },
   ) => void
   adding: boolean
@@ -176,8 +176,12 @@ function AddItemForm({ onAdd, adding, error, canPrice }: {
       {
         name: name.trim(),
         category: category.trim() || undefined,
-        by_glass_price: canPrice && byGlass ? Number(byGlass) : undefined,
-        bottle_price: canPrice && bottle ? Number(bottle) : undefined,
+        // Sent as typed: the gateway reads "45,50" and "1.250,00" the way the
+        // Change price boxes are read (parseMenuPrice), and refuses what is
+        // not a price instead of adding the line unpriced (r28 G7). Staff send
+        // no price at all: they are handed no boxes (r21 walk).
+        by_glass_typed: canPrice ? byGlass.trim() || undefined : undefined,
+        bottle_typed: canPrice ? bottle.trim() || undefined : undefined,
       },
       {
         onSuccess: () => {
@@ -222,9 +226,8 @@ function AddItemForm({ onAdd, adding, error, canPrice }: {
           <input
             id="menu-add-glass"
             className="cl-field cl-focus cl-num"
-            type="number"
-            min={0}
-            step="0.01"
+            inputMode="decimal"
+            autoComplete="off"
             value={byGlass}
             onChange={(e) => setByGlass(e.target.value)}
             style={{ width: 80 }}
@@ -235,9 +238,8 @@ function AddItemForm({ onAdd, adding, error, canPrice }: {
           <input
             id="menu-add-bottle"
             className="cl-field cl-focus cl-num"
-            type="number"
-            min={0}
-            step="0.01"
+            inputMode="decimal"
+            autoComplete="off"
             value={bottle}
             onChange={(e) => setBottle(e.target.value)}
             style={{ width: 80 }}

@@ -427,6 +427,30 @@ export function parseMenuPrice(raw: string): { value: number } | { refused: stri
   return not("its marks do not read as one amount");
 }
 
+/**
+ * The price a line added on /menu names (r28 G7): the number a caller sent, or
+ * the text the person typed, read by parseMenuPrice. The web's Add form used
+ * number boxes read with Number(): in a lira house "45,50" emptied the box in
+ * Chrome (the line went in unpriced) and "1.250" became 1.25. A text that is
+ * not a price is refused with the reason, and nothing is added.
+ */
+export function addedPrice(
+  sent: number | null | undefined,
+  typed: string | null | undefined,
+  label: "glass" | "bottle",
+): number | undefined {
+  const text = typeof typed === "string" ? typed.trim() : "";
+  if (text === "") return sent ?? undefined;
+  if (sent !== undefined && sent !== null) {
+    throw new BadRequestException(`The ${label} price was sent twice, as a number and as typed text. Nothing was added.`);
+  }
+  const read = parseMenuPrice(text);
+  if ("refused" in read) {
+    throw new BadRequestException(`The ${label} price ${read.refused.replace("Nothing was changed.", "Nothing was added.")}`);
+  }
+  return read.value;
+}
+
 /** A `YYYY-MM-DD` or `YYYY-MM` that is a real date, as the stored date and its precision. */
 export function parseMenuDate(
   raw: string | null | undefined,
@@ -930,6 +954,10 @@ export class MenusService {
         "This session is not attached to a restaurant, so no line can be added to a menu.",
       );
     }
+    // A typed price is read before anything is read or written: a price
+    // that is not one refuses the whole line (r28 G7).
+    const byGlassPrice = addedPrice(dto.by_glass_price, dto.by_glass_typed, "glass");
+    const bottlePrice = addedPrice(dto.bottle_price, dto.bottle_typed, "bottle");
     const { data: menu, error: menuErr } = await this.dbService.supabase
       .from("restaurant_menus")
       .select("id, restaurant_id, status")
@@ -945,9 +973,7 @@ export class MenusService {
     }
 
     const isCurrent = menu.status === "active";
-    const namesPrice =
-      (dto.by_glass_price !== undefined && dto.by_glass_price !== null) ||
-      (dto.bottle_price !== undefined && dto.bottle_price !== null);
+    const namesPrice = byGlassPrice !== undefined || bottlePrice !== undefined;
     if (isCurrent && namesPrice && !callerMayPrice) {
       throw new ForbiddenException(
         "Only managers and owners can put a price on the current menu: it sets the house's own price. Nothing was added.",
@@ -961,8 +987,8 @@ export class MenusService {
       vintage: dto.vintage,
       region: dto.region,
       grape_variety: dto.grape_variety,
-      by_glass_price: dto.by_glass_price,
-      bottle_price: dto.bottle_price,
+      by_glass_price: byGlassPrice,
+      bottle_price: bottlePrice,
     };
 
     const [reviewItem] = await this.resolveAndPersistItems(

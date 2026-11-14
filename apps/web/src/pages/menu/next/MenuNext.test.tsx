@@ -297,6 +297,58 @@ describe('MenuNext — add', () => {
   });
 });
 
+describe('MenuNext — add, prices as typed (r28 G7)', () => {
+  it('sends a decimal-comma price as typed, in a text box, never through Number()', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    mockAdd.mockResolvedValue({} as never);
+    mount();
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Barolo' } });
+    const glass = screen.getByLabelText('Glass');
+    const bottle = screen.getByLabelText('Bottle');
+    expect(glass).not.toHaveAttribute('type', 'number');
+    expect(bottle).not.toHaveAttribute('type', 'number');
+    expect(glass).toHaveAttribute('inputmode', 'decimal');
+    fireEvent.change(glass, { target: { value: '45,50' } });
+    fireEvent.change(bottle, { target: { value: ' 1.250,00 ' } });
+    fireEvent.click(screen.getByRole('button', { name: /Add to menu/ }));
+    await waitFor(() => expect(mockAdd).toHaveBeenCalled());
+    const sent = mockAdd.mock.calls[0][1] as unknown as Record<string, unknown>;
+    expect(sent).toMatchObject({ name: 'Barolo', by_glass_typed: '45,50', bottle_typed: '1.250,00' });
+    expect(sent).not.toHaveProperty('by_glass_price');
+    expect(sent).not.toHaveProperty('bottle_price');
+  });
+
+  it('sends no price at all when the boxes are empty', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    mockAdd.mockResolvedValue({} as never);
+    mount();
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Barolo' } });
+    fireEvent.change(screen.getByLabelText('Glass'), { target: { value: '   ' } });
+    fireEvent.click(screen.getByRole('button', { name: /Add to menu/ }));
+    await waitFor(() => expect(mockAdd).toHaveBeenCalled());
+    const sent = mockAdd.mock.calls[0][1] as unknown as Record<string, unknown>;
+    expect(sent.by_glass_typed).toBeUndefined();
+    expect(sent.bottle_typed).toBeUndefined();
+  });
+
+  it("shows the gateway's refusal and keeps what was typed", async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    // The gateway's 400, as axios rejects it: the sentence is in the body, the
+    // message is only the status.
+    mockAdd.mockRejectedValue(
+      Object.assign(new Error('Request failed with status code 400'), {
+        response: { status: 400, data: { message: 'The bottle price "1.250" is not a price: it could be 1250 or 1.25. Nothing was added.' } },
+      }),
+    );
+    mount();
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Barolo' } });
+    fireEvent.change(screen.getByLabelText('Bottle'), { target: { value: '1.250' } });
+    fireEvent.click(screen.getByRole('button', { name: /Add to menu/ }));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/could be 1250 or 1.25/));
+    expect(screen.getByLabelText('Bottle')).toHaveValue('1.250');
+  });
+});
+
 describe('MenuNext — discard', () => {
   afterEach(() => {
     role = 'manager';
@@ -503,9 +555,12 @@ describe('MenuNext — a price changes on its line', () => {
     expect(screen.getByTestId('menu-add-unpriced').textContent).toMatch(/no price; an owner or a manager sets it/);
     fireEvent.click(screen.getByRole('button', { name: /Add to menu/ }));
     await waitFor(() => expect(mockAdd).toHaveBeenCalled());
-    const sent = mockAdd.mock.calls[0][1] as { by_glass_price?: number; bottle_price?: number };
+    // The add form sends a price as typed (r28 G7): staff send neither form.
+    const sent = mockAdd.mock.calls[0][1] as { by_glass_price?: number; bottle_price?: number; by_glass_typed?: string; bottle_typed?: string };
     expect(sent.by_glass_price).toBeUndefined();
     expect(sent.bottle_price).toBeUndefined();
+    expect(sent.by_glass_typed).toBeUndefined();
+    expect(sent.bottle_typed).toBeUndefined();
   });
 
   it('a price typed before the role became staff is not sent', async () => {
@@ -522,7 +577,9 @@ describe('MenuNext — a price changes on its line', () => {
     );
     fireEvent.click(await screen.findByRole('button', { name: /Add to menu/ }));
     await waitFor(() => expect(mockAdd).toHaveBeenCalled());
-    expect((mockAdd.mock.calls[0][1] as { bottle_price?: number }).bottle_price).toBeUndefined();
+    const sent = mockAdd.mock.calls[0][1] as { bottle_price?: number; bottle_typed?: string };
+    expect(sent.bottle_price).toBeUndefined();
+    expect(sent.bottle_typed).toBeUndefined();
   });
 
   it('a manager keeps the price boxes', async () => {
