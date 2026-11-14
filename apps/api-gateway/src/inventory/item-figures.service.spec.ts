@@ -124,11 +124,12 @@ describe("ItemFiguresService (proposal K1-K10)", () => {
 
   it("(e4) the trend is the newest deliveries, at most 24, and says when the read was capped", async () => {
     const { db, svc, rv } = seed();
-    db.tables.inventory_lot_revaluations = Array.from({ length: 200 }, (_, i) => rv(`o-${i}`, 100 + i, 300 - i));
+    // 250 settled lots: the read takes the newest 200, the trend the newest 24.
+    db.tables.inventory_lot_revaluations = Array.from({ length: 250 }, (_, i) => rv(`o-${i}`, 100 + i, 300 - i));
     const { costTrend } = await svc.figures(H, I, "shown", NOW);
     expect(costTrend.points).toHaveLength(24);
-    expect(costTrend.points![23]).toEqual({ receivedAt: ago(101), unitCost: 299 });
-    expect(costTrend.points![0]).toEqual({ receivedAt: ago(124), unitCost: 276 });
+    expect(costTrend.points![23]).toEqual({ receivedAt: ago(51), unitCost: 349 });
+    expect(costTrend.points![0]).toEqual({ receivedAt: ago(74), unitCost: 326 });
     expect(costTrend.source).toMatch(/Only the newest 200 settled lots were read/);
   });
 
@@ -147,6 +148,10 @@ describe("ItemFiguresService (proposal K1-K10)", () => {
     expect(
       costTrendFrom([row("a", 0, "2026-01-01T00:00:00Z", "manual"), row("b", 4, "2026-02-01T00:00:00Z")]).changePct,
     ).toBeNull();
+    // Rows in any order: one order's newest settled price wins, dated at its first.
+    expect(
+      costTrendFrom([row("a", 5, "2026-01-01T00:00:00Z"), row("a", 6, "2026-03-01T00:00:00Z"), row("a", 4, "2026-02-01T00:00:00Z")]),
+    ).toEqual({ points: [{ receivedAt: "2026-01-01T00:00:00Z", unitCost: 6 }], changePct: null });
     expect(
       costTrendFrom([row("b", 9, "2026-02-01T00:00:00Z"), row("a", 12, "2026-01-01T00:00:00Z")]),
     ).toEqual({
