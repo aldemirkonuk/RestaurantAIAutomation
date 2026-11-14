@@ -8,10 +8,13 @@
  * The amount and unit rules live in `units.ts`.
  */
 import { useId, useState } from 'react';
+import { Link, useInRouterContext } from 'react-router-dom';
 import { Link2, Trash2 } from 'lucide-react';
-import type { RecipeLineRole, RecipeLineStatus, ShelfItem } from '../../../../services/api/recipes';
-import { RECIPE_UNITS, amountWithUnit, qtyText, readQty, unitWord, type RecipeUnit } from './units';
+import type { RecipeLineRole, RecipeLineStatus, ShelfItem, StatedWeights, WeighedBy, WeightNeeded } from '../../../../services/api/recipes';
+import { amountWithUnit, qtyText, readQty, unitChoices, unitWord, type RecipeUnit } from './units';
 import ShelfPicker, { kindWords } from './ShelfPicker';
+import { recipeWords, type RecipeKind, type RecipeWords } from './recipeWords';
+import WeighBox, { plainGrams, type SayGrams } from './WeighBox';
 
 export interface DraftRow {
   key: string;
@@ -40,7 +43,37 @@ export interface DraftRow {
     /** The same cost at six places, so a line under half a cent is not said as free. */
     costPerServeExact?: number | null;
     costBasis: string | null;
+    /** The weight the house can state so this line is priced (r28 gap 7). */
+    needs?: WeightNeeded | null;
+    /** The stated weight this line's price went through, if any. */
+    weighed?: WeighedBy | null;
+    /** With costBasis "last_known_lot_cost": when the lot it was priced from came in. */
+    boughtAt?: string | null;
   } | null;
+}
+
+/** The weight a saved line waits for, when its good can take one and the person can act on it. */
+export function weightNeeded(row: DraftRow): WeightNeeded | null {
+  if (row.role !== 'stocked' || !row.inventoryId || row.itemGone || !row.saved) return null;
+  if (row.saved.costBasis !== 'unit_mismatch' || row.saved.costPerServe != null) return null;
+  return row.saved.needs ?? null;
+}
+
+/**
+ * The stated weight a saved, priced line went through, when the person can
+ * change it: a line edited since the read has no `saved`, so a weight is never
+ * shown beside a price it no longer makes.
+ */
+export function weighedBy(row: DraftRow): WeighedBy | null {
+  if (row.role !== 'stocked' || !row.inventoryId || row.itemGone || !row.saved) return null;
+  if (row.saved.costPerServe == null) return null;
+  const w = row.saved.weighed;
+  return w && Number.isFinite(w.grams) && w.grams > 0 ? w : null;
+}
+
+/** "Priced from one piece of Eggs at 60 g." / "Priced from one ml of Flour at 0,53 g." */
+export function weighedWords(w: WeighedBy, item: string, sayGrams: SayGrams = plainGrams): string {
+  return `Priced from one ${w.by === 'piece_grams' ? 'piece' : 'ml'} of ${item} at ${sayGrams(w.grams)} g.`;
 }
 
 /** The line's amount: the stored number while the box is as loaded, else what was typed. */
@@ -79,6 +112,15 @@ function costWords(saved: NonNullable<DraftRow['saved']>, say: (n: number) => st
   return cents === 0 && exact != null && exact > 0 ? `Under ${say(0.01)}` : say(cents);
 }
 
+/** "1 Nov", or "1 Nov 2025" outside this year; null when there is no readable date. */
+export function boughtDay(iso: string | null | undefined, now: Date = new Date()): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const sameYear = d.getFullYear() === now.getFullYear();
+  return d.toLocaleDateString('en-GB', sameYear ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 /**
  * The sentence under a line an editor is working on, or null. Money sentences
  * only when `say` is given. Staff never get one: nothing in it is theirs to
@@ -87,12 +129,13 @@ function costWords(saved: NonNullable<DraftRow['saved']>, say: (n: number) => st
 export function rowNote(
   row: DraftRow,
   say: ((n: number) => string) | null,
+  words: RecipeWords = recipeWords('cocktail'),
 ): { tone: 'warn' | 'ink'; text: string } | null {
   if (row.role !== 'stocked') return null;
   if (!row.inventoryId) {
     return {
       tone: 'warn',
-      text: `This drink won't take stock until '${rowName(row)}' is linked to something on your shelf.`,
+      text: `This ${words.thing} won't take stock until '${rowName(row)}' is linked to something on your shelf.`,
     };
   }
   if (row.itemGone) {
@@ -105,13 +148,22 @@ export function rowNote(
   const basis = row.saved.costBasis;
   if (row.saved.costPerServe != null) {
     const cost = costWords(row.saved, say);
+    if (basis === 'last_known_lot_cost') {
+      // Nothing on hand is priced (sold out, or only estimated stock): the
+      // price is what it was last bought at, and how old that is (r36 gap 1).
+      const day = boughtDay(row.saved.boughtAt);
+      return {
+        tone: 'ink',
+        text: `${cost} a ${words.unit}, at what ${row.itemName ?? rowName(row)} last cost${day ? ` (bought ${day})` : ''}; nothing on hand has a price.`,
+      };
+    }
     return basis === 'invoice_lot_wac_partial'
-      ? { tone: 'ink', text: `${cost} a serve, from the bottles that have an invoice; some on hand have none yet.` }
-      : { tone: 'ink', text: `${cost} a serve` };
+      ? { tone: 'ink', text: `${cost} a ${words.unit}, from the ${words.stockWord} that have an invoice; some on hand have none yet.` }
+      : { tone: 'ink', text: `${cost} a ${words.unit}` };
   }
   const item = row.itemName ?? rowName(row);
   if (basis === 'size_not_known') {
-    return { tone: 'warn', text: `No price yet: your shelf doesn't say how much one ${row.itemUom ?? 'bottle'} of ${item} holds.` };
+    return { tone: 'warn', text: `No price yet: your shelf doesn't say how much one ${row.itemUom ?? words.container} of ${item} holds.` };
   }
   if (basis === 'pack_size_not_known') {
     // The gateway names this for a volume line and for a weighed one. A
@@ -120,19 +172,31 @@ export function rowNote(
     const fix =
       row.unit === 'g' || row.unit === 'kg'
         ? 'Link the line to something your shelf counts by weight, in g or kg.'
-        : 'Link the line to the single bottle you pour from.';
+        : `Link the line to ${words.pourFrom}.`;
     return {
       tone: 'warn',
       text: `No price: ${item} is counted ${countedHow(row.itemUom)}, and your shelf doesn't say what one holds. ${fix}`,
     };
   }
+  const needs = weightNeeded(row);
+  if (needs) {
+    return {
+      tone: 'warn',
+      text: `No price yet: this line is ${measuredHow(row.unit)}, but ${item} is counted ${countedHow(row.itemUom)}. Say what ${needs === 'piece_grams' ? 'one weighs' : 'one ml of it weighs'}, and every ${words.thing} with ${item} is priced from that.`,
+    };
+  }
   if (basis === 'unit_mismatch') {
     return {
       tone: 'warn',
-      text: `No price: this line is ${measuredHow(row.unit)}, but ${item} is counted ${countedHow(row.itemUom)}. Change the unit, or link the item it pours from.`,
+      text: `No price: this line is ${measuredHow(row.unit)}, but ${item} is counted ${countedHow(row.itemUom)}. Change the unit, or link the item it ${words.comesFrom} from.`,
     };
   }
-  return { tone: 'warn', text: 'No price yet: it will cost once a delivery of it is checked in.' };
+  // A delivery checked in at the door is costed only once it is verified
+  // with its invoice or a price agreed with the supplier (r36 gap 12).
+  return {
+    tone: 'warn',
+    text: `No price yet: nothing says what ${item} cost. It is priced once a delivery of it is verified with its invoice or an agreed price.`,
+  };
 }
 
 function Note({ note }: { note: { tone: 'warn' | 'ink'; text: string } | null }) {
@@ -150,6 +214,33 @@ function amountWords(row: DraftRow): string {
   return amountWithUnit(q, row.unit);
 }
 
+/** Where a shelf item opens: its drawer on /inventory, with its cards and what is in it. */
+export const goodHref = (inventoryId: string) => `/inventory?open=${encodeURIComponent(inventoryId)}`;
+
+/**
+ * A linked line leads to its good (founder /goal 2026-11-07: a drink, or a
+ * dish, and its recipe lead to the goods in it, each with its cards and its
+ * nutrition card). A router link, so an unsaved draft is kept (drafts.ts); a
+ * plain link outside a router (a bare mount). A good that was archived or
+ * deleted has no drawer to open, so it has no link.
+ */
+export function GoodLink({ row }: { row: DraftRow }) {
+  const routed = useInRouterContext();
+  if (row.role !== 'stocked' || !row.inventoryId || row.itemGone) return null;
+  const to = goodHref(row.inventoryId);
+  const label = `Open ${row.itemName ?? row.label} in inventory`;
+  const props = { className: 'cl-rcp-good cl-focus', 'aria-label': label, 'data-testid': 'recipe-line-good' };
+  return routed ? (
+    <Link to={to} {...props}>
+      Open in inventory
+    </Link>
+  ) : (
+    <a href={to} {...props}>
+      Open in inventory
+    </a>
+  );
+}
+
 /** A line as a staff member reads it: no inputs, no money, and no warning that is not theirs to act on. */
 export function LineRowRead({ row }: { row: DraftRow }) {
   return (
@@ -163,8 +254,68 @@ export function LineRowRead({ row }: { row: DraftRow }) {
           ) : null}
           {row.role === 'untracked' ? <span className="cl-dim"> · not counted</span> : null}
         </span>
+        <GoodLink row={row} />
       </div>
     </li>
+  );
+}
+
+/**
+ * The weight a priced line went through, said under its price, with a way to
+ * change it (r28 gap 7): a mistyped weight (600 g for one egg) otherwise shows
+ * only as a price that looks wrong. The weight belongs to the good, so the
+ * box says that every recipe with it is priced again.
+ */
+function WeighedNote({
+  row,
+  w,
+  sayGrams,
+  open,
+  setOpen,
+  onWeighed,
+  thing,
+}: {
+  row: DraftRow;
+  w: WeighedBy;
+  sayGrams: SayGrams;
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  onWeighed?: (itemId: string, weights: StatedWeights) => void | Promise<void>;
+  thing: string;
+}) {
+  const item = row.itemName ?? rowName(row);
+  return (
+    <>
+      <p className="cl-rcp-note" data-testid="recipe-line-weighed">
+        {weighedWords(w, item, sayGrams)}{' '}
+        {open ? null : (
+          <button
+            type="button"
+            className="cl-btn cl-focus"
+            aria-label={`Change what one ${w.by === 'piece_grams' ? 'piece' : 'ml'} of ${item} weighs`}
+            onClick={() => setOpen(true)}
+          >
+            Change
+          </button>
+        )}
+      </p>
+      {open ? (
+        <>
+          <p className="cl-rcp-note">{`A new weight prices every ${thing} with ${item} again.`}</p>
+          <WeighBox
+            itemId={row.inventoryId as string}
+            item={item}
+            needs={w.by}
+            now={sayGrams(w.grams)}
+            onCancel={() => setOpen(false)}
+            onWeighed={async (itemId, weights) => {
+              await onWeighed?.(itemId, weights);
+              setOpen(false);
+            }}
+          />
+        </>
+      ) : null}
+    </>
   );
 }
 
@@ -173,18 +324,31 @@ export default function LineRow({
   say,
   onChange,
   onRemove,
+  kind,
+  onWeighed,
+  sayGrams = plainGrams,
 }: {
   row: DraftRow;
   say: ((n: number) => string) | null;
   onChange: (patch: Partial<DraftRow>) => void;
   onRemove: () => void;
+  /** What the recipe is for; a dish's notes and examples say plate, not serve. */
+  kind?: RecipeKind;
+  /** Told when a weight this line waited for, or one it was priced through, is kept. */
+  onWeighed?: (itemId: string, weights: StatedWeights) => void | Promise<void>;
+  /** Writes a stated weight in the house's form. */
+  sayGrams?: SayGrams;
 }) {
+  const words = recipeWords(kind);
   const id = useId();
   const [picking, setPicking] = useState(false);
+  const [reweighing, setReweighing] = useState(false);
   const stocked = row.role === 'stocked';
   const qty = rowQty(row);
 
-  const pick = (item: ShelfItem) => {
+  const [added, setAdded] = useState<string | null>(null);
+  const pick = (item: ShelfItem, said?: string) => {
+    setAdded(said ?? null);
     onChange({
       inventoryId: item.id,
       itemName: item.name,
@@ -222,14 +386,15 @@ export default function LineRow({
                 </span>
               )}
             </button>
-          ) : (
+          ) : null}
+          {stocked ? <GoodLink row={row} /> : (
             <>
               <label htmlFor={`${id}-label`} className="cl-sr">What it is</label>
               <input
                 id={`${id}-label`}
                 className="cl-field cl-focus"
                 value={row.label}
-                placeholder="Orange twist"
+                placeholder={words.notCountedPlaceholder}
                 onChange={(e) => onChange({ label: e.target.value })}
                 style={{ width: '100%' }}
               />
@@ -257,7 +422,7 @@ export default function LineRow({
           onChange={(e) => onChange({ unit: e.target.value as RecipeUnit | '', saved: null })}
         >
           <option value="">unit</option>
-          {RECIPE_UNITS.map((u) => (
+          {unitChoices(words.units, row.unit).map((u) => (
             <option key={u} value={u}>{unitWord(u, rowQty(row))}</option>
           ))}
         </select>
@@ -289,9 +454,38 @@ export default function LineRow({
         </button>
       </div>
       {picking ? (
-        <ShelfPicker initial={row.inventoryId ? '' : row.label} onPick={pick} onClose={() => setPicking(false)} />
+        <ShelfPicker
+          initial={row.inventoryId ? '' : row.label}
+          onPick={pick}
+          onClose={() => setPicking(false)}
+          addFor={{ unit: row.unit, kind: kind ?? 'cocktail' }}
+        />
       ) : null}
-      <Note note={rowNote(row, say)} />
+      {added ? (
+        <p className="cl-rcp-note" role="status" data-testid="shelf-added">
+          {added}
+        </p>
+      ) : null}
+      <Note note={rowNote(row, say, words)} />
+      {say && weightNeeded(row) && row.inventoryId ? (
+        <WeighBox
+          itemId={row.inventoryId}
+          item={row.itemName ?? rowName(row)}
+          needs={weightNeeded(row) as WeightNeeded}
+          onWeighed={onWeighed}
+        />
+      ) : null}
+      {say && weighedBy(row) && row.inventoryId ? (
+        <WeighedNote
+          row={row}
+          w={weighedBy(row) as WeighedBy}
+          sayGrams={sayGrams}
+          open={reweighing}
+          setOpen={setReweighing}
+          onWeighed={onWeighed}
+          thing={words.thing}
+        />
+      ) : null}
     </li>
   );
 }

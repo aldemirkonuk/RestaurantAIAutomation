@@ -1,7 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import type { CocktailRecipe, RecipeLine, WhatIsIn } from '../../../../services/api/recipes';
-import DrinkCards from './DrinkCards';
+import type { CocktailRecipe, CostPreview, RecipeLine, WhatIsIn } from '../../../../services/api/recipes';
+import DrinkCards, { POUR_COST_BASIS, pourCostShare, type DraftCost } from './DrinkCards';
+import { formatHousePercent } from '../../../../lib/house-number';
 
 const fig = (value: number | null, missing: string[] = [], atLeast = false) => ({ value, atLeast, missing });
 const say = (n: number) => `$${n.toFixed(2)}`;
@@ -70,7 +71,7 @@ const readable = (alcohol: ReturnType<typeof fig> | undefined): WhatIsIn => ({
 describe('DrinkCards', () => {
   it('reads the House G&T as the walk measured it: 2.47 a serve, 12 on the list, 178.5 kcal, 20 ml of alcohol', () => {
     render(<DrinkCards data={gAndT({}, readable(fig(20, ['Angostura'], true)))} sayMoney={say} unsaved={false} />);
-    expect(screen.getByTestId('drink-card-cost').textContent).toBe("Cost a serve$2.47At today's prices, all 2 ingredients priced.");
+    expect(screen.getByTestId('drink-card-cost').textContent).toBe("Cost per serve$2.47At today's prices, all 2 ingredients priced.");
     expect(screen.getByTestId('drink-card-price').textContent).toBe('Price$12.00A serve, as your list has it.');
     expect(screen.getByTestId('drink-card-ingredients').textContent).toBe('Ingredients32 from your shelf, 1 not counted.');
     expect(screen.getByTestId('drink-card-energy').textContent).toBe('Energy a serveat least 178.5 kcalUnknown for Angostura.');
@@ -91,7 +92,7 @@ describe('DrinkCards', () => {
     );
     const cost = screen.getByTestId('drink-card-cost');
     expect(cost).toHaveAttribute('data-known', 'false');
-    expect(cost.textContent).toBe('Cost a serveNot known1 of 2 ingredients priced; no price yet for lime.');
+    expect(cost.textContent).toBe('Cost per serveNot known1 of 2 ingredients priced; no price yet for lime.');
     expect(cost.textContent).not.toContain('1.57');
     expect(screen.getByTestId('drink-card-ingredients')).toHaveAttribute('data-warn', 'true');
     expect(screen.getByTestId('drink-card-ingredients').textContent).toContain('1 not linked to it yet');
@@ -132,5 +133,175 @@ describe('DrinkCards', () => {
   it('shows nothing before a recipe is saved', () => {
     const { container } = render(<DrinkCards data={gAndT({ current: null, cost: null })} sayMoney={say} unsaved={false} />);
     expect(container.innerHTML).toBe('');
+  });
+});
+
+describe('DrinkCards: the cost of unsaved lines', () => {
+  const draft = (cost: Partial<CostPreview>, labels = ['House London Dry Gin', 'Tonic Water']): DraftCost => ({
+    labels,
+    cost: {
+      perServe: 3.1,
+      perServeExact: 3.1,
+      priced: 2,
+      of: 2,
+      complete: true,
+      partial: 0,
+      lines: [
+        { status: 'linked', costPerServe: 2.2, costBasis: 'invoice_lot_wac' },
+        { status: 'linked', costPerServe: 0.9, costBasis: 'invoice_lot_wac' },
+      ],
+      ...cost,
+    },
+  });
+
+  it('shows the draft cost with its own said-line, and says which figures are still the saved ones', () => {
+    render(<DrinkCards data={gAndT({}, readable(fig(20)))} sayMoney={say} unsaved draftCost={draft({})} />);
+    expect(screen.getByTestId('drink-card-cost').textContent).toBe("Cost per serve$3.10Your unsaved lines, at today's prices.");
+    expect(screen.getByTestId('drink-card-price').textContent).toBe('Price$12.00A serve, as your list has it.');
+    expect(screen.getByTestId('drink-cards').textContent).toContain(
+      'The cost is your unsaved lines. The other figures are the saved recipe\u2019s; save to count them.',
+    );
+    expect(screen.getByTestId('drink-cards').textContent).not.toContain('Save to count your changes.');
+  });
+
+  it('keeps the saved cost and the old note while the draft is not priced (absent draftCost)', () => {
+    render(<DrinkCards data={gAndT({}, readable(fig(20)))} sayMoney={say} unsaved draftCost={null} />);
+    expect(screen.getByTestId('drink-card-cost').textContent).toBe("Cost per serve$2.47At today's prices, all 2 ingredients priced.");
+    expect(screen.getByTestId('drink-cards').textContent).toContain('These are the saved recipe\u2019s figures. Save to count your changes.');
+  });
+
+  it('a drink never saved shows only its draft cost and its price, and says nothing else is counted yet', () => {
+    render(<DrinkCards data={gAndT({ current: null, cost: null })} sayMoney={say} unsaved draftCost={draft({})} />);
+    expect(screen.getByTestId('drink-card-cost').textContent).toBe("Cost per serve$3.10Your unsaved lines, at today's prices.");
+    expect(screen.getByTestId('drink-card-price')).toBeInTheDocument();
+    expect(screen.queryByTestId('drink-card-ingredients')).toBeNull();
+    expect(screen.getByTestId('drink-cards').textContent).toContain('Nothing else is counted until the recipe is saved.');
+  });
+
+  it('a drink never saved, with no draft priced yet, still shows nothing', () => {
+    const { container } = render(<DrinkCards data={gAndT({ current: null, cost: null })} sayMoney={say} unsaved draftCost={null} />);
+    expect(container.innerHTML).toBe('');
+  });
+
+  it('ignores a draft cost once the sheet is not unsaved', () => {
+    render(<DrinkCards data={gAndT({}, readable(fig(20)))} sayMoney={say} unsaved={false} draftCost={draft({})} />);
+    expect(screen.getByTestId('drink-card-cost').textContent).toContain('$2.47');
+  });
+
+  it('says an unknown draft cost as not known and names the line, never 0', () => {
+    render(
+      <DrinkCards
+        data={gAndT({}, readable(fig(20)))}
+        sayMoney={say}
+        unsaved
+        draftCost={draft({
+          perServe: null,
+          perServeExact: null,
+          priced: 1,
+          complete: false,
+          lines: [
+            { status: 'linked', costPerServe: 2.2, costBasis: 'invoice_lot_wac' },
+            { status: 'linked', costPerServe: null, costBasis: 'unknown' },
+          ],
+        })}
+      />,
+    );
+    const cost = screen.getByTestId('drink-card-cost');
+    expect(cost).toHaveAttribute('data-known', 'false');
+    expect(cost.textContent).toBe('Cost per serveNot known1 of 2 ingredients priced; no price yet for Tonic Water.');
+    expect(cost.textContent).not.toMatch(/\$0/);
+  });
+
+  it('says a partial draft cost the way the saved one does', () => {
+    render(<DrinkCards data={gAndT({}, readable(fig(20)))} sayMoney={say} unsaved draftCost={draft({ partial: 1 })} />);
+    expect(screen.getByTestId('drink-card-cost').textContent).toBe(
+      "Cost per serve$3.10Your unsaved lines, at today's prices; 1 ingredient is priced from the bottles with an invoice only.",
+    );
+  });
+
+  it('r36 gap 1: says how many ingredients are priced at what they last cost, beside a partial one', () => {
+    render(<DrinkCards data={gAndT({}, readable(fig(20)))} sayMoney={say} unsaved draftCost={draft({ lastBought: 2 })} />);
+    expect(screen.getByTestId('drink-card-cost').textContent).toBe(
+      "Cost per serve$3.10Your unsaved lines, at today's prices; 2 ingredients are priced at what they last cost, with none priced on hand.",
+    );
+  });
+
+  it('r36 gap 1: one ingredient at its last cost and one from part of the stock are both said', () => {
+    render(<DrinkCards data={gAndT({}, readable(fig(20)))} sayMoney={say} unsaved draftCost={draft({ partial: 1, lastBought: 1 })} />);
+    expect(screen.getByTestId('drink-card-cost').textContent).toBe(
+      "Cost per serve$3.10Your unsaved lines, at today's prices; 1 ingredient is priced from the bottles with an invoice only; 1 ingredient is priced at what it last cost, with none priced on hand.",
+    );
+  });
+});
+
+describe('pour cost (ADR 0366 item 6)', () => {
+  const cost = { perServe: 2.47, perServeExact: 2.471429, priced: 2, of: 2, complete: true, partial: 0 };
+
+  it('is the complete cost a serve over the listed price, and says what the % is of', () => {
+    render(<DrinkCards data={gAndT()} sayMoney={say} unsaved={false} />);
+    expect(screen.getByTestId('drink-card-pour-cost').textContent).toBe(`Pour cost20.6%${POUR_COST_BASIS}`);
+    expect(POUR_COST_BASIS).toContain('whether that price includes tax is not recorded');
+  });
+
+  it('is written in the house form it is given: "%20,6" in a lira house, "20.6%" in a pound house (r28 gap 15)', () => {
+    const { unmount } = render(<DrinkCards data={gAndT()} sayMoney={say} unsaved={false} sayPct={(p) => formatHousePercent(p, 'TRY')} />);
+    expect(screen.getByTestId('drink-card-pour-cost').textContent).toBe(`Pour cost%20,6${POUR_COST_BASIS}`);
+    unmount();
+    render(<DrinkCards data={gAndT()} sayMoney={say} unsaved={false} sayPct={(p) => formatHousePercent(p, 'GBP')} />);
+    expect(screen.getByTestId('drink-card-pour-cost').textContent).toBe(`Pour cost20.6%${POUR_COST_BASIS}`);
+  });
+
+  it('is not known, and says which side is missing, when the cost is partial or there is no price', () => {
+    render(
+      <DrinkCards
+        data={gAndT({ cocktail: { ...gAndT().cocktail, price: null }, cost: { perServe: null, priced: 1, of: 2, complete: false } })}
+        sayMoney={say}
+        unsaved={false}
+      />,
+    );
+    const card = screen.getByTestId('drink-card-pour-cost');
+    expect(card.textContent).toBe('Pour costNot knownThe cost is not complete and your list has no price for it.');
+    expect(card).toHaveAttribute('data-known', 'false');
+  });
+
+  it("an unsaved draft's priced cost is the one divided", () => {
+    const draftCost: DraftCost = { cost: { perServe: 6, perServeExact: 6, priced: 1, of: 1, complete: true, partial: 0, lines: [] } as CostPreview, labels: ['gin'] };
+    render(<DrinkCards data={gAndT()} sayMoney={say} unsaved draftCost={draftCost} />);
+    expect(screen.getByTestId('drink-card-pour-cost').textContent).toContain('50.0%');
+  });
+
+  it('a role without money gets no pour-cost card', () => {
+    render(<DrinkCards data={gAndT()} sayMoney={null} unsaved={false} />);
+    expect(screen.queryByTestId('drink-card-pour-cost')).toBeNull();
+  });
+
+  it('only a complete cost and a price above 0 make a %', () => {
+    expect(pourCostShare(cost, 12)).toEqual({ pct: 20.6 });
+    expect(pourCostShare({ ...cost, perServeExact: null }, 10)).toEqual({ pct: 24.7 });
+    expect(pourCostShare({ ...cost, complete: false }, 12)).toEqual({ missing: ['the cost is not complete'] });
+    expect(pourCostShare(cost, 0)).toEqual({ missing: ['the price on your list is 0'] });
+    expect(pourCostShare(cost, null)).toEqual({ missing: ['your list has no price for it'] });
+    expect(pourCostShare(null, 12)).toEqual({ missing: ['the cost is not complete'] });
+  });
+});
+
+describe('DrinkCards on a dish (ADR 0366)', () => {
+  const dish = (over: Partial<CocktailRecipe> = {}): CocktailRecipe => ({ ...gAndT({}, readable(fig(20))), kind: 'dish', ...over });
+
+  it('says plates and Food cost, and has no pure-alcohol card', () => {
+    render(<DrinkCards data={dish({ current: { ...gAndT().current!, yieldServes: 4 } })} sayMoney={say} unsaved={false} />);
+    expect(screen.getByTestId('drink-card-cost')).toHaveTextContent('Cost per plate$2.47');
+    expect(screen.getByTestId('drink-card-pour-cost').textContent).toBe(`Food cost20.6%${POUR_COST_BASIS}`);
+    expect(screen.getByTestId('drink-card-ingredients')).toHaveTextContent('Makes 4 plates; every card is per plate.');
+    expect(screen.getByTestId('drink-card-energy')).toHaveTextContent('Energy a plate');
+    expect(screen.queryByTestId('drink-card-alcohol')).toBeNull();
+    expect(screen.getByTestId('drink-cards')).toHaveAttribute('aria-label', 'This dish in figures');
+  });
+
+  it('Food cost is Not known on an incomplete cost, never a % of a partial one', () => {
+    render(<DrinkCards data={dish({ cost: { perServe: null, perServeExact: 2.47, priced: 1, of: 2, complete: false, partial: 0 } })} sayMoney={say} unsaved={false} />);
+    const card = screen.getByTestId('drink-card-pour-cost');
+    expect(card).toHaveAttribute('data-known', 'false');
+    expect(card.textContent).not.toMatch(/%/);
   });
 });

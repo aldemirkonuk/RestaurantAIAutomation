@@ -43,6 +43,47 @@ export interface RecipeLine {
    * size), pack_size_not_known (case, pack, glass, shot), unit_mismatch.
    */
   costBasis: string | null;
+  /**
+   * Beside costBasis "unit_mismatch": the weight the house can state for the
+   * linked good so the line is priced (r28 gap 7). Absent from an older gateway.
+   */
+  needs?: WeightNeeded | null;
+  /**
+   * The stated weight this line's price went through, when it went through
+   * one (2 eggs against eggs kept by the kg). Absent from an older gateway.
+   */
+  weighed?: WeighedBy | null;
+  /**
+   * Beside costBasis "last_known_lot_cost" (nothing on hand is priced, so the
+   * line is priced at what its good was last bought at): when that lot came
+   * in. Absent from an older gateway.
+   */
+  boughtAt?: string | null;
+  /** What one piece of the linked good weighs, in g, as the house stated it. */
+  itemPieceGrams?: number | null;
+  /** What one ml of the linked good weighs, in g, as the house stated it. */
+  itemMlGrams?: number | null;
+}
+
+/** piece_grams: what one piece weighs; ml_grams: what one ml weighs. */
+export type WeightNeeded = 'piece_grams' | 'ml_grams';
+
+/** A stated weight a line was priced through: which one, and its grams. */
+export interface WeighedBy {
+  by: WeightNeeded;
+  grams: number;
+}
+
+/** PUT .../items/:itemId/weights: a field left out is kept, null takes it off. */
+export interface StateWeightsBody {
+  pieceGrams?: number | null;
+  mlGrams?: number | null;
+}
+
+export interface StatedWeights {
+  id: string;
+  pieceGrams: number | null;
+  mlGrams: number | null;
 }
 
 export interface RecipeVersion {
@@ -64,6 +105,8 @@ export interface RecipeCost {
   complete: boolean;
   /** Priced lines whose average covers only part of the stock on hand. */
   partial?: number;
+  /** Priced lines whose good has nothing priced on hand, at what it last cost. */
+  lastBought?: number;
 }
 
 export interface LegacyRecipeLine {
@@ -104,7 +147,14 @@ export type WhatIsIn =
     }
   | { readable: false; sentence: string };
 
+/** What a recipe belongs to (ADR 0366). A bare string means a cocktail. */
+export type RecipeOwner = { kind: 'cocktail' | 'dish'; id: string };
+
+export const ownerOf = (o: string | RecipeOwner): RecipeOwner => (typeof o === 'string' ? { kind: 'cocktail', id: o } : o);
+
 export interface CocktailRecipe {
+  /** Absent means a cocktail. A dish also fills `cocktail` (follow-up: rename it `owner`). */
+  kind?: 'cocktail' | 'dish';
   cocktail: {
     id: string;
     name: string;
@@ -155,10 +205,42 @@ export interface SaveRecipeBody {
   lines: SaveRecipeLine[];
 }
 
+/** One line of an unsaved draft, as POST .../cost-preview takes it. */
+export interface PreviewCostLine {
+  role: RecipeLineRole;
+  inventoryId: string | null;
+  qtyEntered: number;
+  unitCode: string;
+}
+
+export interface PreviewCostBody {
+  yieldServes: number;
+  lines: PreviewCostLine[];
+}
+
+/** What a draft would cost at today's prices: the saved cost's shape, plus each line in the order sent. */
+export interface CostPreview extends RecipeCost {
+  lines: Array<{ status: RecipeLineStatus; costPerServe: number | null; costBasis: string | null; needs?: WeightNeeded | null }>;
+}
+
 export interface SaveRecipeResult {
   versionId: string;
   version: number;
   lines: unknown[];
+}
+
+/** POST /inventory/:rid/house-items, as house-item.service.ts takes it. */
+export interface AddToShelfBody {
+  kind: string;
+  uom: string;
+  displayName: string;
+}
+
+export interface AddedToShelf {
+  id: string;
+  kind: string;
+  uom: string;
+  displayName: string;
 }
 
 export interface ShelfItem {
@@ -169,33 +251,86 @@ export interface ShelfItem {
   bottleSizeMl: number | null;
 }
 
+/**
+ * One pasted label's shelf item by exact name, case and runs of spaces folded
+ * (ADR 0366 item 7). `item` is null when no live item, or more than one, has
+ * that name; `sameName` says how many do.
+ */
+export interface ShelfMatch {
+  label: string;
+  item: ShelfItem | null;
+  sameName: number;
+}
+
 const base = (restaurantId: string) => `/recipes/${encodeURIComponent(restaurantId)}`;
 
+/** `cocktails/<id>` or `dishes/<id>`: the one place a recipe's path is built. */
+const ownerPath = (restaurantId: string, owner: string | RecipeOwner) => {
+  const o = ownerOf(owner);
+  return `${base(restaurantId)}/${o.kind === 'dish' ? 'dishes' : 'cocktails'}/${encodeURIComponent(o.id)}`;
+};
+
+/** GET /dishes/:dishId as the gateway sends it. */
+interface DishRecipeAnswer extends Omit<CocktailRecipe, 'cocktail' | 'kind'> {
+  dish: { id: string; name: string; section: string | null; price: number | null; description: string | null };
+}
+
 export const recipesApi = {
-  async get(restaurantId: string, cocktailId: string): Promise<CocktailRecipe> {
-    const r = await apiClient.get<CocktailRecipe>(`${base(restaurantId)}/cocktails/${encodeURIComponent(cocktailId)}`);
+  async get(restaurantId: string, owner: string | RecipeOwner): Promise<CocktailRecipe> {
+    if (ownerOf(owner).kind === 'dish') {
+      const r = await apiClient.get<DishRecipeAnswer>(ownerPath(restaurantId, owner));
+      const { dish, ...rest } = r.data;
+      return {
+        ...rest,
+        kind: 'dish',
+        cocktail: { id: dish.id, name: dish.name, price: dish.price, glass: null, garnish: null, method: null, description: dish.description },
+      };
+    }
+    const r = await apiClient.get<CocktailRecipe>(ownerPath(restaurantId, owner));
     return r.data;
   },
 
-  async versions(restaurantId: string, cocktailId: string): Promise<RecipeVersionSummary[]> {
-    const r = await apiClient.get<RecipeVersionSummary[]>(
-      `${base(restaurantId)}/cocktails/${encodeURIComponent(cocktailId)}/versions`,
-    );
+  async versions(restaurantId: string, owner: string | RecipeOwner): Promise<RecipeVersionSummary[]> {
+    const r = await apiClient.get<RecipeVersionSummary[]>(`${ownerPath(restaurantId, owner)}/versions`);
     return r.data;
   },
 
-  async version(restaurantId: string, cocktailId: string, versionId: string): Promise<PastRecipeVersion> {
-    const r = await apiClient.get<PastRecipeVersion>(
-      `${base(restaurantId)}/cocktails/${encodeURIComponent(cocktailId)}/versions/${encodeURIComponent(versionId)}`,
-    );
+  async version(restaurantId: string, owner: string | RecipeOwner, versionId: string): Promise<PastRecipeVersion> {
+    const r = await apiClient.get<PastRecipeVersion>(`${ownerPath(restaurantId, owner)}/versions/${encodeURIComponent(versionId)}`);
     return r.data;
   },
 
-  async save(restaurantId: string, cocktailId: string, body: SaveRecipeBody): Promise<SaveRecipeResult> {
-    const r = await apiClient.put<SaveRecipeResult>(
-      `${base(restaurantId)}/cocktails/${encodeURIComponent(cocktailId)}`,
-      body,
-    );
+  async save(restaurantId: string, owner: string | RecipeOwner, body: SaveRecipeBody): Promise<SaveRecipeResult> {
+    const r = await apiClient.put<SaveRecipeResult>(ownerPath(restaurantId, owner), body);
+    return r.data;
+  },
+
+  /** Prices an unsaved draft at today's prices. The server prices it; nothing is written. */
+  async previewCost(restaurantId: string, owner: string | RecipeOwner, body: PreviewCostBody): Promise<CostPreview> {
+    const r = await apiClient.post<CostPreview>(`${ownerPath(restaurantId, owner)}/cost-preview`, body);
+    return r.data;
+  },
+
+  /** Proposes a shelf item for each pasted label; writes nothing. */
+  async matchShelf(restaurantId: string, labels: string[]): Promise<ShelfMatch[]> {
+    const r = await apiClient.post<ShelfMatch[]>(`${base(restaurantId)}/shelf/match`, { labels });
+    return r.data;
+  },
+
+  /**
+   * Adds a good to the house's shelf from a recipe line that found none (r28
+   * gap 8): the inventory's own "carry this" route (POST /inventory/:rid/
+   * house-items, owner or manager), so there is one writer of a house good.
+   * Stock is never entered here: it arrives with a delivery.
+   */
+  async addToShelf(restaurantId: string, body: AddToShelfBody): Promise<AddedToShelf> {
+    const r = await apiClient.post<AddedToShelf>(`/inventory/${encodeURIComponent(restaurantId)}/house-items`, body);
+    return r.data;
+  },
+
+  /** States what one piece and one ml of a good weigh (owner or manager); the gateway bounds both. */
+  async stateWeights(restaurantId: string, itemId: string, body: StateWeightsBody): Promise<StatedWeights> {
+    const r = await apiClient.put<StatedWeights>(`${base(restaurantId)}/items/${encodeURIComponent(itemId)}/weights`, body);
     return r.data;
   },
 

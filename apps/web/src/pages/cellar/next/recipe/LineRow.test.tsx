@@ -18,7 +18,7 @@ const h = vi.hoisted(() => ({ get: vi.fn(), rid: '11111111-1111-4111-8111-111111
 vi.mock('../../../../services/api/client', () => ({ apiClient: { get: h.get } }));
 vi.mock('../../../../contexts/AuthContext', () => ({ useAuth: () => ({ activeRestaurantId: h.rid }) }));
 
-import LineRow, { LineRowRead, rowQty, type DraftRow } from './LineRow';
+import LineRow, { LineRowRead, boughtDay, rowQty, type DraftRow } from './LineRow';
 import { amountWithUnit, qtyText, readQty, unitWord } from './units';
 import { useShelf } from './useRecipe';
 
@@ -28,12 +28,12 @@ const blank: DraftRow = {
 };
 
 let last: DraftRow = blank;
-function Harness({ start, say = null }: { start: DraftRow; say?: ((n: number) => string) | null }) {
+function Harness({ start, say = null, kind }: { start: DraftRow; say?: ((n: number) => string) | null; kind?: 'cocktail' | 'dish' }) {
   const [row, setRow] = useState(start);
   last = row;
   return (
     <ol>
-      <LineRow row={row} say={say} onChange={(p) => setRow((r) => ({ ...r, ...p }))} onRemove={() => {}} />
+      <LineRow row={row} say={say} kind={kind} onChange={(p) => setRow((r) => ({ ...r, ...p }))} onRemove={() => {}} />
     </ol>
   );
 }
@@ -79,7 +79,11 @@ describe('LineRow', () => {
     const { unmount } = mount(
       <Harness start={{ ...linked, saved: { status: 'linked', costPerServe: null, costBasis: 'unknown' } }} say={say} />,
     );
-    expect(screen.getByText('No price yet: it will cost once a delivery of it is checked in.')).toBeInTheDocument();
+    // r36 gap 12: a delivery checked in at the door has no price until it is verified.
+    expect(
+      screen.getByText('No price yet: nothing says what gin cost. It is priced once a delivery of it is verified with its invoice or an agreed price.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/checked in/)).toBeNull();
     unmount();
     mount(<Harness start={{ ...linked, saved: { status: 'linked', costPerServe: 30, costBasis: 'lot_wac' } }} say={say} />);
     expect(screen.getByText('₺30.00 a serve')).toBeInTheDocument();
@@ -94,7 +98,8 @@ describe('LineRow', () => {
       </ol>,
     );
     expect(container.querySelector('input, select')).toBeNull();
-    expect(container.textContent).toBe('30 mlgin');
+    // The line, and the link to its good (no money in it).
+    expect(container.textContent).toBe('30 mlginOpen in inventory');
   });
 
   it('round 17 D7: staff read an unlinked or archived line with no warning they cannot act on', () => {
@@ -134,6 +139,26 @@ describe('LineRow', () => {
     // A good that truly costs nothing, or an older gateway with no six-place figure, reads as the cents say.
     mount(<Harness start={{ ...linked, saved: { status: 'linked', costPerServe: 0, costPerServeExact: 0, costBasis: 'lot_wac' } }} say={say} />);
     expect(screen.getByText('₺0.00 a serve')).toBeInTheDocument();
+  });
+
+  it('r36 gap 1: a line priced at what its good last cost says so, and when it was bought', () => {
+    const linked = { ...blank, inventoryId: GIN, itemName: 'Campari', label: 'campari' };
+    const at = new Date().getFullYear() + '-03-07T09:00:00Z';
+    const { unmount } = mount(
+      <Harness start={{ ...linked, saved: { status: 'linked', costPerServe: 4, costBasis: 'last_known_lot_cost', boughtAt: at } }} say={(n) => `₺${n.toFixed(2)}`} />,
+    );
+    expect(screen.getByText('₺4.00 a serve, at what Campari last cost (bought 7 Mar); nothing on hand has a price.')).toBeInTheDocument();
+    unmount();
+    mount(<Harness start={{ ...linked, saved: { status: 'linked', costPerServe: 4, costBasis: 'last_known_lot_cost', boughtAt: null } }} say={(n) => `₺${n.toFixed(2)}`} />);
+    expect(screen.getByText('₺4.00 a serve, at what Campari last cost; nothing on hand has a price.')).toBeInTheDocument();
+  });
+
+  it('r36 gap 1: a bought day outside this year carries its year, and no date is made up', () => {
+    const now = new Date('2026-11-13T12:00:00Z');
+    expect(boughtDay('2025-11-01T09:00:00Z', now)).toBe('1 Nov 2025');
+    expect(boughtDay('2026-11-01T09:00:00Z', now)).toBe('1 Nov');
+    expect(boughtDay('not a date', now)).toBeNull();
+    expect(boughtDay(null, now)).toBeNull();
   });
 
   it('a line priced from part of the stock says so beside its cost', () => {
@@ -254,5 +279,28 @@ describe('LineRow', () => {
     rerender();
     await waitFor(() => expect(result.current.data?.[0]?.name).toBe('House B gin'));
     expect(h.get).toHaveBeenCalledWith(`/recipes/${RID_B}/shelf`, expect.anything());
+  });
+});
+
+describe('LineRow unit picker by recipe kind', () => {
+  const options = () =>
+    Array.from((screen.getByLabelText('Unit') as HTMLSelectElement).options)
+      .map((o) => o.textContent)
+      .filter((t) => t !== 'unit');
+
+  it('a dish line offers kitchen units, never a bar measure', () => {
+    mount(<Harness start={{ ...blank, qtyText: '250', unit: 'g' }} kind="dish" />);
+    expect(options()).toEqual(['g', 'kg', 'ml', 'l', 'tsp', 'tbsp', 'each']);
+  });
+
+  it('a drink line still offers every unit, the bar measures included', () => {
+    mount(<Harness start={{ ...blank, qtyText: '2', unit: 'dash' }} kind="cocktail" />);
+    expect(options()).toEqual(['ml', 'cl', 'l', 'US oz', 'tsp', 'tbsp', 'dashes', 'barspoons', 'g', 'kg', 'each']);
+  });
+
+  it('a dish line that already reads in a bar unit keeps it chosen', () => {
+    mount(<Harness start={{ ...blank, qtyText: '1', unit: 'oz' }} kind="dish" />);
+    expect(options()).toEqual(['g', 'kg', 'ml', 'l', 'tsp', 'tbsp', 'each', 'US oz']);
+    expect((screen.getByLabelText('Unit') as HTMLSelectElement).value).toBe('oz');
   });
 });

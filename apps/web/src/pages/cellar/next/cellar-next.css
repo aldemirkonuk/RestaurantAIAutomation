@@ -912,6 +912,20 @@ textarea.cl-field {
 .cl-rcp-link[data-linked='true'] svg { color: var(--seal); }
 .cl-rcp-link[data-linked='false'] { color: var(--warn); }
 .cl-rcp-flag { color: var(--warn); }
+/* A linked line leads to its good's drawer on /inventory. */
+.cl-rcp-good {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  font-size: 11.5px;
+  /* --ink-4, not --ink-3: the higher-contrast caption token (see .cl-note). */
+  color: var(--ink-4);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+.cl-rcp-good:hover { color: var(--ink-1); }
+.cl-rcp-read .cl-rcp-good { margin-left: auto; }
 .cl-rcp-note { margin: 6px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--ink-3); }
 .cl-rcp-note-warn {
   padding: 4px 8px;
@@ -920,6 +934,13 @@ textarea.cl-field {
   color: var(--ink-1);
   border-left: 3px solid var(--warn);
 }
+/* The weight a line waits for (r28 gap 7): label, box, g and Keep wrap on a phone. */
+.cl-rcp-weigh { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; }
+.cl-rcp-weigh .cl-rcp-note { flex-basis: 100%; }
+/* Adding a good from a line that found none (r28 gap 8): one column on a phone. */
+.cl-rcp-add { display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); gap: 6px 8px; align-items: center; margin-top: 8px; font-size: 12px; }
+.cl-rcp-add > span, .cl-rcp-add > .cl-rcp-note { grid-column: 1 / -1; }
+@media (max-width: 480px) { .cl-rcp-add { grid-template-columns: minmax(0, 1fr); } }
 .cl-rcp-picker { margin-top: 8px; padding: 8px; border: 1px solid var(--paper-2); border-radius: 8px; background: var(--paper-0); }
 .cl-rcp-picks { list-style: none; margin: 6px 0 0; padding: 0; max-height: 220px; overflow-y: auto; }
 .cl-rcp-pick {
@@ -1020,6 +1041,7 @@ textarea.cl-field {
   .cl-rcp .cl-btn,
   .cl-rcp .cl-linkish,
   .cl-rcp-link,
+  .cl-rcp-good,
   .cl-rcp-pick { min-height: 44px; }
   .cl-rcp .cl-field { font-size: 16px; }
   .cl-rcp .cl-btn { font-size: 14px; }

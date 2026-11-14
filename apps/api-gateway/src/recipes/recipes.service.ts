@@ -10,7 +10,7 @@ import {
 import { DatabaseService } from "../database/database.service";
 import { seesHouseAmounts } from "../dashboard/amounts-for-role";
 import { BaseUnit, CostItem, recipeCost } from "./recipe-cost";
-import { SaveRecipeDto } from "./dto/recipes.dto";
+import { PreviewCostDto, SaveRecipeDto } from "./dto/recipes.dto";
 import { FIGURE_KEYS, ItemFigures, ServeNutrition, serveNutrition } from "./recipe-nutrition";
 
 export const NOT_THIS_HOUSE = "This drink is not on this house's list.";
@@ -19,6 +19,15 @@ export const READ_FAILED = "We could not read this recipe just now. Nothing is s
 export const SAVE_FAILED = "We could not save this recipe. Nothing was changed.";
 const SHELF_FAILED = "We could not read the shelf just now.";
 export const NOT_THIS_VERSION = "That version is not one of this drink's.";
+export const DISH_NOT_THIS_HOUSE = "This dish is not on this house's list.";
+export const NOT_THIS_DISH_VERSION = "That version is not one of this dish's.";
+
+/** What a recipe belongs to (ADR 0366): a drink (`cocktails`) or a plate (`dishes`). */
+export type OwnerKind = "cocktail" | "dish";
+export interface RecipeOwner {
+  kind: OwnerKind;
+  id: string;
+}
 export const WHAT_IS_IN_UNREAD =
   "What is in a serve could not be read just now, so nothing about it is shown as known. The recipe and its cost are unaffected.";
 
@@ -79,6 +88,72 @@ export class RecipesService {
     if (error) this.failed("cocktail read", error);
     if (!data) throw new NotFoundException(NOT_THIS_HOUSE);
     return data as Record<string, any>;
+  }
+
+  /** A live dish of this house, or 404 (ADR 0366); another house's dish is simply not found. */
+  async houseDish(restaurantId: string, dishId: string) {
+    const { data, error } = await this.db
+      .getClient()
+      .from("dishes")
+      .select("id, name, menu_section, price, description")
+      .eq("id", dishId)
+      .eq("restaurant_id", restaurantId)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (error) this.failed("dish read", error);
+    if (!data) throw new NotFoundException(DISH_NOT_THIS_HOUSE);
+    return data as Record<string, any>;
+  }
+
+  /**
+   * A dish's current recipe, its lines, its cost a plate at today's prices and
+   * what is in a plate (ADR 0366): the drink's read, for a plate. A dish has
+   * no old recipe box, so `legacyLines` is always empty.
+   */
+  async getDishRecipe(restaurantId: string, dishId: string, role: string | null | undefined) {
+    const money = seesHouseAmounts(role);
+    const client = this.db.getClient();
+    const dish = await this.houseDish(restaurantId, dishId);
+    const [pointer, count] = await Promise.all([
+      client
+        .from("recipe_current_dish")
+        .select("version_id")
+        .eq("dish_id", dishId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle(),
+      client
+        .from("recipe_versions")
+        .select("id", { count: "exact", head: true })
+        .eq("dish_id", dishId)
+        .eq("restaurant_id", restaurantId),
+    ]);
+    if (pointer.error) this.failed("current pointer read", pointer.error);
+    if (count.error) this.failed("version count read", count.error);
+
+    let current: Record<string, unknown> | null = null;
+    let cost: Record<string, unknown> | null = null;
+    let whatIsIn: WhatIsIn | null = null;
+    const versionId = (pointer.data as { version_id?: string } | null)?.version_id;
+    if (versionId) {
+      const body = await this.versionBody(restaurantId, versionId, money, true);
+      current = body.version;
+      cost = body.cost;
+      whatIsIn = body.whatIsIn;
+    }
+    return {
+      dish: {
+        id: dish.id,
+        name: dish.name,
+        section: dish.menu_section ?? null,
+        price: money && dish.price != null ? Number(dish.price) : null,
+        description: dish.description ?? null,
+      },
+      current,
+      cost,
+      whatIsIn,
+      versionCount: count.count ?? 0,
+      legacyLines: [],
+    };
   }
 
   async getRecipe(restaurantId: string, cocktailId: string, role: string | null | undefined) {
@@ -144,47 +219,13 @@ export class RecipesService {
   }
 
   /**
-   * One saved version as the sheet reads it: its lines linked to the house's
-   * items, each line's cost at today's prices, and (for the current version)
-   * what is in a serve. The version is read by its id AND the house, so a
-   * pointer or a path naming another house's version is unreadable, not shown.
-   *
-   * A line linked to an item the house has since archived or deleted keeps
-   * its link and its cost, and says so (`itemGone`, round 17 D9): a save of
-   * that line is refused by the database until it is linked again.
+   * The shelf items and their lot costs a set of lines is priced from. ONE
+   * read for the saved version and for a draft, so the two can never price
+   * differently. Scoped to the house on both tables: an id that is not this
+   * house's is simply not found, and its line reads as an unknown item.
    */
-  private async versionBody(
-    restaurantId: string,
-    versionId: string,
-    money: boolean,
-    withWhatIsIn: boolean,
-    cocktailId?: string,
-  ): Promise<{ version: Record<string, unknown>; cost: Record<string, unknown> | null; whatIsIn: WhatIsIn | null }> {
+  async readPricing(restaurantId: string, ids: string[], money: boolean) {
     const client = this.db.getClient();
-    let versionQuery = client
-      .from("recipe_versions")
-      .select("id, version, yield_serves, method, glass, garnish, created_at")
-      .eq("id", versionId)
-      .eq("restaurant_id", restaurantId);
-    if (cocktailId) versionQuery = versionQuery.eq("cocktail_id", cocktailId);
-    const [version, lines] = await Promise.all([
-      versionQuery.maybeSingle(),
-      client
-        .from("recipe_lines")
-        .select("id, position, role, inventory_id, label, qty_entered, unit_code, qty_base, base_unit")
-        .eq("version_id", versionId)
-        .eq("restaurant_id", restaurantId)
-        .order("position", { ascending: true }),
-    ]);
-    if (version.error) this.failed("version read", version.error);
-    if (!version.data) {
-      if (cocktailId) throw new NotFoundException(NOT_THIS_VERSION);
-      this.failed("version read", "pointer names no version");
-    }
-    if (lines.error) this.failed("line read", lines.error);
-    const rows = (lines.data ?? []) as any[];
-    const ids = [...new Set(rows.map((l) => l.inventory_id).filter(Boolean))] as string[];
-
     const items = new Map<string, any>();
     const lots = new Map<string, any>();
     if (ids.length) {
@@ -210,6 +251,53 @@ export class RecipesService {
       for (const i of (itemRead.data ?? []) as any[]) items.set(i.id, i);
       for (const l of (lotRead.data ?? []) as any[]) lots.set(l.inventory_id, l);
     }
+    return { items, lots };
+  }
+
+  /**
+   * One saved version as the sheet reads it: its lines linked to the house's
+   * items, each line's cost at today's prices, and (for the current version)
+   * what is in a serve. The version is read by its id AND the house, so a
+   * pointer or a path naming another house's version is unreadable, not shown.
+   *
+   * A line linked to an item the house has since archived or deleted keeps
+   * its link and its cost, and says so (`itemGone`, round 17 D9): a save of
+   * that line is refused by the database until it is linked again.
+   */
+  private async versionBody(
+    restaurantId: string,
+    versionId: string,
+    money: boolean,
+    withWhatIsIn: boolean,
+    owner?: RecipeOwner,
+  ): Promise<{ version: Record<string, unknown>; cost: Record<string, unknown> | null; whatIsIn: WhatIsIn | null }> {
+    const client = this.db.getClient();
+    let versionQuery = client
+      .from("recipe_versions")
+      .select("id, version, yield_serves, method, glass, garnish, created_at")
+      .eq("id", versionId)
+      .eq("restaurant_id", restaurantId);
+    if (owner?.kind === "cocktail") versionQuery = versionQuery.eq("cocktail_id", owner.id);
+    if (owner?.kind === "dish") versionQuery = versionQuery.eq("dish_id", owner.id);
+    const [version, lines] = await Promise.all([
+      versionQuery.maybeSingle(),
+      client
+        .from("recipe_lines")
+        .select("id, position, role, inventory_id, label, qty_entered, unit_code, qty_base, base_unit")
+        .eq("version_id", versionId)
+        .eq("restaurant_id", restaurantId)
+        .order("position", { ascending: true }),
+    ]);
+    if (version.error) this.failed("version read", version.error);
+    if (!version.data) {
+      if (owner) throw new NotFoundException(owner.kind === "dish" ? NOT_THIS_DISH_VERSION : NOT_THIS_VERSION);
+      this.failed("version read", "pointer names no version");
+    }
+    if (lines.error) this.failed("line read", lines.error);
+    const rows = (lines.data ?? []) as any[];
+    const ids = [...new Set(rows.map((l) => l.inventory_id).filter(Boolean))] as string[];
+
+    const { items, lots } = await this.readPricing(restaurantId, ids, money);
 
     const v = version.data as Record<string, any>;
     const whatIsIn = withWhatIsIn ? await this.whatIsIn(restaurantId, ids, rows, Number(v.yield_serves)) : null;
@@ -276,8 +364,87 @@ export class RecipesService {
   async readVersion(restaurantId: string, cocktailId: string, versionId: string, role: string | null | undefined) {
     const money = seesHouseAmounts(role);
     await this.houseCocktail(restaurantId, cocktailId);
-    const { version, cost } = await this.versionBody(restaurantId, versionId, money, false, cocktailId);
+    const { version, cost } = await this.versionBody(restaurantId, versionId, money, false, { kind: "cocktail", id: cocktailId });
     return { version, cost };
+  }
+
+  /** One earlier version of a dish's recipe (ADR 0366), as `readVersion` reads a drink's. */
+  async readDishVersion(restaurantId: string, dishId: string, versionId: string, role: string | null | undefined) {
+    const money = seesHouseAmounts(role);
+    await this.houseDish(restaurantId, dishId);
+    const { version, cost } = await this.versionBody(restaurantId, versionId, money, false, { kind: "dish", id: dishId });
+    return { version, cost };
+  }
+
+  /**
+   * What an UNSAVED draft would cost per serve at today's prices (a manager
+   * editing lines sees the cost of the edit before saving). Writes nothing.
+   * Quantities become base units through the database's own
+   * `recipe_qty_base`, once per distinct (qty, unit), so no second table of
+   * unit factors exists in code. Items and lots are read by `readPricing`,
+   * exactly as a saved version's are. Unknown stays null, never 0 (ADR 0051).
+   */
+  async previewCost(restaurantId: string, cocktailId: string, dto: PreviewCostDto) {
+    await this.houseCocktail(restaurantId, cocktailId);
+    return this.previewLines(restaurantId, dto);
+  }
+
+  /** What an unsaved dish draft would cost a plate (ADR 0366); the drink's preview, for a dish. */
+  async previewDishCost(restaurantId: string, dishId: string, dto: PreviewCostDto) {
+    await this.houseDish(restaurantId, dishId);
+    return this.previewLines(restaurantId, dto);
+  }
+
+  private async previewLines(restaurantId: string, dto: PreviewCostDto) {
+    const client = this.db.getClient();
+
+    const stocked = dto.lines.filter((l) => l.role === "stocked");
+    const pairs = new Map<string, { qty: number; unit: string }>();
+    for (const l of stocked) pairs.set(`${l.qtyEntered}|${l.unitCode}`, { qty: l.qtyEntered, unit: l.unitCode });
+    const converted = new Map<string, { qtyBase: number; baseUnit: BaseUnit } | null>();
+    await Promise.all(
+      [...pairs.entries()].map(async ([k, p]) => {
+        const { data, error } = await client.rpc("recipe_qty_base", { p_qty: p.qty, p_unit: p.unit });
+        if (error) this.failed("quantity conversion", error);
+        const row = (Array.isArray(data) ? data[0] : data) as { qty_base?: unknown; base_unit?: unknown } | null;
+        converted.set(
+          k,
+          row && row.qty_base != null && row.base_unit != null
+            ? { qtyBase: Number(row.qty_base), baseUnit: row.base_unit as BaseUnit }
+            : null,
+        );
+      }),
+    );
+
+    const ids = [...new Set(stocked.map((l) => l.inventoryId).filter(Boolean))] as string[];
+    const { items, lots } = await this.readPricing(restaurantId, ids, true);
+
+    const priced = recipeCost(
+      dto.lines.map((l) => {
+        const inventoryId = l.role === "stocked" ? (l.inventoryId ?? null) : null;
+        const q = l.role === "stocked" ? converted.get(`${l.qtyEntered}|${l.unitCode}`) : null;
+        return {
+          role: l.role,
+          inventoryId,
+          // A unit the database does not know has no base quantity: NaN prices
+          // the line as unknown, never as free.
+          qtyBase: q ? q.qtyBase : Number.NaN,
+          baseUnit: q ? q.baseUnit : ("ml10" as BaseUnit),
+          item: (inventoryId && (items.get(inventoryId) as CostItem)) || null,
+          lot: (inventoryId && lots.get(inventoryId)) || null,
+        };
+      }),
+      dto.yieldServes,
+    );
+    return {
+      perServe: priced.perServe,
+      perServeExact: priced.perServeExact,
+      priced: priced.priced,
+      of: priced.of,
+      complete: priced.complete,
+      partial: priced.partial,
+      lines: priced.lines.map((l) => ({ status: l.status, costPerServe: l.costPerServe, costBasis: l.costBasis })),
+    };
   }
 
   /**
@@ -337,14 +504,32 @@ export class RecipesService {
 
   async listVersions(restaurantId: string, cocktailId: string) {
     await this.houseCocktail(restaurantId, cocktailId);
-    const client = this.db.getClient();
-    const { data, error } = await client
+    const { data, error } = await this.db
+      .getClient()
       .from("recipe_versions")
       .select("id, version, created_at, author, recipe_lines(count)")
       .eq("cocktail_id", cocktailId)
       .eq("restaurant_id", restaurantId)
       .order("version", { ascending: false });
     if (error) this.failed("version list read", error);
+    return this.versionSummaries((data ?? []) as any[]);
+  }
+
+  /** Every saved version of a dish's recipe, newest first (ADR 0366). */
+  async listDishVersions(restaurantId: string, dishId: string) {
+    await this.houseDish(restaurantId, dishId);
+    const { data, error } = await this.db
+      .getClient()
+      .from("recipe_versions")
+      .select("id, version, created_at, author, recipe_lines(count)")
+      .eq("dish_id", dishId)
+      .eq("restaurant_id", restaurantId)
+      .order("version", { ascending: false });
+    if (error) this.failed("version list read", error);
+    return this.versionSummaries((data ?? []) as any[]);
+  }
+
+  private async versionSummaries(data: any[]) {
     const rows = (data ?? []) as any[];
     const names = await this.authorNames(rows.map((v) => v.author).filter(Boolean));
     return rows.map((v) => ({
@@ -422,6 +607,35 @@ export class RecipesService {
         unit: l.unit,
       })),
     });
+    return this.saved(data, error);
+  }
+
+  /**
+   * Save a new version of a dish's recipe (ADR 0366) through its one RPC,
+   * `save_dish_recipe_version`. A plate has no glass: one sent is not stored.
+   */
+  async saveDishRecipe(restaurantId: string, dishId: string, author: string | null, dto: SaveRecipeDto) {
+    this.assertSavable(dto);
+    const { data, error } = await this.db.getClient().rpc("save_dish_recipe_version", {
+      p_restaurant: restaurantId,
+      p_dish: dishId,
+      p_expected_version: dto.expectedVersionId ?? null,
+      p_yield_serves: dto.yieldServes,
+      p_method: dto.method ?? null,
+      p_garnish: dto.garnish ?? null,
+      p_author: author,
+      p_lines: dto.lines.map((l) => ({
+        role: l.role,
+        inventoryId: l.inventoryId ?? null,
+        label: l.label,
+        qty: l.qty,
+        unit: l.unit,
+      })),
+    });
+    return this.saved(data, error);
+  }
+
+  private saved(data: unknown, error: { code?: string; message: string } | null) {
     if (error) {
       if (error.code === "RCP09") throw new ConflictException(STALE_SAVE);
       if (error.code === "RCP00") throw new BadRequestException(error.message);
