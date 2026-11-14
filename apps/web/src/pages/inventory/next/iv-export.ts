@@ -70,3 +70,15 @@ export function valuationColumns(currencyCode: string | null): TableExportColumn
 export function rowFilename(row: InvRow): string {
   return (row.name ?? '').replace(/[^\w]+/g, '-').toLowerCase() || 'inventory-row';
 }
+
+/** The cost columns a valuation export carries: WAC and value at cost. */
+export const COST_HEADERS: ReadonlySet<string> = new Set(['WAC', 'Value at cost']);
+
+/**
+ * The columns this reader may take away: all of them for an owner or a
+ * manager, the counts and prices without the cost for staff (inventory r28
+ * audit, gap 9; the gateway withholds the figures too, #1355).
+ */
+export function costColumnsFor<T>(columns: TableExportColumn<T>[], canManage: boolean): TableExportColumn<T>[] {
+  return canManage ? columns : columns.filter((c) => !COST_HEADERS.has(c.header));
+}

@@ -1561,6 +1561,21 @@ describe('row selection, ported from the legacy table (re-gate 2026-10-31)', () 
     expect(opts.columns.map((c) => c.header)).toContain('Value at cost');
   });
 
+  it('Export selected hands staff the counts and prices without the cost columns (inventory r28 gap 9)', async () => {
+    exportSpy.mockClear();
+    mock.data = data({ rows: three(), canManage: false });
+    renderPage();
+    tick('Alpha');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export selected' }));
+    });
+    const opts = exportSpy.mock.calls[0][0] as { columns: { header: string }[] };
+    const headers = opts.columns.map((c) => c.header);
+    expect(headers).not.toContain('WAC');
+    expect(headers).not.toContain('Value at cost');
+    expect(headers).toContain('Live');
+  });
+
   it('Copy names puts one name per line on the clipboard and says how many', async () => {
     const writeText = vi.fn(async () => undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });

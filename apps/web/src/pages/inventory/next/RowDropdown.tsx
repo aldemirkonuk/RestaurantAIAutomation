@@ -41,7 +41,7 @@ import { CountSheet, OrderSheet, PourSheet, TransferSheet, WriteOffSheet } from 
 import { amountUnit, isPoured } from './iv-amount';
 import { fmtQty, NOT_DRAWN_BY_SALES, perUnit, usageWords as usageWordsOf } from './ItemCards';
 import { writeFailure } from './iv-failure';
-import { oneLine, rowFilename, runExport, valuationColumns } from './iv-export';
+import { costColumnsFor, oneLine, rowFilename, runExport, valuationColumns } from './iv-export';
 import {
   cellMoney,
   cellUnitCost,
@@ -354,7 +354,7 @@ export default function RowDropdown(props: RowDropdownProps) {
           {has('where') ? <WhereTheCountComesFrom row={row} zoneName={zoneName} onCount={() => setSheet('count')} /> : null}
           {has('pace') ? <HowFastItPours row={row} uom={props.uom ?? null} kind={props.kind ?? null} /> : null}
           {has('cost') ? (
-          <WhatItHasCost row={row} currency={currency} detail={detail} uom={props.uom ?? null} kind={props.kind ?? null} />
+          <WhatItHasCost row={row} currency={currency} detail={detail} uom={props.uom ?? null} kind={props.kind ?? null} canManage={canManage} />
         ) : null}
         </div>
       ) : null}
@@ -443,7 +443,7 @@ export default function RowDropdown(props: RowDropdownProps) {
               onClick={() => {
                 setMoreOpen(false);
                 // Legacy's right-click "Export this row": the valuation columns, as CSV, named after the title.
-                void runExport([row], valuationColumns(currency.code ?? null), rowFilename(row), title);
+                void runExport([row], costColumnsFor(valuationColumns(currency.code ?? null), canManage), rowFilename(row), title);
               }}
             >
               Export this row
@@ -717,18 +717,41 @@ function HowFastItPours({ row, uom, kind }: { row: InvRow; uom: string | null; k
 
 /* ── column 3 ──────────────────────────────────────────────────────────── */
 
+/** Said where cost is not shown to this reader, as the drawer's Cost card says it. */
+export const COST_IS_A_MANAGERS = 'Cost is shown to owners and managers.';
+
+/** The margin's own caveat, as the dish and drink cards carry FOOD_COST_TAX_NOTE. */
+export const MARGIN_TAX_NOTE = 'of the bottle price as your list has it; whether that price includes tax is not recorded';
+
+/**
+ * What one bottle has cost, from a cost kept a base unit (ADR 0070): a wine
+ * kept in bottles costs its WAC a bottle; a spirit kept in ml or litres costs
+ * its WAC times the bottle's size. `null` where the size is not recorded or
+ * the good is kept some other way, rather than comparing a bottle's price
+ * with a millilitre's cost (inventory r28 audit, gap 10).
+ */
+export function bottleCost(wac: number, uom: string | null, bottleSizeMl: number | null): number | null {
+  if (uom === null || uom === 'bottle') return wac;
+  if (bottleSizeMl === null || !(bottleSizeMl > 0)) return null;
+  if (uom === 'ml') return wac * bottleSizeMl;
+  if (uom === 'l') return (wac * bottleSizeMl) / 1000;
+  return null;
+}
+
 function WhatItHasCost({
   row,
   currency,
   detail,
   uom,
   kind,
+  canManage,
 }: {
   row: InvRow;
   currency: HouseCurrency;
   detail: ReturnType<typeof useRowDetail>;
   uom: string | null;
   kind: string | null;
+  canManage: boolean;
 }) {
   // A food or supply is costed, not priced (ADR 0051/0053): no btl · glass price,
   // margin, market or auction lots, and its costs, stored a g, ml or piece
@@ -736,10 +759,14 @@ function WhatItHasCost({
   // (ItemCards perUnit). With no unit recorded a cost cannot say what it is a,
   // so it reads as a dash, never as a guessed bottle. A drink is drawn as before.
   const good = kind === 'food' || kind === 'supply' ? kind : null;
+  // A drink kept in bottles (or with no unit, a wine) reads its cost a bottle;
+  // one kept by measure reads a litre, as a food does, never a bare
+  // millilitre's cost that looks like a bottle's (inventory r28 audit, gap 10).
+  const byBottle = uom === null || uom === 'bottle';
   const money = (n: number | null): ReactNode => {
     // A unit cost keeps the places it needs (0.035 a gram, #858) for a drink
-    // and a food or supply alike.
-    if (good === null) return cellUnitCost(n, currency);
+    // and a food or supply alike; a drink kept by measure reads a litre below.
+    if (good === null && byBottle) return cellUnitCost(n, currency);
     if (n === null || uom === null) return EM;
     const u = perUnit(n, uom);
     return (
@@ -763,7 +790,41 @@ function WhatItHasCost({
     last && before && last.unitCost !== null && before.unitCost !== null && before.unitCost > 0
       ? ((last.unitCost - before.unitCost) / before.unitCost) * 100
       : null;
-  const margin = row.bottle !== null && row.bottle > 0 && row.wac !== null ? ((row.bottle - row.wac) / row.bottle) * 100 : null;
+  const oneBottle = row.wac === null ? null : bottleCost(row.wac, uom, row.bottleSizeMl);
+  const margin = row.bottle !== null && row.bottle > 0 && oneBottle !== null ? ((row.bottle - oneBottle) / row.bottle) * 100 : null;
+  const noMarginWhy =
+    row.bottle === null || !(row.bottle > 0)
+      ? null
+      : row.wac === null
+        ? 'no cost yet'
+        : oneBottle === null
+          ? uom === 'ml' || uom === 'l'
+            ? 'the bottle size is not recorded, so a bottle’s cost is not known'
+            : 'its cost is not kept a bottle'
+          : null;
+
+  // Staff read stock, not what the house paid (inventory r28 audit, gap 9).
+  // Before, a staff reader saw the cost here, or, with the gateway withholding
+  // it (#1355), "none on the ledger", which says the good was never bought.
+  if (!canManage) {
+    return (
+      <section className="iv-col">
+        <h4 className="iv-sec">What it has cost</h4>
+        <p className="iv-note" data-testid="cost-is-a-managers">
+          {COST_IS_A_MANAGERS}
+        </p>
+        {good === null ? (
+          <dl>
+            <KV k="Your price">
+              <span className="iv-num">
+                {cellMoney(row.bottle, currency)} · {cellMoney(row.glass, currency)}
+              </span>
+            </KV>
+          </dl>
+        ) : null}
+      </section>
+    );
+  }
 
   return (
     <section className="iv-col">
@@ -798,8 +859,20 @@ function WhatItHasCost({
                 {cellMoney(row.bottle, currency)} · {cellMoney(row.glass, currency)}
               </span>
             </KV>
-            <KV k="Margin over cost">
-              <span className="iv-num">{margin === null ? EM : formatHousePercent(margin, currency.code, { digits: 0 })}</span>
+            <KV k="Margin on your bottle price">
+              {margin === null ? (
+                <>
+                  {EM}
+                  {noMarginWhy ? <span className="iv-dim"> {noMarginWhy}</span> : null}
+                </>
+              ) : (
+                <>
+                  <span className="iv-num">{formatHousePercent(margin, currency.code, { digits: 0 })}</span>{' '}
+                  <span className="iv-dim" data-testid="margin-tax-note">
+                    {MARGIN_TAX_NOTE}
+                  </span>
+                </>
+              )}
             </KV>
             <KV k="Market">
               {EM} <span className="iv-dim">no market price is read</span>

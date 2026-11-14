@@ -79,7 +79,7 @@ vi.mock('../../../hooks/queries/useProviderQueries', async (orig) => ({
   useRecommendedProviders: () => ({ data: undefined, isError: false }),
 }));
 
-import RowDropdown, { type RowDropdownProps } from './RowDropdown';
+import RowDropdown, { bottleCost, COST_IS_A_MANAGERS, MARGIN_TAX_NOTE, type RowDropdownProps } from './RowDropdown';
 
 function row(over: Partial<InvRow> = {}): InvRow {
   return {
@@ -683,6 +683,91 @@ describe('Ported acts in the More menu: Mark inactive and Remove from inventory'
   });
 });
 
+describe('the cost column says per what, and to whom (inventory r28 gaps 9, 10)', () => {
+  const eur = { state: 'recorded', code: 'EUR' } as const;
+  async function menu(over: Partial<RowDropdownProps> = {}) {
+    renderDrop(over);
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    return screen.findByRole('menu');
+  }
+  beforeEach(() => {
+    reads.detail = {
+      purchases: [
+        { id: 'l2', at: '2026-11-10T10:00:00Z', qty: 700, unitCost: 0.03, orderId: null },
+        { id: 'l1', at: '2026-10-10T10:00:00Z', qty: 700, unitCost: 0.025, orderId: null },
+      ],
+    };
+  });
+
+  it('staff read that cost is an owner’s and a manager’s, never "none on the ledger", and keep the selling price', () => {
+    renderDrop({ canManage: false });
+    const drop = screen.getByTestId('row-dropdown');
+    expect(screen.getByTestId('cost-is-a-managers')).toHaveTextContent(COST_IS_A_MANAGERS);
+    expect(drop.textContent).not.toContain('none on the ledger');
+    for (const k of ['Weighted average cost', 'Last bought', 'Before that', 'Margin on your bottle price', 'Auction lots'])
+      expect(within(drop).queryByText(k)).toBeNull();
+    expect(within(drop).getByText('Your price')).toBeTruthy();
+  });
+
+  it('staff are told about cost for a food too, with no selling price', () => {
+    renderDrop({ canManage: false, kind: 'food', uom: 'g', row: row({ kind: 'food', bottle: null, glass: null }) });
+    expect(screen.getByTestId('cost-is-a-managers')).toBeTruthy();
+    expect(within(screen.getByTestId('row-dropdown')).queryByText('Your price')).toBeNull();
+  });
+
+  it('a spirit kept in ml reads its cost a litre and its margin on what one bottle cost', () => {
+    // 0.03 a ml in a 700 ml bottle: 21 a bottle; sold at 60: a margin of 65 in a hundred.
+    renderDrop({ row: row({ kind: 'spirit', bottleSizeMl: 700, bottle: 60, wac: 0.03 }), uom: 'ml', kind: 'spirit' });
+    const text = screen.getByTestId('row-dropdown').textContent ?? '';
+    expect(text).toContain(`Weighted average cost${cellMoney(30, eur)} a litre`);
+    expect(text).toContain('Margin on your bottle price65%');
+    expect(screen.getByTestId('margin-tax-note')).toHaveTextContent(MARGIN_TAX_NOTE);
+  });
+
+  it('a spirit with no bottle size gives no margin and says why, rather than comparing a bottle with a ml', () => {
+    renderDrop({ row: row({ kind: 'spirit', bottleSizeMl: null, bottle: 60, wac: 0.03 }), uom: 'ml', kind: 'spirit' });
+    const text = screen.getByTestId('row-dropdown').textContent ?? '';
+    expect(text).toContain(`Margin on your bottle price${EM} the bottle size is not recorded`);
+    expect(text).not.toContain('100%');
+  });
+
+  it('a wine kept in bottles keeps its cost a bottle', () => {
+    // 40 a bottle sold at 92: 57.
+    renderDrop({ row: row({ bottle: 92, wac: 40 }) });
+    const text = screen.getByTestId('row-dropdown').textContent ?? '';
+    expect(text).toContain(`Weighted average cost${cellMoney(40, eur)}`);
+    expect(text).not.toContain('a litre');
+    expect(text).toContain('Margin on your bottle price57%');
+  });
+
+  it('bottleCost converts only what it can', () => {
+    expect(bottleCost(40, null, null)).toBe(40);
+    expect(bottleCost(40, 'bottle', 750)).toBe(40);
+    expect(bottleCost(0.03, 'ml', 700)).toBeCloseTo(21);
+    expect(bottleCost(30, 'l', 700)).toBeCloseTo(21);
+    expect(bottleCost(0.03, 'ml', null)).toBeNull();
+    expect(bottleCost(0.03, 'ml', 0)).toBeNull();
+    expect(bottleCost(2, 'g', 700)).toBeNull();
+  });
+
+  it('Export this row hands staff no cost columns, and a manager all of them', async () => {
+    tableExport.exportTable.mockClear();
+    const staff = await menu({ canManage: false });
+    fireEvent.click(within(staff).getByRole('menuitem', { name: 'Export this row' }));
+    const headers = tableExport.exportTable.mock.calls[0][0].columns.map((c: { header: string }) => c.header);
+    expect(headers).not.toContain('WAC');
+    expect(headers).not.toContain('Value at cost');
+    expect(headers).toContain('Live');
+    cleanup();
+    tableExport.exportTable.mockClear();
+    const manager = await menu({ canManage: true });
+    fireEvent.click(within(manager).getByRole('menuitem', { name: 'Export this row' }));
+    const all = tableExport.exportTable.mock.calls[0][0].columns.map((c: { header: string }) => c.header);
+    expect(all).toContain('WAC');
+    expect(all).toContain('Value at cost');
+  });
+});
+
 describe('Name this wine in the opened row (ADR 0192, ported from RowExpansion.tsx:166)', () => {
   const FLAG = 'If you name this wine, we can help you build a better menu.';
   beforeEach(() => {
@@ -973,7 +1058,7 @@ describe('a food or supply is costed in its own unit, with no price, margin, mar
     const kg = (n: number) => `${cellUnitCost(n, eur)} a kg`;
     expect(drop.textContent).toContain(`Weighted average cost${kg(9)}`);
     expect(drop.textContent).toContain(`${kg(7.5)} → ${kg(9)} (+20%)`);
-    for (const k of ['Your price', 'Margin over cost', 'Market', 'Auction lots']) expect(within(drop).queryByText(k)).toBeNull();
+    for (const k of ['Your price', 'Margin on your bottle price', 'Market', 'Auction lots']) expect(within(drop).queryByText(k)).toBeNull();
     expect(screen.getByTestId('good-not-priced')).toHaveTextContent('A food is costed, not priced');
   });
 
@@ -993,16 +1078,16 @@ describe('a food or supply is costed in its own unit, with no price, margin, mar
     cleanup();
     // 92 a bottle on a cost of 40: a margin of 57 in a hundred.
     renderDrop({ currency: tl });
-    expect(screen.getByTestId('row-dropdown').textContent).toContain('Margin over cost%57');
+    expect(screen.getByTestId('row-dropdown').textContent).toContain('Margin on your bottle price%57');
     cleanup();
     renderDrop({ currency: { state: 'recorded', code: 'GBP' } });
-    expect(screen.getByTestId('row-dropdown').textContent).toContain('Margin over cost57%');
+    expect(screen.getByTestId('row-dropdown').textContent).toContain('Margin on your bottle price57%');
   });
 
   it('a drink is drawn as before', () => {
     renderDrop();
     const drop = screen.getByTestId('row-dropdown');
-    for (const k of ['Your price', 'Margin over cost', 'Market', 'Auction lots']) expect(within(drop).getByText(k)).toBeTruthy();
+    for (const k of ['Your price', 'Margin on your bottle price', 'Market', 'Auction lots']) expect(within(drop).getByText(k)).toBeTruthy();
     expect(screen.queryByTestId('good-not-priced')).toBeNull();
   });
 });
