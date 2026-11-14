@@ -8,9 +8,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MenuPlan, kindWords, notOnFileWords, orderedRows, planSentence } from './MenuPlan';
+import { MenuPlan, chooseFailedSentence, kindWords, notOnFileWords, orderedRows, planSentence } from './MenuPlan';
 import { getMenuPlan, makeMenuCurrent, type MenuPlan as Plan, type PlanLine } from '../../../services/api/menus';
 import { lockPrice, releasePriceLock } from '../../../services/api/pricing';
+import { formatMoney } from '../../../lib/currency';
+
+vi.mock('../../../hooks/queries/useHouseCurrencyCode', () => ({ useHouseCurrencyCode: () => 'TRY' }));
+/** A price as a lira house writes it: the page routes every price through formatMoney. */
+const m = (n: number) => formatMoney(n, 'TRY');
+/** The page's text as the DOM matcher reads it: Intl's no-break space read as a space. */
+const shown = (s: string) => s.replace(/\s+/g, ' ');
+
 
 vi.mock('../../../services/api/menus', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/menus')>('../../../services/api/menus');
@@ -115,7 +123,13 @@ describe('the plan in one sentence', () => {
     expect(
       planSentence(plan({ lines: [unmatched, unpriced], counts: { change: 0, unchanged: 0, held_by_lock: 0, blank_kept: 0, blank_never_priced: 3, not_linked: 2, new_wine: 0 }, dormantLocks: [] })),
     ).toBe('Choosing this menu changes no price. 1 line shows no price and the house has none either, so it stays unpriced, and the line carries a note saying so; 1 line is not matched to a wine, so no price.');
-    expect(planSentence(plan({ current: true }))).toBe('This is already the current menu. Choosing it again changes nothing.');
+    // r28 G1: "changes nothing" only when no price on the house differs from the current menu.
+    expect(planSentence(plan({ current: true }))).toBe(
+      'This is the current menu, and 1 price on the house differs from it. Carrying its prices again sets the ones its choice did not reach; a price someone set since it was chosen stays.',
+    );
+    expect(planSentence(plan({ current: true, counts: { ...plan().counts, change: 0, new_wine: 0 } }))).toBe(
+      'This is the current menu, and every price on it already reached the house.',
+    );
   });
 
   // Menu walk 2026-11-12: "add 7 prices for wines new to the house" against the
@@ -176,13 +190,13 @@ describe('2d: not on this file -- shown, never acted on (L12)', () => {
   });
 
   it('says each one in a line: what the house keeps, its locks, or that the house never had it', () => {
-    expect(notOnFileWords(BAROLO_GONE)).toBe('Barolo 2016: keeps bottle 80.00, glass 14.00, bottle locked');
-    expect(notOnFileWords(HOUSE_RED)).toBe("House red: not on the house's list, so nothing is kept for it");
-    expect(notOnFileWords({ ...BAROLO_GONE, bottle: null, glass: null, locked: [] })).toBe('Barolo 2016: keeps no price (it had none)');
-    expect(notOnFileWords({ ...BAROLO_GONE, active: false })).toBe(
-      'Barolo 2016: the house no longer sells it; its row keeps bottle 80.00, glass 14.00, bottle locked',
+    expect(notOnFileWords(BAROLO_GONE, 'TRY')).toBe(`Barolo 2016: keeps bottle ${m(80)}, glass ${m(14)}, bottle locked`);
+    expect(notOnFileWords(HOUSE_RED, 'TRY')).toBe("House red: not on the house's list, so nothing is kept for it");
+    expect(notOnFileWords({ ...BAROLO_GONE, bottle: null, glass: null, locked: [] }, 'TRY')).toBe('Barolo 2016: keeps no price (it had none)');
+    expect(notOnFileWords({ ...BAROLO_GONE, active: false }, 'TRY')).toBe(
+      `Barolo 2016: the house no longer sells it; its row keeps bottle ${m(80)}, glass ${m(14)}, bottle locked`,
     );
-    expect(notOnFileWords({ ...BAROLO_GONE, active: true })).toBe('Barolo 2016: keeps bottle 80.00, glass 14.00, bottle locked');
+    expect(notOnFileWords({ ...BAROLO_GONE, active: true }, 'TRY')).toBe(`Barolo 2016: keeps bottle ${m(80)}, glass ${m(14)}, bottle locked`);
   });
 
   it('lists them on the plan, with no control that would act on them', async () => {
@@ -192,7 +206,7 @@ describe('2d: not on this file -- shown, never acted on (L12)', () => {
     expect(box).toHaveTextContent('Not on this file');
     expect(box).toHaveTextContent('the price, the house\'s row and any lock stay');
     expect(screen.getAllByTestId('menu-plan-not-on-file-line').map((l) => l.textContent)).toEqual([
-      'Barolo 2016: keeps bottle 80.00, glass 14.00, bottle locked',
+      `Barolo 2016: keeps bottle ${m(80)}, glass ${m(14)}, bottle locked`,
       "House red: not on the house's list, so nothing is kept for it",
     ]);
     expect(box.querySelectorAll('button, input')).toHaveLength(0);
@@ -213,12 +227,12 @@ describe('MenuPlan -- the section before the choice (L13)', () => {
     const rows = await screen.findAllByTestId('menu-plan-row');
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveTextContent('Chianti');
-    expect(rows[0]).toHaveTextContent('Becomes 55.00; it was set by hand by Deniz on 2026-09-10');
-    expect(rows[1]).toHaveTextContent('Stays 60.00: locked by Aylin on 2026-09-01');
+    expect(rows[0]).toHaveTextContent(shown(`Becomes ${m(55)}; it was set by hand by Deniz on 2026-09-10`));
+    expect(rows[1]).toHaveTextContent(shown(`Stays ${m(60)}: locked by Aylin on 2026-09-01`));
     const back = screen.getByTestId('menu-plan-returned');
     expect(back).toHaveTextContent("Barolo comes back with this menu and its lock still holds (the house's Barolo 2019).");
     expect(back).toHaveTextContent('Check this one: the menu reads Barolo 2020, and the locked wine it is linked to is the 2019 vintage.');
-    expect(screen.getByTestId('menu-plan-dormant')).toHaveTextContent('Old Rioja (bottle) at 80.00, removed from inventory');
+    expect(screen.getByTestId('menu-plan-dormant')).toHaveTextContent(shown(`Old Rioja (bottle) at ${m(80)}, removed from inventory`));
   });
 
   it('Keep locks that price there and then, and the plan is read again', async () => {
@@ -258,6 +272,56 @@ describe('MenuPlan -- the section before the choice (L13)', () => {
     expect(await screen.findByTestId('menu-plan-moved')).toHaveTextContent('A price or a lock changed since this was shown, so nothing was changed.');
     await waitFor(() => expect(mockPlan).toHaveBeenCalledTimes(2));
     expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it('r28 G1: no answer at all says the switch is not known, never that nothing changed, and reads the menus again', async () => {
+    mockPlan.mockResolvedValue(plan());
+    mockMake.mockRejectedValue({ message: 'timeout of 120000ms exceeded' });
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
+    const said = await screen.findByRole('alert');
+    expect(shown(said.textContent ?? '')).toBe(
+      'No answer came back (timeout of 120000ms exceeded), so whether this menu is now current, and how many of its prices reached the house, is not known. Its standing under Menus kept says; if it is current, Carry its prices again finishes the rest.',
+    );
+    expect(said.textContent).not.toMatch(/Nothing has changed/);
+    await waitFor(() => expect(mockPlan).toHaveBeenCalledTimes(2));
+  });
+
+  it("r28 G1: a 5xx says the gateway's own sentence (the menu IS current), and a refusal still says nothing changed", async () => {
+    mockPlan.mockResolvedValue(plan());
+    mockMake.mockRejectedValueOnce({
+      response: { status: 500, data: { message: 'This menu is now the current one, but its prices did not reach the house (pool closed). Choose it again under Menus kept to carry them; a price set since it was chosen stays.' } },
+    });
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
+    expect(shown((await screen.findByRole('alert')).textContent ?? '')).toBe(
+      'This menu is now the current one, but its prices did not reach the house (pool closed). Choose it again under Menus kept to carry them; a price set since it was chosen stays.',
+    );
+    expect(chooseFailedSentence({ response: { status: 400, data: { message: 'no fingerprint' } } }, false)).toBe(
+      'It was not made current: no fingerprint. Nothing has changed.',
+    );
+    expect(chooseFailedSentence({ response: { status: 403 } }, true)).toBe(
+      'Its prices were not carried again: only an owner or a manager can do that. Nothing has changed.',
+    );
+  });
+
+  it('r28 G1: the current menu offers "Carry its prices again" while a price differs, and none once every price arrived', async () => {
+    mockPlan.mockResolvedValue(plan({ current: true }));
+    const result = { outcome: 'already_current' as const, menuId: 'menu-new', previousMenuIds: [], lines: 2, priceSync: { changed: 1, locked: 1 }, flagged: 0, failed: [] };
+    mockMake.mockResolvedValue(result as any);
+    const { onDone } = mount(true);
+    expect(await screen.findByRole('heading', { name: 'Before its prices are carried again' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Make it current' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Carry its prices again' }));
+    await waitFor(() => expect(mockMake).toHaveBeenCalledWith('menu-new', 'fp-1'));
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith(result, expect.any(Array)));
+  });
+
+  it('r28 G1: a current menu whose every price arrived offers nothing to carry', async () => {
+    mockPlan.mockResolvedValue(plan({ current: true, counts: { ...plan().counts, change: 0, new_wine: 0 } }));
+    mount(true);
+    expect(await screen.findByTestId('menu-plan-sentence')).toHaveTextContent('every price on it already reached the house');
+    expect(screen.queryByRole('button', { name: 'Carry its prices again' })).not.toBeInTheDocument();
   });
 
   it('a plan that cannot be worked out says so, and offers no choice', async () => {
@@ -315,7 +379,7 @@ describe("the founder's L11 confirmation: a price a person set after the menu wa
     const rows = await screen.findAllByTestId('menu-plan-row');
     expect(rows[0]).toHaveTextContent('Rioja');
     expect(rows[0]).toHaveAttribute('data-after-read', 'true');
-    expect(rows[0]).toHaveTextContent('Becomes 42.00; it was set by hand by Deniz on 2026-09-12, after this menu was read');
+    expect(rows[0]).toHaveTextContent(shown(`Becomes ${m(42)}; it was set by hand by Deniz on 2026-09-12, after this menu was read`));
     expect(within(rows[0]).getByRole('button', { name: 'Keep the bottle price of Rioja' })).toBeInTheDocument();
     expect(rows[1]).toHaveAttribute('data-after-read', 'false');
     expect(screen.getByTestId('menu-plan-typed-after')).toHaveTextContent(
@@ -340,9 +404,9 @@ describe('every line of the menu, per kind (L13)', () => {
     const all = await screen.findByTestId('menu-plan-every-line');
     expect(all).toHaveTextContent('Every line on this menu (4)');
     const lines = within(all).getAllByTestId('menu-plan-line');
-    expect(lines[0]).toHaveTextContent('becomes 55.00 (now 50.00)');
+    expect(lines[0]).toHaveTextContent(shown(`becomes ${m(55)} (now ${m(50)})`));
     expect(lines[1]).toHaveTextContent('Barolo 2020');
-    expect(lines[1]).toHaveTextContent('stays 60.00, locked');
+    expect(lines[1]).toHaveTextContent(shown(`stays ${m(60)}, locked`));
     expect(lines[2]).toHaveTextContent('not matched to a wine, so no price');
     expect(lines[3]).toHaveTextContent('no price on the menu or at the house (noted on the line)');
   });
@@ -350,11 +414,11 @@ describe('every line of the menu, per kind (L13)', () => {
   it('each result has its words, and one it does not know is still printed', () => {
     const l = line();
     const k = (over: Partial<PlanLine['bottle']>) => ({ ...l.bottle, ...over });
-    expect(kindWords(l, k({ result: 'unchanged', housePrice: 50 }))).toBe('already 50.00');
-    expect(kindWords(l, k({ result: 'blank_kept', housePrice: 30 }))).toBe('blank on the menu; the house keeps 30.00 (noted on the line)');
-    expect(kindWords(l, k({ result: 'new_wine', menuPrice: 40 }))).toBe('new to the house at 40.00');
-    expect(kindWords(l, k({ result: 'blank_never_priced' }))).toBe('—');
-    expect(kindWords(l, k({ result: 'held_somewhere_else' as never }))).toBe('held somewhere else');
+    expect(kindWords(l, k({ result: 'unchanged', housePrice: 50 }), 'TRY')).toBe(`already ${m(50)}`);
+    expect(kindWords(l, k({ result: 'blank_kept', housePrice: 30 }), 'TRY')).toBe(`blank on the menu; the house keeps ${m(30)} (noted on the line)`);
+    expect(kindWords(l, k({ result: 'new_wine', menuPrice: 40 }), 'TRY')).toBe(`new to the house at ${m(40)}`);
+    expect(kindWords(l, k({ result: 'blank_never_priced' }), 'TRY')).toBe('—');
+    expect(kindWords(l, k({ result: 'held_somewhere_else' as never }), 'TRY')).toBe('held somewhere else');
   });
 });
 
@@ -396,5 +460,45 @@ describe('the plan dates on the house clock', () => {
     mockPlan.mockResolvedValue(plan({ timezone: null, timezoneReason: 'the house has no time zone set' }));
     mount(true);
     expect(await screen.findByTestId('menu-plan-clock')).toHaveTextContent("this device's clock: the house has no time zone set");
+  });
+});
+
+// r28 G9: the carry writes a removed row's price (one row per house and wine),
+// and the plan never said the row stays removed, so a removed wine was sold off
+// the menu with nothing on Inventory saying so.
+describe('a line whose house row was removed is said (r28 G9)', () => {
+  const removed = line({ menuItemId: 'n7', name: 'Old Rioja', inventoryId: 'inv-9', house: { wineName: 'Old Rioja', vintage: 2015, active: false } });
+
+  it('the sentence counts and names the removed lines, and says they stay removed', () => {
+    expect(planSentence(plan({ lines: [line(), removed], dormantLocks: [] }))).toBe(
+      'Choosing this menu will change the price of 2 wines the house already has. 1 line is a good the house removed from Inventory; its price is kept on the removed row and it stays removed (Old Rioja). Bring it back on Inventory to sell it from there.',
+    );
+    const two = line({ ...removed, menuItemId: 'n8', name: 'Gone Gin' });
+    expect(planSentence(plan({ lines: [removed, two], dormantLocks: [] }))).toContain(
+      '2 lines are a good the house removed from Inventory; their price is kept on the removed row and they stay removed (Old Rioja, Gone Gin). Bring them back on Inventory to sell them from there',
+    );
+  });
+
+  it('a live row, or a line with no row, is not called removed', () => {
+    const noRow = line({ menuItemId: 'n9', house: null, inventoryId: null });
+    expect(planSentence(plan({ lines: [line(), noRow], dormantLocks: [] }))).not.toContain('removed');
+  });
+
+  it('the current menu says it too', () => {
+    expect(planSentence(plan({ current: true, lines: [removed], counts: { ...plan().counts, change: 0, new_wine: 0 } }))).toBe(
+      'This is the current menu, and every price on it already reached the house. 1 line is a good the house removed from Inventory; its price is kept on the removed row and it stays removed (Old Rioja). Bring it back on Inventory to sell it from there.',
+    );
+  });
+
+  it('marks the removed line in the price table and in every line, and no other', async () => {
+    mockPlan.mockResolvedValue(plan({ lines: [line(), removed], dormantLocks: [] }));
+    mount(true);
+    const rows = await screen.findAllByTestId('menu-plan-row');
+    const rioja = rows.find((r) => r.textContent?.includes('Old Rioja')) as HTMLElement;
+    expect(within(rioja).getByTestId('menu-plan-removed')).toHaveTextContent('removed from Inventory; it stays removed');
+    const chianti = rows.find((r) => r.textContent?.includes('Chianti')) as HTMLElement;
+    expect(within(chianti).queryByTestId('menu-plan-removed')).not.toBeInTheDocument();
+    const every = screen.getAllByTestId('menu-plan-line');
+    expect(every.filter((r) => within(r).queryByTestId('menu-plan-removed'))).toHaveLength(1);
   });
 });

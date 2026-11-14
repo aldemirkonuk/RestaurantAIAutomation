@@ -1,4 +1,5 @@
 import type { MenuImportReviewItem, MenuItemCorrection } from '../../../services/api/menus';
+import { formatMoney } from '../../../lib/currency';
 
 /**
  * What an added line did to the house's own price (ADR 0193: "it could be
@@ -9,12 +10,14 @@ import type { MenuImportReviewItem, MenuItemCorrection } from '../../../services
  */
 export function housePriceNote(
   item: Pick<MenuImportReviewItem, 'priceSync' | 'priceSyncError' | 'priceHeld'> | null | undefined,
+  /** The house's money; a held price is written in it ("locked at ₺95,00"). */
+  currency: string | null = null,
 ): { tone: 'alert' | 'said'; text: string } | null {
   // ADR 0193 round 3 (L5): a kind a lock held is always named, even when the
   // other kind changed -- "changed" alone would hide the hold.
   const held = item?.priceHeld ?? [];
   const heldWords = held
-    .map((h) => `the ${h.kind} price is locked${h.lockedPrice === null ? '' : ` at ${h.lockedPrice.toFixed(2)}`}`)
+    .map((h) => `the ${h.kind} price is locked${h.lockedPrice === null ? '' : ` at ${formatMoney(h.lockedPrice, currency)}`}`)
     .join(' and ');
   switch (item?.priceSync) {
     case 'changed':
@@ -75,7 +78,8 @@ export function priceChangeNote(
   if (changes.length === 0) return null;
   let alert = false;
   const parts = changes.map((c) => {
-    const what = dish ? 'the price' : `the ${c.kind} price`;
+    // A dish has one price (bottle_price); a glass-column price is named apart (r28 G13).
+    const what = dish ? (c.kind === 'glass' ? 'the glass-column price' : 'the price') : `the ${c.kind} price`;
     if ('refused' in c.result) {
       alert = true;
       return `${what} was not changed (${c.result.refused})`;

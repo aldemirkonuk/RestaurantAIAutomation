@@ -335,7 +335,9 @@ export async function reviewMenuItem(
 
 export async function addMenuItem(
   menuId: string,
-  item: WineExtractItem
+  // by_glass_typed / bottle_typed: a price as the person typed it, read by the
+  // gateway's parseMenuPrice (r28 G7). Send these or the numbers, not both.
+  item: WineExtractItem & { by_glass_typed?: string; bottle_typed?: string }
 ): Promise<MenuImportReviewItem> {
   const response = await apiClient.post<MenuImportReviewItem>('/menus/items', {
     menuId,
@@ -384,6 +386,12 @@ export interface ActiveMenu {
   name: string | null
   status: string | null
   items: MenuLine[]
+  /**
+   * How many MORE menus of this house are marked current (r28 G20): a house
+   * can hold several from before choosing a menu archived the rest, and the
+   * gateway shows the one made current last. Absent when there is one.
+   */
+  otherCurrent?: number
 }
 
 /**
@@ -630,12 +638,22 @@ export async function getMenuSourceUrl(
   return response.data
 }
 
+/** How long choosing a menu may take before the page stops waiting: two minutes. */
+export const MAKE_CURRENT_TIMEOUT_MS = 120_000
+
 /**
  * Make a kept menu the current one, naming the plan the person was shown.
  * Owner or manager; the gateway refuses anyone else (403), a missing
  * fingerprint (400) and a plan that changed since it was shown (409).
  */
 export async function makeMenuCurrent(menuId: string, fingerprint: string): Promise<MakeCurrentResult> {
-  const response = await apiClient.post<MakeCurrentResult>(`/menu-versions/${menuId}/make-current`, { fingerprint })
+  // The switch commits before the prices are carried, so this call is never
+  // cut off at the client's usual 30 s while the gateway is still writing
+  // (r28 G1): a long menu gets its answer, whatever it is.
+  const response = await apiClient.post<MakeCurrentResult>(
+    `/menu-versions/${menuId}/make-current`,
+    { fingerprint },
+    { timeout: MAKE_CURRENT_TIMEOUT_MS },
+  )
   return response.data
 }

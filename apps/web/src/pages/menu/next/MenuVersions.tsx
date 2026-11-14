@@ -42,8 +42,26 @@ import { useAuthStore } from '../../../stores';
 import { MenuPlan } from './MenuPlan';
 import { deviceClockNote, houseDay, houseMoment } from './menu-clock';
 import { isPhoto, pagesProblem, photoToJpegBase64, photosToPages } from '../../../lib/menuPhotos';
+import { formatMoney } from '../../../lib/currency';
+import { useHouseCurrencyCode } from '../../../hooks/queries/useHouseCurrencyCode';
 
 const EM = '—';
+
+/**
+ * What this box reads (r28 G18): photos, PDFs, CSV and .xlsx. An older .xls
+ * workbook (Excel 97-2003) cannot be read (exceljs reads .xlsx only), and the
+ * box offered it, so the house was told "check that each row names a wine".
+ */
+export const MENU_FILE_ACCEPT = 'image/*,application/pdf,.csv,.xlsx';
+
+/** Why a chosen file cannot be read here, in the house's words; null when it can be sent. */
+export function menuFileRefusal(file: { name: string; type?: string } | null): string | null {
+  if (!file) return null;
+  const name = file.name.toLowerCase();
+  if (name.endsWith('.xls') || file.type === 'application/vnd.ms-excel')
+    return 'This is an older Excel file (.xls), which cannot be read here. Save it as .xlsx or CSV and choose that.';
+  return null;
+}
 
 /** The gateway's own words for a refusal, never a bare status. */
 export function reasonOf(err: unknown): string {
@@ -187,9 +205,10 @@ const OUTCOME_WORDS: Record<string, (n: number, noun: KindNoun) => string> = {
  * and every lock by name. `name` is the menu's name in the list; given, the
  * sentence says which menu it is about (menu walk 2026-11-12: a choice made
  * from the list was said as "This is now the current menu" with no name).
+ * `currency` is the house's code: a locked price is said in the house's money.
  */
-export function makeCurrentSentence(r: MakeCurrentResult, name?: string, lines?: PlanLine[]): string {
-  if (r.outcome === 'already_current') return 'That menu was already the current one. Nothing changed.';
+export function makeCurrentSentence(r: MakeCurrentResult, name?: string, lines?: PlanLine[], currency: string | null = null): string {
+  if (r.outcome === 'already_current' && r.lines === 0) return 'That menu was already the current one. Nothing changed.';
   const noun = oneNounFor(lines);
   const parts = [`${r.lines} line${r.lines === 1 ? '' : 's'}`];
   const keys = Object.keys(r.priceSync);
@@ -212,7 +231,7 @@ export function makeCurrentSentence(r: MakeCurrentResult, name?: string, lines?:
     );
   const held = r.held?.length
     ? ` Held by a lock, not changed: ${r.held
-        .map((h) => `${h.name} (${h.kind}${h.lockedPrice === null ? '' : `, locked at ${h.lockedPrice.toFixed(2)}`})`)
+        .map((h) => `${h.name} (${h.kind}${h.lockedPrice === null ? '' : `, locked at ${formatMoney(h.lockedPrice, currency)}`})`)
         .join('; ')}.`
     : '';
   const returned = r.returned?.length
@@ -221,6 +240,8 @@ export function makeCurrentSentence(r: MakeCurrentResult, name?: string, lines?:
   const failed = r.failed.length
     ? ` ${r.failed.length} could not be priced: ${r.failed.map((f) => `${f.name} (${f.error})`).join('; ')}.`
     : '';
+  // r28 G1: choosing the current menu again carries its prices again.
+  if (r.outcome === 'already_current') return `That menu was already the current one; its prices were carried again: ${parts.join(', ')}.${held}${failed}`;
   const who = name ? `${name.charAt(0).toUpperCase()}${name.slice(1)} is` : 'This is';
   return `${who} now the current menu: ${parts.join(', ')}.${held}${returned}${failed}`;
 }
@@ -303,6 +324,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
 }) {
   const queryClient = useQueryClient();
   const [files, setFiles] = useState<File[]>([]);
+  const [fileRefusal, setFileRefusal] = useState<string | null>(null);
   const [cadence, setCadence] = useState<MenuCadence | ''>('');
   const [date, setDate] = useState('');
   const [result, setResult] = useState<MenuImportResult | null>(null);
@@ -310,6 +332,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
   const [replaced, setReplaced] = useState(false);
   const [planning, setPlanning] = useState(false);
   const [readingId, setReadingId] = useState<string | null>(null);
+  const currency = useHouseCurrencyCode();
   const dateRead = readMenuDate(date);
   const shape = uploadShapeOf(files);
 
@@ -375,10 +398,21 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
           <input
             type="file"
             multiple
-            accept="image/*,application/pdf,.csv,.xlsx,.xls"
+            accept={MENU_FILE_ACCEPT}
             aria-label="Menu to read"
-            onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+            onChange={(e) => {
+              const picked = Array.from(e.target.files ?? []);
+              // A file this box cannot read is said at once and never sent.
+              const why = picked.map((f) => menuFileRefusal(f)).find((w) => w !== null) ?? null;
+              setFileRefusal(why);
+              setFiles(why ? [] : picked);
+            }}
           />
+          {fileRefusal ? (
+            <span role="alert" className="cl-note" data-testid="menu-file-refused">
+              {fileRefusal}
+            </span>
+          ) : null}
         </label>
         <label className="cl-said" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           How often it changes (optional)
@@ -479,7 +513,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
               onCancel={() => setPlanning(false)}
               onDone={(r, lines) => {
                 setPlanning(false);
-                setChosen(makeCurrentSentence(r, undefined, lines));
+                setChosen(makeCurrentSentence(r, undefined, lines, currency));
                 // The read's own line said "not the current menu" and offered the
                 // choice again under "This is now the current menu" (browser walk
                 // 2026-11-12). Once it is chosen, the read says so.
@@ -555,15 +589,16 @@ function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan, zone }:
         ) : null}
       </td>
       <td>
-        {!v.current && canManage && readState === 'done' ? (
+        {canManage && readState === 'done' ? (
           <button
             type="button"
             className="cl-btn cl-focus"
             data-on={planning ? 'true' : 'false'}
             onClick={() => onPlan(v.menuId)}
-            aria-label={`Make ${label} current`}
+            aria-label={v.current ? `Carry the prices of ${label} again` : `Make ${label} current`}
           >
-            {planning ? 'See below' : 'Make current'}
+            {/* r28 G1: a carry cut off part-way is finished from the current menu's own row. */}
+            {planning ? 'See below' : v.current ? 'Check its prices' : 'Make current'}
           </button>
         ) : null}
       </td>
@@ -584,6 +619,7 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
     // A read in the background finishes on the server: look again until none is left reading.
     refetchInterval: (query) => (query.state.data?.versions.some((v) => v.readState === 'reading') ? 5000 : false),
   });
+  const currency = useHouseCurrencyCode();
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu'] });
   const zone = q.data?.timezone ?? null;
   const labels = versionLabels(q.data?.versions ?? [], zone);
@@ -684,7 +720,7 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
                 onDone={(r, lines) => {
                   const chosenOne = q.data?.versions.find((v) => v.menuId === r.menuId);
                   setPlanFor(null);
-                  setSaid(makeCurrentSentence(r, chosenOne ? nameOf(chosenOne) : undefined, lines));
+                  setSaid(makeCurrentSentence(r, chosenOne ? nameOf(chosenOne) : undefined, lines, currency));
                   refresh();
                 }}
               />

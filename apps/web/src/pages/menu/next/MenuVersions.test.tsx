@@ -8,13 +8,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  MENU_FILE_ACCEPT,
   MenuVersions,
+  menuFileRefusal,
   makeCurrentSentence,
   readMenuDate,
   sourceWords,
   versionLabel,
   versionLabels,
 } from './MenuVersions';
+import { formatMoney } from '../../../lib/currency';
+
+vi.mock('../../../hooks/queries/useHouseCurrencyCode', () => ({ useHouseCurrencyCode: () => 'TRY' }));
+/** A price as a lira house writes it: the page routes every price through formatMoney. */
+const m = (n: number) => formatMoney(n, 'TRY');
+
 import {
   getMenuPlan,
   importMenu,
@@ -226,6 +234,16 @@ describe('the words the panel uses', () => {
     ).toBe('The menu read 2026-11-12 01:25:06 is now the current menu: 2 lines, 2 lines priced from this menu.');
   });
 
+  it('r28 G1: the current menu chosen again says its prices were carried again; with no line it changed nothing', () => {
+    const base = { outcome: 'already_current' as const, menuId: 'm1', previousMenuIds: [], flagged: 0 };
+    expect(makeCurrentSentence({ ...base, lines: 0, priceSync: {}, failed: [] })).toBe('That menu was already the current one. Nothing changed.');
+    expect(
+      makeCurrentSentence({ ...base, lines: 3, priceSync: { changed: 1, unchanged: 1, stale: 1 }, failed: [] }),
+    ).toBe(
+      "That menu was already the current one; its prices were carried again: 3 lines, 1 line priced from this menu, 1 line already at the menu's price, 1 line kept a price someone set after this menu was chosen.",
+    );
+  });
+
   it('says how many kitchen lines stay on the menu and are carried nowhere', () => {
     expect(
       makeCurrentSentence({
@@ -254,9 +272,9 @@ describe('the words the panel uses', () => {
         { menuItemId: 'l2', name: 'Soave', kind: 'glass', lockId: 'k2', lockedPrice: 9, lockedBy: 'u1', lockedAt: local(2026, 9, 1, 12, 0) },
       ],
       returned: [{ menuItemId: 'l1', name: 'Barolo' }],
-    });
+    }, undefined, undefined, 'TRY');
     expect(s).toBe(
-      'This is now the current menu: 4 lines, 2 lines priced from this menu, 1 line at its locked price, 1 something new. Held by a lock, not changed: Barolo (bottle, locked at 95.00); Soave (glass, locked at 9.00). Back on the menu with its lock still holding: Barolo.',
+      `This is now the current menu: 4 lines, 2 lines priced from this menu, 1 line at its locked price, 1 something new. Held by a lock, not changed: Barolo (bottle, locked at ${m(95)}); Soave (glass, locked at ${m(9)}). Back on the menu with its lock still holding: Barolo.`,
     );
   });
 });
@@ -384,8 +402,11 @@ describe('MenuVersions', () => {
     expect(rows).toHaveLength(3);
     expect(rows[1]).toHaveTextContent('current since 2026-09-01, chosen by Bo');
     expect(rows[2]).toHaveTextContent('last one used, used until 2026-09-01');
-    // The current menu offers no "Make current"; the others do.
+    // The current menu offers no "Make current"; the others do. It offers to
+    // check -- and finish -- its own carry instead (r28 G1).
     expect(screen.getAllByRole('button', { name: /^Make .* current$/ })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: /^Carry the prices of .* again$/ })).toHaveLength(1);
+    expect(rows[1]).toHaveTextContent('Check its prices');
   });
 
   it('a failed read of the kept menus says so -- not "none kept"', async () => {
@@ -655,5 +676,48 @@ describe('MenuVersions -- dates on the house clock', () => {
     mount(true);
     await screen.findByTestId('menu-versions-standing');
     expect(screen.queryByTestId('menu-versions-clock')).not.toBeInTheDocument();
+  });
+});
+
+// r28 G18: the box offered .xls, which cannot be read, and the house was then
+// told to check that each row names a wine.
+describe('the upload box reads what it offers (r28 G18)', () => {
+  const XLS = 'This is an older Excel file (.xls), which cannot be read here. Save it as .xlsx or CSV and choose that.';
+
+  it('offers photos, PDFs, CSV and .xlsx, and not .xls', () => {
+    expect(MENU_FILE_ACCEPT.split(',')).toEqual(['image/*', 'application/pdf', '.csv', '.xlsx']);
+    expect(menuFileRefusal({ name: 'Menu.XLS' })).toBe(XLS);
+    expect(menuFileRefusal({ name: 'menu.bin', type: 'application/vnd.ms-excel' })).toBe(XLS);
+    expect(menuFileRefusal({ name: 'menu.xlsx', type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })).toBeNull();
+    expect(menuFileRefusal(null)).toBeNull();
+  });
+
+  it('an .xls chosen anyway is said at once, never sent, and a readable file clears it', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mockImport.mockResolvedValue({ menuId: 'm9', itemsExtracted: 1, submissionsCreated: 0, items: [] });
+    mount(false);
+    const box = await screen.findByLabelText('Menu to read');
+    expect(box).toHaveAttribute('accept', MENU_FILE_ACCEPT);
+    fireEvent.change(box, { target: { files: [new File(['x'], 'menu.xls', { type: 'application/vnd.ms-excel' })] } });
+    expect(screen.getByTestId('menu-file-refused')).toHaveTextContent(XLS);
+    expect(screen.getByRole('button', { name: 'Read this menu' })).toBeDisabled();
+    fireEvent.change(box, { target: { files: [new File(['name,bottle_price\nOpus,60\n'], 'menu.csv', { type: 'text/csv' })] } });
+    expect(screen.queryByTestId('menu-file-refused')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
+    await waitFor(() => expect(mockImport).toHaveBeenCalledTimes(1));
+    expect(mockImport.mock.calls[0][0]).toBe('csv');
+  });
+
+  it('an .xlsx is still sent as a workbook', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mockImport.mockResolvedValue({ menuId: 'm9', itemsExtracted: 1, submissionsCreated: 0, items: [] });
+    mount(false);
+    fireEvent.change(await screen.findByLabelText('Menu to read'), {
+      target: { files: [new File(['PK'], 'menu.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })] },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
+    await waitFor(() => expect(mockImport).toHaveBeenCalledTimes(1));
+    expect(mockImport.mock.calls[0][0]).toBe('csv');
+    expect(mockImport.mock.calls[0][1]).toHaveProperty('fileBase64');
   });
 });
