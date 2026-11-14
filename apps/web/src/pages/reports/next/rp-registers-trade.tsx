@@ -41,13 +41,38 @@ export interface ReadingRow {
   category: string;
   score: number;
   entityLabel: string | null;
+  /** When the engine wrote it (`analytics_insights.computed_at`); null from a live compute. */
+  computedAt: string | null;
+}
+
+/**
+ * When the oldest of `rows` was computed, in words: "today at 6:00 AM",
+ * "yesterday at 6:00 AM", "on Nov 11 at 6:00 AM". Null when no row carries a
+ * time (a live compute, written as the page asked).
+ *
+ * The reading said "recomputed hourly"; the scheduler's default is once a day
+ * at 06:00 on the server's clock, so the page opened on a sentence up to a day
+ * older than the live registers under it, with no date (r36 reports gap 4).
+ */
+export function readingAge(rows: ReadonlyArray<Pick<ReadingRow, 'computedAt'>>, now = new Date()): string | null {
+  const times = rows
+    .map((r) => (r.computedAt ? Date.parse(r.computedAt) : NaN))
+    .filter((t) => Number.isFinite(t));
+  if (times.length === 0) return null;
+  const at = new Date(Math.min(...times));
+  const clock = at.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const dayOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((dayOf(now) - dayOf(at)) / 86400000);
+  if (days <= 0) return `today at ${clock}`;
+  if (days === 1) return `yesterday at ${clock}`;
+  return `on ${at.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at ${clock}`;
 }
 
 const reading = analysis<ReadingRow[]>({
   title: 'The reading',
   register: 'insight register',
   answers: 'What the engine has noticed, in its own sentences',
-  window: () => 'the stored insight feed, recomputed hourly',
+  window: () => 'the stored insight feed, computed once a day unless the house set another cadence',
   path: (rid) => `/analytics/insights/${rid}?limit=40`,
   graphs: ['table', 'bars'],
   graphNote:
@@ -64,6 +89,7 @@ const reading = analysis<ReadingRow[]>({
           category: str(row.category) || UNFILED,
           score: num(row.score) ?? 0,
           entityLabel: (row.entity_label ?? row.entityLabel ?? null) as string | null,
+          computedAt: str(row.computed_at ?? row.computedAt) || null,
         };
       })
       .filter((r) => r.sentence !== '')
@@ -71,13 +97,14 @@ const reading = analysis<ReadingRow[]>({
   view: (rows) => {
     if (rows.length === 0)
       return {
-        say: 'The engine has produced no insight for this restaurant yet. It computes hourly and on demand — there is nothing to say, rather than nothing to show.',
+        say: 'The engine has produced no insight for this restaurant yet. It computes once a day, and again whenever this page finds nothing stored — there is nothing to say, rather than nothing to show.',
         figures: [],
         notes: [],
         basis: [],
       };
     const counts = new Map<string, number>();
     for (const r of rows) counts.set(r.category, (counts.get(r.category) ?? 0) + 1);
+    const age = readingAge(rows);
     return {
       node: <ReadingList rows={rows} />,
       cats: {
@@ -92,9 +119,15 @@ const reading = analysis<ReadingRow[]>({
       figures: [
         { label: 'Sentences read', value: figure(rows.length) },
         { label: 'Categories with something to say', value: figure(counts.size) },
+        { label: 'Computed', value: age ?? 'as this page asked' },
       ],
       notes: [
         'Sentences are printed as the engine wrote them. This page never composes one.',
+        ...(age
+          ? [
+              `The oldest sentence here was computed ${age}. The registers below are read live, so a figure in a sentence can be older than the same figure below.`,
+            ]
+          : []),
       ],
       basis: [
         `${countOf(rows.length, 'sentence', 'sentences')} read from the stored insight feed; every number in them was computed by the engine from this restaurant's own rows.`,

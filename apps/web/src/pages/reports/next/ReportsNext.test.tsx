@@ -2431,3 +2431,19 @@ describe('staff are handed what they can read (r36 reports gap 3)', () => {
     expect(screen.queryByText(/\(owners and managers\)/)).toBeNull();
   });
 });
+
+describe('the opening line says when the engine wrote it (r36 reports gap 4)', () => {
+  it('dates the stored sentence under the opening; a live one carries no stamp', () => {
+    const computedAt = new Date().toISOString();
+    hook.current = { ...base(), reading: ok(READING.map((r) => ({ ...r, computedAt }))) } as never;
+    const page = paint();
+    expect(screen.getByTestId('rp-opening-age').textContent).toMatch(
+      /^Written by the engine today at .+\. The registers below are read live\.$/,
+    );
+    page.unmount();
+    hook.current = base();
+    paint();
+    expect(screen.queryByTestId('rp-opening-age')).toBeNull();
+  });
+});
+
