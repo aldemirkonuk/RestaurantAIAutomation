@@ -325,7 +325,8 @@ describe('r35 G21: a line that fits the house\'s own goods and is linked to none
 
   it('the sentence says it is carried as a good of its own unless the good is chosen', () => {
     expect(planSentence(plan({ lines: [line(), BAROLO, RED], dormantLocks: [] }))).toBe(
-      "Choosing this menu will set 1 price from this menu, leave 1 locked price as it is. 1 line fits the house's own goods and is linked to none, so it is carried as a good of its own unless the good is chosen below.",
+      // r37 meet: the first clause counts wines as the menu walk 2026-11-12 made it.
+      "Choosing this menu will change the price of 1 wine the house already has, add 1 wine new to the house at its menu price and leave 1 wine at its locked price. 1 line fits the house's own goods and is linked to none, so it is carried as a good of its own unless the good is chosen below.",
     );
     expect(planSentence(plan({ lines: [RED, ROSE], dormantLocks: [] }))).toContain(
       "2 lines fit the house's own goods and are linked to none, so each is carried as a good of its own unless the good is chosen below",
