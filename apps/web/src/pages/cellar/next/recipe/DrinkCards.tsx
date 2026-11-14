@@ -58,16 +58,21 @@ function costCard(
     const exact = cost.perServeExact ?? null;
     const figure = cost.perServe === 0 && exact != null && exact > 0 ? `Under ${sayMoney(0.01)}` : sayMoney(cost.perServe);
     const part = cost.partial ?? 0;
+    const last = cost.lastBought ?? 0;
     const lead = draft ? "Your unsaved lines, at today's prices" : "At today's prices";
     const priced = draft ? '' : cost.of === 1 ? ', its one ingredient priced' : `, all ${cost.of} ingredients priced`;
+    const notes = [
+      part > 0 ? `${count(part, 'ingredient is', 'ingredients are')} priced from the ${words.stockWord} with an invoice only` : null,
+      // Nothing of it on hand is priced: the figure is what it last cost (r36 gap 1).
+      last > 0
+        ? `${count(last, 'ingredient is priced at what it last cost', 'ingredients are priced at what they last cost')}, with none priced on hand`
+        : null,
+    ].filter((n): n is string => n !== null);
     return {
       ...base,
       figure,
       known: true,
-      said:
-        part > 0
-          ? `${lead}; ${count(part, 'ingredient is', 'ingredients are')} priced from the ${words.stockWord} with an invoice only.`
-          : `${lead}${priced}.`,
+      said: notes.length ? `${lead}; ${notes.join('; ')}.` : `${lead}${priced}.`,
     };
   }
   if (cost.of === 0) {

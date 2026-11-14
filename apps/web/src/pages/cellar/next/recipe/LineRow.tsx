@@ -47,6 +47,8 @@ export interface DraftRow {
     needs?: WeightNeeded | null;
     /** The stated weight this line's price went through, if any. */
     weighed?: WeighedBy | null;
+    /** With costBasis "last_known_lot_cost": when the lot it was priced from came in. */
+    boughtAt?: string | null;
   } | null;
 }
 
@@ -110,6 +112,15 @@ function costWords(saved: NonNullable<DraftRow['saved']>, say: (n: number) => st
   return cents === 0 && exact != null && exact > 0 ? `Under ${say(0.01)}` : say(cents);
 }
 
+/** "1 Nov", or "1 Nov 2025" outside this year; null when there is no readable date. */
+export function boughtDay(iso: string | null | undefined, now: Date = new Date()): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const sameYear = d.getFullYear() === now.getFullYear();
+  return d.toLocaleDateString('en-GB', sameYear ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 /**
  * The sentence under a line an editor is working on, or null. Money sentences
  * only when `say` is given. Staff never get one: nothing in it is theirs to
@@ -137,6 +148,15 @@ export function rowNote(
   const basis = row.saved.costBasis;
   if (row.saved.costPerServe != null) {
     const cost = costWords(row.saved, say);
+    if (basis === 'last_known_lot_cost') {
+      // Nothing on hand is priced (sold out, or only estimated stock): the
+      // price is what it was last bought at, and how old that is (r36 gap 1).
+      const day = boughtDay(row.saved.boughtAt);
+      return {
+        tone: 'ink',
+        text: `${cost} a ${words.unit}, at what ${row.itemName ?? rowName(row)} last cost${day ? ` (bought ${day})` : ''}; nothing on hand has a price.`,
+      };
+    }
     return basis === 'invoice_lot_wac_partial'
       ? { tone: 'ink', text: `${cost} a ${words.unit}, from the ${words.stockWord} that have an invoice; some on hand have none yet.` }
       : { tone: 'ink', text: `${cost} a ${words.unit}` };
@@ -171,7 +191,12 @@ export function rowNote(
       text: `No price: this line is ${measuredHow(row.unit)}, but ${item} is counted ${countedHow(row.itemUom)}. Change the unit, or link the item it ${words.comesFrom} from.`,
     };
   }
-  return { tone: 'warn', text: 'No price yet: it will cost once a delivery of it is checked in.' };
+  // A delivery checked in at the door is costed only once it is verified
+  // with its invoice or a price agreed with the supplier (r36 gap 12).
+  return {
+    tone: 'warn',
+    text: `No price yet: nothing says what ${item} cost. It is priced once a delivery of it is verified with its invoice or an agreed price.`,
+  };
 }
 
 function Note({ note }: { note: { tone: 'warn' | 'ink'; text: string } | null }) {

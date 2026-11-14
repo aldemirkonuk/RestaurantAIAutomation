@@ -218,6 +218,20 @@ describe('DrinkCards: the cost of unsaved lines', () => {
       "Cost per serve$3.10Your unsaved lines, at today's prices; 1 ingredient is priced from the bottles with an invoice only.",
     );
   });
+
+  it('r36 gap 1: says how many ingredients are priced at what they last cost, beside a partial one', () => {
+    render(<DrinkCards data={gAndT({}, readable(fig(20)))} sayMoney={say} unsaved draftCost={draft({ lastBought: 2 })} />);
+    expect(screen.getByTestId('drink-card-cost').textContent).toBe(
+      "Cost per serve$3.10Your unsaved lines, at today's prices; 2 ingredients are priced at what they last cost, with none priced on hand.",
+    );
+  });
+
+  it('r36 gap 1: one ingredient at its last cost and one from part of the stock are both said', () => {
+    render(<DrinkCards data={gAndT({}, readable(fig(20)))} sayMoney={say} unsaved draftCost={draft({ partial: 1, lastBought: 1 })} />);
+    expect(screen.getByTestId('drink-card-cost').textContent).toBe(
+      "Cost per serve$3.10Your unsaved lines, at today's prices; 1 ingredient is priced from the bottles with an invoice only; 1 ingredient is priced at what it last cost, with none priced on hand.",
+    );
+  });
 });
 
 describe('pour cost (ADR 0366 item 6)', () => {
