@@ -73,6 +73,11 @@ const COLUMNS: Record<string, string[]> = {
     "closed_at",
     "voided",
   ],
+  // r36 invoices R3: the month also reads the scanned papers of verified
+  // deliveries with no order (`paper-spend.ts`).
+  deliveries: ["id", "restaurant_id", "order_id", "state", "delivered_at", "verified_at"],
+  document_deliveries: ["document_id", "delivery_id", "role"],
+  procurement_documents: ["id", "restaurant_id", "total", "currency", "status"],
 };
 
 type Row = Record<string, any>;
@@ -105,6 +110,8 @@ function matches(row: Row, [op, col, v]: [string, string, any]): boolean {
       return x === v;
     case "in":
       return (v as any[]).includes(x);
+    case "is":
+      return (x ?? null) === v;
     case "gte":
       return x != null && cmp(x, v) >= 0;
     case "gt":
@@ -171,6 +178,7 @@ function fakeDb(
       select: (s: string) => ((call.select = s), b),
       eq: (c: string, v: any) => (call.filters.push(["eq", c, v]), b),
       in: (c: string, v: any[]) => (call.filters.push(["in", c, v]), b),
+      is: (c: string, v: any) => (call.filters.push(["is", c, v]), b),
       gte: (c: string, v: any) => (call.filters.push(["gte", c, v]), b),
       gt: (c: string, v: any) => (call.filters.push(["gt", c, v]), b),
       lt: (c: string, v: any) => (call.filters.push(["lt", c, v]), b),

@@ -31,7 +31,7 @@ import {
 } from "../notifications/producers/service-day";
 import { readAll } from "../providers/vendor-menu-supply";
 import { bucketSpend, spendHouseFor, SPEND_UNREAD } from "./uncosted-spend";
-import { readPaperSpend, withPaperSpend } from "./paper-spend";
+import { readPaperSpend, withPaperSpend, type PaperSpendRow, type PaperWindow } from "./paper-spend";
 
 /**
  * The rows of a settled read, or a throw. Supabase reports most failures in
@@ -180,6 +180,12 @@ export interface CalendarDay {
   not_in_house_currency?: Record<string, number>;
   /** Why `procurement_spend` is null: no recorded cost, or other money. */
   procurement_spend_unread?: string | null;
+  /**
+   * Verified deliveries with no order on the day, counted into
+   * `procurement_spend` by their papers (r36 invoices R3, `paper-spend.ts`):
+   * how many, how many have no invoice total, and how many are in other money.
+   */
+  scanned_deliveries?: PaperWindow;
   /** Bottles DELIVERED by vendors (the frozen key is a misnomer). */
   bottles_sold: number | null;
   order_count: number | null;
@@ -215,6 +221,8 @@ export interface CalendarMonth {
   /** True when an order names a currency and the house's could not be read. */
   house_currency_unread?: boolean;
   monthly_procurement_spend_unread?: string | null;
+  /** The month's verified deliveries with no order, as `CalendarDay.scanned_deliveries`. */
+  monthly_scanned_deliveries?: PaperWindow;
   monthly_bottles: number | null;
   /**
    * The month so far: the sum over the begun days the register counted, said
@@ -1059,7 +1067,7 @@ export class DashboardService {
       const start = localMidnight(first, zone);
       const end = localMidnight(nextFirst, zone);
 
-      const [eventsByDay, orders, takings] = await Promise.all([
+      const [eventsByDay, orders, takings, papers] = await Promise.all([
         eventsRead,
         readAll("The month's deliveries", (after) => {
           // `wine_name` was in this select; `procurement_orders` has never had
@@ -1080,10 +1088,25 @@ export class DashboardService {
         withSales
           ? readMonthTakings(client, restaurantId, start, end, zone)
           : Promise.resolve(null),
+        // r36 invoices R3: a verified delivery with no order is spend too, by
+        // its papers, on the day it came in, the same rule as the "Paid to
+        // vendors" tiles (`getStats`). Without it a house that buys by
+        // scanning the paper at the door read $0 on every day of the month
+        // while the tile above said what it paid.
+        readPaperSpend(client, restaurantId),
       ]);
 
-      // The month's orders in the house's money only (`bucketSpend`).
-      const house = await spendHouseFor(client, restaurantId, orders);
+      // The month's orders and papers in the house's money only (`bucketSpend`).
+      const house = await spendHouseFor(client, restaurantId, [
+        ...orders,
+        ...papers.rows,
+      ]);
+      const papersOn = new Map<string, PaperSpendRow[]>();
+      for (const r of papers.rows) {
+        const date = houseDayOf(r.delivered_at, zone);
+        if (!date || date < first || date >= nextFirst) continue;
+        papersOn.set(date, [...(papersOn.get(date) ?? []), r]);
+      }
       const spend = new Map<
         string,
         { orders: any[]; bottles: number; count: number }
@@ -1117,13 +1140,21 @@ export class DashboardService {
         // includes today until its first check lands, and every day ahead.
         const counted =
           since !== null && until !== null && date >= since && date <= until;
-        const read = bucketSpend(s?.orders ?? [], house);
+        // A failed papers read withholds every day, with why: it is not known
+        // which day the unread papers fall on.
+        const { read, papers: scanned } = withPaperSpend(
+          bucketSpend(s?.orders ?? [], house),
+          papersOn.get(date) ?? [],
+          house,
+          papers.unread,
+        );
         return {
           date,
           procurement_spend: read.spend === null ? null : cents(read.spend),
           uncosted_orders: read.uncosted,
           not_in_house_currency: read.notInHouseCurrency,
           procurement_spend_unread: read.unread,
+          scanned_deliveries: scanned,
           bottles_sold: s?.bottles ?? 0,
           order_count: s?.count ?? 0,
           net_sales: counted ? (sold ? sold.net_sales : 0) : null,
@@ -1156,9 +1187,14 @@ export class DashboardService {
           ? cents(known.reduce((sum, d) => sum + (d.net_sales ?? 0), 0))
           : null;
 
-      const monthUncosted = bucketSpend(
-        dates.flatMap((date) => spend.get(date)?.orders ?? []),
+      const { read: monthUncosted, papers: monthScanned } = withPaperSpend(
+        bucketSpend(
+          dates.flatMap((date) => spend.get(date)?.orders ?? []),
+          house,
+        ),
+        dates.flatMap((date) => papersOn.get(date) ?? []),
         house,
+        papers.unread,
       );
 
       return {
@@ -1175,6 +1211,7 @@ export class DashboardService {
         monthly_not_in_house_currency: monthUncosted.notInHouseCurrency,
         house_currency_unread: house.unread,
         monthly_procurement_spend_unread: monthUncosted.unread,
+        monthly_scanned_deliveries: monthScanned,
         monthly_bottles: daily.reduce(
           (sum, d) => sum + (d.bottles_sold ?? 0),
           0,
