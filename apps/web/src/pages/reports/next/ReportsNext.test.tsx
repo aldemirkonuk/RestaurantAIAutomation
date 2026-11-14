@@ -902,7 +902,7 @@ describe('ReportsNext — the costed part and earlier late prices, apart (batch 
     const cogs = within(ledger).getByText('What it cost (365d)').closest('.rp-fig');
     expect(within(cogs as HTMLElement).getByText('—')).toBeInTheDocument();
     expect(
-      within(ledger).getByText(/The 11 of 12 items sold whose every bottle carries its cost came to \$4,210\.5 at cost\. That is not the cost of everything sold/),
+      within(ledger).getByText(/The 11 of 12 items sold whose every bottle carries its cost came to \$4,210\.50 at cost\. That is not the cost of everything sold/),
     ).toBeInTheDocument();
     expect(
       within(ledger).getByText(/of late prices was settled in this window on bottles sold before it\. It is not in what it cost/),
