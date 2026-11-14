@@ -299,6 +299,34 @@ describe('CanonicalDocumentPage', () => {
     expect(screen.getByTestId('spine-failed')).toBeTruthy()
   })
 
+  it('lets the gates and the thread stack on a phone (r33 w2 F6)', async () => {
+    // At 375 px the two cards were two fixed columns of 137 px of words. The
+    // grid now fits as many 240 px columns as the page has room for.
+    documentMock.mockResolvedValue(
+      response({
+        deliveries: [
+          {
+            deliveryId: 'del-syn',
+            state: 'RECEIVED',
+            provenance: 'ORDERED',
+            deliveredAt: null,
+            agreedAt: null,
+            verifiedAt: null,
+            jurisdiction: null,
+            providerId: null,
+            selectedRole: 'invoice',
+            documents: [],
+          },
+        ],
+      }),
+    )
+    mount()
+    const grid = await screen.findByTestId('delivery-gates-grid')
+    const columns = grid.getAttribute('style') ?? ''
+    expect(columns).toContain('repeat(auto-fit, minmax(min(100%, 240px), 1fr))')
+    expect(columns).not.toContain('minmax(0, 1fr) minmax(0, 1fr)')
+  })
+
   // -------------------------------------------------------------------------
   // ADR 0104 D5, slice 3 — the correction door.
   // -------------------------------------------------------------------------
