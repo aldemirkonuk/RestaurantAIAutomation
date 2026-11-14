@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { policyFor } from "../../ask-readings/reading-data-classes";
 import { AnalyticsService } from "../../analytics/analytics.service";
 import { AdvancedAnalyticsService } from "../../analytics/advanced-analytics.service";
 import { GoalsService } from "../../analytics/goals.service";
@@ -12,6 +13,12 @@ import type { ExportableCutting } from "./report-export-cuttings";
  * every export is asked for by a role ADR 0145's ROLE_POLICY lets see sales.
  */
 const EXPORT_READS_SALES = { withSales: true } as const;
+
+/**
+ * The classes that holder sees (ROLE_POLICY's manager row, ADR 0348 decision
+ * 3): the overview an export reads is the one a holder's page reads.
+ */
+const EXPORT_SEES = policyFor("manager").sees;
 
 /**
  * Reads one cutting's payload the way the /reports page reads it — through the
@@ -85,7 +92,11 @@ export class ReportCuttingReader {
         );
       // GET /analytics/overview/:rid
       case "bench":
-        return this.advanced.getOverview(restaurantId, EXPORT_READS_SALES);
+        return this.advanced.getOverview(
+          restaurantId,
+          EXPORT_READS_SALES,
+          EXPORT_SEES,
+        );
       // GET /analytics/cashflow/:rid
       case "pacing":
         return this.advanced.getCashflow(restaurantId);
