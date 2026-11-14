@@ -337,7 +337,8 @@ describe('the empty house', () => {
   it('shows the first steps and hides the chips, the filters and the table', () => {
     mock.data = data({ rows: [] });
     renderPage();
-    expect(screen.getByText('No bottles on the books yet.')).toBeTruthy();
+    expect(screen.getByText('Nothing on the books yet.')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('No bottles on the books');
     expect(screen.getByTestId('inventory-headline').textContent).toBe('Inventory.');
     expect(screen.getByRole('link', { name: 'Receive a delivery' }).getAttribute('href')).toBe('/receiving');
     expect(screen.getByRole('link', { name: 'Upload an invoice' })).toBeTruthy();
@@ -359,6 +360,62 @@ describe('the empty house', () => {
     });
     renderPage();
     expect(screen.getByTestId('inventory-quiet-line').textContent).toContain('2 invoices wait for a match');
+  });
+});
+
+describe('the empty house is a way in for a kitchen too (inventory r36, gap 5)', () => {
+  it('offers a manager Carry a food or supply, and it opens the carry sheet', () => {
+    mock.data = data({ rows: [], canManage: true });
+    renderPage();
+    const card = screen.getByTestId('inventory-empty-food');
+    expect(card.textContent).toContain('Flour, lemons, oil, napkins');
+    fireEvent.click(within(card).getByRole('button', { name: 'Carry a food or supply' }));
+    expect(screen.getByText('A good the library does not hold')).toBeTruthy();
+  });
+
+  it('tells staff who carries a new good, with no button', () => {
+    mock.data = data({ rows: [], canManage: false });
+    renderPage();
+    const card = screen.getByTestId('inventory-empty-food');
+    expect(within(card).queryByRole('button')).toBeNull();
+    expect(card.textContent).toContain('An owner or a manager carries a new good onto the book.');
+  });
+});
+
+describe('what the house paid is written by a manager (inventory r36, gap 4)', () => {
+  it('staff see neither cost-writing act on the empty house, and are told who writes a delivery in', () => {
+    mock.data = data({ rows: [], canManage: false });
+    renderPage();
+    expect(screen.queryByRole('button', { name: 'A delivery without an order' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Start an auction lot' })).toBeNull();
+    expect(screen.getByTestId('inventory-empty').textContent).toContain(
+      'A delivery nobody ordered is written in by an owner or a manager, because it carries what the house paid.',
+    );
+    // what staff do every shift stays
+    expect(screen.getByRole('link', { name: 'Receive a delivery' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Scan your menu' })).toBeTruthy();
+  });
+
+  it('staff see neither in Tools; a manager sees both', () => {
+    mock.data = data({ rows: [row()], canManage: false });
+    const staff = renderPage();
+    const tools = () => within(document.getElementById('iv-tools')!);
+    expect(tools().queryByRole('button', { name: 'A delivery without an order' })).toBeNull();
+    expect(tools().queryByRole('button', { name: 'Start an auction lot' })).toBeNull();
+    expect(tools().getByRole('button', { name: 'Export count sheet' })).toBeTruthy();
+    staff.unmount();
+    mock.data = data({ rows: [row()], canManage: true });
+    renderPage();
+    expect(tools().getByRole('button', { name: 'A delivery without an order' })).toBeTruthy();
+    expect(tools().getByRole('button', { name: 'Start an auction lot' })).toBeTruthy();
+  });
+
+  it('a manager on the empty house keeps both, and the line-by-line note', () => {
+    mock.data = data({ rows: [], canManage: true });
+    renderPage();
+    expect(screen.getByRole('button', { name: 'A delivery without an order' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Start an auction lot' })).toBeTruthy();
+    expect(screen.getByTestId('inventory-empty').textContent).toContain('A delivery nobody ordered is written in here, line by line.');
   });
 });
 

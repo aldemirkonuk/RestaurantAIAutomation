@@ -641,9 +641,11 @@ export default function InventoryNext() {
         ) : rows !== null && rows.length === 0 ? (
           /* ── the empty house (sketch frame 2) ───────────────────────── */
           <div data-testid="inventory-empty">
-            <p className="iv-lead">No bottles on the books yet.</p>
+            {/* Not "No bottles": a kitchen-first house keeps flour and lemons
+                here too, and its way in is below (inventory r36, gap 5). */}
+            <p className="iv-lead">Nothing on the books yet.</p>
             <p className="iv-said">
-              The cellar starts with its first evidence: a delivery at the door, or the invoice that came with it.
+              The book starts with its first evidence: a delivery at the door, or the invoice that came with it.
               Figures appear once there is something to count. Until then the page shows nothing it would have to state
               as zero.
             </p>
@@ -663,13 +665,18 @@ export default function InventoryNext() {
                 <Link to="/receiving" className="iv-btn iv-focus">
                   Upload an invoice
                 </Link>
-                <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('receipt')}>
-                  A delivery without an order
-                </button>
+                {/* Its lines carry what the house paid, which staff are never
+                    shown and the gateway refuses from them (r36, gap 4). */}
+                {data.canManage ? (
+                  <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('receipt')}>
+                    A delivery without an order
+                  </button>
+                ) : null}
               </div>
               <p className="iv-note">
-                An invoice is uploaded at the door of its delivery, on Receiving. A delivery nobody ordered is written
-                in here, line by line.
+                {data.canManage
+                  ? 'An invoice is uploaded at the door of its delivery, on Receiving. A delivery nobody ordered is written in here, line by line.'
+                  : 'An invoice is uploaded at the door of its delivery, on Receiving. A delivery nobody ordered is written in by an owner or a manager, because it carries what the house paid.'}
               </p>
             </section>
             <div className="iv-starts">
@@ -682,9 +689,25 @@ export default function InventoryNext() {
                 <Link to="/wines" className="iv-btn iv-focus">
                   Add a bottle
                 </Link>{' '}
-                <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('auction')}>
-                  Start an auction lot
-                </button>
+                {data.canManage ? (
+                  <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('auction')}>
+                    Start an auction lot
+                  </button>
+                ) : null}
+              </section>
+              <section className="iv-card" data-testid="inventory-empty-food">
+                <h3 className="iv-h3">Carry a food or supply</h3>
+                <p className="iv-said">
+                  Flour, lemons, oil, napkins: anything the kitchen or the bar keeps that is not a bottle. Carry it by
+                  weight, by volume or by the piece, with the par you keep it at.
+                </p>
+                {data.canManage ? (
+                  <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('carry')}>
+                    Carry a food or supply
+                  </button>
+                ) : (
+                  <p className="iv-note">An owner or a manager carries a new good onto the book.</p>
+                )}
               </section>
               <section className="iv-card">
                 <h3 className="iv-h3">Scan your menu</h3>
@@ -993,12 +1016,17 @@ export default function InventoryNext() {
                 <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('pos')}>
                   Map POS buttons
                 </button>
-                <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('receipt')}>
-                  A delivery without an order
-                </button>
-                <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('auction')}>
-                  Start an auction lot
-                </button>
+                {/* Both write what the house paid: a manager's (r36, gap 4). */}
+                {data.canManage ? (
+                  <>
+                    <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('receipt')}>
+                      A delivery without an order
+                    </button>
+                    <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('auction')}>
+                      Start an auction lot
+                    </button>
+                  </>
+                ) : null}
                 <button type="button" className="iv-btn iv-focus" onClick={() => void exportCountSheet()}>
                   Export count sheet
                 </button>
