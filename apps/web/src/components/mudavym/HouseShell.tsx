@@ -49,8 +49,9 @@
  * Below ~1280 px (and on the phone) the same panel lies over the page.
  */
 
-import { useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
+import { AnimatePresence } from 'framer-motion';
 import { AuthContext } from '../../contexts/AuthContext';
 import { CommandProvider } from '../command/CommandProvider';
 import { AskPanel } from '../askai/AskPanel';
@@ -60,6 +61,14 @@ import { GuidanceProvider } from '../../guidance/GuidanceProvider';
 import { PageTipStrip } from '../../guidance/components/PageTipStrip';
 import { SetupNudgeBanner } from '../../guidance/components/SetupNudgeBanner';
 import { GuidanceLiveRegion } from '../../guidance/announce';
+import { LearnPanel } from '../../guidance/components/LearnPanel';
+import { trackGuidance } from '../../guidance/analytics';
+import { useOnboardingProgress } from '../../hooks/queries/useOnboardingProgress';
+import {
+  getStartedOpenedBefore,
+  learnDoorFor,
+  rememberGetStartedOpened,
+} from './houseLearnDoor';
 import { ErrorBoundary } from '../ErrorBoundary';
 import { HouseErrorScreen } from './HouseErrorScreen';
 import { HouseHeader } from './HouseHeader';
@@ -198,6 +207,34 @@ export function HouseShell({ children }: { children?: ReactNode } = {}) {
     setPhoneCounter(false);
   }, [pathname]);
 
+  // Get started / Learn & Help (r33 w1 F1): one panel for the shell, opened
+  // from the rail on a desk and from the Rooms sheet on a phone. The panel
+  // lives here, not in the sheet: the sheet sits above it and closes first.
+  const onboarding = useOnboardingProgress();
+  const learnDoor = learnDoorFor(role, onboarding);
+  const [learnOpen, setLearnOpen] = useState(false);
+  const learnAnchor = useRef<HTMLButtonElement>(null);
+  const learnMode = learnDoor?.mode ?? null;
+  const toggleLearn = useCallback(() => {
+    if (!learnOpen && learnMode) trackGuidance('learn_opened', { mode: learnMode });
+    setLearnOpen(!learnOpen);
+  }, [learnOpen, learnMode]);
+  // A new owner lands on it: the first time the shell opens for an owner whose
+  // setup is not done, on a desk with the rooms out, Get started opens once.
+  // Not on a phone (the panel would cover most of the page they came to) and
+  // not for a manager (the house's setup is the owner's to begin).
+  const railShown = !phone && !prefs.railTucked;
+  useEffect(() => {
+    if (learnMode !== 'get-started' || role !== 'owner' || !railShown) return;
+    if (!userId || !houseId || getStartedOpenedBefore(userId, houseId)) return;
+    rememberGetStartedOpened(userId, houseId);
+    setLearnOpen(true);
+  }, [learnMode, role, railShown, userId, houseId]);
+  // A role or house change that takes the door away closes the panel.
+  useEffect(() => {
+    if (!learnMode) setLearnOpen(false);
+  }, [learnMode]);
+
   const waiting = counter.last ? actsWaiting(counter.last.registers) : counter.failure ? null : false;
 
   const openAct = useCallback((t: CounterActTarget) => {
@@ -280,6 +317,11 @@ export function HouseShell({ children }: { children?: ReactNode } = {}) {
                   tucked={prefs.railTucked}
                   onToggle={toggleRail}
                   mod={mod}
+                  learn={
+                    learnDoor
+                      ? { door: learnDoor, open: learnOpen, onClick: toggleLearn, buttonRef: learnAnchor }
+                      : null
+                  }
                 />
               )}
               <div className="mdv-shell__page bg-gray-50" id="main-content">
@@ -349,11 +391,46 @@ export function HouseShell({ children }: { children?: ReactNode } = {}) {
                   detents={PHONE_DETENTS}
                 >
                   <div className="mudavym mdv-rail mdv-rail--sheet">
-                    <RoomsList role={role} flags={flags} onNavigate={() => setPhoneRooms(false)} />
+                    <RoomsList
+                      role={role}
+                      flags={flags}
+                      onNavigate={() => setPhoneRooms(false)}
+                      learn={
+                        learnDoor
+                          ? {
+                              door: learnDoor,
+                              open: learnOpen,
+                              onClick: () => {
+                                setPhoneRooms(false);
+                                toggleLearn();
+                              },
+                            }
+                          : null
+                      }
+                    />
                   </div>
                 </Sheet>
               </>
             )}
+            <AnimatePresence>
+              {learnOpen && learnDoor && (
+                <LearnPanel
+                  progress={onboarding.progress}
+                  mode={learnDoor.mode}
+                  showNextSteps={learnDoor.runsSetup}
+                  anchorRef={learnAnchor}
+                  onClose={() => setLearnOpen(false)}
+                  onDismissChecklist={
+                    learnDoor.mode === 'get-started'
+                      ? () => {
+                          onboarding.update({ checklist_dismissed: true });
+                          setLearnOpen(false);
+                        }
+                      : undefined
+                  }
+                />
+              )}
+            </AnimatePresence>
             <CounterActSheet
               target={target}
               read={counter.last}

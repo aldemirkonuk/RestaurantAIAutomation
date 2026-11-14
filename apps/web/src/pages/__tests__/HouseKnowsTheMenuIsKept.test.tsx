@@ -16,8 +16,15 @@ vi.mock('../../services/api/menus', () => ({
   getOnboardingProgress,
   addMenuItem: vi.fn(),
   reviewMenuItem: vi.fn(),
+  readWarningSentence: (w: unknown) => String(w),
 }))
 vi.mock('../../components/brand/BrandMark', () => ({ BrandMark: () => <span>Mudavym</span> }))
+// r37 meet with the menu train: /house/menu asks who reads it and reads the
+// house money. Staff, and a money read left pending, keep this test on its subject.
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({ activeRole: 'staff', user: { role: 'staff' } }),
+}))
+vi.mock('../../services/api/settings', () => ({ settingsApi: { houseCurrency: vi.fn(() => new Promise(() => {})) } }))
 
 import HouseContents from '../HouseContents'
 import HouseMenu from '../HouseMenu'

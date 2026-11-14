@@ -2,7 +2,9 @@
  * The rooms rail — a quiet rail of words (sketch 119 D, in sketch 106 A's
  * grammar): *Ask Mudavym.* first, the five groups, then Settings, Connections,
  * The desk and Help in the foot. Tucks to a strip on ⌘\ (the person's choice,
- * remembered with the counter's).
+ * remembered with the counter's). "Get started" (an owner or a manager while
+ * setup is not done) heads the rooms; "Learn & Help" closes the foot — the
+ * one door to the setup and guidance panel in the shell (r33 w1 F1).
  *
  * It reads the ONE rooms table (`lib/mudavym/rooms.ts`) — the phone's Rooms
  * sheet reads the same one, so the two can never list different rooms.
@@ -17,20 +19,34 @@ import {
   type RoomFlags,
   type ShellRole,
 } from '../../lib/mudavym/rooms';
+import { LearnDoorButton, type LearnDoorButtonProps } from './houseLearnDoor';
 
 export interface RoomsListProps {
   role: ShellRole;
   flags: RoomFlags;
   onNavigate?: () => void;
+  /**
+   * The Get started / Learn & Help entry (r33 w1 F1). "Get started" heads the
+   * list, where a new owner sees it without scrolling; "Learn & Help" sits in
+   * the foot beside Help. Absent: no entry (role not known yet).
+   */
+  learn?: LearnDoorButtonProps | null;
 }
 
 /** The rooms as a list — the rail's body and the phone sheet's. */
-export function RoomsList({ role, flags, onNavigate }: RoomsListProps) {
+export function RoomsList({ role, flags, onNavigate, learn }: RoomsListProps) {
   const { pathname } = useLocation();
   const groups = visibleGroups(role, flags);
   const foot = visibleFoot(role, flags);
   return (
     <>
+      {learn?.door.mode === 'get-started' && (
+        <ul className="mdv-rail__start">
+          <li>
+            <LearnDoorButton {...learn} />
+          </li>
+        </ul>
+      )}
       {groups.map((g) => (
         <div key={g.name} className="mdv-rail__group">
           <span className="mdv-rail__sect">{g.name}</span>
@@ -66,6 +82,11 @@ export function RoomsList({ role, flags, onNavigate }: RoomsListProps) {
             </Link>
           </li>
         ))}
+        {learn?.door.mode === 'learn' && (
+          <li>
+            <LearnDoorButton {...learn} />
+          </li>
+        )}
       </ul>
     </>
   );
@@ -78,7 +99,7 @@ export interface HouseRailProps extends RoomsListProps {
   mod: string;
 }
 
-export function HouseRail({ role, flags, tucked, onToggle, mod }: HouseRailProps) {
+export function HouseRail({ role, flags, tucked, onToggle, mod, learn }: HouseRailProps) {
   if (tucked) {
     return (
       <nav className="mdv-rail mudavym mdv-rail--strip" aria-label="The rooms, tucked">
@@ -95,7 +116,7 @@ export function HouseRail({ role, flags, tucked, onToggle, mod }: HouseRailProps
         <kbd className="mdv-kbd">{mod}⇧K</kbd>
       </button>
       <div className="mdv-rail__scroll">
-        <RoomsList role={role} flags={flags} />
+        <RoomsList role={role} flags={flags} learn={learn} />
       </div>
       <button type="button" className="mdv-rail__tuck" onClick={onToggle}>
         Tuck the rooms

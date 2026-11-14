@@ -19,6 +19,8 @@ export function useOnboardingProgress() {
   return {
     progress: query.data ?? null,
     isLoading: query.isLoading,
+    /** The read failed (a 404 is not a failure: it answers null). */
+    isError: query.isError,
     update: mutation.mutate,
     isUpdating: mutation.isPending,
   }
