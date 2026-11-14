@@ -1024,7 +1024,7 @@ describe('ReportsNext — money in the house’s currency (audit G5)', () => {
     hook.current = { ...base(), currency: { state: 'stated', code: 'TRY' } } as never;
     paint();
     const till = screen.getByRole('region', { name: 'Through the till' });
-    expect(within(till).getByText('₺4,210')).toBeInTheDocument();
+    expect(within(till).getByText('₺4.210')).toBeInTheDocument();
     expect(within(till).queryByText(/\$/)).not.toBeInTheDocument();
     expect(screen.queryByTestId('rp-money-line')).not.toBeInTheDocument();
   });
