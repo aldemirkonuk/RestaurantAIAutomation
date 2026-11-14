@@ -35,6 +35,15 @@ export const dishesKey = (rid: string | null | undefined) => ['recipes', rid ?? 
 export const drinkFiguresKey = (rid: string | null | undefined) => ['cellar', 'cocktails', rid ?? null, 'figures'] as const;
 
 /**
+ * How long a list's figures (costs, menu prices) are used as read before a
+ * page mounted again reads them again. Every write that moves them (a recipe
+ * saved, a drink or dish changed) invalidates them at once; this only stops a
+ * return to the tab, or a remount, from re-pricing the whole house (App.tsx's
+ * `refetchOnMount: 'always'` ignored any staleTime; r41 recipes audit, gap 5).
+ */
+export const LIST_FIGURES_FRESH_MS = 60_000;
+
+/**
  * Every drink's cost a serve, for the cost and pour cost columns of
  * /cocktails. Read only for a role that sees the house's money.
  */
@@ -44,6 +53,8 @@ export function useDrinkFigures(enabled: boolean) {
     queryKey: drinkFiguresKey(activeRestaurantId),
     enabled: Boolean(enabled && activeRestaurantId),
     queryFn: () => dishesApi.drinkFigures(activeRestaurantId as string),
+    staleTime: LIST_FIGURES_FRESH_MS,
+    refetchOnMount: true,
   });
   return {
     // A failed re-read keeps the last figures in the cache; they are not shown
@@ -75,6 +86,8 @@ export function useMenuPrices(side: 'dish' | 'drink', enabled: boolean) {
     queryKey: menuPricesKey(activeRestaurantId, side),
     enabled: Boolean(enabled && activeRestaurantId),
     queryFn: () => dishesApi.menuPrices(activeRestaurantId as string),
+    staleTime: LIST_FIGURES_FRESH_MS,
+    refetchOnMount: true,
   });
   // A read that fails after an earlier one answered leaves that older answer
   // in the cache. It is not shown: the page says the menu could not be read.

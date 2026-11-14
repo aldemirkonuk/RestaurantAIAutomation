@@ -25,6 +25,10 @@ export function useHousePercent(): SayPercent {
     enabled: Boolean(activeRestaurantId),
     queryFn: () => settingsApi.houseCurrency(),
     staleTime: 5 * 60_000,
+    // App.tsx's default `refetchOnMount: 'always'` ignores the staleTime, so
+    // every recipe sheet opened read the house's money again (r41 recipes
+    // audit, gap 5). A mount while the answer is fresh uses it.
+    refetchOnMount: true,
   });
   const code = q.data?.readable ? q.data.code : null;
   return (points: number) => formatHousePercent(points, code);
