@@ -455,6 +455,18 @@ export default function GetStarted() {
   }
 
   /**
+   * Opens one way in (photo, file, typed lines) or closes it. A word left by
+   * another way (a photo the reader refused, a file the box refused) is
+   * cleared with it, so the page never shows two ways' errors at once
+   * (r33 walk w1 F7). A file box opened afresh holds no dropped file.
+   */
+  const chooseMethod = (method: MenuMethod) => {
+    setError(null)
+    setDroppedFiles(null)
+    setMenuMethod(method)
+  }
+
+  /**
    * One dropped photo is read at once. Anything else dropped (a PDF, a
    * spreadsheet, a CSV, several files) used to open the file box with the
    * file thrown away and not a word said (r28 onboarding gap 11); it is now
@@ -463,6 +475,10 @@ export default function GetStarted() {
   const ingestDrop = (files: File[]) => {
     if (files.length === 0) return
     if (files.length === 1 && files[0].type.startsWith('image/')) {
+      // The photo is read here, so a file box left open by an earlier drop
+      // closes with its refusal ("not a spreadsheet…"): that word was left
+      // standing beside this photo's own (r33 walk w1 F7).
+      if (menuMethod === 'file') chooseMethod(null)
       void ingestDroppedImage(files[0])
       return
     }
@@ -679,7 +695,7 @@ export default function GetStarted() {
         )}
         <button
           type="button"
-          onClick={() => setMenuMethod(menuMethod === 'photo' ? null : 'photo')}
+          onClick={() => chooseMethod(menuMethod === 'photo' ? null : 'photo')}
           onDragEnter={() => setDropping(true)}
           onDragOver={(event) => {
             event.preventDefault()
@@ -704,15 +720,12 @@ export default function GetStarted() {
         <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm">
           <button
             type="button"
-            onClick={() => {
-              setDroppedFiles(null)
-              setMenuMethod(menuMethod === 'file' ? null : 'file')
-            }}
+            onClick={() => chooseMethod(menuMethod === 'file' ? null : 'file')}
             className="text-[#1a5e6b] underline underline-offset-4"
           >
             Send a file
           </button>
-          <button type="button" onClick={() => setMenuMethod(menuMethod === 'typed' ? null : 'typed')} className="flex items-center gap-1 text-[#1a5e6b] underline underline-offset-4">
+          <button type="button" onClick={() => chooseMethod(menuMethod === 'typed' ? null : 'typed')} className="flex items-center gap-1 text-[#1a5e6b] underline underline-offset-4">
             <PenLine className="h-3.5 w-3.5" /> Type a few lines
           </button>
         </div>
