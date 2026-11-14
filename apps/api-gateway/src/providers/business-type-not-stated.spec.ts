@@ -100,6 +100,9 @@ function makeService(opts: {
       q.select = () => q;
       q.eq = () => q;
       q.is = () => q;
+      q.order = () => q;
+      // The same-name check (r34 w1 F1): the house has no vendors yet.
+      q.range = async () => ok([]);
       // The catalogue duplicate check: no such vendor yet.
       q.maybeSingle = async () =>
         opts.capture.update !== undefined

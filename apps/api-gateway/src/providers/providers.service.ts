@@ -27,6 +27,7 @@ import {
   UpdateProviderLocationDto,
 } from "./dto/providers.dto";
 import { UpdateIntelligenceDto } from "./dto/update-intelligence.dto";
+import { foldVendorName } from "./vendor-name";
 import { phoneReachability } from "./phone-reachability";
 import { RetroactiveOrderDto } from "./dto/retroactive-order.dto";
 import { ProcurementService } from "../procurement/procurement.service";
@@ -145,6 +146,41 @@ export class ProvidersService {
     private readonly procurementService: ProcurementService,
   ) {}
 
+  /**
+   * The live vendor of this house whose name folds to the same key as
+   * `name` (`foldVendorName`), or null. Reads every live row of the house in
+   * pages of 1000, so a house past PostgREST's row cap is still read whole.
+   * Throws 503 when a page cannot be read: the caller must not insert on an
+   * unanswered question.
+   */
+  private async findVendorNamed(
+    restaurantId: string,
+    name: string,
+  ): Promise<{ id: string; name: string } | null> {
+    const key = foldVendorName(name);
+    if (!key) return null;
+    const PAGE = 1000;
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await this.databaseService.supabase
+        .from("providers")
+        .select("id, name")
+        .eq("restaurant_id", restaurantId)
+        .is("deleted_at", null)
+        .order("id", { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) {
+        throw new ServiceUnavailableException(
+          "Could not check whether a vendor of this name is already on your vendors. " +
+            "Nothing was added. Try again.",
+        );
+      }
+      const rows = (data ?? []) as Array<{ id: string; name: string | null }>;
+      const hit = rows.find((r) => foldVendorName(r.name) === key);
+      if (hit) return { id: hit.id, name: hit.name ?? name };
+      if (rows.length < PAGE) return null;
+    }
+  }
+
   async createProvider(
     dto: CreateProviderDto,
     restaurantId: string,
@@ -240,6 +276,21 @@ export class ProvidersService {
         throw new BadRequestException(
           "name is required when catalogue_vendor_id is not provided",
         );
+      }
+
+      // One vendor, one row (r34 walk w1 F1). A name this house already
+      // has on its vendors, folded for case (Turkish i's included), marks,
+      // spaces and punctuation, is refused with 409 and the row it already
+      // is, never inserted a second time. Same fail-closed rule as the
+      // catalogue guard above: a lookup that cannot run refuses the add.
+      const same = await this.findVendorNamed(restaurantId, dto.name);
+      if (same) {
+        throw new ConflictException({
+          statusCode: 409,
+          message: `${same.name} is already on your vendors.`,
+          existingId: same.id,
+          existingName: same.name,
+        });
       }
 
       payload = {
