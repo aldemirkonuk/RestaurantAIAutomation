@@ -1,6 +1,9 @@
 import {
+  BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
+  NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
@@ -9,6 +12,13 @@ import {
   likeExactly,
   senderDomain,
 } from "../../communications/inbound-headers";
+import {
+  findSenderVendor,
+  type SenderVendor,
+} from "../../communications/sender-vendor";
+
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** A persisted attachment reference stored on a prospect (bytes live in Storage). */
 export interface ProspectAttachmentRef {
@@ -397,7 +407,10 @@ export class ProspectsService {
         .eq("status", "new")
         .order("last_seen_at", { ascending: false })
         .limit(100);
-      return ((data as any[]) || []).map((r) => this.toDto(r));
+      return await this.withHeldVendors(
+        ((data as any[]) || []).map((r) => this.toDto(r)),
+        restaurantId,
+      );
     } catch {
       return [];
     }
@@ -467,10 +480,51 @@ export class ProspectsService {
         .eq("status", "new")
         .order("last_seen_at", { ascending: false })
         .limit(300);
-      return ((data as any[]) || []).map((r) => this.toDto(r));
+      return await this.withHeldVendors(
+        ((data as any[]) || []).map((r) => this.toDto(r)),
+        null,
+      );
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Each held letter whose sender could not be confirmed names the vendor
+   * its address belongs to in its house's book, the vendor "File it under"
+   * would use (r35 mail, gap 9): `held_vendor` is `{ id, name }`, or null
+   * when no single live vendor lists the address. `held_vendor_unread` is
+   * true when the book could not be read, which is not "no vendor".
+   * Read once per (house, address); held letters are few. `house` names
+   * the house for rows read without their `restaurant_id` (`list`).
+   */
+  private async withHeldVendors(
+    rows: any[],
+    house: string | null,
+  ): Promise<any[]> {
+    const memo = new Map<string, Promise<SenderVendor | null>>();
+    return Promise.all(
+      rows.map(async (r) => {
+        const rowHouse: string | null = r.restaurant_id ?? house;
+        if (r.held_reason !== "sender_unconfirmed" || !r.sender_email || !rowHouse) {
+          return r;
+        }
+        const key = `${rowHouse} ${String(r.sender_email).toLowerCase()}`;
+        if (!memo.has(key)) {
+          memo.set(
+            key,
+            findSenderVendor(this.databaseService.supabase, rowHouse, r.sender_email),
+          );
+        }
+        try {
+          const v = await memo.get(key)!;
+          return { ...r, held_vendor: v ? { id: v.id, name: v.name } : null, held_vendor_unread: false };
+        } catch (err: any) {
+          this.logger.warn(`list: the vendor of a held letter could not be read — ${err?.message}`);
+          return { ...r, held_vendor: null, held_vendor_unread: true };
+        }
+      }),
+    );
   }
 
   /** Normalize a row into the DTO the surface expects (attachment metadata only, no URLs). */
@@ -686,6 +740,263 @@ export class ProspectsService {
     } catch {
       return { dismissed: false };
     }
+  }
+
+  /**
+   * File a held letter under the vendor a person vouches for (r28 mail
+   * audit, gap 9). A letter the receiving server could not confirm came from
+   * its From (`held_reason = sender_unconfirmed`) was held in "Who is
+   * writing" with no way to reach its vendor: promote refuses a held row,
+   * and the list offered only "Put away". A real vendor whose mail domain is
+   * set up badly never reached its thread, its order or the invoice desk.
+   *
+   * An owner or a manager (the controller's RolesGuard) now says "it is
+   * theirs". The letter is written as that vendor's inbound letter, with the
+   * words and files the held row kept, and the row is marked `filed`.
+   *
+   * - The vendor is the one the house's book names for the address now
+   *   (`findSenderVendor`, the bridge's own rule), never a guess: an address
+   *   no live vendor, or two, list is refused (409).
+   * - Only a `sender_unconfirmed` row still open (`new`) can be filed. An
+   *   unreadable sender names no address to file under (409).
+   * - The row is claimed first (status `new` -> `filed`, compare-and-set),
+   *   so two clicks or a click racing "Put away" file it once. A write that
+   *   fails after the claim is undone and answered 503.
+   * - The letter names no order: the held row kept no Message-ID, so the
+   *   order cannot be read from the reply's headers, and a guess would put a
+   *   price on the wrong order. A reply in a Gmail thread joins that thread
+   *   by its gmail_thread_id. Its files carry no order either, so the
+   *   invoice desk links them only by the order number they cite.
+   * - `email_headers.filed_from_held` records the held reason, who vouched
+   *   and when, and whether the kept words were cut at 4,000 characters.
+   */
+  async fileHeldLetter(
+    restaurantId: string,
+    prospectId: string,
+    userId: string,
+  ): Promise<{
+    filed: true;
+    conversationId: string;
+    threadKey: string | null;
+    providerId: string;
+    providerName: string;
+    alreadyStored: boolean;
+  }> {
+    if (!UUID.test(prospectId)) {
+      throw new BadRequestException("That is not a letter id.");
+    }
+    const db = this.databaseService.supabase;
+    const { data: row, error: rowError } = await db
+      .from("email_prospects")
+      .select(
+        "id, sender_email, subject, body_preview, attachments, held_reason, status, gmail_message_id, gmail_thread_id, first_seen_at",
+      )
+      .eq("restaurant_id", restaurantId)
+      .eq("id", prospectId)
+      .maybeSingle();
+    if (rowError) {
+      this.logger.error(
+        `fileHeldLetter: read of ${prospectId} failed — ${rowError.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "The held letter could not be read just now; nothing was filed.",
+      );
+    }
+    if (!row) {
+      throw new NotFoundException("That letter is not in this house's mail.");
+    }
+    const held = row as any;
+    if (held.held_reason !== "sender_unconfirmed" || !held.sender_email) {
+      throw new ConflictException(
+        "Only a letter whose sender could not be confirmed can be filed under a vendor.",
+      );
+    }
+    if (held.status !== "new") {
+      throw new ConflictException(
+        held.status === "filed"
+          ? "That letter is already filed under a vendor."
+          : "That letter was put away. Bring it back before filing it.",
+      );
+    }
+
+    let vendor: SenderVendor | null;
+    try {
+      vendor = await findSenderVendor(db, restaurantId, held.sender_email, (m) =>
+        this.logger.warn(`fileHeldLetter: ${m}`),
+      );
+    } catch (err: any) {
+      this.logger.error(`fileHeldLetter: ${err?.message}`);
+      throw new ServiceUnavailableException(
+        "Your vendor book could not be read just now; nothing was filed.",
+      );
+    }
+    if (!vendor) {
+      throw new ConflictException(
+        `No single vendor in your book lists ${held.sender_email}, so there is no vendor to file it under.`,
+      );
+    }
+
+    // Claim the row: only one click files it.
+    const now = new Date().toISOString();
+    const { data: claimed, error: claimError } = await db
+      .from("email_prospects")
+      .update({ status: "filed", promoted_provider_id: vendor.id, updated_at: now })
+      .eq("restaurant_id", restaurantId)
+      .eq("id", prospectId)
+      .eq("status", "new")
+      .select("id");
+    if (claimError) {
+      this.logger.error(
+        `fileHeldLetter: claiming ${prospectId} failed — ${claimError.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "The held letter could not be marked just now; nothing was filed.",
+      );
+    }
+    if (!Array.isArray(claimed) || claimed.length === 0) {
+      throw new ConflictException(
+        "That letter was filed or put away a moment ago; nothing was filed twice.",
+      );
+    }
+    const release = async () => {
+      const { error } = await db
+        .from("email_prospects")
+        .update({ status: "new", promoted_provider_id: null, updated_at: new Date().toISOString() })
+        .eq("restaurant_id", restaurantId)
+        .eq("id", prospectId)
+        .eq("status", "filed");
+      if (error) {
+        this.logger.error(
+          `fileHeldLetter: releasing ${prospectId} after a failed write failed — ${error.message}`,
+        );
+      }
+    };
+
+    // The same letter may already be the vendor's (it came again by another
+    // door that confirmed it): that row is the answer, not a second copy.
+    if (held.gmail_message_id) {
+      const { data: stored, error: storedError } = await db
+        .from("procurement_conversations")
+        .select("id, thread_key")
+        .eq("restaurant_id", restaurantId)
+        .eq("provider_id", vendor.id)
+        .eq("gmail_message_id", held.gmail_message_id)
+        .limit(1);
+      if (storedError) {
+        await release();
+        throw new ServiceUnavailableException(
+          "The vendor's mail could not be read just now; nothing was filed.",
+        );
+      }
+      if (stored?.[0]) {
+        return {
+          filed: true,
+          conversationId: (stored[0] as any).id,
+          threadKey: (stored[0] as any).thread_key ?? null,
+          providerId: vendor.id,
+          providerName: vendor.name,
+          alreadyStored: true,
+        };
+      }
+    }
+
+    const words = String(held.body_preview ?? "");
+    const subject = String(held.subject ?? "");
+    const { data: inserted, error: insertError } = await db
+      .from("procurement_conversations")
+      .insert({
+        order_id: null,
+        restaurant_id: restaurantId,
+        provider_id: vendor.id,
+        direction: "inbound",
+        channel: "email",
+        message_text: `Subject: ${subject}\n\n${words}`,
+        ai_generated: false,
+        received_at: held.first_seen_at ?? now,
+        delivery_status: "delivered",
+        gmail_thread_id: held.gmail_thread_id || null,
+        gmail_message_id: held.gmail_message_id || null,
+        email_headers: {
+          from: held.sender_email,
+          subject,
+          gmail_thread_id: held.gmail_thread_id || null,
+          filed_from_held: {
+            prospect_id: prospectId,
+            held_reason: held.held_reason,
+            by_user_id: userId,
+            at: now,
+            words_cut: words.length >= 4000,
+          },
+        },
+        confidence_score: null,
+      })
+      .select("id, thread_key")
+      .single();
+    if (insertError || !inserted) {
+      this.logger.error(
+        `fileHeldLetter: storing ${prospectId} under vendor ${vendor.id} failed — ${insertError?.message ?? "no row"}`,
+      );
+      await release();
+      throw new ServiceUnavailableException(
+        "The letter could not be filed just now; it is still held.",
+      );
+    }
+    const conversationId = (inserted as any).id as string;
+
+    const refs: ProspectAttachmentRef[] = Array.isArray(held.attachments)
+      ? held.attachments.filter((a: any) => a && a.storage_path)
+      : [];
+    if (refs.length) {
+      const { error: filesError } = await db
+        .from("conversation_attachments")
+        .insert(
+          refs.map((a) => ({
+            conversation_id: conversationId,
+            order_id: null,
+            restaurant_id: restaurantId,
+            provider_id: vendor!.id,
+            filename: a.filename || "attachment",
+            mime_type: a.mime_type ?? null,
+            size_bytes: a.size_bytes ?? null,
+            storage_path: a.storage_path,
+            sha256: a.sha256 ?? null,
+          })),
+        );
+      if (filesError) {
+        this.logger.error(
+          `fileHeldLetter: the files of ${prospectId} could not be filed — ${filesError.message}`,
+        );
+        const { error: undoError } = await db
+          .from("procurement_conversations")
+          .delete()
+          .eq("restaurant_id", restaurantId)
+          .eq("id", conversationId);
+        if (undoError) {
+          this.logger.error(
+            `fileHeldLetter: removing the half-filed letter ${conversationId} failed — ${undoError.message}`,
+          );
+          throw new ServiceUnavailableException(
+            "The letter was filed but its files were not, and that could not be undone. Its files are still under Who is writing.",
+          );
+        }
+        await release();
+        throw new ServiceUnavailableException(
+          "The letter's files could not be filed just now; it is still held.",
+        );
+      }
+    }
+
+    this.logger.warn(
+      `HELD_LETTER_FILED prospect=${prospectId} vendor=${vendor.id} house=${restaurantId} by=${userId}`,
+    );
+    return {
+      filed: true,
+      conversationId,
+      threadKey: (inserted as any).thread_key ?? null,
+      providerId: vendor.id,
+      providerName: vendor.name,
+      alreadyStored: false,
+    };
   }
 
   /** Restore a dismissed prospect back to the open list (undo a dismiss). */
