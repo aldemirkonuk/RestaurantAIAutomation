@@ -414,7 +414,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   }, [data.reading]);
   /** True when the engine answered and has nothing to say: day 1 for a new house (r36 gap 5). */
   const openingSilent =
-    !data.reading.failure && !data.reading.loading && Array.isArray(data.reading.data) && data.reading.data.length === 0;
+    !data.reading.failure && Array.isArray(data.reading.data) && data.reading.data.length === 0;
   /** When the opening sentence was written; it can be a day older than the registers (r36 gap 4). */
   const openingAge = useMemo(() => {
     const top = data.reading.failure ? undefined : data.reading.data?.[0];
