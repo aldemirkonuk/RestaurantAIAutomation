@@ -114,7 +114,7 @@ describe("matchLine", () => {
   });
 });
 
-/** A builder that honours what the read uses: eq, is, gt, order by id, limit. */
+/** A builder that honours what the read uses: select (plain columns are the only keys returned), eq, is, gt, order by id, limit. */
 function pagingClient(tables: Record<string, Array<Record<string, any>>>, fails: Record<string, string> = {}) {
   const reads: string[] = [];
   return {
@@ -122,8 +122,12 @@ function pagingClient(tables: Record<string, Array<Record<string, any>>>, fails:
     from(table: string) {
       const preds: Array<(r: Record<string, any>) => boolean> = [];
       let cap = Infinity;
+      let cols: string[] | null = null;
       const api: any = {
-        select: () => api,
+        select: (c: string) => {
+          if (!/[(*]/.test(c)) cols = c.split(",").map((x) => x.trim());
+          return api;
+        },
         eq: (c: string, v: unknown) => (preds.push((r) => r[c] === v), api),
         is: (c: string, v: unknown) => (preds.push((r) => (r[c] ?? null) === v), api),
         gt: (c: string, v: string) => (preds.push((r) => String(r[c]) > v), api),
@@ -136,7 +140,8 @@ function pagingClient(tables: Record<string, Array<Record<string, any>>>, fails:
           const rows = (tables[table] ?? [])
             .filter((r) => preds.every((p) => p(r)))
             .sort((a, b) => String(a.id).localeCompare(String(b.id)))
-            .slice(0, cap);
+            .slice(0, cap)
+            .map((r) => (cols ? Object.fromEntries(cols.filter((k) => k in r).map((k) => [k, r[k]])) : r));
           resolve({ data: rows, error: null });
         },
       };
@@ -189,6 +194,21 @@ describe("matchHouseGoods: the reads", () => {
     // The producer-and-name form finds an earlier good than the name alone: still list order.
     const two = [g({ id: "c1", display_name: "Caymus Cabernet" }), g({ id: "c2", display_name: "Cabernet" })];
     expect(matchLine({ name: "Cabernet", producer: "Caymus" }, two)).toEqual({ outcome: "many", goods: two });
+  });
+
+  it("r37 w1 M-F1: two goods of one name come back with what tells them apart", async () => {
+    const rows = [
+      live(1, { display_name: "House White", menu_price_current: 30, menu_price_glass: 8, identity_provenance: "house_declared", bottle_size_ml: 750 }),
+      live(2, { display_name: "House White", menu_price_current: null, menu_price_glass: null, identity_provenance: "beverage_catalogue", bottle_size_ml: 1000 }),
+    ];
+    const [m] = await matchHouseGoods(pagingClient({ restaurant_inventory: rows }), "rest-1", [{ name: "House White", category: "White" }]);
+    expect(m).toMatchObject({
+      outcome: "many",
+      goods: [
+        { id: "inv-00001", bottle_size_ml: 750, menu_price_current: 30, menu_price_glass: 8, identity_provenance: "house_declared" },
+        { id: "inv-00002", bottle_size_ml: 1000, menu_price_current: null, menu_price_glass: null, identity_provenance: "beverage_catalogue" },
+      ],
+    });
   });
 
   it("reads past the 1000-row cap: a good on the second page is found", async () => {

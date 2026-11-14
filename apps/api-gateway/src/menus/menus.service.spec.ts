@@ -2863,13 +2863,18 @@ describe("a menu line finds the house's own good before the library (r21 D1)", (
   it("two of the house's goods that fit are not guessed between: the line goes to the library and names both", async () => {
     const lib = spyLibrary();
     const tables = house([
-      good({ id: "inv-a", master_wine_id: null, display_name: "House Red", kind: "wine" }),
-      good({ id: "inv-b", master_wine_id: null, wine_name: "HOUSE RED", display_name: "House red.", kind: "other" }),
+      good({ id: "inv-a", master_wine_id: null, display_name: "House Red", kind: "wine", bottle_size_ml: 750, menu_price_current: 30, identity_provenance: "house_declared" }),
+      good({ id: "inv-b", master_wine_id: null, wine_name: "HOUSE RED", display_name: "House red.", kind: "other", menu_price_glass: "7.50", identity_provenance: "beverage_catalogue" }),
     ]);
     const service = makeService(tables, { wineSubmissions: lib, rpc: priceRpc });
     const item = await service.addMenuItem({ menuId: "menu-1", name: "House Red" } as any, "user-1", "rest-1", true);
     expect(lib.sent).toHaveLength(1);
     expect(item.houseCandidates?.map((c) => c.inventoryItemId)).toEqual(["inv-a", "inv-b"]);
+    // r37 walk w1 M-F1: the reply says what tells the two apart, as the plan does.
+    expect(item.houseCandidates).toEqual([
+      expect.objectContaining({ bottleSizeMl: 750, bottlePrice: 30, glassPrice: null, source: "house_declared" }),
+      expect.objectContaining({ bottleSizeMl: null, bottlePrice: null, glassPrice: 7.5, source: "beverage_catalogue" }),
+    ]);
     expect(tables.menu_items[0].wine_library_id).toBe("mw-new");
   });
 
@@ -3002,8 +3007,8 @@ describe("a menu line finds the house's own good before the library (r21 D1)", (
       const { r, red } = await read(service, tables);
       const plan = await service.planFor("rest-1", r.menuId);
       expect(plan.lines.find((l) => l.menuItemId === red.id)!.houseCandidates).toEqual([
-        { inventoryItemId: "inv-a", name: "House Red", kind: "wine" },
-        { inventoryItemId: "inv-b", name: "House red.", kind: "wine" },
+        { inventoryItemId: "inv-a", name: "House Red", kind: "wine", bottleSizeMl: null, vintage: null, producer: null, bottlePrice: null, glassPrice: null, source: null },
+        { inventoryItemId: "inv-b", name: "House red.", kind: "wine", bottleSizeMl: null, vintage: null, producer: null, bottlePrice: null, glassPrice: null, source: null },
       ]);
       // Only a loose line is matched: no other line carries candidates.
       expect(plan.lines.filter((l) => l.houseCandidates).map((l) => l.menuItemId)).toEqual([red.id]);
@@ -3011,6 +3016,29 @@ describe("a menu line finds the house's own good before the library (r21 D1)", (
       const after = await service.planFor("rest-1", r.menuId);
       expect(after.lines.find((l) => l.menuItemId === red.id)).toMatchObject({ inventoryId: "inv-b" });
       expect(after.lines.find((l) => l.menuItemId === red.id)!.houseCandidates).toBeUndefined();
+    });
+
+    // r37 walk w1 M-F1: two goods of one name gave two identical buttons.
+    it("each good a line fits carries what tells it from the other: size, prices and where it came from", async () => {
+      const { tables, service } = twoReds();
+      const { r, red } = await read(service, tables);
+      Object.assign(tables.restaurant_inventory.find((g) => g.id === "inv-a")!, {
+        bottle_size_ml: 750,
+        menu_price_current: "30.00",
+        menu_price_glass: null,
+        identity_provenance: "wine_library",
+      });
+      Object.assign(tables.restaurant_inventory.find((g) => g.id === "inv-b")!, {
+        bottle_size_ml: 1000,
+        menu_price_current: null,
+        menu_price_glass: 8,
+        identity_provenance: "house_declared",
+      });
+      const plan = await service.planFor("rest-1", r.menuId);
+      expect(plan.lines.find((l) => l.menuItemId === red.id)!.houseCandidates).toEqual([
+        expect.objectContaining({ inventoryItemId: "inv-a", bottleSizeMl: 750, bottlePrice: 30, glassPrice: null, source: "wine_library" }),
+        expect.objectContaining({ inventoryItemId: "inv-b", bottleSizeMl: 1000, bottlePrice: null, glassPrice: 8, source: "house_declared" }),
+      ]);
     });
 
     it("a good removed since the read is no candidate, so one good may be left; a good added since is one, and moves the plan", async () => {

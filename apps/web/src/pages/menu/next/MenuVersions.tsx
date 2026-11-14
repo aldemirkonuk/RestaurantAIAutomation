@@ -43,6 +43,7 @@ import { useAuthStore } from '../../../stores';
 import { MenuPlan } from './MenuPlan';
 import { takenOffSentence } from './menu-take-off';
 import { formatMoney } from '../../../lib/currency';
+import { houseCandidateWords } from './house-candidate-words';
 import { useHouseCurrencyCode } from '../../../hooks/queries/useHouseCurrencyCode';
 
 const EM = '—';
@@ -295,6 +296,7 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
               menuId={result.menuId}
               items={result.items ?? []}
               canManage={canManage}
+              currency={currency}
               onLinked={() => setPlanning(false)}
             />
           )}
@@ -514,11 +516,13 @@ export function SeveralGoods({
   menuId,
   items,
   canManage,
+  currency = null,
   onLinked,
 }: {
   menuId: string
   items: MenuImportReviewItem[]
   canManage: boolean
+  currency?: string | null
   onLinked: () => void
 }) {
   const several = items.filter((i) => (i.houseCandidates?.length ?? 0) > 1);
@@ -553,24 +557,26 @@ export function SeveralGoods({
               </span>
             ) : (
               <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-                {(item.houseCandidates ?? []).map((good) =>
-                  canManage ? (
+                {(item.houseCandidates ?? []).map((good, i, goods) => {
+                  // r37 walk w1 M-F1: two goods of one name are told apart by what differs.
+                  const words = houseCandidateWords(goods, (n) => formatMoney(n, currency))[i]
+                  return canManage ? (
                     <button
                       key={good.inventoryItemId}
                       type="button"
                       className="cl-btn cl-focus"
                       disabled={link.isPending}
                       onClick={() => link.mutate({ item, good })}
-                      aria-label={`Link ${item.name} to ${good.name}`}
+                      aria-label={`Link ${item.name} to ${words}`}
                     >
-                      It is {good.name}{good.kind ? ` (${good.kind})` : ''}
+                      It is {words}
                     </button>
                   ) : (
                     <span key={good.inventoryItemId} className="cl-chip">
-                      {good.name}{good.kind ? ` (${good.kind})` : ''}
+                      {words}
                     </span>
-                  ),
-                )}
+                  )
+                })}
               </span>
             )}
             {refusedLine === item.menuItemId ? (

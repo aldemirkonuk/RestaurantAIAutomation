@@ -39,6 +39,7 @@ import { lockPrice, releasePriceLock } from '../../../services/api/pricing';
 import { formatMoney } from '../../../lib/currency';
 import { useHouseCurrencyCode } from '../../../hooks/queries/useHouseCurrencyCode';
 import { canTakeOff } from './menu-take-off';
+import { houseCandidateWords } from './house-candidate-words';
 // Drawn with the cellar's classes wherever it is shown (/menu and onboarding).
 import '../../cellar/next/cellar-next.css';
 
@@ -508,6 +509,7 @@ export function MenuPlan({
         menuId={menuId}
         lines={plan.current ? [] : plan.lines}
         canManage={canManage}
+        currency={currency}
         onLinked={(s) => {
           setSaid(s);
           setMoved(false);
@@ -616,11 +618,13 @@ function PlanFits({
   menuId,
   lines,
   canManage,
+  currency = null,
   onLinked,
 }: {
   menuId: string;
   lines: PlanLine[];
   canManage: boolean;
+  currency?: string | null;
   onLinked: (said: string) => void;
 }) {
   const fits = lines.filter((l) => (l.houseCandidates?.length ?? 0) > 0);
@@ -631,7 +635,8 @@ function PlanFits({
       onLinked(`${v.line.name} is linked to ${r.goodName || v.good.name}: choosing this menu carries its price there.`),
   });
   if (fits.length === 0) return null;
-  const goodWords = (g: HouseCandidate) => `${g.name}${g.kind ? ` (${g.kind})` : ''}`;
+  // r37 walk w1 M-F1: two goods of one name are told apart by what differs.
+  const wordsFor = (goods: HouseCandidate[]) => houseCandidateWords(goods, (n) => money(n, currency));
   return (
     <div style={{ marginTop: 12 }} data-testid="menu-plan-fits">
       <p className="cl-said">
@@ -642,13 +647,14 @@ function PlanFits({
       <ul className="cl-said" style={{ paddingLeft: 18, marginTop: 4 }}>
         {fits.map((l) => {
           const goods = l.houseCandidates ?? [];
+          const words = wordsFor(goods);
           return (
             <li key={l.menuItemId} data-testid="menu-plan-fits-line" style={{ marginTop: 4 }}>
               {goods.length === 1
-                ? `${l.name} fits the house's ${goodWords(goods[0])}.`
+                ? `${l.name} fits the house's ${words[0]}.`
                 : `${l.name} fits ${goods.length} of the house's goods.`}
               <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-                {goods.map((g) =>
+                {goods.map((g, i) =>
                   canManage ? (
                     <button
                       key={g.inventoryItemId}
@@ -656,13 +662,13 @@ function PlanFits({
                       className="cl-btn cl-focus"
                       disabled={link.isPending}
                       onClick={() => link.mutate({ line: l, good: g })}
-                      aria-label={`Link ${l.name} to ${g.name}`}
+                      aria-label={`Link ${l.name} to ${words[i]}`}
                     >
-                      It is {goodWords(g)}
+                      It is {words[i]}
                     </button>
                   ) : (
                     <span key={g.inventoryItemId} className="cl-chip">
-                      {goodWords(g)}
+                      {words[i]}
                     </span>
                   ),
                 )}

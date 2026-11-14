@@ -21,7 +21,7 @@ import { UpdateOnboardingProgressDto } from "./dto/update-onboarding-progress.dt
 import { MenuReadWarning, WineExtractItem } from "./wine-extract-item.interface";
 import { itemNeedsPencil } from "./pencil-rule";
 import { isKitchenLine, lineForViewer, type LineView } from "./menu-line-view";
-import { kindNoun, lineFamily, matchHouseGoods } from "./house-good-match";
+import { kindNoun, lineFamily, matchHouseGoods, type HouseGood } from "./house-good-match";
 import {
   setHouseMenuPrice,
   setHouseMenuPrices,
@@ -60,10 +60,44 @@ interface ResolvedItem {
   houseCandidates?: HouseCandidate[];
 }
 
-interface HouseCandidate {
+export interface HouseCandidate {
   inventoryItemId: string;
   name: string;
   kind: string | null;
+  /**
+   * What tells two goods of one name apart (r37 walk w1 M-F1): the page names
+   * only the ones that differ. Null when the good does not state it.
+   */
+  bottleSizeMl: number | null;
+  vintage: string | null;
+  producer: string | null;
+  bottlePrice: number | null;
+  glassPrice: number | null;
+  /** `identity_provenance`: wine_library, beverage_catalogue, house_declared or backfill. */
+  source: string | null;
+}
+
+/** A price column as a number, or null for none (a numeric string from the wire is its number). */
+function priceOrNull(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** One good a line fits, with what tells it from another of its name. */
+export function houseCandidateOf(g: HouseGood): HouseCandidate {
+  const size = g.bottle_size_ml === null || g.bottle_size_ml === undefined ? null : Number(g.bottle_size_ml);
+  return {
+    inventoryItemId: String(g.id),
+    name: g.display_name ?? g.wine_name ?? "",
+    kind: g.kind ?? null,
+    bottleSizeMl: size !== null && Number.isFinite(size) && size > 0 ? size : null,
+    vintage: g.vintage === null || g.vintage === undefined || g.vintage === "" ? null : String(g.vintage),
+    producer: g.producer ? String(g.producer) : null,
+    bottlePrice: priceOrNull(g.menu_price_current),
+    glassPrice: priceOrNull(g.menu_price_glass),
+    source: g.identity_provenance ?? null,
+  };
 }
 
 interface InsertedMenuItem {
@@ -1812,7 +1846,7 @@ export class MenusService {
       for (;;) {
         let q = client
           .from("restaurant_inventory")
-          .select("id, master_wine_id, wine_name, display_name, kind, bottle_size_ml, is_active, deleted_at, menu_price_current, menu_price_glass, master_wine_library(vintage)")
+          .select("id, master_wine_id, wine_name, display_name, kind, bottle_size_ml, is_active, deleted_at, menu_price_current, menu_price_glass, identity_provenance, master_wine_library(vintage)")
           .eq("restaurant_id", restaurantId);
         if (after) q = q.gt("id", after);
         const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
@@ -1977,6 +2011,9 @@ export class MenusService {
             kind: r.kind ?? null,
             master_wine_id: r.master_wine_id ?? null,
             bottle_size_ml: r.bottle_size_ml ?? null,
+            menu_price_current: r.menu_price_current ?? null,
+            menu_price_glass: r.menu_price_glass ?? null,
+            identity_provenance: r.identity_provenance ?? null,
           }));
         try {
           fits = await matchHouseGoods(
@@ -1994,13 +2031,7 @@ export class MenusService {
         loose.forEach((l, i) => {
           const m = fits[i];
           const goods = m?.outcome === "one" ? [m.good] : m?.outcome === "many" ? m.goods : [];
-          if (goods.length > 0) {
-            l.houseCandidates = goods.map((g) => ({
-              inventoryItemId: String(g.id),
-              name: g.display_name ?? g.wine_name ?? "",
-              kind: g.kind ?? null,
-            }));
-          }
+          if (goods.length > 0) l.houseCandidates = goods.map(houseCandidateOf);
         });
       }
     }
@@ -2566,11 +2597,7 @@ export class MenusService {
           confidence: r?.confidence ?? null,
           ...(h.outcome === "many"
             ? {
-                houseCandidates: h.goods.map((g) => ({
-                  inventoryItemId: g.id,
-                  name: g.display_name ?? g.wine_name ?? "",
-                  kind: g.kind ?? null,
-                })),
+                houseCandidates: h.goods.map(houseCandidateOf),
               }
             : {}),
         };
