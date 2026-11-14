@@ -444,6 +444,9 @@ export function treatTax(
     said,
   });
 
+  // r34 walk w2 F5: "its tax could not be added ... what its cost holds is
+  // not stated" did not say what the cost IS. The two sentences below name
+  // it (the printed amount), why (`missing`), and the tax step left undone.
   if (reclaim.reclaims == null) {
     return done(
       amount,
@@ -456,7 +459,7 @@ export function treatTax(
       return done(
         amount,
         null,
-        `its tax could not be taken out, since ${missing}, so it is costed as printed and what its cost holds is not stated`,
+        `the printed amount is used, since ${missing}, so the tax the house reclaims is not taken out of it`,
       );
     }
     const tax = amount - pre;
@@ -474,7 +477,7 @@ export function treatTax(
     return done(
       amount,
       null,
-      `its tax could not be added, since ${missing}, so it is costed as printed and what its cost holds is not stated`,
+      `the printed amount is used, since ${missing}, so the tax the house pays on it is not added`,
     );
   }
   const tax = gross - (pre ?? gross);
