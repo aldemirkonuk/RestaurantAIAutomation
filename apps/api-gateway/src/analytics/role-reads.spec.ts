@@ -11,6 +11,8 @@ import {
   insightReadable,
   insightsForRole,
   lensHidden,
+  reorderCostReadable,
+  riskForRole,
   seesFor,
 } from "./role-reads";
 
@@ -23,8 +25,9 @@ describe("lensHidden", () => {
     expect(lensHidden("cashflow", STAFF)).toEqual(["money", "suppliers"]);
     expect(lensHidden("vendorScorecard", STAFF)).toEqual(["money", "suppliers"]);
     expect(lensHidden("wine360", STAFF)).toEqual(["money", "sales"]);
+    expect(lensHidden("financial", STAFF)).toEqual(["money", "sales", "suppliers"]);
     const manager = seesFor({ role: "manager" });
-    for (const lens of ["menuEngineering", "cashflow", "vendorScorecard", "wine360"] as const)
+    for (const lens of ["menuEngineering", "cashflow", "vendorScorecard", "wine360", "financial"] as const)
       expect(lensHidden(lens, manager)).toEqual([]);
   });
   it("reads no role, or an unknown one, as staff", () => {
@@ -131,5 +134,79 @@ describe("insightsForRole", () => {
       withheldForRole: 3,
     });
     expect(insightsForRole(rows, OWNER).withheldForRole).toBe(0);
+  });
+});
+
+const PROFILE = {
+  basis: { demand: "bottles/day" },
+  vendorConcentration: { hhi: 0.41, cr4: 1, vendorCount: 3 },
+  revenueConcentration: { gini: 0.7, hhi: 0.3 },
+  demandRisk: { volatility: 0.2, sampleDays: 90 },
+  generatedAt: "2026-11-13T10:00:00.000Z",
+};
+
+describe("riskForRole (slice 4)", () => {
+  it("[REVERT-FAILS] withholds the spend and value shares from staff, and keeps demand risk", () => {
+    expect(riskForRole(PROFILE, STAFF)).toEqual({
+      ...PROFILE,
+      vendorConcentration: { withheldForRole: ["money", "suppliers"] },
+      revenueConcentration: { withheldForRole: ["money"] },
+    });
+  });
+  it("never says the whole lens is withheld, so the page still reads demand risk", () => {
+    expect((riskForRole(PROFILE, STAFF) as Record<string, unknown>).withheldForRole).toBeUndefined();
+  });
+  it("hands an owner the profile unchanged, and does not add a part the lens lacks", () => {
+    expect(riskForRole(PROFILE, OWNER)).toEqual(PROFILE);
+    expect(riskForRole({ demandRisk: {} }, STAFF)).toEqual({ demandRisk: {} });
+  });
+});
+
+describe("reorderCostReadable (slice 4)", () => {
+  it("is money: staff restock without the cost, an owner and a manager read it", () => {
+    expect(reorderCostReadable(STAFF)).toBe(false);
+    expect(reorderCostReadable(OWNER)).toBe(true);
+    expect(reorderCostReadable(seesFor({ role: "manager" }))).toBe(true);
+  });
+});
+
+describe("the overview's figures of record, risk and reorder rows as a role reads them (slice 4)", () => {
+  const make = () => {
+    const analytics = {
+      getFinancialSummary: jest.fn(async () => ({ inventoryValue: 41000 })),
+      getRiskProfile: jest.fn(async () => PROFILE),
+      getInventoryScience: jest.fn(async () => ({ reorderCount: 0, reorderList: [], skuCount: 1 })),
+    };
+    const svc = new AdvancedAnalyticsService(
+      {} as never,
+      analytics as never,
+      { getStored: async () => [] } as never,
+      { listGoals: async () => [] } as never,
+    );
+    jest.spyOn(svc, "getMenuEngineering").mockResolvedValue({ counts: {}, items: [] } as never);
+    jest.spyOn(svc, "getCashflow").mockResolvedValue({} as never);
+    jest.spyOn(svc, "getSeasonality").mockResolvedValue({} as never);
+    return { svc, analytics };
+  };
+
+  it("[REVERT-FAILS] staff: the figures of record are not read, risk keeps demand only, reorder rows carry no cost", async () => {
+    const { svc, analytics } = make();
+    const o = await svc.getOverview("h", { withSales: false }, STAFF);
+    expect(analytics.getFinancialSummary).not.toHaveBeenCalled();
+    expect(o.financial).toEqual({ withheldForRole: ["money", "sales", "suppliers"] });
+    expect(o.risk.vendorConcentration).toEqual({ withheldForRole: ["money", "suppliers"] });
+    expect(o.risk.revenueConcentration).toEqual({ withheldForRole: ["money"] });
+    expect(o.risk.demandRisk).toEqual(PROFILE.demandRisk);
+    expect(analytics.getInventoryScience).toHaveBeenCalledWith("h", { withCost: false });
+  });
+
+  it("an owner, and an internal caller naming no role, read all three whole", async () => {
+    for (const sees of [OWNER, undefined]) {
+      const { svc, analytics } = make();
+      const o = await svc.getOverview("h", { withSales: true }, sees);
+      expect(o.financial).toEqual({ inventoryValue: 41000 });
+      expect(o.risk).toEqual(PROFILE);
+      expect(analytics.getInventoryScience).toHaveBeenCalledWith("h", { withCost: true });
+    }
   });
 });

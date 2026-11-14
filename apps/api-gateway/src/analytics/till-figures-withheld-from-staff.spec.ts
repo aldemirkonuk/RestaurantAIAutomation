@@ -17,6 +17,9 @@
  * staff read the stock and volume sentences only, never a named server's
  * ranking, the till, a spend or a margin, and are told how many were withheld.
  *
+ * The fourth (2026-11-13) adds the figures of record, the reorder lens's cost
+ * columns and the risk lens's spend and value shares.
+ *
  * Tests marked [REVERT-FAILS] fail against the controller before this change.
  */
 import "reflect-metadata";
@@ -82,10 +85,18 @@ const WINDOW = {
   dailySeries: [{ date: "2026-11-12", revenue: 1840 }],
 };
 const goals = { getPosRevenueWindow: jest.fn(async () => WINDOW) };
+const RISK = {
+  vendorConcentration: { hhi: 0.41, vendorCount: 3 },
+  revenueConcentration: { gini: 0.7 },
+  demandRisk: { volatility: 0.2 },
+};
 const analytics = {
   getPosConsumptionBreakdown: jest.fn(async () => [
     { masterWineId: "w1", bottles: 3, glasses: 4 },
   ]),
+  getFinancialSummary: jest.fn(async () => ({ inventoryValue: 41000, deliveredPurchases: 9330 })),
+  getInventoryScience: jest.fn(async () => ({ reorderCount: 1, reorderList: [] })),
+  getRiskProfile: jest.fn(async () => RISK),
 };
 const tables = {
   getBasketAffinity: jest.fn(async () => ({
@@ -357,5 +368,57 @@ describe.each(["owner", "manager"] as const)("the insight feed as %s of the hous
     expect(res.status).toBe(200);
     expect(insightGenerator.generate).toHaveBeenCalledTimes(1);
     expect(res.body.insights).toHaveLength(1);
+  });
+});
+
+describe.each(WITHOUT_SALES)("the figures of record, reorder and risk as %s of the house (slice 4)", (who) => {
+  it("[REVERT-FAILS] financial answers 200 withheld for the role, and the lens is never read", async () => {
+    const res = await get(`/analytics/financial/${HOUSE}`, who);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      restaurantId: HOUSE,
+      withheldForRole: ["money", "sales", "suppliers"],
+    });
+    expect(serviceCalls()).toEqual([]);
+  });
+
+  it("[REVERT-FAILS] the reorder lens is read without its cost", async () => {
+    const res = await get(`/analytics/inventory-science/${HOUSE}`, who);
+    expect(res.status).toBe(200);
+    expect(analytics.getInventoryScience).toHaveBeenCalledWith(HOUSE, {
+      serviceLevel: undefined,
+      leadTimeDays: undefined,
+      withCost: false,
+    });
+  });
+
+  it("[REVERT-FAILS] risk keeps demand risk and withholds the spend and value shares", async () => {
+    const res = await get(`/analytics/risk/${HOUSE}`, who);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      vendorConcentration: { withheldForRole: ["money", "suppliers"] },
+      revenueConcentration: { withheldForRole: ["money"] },
+      demandRisk: { volatility: 0.2 },
+    });
+  });
+});
+
+describe.each(["owner", "manager"] as const)("the figures of record, reorder and risk as %s of the house (slice 4)", (who) => {
+  it("financial is read", async () => {
+    const res = await get(`/analytics/financial/${HOUSE}`, who);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ inventoryValue: 41000, deliveredPurchases: 9330 });
+  });
+  it("the reorder lens is read with its cost", async () => {
+    await get(`/analytics/inventory-science/${HOUSE}?serviceLevel=0.9`, who);
+    expect(analytics.getInventoryScience).toHaveBeenCalledWith(HOUSE, {
+      serviceLevel: 0.9,
+      leadTimeDays: undefined,
+      withCost: true,
+    });
+  });
+  it("risk is read whole", async () => {
+    const res = await get(`/analytics/risk/${HOUSE}`, who);
+    expect(res.body).toEqual(RISK);
   });
 });

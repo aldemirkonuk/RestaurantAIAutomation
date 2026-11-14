@@ -56,6 +56,8 @@ import {
   insightReadable,
   insightsForRole,
   lensHidden,
+  reorderCostReadable,
+  riskForRole,
   seesFor,
   withheldLens,
 } from "./role-reads";
@@ -229,6 +231,11 @@ export class AnalyticsController {
     @Query("labor") laborStr?: string,
     @CurrentUser() user?: { role?: string | null },
   ) {
+    // Every figure of record is money, the till or vendor spend: a role that
+    // does not see them is told so, and the lens is never read (ADR 0348
+    // decision 3, slice 4).
+    const hidden = lensHidden("financial", seesFor(user));
+    if (hidden.length) return withheldLens(restaurantId, hidden);
     try {
       const labor = laborStr ? parseFloat(laborStr) : 0;
       return await this.analyticsService.getFinancialSummary(
@@ -265,11 +272,15 @@ export class AnalyticsController {
     @Param("restaurantId") restaurantId: string,
     @Query("serviceLevel") serviceLevelStr?: string,
     @Query("leadTimeDays") leadTimeStr?: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     try {
+      // Staff restock from this lens, so it stays open; its cost columns are
+      // withheld from a role that does not see money (ADR 0348, slice 4).
       return await this.analyticsService.getInventoryScience(restaurantId, {
         serviceLevel: serviceLevelStr ? parseFloat(serviceLevelStr) : undefined,
         leadTimeDays: leadTimeStr ? parseFloat(leadTimeStr) : undefined,
+        withCost: reorderCostReadable(seesFor(user)),
       });
     } catch (error) {
       throw new HttpException(
@@ -291,9 +302,14 @@ export class AnalyticsController {
     @CurrentUser() user?: { role?: string | null },
   ) {
     try {
-      return await this.analyticsService.getRiskProfile(
-        restaurantId,
-        salesGateFor(user),
+      // The concentration parts are spend and value shares; demand risk is
+      // volumes and stays open (ADR 0348, slice 4).
+      return riskForRole(
+        await this.analyticsService.getRiskProfile(
+          restaurantId,
+          salesGateFor(user),
+        ),
+        seesFor(user),
       );
     } catch (error) {
       throw new HttpException(

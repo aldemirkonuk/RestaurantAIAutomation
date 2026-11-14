@@ -96,3 +96,21 @@ The overview filters its stored feed the same way. Claim
 POST `goals` baselines, `financial` and `risk` money (they gate sales only),
 `inventory-science` unit cost, `consult`, the four role-less writes and
 `/toast/sales` (ADR 0348 item 5).
+
+**2026-11-13, r32 slice 4 (`fix/ledger-and-restock-money-withheld-from-staff`,
+on #1436).** GET `financial` answers a role that does not see money, sales and
+suppliers `{ restaurantId, withheldForRole }` and is never read: every figure
+of record is one of the three. GET `inventory-science` stays open to staff,
+who restock from it, but is read `withCost: false` for them: unit cost, value
+at cost, EOQ (the cost reads back out of it) and the ABC class (a rank by
+value) are null, `costWithheld: true`, and the rows are ranked by bottles on
+hand, not by value. GET `risk` withholds vendor concentration (spend shares)
+and revenue concentration (value shares) part by part and keeps demand risk
+(volumes). The overview does the same three. The web half
+(`fix/reports-ledger-held-for-staff`, stacked on it) holds "Figures of
+record" back for staff on /reports. New claim
+`A-LEDGER-REORDER-RISK-WITHHELD-FROM-STAFF`.
+Still open: `recommendations` (`staff_spread`, dead-stock value, spend, price
+advice), POST `goals` baselines, `consult` (it reads the financial and risk
+lenses whole for its consultants), the four role-less writes and
+`/toast/sales` (ADR 0348 item 5).
