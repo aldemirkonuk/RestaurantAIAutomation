@@ -6,10 +6,10 @@
  * stubbed; the sheets and the ceremony stub are real mounts.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { InvRow } from './useInventoryNextData';
+import { cellMoney, EM, type InvRow } from './useInventoryNextData';
 import type { Provider } from '../../../services/api/providers';
 
 // Per-test overrides for the stubbed reads (INV-W8 / INV-W9).
@@ -102,6 +102,10 @@ function row(over: Partial<InvRow> = {}): InvRow {
     runway: 3,
     daysSinceSale: 1,
     deadStock: false,
+    usageSource: null,
+    usageSince: null,
+    usageUntil: null,
+    usageQty: null,
     bottle: 92,
     glass: 18,
     pourMl: 150,
@@ -289,6 +293,38 @@ describe('RowDropdown head facts (INV-W13, W16, W17)', () => {
     const drop = screen.getByTestId('row-dropdown');
     expect(drop.textContent).toContain('About 0.03 a day (1 sold in the last 30 days); at that pace it lasts 330 days.');
     expect(drop.textContent).not.toContain('0.0 a day');
+  });
+
+  it('a good measured by its counts says its use a day, the counts it comes from, and its runway', () => {
+    renderDrop({
+      row: row({
+        velocity: 290,
+        runway: 28,
+        usageSource: 'counts',
+        usageSince: '2026-10-22T09:00:00Z',
+        usageUntil: '2026-11-11T09:00:00Z',
+        usageQty: 5800,
+      }),
+      uom: 'g',
+      kind: 'food',
+    });
+    const t = screen.getByTestId('row-dropdown').textContent ?? '';
+    expect(t).toContain('About 290 g a day: 5.8 kg used between the counts of 22 Oct 2026 and 11 Nov 2026; at that pace, counting the use since the last count, it lasts 28 days.');
+    expect(t).not.toContain('sold in the last 30 days');
+  });
+
+  it('a food not yet counted twice says how its use will be measured', () => {
+    renderDrop({ row: row({ velocity: 0, runway: null }), uom: 'g', kind: 'food' });
+    expect(screen.getByTestId('row-dropdown').textContent).toContain('count it twice, at least 3 days apart');
+  });
+
+  it('a good carried 10 days says what it sold in those 10 days, less voids', () => {
+    renderDrop({
+      row: row({ velocity: 1, runway: 3, usageSource: 'sales', usageSince: '2026-11-02T09:00:00Z', usageUntil: '2026-11-12T09:00:00Z', usageQty: 10 }),
+    });
+    expect(screen.getByTestId('row-dropdown').textContent).toContain(
+      'About 1.0 a day (10 bottles sold in the last 10 days, less voids); at that pace it lasts 3 days.',
+    );
   });
 
   it('says what is left in the open bottle', () => {
@@ -491,10 +527,29 @@ describe('Ported acts in the More menu: Mark inactive and Remove from inventory'
     return screen.findByRole('menu');
   }
 
-  it('both acts are reachable from More, for staff as well as managers (legacy gates neither)', async () => {
-    const m = await menu({ canManage: false });
+  it('a food or a good weighed in grams is never offered "Record a pour"; a wine still is', async () => {
+    const food = await menu({ uom: 'g', kind: 'food' });
+    expect(within(food).queryByRole('menuitem', { name: 'Record a pour' })).toBeNull();
+    cleanup();
+    const wine = await menu();
+    expect(within(wine).getByRole('menuitem', { name: 'Record a pour' })).toBeTruthy();
+  });
+
+  // Inventory r28, gap 2: legacy gated neither, and so Remove (which counts a
+  // good to zero and soft-deletes it) let staff do what Write off refuses them.
+  // Both are now an owner's or a manager's, here and at the gateway.
+  it('both acts are reachable from More for a manager, and neither for staff, who are told why', async () => {
+    const m = await menu({ canManage: true });
     expect(within(m).getByRole('menuitem', { name: 'Mark inactive' })).toBeTruthy();
     expect(within(m).getByRole('menuitem', { name: 'Remove from inventory' })).toBeTruthy();
+    expect(within(m).queryByTestId('remove-is-a-managers')).toBeNull();
+    cleanup();
+    const s = await menu({ canManage: false, row: row({ active: true, stock: 0, shadow: 0, openMl: 0 }) });
+    expect(within(s).queryByRole('menuitem', { name: 'Mark inactive' })).toBeNull();
+    expect(within(s).queryByRole('menuitem', { name: 'Remove from inventory' })).toBeNull();
+    expect(within(s).getByTestId('remove-is-a-managers').textContent).toBe(
+      'Removing a good or marking it inactive is for owners and managers.',
+    );
   });
 
   it('Mark inactive sends the legacy PATCH body to updateInventoryItem for this row and house', async () => {
@@ -546,6 +601,29 @@ describe('Ported acts in the More menu: Mark inactive and Remove from inventory'
       fireEvent.click(confirm);
     });
     expect(inv.reconcile).toHaveBeenCalledWith('i1', expect.objectContaining({ wineId: 'w1', actualCount: 0 }));
+    expect(inv.del).toHaveBeenCalledWith('i1');
+  });
+
+  it('a good with no library title is removed too: zeroed with no wineId, said in its unit, then soft-deleted', async () => {
+    const m = await menu({
+      uom: 'g',
+      kind: 'food',
+      row: row({ wineId: null, name: 'Flour 00', kind: 'food', stock: 2250, shadow: 0, openMl: 0 }),
+    });
+    const item = within(m).getByRole('menuitem', { name: 'Remove from inventory' }) as HTMLButtonElement;
+    expect(item.disabled).toBe(false);
+    expect(screen.queryByTestId('remove-blocked')).toBeNull();
+    fireEvent.click(item);
+    const confirm = await screen.findByRole('button', { name: 'Remove item' });
+    expect(screen.getByText(/2\.25 kg live \/ 0 g shadow/)).toBeTruthy();
+    expect(screen.queryByText(/Wine Library/)).toBeNull();
+    await act(async () => {
+      fireEvent.click(confirm);
+    });
+    expect(inv.reconcile).toHaveBeenCalledTimes(1);
+    const body = inv.reconcile.mock.calls[0][1] as Record<string, unknown>;
+    expect(body).toEqual(expect.objectContaining({ actualCount: 0 }));
+    expect('wineId' in body).toBe(false);
     expect(inv.del).toHaveBeenCalledWith('i1');
   });
 
@@ -666,6 +744,27 @@ describe('Name this wine in the opened row (ADR 0192, ported from RowExpansion.t
   });
 });
 
+describe('the evidence-only copy the drawer mounts (actions={false})', () => {
+  it('is named apart from the opened row, draws no acts, and asks the holder for the count sheet', () => {
+    const onSheet = vi.fn();
+    renderDrop({ actions: false, sections: ['where'], onSheet, sheet: null });
+    expect(screen.queryByTestId('row-dropdown')).toBeNull();
+    const ev = screen.getByTestId('row-evidence');
+    expect(ev.getAttribute('aria-label')).toBe('Gravner Ribolla: the evidence');
+    expect(screen.queryByRole('button', { name: 'More' })).toBeNull();
+    fireEvent.click(within(ev).getByRole('button', { name: 'Record a count' }));
+    expect(onSheet).toHaveBeenCalledWith('count');
+  });
+
+  it('draws no sheet even when the shared state names one; the acts copy draws it', () => {
+    renderDrop({ actions: false, sections: ['where'], onSheet: vi.fn(), sheet: 'count' });
+    expect(screen.queryByRole('textbox', { name: 'Bottles counted' })).toBeNull();
+    cleanup();
+    renderDrop({ sections: [], onSheet: vi.fn(), sheet: 'count' });
+    expect(screen.getByRole('textbox', { name: 'Bottles counted' })).toBeTruthy();
+  });
+});
+
 describe('the rest of the legacy expansion (round 4 census)', () => {
   beforeEach(() => {
     inv.reconcile.mockReset().mockResolvedValue({});
@@ -687,6 +786,23 @@ describe('the rest of the legacy expansion (round 4 census)', () => {
     expect(inv.reconcile).toHaveBeenCalledWith('i1', { wineId: 'w1', actualCount: 5, notes: 'Shadow reconciled into live' });
     expect(toasts.success.mock.calls[0][0]).toBe('Gravner Ribolla: live set to 5, the shadow bottles counted in.');
     expect(toasts.success.mock.calls[0][0]).not.toMatch(/booked|moved/);
+  });
+
+  it('a good with no library title reconciles its shadow too, and sends no wineId', async () => {
+    const m = await openMore({ row: row({ wineId: null, stock: 3, shadow: 2 }) });
+    await act(async () => {
+      fireEvent.click(within(m).getByRole('menuitem', { name: 'Reconcile 2 into live' }));
+    });
+    expect(inv.reconcile).toHaveBeenCalledWith('i1', { actualCount: 5, notes: 'Shadow reconciled into live' });
+  });
+
+  it('a good kept in grams reconciles in kg, never "bottles"', async () => {
+    const m = await openMore({ row: row({ stock: 3_000, shadow: 2_500 }), uom: 'g', kind: 'food' });
+    await act(async () => {
+      fireEvent.click(within(m).getByRole('menuitem', { name: 'Reconcile 2.5 kg into live' }));
+    });
+    expect(inv.reconcile).toHaveBeenCalledWith('i1', { wineId: 'w1', actualCount: 5_500, notes: 'Shadow reconciled into live' });
+    expect(toasts.success.mock.calls[0][0]).toBe('Gravner Ribolla: live set to 5.5 kg, the shadow counted in.');
   });
 
   it('holds Reconcile while live stock is unread', async () => {
@@ -835,5 +951,58 @@ describe('the format reads in the house unit (RowExpansion.tsx:69,172)', () => {
     useRestaurantSettingsStore.setState({ measurementUnit: 'ml' });
     renderDrop();
     expect(screen.getByText('750ml')).toBeTruthy();
+  });
+});
+
+describe('a food or supply is costed in its own unit, with no price, margin, market or lots (#1221 follow-up)', () => {
+  const food = row({ name: 'Bread Flour', kind: 'food', bottleSizeMl: null, bottle: null, glass: null, wac: 0.009, openMl: 0 });
+  const eur = { state: 'recorded', code: 'EUR' } as const;
+
+  beforeEach(() => {
+    reads.detail = {
+      purchases: [
+        { id: 'l2', at: '2026-11-10T10:00:00Z', qty: 5000, unitCost: 0.009, orderId: null },
+        { id: 'l1', at: '2026-10-10T10:00:00Z', qty: 5000, unitCost: 0.0075, orderId: null },
+      ],
+    };
+  });
+
+  it('a food kept in g reads its costs a kg and says it is costed, not priced', () => {
+    renderDrop({ row: food, kind: 'food', uom: 'g' });
+    const drop = screen.getByTestId('row-dropdown');
+    const kg = (n: number) => `${cellMoney(n, eur)} a kg`;
+    expect(drop.textContent).toContain(`Weighted average cost${kg(9)}`);
+    expect(drop.textContent).toContain(`${kg(7.5)} → ${kg(9)} (+20%)`);
+    for (const k of ['Your price', 'Margin over cost', 'Market', 'Auction lots']) expect(within(drop).queryByText(k)).toBeNull();
+    expect(screen.getByTestId('good-not-priced')).toHaveTextContent('A food is costed, not priced');
+  });
+
+  it('a supply kept each reads each; one with no recorded unit reads a dash, never a guessed bottle', () => {
+    renderDrop({ row: food, kind: 'supply', uom: 'each' });
+    expect(screen.getByTestId('row-dropdown').textContent).toContain(`Weighted average cost${cellMoney(0.009, eur)} each`);
+    expect(screen.getByTestId('good-not-priced')).toHaveTextContent('A supply is costed, not priced.');
+    cleanup();
+    renderDrop({ row: food, kind: 'supply', uom: null });
+    expect(screen.getByTestId('row-dropdown').textContent).toContain(`Weighted average cost${EM}`);
+  });
+
+  it('a lira house writes the cost change and the margin the way it writes its money (r23 walk)', () => {
+    const tl = { state: 'recorded', code: 'TRY' } as const;
+    renderDrop({ row: food, kind: 'food', uom: 'g', currency: tl });
+    expect(screen.getByTestId('row-dropdown').textContent).toContain('(+%20)');
+    cleanup();
+    // 92 a bottle on a cost of 40: a margin of 57 in a hundred.
+    renderDrop({ currency: tl });
+    expect(screen.getByTestId('row-dropdown').textContent).toContain('Margin over cost%57');
+    cleanup();
+    renderDrop({ currency: { state: 'recorded', code: 'GBP' } });
+    expect(screen.getByTestId('row-dropdown').textContent).toContain('Margin over cost57%');
+  });
+
+  it('a drink is drawn as before', () => {
+    renderDrop();
+    const drop = screen.getByTestId('row-dropdown');
+    for (const k of ['Your price', 'Margin over cost', 'Market', 'Auction lots']) expect(within(drop).getByText(k)).toBeTruthy();
+    expect(screen.queryByTestId('good-not-priced')).toBeNull();
   });
 });

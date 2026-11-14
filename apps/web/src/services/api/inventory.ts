@@ -104,6 +104,10 @@ export function normalizeInventoryItem(
     abcClass: item.abcClass ?? undefined,
     deadStock: item.deadStock ?? false,
     daysSinceSale: item.daysSinceSale ?? undefined,
+    usageSource: item.usageSource === 'sales' || item.usageSource === 'counts' ? item.usageSource : undefined,
+    usageSince: item.usageSince ?? undefined,
+    usageUntil: item.usageUntil ?? undefined,
+    usageQty: typeof item.usageQty === 'number' ? item.usageQty : undefined,
     analyticsReadable: item.analyticsReadable ?? true,
     locations: item.locations ?? [],
   } as InventoryItem;
@@ -142,7 +146,7 @@ export async function getItemActivity(
  */
 export async function reconcileItem(
   inventoryId: string,
-  body: { wineId: string; actualCount: number; notes?: string }
+  body: { wineId?: string; actualCount: number; notes?: string }
 ): Promise<unknown> {
   const response = await apiClient.post(
     `/inventory-ledger/inventory/${inventoryId}/reconcile`,
@@ -562,6 +566,199 @@ export async function fetchHouseItemResearch(): Promise<HouseItemResearch[]> {
 }
 
 // ==================== Export all functions ====================
+
+// ── The item drawer's reads (gateway item-detail.controller.ts) ─────────────
+
+/**
+ * The house's own fields on a list row: its kind, its unit and the name it
+ * gave a good the library does not hold (migration
+ * 20260903171000_the_house_item_is_the_ledgers_key). Snake or camel, as sent.
+ */
+export interface HouseFields {
+  kind: string | null;
+  uom: string | null;
+  displayName: string | null;
+}
+
+export function houseFieldsOf(item: unknown): HouseFields {
+  const r = (item ?? {}) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() !== '' ? v : null);
+  return { kind: str(r.kind), uom: str(r.uom), displayName: str(r.displayName) ?? str(r.display_name) };
+}
+
+/** GET /inventory/:rid/item/:id/figures. Money fields are null for anyone but an owner or manager. */
+export interface ItemFigures {
+  waste: { readable: boolean; qty30d: number | null; given30d: number | null; value30d: number | null; source: string };
+  countGap: {
+    readable: boolean;
+    last: Array<{
+      countedAt: string;
+      expected: number | null;
+      counted: number | null;
+      variance: number | null;
+      by: string | null;
+      money: number | null;
+    }> | null;
+    source: string;
+  };
+  costTrend: { readable: boolean; points: Array<{ receivedAt: string; unitCost: number }> | null; changePct: number | null; source: string };
+}
+
+/** One group of "Used in": a failed read is `lines: null`, never [] (ADR 0067). */
+export interface ItemUsedInGroup<T> {
+  readable: boolean;
+  lines: T[] | null;
+  source: string;
+}
+
+export interface ItemMenuLine {
+  menuItemId: string;
+  menuId: string;
+  name: string;
+  byGlassPrice: number | null;
+  bottlePrice: number | null;
+  linkedBy?: 'inventory_item_id' | 'wine_library_id';
+}
+
+/** GET /inventory/:rid/item/:id/used-in */
+export interface ItemUsedIn {
+  item: { id: string; kind: string | null; displayName: string | null };
+  soldAs: ItemUsedInGroup<ItemMenuLine>;
+  inCocktails: ItemUsedInGroup<{ cocktailId: string; name: string; quantity: number | null; unit: string | null }>;
+  /** Optional: an older gateway does not send it. */
+  inDrinkRecipes?: ItemUsedInGroup<{ cocktailId: string; name: string; label: string; qtyEntered: number; unitCode: string }>;
+  namedNotLinked: ItemUsedInGroup<ItemMenuLine>;
+}
+
+/** Under `inventory`, so every inventory write rereads them too. */
+export const inventoryItemKeys = {
+  figures: (restaurantId: string, itemId: string) => ['inventory', 'item', restaurantId, itemId, 'figures'] as const,
+  usedIn: (restaurantId: string, itemId: string) => ['inventory', 'item', restaurantId, itemId, 'used-in'] as const,
+  nutrition: (restaurantId: string, itemId: string) => ['inventory', 'item', restaurantId, itemId, 'nutrition'] as const,
+};
+
+export async function getItemUsedIn(itemId: string, restaurantId?: string): Promise<ItemUsedIn> {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+  const response = await apiClient.get<ItemUsedIn>(`${INVENTORY_PATH}/${id}/item/${encodeURIComponent(itemId)}/used-in`);
+  return response.data;
+}
+
+export async function getItemFigures(itemId: string, restaurantId?: string): Promise<ItemFigures> {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+  const response = await apiClient.get<ItemFigures>(`${INVENTORY_PATH}/${id}/item/${encodeURIComponent(itemId)}/figures`);
+  return response.data;
+}
+
+/** POST /inventory/:rid/house-items: "Carry this", a good the wine library does not hold. */
+export interface CarryHouseItemBody {
+  kind: string;
+  uom: string;
+  displayName: string;
+  thresholdMin?: number;
+}
+
+export interface CarriedHouseItem {
+  id: string;
+  kind: string;
+  uom: string;
+  displayName: string;
+  thresholdMin: number;
+}
+
+export async function carryHouseItem(body: CarryHouseItemBody, restaurantId?: string): Promise<CarriedHouseItem> {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+  const response = await apiClient.post<CarriedHouseItem>(`${INVENTORY_PATH}/${id}/house-items`, body);
+  return response.data;
+}
+
+/**
+ * What a good is made of: GET/PUT /inventory/:rid/item/:id/nutrition and the
+ * label lookup. Every figure is per 100 g or 100 ml (basis), and null when not
+ * known, never 0. All 14 allergens always come back; one nobody stated is
+ * 'not_stated'.
+ */
+export type NutritionBasis = '100g' | '100ml';
+export type NutritionSource = 'house' | 'pack_label' | 'open_food_facts' | 'usda_fdc';
+export type AllergenStatus = 'contains' | 'may_contain' | 'free' | 'not_stated';
+export const ALLERGENS = [
+  'gluten', 'crustaceans', 'eggs', 'fish', 'peanuts', 'soy', 'milk',
+  'tree_nuts', 'celery', 'mustard', 'sesame', 'sulphites', 'lupin', 'molluscs',
+] as const;
+export type Allergen = (typeof ALLERGENS)[number];
+
+export interface NutritionFigures {
+  energyKcal: number | null;
+  fatG: number | null;
+  saturatesG: number | null;
+  carbohydrateG: number | null;
+  sugarsG: number | null;
+  proteinG: number | null;
+  saltG: number | null;
+  abvPct: number | null;
+}
+
+export interface StoredNutrition extends NutritionFigures {
+  basis: NutritionBasis;
+  /** Energy was worked out from the ABV alone: the alcohol, not any sugar. */
+  energyFromAbv: boolean;
+  source: NutritionSource;
+  sourceRef: string | null;
+  statedByName: string;
+  statedAt: string;
+}
+
+export interface ItemNutrition {
+  item: { id: string; name: string; kind: string | null; uom: string | null };
+  suggestedBasis: NutritionBasis | null;
+  figures: StoredNutrition | null;
+  allergens: Array<{ allergen: Allergen; status: AllergenStatus; statedByName: string | null; statedAt: string | null }>;
+}
+
+export interface SaveItemNutritionBody {
+  figures: (Partial<NutritionFigures> & { basis: NutritionBasis; source: NutritionSource; sourceRef?: string | null }) | null;
+  allergens: Array<{ allergen: Allergen; status: AllergenStatus }>;
+}
+
+export interface NutritionDraft {
+  source: 'open_food_facts' | 'usda_fdc';
+  sourceRef: string;
+  productName: string | null;
+  basis: NutritionBasis;
+  figures: NutritionFigures;
+  allergens: Array<{ allergen: Allergen; status: 'contains' | 'may_contain' }>;
+  notes: string[];
+  attribution: string;
+}
+
+export type NutritionLookup =
+  | { kind: 'draft'; draft: NutritionDraft }
+  | { kind: 'choices'; choices: Array<{ source: 'open_food_facts' | 'usda_fdc'; ref: string; name: string; brand: string | null }>; said: string[] }
+  | { kind: 'none'; why: string; said: string[] };
+
+const nutritionPath = (restaurantId: string | undefined, itemId: string) => {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+  return `${INVENTORY_PATH}/${id}/item/${encodeURIComponent(itemId)}/nutrition`;
+};
+
+export async function getItemNutrition(itemId: string, restaurantId?: string): Promise<ItemNutrition> {
+  return (await apiClient.get<ItemNutrition>(nutritionPath(restaurantId, itemId))).data;
+}
+
+export async function saveItemNutrition(itemId: string, body: SaveItemNutritionBody, restaurantId?: string): Promise<ItemNutrition> {
+  return (await apiClient.put<ItemNutrition>(nutritionPath(restaurantId, itemId), body)).data;
+}
+
+export async function lookupItemNutrition(
+  itemId: string,
+  by: { barcode?: string; name?: string; fdcId?: string },
+  restaurantId?: string,
+): Promise<NutritionLookup> {
+  return (await apiClient.post<NutritionLookup>(`${nutritionPath(restaurantId, itemId)}/lookup`, by)).data;
+}
 
 export const inventoryApi = {
   getInventory,

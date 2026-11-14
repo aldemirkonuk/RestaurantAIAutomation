@@ -35,11 +35,17 @@ interface RemoveFromInventoryModalProps {
   onClose: () => void
   /** Called once, after every item has been removed. */
   onRemoved: () => void
+  /**
+   * An amount in the goods' own unit ("2.25 kg"). Without it a figure is said
+   * bare, as it always was for bottles. A good kept in grams passes it, so
+   * 2,250 g never reads as "2250 live".
+   */
+  say?: (n: number) => string
 }
 
 type Phase = 'confirm' | 'working' | 'error'
 
-export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: RemoveFromInventoryModalProps) {
+export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved, say = String }: RemoveFromInventoryModalProps) {
   const queryClient = useQueryClient()
   const [reason, setReason] = useState(REMOVE_REASONS[0].value)
   const [phase, setPhase] = useState<Phase>('confirm')
@@ -59,6 +65,23 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
   )
   const totalValue = rows.reduce((s, r) => s + r.value, 0)
   const anyStock = rows.some((r) => r.total > 0 || r.openMl > 0)
+  // A row with no library title (ADR 0115: flour, napkins) is a good, not a
+  // wine, and nothing of it stays in the Wine Library.
+  const allWines = items.every((i) => Boolean(i.id))
+  const someWines = items.some((i) => Boolean(i.id))
+  const noun = allWines ? 'wine' : 'item'
+  // Said per batch: a mixed one (wines and a flour) keeps the wines' library
+  // line, and a batch of goods speaks of "their" history, never "its".
+  const keeps =
+    rows.length === 1
+      ? allWines
+        ? 'Keeps the wine in your Wine Library — re-add anytime'
+        : 'Its history stays on the book — it can be added again'
+      : allWines
+        ? 'Keeps the wines in your Wine Library — re-add anytime'
+        : someWines
+          ? 'Their history stays on the book, and the wines stay in your Wine Library — each can be added again'
+          : 'Their history stays on the book — each can be added again'
 
   if (!isOpen) return null
 
@@ -80,7 +103,7 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
         // Step 1: zero out any remaining stock, on the ledger, with the chosen reason.
         if (total > 0) {
           await reconcileItem(inventoryId, {
-            wineId: item.id,
+            ...(item.id ? { wineId: item.id } : {}),
             actualCount: 0,
             notes: `Removed from inventory — ${reason}`,
           })
@@ -101,7 +124,7 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
       toast.success(
         rows.length === 1
           ? `${rows[0].item.name} removed from inventory`
-          : `${rows.length} wines removed from inventory`,
+          : `${rows.length} ${noun}s removed from inventory`,
       )
       setPhase('confirm')
       onRemoved()
@@ -136,9 +159,11 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
               </div>
               <div>
                 <h2 className="text-base font-bold text-gray-900">
-                  Remove {rows.length === 1 ? rows[0].item.name : `${rows.length} wines`} from inventory
+                  Remove {rows.length === 1 ? rows[0].item.name : `${rows.length} ${noun}s`} from inventory
                 </h2>
-                <p className="text-xs text-gray-500">Keeps the wine in your Wine Library — re-add anytime</p>
+                <p className="text-xs text-gray-500" data-testid="remove-keeps">
+                  {keeps}
+                </p>
               </div>
             </div>
             <button onClick={close} className="p-2 hover:bg-white/60 rounded-lg transition-colors" disabled={phase === 'working'}>
@@ -154,7 +179,7 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
                 <div key={item.inventoryId} className="flex items-center justify-between px-3 py-2 text-xs">
                   <span className="font-medium text-gray-800 truncate pr-2">{item.name}</span>
                   <span className="font-mono text-gray-500 shrink-0">
-                    {live + shadow > 0 ? `${live} live / ${shadow} shadow` : 'no stock'}
+                    {live + shadow > 0 ? `${say(live)} live / ${say(shadow)} shadow` : 'no stock'}
                     {openMl > 0 ? ` · ${openMl}ml open` : ''}
                     {value > 0 && <b className="ml-2 text-gray-700">{fmtMoney(value)}</b>}
                   </span>
@@ -205,7 +230,7 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
               className="h-9 px-4 flex items-center gap-1.5 rounded-lg text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-60"
             >
               {phase === 'working' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-              {phase === 'working' ? 'Removing…' : `Remove ${rows.length === 1 ? 'wine' : `${rows.length} wines`}`}
+              {phase === 'working' ? 'Removing…' : `Remove ${rows.length === 1 ? noun : `${rows.length} ${noun}s`}`}
             </button>
           </div>
         </motion.div>

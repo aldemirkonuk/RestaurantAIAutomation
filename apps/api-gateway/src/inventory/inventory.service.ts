@@ -169,6 +169,18 @@ export class InventoryService {
       abcClass: analytics?.abc_class ?? undefined,
       deadStock: analytics?.dead_stock ?? false,
       daysSinceSale: analytics?.days_since_sale ?? undefined,
+      // Where velocityPerDay comes from (days_of_stock_from_real_use):
+      // "sales" (the till drew it), "counts" (two counts and what moved
+      // between them; a food or supply the till never draws), or undefined
+      // (neither, so velocity is 0 and there is no cover). usageQty is what
+      // was used between usageSince and usageUntil, in the item's own unit.
+      usageSource: analytics?.usage_source ?? undefined,
+      usageSince: analytics?.usage_since ?? undefined,
+      usageUntil: analytics?.usage_until ?? undefined,
+      usageQty:
+        analytics?.usage_qty === null || analytics?.usage_qty === undefined
+          ? undefined
+          : Number(analytics.usage_qty),
       // Phase 2 multi-location: per-location live quantities ([{locationId, qty, wac}]).
       locations: locations ?? [],
     };
@@ -239,7 +251,7 @@ export class InventoryService {
       const { data, error } = await client
         .from("inventory_analytics")
         .select(
-          "inventory_id, velocity_per_day, days_of_cover, reorder_point, reorder_suggested, abc_class, dead_stock, days_since_sale",
+          "inventory_id, velocity_per_day, days_of_cover, reorder_point, reorder_suggested, abc_class, dead_stock, days_since_sale, usage_source, usage_since, usage_until, usage_qty",
         )
         .eq("restaurant_id", restaurantId);
       if (error) throw error;
