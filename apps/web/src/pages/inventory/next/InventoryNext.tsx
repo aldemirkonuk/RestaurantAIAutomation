@@ -314,8 +314,9 @@ export default function InventoryNext() {
           matchesSearch(r, query, zn),
       ),
       sort,
+      uomOf,
     );
-  }, [rows, activeChip, kind, goodOf, zone, type, query, sort, locs.list]);
+  }, [rows, activeChip, kind, goodOf, zone, type, query, sort, locs.list, uomOf]);
 
   // ── Row selection, ported from the legacy page (NEW-064, InventoryCommandPage.tsx:507-531).
   // Keyed by restaurant_inventory id. A house switch or a filter change empties
@@ -1044,7 +1045,7 @@ export default function InventoryNext() {
 
             <p className="iv-footer" data-testid="inventory-footer">
               {visible.length === rows.length ? `All ${fmtCount(rows.length)}` : fmtCount(visible.length)} of {fmtCount(rows.length)} titles are
-              listed{filterWords ? ` (${filterWords})` : ''}, {sortWords(sort, visible)}.
+              listed{filterWords ? ` (${filterWords})` : ''}, {sortWords(sort, visible, uomOf)}.
               {filtered && visible.length > 0 ? (
                 <>
                   {' '}
