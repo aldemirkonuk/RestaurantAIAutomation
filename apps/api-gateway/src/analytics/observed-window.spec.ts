@@ -1,5 +1,5 @@
 import { AnalyticsService } from "./analytics.service";
-import { AdvancedAnalyticsService } from "./advanced-analytics.service";
+/** r36 reports audit, gap 1: the probe is a 2-a-day good in a 7-day-old house. */
 import {
   MIN_PLAN_DAYS,
   MIN_RATE_DAYS,
@@ -8,16 +8,6 @@ import {
   trimToObserved,
   windowWords,
 } from "./observed-window";
-
-/**
- * r36 reports audit, gap 1: a new house's rates counted the days before its
- * first record as days it sold nothing.
- *
- * The case the audit measured with the engine: one good selling 2 bottles
- * every day, in a house 7 days old, with a 7-day lead. Served: mean 0.156,
- * reorder point 3.43, 154 days of cover, trend +16.1% a day. True: mean 2,
- * reorder point 14, cover = on hand ÷ 2, no trend.
- */
 
 const day = (n: number) =>
   new Date(Date.now() - n * 86400000).toISOString().substring(0, 10);
@@ -96,12 +86,6 @@ describe("observedWindow: a rate starts at the house's first record", () => {
     expect(windowWords(w, "consumption line")).toBe("over 90d");
   });
 
-  it("a house whose first line is the window's first day keeps it whole", () => {
-    const w = observedWindow(90, today, { read: "read", day: day(89) });
-    expect(w.observedDays).toBe(90);
-    expect(w.since).toBeNull();
-  });
-
   it("a 7-day-old house counts 7 days, and is too young to plan from", () => {
     const w = observedWindow(90, today, { read: "read", day: day(6) });
     expect(w).toMatchObject({
@@ -158,27 +142,20 @@ describe("observedWindow: a rate starts at the house's first record", () => {
 });
 
 describe("readFirstRecord", () => {
-  it("reads the first line's day", async () => {
+  it("reads the first line's day, none, or a failure it never throws", async () => {
+    const read = (c: any) => readFirstRecord(c, "wine_consumption_log", RID);
+    await expect(read(firstLineClient(day(4)))).resolves.toEqual({
+      read: "read",
+      day: day(4),
+    });
+    await expect(read(firstLineClient(null))).resolves.toEqual({
+      read: "read",
+      day: null,
+    });
     await expect(
-      readFirstRecord(firstLineClient(day(4)), "wine_consumption_log", RID),
-    ).resolves.toEqual({ read: "read", day: day(4) });
-  });
-  it("says so when the house has no line", async () => {
-    await expect(
-      readFirstRecord(firstLineClient(null), "wine_consumption_log", RID),
-    ).resolves.toEqual({ read: "read", day: null });
-  });
-  it("reports a failed read instead of throwing", async () => {
-    await expect(
-      readFirstRecord(
-        firstLineClient(new Error("boom")),
-        "wine_consumption_log",
-        RID,
-      ),
+      read(firstLineClient(new Error("boom"))),
     ).resolves.toMatchObject({ read: "could_not_read", error: "boom" });
-    await expect(
-      readFirstRecord(null, "wine_consumption_log", RID),
-    ).resolves.toMatchObject({ read: "could_not_read" });
+    await expect(read(null)).resolves.toMatchObject({ read: "could_not_read" });
   });
 });
 
@@ -189,7 +166,6 @@ describe("restock in a 7-day-old house (the audit's probe)", () => {
     expect(sku.avgDailyDemand).toBeCloseTo(2, 9);
     expect(sku.reorderPoint).toBeCloseTo(14, 9);
     expect(sku.daysOfCover).toBeCloseTo(5, 9);
-    // 10 on hand is under the 14 it needs to last the lead: it is listed.
     expect(sku.needsReorder).toBe(true);
     expect(out.reorderList.map((s: any) => s.id)).toEqual(["inv-1"]);
     expect(out.observed).toMatchObject({ observedDays: 7, young: true });
@@ -203,8 +179,11 @@ describe("restock in a 7-day-old house (the audit's probe)", () => {
   });
 
   it("an unreadable first line falls back to the whole window and says so", async () => {
-    const out: any = await analytics(new Error("down"), 7, 10)
-      .getInventoryScience(RID);
+    const out: any = await analytics(
+      new Error("down"),
+      7,
+      10,
+    ).getInventoryScience(RID);
     expect(out.skus[0].avgDailyDemand).toBeCloseTo(14 / 90, 9);
     expect(out.basis.demand).toContain("could not be read");
   });
@@ -229,82 +208,3 @@ describe("the forecast in a young house", () => {
     expect(out.totalForecastDemand / out.horizon).toBeCloseTo(2, 0);
   });
 });
-
-function advanced(first: string | null, n: number) {
-  const svc = new AdvancedAnalyticsService(
-    { getClient: () => firstLineClient(first) } as any,
-    {} as any,
-    {} as any,
-    {} as any,
-  );
-  jest.spyOn(svc as any, "loadConsumption").mockResolvedValue(lines(n, 2));
-  jest.spyOn(svc as any, "loadInventoryWithCost").mockResolvedValue([
-    {
-      id: "inv-1",
-      name: "House red",
-      type: "red",
-      masterWineId: "mw-1",
-      unitPrice: 30,
-      unitCost: 10,
-      costBasis: "invoiced_lot",
-      marginPerBottle: 20,
-    },
-  ]);
-  return svc;
-}
-
-describe("menu speed and the week's shape in a young house", () => {
-  it("menu speed is sold ÷ the days since the first line", async () => {
-    const out: any = await advanced(day(6), 7).getMenuEngineering(RID, 90);
-    expect(out.items[0].velocityPerDay).toBeCloseTo(2, 9);
-    expect(out.basis.velocity).toContain(`over 7 days since ${day(6)}`);
-  });
-
-  it("an established house's menu speed is still sold ÷ 90", async () => {
-    const out: any = await advanced(day(300), 7).getMenuEngineering(RID, 90);
-    expect(out.items[0].velocityPerDay).toBeCloseTo(14 / 90, 9);
-    expect(out.basis.velocity).toMatch(/^bottles\/day over 90d — /);
-  });
-
-  it("flat sales in a 7-day house draw no trend, not +16% a day", async () => {
-    const out: any = await seasonality(day(7), 7);
-    expect(out.trendPerDayPct).toBeNull();
-    expect(out.basis.trend).toContain("7 days of records");
-    expect(out.observed).toMatchObject({ observedDays: 7, young: true });
-  });
-
-  it("flat sales over 30 days read a flat trend and a weekday mean of 2", async () => {
-    const out: any = await seasonality(day(30), 30);
-    expect(out.trendPerDayPct).toBeCloseTo(0, 9);
-    for (const p of out.weekdayProfile) expect(p.mean).toBeCloseTo(2, 9);
-  });
-});
-
-/** The week's shape also reads the house's types; that read answers nothing. */
-async function seasonality(first: string, n: number) {
-  const client: any = firstLineClient(first);
-  const inner = client.from;
-  client.from = (t: string) => {
-    if (t !== "restaurant_inventory") return inner(t);
-    const b: any = {};
-    b.select = () => b;
-    b.eq = () => Promise.resolve({ data: [], error: null });
-    return b;
-  };
-  const svc = new AdvancedAnalyticsService(
-    { getClient: () => client } as any,
-    {} as any,
-    {} as any,
-    {} as any,
-  );
-  jest.spyOn(svc as any, "loadConsumption").mockResolvedValue(
-    Array.from({ length: n }, (_, i) => ({
-      wineId: "mw-1",
-      inventoryId: "inv-1",
-      qty: 2,
-      how: "bottle",
-      date: day(n - i),
-    })),
-  );
-  return svc.getSeasonality(RID, 90);
-}

@@ -1,31 +1,14 @@
 /**
- * A rate is taken over the days the house was recording, not over the days of
- * the lens's window (r36 reports audit, gap 1).
+ * A rate is taken over the days the house was recording, not over the whole
+ * window (r36 reports audit, gap 1). Zero-filling a 90-day window for a
+ * 7-day-old house read a 2-a-day good at 0.156 a day: reorder point 3.43
+ * instead of 14, 154 days of cover instead of 12.
  *
- * Restock, menu speed, the week's shape and the forecast each read a fixed
- * window (90 or 120 days) and filled every day without a line with a zero. For
- * a house that started recording last week, that counted ~83 days before its
- * first line as days it sold nothing. Measured with the engine: a good selling
- * 2 bottles a day in a 7-day-old house read a reorder point of 3.43 instead of
- * 14, 154 days of cover instead of 12, and a trend of +16.1% a day for flat
- * sales.
- *
- * The rule here:
- *
- * - The window starts at the house's FIRST RECORD of the feed the lens reads
- *   (the first `wine_consumption_log` line ever, not the first in the window,
- *   so a quiet stretch inside an older house still counts as quiet).
- * - A rate divides by at least `MIN_RATE_DAYS` (one week), so a busy opening
- *   night is not read as every night. Under a week the rate runs low by at
- *   most observed/7, and `young` says so.
- * - Under `MIN_PLAN_DAYS` (two of each weekday) a lens that projects or
- *   draws a trend withholds it: the history is too young to plan from.
- * - When the first record cannot be read, the whole window is used (the old
- *   reading, right for any house older than the window) and the basis says
- *   the rate may run low.
- *
- * Days are compared as `YYYY-MM-DD` strings in the same clock the caller's
- * series uses.
+ * - The window starts at the house's FIRST line ever in the lens's feed (not
+ *   the first in the window, so a quiet stretch in an older house stays quiet).
+ * - A rate divides by at least one week, so an opening night is not every night.
+ * - Under two of each weekday, a projection or a trend is withheld.
+ * - An unreadable first line falls back to the whole window, and says so.
  */
 
 /** A rate never divides by fewer days than one week. */
@@ -79,7 +62,8 @@ export function observedWindow(
     rateDays: windowDays,
     since: null,
     young: false,
-    firstRecord: first.read === "read" && first.day == null ? "none" : first.read,
+    firstRecord:
+      first.read === "read" && first.day == null ? "none" : first.read,
   };
   // No line at all, or unreadable: nothing to cut at. A house with no line
   // reads zero over any window; the lenses already refuse an all-zero series.
