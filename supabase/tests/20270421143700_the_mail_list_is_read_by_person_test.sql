@@ -390,4 +390,192 @@ DO $$ BEGIN
     'NR8d row level security is on');
 END $$;
 
+-- ── A thread counts its letters, and the list can be searched (r28 mail gaps 14, 16) ──
+-- House H6, its own. Vendors (providers rows, so the list has names):
+--   P1 "Süt Evi":      s1 in "Our list", subject "Spring prices"; then a
+--                      queued letter (not left) and a bounce, same thread.
+--   P2 "Fish Co":      s2 in "The İstanbul van is late".
+--   P3 "Bread 50% Ltd": s3 in "hello", on order PO-777 (snapshot only),
+--                      DELIVERED: it owes nothing, so P3 is not waiting.
+--   P4 "Wine Cellar":  s4 in "hi"; a HOUSE_DRAFT "credit claim secret".
+--   P5 "Sut Copy":     a second copy (same Message-ID) holds "cheddar".
+-- House H7 has P2's twin letter "Süt", which H6 must never find.
+INSERT INTO public.restaurants (id, name, slug, timezone) VALUES
+  ('66666666-6666-4666-8666-666666666666', 'Search house', 'search-house-test', 'UTC'),
+  ('77777777-7777-4777-8777-777777777777', 'Other search house', 'other-search-house-test', 'UTC');
+INSERT INTO public.providers (id, restaurant_id, name, primary_contact) VALUES
+  ('c6000000-0000-4000-8000-000000000001', '66666666-6666-4666-8666-666666666666', 'Süt Evi', '{}'),
+  ('c6000000-0000-4000-8000-000000000002', '66666666-6666-4666-8666-666666666666', 'Fish Co', '{}'),
+  ('c6000000-0000-4000-8000-000000000003', '66666666-6666-4666-8666-666666666666', 'Bread 50% Ltd', '{}'),
+  ('c6000000-0000-4000-8000-000000000004', '66666666-6666-4666-8666-666666666666', 'Wine Cellar', '{}'),
+  ('c6000000-0000-4000-8000-000000000005', '66666666-6666-4666-8666-666666666666', 'Plain Dairy', '{}'),
+  ('c7000000-0000-4000-8000-000000000001', '77777777-7777-4777-8777-777777777777', 'Elsewhere', '{}');
+INSERT INTO public.procurement_conversations
+  (id, restaurant_id, provider_id, direction, channel, message_text, status, thread_key, message_id,
+   order_number_snapshot, received_at, sent_at, created_at, email_headers) VALUES
+  ('f6000000-0000-4000-8000-000000000001', '66666666-6666-4666-8666-666666666666', 'c6000000-0000-4000-8000-000000000001',
+   'inbound', 'email', 'Our list', 'RECEIVED', 'mid:s1', '<s1@a>', NULL, '2027-03-01 09:00+00', NULL, '2027-03-01 09:00+00', '{"subject":"Spring prices"}'),
+  ('f6000000-0000-4000-8000-000000000002', '66666666-6666-4666-8666-666666666666', 'c6000000-0000-4000-8000-000000000001',
+   'outbound', 'email', 'Not left yet', 'HOUSE_QUEUED', 'mid:s1', NULL, NULL, NULL, NULL, '2027-03-01 09:30+00', '{}'),
+  ('f6000000-0000-4000-8000-000000000003', '66666666-6666-4666-8666-666666666666', 'c6000000-0000-4000-8000-000000000001',
+   'inbound', 'email', 'Undeliverable', 'RECEIVED', 'mid:s1', '<b@mx>', NULL, '2027-03-01 09:40+00', NULL, '2027-03-01 09:40+00', '{"from":"MAILER-DAEMON@mx.example"}'),
+  ('f6000000-0000-4000-8000-000000000004', '66666666-6666-4666-8666-666666666666', 'c6000000-0000-4000-8000-000000000002',
+   'inbound', 'email', 'The İstanbul van is late', 'RECEIVED', 'mid:s2', '<s2@a>', NULL, '2027-03-01 08:00+00', NULL, '2027-03-01 08:00+00', '{}'),
+  ('f6000000-0000-4000-8000-000000000005', '66666666-6666-4666-8666-666666666666', 'c6000000-0000-4000-8000-000000000003',
+   'inbound', 'email', 'hello', 'DELIVERED', 'mid:s3', '<s3@a>', 'PO-777', '2027-03-01 07:00+00', NULL, '2027-03-01 07:00+00', '{}'),
+  ('f6000000-0000-4000-8000-000000000006', '66666666-6666-4666-8666-666666666666', 'c6000000-0000-4000-8000-000000000004',
+   'inbound', 'email', 'hi', 'RECEIVED', 'mid:s4', '<s4@a>', NULL, '2027-03-01 06:00+00', NULL, '2027-03-01 06:00+00', '{}'),
+  ('f6000000-0000-4000-8000-000000000007', '66666666-6666-4666-8666-666666666666', 'c6000000-0000-4000-8000-000000000004',
+   'outbound', 'email', 'credit claim secret', 'HOUSE_DRAFT', 'mid:s4', NULL, NULL, NULL, NULL, '2027-03-01 06:30+00', '{}'),
+  ('f6000000-0000-4000-8000-000000000008', '66666666-6666-4666-8666-666666666666', 'c6000000-0000-4000-8000-000000000005',
+   'inbound', 'email', 'butter', 'RECEIVED', 'mid:s5', '<s5@a>', NULL, '2027-03-01 05:00+00', NULL, '2027-03-01 05:00+00', '{}'),
+  ('f6000000-0000-4000-8000-000000000009', '66666666-6666-4666-8666-666666666666', 'c6000000-0000-4000-8000-000000000005',
+   'inbound', 'email', 'butter and cheddar', 'RECEIVED', 'mid:s5', '<S5@a>', NULL, '2027-03-01 05:00+00', NULL, '2027-03-01 05:05+00', '{}'),
+  ('f7000000-0000-4000-8000-000000000001', '77777777-7777-4777-8777-777777777777', 'c7000000-0000-4000-8000-000000000001',
+   'inbound', 'email', 'Süt and wine', 'RECEIVED', 'mid:z7', '<z7@a>', NULL, '2027-03-01 09:00+00', NULL, '2027-03-01 09:00+00', '{}');
+
+-- LC1: a thread counts the letters that came or went, not the queued one.
+DO $$ DECLARE r record; BEGIN
+  SELECT * INTO r FROM public.mail_thread_states('66666666-6666-4666-8666-666666666666', true, NULL)
+   WHERE thread_key = 'mid:s1';
+  PERFORM pg_temp.ok(r.letter_count = 1, 'LC1 a queued letter and a bounce are not counted as letters');
+  PERFORM pg_temp.ok(r.message_count = 2, 'LC1b message_count still holds every row that is not automatic');
+  SELECT * INTO r FROM public.list_mail_threads('66666666-6666-4666-8666-666666666666',
+    'c6000000-0000-4000-8000-000000000001', true);
+  PERFORM pg_temp.ok(r.letter_count = 1 AND r.message_count = 2, 'LC1c the thread list carries both counts');
+  SELECT * INTO r FROM public.list_mail_threads('66666666-6666-4666-8666-666666666666',
+    'c6000000-0000-4000-8000-000000000004', false);
+  PERFORM pg_temp.ok(r.letter_count = 1 AND r.message_count = 2, 'LC1d an owner''s draft is on the thread, not one of its letters');
+END $$;
+
+-- S1: the search finds by name, accents and dotted I folded.
+DO $$ DECLARE ks text[]; BEGIN
+  SELECT array_agg(key ORDER BY key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, 'SUT');
+  PERFORM pg_temp.ok(ks = ARRAY['vendor:c6000000-0000-4000-8000-000000000001'], 'S1 "SUT" finds Süt Evi by name, and no other house');
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, 'istanbul');
+  PERFORM pg_temp.ok(ks = ARRAY['vendor:c6000000-0000-4000-8000-000000000002'], 'S1b "istanbul" finds a letter that says İstanbul');
+END $$;
+
+-- S2: by a thread subject and by an order number.
+DO $$ DECLARE ks text[]; BEGIN
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, '  spring PRICES ');
+  PERFORM pg_temp.ok(ks = ARRAY['vendor:c6000000-0000-4000-8000-000000000001'], 'S2 a subject is found, trimmed and folded');
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, 'po-777');
+  PERFORM pg_temp.ok(ks = ARRAY['vendor:c6000000-0000-4000-8000-000000000003'], 'S2b an order number is found');
+END $$;
+
+-- S3: % and _ are plain characters, never wildcards.
+DO $$ DECLARE ks text[]; BEGIN
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, '50%');
+  PERFORM pg_temp.ok(ks = ARRAY['vendor:c6000000-0000-4000-8000-000000000003'], 'S3 "50%" finds the name holding it');
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, '%');
+  PERFORM pg_temp.ok(ks = ARRAY['vendor:c6000000-0000-4000-8000-000000000003'], 'S3b a bare "%" is not "everyone"');
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, 'h_');
+  PERFORM pg_temp.ok(ks IS NULL, 'S3c "_" matches only an underscore');
+END $$;
+
+-- S4: a withheld draft is not searched for staff, and is for an owner.
+DO $$ DECLARE ks text[]; BEGIN
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, 'credit claim');
+  PERFORM pg_temp.ok(ks IS NULL, 'S4 staff do not find a word that is only in a withheld draft');
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', false, false, NULL, NULL, 50, 'credit claim');
+  PERFORM pg_temp.ok(ks = ARRAY['vendor:c6000000-0000-4000-8000-000000000004'], 'S4b an owner finds it');
+END $$;
+
+-- S5: a second copy of a letter is not searched; the letter itself is.
+DO $$ DECLARE ks text[]; BEGIN
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, 'cheddar');
+  PERFORM pg_temp.ok(ks IS NULL, 'S5 words only in a second copy find no one');
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, 'butter');
+  PERFORM pg_temp.ok(ks = ARRAY['vendor:c6000000-0000-4000-8000-000000000005'], 'S5b the letter''s own words do');
+END $$;
+
+-- S6: no search, a blank one and a search with the waiting chip.
+DO $$ DECLARE n int; ks text[]; BEGIN
+  SELECT count(*) INTO n FROM public.list_mail_people('66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, NULL);
+  PERFORM pg_temp.ok(n = 5, 'S6 no search lists everyone');
+  SELECT count(*) INTO n FROM public.list_mail_people('66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, '   ');
+  PERFORM pg_temp.ok(n = 5, 'S6b a blank search lists everyone');
+  SELECT count(*) INTO n FROM public.list_mail_people('66666666-6666-4666-8666-666666666666');
+  PERFORM pg_temp.ok(n = 5, 'S6c the old call, with no search argument, still works');
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, true, NULL, NULL, 50, 'hello');
+  PERFORM pg_temp.ok(ks IS NULL, 'S6d a search with Waiting on you keeps both filters (P3 is not waiting)');
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, true, NULL, NULL, 50, 'late');
+  PERFORM pg_temp.ok(ks = ARRAY['vendor:c6000000-0000-4000-8000-000000000002'], 'S6e a waiting vendor is found with the chip on');
+END $$;
+
+-- S7: what was typed is cut at 100 characters; the fold and the grants.
+UPDATE public.procurement_conversations SET message_text = 'butter ' || repeat('x', 100) || 'y'
+ WHERE id = 'f6000000-0000-4000-8000-000000000008';
+DO $$ DECLARE ks text[]; BEGIN
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, repeat('x', 100) || 'q');
+  PERFORM pg_temp.ok(ks = ARRAY['vendor:c6000000-0000-4000-8000-000000000005'], 'S7 only the first 100 characters are searched');
+  PERFORM pg_temp.ok(public.mail_fold('İSTANBUL Çığ Şöför') = 'istanbul cig sofor', 'S7 the fold reads Turkish letters as plain ones');
+  PERFORM pg_temp.ok(NOT has_function_privilege('anon', 'public.mail_fold(text)', 'EXECUTE'), 'S7b the fold is not granted to anon');
+  PERFORM pg_temp.ok(NOT has_function_privilege('authenticated',
+    'public.list_mail_people(uuid, boolean, boolean, timestamp with time zone, text, integer, text)', 'EXECUTE'),
+    'S7c the searching list is not granted to authenticated');
+END $$;
+
+-- S8: what was typed is matched as plain text, never as a pattern; each plain
+-- letter stands for its accented and Turkish forms in upper and lower case.
+DO $$ DECLARE ks text[]; ok_paren boolean; BEGIN
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, 'fish.co');
+  PERFORM pg_temp.ok(ks IS NULL, 'S8 a dot is a dot: "fish.co" does not find Fish Co');
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, 'süt');
+  PERFORM pg_temp.ok(ks = ARRAY['vendor:c6000000-0000-4000-8000-000000000001'], 'S8b "süt" typed with its accent finds Süt Evi');
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, 'İSTANBUL');
+  PERFORM pg_temp.ok(ks = ARRAY['vendor:c6000000-0000-4000-8000-000000000002'], 'S8c "İSTANBUL" typed in capitals finds the letter');
+  BEGIN
+    SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+      '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, 'bread (50');
+    ok_paren := ks IS NULL;
+  EXCEPTION WHEN OTHERS THEN ok_paren := false;
+  END;
+  PERFORM pg_temp.ok(ok_paren, 'S8d an open bracket is searched plainly and does not fail');
+  PERFORM pg_temp.ok('âçéğñöşıü' ~* public.mail_search_pattern('acegnosiu')
+                 AND 'ÂÇÉĞÑÖŞİÜ' ~* public.mail_search_pattern('ACEGNOSIU'),
+    'S8e every plain letter stands for its accented forms, both cases');
+  PERFORM pg_temp.ok(public.mail_search_pattern('  ') IS NULL AND public.mail_search_pattern(NULL) IS NULL,
+    'S8f a blank search is no search');
+  PERFORM pg_temp.ok(NOT has_function_privilege('anon', 'public.mail_search_pattern(text)', 'EXECUTE'),
+    'S8g the search pattern is not granted to anon');
+END $$;
+
+-- S9: the search does not care about case, in names, subjects and letters,
+-- and an accented letter typed finds the plain one written.
+UPDATE public.procurement_conversations SET email_headers = '{"subject":"Spring Prices"}'
+ WHERE id = 'f6000000-0000-4000-8000-000000000001';
+DO $$ DECLARE ks text[]; BEGIN
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, 'fish co');
+  PERFORM pg_temp.ok(ks = ARRAY['vendor:c6000000-0000-4000-8000-000000000002'], 'S9 "fish co" finds Fish Co by name');
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, 'spring prices');
+  PERFORM pg_temp.ok(ks = ARRAY['vendor:c6000000-0000-4000-8000-000000000001'], 'S9b "spring prices" finds the subject Spring Prices');
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, 'the istanbul');
+  PERFORM pg_temp.ok(ks = ARRAY['vendor:c6000000-0000-4000-8000-000000000002'], 'S9c "the istanbul" finds a letter that begins The İstanbul');
+  SELECT array_agg(key) INTO ks FROM public.list_mail_people(
+    '66666666-6666-4666-8666-666666666666', true, false, NULL, NULL, 50, 'PLÂİN');
+  PERFORM pg_temp.ok(ks = ARRAY['vendor:c6000000-0000-4000-8000-000000000005'], 'S9d "PLÂİN" typed with accents finds Plain Dairy');
+END $$;
+
 rollback;
