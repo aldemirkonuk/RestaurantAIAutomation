@@ -7,8 +7,8 @@ import type { MenuLine } from '../../../services/api/menus';
  * section on the first proof, and /menu then printed that line's status raw,
  * "flagged", with nothing anywhere to say what it meant. 'flagged' is written
  * by the gateway for three things only -- a manager corrected a field, a
- * manager added the line by hand while checking the menu, or a typed line went
- * past the free plan's limit -- and it gates nothing. The chip now says which.
+ * manager added the line by hand while checking the menu, or (on older rows) a
+ * typed line went past a 25-line cap no plan holds -- and it gates nothing. The chip now says which.
  * A line a person set by hand is sealed like a line as read: a person checked it.
  */
 export interface LineStatusWords {
@@ -52,12 +52,15 @@ export function lineStatusWords(line: Pick<MenuLine, 'status' | 'source' | 'flag
       }
       case 'added_by_hand':
         return { words: 'added by hand', sealed: true, why: 'A manager added this line while checking the menu.', noteShown: false };
+      // An older read marked a typed line past the 25th (r28 G16). No plan
+      // holds such a cap and the mark gated nothing, so the line is said as
+      // typed, and the mark is explained on hover only.
       case 'past_free_limit':
         return {
-          words: "past the free plan's typed lines",
-          sealed: false,
-          why: "Typed after the free plan's first 25 lines.",
-          noteShown: true,
+          words: 'as typed',
+          sealed: true,
+          why: 'An older read marked this line past a 25-line cap that no plan holds. Nothing about it is limited.',
+          noteShown: false,
         };
       default:
         return { words: 'marked for a second look', sealed: false, why: null, noteShown: false };
