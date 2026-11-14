@@ -34,6 +34,13 @@
  * and a count of a bottle item never prices (`recipe-cost.ts` refuses to
  * assume one bottle of a bottle item). Only volume and weight words count as a
  * stated measure; two of them on one line are not guessed between.
+ *
+ * A line written name first ("Yeni Rakı 50 ml", "Lime juice 2 cl",
+ * "Angostura 2 dashes") is read by its trailing amount (r33 w1 F3): menus and
+ * spec sheets are often written that way, and the line used to become text,
+ * not counted. Only an amount WITH a unit word at the very end is read, never
+ * a bare number ("Chanel No 5", "Bitters 100") and never a count word ("each",
+ * "x"), so a name that ends in a number stays its name.
  */
 
 import { readsAsThousandAmbiguous, type RecipeUnit } from './units';
@@ -143,6 +150,16 @@ const NUM_TOKEN = String.raw`(?:\d+\s+\d+\/\d+|\d+\s*[½¼¾⅓⅔⅛⅜⅝⅞]|
 const UNIT_ALT = Object.keys(UNIT_WORDS).sort((a, b) => b.length - a.length).join('|');
 // The amount may not run on into more digits, a separator or an exponent.
 const LEAD = new RegExp(String.raw`^(${NUM_TOKEN})(?![\d.,])(\s*)(?:(${UNIT_ALT})\b\.?)?\s*(.*)$`, 'i');
+/** Measures (not counts) a name-first line may end with. */
+const TRAIL_UNIT_ALT = Object.keys(UNIT_WORDS)
+  .filter((k) => UNIT_WORDS[k] !== 'each')
+  .sort((a, b) => b.length - a.length)
+  .join('|');
+/** "Yeni Rakı 50 ml": a label with a letter, then the amount and its unit, and nothing after. */
+const TRAIL = new RegExp(
+  String.raw`^(.*?\p{L}.*?)[\s,:–-]+(${NUM_TOKEN})(?![\d.,])\s*(${TRAIL_UNIT_ALT})(?![\p{L}\d])\.?$`,
+  'iu',
+);
 /** A " / " or "/" that starts another amount splits; "Sweet / dry vermouth" and "1 1/2" do not. */
 const SPLIT = new RegExp(String.raw`\r?\n|(?<=[^\d\s])\s*\/\s*(?=${NUM_TOKEN}(?![\d.,]))`);
 
@@ -188,7 +205,7 @@ export function parseLine(line: string): ProposedLine | null {
     return { qty: null, unit: null, label, role: 'untracked', confirmed: false, flag: null };
   };
   const m = LEAD.exec(text);
-  if (!m) return asText();
+  if (!m) return nameFirst(text) ?? asText();
   const unitWord = m[3]?.toLowerCase();
   let unit: RecipeUnit | null = unitWord ? UNIT_WORDS[unitWord] ?? null : null;
   // The unit settles "1.125": a decimal for oz, still a refusal for ml or no unit.
@@ -234,6 +251,19 @@ export function parseLine(line: string): ProposedLine | null {
     unit = 'each';
     for (const [re, to] of SINGULAR) label = label.replace(re, to);
   }
+  return { qty, unit, label, role: roleOf(text, label, qty), confirmed: false, flag: null };
+}
+
+/** "Lime juice 2 cl" → 2 cl of lime juice; null when the line does not end in an amount and a unit. */
+function nameFirst(text: string): ProposedLine | null {
+  const t = TRAIL.exec(text);
+  if (!t) return null;
+  const unit = UNIT_WORDS[t[3].toLowerCase()];
+  if (!unit) return null;
+  const qty = readAmount(t[2], unit);
+  if (qty === null || qty <= 0) return null;
+  const label = tidy(t[1]);
+  if (!label) return null;
   return { qty, unit, label, role: roleOf(text, label, qty), confirmed: false, flag: null };
 }
 

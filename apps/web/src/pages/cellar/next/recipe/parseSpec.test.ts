@@ -199,3 +199,47 @@ describe('a stated size wins over a count (r5, R6)', () => {
     expect(parseLine('1 tonic 1.000ml')).toMatchObject({ qty: 1, unit: 'each' });
   });
 });
+
+describe('a name-first line is read by its trailing amount (r33 w1 F3)', () => {
+  it('reads "Yeni Rakı 50 ml", "YENİ RAKI 50 ml" and "Lime juice 2 cl" as measured, stocked rows', () => {
+    expect(parseLine('Yeni Rakı 50 ml')).toEqual({
+      qty: 50, unit: 'ml', label: 'Yeni Rakı', role: 'stocked', confirmed: false, flag: null,
+    });
+    expect(parseLine('YENİ RAKI 50 ml')).toMatchObject({ qty: 50, unit: 'ml', label: 'YENİ RAKI', role: 'stocked' });
+    expect(parseLine('Lime juice 2 cl')).toMatchObject({ qty: 2, unit: 'cl', label: 'Lime juice', role: 'stocked' });
+  });
+
+  it('reads fractions, decimals, glued units and a separator before the amount', () => {
+    expect(parseLine('Gin 1 1/2 oz')).toMatchObject({ qty: 1.5, unit: 'oz', label: 'Gin' });
+    expect(parseLine('Sugar syrup 22,5ml')).toMatchObject({ qty: 22.5, unit: 'ml', label: 'Sugar syrup' });
+    expect(parseLine('Angostura: 2 dashes')).toMatchObject({ qty: 2, unit: 'dash', label: 'Angostura' });
+    expect(parseLine('- Campari – 30 ml.')).toMatchObject({ qty: 30, unit: 'ml', label: 'Campari' });
+  });
+
+  it('a name ending in a bare number, or a count word, stays text', () => {
+    for (const line of ['Chanel No 5', 'Bitters 100', 'Monkey 47', 'Limes 2 each', 'Lemons 2 x']) {
+      expect(parseLine(line), line).toMatchObject({ qty: null, unit: null, role: 'untracked' });
+    }
+  });
+
+  it('an amount that is not at the very end, or an ambiguous thousand, stays text', () => {
+    expect(parseLine('Gin 50 ml chilled')).toMatchObject({ qty: null, unit: null });
+    expect(parseLine('Water 1.000 ml')).toMatchObject({ qty: null, unit: null });
+    expect(parseLine('50 ml')).toMatchObject({ qty: null, unit: null });
+    // Something before the amount that names nothing is not a label.
+    expect(parseLine('— 50 ml')).toMatchObject({ qty: null, unit: null, label: '— 50 ml' });
+  });
+
+  it('a garnish or a top-up written name first is not taken from the shelf', () => {
+    expect(parseLine('Orange peel 1 g')).toMatchObject({ qty: 1, unit: 'g', role: 'untracked' });
+    expect(parseLine('Soda to top 60 ml')).toMatchObject({ qty: 60, unit: 'ml', role: 'untracked' });
+  });
+
+  it('a pasted spec mixes both orders', () => {
+    expect(parseSpec('50 ml gin\nCampari 25 ml\nSweet vermouth 25 ml').map((r) => [r.qty, r.unit, r.label])).toEqual([
+      [50, 'ml', 'gin'],
+      [25, 'ml', 'Campari'],
+      [25, 'ml', 'Sweet vermouth'],
+    ]);
+  });
+});
