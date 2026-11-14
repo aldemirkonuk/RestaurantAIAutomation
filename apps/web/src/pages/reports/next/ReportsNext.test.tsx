@@ -2534,3 +2534,22 @@ describe('a full-screen link opens what it names, on the sheet or not (r36 repor
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 });
+
+describe('the opening line leads somewhere on day 1 (r36 reports gap 5)', () => {
+  it('[REVERT-FAILS] with nothing to say, the opening points at Get started', () => {
+    hook.current = { ...base(), reading: ok([]) } as never;
+    paint();
+    expect(screen.getByText('The engine has nothing to say about this restaurant yet.')).toBeInTheDocument();
+    const step = screen.getByTestId('rp-opening-step');
+    expect(within(step).getByRole('link', { name: /Start with Get started/ })).toHaveAttribute('href', '/get-started');
+  });
+
+  it('says nothing more while the reading is in flight, failed, or has a sentence', () => {
+    for (const reading of [pending, broke(500), ok(READING)]) {
+      hook.current = { ...base(), reading } as never;
+      const page = paint();
+      expect(screen.queryByTestId('rp-opening-step')).toBeNull();
+      page.unmount();
+    }
+  });
+});
