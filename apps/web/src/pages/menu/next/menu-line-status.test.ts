@@ -7,6 +7,14 @@ import { describe, expect, it } from 'vitest';
 import { lineStatusWords } from './menu-line-status';
 
 describe('lineStatusWords', () => {
+  it('a dish set by hand says its price, never a bottle (r33 walk)', () => {
+    const set = (flag_field: string) =>
+      lineStatusWords({ status: 'flagged', source: 'csv', flag_reason: 'corrected', flag_field }, { dish: true });
+    expect(set('bottle_price')).toMatchObject({ words: 'set by hand: its price', why: 'A manager set its price after the menu was read. Nothing more is needed.' });
+    expect(set('by_glass_price').words).toBe('set by hand: its glass-column price');
+    expect(set('name').words).toBe('set by hand: its name');
+  });
+
   it('says why a line is flagged, from the reason the gateway sends', () => {
     expect(lineStatusWords({ status: 'flagged', source: 'manual', flag_reason: 'corrected', flag_field: 'category' })).toMatchObject({
       words: 'set by hand: its section',
