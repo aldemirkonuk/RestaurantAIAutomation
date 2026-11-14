@@ -395,6 +395,24 @@ export function costRepairSentences(repair: {
  * named with its reason.
  */
 type CostFlagOut = { inventoryId: string; kind: 'refused' | 'line_changed'; reason: string }
+
+/**
+ * A FIRST verify's own sentence about the cost (r34 walk w2 F2): what it
+ * posted, what it left provisional and why, and once per invoice what the
+ * paper carries outside any bottle's cost and what was done with its tax
+ * ("…prices include 20% tax, which this house reclaims, so the cost is net").
+ * The gateway writes it as `costNote`; the page used to drop it, so the tax
+ * sentence the owner answered for in Settings never reached the document.
+ *
+ * Only a first verify (`alreadyVerified === false`): a re-check says what it
+ * did through `costNoticeOf`. Null when the answer carries no sentence.
+ */
+export function verifyCostNoteOf(result: unknown): string | null {
+  const r = result as { alreadyVerified?: unknown; costNote?: unknown } | null | undefined
+  if (!r || r.alreadyVerified !== false) return null
+  return typeof r.costNote === 'string' && r.costNote.trim() !== '' ? r.costNote.trim() : null
+}
+
 export function costNoticeOf(result: unknown): {
   repaired: readonly unknown[]
   flagged: CostFlagOut[]
@@ -415,5 +433,9 @@ export function costNoticeOf(result: unknown): {
     return posted > 0 ? { ...base, flagged, posted } : { ...base, flagged }
   }
   if (r?.repair) return r.repair
+  // A first verify that says its own cost sentence names each provisional
+  // item's reason in it (`verifyCostNoteOf`); listing them again here would
+  // say every reason twice.
+  if (verifyCostNoteOf(result)) return null
   return held.length ? { repaired: [], flagged: held } : null
 }

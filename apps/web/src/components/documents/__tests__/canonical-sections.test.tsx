@@ -25,7 +25,7 @@ import { DegradedNotice, degradedReasons } from '../DegradedNotice'
 import { DoorFrame } from '../DoorFrame'
 import { ProposalThread } from '../ProposalThread'
 import { DeliveryGates } from '../DeliveryGates'
-import { costNoticeOf, costRepairSentences } from '../canonical-format'
+import { costNoticeOf, costRepairSentences, verifyCostNoteOf } from '../canonical-format'
 import type { DeliveryEvent, Proposal } from '../../../services/api/deliveries'
 import type {
   AdjudicatedLine,
@@ -961,6 +961,29 @@ describe('DeliveryGates — the two gates, explained before they are pressed', (
     expect(src).toMatch(/costNoticeOf\(result\)/)
     expect(src).toMatch(/setCostRepair\(repair\)/)
     expect(src).toMatch(/repair=\{costRepair\}/)
+  })
+
+  it('r34 w2 F2: only a first verify\'s own cost sentence is kept, trimmed', () => {
+    expect(verifyCostNoteOf({ alreadyVerified: false, costNote: '  Cost posted for 1 item(s). ' })).toBe('Cost posted for 1 item(s).')
+    expect(verifyCostNoteOf({ alreadyVerified: true, costNote: 'already verified' })).toBeNull()
+    expect(verifyCostNoteOf({ costNote: 'no flag says it was a first verify' })).toBeNull()
+    expect(verifyCostNoteOf({ alreadyVerified: false, costNote: '   ' })).toBeNull()
+    expect(verifyCostNoteOf({ alreadyVerified: false, costNote: 7 })).toBeNull()
+    expect(verifyCostNoteOf(null)).toBeNull()
+    // With its sentence, a first verify's provisional items are not listed again.
+    const held = { inventoryId: 'i2', reason: 'no agreed price' }
+    expect(costNoticeOf({ alreadyVerified: false, costNote: 'No cost was posted.', cost: { finalised: [], stillProvisional: [held] } })).toBeNull()
+    // Without one, they still are (QA 12b).
+    expect(costNoticeOf({ alreadyVerified: false, cost: { finalised: [], stillProvisional: [held] } })).toEqual({
+      repaired: [],
+      flagged: [{ ...held, kind: 'refused' }],
+    })
+  })
+
+  it('r34 w2 F2: the Verified gate renders the sentence it is given', () => {
+    const verified = event({ state: 'VERIFIED', agreedAt: '2026-08-15T10:00:00Z', agreedRule: 'both_sides_recorded', verifiedAt: '2026-08-15T11:00:00Z' })
+    render(<DeliveryGates delivery={verified} verifyNote="Cost posted for 2 item(s); 0 left provisional." />)
+    expect(screen.getByTestId('verify-cost-note').textContent).toBe('Cost posted for 2 item(s); 0 left provisional.')
   })
 
   it('QA 12b: a first verify that leaves a lot provisional says why on screen', () => {

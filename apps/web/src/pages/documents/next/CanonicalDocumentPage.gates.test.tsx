@@ -9,7 +9,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -49,6 +49,7 @@ vi.mock('../../../services/api/inventory', () => ({ getInventory: async () => []
 
 import { AuthContext } from '@/contexts/AuthContext'
 import { CanonicalDocumentPage } from './CanonicalDocumentPage'
+import { deliveriesApi } from '../../../services/api/deliveries'
 
 const env = (value: unknown, extra: Record<string, unknown> = {}) => ({
   value,
@@ -285,5 +286,61 @@ describe('the delivery block, by who is looking (r28 G3, web)', () => {
     await waitFor(() => expect(screen.getByTestId('delivery-gates')).toBeTruthy())
     expect(screen.queryByTestId('agree-button')).toBeNull()
     expect(screen.getByTestId('gates-need-a-manager')).toBeTruthy()
+  })
+})
+
+describe('a first verify says what it did to the cost, and the invoice tax (r34 w2 F2)', () => {
+  const TAX =
+    'Cost posted for 1 item(s); 0 left provisional. On the invoice: nothing is left out of the bottle cost. Its prices include 20% tax, which this house reclaims, so the cost is net.'
+  const verify = deliveriesApi.verify as unknown as ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    documentMock.mockReset()
+    eventMock.mockReset()
+    threadMock.mockReset()
+    verify.mockReset()
+    documentMock.mockResolvedValue(response({ deliveries: [SPINE] }))
+    eventMock.mockResolvedValue(event({ state: 'AGREED', agreedAt: '2026-08-12T10:00:00Z', agreedRule: 'both_sides_recorded' }))
+    threadMock.mockResolvedValue({ proposals: [], moneyWithheld: false })
+  })
+
+  const press = async () => {
+    mount('manager')
+    const button = await screen.findByTestId('verify-button')
+    await act(async () => {
+      fireEvent.click(button)
+    })
+    await waitFor(() => expect(verify).toHaveBeenCalledWith('del-syn'))
+  }
+
+  it('[REVERT-FAILS] shows the gateway\'s cost sentence, tax and all, under the Verified gate', async () => {
+    verify.mockResolvedValue({ alreadyVerified: false, costNote: TAX, cost: { finalised: [{}], stillProvisional: [] }, delivery: {} })
+    await press()
+    const note = await screen.findByTestId('verify-cost-note')
+    expect(note.textContent).toBe(TAX)
+    expect(note.getAttribute('role')).toBe('status')
+    expect(screen.getByTestId('delivery-gates').contains(note)).toBe(true)
+    expect(screen.queryByTestId('cost-repair-notice')).toBeNull()
+  })
+
+  it('[REVERT-FAILS] a first verify that left an item provisional says its reason once, in the sentence', async () => {
+    const held = { inventoryId: 'i2', reason: 'the accepted proposal names no invoice line' }
+    verify.mockResolvedValue({
+      alreadyVerified: false,
+      costNote: 'No cost was posted: 1 item(s) stay provisional. The accepted proposal names no invoice line',
+      cost: { finalised: [], stillProvisional: [held] },
+      delivery: {},
+    })
+    await press()
+    const note = await screen.findByTestId('verify-cost-note')
+    expect(note.textContent).toMatch(/stay provisional\. The accepted proposal names no invoice line$/)
+    expect(screen.queryByTestId('cost-repair-notice')).toBeNull()
+  })
+
+  it('a refused verify shows the refusal and no cost sentence', async () => {
+    verify.mockRejectedValue(new Error('Only an agreed delivery can be verified'))
+    await press()
+    await waitFor(() => expect(screen.getByTestId('gate-error')).toBeTruthy())
+    expect(screen.queryByTestId('verify-cost-note')).toBeNull()
   })
 })
