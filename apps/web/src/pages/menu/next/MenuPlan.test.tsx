@@ -8,7 +8,7 @@
 import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { MenuPlan, chooseFailedSentence, kindWords, notOnFileWords, orderedRows, planSentence } from './MenuPlan';
 import { getMenuPlan, makeMenuCurrent, type MenuPlan as Plan, type PlanLine } from '../../../services/api/menus';
 import { lockPrice, releasePriceLock } from '../../../services/api/pricing';
@@ -506,11 +506,18 @@ describe('r41 R2: the plan just chosen is not worked out again; another open pla
           />
         ) : null}
         <MenuPlan menuId="menu-other" canManage onDone={vi.fn()} onCancel={vi.fn()} />
+        <Locks />
       </>
     );
   }
+  const readLocks = vi.fn(async () => ({ locks: [] }));
+  function Locks() {
+    useQuery({ queryKey: ['pricing', 'locks'], queryFn: readLocks });
+    return null;
+  }
 
   it('making one menu current drops its own plan, and reads the other open plan again', async () => {
+    readLocks.mockClear();
     mockPlan.mockImplementation(async (id: string) => plan({ menuId: id, fingerprint: `fp-${id}` }));
     mockMake.mockResolvedValue({ outcome: 'made_current', menuId: 'menu-new', previousMenuIds: [], lines: 2, priceSync: { changed: 1 }, flagged: 0, failed: [] });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -531,6 +538,8 @@ describe('r41 R2: the plan just chosen is not worked out again; another open pla
     expect(mockPlan.mock.calls.filter(([id]) => id === 'menu-new')).toHaveLength(1);
     expect(client.getQueryData(['menu', 'plan', 'menu-new'])).toBeUndefined();
     expect(mockPlan.mock.calls.filter(([id]) => id === 'menu-other')).toHaveLength(2);
+    // The locks a choice may have released are read again.
+    expect(readLocks).toHaveBeenCalledTimes(2);
   });
 
   it('a plan a parent keeps on screen is read once more, for what it now shows', async () => {
