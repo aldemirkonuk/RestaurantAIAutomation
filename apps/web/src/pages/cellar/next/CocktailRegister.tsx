@@ -16,8 +16,10 @@
  *
  * TWO BOOKS, NOT ONE. The house's cocktail list is `public.cocktails`. What the
  * house's OTHER books say about cocktails — menu lines, till lines — is the
- * ledger, and it is shown apart rather than merged, because merging them would
- * need a name match this page is not entitled to make in the browser.
+ * ledger, and it is shown apart rather than merged. The menu reaches the list
+ * in two ways, both matched by name on the server: the Menu column gives a
+ * listed drink its menu price, and MenuDrinksOffer puts a menu cocktail not
+ * listed yet onto the list (r36 recipes audit, gap 3).
  *
  * NO SEAL HERE. The house ceremony is rationed to one act on this page: the
  * hold that sends a real purchase order to a vendor. Retiring a cocktail is
@@ -37,6 +39,7 @@ import {
   type HouseBookId,
 } from './cellar-format';
 import RecipeSheet from './recipe/RecipeSheet';
+import MenuDrinksOffer from './MenuDrinksOffer';
 import { PRICE_UNREAD, priceText, readPrice } from './recipe/price-text';
 import { pourCostShare } from './recipe/DrinkCards';
 import { useCanEditRecipe, useDrinkFigures, useHouseMoney, useMenuPrices } from './recipe/useRecipe';
@@ -276,6 +279,8 @@ export default function CocktailRegister({
       </div>
 
       {said ? <p className="cl-note" role="status" data-testid="cocktail-said">{said}</p> : null}
+
+      {seesCost ? <MenuDrinksOffer /> : null}
 
       {draft ? (
         <div className="cl-panel" style={{ marginTop: 12 }} data-testid="cocktail-draft">
@@ -535,9 +540,8 @@ export default function CocktailRegister({
             <p className="cl-said">
               {count(register.counts.houseRows)} cocktail{' '}
               {register.counts.houseRows === 1 ? 'line' : 'lines'} appear in this
-              house’s menu and till outside the list above. They are shown apart
-              rather than merged: joining them to a row of the list would need a
-              name match this page is not entitled to make.
+              house’s menu and till. They are shown as those books name them,
+              beside the list above rather than joined to a row of it.
             </p>
             <div style={{ marginTop: 10, overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10 }}>
               <table className="cl-table">
