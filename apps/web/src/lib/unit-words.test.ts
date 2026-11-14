@@ -74,4 +74,16 @@ describe('every page reads the one table', () => {
     expect(PRICE_UOM_LABEL.each).toBe('per item')
     expect(PRICE_UOM_LABEL.liter).toBe('per litre')
   })
+
+  // r37 meet (#1289 with #1550): a document line may be read in a weight or a
+  // US unit no picker offers. The documents say those themselves; every stored
+  // code still reads from the one table above.
+  it('documents: a line read in a weight or a US unit says it in words', () => {
+    expect(documentsUnitWord('gal', 2)).toBe('gallons')
+    expect(documentsUnitWord('gal', 1)).toBe('gallon')
+    expect(documentsUnitWord('floz', 12)).toBe('fl oz')
+    expect(documentsUnitWord('lb', 3)).toBe('lb')
+    expect(documentsUnitWord('each', 2)).toBe('items')
+    expect(documentsUnitWord('constructor', 2)).toBe('constructor')
+  })
 })
