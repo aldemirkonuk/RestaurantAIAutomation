@@ -33,6 +33,15 @@ const COST_TREND_NOT_KEPT = {
 const num = (v: unknown): number | null =>
   v === null || v === undefined ? null : Number(v);
 const round2 = (n: number) => Math.round(n * 100) / 100;
+/** Start a read now; a throw while building it becomes its rejection, so no
+ *  read already in flight is left rejected with nobody listening. */
+const start = <T>(read: () => PromiseLike<T> | T): Promise<T> => {
+  try {
+    return Promise.resolve(read());
+  } catch (e) {
+    return Promise.reject(e);
+  }
+};
 
 /**
  * The drawer's own figures (proposal K1-K10). On hand, WAC, value, velocity
@@ -45,36 +54,72 @@ export class ItemFiguresService {
 
   async figures(restaurantId: string, itemId: string, view: MoneyView, now = new Date()) {
     const client = this.db.supabase;
-    await readHouseItem(client, restaurantId, itemId);
     const seesMoney = view === "shown";
+    const since30 = new Date(now.getTime() - 30 * DAY).toISOString();
 
+    // Every read starts at once: the drawer waits for the slowest one, not
+    // the sum of five. Each read is scoped to the house on its own, and the
+    // house check is still settled first, so another house's item is
+    // refused with nothing returned.
+    const houseRead = start(() => readHouseItem(client, restaurantId, itemId));
     // Current WAC: read only for a caller who may see money.
-    let wac: number | null = null;
-    let wacError: string | null = null;
-    if (seesMoney) {
-      const r = await client
-        .from("inventory_lot_rollup")
-        .select("wac")
+    const wacRead = seesMoney
+      ? start(() =>
+          client
+            .from("inventory_lot_rollup")
+            .select("wac")
+            .eq("inventory_id", itemId)
+            .eq("restaurant_id", restaurantId)
+            .maybeSingle(),
+        )
+      : null;
+    // ── waste vs given (K10: never added together) ──
+    const txRead = start(() =>
+      client
+        .from("inventory_transactions")
+        .select("transaction_type, quantity_change, unit_cost")
         .eq("inventory_id", itemId)
         .eq("restaurant_id", restaurantId)
-        .maybeSingle();
-      if (r.error) wacError = r.error.message;
-      else wac = num(r.data?.wac);
+        .eq("stock_type", "live")
+        .in("transaction_type", ["waste", "comp"])
+        .gte("transaction_date", since30),
+    );
+    // ── count gap: the last 5 counts, then who counted them ──
+    const countsRead = start(() =>
+      client
+        .from("stock_counts")
+        .select("counted_at, expected_qty, counted_qty, variance_qty, counted_by")
+        .eq("inventory_id", itemId)
+        .eq("restaurant_id", restaurantId)
+        .order("counted_at", { ascending: false })
+        .limit(5),
+    ).then(async (counts) =>
+      counts.error
+        ? { counts, people: null }
+        : {
+            counts,
+            people: await readPeople(
+              client,
+              ((counts.data ?? []) as Array<Record<string, any>>).map((r) => r.counted_by),
+            ),
+          },
+    );
+    const settled = await Promise.allSettled([houseRead, wacRead, txRead, countsRead]);
+    for (const r of settled) if (r.status === "rejected") throw r.reason;
+    const [, wacR, tx, { counts, people: countPeople }] = settled.map(
+      (r) => (r as PromiseFulfilledResult<any>).value,
+    );
+
+    let wac: number | null = null;
+    let wacError: string | null = null;
+    if (wacR) {
+      if (wacR.error) wacError = wacR.error.message;
+      else wac = num(wacR.data?.wac);
     }
     const noWac = wacError
       ? `the average cost could not be read (${wacError})`
       : "no received lot of this item has a cost yet";
 
-    // ── waste vs given (K10: never added together) ──
-    const since30 = new Date(now.getTime() - 30 * DAY).toISOString();
-    const tx = await client
-      .from("inventory_transactions")
-      .select("transaction_type, quantity_change, unit_cost")
-      .eq("inventory_id", itemId)
-      .eq("restaurant_id", restaurantId)
-      .eq("stock_type", "live")
-      .in("transaction_type", ["waste", "comp"])
-      .gte("transaction_date", since30);
     let waste;
     if (tx.error) {
       waste = {
@@ -115,14 +160,6 @@ export class ItemFiguresService {
       };
     }
 
-    // ── count gap: the last 5 counts ──
-    const counts = await client
-      .from("stock_counts")
-      .select("counted_at, expected_qty, counted_qty, variance_qty, counted_by")
-      .eq("inventory_id", itemId)
-      .eq("restaurant_id", restaurantId)
-      .order("counted_at", { ascending: false })
-      .limit(5);
     let countGap;
     if (counts.error) {
       countGap = {
@@ -132,10 +169,7 @@ export class ItemFiguresService {
       };
     } else {
       const rows = (counts.data ?? []) as Array<Record<string, any>>;
-      const { people, error: peopleError } = await readPeople(
-        client,
-        rows.map((r) => r.counted_by),
-      );
+      const { people, error: peopleError } = countPeople;
       const last = rows.map((r) => ({
         countedAt: r.counted_at,
         expected: r.expected_qty,

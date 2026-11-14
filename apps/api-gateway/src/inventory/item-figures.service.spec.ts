@@ -1,3 +1,4 @@
+import { NotFoundException } from "@nestjs/common";
 import { FakeDb } from "../notifications/producers/testing/fake-db";
 import { ItemFiguresService } from "./item-figures.service";
 
@@ -78,5 +79,109 @@ describe("ItemFiguresService (proposal K1-K10)", () => {
     const { waste } = await svc.figures(H, I, "shown", NOW);
     expect(waste.value30d).toBeNull();
     expect(waste.source).toContain("no received lot of this item has a cost yet");
+  });
+  // Every read is held at a gate; the reads that started before any answered
+  // are the ones the drawer waits for together.
+  function gated(db: FakeDb) {
+    const started: string[] = [];
+    let open!: () => void;
+    const gate = new Promise<void>((r) => (open = r));
+    const from = db.from.bind(db);
+    (db as any).from = (table: string) => {
+      started.push(table);
+      const q: any = from(table);
+      const run = q.run.bind(q);
+      q.run = async (single: boolean) => {
+        await gate;
+        return run(single);
+      };
+      return q;
+    };
+    const tick = () => new Promise((r) => setImmediate(r));
+    return { started, open, tick };
+  }
+
+  it("the drawer's reads start together, not one after another", async () => {
+    const { db, svc } = seed();
+    const { started, open, tick } = gated(db);
+    const pending = svc.figures(H, I, "shown", NOW);
+    await tick();
+    expect([...started].sort()).toEqual(
+      ["inventory_lot_rollup", "inventory_transactions", "restaurant_inventory", "stock_counts"],
+    );
+    open();
+    const { waste, countGap } = await pending;
+    expect(waste).toMatchObject({ readable: true, qty30d: 2, given30d: 1, value30d: 22 });
+    expect(countGap.last![0]).toMatchObject({ by: "Ayşe", money: -20 });
+    expect(started).toContain("users");
+  });
+
+  it("a staff caller's drawer does not read the average cost at all", async () => {
+    const { db, svc } = seed();
+    const { started, open, tick } = gated(db);
+    const pending = svc.figures(H, I, "staff", NOW);
+    await tick();
+    open();
+    await pending;
+    expect(started).not.toContain("inventory_lot_rollup");
+  });
+
+  it("another house's item is refused, though its other reads ran", async () => {
+    const { db, svc } = seed();
+    db.tables.restaurant_inventory = [{ id: I, restaurant_id: "house-2", kind: "food", display_name: "Un" }];
+    await expect(svc.figures(H, I, "shown", NOW)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("the house refusal wins over another read that broke", async () => {
+    const { db, svc } = seed();
+    db.tables.restaurant_inventory = [];
+    const from = db.from.bind(db);
+    (db as any).from = (table: string) => {
+      if (table === "inventory_transactions") throw new Error("socket closed");
+      return from(table);
+    };
+    await expect(svc.figures(H, I, "shown", NOW)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("a refused house is not left unheard while a slow read is still out", async () => {
+    const { db, svc } = seed();
+    db.tables.restaurant_inventory = [];
+    const unheard: unknown[] = [];
+    const listen = (e: unknown) => unheard.push(e);
+    process.on("unhandledRejection", listen);
+    try {
+      let open!: () => void;
+      const gate = new Promise<void>((r) => (open = r));
+      const from = db.from.bind(db);
+      (db as any).from = (table: string) => {
+        const q: any = from(table);
+        if (table === "stock_counts") {
+          const run = q.run.bind(q);
+          q.run = async (single: boolean) => {
+            await gate;
+            return run(single);
+          };
+        }
+        return q;
+      };
+      const pending = svc.figures(H, I, "shown", NOW);
+      for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+      open();
+      await expect(pending).rejects.toBeInstanceOf(NotFoundException);
+      expect(unheard).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", listen);
+    }
+  });
+
+  it("a read that throws is not swallowed", async () => {
+    const { db, svc } = seed();
+    const from = db.from.bind(db);
+    (db as any).from = (table: string) => {
+      const q: any = from(table);
+      if (table === "stock_counts") q.run = async () => { throw new Error("socket closed"); };
+      return q;
+    };
+    await expect(svc.figures(H, I, "shown", NOW)).rejects.toThrow("socket closed");
   });
 });
