@@ -652,9 +652,8 @@ export class AdvancedAnalyticsService {
       basis: {
         weekday: `mean bottles per weekday over the last ${sinceDays} days of wine_consumption_log; a weekday with no observation is absent from weekdayProfile rather than reported as 0`,
         units: unitsBasisSentence(unitsCoverage, "series"),
-        extremes: extremes.tie
-          ? "bestDay/worstDay are null: more than one weekday shares the extreme, and naming one of them would be an arbitrary tie-break, not a finding"
-          : "bestDay/worstDay are the single weekdays holding the highest and lowest mean",
+        // Names which extreme is withheld, not just that one is (r33 R-F2).
+        extremes: E.extremesBasis(extremes, weekday.profiles.length),
       },
       weeklySeasonalFactors: decomposition
         ? decomposition.seasonal.slice(0, 7)
