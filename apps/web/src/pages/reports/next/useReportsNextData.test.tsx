@@ -332,3 +332,25 @@ describe('useReportsNextData — whose sheet this is', () => {
     expect(result.current.sheetUnread).toMatch(/signed in/);
   });
 });
+
+describe('useReportsNextData — staff with no saved sheet (r36 reports gap 3)', () => {
+  beforeEach(() => {
+    auth.rid = 'r1';
+    api.get.mockReset();
+    api.get.mockResolvedValue({ data: [] });
+  });
+
+  it('hands staff the readable house sheet, and a manager the hand-set one', () => {
+    auth.role = 'staff';
+    const staff = renderHook(() => useReportsNextData(30, () => {}), { wrapper: wrapper() });
+    const ids = staff.result.current.sheet.cuttings.map((c) => c.id);
+    expect(ids).not.toContain('seats');
+    expect(ids).not.toContain('service');
+    expect(staff.result.current.role).toBe('staff');
+    auth.role = 'manager';
+    const manager = renderHook(() => useReportsNextData(30, () => {}), { wrapper: wrapper() });
+    expect(manager.result.current.sheet.cuttings.map((c) => c.id)).toEqual(
+      defaultSheet().cuttings.map((c) => c.id),
+    );
+  });
+});
