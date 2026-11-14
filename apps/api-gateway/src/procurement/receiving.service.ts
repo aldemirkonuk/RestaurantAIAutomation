@@ -29,6 +29,7 @@ import {
   type LineHistoryEntry,
 } from "./receiving-line-history";
 import type { ShelfReceived } from "./shelf-received";
+import { readWholeWindow } from "../common/read-whole-window";
 
 export interface LineHistoryPage {
   orderId: string;
@@ -996,112 +997,54 @@ export class ReceivingService {
 
   /**
    * Same read as `listUnverified`, plus whether the underlying
-   * `procurement_receipt_events` read hit its 500-row cap.
+   * read stopped short (`capped`), in the shape the house counter reads.
    *
-   * `capped: true` means `rows` is a floor, not a total — the exact sense
-   * `complete` carries for every other register (`house-counter.types.ts`).
-   * An order whose only qualifying event fell outside the newest-500 window
-   * is silently absent from `rows`, not truncated, so a caller that needs to
-   * claim completeness (the house counter) must read this, not the plain
-   * array `listUnverified` and the `/unverified` page route keep using.
+   * `capped` is always `false` now: the open counts are read WHOLE
+   * (`readWholeWindow`, ADR 0292), or the read throws. It stays in the shape
+   * because `complete` on the house counter is derived from it
+   * (`house-counter.types.ts`), and a read that cannot be completed must
+   * still refuse rather than claim a total.
    */
   async listUnverifiedCapped(
     restaurantId: string,
   ): Promise<{ rows: UnverifiedDelivery[]; capped: boolean }> {
-    // Newest-first: the cap below is a lifetime-event-count safety valve, not a
-    // recency window, and a restaurant well past 500 lifetime events must still
-    // see today's delivery. Ascending order here previously meant the cap kept
-    // the OLDEST 500 events, so every new door count stopped surfacing once a
-    // restaurant crossed that lifetime total.
-    const { data, error } = await this.db
-      .getClient()
-      .from("procurement_receipt_events")
-      .select("order_id, counted_qty_bottles, occurred_at, stage")
-      .eq("restaurant_id", restaurantId)
-      .order("occurred_at", { ascending: false })
-      .limit(500);
-    if (error) throw new Error(error.message);
-    // A read that returned exactly the page size may have dropped an older
-    // event that a still-open order needed — the register reading this must
-    // say so rather than claim `complete: true` over a read that stopped,
-    // not a read that finished.
-    const capped = (data ?? []).length === 500;
-
-    const byOrder = new Map<
-      string,
-      {
-        counted: number;
-        at: string;
-        verified: boolean;
-        caseCountAt: number | null;
-      }
-    >();
-    for (const e of data ?? []) {
-      if (!e.order_id) continue;
-      const cur = byOrder.get(e.order_id) ?? {
-        counted: 0,
-        at: e.occurred_at,
-        verified: false,
-        caseCountAt: null,
-      };
-      // Rows are no longer guaranteed ascending, so pick the latest case_count
-      // by comparing timestamps explicitly rather than trusting fetch order.
-      if (e.stage === "case_count") {
-        const t = new Date(e.occurred_at).getTime();
-        if (cur.caseCountAt === null || t >= cur.caseCountAt) {
-          cur.counted = Number(e.counted_qty_bottles ?? 0);
-          cur.at = e.occurred_at;
-          cur.caseCountAt = t;
-        }
-      }
-      // Either a bottle count or an explicit reconcile closes the loop.
-      if (e.stage === "bottle_count" || e.stage === "reconciled")
-        cur.verified = true;
-      byOrder.set(e.order_id, cur);
-    }
-
-    const open = [...byOrder.entries()].filter(([, v]) => !v.verified);
-    if (!open.length) return { rows: [], capped };
-
-    const { data: orders, error: ordersError } = await this.db
-      .getClient()
-      .from("procurement_orders")
-      .select("id, order_number, status")
-      .in(
-        "id",
-        open.map(([id]) => id),
-      );
-    // A failed read of the orders is not "none of them closed". Ignoring the
-    // error left `numbers` empty, so the COMPLETED/CANCELLED filter below let
-    // every closed order through and printed each without its number — an
-    // inflated queue built from a read that did not happen. The house counter
-    // (sketch 119 D) reads this register, so the failure must reach it.
-    if (ordersError) throw new Error(ordersError.message);
-    const numbers = new Map(
-      (orders ?? []).map((o) => [
-        o.id,
-        { number: o.order_number, status: o.status },
-      ]),
+    // The open counts are worked out in the database, over ALL of the house's
+    // receipt events (the_door_strip_reads_every_open_count): one row per
+    // order counted at the door with no bottle_count or reconciled event and
+    // not COMPLETED or CANCELLED, carrying its latest case count.
+    //
+    // This read used to take the house's newest 500 receipt events and work
+    // them out here. A house writes a few events per delivery, so it passed
+    // 500 within months, and from then on the OLDEST open counts, the overdue
+    // ones this list exists to chase, fell outside the window and the strip
+    // read as caught up. The view ships the open orders only, read to the end.
+    const open = await readWholeWindow<{
+      id: string;
+      order_number: string | null;
+      counted_qty_bottles: number | string | null;
+      counted_at: string;
+    }>("The deliveries counted by case and not yet checked", () =>
+      this.db
+        .getClient()
+        .from("procurement_door_counts_open")
+        .select("id, order_number, counted_qty_bottles, counted_at", {
+          count: "exact",
+        })
+        .eq("restaurant_id", restaurantId),
     );
 
     const now = Date.now();
     const rows = open
-      .filter(([id]) => {
-        // A delivery closed through the ordinary one-shot path is verified even
-        // without a bottle_count event; only genuinely open ones belong here.
-        const status = numbers.get(id)?.status;
-        return status !== "COMPLETED" && status !== "CANCELLED";
-      })
-      .map(([orderId, v]) => {
+      .map((o) => {
         const ageHours = Math.max(
           0,
-          (now - new Date(v.at).getTime()) / 3_600_000,
+          (now - new Date(o.counted_at).getTime()) / 3_600_000,
         );
         return {
-          orderId,
-          orderNumber: numbers.get(orderId)?.number ?? null,
-          countedQtyBottles: v.counted,
-          countedAt: v.at,
+          orderId: o.id,
+          orderNumber: o.order_number ?? null,
+          countedQtyBottles: Number(o.counted_qty_bottles ?? 0),
+          countedAt: o.counted_at,
           ageHours: Math.round(ageHours),
           severity:
             ageHours >= OVERDUE_AFTER_HOURS
@@ -1112,7 +1055,7 @@ export class ReceivingService {
         };
       })
       .sort((a, b) => b.ageHours - a.ageHours);
-    return { rows, capped };
+    return { rows, capped: false };
   }
 
   /**

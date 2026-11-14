@@ -508,7 +508,10 @@ describe('F5 — a windowed figure renders as a floor (ADR 0051 clause 2)', () =
     expect(short).not.toHaveTextContent('≥1')
   })
 
-  it('marks the uncounted strip as a floor — it is built behind a 500-row window', async () => {
+  it('prints the uncounted strip as a whole count — the gateway reads every open count', async () => {
+    // It was a floor while the list was built from the newest 500 receipt
+    // events (r41 invoices audit, gap 6). The gateway now reads every open
+    // count, so "1" means one, and a "≥" here would hedge a complete list.
     get.mockResolvedValue(
       queuePayload({
         unverified: [
@@ -517,7 +520,9 @@ describe('F5 — a windowed figure renders as a floor (ADR 0051 clause 2)', () =
       }),
     )
     harness(ManagerBody)
-    expect(await screen.findByText('≥1')).toBeInTheDocument()
+    expect(await screen.findByText(/counted by case and not yet by bottle/)).toBeInTheDocument()
+    expect(screen.queryByText('≥1')).toBeNull()
+    expect(screen.queryByTitle(/receipt events/)).toBeNull()
   })
 
   it('marks every owner figure as a floor — stats read at most 5000 unordered rows', async () => {

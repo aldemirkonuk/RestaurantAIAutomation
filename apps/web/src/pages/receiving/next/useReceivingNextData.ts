@@ -90,8 +90,6 @@ export function failureOf(isError: boolean, error: unknown): FailureVM | null {
 export const SERVER_WINDOWS = {
   /** receiving.service.ts:375 — the queue's own rows. */
   QUEUE_ITEMS: 100,
-  /** receiving.service.ts:271 — the receipt events the uncounted list is built from. */
-  UNVERIFIED: 500,
   /** receiving.service.ts:384 — credits linked to queue rows. No `.order()`. */
   LINKED_CREDITS: 200,
   /** credits.controller.ts:137 — every figure on the owner ledger. No `.order()`. */
@@ -480,10 +478,11 @@ export function useManagerQueue(): ManagerQueueData {
       totalAtRiskByCurrency: known ? (q.data!.totalAtRiskByCurrency ?? null) : null,
       itemsAtFloor,
       unverified,
-      // Built from the newest 500 receipt events; the list itself is shorter
-      // than that window, so fullness is not observable and this is a floor
-      // whenever the list is non-empty.
-      unverifiedAtFloor: (unverified?.length ?? 0) > 0,
+      // Read whole on the gateway (listUnverifiedCapped reads every open
+      // count, the_door_strip_reads_every_open_count), so the list is the
+      // whole list, never a floor. It used to be built from the newest 500
+      // receipt events, and an older uncounted delivery fell outside it.
+      unverifiedAtFloor: false,
       providerNamesUnavailable: known ? !!q.data!.providerNamesUnavailable : false,
       itemNamesUnavailable: known ? !!q.data!.itemNamesUnavailable : false,
       hasData: known,

@@ -234,6 +234,50 @@ function makeDb(opts: {
       }
       if (tableName === "procurement_orders" && opts.orders)
         (q as any).in = async () => ({ data: opts.orders, error: null });
+      // The open-counts view (the_door_strip_reads_every_open_count), modelled
+      // over the stored events and `opts.orders` as its SQL defines it, so the
+      // listUnverified fixtures still drive the whole path. Paged as
+      // readWholeWindow pages it: `id` order, `gt` cursor, exact count.
+      if (tableName === "procurement_door_counts_open") {
+        let after: string | null = null;
+        (q as any).gt = (_col: string, v: string) => {
+          after = v;
+          return q;
+        };
+        (q as any).limit = async (n: number) => {
+          const orders = new Map((opts.orders ?? []).map((o) => [o.id, o]));
+          const byOrder = new Map<string, Row[]>();
+          for (const e of table.filter(matches)) {
+            if (!e.order_id || !orders.has(e.order_id)) continue;
+            byOrder.set(e.order_id, [...(byOrder.get(e.order_id) ?? []), e]);
+          }
+          const open = [...byOrder.entries()]
+            .filter(
+              ([id, es]) =>
+                !["COMPLETED", "CANCELLED"].includes(orders.get(id)!.status) &&
+                !es.some(
+                  (e) => e.stage === "bottle_count" || e.stage === "reconciled",
+                ),
+            )
+            .map(([id, es]) => {
+              const newest = [...es].sort(
+                (a, b) =>
+                  new Date(b.occurred_at).getTime() -
+                  new Date(a.occurred_at).getTime(),
+              );
+              const count = newest.find((e) => e.stage === "case_count");
+              return {
+                id,
+                order_number: orders.get(id)!.order_number ?? null,
+                counted_qty_bottles: count?.counted_qty_bottles ?? null,
+                counted_at: (count ?? newest[0]).occurred_at,
+              };
+            })
+            .filter((r) => after === null || r.id > after)
+            .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+          return { data: open.slice(0, n), error: null, count: open.length };
+        };
+      }
       return q;
     },
     rpc: async (name: string, args: Row) => {
@@ -1034,6 +1078,53 @@ describe("listUnverified", () => {
     expect(await new ReceivingService(db).listUnverified("r1")).toHaveLength(0);
   });
 
+  it("still lists the OLDEST open count once newer deliveries pass the old 500-event window", async () => {
+    // r41 invoices audit, gap 6. The read used to take the newest 500 events,
+    // so an open count older than them dropped out: the overdue delivery the
+    // strip exists to chase, gone, and the strip read as caught up.
+    const closed = Array.from({ length: 300 }, (_, i) => i).flatMap((i) => [
+      {
+        order_id: `closed-${i}`,
+        stage: "case_count",
+        counted_qty_bottles: 12,
+        occurred_at: hoursAgo(10 + i / 100),
+      },
+      {
+        order_id: `closed-${i}`,
+        stage: "bottle_count",
+        counted_qty_bottles: 12,
+        occurred_at: hoursAgo(9 + i / 100),
+      },
+    ]);
+    const { db } = makeDb({
+      events: [
+        {
+          order_id: "oldest",
+          stage: "case_count",
+          counted_qty_bottles: 24,
+          occurred_at: hoursAgo(200),
+        },
+        ...closed,
+      ],
+      orders: [
+        { id: "oldest", order_number: "PO-OLD", status: "PARTIALLY_RECEIVED" },
+        ...Array.from({ length: 300 }, (_, i) => ({
+          id: `closed-${i}`,
+          order_number: `PO-${i}`,
+          status: "PARTIALLY_RECEIVED",
+        })),
+      ],
+    });
+
+    const { rows, capped } = await new ReceivingService(db).listUnverifiedCapped(
+      "r1",
+    );
+    expect(rows.map((r) => [r.orderNumber, r.countedQtyBottles, r.severity])).toEqual([
+      ["PO-OLD", 24, "overdue"],
+    ]);
+    expect(capped).toBe(false);
+  });
+
   it("still surfaces a brand-new delivery once a restaurant has 500+ lifetime receipt events", async () => {
     // 500 old, already-closed events padding out the table, plus one fresh
     // unverified case count. The 500-row cap must keep the newest window —
@@ -1175,16 +1266,16 @@ describe("listUnverifiedCapped", () => {
     expect(rows).toHaveLength(1);
   });
 
-  it("reports capped: true when the read hits exactly the 500-row page", async () => {
-    // 500 events, none of them closed — the read returns exactly 500 rows,
-    // so the register does not know whether an order's qualifying event was
-    // pushed out past the window. `complete` (house-counter.service.ts) must
-    // derive from THIS, not print `true` unconditionally.
-    const events = Array.from({ length: 500 }, (_, i) => ({
-      order_id: `o-${i}`,
+  it("reads every open count past one page, so it is never a floor", async () => {
+    // This was `capped: true` at exactly 500 events: the read could not tell
+    // whether an older open count had been pushed out. The open counts are now
+    // read whole (readWholeWindow, 1,000 a page), so 1,500 open orders come
+    // back as 1,500 rows and `complete` on the house counter is true.
+    const events = Array.from({ length: 1500 }, (_, i) => ({
+      order_id: `o-${String(i).padStart(4, "0")}`,
       stage: "case_count",
       counted_qty_bottles: 6,
-      occurred_at: hoursAgo(500 - i),
+      occurred_at: hoursAgo(1500 - i),
     }));
     const orders = events.map((e) => ({
       id: e.order_id,
@@ -1194,8 +1285,9 @@ describe("listUnverifiedCapped", () => {
     const { db } = makeDb({ events, orders });
 
     const { rows, capped } = await new ReceivingService(db).listUnverifiedCapped("r1");
-    expect(capped).toBe(true);
-    expect(rows).toHaveLength(500);
+    expect(capped).toBe(false);
+    expect(rows).toHaveLength(1500);
+    expect(new Set(rows.map((r) => r.orderId)).size).toBe(1500);
   });
 });
 
