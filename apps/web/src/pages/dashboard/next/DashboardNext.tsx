@@ -40,6 +40,7 @@ import WaitingOnYou from './WaitingOnYou';
 import OneTapPanel from './OneTapPanel';
 import { ActivityPanel, LowStockPanel, WeekAhead } from './RailPanels';
 import NoGoodsYet from './NoGoodsYet';
+import { lowStockRead, noneCountedSaid, noneCountedYet } from './notCounted';
 import { TryAgain } from './TryAgain';
 import './dashboard-next.css';
 
@@ -127,14 +128,21 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
 
   const pendingCount =
     spine.pending === undefined ? undefined : spine.pending === null ? null : spine.pending.length;
+  // A list nobody has counted lists its goods at 0: those zeros are not low
+  // stock (r39 walk), so the line, the tile and the panel read without them.
+  const lowStock = lowStockRead(spine.stats, spine.lowStock);
   const lowStockCount =
-    spine.lowStock === undefined ? undefined : spine.lowStock === null ? null : spine.lowStock.length;
+    lowStock === undefined ? undefined : lowStock === null ? null : lowStock.length;
   // r28 onboarding gap 2: a house with no goods is not a house where nothing
   // runs low. Said only when the totals and the low-stock list both answered
   // and agree — zero goods counted, nothing below its minimum — so a read
   // that failed is never taken for an empty house.
   const goodsCount = spine.stats ? spine.stats.totalWines : null;
   const noGoodsYet = goodsCount === 0 && lowStockCount === 0;
+  // r36 onboarding gap 1: goods on the list that nobody has counted are not
+  // a cellar that holds. Null unless the house lists goods and has counted
+  // none of them (and on a gateway that does not send the counts).
+  const waitingForCount = noneCountedYet(spine.stats);
 
   // The opening sentence only speaks what it actually knows. DASH-W19: what
   // it could not read it names, in the house's words, and offers to read again.
@@ -167,12 +175,14 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
         : pendingCount === null
           ? 'The house has no goods on its list yet.'
           : 'No approvals are waiting, and the house has no goods on its list yet.'
-      : waiting ??
-        (pendingCount === null
-          ? 'No item is running low.'
-          : lowStockCount === null
-            ? 'No approvals are waiting.'
-            : 'Nothing is waiting on you.');
+      : waitingForCount !== null
+        ? `${waiting ?? (pendingCount === null ? '' : 'No approvals are waiting.')} ${noneCountedSaid(waitingForCount)}`.trim()
+        : waiting ??
+          (pendingCount === null
+            ? 'No item is running low.'
+            : lowStockCount === null
+              ? 'No approvals are waiting.'
+              : 'Nothing is waiting on you.');
     if (unread.length > 0) {
       const list = unread.length === 1 ? unread[0] : `${unread.slice(0, -1).join(', ')} and ${unread[unread.length - 1]}`;
       standing += ` ${list.charAt(0).toUpperCase()}${list.slice(1)} couldn’t be reached just now.`;
@@ -264,8 +274,10 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
             <WeekAhead restaurantId={activeRestaurantId} zone={zone} />
             {noGoodsYet ? (
               <NoGoodsYet />
+            ) : waitingForCount !== null && lowStockCount === 0 ? (
+              <NoGoodsYet waitingForCount={waitingForCount} />
             ) : (
-              <LowStockPanel items={spine.lowStock} onRetry={spine.refetch} />
+              <LowStockPanel items={lowStock} onRetry={spine.refetch} />
             )}
             <ActivityPanel items={spine.activity} />
           </div>
