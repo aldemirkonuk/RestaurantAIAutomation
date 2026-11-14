@@ -6,7 +6,7 @@ import { Roles } from "../auth/decorators/roles.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RecipesService } from "./recipes.service";
 import { DishesService } from "./dishes.service";
-import { CreateDishDto, PreviewCostDto, SaveRecipeDto, UpdateDishDto } from "./dto/recipes.dto";
+import { CreateDishDto, PreviewCostDto, SaveRecipeDto, ShelfMatchDto, UpdateDishDto } from "./dto/recipes.dto";
 
 /**
  * A dish and its recipe (ADR 0366), on the drinks' recipe routes. Every route
@@ -102,5 +102,23 @@ export class DishesController {
     @Body() dto: PreviewCostDto,
   ) {
     return this.recipes.previewDishCost(restaurantId, dishId, dto);
+  }
+
+  @Get(":restaurantId/items/:itemId/dishes")
+  @ApiOperation({ summary: "The dishes whose current recipe uses a shelf item, each with its figures" })
+  dishesUsingItem(
+    @Param("restaurantId", ParseUUIDPipe) restaurantId: string,
+    @Param("itemId", ParseUUIDPipe) itemId: string,
+    @CurrentUser() user: { role?: string } | undefined,
+  ) {
+    return this.dishes.dishesUsingItem(restaurantId, itemId, user?.role);
+  }
+
+  @Post(":restaurantId/shelf/match")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({ summary: "Pasted recipe labels matched to shelf items by exact name (owner/manager); writes nothing" })
+  matchShelf(@Param("restaurantId", ParseUUIDPipe) restaurantId: string, @Body() dto: ShelfMatchDto) {
+    return this.dishes.matchShelf(restaurantId, dto.labels);
   }
 }
