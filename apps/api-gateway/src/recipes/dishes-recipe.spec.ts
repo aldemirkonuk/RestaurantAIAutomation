@@ -19,10 +19,15 @@ import { B_DISH, GONE, HOUSE_A, HOUSE_B, SOUP, TART, V_TART_1, V_TART_2, fakeDb,
 
 /** Every route the controller declares, and which of them write. */
 const DECLARED = [
-  "createDish", "dishesUsingItem", "drinkFigures", "drinksUsingItem", "getDishRecipe", "listDishes", "listDishVersions",
-  "matchShelf", "menuPrices", "previewDishCost", "readDishVersion", "saveDishRecipe", "updateDish",
+  "addMenuDishes", "createDish", "dishesUsingItem", "drinkFigures", "drinksUsingItem", "getDishRecipe", "listDishes", "listDishVersions",
+  "matchShelf", "menuDishes", "menuPrices", "previewDishCost", "readDishVersion", "saveDishRecipe", "updateDish",
 ];
-const WRITES = ["createDish", "matchShelf", "previewDishCost", "saveDishRecipe", "updateDish"];
+const WRITES = ["addMenuDishes", "createDish", "matchShelf", "previewDishCost", "saveDishRecipe", "updateDish"];
+/**
+ * Reads gated like a write: the menu-dish offer exists only to be taken by
+ * the one who may write it, and it carries the menu's prices (gap 1 slice 3).
+ */
+const GATED_READS = ["menuDishes"];
 
 type Route = { handler: string; method: number; path: string };
 const proto = DishesController.prototype as unknown as Record<string, object>;
@@ -59,10 +64,11 @@ describe("dishes: the path's house is the caller's (real guard, every route)", (
     await expect(realGuard().canActivate(contextFor(route, HOUSE_B))).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it("every write is owner or manager; every read is not role-gated", () => {
+  it("every write is owner or manager; every read but the menu-dish offer is not role-gated", () => {
     for (const r of routes) {
       const roles = Reflect.getMetadata(ROLES_KEY, proto[r.handler]) ?? null;
-      expect([r.handler, roles]).toEqual([r.handler, WRITES.includes(r.handler) ? ["owner", "manager"] : null]);
+      const gated = WRITES.includes(r.handler) || GATED_READS.includes(r.handler);
+      expect([r.handler, roles]).toEqual([r.handler, gated ? ["owner", "manager"] : null]);
     }
   });
 });
