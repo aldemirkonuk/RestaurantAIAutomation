@@ -10,6 +10,7 @@ import {
 import { DatabaseService } from "../database/database.service";
 import { seesHouseAmounts } from "../dashboard/amounts-for-role";
 import { BaseUnit, CostItem, recipeCost } from "./recipe-cost";
+import { serveNutrition, type Allergen, type AllergenStatus } from "./recipe-nutrition";
 import { CreateDishDto, UpdateDishDto } from "./dto/recipes.dto";
 import { DISH_NOT_THIS_HOUSE, RecipesService } from "./recipes.service";
 import { foldName } from "./name-fold";
@@ -72,6 +73,23 @@ export async function inWaves<T, R>(xs: T[], read: (x: T) => Promise<R>, width =
   return out;
 }
 
+/**
+ * Item ids sent in one allergen read. An item states at most 14 allergens, so
+ * 50 items are at most 700 rows, under the 1,000-row cap; the read pages anyway.
+ */
+export const ALLERGEN_CHUNK = 50;
+
+/**
+ * What a list row says of its allergens (r36 recipes audit, gap 8), by the
+ * sheet's own rule (recipe-nutrition.ts): free only when every line, untracked
+ * too, states it free, and the lines that leave any allergen unstated are
+ * named. Not money: every role reads it. A failed read says so on the row
+ * (readable false) and never reads as allergen-free.
+ */
+export type RowAllergens =
+  | { readable: true; status: Record<Allergen, AllergenStatus>; unstatedBy: string[] }
+  | { readable: false };
+
 type Read = PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>;
 
 /** A dish's figures at today's prices: its current version, its yield and its cost a plate. */
@@ -88,6 +106,8 @@ export interface DishFigures {
     complete: boolean;
     partial: number;
   } | null;
+  /** Only when the caller asked for allergens. */
+  allergens?: RowAllergens;
 }
 
 /**
@@ -138,7 +158,7 @@ export class DishesService {
         .order("id", { ascending: true })
         .range(from, to),
     );
-    const figures = await this.figures(restaurantId, dishes.map((d) => d.id), money, DISHES_UNREAD);
+    const figures = await this.figures(restaurantId, dishes.map((d) => d.id), money, DISHES_UNREAD, "dish", { allergens: true });
     return dishes
       .map((d) => ({
         id: d.id,
@@ -146,6 +166,7 @@ export class DishesService {
         section: d.menu_section ?? null,
         price: money && d.price != null ? Number(d.price) : null,
         ...this.figureFields(figures.get(d.id)),
+        allergens: figures.get(d.id)?.allergens ?? null,
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -171,6 +192,7 @@ export class DishesService {
     money: boolean,
     sentence: string,
     owner: RecipeOwner = "dish",
+    opts: { allergens?: boolean } = {},
   ): Promise<Map<string, DishFigures>> {
     const client = this.db.getClient();
     const out = new Map<string, DishFigures>();
@@ -229,7 +251,7 @@ export class DishesService {
         this.all<any>("recipe line read", sentence, (from, to) =>
           client
             .from("recipe_lines")
-            .select("id, version_id, position, role, inventory_id, qty_base, base_unit, usable_pct")
+            .select("id, version_id, position, label, role, inventory_id, qty_base, base_unit, usable_pct")
             .eq("restaurant_id", restaurantId)
             .in("version_id", ids)
             .order("id", { ascending: true })
@@ -246,12 +268,15 @@ export class DishesService {
 
     const items = new Map<string, any>();
     const lots = new Map<string, any>();
+    const itemIds = [...new Set([...lines.values()].flat().map((l) => l.inventory_id).filter(Boolean))] as string[];
+    // The allergens are read beside the pricing, never after it.
+    const allergenRead = opts.allergens ? this.allergensOf(restaurantId, itemIds, sentence) : Promise.resolve(null);
     if (money) {
-      const itemIds = [...new Set([...lines.values()].flat().map((l) => l.inventory_id).filter(Boolean))] as string[];
       let reads: Array<{ items: Map<string, any>; lots: Map<string, any> }>;
       try {
         reads = await inWaves(chunks(itemIds, 100), (ids) => this.recipes.readPricing(restaurantId, ids, true));
       } catch (e) {
+        await allergenRead;
         this.failed(`${owner} pricing read`, e, sentence);
       }
       for (const read of reads) {
@@ -259,6 +284,7 @@ export class DishesService {
         read.lots.forEach((v, k) => lots.set(k, v));
       }
     }
+    const allergenRows = await allergenRead;
 
     for (const p of pointers) {
       const v = versions.get(p.versionId);
@@ -289,9 +315,44 @@ export class DishesService {
           partial: priced.partial,
         };
       }
-      out.set(p.ownerId, { versionId: p.versionId, yieldServes, lineCount: rows.length, cost });
+      const figures: DishFigures = { versionId: p.versionId, yieldServes, lineCount: rows.length, cost };
+      if (opts.allergens) figures.allergens = rowAllergens(rows, yieldServes, allergenRows);
+      out.set(p.ownerId, figures);
     }
     return out;
+  }
+
+  /**
+   * The allergens each item states, by item id, or null when the read failed
+   * (logged; the row then says it could not be read). Chunked, at most WAVE
+   * chunks at once, each paged past the 1,000-row cap.
+   */
+  private async allergensOf(
+    restaurantId: string,
+    itemIds: string[],
+    sentence: string,
+  ): Promise<Map<string, Array<{ allergen: string; status: string }>> | null> {
+    const client = this.db.getClient();
+    try {
+      const reads = await inWaves(chunks(itemIds, ALLERGEN_CHUNK), (ids) =>
+        this.all<any>("item allergen read", sentence, (from, to) =>
+          client
+            .from("item_allergens")
+            .select("id, inventory_id, allergen, status")
+            .eq("restaurant_id", restaurantId)
+            .in("inventory_id", ids)
+            .order("id", { ascending: true })
+            .range(from, to),
+        ),
+      );
+      const out = new Map<string, Array<{ allergen: string; status: string }>>();
+      for (const rows of reads) {
+        for (const a of rows) out.set(a.inventory_id, [...(out.get(a.inventory_id) ?? []), { allergen: a.allergen, status: a.status }]);
+      }
+      return out;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -466,12 +527,15 @@ export class DishesService {
         .order("id", { ascending: true })
         .range(from, to),
     );
-    const figures = await this.figures(restaurantId, drinks.map((d) => d.id), money, DRINK_FIGURES_UNREAD, "cocktail");
+    const figures = await this.figures(restaurantId, drinks.map((d) => d.id), money, DRINK_FIGURES_UNREAD, "cocktail", {
+      allergens: true,
+    });
     return {
       drinks: drinks.map((d) => ({
         cocktailId: d.id,
         price: money && d.price != null ? Number(d.price) : null,
         ...this.figureFields(figures.get(d.id)),
+        allergens: figures.get(d.id)?.allergens ?? null,
       })),
     };
   }
@@ -626,4 +690,30 @@ export class DishesService {
     if (!data) throw new NotFoundException(DISH_NOT_THIS_HOUSE);
     return this.dishOut(data);
   }
+}
+
+/**
+ * A recipe's allergens by the sheet's rule, from its lines (in recipe order)
+ * and what each linked item states. Null rows: the read failed, so nothing is
+ * said rather than something false.
+ */
+export function rowAllergens(
+  rows: any[],
+  yieldServes: number,
+  stated: Map<string, Array<{ allergen: string; status: string }>> | null,
+): RowAllergens {
+  if (!stated) return { readable: false };
+  const sum = serveNutrition(
+    rows.map((l) => ({
+      label: l.label ?? "",
+      role: l.role,
+      inventoryId: l.inventory_id ?? null,
+      qtyBase: Number(l.qty_base),
+      baseUnit: l.base_unit as BaseUnit,
+      figures: null,
+      allergens: (l.inventory_id && stated.get(l.inventory_id)) || [],
+    })),
+    yieldServes,
+  );
+  return { readable: true, status: sum.allergens, unstatedBy: sum.allergensUnstatedBy };
 }

@@ -175,7 +175,7 @@ describe("drinks: the list's figures", () => {
     const rows = withDrinks();
     rows.recipe_current = rows.recipe_current.filter((p) => p.cocktail_id !== SOUR);
     const sour = (await service(rows).drinkFigures(HOUSE_A, "owner")).drinks.find((d) => d.cocktailId === SOUR)!;
-    expect(sour).toEqual({ cocktailId: SOUR, price: null, hasRecipe: false, yieldServes: null, lineCount: 0, cost: null });
+    expect(sour).toEqual({ cocktailId: SOUR, price: null, hasRecipe: false, yieldServes: null, lineCount: 0, cost: null, allergens: null });
   });
 
   it("staff get no price and no cost", async () => {
