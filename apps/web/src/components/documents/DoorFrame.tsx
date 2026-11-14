@@ -44,6 +44,37 @@ export function knownPack(n: unknown): number | null {
   return n != null && n !== '' && Number.isInteger(v) && v >= 2 ? v : null
 }
 
+/**
+ * What the paperwork says for a line, in words (r31 walk). Layer 3's figures
+ * are bottle-equivalents: a paper of 2 cases of 12 bills 24. Printed with the
+ * paper's own unit word, that read "24 KOLİ" beside "12 bottles to a case".
+ * With the pack known the figure goes back to the paper's count, with the
+ * bottles beside it; with no pack stated the figure IS the paper's count.
+ */
+export function paperworkWords(
+  q: number | null | undefined,
+  packed: boolean,
+  pack: number | null,
+  printedUnit: string,
+): string {
+  if (q == null || !packed || pack === null) return `${fmtQty(q)} ${printedUnit}`.trim()
+  if (q % pack === 0) return `${fmtQty(q / pack)} ${printedUnit} (${bottlesWords(q)})`.trim()
+  return bottlesWords(q)
+}
+
+/**
+ * What the door already counted, in words (r31 walk). A packed line's count
+ * is booked in bottles (the gateway refuses one whose pack is unknown), so it
+ * is said in bottles, never as that many cases.
+ */
+export function countedWords(q: number, packed: boolean, printedUnit: string): string {
+  return packed ? bottlesWords(q) : `${fmtQty(q)} ${printedUnit}`.trim()
+}
+
+function bottlesWords(q: number): string {
+  return `${fmtQty(q)} ${q === 1 ? 'bottle' : 'bottles'}`
+}
+
 export interface DoorFrameProps {
   doc: CanonicalDocument
   /** Who counted, when the record names them. */
@@ -210,8 +241,12 @@ export function DoorFrame({
               <span style={{ display: 'block', fontSize: 10.5, color: 'var(--ink-2, #4F473C)' }}>
                 The paperwork says{' '}
                 <strong>
-                  {fmtQty(adj?.shipped ?? adj?.billed ?? null)}{' '}
-                  {line.unit.value ?? ''}
+                  {paperworkWords(
+                    adj?.shipped ?? adj?.billed ?? null,
+                    packedUnit(i) !== null,
+                    paperPack(i),
+                    line.unit.value ?? '',
+                  )}
                 </strong>
                 {packedUnit(i) && paperPack(i) !== null
                   ? ` · ${paperPack(i)} bottles to a ${PACKED_WORD[packedUnit(i)!]}`
@@ -361,7 +396,7 @@ export function DoorFrame({
               )}
               {onSubmitCount && typeof adj?.received === 'number' && (
                 <span data-testid="door-counted-so-far" style={{ display: 'block', fontSize: 9.5, color: 'var(--ink-2, #4F473C)' }}>
-                  Counted so far: {fmtQty(adj.received)} {line.unit.value ?? ''}. A new count of this line replaces it.
+                  Counted so far: {countedWords(adj.received, packedUnit(i) !== null, line.unit.value ?? '')}. A new count of this line replaces it.
                 </span>
               )}
               {onSubmitCount && resolved.has(i) && resolved.get(i)!.inventoryIdSource !== 'line' && (

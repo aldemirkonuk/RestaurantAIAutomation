@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import type { CanonicalDocument } from '../../../services/api/canonical'
-import { DoorFrame, knownPack } from '../DoorFrame'
+import { DoorFrame, countedWords, knownPack, paperworkWords } from '../DoorFrame'
 
 /**
  * r28 invoices audit, G1: a case the paper has no pack for asks the door.
@@ -104,5 +104,40 @@ describe('DoorFrame asks for the pack the paper does not state (r28 G1)', () => 
   it('a read-only frame asks nothing', () => {
     render(<DoorFrame doc={doc(null)} />)
     expect(screen.queryByTestId('door-pack')).toBeNull()
+  })
+})
+
+/**
+ * r31 walk: layer 3's figures are bottle-equivalents. A paper of 2 cases of 12
+ * read "The paperwork says 24 KOLİ · 12 bottles to a case", and a door count
+ * of those 24 bottles read "Counted so far: 24 KOLİ".
+ */
+describe('a packed line says its figures in cases and bottles, never bottles as cases (r31 walk)', () => {
+  it.each([
+    [24, true, 12, 'KOLİ', '2 KOLİ (24 bottles)'],
+    [12, true, 12, 'KOLİ', '1 KOLİ (12 bottles)'],
+    [25, true, 12, 'KOLİ', '25 bottles'],
+    [2, true, null, 'KOLİ', '2 KOLİ'],
+    [6, false, null, 'ADET', '6 ADET'],
+  ])('paperwork %p (packed %p, pack %p, %p) reads %p', (q, packed, pack, unit, words) =>
+    expect(paperworkWords(q, packed, pack, unit)).toBe(words),
+  )
+
+  it.each([
+    [24, true, 'KOLİ', '24 bottles'],
+    [1, true, 'KOLİ', '1 bottle'],
+    [6, false, 'ADET', '6 ADET'],
+  ])('counted %p (packed %p, %p) reads %p', (q, packed, unit, words) =>
+    expect(countedWords(q, packed, unit)).toBe(words),
+  )
+
+  it('draws the paper count with its bottles, and the door count in bottles', () => {
+    const d = doc(12)
+    ;(d.layer3.lines[0] as { billed: number; received: unknown }).billed = 24
+    ;(d.layer3.lines[0] as { billed: number; received: unknown }).received = 24
+    render(<DoorFrame doc={d} onSubmitCount={async () => undefined} />)
+    const first = screen.getAllByRole('listitem')[0]
+    expect(first.textContent).toContain('The paperwork says 2 KOLİ (24 bottles) · 12 bottles to a case')
+    expect(screen.getByTestId('door-counted-so-far').textContent).toContain('Counted so far: 24 bottles.')
   })
 })
