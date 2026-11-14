@@ -231,6 +231,15 @@ function daysBetween(since: string, until: string): number {
 }
 
 /**
+ * "the last day", "the last 2 days". Since a new good's sales window is the
+ * days it was carried (from 1, not 7: inventory r36 audit, gap 10), one day
+ * is a real window and is said as one.
+ */
+export function lastDays(n: number): string {
+  return n === 1 ? 'the last day' : `the last ${fmtCount(n)} days`;
+}
+
+/**
  * Where a good's usage a day comes from, in the house's words, for the Usage
  * card and the pace evidence. Null when the server sent no source (an older
  * gateway, or neither sales nor counts measured it).
@@ -240,11 +249,13 @@ export function usageSaid(row: InvRow, uom: string | null): string | null {
   const n = daysBetween(row.usageSince, row.usageUntil);
   if (row.usageSource === 'counts') {
     const used = row.usageQty === null ? 'What was used' : `${fmtQty(row.usageQty, uom)} used`;
-    return `${used} between the counts of ${shortDate(row.usageSince)} and ${shortDate(row.usageUntil)} (${n} days): the two counts, with what was received, written off and found short between them.`;
+    // The count identity: first count + arrived - last count. A write-off or a
+    // shortfall between the counts is inside it, not taken out (gap 11).
+    return `${used} between the counts of ${shortDate(row.usageSince)} and ${shortDate(row.usageUntil)} (${fmtCount(n)} day${n === 1 ? '' : 's'}): the first count, plus what was received, less the last count. What was written off or found short between them is part of it.`;
   }
   return row.usageQty === null
-    ? `Sold over the last ${n} days, from the stock ledger, less voids.`
-    : `${fmtQty(row.usageQty, uom)} sold in the last ${n} days, from the stock ledger, less voids.`;
+    ? `Sold over ${lastDays(n)}, from the stock ledger, less voids.`
+    : `${fmtQty(row.usageQty, uom)} sold in ${lastDays(n)}, from the stock ledger, less voids.`;
 }
 
 export default function ItemCards({ row, uom, kind, canManage, currency, figures, inside, open, onOpen }: ItemCardsProps) {

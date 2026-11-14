@@ -39,7 +39,7 @@ import { useRowRecord } from '../../cellar/next/useCellarNextData';
 import { velocity, whenItSells, type TillLine } from '../../cellar/next/rowSeries';
 import { CountSheet, OrderSheet, PourSheet, TransferSheet, WriteOffSheet } from './InventorySheets';
 import { amountUnit, isPoured } from './iv-amount';
-import { fmtQty, NOT_DRAWN_BY_SALES, perUnit, usageWords as usageWordsOf } from './ItemCards';
+import { fmtQty, lastDays, NOT_DRAWN_BY_SALES, perUnit, usageWords as usageWordsOf } from './ItemCards';
 import { writeFailure } from './iv-failure';
 import { costColumnsFor, oneLine, rowFilename, runExport, valuationColumns } from './iv-export';
 import {
@@ -652,7 +652,7 @@ function HowFastItPours({ row, uom, kind }: { row: InvRow; uom: string | null; k
       : row.velocity === 0
         ? 'Nothing sold lately, so there is no runway to give.'
         : row.usageSource === 'sales' && row.usageQty !== null && row.usageSince && row.usageUntil
-          ? `About ${fmtPace(row.velocity)} a day (${fmtQty(row.usageQty, uom)} sold in the last ${fmtCount(Math.max(1, Math.round((Date.parse(row.usageUntil) - Date.parse(row.usageSince)) / 86_400_000)))} days, less voids)${lasts}`
+          ? `About ${fmtPace(row.velocity)} a day (${fmtQty(row.usageQty, uom)} sold in ${lastDays(Math.max(1, Math.round((Date.parse(row.usageUntil) - Date.parse(row.usageSince)) / 86_400_000)))}, less voids)${lasts}`
           : `About ${fmtPace(row.velocity)} a day (${fmtCount(sold30(row.velocity))} sold in the last 30 days)${lasts}`;
 
   return (

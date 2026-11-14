@@ -328,6 +328,13 @@ describe('RowDropdown head facts (INV-W13, W16, W17)', () => {
     );
   });
 
+  it('a good carried one day says "the last day" (r36 inventory gap 10)', () => {
+    renderDrop({
+      row: row({ velocity: 3, runway: 1, usageSource: 'sales', usageSince: '2026-11-11T09:00:00Z', usageUntil: '2026-11-12T09:00:00Z', usageQty: 3 }),
+    });
+    expect(screen.getByTestId('row-dropdown').textContent).toContain('About 3.0 a day (3 bottles sold in the last day, less voids)');
+  });
+
   it('says what is left in the open bottle', () => {
     renderDrop({ row: row({ openMl: 150 }) });
     const drop = screen.getByTestId('row-dropdown');
