@@ -269,6 +269,11 @@ describe("CsvParserService: the money a file prices a line in (r40, r36 N1)", ()
       expect.objectContaining({ by_glass_price: 9, currency: "EUR", also_priced: [{ currency: "TL", bottle_price: 1200 }] }),
     );
     expect(mixed.bottle_price).toBeUndefined();
+    // A third bottle column in a money already kept aside: the first of that money stands.
+    const [three] = parser().parse("Ad;Şişe (TL);Bottle (EUR);Bottle (€)\nBrunello;3.250,00;95;99\n");
+    expect(three.also_priced).toEqual([{ currency: "EUR", bottle_price: 95 }]);
+    // Two name columns: the first is the line's name, as before.
+    expect(parser().parse("Name,Item,Bottle\nBarolo,Wine 7,64\n")[0].name).toBe("Barolo");
     // Two columns in the same money: the second is passed over, as before.
     const [same] = parser().parse("Ad;Şişe (TL);Şişe (₺)\nSoave;1.200,00;1.300,00\n");
     expect(same).toEqual({ name: "Soave", bottle_price: 1200, currency: "TL", raw_text: "Soave;1.200,00;1.300,00" });

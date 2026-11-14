@@ -37,6 +37,8 @@ describe("price-mark: the money a menu file names (r40, r36 N1)", () => {
     expect(excelFormatMark('#,##0.00 "TL"')).toBe("TL");
     expect(excelFormatMark("$#,##0.00")).toBe("$");
     expect(excelFormatMark("[$-41F]#,##0.00")).toBeNull();
+    // A mark this file cannot place names no money: the price is read as before.
+    expect(excelFormatMark("[$kr-41D] #,##0.00")).toBeNull();
     expect(excelFormatMark('#,##0.00 "adet"')).toBeNull();
     expect(excelFormatMark("dd/mm/yyyy")).toBeNull();
     expect(excelFormatMark("General")).toBeNull();
