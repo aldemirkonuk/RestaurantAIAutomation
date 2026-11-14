@@ -26,7 +26,7 @@
  * read with the page, it says so, never that the letters carried none.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { EM, MONO, SANS, SERIF, failedReadWords, fmtWhen, heldBecause } from './cm-format';
@@ -224,17 +224,16 @@ export function MailThread({
     : null;
 
   // "New to you" (r36 mail gap 6): a thread on screen is read by this person
-  // through the newest vendor letter it shows. Once per letter: a poll that
-  // brings nothing new sends nothing; a letter that arrives while the thread
-  // is open is marked when it is drawn. Every member keeps their own mark.
+  // through the newest vendor letter it shows. Once per letter (the effect
+  // runs only when that letter changes): a poll that brings nothing new sends
+  // nothing; a letter that arrives while the thread is open is marked when it
+  // is drawn. Every member keeps their own mark. The mark is idempotent, so a
+  // remount sending it again changes nothing.
   const seen = useMarkThreadSeen();
   const mark = seenMarkFor(head);
   const markId = mark ? `${mark.with}|${mark.key}|${mark.through}` : null;
-  const marked = useRef<string | null>(null);
   useEffect(() => {
-    if (!mark || !markId || marked.current === markId) return;
-    marked.current = markId;
-    seen.mutate(mark);
+    if (mark) seen.mutate(mark);
   }, [markId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (

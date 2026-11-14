@@ -169,8 +169,10 @@ describe('a thread on screen is read by this person', () => {
     );
     await waitFor(() => expect(qc.getQueryState(['mail-people', 'r1', false, ''])?.isInvalidated).toBe(true));
     expect(qc.getQueryState(['mail-threads', 'r1', 'vendor:p1'])?.isInvalidated).toBe(true);
-    // Only those two: the header's count is not what a mark changes.
-    expect(qc.getQueryState(['mail-summary', 'r1'])?.isInvalidated).toBe(false);
+    // Only those two: the header's count is not what a mark changes, so the
+    // summary (fresh, and on screen) is not read again.
+    await waitFor(() => expect(qc.isMutating()).toBe(0));
+    expect(gets('/mail/summary')).toBe(0);
   });
 
   it('does not read the lists again when the mark was not kept', async () => {
