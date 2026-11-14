@@ -19,8 +19,7 @@ export class GoalReadingRefused extends Error {
  * (r34 walk w3, R-F7). The same words the reports page uses for a register
  * whose read failed on the server.
  */
-export const GOAL_UNREAD_ON_OUR_SIDE =
-  "Mudavym’s side failed while reading it. Nothing is claimed from it.";
+export const GOAL_UNREAD_ON_OUR_SIDE = "Mudavym’s side failed while reading it.";
 
 /**
  * Why a goal could not be read, in the house's words (r34 walk w3, R-F7).
