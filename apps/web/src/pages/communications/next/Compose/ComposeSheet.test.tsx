@@ -720,6 +720,21 @@ describe('a reply opened from Mail (r28 gap 3)', () => {
     expect(onHold).toHaveBeenCalledTimes(1);
   });
 
+  it('a reply turned to another vendor is held', async () => {
+    mockData.current = {
+      ...base,
+      sender: HOUSE_MAILBOX,
+      book: [...BOOK, { providerId: 'p2', providerName: 'Ege Şarap', contactName: 'Ege', email: 'ege@egesarap.com', source: 'provider' as const }],
+    };
+    const onHold = vi.fn();
+    render(<ComposeSheet open onClose={() => {}} onHold={onHold} prefill={REPLY} />);
+    await waitFor(() => expect(screen.getByText('fikri@fikritarim.com')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.click(await screen.findByText('Ege Şarap'));
+    fireEvent.click(screen.getByText('Close'));
+    expect(onHold).toHaveBeenCalledWith(expect.objectContaining({ to: expect.objectContaining({ providerId: 'p2' }) }));
+  });
+
   it('a plain letter names nothing it answers', async () => {
     mockData.current = { ...base, sender: HOUSE_MAILBOX };
     sealThenQueue();
