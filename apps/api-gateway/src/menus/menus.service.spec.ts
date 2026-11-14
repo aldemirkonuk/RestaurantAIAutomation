@@ -1402,6 +1402,15 @@ describe("MenusService — every menu read is kept as its own version", () => {
         expect(plan.lines[0].bottle).toMatchObject({ result: "change", setAfterRead: true });
       });
 
+      it("a menu that was current once and is not now is chosen now too: its old choice dates nothing", async () => {
+        const { tables, service, read } = await withAPriceSetAt("2026-11-13T15:00:00Z", false);
+        Object.assign(tables.restaurant_menus.find((m) => m.id === read.menuId)!, { status: "archived", made_current_at: CHOSEN });
+        const plan = await service.planFor("rest-1", read.menuId);
+        expect(plan.current).toBe(false);
+        expect(plan.lines[0].bottle).toMatchObject({ result: "change" });
+        expect(plan.counts).toMatchObject({ kept_newer: 0 });
+      });
+
       it("Carry again on that plan is accepted (the fingerprints agree)", async () => {
         const { service, read } = await withAPriceSetAt("2026-11-13T15:00:00Z");
         const plan = await service.planFor("rest-1", read.menuId);
