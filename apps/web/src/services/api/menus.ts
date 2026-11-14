@@ -59,6 +59,19 @@ export interface MenuImportReviewItem {
   priceFlagNote?: string | null
   /** ADR 0193 round 3: every kind a price lock held, with its lock. */
   priceHeld?: HeldKind[]
+  /**
+   * Set when two or more of the house's own goods fit this line (name, kind,
+   * vintage and size): none was guessed, and the line went to the library
+   * (r28 G21). An owner or a manager links it with linkMenuLineToHouseGood.
+   */
+  houseCandidates?: HouseCandidate[]
+}
+
+/** One of the house's own goods a read line fits (gateway `HouseCandidate`). */
+export interface HouseCandidate {
+  inventoryItemId: string
+  name: string
+  kind: string | null
 }
 
 /**
@@ -519,6 +532,23 @@ export const MAKE_CURRENT_TIMEOUT_MS = 120_000
  * Owner or manager; the gateway refuses anyone else (403), a missing
  * fingerprint (400) and a plan that changed since it was shown (409).
  */
+/**
+ * Link one line of a kept (not current) menu to one of the house's own goods
+ * (r28 G21) -- owner or manager only. The menu's plan changes, so a plan shown
+ * before is refused at make-current and is read again.
+ */
+export async function linkMenuLineToHouseGood(
+  menuId: string,
+  menuItemId: string,
+  inventoryItemId: string,
+): Promise<{ menuItemId: string; inventoryItemId: string; goodName: string }> {
+  const response = await apiClient.patch<{ menuItemId: string; inventoryItemId: string; goodName: string }>(
+    `/menu-versions/${menuId}/items/${menuItemId}/house-good`,
+    { inventoryItemId },
+  )
+  return response.data
+}
+
 export async function makeMenuCurrent(menuId: string, fingerprint: string): Promise<MakeCurrentResult> {
   // The switch commits before the prices are carried, so this call is never
   // cut off at the client's usual 30 s while the gateway is still writing
