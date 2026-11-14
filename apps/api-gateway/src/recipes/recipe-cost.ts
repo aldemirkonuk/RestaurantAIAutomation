@@ -96,7 +96,8 @@ const WEIGHTS = new Set(["mg", "g", "kg"]);
 
 /** A stated weight (g) the bridge may use: a finite number above 0, else none. */
 function stated(v: number | string | null | undefined): number | null {
-  if (v === null || v === undefined || v === "") return null;
+  if (v === null || v === undefined) return null;
+  // "" reads as 0, so it is not stated either.
   const n = Number(v);
   return Number.isFinite(n) && n > 0 ? n : null;
 }
@@ -145,7 +146,10 @@ function directCost(uom: string, item: CostItem, unitCost: number, baseUnit: Bas
 export function baseUnitCost(item: CostItem, unitCost: number, baseUnit: BaseUnit): BaseCost {
   const uom = String(item.uom ?? "").toLowerCase();
   const direct = directCost(uom, item, unitCost, baseUnit);
-  if ("perBase" in direct || direct.why !== "unit_mismatch") return direct;
+  // Only a mismatch is bridged; a pack or a bottle of no stated size keeps
+  // its own reason, since no branch below takes a pack, and a bottle of no
+  // size is answered before any weight is read.
+  if ("perBase" in direct) return direct;
 
   if (baseUnit === "each_milli" && WEIGHTS.has(uom)) {
     const pieceG = stated(item.piece_grams);

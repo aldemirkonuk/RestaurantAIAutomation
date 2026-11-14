@@ -99,6 +99,32 @@ describe("recipeCost: a line meets its good through a weight the house stated", 
   });
 });
 
+/**
+ * The shared fake ignores a select's column list. This one keeps only the
+ * columns a read names, as PostgREST does, so a read that forgets
+ * piece_grams or ml_grams sees none.
+ */
+function projecting(fake: ReturnType<typeof fakeDb>) {
+  const client: any = fake.db.getClient();
+  const from = client.from;
+  client.from = (t: string) => {
+    const q = from(t);
+    let cols: string[] | null = null;
+    const select = q.select;
+    q.select = (c: string, o?: any) => ((cols = c.includes("(") ? null : c.split(",").map((x) => x.trim())), select(c, o));
+    const keep = (r: any) => (cols && r ? Object.fromEntries(cols.map((k) => [k, r[k]])) : r);
+    const then = q.then;
+    q.then = (ok: (v: any) => unknown) => then((v: any) => ok({ ...v, data: Array.isArray(v.data) ? v.data.map(keep) : keep(v.data) }));
+    const maybeSingle = q.maybeSingle;
+    q.maybeSingle = async () => {
+      const v = await maybeSingle();
+      return { ...v, data: keep(v.data) };
+    };
+    return q;
+  };
+  return new RecipesService({ getClient: () => client } as never);
+}
+
 /* ── part 2: the service ──────────────────────────────────────────────── */
 
 const EGGS = "f0000000-0000-4000-8000-0000000000e1";
@@ -124,7 +150,7 @@ function houseWithEggs(egg: Record<string, unknown> = {}) {
 describe("the sheet reads a good's stated weights", () => {
   it("prices and counts the eggs line once one egg's weight is stated, and says it on the line", async () => {
     const rows = houseWithEggs({ piece_grams: "60.000" });
-    const svc = new RecipesService(fakeDb(rows).db);
+    const svc = projecting(fakeDb(rows));
     const out: any = await svc.getDishRecipe(HOUSE_A, TART, "owner");
     const egg = out.current.lines.find((l: any) => l.label === "Eggs");
     expect(egg).toMatchObject({ itemPieceGrams: 60, itemMlGrams: null, needs: null, costBasis: "last_purchase_price" });
@@ -139,8 +165,17 @@ describe("the sheet reads a good's stated weights", () => {
     expect(egg).toMatchObject({ itemPieceGrams: null, needs: "piece_grams", costBasis: "unit_mismatch", costPerServe: null });
   });
 
+  it("prices a volume line through the good's stated ml weight, read with the price", async () => {
+    // 2 eggs counted as 100 ml of beaten egg at 1.03 g a ml: 103 g of a kg at 50 = 5.15, over 8 serves.
+    const rows = houseWithEggs({ ml_grams: "1.0300" });
+    const egg = rows.recipe_lines.find((l) => l.id === "l-egg")!;
+    Object.assign(egg, { qty_entered: 100, unit_code: "ml", qty_base: 1000, base_unit: "ml10" });
+    const out: any = await projecting(fakeDb(rows)).getDishRecipe(HOUSE_A, TART, "owner");
+    expect(out.current.lines.find((l: any) => l.label === "Eggs")).toMatchObject({ itemMlGrams: 1.03, needs: null, costPerServeExact: 0.64375 });
+  });
+
   it("gives a role without money no cost and no need", async () => {
-    const svc = new RecipesService(fakeDb(houseWithEggs({ piece_grams: 60 })).db);
+    const svc = projecting(fakeDb(houseWithEggs({ piece_grams: 60 })));
     const out: any = await svc.getDishRecipe(HOUSE_A, TART, "staff");
     const egg = out.current.lines.find((l: any) => l.label === "Eggs");
     expect(egg).toMatchObject({ costPerServe: null, needs: null, costBasis: null, itemPieceGrams: 60 });
@@ -157,7 +192,7 @@ describe("the sheet reads a good's stated weights", () => {
   it("prices an unsaved draft through the stated weight, and names the need on a preview line", async () => {
     const rows = houseWithEggs({ piece_grams: 60 });
     const rpc = (_n: string, a: any) => ({ data: [{ qty_base: Math.round(a.p_qty * 1000), base_unit: "each_milli" }] });
-    const svc = new RecipesService(fakeDb(rows, { rpc }).db);
+    const svc = projecting(fakeDb(rows, { rpc }));
     const dto = { yieldServes: 1, lines: [{ role: "stocked", inventoryId: EGGS, qtyEntered: 2, unitCode: "each" }] } as any;
     const out: any = await svc.previewDishCost(HOUSE_A, TART, dto);
     expect(out.perServe).toBe(6);
