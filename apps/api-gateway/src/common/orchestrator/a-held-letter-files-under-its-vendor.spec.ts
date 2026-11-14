@@ -48,13 +48,16 @@ function store(
     let single = false;
     let returning = false;
     let lim = Infinity;
+    let columns: string[] | null = null;
     const field = (r: Row, c: string) => {
       const [col, f] = c.split("->>");
       return f === undefined ? r[col] : r[col]?.[f];
     };
     const qb: any = {
-      select: () => {
+      // A read returns only the columns it names, as PostgREST does.
+      select: (cols?: string) => {
         if (op !== "select") returning = true;
+        else if (cols && cols !== "*") columns = cols.split(",").map((c) => c.trim());
         return qb;
       },
       eq: (c: string, v: any) => (filters.push((r) => field(r, c) === v), qb),
@@ -102,7 +105,11 @@ function store(
             for (const r of hit) rows.splice(rows.indexOf(r), 1);
             out = { data: null, error: null };
           } else {
-            const m = hit.slice(0, lim);
+            const m = hit
+              .slice(0, lim)
+              .map((r) =>
+                columns ? Object.fromEntries(columns.filter((c) => c in r).map((c) => [c, r[c]])) : { ...r },
+              );
             out = { data: single ? (m[0] ?? null) : m, error: null };
           }
         }
@@ -280,6 +287,11 @@ describe("fileHeldLetter: what it refuses, and that a refusal leaves the letter 
 
   it("409 for a letter whose sender could not be read", async () => {
     const t = world({ held: [heldRow({ held_reason: "sender_unreadable", sender_email: null })] });
+    await refused(t, ConflictException, /could not be confirmed can be filed/);
+  });
+
+  it("409 for a letter whose sender could not be read, even when an address was kept", async () => {
+    const t = world({ held: [heldRow({ held_reason: "sender_unreadable" })] });
     await refused(t, ConflictException, /could not be confirmed can be filed/);
   });
 
