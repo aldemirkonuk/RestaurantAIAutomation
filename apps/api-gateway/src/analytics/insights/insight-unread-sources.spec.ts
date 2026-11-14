@@ -118,6 +118,7 @@ const ROWS: Record<keyof typeof BUNDLE_READ_WORDS, Row[]> = {
   ],
   procurement_orders: [
     {
+      id: "o1",
       provider_id: "p1",
       providers: { name: "Vendor" },
       total_cost: 100,
@@ -277,6 +278,7 @@ describe("the insight generator names a read it could not make (ADR 0292, 2026-1
   it.each([
     ["wine_consumption_log", "pour history"],
     ["pos_checks", "till checks"],
+    ["procurement_orders", "order history"],
   ])(
     "a whole-window %s read refused past the ceiling is named %p, and its family is silent",
     async (table, word) => {
@@ -285,7 +287,12 @@ describe("the insight generator names a read it could not make (ADR 0292, 2026-1
         [table]: { overCeiling: true },
       }).generate("r1", { persist: false });
       expect(out.sourcesUnread).toEqual([word]);
-      const need = table === "pos_checks" ? "checks" : "consumption";
+      const need =
+        table === "pos_checks"
+          ? "checks"
+          : table === "procurement_orders"
+            ? "orders"
+            : "consumption";
       expect(out.availability).not.toContain(need);
     },
   );

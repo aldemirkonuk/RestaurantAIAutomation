@@ -32,6 +32,8 @@ export interface TillSalesRead {
   items?: Array<{
     inventory_id: string;
     sales: number | string;
+    /** A mapping of this house points at the item (listed even if it never sold). */
+    mapped?: boolean;
     in_house?: boolean;
   }>;
   checks?: number;
@@ -183,20 +185,138 @@ export function cogsCoverageOf(read: TillCostRead): CogsCoverage {
 }
 
 /**
+ * Today's stock at cost of the goods the till reaches (reports lane r2,
+ * 2026-11-11; the #1088 residual "turns and days of stock compare unlike
+ * bases").
+ *
+ * Turns, days of stock and GMROI divide the cost of what the till sold by the
+ * stock it sold from. The cost of what sold holds only goods the till reaches:
+ * a sale on a line that names no stocked good moves no bottle and carries no
+ * cost. Divided into the whole cellar, every good the till cannot sell (a wine
+ * not mapped to a till item, a kitchen good) added days of stock that no sale
+ * could ever take away, so an unmapped wine read as idle stock.
+ *
+ * A good the till reaches: one the sales read lists for this house (a mapping
+ * points at it, or a line named it, or the till moved it in the window), or
+ * one the cost read lists. The rest are named apart, with their value at cost,
+ * and feed no ratio. The invariant ADR 0051 set for the whole cellar holds
+ * here: the value is null unless every on-hand good the till reaches carries a
+ * recorded cost, never a total of the costed part. An unpriced good the till
+ * does not reach no longer withholds it.
+ *
+ * Null when the sales read failed: without it the mapped goods that did not
+ * sell are unknown, and a smaller stock would shorten days of stock.
+ */
+export interface TillStock {
+  value: number | null;
+  /** On-hand goods (rows holding a bottle or more). */
+  goodsOnHand: number;
+  /** Of those, the goods the till reaches. */
+  goodsOnTill: number;
+  /** Of those the till reaches, how many carry no recorded cost. */
+  uncostedOnTill: number;
+  /**
+   * Of those the till reaches, how many sold nothing in the window (a mapped
+   * item no line named with a sale, no bottle moved). They stay in the base:
+   * a slow or idle seller is stock the till can sell, and leaving it out
+   * would shorten days of stock. Named so the reader can tell them apart.
+   */
+  idleOnTill: number;
+  /** Their value at cost, or null when one of them has no recorded cost. */
+  idleOnTillValue: number | null;
+  /** On-hand goods the till does not reach: left out of every ratio. */
+  goodsOffTill: number;
+  /** Their value at cost, or null when one of them has no recorded cost. */
+  offTillValue: number | null;
+}
+
+export function tillStockOf(input: {
+  onHand: Array<{ id: string; inventoryValue: number | null }>;
+  sales: TillSalesRead | null;
+  cost: TillCostRead | null;
+}): TillStock | null {
+  const { onHand, sales, cost } = input;
+  if (sales == null) return null;
+  const reached = new Set<string>();
+  for (const i of sales.items ?? []) if (i.in_house !== false) reached.add(String(i.inventory_id));
+  for (const i of cost?.items ?? []) if (i.in_house !== false) reached.add(String(i.inventory_id));
+  const on = onHand.filter((g) => reached.has(String(g.id)));
+  const off = onHand.filter((g) => !reached.has(String(g.id)));
+  const known = (v: number | null): v is number => typeof v === "number" && Number.isFinite(v);
+  const uncostedOnTill = on.filter((g) => !known(g.inventoryValue)).length;
+  const sum = (gs: typeof onHand) =>
+    gs.reduce((a, g) => a + (g.inventoryValue as number), 0);
+  // Sold in the window: a sale on the till, or a bottle the till moved.
+  const sold = new Set<string>();
+  for (const i of sales.items ?? []) if (num(i.sales) > 0) sold.add(String(i.inventory_id));
+  for (const i of cost?.items ?? [])
+    if (num(i.bottles_out) > 0 || num(i.bottles_back) > 0) sold.add(String(i.inventory_id));
+  const idle = on.filter((g) => !sold.has(String(g.id)));
+  return {
+    // No on-hand good the till reaches is "none, or no answer" (the loader
+    // degrades a failed read to []), so null, never 0 days.
+    value: on.length > 0 && uncostedOnTill === 0 ? sum(on) : null,
+    goodsOnHand: onHand.length,
+    goodsOnTill: on.length,
+    uncostedOnTill,
+    idleOnTill: idle.length,
+    idleOnTillValue: idle.every((g) => known(g.inventoryValue)) ? round2(sum(idle)) : null,
+    goodsOffTill: off.length,
+    offTillValue: off.every((g) => known(g.inventoryValue)) ? round2(sum(off)) : null,
+  };
+}
+
+/** What the stock base of turns, days of stock and GMROI covered. */
+/*
+ * The working the house reads under "Show the working" and in the report
+ * export (which prints it verbatim). It names each figure by the label the
+ * page gives it, never by its field name, and says "left blank" for an
+ * unknown: no camelCase, no `null`, no `$`, no "365d" (r11, 2026-11-12).
+ */
+function days(n: number): string {
+  return `${n} ${n === 1 ? "day" : "days"}`;
+}
+const COST_DERIVED_RATIOS =
+  "Kept, kept of sales, cost of sales and prime cost divide the cost of what the till sold by its net sales of the same items, and are left blank when either is. ";
+const COST_DERIVED_APART =
+  "Late prices settled in the window on bottles sold before it, the cost of the items whose cost is known, what was bought, and the shelf at menu price are each shown apart and feed no ratio.";
+
+function tillStockSentence(t: TillStock | null): string {
+  if (t == null) return ": left blank, since the till's sales could not be read and the goods it reaches are unknown";
+  const parts = [`: ${t.goodsOnTill} of ${plural(t.goodsOnHand, "good")} on hand`];
+  if (t.uncostedOnTill > 0)
+    parts.push(`, ${t.uncostedOnTill} of them with no recorded cost`);
+  if (t.idleOnTill > 0)
+    parts.push(
+      `, ${t.idleOnTill} of them sold nothing in the window` +
+        (t.idleOnTillValue != null ? ` (${t.idleOnTillValue.toFixed(2)} at cost)` : "") +
+        ` and ${t.idleOnTill === 1 ? "stays" : "stay"} in, since the till can sell ${t.idleOnTill === 1 ? "it" : "them"}`,
+    );
+  if (t.goodsOffTill > 0)
+    parts.push(
+      `; the ${plural(t.goodsOffTill, "good")} the till does not reach` +
+        (t.offTillValue != null ? `, ${t.offTillValue.toFixed(2)} at cost,` : "") +
+        " are left out, since nothing they sell reaches the cost of what sold",
+    );
+  return parts.join("");
+}
+
+/**
  * The till's figures for one house. `sales` / `cost` are the two reads, or
  * `null` when that read failed (a failed read is null, never 0: ADR 0067).
- * `inventoryValue` is today's stock at cost, null unless every on-hand row is
- * costed (ADR 0051).
+ * `tillStock` is today's stock at cost of the goods the till reaches
+ * (`tillStockOf`), the base turns, days of stock and GMROI divide by.
  */
 export function tillFigures(input: {
   sales: TillSalesRead | null;
   cost: TillCostRead | null;
-  inventoryValue: number | null;
+  tillStock: TillStock | null;
   labor: number;
   now: Date;
   windowDays: number;
 }): TillFigures {
-  const { sales, cost, inventoryValue, labor, now, windowDays } = input;
+  const { sales, cost, tillStock, labor, now, windowDays } = input;
+  const inventoryValue = tillStock?.value ?? null;
 
   // ---- cost of what sold -------------------------------------------------
   let cogs: number | null = null;
@@ -208,7 +328,7 @@ export function tillFigures(input: {
   const firstMoveAt = cost?.first_move_at ?? null;
   if (cost == null) {
     cogsBasis =
-      "cost of what the till sold — null: the till's movements could not be read";
+      "Cost of what the till sold — left blank: the till's movements could not be read";
   } else {
     cogsCoverage = cogsCoverageOf(cost);
     const c = cogsCoverage;
@@ -217,7 +337,7 @@ export function tillFigures(input: {
     const earlier = num(cost.settled_on_earlier_sales);
     settledOnEarlierSales = Number.isFinite(earlier) ? round2(earlier) : null;
     if (c.itemsMoved === 0) {
-      cogsBasis = `cost of what the till sold (${windowDays}d) — null: the till moved no stocked item in the window, and $0 would claim it sold nothing`;
+      cogsBasis = `Cost of what the till sold (${days(windowDays)}) — left blank: the till moved no stocked item in the window, and a zero would claim it sold nothing`;
     } else if (c.itemsCosted < c.itemsMoved) {
       const why: string[] = [];
       if (c.rowsUnstamped > 0)
@@ -229,7 +349,7 @@ export function tillFigures(input: {
           `${plural(c.bottlesBackUncosted, "bottle")} a void gave back named no sale to take its cost from`,
         );
       cogsBasis =
-        `cost of what the till sold (${windowDays}d) — withheld: cost known for ${c.itemsCosted} of ${plural(c.itemsMoved, "item")} sold; ` +
+        `Cost of what the till sold (${days(windowDays)}) — left blank: cost known for ${c.itemsCosted} of ${plural(c.itemsMoved, "item")} sold; ` +
         `${plural(c.bottlesUncosted, "bottle")} left or came back with no invoice cost yet` +
         (why.length ? ` (${why.join("; ")})` : "") +
         ". A smaller number under this label would be a guess.";
@@ -239,19 +359,19 @@ export function tillFigures(input: {
           items: c.itemsCosted,
           of: c.itemsMoved,
         };
-        cogsBasis += ` The ${plural(c.itemsCosted, "item")} whose every bottle carries its cost cost ${costOfCostedItems.amount.toFixed(2)} (costOfCostedItems): exact for those items, not the cost of goods, and divided by nothing.`;
+        cogsBasis += ` The ${plural(c.itemsCosted, "item")} whose every bottle carries its cost came to ${costOfCostedItems.amount.toFixed(2)} at cost: exact for those items, not the cost of goods, and divided by nothing.`;
       }
     } else {
       const total = num(cost.cost);
       if (!Number.isFinite(total)) {
         cogsBasis =
-          "cost of what the till sold — null: the cost total did not read as a number";
+          "Cost of what the till sold — left blank: the cost total did not read as a number";
       } else {
         cogs = round2(total);
         const settled = num(cost.settled_after_sale);
         settledAfterSale = Number.isFinite(settled) ? round2(settled) : null;
         cogsBasis =
-          `cost of what the till sold (${windowDays}d): each bottle at the cost it carried when it left its lot, voids given back at their sale's cost — ` +
+          `Cost of what the till sold (${days(windowDays)}): each bottle at the cost it carried when it left its lot, voids given back at their sale's cost — ` +
           `${plural(c.itemsMoved, "item")}, ${plural(c.bottlesOut - c.bottlesBack, "bottle")} net` +
           (settledAfterSale != null && settledAfterSale !== 0
             ? `, of which ${settledAfterSale.toFixed(2)} is late prices on these sales, settled by invoices verified after the bottles sold`
@@ -260,7 +380,7 @@ export function tillFigures(input: {
       }
     }
     if (settledOnEarlierSales != null && settledOnEarlierSales !== 0)
-      cogsBasis += ` Late prices settled in the window on bottles sold before it, ${settledOnEarlierSales.toFixed(2)}, are named apart (settledOnEarlierSales) and are not in it: those sales are not in this window's net sales.`;
+      cogsBasis += ` Late prices settled in the window on bottles sold before it, ${settledOnEarlierSales.toFixed(2)}, are named apart and are not in it: those sales are not in this window's net sales.`;
   }
 
   // ---- net sales of stocked items ---------------------------------------
@@ -268,7 +388,7 @@ export function tillFigures(input: {
   let salesCoverage: SalesCoverage | null = null;
   let revenueBasis: string;
   if (sales == null) {
-    revenueBasis = "net till sales of stocked items — null: the till could not be read";
+    revenueBasis = "Net till sales of stocked items — left blank: the till could not be read";
   } else {
     const items = sales.items ?? [];
     const mine = items.filter((i) => i.in_house !== false);
@@ -281,15 +401,15 @@ export function tillFigures(input: {
     };
     const total = mine.reduce((s, i) => s + num(i.sales), 0);
     if (salesCoverage.checks === 0) {
-      revenueBasis = `net till sales of stocked items (${windowDays}d) — null: no closed check in the window`;
+      revenueBasis = `Net till sales of stocked items (${days(windowDays)}) — left blank: no closed check in the window`;
     } else if (salesCoverage.unreadableLines > 0) {
-      revenueBasis = `net till sales of stocked items (${windowDays}d) — null: ${plural(salesCoverage.unreadableLines, "till line")} could not be read, so a total would be a floor`;
+      revenueBasis = `Net till sales of stocked items (${days(windowDays)}) — left blank: ${plural(salesCoverage.unreadableLines, "till line")} could not be read, so a total would be a floor`;
     } else if (!Number.isFinite(total)) {
-      revenueBasis = `net till sales of stocked items (${windowDays}d) — null: a line's sales did not read as a number`;
+      revenueBasis = `Net till sales of stocked items (${days(windowDays)}) — left blank: a line's sales did not read as a number`;
     } else {
       revenue = round2(total);
       revenueBasis =
-        `net till sales of stocked items (${windowDays}d), before tax and surcharge — ${plural(salesCoverage.checks, "check")}` +
+        `Net till sales of stocked items (${days(windowDays)}), before tax and surcharge — ${plural(salesCoverage.checks, "check")}` +
         (salesCoverage.unmappedLines > 0
           ? `; ${plural(salesCoverage.unmappedLines, "line")} naming no stocked item (food, unmapped) not in it`
           : "") +
@@ -353,9 +473,11 @@ export function tillFigures(input: {
       cogs: cogsBasis,
       revenue: revenueBasis,
       costDerived:
-        "grossMarginDollars, grossMargin, cogsRatio and primeCostRatio divide the cost of what the till sold by its net sales of the same items, and are null when either is; " +
-        `inventoryTurnover, daysInventoryOutstanding and gmroi annualise the span the till covers (null under ${MIN_SPAN_DAYS} days) against today's stock at cost, which is null unless every bottle on hand carries a recorded cost (ADR 0051). ` +
-        "settledOnEarlierSales (late prices settled in the window on bottles sold before it), costOfCostedItems, deliveredPurchases and shelfValueAtMenuPrice keep their own names and feed no ratio.",
+        COST_DERIVED_RATIOS +
+        `Inventory turns, days of inventory and GMROI scale the days the till covers to a year (left blank under ${MIN_SPAN_DAYS} days) and set that against today's stock at cost of the goods the till reaches (mapped to a till item, or sold or moved by it in the window), which is left blank unless every one of them on hand carries a recorded cost (a row whose invoiced cost covers only part of its bottles is valued at that cost, as the cellar's working says)` +
+        tillStockSentence(tillStock) +
+        ". " +
+        COST_DERIVED_APART,
     },
   };
 }
@@ -380,9 +502,9 @@ export function withheldTillFigures(windowDays: number): TillFigures {
     salesCoverage: null,
     cogsWindow: { firstMoveAt: null, spanDays: null },
     basis: {
-      cogs: `cost of what the till sold (${windowDays}d) — ${w}`,
-      revenue: `net till sales of stocked items (${windowDays}d) — ${w}`,
-      costDerived: `every figure divided by sales or by the cost of what sold — ${w}`,
+      cogs: `Cost of what the till sold (${days(windowDays)}) — ${w}`,
+      revenue: `Net till sales of stocked items (${days(windowDays)}) — ${w}`,
+      costDerived: `Every figure divided by sales or by the cost of what sold — ${w}`,
     },
   };
 }

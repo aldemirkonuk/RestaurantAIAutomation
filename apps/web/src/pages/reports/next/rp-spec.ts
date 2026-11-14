@@ -8,6 +8,7 @@
 
 import type { AuthContextType } from '@/contexts/AuthContext';
 import type { GraphType } from './rp-sheet';
+import type { MoneyIn } from './rp-format';
 import type { AnalysisView } from './rp-view';
 import type { GoalsDesk } from './useGoalsDesk';
 
@@ -17,6 +18,13 @@ export type HouseRole = NonNullable<AuthContextType['activeRole']>;
 export interface ViewCtx {
   /** The till window the reader picked. Only `till` takes one. */
   days: number;
+  /**
+   * The house's ISO 4217 code from `GET /settings/currency`; null or absent
+   * when it was never stated or could not be read (money then prints bare,
+   * never in `$`); `READING` while the read has not answered (every money
+   * figure is the dash). See `money`, rp-format.ts.
+   */
+  currency?: MoneyIn;
   /**
    * The one register on this sheet that WRITES.
    *

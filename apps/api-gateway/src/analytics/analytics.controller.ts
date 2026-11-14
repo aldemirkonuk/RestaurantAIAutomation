@@ -1010,12 +1010,14 @@ export class AnalyticsController {
     @Param("restaurantId") restaurantId: string,
     @Param("goalId") goalId: string,
     @Body() body: any,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     try {
       return await this.goalsService.updateGoal(
         restaurantId,
         goalId,
         body || {},
+        salesGateFor(user),
       );
     } catch (error) {
       throw new HttpException(
@@ -1087,12 +1089,14 @@ export class AnalyticsController {
     @Param("restaurantId") restaurantId: string,
     @Param("goalId") goalId: string,
     @Body() body: { status?: string },
+    @CurrentUser() user?: { role?: string | null },
   ) {
     try {
       return await this.goalsService.updateGoalStatus(
         restaurantId,
         goalId,
         body?.status || "",
+        salesGateFor(user),
       );
     } catch (error) {
       throw new HttpException(

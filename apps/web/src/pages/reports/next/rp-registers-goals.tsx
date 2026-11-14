@@ -37,7 +37,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BookOpen, MessageSquarePlus, Pencil, Plus, Sparkles, Target, X } from 'lucide-react';
-import { EM, countOf, figure, num, ratioPct } from './rp-format';
+import { EM, countOf, figure, inParens, money, num, ratioPct, type MoneyIn } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
 import type { GoalScenario, GoalScenarios } from '@/hooks/useGoalScenarios';
 import type { GoalsDesk, ScenarioRequest } from './useGoalsDesk';
@@ -87,11 +87,15 @@ export interface GoalsRegister {
   basis: Array<string | null | undefined>;
 }
 
-/** A figure in its own unit — a percent is not a count is not money. */
-function inUnit(v: number | null, unit: string): string {
+/**
+ * A figure in its own unit — a percent is not a count is not money. Money is
+ * the house's (`currency`), bare when the house has none recorded, and the
+ * dash while the house's currency is still being read.
+ */
+function inUnit(v: number | null, unit: string, currency?: MoneyIn): string {
   if (v === null) return EM;
   if (unit === 'percent') return ratioPct(v);
-  if (unit === 'currency') return figure(v, 'compact');
+  if (unit === 'currency') return money(v, 'compact', currency);
   return figure(v, 'compact');
 }
 
@@ -101,7 +105,7 @@ function inUnit(v: number | null, unit: string): string {
  * did not judge the pace, and the sentence is its reason (`paceUnread`, ADR
  * 0296), never "no deadline" and never "not enough history".
  */
-export function paceCaption(g: GoalRow): string {
+export function paceCaption(g: GoalRow, currency?: MoneyIn): string {
   const left = g.daysLeft !== null ? `, ${countOf(g.daysLeft, 'day', 'days')} left` : '';
   const pace =
     g.onTrack === null
@@ -112,7 +116,7 @@ export function paceCaption(g: GoalRow): string {
         ? `On the pace this goal needs${left}.`
         : `Behind the pace this goal needs${left}.`;
   if (g.projected !== null)
-    return `${pace} The trend projects ${inUnit(g.projected, g.unit)} by the deadline${
+    return `${pace} The trend projects ${inUnit(g.projected, g.unit, currency)} by the deadline${
       g.projectionHitsTarget === null ? '' : g.projectionHitsTarget ? ' — enough.' : ' — short.'
     }`;
   return g.deadline && g.onTrack !== null
@@ -602,7 +606,15 @@ function ProposalCard({ desk }: { desk: GoalsDesk }) {
   );
 }
 
-function Desk({ reg, desk }: { reg: GoalsRegister; desk: GoalsDesk }) {
+function Desk({
+  reg,
+  desk,
+  currency,
+}: {
+  reg: GoalsRegister;
+  desk: GoalsDesk;
+  currency?: MoneyIn;
+}) {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
 
@@ -693,7 +705,7 @@ function Desk({ reg, desk }: { reg: GoalsRegister; desk: GoalsDesk }) {
 
                 {g.unreadable ? (
                   <p className="rp-cap" role="status">
-                    This goal could not be scored ({g.unreadable}). Nothing below it is claimed.
+                    This goal could not be scored ({inParens(g.unreadable)}). Nothing below it is claimed.
                     {/* The same link as beside the pace reason below. */}
                     {g.zoneUnset && (
                       <>
@@ -707,8 +719,8 @@ function Desk({ reg, desk }: { reg: GoalsRegister; desk: GoalsDesk }) {
                 ) : (
                   <>
                     <p className="rp-goal__line">
-                      <span className="rp-mono">{inUnit(g.current, g.unit)}</span> of{' '}
-                      <span className="rp-mono">{inUnit(g.target, g.unit)}</span> ·{' '}
+                      <span className="rp-mono">{inUnit(g.current, g.unit, currency)}</span> of{' '}
+                      <span className="rp-mono">{inUnit(g.target, g.unit, currency)}</span> ·{' '}
                       {g.metricLabel} · {g.direction === 'at_most' ? 'keep at most' : 'reach at least'}
                       {g.deadline ? ` · by ${g.deadline}` : ' · no deadline'}
                     </p>
@@ -724,13 +736,13 @@ function Desk({ reg, desk }: { reg: GoalsRegister; desk: GoalsDesk }) {
                       <div
                         className="rp-bar"
                         role="img"
-                        aria-label={`${ratioPct(Math.min(1, g.progressPct))} of the target`}
+                        aria-label={`${ratioPct(Math.min(1, g.progressPct))} of the ${g.direction === 'at_most' ? 'ceiling' : 'target'}`}
                       >
                         <span style={{ width: `${Math.min(100, Math.max(0, g.progressPct * 100))}%` }} />
                       </div>
                     )}
                     <p className="rp-cap">
-                      {paceCaption(g)}
+                      {paceCaption(g, currency)}
                       {/* Same target and markup as the till's no-zone notice
                           (rp-registers-trade.tsx). */}
                       {paceAwaitsZone(g) && (
@@ -873,7 +885,7 @@ export const goals = analysis<GoalsRegister>({
     return {
       // The desk replaces the table rendering: these are records with controls,
       // and a grid of cells cannot carry a form.
-      node: ctx.goals ? <Desk reg={reg} desk={ctx.goals} /> : undefined,
+      node: ctx.goals ? <Desk reg={reg} desk={ctx.goals} currency={ctx.currency} /> : undefined,
       cats:
         scored.length > 0
           ? {
@@ -899,8 +911,8 @@ export const goals = analysis<GoalsRegister>({
           key: g.id,
           cells: [
             g.name,
-            g.unreadable ? EM : inUnit(g.current, g.unit),
-            inUnit(g.target, g.unit),
+            g.unreadable ? EM : inUnit(g.current, g.unit, ctx.currency),
+            inUnit(g.target, g.unit, ctx.currency),
             g.deadline ?? EM,
           ],
         })),

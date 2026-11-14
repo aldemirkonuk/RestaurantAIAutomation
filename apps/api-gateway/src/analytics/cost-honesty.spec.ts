@@ -240,7 +240,7 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     expect(out.cogs).toBeNull();
     expect(out.cogs).not.toBe(0);
     expect(out.deliveredPurchases).toBeNull();
-    expect(out.basis.deliveredPurchases).toContain("null");
+    expect(out.basis.deliveredPurchases).toContain("left blank");
   });
 
   it("stops the basis claiming WAC for a value that never touched WAC", async () => {
@@ -269,7 +269,7 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     expect(out.inventoryValue).toBe(100); // 5 × 20
     expect(out.costCoverage.complete).toBe(true);
     expect(out.basis.inventoryValue).toContain(
-      "every row in scope has a recorded cost",
+      "every item has a recorded cost",
     );
   });
 
@@ -457,6 +457,6 @@ describe("getWine360", () => {
     const out = await svc.getWine360(RESTAURANT, RECORDED.master_wine_id);
     expect(out.unitCost).toBe(20);
     expect(out.marginPerBottle).toBe(40);
-    expect(out.basis.unitCost).toContain("last_purchase_price");
+    expect(out.basis.unitCost).toContain("the last price paid");
   });
 });

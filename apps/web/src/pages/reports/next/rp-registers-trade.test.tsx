@@ -247,7 +247,8 @@ describe("a goal's pace in a house with no time zone (ADR 0296)", () => {
     };
     expect(zoneLink({ goal: covers, unreadable: true, reason: NO_ZONE, zoneUnset: true })).toEqual({
       href: '/settings?tab=time-zone',
-      caption: `This goal could not be scored (${NO_ZONE}). Nothing below it is claimed. Set the time zone in Settings`,
+      // The reason's own full stop is dropped inside the parentheses.
+      caption: `This goal could not be scored (${NO_ZONE.slice(0, -1)}). Nothing below it is claimed. Set the time zone in Settings`,
     });
     // Another reason, such as a refused read: no link.
     expect(

@@ -189,7 +189,7 @@ describe("forecast publishes nothing when there is nothing to project from", () 
       wine_consumption_log: [],
     }).getDemandForecast(RESTAURANT);
     expect(out.basis.model).toContain("reads zero");
-    expect(out.basis.total).toContain("no projection to total");
+    expect(out.basis.total).toContain("no projection to add up");
   });
 
   it("still projects, and still totals, when the log holds real movement", async () => {
@@ -201,7 +201,7 @@ describe("forecast publishes nothing when there is nothing to project from", () 
     expect(out.forecast).toHaveLength(14);
     expect(typeof out.totalForecastDemand).toBe("number");
     expect(out.totalForecastDemand).toBeGreaterThan(0);
-    expect(out.basis.model).toContain("fitted on 120 days");
+    expect(out.basis.model).toContain("fitted on 120 days of history");
   });
 });
 
@@ -257,7 +257,7 @@ describe("seasonality withholds a day it cannot separate", () => {
     expect(out.bestDay).toBeNull();
     expect(out.worstDay).toBeNull();
     expect(out.tie).toBe(true);
-    expect(out.basis.extremes).toContain("arbitrary tie-break");
+    expect(out.basis.extremes).toContain("a coin toss");
   });
 
   it("does not report the same day as both busiest and quietest", async () => {
@@ -278,5 +278,34 @@ describe("seasonality withholds a day it cannot separate", () => {
     expect(typeof out.worstDay).toBe("string");
     expect(out.bestDay).not.toBe(out.worstDay);
     expect(out.basis.extremes).toContain("single weekdays");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The working the house reads: no table name, no `$`, in every state.
+// ---------------------------------------------------------------------------
+
+describe("the financial working is said in the house's words", () => {
+  // /reports prints these under "Show the working" and the export prints them
+  // in the download (r9 left list, 2026-11-12: a lira house read
+  // "delivered procurement_orders … $0 would claim the first").
+  const CODE = /\b[a-z]+_[a-z0-9_]+\b|\$|\bqty\b|\bnull\b|\d+d\b/;
+  const states: Array<[string, Record<string, any[]>]> = [
+    ["nothing came back", {}],
+    ["priced and delivered", { restaurant_inventory: [STOCKED], procurement_orders: [DELIVERED] }],
+    [
+      "an uncosted order",
+      {
+        restaurant_inventory: [STOCKED],
+        procurement_orders: [DELIVERED, { ...DELIVERED, id: "po-2", total_cost: null, final_price: null }],
+      },
+    ],
+  ];
+  it.each(states)("%s", async (_label, rows) => {
+    const out: any = await analytics(rows).getFinancialSummary(RESTAURANT);
+    for (const key of ["deliveredPurchases", "shelfValueAtMenuPrice", "deadStock"]) {
+      expect([key, out.basis[key]]).toEqual([key, expect.any(String)]);
+      expect([key, out.basis[key]]).not.toEqual([key, expect.stringMatching(CODE)]);
+    }
   });
 });

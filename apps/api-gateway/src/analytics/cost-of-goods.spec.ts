@@ -4,6 +4,7 @@ import {
   TillSalesRead,
   cogsCoverageOf,
   tillFigures,
+  tillStockOf,
   withheldTillFigures,
 } from "./cost-of-goods";
 
@@ -53,7 +54,7 @@ const run = (over: Partial<Parameters<typeof tillFigures>[0]> = {}) =>
   tillFigures({
     sales: SALES,
     cost: COST,
-    inventoryValue: 1000,
+    tillStock: { value: 1000, goodsOnHand: 2, goodsOnTill: 2, uncostedOnTill: 0, idleOnTill: 0, idleOnTillValue: 0, goodsOffTill: 0, offTillValue: 0 },
     labor: 0,
     now: NOW,
     windowDays: 365,
@@ -108,7 +109,7 @@ describe("cost of goods is what the till sold", () => {
     expect(t.cogsCoverage).toMatchObject({ itemsMoved: 2, itemsCosted: 2 });
     expect(t.basis.cogs).toContain("2 items");
     expect(t.basis.cogs).toContain("4.00, are named apart");
-    expect(t.basis.costDerived).toContain("settledOnEarlierSales");
+    expect(t.basis.costDerived).toContain("Late prices settled in the window on bottles sold before it");
   });
 
   it("keeps the earlier-sale settlement null when the read does not name it, never 0", () => {
@@ -132,7 +133,8 @@ describe("cost of goods is what the till sold", () => {
     expect(t.grossMarginDollars).toBeNull();
     expect(t.daysInventoryOutstanding).toBeNull();
     expect(t.basis.cogs).toContain("1 bottle a void gave back named no sale");
-    expect(t.basis.cogs).toContain("cost 120.00 (costOfCostedItems)");
+    expect(t.basis.cogs).toContain("came to 120.00 at cost: exact for those items");
+    expect(t.basis.cogs).not.toMatch(/cost cost/);
     // None costed: nothing to give apart.
     const none = run({ cost: { ...COST, items: [item("a", { uncosted_out: 1 })] } });
     expect(none.costOfCostedItems).toBeNull();
@@ -200,7 +202,7 @@ describe("cost of goods is what the till sold", () => {
     expect(young.inventoryTurnover).toBeNull();
     expect(young.daysInventoryOutstanding).toBeNull();
     expect(young.gmroi).toBeNull();
-    const unpriced = run({ inventoryValue: null });
+    const unpriced = run({ tillStock: { value: null, goodsOnHand: 2, goodsOnTill: 2, uncostedOnTill: 1, idleOnTill: 0, idleOnTillValue: 0, goodsOffTill: 0, offTillValue: 0 } });
     expect(unpriced.daysInventoryOutstanding).toBeNull();
   });
 
@@ -213,5 +215,80 @@ describe("cost of goods is what the till sold", () => {
     for (const k of ["cogs", "revenue", "grossMargin", "cogsRatio", "daysInventoryOutstanding", "gmroi", "settledOnEarlierSales", "costOfCostedItems"] as const)
       expect(w[k]).toBeNull();
     expect(w.basis.cogs).toContain("owners and managers only");
+  });
+});
+
+describe("turns, days of stock and GMROI divide by the stock the till reaches (reports lane r2)", () => {
+  const onHand = [
+    { id: "w-sold", inventoryValue: 600 },
+    { id: "w-mapped-idle", inventoryValue: 400 },
+    { id: "w-unmapped", inventoryValue: 2000 },
+    { id: "k-flour", inventoryValue: null },
+  ];
+  const sales = {
+    items: [
+      { inventory_id: "w-sold", sales: 500, mapped: true, in_house: true },
+      { inventory_id: "w-mapped-idle", sales: 0, mapped: true, in_house: true },
+      { inventory_id: "w-elsewhere", sales: 10, in_house: false },
+    ],
+    checks: 40,
+    lines: 60,
+    unmapped_lines: 12,
+  };
+
+  it("leaves out the goods the till does not reach, naming them and their value", () => {
+    const s = tillStockOf({ onHand, sales, cost: null });
+    expect(s).toEqual({
+      value: 1000,
+      goodsOnHand: 4,
+      goodsOnTill: 2,
+      uncostedOnTill: 0,
+      // The mapped wine that sold nothing stays in, and is named.
+      idleOnTill: 1,
+      idleOnTillValue: 400,
+      goodsOffTill: 2,
+      // The flour has no cost, so the left-out value is unknown, never a part.
+      offTillValue: null,
+    });
+  });
+
+  it("an unpriced good the till does not reach no longer withholds days of stock", () => {
+    const t = run({ tillStock: tillStockOf({ onHand, sales, cost: null }) });
+    expect(t.daysInventoryOutstanding).not.toBeNull();
+    expect(t.basis.costDerived).toContain("2 of 4 goods on hand");
+    expect(t.basis.costDerived).toContain("the 2 goods the till does not reach are left out");
+    expect(t.basis.costDerived).toContain("1 of them sold nothing in the window (400.00 at cost) and stays in, since the till can sell it");
+  });
+
+  it("a good the till moved a bottle of is not idle, even with no sale value on the line", () => {
+    const s = tillStockOf({
+      onHand: onHand.slice(0, 2),
+      sales,
+      cost: { items: [{ inventory_id: "w-mapped-idle", bottles_out: 0, bottles_back: 1, cost: 0, settled_after_sale: 0, uncosted_out: 0, uncosted_back: 0 }] },
+    });
+    expect(s).toMatchObject({ idleOnTill: 0, idleOnTillValue: 0 });
+  });
+
+  it("the unmapped wine no longer inflates days of stock", () => {
+    const whole = run({ tillStock: { value: 3000, goodsOnHand: 3, goodsOnTill: 3, uncostedOnTill: 0, idleOnTill: 0, idleOnTillValue: 0, goodsOffTill: 0, offTillValue: 0 } });
+    const reached = run({ tillStock: tillStockOf({ onHand: onHand.slice(0, 3), sales, cost: null }) });
+    expect(reached.daysInventoryOutstanding! * 3).toBeCloseTo(whole.daysInventoryOutstanding!, 6);
+  });
+
+  it("a good the till reaches with no cost withholds it; so does an unread till", () => {
+    const s = tillStockOf({ onHand: [{ id: "w-sold", inventoryValue: null }], sales, cost: null });
+    expect(s).toMatchObject({ value: null, uncostedOnTill: 1 });
+    expect(tillStockOf({ onHand, sales: null, cost: null })).toBeNull();
+    expect(run({ tillStock: null }).daysInventoryOutstanding).toBeNull();
+  });
+
+  it("a good the cost read moved counts as reached, and none on hand is null, not 0 days", () => {
+    const s = tillStockOf({
+      onHand: [{ id: "w-moved", inventoryValue: 50 }],
+      sales: { items: [], checks: 1 },
+      cost: { items: [{ inventory_id: "w-moved", bottles_out: 1, bottles_back: 0, cost: 5, settled_after_sale: 0, uncosted_out: 0, uncosted_back: 0 }] },
+    });
+    expect(s?.value).toBe(50);
+    expect(tillStockOf({ onHand: [], sales, cost: null })?.value).toBeNull();
   });
 });
