@@ -21,7 +21,7 @@ import type {
   AdjudicatedLine,
   CanonicalDocument,
 } from '../../services/api/canonical'
-import { EM, MONO, SERIF, fmtMoney, fmtQty, fmtReceived, unitWord } from './canonical-format'
+import { MONO, SERIF, fmtMoney, fmtQty, fmtReceived, unitWord } from './canonical-format'
 
 /** The unit words live in canonical-format (moved at W22, one source). */
 function unitSuffix(unit: string, qty: unknown): string {
@@ -384,15 +384,20 @@ export function VerdictBlock({ doc, states = [] }: VerdictBlockProps) {
               </span>
               <span style={{ display: 'block', fontSize: 11.5, lineHeight: 1.3, marginTop: 1 }}>
                 {e.sentence}
-                {/* An em dash where a claim would go says "we have not worked
-                    it out yet". On a line nobody compared there is no claim to
-                    work out, so the slot is absent rather than empty. */}
+                {/* The claim on a compared line. Not yet worked out is said in
+                    words: a bare em dash after the sentence's full stop read as
+                    a dangling dash (r34 walk w2 F6). On a line nobody compared
+                    there is no claim to work out, so the slot is absent. */}
                 {e.compared && (
                   <>
                     {' '}
-                    <strong style={{ fontFamily: MONO, fontWeight: 600 }}>
-                      {e.money == null ? EM : fmtMoney(e.money, currency)}
-                    </strong>
+                    {e.money == null ? (
+                      <span data-testid="line-money-unknown">The money on it is not worked out yet.</span>
+                    ) : (
+                      <strong style={{ fontFamily: MONO, fontWeight: 600 }}>
+                        {fmtMoney(e.money, currency)}
+                      </strong>
+                    )}
                   </>
                 )}
               </span>
