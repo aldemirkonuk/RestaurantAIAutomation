@@ -31,7 +31,7 @@
  * a screen reader without a second description.
  */
 
-import { useState, type ReactNode } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import {
   Area,
   AreaChart,
@@ -74,8 +74,101 @@ const AXIS_LABEL = {
 
 const RULE = { stroke: 'var(--ink-3)', strokeDasharray: '2 3' } as const;
 
+/**
+ * One glyph of an axis title: the mono face is about 0.6em wide, plus the
+ * 0.08em tracking (`AXIS_LABEL`). An estimate, kept generous, since jsdom and
+ * a server render cannot measure text.
+ */
+const TITLE_GLYPH_PX = AXIS_LABEL.fontSize * 0.68;
+/** How far a value axis's title stands in from the axis's outer edge. */
+const TITLE_INSET = 12;
+
+/**
+ * An axis title cut to the room it has, by the glyph estimate above: whole
+ * when it fits, else shortened with an ellipsis, and nothing at all when not
+ * even two glyphs fit (an ellipsis alone names nothing).
+ */
+export function fitTitle(text: string, room: number): string {
+  const max = Math.floor(room / TITLE_GLYPH_PX);
+  if (text.length <= max) return text;
+  if (max < 2) return '';
+  return `${text.slice(0, max - 1).trimEnd()}…`;
+}
+
+/**
+ * A value axis's title, standing on the middle of its axis (r33 walk R-F1).
+ * recharts anchors a rotated `insideLeft` / `insideRight` title at one END
+ * (`textAnchor` start or end, which a `textAnchor` prop cannot override), so
+ * the title ran from the axis's middle up past the plot's top edge, where
+ * `.rp-plot` clips it: on the till's bars and a line, "Average check" read
+ * "ge check". Here it is centred on the axis, and a title longer than the
+ * room is shortened, with the whole name in a `<title>` for a pointer; the
+ * plot's own words (`Plot` label, the combo caption) carry it for a screen
+ * reader.
+ */
+export function SideTitle({
+  viewBox,
+  text,
+  side,
+}: {
+  /** The axis's box, which recharts' `Label` passes in. */
+  viewBox?: { x?: number; y?: number; width?: number; height?: number };
+  text: string;
+  side: 'left' | 'right';
+}) {
+  if (!viewBox) return null;
+  const { x = 0, y = 0, width = 0, height = 0 } = viewBox;
+  const cx = side === 'left' ? x + TITLE_INSET : x + width - TITLE_INSET;
+  const cy = y + height / 2;
+  // Centred, the title may use the plot's margins above and below its axis
+  // as well as the axis itself, but no more than the room above its middle
+  // allows on both sides: the drawing's top edge is y = 0.
+  const shown = fitTitle(text, 2 * cy - 4);
+  if (!shown) return null;
+  return (
+    <text
+      x={cx}
+      y={cy}
+      transform={`rotate(${side === 'left' ? -90 : 90}, ${cx}, ${cy})`}
+      textAnchor="middle"
+      dominantBaseline="central"
+      className="recharts-label rp-axis-title"
+      data-side={side}
+      style={AXIS_LABEL}
+    >
+      {shown !== text && <title>{text}</title>}
+      {shown}
+    </text>
+  );
+}
+
+/**
+ * `SideTitle` as a recharts `Label` content element: `Label` clones it with
+ * the axis's `viewBox` (an element, not a function, so React keeps one
+ * component type across renders).
+ */
+const sideTitle = (text: string, side: 'left' | 'right') => (
+  <SideTitle text={text} side={side} />
+);
+
 /** Room for the two axis labels. Kept in one place so every plot agrees. */
 const MARGIN = { top: 8, right: 8, bottom: 14, left: 2 } as const;
+/** Every value axis on this page is this wide, left or right. */
+const Y_AXIS_W = 52;
+
+/**
+ * The hover detail never runs past the plot's edge, where `.rp-plot` clips it
+ * (audit G16, r28 gap 18). recharts keeps a tooltip at or right of the
+ * plotting area's left edge (the margin and the value axis) and flips it left
+ * when it would pass the right edge; a tooltip wider than the room right of
+ * that edge still ran out of the box and lost its end. Bounding its width to
+ * that room, and letting a long name wrap (`.rp-tip`), keeps the whole of it
+ * on the plot at any cutting width.
+ */
+export const TIP_WRAPPER: CSSProperties = {
+  maxWidth: `calc(100% - ${MARGIN.left + Y_AXIS_W}px)`,
+  zIndex: 2,
+};
 
 /**
  * The frame every recharts drawing sits in. It names itself for a screen
@@ -307,6 +400,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
   }`;
   const tip = (
     <Tooltip
+      wrapperStyle={TIP_WRAPPER}
       cursor={kind === 'bars' ? { fill: 'var(--seal-tint)' } : { stroke: 'var(--seal-ring)' }}
       content={
         <Tip unit={unit} format={format} projectedLabel={projectedLabel} /> as unknown as never
@@ -319,8 +413,8 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
       <XAxis dataKey="label" {...AXIS} interval={tickInterval(data)} minTickGap={26}>
         <Label value={xLabel} position="insideBottom" offset={-11} style={AXIS_LABEL} />
       </XAxis>
-      <YAxis {...AXIS} width={52} tickFormatter={(v: number) => format(v)}>
-        <Label value={yLabel} angle={-90} position="insideLeft" offset={12} style={AXIS_LABEL} />
+      <YAxis {...AXIS} width={Y_AXIS_W} tickFormatter={(v: number) => format(v)}>
+        <Label content={sideTitle(yLabel, 'left')} />
       </YAxis>
       {tip}
       {(refs ?? []).map((r) => (
@@ -530,35 +624,24 @@ export function ComboPlot({
           <YAxis
             yAxisId="bars"
             {...AXIS}
-            width={52}
+            width={Y_AXIS_W}
             tickFormatter={(v: number) => bars.format(v)}
           >
-            <Label
-              value={shared ?? bars.label}
-              angle={-90}
-              position="insideLeft"
-              offset={12}
-              style={AXIS_LABEL}
-            />
+            <Label content={sideTitle(shared ?? bars.label, 'left')} />
           </YAxis>
           {split && (
             <YAxis
               yAxisId="line"
               orientation="right"
               {...AXIS}
-              width={52}
+              width={Y_AXIS_W}
               tickFormatter={(v: number) => line.format(v)}
             >
-              <Label
-                value={line.label}
-                angle={90}
-                position="insideRight"
-                offset={12}
-                style={AXIS_LABEL}
-              />
+              <Label content={sideTitle(line.label, 'right')} />
             </YAxis>
           )}
           <Tooltip
+            wrapperStyle={TIP_WRAPPER}
             cursor={{ fill: 'var(--seal-tint)' }}
             content={<ComboTip plan={plan} /> as unknown as never}
           />
@@ -635,13 +718,14 @@ export function PointPlot({ series }: { series: PointSeries }) {
           type="number"
           dataKey="y"
           {...AXIS}
-          width={52}
+          width={Y_AXIS_W}
           tickFormatter={(v: number) => formatY(v)}
         >
-          <Label value={yLabel} angle={-90} position="insideLeft" offset={12} style={AXIS_LABEL} />
+          <Label content={sideTitle(yLabel, 'left')} />
         </YAxis>
         <ZAxis range={[36, 36]} />
         <Tooltip
+          wrapperStyle={TIP_WRAPPER}
           cursor={{ stroke: 'var(--seal-ring)' }}
           content={
             (({
