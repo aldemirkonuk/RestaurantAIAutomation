@@ -233,8 +233,11 @@ describe('the cocktail list: drinks with no recipe yet (r40)', () => {
 
   it('staff are not told', async () => {
     h.role = 'staff';
-    mount();
+    const { qc } = mount();
     await waitFor(() => expect(h.get).toHaveBeenCalledWith(FIGURES));
+    // Once the figures are in, a drink with no recipe is known; staff are still not told.
+    await waitFor(() => expect(qc.isFetching()).toBe(0));
+    expect(qc.getQueryCache().findAll().some((q) => JSON.stringify(q.state.data ?? '').includes('cocktailId'))).toBe(true);
     expect(screen.queryByTestId('no-recipe-yet')).toBeNull();
   });
 });

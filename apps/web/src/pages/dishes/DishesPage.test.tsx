@@ -319,6 +319,14 @@ describe('DishesPage: dishes with no recipe yet (r40)', () => {
     expect(screen.getByTestId(`dish-row-${A}`)).toBeInTheDocument();
   });
 
+  it('the allergen check counts only the dishes it hid, not the ones the box hid', async () => {
+    mount();
+    await screen.findByTestId(`dish-row-${A}`);
+    fireEvent.click(screen.getByLabelText(/Show only that one/));
+    fireEvent.change(screen.getByLabelText(/Check an allergen/), { target: { value: 'milk' } });
+    expect(screen.getByTestId('allergen-check-said')).toHaveTextContent('None says it is free of milk.');
+  });
+
   it('staff are not told, and see every dish', async () => {
     h.auth = { activeRestaurantId: RID, activeRole: 'staff', user: { userId: 'u1', role: 'staff' } };
     mount();
