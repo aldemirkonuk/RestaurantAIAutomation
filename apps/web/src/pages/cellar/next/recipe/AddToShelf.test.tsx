@@ -152,6 +152,14 @@ describe('a search that finds nothing', () => {
     expect(last.inventoryId).toBeNull();
   });
 
+  it('links only on a 409: another refusal naming a good still refuses', async () => {
+    h.post.mockRejectedValue({ response: { status: 403, data: { message: 'Only an owner or manager can do that.', existingId: OLD } } });
+    fireEvent.click(await openEmptySearch());
+    fireEvent.click(screen.getByRole('button', { name: 'Add and link' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('Yuzu juice was not added: Only an owner or manager can do that.');
+    expect(last.inventoryId).toBeNull();
+  });
+
   it('says a missing route in the house\'s words, never the internal path', async () => {
     h.post.mockRejectedValue({ response: { status: 404, data: { message: 'Cannot POST /inventory/x/house-items' } } });
     fireEvent.click(await openEmptySearch());
