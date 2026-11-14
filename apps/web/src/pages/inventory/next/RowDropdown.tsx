@@ -225,7 +225,8 @@ export default function RowDropdown(props: RowDropdownProps) {
   // The Paperwork table reads the purchases and their paper.
   const costShown = has('cost') && canManage;
   const settledNow = props.settled ?? null;
-  const costFromLedger = settledNow !== 'reading' && settledNow !== 'failed' && (settledNow === null || settledNow.length === 0);
+  // 'reading' and 'failed' are not an absent price: no ledger then (gap 9).
+  const costFromLedger = Array.isArray(settledNow) ? settledNow.length === 0 : settledNow === null;
   const kitchenGood = props.kind === 'food' || props.kind === 'supply';
   const detail = useRowDetail(row.id, {
     purchases: has('paper') || (costShown && costFromLedger),
