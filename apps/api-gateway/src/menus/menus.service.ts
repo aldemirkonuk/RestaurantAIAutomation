@@ -20,6 +20,7 @@ import { ReviewMenuItemDto } from "./dto/review-menu-item.dto";
 import { UpdateOnboardingProgressDto } from "./dto/update-onboarding-progress.dto";
 import { MenuReadWarning, WineExtractItem } from "./wine-extract-item.interface";
 import { itemNeedsPencil } from "./pencil-rule";
+import { lineMoney, namesMoney, typedMoneyOf, typedMoneyRefusal } from "./menu-money";
 import { isKitchenLine, lineForViewer, type LineView } from "./menu-line-view";
 import { kindNoun, lineFamily, matchHouseGoods } from "./house-good-match";
 import {
@@ -88,6 +89,10 @@ interface InsertedMenuItem {
   region?: string | null;
   grape_variety?: string | null;
   kitchen_line?: boolean;
+  // Set at import when the menu printed this line's price only in another
+  // money (r36 N1): the carry keeps the flag and takes no price.
+  price_flag?: string | null;
+  price_flag_note?: string | null;
 }
 
 /**
@@ -113,8 +118,12 @@ interface CarryDating {
   menuId: string | null;
 }
 
-/** The price flags a line can carry (founder answers 3 and 4). */
-type PriceFlag = "blank_kept_last_known" | "blank_no_house_price";
+/**
+ * The price flags a line can carry (founder answers 3 and 4), and
+ * `other_currency`: the menu prints the line's price only in a money that is
+ * not the house's, so no price was taken from it (r36 N1, menu-money.ts).
+ */
+type PriceFlag = "blank_kept_last_known" | "blank_no_house_price" | "other_currency";
 
 /**
  * What choosing a menu WOULD do, per line and per kind (ADR 0193 round 3,
@@ -179,6 +188,8 @@ export interface PlanLine {
   glass: PlanKind;
   /** The flag the line will carry once this menu is current. */
   flag: PriceFlag | null;
+  /** r36 N1: why no price is taken, when the menu prints it only in another money. */
+  flagNote?: string;
   /** A locked wine that was not on the menu being replaced comes back with this one (L18). */
   returned: boolean;
   /** Both vintages are years and they differ: look before trusting the link (L18). */
@@ -648,6 +659,11 @@ function carryPlanOf(
   // The good's kind, for the sentence: a gin is not "this wine" (r21, D4).
   kind: string | null = null,
 ): CarryPlan {
+  // The menu printed this line's price only in another money (r36 N1): no
+  // price is carried, and the line keeps the sentence its read gave it.
+  if (item.price_flag === "other_currency" && item.price_flag_note) {
+    return { bottle: null, glass: null, flag: "other_currency", flagNote: item.price_flag_note };
+  }
   const price = (v: unknown): number | null => {
     if (v === null || v === undefined || v === "") return null;
     const n = typeof v === "number" ? v : Number(v);
@@ -1043,6 +1059,10 @@ export class MenusService {
     // that is not one refuses the whole line (r28 G7).
     const byGlassPrice = addedPrice(dto.by_glass_price, dto.by_glass_typed, "glass");
     const bottlePrice = addedPrice(dto.bottle_price, dto.bottle_typed, "bottle");
+    // A typed price whose mark names another money is not the house's (r36 N1).
+    for (const typed of [dto.by_glass_typed, dto.bottle_typed]) {
+      await this.refuseOtherMoney(typed, callerRestaurantId, "Nothing was added.");
+    }
     const { data: menu, error: menuErr } = await this.dbService.supabase
       .from("restaurant_menus")
       .select("id, restaurant_id, status")
@@ -1245,6 +1265,7 @@ export class MenusService {
     if (isPrice) {
       const price = parseMenuPrice(dto.newValue);
       if ("refused" in price) throw new BadRequestException(price.refused);
+      await this.refuseOtherMoney(dto.newValue, callerRestaurantId, "Nothing was changed.");
       newValueTyped = price.value;
     }
 
@@ -1927,7 +1948,8 @@ export class MenusService {
       const glass = kindPlan("glass", menuG, houseG);
       // The same rule the carry writes (carryMenuPrice): answer 3, then answer 4.
       let flag: PriceFlag | null = null;
-      if (wineId || row) {
+      if (line.price_flag === "other_currency" && line.price_flag_note) flag = "other_currency";
+      else if (wineId || row) {
         if ((menuB === null && houseB !== null) || (menuG === null && houseG !== null)) flag = "blank_kept_last_known";
         else if (menuB === null && menuG === null && houseB === null && houseG === null) flag = "blank_no_house_price";
       }
@@ -1956,6 +1978,8 @@ export class MenusService {
           locked &&
           (!replacing || !onReplaced.has(wineId ? String(wineId) : `good:${String(line.inventory_item_id)}`)),
         vintageMismatch: locked && readYear !== null && typeof libVintage === "number" && readYear !== libVintage,
+        // r36 N1: the sentence a held line carries, so the plan can say which money the menu printed.
+        ...(flag === "other_currency" ? { flagNote: String(line.price_flag_note) } : {}),
       };
     });
 
@@ -2474,6 +2498,25 @@ export class MenusService {
   ): Promise<MenuImportReviewItem[]> {
     if (items.length === 0) return [];
 
+    // THE HOUSE'S MONEY (r36 N1, menu-money.ts). A line whose menu prints its
+    // price only in another money takes no price, and says why; a line that
+    // prints the house's money in a second column takes that column. The
+    // house's money is read only when a line names one.
+    const held = new Map<WineExtractItem, string>();
+    if (items.some((item) => namesMoney(item as unknown as Record<string, unknown>))) {
+      const house = await this.houseMoney(restaurantId);
+      items = items.map((item) => {
+        const take = lineMoney(item as unknown as Record<string, unknown>, house.code, house.unreadable);
+        if (take.kind === "as_read") return item;
+        if (take.kind === "house_column") {
+          return { ...item, by_glass_price: take.glass ?? undefined, bottle_price: take.bottle ?? undefined };
+        }
+        const kept = { ...item, by_glass_price: undefined, bottle_price: undefined };
+        held.set(kept, take.note);
+        return kept;
+      });
+    }
+
     // Resolve every item against master_wine_library BEFORE inserting
     // menu_items — wine_library_id and restaurant_inventory.master_wine_id
     // are both FK targets and must point at a real row, not be populated
@@ -2615,6 +2658,7 @@ export class MenusService {
       by_glass_price: item.by_glass_price ?? null,
       bottle_price: item.bottle_price ?? null,
       raw_extracted_text: item.raw_text ?? null,
+      ...(held.has(item) ? { price_flag: "other_currency", price_flag_note: held.get(item) } : {}),
       wine_library_id: masterWineId,
       ...(houseItemId ? { inventory_item_id: houseItemId } : {}),
       source: method,
@@ -2631,7 +2675,7 @@ export class MenusService {
       .from("menu_items")
       .insert(menuItemRows)
       .select(
-        "id, wine_library_id, inventory_item_id, name, by_glass_price, bottle_price, created_at, producer, vintage, region, grape_variety, category, raw_extracted_text",
+        "id, wine_library_id, inventory_item_id, name, by_glass_price, bottle_price, created_at, producer, vintage, region, grape_variety, category, raw_extracted_text, price_flag, price_flag_note",
       );
 
     if (menuItemsErr) {
@@ -2718,8 +2762,12 @@ export class MenusService {
         priceSyncError: menuItem
           ? (priceSync.get(menuItem.id)?.error ?? null)
           : null,
-        priceFlag: menuItem ? (priceSync.get(menuItem.id)?.flag ?? null) : null,
-        priceFlagNote: menuItem ? (priceSync.get(menuItem.id)?.flagNote ?? null) : null,
+        priceFlag: menuItem
+          ? (priceSync.get(menuItem.id)?.flag ?? (held.has(r.item) ? "other_currency" : null))
+          : null,
+        priceFlagNote: menuItem
+          ? (priceSync.get(menuItem.id)?.flagNote ?? held.get(r.item) ?? null)
+          : null,
         priceHeld: menuItem ? (priceSync.get(menuItem.id)?.held ?? []) : [],
         ...(r.houseCandidates ? { houseCandidates: r.houseCandidates } : {}),
       };
@@ -3068,6 +3116,39 @@ export class MenusService {
     });
 
     return { inventoryMap: result, priceSync };
+  }
+
+  /**
+   * The house's own money (restaurants.currency), or why it could not be read.
+   * null code: the house has not named its money (r36 N1, menu-money.ts).
+   */
+  private async houseMoney(restaurantId: string): Promise<{ code: string | null; unreadable: string | null }> {
+    const { data, error } = await this.dbService.supabase
+      .from("restaurants")
+      .select("currency")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error) return { code: null, unreadable: error.message };
+    const code = (data as { currency?: unknown } | null)?.currency;
+    return { code: typeof code === "string" && code.trim() !== "" ? code.trim().toUpperCase() : null, unreadable: null };
+  }
+
+  /**
+   * Refuses a typed price whose mark names another money than the house's
+   * (r36 N1): "€12" typed in a lira house would be stored as 12 lira. A typed
+   * price with no mark is never read against the house, so most saves read
+   * nothing more. A house whose money cannot be read refuses a marked price.
+   */
+  private async refuseOtherMoney(typed: unknown, restaurantId: string, nothing: string): Promise<void> {
+    if (typeof typed !== "string" || typedMoneyOf(typed) === null) return;
+    const house = await this.houseMoney(restaurantId);
+    if (house.unreadable !== null) {
+      throw new BadRequestException(
+        `"${typed.trim()}" names a currency, and this house's own money could not be read (${house.unreadable}). Type the price without the mark. ${nothing}`,
+      );
+    }
+    const why = typedMoneyRefusal(typed, house.code);
+    if (why) throw new BadRequestException(why.replace("Nothing was changed.", nothing));
   }
 
   /**

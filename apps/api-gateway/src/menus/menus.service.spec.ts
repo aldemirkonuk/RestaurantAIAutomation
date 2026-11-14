@@ -1324,6 +1324,118 @@ describe("MenusService — every menu read is kept as its own version", () => {
     const choose = async (service: MenusService, menuId: string, house = "rest-1", user = "user-2") =>
       service.makeCurrent(house, menuId, user, (await service.planFor(house, menuId)).fingerprint);
 
+    // r36 menu audit N1: a menu's prices were taken as the house's money
+    // whatever the menu printed, so "€12" became 12 lira on Inventory.
+    describe("a menu priced in another money (r36 N1)", () => {
+      async function readIn(house: string | null, lines: Row[]) {
+        const calls: RpcCall[] = [];
+        const tables: Record<string, Row[]> = base();
+        tables.restaurants[0].currency = house;
+        const service = makeService(tables, {
+          wineSubmissions,
+          rpcCalls: calls,
+          rpc: makeCurrentRpc(tables),
+          scanParser: { parseWithWarnings: async () => ({ items: lines, warnings: [] }) },
+        });
+        const read = await service.importMenu(
+          { method: "scan", data: { imageBase64: Buffer.from("%PDF").toString("base64") }, restaurantId: "rest-1" } as any,
+          "user-1",
+        );
+        const row = tables.menu_items.find((m) => m.menu_id === read.menuId)!;
+        return { calls, tables, service, read, row };
+      }
+      const priced = (calls: RpcCall[]) => calls.filter(([fn]) => fn === "set_house_menu_price");
+
+      it("a euro price in a lira house is kept with no price, says why, and choosing the menu leaves the house's own price", async () => {
+        const { calls, tables, service, read, row } = await readIn("TRY", [
+          { name: "Opus One", producer: "Opus", category: "red", currency: "EUR", bottle_price: 12, by_glass_price: 4 },
+        ]);
+        expect(row.bottle_price).toBeNull();
+        expect(row.by_glass_price).toBeNull();
+        expect(row.price_flag).toBe("other_currency");
+        expect(row.price_flag_note).toMatch(/^The menu prints this line at 12\.00 EUR a bottle and 4\.00 EUR a glass, and this house's money is TRY\./);
+        expect(read.items[0]).toMatchObject({ bottlePrice: null, byGlassPrice: null, priceFlag: "other_currency" });
+        expect(read.items[0].priceFlagNote).toBe(row.price_flag_note);
+
+        const plan = await service.planFor("rest-1", read.menuId);
+        expect(plan.lines[0]).toMatchObject({ flag: "other_currency", flagNote: row.price_flag_note });
+        expect(plan.lines[0].bottle).toMatchObject({ menuPrice: null, result: "blank_kept" });
+
+        const chose = await choose(service, read.menuId);
+        expect(priced(calls)).toHaveLength(0);
+        expect(tables.restaurant_inventory[0].menu_price_current).toBe(60);
+        expect(row.price_flag).toBe("other_currency");
+        expect(chose.priceSync).toMatchObject({ no_price: 1 });
+      });
+
+      it("a line printed in euros and lira takes the lira column", async () => {
+        const { calls, service, read, row } = await readIn("TRY", [
+          {
+            name: "Opus One",
+            producer: "Opus",
+            category: "red",
+            currency: "€",
+            bottle_price: 12,
+            also_priced: [{ currency: "TL", bottle_price: 450 }],
+          },
+        ]);
+        expect(row.bottle_price).toBe(450);
+        expect(row.price_flag ?? null).toBeNull();
+        await choose(service, read.menuId);
+        expect(priced(calls)).toHaveLength(1);
+        expect(priced(calls)[0][1]).toMatchObject({ p_bottle_price: 450, p_set_glass: false });
+      });
+
+      it("the house's own money, and a house that names no money, take the price as read", async () => {
+        const lira = await readIn("TRY", [{ name: "Opus One", producer: "Opus", category: "red", currency: "₺", bottle_price: 900 }]);
+        expect(lira.row).toMatchObject({ bottle_price: 900 });
+        expect(lira.row.price_flag ?? null).toBeNull();
+        const unnamed = await readIn(null, [{ name: "Opus One", producer: "Opus", category: "red", currency: "EUR", bottle_price: 12 }]);
+        expect(unnamed.row).toMatchObject({ bottle_price: 12 });
+        expect(unnamed.row.price_flag ?? null).toBeNull();
+      });
+
+      it("a typed euro price is refused on the current menu of a lira house; a lira or bare price is taken", async () => {
+        const tables: Record<string, Row[]> = {
+          restaurants: [{ id: "rest-1", currency: "TRY" }],
+          restaurant_menus: [{ id: "menu-1", restaurant_id: "rest-1", status: "active" }],
+          menu_items: [
+            { id: "mi-1", menu_id: "menu-1", restaurant_id: "rest-1", name: "Opus One", bottle_price: 60, inventory_item_id: "inv-1", status: "approved" },
+          ],
+        };
+        const calls: RpcCall[] = [];
+        const service = makeService(tables, {
+          rpcCalls: calls,
+          rpc: () => ({ data: { outcome: "changed", bottle_price: 70, glass_price: null, previous_bottle: 60 }, error: null }),
+        });
+        const change = (newValue: string) =>
+          service.reviewMenuItem("mi-1", "user-1", "rest-1", { fieldName: "bottle_price", newValue } as any, true);
+        await expect(change("€70")).rejects.toThrow(/^"€70" is in EUR, and this house's money is TRY\..*Nothing was changed\.$/);
+        expect(tables.menu_items[0].bottle_price).toBe(60);
+        expect(calls).toHaveLength(0);
+        await change("₺70");
+        expect(tables.menu_items[0].bottle_price).toBe(70);
+        await change("72");
+        expect(tables.menu_items[0].bottle_price).toBe(72);
+      });
+
+      it("a line added with a euro price in a lira house is refused, and nothing is added", async () => {
+        const tables: Record<string, Row[]> = {
+          restaurants: [{ id: "rest-1", currency: "TRY" }],
+          restaurant_menus: [{ id: "menu-1", restaurant_id: "rest-1", status: "draft" }],
+          menu_items: [],
+        };
+        const service = makeService(tables, { wineSubmissions });
+        await expect(
+          service.addMenuItem({ menuId: "menu-1", name: "Opus One", bottle_typed: "12 EUR" } as any, "user-1", "rest-1", true),
+        ).rejects.toThrow(/^"12 EUR" is in EUR, and this house's money is TRY\..*Nothing was added\.$/);
+        await expect(
+          service.addMenuItem({ menuId: "menu-1", name: "Opus One", by_glass_typed: "€4" } as any, "user-1", "rest-1", true),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(tables.menu_items).toHaveLength(0);
+      });
+    });
+
     // r28 G20: a house can hold two menus marked current (no unique index).
     // getMenu's maybeSingle failed the whole /menu page, and an active menu was
     // planned as "already current", so the house could not settle it.
