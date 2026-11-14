@@ -56,7 +56,12 @@ export function learnDoorFor(role: ShellRole, read: ProgressRead): LearnDoor | n
     true,
     !!progress?.menu_current,
     !!progress?.vendor_added,
-    !!progress?.team_member_invited,
+    // A person's "No team yet" settles the team step while the house has no
+    // invite (r36 onboarding gap 12, #1625), as the panel counts it. Read
+    // structurally: the field is typed in the setup chain, and an older
+    // gateway does not send it.
+    !!progress?.team_member_invited ||
+      (progress as { no_team_yet?: unknown } | null)?.no_team_yet === true,
   ].filter(Boolean).length;
   return { mode: 'get-started', done, of: SETUP_STEPS, runsSetup };
 }

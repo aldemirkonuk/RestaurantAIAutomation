@@ -438,6 +438,13 @@ describe('learnDoorFor — which door, by role and the house setup', () => {
     expect(learnDoorFor('owner', read(null))).toMatchObject({ mode: 'get-started', done: 1 });
   });
 
+  it('a person\'s "No team yet" counts the team step, as the panel does', () => {
+    const noTeam = (v: unknown) => progressOf({ no_team_yet: v } as Partial<OnboardingProgress>);
+    expect(learnDoorFor('owner', read(noTeam(true)))).toMatchObject({ mode: 'get-started', done: 3 });
+    expect(learnDoorFor('owner', read(noTeam(false)))).toMatchObject({ done: 2 });
+    expect(learnDoorFor('owner', read(noTeam('yes')))).toMatchObject({ done: 2 });
+  });
+
   it('setup done or put away gives Learn & Help, which keeps the steps to the costs', () => {
     expect(learnDoorFor('owner', read(progressOf({ completed_at: '2026-11-13T10:00:00Z' })))).toEqual({
       mode: 'learn', done: 0, of: 4, runsSetup: true,
