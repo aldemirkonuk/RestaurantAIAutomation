@@ -613,6 +613,55 @@ describe('DashboardNext', () => {
       expect(screen.queryByTestId('dn-not-counted-yet')).not.toBeInTheDocument();
     });
 
+    it('reads a list made current at stock 0 as not counted, not as low stock', async () => {
+      // r39 walk: a menu made current lists its drinks at 0 with a minimum,
+      // so every one of them came back below its minimum.
+      routeGets({
+        '/dashboard/stats/': listed({ lowStockItems: 2 }),
+        '/low-stock': [
+          { id: 'inv-1', wine_name: 'Chianti', vintage: null, stock_live: 0, threshold_min: 3 },
+          { id: 'inv-2', wine_name: 'Sauternes', vintage: null, stock_live: 0, threshold_min: 3 },
+        ],
+      });
+
+      mount();
+
+      expect(
+        await screen.findByText('No approvals are waiting. None of the 12 goods on the house’s list has been counted yet.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/low-stock/)).not.toBeInTheDocument();
+      expect(screen.getByTestId('dn-not-counted-yet')).toHaveTextContent('so nothing can be read as running low');
+      expect(tile('Running low').textContent).toMatch(/^Running low—read once goods are counted$/);
+    });
+
+    it('keeps an uncounted good that receipts put above 0, and leaves out the list\'s zeros', async () => {
+      routeGets({
+        '/dashboard/stats/': listed({ lowStockItems: 2 }),
+        '/low-stock': [
+          { id: 'inv-1', wine_name: 'Peroni', vintage: null, stock_live: 2, threshold_min: 24 },
+          { id: 'inv-2', wine_name: 'Chianti', vintage: null, stock_live: 0, threshold_min: 3 },
+        ],
+      });
+
+      mount();
+
+      expect(
+        await screen.findByText('1 low-stock item is waiting on you. None of the 12 goods on the house’s list has been counted yet.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Chianti')).not.toBeInTheDocument();
+    });
+
+    it('keeps a good at 0 below its minimum once the house has counted', async () => {
+      routeGets({
+        '/dashboard/stats/': listed({ countedGoods: 1, goodsNotCounted: 11, totalBottles: 6, lowStockItems: 1 }),
+        '/low-stock': [{ id: 'inv-2', wine_name: 'Chianti', vintage: null, stock_live: 0, threshold_min: 3 }],
+      });
+
+      mount();
+
+      expect(await screen.findByText('1 low-stock item is waiting on you.')).toBeInTheDocument();
+    });
+
     it('says nothing about counting once one good is counted', async () => {
       routeGets({ '/dashboard/stats/': listed({ countedGoods: 1, goodsNotCounted: 11, totalBottles: 6 }) });
 

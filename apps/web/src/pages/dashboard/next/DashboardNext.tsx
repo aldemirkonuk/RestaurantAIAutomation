@@ -40,7 +40,7 @@ import WaitingOnYou from './WaitingOnYou';
 import OneTapPanel from './OneTapPanel';
 import { ActivityPanel, LowStockPanel, WeekAhead } from './RailPanels';
 import NoGoodsYet from './NoGoodsYet';
-import { noneCountedSaid, noneCountedYet } from './notCounted';
+import { lowStockRead, noneCountedSaid, noneCountedYet } from './notCounted';
 import { TryAgain } from './TryAgain';
 import './dashboard-next.css';
 
@@ -128,8 +128,11 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
 
   const pendingCount =
     spine.pending === undefined ? undefined : spine.pending === null ? null : spine.pending.length;
+  // A list nobody has counted lists its goods at 0: those zeros are not low
+  // stock (r39 walk), so the line, the tile and the panel read without them.
+  const lowStock = lowStockRead(spine.stats, spine.lowStock);
   const lowStockCount =
-    spine.lowStock === undefined ? undefined : spine.lowStock === null ? null : spine.lowStock.length;
+    lowStock === undefined ? undefined : lowStock === null ? null : lowStock.length;
   // r28 onboarding gap 2: a house with no goods is not a house where nothing
   // runs low. Said only when the totals and the low-stock list both answered
   // and agree — zero goods counted, nothing below its minimum — so a read
@@ -274,7 +277,7 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
             ) : waitingForCount !== null && lowStockCount === 0 ? (
               <NoGoodsYet waitingForCount={waitingForCount} />
             ) : (
-              <LowStockPanel items={spine.lowStock} onRetry={spine.refetch} />
+              <LowStockPanel items={lowStock} onRetry={spine.refetch} />
             )}
             <ActivityPanel items={spine.activity} />
           </div>
