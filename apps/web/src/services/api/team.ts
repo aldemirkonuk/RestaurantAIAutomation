@@ -468,8 +468,19 @@ export async function publishSchedule(
   )
   return data
 }
+/**
+ * "I have seen it". Resolves only when the receipt was stored: an answer that
+ * is not `acknowledged: true` (an older gateway said `false` with a 200 for a
+ * person with no roster row) is thrown, so the page never reports a
+ * confirmation that did not happen.
+ */
 export async function acknowledgeSchedule(scheduleId: string, rid?: string) {
-  const { data } = await apiClient.post(`${base(rid)}/schedules/${scheduleId}/acknowledge`)
+  const { data } = await apiClient.post<{ acknowledged?: boolean }>(
+    `${base(rid)}/schedules/${scheduleId}/acknowledge`,
+  )
+  if (data?.acknowledged !== true) {
+    throw new Error('The confirmation was not recorded.')
+  }
   return data
 }
 
