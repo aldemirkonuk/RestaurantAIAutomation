@@ -24,13 +24,13 @@ import {
   hasStatus,
 } from "../procurement/order-status";
 import { houseFrame } from "../common/house-frame";
-import { bucketSpend, spendHouseFor, SPEND_UNREAD } from "./uncosted-spend";
 import {
   localDateIn,
   localMidnight,
   shiftLocalDate,
 } from "../notifications/producers/service-day";
 import { readAll } from "../providers/vendor-menu-supply";
+import { bucketSpend, spendHouseFor, SPEND_UNREAD } from "./uncosted-spend";
 
 /**
  * The rows of a settled read, or a throw. Supabase reports most failures in
