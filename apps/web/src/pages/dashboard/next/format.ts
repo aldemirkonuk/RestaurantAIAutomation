@@ -75,6 +75,71 @@ export function heldBackSaid(
   return `${money}; ${uncosted} ${uncosted === 1 ? 'has' : 'have'} no recorded cost`;
 }
 
+/** One spend window's scanned deliveries with no order (gateway `scannedDeliveries`). */
+export interface ScannedWindow {
+  counted: number;
+  uncosted: number;
+  notInHouseCurrency: Record<string, number>;
+}
+
+const deliveries = (n: number) => `${n} scanned ${n === 1 ? 'delivery' : 'deliveries'}`;
+
+/**
+ * Why the scanned deliveries with no order hold a spend figure back (r36
+ * invoices R3): verified deliveries whose papers carry no invoice total, or
+ * whose papers are in money other than the house's. Null when they hold
+ * nothing back.
+ */
+export function scannedHeldSaid(p: ScannedWindow | null | undefined): string | null {
+  if (!p) return null;
+  const codes = Object.entries(p.notInHouseCurrency ?? {})
+    .filter(([, n]) => typeof n === 'number' && n > 0)
+    .sort(([a, x], [b, y]) => y - x || (a < b ? -1 : 1));
+  const other = codes.reduce((sum, [, k]) => sum + k, 0);
+  const parts: string[] = [];
+  if (other > 0) {
+    const where =
+      codes.length === 1
+        ? `in ${codes[0][0]}`
+        : `in other currencies (${codes.map(([c, k]) => `${k} ${c}`).join(', ')})`;
+    parts.push(`${deliveries(other)} ${other === 1 ? 'is' : 'are'} ${where}, not the house’s money`);
+  }
+  if (p.uncosted > 0) {
+    parts.push(`${deliveries(p.uncosted)} ${p.uncosted === 1 ? 'has' : 'have'} no invoice total yet`);
+  }
+  return parts.length ? parts.join('; ') : null;
+}
+
+/**
+ * Why a spend figure is withheld, all reasons together: the orders', then the
+ * scanned deliveries'. When neither names one but the gateway sent a reason
+ * (`unread`: a read that failed), the tile says the figure could not be read,
+ * never nothing. Null when the figure is stated.
+ */
+export function spendWithheldSaid(input: {
+  uncosted?: number | null;
+  other?: Record<string, number> | null;
+  houseUnread?: boolean;
+  scanned?: ScannedWindow | null;
+  unread?: string | null;
+}): string | null {
+  const said = [heldBackSaid(input.uncosted, input.other, input.houseUnread ?? false), scannedHeldSaid(input.scanned)]
+    .filter((s): s is string => !!s)
+    .join('; ');
+  if (said) return said;
+  return typeof input.unread === 'string' && input.unread.trim() !== '' ? 'could not be read just now' : null;
+}
+
+/**
+ * What a stated spend figure is made of. With scanned deliveries in the
+ * window it says so, since a house that only scans its papers has no orders
+ * behind the figure; otherwise `ordersOnly`, the tile's own words.
+ */
+export function spendMadeOf(p: ScannedWindow | null | undefined, ordersOnly: string): string {
+  const n = p && typeof p.counted === 'number' ? p.counted : 0;
+  return n > 0 ? `delivered orders and ${deliveries(n)}` : ordersOnly;
+}
+
 /** Plain figure or the dash. */
 export function figure(v: number | null | undefined, mode: 'compact' | 'full' = 'full'): string {
   return v == null || Number.isNaN(v) ? DASH : formatNumber(v, mode);
