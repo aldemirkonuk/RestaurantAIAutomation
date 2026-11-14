@@ -11,14 +11,14 @@ const C = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const D = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const NEW = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 
-const h = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), auth: {} as Record<string, unknown> }));
+const h = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), del: vi.fn(), auth: {} as Record<string, unknown> }));
 vi.mock('../../services/api/client', () => ({
-  apiClient: { get: h.get, post: h.post, put: h.put },
+  apiClient: { get: h.get, post: h.post, put: h.put, patch: h.patch, delete: h.del },
   getErrorStatus: (e: unknown) => (e as { response?: { status?: number } } | null)?.response?.status ?? null,
 }));
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => h.auth }));
 
-import DishesPage from './DishesPage';
+import DishesPage, { PRICE_UNREAD, readPrice } from './DishesPage';
 
 const full = { perServe: 300, perServeExact: 300, priced: 2, of: 2, complete: true, partial: 0 };
 const row = (id: string, name: string, over: Record<string, unknown> = {}) => ({
@@ -140,7 +140,7 @@ describe('DishesPage', () => {
     mount();
     await screen.findByText('No dishes yet.');
     const form = screen.getByRole('form', { name: 'Add a dish' });
-    const fields = within(form).getAllByRole('textbox').concat(within(form).getAllByRole('spinbutton'));
+    const fields = within(form).getAllByRole('textbox');
     expect(fields).toHaveLength(3);
     for (const f of fields) {
       expect(f.id).not.toBe('');
@@ -148,7 +148,7 @@ describe('DishesPage', () => {
     }
     expect(screen.getByRole('textbox', { name: 'Dish name' })).toHaveAttribute('aria-required', 'true');
     expect(screen.getByRole('textbox', { name: 'Section' })).toBeInTheDocument();
-    expect(screen.getByRole('spinbutton', { name: 'Price' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Price' })).toHaveAttribute('inputmode', 'decimal');
   });
 
   it('shows the gateway sentence for a duplicate name', async () => {
@@ -171,5 +171,91 @@ describe('DishesPage', () => {
     fireEvent.click(screen.getByTestId(`dish-row-${A}`));
     await waitFor(() => expect(screen.queryByTestId(`dish-leaf-${A}`)).toBeNull());
     expect(screen.getByTestId('where').textContent).toBe('');
+  });
+
+  it('a price typed with a comma is saved as that price, never dropped', async () => {
+    list = [];
+    h.post.mockResolvedValue({ data: { id: NEW, name: 'Pilaf', section: null, price: 12.5, description: null } });
+    mount();
+    await screen.findByText('No dishes yet.');
+    fireEvent.change(screen.getByLabelText('Dish name'), { target: { value: 'Pilaf' } });
+    fireEvent.change(screen.getByLabelText('Price'), { target: { value: '12,50' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add dish' }));
+    await waitFor(() => expect(h.post).toHaveBeenCalledWith(`/recipes/${RID}/dishes`, { name: 'Pilaf', price: 12.5 }));
+  });
+
+  it('a price it cannot read is said and blocks the add', async () => {
+    list = [];
+    mount();
+    await screen.findByText('No dishes yet.');
+    fireEvent.change(screen.getByLabelText('Dish name'), { target: { value: 'Pilaf' } });
+    fireEvent.change(screen.getByLabelText('Price'), { target: { value: '1.250' } });
+    expect(screen.getByRole('button', { name: 'Add dish' })).toBeDisabled();
+    expect(screen.getByText(PRICE_UNREAD)).toBeInTheDocument();
+    expect(screen.getByLabelText('Price')).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('an editor changes an open dish, sending only what changed', async () => {
+    h.patch.mockResolvedValue({ data: { id: A, name: 'Lamb shank', section: 'Mains', price: 950.5, description: null } });
+    mount(`/dishes?open=${A}`);
+    const panel = await screen.findByTestId(`dish-details-${A}`);
+    const save = within(panel).getByRole('button', { name: 'Save changes' });
+    expect(save).toBeDisabled();
+    fireEvent.change(within(panel).getByLabelText('Price'), { target: { value: '950,50' } });
+    fireEvent.click(save);
+    await waitFor(() => expect(h.patch).toHaveBeenCalledWith(`/recipes/${RID}/dishes/${A}`, { price: 950.5 }));
+    expect(await within(panel).findByRole('status')).toHaveTextContent('Saved.');
+  });
+
+  it('a blank price clears it, and says so before the save', async () => {
+    h.patch.mockResolvedValue({ data: { id: A, name: 'Lamb shank', section: 'Mains', price: null, description: null } });
+    mount(`/dishes?open=${A}`);
+    const panel = await screen.findByTestId(`dish-details-${A}`);
+    fireEvent.change(within(panel).getByLabelText('Price'), { target: { value: ' ' } });
+    expect(within(panel).getByText('A blank price saves the dish with no price.')).toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(h.patch).toHaveBeenCalledWith(`/recipes/${RID}/dishes/${A}`, { price: null }));
+  });
+
+  it('takes a dish off the list only after asking, then closes it', async () => {
+    h.del.mockImplementation(async () => {
+      list = list.filter((d) => (d as { id: string }).id !== A);
+      return { data: { id: A, name: 'Lamb shank', removed: true } };
+    });
+    mount(`/dishes?open=${A}`);
+    const panel = await screen.findByTestId(`dish-details-${A}`);
+    fireEvent.click(within(panel).getByRole('button', { name: 'Take off the list' }));
+    expect(h.del).not.toHaveBeenCalled();
+    expect(within(panel).getByText('Take Lamb shank off your list? Its recipe history is kept.')).toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Yes, take it off' }));
+    await waitFor(() => expect(h.del).toHaveBeenCalledWith(`/recipes/${RID}/dishes/${A}`));
+    await waitFor(() => expect(screen.queryByTestId(`dish-row-${A}`)).toBeNull());
+    expect(screen.getByTestId('where').textContent).toBe('');
+  });
+
+  it('a failed removal says the dish is still on the list', async () => {
+    h.del.mockRejectedValue(Object.assign(new Error('x'), { response: { status: 500, data: { message: 'The dish could not be taken off your list. Nothing was changed.' } } }));
+    mount(`/dishes?open=${A}`);
+    const panel = await screen.findByTestId(`dish-details-${A}`);
+    fireEvent.click(within(panel).getByRole('button', { name: 'Take off the list' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'Yes, take it off' }));
+    expect(await within(panel).findByRole('alert')).toHaveTextContent('It is still on your list: The dish could not be taken off your list.');
+    expect(screen.getByTestId(`dish-row-${A}`)).toBeInTheDocument();
+  });
+
+  it('staff get no change or remove panel', async () => {
+    h.auth = { activeRestaurantId: RID, activeRole: 'staff', user: { userId: 'u1', role: 'staff' } };
+    mount(`/dishes?open=${A}`);
+    await screen.findByTestId(`dish-leaf-${A}`);
+    expect(screen.queryByTestId(`dish-details-${A}`)).toBeNull();
+  });
+});
+
+describe('readPrice', () => {
+  it.each([
+    ['', null, false], ['12', 12, false], ['12,5', 12.5, false], ['12.50', 12.5, false], [' 1 250,00 ', 1250, false],
+    ['1.250', null, true], ['1,250', null, true], ['12,505', null, true], ['-3', null, true], ['abc', null, true], ['1.2.3', null, true],
+  ])('%j reads as %j (bad %j)', (text, price, bad) => {
+    expect(readPrice(text)).toEqual({ price, bad });
   });
 });
