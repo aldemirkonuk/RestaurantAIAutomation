@@ -189,6 +189,36 @@ describe("readCurrentMenuLines", () => {
     expect(readsOf("menu_items")).toHaveLength(0);
   });
 
+  // r36 menu audit N4: probed on the real isKitchenLine, /menu said one thing
+  // and the recipe lane, reading this, the other for all three of these.
+  it("says dish or drink as /menu does, and never hands on the raw line", async () => {
+    const { db } = fakeDb({
+      restaurant_menus: { rows: [menu("live", "active")] },
+      menu_items: {
+        rows: [
+          line("k1", "live", { name: "Sauternes", category: "dessert", producer: "Ch. Suduiraut", vintage: "2015" }),
+          line("k2", "live", { name: "Moscato d'Asti", category: "Desserts" }),
+          line("k3", "live", { name: "Köfte", category: null, raw_extracted_text: "Köfte,Mains,18,cost 6.10,Kasap Ali" }),
+          line("k4", "live", { name: "Tiramisu", category: "dessert" }),
+          line("k5", "live", { name: "Chianti", category: "red", raw_extracted_text: "Chianti, great with pasta" }),
+        ],
+      },
+    });
+    const out = await readCurrentMenuLines(db, RID);
+    expect(out.rows.map((r) => [r.name, r.kitchen_line])).toEqual([
+      ["Sauternes", false],
+      ["Moscato d'Asti", false],
+      ["Köfte", true],
+      ["Tiramisu", true],
+      ["Chianti", false],
+    ]);
+    expect(out.rows.some((r) => "raw_extracted_text" in r)).toBe(false);
+    expect(out.rows[0]).toMatchObject({ producer: "Ch. Suduiraut", vintage: "2015", category: "dessert" });
+    // The fake hands back every field; the columns the test needs must be read.
+    const read = CURRENT_MENU_LINE_COLUMNS.split(",").map((c) => c.trim());
+    expect(read).toEqual(expect.arrayContaining(["category", "producer", "vintage", "region", "grape_variety", "raw_extracted_text"]));
+  });
+
   it("THROWS when the lines cannot be read — never a shorter menu", async () => {
     const { db } = fakeDb({
       restaurant_menus: { rows: [menu("live", "active")] },

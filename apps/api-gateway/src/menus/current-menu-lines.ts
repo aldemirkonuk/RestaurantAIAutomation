@@ -1,4 +1,5 @@
 import { readAll, type Row } from "../providers/vendor-menu-supply";
+import { isKitchenLine } from "./menu-line-view";
 
 /**
  * The lines on this house's CURRENT menu — the one read the cellar's menu
@@ -38,12 +39,29 @@ import { readAll, type Row } from "../providers/vendor-menu-supply";
  * migrations; an inlined list is a read nobody is checking.
  */
 export const CURRENT_MENU_LINE_COLUMNS =
-  "id, menu_id, name, producer, category, bottle_price, by_glass_price, created_at";
+  "id, menu_id, name, producer, category, bottle_price, by_glass_price, created_at, vintage, region, grape_variety, raw_extracted_text";
+
+/**
+ * DISH OR DRINK, DECIDED ONCE (r36 menu audit N4). /menu decides it with
+ * `isKitchenLine(category, raw line, line)`: a drink field (producer, vintage,
+ * region, grape) or a dessert-wine word keeps a 'dessert' line a drink, and a
+ * CSV dish known only from its raw row is a dish. The readers of this read
+ * (/dishes' menu offer, the Menu column) called `isKitchenLine(category,
+ * null)` on rows with neither, so a Sauternes under Desserts was offered as a
+ * dish and a CSV dish /menu set apart was never offered. Each row now carries
+ * `kitchen_line`, decided here by the call /menu makes. The raw line, which
+ * can hold a CSV row's cost and supplier cells, is dropped before the row
+ * leaves this read.
+ */
+function withKitchenLine(row: Row): Row {
+  const { raw_extracted_text: raw, ...rest } = row;
+  return { ...rest, kitchen_line: isKitchenLine(row.category, raw, row) };
+}
 
 export interface CurrentMenuLines {
   /** How many menus are current (`status = 'active'`). 0 is "no current menu". */
   currentMenus: number;
-  /** Their live lines, unioned, in `id` order. Empty when `currentMenus` is 0. */
+  /** Their live lines, unioned, in `id` order, each with `kitchen_line` and without its raw line. Empty when `currentMenus` is 0. */
   rows: Row[];
 }
 
@@ -77,5 +95,5 @@ export async function readCurrentMenuLines(
       return q;
     },
   );
-  return { currentMenus: menuIds.length, rows };
+  return { currentMenus: menuIds.length, rows: rows.map(withKitchenLine) };
 }
