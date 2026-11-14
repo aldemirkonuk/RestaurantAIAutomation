@@ -35,6 +35,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { AlertTriangle, Info, Undo2 } from 'lucide-react';
 import { HoldToApprove, Sheet } from '@/components/mudavym';
 import { apiClient } from '../../../../services/api/client';
@@ -660,6 +661,37 @@ export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: Co
             {send.says}
           </p>
         )}
+
+        {/* A vendor's answer that would not reach Mail is said before Send,
+            never after (r36 mail audit, gap 1): the letter leaves from the
+            house's own mailbox, the deployment has no Mudavym address to
+            answer to, and nothing reads that mailbox. Send stays open: a
+            day-1 owner may still write, knowing where the answer goes. */}
+        {sender?.kind === 'house_mailbox' &&
+          sender.sendable &&
+          sender.conversation?.answerReachesMail === false && (
+            <p
+              data-testid="answer-unseen"
+              role="note"
+              className="flex items-start gap-1.5"
+              style={{ margin: 0, fontSize: 11.5, lineHeight: 1.45, color: 'var(--ink-2, #4F473C)', maxWidth: '60ch' }}
+            >
+              <Info size={13} aria-hidden style={{ flexShrink: 0, marginTop: 2 }} />
+              <span>
+                {`A vendor's answer to this letter goes back to ${
+                  sender.address ?? 'the mailbox it leaves from'
+                }. Nothing here reads that mailbox, so the answer will not show in Mail. `}
+                <Link
+                  to="/communications?tab=mail&setup=1"
+                  onClick={leave}
+                  data-testid="answer-unseen-setup"
+                  style={{ color: 'var(--seal, #1A5E6B)', fontWeight: 600 }}
+                >
+                  See Mail setup
+                </Link>
+              </span>
+            </p>
+          )}
 
         {/* ── Send ────────────────────────────────────────────────────────── */}
         <div
