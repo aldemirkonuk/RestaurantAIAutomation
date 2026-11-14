@@ -43,6 +43,19 @@ import type { GoalScenario, GoalScenarios } from '@/hooks/useGoalScenarios';
 import type { GoalsDesk, ScenarioRequest } from './useGoalsDesk';
 import type { ViewCtx } from './rp-spec';
 
+/**
+ * A goal's deadline as the app writes a date: "31 Dec 2026" (r28 gap 21),
+ * never the stored "2026-12-31". The column is a calendar date, read as a
+ * local date so no time zone moves it a day; anything else is shown as sent.
+ */
+export function deadlineWords(deadline: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(deadline);
+  if (!m) return deadline;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (Number.isNaN(d.getTime()) || d.getDate() !== Number(m[3])) return deadline;
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 /* ─────────────────────────────────────────────────────── the payload ───── */
 
 export interface GoalRow {
@@ -723,7 +736,7 @@ function Desk({
                       <span className="rp-mono">{inUnit(g.current, g.unit, currency)}</span> of{' '}
                       <span className="rp-mono">{inUnit(g.target, g.unit, currency)}</span> ·{' '}
                       {g.metricLabel} · {g.direction === 'at_most' ? 'keep at most' : 'reach at least'}
-                      {g.deadline ? ` · by ${g.deadline}` : ' · no deadline'}
+                      {g.deadline ? ` · by ${deadlineWords(g.deadline)}` : ' · no deadline'}
                     </p>
                     {/* The bar is the SERVER's progressPct. An unknown one draws
                         no bar at all rather than an empty track that reads
@@ -914,7 +927,7 @@ export const goals = analysis<GoalsRegister>({
             g.name,
             g.unreadable ? EM : inUnit(g.current, g.unit, ctx.currency),
             inUnit(g.target, g.unit, ctx.currency),
-            g.deadline ?? EM,
+            g.deadline ? deadlineWords(g.deadline) : EM,
           ],
         })),
       },
