@@ -1,4 +1,5 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
+import { VendorTermsService } from "../vendor-terms/vendor-terms.service";
 import { DatabaseService } from "../database/database.service";
 import { readWholeWindow } from "../common/read-whole-window";
 import * as E from "./engine";
@@ -88,7 +89,41 @@ export class AnalyticsService {
   private readonly logger = new Logger(AnalyticsService.name);
   private readonly HOLDING_RATE = 0.26; // capital+storage+spoilage, %/yr
 
-  constructor(private readonly dbService: DatabaseService) {}
+  constructor(
+    private readonly dbService: DatabaseService,
+    // Optional so a caller built without the vendor register (tests, a
+    // module that provides this service alone) still answers, on an assumed
+    // lead that the basis names.
+    @Optional() private readonly vendorTerms?: VendorTermsService,
+  ) {}
+
+  /**
+   * Each vendor's lead time as the vendor register states it (stated by the
+   * house, the house's own vendor record, the vendor's, or inferred from
+   * receipts), keyed by provider id. "What to buy back" assumed 7 days for
+   * every good (r36 reports gap 7). Never throws: an unread register leaves
+   * every good on the assumed lead, and the basis says so.
+   */
+  private async vendorLeadTimes(
+    restaurantId: string,
+  ): Promise<{ read: boolean; byProvider: Map<string, { days: number; source: string }> }> {
+    const byProvider = new Map<string, { days: number; source: string }>();
+    if (!this.vendorTerms) return { read: false, byProvider };
+    try {
+      const out = await this.vendorTerms.read(restaurantId);
+      for (const v of out.vendors) {
+        const days = v.leadTimeDays?.value;
+        if (typeof days === "number" && Number.isFinite(days) && days > 0)
+          byProvider.set(v.providerId, { days, source: v.leadTimeDays.source });
+      }
+      return { read: true, byProvider };
+    } catch (err: any) {
+      this.logger.warn(
+        `vendor lead times could not be read; restock assumes 7 days: ${err?.message ?? err}`,
+      );
+      return { read: false, byProvider };
+    }
+  }
 
   /**
    * The house's first consumption line ever: a rate starts there, not at the
@@ -166,7 +201,7 @@ export class AnalyticsService {
         // the reorder trigger is `threshold_min`, and the varietal/type
         // lives on master_wine_library.
         .select(
-          "id, wine_name, stock_live, menu_price_current, last_purchase_price, threshold_min, master_wine_id, master_wine_library(primary_type)",
+          "id, wine_name, stock_live, menu_price_current, last_purchase_price, threshold_min, master_wine_id, provider_id, master_wine_library(primary_type)",
         )
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true),
@@ -218,6 +253,7 @@ export class AnalyticsService {
         // is no separate reorder_point column.
         reorderPoint: i.threshold_min || 0,
         masterWineId: i.master_wine_id,
+        providerId: (i.provider_id ?? null) as string | null,
         // A row we cannot cost has no value we can state. `qty × null` must
         // not become 0 — that is the fabrication ADR 0051 names, wearing an
         // arithmetic costume.
@@ -668,14 +704,26 @@ export class AnalyticsService {
     opts: { serviceLevel?: number; leadTimeDays?: number } = {},
   ) {
     const serviceLevel = opts.serviceLevel ?? 0.95;
-    const leadTime = opts.leadTimeDays ?? 7;
+    const ASSUMED_LEAD = 7;
+    const leadTime = opts.leadTimeDays ?? ASSUMED_LEAD;
     const sinceDays = 90;
 
-    const [inventory, consumption, first] = await Promise.all([
+    const [inventory, consumption, first, leads] = await Promise.all([
       this.loadInventory(restaurantId),
       this.loadConsumption(restaurantId, sinceDays),
       this.firstConsumption(restaurantId),
+      opts.leadTimeDays == null
+        ? this.vendorLeadTimes(restaurantId)
+        : Promise.resolve({ read: true, byProvider: new Map() }),
     ]);
+    // A good's lead is its vendor's, as the vendor register states it; a
+    // caller's explicit lead wins; else 7 days, ASSUMED and counted below.
+    const leadOf = (providerId: string | null | undefined) => {
+      if (opts.leadTimeDays != null)
+        return { days: opts.leadTimeDays, source: "requested" };
+      const v = providerId ? leads.byProvider.get(providerId) : undefined;
+      return v ?? { days: ASSUMED_LEAD, source: "assumed" };
+    };
     // The series ends today (`toDailySeries`) and starts at the house's first
     // line when that is inside the window: a day before it is not a day the
     // house sold nothing (r36 reports gap 1).
@@ -702,6 +750,7 @@ export class AnalyticsService {
     const unitsCoverage = summarizeUnits(consumption);
 
     const skus = inventory.map((i) => {
+      const lead = leadOf((i as { providerId?: string | null }).providerId);
       const rows = demandByWine.get(i.masterWineId || "") || [];
       const { values } = trimToObserved(
         this.toDailySeries(rows, sinceDays),
@@ -716,13 +765,13 @@ export class AnalyticsService {
         serviceLevel,
         avgDemandPerPeriod: profile.mean,
         demandStdev: profile.stdev,
-        avgLeadTime: leadTime,
+        avgLeadTime: lead.days,
       });
       const stockoutProb = E.inventory.stockoutProbability({
         onHand: i.qty,
         avgDemandPerPeriod: profile.mean,
         demandStdev: profile.stdev,
-        leadTime,
+        leadTime: lead.days,
       });
       const doc = E.inventory.daysOfCover(i.qty, profile.mean);
       const annualDemand = profile.mean * 365;
@@ -749,6 +798,8 @@ export class AnalyticsService {
         stockoutProbability: stockoutProb,
         eoq: eoq?.eoq ?? null,
         needsReorder: rop ? i.qty <= rop.reorderPoint : false,
+        leadTimeDays: lead.days,
+        leadTimeSource: lead.source,
         unitCost: i.unitCost,
         costBasis: i.costBasis,
         inventoryValue: i.inventoryValue,
@@ -771,6 +822,13 @@ export class AnalyticsService {
       };
     });
     const unassessed = skus.filter((s) => s.demandUnknown).length;
+    const assumedLead = skus.filter((s) => s.leadTimeSource === "assumed").length;
+    const leadWords =
+      opts.leadTimeDays != null
+        ? `lead time ${leadTime}d as requested, for every good`
+        : assumedLead === 0
+          ? "lead time per good, from its vendor's lead in the vendor register"
+          : `lead time per good from its vendor's lead in the vendor register; ${assumedLead} of ${skus.length} assumed at ${ASSUMED_LEAD}d (${leads.read ? "no lead time recorded for their vendor" : "the vendor register could not be read"})`;
 
     // ABC by inventory value. Every class is a cut on cumulative SHARE OF THE
     // TOTAL, so one unpriced row moves every other row's class: the total is
@@ -808,7 +866,7 @@ export class AnalyticsService {
       // columns unreadable: nothing said where `inventoryValue` came from.
       basis: {
         demand: `bottles/day ${windowWords(observed, "consumption line")} — ${unitsBasisSentence(unitsCoverage)}${unassessed > 0 ? `; ${unassessed} row(s) are unassessed (skus[].demandUnknown): their demand, cover, reorder point and stockout risk are null and they are never put on the reorder list` : ""}`,
-        reorderScience: `King safety stock at serviceLevel ${serviceLevel}, lead time ${leadTime}d — demand-derived, unaffected by cost`,
+        reorderScience: `King safety stock at serviceLevel ${serviceLevel}, ${leadWords} — demand-derived, unaffected by cost`,
         inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
         costDerived:
           "skus[].inventoryValue, skus[].unitCost and skus[].eoq are null for any row with no recorded cost; skus[].abcClass is null for EVERY row unless the whole cellar is priced, because ABC cuts on share of a total (ADR 0051)",
