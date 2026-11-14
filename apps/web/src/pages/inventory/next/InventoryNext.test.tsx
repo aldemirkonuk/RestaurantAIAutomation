@@ -991,6 +991,35 @@ describe('counts read with grouped digits, as money does (INV-W33)', () => {
       expect(s).not.toContain('no par');
     });
 
+    it('on the page, a food the house carries makes it goods, though its row has no drink kind', () => {
+      // The live row of a house food: kind null (withHouseKind), its kind on the house item.
+      mock.data = data({
+        rows: [
+          row({ id: 'w', stock: 3, par: 2, standing: 'above', value: 20, zones: null }),
+          row({ id: 'f', wineId: null, name: 'Un', type: null, kind: null, stock: 12400, par: null, standing: 'nopar', value: 10, zones: null }),
+        ],
+        rawItems: [{ id: 'f', kind: 'food', uom: 'g', display_name: 'Un' }],
+      });
+      renderPage();
+      const s = screen.getByTestId('inventory-read-sentence').textContent ?? '';
+      expect(s).toContain('2 goods,');
+      expect(s).toContain('One good has no par');
+      expect(s).toContain('At cost the house holds');
+      expect(s).not.toContain('title');
+      expect(s).not.toContain('cellar');
+    });
+
+    it('on the page, a drinks-only list keeps titles and the cellar', () => {
+      mock.data = data({
+        rows: [row({ id: 'w', stock: 3, par: 2, standing: 'above', value: 20, zones: null })],
+        rawItems: [{ id: 'w', kind: 'wine', uom: 'bottle', display_name: 'Ankara Red' }],
+      });
+      renderPage();
+      const s = screen.getByTestId('inventory-read-sentence').textContent ?? '';
+      expect(s).toContain('1 title,');
+      expect(s).toContain('At cost the cellar holds');
+    });
+
     it('a food with no name reads "Unnamed good" on the list', () => {
       mock.data = data({ rows: [flour('a', { name: null })] });
       renderPage();
@@ -1249,7 +1278,7 @@ describe('INV-W38 — the view is the URL', () => {
     });
     renderAt('/inventory');
     const said = screen.getByTestId('inventory-read-sentence').textContent ?? '';
-    expect(said).toContain('2 titles, 10 bottles and 12.4 kg');
+    expect(said).toContain('2 goods, 10 bottles and 12.4 kg');
     expect(said).not.toContain('12,410');
     const live = (id: string) => screen.getByTestId(`inv-row-${id}`).querySelector('td[data-label="On hand / to reconcile · par"]')!.textContent;
     expect(live('f')).toContain('12.4 kg / 12.4 kg · 5 kg');
