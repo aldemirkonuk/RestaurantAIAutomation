@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  answerFor,
   doorWords,
   emptyListWords,
   headerSentence,
@@ -609,5 +610,74 @@ describe('the setup page says failures in its own words (QA round 26, #980 defec
     expect(setupFailWords(offline, 'read')).toBe(
       'The mail setup could not be read: no answer. Check the connection. That does not mean nothing is set up.',
     );
+  });
+});
+
+describe('what "Write a reply" answers (r28 gap 3)', () => {
+  const head = (subject: string | null, providerId: string | null = 'p1') => ({
+    subject,
+    person: providerId ? { key: `vendor:${providerId}`, kind: 'vendor' as const, providerId, name: 'Bodega' } : null,
+  });
+  const m = (over: Partial<MailMessage>): MailMessage => ({
+    id: 'x',
+    direction: 'inbound',
+    channel: 'email',
+    text: '',
+    aiGenerated: false,
+    status: 'RECEIVED',
+    sentAt: null,
+    receivedAt: '2026-11-01T09:00:00Z',
+    createdAt: '2026-11-01T09:00:00Z',
+    rawDeletedAt: null,
+    door: 'house_mailbox',
+    ...over,
+  } as MailMessage);
+
+  it('the newest letter that arrived or left, and Re: on the subject', () => {
+    const got = answerFor(head('Standing order'), [
+      m({ id: 'in-1', receivedAt: '2026-11-01T09:00:00Z' }),
+      m({ id: 'out-1', direction: 'outbound', sentAt: '2026-11-02T09:00:00Z', receivedAt: null }),
+      m({ id: 'in-2', receivedAt: '2026-11-03T09:00:00Z' }),
+    ]);
+    expect(got).toEqual({ providerId: 'p1', answers: 'in-2', subject: 'Re: Standing order' });
+  });
+
+  it('a sent letter of the house is answerable when it is the newest', () => {
+    const got = answerFor(head('Standing order'), [
+      m({ id: 'in-1', receivedAt: '2026-11-01T09:00:00Z' }),
+      m({ id: 'out-1', direction: 'outbound', sentAt: '2026-11-02T09:00:00Z', receivedAt: null }),
+    ]);
+    expect(got?.answers).toBe('out-1');
+  });
+
+  it('a draft or a queued letter has not left: it is passed over', () => {
+    const got = answerFor(head('Standing order'), [
+      m({ id: 'in-1', receivedAt: '2026-11-01T09:00:00Z' }),
+      m({ id: 'draft', direction: 'outbound', sentAt: null, receivedAt: null, createdAt: '2026-11-05T09:00:00Z' }),
+    ]);
+    expect(got?.answers).toBe('in-1');
+  });
+
+  it('a WhatsApp letter is not mail: passed over; a letter with no channel is mail', () => {
+    const got = answerFor(head('Standing order'), [
+      m({ id: 'old-mail', channel: null as unknown as string, receivedAt: '2026-11-01T09:00:00Z' }),
+      m({ id: 'wa', channel: 'whatsapp', receivedAt: '2026-11-04T09:00:00Z' }),
+    ]);
+    expect(got?.answers).toBe('old-mail');
+    expect(answerFor(head('S'), [m({ id: 'wa', channel: 'whatsapp' })])).toBeNull();
+  });
+
+  it('a subject that already says Re: is kept; none stays empty', () => {
+    expect(answerFor(head('RE: Prices'), [m({ id: 'a' })])?.subject).toBe('RE: Prices');
+    expect(answerFor(head('re:Prices'), [m({ id: 'a' })])?.subject).toBe('re:Prices');
+    expect(answerFor(head('Prices for re-order'), [m({ id: 'a' })])?.subject).toBe('Re: Prices for re-order');
+    expect(answerFor(head('  '), [m({ id: 'a' })])?.subject).toBe('');
+    expect(answerFor(head(null), [m({ id: 'a' })])?.subject).toBe('');
+  });
+
+  it('no vendor, or nothing to answer: nothing', () => {
+    expect(answerFor(head('S', null), [m({ id: 'a' })])).toBeNull();
+    expect(answerFor(null, [m({ id: 'a' })])).toBeNull();
+    expect(answerFor(head('S'), [])).toBeNull();
   });
 });

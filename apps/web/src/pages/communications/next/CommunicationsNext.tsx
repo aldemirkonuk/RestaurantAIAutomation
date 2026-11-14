@@ -54,7 +54,7 @@ import { HouseDrafts, useHouseDrafts, type HouseDraft } from './Compose/HouseDra
 import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
 import { MailTab } from './MailTab';
 import WhoIsWriting from './WhoIsWriting';
-import { mailTabLabel } from './mail-format';
+import { mailTabLabel, type MailAnswer } from './mail-format';
 import { useMailSummary } from './useMailData';
 
 function GlanceFigure({
@@ -153,6 +153,9 @@ export default function CommunicationsNext() {
   const [draftFrom, setDraftFrom] = useState<HeldLetter | null>(null);
   const [composeKey, setComposeKey] = useState(0);
   const [composeFrom, setComposeFrom] = useState<HeldLetter | null>(null);
+  // "Write a reply" in a Mail thread (r28 gap 3): the composer opens on an
+  // answer to that thread's newest letter.
+  const [answerFrom, setAnswerFrom] = useState<MailAnswer | null>(null);
   const [templateFrom, setTemplateFrom] = useState<HeldTemplate | null>(null);
   // Resume takes its own stub away, and the button with it. Focus moves to the
   // row's own opener first, so the sheet hands focus back there when it closes
@@ -172,8 +175,20 @@ export default function CommunicationsNext() {
     }
   };
   const openCompose = () => {
-    // The composer stays mounted, so a held letter is still in it.
+    // The composer stays mounted, so a held letter is still in it. A reply
+    // opened from Mail and left unwritten is not a new letter: a fresh sheet.
+    if (answerFrom && !letters.words('new')) {
+      setAnswerFrom(null);
+      setComposeKey((k) => k + 1);
+    }
     letters.drop('new');
+    setCompose(true);
+  };
+  const openAnswer = (a: MailAnswer) => {
+    // A fresh sheet for the reply: a letter held from before is left held.
+    setComposeFrom(null);
+    setAnswerFrom(a);
+    setComposeKey((k) => k + 1);
     setCompose(true);
   };
   const openLibrary = () => {
@@ -400,6 +415,7 @@ export default function CommunicationsNext() {
           <MailTab
             draftedOrderIds={draftedOrderIds}
             onOpenReply={openReply}
+            onAnswer={openAnswer}
             bookFacts={bookFacts}
             // ADR 0160 §113, Open item 3 (founder, 2026-09-18): senders and
             // strangers are mail, not money. Drawn in the Mail tab since r21
@@ -731,11 +747,13 @@ export default function CommunicationsNext() {
                         // The composer is emptied by mounting a fresh one; Put it back mounts it with these words.
                         letters.discard('new');
                         setComposeFrom(null);
+                        setAnswerFrom(null);
                         setComposeKey((k) => k + 1);
                       }}
                       onRestore={() => {
                         letters.restore('new');
                         setComposeFrom(h.words);
+                        setAnswerFrom(null);
                         setComposeKey((k) => k + 1);
                       }}
                       footer={`${h.words.to ? `To ${h.words.to.providerName}. ` : ''}Not sent. Kept on this page until you leave it.`}
@@ -796,8 +814,11 @@ export default function CommunicationsNext() {
                 body: composeFrom.body,
                 insights: composeFrom.insights,
                 templateId: composeFrom.templateId,
+                answers: composeFrom.answers,
               }
-            : null
+            : answerFrom
+              ? { providerId: answerFrom.providerId, subject: answerFrom.subject, answers: answerFrom.answers }
+              : null
         }
       />
       {draft && (

@@ -43,6 +43,7 @@ import {
   mailStatusLine,
   storedKindsLine,
   todayLine,
+  type MailAnswer,
   type MailboxReader,
   type MailPersonRow,
   type TestArrival,
@@ -325,6 +326,7 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
 export function MailTab({
   draftedOrderIds,
   onOpenReply,
+  onAnswer,
   bookFacts,
   whoIsWriting = null,
 }: {
@@ -332,6 +334,8 @@ export function MailTab({
   draftedOrderIds: ReadonlySet<string>;
   /** The page's own openReply: the drafted reply and its sealed approve, untouched. */
   onOpenReply: (orderId: string) => void;
+  /** The page's composer, opened on a reply to a thread's newest letter (gap 3). */
+  onAnswer?: (answer: MailAnswer) => void;
   /** Why a recent letter was held or refused, by letter id, from the book (see MailThread). */
   bookFacts?: ReadonlyMap<string, LetterFacts>;
   /**
@@ -479,6 +483,7 @@ export function MailTab({
           canReply={canReply}
           draftedOrderIds={draftedOrderIds}
           onOpenReply={onOpenReply}
+          onAnswer={onAnswer}
           bookFacts={bookFacts}
         />
       ) : withKey ? (

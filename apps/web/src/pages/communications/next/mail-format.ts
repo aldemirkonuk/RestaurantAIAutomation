@@ -683,3 +683,41 @@ export function setupFailWords(err: unknown, act: SetupAct): string {
   if (status === 403) return 'Only an owner or a manager of this house can send a test letter.';
   return 'The test letter could not be started; try again.';
 }
+
+/**
+ * What "Write a reply" in a thread answers (r28 mail audit, gap 3): the
+ * thread's newest mail letter that arrived, or that left the house (a draft
+ * or a queued letter has nothing to answer), and the subject the reply opens
+ * with. Null when the thread has no such letter or no vendor.
+ */
+export interface MailAnswer {
+  providerId: string;
+  answers: string;
+  subject: string;
+}
+
+export function answerFor(
+  head: Pick<MailThreadPage, 'subject' | 'person'> | null,
+  letters: readonly MailMessage[],
+): MailAnswer | null {
+  const providerId = head?.person?.providerId;
+  if (!providerId) return null;
+  // Mail only: a WhatsApp letter has no mail thread to answer. A row with
+  // no channel is from before the column, and those are mail.
+  const answerable = letters.filter(
+    (m) =>
+      (!m.channel || m.channel.toLowerCase() === 'email') &&
+      (m.direction === 'inbound' || m.sentAt !== null),
+  );
+  const last = answerable.reduce<MailMessage | null>(
+    (best, m) => (best === null || letterAt(m) >= letterAt(best) ? m : best),
+    null,
+  );
+  if (!last) return null;
+  const subject = (head?.subject ?? '').trim();
+  return {
+    providerId,
+    answers: last.id,
+    subject: subject === '' ? '' : /^re\s*:/i.test(subject) ? subject : `Re: ${subject}`,
+  };
+}
