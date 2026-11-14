@@ -187,6 +187,21 @@ function at(iso: string | null | undefined): number | null {
  * says the read failed — then the figure is the em dash and the reason is
  * said, never a zero that reads as "no one is waiting".
  */
+/**
+ * Has any vendor letter ever been stored for this house, by any door? (r36
+ * mail audit, gap 5.) The summary's three doors cover every inbound letter
+ * (mail_inbox_summary: the house mailbox, WhatsApp, and every other inbound
+ * letter as "Mudavym mail"), each the newest one stored, of all time. All
+ * three empty means nothing has arrived yet, which on day 1 is not the same
+ * news as "no one is waiting".
+ */
+export function nothingArrivedYet(summary: MailSummary): boolean {
+  const d = summary.doors;
+  return !d?.houseMailbox?.lastStoredAt && !d?.whatsapp?.lastStoredAt && !d?.mudavymMail?.lastStoredAt;
+}
+
+export const NOTHING_ARRIVED_YET = 'No vendor letter has reached Mail yet.';
+
 export function headerSentence(
   summary: MailSummary | null,
   opts: { failed: boolean; reason?: string; now: number },
@@ -197,7 +212,9 @@ export function headerSentence(
       : `${EM} Reading who is waiting on you…`;
   }
   const n = summary.waitingPeople;
-  if (n === 0) return 'No one is waiting on you.';
+  // Day 1 is not "healthy": with no letter ever stored, the honest news is
+  // that nothing has come in, and the status line under it says why.
+  if (n === 0) return nothingArrivedYet(summary) ? NOTHING_ARRIVED_YET : 'No one is waiting on you.';
   const lead = n === 1 ? '1 vendor is waiting on you.' : `${n} vendors are waiting on you.`;
   const since = at(summary.oldestWaitAt);
   if (since === null) return lead;
@@ -220,8 +237,13 @@ export function todayLine(summary: MailSummary | null): string {
   return `Today: ${plural(summary.inToday, 'letter', 'letters')} in, ${summary.outToday} out.`;
 }
 
-/** The tab label: "Mail · 3", or the em dash while the count is unknown. */
+/**
+ * The tab label: "Mail · 3", or the em dash while the count is unknown. A
+ * house no letter has ever reached reads plain "Mail": a zero there, seen
+ * from Letters, reads as "all answered" when nothing has arrived (r36 gap 5).
+ */
 export function mailTabLabel(summary: MailSummary | null): string {
+  if (summary && summary.waitingPeople === 0 && nothingArrivedYet(summary)) return 'Mail';
   return `Mail · ${summary ? summary.waitingPeople : EM}`;
 }
 

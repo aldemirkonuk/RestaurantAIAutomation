@@ -93,7 +93,14 @@ describe('the header sentence', () => {
   });
 
   it('says plainly when no one waits', () => {
-    expect(headerSentence(summary(), { failed: false, now: NOW })).toBe('No one is waiting on you.');
+    const arrived = summary({
+      doors: {
+        houseMailbox: { lastStoredAt: null },
+        whatsapp: { lastStoredAt: null },
+        mudavymMail: { lastStoredAt: new Date(NOW - 86_400_000).toISOString() },
+      },
+    });
+    expect(headerSentence(arrived, { failed: false, now: NOW })).toBe('No one is waiting on you.');
   });
 
   // Spec (g): a failed summary is an em dash and words, never 0.
@@ -126,6 +133,17 @@ describe('the today line and the tab label', () => {
 
   it("the tab carries the waiting count, an em dash while it is unknown", () => {
     expect(mailTabLabel(summary({ waitingPeople: 3 }))).toBe('Mail · 3');
+    expect(
+      mailTabLabel(
+        summary({
+          doors: {
+            houseMailbox: { lastStoredAt: '2026-11-01T09:00:00Z' },
+            whatsapp: { lastStoredAt: null },
+            mudavymMail: { lastStoredAt: null },
+          },
+        }),
+      ),
+    ).toBe('Mail · 0');
     expect(mailTabLabel(null)).toBe('Mail · —');
   });
 
@@ -691,5 +709,43 @@ describe('what "Write a reply" answers (r28 gap 3)', () => {
     expect(answerFor(head('S', null), [m({ id: 'a' })])).toBeNull();
     expect(answerFor(null, [m({ id: 'a' })])).toBeNull();
     expect(answerFor(head('S'), [])).toBeNull();
+  });
+});
+
+/**
+ * r36 mail audit, gap 5: day 1 does not read as healthy. With no letter ever
+ * stored by any door, the header says nothing has arrived yet rather than
+ * "No one is waiting on you.", and the tab carries no reassuring zero.
+ */
+describe('day 1, before any letter has arrived', () => {
+  const at = '2026-11-01T09:00:00Z';
+  const empty = { houseMailbox: { lastStoredAt: null }, whatsapp: { lastStoredAt: null }, mudavymMail: { lastStoredAt: null } };
+
+  it('says no letter has reached Mail yet, not that no one is waiting', () => {
+    expect(headerSentence(summary(), { failed: false, now: NOW })).toBe('No vendor letter has reached Mail yet.');
+  });
+
+  it('the tab reads plain "Mail", with no zero', () => {
+    expect(mailTabLabel(summary())).toBe('Mail');
+  });
+
+  it.each([
+    ['the house mailbox', { ...empty, houseMailbox: { lastStoredAt: at } }],
+    ['WhatsApp', { ...empty, whatsapp: { lastStoredAt: at } }],
+    ['Mudavym mail', { ...empty, mudavymMail: { lastStoredAt: at } }],
+  ])('one letter by %s is enough to say "No one is waiting on you."', (_door, doors) => {
+    expect(headerSentence(summary({ doors }), { failed: false, now: NOW })).toBe('No one is waiting on you.');
+    expect(mailTabLabel(summary({ doors }))).toBe('Mail · 0');
+  });
+
+  it('someone waiting is said as before, whatever the doors say', () => {
+    const s = summary({ waitingPeople: 2 });
+    expect(headerSentence(s, { failed: false, now: NOW })).toBe('2 vendors are waiting on you.');
+    expect(mailTabLabel(s)).toBe('Mail · 2');
+  });
+
+  it('a summary without doors does not crash the header', () => {
+    const s = { ...summary(), doors: undefined } as unknown as MailSummary;
+    expect(() => headerSentence(s, { failed: false, now: NOW })).not.toThrow();
   });
 });
