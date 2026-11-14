@@ -795,6 +795,32 @@ describe("MenusService.reviewMenuItem — tenant isolation and the house price (
     expect(calls).toHaveLength(0);
     expect(result.priceSync).toBeUndefined();
   });
+
+  it("reads a decimal-comma price as written: '45,50' is 45.50, not 4550", async () => {
+    const tables = { menu_items: [line()], restaurant_menus: [CURRENT()] };
+    const service = makeService(tables, { rpc: changed });
+    await service.reviewMenuItem("mi-1", "user-1", "rest-1", {
+      fieldName: "bottle_price",
+      newValue: "45,50",
+    } as any);
+    expect(tables.menu_items[0].bottle_price).toBe(45.5);
+  });
+
+  it("refuses a price with two readings ('1.250') in words, and touches neither the line nor the house price", async () => {
+    const calls: RpcCall[] = [];
+    const tables = { menu_items: [line()], restaurant_menus: [CURRENT()] };
+    const service = makeService(tables, { rpc: changed, rpcCalls: calls });
+    const write = service.reviewMenuItem("mi-1", "user-1", "rest-1", {
+      fieldName: "bottle_price",
+      newValue: "1.250",
+    } as any);
+    await expect(write).rejects.toBeInstanceOf(BadRequestException);
+    // r33 meet: parseMenuPrice says the two readings by name.
+    await expect(write).rejects.toThrow(/could be 1250 or 1\.25/);
+    expect(tables.menu_items[0].bottle_price).toBe(60);
+    expect(tables.menu_items[0].status).toBe("approved");
+    expect(calls).toHaveLength(0);
+  });
 });
 
 /**
@@ -1068,6 +1094,19 @@ describe("MenusService — every menu read is kept as its own version", () => {
     expect(r.items[0].priceSync).toBe("not_current");
     // Lines are stored against the new version, not appended to the old menu.
     expect(tables.menu_items.every((l) => l.menu_id === r.menuId)).toBe(true);
+  });
+
+  it("a price the file read left blank is SAID on the reply, row by row, not only dropped", async () => {
+    const service = makeService(base(), { wineSubmissions, csvParser: new CsvParserService() });
+    const r = await service.importMenu(
+      { method: "csv", data: { csvContent: "name;bottle_price\nOpus One;1.250\n;90\n" }, restaurantId: "rest-1" } as any,
+      "user-1",
+    );
+    expect(r.itemsExtracted).toBe(1);
+    expect(r.notes).toEqual([
+      { row: 2, reason: "two_readings", field: "bottle_price", raw: "1.250" },
+      { row: 3, reason: "no_name" },
+    ]);
   });
 
   it("a source that could not be stored is SAID on the version, and the read is still kept", async () => {

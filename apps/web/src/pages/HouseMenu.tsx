@@ -41,6 +41,7 @@ const KEPT_NOT_CURRENT =
 import { settingsApi } from '../services/api/settings'
 import { formatMoney } from '../lib/currency'
 import { formatHouseNumber } from '../lib/house-number'
+import { MenuReadNotes } from '../components/onboarding/MenuReadNotes'
 
 const sectionOrder = [
   'wine',
@@ -188,6 +189,7 @@ export default function HouseMenu() {
           <BrandMark size={24} alt="Mudavym" />
           <h1 className="mt-8 font-serif text-4xl">We couldn&apos;t read this file.</h1>
           <p className="mt-4 text-[#6d685f]">Nothing was set. Try a clearer photo or a PDF of the drinks list.</p>
+          <MenuReadNotes notes={proof.notes} className="mt-4 text-sm text-[#6d685f]" />
           <button onClick={() => navigate('/get-started')} className="mt-6 text-[#1a5e6b] underline">
             Try another menu
           </button>
@@ -269,6 +271,7 @@ export default function HouseMenu() {
             ))}
           </ul>
         ) : null}
+        <MenuReadNotes notes={proof.notes} className="mt-4 text-sm text-[#6d685f]" />
 
         <div className="mt-12 space-y-12">
           {grouped.map(([category, rows]) => (

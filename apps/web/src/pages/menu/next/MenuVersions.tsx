@@ -44,6 +44,7 @@ import { deviceClockNote, houseDay, houseMoment } from './menu-clock';
 import { isPhoto, pagesProblem, photoToJpegBase64, photosToPages } from '../../../lib/menuPhotos';
 import { formatMoney } from '../../../lib/currency';
 import { useHouseCurrencyCode } from '../../../hooks/queries/useHouseCurrencyCode';
+import { MenuReadNotes } from '../../../components/onboarding/MenuReadNotes';
 
 const EM = '—';
 
@@ -475,6 +476,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
                 : 'It is not the current menu, and no price has changed.'}
           </p>
           <ReadWarnings warnings={result.warnings} testId="menu-read-warnings" />
+          <MenuReadNotes notes={result.notes} className="cl-note" />
           {result.reopened ? (
             <button
               type="button"

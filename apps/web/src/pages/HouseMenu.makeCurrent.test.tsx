@@ -14,6 +14,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import HouseMenu from './HouseMenu'
+import { settingsApi } from '../services/api/settings'
+import { formatMoney } from '../lib/currency'
 import { writeProof } from '../lib/firstProof'
 import { getMenuPlan, makeMenuCurrent, type MenuImportResult } from '../services/api/menus'
 
@@ -156,6 +158,9 @@ describe('the first proof -- the current-menu choice', () => {
 
   it('a price a lock held is named (ADR 0193 round 3, L15)', async () => {
     role = 'manager'
+    // The locked price is said in the house's money (#1422); r33 gives this
+    // case a house currency so it reads as money, not as a bare number.
+    const spy = vi.spyOn(settingsApi, 'houseCurrency').mockResolvedValue({ readable: true, code: 'EUR' } as never)
     mockMake.mockResolvedValue({
       outcome: 'made_current', menuId: 'm9', previousMenuIds: [], lines: 1,
       priceSync: { locked: 1 }, flagged: 0, failed: [],
@@ -164,8 +169,9 @@ describe('the first proof -- the current-menu choice', () => {
     mount()
     await chooseThroughThePlan()
     expect(await screen.findByTestId('first-proof-choice-said')).toHaveTextContent(
-      'Held by a lock, not changed: Barolo (bottle, locked at 95.00).',
+      `Held by a lock, not changed: Barolo (bottle, locked at ${formatMoney(95, 'EUR')}).`,
     )
+    spy.mockRestore()
   })
 
   it('a refused choice is said, and nothing is recorded as chosen', async () => {
