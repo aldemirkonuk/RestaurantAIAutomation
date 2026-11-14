@@ -367,15 +367,36 @@ export class HouseInboxService {
       });
     }
 
-    if (addresses.length === 0) {
-      return this.blank(row, "empty_book", {
-        says: "This house's vendor book holds no address, so there was nothing to filter a request by and no request was made. An unbounded read is not the fallback for an empty book.",
-      });
-    }
-
     // The cursor. Absent means this grant has never been read: seed it at NOW
     // and read nothing. Turning the reader on does not sweep the mailbox.
     const cursor = await this.loadCursor(connectionId);
+
+    if (addresses.length === 0) {
+      // Reading starts at consent, even with an empty book (r36 mail audit,
+      // gap 5). The cursor used to be seeded only once the book held an
+      // address, so a vendor's letter that came between the person's consent
+      // and the vendor's address being added was never read. Seeding here
+      // reads nothing older than consent, the promise the grant was given on,
+      // and still reads only book addresses once there are some.
+      //
+      // A grant already seeded records the run without moving its cursor: the
+      // reader did run, and asked for nothing. Its last error is left as it
+      // was, because a run that never fetched a token proves nothing about it.
+      const seeded =
+        cursor === null
+          ? await this.seedCursor(connectionId, restaurantId, nowMs)
+          : false;
+      if (cursor !== null) await this.recordEmptyRun(connectionId, nowMs);
+      return this.blank(row, "empty_book", {
+        cursorAdvancedTo: seeded ? nowMs : null,
+        says: `This house's vendor book holds no address, so there was nothing to filter a request by and no request was made. An unbounded read is not the fallback for an empty book.${
+          seeded
+            ? ` Reading starts at ${new Date(nowMs).toISOString()}: once a vendor's address is added, their letters from then on are read.`
+            : ""
+        }`,
+      });
+    }
+
     if (cursor === null) {
       const seeded = await this.seedCursor(connectionId, restaurantId, nowMs);
       return this.blank(row, seeded ? "seeded" : "error", {
@@ -801,6 +822,23 @@ export class HouseInboxService {
     }
   }
 
+  private async recordEmptyRun(connectionId: string, nowMs: number): Promise<void> {
+    const { error } = await this.db.client
+      .from("house_inbox_cursors")
+      .update({
+        last_read_at: new Date(nowMs).toISOString(),
+        last_listed: 0,
+        last_admitted: 0,
+        last_discarded: 0,
+      })
+      .eq("connection_id", connectionId);
+    if (error) {
+      this.logger.error(
+        `House inbox: the empty-book run could not be recorded for ${connectionId} — ${error.message}`,
+      );
+    }
+  }
+
   private async recordError(
     connectionId: string,
     message: string,
@@ -842,6 +880,13 @@ export class HouseInboxService {
     mailbox: string | null;
     /** How many live reading grants this house has; the status speaks for the weakest. */
     mailboxes: number;
+    /**
+     * How many vendor addresses the reader may ask Gmail about, read now from
+     * the same book the tick bounds its query by (r36 mail audit, gap 5). 0
+     * means a connected mailbox has nothing to read for until a vendor has an
+     * address; null means it was not read (no grant) or the read failed.
+     */
+    bookAddresses: number | null;
   }> {
     const enabled = await this.isEnabled(restaurantId);
     const { data, error } = await this.db.client
@@ -865,6 +910,7 @@ export class HouseInboxService {
         lastError: `The reading grants could not be read (${error.message}).`,
         mailbox: null,
         mailboxes: 0,
+        bookAddresses: null,
       };
     }
 
@@ -885,16 +931,21 @@ export class HouseInboxService {
         lastError: null,
         mailbox: null,
         mailboxes: 0,
+        bookAddresses: null,
       };
     }
 
-    const { data: cursorData, error: cursorError } = await this.db.client
-      .from("house_inbox_cursors")
-      .select("connection_id, started_at, last_read_at, last_error")
-      .in(
-        "connection_id",
-        rows.map((r) => String(r.id)),
-      );
+    const [{ data: cursorData, error: cursorError }, bookAddresses] =
+      await Promise.all([
+        this.db.client
+          .from("house_inbox_cursors")
+          .select("connection_id, started_at, last_read_at, last_error")
+          .in(
+            "connection_id",
+            rows.map((r) => String(r.id)),
+          ),
+        this.bookAddressCount(restaurantId),
+      ]);
 
     // supabase-js RESOLVES with { data, error }; a discarded error here would
     // make "this grant has never been read" and "the cursor table could not be
@@ -914,6 +965,7 @@ export class HouseInboxService {
         lastError: `Where this grant has been read to could not be read (${cursorError.message}), so "never read" below is unknown rather than an answer.`,
         mailbox: rows.length === 1 ? addressOf(first) : null,
         mailboxes: rows.length,
+        bookAddresses,
       };
     }
 
@@ -947,6 +999,31 @@ export class HouseInboxService {
       lastError: (c.last_error as string | null) ?? null,
       mailbox: addressOf(weakest),
       mailboxes: rows.length,
+      bookAddresses,
     };
+  }
+
+  /**
+   * The addresses the tick would bound its query by, counted the tick's way:
+   * the same `book()`, trimmed, lower-cased, de-duplicated, with an "@". A
+   * failed read is null, never 0: "no vendor has an address" and "the book
+   * could not be read" are different sentences.
+   */
+  private async bookAddressCount(restaurantId: string): Promise<number | null> {
+    try {
+      const entries = await this.letters.book(restaurantId);
+      return new Set(
+        entries
+          .map((e) => e.email.trim().toLowerCase())
+          .filter((a) => a.includes("@")),
+      ).size;
+    } catch (err) {
+      this.logger.warn(
+        `House inbox: the vendor book could not be counted for ${restaurantId} — ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return null;
+    }
   }
 }

@@ -89,7 +89,12 @@ const cursor = (id: string, lastReadAt: string | null, lastError: string | null 
   last_error: lastError,
 });
 
-function status(grants: Row[], cursors: Row[] | Table, flagOn = true) {
+function status(
+  grants: Row[],
+  cursors: Row[] | Table,
+  flagOn = true,
+  letters: unknown = {},
+) {
   const db = fakeDb({
     restaurant_feature_flags: {
       rows: [{ restaurant_id: HOUSE, flag_name: "settings", enable_house_inbox_read: flagOn }],
@@ -97,7 +102,7 @@ function status(grants: Row[], cursors: Row[] | Table, flagOn = true) {
     integration_oauth_connections: { rows: grants },
     house_inbox_cursors: Array.isArray(cursors) ? { rows: cursors } : cursors,
   });
-  const svc = new HouseInboxService(db as any, {} as any, {} as any, {} as any);
+  const svc = new HouseInboxService(db as any, {} as any, {} as any, letters as any);
   return svc.statusFor(HOUSE);
 }
 
@@ -178,5 +183,44 @@ describe("the reader status speaks for the weakest mailbox", () => {
     // Two mailboxes and no cursor: which one is weakest is not known.
     expect(s.mailbox).toBeNull();
     expect(s.mailboxes).toBe(2);
+  });
+});
+
+describe("the status says how many vendor addresses the reader may ask for (r36 mail gap 5)", () => {
+  const book = (emails: string[]) => ({
+    book: jest.fn(async () => emails.map((email) => ({ email }))),
+  });
+
+  it("counts the book the tick's way: trimmed, lower-cased, once each, with an @", async () => {
+    const letters = book(["Fikri@Vendor.test", " fikri@vendor.test ", "acc@vendor.test", "not-an-address"]);
+    const s = await status([A], [cursor("g-a", "2026-11-13T09:00:00Z")], true, letters);
+    expect(s.bookAddresses).toBe(2);
+    expect(letters.book).toHaveBeenCalledWith(HOUSE);
+  });
+
+  it("an empty book is 0, so the line can say there is nothing to read for", async () => {
+    const s = await status([A], [cursor("g-a", "2026-11-13T09:00:00Z")], true, book([]));
+    expect(s.bookAddresses).toBe(0);
+  });
+
+  it("a book that could not be read is null, never 0", async () => {
+    const letters = { book: jest.fn(async () => { throw new Error("permission denied"); }) };
+    const s = await status([A], [cursor("g-a", "2026-11-13T09:00:00Z")], true, letters);
+    expect(s.bookAddresses).toBeNull();
+    // The rest of the status still answers.
+    expect(s).toMatchObject({ granted: true, mailbox: "office@house.test" });
+  });
+
+  it("is said beside an unreadable cursor table too", async () => {
+    const s = await status([A], { error: { message: "timeout" } }, true, book([]));
+    expect(s.bookAddresses).toBe(0);
+    expect(s.lastError).toContain("timeout");
+  });
+
+  it("with no reading grant, the book is not read", async () => {
+    const letters = book([]);
+    const s = await status([], [], true, letters);
+    expect(s.bookAddresses).toBeNull();
+    expect(letters.book).not.toHaveBeenCalled();
   });
 });
