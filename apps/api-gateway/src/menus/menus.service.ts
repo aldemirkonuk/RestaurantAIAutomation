@@ -21,6 +21,7 @@ import { UpdateOnboardingProgressDto } from "./dto/update-onboarding-progress.dt
 import { MenuReadWarning, WineExtractItem } from "./wine-extract-item.interface";
 import { itemNeedsPencil } from "./pencil-rule";
 import { isKitchenLine, lineForViewer, type LineView } from "./menu-line-view";
+import { SET_ASIDE_MAKE_CURRENT_REFUSAL, setMenuAside, type SetAsideResult } from "./menu-set-aside";
 import { kindNoun, lineFamily, matchHouseGoods } from "./house-good-match";
 import {
   setHouseMenuPrice,
@@ -420,6 +421,9 @@ export interface MenuVersion {
   madeCurrentBy: { userId: string; name: string | null } | null;
   retiredAt: string | null;
   retiredBy: { userId: string; name: string | null } | null;
+  /** r36 N9: when an owner or a manager set this menu aside; null = not set aside. */
+  setAsideAt: string | null;
+  setAsideBy: { userId: string; name: string | null } | null;
   createdAt: string | null;
 }
 
@@ -431,7 +435,7 @@ const EMPTY_READ_REFUSAL: Record<string, string> = {
 };
 
 const VERSION_SELECT =
-  "id, name, status, cadence, menu_date, menu_date_precision, source_method, source_path, source_mime, source_bytes, source_failure, lines_extracted, read_warnings, extracted_at, extracted_by, made_current_at, made_current_by, retired_at, retired_by, created_at";
+  "id, name, status, cadence, menu_date, menu_date_precision, source_method, source_path, source_mime, source_bytes, source_failure, lines_extracted, read_warnings, extracted_at, extracted_by, made_current_at, made_current_by, retired_at, retired_by, set_aside_at, set_aside_by, created_at";
 
 /**
  * The columns every line read asks for. `raw_extracted_text` is read so
@@ -1666,7 +1670,7 @@ export class MenusService {
       after = String(page[page.length - 1].id);
     }
     const { names, error: namesError } = await this.namesOf(
-      rows.flatMap((r) => [r.extracted_by, r.made_current_by, r.retired_by]),
+      rows.flatMap((r) => [r.extracted_by, r.made_current_by, r.retired_by, r.set_aside_by]),
     );
     const versions = rows
       .map((r) => this.toVersion(r, names))
@@ -1686,6 +1690,14 @@ export class MenusService {
   }
 
   /**
+   * Sets a kept menu of this house aside, or brings it back (r36 N9,
+   * menu-set-aside.ts). The controller checks the caller may manage the house.
+   */
+  async setAside(restaurantId: string, menuId: string, userId: string, aside: boolean): Promise<SetAsideResult> {
+    return setMenuAside(this.dbService.supabase, restaurantId, menuId, userId, aside);
+  }
+
+  /**
    * One kept menu of this house and its lines. Another house's id is a 404.
    * A line's raw line is sent only when `view.rawLine` says so (default: not);
    * a reply without it says `rawLineWithheld: true`.
@@ -1702,7 +1714,7 @@ export class MenusService {
     rawLineWithheld?: true;
   }> {
     const row = await this.readVersionRow(restaurantId, menuId);
-    const { names, error } = await this.namesOf([row.extracted_by, row.made_current_by, row.retired_by]);
+    const { names, error } = await this.namesOf([row.extracted_by, row.made_current_by, row.retired_by, row.set_aside_by]);
     return {
       version: this.toVersion(row, names),
       items: await this.readLines(menuId, restaurantId, view),
@@ -2191,6 +2203,8 @@ export class MenusService {
     // read throws here and nothing is changed.
     const lines = (await this.readLines(menuId, restaurantId)) as unknown as InsertedMenuItem[];
     const version = await this.readVersionRow(restaurantId, menuId);
+    // r36 N9: a menu set aside is brought back before it is chosen.
+    if (version.set_aside_at) throw new ConflictException(SET_ASIDE_MAKE_CURRENT_REFUSAL);
     const plan = await this.computePlan(restaurantId, menuId, await this.isOnlyCurrent(restaurantId, menuId, version), lines, readMomentOf(version), carryMomentOf(version));
     if (plan.fingerprint !== fingerprint.trim()) {
       throw new ConflictException(
@@ -2447,6 +2461,8 @@ export class MenusService {
       madeCurrentBy: who(r.made_current_by),
       retiredAt: r.retired_at ?? null,
       retiredBy: who(r.retired_by),
+      setAsideAt: r.set_aside_at ?? null,
+      setAsideBy: who(r.set_aside_by),
       createdAt: r.created_at ?? null,
     };
   }

@@ -278,6 +278,42 @@ export class MenuVersionsController {
     return this.menusService.makeCurrent(house, menuId, userId, dto?.fingerprint ?? null, dto?.takeOff ?? []);
   }
 
+  @Post(":menuId/set-aside")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Set a kept menu aside -- owner or manager only (r36 N9)",
+    description:
+      "Keeps the menu and every line as they are, says who set it aside and when, and refuses to make it current until it is brought back. 409 for the current menu (the house sells from it); 404 for a menu that is not this house's. A menu already set aside answers changed: false.",
+  })
+  @ApiResponse({ status: 403, description: "The caller is not an owner or manager of this restaurant." })
+  @ApiResponse({ status: 409, description: "This is the current menu. Nothing was changed." })
+  async setAside(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+    @Param("menuId", new ParseUUIDPipe()) menuId: string,
+  ) {
+    const house = this.house(restaurantId);
+    await this.organizations.assertCanManageRestaurant(userId, house, "set a kept menu aside");
+    return this.menusService.setAside(house, menuId, userId, true);
+  }
+
+  @Post(":menuId/bring-back")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Bring a menu that was set aside back to the kept menus -- owner or manager only (r36 N9)",
+    description: "It can then be made current again. A menu that is not set aside answers changed: false; 404 for a menu that is not this house's.",
+  })
+  @ApiResponse({ status: 403, description: "The caller is not an owner or manager of this restaurant." })
+  async bringBack(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+    @Param("menuId", new ParseUUIDPipe()) menuId: string,
+  ) {
+    const house = this.house(restaurantId);
+    await this.organizations.assertCanManageRestaurant(userId, house, "bring back a menu that was set aside");
+    return this.menusService.setAside(house, menuId, userId, false);
+  }
+
   @Patch(":menuId/items/:itemId/house-good")
   @ApiOperation({
     summary: "Link a line of a kept menu to one of the house's own goods -- owner or manager only (r28 G21)",
