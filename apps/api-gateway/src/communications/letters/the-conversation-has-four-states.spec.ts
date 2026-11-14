@@ -104,25 +104,34 @@ function resolveWith(
 }
 
 describe("the four states of a house's conversation", () => {
-  it("STATE 1 — both grants and the switch on: the whole conversation is here", async () => {
+  it("STATE 1 — both grants and the switch on: the house sends and reads its own mail", async () => {
     const identity = await resolveWith([sendGrant, readGrant], READER_ON);
     expect(identity.conversation.where).toBe("whole_conversation_here");
-    expect(identity.conversation.words).toContain(
+    // r36 gap 3: neither grant recorded an address, so "the same mailbox"
+    // is not claimed; the words say it is not recorded.
+    expect(identity.conversation.words).not.toContain(
       "The whole conversation is on this house's mailbox",
     );
-    // It names what is NOT involved, which is the whole point of the condition.
-    expect(identity.conversation.words).toContain("notifications@mudavym.com");
+    expect(identity.conversation.words).toContain("This house sends and reads its own vendor mail.");
+    expect(identity.conversation.words).toContain("Whether that is the mailbox letters leave from is not recorded");
+    // Order letters still leave from the shared address (#1050), so it is named.
+    expect(identity.conversation.words).toContain(
+      "Order letters leave from notifications@mudavym.com",
+    );
     expect(identity.conversation.sending.granted).toBe(true);
     expect(identity.conversation.receiving.consented).toBe(true);
     expect(identity.conversation.receiving.switchedOn).toBe(true);
   });
 
-  it("STATE 2 — send but no read: letters leave, replies still arrive on the shared mailbox", async () => {
+  it("STATE 2 — send but no read: letters leave, and with no Mudavym address the answer is not seen", async () => {
     const identity = await resolveWith([sendGrant], READER_OFF);
     expect(identity.conversation.where).toBe("letters_leave_only");
-    expect(identity.conversation.words).toContain("Letters leave from");
+    expect(identity.conversation.words).toContain("Letters written here leave from");
+    // r36 gap 1: a house letter's answer goes back to the sending mailbox,
+    // not to the shared one, and nothing reads it.
+    expect(identity.conversation.words).not.toContain("replies still arrive through");
     expect(identity.conversation.words).toContain(
-      "replies still arrive through notifications@mudavym.com",
+      "nothing reads it, so the answer will not show in Mail",
     );
     // The reading grant is named by its own label, so the advice is actionable.
     expect(identity.conversation.words).toContain(
@@ -317,5 +326,107 @@ describe("the read grant never becomes a sending identity", () => {
     expect(identity.grant).toBeNull();
     // The scope check is what keeps them apart.
     expect(GMAIL_READ_SCOPE).not.toBe(GMAIL_SEND_SCOPE);
+  });
+});
+
+/**
+ * r36 mail audit, gaps 1 and 3: the words say where a vendor's answer goes
+ * and which mailbox is read, from what the send does and what the grants
+ * recorded, never from "a send grant and a read grant exist".
+ */
+describe("the words say where an answer goes and which mailbox is read", () => {
+  const DOOR_CONFIG = {
+    get: (k: string) => (k === "INBOUND_EMAIL_DOMAIN" ? "in.example.test" : undefined),
+  } as never;
+  const withDoor = (grants: Record<string, unknown>[], flags: Record<string, unknown>[]) =>
+    new HouseSenderService(
+      build({ integration_oauth_connections: grants, restaurant_feature_flags: flags, users: [{ name: "Aldemir" }] }),
+      DOOR_CONFIG,
+    ).resolve(HOUSE, PERSON);
+  const named = (g: Record<string, unknown>, email: string) => ({ ...g, account_email: email });
+
+  it("send only, with a Mudavym address: the answer comes back there", async () => {
+    const identity = await withDoor([sendGrant], READER_OFF);
+    expect(identity.conversation.where).toBe("letters_leave_only");
+    expect(identity.conversation.words).toContain("comes back to this house's Mudavym address");
+    expect(identity.conversation.words).not.toContain("will not show in Mail");
+  });
+
+  it("both, with a Mudavym address: the answer comes back there, never 'the same mailbox'", async () => {
+    const identity = await withDoor(
+      [named(sendGrant, "office@house.test"), named(readGrant, "office@house.test")],
+      READER_ON,
+    );
+    expect(identity.conversation.words).toContain("comes back to this house's Mudavym address");
+    expect(identity.conversation.words).not.toContain("comes back to that same mailbox");
+    expect(identity.conversation.words).not.toContain("The whole conversation is on this house's mailbox");
+  });
+
+  it("both, no Mudavym address, the same recorded address: the whole conversation is here", async () => {
+    const identity = await resolveWith(
+      [named(sendGrant, "Office@House.test"), named(readGrant, "office@house.test")],
+      READER_ON,
+    );
+    expect(identity.conversation.words).toContain("The whole conversation is on this house's mailbox.");
+    expect(identity.conversation.words).toContain("Mail is read from office@house.test, the same mailbox letters leave from.");
+    expect(identity.conversation.words).toContain("comes back to that same mailbox");
+  });
+
+  it("both, two different recorded addresses: says so, and does not claim the answer is read", async () => {
+    const identity = await resolveWith(
+      [named(sendGrant, "owner@house.test"), named(readGrant, "manager@house.test")],
+      READER_ON,
+    );
+    const words = identity.conversation.words;
+    expect(words).toContain("Letters leave from owner@house.test; mail is read from manager@house.test, a different mailbox.");
+    expect(words).toContain("shows in Mail only when that mailbox is one being read");
+    expect(words).not.toContain("The whole conversation is on this house's mailbox");
+  });
+
+  it("names every mailbox that is read, once each", async () => {
+    const second = { ...named(readGrant, "chef@house.test"), id: "grant-read-2" };
+    const identity = await resolveWith(
+      [sendGrant, named(readGrant, "office@house.test"), second, { ...named(readGrant, "OFFICE@house.test"), id: "grant-read-3" }],
+      READER_ON,
+    );
+    expect(identity.conversation.words).toContain("mail is read from office@house.test, chef@house.test.");
+  });
+
+  it("neither, with a Mudavym address: an order's answer comes back there", async () => {
+    const identity = await withDoor([], READER_OFF);
+    expect(identity.conversation.where).toBe("shared_mailbox");
+    expect(identity.conversation.words).toContain(
+      "A vendor's answer to an order comes back to this house's Mudavym address",
+    );
+  });
+
+  it("says whether an answer reaches Mail, as a field the composer can read", async () => {
+    // Sending only, no Mudavym address: the answer goes to an unread mailbox.
+    expect((await resolveWith([sendGrant], READER_OFF)).conversation.answerReachesMail).toBe(false);
+    // Sending only, with one: the answer comes back to it.
+    expect((await withDoor([sendGrant], READER_OFF)).conversation.answerReachesMail).toBe(true);
+    // Both, sameness not recorded: not known, never a false alarm.
+    expect((await resolveWith([sendGrant, readGrant], READER_ON)).conversation.answerReachesMail).toBeNull();
+    // Both, the same recorded address.
+    expect(
+      (await resolveWith([named(sendGrant, "o@house.test"), named(readGrant, "o@house.test")], READER_ON)).conversation
+        .answerReachesMail,
+    ).toBe(true);
+    // Both, two different recorded addresses.
+    expect(
+      (await resolveWith([named(sendGrant, "o@house.test"), named(readGrant, "m@house.test")], READER_ON)).conversation
+        .answerReachesMail,
+    ).toBe(false);
+    // No letter written here can leave: the question does not arise.
+    expect((await resolveWith([readGrant], READER_ON)).conversation.answerReachesMail).toBeNull();
+    expect((await resolveWith([], READER_OFF)).conversation.answerReachesMail).toBeNull();
+    expect((await resolveWith({ error: { message: "x" } }, READER_OFF)).conversation.answerReachesMail).toBeNull();
+  });
+
+  it("neither, with no Mudavym address: an order's answer arrives at the shared address", async () => {
+    const identity = await resolveWith([], READER_OFF);
+    expect(identity.conversation.words).toContain(
+      "A vendor's answer to an order arrives at notifications@mudavym.com",
+    );
   });
 });

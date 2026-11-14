@@ -176,6 +176,15 @@ export interface HouseConversationState {
     /** The flag whose value `switchedOn` is, named so it can be found. */
     switch: string;
   };
+  /**
+   * Does a vendor's answer to a letter written here reach Mail? (r36 mail
+   * audit, gap 1.) True when the answer comes back to the house's Mudavym
+   * address, or to a sending mailbox known to be the one that is read;
+   * false when it goes back to a sending mailbox nothing reads; null when it
+   * is not known or no letter written here can leave. Absent on a gateway
+   * that predates it. The composer warns before Send only on `false`.
+   */
+  answerReachesMail: boolean | null;
 }
 
 export interface HouseSenderIdentity {
@@ -321,6 +330,17 @@ export class HouseSenderService {
     const scopesOf = (r: Record<string, unknown>): string[] =>
       Array.isArray(r.scopes) ? (r.scopes as string[]) : [];
     const withSend = rows.filter((r) => scopesOf(r).includes(GMAIL_SEND_SCOPE));
+    // Which mailboxes are read, by the address their grant recorded (r36 mail
+    // audit, gap 3): the setup words name them rather than saying "this
+    // house's mailbox" of whichever one it is.
+    const readAddresses = Array.from(
+      new Set(
+        rows
+          .filter((r) => scopesOf(r).includes(GMAIL_READ_SCOPE))
+          .map((r) => (typeof r.account_email === "string" ? r.account_email.trim().toLowerCase() : ""))
+          .filter(Boolean),
+      ),
+    );
     const readConsented: boolean | "unknown" = error
       ? "unknown"
       : rows.some((r) => scopesOf(r).includes(GMAIL_READ_SCOPE));
@@ -348,6 +368,7 @@ export class HouseSenderService {
           sendGranted: true,
           sendAddress: `siparis@${domain}`,
           readConsented,
+          readAddresses,
           readSwitchedOn,
           viewerMaySwitch,
           deploymentAddress: base.deployment.address,
@@ -391,6 +412,7 @@ export class HouseSenderService {
           sendGranted: false,
           sendAddress: null,
           readConsented,
+          readAddresses,
           readSwitchedOn,
           viewerMaySwitch,
           deploymentAddress: base.deployment.address,
@@ -461,6 +483,7 @@ export class HouseSenderService {
         sendGranted: true,
         sendAddress: address,
         readConsented,
+        readAddresses,
         readSwitchedOn,
         viewerMaySwitch,
         deploymentAddress: base.deployment.address,
@@ -572,6 +595,7 @@ export class HouseSenderService {
         sendGranted: "unknown",
         sendAddress: null,
         readConsented: "unknown",
+        readAddresses: [],
         readSwitchedOn,
         deploymentAddress: base.deployment.address,
       }),
@@ -600,6 +624,8 @@ export class HouseSenderService {
     sendGranted: boolean | "unknown";
     sendAddress: string | null;
     readConsented: boolean | "unknown";
+    /** Addresses of the live reading grants, lowercased; empty when none recorded one. */
+    readAddresses: string[];
     readSwitchedOn: boolean;
     /** May the person reading this sentence turn the switch on? `null`: not known. */
     viewerMaySwitch?: boolean | null;
@@ -609,10 +635,15 @@ export class HouseSenderService {
       sendGranted,
       sendAddress,
       readConsented,
+      readAddresses,
       readSwitchedOn,
       viewerMaySwitch = null,
       deploymentAddress,
     } = params;
+    // Does the deployment take mail at a Mudavym address? Then a letter this
+    // house writes carries Reply-To to it (HouseLettersService.replyAddress),
+    // and so does an order letter (ProcurementService.sendProviderEmail).
+    const door = Boolean((this.config.get<string>("INBOUND_EMAIL_DOMAIN") || "").trim());
 
     const sending = { granted: sendGranted };
     const receiving = {
@@ -628,6 +659,7 @@ export class HouseSenderService {
           "Which mailbox this house's letters use could not be read just now, so nothing is said about it. This is a failed read, not an answer: the house may well have both mailbox connections. Try again before concluding anything.",
         sending,
         receiving,
+        answerReachesMail: null,
       };
     }
 
@@ -652,22 +684,54 @@ export class HouseSenderService {
       ? ` Somebody here has consented to reading, but the house's "${HOUSE_INBOX_SWITCH_LABEL}" switch in Settings is off, so nothing is being read; the consent is not the switch. ${whoSwitches}`
       : ` Connect "${INTEGRATION_DEFINITIONS.gmail_read.label}" on the Connections page — it asks for one permission and reads only mail from the vendors already in this house's book.`;
     const from = sendAddress ? ` ${sendAddress}` : " this house's own mailbox";
+    // Where a vendor's answer to a letter written here goes (r36 mail audit,
+    // gaps 1 and 3). Said from what the send does, never from the grants
+    // alone: with a Mudavym address the answer comes back there; without
+    // one it goes to the mailbox the letter left from.
+    const orderLine = ` Order letters leave from ${deploymentAddress}, the address every restaurant on this deployment shares, with this house's name on them, and their answers are filed in the book too.`;
+    const doorAnswer =
+      " A vendor's answer to a letter written here comes back to this house's Mudavym address and is filed in this house's book, where everyone who works here can read it.";
 
     if (sendGranted && reading) {
+      // Which mailbox is read, by name, and whether it is the one letters
+      // leave from. A sending grant records no address, so "the same
+      // mailbox" is said only when both addresses are known and equal.
+      const sendKey = sendAddress ? sendAddress.trim().toLowerCase() : null;
+      const same = sendKey !== null && readAddresses.includes(sendKey);
+      const readName = readAddresses.length
+        ? readAddresses.join(", ")
+        : "the mailbox connected for reading";
+      const which = same
+        ? ` Mail is read from ${readName}, the same mailbox letters leave from.`
+        : sendKey && readAddresses.length
+          ? ` Letters leave from ${sendAddress}; mail is read from ${readName}, a different mailbox.`
+          : ` Letters leave from${from}; mail is read from ${readName}.${sendKey ? "" : " Whether that is the mailbox letters leave from is not recorded, because the sending connection asks only to send and Google does not tell it its own address."}`;
+      const answer = door
+        ? doorAnswer
+        : same
+          ? " A vendor's answer comes back to that same mailbox and is filed in this house's book, where everyone who works here can read it."
+          : " A vendor's answer goes back to the mailbox its letter left from, so it shows in Mail only when that mailbox is one being read.";
       return {
         where: "whole_conversation_here",
-        words: `The whole conversation is on this house's mailbox. Letters leave from${from}, and a vendor's reply comes back to the same mailbox and is filed in this house's book, where everyone who works here can read it. Nothing about this house's vendor mail passes through ${deploymentAddress}, the address every restaurant on this deployment shares.`,
+        words: `${same && !door ? "The whole conversation is on this house's mailbox." : "This house sends and reads its own vendor mail."}${which}${answer}${orderLine}`,
         sending,
         receiving,
+        // Two known, different addresses is "false"; an unrecorded sending
+        // address is not: that mailbox may well be the one read.
+        answerReachesMail: door || same ? true : sendKey && readAddresses.length ? false : null,
       };
     }
 
     if (sendGranted && !reading) {
+      const answer = door
+        ? `${doorAnswer} A letter a vendor starts on its own and sends to that mailbox is not read.`
+        : " A vendor's answer goes back to that mailbox, and nothing reads it, so the answer will not show in Mail.";
       return {
         where: "letters_leave_only",
-        words: `Letters leave from${from}, so a vendor sees this house's own address — but replies still arrive through ${deploymentAddress}, the mailbox every restaurant on this deployment shares, and are filed from there.${readCaveat}`,
+        words: `Letters written here leave from${from}, so a vendor sees this house's own address.${answer}${orderLine}${readCaveat}`,
         sending,
         receiving,
+        answerReachesMail: door,
       };
     }
 
@@ -677,6 +741,7 @@ export class HouseSenderService {
         words: `A vendor's reply to this house is read from its own mailbox and filed in the book, so nothing arrives only in one person's inbox — but no letter may leave from it, because nobody here has consented to sending. Order letters leave from ${deploymentAddress}, the address every restaurant on this deployment shares, and a letter written here to a vendor cannot leave until a mailbox is connected for sending. Connect "${GMAIL_SEND_DEFINITION.label}" on the Connections page; it asks for one permission, to send, and cannot read a single message.`,
         sending,
         receiving,
+        answerReachesMail: null,
       };
     }
 
@@ -686,9 +751,10 @@ export class HouseSenderService {
       // house's mailbox. No letter may leave at all". Order letters do leave,
       // from the shared address (85026e4f3), so "at all" was broader than
       // the code; only a letter the house writes to a vendor is held.
-      words: `Nothing runs through a mailbox of this house's own yet. Order letters leave from ${deploymentAddress}, the address every restaurant on this deployment shares, and a letter written here to a vendor cannot leave until a mailbox is connected. A vendor's reply arrives at ${deploymentAddress} and is filed in this house's book. Two connections move this onto your own mailbox, and each asks for one thing: "${GMAIL_SEND_DEFINITION.label}" and "${INTEGRATION_DEFINITIONS.gmail_read.label}".${readConsented ? readCaveat : ""}`,
+      words: `Nothing runs through a mailbox of this house's own yet. Order letters leave from ${deploymentAddress}, the address every restaurant on this deployment shares, and a letter written here to a vendor cannot leave until a mailbox is connected. A vendor's answer to an order ${door ? "comes back to this house's Mudavym address" : `arrives at ${deploymentAddress}`} and is filed in this house's book. Two connections move this onto your own mailbox, and each asks for one thing: "${GMAIL_SEND_DEFINITION.label}" and "${INTEGRATION_DEFINITIONS.gmail_read.label}".${readConsented ? readCaveat : ""}`,
       sending,
       receiving,
+      answerReachesMail: null,
     };
   }
 }
