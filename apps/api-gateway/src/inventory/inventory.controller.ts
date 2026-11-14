@@ -103,6 +103,33 @@ export class InventoryController {
     await this.organizations.assertCanManageRestaurant(userId, restaurantId, action);
   }
 
+  /**
+   * What the house paid is a manager's figure (inventory r36, gap 4). Staff
+   * are never shown a cost (#1355), so a cost staff typed on a create or a
+   * receive would set the average cost, the value and every dish cost, and
+   * the person who typed it could never see it to put it right. A cost of 0
+   * marked "sample" is a cost too. A good with no cost given stays open:
+   * staff still add goods and book stock without one.
+   */
+  private writesCost(line: { costPerBottle?: number | null; costProvenance?: unknown }): boolean {
+    return (
+      (line.costPerBottle !== undefined && line.costPerBottle !== null) ||
+      (line.costProvenance !== undefined && line.costProvenance !== null)
+    );
+  }
+
+  /**
+   * Bringing back a good a manager took off the list is the same act as
+   * PATCHing it active again, which is a manager's (STOCK_FIELDS). The create
+   * routes do it as a side effect when the good is already on the books, so
+   * they are handed this check and run it only when that happens: the role is
+   * read only for a good that is coming back.
+   */
+  private reactivationCheck(userId: string | undefined, restaurantId: string): () => Promise<void> {
+    return () =>
+      this.assertMayManageStock(userId, restaurantId, "bring back a good taken off the list");
+  }
+
   // ==========================================================================
   // AUCTION LOT RECORDS — an auction lot's own details, kept. Built
   // 2026-09-21 (founder answer 2) closing the gap AuctionLotStart.tsx and
@@ -221,11 +248,15 @@ export class InventoryController {
     if (dto.menuPriceBottle !== undefined || dto.menuPriceGlass !== undefined) {
       await this.assertMayPrice(user?.userId, restaurantId);
     }
+    if (this.writesCost(dto)) {
+      await this.assertMayManageStock(user?.userId, restaurantId, "write what the house paid for a good");
+    }
     try {
       return await this.inventoryService.createInventoryItem(
         restaurantId,
         dto,
         user?.userId ?? null,
+        { assertMayReactivate: this.reactivationCheck(user?.userId, restaurantId) },
       );
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -261,11 +292,17 @@ export class InventoryController {
     ) {
       await this.assertMayPrice(user?.userId, restaurantId);
     }
+    // A cost on any line is refused whole, as a price is: a delivery booked at
+    // staff-typed costs is not half right.
+    if ((dto.items ?? []).some((l) => this.writesCost(l))) {
+      await this.assertMayManageStock(user?.userId, restaurantId, "write what the house paid for a good");
+    }
     try {
       return await this.inventoryService.bulkCreateInventoryItems(
         restaurantId,
         dto,
         user?.userId ?? null,
+        { assertMayReactivate: this.reactivationCheck(user?.userId, restaurantId) },
       );
     } catch (error) {
       if (error instanceof HttpException) throw error;

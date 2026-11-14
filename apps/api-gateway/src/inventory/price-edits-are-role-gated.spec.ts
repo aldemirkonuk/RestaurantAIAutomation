@@ -80,8 +80,8 @@ describe("POST inventory items — a price on add is gated and names the person"
     const { c, create, bulk } = addController(role);
     await c.createInventoryItem("rest-1", { wineId: "w", menuPriceBottle: 60 } as any, { userId: "u-1" });
     await c.bulkCreateInventoryItems("rest-1", { items: [{ wineId: "w", menuPriceGlass: 12 }] } as any, { userId: "u-1" });
-    expect(create).toHaveBeenCalledWith("rest-1", { wineId: "w", menuPriceBottle: 60 }, "u-1");
-    expect(bulk).toHaveBeenCalledWith("rest-1", { items: [{ wineId: "w", menuPriceGlass: 12 }] }, "u-1");
+    expect(create).toHaveBeenCalledWith("rest-1", { wineId: "w", menuPriceBottle: 60 }, "u-1", expect.objectContaining({ assertMayReactivate: expect.any(Function) }));
+    expect(bulk).toHaveBeenCalledWith("rest-1", { items: [{ wineId: "w", menuPriceGlass: 12 }] }, "u-1", expect.objectContaining({ assertMayReactivate: expect.any(Function) }));
   });
 
   it.each(["staff", null])("%s adding WITH a price is refused before anything is written", async (role) => {
@@ -104,7 +104,7 @@ describe("POST inventory items — a price on add is gated and names the person"
     const { c, create, bulk } = addController("staff");
     await c.createInventoryItem("rest-1", { wineId: "w" } as any, { userId: "u-2" });
     await c.bulkCreateInventoryItems("rest-1", { items: [{ wineId: "w" }] } as any, { userId: "u-2" });
-    expect(create).toHaveBeenCalledWith("rest-1", { wineId: "w" }, "u-2");
-    expect(bulk).toHaveBeenCalledWith("rest-1", { items: [{ wineId: "w" }] }, "u-2");
+    expect(create).toHaveBeenCalledWith("rest-1", { wineId: "w" }, "u-2", expect.objectContaining({ assertMayReactivate: expect.any(Function) }));
+    expect(bulk).toHaveBeenCalledWith("rest-1", { items: [{ wineId: "w" }] }, "u-2", expect.objectContaining({ assertMayReactivate: expect.any(Function) }));
   });
 });

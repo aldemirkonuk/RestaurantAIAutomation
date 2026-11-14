@@ -936,6 +936,11 @@ export class InventoryService {
     // verified JWT; the controller has already refused a priced create by
     // anyone but an owner or manager.
     actorUserId: string | null = null,
+    // Inventory r36, gap 4: bringing back a good taken off the list is a
+    // manager's. The controller hands this in; it throws for anyone else, and
+    // it is run only when the good exists and is inactive, before any write.
+    // Absent = no check (no other caller creates through here today).
+    opts: { assertMayReactivate?: () => Promise<void> } = {},
   ) {
     const client = this.dbService.getClient();
 
@@ -962,6 +967,7 @@ export class InventoryService {
 
     if (existing) {
       if (!existing.is_active) {
+        if (opts.assertMayReactivate) await opts.assertMayReactivate();
         // Soft-deleted item: re-activate it so the order can proceed
         const { data: reactivated, error: reactivateError } = await client
           .from("restaurant_inventory")
@@ -1193,6 +1199,10 @@ export class InventoryService {
     // ADR 0193, founder 2026-09-21 (answer 5): the person on the token, so a
     // price a new line carries is recorded under their name.
     actorUserId: string | null = null,
+    // Inventory r36, gap 4: as for one good. A line that would bring back a
+    // good taken off the list fails alone when this throws; the rest of the
+    // batch is received.
+    opts: { assertMayReactivate?: () => Promise<void> } = {},
   ) {
     const source = dto.source || "bulk_receive";
     const results: Array<Record<string, any>> = [];
@@ -1211,6 +1221,7 @@ export class InventoryService {
           resolved.masterWineId,
           source,
           dto.reason,
+          opts.assertMayReactivate,
         );
         // A NEW row's price goes through the one writer, by the person
         // (receiveBulkLine no longer puts it in the insert). An existing
@@ -1363,6 +1374,7 @@ export class InventoryService {
     masterWineId: string,
     source: string,
     reason?: string,
+    assertMayReactivate?: () => Promise<void>,
   ): Promise<{ status: string; inventoryId: string }> {
     const client = this.dbService.getClient();
     const qty = line.stockLive ?? 0;
@@ -1378,6 +1390,8 @@ export class InventoryService {
     let status: string;
 
     if (existing?.id) {
+      // Checked before the patch: a refused line writes nothing.
+      if (!existing.is_active && assertMayReactivate) await assertMayReactivate();
       const patch: Record<string, any> = {};
       if (!existing.is_active) patch.is_active = true;
       if (line.providerId) patch.provider_id = line.providerId;
