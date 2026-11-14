@@ -25,7 +25,7 @@ import { DegradedNotice, degradedReasons } from '../DegradedNotice'
 import { DoorFrame } from '../DoorFrame'
 import { ProposalThread } from '../ProposalThread'
 import { DeliveryGates } from '../DeliveryGates'
-import { costNoticeOf } from '../canonical-format'
+import { costNoticeOf, costRepairSentences } from '../canonical-format'
 import type { DeliveryEvent, Proposal } from '../../../services/api/deliveries'
 import type {
   AdjudicatedLine,
@@ -971,6 +971,35 @@ describe('DeliveryGates — the two gates, explained before they are pressed', (
     })
     expect(costNoticeOf({ cost: { finalised: [], stillProvisional: [] } })).toBeNull()
     expect(costNoticeOf({ repair: { repaired: [], flagged: [] } })).toEqual({ repaired: [], flagged: [] })
+  })
+
+  it('r33 w2 F2: a re-check that posts a provisional lot says so, not "nothing needed correcting"', () => {
+    const posted = { inventoryId: 'inv-late', unitCost: 22, bottlesFinalised: 12 }
+    const notice = costNoticeOf({
+      alreadyVerified: true,
+      cost: { finalised: [posted], stillProvisional: [] },
+      repair: { repaired: [], flagged: [] },
+    })
+    expect(notice).toEqual({ repaired: [], flagged: [], posted: 1 })
+    expect(costRepairSentences(notice!)).toEqual(['Cost posted: 1 item still provisional is now costed at the agreed price.'])
+    // Two, and a gateway that sends no repair (the re-check's cost alone).
+    const two = costNoticeOf({ alreadyVerified: true, cost: { finalised: [posted, posted], stillProvisional: [] } })
+    expect(costRepairSentences(two!)).toEqual(['Cost posted: 2 items still provisional are now costed at the agreed price.'])
+    // A lot the re-check still could not cost is named, once, with its reason.
+    const held = { inventoryId: 'inv-x', reason: 'no agreed price for this item' }
+    const stuck = costNoticeOf({
+      alreadyVerified: true,
+      cost: { finalised: [], stillProvisional: [held] },
+      repair: { repaired: [], flagged: [{ ...held, kind: 'refused' as const }] },
+    })
+    expect(stuck).toEqual({ repaired: [], flagged: [{ ...held, kind: 'refused' }] })
+    expect(costRepairSentences(stuck!)).toEqual(['Refused: no agreed price for this item'])
+    // A re-check that posted nothing and had nothing to repair still says so.
+    expect(costRepairSentences(costNoticeOf({ alreadyVerified: true, cost: { finalised: [], stillProvisional: [] }, repair: { repaired: [], flagged: [] } })!)).toEqual([
+      'Cost checked again: nothing needed correcting.',
+    ])
+    // A re-check with no cost and no repair puts up no notice.
+    expect(costNoticeOf({ alreadyVerified: true, cost: null, repair: null })).toBeNull()
   })
 
   it('marks an UNORDERED delivery permanently, not as a step to complete', () => {
