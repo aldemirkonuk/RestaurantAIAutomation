@@ -8,7 +8,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MenuPlan, chooseFailedSentence, kindWords, notOnFileWords, orderedRows, planSentence } from './MenuPlan';
+import { MenuPlan, chooseFailedSentence, kindWords, notOnFileWords, orderedRows, otherMoneyLines, planSentence } from './MenuPlan';
 import { canTakeOff, takenOffSentence } from './menu-take-off';
 import { getMenuPlan, getMenuVersion, linkMenuLineToHouseGood, makeMenuCurrent, type MenuPlan as Plan, type PlanLine } from '../../../services/api/menus';
 import { lockPrice, releasePriceLock } from '../../../services/api/pricing';
@@ -649,5 +649,75 @@ describe('correcting a line before the menu is current', () => {
     await screen.findByTestId('menu-plan');
     expect(screen.queryByTestId('menu-line-fix')).toBeNull();
     expect(vi.mocked(getMenuVersion)).not.toHaveBeenCalled();
+  });
+});
+
+describe('r36 N1: a line the menu prints only in another money', () => {
+  const NOTE =
+    'The menu prints this line at 12.00 EUR a bottle, and this house\'s money is TRY. Nothing converts between currencies, so no price was taken from this line, and the house\'s own price for it stands. A manager can set one on Inventory, under Your price.';
+  /** As the gateway sends it: both kinds blank, the house keeps its bottle price, the flag and its sentence. */
+  const EURO = line({
+    menuItemId: 'n8',
+    name: 'Brunello',
+    vintage: '2018',
+    flag: 'other_currency',
+    flagNote: NOTE,
+    bottle: { kind: 'bottle', menuPrice: null, housePrice: 900, result: 'blank_kept', lastSet: null, lock: null },
+    glass: { kind: 'glass', menuPrice: null, housePrice: null, result: 'blank_never_priced', lastSet: null, lock: null },
+  });
+  const BLANK = line({
+    menuItemId: 'n9',
+    name: 'Soave',
+    flag: 'blank_kept_last_known',
+    bottle: { kind: 'bottle', menuPrice: null, housePrice: 400, result: 'blank_kept', lastSet: null, lock: null },
+  });
+  const counts = { change: 0, unchanged: 0, held_by_lock: 0, blank_kept: 2, blank_never_priced: 2, not_linked: 0, new_wine: 0 };
+
+  it('is not counted as a blank price, and is said on its own', () => {
+    expect(planSentence(plan({ lines: [EURO, BLANK], counts, dormantLocks: [] }))).toBe(
+      'Choosing this menu changes no price. 1 price is blank on the menu, so the house keeps its own (flagged); 1 line is priced on the menu only in another money, so no price is taken from it and the house keeps its own; nothing converts (flagged).',
+    );
+    // Only held lines: no "blank" clause at all.
+    expect(planSentence(plan({ lines: [EURO], counts: { ...counts, blank_kept: 1, blank_never_priced: 1 }, dormantLocks: [] }))).toBe(
+      'Choosing this menu changes no price. 1 line is priced on the menu only in another money, so no price is taken from it and the house keeps its own; nothing converts (flagged).',
+    );
+    // Two held lines are counted as lines, in the plural.
+    expect(
+      planSentence(plan({ lines: [EURO, { ...EURO, menuItemId: 'n10' }], counts: { ...counts, blank_kept: 2, blank_never_priced: 2 }, dormantLocks: [] })),
+    ).toContain('2 lines are priced on the menu only in another money, so no price is taken from them');
+  });
+
+  it('says per kind that no price was taken, never that the menu was blank', () => {
+    expect(kindWords(EURO, EURO.bottle, 'TRY')).toBe(
+      `no price taken: the menu prints it in another money; the house keeps ${m(900)} (flagged)`,
+    );
+    expect(kindWords(EURO, EURO.glass, 'TRY')).toBe('no price taken: the menu prints it in another money, and the house has none (flagged)');
+    // A line the menu left blank still reads as blank.
+    expect(kindWords(BLANK, BLANK.bottle, 'TRY')).toBe(`blank on the menu; the house keeps ${m(400)} (flagged)`);
+    expect(otherMoneyLines([EURO, BLANK, line()]).map((l) => l.name)).toEqual(['Brunello']);
+  });
+
+  it('lists each held line with the gateway\'s sentence, outside the folded table', async () => {
+    mockPlan.mockResolvedValue(plan({ lines: [EURO, BLANK], counts, dormantLocks: [] }));
+    mount(true);
+    const list = await screen.findByTestId('menu-plan-other-money');
+    expect(within(list).getAllByRole('note')).toHaveLength(1);
+    expect(list.textContent).toBe(`Brunello 2018: ${NOTE}`);
+  });
+
+  it('a held line from a gateway that sent no sentence still says why', async () => {
+    mockPlan.mockResolvedValue(plan({ lines: [{ ...EURO, flagNote: undefined }], counts, dormantLocks: [] }));
+    mount(false);
+    const list = await screen.findByTestId('menu-plan-other-money');
+    expect(list.textContent).toBe(
+      'Brunello 2018: the menu prints this line only in another money, so no price is taken from it and the house keeps its own.',
+    );
+  });
+
+  it('a plan with no held line shows no such list', async () => {
+    mockPlan.mockResolvedValue(plan({ lines: [BLANK], counts: { ...counts, blank_kept: 1 }, dormantLocks: [] }));
+    mount(true);
+    await screen.findByTestId('menu-plan-sentence');
+    expect(screen.queryByTestId('menu-plan-other-money')).toBeNull();
   });
 });
