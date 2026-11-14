@@ -44,6 +44,7 @@ import { PRICE_UNREAD, priceText, readPrice } from './recipe/price-text';
 import { pourCostShare } from './recipe/DrinkCards';
 import { useCanEditRecipe, useDrinkFigures, useHouseMoney, useMenuPrices } from './recipe/useRecipe';
 import { AllergenCell, AllergenCheck, keptFor } from './recipe/ListAllergens';
+import { CostWaits, NoRecipeYet } from './recipe/ListCostWaits';
 import { MENU_PRICES_UNREAD, MenuPriceCell } from './recipe/MenuPriceCell';
 import { useHousePercent, type SayPercent } from './recipe/useHousePercent';
 import type { DrinkFigureRow } from '../../../services/api/recipes';
@@ -128,7 +129,10 @@ function drinkCells(
   return {
     cost:
       per == null ? (
-        'Not known'
+        <>
+          Not known
+          <CostWaits id={id} cost={f.cost} />
+        </>
       ) : part > 0 ? (
         <>
           {say(per)}
@@ -201,6 +205,7 @@ export default function CocktailRegister({
   const [said, setSaid] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [allergen, setAllergen] = useState('');
+  const [onlyBare, setOnlyBare] = useState(false);
 
   // Opened from a link: bring the drink into view once the list has it. A
   // link to a drink this house's list does not hold is said, not ignored.
@@ -216,7 +221,10 @@ export default function CocktailRegister({
     return [c.name, c.display_name, c.menu_section, c.method, c.glass]
       .filter(Boolean).join(' ').toLowerCase().includes(q);
   });
-  const rows = searched.filter((c) => keptFor(figures.byId?.get(c.id)?.allergens, allergen));
+  const byAllergen = searched.filter((c) => keptFor(figures.byId?.get(c.id)?.allergens, allergen));
+  // Which drinks have no recipe: known only once the figures are read.
+  const bareIds = figures.byId ? (data?.rows ?? []).filter((c) => !figures.byId?.get(c.id)?.hasRecipe).map((c) => c.id) : [];
+  const rows = seesCost && onlyBare ? byAllergen.filter((c) => bareIds.includes(c.id)) : byAllergen;
   const openShown = Boolean(openId && rows.some((x) => x.id === openId));
 
   const priceRead = readPrice(draft?.priceText ?? '');
@@ -390,7 +398,12 @@ export default function CocktailRegister({
           ) : null}
 
           {data.rows.length > 0 ? (
-            <AllergenCheck value={allergen} onChange={setAllergen} hidden={searched.length - rows.length} noun="drinks" />
+            <>
+              {seesCost ? (
+                <NoRecipeYet bare={bareIds.length} of={data.rows.length} noun="drinks" only={onlyBare} onOnly={setOnlyBare} />
+              ) : null}
+              <AllergenCheck value={allergen} onChange={setAllergen} hidden={searched.length - byAllergen.length} noun="drinks" />
+            </>
           ) : null}
 
           {rows.length === 0 ? (
