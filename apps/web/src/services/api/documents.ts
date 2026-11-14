@@ -175,6 +175,19 @@ export const documentsApi = {
     return data.items ?? []
   },
 
+  /**
+   * How many documents the house has in one status: the number alone, no
+   * documents (r41 inventory audit gap 2). A failed count rejects; it never
+   * resolves to 0.
+   */
+  async count(opts: { status?: ProcurementDocument['status'] } = {}): Promise<number> {
+    const { data } = await apiClient.get('/procurement/documents/count', {
+      params: { status: opts.status },
+    })
+    if (typeof data?.count !== 'number') throw new Error('the document count came back in a shape this page cannot read')
+    return data.count
+  },
+
   async detail(id: string): Promise<{
     document: ProcurementDocument
     lines: ProcurementDocumentLine[]

@@ -586,8 +586,6 @@ export interface Waiting {
   capped?: boolean;
 }
 
-const RECEIPT_QUEUE_LIMIT = 100;
-
 export function useInventoryNextData() {
   const { activeRestaurantId, activeRole, user, availableRestaurants, loading: authLoading } = useAuth();
   const queryClient = useQueryClient();
@@ -657,12 +655,17 @@ export function useInventoryNextData() {
     };
   }, [adviceQ.isError, adviceQ.error, adviceQ.data]);
 
-  // The quiet line's three counts. The first two share their keys and fetchers
-  // with /receipts (useReceiptsNextData.ts:114-120) and the DeliveriesToName
-  // card, so the page and the card can never disagree about one read.
-  const invoicesQ = useQuery<ProcurementDocument[]>({
-    queryKey: ['receipts-next', 'queue', rid],
-    queryFn: () => documentsApi.list({ status: 'needs_review', limit: RECEIPT_QUEUE_LIMIT }),
+  // The quiet line's three counts. The deliveries count shares its key and
+  // fetcher with the DeliveriesToName card, so the two never disagree.
+  // [2026-11-14, r41 inventory audit gap 2: the invoices count no longer
+  // shares /receipts' queue read, which brought up to 100 whole invoices
+  // (raw mail text and line prices, to every role) for one number. It asks
+  // the gateway's head-only count, under the `receipts-next` prefix so the
+  // Receipts page's acts (ReceiptsNext.tsx invalidates ['receipts-next'])
+  // refresh it too, and it has no cap.]
+  const invoicesQ = useQuery<number>({
+    queryKey: ['receipts-next', 'queue-count', rid],
+    queryFn: () => documentsApi.count({ status: 'needs_review' }),
     enabled: rid !== null,
     staleTime: 30_000,
   });
@@ -692,9 +695,8 @@ export function useInventoryNextData() {
 
   const waiting = {
     invoices: {
-      n: invoicesQ.data ? invoicesQ.data.length : null,
+      n: typeof invoicesQ.data === 'number' ? invoicesQ.data : null,
       failed: invoicesQ.isError,
-      capped: (invoicesQ.data?.length ?? 0) >= RECEIPT_QUEUE_LIMIT,
     } as Waiting,
     deliveries: {
       n: deliveriesQ.data ? deliveriesQ.data.deliveries.length : null,
