@@ -9,7 +9,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -27,6 +27,8 @@ vi.mock('../../../services/api/canonical', () => ({
 
 const eventMock = vi.fn()
 const threadMock = vi.fn()
+const proposeMock = vi.fn()
+const returnStockMock = vi.fn()
 vi.mock('../../../services/api/deliveries', async (orig) => {
   const real = await orig<typeof import('../../../services/api/deliveries')>()
   return {
@@ -37,7 +39,8 @@ vi.mock('../../../services/api/deliveries', async (orig) => {
       proposalThread: (id: string) => threadMock(id),
       agree: vi.fn(),
       verify: vi.fn(),
-      propose: vi.fn(),
+      propose: (id: string, body: unknown) => proposeMock(id, body),
+      returnStock: (id: string) => returnStockMock(id),
       counter: vi.fn(),
       accept: vi.fn(),
       recordDoorCount: vi.fn(),
@@ -285,5 +288,85 @@ describe('the delivery block, by who is looking (r28 G3, web)', () => {
     await waitFor(() => expect(screen.getByTestId('delivery-gates')).toBeTruthy())
     expect(screen.queryByTestId('agree-button')).toBeNull()
     expect(screen.getByTestId('gates-need-a-manager')).toBeTruthy()
+  })
+})
+
+describe('a rejected delivery\'s stock, on the page (r28 G2, web)', () => {
+  const FAILED =
+    'The delivery is closed, but what its door count put on the shelf was not given back: stock would go negative. Those bottles still count as stock. Fix the cause, then give the stock back from the delivery.'
+
+  beforeEach(() => {
+    documentMock.mockReset()
+    eventMock.mockReset()
+    threadMock.mockReset()
+    proposeMock.mockReset()
+    returnStockMock.mockReset()
+    documentMock.mockResolvedValue(response({ deliveries: [SPINE] }))
+    threadMock.mockResolvedValue({ proposals: [], moneyWithheld: false })
+  })
+
+  it('shows a failed return from the rejection\'s answer, and the retry gives it back', async () => {
+    eventMock.mockResolvedValue(event())
+    proposeMock.mockImplementation(async () => {
+      eventMock.mockResolvedValue(event({ state: 'REJECTED' }))
+      return {
+        proposalId: 'prop-9',
+        delivery: {},
+        stockReturn: { returned: false, error: FAILED },
+      }
+    })
+    returnStockMock.mockResolvedValue({
+      deliveryId: 'del-syn',
+      stockReturn: { returned: true, bottlesReturned: 6 },
+    })
+    mount('manager')
+    await waitFor(() => expect(screen.getByTestId('open-proposal-form')).toBeTruthy())
+    expect(screen.queryByTestId('stock-return-failed')).toBeNull()
+    fireEvent.click(screen.getByTestId('open-proposal-form'))
+    fireEvent.change(screen.getByTestId('proposal-reason'), { target: { value: 'WRONG_VENUE' } })
+    fireEvent.click(screen.getByTestId('submit-proposal'))
+    await waitFor(() => expect(screen.getByTestId('stock-return-failed')).toBeTruthy())
+    expect(proposeMock).toHaveBeenCalledWith(
+      'del-syn',
+      expect.objectContaining({ reason: 'WRONG_VENUE' }),
+    )
+    expect(screen.getByTestId('stock-return-failed').textContent).toBe(FAILED)
+    expect(screen.getByTestId('stock-return-retry').textContent).toBe('Give the stock back')
+    fireEvent.click(screen.getByTestId('stock-return-retry'))
+    await waitFor(() => expect(screen.getByTestId('stock-return-done')).toBeTruthy())
+    expect(returnStockMock).toHaveBeenCalledWith('del-syn')
+    expect(screen.queryByTestId('stock-return-failed')).toBeNull()
+    expect(screen.queryByTestId('stock-return-retry')).toBeNull()
+  })
+
+  it('a rejected delivery opened later says it cannot read the return, and a manager can make sure', async () => {
+    eventMock.mockResolvedValue(event({ state: 'REJECTED' }))
+    returnStockMock.mockResolvedValue({
+      deliveryId: 'del-syn',
+      stockReturn: { returned: true, bottlesReturned: 0 },
+    })
+    mount('manager')
+    await waitFor(() => expect(screen.getByTestId('stock-return-unknown')).toBeTruthy())
+    expect(screen.getByTestId('stock-return-unknown').textContent).toMatch(/rejected/)
+    fireEvent.click(screen.getByTestId('stock-return-retry'))
+    await waitFor(() => expect(screen.getByTestId('stock-return-done')).toBeTruthy())
+    expect(screen.getByTestId('stock-return-done').textContent).toMatch(/nothing moved/)
+  })
+
+  it('staff read the same sentence with no button', async () => {
+    eventMock.mockResolvedValue(event({ state: 'CANCELLED' }))
+    mount('staff')
+    await waitFor(() => expect(screen.getByTestId('stock-return-unknown')).toBeTruthy())
+    expect(screen.getByTestId('stock-return-unknown').textContent).toMatch(/cancelled/)
+    expect(screen.queryByTestId('stock-return-retry')).toBeNull()
+  })
+
+  it('an open delivery shows nothing about a return', async () => {
+    eventMock.mockResolvedValue(event())
+    mount('manager')
+    await waitFor(() => expect(screen.getByTestId('delivery-gates')).toBeTruthy())
+    expect(screen.queryByTestId('stock-return-unknown')).toBeNull()
+    expect(screen.queryByTestId('stock-return-failed')).toBeNull()
+    expect(screen.queryByTestId('stock-return-done')).toBeNull()
   })
 })

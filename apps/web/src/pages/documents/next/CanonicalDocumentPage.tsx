@@ -72,6 +72,7 @@ import {
   ProposalThread,
   SANS,
   SERIF,
+  StockReturnNotice,
   VerdictBlock,
   degradedReasons,
   envelopeAt,
@@ -82,7 +83,12 @@ import { costNoticeOf } from '../../../components/documents/canonical-format'
 import { AuthContext } from '@/contexts/AuthContext'
 import { canonicalApi } from '../../../services/api/canonical'
 import { getInventory } from '../../../services/api/inventory'
-import { deliveriesApi, type CostRepair, type ProposalBody } from '../../../services/api/deliveries'
+import {
+  deliveriesApi,
+  type CostRepair,
+  type ProposalBody,
+  type StockReturn,
+} from '../../../services/api/deliveries'
 import './canonical-document.css'
 
 type Tab = 'sheet' | 'door'
@@ -135,6 +141,16 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
   const [deliveryError, setDeliveryError] = useState<string | null>(null)
   // QA 10a (5): what a re-verify did to the cost, kept so it reaches the screen.
   const [costRepair, setCostRepair] = useState<CostRepair | null>(null)
+  /**
+   * The last answer about a closed delivery's stock (r28 G2): carried by a
+   * rejection's answer and by a retry's. Kept so the sentence reaches the
+   * screen; the gateway sends it nowhere else but a notification. It names
+   * its delivery, so a page that moves to another document drops it.
+   */
+  const [stockReturn, setStockReturn] = useState<{
+    deliveryId: string
+    value: StockReturn
+  } | null>(null)
 
   /**
    * Every key below names the house (ADR 0051). The gateway scopes these reads
@@ -598,12 +614,15 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
             /* No handlers = read-only: putting a position on the record,
                answering one and accepting one are money acts (r28 G3). */
             onPropose={!settlesMoney ? undefined : (body) =>
-              deliveryWrite(() =>
-                deliveriesApi.propose(soleDelivery.deliveryId, {
+              deliveryWrite(async () => {
+                const out = await deliveriesApi.propose(soleDelivery.deliveryId, {
                   ...(body as ProposalBody),
                   documentId: doc.documentId,
-                }),
-              )
+                })
+                if (out?.stockReturn)
+                  setStockReturn({ deliveryId: soleDelivery.deliveryId, value: out.stockReturn })
+                return out
+              })
             }
             onCounter={!settlesMoney ? undefined : (pid, body) =>
               deliveryWrite(() =>
@@ -618,6 +637,26 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
             }
           />
         </div>
+      )}
+
+      {/* A rejected or cancelled delivery's stock: went back, did not, or
+          cannot be read from here (r28 G2). */}
+      {soleDelivery && eventQ.data && (
+        <StockReturnNotice
+          state={eventQ.data.state}
+          stockReturn={
+            stockReturn?.deliveryId === soleDelivery.deliveryId ? stockReturn.value : null
+          }
+          settlesMoney={settlesMoney}
+          busy={writing}
+          onReturn={() =>
+            deliveryWrite(async () => {
+              const out = await deliveriesApi.returnStock(soleDelivery.deliveryId)
+              setStockReturn({ deliveryId: soleDelivery.deliveryId, value: out.stockReturn })
+              return out
+            })
+          }
+        />
       )}
 
       {showDoorTab && (
