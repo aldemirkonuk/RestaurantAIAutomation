@@ -142,6 +142,84 @@ export const WINE_EXTRACTION_PROMPT =
   'Examples: [{"name":"Merlot","producer":"Duckhorn","category":"red","vintage":"2019","region":"Napa Valley","bottle_price":120},' +
   '{"name":"Pale Ale","producer":"Sierra Nevada","category":"beer","by_glass_price":9}]';
 
+function countOf(parts: WineExtractItem[][]): number {
+  return parts.reduce((n, p) => n + p.length, 0);
+}
+
+/** How many lines either side of a seam are compared. */
+export const SEAM_WINDOW = 3;
+
+/**
+ * A line folded for comparison: every letter and digit of any script kept,
+ * accents dropped, case and punctuation ignored. Cyrillic, Greek and Arabic
+ * names keep their letters (the old fold kept a-z0-9 only, so they folded to
+ * nothing and every such line after the first was dropped).
+ */
+function fold(v: unknown): string {
+  return String(v ?? "")
+    .normalize("NFKD")
+    .replace(/\p{M}+/gu, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+/**
+ * The whole printed line as a key, or null when its name has no letter or
+ * digit to compare: such a line is never taken for a repeat.
+ */
+function lineKey(item: WineExtractItem): string | null {
+  const name = fold(item.name);
+  if (name === "") return null;
+  const price = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? String(v) : fold(v));
+  return [
+    fold(item.producer),
+    name,
+    fold(item.vintage),
+    fold(item.category),
+    price(item.by_glass_price),
+    price(item.bottle_price),
+  ].join("|");
+}
+
+/**
+ * Join the chunks of a split PDF, dropping a line only when it is the SAME
+ * printed line read twice across a seam (r36 menu audit N8).
+ *
+ * Chunks are page ranges that do not overlap, so a line can come back twice
+ * only at a page break: the last lines of one range and the first lines of the
+ * next. The old dedupe compared every line with every other on
+ * producer|name|vintage folded to a-z0-9, so it also dropped real lines: a
+ * dish ("Salad") or "House Red" printed again pages later, two sizes of one
+ * beer, and every Cyrillic, Greek or Arabic name after the first (they folded
+ * to an empty key). Now a line is dropped only when it is among the first
+ * SEAM_WINDOW lines of a chunk, its whole line (producer, name, vintage,
+ * category and both prices) equals one of the last SEAM_WINDOW lines of the
+ * chunk before, and its name has a letter or digit. A repeat kept by mistake
+ * is a line the person can see and discard; a line dropped by mistake is gone
+ * without a trace.
+ */
+export function dropSeamRepeats(parts: WineExtractItem[][]): WineExtractItem[] {
+  const out: WineExtractItem[] = [];
+  let tail = new Set<string>();
+  for (const part of parts) {
+    part.forEach((item, idx) => {
+      const key = idx < SEAM_WINDOW ? lineKey(item) : null;
+      if (key !== null && tail.has(key)) return;
+      out.push(item);
+    });
+    // An empty or failed chunk ends the seam: the next chunk's pages do not
+    // follow the ones before it.
+    tail = new Set(
+      part
+        .slice(-SEAM_WINDOW)
+        .map(lineKey)
+        .filter((k): k is string => k !== null),
+    );
+  }
+  return out;
+}
+
 @Injectable()
 export class ScanParserService {
   private readonly logger = new Logger(ScanParserService.name);
@@ -308,7 +386,8 @@ export class ScanParserService {
     // reports truncation — the cap itself is the signal. Bounded so a
     // pathological PDF cannot recurse indefinitely.
     const MAX_SPLIT_DEPTH = 3;
-    const all: WineExtractItem[] = [];
+    // One list per chunk, in page order: a seam is between two of them.
+    const parts: WineExtractItem[][] = [];
     const failed: number[] = [];
 
     for (let i = 0; i < chunks.length; i++) {
@@ -351,10 +430,10 @@ export class ScanParserService {
             );
             // Never regress: keep whichever pass recovered more.
             if (arrival || deeper.length >= items.length) {
-              all.push(...deeper);
+              parts.push(deeper);
               warnings.push(...deeperWarnings);
             } else {
-              all.push(...items);
+              parts.push(items);
               warnings.push({ kind: "truncated", pages });
             }
             continue;
@@ -367,7 +446,7 @@ export class ScanParserService {
           throw new ServiceUnavailableException(
             "A menu page range was incomplete.",
           );
-        all.push(...items);
+        parts.push(items);
         if (truncated) warnings.push({ kind: "truncated", pages });
         else if (unreadable) warnings.push({ kind: "unreadable_reply", pages });
         this.logger.log(
@@ -379,6 +458,7 @@ export class ScanParserService {
         // Not a gap in the menu: the whole read waits and says why.
         if (err instanceof MenuReadWaitingException) throw err;
         failed.push(i + 1);
+        parts.push([]);
         warnings.push({ kind: "chunk_failed", pages });
         this.logger.error(
           `Menu chunk ${i + 1}/${chunks.length} failed: ${err?.message}`,
@@ -398,40 +478,16 @@ export class ScanParserService {
         );
       this.logger.error(
         `Menu extracted with gaps — chunk(s) ${failed.join(", ")} of ` +
-          `${chunks.length} failed; ${all.length} item(s) recovered`,
+          `${chunks.length} failed; ${countOf(parts)} item(s) recovered`,
       );
     }
 
-    const merged = this.dedupe(all);
+    const merged = dropSeamRepeats(parts);
     this.logger.log(
-      `Menu split into ${chunks.length} chunk(s): ${all.length} item(s) ` +
+      `Menu split into ${chunks.length} chunk(s): ${countOf(parts)} item(s) ` +
         `-> ${merged.length} after dedupe`,
     );
     return merged;
-  }
-
-  /**
-   * Drop repeats across chunk boundaries. A wine printed in a section header
-   * that spans a page break can legitimately appear in two chunks; the same
-   * (producer, name, vintage) twice is a seam artifact, not two wines.
-   */
-  private dedupe(items: WineExtractItem[]): WineExtractItem[] {
-    const seen = new Set<string>();
-    const out: WineExtractItem[] = [];
-    for (const item of items) {
-      const norm = (v: unknown) =>
-        String(v ?? "")
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, " ")
-          .trim();
-      const key = `${norm(item.producer)}|${norm(item.name)}|${norm(
-        (item as any).vintage,
-      )}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(item);
-    }
-    return out;
   }
 
   private async parseOne(
