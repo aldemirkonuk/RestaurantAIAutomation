@@ -1104,7 +1104,9 @@ export class DashboardService {
       const papersOn = new Map<string, PaperSpendRow[]>();
       for (const r of papers.rows) {
         const date = houseDayOf(r.delivered_at, zone);
-        if (!date || date < first || date >= nextFirst) continue;
+        // Only this month's days are read below (`dates`); a paper on another
+        // month's day is filed and never summed here.
+        if (!date) continue;
         papersOn.set(date, [...(papersOn.get(date) ?? []), r]);
       }
       const spend = new Map<
