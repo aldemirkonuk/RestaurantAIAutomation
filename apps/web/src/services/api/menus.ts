@@ -253,6 +253,14 @@ export interface MenuLine {
    * gateway; the page then works it out with the same test.
    */
   kitchen_line?: boolean
+  /**
+   * The house's own price for the good this line is linked to (Inventory, Your
+   * price), sent with the current menu only (r28 G11). It can differ from the
+   * menu's printed price: changed on Inventory since, held by a lock, or not
+   * carried. `removed`: the good is removed or inactive on Inventory. Absent on
+   * a line with no link, and from an older gateway.
+   */
+  house_price?: { bottle: number | null; glass: number | null; removed: boolean }
 }
 
 export interface ActiveMenu {
@@ -266,6 +274,8 @@ export interface ActiveMenu {
    * gateway shows the one made current last. Absent when there is one.
    */
   otherCurrent?: number
+  /** Set when the house's own prices could not be read: no line then carries `house_price`. */
+  housePricesUnreadable?: string
 }
 
 /**
