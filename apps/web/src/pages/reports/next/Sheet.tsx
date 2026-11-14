@@ -40,7 +40,6 @@
 import { useCallback, useLayoutEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   Responsive,
-  WidthProvider,
   type LayoutItem,
   type ResponsiveLayouts,
 } from 'react-grid-layout/legacy';
@@ -58,7 +57,49 @@ import {
   type Slot,
 } from './rp-sheet';
 
-const Grid = WidthProvider(Responsive);
+/**
+ * The width the grid lays out at when the sheet measures 0 (jsdom). A sheet
+ * on screen is always measured before the grid is first drawn.
+ */
+const UNMEASURED_WIDTH = 1280;
+
+/**
+ * The sheet's own width (reports lane r2, 2026-11-11).
+ *
+ * `WidthProvider` started every grid at 1280 px and corrected it only when its
+ * ResizeObserver first reported, on a rendered frame. Measured at 1440 wide,
+ * the page scrolled sideways to 1528 px (248 px of shell + 1280), and stayed
+ * so wherever no frame was rendered (a background tab, a capture). Passing a
+ * measured width is not enough on its own: a grid first drawn at 1280 and
+ * re-laid out before paint still animates its items from the 1280 boxes (the
+ * library's `transition: width, transform`), so the overflow lingers for as
+ * long as no frame runs. So the width is read in the ref callback, the grid
+ * is not drawn until the sheet is attached, and a ResizeObserver keeps it.
+ */
+function useSheetWidth(): {
+  el: HTMLDivElement | null;
+  width: number;
+  measure: (node: HTMLDivElement | null) => void;
+} {
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState(0);
+  const measure = useCallback((node: HTMLDivElement | null) => {
+    setEl(node);
+    setWidth(node ? node.clientWidth : 0);
+  }, []);
+  useLayoutEffect(() => {
+    if (!el) return;
+    const read = () => setWidth(el.clientWidth);
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', read);
+      return () => window.removeEventListener('resize', read);
+    }
+    const observer = new ResizeObserver(read);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [el]);
+  return { el, width: width > 0 ? width : UNMEASURED_WIDTH, measure };
+}
 
 /** Pointer targets that must never begin a drag — the two new selects included. */
 const DRAG_CANCEL =
@@ -82,7 +123,7 @@ export interface SheetProps {
 }
 
 export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: SheetProps) {
-  const [el, setEl] = useState<HTMLDivElement | null>(null);
+  const { el, width, measure } = useSheetWidth();
   const [ghostBox, setGhostBox] = useState<CSSProperties | null>(null);
 
   const layouts = useMemo((): ResponsiveLayouts => {
@@ -127,10 +168,10 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
 
   const attach = useCallback(
     (node: HTMLDivElement | null) => {
-      setEl(node);
+      measure(node);
       containerRef?.(node);
     },
-    [containerRef],
+    [measure, containerRef],
   );
 
   return (
@@ -141,27 +182,30 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
       style={{ ['--rp-tuck' as keyof CSSProperties]: `${tuck.ms}ms ${tuck.easing}` } as CSSProperties}
     >
       {ghostBox && <div className="rp-ghost" style={ghostBox} aria-hidden />}
-      <Grid
-        className="layout"
-        layouts={layouts}
-        breakpoints={SHEET_BREAKPOINTS}
-        cols={SHEET_BREAKPOINT_COLS}
-        rowHeight={SHEET_ROW_HEIGHT}
-        margin={SHEET_MARGIN}
-        containerPadding={[0, 0]}
-        compactType="vertical"
-        isDraggable={arranging}
-        isResizable={arranging}
-        draggableCancel={DRAG_CANCEL}
-        onDragStop={handleChange}
-        onResizeStop={handleChange}
-      >
-        {cuttings.map((c) => (
-          <div key={c.id} className="rp-grid-item">
-            {c.body}
-          </div>
-        ))}
-      </Grid>
+      {el && (
+        <Responsive
+          width={width}
+          className="layout"
+          layouts={layouts}
+          breakpoints={SHEET_BREAKPOINTS}
+          cols={SHEET_BREAKPOINT_COLS}
+          rowHeight={SHEET_ROW_HEIGHT}
+          margin={SHEET_MARGIN}
+          containerPadding={[0, 0]}
+          compactType="vertical"
+          isDraggable={arranging}
+          isResizable={arranging}
+          draggableCancel={DRAG_CANCEL}
+          onDragStop={handleChange}
+          onResizeStop={handleChange}
+        >
+          {cuttings.map((c) => (
+            <div key={c.id} className="rp-grid-item">
+              {c.body}
+            </div>
+          ))}
+        </Responsive>
+      )}
     </div>
   );
 }
