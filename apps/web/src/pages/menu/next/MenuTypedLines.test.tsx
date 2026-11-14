@@ -131,12 +131,15 @@ describe('Type the menu on /menu', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Type the menu' }));
     expect(screen.getByRole('button', { name: 'Leave line 1 out' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Another line' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Another line' }));
     fireEvent.change(screen.getByLabelText('Line 1 name'), { target: { value: 'Raki' } });
     fireEvent.change(screen.getByLabelText('Line 2 name'), { target: { value: 'Efes' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Leave line 1 out' }));
+    fireEvent.change(screen.getByLabelText('Line 3 name'), { target: { value: 'Su' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Leave line 2 out' }));
     const rows = screen.getAllByTestId('menu-typed-line');
-    expect(rows).toHaveLength(1);
-    expect(within(rows[0]).getByLabelText('Line 1 name')).toHaveValue('Efes');
+    expect(rows).toHaveLength(2);
+    expect(within(rows[0]).getByLabelText('Line 1 name')).toHaveValue('Raki');
+    expect(within(rows[1]).getByLabelText('Line 2 name')).toHaveValue('Su');
   });
 
   it('staff see the same box: reading is not choosing', async () => {
