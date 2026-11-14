@@ -343,6 +343,63 @@ describe("an empty book is not an unbounded read", () => {
     expect(publish).not.toHaveBeenCalled();
   });
 
+  it("starts reading at consent even with an empty book, and still asks Gmail nothing (r36 mail gap 5)", async () => {
+    const { db, rec } = build({
+      integration_oauth_connections: [READ_GRANT],
+      ...FLAG_ON,
+      providers: [],
+      provider_contacts: [],
+      house_inbox_cursors: [],
+    });
+    const { service, publish, oauth } = serviceOver(db);
+    const { urls, impl } = gmail({});
+    service.fetchImpl = impl;
+
+    const now = 1_763_000_000_000;
+    const run = await service.readDue(now);
+
+    expect(run.outcomes[0].outcome).toBe("empty_book");
+    expect(run.outcomes[0].cursorAdvancedTo).toBe(now);
+    expect(run.outcomes[0].says).toContain("once a vendor's address is added");
+    const seeds = rec.inserts.filter((i) => i.table === "house_inbox_cursors");
+    expect(seeds).toHaveLength(1);
+    expect(seeds[0].body).toMatchObject({
+      connection_id: GRANT,
+      restaurant_id: HOUSE,
+      last_internal_date: now,
+      started_at: new Date(now).toISOString(),
+    });
+    expect(urls).toHaveLength(0);
+    expect(publish).not.toHaveBeenCalled();
+    expect(oauth.getAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("an empty book with a cursor already seeded records the run, and moves no cursor and no error", async () => {
+    const { db, rec } = build({
+      integration_oauth_connections: [READ_GRANT],
+      ...FLAG_ON,
+      providers: [],
+      provider_contacts: [],
+      house_inbox_cursors: [{ last_internal_date: 1 }],
+    });
+    const { service } = serviceOver(db);
+    service.fetchImpl = gmail({}).impl;
+    const now = 1_763_000_000_000;
+    const run = await service.readDue(now);
+    expect(run.outcomes[0].outcome).toBe("empty_book");
+    expect(run.outcomes[0].cursorAdvancedTo).toBeNull();
+    expect(run.outcomes[0].says).not.toContain("Reading starts at");
+    expect(rec.inserts.filter((i) => i.table === "house_inbox_cursors")).toHaveLength(0);
+    const updates = rec.updates.filter((i) => i.table === "house_inbox_cursors");
+    expect(updates).toHaveLength(1);
+    expect(updates[0].body).toEqual({
+      last_read_at: new Date(now).toISOString(),
+      last_listed: 0,
+      last_admitted: 0,
+      last_discarded: 0,
+    });
+  });
+
   it("refuses rather than reading when the book itself cannot be read", async () => {
     const { db } = build({
       integration_oauth_connections: [READ_GRANT],
