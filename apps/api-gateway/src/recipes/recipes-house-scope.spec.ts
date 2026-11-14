@@ -89,8 +89,8 @@ describe("recipes: the path's house is the caller's (real guard, every route)", 
   afterEach(() => jest.restoreAllMocks());
   const routes = declaredRoutes();
 
-  it("declares the six routes the sheet calls, all under :restaurantId", () => {
-    expect(routes.map((r) => r.handler).sort()).toEqual(["getRecipe", "listVersions", "previewCost", "readVersion", "saveRecipe", "shelf"]);
+  it("declares the seven routes the sheet calls, all under :restaurantId", () => {
+    expect(routes.map((r) => r.handler).sort()).toEqual(["getRecipe", "listVersions", "previewCost", "readVersion", "saveRecipe", "shelf", "stateWeights"]);
     for (const r of routes) expect(r.path.split("/")[0]).toBe(":restaurantId");
   });
 

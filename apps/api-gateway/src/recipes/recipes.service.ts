@@ -11,7 +11,7 @@ import { DatabaseService } from "../database/database.service";
 import { seesHouseAmounts } from "../dashboard/amounts-for-role";
 import { mergeAgreedLotCost, mergeInvoiceLotCost } from "../analytics/inventory-cost";
 import { BaseUnit, CostItem, recipeCost } from "./recipe-cost";
-import { PreviewCostDto, SaveRecipeDto } from "./dto/recipes.dto";
+import { PreviewCostDto, SaveRecipeDto, StateWeightsDto } from "./dto/recipes.dto";
 import { FIGURE_KEYS, ItemFigures, ServeNutrition, serveNutrition } from "./recipe-nutrition";
 import { shelfSearchPattern } from "./name-fold";
 
@@ -59,6 +59,16 @@ export type WhatIsIn = ({ readable: true } & ServeNutrition) | { readable: false
  */
 export const MAX_LINE_QTY = 100_000;
 export const MAX_YIELD_SERVES = 1_000;
+
+/**
+ * The most a stated weight may be (r28 gap 7): one piece up to 50 kg (a whole
+ * lamb, a wheel of cheese), one ml up to 5 g (honey is 1.4, syrups under 2).
+ * A figure past these is a slip, such as grams per litre typed as grams per ml.
+ */
+export const MAX_PIECE_GRAMS = 50_000;
+export const MAX_ML_GRAMS = 5;
+export const WEIGHT_NOT_THIS_HOUSE = "That good is not on this house's shelf.";
+export const WEIGHT_SAVE_FAILED = "We could not keep that weight just now. Nothing was changed.";
 
 /** A stated weight from the database (numeric arrives as a string), or null. */
 function grams(v: unknown): number | null {
@@ -519,9 +529,13 @@ export class RecipesService {
   private async whatIsIn(restaurantId: string, ids: string[], rows: any[], yieldServes: number): Promise<WhatIsIn> {
     const figuresById = new Map<string, ItemFigures>();
     const allergensById = new Map<string, Array<{ allergen: string; status: string }>>();
+    const weightsById = new Map<string, { pieceGrams: number | null; mlGrams: number | null }>();
     if (ids.length) {
       const client = this.db.getClient();
-      const [nutrition, allergens] = await Promise.all([
+      // The weights the house stated join a piece or a volume to figures per
+      // 100 g, and a weight to figures per 100 ml (r28 gap 7). Read beside
+      // the figures, so the sheet keeps its three round trips.
+      const [nutrition, allergens, weights] = await Promise.all([
         client
           .from("item_nutrition")
           .select("inventory_id, basis, energy_kcal, fat_g, saturates_g, carbohydrate_g, sugars_g, protein_g, salt_g, abv_pct, energy_from_abv")
@@ -532,8 +546,13 @@ export class RecipesService {
           .select("inventory_id, allergen, status")
           .eq("restaurant_id", restaurantId)
           .in("inventory_id", ids),
+        client
+          .from("restaurant_inventory")
+          .select("id, piece_grams, ml_grams")
+          .eq("restaurant_id", restaurantId)
+          .in("id", ids),
       ]);
-      const error = nutrition.error ?? allergens.error;
+      const error = nutrition.error ?? allergens.error ?? weights.error;
       if (error) {
         this.logger.error(`recipes: what-is-in read failed: ${error.message}`);
         return { readable: false, sentence: WHAT_IS_IN_UNREAD };
@@ -545,6 +564,9 @@ export class RecipesService {
           f[k] = raw === null || raw === undefined ? null : Number(raw);
         }
         figuresById.set(r.inventory_id, f);
+      }
+      for (const w of (weights.data ?? []) as any[]) {
+        weightsById.set(w.id, { pieceGrams: grams(w.piece_grams), mlGrams: grams(w.ml_grams) });
       }
       for (const a of (allergens.data ?? []) as any[]) {
         const list = allergensById.get(a.inventory_id) ?? [];
@@ -560,6 +582,8 @@ export class RecipesService {
         qtyBase: Number(l.qty_base),
         baseUnit: l.base_unit,
         figures: (l.inventory_id && figuresById.get(l.inventory_id)) || null,
+        pieceGrams: (l.inventory_id && weightsById.get(l.inventory_id)?.pieceGrams) ?? null,
+        mlGrams: (l.inventory_id && weightsById.get(l.inventory_id)?.mlGrams) ?? null,
         allergens: (l.inventory_id && allergensById.get(l.inventory_id)) || [],
       })),
       yieldServes,
@@ -740,5 +764,48 @@ export class RecipesService {
       uom: r.uom,
       bottleSizeMl: r.bottle_size_ml == null ? null : Number(r.bottle_size_ml),
     }));
+  }
+
+  /**
+   * Keep what one piece of a good weighs, and what one ml of it weighs, as the
+   * house states them (r28 gap 7). A recipe line measured another way than
+   * the good is kept is priced and counted through these and nothing else.
+   * A field left out is kept; null takes the statement off. House-scoped: a
+   * good of another house is not found. The cost views are untouched: the
+   * weights change no lot's cost, only how a line meets it.
+   */
+  async stateWeights(restaurantId: string, itemId: string, dto: StateWeightsDto) {
+    const patch: Record<string, number | null> = {};
+    // The smallest step each column keeps (numeric(10,3), numeric(8,4)): a
+    // figure below it would be stored as 0, which the database refuses.
+    if (dto.pieceGrams !== undefined) patch.piece_grams = this.weight(dto.pieceGrams, 0.001, MAX_PIECE_GRAMS, "One piece");
+    if (dto.mlGrams !== undefined) patch.ml_grams = this.weight(dto.mlGrams, 0.0001, MAX_ML_GRAMS, "One ml");
+    if (Object.keys(patch).length === 0) {
+      throw new BadRequestException("Say what one piece weighs, what one ml weighs, or both.");
+    }
+    const { data, error } = await this.db
+      .getClient()
+      .from("restaurant_inventory")
+      .update(patch)
+      .eq("id", itemId)
+      .eq("restaurant_id", restaurantId)
+      .select("id, piece_grams, ml_grams")
+      .maybeSingle();
+    if (error) {
+      this.logger.error(`recipes: weight save failed: ${error.message}`);
+      throw new InternalServerErrorException(WEIGHT_SAVE_FAILED);
+    }
+    if (!data) throw new NotFoundException(WEIGHT_NOT_THIS_HOUSE);
+    const row = data as { id: string; piece_grams: unknown; ml_grams: unknown };
+    return { id: row.id, pieceGrams: grams(row.piece_grams), mlGrams: grams(row.ml_grams) };
+  }
+
+  private weight(v: number | null, min: number, max: number, what: string): number | null {
+    if (v === null) return null;
+    if (typeof v !== "number" || !Number.isFinite(v) || v < min) {
+      throw new BadRequestException(`${what} must weigh more than 0 g.`);
+    }
+    if (v > max) throw new BadRequestException(`${what} can weigh at most ${max} g. Check the figure.`);
+    return v;
   }
 }
