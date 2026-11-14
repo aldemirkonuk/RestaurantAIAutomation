@@ -9,7 +9,7 @@ import {
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { seesHouseAmounts } from "../dashboard/amounts-for-role";
-import { mergeAgreedLotCost, mergeInvoiceLotCost } from "../analytics/inventory-cost";
+import { mergeAgreedLotCost, mergeInvoiceLotCost, mergeLastKnownLotCost } from "../analytics/inventory-cost";
 import { BaseUnit, CostItem, recipeCost } from "./recipe-cost";
 import { PreviewCostDto, SaveRecipeDto, StateWeightsDto } from "./dto/recipes.dto";
 import { FIGURE_KEYS, ItemFigures, ServeNutrition, serveNutrition } from "./recipe-nutrition";
@@ -254,8 +254,10 @@ export class RecipesService {
    * `mergeAgreedLotCost`, and the invoice figures from
    * `inventory_lot_invoice_cost` by `mergeInvoiceLotCost`, so the invoiced
    * cost averages invoices only (r28 gap 3): invoiced lot WAC, then a cost settled without an
-   * invoice (a price the house entered, or one agreed at delivery), then the
-   * last purchase price, else unknown. Before this the recipe read the rollup
+   * invoice (a price the house entered, or one agreed at delivery), then what
+   * the good was last bought at when nothing on hand is priced
+   * (`inventory_lot_last_known_cost`, r36 gap 1: a sold-out good keeps its
+   * price), then the last purchase price, else unknown. Before this the recipe read the rollup
    * alone, so a good costed only by hand read as unknown here and only here.
    */
   async readPricing(restaurantId: string, ids: string[], money: boolean) {
@@ -273,7 +275,7 @@ export class RecipesService {
             .from("restaurant_inventory")
             .select("id, display_name, kind, uom, bottle_size_ml, piece_grams, ml_grams, is_active, deleted_at");
       const none = Promise.resolve({ data: [], error: null });
-      const [itemRead, lotRead, agreedRead, invoiceRead] = await Promise.all([
+      const [itemRead, lotRead, agreedRead, invoiceRead, lastRead] = await Promise.all([
         itemQuery.eq("restaurant_id", restaurantId).in("id", ids),
         money
           ? client
@@ -300,6 +302,16 @@ export class RecipesService {
               .eq("restaurant_id", restaurantId)
               .in("inventory_id", ids)
           : none,
+        // What the good was last bought at, used up or not: the live views
+        // above read stock on hand only, so a sold-out good would read
+        // "no price yet" the moment its last unit is poured (r36 gap 1).
+        money
+          ? client
+              .from("inventory_lot_last_known_cost")
+              .select("inventory_id, last_unit_cost, last_received_at")
+              .eq("restaurant_id", restaurantId)
+              .in("inventory_id", ids)
+          : none,
       ]);
       if (itemRead.error) this.failed("item read", itemRead.error);
       if (lotRead.error) this.failed("lot read", lotRead.error);
@@ -309,9 +321,13 @@ export class RecipesService {
       // Refused like the others: priced without it, the serve would fall back
       // to nothing for a good whose only cost is on an invoice.
       if (invoiceRead.error) this.failed("invoice cost read", invoiceRead.error);
+      // Refused like the others: priced without it, a sold-out good would
+      // read "no price yet" as if nothing had ever been paid for it.
+      if (lastRead.error) this.failed("last known cost read", lastRead.error);
       for (const i of (itemRead.data ?? []) as any[]) items.set(i.id, i);
       for (const l of (lotRead.data ?? []) as any[]) lots.set(l.inventory_id, l);
       mergeAgreedLotCost(lots, agreedRead.data as Array<Record<string, unknown>> | null);
+      mergeLastKnownLotCost(lots, lastRead.data as Array<Record<string, unknown>> | null);
       if (money) mergeInvoiceLotCost(lots, ids, invoiceRead.data as Array<Record<string, unknown>> | null);
     }
     return { items, lots };
@@ -418,6 +434,8 @@ export class RecipesService {
           // The stated weight this line's price went through, so a mistyped
           // one is seen beside the price it made and can be changed.
           weighed: money ? (priced.lines[i].weighed ?? null) : null,
+          // When the lot a sold-out good is priced from came in (r36 gap 1).
+          boughtAt: money ? (priced.lines[i].boughtAt ?? null) : null,
         };
       }),
     };
@@ -429,6 +447,7 @@ export class RecipesService {
           of: priced.of,
           complete: priced.complete,
           partial: priced.partial,
+          lastBought: priced.lastBought,
         }
       : null;
     return { version: body, cost, whatIsIn };
@@ -525,12 +544,14 @@ export class RecipesService {
       of: priced.of,
       complete: priced.complete,
       partial: priced.partial,
+      lastBought: priced.lastBought,
       lines: priced.lines.map((l) => ({
         status: l.status,
         costPerServe: l.costPerServe,
         costBasis: l.costBasis,
         needs: l.needs ?? null,
         weighed: l.weighed ?? null,
+        boughtAt: l.boughtAt ?? null,
       })),
     };
   }

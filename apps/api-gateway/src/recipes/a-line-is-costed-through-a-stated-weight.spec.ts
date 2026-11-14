@@ -202,6 +202,7 @@ describe("the sheet reads a good's stated weights", () => {
       costBasis: "last_purchase_price",
       needs: null,
       weighed: { by: "piece_grams", grams: 60 },
+      boughtAt: null,
     });
 
     const bare = new RecipesService(fakeDb(houseWithEggs(), { rpc }).db);
