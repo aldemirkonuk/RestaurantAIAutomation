@@ -26,7 +26,7 @@
  * `?senders=open` opens that register, which is where those notices link.
  */
 
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Mail, MessageCircle } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -40,9 +40,13 @@ import {
   headerSentence,
   lastWriterWords,
   houseMailboxStatus,
+  MAIL_SEARCH_MAX,
+  mailSearchTerm,
   mailStatusLine,
+  searchEmptyWords,
   setupLinkWords,
   storedKindsLine,
+  threadCountWords,
   todayLine,
   type MailAnswer,
   type MailboxReader,
@@ -195,10 +199,8 @@ function PersonThreads({
                       {fmtWhen(t.lastAt)}
                     </span>
                   </span>
-                  <span style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
-                    {t.messageCount === 0 ? null : (
-                      <>{t.messageCount === 1 ? '1 letter' : `${t.messageCount} letters`} · </>
-                    )}
+                  <span data-testid="mail-thread-count" style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
+                    {threadCountWords(t) && <>{threadCountWords(t)} · </>}
                     {lastWriterWords(t.lastDirection, person.name, t.messageCount)}
                   </span>
                 </button>
@@ -228,6 +230,8 @@ function PersonThreads({
 
 function People({
   waitingOnly,
+  search,
+  onClearSearch,
   reader,
   summary,
   onOpenPerson,
@@ -235,6 +239,9 @@ function People({
   setupWords,
 }: {
   waitingOnly: boolean;
+  /** The trimmed search term, '' for none (r28 mail gap 16). */
+  search: string;
+  onClearSearch: () => void;
   reader: MailboxReader | null;
   summary: Parameters<typeof emptyListWords>[1];
   onOpenPerson: (key: string) => void;
@@ -242,7 +249,7 @@ function People({
   /** setupLinkWords(canReply): staff are not told to set up what they cannot change. */
   setupWords: string;
 }) {
-  const q = useMailPeople(waitingOnly);
+  const q = useMailPeople(waitingOnly, search);
   const pages = q.data?.pages ?? [];
   const people = pages.flatMap((p) => p.people);
   const storedKinds = pages[0]?.storedKinds ?? null;
@@ -258,6 +265,13 @@ function People({
         </p>
       ) : !q.data ? (
         <p style={{ margin: 0, ...QUIET }}>Reading the mail…</p>
+) : people.length === 0 && search ? (
+        <p data-testid="search-empty" role="status" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', maxWidth: '68ch', overflowWrap: 'anywhere' }}>
+          {searchEmptyWords(search, { waitingOnly })}{' '}
+          <button type="button" data-testid="search-clear-empty" onClick={onClearSearch} style={LINK_BUTTON}>
+            Clear the search
+          </button>
+        </p>
       ) : people.length === 0 ? (
         <p data-testid="people-empty" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', maxWidth: '68ch' }}>
           {emptyListWords(reader, summary, { waitingOnly })}{' '}
@@ -355,6 +369,19 @@ export function MailTab({
   const canReply = managesHouse(activeRole, user?.role);
   const [params, setParams] = useSearchParams();
   const [waitingOnly, setWaitingOnly] = useState(false);
+  // r28 mail gap 16: what is typed, and the term sent 300 ms after typing stops.
+  const [typed, setTyped] = useState('');
+  const [search, setSearch] = useState('');
+  useEffect(() => {
+    const term = mailSearchTerm(typed);
+    if (term === search) return;
+    const t = setTimeout(() => setSearch(term), 300);
+    return () => clearTimeout(t);
+  }, [typed, search]);
+  const clearSearch = () => {
+    setTyped('');
+    setSearch('');
+  };
   const [sheet, setSheet] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -499,6 +526,36 @@ export function MailTab({
         />
       ) : (
         <>
+          <div className="flex flex-wrap items-center gap-2" role="search">
+            <input
+              type="search"
+              data-testid="mail-search"
+              aria-label="Search mail"
+              placeholder="Find a vendor, subject, order number or word"
+              value={typed}
+              maxLength={MAIL_SEARCH_MAX}
+              onChange={(e) => setTyped(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') clearSearch();
+              }}
+              style={{
+                flex: '1 1 16rem',
+                minWidth: 0,
+                fontSize: 13,
+                fontFamily: SANS,
+                padding: '6px 10px',
+                borderRadius: 8,
+                border: '1px solid var(--paper-2, #EAE4D8)',
+                background: 'var(--paper-0, #FAF7F1)',
+                color: 'var(--ink-1, #211C16)',
+              }}
+            />
+            {typed && (
+              <button type="button" data-testid="search-clear" onClick={clearSearch} style={LINK_BUTTON}>
+                Clear
+              </button>
+            )}
+          </div>
           <div className="flex flex-wrap gap-2" role="group" aria-label="Show">
             <Chip on={!waitingOnly} onClick={() => setWaitingOnly(false)}>
               All
@@ -509,6 +566,8 @@ export function MailTab({
           </div>
           <People
             waitingOnly={waitingOnly}
+            search={search}
+            onClearSearch={clearSearch}
             reader={reader}
             summary={summary}
             onOpenPerson={(key) => go({ with: key })}
