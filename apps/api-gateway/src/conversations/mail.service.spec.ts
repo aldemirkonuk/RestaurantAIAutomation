@@ -779,6 +779,16 @@ describe("waitingVendors: the counter's count is Mail's (r36 mail gap 7)", () =>
     ).rejects.toThrow(ServiceUnavailableException);
   });
 
+  it("an error beside a row is still a failure", async () => {
+    resolve = (q) =>
+      q.name === "mail_inbox_summary"
+        ? { data: [SUMMARY_ROW], error: { message: "statement timeout" } }
+        : { data: [], error: null };
+    await expect(
+      service().waitingVendors(HOUSE, "owner", 5),
+    ).rejects.toThrow(ServiceUnavailableException);
+  });
+
   it("a failed list is a failure too", async () => {
     resolve = (q) =>
       q.name === "list_mail_people"

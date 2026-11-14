@@ -126,7 +126,7 @@ function sources(over: Partial<Record<string, jest.Mock>> = {}) {
               kind: "vendor",
               providerId: "v-3",
               name: "Revel Wine",
-              lastAt: "2026-09-21T07:00:00Z",
+              lastAt: "2026-09-21T09:30:00Z",
               lastLine: "We can do $41.00 a bottle",
               lastDirection: "inbound",
               waiting: true,
