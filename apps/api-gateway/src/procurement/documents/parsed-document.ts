@@ -152,6 +152,28 @@ export interface ParsedDocument {
   referencesDocNumber?: string | null;
   poNumber?: string | null;
 
+  /**
+   * The e-invoice's own number (ETTN, UBL `cbc:UUID`), read from the e-Fatura,
+   * e-Arşiv or e-İrsaliye FILE. Unique per house: the same ETTN again is the
+   * same paper (ADR 0261 W43). NULL for every paper not read from that file.
+   */
+  ettn?: string | null;
+  /**
+   * What the e-invoice file said about itself, for the screen's origin words
+   * ("From the e-invoice file"). `signatureChecked` is false on every read
+   * today: the file's XAdES signature is NOT verified (proposal row 3.3 /
+   * ADR 0104 D14 owes that), and the screen says so rather than implying it.
+   */
+  einvoice?: {
+    kind: "e-fatura" | "e-arsiv" | "e-irsaliye";
+    profile: string | null;
+    typeCode: string | null;
+    signed: boolean;
+    signatureChecked: false;
+  } | null;
+  /** Despatch notes (irsaliye numbers) the paper cites, for linking later. */
+  despatchRefs?: string[];
+
   vendorName?: string | null;
   /** Vendor's own account number for this restaurant, when stated. */
   vendorAccount?: string | null;

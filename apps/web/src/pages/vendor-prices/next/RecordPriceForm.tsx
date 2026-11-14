@@ -34,7 +34,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { Panel } from '../../../components/mudavym/Sheet'
 import { useAuth } from '../../../contexts/AuthContext'
 import { useProviders } from '../../../hooks/queries/useProviderQueries'
-import { apiErrorMessage, attachPaper, type ManualObservationInput } from '../../../services/api/vendorIntel'
+import { PaperAlreadyOnFileError, apiErrorMessage, attachPaper, type ManualObservationInput } from '../../../services/api/vendorIntel'
 import { SCAN_ACCEPT, resolveMimeType } from '../../../lib/uploadAccept'
 import { COMMON_CURRENCIES, HAND_SOURCES, MONO, SANS, dateWords } from './vp-format'
 import { useObservationSources, useProviderUsualCurrency, useRecordPrice } from './useVendorPricesNextData'
@@ -103,6 +103,10 @@ export function RecordPriceForm({
   const [contactId, setContactId] = useState('')
   const [attaching, setAttaching] = useState(false)
   const [attachError, setAttachError] = useState<string | null>(null)
+  // The attached paper's number is already on file under this vendor: the
+  // door stored nothing, so the price waits for the person to choose the
+  // paper already on file (or to drop the paper). Never chosen for them.
+  const [paperOnFile, setPaperOnFile] = useState<{ documentId: string; docNumber: string } | null>(null)
 
   const { activeRestaurantId } = useAuth()
   const providersQuery = useProviders(activeRestaurantId ?? '')
@@ -156,8 +160,29 @@ export function RecordPriceForm({
     setMessageId('')
     setContactId('')
     setAttachError(null)
+    setPaperOnFile(null)
     mutation.reset()
   }
+
+  const record = (documentId: string | undefined) =>
+    mutation.mutate(
+      {
+        masterWineId: wineId,
+        providerId: matchedProvider?.id,
+        vendorName: vendorName.trim(),
+        price: priceNum,
+        currency: currency.trim().toUpperCase(),
+        packSize: packNum,
+        unitVolumeMl: Number.isFinite(volNum) && volNum > 0 ? volNum : undefined,
+        sourceType,
+        sourceUrl: sourceUrl.trim() || undefined,
+        note: note.trim() || undefined,
+        documentId,
+        conversationMessageId: matchedProvider && messageId ? messageId : undefined,
+        contactId: matchedProvider && contactId ? contactId : undefined,
+      },
+      { onSuccess: () => { reset(); onClose() } },
+    )
 
   return (
     <Panel open={open} onClose={onClose} label="Record a price you were quoted" eyebrow="New sighting" title="Add a price">
@@ -168,6 +193,7 @@ export function RecordPriceForm({
           e.preventDefault()
           if (!canSubmit || attaching) return
           setAttachError(null)
+          setPaperOnFile(null)
           let documentId: string | undefined
           if (paper) {
             setAttaching(true)
@@ -180,30 +206,18 @@ export function RecordPriceForm({
               })
               documentId = stored.documentId
             } catch (err) {
-              setAttachError(apiErrorMessage(err, 'The paper was not stored, so the price was not recorded.'))
+              if (err instanceof PaperAlreadyOnFileError) {
+                setAttachError(err.message)
+                setPaperOnFile(err.earlier)
+              } else {
+                setAttachError(apiErrorMessage(err, 'The paper was not stored, so the price was not recorded.'))
+              }
               return
             } finally {
               setAttaching(false)
             }
           }
-          mutation.mutate(
-            {
-              masterWineId: wineId,
-              providerId: matchedProvider?.id,
-              vendorName: vendorName.trim(),
-              price: priceNum,
-              currency: currency.trim().toUpperCase(),
-              packSize: packNum,
-              unitVolumeMl: Number.isFinite(volNum) && volNum > 0 ? volNum : undefined,
-              sourceType,
-              sourceUrl: sourceUrl.trim() || undefined,
-              note: note.trim() || undefined,
-              documentId,
-              conversationMessageId: matchedProvider && messageId ? messageId : undefined,
-              contactId: matchedProvider && contactId ? contactId : undefined,
-            },
-            { onSuccess: () => { reset(); onClose() } },
-          )
+          record(documentId)
         }}
       >
         <p style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)', margin: 0 }}>
@@ -345,7 +359,10 @@ export function RecordPriceForm({
             id="vp-paper"
             type="file"
             accept={SCAN_ACCEPT}
-            onChange={(e) => setPaper(e.target.files?.[0] ?? null)}
+            onChange={(e) => {
+              setPaper(e.target.files?.[0] ?? null)
+              setPaperOnFile(null)
+            }}
             style={{ ...inputStyle, padding: '6px 8px' }}
           />
           {paper && (
@@ -432,6 +449,28 @@ export function RecordPriceForm({
           <p role="alert" style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-1, #211C16)', background: 'var(--paper-1, #F3EFE6)', padding: '8px 10px', borderRadius: 8, margin: 0 }}>
             {attachError}
           </p>
+        )}
+        {paperOnFile && (
+          <div style={{ display: 'grid', gap: 6 }}>
+            <button
+              type="button"
+              disabled={!canSubmit || mutation.isPending}
+              onClick={() => record(paperOnFile.documentId)}
+              style={{ fontFamily: SANS, fontSize: 12.5, fontWeight: 600, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--seal-ring, rgba(26,94,107,.32))', background: 'transparent', color: 'var(--seal, #1A5E6B)', cursor: 'pointer' }}
+            >
+              {paperOnFile.docNumber
+                ? `Record it with paper no. ${paperOnFile.docNumber} already on file`
+                : 'Record it with the paper already on file'}
+            </button>
+            <button
+              type="button"
+              disabled={!canSubmit || mutation.isPending}
+              onClick={() => record(undefined)}
+              style={{ fontFamily: SANS, fontSize: 12.5, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--paper-2, #EAE4D8)', background: 'transparent', color: 'var(--ink-2, #4F473C)', cursor: 'pointer' }}
+            >
+              Record it without a paper
+            </button>
+          </div>
         )}
         {mutation.isError && (
           <p role="alert" style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-1, #211C16)', background: 'var(--paper-1, #F3EFE6)', padding: '8px 10px', borderRadius: 8, margin: 0 }}>

@@ -22,6 +22,7 @@ import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import { DatabaseService } from "../../database/database.service";
 import { DocumentIntakeService } from "./document-intake.service";
+import { houseIdsFor } from "./house-ids";
 import {
   ApplyExtractionDto,
   CorrectFieldDto,
@@ -896,6 +897,15 @@ export class DocumentsController {
       };
     }
 
+    // Row 1.3 at the door too: the count and the delivery it creates carry a
+    // vendor and an order only when they are this house's.
+    const ids =
+      body.providerId || body.orderId
+        ? await houseIdsFor(this.db.getClient(), user.restaurantId, {
+            providerId: body.providerId ?? null,
+            orderId: body.orderId ?? null,
+          })
+        : { providerId: null, orderId: null, refused: [] as string[] };
     /**
      * A COUNT OF A PAPER BOOKS BY THE PAPER (r24). Each line takes its item,
      * unit and size from the paper's own line; the delivery carries the paper
@@ -912,7 +922,9 @@ export class DocumentsController {
         user.restaurantId,
         body.forDocumentId,
         body.lines,
-        body.orderId ?? null,
+        // r33 meet with #1076: the asked order is this house's or none, so
+        // a paper with no linked order never takes another house's order.
+        ids.orderId,
       );
       if (!read.ok) throw new HttpException(read.error, read.status);
       paper = read.value;
@@ -928,7 +940,7 @@ export class DocumentsController {
 
     const result = await this.intake.recordDoorCount({
       restaurantId: user.restaurantId,
-      providerId: body.providerId ?? null,
+      providerId: ids.providerId,
       countedBy: user.userId,
       countedAt: body.countedAt ?? null,
       lines: paper ? paper.lines : body.lines,
@@ -997,8 +1009,8 @@ export class DocumentsController {
         user.restaurantId,
         user.userId,
         {
-          orderId: paper ? paper.orderId : (body.orderId ?? null),
-          providerId: body.providerId ?? null,
+          orderId: paper ? paper.orderId : ids.orderId,
+          providerId: ids.providerId,
           jurisdiction: body.jurisdiction ?? null,
           deliveredAt: body.countedAt ?? null,
           documents: [
@@ -1085,6 +1097,7 @@ export class DocumentsController {
       // The paper this count was of, and the order its delivery names.
       ...(paper ? { countedFor: { documentId: paper.documentId, orderId: paper.orderId } } : {}),
       ...(result.storageError ? { storageError: result.storageError } : {}),
+      ...(ids.refused.length ? { linkRefused: ids.refused } : {}),
     };
   }
 
@@ -1092,7 +1105,7 @@ export class DocumentsController {
   @ApiOperation({
     summary: "Upload or photograph a vendor document",
     description:
-      "Accepts base64 content for a PDF, image or EDI file. Classifies it (invoice / packing slip / credit memo / EDI 832 price list), extracts lines, and stores it for review. Writes no stock, cost or orders. Identical content is deduplicated per restaurant, so the same invoice arriving by email and by photo is one document. " +
+      "Accepts base64 content for a PDF, image, EDI file, or e-invoice (UBL-TR XML, or a zip holding one, read field by field and kept once per ETTN). Classifies it (invoice / packing slip / credit memo / EDI 832 price list), extracts lines, and stores it for review. Writes no stock, cost or orders. Identical content is deduplicated per restaurant, so the same invoice arriving by email and by photo is one document. " +
       "AN EDI 832 PRICE CATALOGUE IS ALSO ADMITTED HERE (ADR 0126, batch 56) rather than at a door of its own: it is stored as a `price_list`, and when `distributorKey` names a measured distributor its lines are read against the price-code meanings a manager of this house has stated. The per-line outcome comes back in `catalog` — what was priced, and for each refused line the reason and the code that refused it. There is never a bare row count. The upload is open to every signed-in person at the house, because it is the delivery door. A session that does not hold the house's money gets `document` cut down to the keys the door reads (`docType`, `docNumber`, and per line `lineNo`, `qty`, `uom`, `packSize`, `qtyBottles`) and `amountsWithheld: true` at the root; owners and managers get the whole parse.",
   })
   async upload(
@@ -1111,10 +1124,21 @@ export class DocumentsController {
     if (!buffer.length)
       throw new HttpException("Document is empty", HttpStatus.BAD_REQUEST);
 
+    // Proposal-receipt row 1.3: a vendor or order id from the body is kept
+    // only when it is this house's. A foreign one is dropped and said; the
+    // paper itself is never refused for it (`house-ids.ts`).
+    const ids =
+      body.providerId || body.orderId
+        ? await houseIdsFor(this.db.getClient(), user.restaurantId, {
+            providerId: body.providerId ?? null,
+            orderId: body.orderId ?? null,
+          })
+        : { providerId: null, orderId: null, refused: [] as string[] };
+
     const result = await this.intake.ingest({
       restaurantId: user.restaurantId,
-      providerId: body.providerId ?? null,
-      orderId: body.orderId ?? null,
+      providerId: ids.providerId,
+      orderId: ids.orderId,
       source: body.source ?? "upload",
       buffer,
       filename: body.filename ?? null,
@@ -1164,6 +1188,14 @@ export class DocumentsController {
       // included. Omitting a refusal would leave the caller unable to tell
       // `unresolved` from "resolution never ran".
       ...(result.vendor ? { vendor: result.vendor } : {}),
+      // Proposal-receipt §3 row 1.4: a paper whose number this vendor already
+      // has on file names the earlier paper, beside `duplicate: true`; a stamp
+      // that did not land says so. Never "vendor matched, duplicate false".
+      ...(result.duplicateOf ? { duplicateOf: result.duplicateOf } : {}),
+      ...(result.vendorStampError
+        ? { vendorStampError: result.vendorStampError }
+        : {}),
+      ...(ids.refused.length ? { linkRefused: ids.refused } : {}),
     };
   }
 
@@ -1330,6 +1362,7 @@ export class DocumentsController {
    */
   private async vendorNamesFor(
     rows: Record<string, unknown>[],
+    restaurantId: string,
   ): Promise<Map<string, string | null>> {
     const providerIds = [
       ...new Set(
@@ -1344,7 +1377,11 @@ export class DocumentsController {
         .getClient()
         .from("providers")
         .select("id, name, company_name")
-        .in("id", providerIds);
+        .in("id", providerIds)
+        // Only this house's vendor rows name a row (row 1.3): a provider id a
+        // paper carries from before the house check never prints another
+        // house's vendor name.
+        .eq("restaurant_id", restaurantId);
       if (error)
         this.logger.warn(
           `List: vendors could not be read (${error.message}); rows name the vendor the paper carried.`,
@@ -1367,6 +1404,58 @@ export class DocumentsController {
       );
     }
     return out;
+  }
+
+  /**
+   * WHAT BECAME OF EACH EMAILED FILE (proposal-receipt rows 1.2 and 3.6).
+   *
+   * One row per attachment that reached this house's mail, newest first, with
+   * the outcome the intake sweep recorded: added (a document), already on
+   * file (the paper that holds it), not a paper, could not be read (why), or
+   * waiting. Declared before `:id` so "arrivals" is never read as an id.
+   *
+   * No money is on it: a file name, when it came, and what happened to it.
+   * The list is capped and says so (`more`), never a silent 1,000-row cut.
+   */
+  @Get("arrivals")
+  @ApiOperation({
+    summary: "What became of each file emailed to this house",
+  })
+  @ApiQuery({ name: "limit", required: false })
+  async arrivals(
+    @CurrentUser() user: AuthedUser,
+    @Query("limit") limit?: string,
+  ) {
+    const n = Math.min(Math.max(Number(limit) || 50, 1), 200);
+    const { data, error } = await this.db
+      .getClient()
+      .from("conversation_attachments")
+      .select(
+        "id, filename, mime_type, size_bytes, created_at, ingest_state, ingested_document_id, last_ingest_reason, ingest_attempts, provider_id",
+      )
+      .eq("restaurant_id", user.restaurantId)
+      .order("created_at", { ascending: false })
+      .limit(n + 1);
+    if (error)
+      throw new HttpException(
+        `The emailed files could not be read: ${error.message}`,
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    const rows = (data ?? []) as Record<string, unknown>[];
+    return {
+      items: rows.slice(0, n).map((r) => ({
+        id: r.id,
+        filename: r.filename,
+        mimeType: r.mime_type ?? null,
+        sizeBytes: r.size_bytes ?? null,
+        arrivedAt: r.created_at,
+        state: r.ingest_state,
+        documentId: r.ingested_document_id ?? null,
+        reason: r.last_ingest_reason ?? null,
+        attempts: r.ingest_attempts ?? 0,
+      })),
+      more: rows.length > n,
+    };
   }
 
   @Get()
@@ -1450,7 +1539,10 @@ export class DocumentsController {
      */
     const [verdicts, vendorNames] = await Promise.all([
       this.tieOutsAsRuledNow((data ?? []) as Record<string, unknown>[]),
-      this.vendorNamesFor((data ?? []) as Record<string, unknown>[]),
+      this.vendorNamesFor(
+        (data ?? []) as Record<string, unknown>[],
+        user.restaurantId,
+      ),
     ]);
     const items = (data ?? []).map((row) => ({
       ...(row as Record<string, unknown>),
@@ -1609,6 +1701,10 @@ export class DocumentsController {
       revision: applied.revision,
       // ADR 0104 D15 — what resolving the vendor answered on this read.
       ...(applied.vendor ? { vendor: applied.vendor } : {}),
+      ...(applied.duplicateOf ? { duplicateOf: applied.duplicateOf } : {}),
+      ...(applied.vendorStampError
+        ? { vendorStampError: applied.vendorStampError }
+        : {}),
     };
   }
 

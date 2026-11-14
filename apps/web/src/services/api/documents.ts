@@ -397,6 +397,65 @@ export const documentsApi = {
       orderLineId,
     })
   },
+
+  /**
+   * File one paper from the desk (proposal-receipt row 3.1 surface): a photo,
+   * a PDF, or an e-invoice (UBL-TR XML, or the zip it came in). The reply is
+   * passed through whole, so the strip can say every outcome the gateway
+   * names: filed, already on file (with the earlier paper), or a link it
+   * refused to make.
+   */
+  async upload(params: {
+    contentBase64: string
+    filename: string
+    mimeType: string
+  }): Promise<DeskUploadReply> {
+    const { data } = await apiClient.post('/procurement/documents', {
+      ...params,
+      source: 'upload',
+    })
+    return data
+  },
+
+  /**
+   * What became of each file that arrived by email (proposal-receipt row 1.2):
+   * the gateway records an outcome per attachment, so a file that was not
+   * filed is named with its reason instead of simply being absent.
+   */
+  async arrivals(limit = 30): Promise<{ items: EmailArrival[]; more: boolean }> {
+    const { data } = await apiClient.get('/procurement/documents/arrivals', {
+      params: { limit },
+    })
+    return { items: data.items ?? [], more: Boolean(data.more) }
+  },
+}
+
+/** The gateway's answer to one desk upload (`POST /procurement/documents`). */
+export interface DeskUploadReply {
+  documentId: string | null
+  duplicate: boolean
+  document: {
+    docType?: string
+    docNumber?: string | null
+    warnings?: string[]
+    einvoice?: { kind: string; signed: boolean; signatureChecked: false } | null
+  } | null
+  duplicateOf?: { documentId: string; docNumber: string; reason: string }
+  linkRefused?: string[]
+  amountsWithheld?: true
+}
+
+/** One emailed attachment and what became of it. */
+export interface EmailArrival {
+  id: string
+  filename: string | null
+  mimeType: string | null
+  sizeBytes: number | null
+  arrivedAt: string
+  state: 'pending' | 'ingested' | 'duplicate' | 'failed' | 'not_a_document' | 'backlog'
+  documentId: string | null
+  reason: string | null
+  attempts: number
 }
 
 /**

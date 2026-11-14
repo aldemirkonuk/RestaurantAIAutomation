@@ -75,6 +75,7 @@ import {
   useActiveRestaurantId,
   useReceiptsNextData,
 } from './useReceiptsNextData';
+import { ReceiptsIntake } from './ReceiptsIntake';
 
 // The credit ledger is this page's second lane (ADR 0149 row 22). `/credits`
 // lands here as `?tab=credits`. Until 2026-09-25 that tab lazy-loaded the
@@ -1580,6 +1581,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
 
 export default function ReceiptsNext() {
   const data = useReceiptsNextData();
+  const rid = useActiveRestaurantId();
   const [searchParams, setSearchParams] = useSearchParams();
   const { activeRole, user } = useAuth();
   const creditsOffered = canSeeCreditLedger(activeRole, user?.role);
@@ -1827,6 +1829,8 @@ export default function ReceiptsNext() {
             this is not an empty queue.
           </div>
         )}
+
+        <ReceiptsIntake rid={rid} onOpen={(id) => select(id)} />
 
         {data.isError && (
           <div

@@ -98,6 +98,17 @@ describe("door count of a paper (r24)", () => {
     expect(h.calls.record).toEqual([]);
   });
 
+  it("r33 meet with #1076: an order named for a paper with no order is this house's or none", async () => {
+    const h = harness();
+    h.db.answers.procurement_document_links = { data: [], error: null };
+    h.db.answers.procurement_orders = { data: null, count: 0, error: null } as never;
+    const OTHER = "0ccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const out = (await h.controller.doorCount(body({ orderId: OTHER }), user as never)) as Record<string, unknown>;
+    expect(h.calls.create[0]).toMatchObject({ orderId: null });
+    expect(JSON.stringify(h.calls.create[0])).not.toContain(OTHER);
+    expect(out.linkRefused).toEqual([expect.stringContaining("order")]);
+  });
+
   it("a count with no paper is recorded as before, with the body's own lines", async () => {
     const h = harness();
     await h.controller.doorCount(

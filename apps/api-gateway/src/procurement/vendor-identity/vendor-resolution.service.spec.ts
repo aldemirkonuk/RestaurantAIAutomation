@@ -56,6 +56,7 @@ describe("VendorResolutionService (ADR 0104 D15)", () => {
     for (const verb of [
       "select",
       "eq",
+      "neq",
       "is",
       "in",
       "order",
@@ -365,6 +366,198 @@ describe("VendorResolutionService (ADR 0104 D15)", () => {
         reason: "x",
       });
       expect(updates).toHaveLength(0);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // proposal-receipt §3, Phase 1A row 1.4. Stamping the vendor can make this
+  // paper the second live one with the same number; the index refuses it, and
+  // that refusal becomes a `duplicate` verdict naming the earlier paper.
+  describe("the stamp collides with an earlier paper's number", () => {
+    const EARLIER = "dddddddd-0000-0000-0000-0000000000e1";
+    const MATCHED = {
+      state: "matched" as const,
+      providerId: "prov-A",
+      source: "matched_tax_id" as const,
+      identity: null,
+      reason: "x",
+    };
+    const numberCollision = {
+      data: null,
+      error: {
+        code: "23505",
+        message:
+          'duplicate key value violates unique constraint "uq_pd_restaurant_provider_type_number"',
+      },
+    };
+    const docUpdates = () =>
+      updates.filter((u) => u.table === "procurement_documents");
+
+    it("writes a duplicate verdict naming the earlier paper, and no vendor", async () => {
+      answers.procurement_documents = [
+        numberCollision,
+        { data: { doc_type: "invoice", doc_number: "SYN-0042" }, error: null },
+        { data: [{ id: EARLIER, doc_number: "SYN-0042" }], error: null },
+        { data: null, error: null },
+      ];
+      const out = await service.applyToDocument(RESTAURANT, DOCUMENT, MATCHED);
+      expect(out).toEqual({
+        kind: "duplicate",
+        earlier: { documentId: EARLIER, docNumber: "SYN-0042" },
+        reason: expect.stringContaining(EARLIER),
+      });
+      const u = docUpdates();
+      expect(u).toHaveLength(2);
+      expect(u[0].payload).toEqual({ provider_id: "prov-A" });
+      expect(u[1].payload).not.toHaveProperty("provider_id");
+      expect(u[1].payload.intake_verdict).toBe("duplicate");
+      expect(u[1].payload.intake_reason).toContain("SYN-0042");
+      expect(u[1].payload.intake_reason).toContain(EARLIER);
+      // The earlier paper is looked up in this house, under the stamped
+      // vendor, by this paper's own type and number.
+      const pd = filters.filter((f) => f.table === "procurement_documents");
+      expect(pd).toEqual(
+        expect.arrayContaining([
+          {
+            table: "procurement_documents",
+            column: "provider_id",
+            value: "prov-A",
+          },
+          {
+            table: "procurement_documents",
+            column: "doc_type",
+            value: "invoice",
+          },
+          {
+            table: "procurement_documents",
+            column: "doc_number",
+            value: "SYN-0042",
+          },
+        ]),
+      );
+      expect(
+        pd
+          .filter((f) => f.column === "restaurant_id")
+          .every((f) => f.value === RESTAURANT),
+      ).toBe(true);
+    });
+
+    it("a failed look-up returns a sentence and writes no verdict", async () => {
+      answers.procurement_documents = [
+        numberCollision,
+        { data: { doc_type: "invoice", doc_number: "SYN-0042" }, error: null },
+        { data: null, error: { message: "boom" } },
+      ];
+      const out = await service.applyToDocument(RESTAURANT, DOCUMENT, MATCHED);
+      expect(out.kind).toBe("failed");
+      expect(out.kind === "failed" && out.error).toMatch(
+        /earlier paper could not be read: boom/,
+      );
+      expect(docUpdates()).toHaveLength(1);
+    });
+
+    it("an earlier paper that is not there on the second read is not success", async () => {
+      answers.procurement_documents = [
+        numberCollision,
+        { data: { doc_type: "invoice", doc_number: "SYN-0042" }, error: null },
+        { data: [], error: null },
+      ];
+      const out = await service.applyToDocument(RESTAURANT, DOCUMENT, MATCHED);
+      expect(out.kind === "failed" && out.error).toMatch(/not found/);
+      expect(docUpdates()).toHaveLength(1);
+    });
+
+    it("a failed verdict write returns a sentence, never success", async () => {
+      answers.procurement_documents = [
+        numberCollision,
+        { data: { doc_type: "invoice", doc_number: "SYN-0042" }, error: null },
+        { data: [{ id: EARLIER, doc_number: "SYN-0042" }], error: null },
+        { data: null, error: { message: "denied" } },
+      ];
+      const out = await service.applyToDocument(RESTAURANT, DOCUMENT, MATCHED);
+      // Still a duplicate — the earlier paper is known — and it says the
+      // record of it did not land, never success.
+      expect(out.kind).toBe("duplicate");
+      expect(out.kind === "duplicate" && out.earlier.documentId).toBe(EARLIER);
+      expect(out.kind === "duplicate" && out.recordError).toMatch(
+        /was not written on it: denied/,
+      );
+    });
+
+    // QA round 3 item 3: a page verdict already on the paper is the stronger
+    // fact and stays; the duplicate sentence is added to its reason.
+    it.each(["blank_page", "low_resolution", "unreadable", "bundle"])(
+      "keeps an earlier %s verdict and adds the duplicate to its reason",
+      async (prior) => {
+        answers.procurement_documents = [
+          numberCollision,
+          {
+            data: {
+              doc_type: "invoice",
+              doc_number: "SYN-0042",
+              intake_verdict: prior,
+              intake_reason: "page 2 of 3 is blank.",
+            },
+            error: null,
+          },
+          { data: [{ id: EARLIER, doc_number: "SYN-0042" }], error: null },
+          { data: null, error: null },
+        ];
+        const out = await service.applyToDocument(
+          RESTAURANT,
+          DOCUMENT,
+          MATCHED,
+        );
+        expect(out.kind === "duplicate" && out.keptVerdict).toBe(prior);
+        const u = docUpdates();
+        expect(u).toHaveLength(2);
+        expect(u[1].payload).not.toHaveProperty("intake_verdict");
+        expect(u[1].payload).not.toHaveProperty("provider_id");
+        expect(u[1].payload.intake_reason).toMatch(
+          /^page 2 of 3 is blank\. Also, this vendor's paper no\. SYN-0042/,
+        );
+        expect(u[1].payload.intake_reason).toContain(EARLIER);
+      },
+    );
+
+    it.each([null, "ok", "duplicate"])(
+      "replaces a %s verdict with duplicate",
+      async (prior) => {
+        answers.procurement_documents = [
+          numberCollision,
+          {
+            data: {
+              doc_type: "invoice",
+              doc_number: "SYN-0042",
+              intake_verdict: prior,
+              intake_reason: prior ? "old" : null,
+            },
+            error: null,
+          },
+          { data: [{ id: EARLIER, doc_number: "SYN-0042" }], error: null },
+          { data: null, error: null },
+        ];
+        const out = await service.applyToDocument(
+          RESTAURANT,
+          DOCUMENT,
+          MATCHED,
+        );
+        expect(out.kind === "duplicate" && out.keptVerdict).toBeUndefined();
+        const u = docUpdates();
+        expect(u[1].payload.intake_verdict).toBe("duplicate");
+        expect(u[1].payload.intake_reason).not.toContain("old");
+      },
+    );
+
+    it("a 23505 on any other constraint keeps returning the raw text", async () => {
+      const other =
+        'duplicate key value violates unique constraint "uq_pd_restaurant_provider_type_number_v2"';
+      answers.procurement_documents = [
+        { data: null, error: { code: "23505", message: other } },
+      ];
+      const out = await service.applyToDocument(RESTAURANT, DOCUMENT, MATCHED);
+      expect(out).toEqual({ kind: "failed", error: other });
+      expect(docUpdates()).toHaveLength(1);
     });
   });
 

@@ -19,6 +19,8 @@ import { applyTieOut, ParsedDocument, ParsedLine } from "./parsed-document";
 import { readSnapshot } from "../canonical/from-document-rows";
 import { LineMatch, matchLines, MatchLinesResult } from "./line-matcher";
 import { looksLikeX12, parseX12 } from "./x12";
+import { readEinvoiceFile } from "./efatura";
+import { normalizeTaxId } from "../vendor-identity/tax-identity";
 // A pure reader, no Nest dependency and no network: the 832 the document door
 // stores and the 832 `distributor-feed` prices are read by ONE parser, so a
 // catalogue cannot be classified one way here and another way there.
@@ -32,9 +34,43 @@ import {
   ReadResult,
 } from "../canonical/canonical-document.service";
 import {
+  DocumentStamp,
+  isSameNumberCollision,
+  duplicateReason,
   VendorResolution,
   VendorResolutionService,
 } from "../vendor-identity/vendor-resolution.service";
+
+/**
+ * The earlier paper a duplicate answer names (proposal-receipt §3, Phase 1A
+ * row 1.4; QA round 3 on PR #775). `reason` is the sentence written on the
+ * paper; `keptVerdict` is a stronger verdict the paper already carried, which
+ * a number collision did not replace.
+ */
+export interface DuplicateOf {
+  documentId: string;
+  docNumber: string;
+  reason: string;
+  keptVerdict?: string;
+}
+
+/** What the vendor stamp came to, in the shape the intake replies carry. */
+function stampAnswer(stamp: DocumentStamp | null): {
+  duplicateOf?: DuplicateOf;
+  vendorStampError?: string;
+} {
+  if (!stamp || stamp.kind === "stamped") return {};
+  if (stamp.kind === "failed") return { vendorStampError: stamp.error };
+  return {
+    duplicateOf: {
+      documentId: stamp.earlier.documentId,
+      docNumber: stamp.earlier.docNumber,
+      reason: stamp.reason,
+      ...(stamp.keptVerdict ? { keptVerdict: stamp.keptVerdict } : {}),
+    },
+    ...(stamp.recordError ? { vendorStampError: stamp.recordError } : {}),
+  };
+}
 
 /**
  * DocumentIntakeService — the single door every vendor document comes through.
@@ -82,8 +118,25 @@ export interface IntakeInput {
 export interface IntakeResult {
   documentId: string | null;
   parsed: ParsedDocument | null;
-  /** True when this exact content was already ingested. */
+  /**
+   * True when this exact content was already ingested — or when this paper's
+   * (vendor, type, number) is already on file, which `duplicateOf` then names.
+   */
   duplicate: boolean;
+  /**
+   * The earlier live paper holding this paper's vendor, type and number. Set
+   * when the vendor stamp collided (`documentId` is then THIS paper, stored
+   * with no vendor and a `duplicate` verdict) and when the insert itself
+   * collided because the caller named the vendor (`documentId` is then the
+   * earlier paper, and no second row was written).
+   */
+  duplicateOf?: DuplicateOf;
+  /**
+   * The vendor was resolved and could NOT be written on the paper, or a
+   * duplicate was found and could not be recorded on it. The document is on
+   * the record; this says what is missing from it (ADR 0067).
+   */
+  vendorStampError?: string;
   error?: string;
   /**
    * The original bytes arrived and could NOT be stored (ADR 0067).
@@ -122,6 +175,10 @@ export interface ExternalExtractionResult {
   revision: ReadResult<{ revision: number; id: string }>;
   /** ADR 0104 D15 — what resolving the vendor answered on this read. */
   vendor?: VendorResolution;
+  /** As on `IntakeResult`: the paper this one's number collided with. */
+  duplicateOf?: DuplicateOf;
+  /** As on `IntakeResult`: the vendor stamp, or its record, did not land. */
+  vendorStampError?: string;
 }
 
 @Injectable()
@@ -515,12 +572,52 @@ export class DocumentIntakeService {
       const parsedWithStorage = stored.failure
         ? { ...parsed, warnings: [...parsed.warnings, stored.failure] }
         : parsed;
-      const documentId = await this.persist(
+      // THE SAME E-INVOICE AGAIN IS THE SAME PAPER (ADR 0261 W43). Its ETTN is
+      // unique per house; a second file carrying it (re-sent mail, the zip
+      // and the bare XML, another integrator's copy) is answered with the
+      // paper already on file. The unique index catches a race (`persist`).
+      if (parsedWithStorage.ettn) {
+        const earlier = await this.paperWithEttn(
+          input.restaurantId,
+          parsedWithStorage.ettn,
+        );
+        if (earlier)
+          return {
+            documentId: earlier.documentId,
+            parsed: parsedWithStorage,
+            duplicate: true,
+            duplicateOf: earlier,
+            ...(stored.failure ? { storageError: stored.failure } : {}),
+          };
+      }
+
+      const persisted = await this.persist(
         resolvedInput,
         sha256,
         bytes,
         parsedWithStorage,
       );
+      // The caller named the vendor and the number is already on file under
+      // it: no second row exists, so the answer is the earlier paper.
+      if (persisted.duplicateOf)
+        return {
+          documentId: persisted.documentId,
+          parsed: parsedWithStorage,
+          duplicate: true,
+          duplicateOf: persisted.duplicateOf,
+          ...(stored.failure ? { storageError: stored.failure } : {}),
+        };
+      // Another path filed these exact bytes between the sha check above and
+      // the insert: the answer is that row, as a duplicate, and it is never
+      // resolved or stamped a second time.
+      if (persisted.sameBytes)
+        return {
+          documentId: persisted.documentId,
+          parsed: null,
+          duplicate: true,
+          ...(stored.failure ? { storageError: stored.failure } : {}),
+        };
+      const documentId = persisted.documentId;
 
       /**
        * ADR 0104 D15 — the vendor, from the seller party the document PRINTED.
@@ -532,20 +629,22 @@ export class DocumentIntakeService {
        * resolve is still a document, and D15's answer for that case is
        * `unresolved` with a sentence, never a discarded upload.
        */
-      const vendor = documentId
+      const resolved = documentId
         ? await this.resolveVendorFor(
             documentId,
             resolvedInput,
             parsedWithStorage,
           )
         : null;
+      const stamped = stampAnswer(resolved?.stamp ?? null);
 
       return {
         documentId,
         parsed: parsedWithStorage,
-        duplicate: false,
+        duplicate: Boolean(stamped.duplicateOf),
         ...(stored.failure ? { storageError: stored.failure } : {}),
-        ...(vendor ? { vendor } : {}),
+        ...(resolved ? { vendor: resolved.vendor } : {}),
+        ...stamped,
       };
     } catch (err: any) {
       this.logger.warn(`ingest failed: ${err?.message}`);
@@ -668,6 +767,49 @@ export class DocumentIntakeService {
       input.orderId,
     );
 
+    /*
+     * THE E-INVOICE FILE IS READ AS WRITTEN (proposal-receipt rows 2.3 and
+     * 3.3). A UBL-TR XML (e-Fatura, e-Arşiv, e-İrsaliye), or a zip holding
+     * one, is read field by field and never sent to the model. A file that
+     * claims to be one and is not is stored unread with the reason.
+     */
+    const einvoice = readEinvoiceFile(bytes, input.filename, input.mimeType);
+    if (einvoice.kind === "refused") return this.unreadable(einvoice.reason);
+    if (einvoice.kind === "read") {
+      // WHICH SIDE OF IT IS THIS HOUSE (batch review on PR 1043). An
+      // e-invoice the house ISSUED — a catering sale, its own İADE to a
+      // vendor — is not a purchase. It is kept, with its ETTN so a re-sent
+      // copy is still the same paper, but read into no lines, so nothing on
+      // it can be matched to an order or booked as stock or cost.
+      const side = await this.einvoiceSide(input.restaurantId, einvoice.doc);
+      if (side.issuedByHouse)
+        return {
+          ...this.unreadable(side.issuedByHouse),
+          docNumber: einvoice.doc.docNumber,
+          docDate: einvoice.doc.docDate,
+          ettn: einvoice.doc.ettn,
+          einvoice: einvoice.doc.einvoice,
+        };
+      const failures = [house.failure, order.failure, side.warning].filter(
+        (f): f is string => typeof f === "string",
+      );
+      // A despatch note carries no money, so no currency is filed for it.
+      const ruled =
+        einvoice.doc.docType === "delivery_note"
+          ? einvoice.doc
+          : applyCurrencyRules({
+              doc: einvoice.doc,
+              houseCurrency: house.code,
+              orderCurrency: order.code,
+              hasMatchedOrder: order.matched,
+              orderLabel: order.label,
+              fileField: "DocumentCurrencyCode",
+            });
+      return failures.length
+        ? { ...ruled, warnings: [...ruled.warnings, ...failures] }
+        : ruled;
+    }
+
     if (mime.startsWith("text/") || isEdiName || input.text != null) {
       const text = bytes.toString("utf8");
       if (looksLikeEdi832(text)) return this.priceCatalogue(text);
@@ -781,6 +923,127 @@ export class DocumentIntakeService {
    * document's warnings — the refusal that follows then says, in the document's
    * own notes, that it may be a failure rather than a fact.
    */
+  /**
+   * Is this house the buyer on the e-invoice, the seller, or can that not be
+   * told? (Batch review on PR 1043: the reader filed the house's own outgoing
+   * e-Fatura as a purchase from "vendor" = the house.)
+   *
+   * Evidence, in order:
+   *   1. The house's own tax number (`restaurants.tax_id_normalized`, ADR 0104
+   *      D15). Seller = house → issued by the house. Buyer = house → a
+   *      purchase. Neither → a warning that it may not be this house's paper.
+   *   2. When the house's number is not on file: the BUYER carries the tax
+   *      number of one of this house's own vendors → the house is not the
+   *      buyer, so this is not a purchase paper. The SELLER being one of its
+   *      vendors → a purchase, nothing to say.
+   *   3. Otherwise a warning that the side could not be checked.
+   *
+   * A failed read is a warning in words, never a silent "it is a purchase",
+   * and never a block: a block on a failed read would turn every e-invoice
+   * away whenever the database blinks.
+   *
+   * The session's call (2026-11-11, under the 2026-11-07 /goal): keep the
+   * house's own paper, unread into lines, with the reason. Rejected: refusing
+   * it (the house may need its own sale on file, and a refusal leaves the
+   * emailed file with no paper to point at); filing it with lines and a
+   * warning (verify and line-matching would still treat the sale's lines as
+   * goods bought).
+   */
+  private async einvoiceSide(
+    restaurantId: string,
+    doc: ParsedDocument,
+  ): Promise<{ issuedByHouse?: string; warning?: string }> {
+    const country = doc.vendorCountry ?? "TR";
+    const seller = normalizeTaxId(doc.vendorTaxId, country);
+    const buyer = normalizeTaxId(doc.buyerTaxId, country);
+    if (!seller.ok && !buyer.ok)
+      return {
+        warning:
+          "The file names no tax number for either party, so it was not checked that this e-invoice was issued to this house.",
+      };
+
+    const house = await this.houseTaxIdentity(restaurantId);
+    if (house.failure)
+      return {
+        warning: `This house's own tax number could not be read (${house.failure}), so it was not checked that this e-invoice was issued to the house.`,
+      };
+    if (house.normalized) {
+      if (seller.ok && seller.identity.normalized === house.normalized)
+        return {
+          issuedByHouse: `This e-invoice was issued BY this house (the seller's tax number ${seller.identity.printed} is the house's own), so it is a sale or a return the house sent, not a purchase. It is kept with this reason, and nothing on it is read into lines to book.`,
+        };
+      if (buyer.ok && buyer.identity.normalized === house.normalized) return {};
+      return {
+        warning: `Neither party on this e-invoice carries this house's tax number (the buyer is ${buyer.ok ? buyer.identity.printed : "not named by tax number"}); check it was sent to this house before it is booked.`,
+      };
+    }
+
+    const known = await this.providerTaxIdentities(
+      restaurantId,
+      [seller, buyer].flatMap((r) => (r.ok ? [r.identity.normalized] : [])),
+    );
+    if (known.failure)
+      return {
+        warning: `This house's vendors could not be read (${known.failure}), so it was not checked that this e-invoice was issued to the house.`,
+      };
+    if (seller.ok && known.ids.has(seller.identity.normalized)) return {};
+    if (buyer.ok && known.ids.has(buyer.identity.normalized))
+      return {
+        issuedByHouse: `The buyer on this e-invoice (tax number ${buyer.identity.printed}) is one of this house's own vendors, so the house did not buy on it: it is a sale or a return, not a purchase. It is kept with this reason, and nothing on it is read into lines to book.`,
+      };
+    return {
+      warning:
+        "This house's own tax number is not on file, and the seller is not one of its vendors yet, so it was not checked that this e-invoice was issued to the house. A sale or a return the house issued itself would read as a purchase; check the buyer before it is booked.",
+    };
+  }
+
+  /** `restaurants.tax_id_normalized`, or the read failure in words. */
+  private async houseTaxIdentity(
+    restaurantId: string,
+  ): Promise<{ normalized: string | null; failure: string | null }> {
+    const { data, error } = await this.db
+      .getClient()
+      .from("restaurants")
+      .select("tax_id_normalized")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    // Before ADR 0104 D15's migration the column does not exist: no number.
+    if (error?.code === "42703" || error?.code === "PGRST204")
+      return { normalized: null, failure: null };
+    if (error) return { normalized: null, failure: error.message };
+    return {
+      normalized:
+        (data as { tax_id_normalized?: string | null } | null)
+          ?.tax_id_normalized ?? null,
+      failure: null,
+    };
+  }
+
+  /** Which of these normalized tax numbers this house's live vendors carry. */
+  private async providerTaxIdentities(
+    restaurantId: string,
+    normalized: string[],
+  ): Promise<{ ids: Set<string>; failure: string | null }> {
+    if (!normalized.length) return { ids: new Set(), failure: null };
+    const { data, error } = await this.db
+      .getClient()
+      .from("providers")
+      .select("tax_id_normalized")
+      .eq("restaurant_id", restaurantId)
+      .in("tax_id_normalized", normalized)
+      .is("deleted_at", null)
+      .limit(10);
+    if (error) return { ids: new Set(), failure: error.message };
+    return {
+      ids: new Set(
+        ((data ?? []) as Array<{ tax_id_normalized: string | null }>)
+          .map((r) => r.tax_id_normalized)
+          .filter((v): v is string => Boolean(v)),
+      ),
+      failure: null,
+    };
+  }
+
   private async houseCurrency(
     restaurantId: string,
   ): Promise<{ code: string | null; failure: string | null }> {
@@ -991,7 +1254,12 @@ export class DocumentIntakeService {
     sha256: string,
     bytes: Buffer,
     parsed: ParsedDocument,
-  ): Promise<string | null> {
+  ): Promise<{
+    documentId: string | null;
+    duplicateOf?: DuplicateOf;
+    /** Another path filed these exact bytes first; `documentId` is that row. */
+    sameBytes?: true;
+  }> {
     const needsReview = this.needsReview(parsed);
 
     /**
@@ -1027,6 +1295,7 @@ export class DocumentIntakeService {
         // a write whose column names are literal, and a payload it cannot read
         // is a payload it cannot check for a column the table does not have.
         printed: parsed.printed ?? null,
+        ettn: parsed.ettn ?? null,
         restaurant_id: input.restaurantId,
         provider_id: input.providerId ?? null,
         doc_type: parsed.docType,
@@ -1092,7 +1361,10 @@ export class DocumentIntakeService {
     if (error?.code === "42703" || error?.code === "PGRST204") {
       schemaLagNote =
         "The price base and the printed literals were read but could not be " +
-        "stored: this database has not applied migration 20260904120000.";
+        "stored: this database has not applied migration 20260904120000" +
+        (parsed.ettn
+          ? " or 20270717093714 (the e-invoice's ETTN stays in the read snapshot only)."
+          : ".");
       this.logger.warn(schemaLagNote);
       ({ data, error } = await this.db
         .getClient()
@@ -1140,9 +1412,37 @@ export class DocumentIntakeService {
     }
 
     if (error) {
-      // A unique violation means another path won the race on the same bytes.
-      // That is the dedupe working, not a failure.
+      // The caller named the vendor, and this (house, vendor, type, number)
+      // is already on file: `uq_pd_restaurant_provider_type_number` refused
+      // the row. The answer is the earlier paper, said as a duplicate — never
+      // a null id under a 200 (QA round 3 on PR #775, item 2).
+      if (isSameNumberCollision(error) && input.providerId && parsed.docNumber)
+        return this.earlierSameNumberPaper(input, parsed, input.providerId);
+      // Another path filed this e-invoice's ETTN first.
+      if (
+        error.code === "23505" &&
+        parsed.ettn &&
+        String(error.message ?? "").includes("uq_pd_restaurant_ettn")
+      ) {
+        const earlier = await this.paperWithEttn(input.restaurantId, parsed.ettn);
+        if (!earlier)
+          throw new Error(
+            `This e-invoice (ETTN ${parsed.ettn}) is already on file by the database's own rule, but no earlier paper holds it on a second read.`,
+          );
+        return { documentId: earlier.documentId, duplicateOf: earlier };
+      }
+      // A unique violation on the BYTES means another path won the race on
+      // the same file. That is the dedupe working, not a failure — but only
+      // when a second read finds the row that won. Any other 23505 (another
+      // index, or a sha race whose winner cannot be read back) is an error
+      // in words: answering `documentId: null` with no error is the silent
+      // drop proposal-receipt row 1.1 closes ("no path returns a null id
+      // without an error").
       if (error.code === "23505") {
+        if (!String(error.message ?? "").includes("uq_pd_restaurant_sha256"))
+          throw new Error(
+            `This paper could not be filed: the database refused it as a duplicate of something it did not name (${error.message}). Nothing was written; the file is kept in storage.`,
+          );
         const dup = await this.db
           .getClient()
           .from("procurement_documents")
@@ -1150,7 +1450,15 @@ export class DocumentIntakeService {
           .eq("restaurant_id", input.restaurantId)
           .eq("sha256", sha256)
           .maybeSingle();
-        return dup.data?.id ?? null;
+        if (dup.error)
+          throw new Error(
+            `This file is already on file, but the earlier copy could not be read back: ${dup.error.message}.`,
+          );
+        if (!dup.data?.id)
+          throw new Error(
+            "This file is already on file by the database's own rule, but no earlier copy holds it on a second read.",
+          );
+        return { documentId: dup.data.id as string, sameBytes: true };
       }
       throw new Error(error.message);
     }
@@ -1183,7 +1491,77 @@ export class DocumentIntakeService {
       parsed,
     );
 
-    return documentId;
+    return { documentId };
+  }
+
+  /**
+   * The live paper in this house carrying this ETTN, or null when none does.
+   * A failed read THROWS: answering "none" would file a second copy of an
+   * e-invoice the house already holds.
+   */
+  private async paperWithEttn(
+    restaurantId: string,
+    ettn: string,
+  ): Promise<DuplicateOf | null> {
+    const { data, error } = await this.db
+      .getClient()
+      .from("procurement_documents")
+      .select("id, doc_number")
+      .eq("restaurant_id", restaurantId)
+      .eq("ettn", ettn)
+      .neq("status", "superseded")
+      .limit(1)
+      .maybeSingle();
+    // Before migration 20270717093714 no paper can carry an ETTN, so none
+    // holds this one: that is a true "none", not a failed read.
+    if (error?.code === "42703" || error?.code === "PGRST204") return null;
+    if (error)
+      throw new Error(
+        `Whether this e-invoice (ETTN ${ettn}) is already on file could not be read: ${error.message}. It was not filed.`,
+      );
+    if (!data?.id) return null;
+    const number = (data.doc_number as string | null) ?? ettn;
+    return {
+      documentId: data.id as string,
+      docNumber: number,
+      reason: `This e-invoice (ETTN ${ettn}) is already on file as paper no. ${number} (document ${data.id}), so it was not filed a second time.`,
+    };
+  }
+
+  /**
+   * The insert collided on the number index. Name the paper that holds the
+   * number; a look-up that cannot is a THROWN sentence, so `ingest` answers
+   * with an error instead of a document id it does not have.
+   */
+  private async earlierSameNumberPaper(
+    input: IntakeInput,
+    parsed: ParsedDocument,
+    providerId: string,
+  ): Promise<{ documentId: string; duplicateOf: DuplicateOf }> {
+    const said = `this vendor's paper no. ${parsed.docNumber} is already on file`;
+    const found = await this.vendorResolution.findSameNumberPaper(
+      input.restaurantId,
+      providerId,
+      parsed.docType,
+      parsed.docNumber as string,
+      null,
+    );
+    if (!found.ok)
+      throw new Error(
+        `${said}, but the earlier paper could not be read: ${found.error}`,
+      );
+    if (!found.paper)
+      throw new Error(
+        `${said} by the database's own rule, but no earlier paper holds it on a second read`,
+      );
+    return {
+      documentId: found.paper.documentId,
+      duplicateOf: {
+        documentId: found.paper.documentId,
+        docNumber: found.paper.docNumber,
+        reason: duplicateReason(found.paper.docNumber, found.paper.documentId),
+      },
+    };
   }
 
   /**
@@ -1212,7 +1590,7 @@ export class DocumentIntakeService {
     input: { restaurantId: string; providerId?: string | null },
     parsed: ParsedDocument,
     actorUserId: string | null = null,
-  ): Promise<VendorResolution | null> {
+  ): Promise<{ vendor: VendorResolution; stamp: DocumentStamp | null }> {
     try {
       const resolution = await this.vendorResolution.resolveVendor({
         restaurantId: input.restaurantId,
@@ -1234,12 +1612,12 @@ export class DocumentIntakeService {
         existingProviderId: input.providerId ?? null,
         actorUserId,
       });
-      await this.vendorResolution.applyToDocument(
+      const stamp = await this.vendorResolution.applyToDocument(
         input.restaurantId,
         documentId,
         resolution,
       );
-      return resolution;
+      return { vendor: resolution, stamp };
     } catch (err: any) {
       // A THROW here is our own failure, not the document's, so it is reported
       // as `unavailable` rather than swallowed — `unresolved` would blame the
@@ -1248,11 +1626,14 @@ export class DocumentIntakeService {
         `vendor resolution threw for document ${documentId}: ${err?.message}`,
       );
       return {
-        state: "unavailable",
-        providerId: null,
-        source: null,
-        identity: null,
-        reason: `The vendor could not be resolved because the resolution itself failed: ${err?.message ?? "unknown error"}`,
+        vendor: {
+          state: "unavailable",
+          providerId: null,
+          source: null,
+          identity: null,
+          reason: `The vendor could not be resolved because the resolution itself failed: ${err?.message ?? "unknown error"}`,
+        },
+        stamp: null,
       };
     }
   }
@@ -1585,7 +1966,7 @@ export class DocumentIntakeService {
     // seller party at all, so it is the door that most often resolves one. It
     // runs BEFORE the revision is appended (step 7), so the canonical object
     // that revision records already names the vendor it resolved.
-    const vendor = await this.resolveVendorFor(
+    const { vendor, stamp } = await this.resolveVendorFor(
       documentId,
       { restaurantId },
       parsed,
@@ -1621,6 +2002,7 @@ export class DocumentIntakeService {
     return {
       warnings: parsed.warnings,
       ...(vendor ? { vendor } : {}),
+      ...stampAnswer(stamp),
       tieOut: {
         computedLinesTotal: parsed.computedLinesTotal,
         tieOutDelta: parsed.tieOutDelta,
@@ -2110,83 +2492,322 @@ export class DocumentIntakeService {
    * OrchestratorModule, so hooking the bridge directly would need a circular
    * forwardRef — which in Nest fails by injecting `undefined` at runtime rather
    * than at build time, and the symptom would be invoices silently not being
-   * ingested. A five-minute sweep costs one indexed lookup per recent
-   * attachment and cannot break the mail path it feeds from.
+   * ingested.
    *
-   * The latency is immaterial for this channel: a distributor's invoice arrives
-   * hours after the delivery it bills, and the low-latency path is the receiver
-   * photographing the paper at the door. It also backfills attachments that
-   * landed before document intake existed.
+   * EACH ATTACHMENT IS READ ONCE, AND EACH ONE GETS AN OUTCOME
+   * (proposal-receipt row 1.2, migration
+   * `20270717093713_an_emailed_attachment_is_read_once.sql`).
    *
-   * Safe to run repeatedly — intake is content-addressed, so a second attempt on
-   * the same bytes is a no-op.
+   * Now the sweep reads `pending` rows only and writes `ingest_state` on every
+   * row it touches: ingested, duplicate, not_a_document, or failed with the
+   * reason in words. EVERY download counts against `limit`, whatever it
+   * became, so one run reads the model at most `limit` times.
+   *
+   * THE SESSION'S CALLS (2026-11-11, under the founder's 2026-11-07 /goal;
+   * the proposal's Decision 7 items):
+   * - Retry cap: a download or reading failure stays `pending` and is tried
+   *   again on a later run, up to `INGEST_ATTEMPTS` attempts, then `failed`.
+   *   Rejected: never retry (a storage blip would lose a real invoice for
+   *   good); retry forever (a file the model always refuses would spend on
+   *   every run).
+   * - An outcome that cannot be WRITTEN stops the run: carrying on would read
+   *   the same files again next run, which is the spend this closes.
+   * - Fairness between houses and releasing `backlog` are not built here.
    */
   @Cron("*/5 * * * *", { name: "procurement-document-intake-sweep" })
   async sweepUningestedAttachments(limit = 25): Promise<number> {
-    const { data: attachments, error } = await this.db
-      .getClient()
+    const client = this.db.getClient();
+    const { data: attachments, error } = await client
       .from("conversation_attachments")
       .select(
-        "id, restaurant_id, provider_id, order_id, filename, mime_type, storage_path, sha256",
+        "id, restaurant_id, provider_id, order_id, filename, mime_type, storage_path, sha256, bytes_deleted_at, ingest_attempts",
       )
+      .eq("ingest_state", "pending")
       .order("created_at", { ascending: false })
       .limit(200);
     if (error) {
-      this.logger.warn(`document backfill sweep failed: ${error.message}`);
+      this.logger.warn(`document intake sweep could not read: ${error.message}`);
       return 0;
     }
 
     let ingested = 0;
-    for (const a of attachments ?? []) {
-      if (ingested >= limit) break;
-      if (!a.restaurant_id || !a.storage_path) continue;
-      if (!isDocumentLike(a.mime_type, a.filename)) continue;
+    let downloads = 0;
+    for (const a of (attachments ?? []) as SweepAttachment[]) {
+      if (downloads >= limit) break;
+      const decided = await this.sweepOne(a, () => downloads++);
+      if (!decided) break;
+      if (decided.state === "ingested") ingested++;
+      const wrote = await this.recordAttachmentOutcome(a, decided);
+      if (!wrote) break;
+    }
 
-      // Cheap pre-check on the hash we already have, so the common case costs
-      // one indexed lookup rather than a storage download.
-      if (a.sha256) {
-        const { data: seen } = await this.db
-          .getClient()
-          .from("procurement_documents")
-          .select("id")
-          .eq("restaurant_id", a.restaurant_id)
-          .eq("sha256", a.sha256)
-          .maybeSingle();
-        if (seen?.id) continue;
-      }
-
-      const file = await this.db
-        .getClient()
-        .storage.from("vendor-attachments")
-        .download(a.storage_path);
-      if (file.error || !file.data) continue;
-
-      const buffer = Buffer.from(await file.data.arrayBuffer());
-      // One correlation scope PER ATTACHMENT. `ingest` reaches
-      // DocumentExtractorService -> ModelClientService, and a cron has no
-      // request to inherit an id from, so without this the NF row for every
-      // email-sourced extraction lands with correlation_id NULL — which is
-      // most of them, since the HTTP path is manual upload. Per-attachment
-      // rather than per-sweep so one id still means one document.
-      const result = await runWithNewCorrelationId(() =>
-        this.ingest({
-          restaurantId: a.restaurant_id,
-          providerId: a.provider_id,
-          orderId: a.order_id,
-          source: "email",
-          buffer,
-          filename: a.filename,
-          mimeType: a.mime_type,
-          sourceRef: `conversation_attachment:${a.id}`,
-          storagePath: a.storage_path,
-        }),
+    // Never lets the sweep's own answer fail: it is a second, optional pass.
+    try {
+      await this.requeueUnderTheWiderRule();
+    } catch (e: any) {
+      this.logger.warn(
+        `document intake sweep could not look again at files the old rule turned away: ${e?.message ?? e}`,
       );
-      if (result.documentId && !result.duplicate) ingested++;
     }
 
     if (ingested)
-      this.logger.log(`document backfill ingested ${ingested} attachment(s)`);
+      this.logger.log(`document intake sweep filed ${ingested} attachment(s)`);
     return ingested;
+  }
+
+  /**
+   * Put back to `pending` the emailed XML and zip files the narrower rule
+   * called "not a paper" (batch review on PR 1043).
+   *
+   * PR 1040's sweep marked every XML and zip `not_a_document` for good, and
+   * reads `pending` rows only, so widening `isDocumentLike` alone would never
+   * read the e-invoices it had already turned away.
+   *
+   * The session's call (2026-11-11, under the 2026-11-07 /goal): done HERE,
+   * by the code that holds the wider rule, and keyed on the old rule's own
+   * words. Rejected: a migration UPDATE — migrations apply on merge, before
+   * the gateway is rebuilt, so the old sweep (every five minutes) would turn
+   * the same files away again in that window, and nothing would put them
+   * back. Here, a row the old code rejects after this deploy carries the old
+   * words and is picked up on the next run.
+   *
+   * Every row it selects is rewritten (to `pending`, or to the new words
+   * when the wider rule still turns it away), so no row is looked at twice.
+   * A failed read or write is logged and left for the next run; it does not
+   * stop the sweep.
+   */
+  private async requeueUnderTheWiderRule(): Promise<number> {
+    const client = this.db.getClient();
+    const { data, error } = await client
+      .from("conversation_attachments")
+      .select("id, filename, mime_type")
+      .eq("ingest_state", "not_a_document")
+      .eq("last_ingest_reason", NOT_A_DOCUMENT_BEFORE_EINVOICE)
+      .or(
+        "filename.ilike.%.xml,filename.ilike.%.zip,mime_type.ilike.%xml%,mime_type.ilike.%zip%",
+      )
+      .limit(200);
+    if (error) {
+      this.logger.warn(
+        `document intake sweep could not look again at files the old rule turned away: ${error.message}`,
+      );
+      return 0;
+    }
+    let requeued = 0;
+    for (const r of (data ?? []) as Array<{
+      id: string;
+      filename: string | null;
+      mime_type: string | null;
+    }>) {
+      const take = isDocumentLike(r.mime_type, r.filename);
+      const { error: writeError } = await client
+        .from("conversation_attachments")
+        .update(
+          take
+            ? {
+                ingest_state: "pending",
+                ingest_attempts: 0,
+                last_ingest_reason: null,
+                ingested_document_id: null,
+                ingest_decided_at: null,
+              }
+            : { last_ingest_reason: NOT_A_DOCUMENT_REASON },
+        )
+        .eq("id", r.id)
+        .eq("ingest_state", "not_a_document")
+        .eq("last_ingest_reason", NOT_A_DOCUMENT_BEFORE_EINVOICE)
+        .select("id");
+      if (writeError) {
+        this.logger.warn(
+          `document intake sweep could not put attachment ${r.id} back to be read: ${writeError.message}`,
+        );
+        return requeued;
+      }
+      if (take) requeued++;
+    }
+    if (requeued)
+      this.logger.log(
+        `document intake sweep put ${requeued} e-invoice file(s) the old rule turned away back to be read`,
+      );
+    return requeued;
+  }
+
+  /**
+   * What one pending attachment becomes. `null` means "stop the run": the
+   * database could not be read, so nothing can be decided about any row.
+   */
+  private async sweepOne(
+    a: SweepAttachment,
+    countDownload: () => void,
+  ): Promise<AttachmentOutcome | null> {
+    const attempts = (a.ingest_attempts ?? 0) + 1;
+    const retryOrFail = (reason: string): AttachmentOutcome =>
+      attempts >= INGEST_ATTEMPTS
+        ? {
+            state: "failed",
+            reason: `${reason} (tried ${attempts} times; not tried again)`,
+            attempts,
+          }
+        : { state: "pending", reason, attempts };
+
+    if (!a.restaurant_id)
+      return {
+        state: "failed",
+        reason: "This attachment names no house, so it cannot be filed.",
+        attempts: a.ingest_attempts ?? 0,
+      };
+    if (!isDocumentLike(a.mime_type, a.filename))
+      return {
+        state: "not_a_document",
+        reason: NOT_A_DOCUMENT_REASON,
+        attempts: a.ingest_attempts ?? 0,
+      };
+    if (a.bytes_deleted_at)
+      return {
+        state: "failed",
+        reason: `The file was removed under the mail retention rule on ${String(a.bytes_deleted_at).slice(0, 10)} before it was read.`,
+        attempts: a.ingest_attempts ?? 0,
+      };
+
+    // Cheap pre-check on the hash we already have, so the common case costs
+    // one indexed lookup rather than a storage download.
+    if (a.sha256) {
+      const seen = await this.db
+        .getClient()
+        .from("procurement_documents")
+        .select("id, source_ref")
+        .eq("restaurant_id", a.restaurant_id)
+        .eq("sha256", a.sha256)
+        .maybeSingle();
+      if (seen.error) {
+        this.logger.warn(
+          `document intake sweep stopped: the sha check failed (${seen.error.message})`,
+        );
+        return null;
+      }
+      if (seen.data?.id)
+        return seen.data.source_ref === `conversation_attachment:${a.id}`
+          ? { state: "ingested", documentId: seen.data.id, attempts: a.ingest_attempts ?? 0 }
+          : {
+              state: "duplicate",
+              documentId: seen.data.id,
+              reason: `The same file is already on file as document ${seen.data.id}.`,
+              attempts: a.ingest_attempts ?? 0,
+            };
+    }
+
+    countDownload();
+    const file = await this.db
+      .getClient()
+      .storage.from("vendor-attachments")
+      .download(a.storage_path);
+    if (file.error || !file.data)
+      return retryOrFail(
+        `The file could not be downloaded: ${file.error?.message ?? "no bytes came back"}`,
+      );
+
+    const buffer = Buffer.from(await file.data.arrayBuffer());
+    // An XML or zip that plainly holds no e-invoice (a zip of photos, an XML
+    // that is not UBL) is not a paper: say so with what it held, rather than
+    // file an unread paper on the review list for every such attachment. The
+    // read is the same pure reader `ingest` uses, so the two cannot disagree.
+    if (
+      isEinvoiceFileName(
+        (a.mime_type ?? "").toLowerCase(),
+        (a.filename ?? "").toLowerCase(),
+      )
+    ) {
+      let pre: ReturnType<typeof readEinvoiceFile> | null = null;
+      try {
+        pre = readEinvoiceFile(buffer, a.filename, a.mime_type);
+      } catch {
+        pre = null; // `ingest` meets the same failure and answers it in words
+      }
+      if (pre?.kind === "refused" && pre.notADocument)
+        return { state: "not_a_document", reason: pre.reason, attempts };
+    }
+    // One correlation scope PER ATTACHMENT. `ingest` reaches
+    // DocumentExtractorService -> ModelClientService, and a cron has no
+    // request to inherit an id from, so without this the NF row for every
+    // email-sourced extraction lands with correlation_id NULL.
+    const result = await runWithNewCorrelationId(() =>
+      this.ingest({
+        restaurantId: a.restaurant_id as string,
+        providerId: a.provider_id,
+        orderId: a.order_id,
+        source: "email",
+        buffer,
+        filename: a.filename,
+        mimeType: a.mime_type,
+        sourceRef: `conversation_attachment:${a.id}`,
+        storagePath: a.storage_path,
+      }),
+    );
+    if (result.error || !result.documentId)
+      return retryOrFail(
+        `The file could not be filed: ${result.error ?? "no document and no reason came back"}`,
+      );
+    if (result.duplicate)
+      return {
+        state: "duplicate",
+        documentId: result.documentId,
+        reason:
+          result.duplicateOf?.reason ??
+          `The same file is already on file as document ${result.documentId}.`,
+        attempts,
+      };
+    return { state: "ingested", documentId: result.documentId, attempts };
+  }
+
+  /**
+   * Write one attachment's outcome. False when the write failed.
+   *
+   * THE WRITE ONLY LANDS ON THE ROW AS IT WAS READ: still `pending`, with the
+   * attempt count this run saw. The cron holds no lock, and two gateway
+   * replicas can sweep the same minute; without the guard the run that lost
+   * the race (its `ingest` answers "duplicate" of the paper the other run just
+   * filed FROM THIS SAME FILE) would write "already on file" over "filed", and
+   * a retry write could put a decided row back to `pending`.
+   *
+   * Zero rows matched means another run decided this row first. That is not a
+   * failure of this run, so it carries on; the other run's outcome stands.
+   *
+   * The session's call (2026-11-11, under the 2026-11-07 /goal): an
+   * optimistic guard on the write, not a claim taken before the read.
+   * Rejected: a lease column claimed by `UPDATE … WHERE pending RETURNING`
+   * before downloading (it also stops the second model read, but needs a
+   * lease expiry so a run that dies mid-file does not strand the row, and
+   * that is a migration and a clock for a race one replica never runs).
+   */
+  private async recordAttachmentOutcome(
+    a: SweepAttachment,
+    o: AttachmentOutcome,
+  ): Promise<boolean> {
+    const { data, error } = await this.db
+      .getClient()
+      .from("conversation_attachments")
+      .update({
+        ingest_state: o.state,
+        ingested_document_id: o.documentId ?? null,
+        ingest_attempts: o.attempts,
+        last_ingest_reason: o.reason ?? null,
+        ingest_decided_at: o.state === "pending" ? null : new Date().toISOString(),
+      })
+      .eq("id", a.id)
+      .eq("ingest_state", "pending")
+      .eq("ingest_attempts", a.ingest_attempts ?? 0)
+      .select("id");
+    if (error) {
+      this.logger.error(
+        `document intake sweep stopped: attachment ${a.id} became ${o.state} but that could not be recorded (${error.message}); stopping so the next run does not read the same files again`,
+      );
+      return false;
+    }
+    if (!data || (Array.isArray(data) && data.length === 0))
+      this.logger.warn(
+        `document intake sweep: attachment ${a.id} was decided by another run while this one read it; this run's outcome (${o.state}) was not written over it`,
+      );
+    return true;
   }
 
   /**
@@ -2682,6 +3303,58 @@ export class DocumentIntakeService {
  * one through a vision model costs money per message and fills the review queue
  * with noise that trains people to ignore it. Cheap filters first.
  */
+/** Attempts a failing attachment gets across sweep runs before `failed`. */
+export const INGEST_ATTEMPTS = 3;
+
+interface SweepAttachment {
+  id: string;
+  restaurant_id: string | null;
+  provider_id: string | null;
+  order_id: string | null;
+  filename: string | null;
+  mime_type: string | null;
+  storage_path: string;
+  sha256: string | null;
+  bytes_deleted_at: string | null;
+  ingest_attempts: number | null;
+}
+
+export type AttachmentIngestState =
+  | "pending"
+  | "ingested"
+  | "duplicate"
+  | "failed"
+  | "not_a_document";
+
+interface AttachmentOutcome {
+  state: AttachmentIngestState;
+  documentId?: string;
+  reason?: string;
+  attempts: number;
+}
+
+/** Named or typed as the e-invoice file: an XML, or a zip that may hold one. */
+function isEinvoiceFileName(mimeLower: string, nameLower: string): boolean {
+  return (
+    nameLower.endsWith(".xml") ||
+    mimeLower === "application/xml" ||
+    mimeLower === "text/xml" ||
+    nameLower.endsWith(".zip") ||
+    mimeLower.includes("zip")
+  );
+}
+
+/**
+ * The words `not_a_document` carried before the sweep took the e-invoice file
+ * (PR 1040's rule). A row still holding them was judged under the narrower
+ * rule; `requeueUnderTheWiderRule` looks at those rows again.
+ */
+export const NOT_A_DOCUMENT_BEFORE_EINVOICE =
+  "Not a PDF, image, e-invoice XML or EDI file.";
+/** The words `not_a_document` carries under the rule that takes XML and zips. */
+export const NOT_A_DOCUMENT_REASON =
+  "Not a PDF, image, e-invoice file (an XML, or a zip holding one) or EDI file.";
+
 export function isDocumentLike(
   mimeType?: string | null,
   filename?: string | null,
@@ -2691,6 +3364,14 @@ export function isDocumentLike(
   if (/logo|signature|banner|icon|footer|header/.test(n)) return false;
   if (m === "application/pdf" || n.endsWith(".pdf")) return true;
   if (/\.(edi|x12|810|856|812)$/.test(n)) return true;
+  // The e-invoice file (proposal-receipt row 3.3): any XML and any zip. A zip
+  // is NOT judged by its name: GİB and the integrators name it after the bare
+  // ETTN or a date as often as "fatura". What is inside decides — the sweep
+  // reads it and records a zip with no e-invoice as `not_a_document` with
+  // what it held (`sweepOne`), and the desk stores it unread with the same
+  // sentence. Rejected (batch review on PR 1043): a name pattern, which
+  // dropped an e-invoice zip named a1b2c3d4-….zip for good.
+  if (isEinvoiceFileName(m, n)) return true;
   if (m.startsWith("image/")) return true;
   if (m.startsWith("text/") && /invoice|packing|credit|statement/.test(n))
     return true;

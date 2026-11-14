@@ -890,6 +890,8 @@ export function useConnectionsNextData() {
       documentId: string | null;
       duplicate: boolean;
       document: { docType?: string; warnings?: string[] } | null;
+      /** Set when this vendor's same-numbered paper is already on file. */
+      duplicateOf?: { documentId: string; docNumber: string };
       catalog?: CatalogueAdmissionVM;
     }> => {
       const { data } = await apiClient.post('/procurement/documents', {

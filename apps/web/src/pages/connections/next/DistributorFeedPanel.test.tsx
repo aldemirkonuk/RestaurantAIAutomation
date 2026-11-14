@@ -378,6 +378,42 @@ describe('handing over a file', () => {
     expect(screen.queryByTestId('cx-df-report')).not.toBeInTheDocument();
   });
 
+  // Proposal-receipt §3 row 1.4: a different file carrying a number this
+  // vendor already has is NOT "this exact file", and says which number.
+  it('names the number already on file, never "this exact file", for a same-number paper', async () => {
+    const up = uploader({
+      documentId: 'doc-3',
+      duplicate: true,
+      duplicateOf: { documentId: 'doc-1', docNumber: 'SYN-0042' },
+      document: { docType: 'invoice' },
+    });
+    render(<DistributorFeedPanel distributors={reg(catalogue)} upload={up} />);
+    fireEvent.change(screen.getByTestId('cx-df-file'), {
+      target: { files: [file('invoice.edi')] },
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByText(/this vendor's paper no\. SYN-0042 is already on file/),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/this exact file/)).not.toBeInTheDocument();
+  });
+
+  it('still says "this exact file" for the same bytes', async () => {
+    const up = uploader({
+      documentId: 'doc-1',
+      duplicate: true,
+      document: { docType: 'invoice' },
+    });
+    render(<DistributorFeedPanel distributors={reg(catalogue)} upload={up} />);
+    fireEvent.change(screen.getByTestId('cx-df-file'), {
+      target: { files: [file('invoice.edi')] },
+    });
+    await waitFor(() =>
+      expect(screen.getByText(/this house already held this exact file/)).toBeInTheDocument(),
+    );
+  });
+
   it('carries a refused upload back in the gateway’s own sentence', async () => {
     const up = uploader(null, {
       response: { data: { message: 'Document is empty' } },

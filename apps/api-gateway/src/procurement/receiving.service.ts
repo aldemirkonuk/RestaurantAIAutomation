@@ -167,6 +167,14 @@ export interface DoorReceiptInput {
   driverName?: string | null;
   /** What the order expected, IN THE SAME UNIT AS `countedQty`. */
   expectedQtyInCountedUom?: number | null;
+  /**
+   * ADR 0059 L3: what the paper read at the door suggested, in the counted
+   * unit, and whether the receiver sealed it unchanged. NULL on both when no
+   * reading was offered: `false` would claim a person overrode a number that
+   * was never shown.
+   */
+  suggestedQtyInCountedUom?: number | null;
+  suggestionAccepted?: boolean | null;
 }
 
 /**
@@ -386,6 +394,9 @@ export class ReceivingService {
       signed_by_initials: input.signedByInitials ?? null,
       driver_name: input.driverName ?? null,
       expected_qty_bottles: expectedBottles,
+      // ADR 0059 L3 (proposal-receipt row 1.9): the door's label, kept.
+      suggested_qty: input.suggestedQtyInCountedUom ?? null,
+      suggestion_accepted: input.suggestionAccepted ?? null,
     };
 
     const { data: event, error: evErr } = await this.db

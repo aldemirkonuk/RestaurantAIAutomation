@@ -64,6 +64,8 @@ export interface DistributorFeedPanelProps {
       documentId: string | null;
       duplicate: boolean;
       document: { docType?: string; warnings?: string[] } | null;
+      /** Set when this vendor's same-numbered paper is already on file. */
+      duplicateOf?: { documentId: string; docNumber: string };
       catalog?: CatalogueAdmissionVM;
     }>;
     isPending?: boolean;
@@ -109,6 +111,21 @@ const VERDICT_WORDS: Record<string, string> = {
   permitted_with_bounds: 'Permits a reader, within bounds',
   unstated: 'Says nothing about automated reading',
 };
+
+/**
+ * What the upload said about a paper already held. `duplicate` alone is the
+ * same FILE; `duplicateOf` is a different file carrying a number this vendor
+ * already has on file (proposal-receipt §3 row 1.4), which is not the same
+ * claim and must not borrow the "exact file" sentence.
+ */
+function heldClause(out: {
+  duplicate: boolean;
+  duplicateOf?: { documentId: string; docNumber: string };
+}): string {
+  if (out.duplicateOf)
+    return ` — this vendor's paper no. ${out.duplicateOf.docNumber} is already on file, so this one was set aside as a duplicate of it`;
+  return out.duplicate ? ' — this house already held this exact file' : '';
+}
 
 export function DistributorFeedPanel({
   distributors,
@@ -192,8 +209,8 @@ export function DistributorFeedPanel({
       else if (out)
         setNonCatalogue(
           out.document?.docType === 'invoice'
-            ? `Read as an invoice and stored${out.duplicate ? ' — this house already held this exact file' : ''}. Its prices reach the register the way every invoice does, as your own paper.`
-            : `Stored as ${out.document?.docType ?? 'a document this parser could not classify'}${out.duplicate ? ' — this house already held this exact file' : ''}. It is not an EDI 832 price catalogue, so no catalogue line was priced.`,
+            ? `Read as an invoice and stored${heldClause(out)}. Its prices reach the register the way every invoice does, as your own paper.`
+            : `Stored as ${out.document?.docType ?? 'a document this parser could not classify'}${heldClause(out)}. It is not an EDI 832 price catalogue, so no catalogue line was priced.`,
         );
     } catch (err) {
       const e = err as { response?: { data?: { message?: string } }; message?: string };
