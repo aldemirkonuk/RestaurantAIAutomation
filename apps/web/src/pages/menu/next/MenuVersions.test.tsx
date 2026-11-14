@@ -14,7 +14,9 @@ import {
   makeCurrentSentence,
   readMenuDate,
   sourceWords,
-  versionLabel, standingSecond } from './MenuVersions';
+  standingSecond,
+  versionLabel,
+} from './MenuVersions';
 import { formatMoney } from '../../../lib/currency';
 
 vi.mock('../../../hooks/queries/useHouseCurrencyCode', () => ({ useHouseCurrencyCode: () => 'TRY' }));
