@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { reading, readingAge } from './rp-registers-trade';
+import { reading, readingAge, type ReadingRow } from './rp-registers-trade';
 
 /**
  * r36 reports audit, gap 4: "The reading" said "recomputed hourly". The
@@ -43,12 +43,12 @@ describe('the reading register says when it was computed', () => {
   };
 
   it('reads computed_at from the stored row', () => {
-    const rows = reading.select(raw, { days: 30 });
+    const rows = (reading.select(raw) as ReadingRow[]);
     expect(rows.map((r) => r.computedAt)).toEqual([at(2026, 11, 13, 6), at(2026, 11, 12, 6)]);
   });
 
   it('prints the age as a figure and a note, and no longer claims an hourly cadence', () => {
-    const rows = reading.select(raw, { days: 30 });
+    const rows = (reading.select(raw) as ReadingRow[]);
     const view = reading.view(rows, { days: 30 });
     const computed = view.figures.find((f) => f.label === 'Computed');
     expect(computed?.value).toMatch(/^(today|yesterday|on .+) at \d{1,2}:\d{2} [AP]M$/);
@@ -58,7 +58,7 @@ describe('the reading register says when it was computed', () => {
   });
 
   it('a live compute carries no time and says so', () => {
-    const rows = reading.select({ insights: [{ candidate_key: 'a', sentence: 'x', score: 1 }] }, { days: 30 });
+    const rows = (reading.select({ insights: [{ candidate_key: 'a', sentence: 'x', score: 1 }] }) as ReadingRow[]);
     expect(reading.view(rows, { days: 30 }).figures.find((f) => f.label === 'Computed')?.value).toBe(
       'as this page asked',
     );
