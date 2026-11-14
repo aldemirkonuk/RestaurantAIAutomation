@@ -57,8 +57,7 @@ beforeEach(() => {
   h.get.mockReset().mockImplementation((url: string) => (answer[url] ? answer[url]() : Promise.reject(new Error(`not read here: ${url}`))));
 });
 
-function mount() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function mount(qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={['/dishes']}>
@@ -128,6 +127,30 @@ describe('/dishes reads its names and its figures apart', () => {
     await waitFor(() => expect(screen.getByTestId('dishes-allergens-unread')).toBeInTheDocument());
     expect(screen.queryByTestId('dishes-costs-unread')).toBeNull();
     expect(row(A)).toHaveTextContent('Lamb shank');
+  });
+
+  it('a figures re-read that fails does not keep showing the last costs', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    mount(qc);
+    await waitFor(() => expect(row(A)).toHaveTextContent(fmtMoney(300, 'TRY')));
+    answer[FIGURES] = () => Promise.reject(new Error('down'));
+    await qc.invalidateQueries({ queryKey: ['recipes', RID, 'dishes', 'figures'] });
+    await waitFor(() => expect(screen.getByTestId('dishes-costs-unread')).toBeInTheDocument());
+    expect(row(A)).not.toHaveTextContent(fmtMoney(300, 'TRY'));
+    expect(screen.getByTestId(`allergens-${A}`)).not.toHaveTextContent('Contains');
+  });
+
+  it('coming back to the page within a minute reads neither the names nor the figures again', async () => {
+    // App.tsx's defaults, whose refetchOnMount 'always' ignored every staleTime (gap 5).
+    const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 5_000, refetchOnMount: 'always', retry: false } } });
+    const first = mount(qc);
+    await waitFor(() => expect(row(A)).toHaveTextContent(fmtMoney(300, 'TRY')));
+    first.unmount();
+    mount(qc);
+    await waitFor(() => expect(row(A)).toHaveTextContent(fmtMoney(300, 'TRY')));
+    await new Promise((r) => setTimeout(r, 20));
+    const asked = h.get.mock.calls.map(([u]) => u);
+    expect([asked.filter((u) => u === NAMES).length, asked.filter((u) => u === FIGURES).length]).toEqual([1, 1]);
   });
 
   it('a failed names read is still the page-wide "could not be read"', async () => {
