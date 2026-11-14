@@ -240,7 +240,6 @@ export async function scanPayload(file: File): Promise<string> {
 }
 
 function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () => void }) {
-  const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
   const [fileRefusal, setFileRefusal] = useState<string | null>(null);
   const [cadence, setCadence] = useState<MenuCadence | ''>('');
@@ -379,8 +378,7 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
                 setPlanning(false);
                 setMadeCurrent(true);
                 setChosen(makeCurrentSentence(r, currency));
-                void queryClient.invalidateQueries({ queryKey: ['menu'] });
-                onRead();
+                // The plan already read every menu read again (r41 R2).
               }}
             />
           ) : null}
@@ -576,7 +574,7 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
                 onDone={(r) => {
                   setPlanFor(null);
                   setSaid(makeCurrentSentence(r, currency));
-                  refresh();
+                  // The plan already read every menu read again (r41 R2).
                 }}
               />
             ) : null}

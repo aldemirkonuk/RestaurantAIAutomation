@@ -305,9 +305,20 @@ export function MenuPlan({
   const choose = useMutation({
     mutationFn: (fingerprint: string) => makeMenuCurrent(menuId, fingerprint),
     onSuccess: (r) => {
-      void queryClient.invalidateQueries({ queryKey: ['menu'] });
+      // r41 R2: the plan just chosen describes a menu that is now current, so it
+      // is dropped, never worked out again (8+ database trips, a full inventory
+      // read among them). Every other menu read, another open plan included, is
+      // read once more here; the parents add no invalidation of their own.
+      const chosen = ['menu', 'plan', menuId];
+      void queryClient.invalidateQueries({
+        queryKey: ['menu'],
+        predicate: (query) => !(query.queryKey[1] === 'plan' && query.queryKey[2] === menuId),
+      });
       void queryClient.invalidateQueries({ queryKey: ['pricing', 'locks'] });
       onDone(r);
+      // After onDone: a parent that closes the plan leaves it unread; one that
+      // keeps it on screen gets it read once, for what it now shows.
+      queryClient.removeQueries({ queryKey: chosen, exact: true });
     },
     onError: (e) => {
       const status = (e as { response?: { status?: number } })?.response?.status;
