@@ -212,6 +212,28 @@ describe('a return to the tab reads again only once the figures are five minutes
     expect(calls(tillPath('r1', 30))).toBe(before);
   });
 
+  it('back on the page within five minutes: the figures already read are drawn, not read again', async () => {
+    // The app mounts every query with `refetchOnMount: 'always'` (App.tsx), so
+    // the register's own read runs again; the raw payload it shares is what
+    // must still count as fresh.
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, refetchOnMount: 'always' } },
+    });
+    const wrap = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+    const first = renderHook(() => useReportsNextData(30, () => {}, SHOWING), { wrapper: wrap });
+    await waitFor(() => expect(first.result.current.registers.till?.data).toBeDefined());
+    first.unmount();
+    const before = calls(tillPath('r1', 30));
+    const t0 = realNow();
+    Date.now = () => t0 + 2 * 60_000;
+    const again = renderHook(() => useReportsNextData(30, () => {}, SHOWING), { wrapper: wrap });
+    await waitFor(() => expect(again.result.current.registers.till?.data).toBeDefined());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(calls(tillPath('r1', 30))).toBe(before);
+  });
+
   it('back after six minutes: the till is read again', async () => {
     const { result } = mountAt(30);
     await waitFor(() => expect(result.current.registers.till?.data).toBeDefined());
