@@ -840,13 +840,33 @@ export interface PaperRead {
 const PAPERWORK_LINES = 3;
 
 /**
+ * Which of the opened row's reads a caller draws. Absent reads them all, as
+ * the row always has. The drawer mounts its acts with no evidence panel, and a
+ * staff reader is never shown a cost, so each open read the purchase ledger,
+ * up to three order-document reads after it and the auction lots for nothing
+ * (inventory r36 audit, gap 7).
+ */
+export interface RowDetailNeed {
+  /** The ledger's purchases: the Paperwork table, or the cost panel's ledger fallback. */
+  purchases: boolean;
+  /** Each purchase's order documents (Paperwork only). Needs the purchases. */
+  paper: boolean;
+  /** The auction lots (a drink's cost panel). */
+  lots: boolean;
+}
+
+const READ_ALL: RowDetailNeed = { purchases: true, paper: true, lots: true };
+
+/**
  * The opened row's own reads, made on the gesture rather than on the page:
  * the last purchases from the ledger (GET /inventory-ledger/transactions with
  * transactionType=purchase), each one's paper (GET /procurement/documents
- * ?orderId=), and the auction lots that carried the title in.
+ * ?orderId=), and the auction lots that carried the title in. Each is read
+ * only when `need` asks for it; what is not asked for stays null, never "none".
  */
-export function useRowDetail(inventoryId: string) {
+export function useRowDetail(inventoryId: string, need: RowDetailNeed = READ_ALL) {
   const { activeRestaurantId } = useAuth();
+  const readPaper = need.paper && need.purchases;
   const purchasesQ = useQuery({
     queryKey: ['inventory-next', 'purchases', activeRestaurantId, inventoryId],
     queryFn: async () => {
@@ -871,7 +891,7 @@ export function useRowDetail(inventoryId: string) {
         total: num(body.total),
       };
     },
-    enabled: Boolean(activeRestaurantId) && inventoryId !== '',
+    enabled: need.purchases && Boolean(activeRestaurantId) && inventoryId !== '',
     staleTime: 30_000,
   });
 
@@ -880,14 +900,14 @@ export function useRowDetail(inventoryId: string) {
     [purchasesQ.data],
   );
   const docQs = useQueries({
-    queries: orderIds.map((orderId) => ({
+    queries: (readPaper ? orderIds : []).map((orderId) => ({
       queryKey: ['inventory-next', 'order-docs', activeRestaurantId, orderId],
       queryFn: () => documentsApi.forOrder(orderId),
       staleTime: 60_000,
     })),
   });
   const paper = new Map<string, PaperRead>();
-  orderIds.forEach((orderId, i) => {
+  (readPaper ? orderIds : []).forEach((orderId, i) => {
     const q = docQs[i];
     paper.set(orderId, {
       docs: q?.data ?? null,
@@ -898,7 +918,7 @@ export function useRowDetail(inventoryId: string) {
   const lotsQ = useQuery<AuctionLotRecord[]>({
     queryKey: ['inventory-next', 'auction-lots', activeRestaurantId, inventoryId],
     queryFn: () => fetchAuctionLotRecords(inventoryId),
-    enabled: Boolean(activeRestaurantId) && inventoryId !== '',
+    enabled: need.lots && Boolean(activeRestaurantId) && inventoryId !== '',
     staleTime: 60_000,
   });
 

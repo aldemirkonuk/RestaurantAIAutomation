@@ -218,8 +218,21 @@ export default function RowDropdown(props: RowDropdownProps) {
   const setSheet = props.onSheet ?? setOwnSheet;
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLButtonElement>(null);
-  const detail = useRowDetail(row.id);
   const has = (s: EvidenceSection) => props.sections === undefined || props.sections.includes(s);
+  // Read only what a drawn panel shows (inventory r36 audit, gap 7). The cost
+  // panel is a manager's; it reads the ledger only when no settled price is
+  // known (WhatItHasCost's fallback), and the auction lots only for a drink.
+  // The Paperwork table reads the purchases and their paper.
+  const costShown = has('cost') && canManage;
+  const settledNow = props.settled ?? null;
+  // 'reading' and 'failed' are not an absent price: no ledger then (gap 9).
+  const costFromLedger = Array.isArray(settledNow) ? settledNow.length === 0 : settledNow === null;
+  const kitchenGood = props.kind === 'food' || props.kind === 'supply';
+  const detail = useRowDetail(row.id, {
+    purchases: has('paper') || (costShown && costFromLedger),
+    paper: has('paper'),
+    lots: costShown && !kitchenGood,
+  });
   const acts = props.actions !== false;
   const queryClient = useQueryClient();
   const [removing, setRemoving] = useState(false);
