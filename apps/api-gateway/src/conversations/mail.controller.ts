@@ -1,7 +1,11 @@
 import {
   Controller,
+  Delete,
   ForbiddenException,
   Get,
+  HttpCode,
+  Param,
+  Post,
   Query,
   UseGuards,
 } from "@nestjs/common";
@@ -15,6 +19,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { MailService } from "./mail.service";
 import type {
+  MailNoReplyAnswer,
   MailPeoplePage,
   MailSummary,
   MailThreadPage,
@@ -37,7 +42,9 @@ function houseOf(user: AuthUser | undefined): string {
 
 /**
  * GET /mail/* — the read model behind the /communications Mail tab (founder
- * /goal 2026-11-07). Read-only.
+ * /goal 2026-11-07). Its one write is the "needs no reply" mark on a letter
+ * (r28 mail gap 4), which only an owner or manager may set; that is enforced
+ * in MailService, for the reason below.
  *
  * Signed-in only, and deliberately no role decorator anywhere in this file:
  * every member of the house may read its vendor mail (draft ADR 0357 answer 3, PR #747, staff
@@ -147,5 +154,29 @@ export class MailController {
     @CurrentUser("role") role: string | null,
   ): Promise<MailSummary> {
     return this.mail.summary(houseOf(user), role);
+  }
+
+  @Post("letters/:id/no-reply-needed")
+  @HttpCode(200)
+  @ApiOperation({
+    summary:
+      "Say a letter the house received needs no reply: it and the thread's earlier letters stop waiting",
+  })
+  markNoReply(
+    @CurrentUser() user: AuthUser,
+    @CurrentUser("role") role: string | null,
+    @Param("id") id: string,
+  ): Promise<MailNoReplyAnswer> {
+    return this.mail.setNoReply(houseOf(user), role, user?.userId, id, true);
+  }
+
+  @Delete("letters/:id/no-reply-needed")
+  @ApiOperation({ summary: "Take back a letter's \"needs no reply\" mark" })
+  unmarkNoReply(
+    @CurrentUser() user: AuthUser,
+    @CurrentUser("role") role: string | null,
+    @Param("id") id: string,
+  ): Promise<MailNoReplyAnswer> {
+    return this.mail.setNoReply(houseOf(user), role, user?.userId, id, false);
   }
 }
