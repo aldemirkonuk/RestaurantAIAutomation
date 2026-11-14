@@ -143,7 +143,7 @@ describe('a cutting laid flat', () => {
     const dialog = screen.getByRole('dialog', { name: 'Through the till' });
     expect(dialog).toHaveAttribute('aria-modal', 'true');
     expect(dialog.querySelector('.rp-plot')).not.toBeNull();
-    expect(within(dialog).getByText('This view is not saved to your sheet.')).toBeInTheDocument();
+    expect(within(dialog).getByText(/^This view is not saved to your sheet\./)).toBeInTheDocument();
 
     const drawAs = within(dialog).getByRole('combobox', { name: 'Draw Through the till as' });
     expect(drawAs).toHaveValue('area');
@@ -248,9 +248,12 @@ describe('a cutting laid flat', () => {
     paint(<Harness id="till" register={answered(TILL)} onDays={onDays} />, ['/reports?flat=till']);
     const dialog = screen.getByRole('dialog', { name: 'Through the till' });
     const group = within(dialog).getByRole('group', { name: 'Till window' });
-    fireEvent.click(within(group).getByRole('button', { name: '90d' }));
+    expect(
+      within(dialog).getByText(/The window you pick is kept in the page link, so a reload or a shared link opens on it\./),
+    ).toBeInTheDocument();
+    fireEvent.click(within(group).getByRole('button', { name: '90 days' }));
     expect(onDays).toHaveBeenCalledWith(90);
-    fireEvent.click(within(group).getByRole('button', { name: '365d' }));
+    fireEvent.click(within(group).getByRole('button', { name: '365 days' }));
     expect(onDays).toHaveBeenCalledWith(365);
   });
 

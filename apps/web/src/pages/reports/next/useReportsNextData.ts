@@ -48,6 +48,8 @@ import {
   IDS_ADDED_IN_V3,
   isAnalysisId,
   isGraphType,
+  SHEET_MIN_H,
+  SHEET_MIN_W,
   type AnalysisId,
   type Cutting,
   type GraphType,
@@ -162,7 +164,7 @@ export function decodeSheet(stored: unknown): SheetState {
     const h = num(b?.h);
     const slot =
       x !== null && y !== null && w !== null && h !== null
-        ? { x, y, w: Math.max(2, w), h: Math.max(2, h) }
+        ? { x, y, w: Math.max(SHEET_MIN_W, w), h: Math.max(SHEET_MIN_H, h) }
         : DEFAULT_SLOTS[id];
     const graph = isGraphType(b?.g) ? graphOrDefault(id, b.g) : defaultGraph(id);
     const combo = decodeCombo(b?.c);
