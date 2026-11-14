@@ -20,7 +20,7 @@ import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { till, type TillWindow } from './rp-registers-trade';
-import { goals, paceCaption, type GoalsRegister } from './rp-registers-goals';
+import { deadlineWords, goals, paceCaption, type GoalsRegister } from './rp-registers-goals';
 import type { GoalsDesk } from './useGoalsDesk';
 import { paceOf, toProgressRow } from '@/pages/recommendations/next/rec-masthead';
 
@@ -201,7 +201,7 @@ describe("a goal's pace in a house with no time zone (ADR 0296)", () => {
   it('says why a goal with a deadline has no pace, and never "No deadline" or "not enough history"', () => {
     const view = goals.view(book(STOCK), { days: 30, goals: desk });
     render(<MemoryRouter>{view.node}</MemoryRouter>);
-    expect(screen.getByText(/· by 2026-09-30/)).toBeInTheDocument();
+    expect(screen.getByText(/· by 30 Sept? 2026/)).toBeInTheDocument();
     expect(screen.getByText(NO_ZONE_PACE)).toBeInTheDocument();
     expect(screen.queryByText(/No deadline/)).toBeNull();
     expect(screen.queryByText(/not enough history/)).toBeNull();
@@ -335,5 +335,34 @@ describe('the money registers and the feed for staff (ADR 0348 decision 3)', () 
     expect(withheldByGateway({ insights: [], withheldForRole: 3 })).toBe(false);
     expect(withheldByGateway([])).toBe(false);
     expect(withheldByGateway(null)).toBe(false);
+  });
+});
+
+describe("a goal's deadline is written as a date (r28 gap 21)", () => {
+  it('[REVERT-FAILS] says "31 Dec 2026", never the stored 2026-12-31', () => {
+    expect(deadlineWords('2026-12-31')).toBe('31 Dec 2026');
+    expect(deadlineWords('2026-01-01')).toBe('1 Jan 2026');
+  });
+
+  it('reads the date as a calendar date, so no clock moves it a day', () => {
+    expect(deadlineWords('2026-03-01T00:00:00.000Z')).toBe('1 Mar 2026');
+  });
+
+  it('shows what it cannot read as a date as it was sent', () => {
+    expect(deadlineWords('2026-02-30')).toBe('2026-02-30');
+    expect(deadlineWords('end of season')).toBe('end of season');
+  });
+
+  it('[REVERT-FAILS] the table and the card print the written date', () => {
+    const goal = { ...STOCK, goal: { ...STOCK.goal, deadline: '2026-12-31' }, paceUnread: null };
+    const v = goals.view(book(goal), { days: 30 });
+    expect(v.table!.rows[0].cells[3]).toBe('31 Dec 2026');
+    expect(goals.view(book(NO_DEADLINE), { days: 30 }).table!.rows[0].cells[3]).toBe('—');
+    const node = v.node;
+    if (node) {
+      render(<MemoryRouter>{node}</MemoryRouter>);
+      expect(screen.getByText(/by 31 Dec 2026/)).toBeInTheDocument();
+      expect(screen.queryByText(/2026-12-31/)).toBeNull();
+    }
   });
 });
