@@ -156,6 +156,27 @@
   "POST /auth/held-memberships/accept (AuthController.acceptHeldMembership)": "open",
   "GET /auth/check-email (AuthController.checkEmail)": "open",
   "POST /auth/sign-in-methods (AuthController.signInMethods)": "open",
+  "GET /beverages/:restaurantId (BeveragesController.listBeverages)": "open",
+  "GET /cocktails/:restaurantId (BeveragesController.listCocktails)": "open",
+  "GET /beverages/:restaurantId/registers/:register (BeveragesController.readRegister)": "open",
+  "GET /beverages/:restaurantId/row-record (BeveragesController.readRowRecord)": "open",
+  "POST /cocktails/:restaurantId (BeveragesController.createCocktail)": [
+    "owner",
+    "manager"
+  ],
+  "PATCH /cocktails/:restaurantId/:cocktailId (BeveragesController.updateCocktail)": [
+    "owner",
+    "manager"
+  ],
+  "DELETE /cocktails/:restaurantId/:cocktailId (BeveragesController.deleteCocktail)": [
+    "owner",
+    "manager"
+  ],
+  "GET /cocktails/:restaurantId/:cocktailId/ingredients (BeveragesController.readIngredients)": "open",
+  "PUT /cocktails/:restaurantId/:cocktailId/ingredients (BeveragesController.setIngredients)": [
+    "owner",
+    "manager"
+  ],
   "GET /commodity-index/status (CommodityController.status)": [
     "owner",
     "manager"

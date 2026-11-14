@@ -41,6 +41,7 @@ import { useWineSubscription } from '../../../contexts/RealtimeContext';
 import { animate, ink } from '../../../lib/mudavym/motion';
 import { queryKeys } from '../../../lib/query-keys';
 import { apiClient } from '../../../services/api/client';
+import { managesHouse } from '../../communications/next/cm-format';
 import type { Wine } from '../../../services/api/types';
 import type { Provider } from '../../../services/api/providers';
 import {
@@ -1016,6 +1017,19 @@ export interface RecipeLineVM {
   quantity?: number | null;
   unit?: string | null;
   sort_order?: number | null;
+}
+
+/**
+ * Whether this person may change the house's cocktail list: an owner or a
+ * manager OF THIS HOUSE (r34 walk w1 F13). The gateway refuses the four
+ * cocktail writes to anyone else with 403 (`@Roles("owner", "manager")` on
+ * BeveragesController), so the register does not offer them. Read the way the
+ * rest of the app reads it (`managesHouse`): the house role first, the
+ * account role only while no house is active, anything else is staff.
+ */
+export function useCocktailManages(): boolean {
+  const { activeRole, user } = useAuth();
+  return managesHouse(activeRole, user?.role);
 }
 
 export function useCocktailWrites() {
