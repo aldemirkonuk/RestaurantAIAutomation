@@ -191,10 +191,19 @@ export function useNoReplyMark() {
       const url = `/mail/letters/${encodeURIComponent(id)}/no-reply-needed`;
       return (marked ? await apiClient.post<{ id: string; marked: boolean }>(url) : await apiClient.delete<{ id: string; marked: boolean }>(url)).data;
     },
+    // The act is not done until the thread on screen shows it (r35 mail,
+    // M-F1): the mark answered at once, but the page read again 1-2 s later,
+    // and in between the button read "No reply needed" again over a letter
+    // still drawn as waiting. Returning the thread's refetch keeps the
+    // mutation pending, so "Saving…" or "Taking it back…" holds until the
+    // line appears. A failed refetch still settles (TanStack does not throw
+    // from an invalidation), and the API client's 30 s timeout bounds a slow
+    // one. The lists behind the thread are read again without waiting.
     onSuccess: () => {
-      for (const root of ['mail-thread', 'mail-threads', 'mail-people', 'mail-summary']) {
+      for (const root of ['mail-threads', 'mail-people', 'mail-summary']) {
         void qc.invalidateQueries({ queryKey: [root, house] });
       }
+      return qc.invalidateQueries({ queryKey: ['mail-thread', house] });
     },
   });
 }
