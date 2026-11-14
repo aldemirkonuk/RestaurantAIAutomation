@@ -57,6 +57,7 @@ import { RouteHead } from './lib/seo/RouteHead'
 import { RootDoor } from './pages/landing/RootDoor'
 import { RegisterDoor } from './pages/landing/RegisterDoor'
 import { RenamedRoute } from './lib/renamedRoute'
+import { keepFreshWindows } from './lib/freshWindows'
 // SyncStatus disabled — floating bottom-right sync widget (re-enable when needed)
 import { AppOfflineBanner } from './components/mudavym/AppOfflineBanner'
 
@@ -154,7 +155,9 @@ const StudioApprovalQueue = lazyWithRefresh(() => import('./pages/studio/StudioA
 const StudioCertify = lazyWithRefresh(() => import('./pages/studio/StudioCertify'))
 const StudioInviteRedeem = lazyWithRefresh(() => import('./pages/studio/StudioInviteRedeem'))
 
-const queryClient = new QueryClient({
+// The reads that keep their own fresh window despite 'always' below:
+// lib/freshWindows.ts (r41 inventory audit gap 5).
+const queryClient = keepFreshWindows(new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 5_000, // 5s - short enough that page navigations trigger background refetch
@@ -167,7 +170,7 @@ const queryClient = new QueryClient({
       throwOnError: false, // Don't throw errors to error boundary
     },
   },
-})
+}))
 
 function App() {
   return (
