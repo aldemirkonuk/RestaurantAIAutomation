@@ -672,6 +672,22 @@ export interface DashboardStats {
   };
   /** An order names a currency and the house's own could not be read. */
   houseCurrencyUnread?: boolean;
+  /**
+   * Verified deliveries with no order, counted into the spend by their
+   * papers (r36 invoices R3), per window: how many, how many have no invoice
+   * total, and how many are in other money, by code. Absent on an older gateway.
+   */
+  scannedDeliveries?: {
+    today: { counted: number; uncosted: number; notInHouseCurrency: Record<string, number> };
+    week: { counted: number; uncosted: number; notInHouseCurrency: Record<string, number> };
+    month: { counted: number; uncosted: number; notInHouseCurrency: Record<string, number> };
+  };
+  /** The gateway's sentence for each withheld spend figure; null when stated. */
+  unread?: {
+    todayProcurementSpend: string | null;
+    weekProcurementSpend: string | null;
+    monthProcurementSpend: string | null;
+  };
 }
 
 /** Vendor spend summary returned by `GET /dashboard/summary/:id`. */

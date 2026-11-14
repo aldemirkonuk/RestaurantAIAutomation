@@ -13,7 +13,7 @@ import { Link } from 'react-router-dom';
 import type { DashboardStats } from '@/services/api/types';
 import { formatNumber } from '@/lib/utils';
 import CountUp from './CountUp';
-import { heldBackSaid, useHouseMoney } from './format';
+import { spendMadeOf, spendWithheldSaid, useHouseMoney } from './format';
 
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
 
@@ -105,10 +105,30 @@ export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true 
   const uncosted = s?.uncostedOrders;
   const other = s?.notInHouseCurrency;
   const houseUnread = s?.houseCurrencyUnread === true;
+  // r36 invoices R3: verified deliveries with no order count by their papers,
+  // and a window they hold back says why beside the orders' reasons.
+  const scanned = s?.scannedDeliveries;
+  const unread = s?.unread;
   const monthWhy =
-    monthSpend === null ? heldBackSaid(uncosted?.month, other?.month, houseUnread) : null;
+    monthSpend === null
+      ? spendWithheldSaid({
+          uncosted: uncosted?.month,
+          other: other?.month,
+          houseUnread,
+          scanned: scanned?.month,
+          unread: unread?.monthProcurementSpend,
+        })
+      : null;
   const todayWhy =
-    todaySpend === null ? heldBackSaid(uncosted?.today, other?.today, houseUnread) : null;
+    todaySpend === null
+      ? spendWithheldSaid({
+          uncosted: uncosted?.today,
+          other: other?.today,
+          houseUnread,
+          scanned: scanned?.today,
+          unread: unread?.todayProcurementSpend,
+        })
+      : null;
   const todayDeliveries = typeof counts.todayDeliveries === 'number' ? counts.todayDeliveries : null;
   const monthBottlesIn = typeof counts.monthBottlesIn === 'number' ? counts.monthBottlesIn : null;
 
@@ -148,7 +168,7 @@ export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true 
             label="Paid to vendors · today"
             value={todaySpend}
             format={(n) => money(n, 'compact')}
-            sub={todayWhy ?? 'delivered purchase orders'}
+            sub={todayWhy ?? spendMadeOf(scanned?.today, 'delivered purchase orders')}
             to="/orders?station=delivered"
             loading={loading}
           />
@@ -156,7 +176,7 @@ export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true 
             label="Paid to vendors · month"
             value={monthSpend}
             format={(n) => money(n, 'compact')}
-            sub={monthWhy ?? 'procurement, not sales'}
+            sub={monthWhy ?? spendMadeOf(scanned?.month, 'procurement, not sales')}
             to="/reports"
             loading={loading}
           />
