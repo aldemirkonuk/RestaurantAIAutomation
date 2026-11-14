@@ -1586,6 +1586,39 @@ describe("MenusService — every menu read is kept as its own version", () => {
         expect(second.price_flag_note).toMatch(/kept the bottle price 64\.00/);
       });
 
+      it("r28 G2: a good a menu adds takes its kind and unit from the line's section, never 'a bottle of wine' for all", async () => {
+        const tables: Record<string, Row[]> = base();
+        const { service, menuId } = await readMenu(tables, [
+          { name: "Efes Pilsen", category: "beer", bottle_price: 90 },
+          { name: "Negroni", category: "cocktail", bottle_price: 350 },
+          { name: "Jameson", category: "whiskey", bottle_price: 220 },
+          { name: "Bombay", category: "spirit", bottle_price: 240 },
+          { name: "Baileys", category: "Liqueurs", bottle_price: 200 },
+          { name: "Ayran", category: "non-alcoholic", bottle_price: 40 },
+          { name: "Cola", category: "soft drink", bottle_price: 50 },
+          { name: "Somersby", category: "cider", bottle_price: 110 },
+          { name: "Barolo", category: "red", bottle_price: 900 },
+          { name: "Mystery", bottle_price: 100 },
+        ]);
+        await service.makeCurrent("rest-1", menuId, "user-2", await fingerprintOf(service, menuId));
+        const made = (name: string) => {
+          const r = tables.restaurant_inventory.find((i) => i.wine_name === name)!;
+          return [r.kind, r.uom];
+        };
+        expect(made("Efes Pilsen")).toEqual(["beer", "bottle"]);
+        expect(made("Negroni")).toEqual(["cocktail", "each"]);
+        expect(made("Jameson")).toEqual(["whiskey", "bottle"]);
+        expect(made("Bombay")).toEqual(["spirit", "bottle"]);
+        expect(made("Baileys")).toEqual(["liqueur", "bottle"]);
+        expect(made("Ayran")).toEqual(["non_alcoholic", "bottle"]);
+        expect(made("Cola")).toEqual(["soft_drink", "bottle"]);
+        expect(made("Somersby")).toEqual(["cider", "bottle"]);
+        expect(made("Barolo")).toEqual(["wine", "bottle"]);
+        // A line whose section says nothing leaves the kind to the insert trigger (wine, bottle).
+        const mystery = tables.restaurant_inventory.find((i) => i.wine_name === "Mystery")!;
+        expect("kind" in mystery || "uom" in mystery).toBe(false);
+      });
+
       it("r28 G3: a dish under a Turkish course is a kitchen line: no good, no price", async () => {
         const calls: RpcCall[] = [];
         const tables: Record<string, Row[]> = base();
