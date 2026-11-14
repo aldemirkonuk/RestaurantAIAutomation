@@ -7,7 +7,8 @@
  * again, one form each, with the price it had just read. This says how many
  * of the menu's dishes are not on the list yet, names the first few, and
  * puts them all on it with one button: each with the menu's name, section
- * and price, and no recipe (a recipe is added on the dish itself).
+ * and price, and no recipe (a recipe is added on the dish itself). With no
+ * current menu it says so and points at Menu, where a read menu is chosen.
  *
  * Owner and manager only (the page mounts it only for them; the routes
  * refuse anyone else). Sends the names it showed, so a menu changed in
@@ -17,6 +18,7 @@
  * is read again.
  */
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
 import { getErrorStatus } from '../../services/api/client';
@@ -28,6 +30,12 @@ export const menuDishesKey = (rid: string | null | undefined) => [...dishesKey(r
 
 /** Said when the offer could not be read. */
 export const MENU_DISHES_UNREAD = 'Your menu’s dishes could not be read just now, so none is offered here.';
+
+/**
+ * Said when no menu is current. A menu read at /get-started stays a draft
+ * until it is chosen, so a house that has read one still sees this.
+ */
+export const NO_CURRENT_MENU = 'No menu is current yet, so none of its dishes is offered here. Choose your menu on';
 
 /** How many names are shown before "and N more". */
 const SHOWN = 3;
@@ -99,6 +107,14 @@ export default function MenuDishesOffer() {
       {offer.isError ? (
         <p className="cl-said" role="status" style={{ marginTop: 12 }} data-testid="menu-dishes-unread">
           {MENU_DISHES_UNREAD}
+        </p>
+      ) : offer.data?.currentMenus === 0 ? (
+        <p className="cl-said" style={{ marginTop: 12 }} data-testid="menu-dishes-no-menu">
+          {NO_CURRENT_MENU}{' '}
+          <Link to="/menu" className="cl-focus" style={{ textDecoration: 'underline' }}>
+            Menu
+          </Link>
+          .
         </p>
       ) : items.length > 0 ? (
         <div className="cl-panel" style={{ marginTop: 12, display: 'grid', gap: 8 }} aria-label="Dishes from your menu" role="group">

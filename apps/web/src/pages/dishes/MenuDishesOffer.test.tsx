@@ -23,6 +23,7 @@ const h = vi.hoisted(() => ({
   offer: [] as Offer[] | Error,
   list: [] as unknown[],
   status: null as number | null,
+  current: 1,
 }));
 vi.mock('../../services/api/client', () => ({
   apiClient: { get: h.get, post: h.post, put: vi.fn(), patch: vi.fn(), delete: vi.fn() },
@@ -39,6 +40,7 @@ const dish = (name: string, section: string | null, price: number | null, prices
 beforeEach(() => {
   h.role = 'owner';
   h.status = null;
+  h.current = 1;
   h.list = [];
   h.offer = [dish('Adana kebap', 'Mains', 420), dish('Mercimek çorbası', 'Soups', 160), dish('Pide', null, null, true), dish('Baklava', 'Desserts', 140)];
   h.post.mockReset();
@@ -48,7 +50,7 @@ beforeEach(() => {
     if (url === `/recipes/${RID}/menu-prices`) return { data: { amountsWithheld: false, currentMenus: 1, dishes: [], drinks: [] } };
     if (url === OFFER) {
       if (h.offer instanceof Error) throw h.offer;
-      return { data: { currentMenus: 1, dishes: h.offer } };
+      return { data: { currentMenus: h.current, dishes: h.offer } };
     }
     throw new Error(`unexpected GET ${url}`);
   });
@@ -135,7 +137,17 @@ describe('/dishes offers the menu’s dishes', () => {
     await screen.findByTestId('dishes-empty');
     await waitFor(() => expect(offerReads()).toBe(1));
     expect(screen.queryByTestId('menu-dishes-unread')).toBeNull();
+    expect(screen.queryByTestId('menu-dishes-no-menu')).toBeNull();
     expect(screen.queryByText(/Your menu has/)).toBeNull();
+  });
+
+  it('says no menu is current, and points at Menu, rather than offering nothing', async () => {
+    h.current = 0;
+    h.offer = [];
+    mount();
+    const said = await screen.findByTestId('menu-dishes-no-menu');
+    expect(said).toHaveTextContent('No menu is current yet, so none of its dishes is offered here. Choose your menu on Menu.');
+    expect(screen.getByRole('link', { name: 'Menu' })).toHaveAttribute('href', '/menu');
   });
 
   it('is not read or shown for staff', async () => {
