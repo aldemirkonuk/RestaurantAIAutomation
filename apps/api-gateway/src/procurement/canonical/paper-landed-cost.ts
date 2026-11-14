@@ -30,7 +30,7 @@
  */
 
 import { currencyCode } from "../../common/iso-4217";
-import { isMass, normalizeUom, toBottles, UOMS } from "../documents/document-types";
+import { isMass, isVolumeLineUnit, normalizeUom, toBottles, UOMS } from "../documents/document-types";
 import { LineKind } from "../documents/parsed-document";
 import {
   CostedLine,
@@ -264,7 +264,7 @@ function freeLineBottles(
       reason: `its free line's unit reads ${JSON.stringify(uom)}, which is not a unit this house counts in`,
     };
   // A count the caller already put in the item's unit (r21) needs no pack.
-  if ((uom === "keg" || uom === "liter") && !r.in_item_unit)
+  if ((uom === "keg" || isVolumeLineUnit(uom)) && !r.in_item_unit)
     return {
       ok: false,
       reason: `its free line is counted in ${uom}s, and a ${uom} is not a number of bottles`,
