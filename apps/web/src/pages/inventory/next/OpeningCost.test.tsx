@@ -156,6 +156,18 @@ describe('OpeningCost', () => {
     expect(screen.queryByText('What did these cost?')).toBeNull();
   });
 
+  it('a write with no answer that did land keeps the sheet and its warning when the re-read finds nothing waiting', async () => {
+    api.get.mockResolvedValueOnce(waitingAnswer({ units: 2000 })).mockResolvedValue(waitingAnswer({ lots: 0, units: 0 }));
+    api.post.mockRejectedValue(refused(502, 'Bad gateway'));
+    mount(<OpeningCost restaurantId="r1" inventoryId="i1" title="Sugar" uom="g" currency={EUR} canManage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'State what it cost' }));
+    fireEvent.change(screen.getByLabelText('Cost a kg'), { target: { value: '20' } });
+    holdByKeyboard(screen.getByRole('button', { name: /^Hold to state/ }));
+    await waitFor(() => expect(api.get.mock.calls.length).toBeGreaterThanOrEqual(2));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.getByRole('alert').textContent).toContain('not known whether the cost was stated');
+  });
+
   it('a bottle is costed a bottle, as typed', async () => {
     api.get.mockResolvedValue(waitingAnswer());
     api.post.mockResolvedValue({ data: { lotsStated: 2, drawsSettled: 0, said: 'Stated on 2 lots (9 units on the shelf).' } });
