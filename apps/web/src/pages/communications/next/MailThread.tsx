@@ -20,6 +20,10 @@
  * reply given by phone or from Gmail. That letter and the earlier ones stop
  * waiting; a later letter waits again. The marked letter says so, and the
  * mark can be taken back from it. Staff see the mark, never the acts.
+ *
+ * Files (r28 gap 13): each letter lists the files it carried, and any reader
+ * of the letter can open one (LetterFiles.tsx). When the files could not be
+ * read with the page, it says so, never that the letters carried none.
  */
 
 import { Link } from 'react-router-dom';
@@ -34,6 +38,7 @@ import {
   type MailAnswer,
   type MailMessage,
 } from './mail-format';
+import { LetterFiles } from './LetterFiles';
 import { QueuedPullBack } from './QueuedPullBack';
 import { useMailThread, useNoReplyMark } from './useMailData';
 
@@ -121,6 +126,7 @@ function Letter({
       ) : (
         <p style={{ ...QUIET, margin: 0 }}>{look.removed ? '' : 'No text was recorded for this letter.'}</p>
       )}
+      <LetterFiles files={m.attachments} />
       <p data-testid="letter-provenance" style={{ ...QUIET, margin: 0 }}>
         {look.line}
       </p>
@@ -292,6 +298,12 @@ export function MailThread({
           {q.isFetchNextPageError && (
             <p role="alert" style={{ margin: 0, fontSize: 12, color: 'var(--alarm-deep, #8C3322)' }}>
               The earlier letters could not be read ({failedReadWords(q.error)}).
+            </p>
+          )}
+
+          {pages.some((p) => p.attachmentsRead === false) && (
+            <p role="status" data-testid="thread-files-unread" style={{ ...QUIET, margin: 0 }}>
+              The files these letters carried could not be read just now. That does not mean there are none.
             </p>
           )}
 
