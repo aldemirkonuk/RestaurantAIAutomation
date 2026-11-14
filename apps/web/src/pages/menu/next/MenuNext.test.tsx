@@ -542,6 +542,61 @@ describe('MenuNext — a price changes on its line', () => {
     expect(screen.getByRole('button', { name: 'Change the price of Chianti' })).toHaveFocus();
   });
 
+  // r21 production-build walk: staff were handed Glass/Bottle boxes on the
+  // add form, and a priced add came back "Request failed with status code 403".
+  it('staff add a line with no price boxes, and are told it stands unpriced', async () => {
+    role = 'staff';
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    mockAdd.mockResolvedValue({} as never);
+    mount();
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Raki' } });
+    expect(screen.queryByLabelText('Glass')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Bottle')).not.toBeInTheDocument();
+    expect(screen.getByTestId('menu-add-unpriced').textContent).toMatch(/no price; an owner or a manager sets it/);
+    fireEvent.click(screen.getByRole('button', { name: /Add to menu/ }));
+    await waitFor(() => expect(mockAdd).toHaveBeenCalled());
+    // The add sends prices as typed (r28 G7); staff send none of either form.
+    const sent = mockAdd.mock.calls[0][1] as unknown as Record<string, unknown>;
+    for (const k of ['by_glass_price', 'bottle_price', 'by_glass_typed', 'bottle_typed']) expect(sent[k]).toBeUndefined();
+  });
+
+  it('a price typed before the role became staff is not sent', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    mockAdd.mockResolvedValue({} as never);
+    const view = mount();
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Raki' } });
+    fireEvent.change(screen.getByLabelText('Bottle'), { target: { value: '30' } });
+    role = 'staff';
+    view.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <MenuNext />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /Add to menu/ }));
+    await waitFor(() => expect(mockAdd).toHaveBeenCalled());
+    const sent = mockAdd.mock.calls[0][1] as unknown as Record<string, unknown>;
+    expect(sent.bottle_typed).toBeUndefined();
+    expect(sent.bottle_price).toBeUndefined();
+  });
+
+  it('a manager keeps the price boxes', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    mount();
+    await screen.findByLabelText('Name');
+    expect(screen.getByLabelText('Glass')).toBeInTheDocument();
+    expect(screen.queryByTestId('menu-add-unpriced')).not.toBeInTheDocument();
+  });
+
+  it('a refused add says the gateway\'s words, not the status', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    const said = 'Only managers and owners can put a price on the current menu: it sets the house\'s own price. Nothing was added.';
+    mockAdd.mockRejectedValue(Object.assign(new Error('Request failed with status code 403'), { response: { status: 403, data: { message: said } } }));
+    mount();
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Raki' } });
+    fireEvent.click(screen.getByRole('button', { name: /Add to menu/ }));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(said));
+  });
+
   it('staff are offered no price change', async () => {
     role = 'staff';
     mockGetMenu.mockResolvedValue(menu({ items: [chianti()] }));
