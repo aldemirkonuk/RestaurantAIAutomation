@@ -44,9 +44,93 @@ export function readStatedCost(raw: unknown): { ok: true; cost: number } | { ok:
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
+/**
+ * What of an item still waits for a stated cost: the lots `state_opening_lot_cost`
+ * would restate, read with the same filter (no delivery, no order, no settled
+ * cost, this house, this stock state). A lot already sold out is counted too:
+ * the function settles what left it, and those sales are what keeps cost of
+ * goods withheld, so a page that offered the act only while bottles remain on
+ * the shelf would hide it exactly when the shelf is empty.
+ */
+export interface UncostedOpeningStock {
+  inventoryId: string;
+  /** Lots with no settled cost from no delivery and no order, sold out ones included. */
+  lots: number;
+  /** What those lots still hold, in the item's own unit. */
+  units: number;
+  /** Of `lots`, the ones already sold or used to nothing. */
+  emptyLots: number;
+}
+
+/** The filter of state_opening_lot_cost, row by row (kept as one predicate so the two cannot drift apart unseen). */
+export function awaitsStatedCost(lot: {
+  delivery_id: string | null;
+  source_order_id: string | null;
+  cost_state: string | null;
+  unit_cost: number | string | null;
+}): boolean {
+  return (
+    lot.delivery_id === null &&
+    lot.source_order_id === null &&
+    (lot.cost_state === "provisional" || lot.unit_cost === null)
+  );
+}
+
+const PAGE = 1000;
+
 @Injectable()
 export class OpeningCostService {
   constructor(private readonly db: DatabaseService) {}
+
+  /**
+   * Read what of one item waits for a stated cost. Paged past the 1000-row
+   * read cap; an item rarely has that many lots, but a cap that is hit
+   * silently would undercount, and a smaller count is not a safe guess here.
+   */
+  async uncosted(
+    restaurantId: string,
+    inventoryId: string,
+    stockState: "live" | "shadow" = "live",
+  ): Promise<UncostedOpeningStock> {
+    let lots = 0;
+    let units = 0;
+    let emptyLots = 0;
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await this.db
+        .getClient()
+        .from("inventory_lots")
+        .select("id, qty, delivery_id, source_order_id, cost_state, unit_cost")
+        .eq("restaurant_id", restaurantId)
+        .eq("inventory_id", inventoryId)
+        .eq("stock_state", stockState)
+        .is("delivery_id", null)
+        .is("source_order_id", null)
+        .or("cost_state.eq.provisional,unit_cost.is.null")
+        .order("id", { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error)
+        throw new HttpException(
+          `What of this item still has no cost could not be read (${error.message}).`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      const rows = (data ?? []) as Array<{
+        qty: number | string | null;
+        delivery_id: string | null;
+        source_order_id: string | null;
+        cost_state: string | null;
+        unit_cost: number | string | null;
+      }>;
+      for (const lot of rows) {
+        if (!awaitsStatedCost(lot)) continue;
+        const qty = Number(lot.qty);
+        lots += 1;
+        if (Number.isFinite(qty) && qty > 0) units += qty;
+        else emptyLots += 1;
+      }
+      if (rows.length < PAGE) break;
+    }
+    return { inventoryId, lots, units, emptyLots };
+  }
 
   async state(
     restaurantId: string,
