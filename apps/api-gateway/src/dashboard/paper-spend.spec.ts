@@ -72,6 +72,15 @@ describe("paperRowsOf", () => {
     ]);
   });
 
+  it("a door-count paper beside the invoice neither adds nor withholds", () => {
+    const rows = paperRowsOf(
+      [d("d1", "2026-11-03T09:00:00Z")],
+      [inv("p1", "d1"), { document_id: "n1", delivery_id: "d1", role: "door_count" }],
+      [doc("p1", 100), doc("n1", null, "EUR")],
+    );
+    expect(rows[0]).toMatchObject({ total_cost: 100, currency: "TRY" });
+  });
+
   it("a door-count paper is not spend", () => {
     const rows = paperRowsOf([d("d1", "2026-11-03T09:00:00Z")], [{ document_id: "p1", delivery_id: "d1", role: "door_count" }], [doc("p1", 100)]);
     expect(rows[0].total_cost).toBeNull();
@@ -213,6 +222,16 @@ describe("getStats — Paid to vendors counts the scanned papers", () => {
     expect(s.todayProcurementSpend).toBe(640);
     expect(s.monthProcurementSpend).toBe(640);
     expect(s.scannedDeliveries.month).toEqual({ counted: 1, uncosted: 0, notInHouseCurrency: {} });
+  });
+
+  it("a paper from another month is not this month's", async () => {
+    const s: any = await service({
+      deliveries: [d("d1", "2020-01-15T09:00:00Z")],
+      document_deliveries: [inv("p1", "d1")],
+      procurement_documents: [doc("p1", 640)],
+    }).getStats("r1");
+    expect(s.monthProcurementSpend).toBe(0);
+    expect(s.scannedDeliveries.month.counted).toBe(0);
   });
 
   it("a paper read that fails withholds the month, with why", async () => {
