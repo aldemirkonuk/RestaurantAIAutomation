@@ -22,12 +22,58 @@
  * "EXPECTED" IS THE SHIPPED NUMBER, AND IT IS LABELLED AS THE VENDOR'S. The
  * door is not told what to find; it is told what the paperwork claims, which is
  * a different sentence and the one ADR 0103 A6 depends on.
+ *
+ * A CASE NEEDS ITS PACK (r28 G1). A case line whose paper does not say how many
+ * bottles one holds (a pack of 1 is the column's "never stated") asks the
+ * person holding it, and the count is not sent until they say. The gateway
+ * refuses such a count anyway; asking here is what makes it go through.
  */
 
 import { useState } from 'react'
 import type { CanonicalDocument } from '../../services/api/canonical'
 import type { DoorBooking, DoorCountLine } from '../../services/api/deliveries'
 import { EM, MONO, SERIF, fmtQty, fmtReceived } from './canonical-format'
+
+/** Units whose bottles depend on the pack, as the gateway names them. */
+const PACKED_UNITS = new Set(['case', 'pack', 'split_case'])
+const PACKED_WORD: Record<string, string> = { case: 'case', pack: 'pack', split_case: 'split case' }
+
+/** A pack that says how many bottles: a whole number of 2 or more, else null. */
+export function knownPack(n: unknown): number | null {
+  const v = Number(n)
+  return n != null && n !== '' && Number.isInteger(v) && v >= 2 ? v : null
+}
+
+/**
+ * What the paperwork says for a line, in words (r31 walk). Layer 3's figures
+ * are bottle-equivalents: a paper of 2 cases of 12 bills 24. Printed with the
+ * paper's own unit word, that read "24 KOLİ" beside "12 bottles to a case".
+ * With the pack known the figure goes back to the paper's count, with the
+ * bottles beside it; with no pack stated the figure IS the paper's count.
+ */
+export function paperworkWords(
+  q: number | null | undefined,
+  packed: boolean,
+  pack: number | null,
+  printedUnit: string,
+): string {
+  if (q == null || !packed || pack === null) return `${fmtQty(q)} ${printedUnit}`.trim()
+  if (q % pack === 0) return `${fmtQty(q / pack)} ${printedUnit} (${bottlesWords(q)})`.trim()
+  return bottlesWords(q)
+}
+
+/**
+ * What the door already counted, in words (r31 walk). A packed line's count
+ * is booked in bottles (the gateway refuses one whose pack is unknown), so it
+ * is said in bottles, never as that many cases.
+ */
+export function countedWords(q: number, packed: boolean, printedUnit: string): string {
+  return packed ? bottlesWords(q) : `${fmtQty(q)} ${printedUnit}`.trim()
+}
+
+function bottlesWords(q: number): string {
+  return `${fmtQty(q)} ${q === 1 ? 'bottle' : 'bottles'}`
+}
 
 export interface DoorFrameProps {
   doc: CanonicalDocument
@@ -70,10 +116,26 @@ export function DoorFrame({
    * is a count of nothing, and it would be submitted as one.
    */
   const [counts, setCounts] = useState<Record<number, number>>({})
+  /** Bottles in one case, typed at the door, for a case the paper has no pack for. */
+  const [packs, setPacks] = useState<Record<number, string>>({})
   const [signedBy, setSignedBy] = useState('')
   const [note, setNote] = useState('')
 
   const touched = Object.keys(counts).length
+
+  /** The unit word when line `i` is packed, or null. */
+  const packedUnit = (i: number): string | null => {
+    const uom = resolved.get(i)?.canonicalUom ?? null
+    return uom && PACKED_UNITS.has(uom) ? uom : null
+  }
+  /** The paper's own pack for line `i`, when it states one. */
+  const paperPack = (i: number) => knownPack(resolved.get(i)?.packSize)
+  /** Line `i` is a case the paper has no pack for. */
+  const asksPack = (i: number) => packedUnit(i) !== null && paperPack(i) === null
+  /** Counted case lines still waiting for their pack, by line number. */
+  const packMissing = Object.entries(counts)
+    .filter(([i, qty]) => qty > 0 && asksPack(Number(i)) && knownPack(packs[Number(i)]) === null)
+    .map(([i]) => Number(i) + 1)
 
   const submit = async () => {
     if (!onSubmitCount) return
@@ -90,6 +152,9 @@ export function DoorFrame({
         ...(line?.formatMl.value != null ? { formatMl: line.formatMl.value } : {}),
         // r24: the paper's own line, so the gateway books by its pairing and unit.
         ...(resolved.get(idx)?.lineId ? { sourceLineId: resolved.get(idx)!.lineId! } : {}),
+        // r28 G1: the pack the door gives. Its box is drawn only where the
+        // paper has none, so only those lines can carry one.
+        ...(knownPack(packs[idx]) !== null ? { packSize: knownPack(packs[idx])! } : {}),
       }
     })
     await onSubmitCount({
@@ -98,6 +163,7 @@ export function DoorFrame({
       ...(note.trim() ? { note: note.trim() } : {}),
     })
     setCounts({})
+    setPacks({})
     setSignedBy('')
     setNote('')
   }
@@ -175,9 +241,16 @@ export function DoorFrame({
               <span style={{ display: 'block', fontSize: 10.5, color: 'var(--ink-2, #4F473C)' }}>
                 The paperwork says{' '}
                 <strong>
-                  {fmtQty(adj?.shipped ?? adj?.billed ?? null)}{' '}
-                  {line.unit.value ?? ''}
+                  {paperworkWords(
+                    adj?.shipped ?? adj?.billed ?? null,
+                    packedUnit(i) !== null,
+                    paperPack(i),
+                    line.unit.value ?? '',
+                  )}
                 </strong>
+                {packedUnit(i) && paperPack(i) !== null
+                  ? ` · ${paperPack(i)} bottles to a ${PACKED_WORD[packedUnit(i)!]}`
+                  : ''}
               </span>
               <span
                 style={{
@@ -276,6 +349,46 @@ export function DoorFrame({
                   </span>
                 )}
               </span>
+              {onSubmitCount && asksPack(i) && (
+                <label
+                  data-testid="door-pack"
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginTop: 4, fontSize: 10.5, fontWeight: 600 }}
+                >
+                  <span>
+                    Bottles in one {PACKED_WORD[packedUnit(i)!]}
+                    <span style={{ display: 'block', fontSize: 9.5, fontWeight: 400, color: '#94661A' }}>
+                      The paper does not say. Count them in one.
+                    </span>
+                  </span>
+                  <input
+                    data-testid="door-pack-input"
+                    aria-label={`Bottles in one ${PACKED_WORD[packedUnit(i)!]} on line ${i + 1}`}
+                    value={packs[i] ?? ''}
+                    inputMode="numeric"
+                    placeholder="—"
+                    onChange={(e) => {
+                      const raw = e.target.value.trim()
+                      setPacks((p) => {
+                        const next = { ...p }
+                        if (raw === '') delete next[i]
+                        else next[i] = raw
+                        return next
+                      })
+                    }}
+                    style={{
+                      width: 46,
+                      textAlign: 'center',
+                      fontFamily: MONO,
+                      fontSize: 14,
+                      fontWeight: 600,
+                      border: '1px solid var(--paper-2, #EAE4D8)',
+                      borderRadius: 7,
+                      padding: '2px 4px',
+                      background: 'var(--paper-0, #FFFDF8)',
+                    }}
+                  />
+                </label>
+              )}
               {short && (
                 <span style={{ display: 'block', fontSize: 9.5, fontWeight: 600, color: '#B0362C' }}>
                   Short of what the paperwork says.
@@ -283,7 +396,7 @@ export function DoorFrame({
               )}
               {onSubmitCount && typeof adj?.received === 'number' && (
                 <span data-testid="door-counted-so-far" style={{ display: 'block', fontSize: 9.5, color: 'var(--ink-2, #4F473C)' }}>
-                  Counted so far: {fmtQty(adj.received)} {line.unit.value ?? ''}. A new count of this line replaces it.
+                  Counted so far: {countedWords(adj.received, packedUnit(i) !== null, line.unit.value ?? '')}. A new count of this line replaces it.
                 </span>
               )}
               {onSubmitCount && resolved.has(i) && resolved.get(i)!.inventoryIdSource !== 'line' && (
@@ -324,6 +437,13 @@ export function DoorFrame({
             </p>
           )}
           {booking && <BookingNote booking={booking} />}
+          {packMissing.length > 0 && (
+            <p data-testid="door-pack-missing" role="status" style={{ margin: 0, fontSize: 10.5, color: '#94661A' }}>
+              {packMissing.length === 1 ? `Line ${packMissing[0]} is` : `Lines ${packMissing.join(', ')} are`} counted
+              in cases the paper gives no size for. Say how many bottles are in one (2 or more) before recording,
+              or the count would go on the shelf as that many bottles.
+            </p>
+          )}
           <p style={{ margin: 0, fontSize: 9.5, color: 'var(--ink-4, #665D50)' }}>
             {touched === 0
               ? 'Nothing counted yet. A line you do not touch is not a zero — it stays “not counted”, and the delivery says so.'
@@ -332,7 +452,7 @@ export function DoorFrame({
           <button
             type="button"
             data-testid="door-submit"
-            disabled={busy || touched === 0}
+            disabled={busy || touched === 0 || packMissing.length > 0}
             onClick={() => void submit()}
             style={{
               fontSize: 12,
@@ -340,9 +460,9 @@ export function DoorFrame({
               padding: '6px 10px',
               borderRadius: 8,
               border: 0,
-              background: touched === 0 ? 'var(--paper-2, #EAE4D8)' : 'var(--seal, #1A5E6B)',
-              color: touched === 0 ? 'var(--ink-4, #665D50)' : '#FFFDF8',
-              cursor: busy ? 'wait' : touched === 0 ? 'not-allowed' : 'pointer',
+              background: touched === 0 || packMissing.length > 0 ? 'var(--paper-2, #EAE4D8)' : 'var(--seal, #1A5E6B)',
+              color: touched === 0 || packMissing.length > 0 ? 'var(--ink-4, #665D50)' : '#FFFDF8',
+              cursor: busy ? 'wait' : touched === 0 || packMissing.length > 0 ? 'not-allowed' : 'pointer',
             }}
           >
             {busy ? 'Recording the count…' : 'Record this count'}
