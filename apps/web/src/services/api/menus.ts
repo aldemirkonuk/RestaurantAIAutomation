@@ -373,6 +373,12 @@ export interface MenuVersion {
   madeCurrentBy: MenuPerson | null
   retiredAt: string | null
   retiredBy: MenuPerson | null
+  /**
+   * r36 N9 (gateway #1634): when an owner or a manager put this menu away, and
+   * who. Absent from an older gateway, which reads as not put away.
+   */
+  setAsideAt?: string | null
+  setAsideBy?: MenuPerson | null
   createdAt: string | null
 }
 
@@ -519,6 +525,28 @@ export async function getMenuPlan(menuId: string): Promise<MenuPlan> {
 /** Every menu this house has read (the house comes from the token). A failed read throws. */
 export async function listMenuVersions(): Promise<MenuVersions> {
   const response = await apiClient.get<MenuVersions>('/menu-versions')
+  return response.data
+}
+
+/** What putting a kept menu away, or bringing it back, did (r36 N9). */
+export interface SetAsideResult {
+  menuId: string
+  setAside: boolean
+  setAsideAt: string | null
+  /** false when the menu already was as asked: nothing was written. */
+  changed: boolean
+  said: string
+}
+
+/** Puts a kept menu away: kept whole, folded out of the list, not offered to make current. Owner or manager. */
+export async function setMenuAside(menuId: string): Promise<SetAsideResult> {
+  const response = await apiClient.post<SetAsideResult>(`/menu-versions/${menuId}/set-aside`)
+  return response.data
+}
+
+/** Brings a menu that was put away back to the kept menus. Owner or manager. */
+export async function bringMenuBack(menuId: string): Promise<SetAsideResult> {
+  const response = await apiClient.post<SetAsideResult>(`/menu-versions/${menuId}/bring-back`)
   return response.data
 }
 

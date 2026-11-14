@@ -12,7 +12,9 @@ import {
   MenuVersions,
   menuFileRefusal,
   makeCurrentSentence,
+  putAwayWords,
   readMenuDate,
+  splitPutAway,
   sourceWords,
   standingSecond,
   versionLabel,
@@ -24,10 +26,12 @@ vi.mock('../../../hooks/queries/useHouseCurrencyCode', () => ({ useHouseCurrency
 const m = (n: number) => formatMoney(n, 'TRY');
 
 import {
+  bringMenuBack,
   getMenuPlan,
   importMenu,
   listMenuVersions,
   makeMenuCurrent,
+  setMenuAside,
   readWarningSentence,
   type MenuPlan,
   type MenuVersion,
@@ -44,6 +48,8 @@ vi.mock('../../../services/api/menus', async () => {
     importMenu: vi.fn(),
     getMenuSourceUrl: vi.fn(),
     getMenuPlan: vi.fn(),
+    setMenuAside: vi.fn(),
+    bringMenuBack: vi.fn(),
   };
 });
 
@@ -540,5 +546,104 @@ describe('the upload box reads what it offers (r28 G18)', () => {
     await waitFor(() => expect(mockImport).toHaveBeenCalledTimes(1));
     expect(mockImport.mock.calls[0][0]).toBe('csv');
     expect(mockImport.mock.calls[0][1]).toHaveProperty('fileBase64');
+  });
+});
+
+describe('r36 N9: a kept menu can be put away, and brought back', () => {
+  const CUR = version({ menuId: 'cur', status: 'active', current: true, madeCurrentAt: '2026-09-21T10:00:00Z', extractedAt: '2026-09-19T10:00:00Z' });
+  const MISREAD = version({ menuId: 'mis', extractedAt: '2026-11-02T10:00:00Z' });
+  const OLD = version({
+    menuId: 'old',
+    extractedAt: '2026-10-01T10:00:00Z',
+    setAsideAt: '2026-11-03T09:00:00Z',
+    setAsideBy: { userId: 'u7', name: 'Aylin' },
+  });
+  const list = (versions: MenuVersion[]) => ({ current: CUR, lastUsed: null, versions, namesReadable: true, namesReason: null });
+  const mockAside = vi.mocked(setMenuAside);
+  const mockBack = vi.mocked(bringMenuBack);
+  beforeEach(() => {
+    mockAside.mockReset();
+    mockBack.mockReset();
+  });
+
+  it('splits the list: a menu put away is folded out, the current one never is', () => {
+    const odd = { ...CUR, setAsideAt: '2026-11-03T09:00:00Z' };
+    expect(splitPutAway([CUR, MISREAD, OLD])).toEqual({ kept: [CUR, MISREAD], away: [OLD] });
+    // A current menu with the column set (it cannot be, by the CHECK) still stays in the list.
+    expect(splitPutAway([odd]).kept).toEqual([odd]);
+    expect(putAwayWords(OLD)).toBe('the menu read 2026-10-01, put away on 2026-11-03 by Aylin');
+    expect(putAwayWords({ ...OLD, setAsideBy: { userId: 'u7', name: null } })).toBe(
+      'the menu read 2026-10-01, put away on 2026-11-03 by someone whose name is not on record',
+    );
+    expect(putAwayWords({ ...OLD, setAsideBy: null })).toBe('the menu read 2026-10-01, put away on 2026-11-03');
+  });
+
+  it('a manager puts a menu away from its row; the current row offers no such button', async () => {
+    mockList.mockResolvedValue(list([CUR, MISREAD, OLD]));
+    mockAside.mockResolvedValue({ menuId: 'mis', setAside: true, setAsideAt: '2026-11-14T09:00:00Z', changed: true, said: '' });
+    mount(true);
+    const rows = await screen.findAllByTestId('menu-version-row');
+    expect(rows).toHaveLength(2);
+    const buttons = screen.getAllByTestId('menu-version-put-away');
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]).toHaveAccessibleName('Put the menu read 2026-11-02 away');
+    fireEvent.click(buttons[0]);
+    await waitFor(() => expect(mockAside).toHaveBeenCalledWith('mis'));
+    expect(
+      await screen.findByText(
+        'the menu read 2026-11-02 is put away. Its file and lines are kept; bring it back from Put away below to make it current.',
+      ),
+    ).toBeInTheDocument();
+    expect(mockBack).not.toHaveBeenCalled();
+  });
+
+  it('lists what was put away, folded, and a manager brings one back', async () => {
+    mockList.mockResolvedValue(list([CUR, MISREAD, OLD]));
+    mockBack.mockResolvedValue({ menuId: 'old', setAside: false, setAsideAt: null, changed: true, said: '' });
+    mount(true);
+    const folded = await screen.findByTestId('menu-versions-put-away');
+    expect(folded).toHaveTextContent('Put away (1)');
+    expect(screen.getByTestId('menu-version-away')).toHaveTextContent('the menu read 2026-10-01, put away on 2026-11-03 by Aylin.');
+    fireEvent.click(screen.getByRole('button', { name: 'Bring the menu read 2026-10-01 back', hidden: true }));
+    await waitFor(() => expect(mockBack).toHaveBeenCalledWith('old'));
+    expect(
+      await screen.findByText('the menu read 2026-10-01 is back among the menus kept, and can be made current again.'),
+    ).toBeInTheDocument();
+    expect(mockAside).not.toHaveBeenCalled();
+  });
+
+  it('staff see what was put away, and no button to put away or bring back', async () => {
+    mockList.mockResolvedValue(list([CUR, MISREAD, OLD]));
+    mount(false);
+    expect(await screen.findByTestId('menu-version-away')).toBeInTheDocument();
+    expect(screen.queryByTestId('menu-version-put-away')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Bring .* back/, hidden: true })).toBeNull();
+  });
+
+  it('putting away the menu whose plan is open closes the plan', async () => {
+    mockList.mockResolvedValue(list([CUR, MISREAD]));
+    mockAside.mockResolvedValue({ menuId: 'mis', setAside: true, setAsideAt: '2026-11-14T09:00:00Z', changed: true, said: '' });
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Make the menu read 2026-11-02 current' }));
+    expect(await screen.findByTestId('menu-plan')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('menu-version-put-away'));
+    await waitFor(() => expect(screen.queryByTestId('menu-plan')).toBeNull());
+  });
+
+  it('a refusal is said with its reason, and nothing changed', async () => {
+    mockList.mockResolvedValue(list([CUR, MISREAD]));
+    mockAside.mockRejectedValue({ response: { status: 409, data: { message: 'This is the current menu, so it cannot be set aside.' } } });
+    mount(true);
+    fireEvent.click(await screen.findByTestId('menu-version-put-away'));
+    expect(
+      await screen.findByText(/^the menu read 2026-11-02 could not be put away \(.+\)\. Nothing was changed\.$/),
+    ).toBeInTheDocument();
+  });
+
+  it('a house whose every menu is put away says so, not that none was read', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [OLD], namesReadable: true, namesReason: null });
+    mount(true);
+    expect(await screen.findByText('Every menu this house has read is put away.')).toBeInTheDocument();
+    expect(screen.queryByText('No menu has been read yet.')).toBeNull();
   });
 });
