@@ -998,6 +998,11 @@ describe('DeliveryGates — the two gates, explained before they are pressed', (
     expect(costRepairSentences(costNoticeOf({ alreadyVerified: true, cost: { finalised: [], stillProvisional: [] }, repair: { repaired: [], flagged: [] } })!)).toEqual([
       'Cost checked again: nothing needed correcting.',
     ])
+    // With no repair sent, a lot still provisional is still named.
+    expect(costNoticeOf({ alreadyVerified: true, cost: { finalised: [], stillProvisional: [held] } })).toEqual({
+      repaired: [],
+      flagged: [{ ...held, kind: 'refused' }],
+    })
     // A re-check with no cost and no repair puts up no notice.
     expect(costNoticeOf({ alreadyVerified: true, cost: null, repair: null })).toBeNull()
   })
