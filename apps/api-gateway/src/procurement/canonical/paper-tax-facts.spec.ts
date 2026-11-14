@@ -89,6 +89,18 @@ describe("paperTaxFacts — the basis", () => {
     expect(paperTaxFacts({ tax: 0, total: 1000 }, [value(1000)]).basis).toBeNull();
     expect(paperTaxFacts({ total: 1000 }, [value(1000)]).basis).toBeNull();
     expect(paperTaxFacts({ tax: 200, total: 1200 }, []).basis).toBeNull();
+    // A deposit on the paper: whether the total holds it is not said.
+    expect(paperTaxFacts({ tax: 200, total: 1200, deposit_total: 30 }, [value(1000)]).basis).toBeNull();
+    // One line of two with no printed total: the lines' sum is not known.
+    expect(paperTaxFacts({ tax: 200, total: 1200 }, [value(1000), { ...value(5), printedTotal: null }]).basis).toBeNull();
+  });
+
+  it("a tax inside the rounding (0.03 on 1000) decides nothing, and neither do sums that tie both ways", () => {
+    expect(
+      paperTaxFacts({ tax: 0.03, total: 1000, tax_breakdown: [{ rate: 0, taxableBase: 999.97 }] }, [value(1000.01)]).basis,
+    ).toBeNull();
+    // lines 999.98, tax 0.05, total 1000.00: both readings are within a cent a part.
+    expect(paperTaxFacts({ tax: 0.05, total: 1000 }, [value(999.98)]).basis).toBeNull();
   });
 });
 
@@ -132,9 +144,12 @@ describe("paperTaxFacts — the rate", () => {
     expect(paperTaxFacts({ tax: 200, total: 1200, tax_breakdown: [{ rate: 20 }] }, [open]).ratePercent).toBeNull();
   });
 
-  it("a rate that is not a rate is given to no line", () => {
+  it("a rate that is not a rate is given to no line, even when its sum works", () => {
     expect(
       paperTaxFacts({ einvoice: { kind: "e-fatura" }, tax: 200, tax_breakdown: [{ rate: 120 }] }, [value(1000)]).ratePercent,
+    ).toBeNull();
+    expect(
+      paperTaxFacts({ einvoice: { kind: "e-fatura" }, tax: 1500, tax_breakdown: [{ rate: 150 }] }, [value(1000)]).ratePercent,
     ).toBeNull();
   });
 });
