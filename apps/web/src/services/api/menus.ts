@@ -138,6 +138,12 @@ export interface OnboardingProgress {
 export interface OnboardingNextSteps {
   /** An active good on the house's list. */
   goods_listed: boolean | null
+  /**
+   * An active good someone has counted. The first current menu puts its
+   * drinks on the list uncounted, so this, not goods_listed, is the count
+   * step. Absent from an older gateway.
+   */
+  goods_counted?: boolean | null
   /** A live Gmail grant held for this house (sending or reading). */
   mailbox_connected: boolean | null
   /** "checked" once an invoice is verified, "waiting" while one is in, else "none". */
