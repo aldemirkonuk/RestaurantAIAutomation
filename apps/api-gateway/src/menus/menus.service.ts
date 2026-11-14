@@ -24,6 +24,7 @@ import { isKitchenLine, lineForViewer, type LineView } from "./menu-line-view";
 import { kindNoun, matchHouseGoods } from "./house-good-match";
 import {
   setHouseMenuPrice,
+  setHouseMenuPrices,
   type HeldKind,
   type HousePriceOutcome,
 } from "../pricing/house-menu-price";
@@ -486,6 +487,54 @@ interface PriceSyncEntry {
   held: HeldKind[];
   /** Set when the flag itself could not be written on the line. */
   flagError?: string;
+}
+
+/** What one line will write, and the flag it carries, decided BEFORE the write. */
+interface CarryPlan {
+  bottle: number | null;
+  glass: number | null;
+  flag: PriceFlag | null;
+  flagNote: string | null;
+}
+
+/**
+ * One linked menu line's prices onto the house's own (see carryMenuPrice for
+ * the founder's rules): the prices it names, and its flag against the house's
+ * price just before this line is written.
+ */
+function carryPlanOf(
+  item: InsertedMenuItem,
+  house: { bottle: number | string | null; glass: number | string | null },
+  // The good's kind, for the sentence: a gin is not "this wine" (r21, D4).
+  kind: string | null = null,
+): CarryPlan {
+  const price = (v: unknown): number | null => {
+    if (v === null || v === undefined || v === "") return null;
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  };
+  const bottle = price(item.bottle_price);
+  const glass = price(item.by_glass_price);
+  const knownBottle = price(house.bottle);
+  const knownGlass = price(house.glass);
+  const kept: string[] = [];
+  if (bottle === null && knownBottle !== null) kept.push(`bottle price ${knownBottle.toFixed(2)}`);
+  if (glass === null && knownGlass !== null) kept.push(`glass price ${knownGlass.toFixed(2)}`);
+  const noPriceAnywhere =
+    bottle === null && glass === null && knownBottle === null && knownGlass === null;
+  const flag: PriceFlag | null =
+    kept.length > 0 ? "blank_kept_last_known" : noPriceAnywhere ? "blank_no_house_price" : null;
+  // Past tense on purpose (last-call review, 2026-09-21): the note stays on
+  // the line after a manager changes the price on Inventory, so it states
+  // what was kept when the line was carried -- true forever -- not what the
+  // house "keeps" now, which the first price change would make false.
+  const flagNote =
+    kept.length > 0
+      ? `The menu line shows no ${kept.map((k) => k.split(" ")[0]).join(" or ")} price, so the house kept the ${kept.join(" and ")} it already had. A manager can change it on Inventory, under Your price.`
+      : noPriceAnywhere
+        ? `The menu line shows no price, and the house had no price for this ${kindNoun(kind)} either, so it stands on the menu unpriced. A manager can set one on Inventory, under Your price.`
+        : null;
+  return { bottle, glass, flag, flagNote };
 }
 
 export interface MenuImportReviewItem {
@@ -1774,7 +1823,14 @@ export class MenusService {
       held: [],
       returned: [],
     };
-    if (r.outcome === "already_current") return { outcome: "already_current", ...empty };
+    // CHOOSING A CURRENT MENU AGAIN FINISHES ITS CARRY (r28 G1). It answered
+    // "already_current" with zero lines, so a carry cut off part-way (a deploy,
+    // a refused price call) could never be finished from any screen. Every
+    // price is written dated by the original choice, so the carry is safe to
+    // run again: a line already carried answers "unchanged", a price someone
+    // set after the choice answers "stale" and stands, a lock still holds.
+    const outcome = r.outcome;
+    if (outcome === "already_current" && !madeCurrentAt) return { outcome, ...empty };
 
     if (!madeCurrentAt) {
       // The menu IS current, and its prices cannot be dated by the choice. Said
@@ -1795,10 +1851,21 @@ export class MenusService {
     }
 
     // addToInventory writes each line's house link and price flag back itself.
-    const { priceSync } = await this.addToInventory(lines, restaurantId, userId, {
-      effectiveFrom: madeCurrentAt,
-      menuId,
-    });
+    // The switch is already committed: a refusal from here on must never
+    // reach the page as "nothing changed".
+    let priceSync: Map<string, PriceSyncEntry>;
+    try {
+      ({ priceSync } = await this.addToInventory(lines, restaurantId, userId, {
+        effectiveFrom: madeCurrentAt,
+        menuId,
+      }));
+    } catch (err) {
+      const why = err instanceof Error ? err.message : String(err);
+      this.logger.error(`menu ${menuId} is current but its prices were not carried: ${why}`);
+      throw new InternalServerErrorException(
+        `This menu is now the current one, but its prices did not reach the house (${why}). Choose it again under Menus kept to carry them; a price set since it was chosen stays.`,
+      );
+    }
 
     const counts: Record<string, number> = {};
     const failed: Array<{ menuItemId: string; name: string; error: string }> = [];
@@ -1824,7 +1891,7 @@ export class MenusService {
     }
     const returned = plan.lines.filter((l) => l.returned).map((l) => ({ menuItemId: l.menuItemId, name: l.name }));
     return {
-      outcome: "made_current",
+      outcome,
       ...empty,
       lines: lines.length,
       priceSync: counts,
@@ -2355,9 +2422,17 @@ export class MenusService {
       }
     }
 
-    // 3. Each line, in menu order: its row, then its price through the writer.
+    // 3. Each line's row, then every price through the writer in ONE call per
+    //    round (r28 G1). Round r holds the r-th line of each wine, in menu
+    //    order: a second line of one wine must see the price the first just
+    //    set (what the per-line read used to see), so its round re-reads those
+    //    rows first. A plain menu is one round; a wine listed by the glass and
+    //    again by the bottle makes two. The price stays set_house_menu_price's,
+    //    run inside set_house_menu_prices (L4, L27).
     const carried = new Set<string>();
     const writeBacks: Array<{ id: string; inventory_item_id: string; price_flag: PriceFlag | null; price_flag_note: string | null }> = [];
+    const rounds: Array<Array<{ item: InsertedMenuItem; inventoryId: string; kind: string | null }>> = [];
+    const roundOf = new Map<string, number>();
     for (const item of validItems) {
       const w = keyOf(item);
       // A failed read is not "no row" (last-call review, 2026-09-21). Read as
@@ -2388,35 +2463,100 @@ export class MenusService {
         priceSync.set(item.id, { outcome: "failed", error: message, flag: null, flagNote: null, held: [] });
         continue;
       }
-      let house = {
-        bottle: existing?.menu_price_current ?? null,
-        glass: existing?.menu_price_glass ?? null,
-      };
-      if (carried.has(w)) {
-        // A second line of the same wine: the first may just have moved its
-        // price, so the row is read again -- what the per-line read used to see.
-        const { data: again, error: againErr } = await client
-          .from("restaurant_inventory")
-          .select("menu_price_current, menu_price_glass")
-          .eq("id", inventoryId)
-          .eq("restaurant_id", restaurantId)
-          .maybeSingle();
-        if (againErr) {
-          const message = `the house's own row for this wine could not be read, so neither its price nor a blank-price flag was decided: ${againErr.message}`;
-          this.logger.error(`menu line ${item.id} ("${item.name}"): ${message}`);
-          priceSync.set(item.id, { outcome: "failed", error: message, flag: null, flagNote: null, held: [] });
-          continue;
-        }
-        house = { bottle: again?.menu_price_current ?? null, glass: again?.menu_price_glass ?? null };
-      }
       result.set(item.id, inventoryId);
       // A row this call created is "created" on its first line only.
       if (!existing && !carried.has(w)) result.created.add(item.id);
       carried.add(w);
+      const r = roundOf.get(w) ?? 0;
+      roundOf.set(w, r + 1);
       const kind = existing ? (existing.kind ?? null) : (createdKind.get(w) ?? null);
-      const entry = await this.carryMenuPrice(item, restaurantId, inventoryId, userId, house, dating, kind);
-      priceSync.set(item.id, entry);
-      writeBacks.push({ id: item.id, inventory_item_id: inventoryId, price_flag: entry.flag, price_flag_note: entry.flagNote });
+      (rounds[r] ??= []).push({ item, inventoryId, kind });
+    }
+
+    for (let r = 0; r < rounds.length; r += 1) {
+      const round = rounds[r];
+      // The house's price before this round: as read (or none, for a row this
+      // call created) for the first, read again for every later round.
+      const before = new Map<string, { bottle: number | string | null; glass: number | string | null }>();
+      const againFailed = new Map<string, string>();
+      if (r === 0) {
+        for (const { item, inventoryId } of round) {
+          const existing = existingByWine.get(keyOf(item)) ?? null;
+          before.set(inventoryId, {
+            bottle: existing?.menu_price_current ?? null,
+            glass: existing?.menu_price_glass ?? null,
+          });
+        }
+      } else {
+        const ids = [...new Set(round.map((x) => x.inventoryId))];
+        for (let at = 0; at < ids.length; at += WINE_ID_CHUNK) {
+          const chunk = ids.slice(at, at + WINE_ID_CHUNK);
+          const { data: again, error: againErr } = await client
+            .from("restaurant_inventory")
+            .select("id, menu_price_current, menu_price_glass")
+            .eq("restaurant_id", restaurantId)
+            .in("id", chunk);
+          if (againErr) {
+            for (const id of chunk) againFailed.set(id, againErr.message);
+            continue;
+          }
+          for (const row of (again ?? []) as Array<{ id: string; menu_price_current: number | string | null; menu_price_glass: number | string | null }>) {
+            before.set(String(row.id), { bottle: row.menu_price_current ?? null, glass: row.menu_price_glass ?? null });
+          }
+        }
+      }
+      const toWrite: Array<{ item: InsertedMenuItem; inventoryId: string; plan: CarryPlan }> = [];
+      for (const { item, inventoryId, kind } of round) {
+        const againErr = againFailed.get(inventoryId);
+        if (againErr !== undefined) {
+          const message = `the house's own row for this wine could not be read, so neither its price nor a blank-price flag was decided: ${againErr}`;
+          this.logger.error(`menu line ${item.id} ("${item.name}"): ${message}`);
+          priceSync.set(item.id, { outcome: "failed", error: message, flag: null, flagNote: null, held: [] });
+          continue;
+        }
+        const plan = carryPlanOf(item, before.get(inventoryId) ?? { bottle: null, glass: null }, kind);
+        writeBacks.push({ id: item.id, inventory_item_id: inventoryId, price_flag: plan.flag, price_flag_note: plan.flagNote });
+        if (plan.bottle === null && plan.glass === null) {
+          priceSync.set(item.id, { outcome: "no_price", error: null, flag: plan.flag, flagNote: plan.flagNote, held: [] });
+          continue;
+        }
+        toWrite.push({ item, inventoryId, plan });
+      }
+      if (toWrite.length === 0) continue;
+      const answers = await setHouseMenuPrices(
+        client,
+        {
+          restaurantId,
+          source: "import",
+          changedBy: userId,
+          // Dated by the choice of the menu, or now for a line added to the
+          // current menu -- never by the line's own created_at (L11).
+          effectiveFrom: dating.effectiveFrom,
+          menuId: dating.menuId,
+          reason: "menu line",
+        },
+        toWrite.map(({ item, inventoryId, plan }) => ({
+          key: String(item.id),
+          inventoryId,
+          ...(plan.bottle !== null ? { bottle: plan.bottle } : {}),
+          ...(plan.glass !== null ? { glass: plan.glass } : {}),
+        })),
+      );
+      for (const { item, inventoryId, plan } of toWrite) {
+        if (answers === null) {
+          // The batch writer is not in this database yet: one call per line, as before.
+          priceSync.set(item.id, await this.carryMenuPrice(item, restaurantId, inventoryId, userId, plan, dating));
+          continue;
+        }
+        const a = answers.get(String(item.id));
+        if (a?.ok) {
+          priceSync.set(item.id, { outcome: a.result.outcome, error: null, flag: plan.flag, flagNote: plan.flagNote, held: a.result.held });
+        } else {
+          const message = a ? a.error : "The price writer's answer did not name this line; whether its price changed is unknown.";
+          this.logger.error(`menu line ${item.id} ("${item.name}"): the house price was not updated: ${message}`);
+          priceSync.set(item.id, { outcome: "failed", error: message, flag: plan.flag, flagNote: plan.flagNote, held: [] });
+        }
+      }
     }
 
     // 4. Every carried line's house link and price flag (null clears a flag an
@@ -2495,37 +2635,10 @@ export class MenusService {
     restaurantId: string,
     inventoryId: string,
     userId: string,
-    house: { bottle: number | string | null; glass: number | string | null },
+    plan: CarryPlan,
     dating: CarryDating,
-    // The good's kind, for the sentence: a gin is not "this wine" (r21, D4).
-    kind: string | null = null,
   ): Promise<PriceSyncEntry> {
-    const price = (v: unknown): number | null => {
-      if (v === null || v === undefined || v === "") return null;
-      const n = typeof v === "number" ? v : Number(v);
-      return Number.isFinite(n) && n >= 0 ? n : null;
-    };
-    const bottle = price(item.bottle_price);
-    const glass = price(item.by_glass_price);
-    const knownBottle = price(house.bottle);
-    const knownGlass = price(house.glass);
-    const kept: string[] = [];
-    if (bottle === null && knownBottle !== null) kept.push(`bottle price ${knownBottle.toFixed(2)}`);
-    if (glass === null && knownGlass !== null) kept.push(`glass price ${knownGlass.toFixed(2)}`);
-    const noPriceAnywhere =
-      bottle === null && glass === null && knownBottle === null && knownGlass === null;
-    const flag: PriceFlag | null =
-      kept.length > 0 ? "blank_kept_last_known" : noPriceAnywhere ? "blank_no_house_price" : null;
-    // Past tense on purpose (last-call review, 2026-09-21): the note stays on
-    // the line after a manager changes the price on Inventory, so it states
-    // what was kept when the line was carried -- true forever -- not what the
-    // house "keeps" now, which the first price change would make false.
-    const flagNote =
-      kept.length > 0
-        ? `The menu line shows no ${kept.map((k) => k.split(" ")[0]).join(" or ")} price, so the house kept the ${kept.join(" and ")} it already had. A manager can change it on Inventory, under Your price.`
-        : noPriceAnywhere
-          ? `The menu line shows no price, and the house had no price for this ${kindNoun(kind)} either, so it stands on the menu unpriced. A manager can set one on Inventory, under Your price.`
-          : null;
+    const { bottle, glass, flag, flagNote } = plan;
     if (bottle === null && glass === null) return { outcome: "no_price", error: null, flag, flagNote, held: [] };
     try {
       const r = await setHouseMenuPrice(this.dbService.supabase, {
