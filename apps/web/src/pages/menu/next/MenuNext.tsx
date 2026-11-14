@@ -50,7 +50,7 @@ import { DISCARD_FOOTER, discardedNote } from './menu-discard-note';
 import { flagNoteInHouseMoney, housePriceBesideWords, housePriceNote, priceChangeNote, type PriceChange } from './menu-price-note';
 import { MenuVersions } from './MenuVersions';
 import { LockedPrices } from './LockedPrices';
-import { settingsApi } from '../../../services/api/settings';
+import { useHouseCurrencyRead } from '../../../hooks/queries/useHouseCurrencyCode';
 import { formatMoney } from '@/lib/currency';
 import { housePriceHint } from '@/lib/house-number';
 import { Wordmark } from '@/components/mudavym';
@@ -92,23 +92,6 @@ export function isKitchenMenuLine(line: MenuLine): boolean {
 function money(v: number | null, currency: string | null): string {
   if (v === null) return EM;
   return formatMoney(v, currency);
-}
-
-/**
- * The house's reporting currency, read the same way `ReceivingWorkspace`
- * reads it (`GET /settings/currency`, 5-minute staleTime) — a failed or
- * unanswered read resolves to `null`, which `formatMoney` renders as
- * "currency not recorded" rather than a silent dollar-sign default.
- */
-function useHouseCurrency(restaurantId: string | null): string | null {
-  const { data } = useQuery({
-    // The house is in the key: one house's currency never prices another's
-    // menu (MENU-01).
-    queryKey: ['settings', 'currency', restaurantId],
-    queryFn: () => settingsApi.houseCurrency(),
-    staleTime: 5 * 60_000,
-  });
-  return data?.readable ? (data.code ?? null) : null;
 }
 
 function useActiveMenu(restaurantId: string | null) {
@@ -522,7 +505,10 @@ export default function MenuNext() {
   const role = (activeRole ?? user?.role ?? null) as string | null;
   const canManage = role === 'owner' || role === 'manager';
   const { q, discard, add } = useActiveMenu(activeRestaurantId);
-  const currency = useHouseCurrency(activeRestaurantId);
+  // r41 R10/R11: the one shared read of the house's money. Until it answers,
+  // the menu is still being read: no price says "(currency not recorded)" of
+  // money that is only on its way.
+  const { code: currency, reading: currencyReading } = useHouseCurrencyRead(activeRestaurantId);
   const [discardingId, setDiscardingId] = useState<string | null>(null);
   // r36 N5: what a discard did, said after the line leaves the list.
   const [discarded, setDiscarded] = useState<string | null>(null);
@@ -650,7 +636,7 @@ export default function MenuNext() {
           Menu.
         </h1>
 
-        {authLoading || q.isLoading ? (
+        {authLoading || q.isLoading || currencyReading ? (
           <p className="cl-said" role="status">
             Reading the menu…
           </p>

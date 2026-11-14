@@ -246,6 +246,32 @@ describe('MenuNext — money states its own house currency', () => {
   });
 });
 
+describe('r41 R10: money on its way is not money "not recorded"', () => {
+  it('while the house money is being read, the menu waits, and no price says "currency not recorded"', async () => {
+    let answer: (c: HouseCurrency) => void = () => undefined;
+    mockCurrency.mockReturnValue(new Promise<HouseCurrency>((r) => (answer = r)));
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ by_glass_price: 62, bottle_price: 900 })] }));
+    mount();
+    await waitFor(() => expect(mockGetMenu).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.getByText('Reading the menu…')).toHaveAttribute('role', 'status');
+    expect(screen.queryAllByTestId('menu-row')).toHaveLength(0);
+    expect(document.body.textContent).not.toContain('currency not recorded');
+    answer(currency({ code: 'TRY' }));
+    const row = (await screen.findAllByTestId('menu-row'))[0];
+    expect(row.textContent).toMatch(/TRY/);
+    expect(row.textContent).not.toContain('currency not recorded');
+  });
+
+  it('a money read that fails is said as not recorded, and the menu is shown', async () => {
+    mockCurrency.mockRejectedValue(new Error('timeout'));
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ by_glass_price: 62 })] }));
+    mount();
+    const row = (await screen.findAllByTestId('menu-row'))[0];
+    expect(row.textContent).toContain('currency not recorded');
+  });
+});
+
 describe('MenuNext — add', () => {
   it('clears the form on a SUCCESSFUL add, never before', async () => {
     mockGetMenu.mockResolvedValue(menu({ items: [] }));
