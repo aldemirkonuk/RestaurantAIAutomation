@@ -263,6 +263,10 @@ interface ComboControl {
   onPick?: (p: ComboPick) => void;
 }
 
+/** Said on a full-screen view opened by a link, for a cutting off the reader's sheet. */
+export const NOT_ON_SHEET =
+  'It is not on your sheet: this view was opened by a link, and “Arrange the sheet” adds it.';
+
 export interface CuttingProps {
   id: AnalysisId;
   graph: GraphType;
@@ -282,6 +286,12 @@ export interface CuttingProps {
   onSwap: (to: AnalysisId) => void;
   onRemove: () => void;
   onDays: (d: number) => void;
+  /**
+   * A visit from a full-screen link (`rp-flat-visit.ts`): the analysis is not
+   * on the reader's sheet, so only its full-screen view is drawn, and the
+   * view's window line says it is not on their sheet.
+   */
+  flatOnly?: boolean;
 }
 
 export default function Cutting({
@@ -298,6 +308,7 @@ export default function Cutting({
   onSwap,
   onRemove,
   onDays,
+  flatOnly = false,
 }: CuttingProps) {
   const spec = CATALOGUE[id];
   const drawn = graphOrDefault(id, graph);
@@ -374,6 +385,25 @@ export default function Cutting({
     if (wasFlat.current && !flat) openerRef.current?.focus();
     wasFlat.current = flat;
   }, [flat]);
+
+  const flatView = flat && (
+    <CuttingFlat
+      title={spec.title}
+      windowLine={flatOnly ? `${windowLine} ${NOT_ON_SHEET}` : windowLine}
+      graphs={spec.graphs}
+      initialGraph={drawn}
+      initialComboPick={comboPick}
+      renderBody={(g, combo) => bodyFor(g, true, combo)}
+      windowControl={
+        spec.takesWindow ? <TillWindowPicker days={ctx.days} onChange={onDays} /> : undefined
+      }
+      anchorRef={openerRef}
+      onClose={closeFlat}
+    />
+  );
+
+  // A visit: nothing on the sheet, only the view the link asked for.
+  if (flatOnly) return <>{flatView}</>;
 
   return (
     <section className="rp-cut" aria-label={spec.title} data-held={held || undefined}>
@@ -464,21 +494,7 @@ export default function Cutting({
 
       <div className="rp-cut__body">{body}</div>
 
-      {flat && (
-        <CuttingFlat
-          title={spec.title}
-          windowLine={windowLine}
-          graphs={spec.graphs}
-          initialGraph={drawn}
-          initialComboPick={comboPick}
-          renderBody={(g, combo) => bodyFor(g, true, combo)}
-          windowControl={
-            spec.takesWindow ? <TillWindowPicker days={ctx.days} onChange={onDays} /> : undefined
-          }
-          anchorRef={openerRef}
-          onClose={closeFlat}
-        />
-      )}
+      {flatView}
     </section>
   );
 }

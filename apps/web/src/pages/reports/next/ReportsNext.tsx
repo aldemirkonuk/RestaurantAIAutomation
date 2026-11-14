@@ -77,6 +77,8 @@ import {
   type Slot,
 } from './rp-sheet';
 import { heldMark, layoutFor } from './rp-readable';
+import { flatAsked, flatVisit, refusedFlatSentence } from './rp-flat-visit';
+import { FLAT_PARAM } from './CuttingFlat';
 import { readingAge } from './rp-registers-trade';
 import type { ComboPick } from './rp-combo';
 import ExportsShelf from './ExportsShelf';
@@ -163,7 +165,10 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     (cut: { id: AnalysisId; graph: GraphType; days: number | null }) => placeRef.current(cut),
     [],
   );
-  const data = useReportsNextData(tillDays, setTillDays, showing, place);
+  // A full-screen link's analysis is read even when it is off the reader's
+  // sheet, so the link opens it (r36 gap 9, `rp-flat-visit.ts`).
+  const flatParam = params.get(FLAT_PARAM);
+  const data = useReportsNextData(tillDays, setTillDays, showing, place, flatAsked(flatParam));
   const role = data.role ?? null;
   const [asking, setAsking] = useState(false);
   const [ruledOff, setRuledOff] = useState(false);
@@ -495,6 +500,24 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
 
   const offSheet = ANALYSIS_IDS.filter((id) => !onSheet.has(id));
 
+  // The sheet is decided once it is read, or known unreadable (the house
+  // sheet is then drawn). Before that a visit could open twice.
+  const visit = flatVisit(
+    flatParam,
+    onSheet,
+    data.sheetKnown || Boolean(data.sheetUnread),
+    editing,
+  );
+  const clearFlat = () =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete(FLAT_PARAM);
+        return next;
+      },
+      { replace: true },
+    );
+
   const today = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
@@ -609,6 +632,32 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
               </p>
             )}
           </div>
+        )}
+
+        {visit.kind === 'refused' && (
+          <p role="status" className="rp-note" style={{ marginBottom: 12 }}>
+            {refusedFlatSentence(visit)}{' '}
+            <button type="button" className="rp-link rp-ink rp-focus" onClick={clearFlat}>
+              Clear it from the link
+            </button>
+          </p>
+        )}
+
+        {visit.kind === 'visit' && data.restaurantId !== null && (
+          <Cutting
+            id={visit.id}
+            graph={defaultGraph(visit.id)}
+            register={data.registers[visit.id]}
+            ctx={ctx}
+            arranging={false}
+            swapOptions={swapOptions}
+            arrange={arrange}
+            onGraph={() => {}}
+            onSwap={() => {}}
+            onRemove={() => {}}
+            onDays={setTillDays}
+            flatOnly
+          />
         )}
 
         {data.sheetUnread && data.restaurantId !== null && (
