@@ -18,7 +18,7 @@ const h = vi.hoisted(() => ({ get: vi.fn(), rid: '11111111-1111-4111-8111-111111
 vi.mock('../../../../services/api/client', () => ({ apiClient: { get: h.get } }));
 vi.mock('../../../../contexts/AuthContext', () => ({ useAuth: () => ({ activeRestaurantId: h.rid }) }));
 
-import LineRow, { LineRowRead, rowQty, type DraftRow } from './LineRow';
+import LineRow, { LineRowRead, labelOnLink, rowQty, sameName, type DraftRow } from './LineRow';
 import { amountWithUnit, qtyText, readQty, unitWord } from './units';
 import { useShelf } from './useRecipe';
 
@@ -57,6 +57,32 @@ describe('LineRow', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Tanqueray gin/ }));
     expect(last).toMatchObject({ inventoryId: GIN, itemName: 'Tanqueray gin', label: 'Tanqueray gin', saved: null });
     expect(h.get).toHaveBeenCalledWith(`/recipes/${RID}/shelf`, { params: { limit: 20 } });
+  });
+
+  it("picking a shelf item for a line typed in another case takes the shelf's spelling", async () => {
+    h.get.mockResolvedValue({ data: [{ id: GIN, name: 'Tanqueray gin', kind: 'spirit', uom: 'bottle', bottleSizeMl: 700 }] });
+    mount(<Harness start={{ ...blank, label: 'TANQUERAY   GIN' }} />);
+    fireEvent.click(screen.getByRole('button', { name: /link it to your shelf/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Tanqueray gin/ }));
+    expect(last).toMatchObject({ inventoryId: GIN, label: 'Tanqueray gin' });
+  });
+
+  it('a linked label folds case and spaces only; anything more is the person\'s words', () => {
+    expect(sameName(' Olive  OIL ', 'Olive Oil')).toBe(true);
+    expect(sameName('Olive oil, extra virgin', 'Olive Oil')).toBe(false);
+    expect(sameName('Olive Oil', null)).toBe(false);
+    expect(labelOnLink('OLIVE OIL', 'Olive Oil')).toBe('Olive Oil');
+    expect(labelOnLink('', 'Olive Oil')).toBe('Olive Oil');
+    expect(labelOnLink('juice of lemons', 'Lemons')).toBe('juice of lemons');
+  });
+
+  it('a saved line whose label is the name in another case reads the name once', () => {
+    const { container } = mount(
+      <ol>
+        <LineRowRead row={{ ...blank, inventoryId: GIN, itemName: 'Olive Oil', label: 'OLIVE OIL' }} />
+      </ol>,
+    );
+    expect(container.textContent).toBe('30 mlOlive Oil');
   });
 
   it('an unlinked counted line warns that the drink will not take stock', () => {

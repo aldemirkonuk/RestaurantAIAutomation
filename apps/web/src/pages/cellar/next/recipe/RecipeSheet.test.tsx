@@ -1348,6 +1348,30 @@ describe('a pasted line proposes its shelf item by exact name (ADR 0366 item 7)'
     expect(within(box).queryByTestId('recipe-proposed-link')).toBeNull();
   });
 
+  it('a linked line pasted in another case saves the shelf\'s name; an unlinked one keeps its words', async () => {
+    shelfAnswers(async (labels) => ({
+      data: labels.map((label) => {
+        const hit = label.replace(/\s+/g, ' ').toLowerCase() === 'bols gin';
+        return { label, item: hit ? BOLS : null, sameName: hit ? 1 : 0 };
+      }),
+    }));
+    mount();
+    const box = await read('2 oz BOLS  gin\n1 oz LIME juice');
+    expect(await within(box).findByTestId('recipe-proposed-link')).toHaveTextContent('links to Bols Gin');
+    const lines = await useAndSave();
+    expect(lines.map((l) => [l.inventoryId, l.label])).toEqual([
+      [GIN, 'Bols Gin'],
+      [null, 'LIME juice'],
+    ]);
+  });
+
+  it('a linked line whose words say more than the name keeps them', () => {
+    const p = { qty: 2, unit: 'oz' as const, label: 'Bols Gin, chilled', role: 'stocked' as const, confirmed: false as const, flag: null };
+    expect(fromProposal({ ...p, link: { status: 'linked', item: BOLS } }).label).toBe('Bols Gin, chilled');
+    expect(fromProposal({ ...p, label: 'bols gin', link: { status: 'linked', item: BOLS } }).label).toBe('Bols Gin');
+    expect(fromProposal({ ...p, label: 'bols gin', link: { status: 'none' } }).label).toBe('bols gin');
+  });
+
   it('a proposed line carries only a linked item into the draft', () => {
     const p = { qty: 2, unit: 'oz' as const, label: 'Bols Gin', role: 'stocked' as const, confirmed: false as const, flag: null };
     expect(fromProposal({ ...p, link: { status: 'linked', item: BOLS } })).toMatchObject({ inventoryId: GIN, itemName: 'Bols Gin', itemUom: 'bottle' });
