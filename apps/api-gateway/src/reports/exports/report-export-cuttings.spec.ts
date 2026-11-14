@@ -306,7 +306,9 @@ describe("a signed change is written in percent, from the engine's 0–1 fractio
   it("against ourselves: a goal is written in its metric's unit, never a bare count (r28 gap 6)", () => {
     const write = (goal: Record<string, unknown>) =>
       EXPORT_CUTTINGS.bench.write(
-        { ...(PAYLOADS.bench as object), activeGoals: [goal] },
+        // r33 meet: the reports train's bench reads the goals register as
+        // `goals` (audit G9), not the overview's `activeGoals`.
+        { ...(PAYLOADS.bench as object), goals: [goal] },
         { days: null },
       ).tables[0].rows.slice(-1)[0];
     const base = { name: "G", baseline_value: 0.2, current_value: 0.24, target_value: 0.3 };
