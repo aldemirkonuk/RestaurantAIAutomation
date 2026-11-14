@@ -13,10 +13,13 @@ import { BaseUnit, CostItem, recipeCost } from "./recipe-cost";
 import { CreateDishDto, UpdateDishDto } from "./dto/recipes.dto";
 import { DISH_NOT_THIS_HOUSE, RecipesService } from "./recipes.service";
 import { foldName } from "./name-fold";
+import { readCurrentMenuLines } from "../menus/current-menu-lines";
+import { menuIndex, menuPriceFor, type MenuLine } from "./menu-price-match";
 
 export const DISHES_UNREAD = "Your dishes could not be read just now. Nothing is shown rather than a wrong list.";
 export const DISH_USE_UNREAD = "Which dishes use this item could not be read just now.";
 export const DRINK_USE_UNREAD = "Which drinks use this item could not be read just now.";
+export const MENU_PRICES_UNREAD = "Your menu's prices could not be read just now, so none is shown beside your list.";
 export const DRINK_FIGURES_UNREAD = "Your drinks' costs could not be read just now, so none is shown.";
 
 /** Whose recipe: a dish (recipe_current_dish) or a house drink (recipe_current). */
@@ -438,6 +441,48 @@ export class DishesService {
         price: money && d.price != null ? Number(d.price) : null,
         ...this.figureFields(figures.get(d.id)),
       })),
+    };
+  }
+
+  /**
+   * The price the house's current menu gives each dish and each drink of the
+   * same name, beside the row's own price (r28 recipes audit, gap 2, slice 1;
+   * the rule is in menu-price-match.ts). Reads only; nothing is linked. The
+   * lists and the menu are read at once, each paged past the 1,000-row cap.
+   * A role that does not see money reads nothing and is told so. A failed
+   * read is a 503 with a sentence, never an empty answer.
+   */
+  async menuPrices(restaurantId: string, role: string | null | undefined) {
+    if (!seesHouseAmounts(role)) return { amountsWithheld: true, currentMenus: null, dishes: [], drinks: [] };
+    const client = this.db.getClient();
+    const [dishes, drinks, menu] = await Promise.all([
+      this.all<any>("dish list read", MENU_PRICES_UNREAD, (from, to) =>
+        client
+          .from("dishes")
+          .select("id, name, price")
+          .eq("restaurant_id", restaurantId)
+          .is("deleted_at", null)
+          .order("id", { ascending: true })
+          .range(from, to),
+      ),
+      this.all<any>("drink list read", MENU_PRICES_UNREAD, (from, to) =>
+        client
+          .from("cocktails")
+          .select("id, name, display_name, price")
+          .eq("restaurant_id", restaurantId)
+          .is("deleted_at", null)
+          .order("id", { ascending: true })
+          .range(from, to),
+      ),
+      readCurrentMenuLines(client, restaurantId).catch((e: unknown) => this.failed("current menu read", e, MENU_PRICES_UNREAD)),
+    ]);
+    if (menu.currentMenus === 0) return { amountsWithheld: false, currentMenus: 0, dishes: [], drinks: [] };
+    const index = menuIndex(menu.rows as unknown as MenuLine[]);
+    return {
+      amountsWithheld: false,
+      currentMenus: menu.currentMenus,
+      dishes: dishes.map((d) => ({ dishId: d.id, menu: menuPriceFor([d.name], "dish", d.price, index) })),
+      drinks: drinks.map((d) => ({ cocktailId: d.id, menu: menuPriceFor([d.display_name, d.name], "drink", d.price, index) })),
     };
   }
 
