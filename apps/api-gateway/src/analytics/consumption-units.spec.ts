@@ -278,6 +278,18 @@ function dbOver(rowsByTable: Rows) {
       b.single = () => Promise.resolve({ data: all[0] ?? null, error: null });
       b.update = () => b;
       b.then = (resolve: any, reject: any) => {
+        // The house's first consumption line (`readFirstRecord`): these
+        // fixtures are an established house, older than any lens window, so
+        // every rate here is over the whole window (r36 reports gap 1).
+        if (
+          table === "wine_consumption_log" &&
+          selected === "created_at" &&
+          lim === 1
+        )
+          return Promise.resolve({
+            data: [{ created_at: daysAgo(400) }],
+            error: null,
+          }).then(resolve, reject);
         const past =
           cursor === null
             ? all
