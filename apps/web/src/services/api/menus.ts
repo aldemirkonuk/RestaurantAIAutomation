@@ -171,10 +171,21 @@ export interface OnboardingProgress {
   activated: boolean
 }
 
+/**
+ * r41 R1: one line typed on /menu. Prices go as typed text; the gateway reads
+ * them with parseMenuPrice (readTypedLines), as it reads the Add form's boxes.
+ */
+export interface TypedMenuLine {
+  name: string
+  category?: string
+  by_glass_typed?: string
+  bottle_typed?: string
+}
+
 type MenuImportData =
   | { imageBase64: string; csvContent?: never; items?: never; fileBase64?: never }
   | { csvContent: string; imageBase64?: never; items?: never; fileBase64?: never }
-  | { items: WineExtractItem[]; imageBase64?: never; csvContent?: never; fileBase64?: never }
+  | { items: Array<WineExtractItem | TypedMenuLine>; imageBase64?: never; csvContent?: never; fileBase64?: never }
   | { fileBase64: string; imageBase64?: never; csvContent?: never; items?: never }
 
 export async function importMenu(
