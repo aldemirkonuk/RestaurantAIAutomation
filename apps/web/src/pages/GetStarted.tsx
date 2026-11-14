@@ -557,8 +557,8 @@ export default function GetStarted() {
         )}
         <p className="mt-3 max-w-xl text-[#6d685f]">
           {mapsOn
-            ? "Find the exact place. Its address sets the house's clock and reporting currency."
-            : "Its country sets the house's clock and reporting currency."}
+            ? "Find the exact place. Its address sets the house's clock and suggests its money."
+            : "Its country sets the house's clock and suggests its money."}
         </p>
         {!mapsOn && (
           <p role="status" className="mt-4 text-sm text-[#6d685f]">
@@ -662,6 +662,15 @@ export default function GetStarted() {
               {!currency && country.trim() && !countryCurrency && (
                 <span>Not known from the country: choose it, or set it later in Settings › Currency.</span>
               )}
+              {/* r36 onboarding gap 6: an unset money withholds the money of
+                  an invoice that names none and comes with no order
+                  (invoice-currency.ts), so the first paper puts no cost on.
+                  Said where the choice is made. */}
+              {!currency && country.trim() && (
+                <span data-testid="money-unset-cost">
+                  Until it is set, an invoice that names no money waits for it before its costs go on.
+                </span>
+              )}
             </label>
           </div>
         </div>
@@ -686,7 +695,9 @@ export default function GetStarted() {
   if (step === 'menu') {
     return (
       <ArrivalShell step={step} onSignOut={signOut}>
-        <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">One last step</p>
+        {/* r36 onboarding gap 11: "One last step" was followed by the proof,
+            the plan, a vendor, an invite and the next steps. */}
+        <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">Next</p>
         <h1 className="mt-3 font-serif text-4xl sm:text-5xl">Your menu</h1>
         <p className="mt-3 text-[#6d685f]">
           A photo, a file, or a few typed lines. Mudavym sets it out as the house&apos;s own list, and you check it on the next page.

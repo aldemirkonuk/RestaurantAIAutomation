@@ -95,6 +95,50 @@ const open = async () => {
 }
 
 describe('GetStarted: the house names its money', () => {
+  // r36 onboarding gaps 6 and 11: an unset money stops the costs of an
+  // invoice that names none; the choice says so where it is made, and the
+  // place line no longer says the address sets the money.
+  describe('what an unset money does to invoice costs', () => {
+    const COST = 'Until it is set, an invoice that names no money waits for it before its costs go on.'
+
+    it('says it when the owner leaves a known money unset', () => {
+      render(page())
+      fill('Türkiye')
+      expect(screen.queryByTestId('money-unset-cost')).not.toBeInTheDocument()
+      fireEvent.change(money(), { target: { value: '' } })
+      expect(screen.getByTestId('money-unset-cost')).toHaveTextContent(COST)
+      fireEvent.change(money(), { target: { value: 'TRY' } })
+      expect(screen.queryByTestId('money-unset-cost')).not.toBeInTheDocument()
+    })
+
+    it('says it where the country gives no money, until one is chosen', () => {
+      render(page())
+      fill('Zimbabwe')
+      expect(screen.getByTestId('money-unset-cost')).toHaveTextContent(COST)
+      fireEvent.change(money(), { target: { value: 'USD' } })
+      expect(screen.queryByTestId('money-unset-cost')).not.toBeInTheDocument()
+    })
+
+    it('says nothing before a country is chosen', () => {
+      render(page())
+      expect(screen.queryByTestId('money-unset-cost')).not.toBeInTheDocument()
+    })
+
+    it('says the place suggests the money, never that it sets it', () => {
+      render(page())
+      expect(screen.getByText("Its country sets the house's clock and suggests its money.")).toBeInTheDocument()
+      expect(screen.queryByText(/reporting currency/)).not.toBeInTheDocument()
+    })
+
+    it('names the menu step "Next", not "One last step"', async () => {
+      render(page())
+      fill('Türkiye')
+      await open()
+      expect(screen.getByText('Next')).toBeInTheDocument()
+      expect(screen.queryByText('One last step')).not.toBeInTheDocument()
+    })
+  })
+
   it('offers the country’s currency, says where it came from, and records it', async () => {
     render(page())
     fill('Türkiye')
