@@ -52,6 +52,13 @@ export interface MailPersonRow {
   newestOpenOrderId: string | null;
   newestOpenOrderNumber: string | null;
   /**
+   * The newest letter came from the vendor after the newest letter of it this
+   * person was shown, or they never opened it (r36 mail gap 6). Per person,
+   * not per house: a colleague reading it does not make it read for you.
+   * Null when the marks could not be read; never false for "unknown".
+   */
+  newToYou: boolean | null;
+  /**
    * The stored status of the house's newest letter to this person that has
    * NOT left (queued, sending, scheduled, failed, refused, pulled back), when
    * it is newer than the last letter that passed — or the only letter there
@@ -96,6 +103,13 @@ export interface MailThreadRow {
   waiting: boolean;
   orderId: string | null;
   orderNumber: string | null;
+  /**
+   * The thread's newest letter came from the vendor after the newest letter of it this
+   * person was shown, or they never opened it (r36 mail gap 6). Per person,
+   * not per house: a colleague reading it does not make it read for you.
+   * Null when the marks could not be read; never false for "unknown".
+   */
+  newToYou: boolean | null;
 }
 
 export interface MailThreadsPage {
@@ -184,6 +198,18 @@ export interface MailThreadPage {
    * never that they carried none.
    */
   attachmentsRead: boolean;
+}
+
+/** The answer to POST /mail/thread/seen. */
+export interface MailSeenAnswer {
+  key: string;
+  /** `vendor:<provider uuid>`, the thread's person. */
+  with: string;
+  /**
+   * The newest letter of this thread now kept as seen by this person; null
+   * when the thread has no letter between the house and this vendor.
+   */
+  seenThrough: string | null;
 }
 
 /** The answer to POST/DELETE /mail/letters/:id/no-reply-needed. */
