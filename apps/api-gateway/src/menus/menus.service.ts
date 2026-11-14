@@ -1026,10 +1026,12 @@ export class MenusService {
     dto: AddMenuItemDto,
     userId: string,
     callerRestaurantId?: string | null,
-    // Whether the caller may set a house price (owner or manager, resolved by
-    // the controller). Matters only when the menu is the CURRENT one and the
-    // line names a price: that line then sets the house's own price, which
-    // is an owner's or a manager's act (founder, 2026-09-21, answer 1).
+    // Whether the caller is an owner or a manager (resolved by the
+    // controller). Matters only when the menu is the CURRENT one: a line
+    // added there joins the house's own goods at once, priced or not (r35
+    // G14), and a priced one sets the house's own price (founder,
+    // 2026-09-21, answer 1). A kept menu that is not current is the review
+    // step, open to any member (ADR 0358 D2: any member may read a menu in).
     callerMayPrice = false,
   ): Promise<MenuImportReviewItem> {
     if (!callerRestaurantId) {
@@ -1060,6 +1062,14 @@ export class MenusService {
     if (isCurrent && namesPrice && !callerMayPrice) {
       throw new ForbiddenException(
         "Only managers and owners can put a price on the current menu: it sets the house's own price. Nothing was added.",
+      );
+    }
+    // r35 G14: an unpriced line on the current menu still adds a good to the
+    // house's own list (and a library row), and only an owner or a manager
+    // can discard it again (ADR 0358 D2). Adding is gated the same way.
+    if (isCurrent && !callerMayPrice) {
+      throw new ForbiddenException(
+        "Only managers and owners can add a line to the current menu: it adds a good to the house's own list. Nothing was added.",
       );
     }
 
@@ -1165,6 +1175,13 @@ export class MenusService {
     userId: string,
     callerRestaurantId: string | null | undefined,
     dto: ReviewMenuItemDto,
+    /**
+     * r35 G14: the caller is an owner or a manager (resolved by the
+     * controller). Anyone else may correct a line of a kept menu that is not
+     * current (the review step), never a line of the current menu, and never
+     * renames the house's own good.
+     */
+    callerMayManage = false,
   ): Promise<{
     menuItemId: string;
     fieldName: string;
@@ -1200,6 +1217,28 @@ export class MenusService {
       throw new NotFoundException("No menu item of this restaurant");
     }
 
+    // r35 G14: a correction to the current menu changes what the house sells
+    // (a name renames its good; a section can turn a drink into a kitchen
+    // line), so it is an owner's or a manager's, checked before any write.
+    if (!callerMayManage) {
+      const { data: ownMenu, error: ownMenuErr } = await this.dbService.supabase
+        .from("restaurant_menus")
+        .select("status")
+        .eq("id", menuItem.menu_id)
+        .eq("restaurant_id", callerRestaurantId)
+        .maybeSingle();
+      if (ownMenuErr) {
+        throw new InternalServerErrorException(
+          `Whether this line is on the current menu could not be read, so nothing was changed: ${ownMenuErr.message}`,
+        );
+      }
+      if ((ownMenu as { status?: string } | null)?.status === "active") {
+        throw new ForbiddenException(
+          "Only managers and owners can correct a line of the current menu: it changes what the house sells. Nothing was changed.",
+        );
+      }
+    }
+
     const oldValue = (menuItem as Record<string, unknown>)[dto.fieldName];
     const isPrice = PRICE_FIELDS.has(dto.fieldName);
     let newValueTyped: string | number = dto.newValue;
@@ -1226,8 +1265,9 @@ export class MenusService {
       throw new Error(`Failed to update menu_item: ${updateErr.message}`);
     }
 
-    // Keep the restaurant's own inventory display name in sync.
-    if (dto.fieldName === "name" && menuItem.inventory_item_id) {
+    // Keep the restaurant's own inventory display name in sync -- an owner's
+    // or a manager's correction only (r35 G14): anyone else corrects the line.
+    if (dto.fieldName === "name" && menuItem.inventory_item_id && callerMayManage) {
       await this.dbService.supabase
         .from("restaurant_inventory")
         .update({ wine_name: dto.newValue })

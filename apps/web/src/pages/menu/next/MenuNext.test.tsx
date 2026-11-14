@@ -363,6 +363,35 @@ describe('MenuNext — discard', () => {
     expect(screen.queryByRole('button', { name: 'Discard Raki' })).not.toBeInTheDocument();
   });
 
+  // r35 G14: a line added to the current menu joins the house's own goods,
+  // and staff could not take it back.
+  it('offers staff no add form on the current menu, and says who adds', async () => {
+    role = 'staff';
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ name: 'Raki' })] }));
+    mount();
+    expect(await screen.findByText('Raki')).toBeInTheDocument();
+    expect(screen.queryByTestId('menu-add-form')).not.toBeInTheDocument();
+    expect(screen.getByTestId('menu-add-staff-note')).toHaveTextContent(
+      "An owner or a manager adds a line to the current menu: it joins the house's own goods at once.",
+    );
+  });
+
+  it('an empty current menu does not tell staff to add the first line', async () => {
+    role = 'staff';
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    mount();
+    expect(await screen.findByText('Nothing on the menu yet.')).toBeInTheDocument();
+    expect(screen.queryByText(/add the first line above/)).not.toBeInTheDocument();
+  });
+
+  it('a manager keeps the add form and the empty-menu prompt', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    mount();
+    expect(await screen.findByText('Nothing on the menu yet — add the first line above.')).toBeInTheDocument();
+    expect(screen.getByTestId('menu-add-form')).toBeInTheDocument();
+    expect(screen.queryByTestId('menu-add-staff-note')).not.toBeInTheDocument();
+  });
+
   it('names the line it discards, for a screen reader', async () => {
     mockGetMenu.mockResolvedValue(menu({ items: [line({ name: 'Raki' })] }));
     mount();

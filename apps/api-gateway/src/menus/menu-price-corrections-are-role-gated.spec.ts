@@ -50,10 +50,28 @@ describe("PATCH /menus/items/:id — a PRICE correction is an owner's or a manag
     expect(review).not.toHaveBeenCalled();
   });
 
-  it("a NAME correction by staff is unchanged by this gate", async () => {
+  it("a NAME correction by staff passes this gate, and the service is told staff may not manage (r35 G14)", async () => {
     const { c, review } = controller("staff");
     await c.reviewMenuItem("mi-1", { fieldName: "name", newValue: "Opus" } as any, USER);
-    expect(review).toHaveBeenCalledTimes(1);
+    expect(review).toHaveBeenCalledWith("mi-1", "u-1", "rest-1", { fieldName: "name", newValue: "Opus" }, false);
+  });
+
+  it.each([
+    ["owner", true],
+    ["manager", true],
+    ["staff", false],
+    [null, false],
+  ])("r35 G14: %s -> the service is told it may manage: %s", async (role, may) => {
+    const { c, review } = controller(role as string | null);
+    if (may) await c.reviewMenuItem("mi-1", { fieldName: "bottle_price", newValue: "70" } as any, USER);
+    await c.reviewMenuItem("mi-1", { fieldName: "category", newValue: "Desserts" } as any, USER);
+    expect(review).toHaveBeenLastCalledWith("mi-1", "u-1", "rest-1", { fieldName: "category", newValue: "Desserts" }, may);
+  });
+
+  it("r35 G14: a session naming no house is not told it may manage", async () => {
+    const { c, review } = controller("owner");
+    await c.reviewMenuItem("mi-1", { fieldName: "name", newValue: "Opus" } as any, { userId: "u-1" });
+    expect(review).toHaveBeenCalledWith("mi-1", "u-1", null, { fieldName: "name", newValue: "Opus" }, false);
   });
 });
 
