@@ -55,6 +55,24 @@ describe('one change in words', () => {
     expect(versionWords(ver({ source: 'pos_sync' }), money)).toBe('bottle ₺52, since 2026-11-02, set pos sync.');
   });
 
+  it('says the reasons the house writes in its words, never a column or a route', () => {
+    // r39 walk: a hand change on /menu read "set from a menu … (menu line corrected (bottle_price))".
+    expect(versionWords(ver({ source: 'import', by: { userId: 'u1', name: 'Max' }, reason: 'menu line corrected (bottle_price)' }), money)).toBe(
+      'bottle ₺52, since 2026-11-02, set by hand on the menu, by Max (its bottle price).',
+    );
+    expect(versionWords(ver({ source: 'import', reason: 'menu line corrected (glass_price)' }), money)).toBe(
+      'bottle ₺52, since 2026-11-02, set by hand on the menu (its glass price).',
+    );
+    expect(versionWords(ver({ source: 'import', reason: 'menu line' }), money)).toBe('bottle ₺52, since 2026-11-02, set from a menu.');
+    expect(versionWords(ver({ reason: 'typed on /inventory' }), money)).toBe('bottle ₺52, since 2026-11-02, set by hand (typed on Inventory).');
+    expect(versionWords(ver({ source: 'backfill', reason: 'Seeded from restaurant_inventory when price versioning was introduced' }), money)).toBe(
+      'bottle ₺52, since 2026-11-02, set as it stood when price records began.',
+    );
+    expect(versionWords(ver({ reason: 'written without set_house_menu_price: no person or source was named' }), money)).toBe(
+      'bottle ₺52, since 2026-11-02, set by hand (written outside the price record, so no person or source was named).',
+    );
+  });
+
   it('never leaves who blank when someone set it', () => {
     expect(versionWords(ver({ by: { userId: 'u9', name: null } }), money)).toBe(
       'bottle ₺52, since 2026-11-02, set by hand, by someone whose name is not on record.',

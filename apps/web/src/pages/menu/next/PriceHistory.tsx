@@ -14,11 +14,38 @@ const SOURCE: Record<string, string> = {
   backfill: 'as it stood when price records began',
 };
 
+/**
+ * A change by hand on /menu is written with the menu's source and the reason
+ * "menu line corrected (bottle_price)" (menus.service). It is said as what it
+ * was: set by hand on the menu, its bottle or glass price (r39 walk: the page
+ * said "set from a menu … (menu line corrected (bottle_price))" while the
+ * line's status read "set by hand: its bottle price").
+ */
+const HAND_ON_MENU = /^menu line corrected \((bottle|glass)_price\)$/;
+
+/**
+ * The reasons the gateway and the database write, in the house's words; one
+ * that only repeats how it was set says nothing. Any other reason (a person's
+ * own words, accepted advice) is said as written.
+ */
+export function reasonWords(reason: string | null): string | null {
+  if (!reason) return null;
+  const r = reason.trim();
+  if (r === 'menu line') return null;
+  if (r === 'Seeded from restaurant_inventory when price versioning was introduced') return null;
+  if (r === 'typed on /inventory') return 'typed on Inventory';
+  if (r.startsWith('written without set_house_menu_price')) return 'written outside the price record, so no person or source was named';
+  const hand = HAND_ON_MENU.exec(r);
+  if (hand) return `its ${hand[1]} price`;
+  return r;
+}
+
 /** One change in a sentence: the prices, since when, how, by whom, and why. */
 export function versionWords(v: HousePriceVersion, money: (n: number) => string, namesReadable = true): string {
   const prices = [v.bottle !== null ? `bottle ${money(v.bottle)}` : null, v.glass !== null ? `glass ${money(v.glass)}` : null].filter(Boolean);
   const when = v.to ? `${v.from.slice(0, 10)} to ${v.to.slice(0, 10)}` : `since ${v.from.slice(0, 10)}`;
-  const how = SOURCE[v.source] ?? v.source.replace(/_/g, ' ');
+  const how = v.reason && HAND_ON_MENU.test(v.reason.trim()) ? 'by hand on the menu' : SOURCE[v.source] ?? v.source.replace(/_/g, ' ');
+  const why = reasonWords(v.reason);
   const who = v.by.name
     ? `, by ${v.by.name}`
     : v.by.userId
@@ -26,7 +53,7 @@ export function versionWords(v: HousePriceVersion, money: (n: number) => string,
         ? ', by someone whose name is not on record'
         : ', by someone not named here'
       : '';
-  return `${prices.length ? prices.join(', ') : 'no price'}, ${when}, set ${how}${who}${v.reason ? ` (${v.reason})` : ''}.`;
+  return `${prices.length ? prices.join(', ') : 'no price'}, ${when}, set ${how}${who}${why ? ` (${why})` : ''}.`;
 }
 
 export function PriceHistory({ inventoryId, name, money }: { inventoryId: string; name: string; money: (n: number) => string }) {
