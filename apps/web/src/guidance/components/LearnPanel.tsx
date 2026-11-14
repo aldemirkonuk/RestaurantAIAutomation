@@ -18,6 +18,13 @@ import { PAGE_TOUR_IDS, PAGE_TOUR_ROUTES, type PageTourId } from '../types'
 import { TOUR_LABELS } from '../tours/registry'
 import { trackGuidance } from '../analytics'
 
+/**
+ * Mail setup, in the Mail tab: both Gmail permissions and the reading switch
+ * are there, and Google's permission returns to it. A gateway or page that
+ * has no Mail tab yet opens /communications as before.
+ */
+const MAIL_SETUP = '/communications?tab=mail&setup=1'
+
 interface LearnPanelProps {
   progress: OnboardingProgress | null
   mode: 'get-started' | 'learn'
@@ -160,6 +167,52 @@ export function LearnPanel({
             why: 'Stock, and what runs low, are read from the count.',
             fact: counted,
           }
+  // The mailbox step (r36 mail gap 4, onboarding gap 2). Orders never leave
+  // from the house's mailbox: they leave from Mudavym's, in the house's name.
+  // What the house's own Gmail does is two things, each with its own grant:
+  // a letter written in Mail leaves from it (sending), and what the house's
+  // vendors send to it comes into Mail (reading, which also needs the
+  // house's switch). The founder's condition for the send grant is the whole
+  // conversation here, so the step is done when both hold, and an open step
+  // names the half that is missing. It leads to Mail setup, where both
+  // grants and the switch are, and where Google's permission returns to.
+  // An older gateway sends no reading fact: the step then says only what
+  // sending does and ticks on it, as before.
+  const sends =
+    next?.mailbox_sends === undefined ? (next?.mailbox_connected ?? null) : next.mailbox_sends
+  const reads = next?.mailbox_reads
+  const mailStep: { label: string; why: string; done: boolean; unread: boolean } =
+    reads === undefined
+      ? {
+          label: "Connect the house's Gmail",
+          why: "Letters you write to vendors in Mail leave from the house's own address.",
+          done: sends === true,
+          unread: sends === null,
+        }
+      : sends === true && reads === true
+        ? { label: "Connect the house's Gmail", why: '', done: true, unread: false }
+        : sends === null || reads === null
+          ? { label: "Connect the house's Gmail", why: '', done: false, unread: true }
+          : sends === true
+            ? {
+                label: "Let Mail read the house's Gmail",
+                why: "Letters you write in Mail leave from the house's address, but what vendors send to it is not read yet, so their answers do not come into Mail.",
+                done: false,
+                unread: false,
+              }
+            : reads === true
+              ? {
+                  label: "Let letters leave from the house's Gmail",
+                  why: "What your vendors send to the house's address comes into Mail, but a letter you write there cannot leave from it yet.",
+                  done: false,
+                  unread: false,
+                }
+              : {
+                  label: "Connect the house's Gmail",
+                  why: "Then letters you write to vendors in Mail leave from the house's address, and what they send to it comes into Mail.",
+                  done: false,
+                  unread: false,
+                }
   const nextSteps: Array<{
     id: string
     label: string
@@ -179,17 +232,8 @@ export function LearnPanel({
         },
         {
           id: 'mailbox',
-          label: "Connect the house's Gmail",
-          why: "Orders to vendors leave from the house's own address.",
-          // Ticks on a grant to send (r36 gap 2): the step says orders leave
-          // from the house's address, and a reading grant sends nothing. An
-          // older gateway names only "a grant"; then that is what is read.
-          done: (next.mailbox_sends === undefined ? next.mailbox_connected : next.mailbox_sends) === true,
-          unread: (next.mailbox_sends === undefined ? next.mailbox_connected : next.mailbox_sends) === null,
-          cta: {
-            label: 'Connect it',
-            onClick: go(`/authorize/gmail_send?returnPath=${encodeURIComponent('/communications')}`),
-          },
+          ...mailStep,
+          cta: { label: 'Set it up', onClick: go(MAIL_SETUP) },
         },
         // r36 onboarding gap 6: with no money set, an invoice that names none
         // and comes with no order puts no cost on. Shown only when the house

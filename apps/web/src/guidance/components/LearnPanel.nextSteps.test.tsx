@@ -69,8 +69,8 @@ describe('the Get started panel goes on past the menu', () => {
 
     fireEvent.click(within(step('goods')).getByRole('button', { name: /Count the first goods/ }))
     expect(navigate).toHaveBeenLastCalledWith('/inventory')
-    fireEvent.click(within(step('mailbox')).getByRole('button', { name: /Connect it/ }))
-    expect(navigate).toHaveBeenLastCalledWith('/authorize/gmail_send?returnPath=%2Fcommunications')
+    fireEvent.click(within(step('mailbox')).getByRole('button', { name: /Set it up/ }))
+    expect(navigate).toHaveBeenLastCalledWith('/communications?tab=mail&setup=1')
     fireEvent.click(within(step('invoice')).getByRole('button', { name: /Open Receipts/ }))
     expect(navigate).toHaveBeenLastCalledWith('/receipts')
     expect(onClose).toHaveBeenCalledTimes(3)

@@ -147,11 +147,18 @@ export interface OnboardingNextSteps {
   /** A live Gmail grant held for this house (sending or reading). */
   mailbox_connected: boolean | null
   /**
-   * A live Gmail grant to send, held for this house. The mailbox step says
-   * orders leave from the house's address, so it ticks on this one; a
-   * reading grant sends nothing. Absent from an older gateway.
+   * A live Gmail grant to send, held for this house: a letter written in
+   * Mail leaves from the house's address. Orders do not (they leave from
+   * Mudavym's mailbox in the house's name). Absent from an older gateway.
    */
   mailbox_sends?: boolean | null
+  /**
+   * The house's mailbox is read: a live Gmail reading grant held for this
+   * house AND its reading switch on. Then what the house's vendors send to
+   * that address comes into Mail. Absent from an older gateway; null when
+   * its read failed.
+   */
+  mailbox_reads?: boolean | null
   /** "checked" once an invoice is verified, "waiting" while one is in, else "none". */
   invoice: 'none' | 'waiting' | 'checked' | null
   /**
