@@ -84,6 +84,14 @@ describe("DocumentsController.count", () => {
     );
   });
 
+  it("fails on a read error even when a count came back beside it", async () => {
+    answer = { count: 4, error: { message: "timeout" } };
+    const err = await controller()
+      .count(user, "needs_review")
+      .catch((e: HttpException) => e);
+    expect((err as HttpException).getStatus()).toBe(500);
+  });
+
   it("reads a missing count as a failure, not as none", async () => {
     answer = { count: null, error: null };
     const err = await controller()
