@@ -31,6 +31,9 @@ import {
   todayLine,
   TODAY_ZONE_UNSET,
   unrecordedDoorStatus,
+  waitingChipWords,
+  waitingOn,
+  searchEmptyWords,
   type MailboxReader,
   type MailMessage,
   type MailSummary,
@@ -80,14 +83,14 @@ const msg = (over: Partial<MailMessage> = {}): MailMessage => ({
 describe('the header sentence', () => {
   it('names how many vendors wait and how long the oldest has', () => {
     const s = summary({ waitingPeople: 3, oldestWaitAt: new Date(NOW - 2 * 86_400_000).toISOString() });
-    expect(headerSentence(s, { failed: false, now: NOW })).toBe(
+    expect(headerSentence(s, { failed: false, now: NOW, on: 'you' })).toBe(
       '3 vendors are waiting on you. The oldest has been waiting 2 days.',
     );
   });
 
   it('says one vendor in the singular', () => {
     const s = summary({ waitingPeople: 1, oldestWaitAt: new Date(NOW - 90 * MIN).toISOString() });
-    expect(headerSentence(s, { failed: false, now: NOW })).toBe(
+    expect(headerSentence(s, { failed: false, now: NOW, on: 'you' })).toBe(
       '1 vendor is waiting on you. They have been waiting 1 hour.',
     );
   });
@@ -100,12 +103,12 @@ describe('the header sentence', () => {
         mudavymMail: { lastStoredAt: new Date(NOW - 86_400_000).toISOString() },
       },
     });
-    expect(headerSentence(arrived, { failed: false, now: NOW })).toBe('No one is waiting on you.');
+    expect(headerSentence(arrived, { failed: false, now: NOW, on: 'you' })).toBe('No one is waiting on you.');
   });
 
   // Spec (g): a failed summary is an em dash and words, never 0.
   it('a failed read is an em dash and words, never a zero', () => {
-    const s = headerSentence(null, { failed: true, reason: 'Service unavailable', now: NOW });
+    const s = headerSentence(null, { failed: true, reason: 'Service unavailable', now: NOW, on: 'you' });
     expect(s).toBe(
       '— Who is waiting on you could not be read (Service unavailable). That does not mean no one is.',
     );
@@ -113,7 +116,44 @@ describe('the header sentence', () => {
   });
 
   it('an unanswered read is still reading, not none', () => {
-    expect(headerSentence(null, { failed: false, now: NOW })).toBe('— Reading who is waiting on you…');
+    expect(headerSentence(null, { failed: false, now: NOW, on: 'you' })).toBe('— Reading who is waiting on you…');
+  });
+});
+
+describe('staff are told who waits on the house, not on them (r36 mail gap 14)', () => {
+  it('only an owner or a manager is "you"', () => {
+    expect(waitingOn(true)).toBe('you');
+    expect(waitingOn(false)).toBe('the house');
+    expect(waitingChipWords('you')).toBe('Waiting on you');
+    expect(waitingChipWords('the house')).toBe('Waiting on the house');
+  });
+
+  it('every header sentence says "the house" to staff', () => {
+    const on = 'the house' as const;
+    const s = summary({ waitingPeople: 3, oldestWaitAt: new Date(NOW - 2 * 86_400_000).toISOString() });
+    expect(headerSentence(s, { failed: false, now: NOW, on })).toBe(
+      '3 vendors are waiting on the house. The oldest has been waiting 2 days.',
+    );
+    expect(headerSentence(summary({ waitingPeople: 1, oldestWaitAt: null }), { failed: false, now: NOW, on })).toBe(
+      '1 vendor is waiting on the house.',
+    );
+    const arrived = summary({
+      doors: {
+        houseMailbox: { lastStoredAt: null },
+        whatsapp: { lastStoredAt: null },
+        mudavymMail: { lastStoredAt: new Date(NOW - 86_400_000).toISOString() },
+      },
+    });
+    expect(headerSentence(arrived, { failed: false, now: NOW, on })).toBe('No one is waiting on the house.');
+    expect(headerSentence(null, { failed: true, reason: 'x', now: NOW, on })).toBe(
+      '— Who is waiting on the house could not be read (x). That does not mean no one is.',
+    );
+    expect(headerSentence(null, { failed: false, now: NOW, on })).toBe('— Reading who is waiting on the house…');
+  });
+
+  it('the empty and search-empty lists say it too', () => {
+    expect(emptyListWords(null, null, { waitingOnly: true, on: 'the house' })).toBe('No vendor is waiting on the house.');
+    expect(searchEmptyWords('ali', { waitingOnly: true, on: 'the house' })).toMatch(/^No one waiting on the house matches “ali”\./);
   });
 });
 
@@ -334,12 +374,13 @@ describe('the list around the people', () => {
   it('an empty list names which doors are connected', () => {
     const words = emptyListWords(reader(), summary({ address: { configured: true, address: 'bodega@in.mudavym.com' } }), {
       waitingOnly: false,
+      on: 'you',
     });
     expect(words).toContain('Mail is read from your mailbox and your Mudavym address (bodega@in.mudavym.com).');
-    expect(emptyListWords(reader({ granted: false }), summary(), { waitingOnly: false })).toContain(
+    expect(emptyListWords(reader({ granted: false }), summary(), { waitingOnly: false, on: 'you' })).toContain(
       'Nothing is known to be connected for this house yet. Your mailbox is not connected; the house has no Mudavym address.',
     );
-    expect(emptyListWords(null, null, { waitingOnly: true })).toBe('No vendor is waiting on you.');
+    expect(emptyListWords(null, null, { waitingOnly: true, on: 'you' })).toBe('No vendor is waiting on you.');
   });
 
   it('says who wrote last', () => {
@@ -722,7 +763,7 @@ describe('day 1, before any letter has arrived', () => {
   const empty = { houseMailbox: { lastStoredAt: null }, whatsapp: { lastStoredAt: null }, mudavymMail: { lastStoredAt: null } };
 
   it('says no letter has reached Mail yet, not that no one is waiting', () => {
-    expect(headerSentence(summary(), { failed: false, now: NOW })).toBe('No vendor letter has reached Mail yet.');
+    expect(headerSentence(summary(), { failed: false, now: NOW, on: 'you' })).toBe('No vendor letter has reached Mail yet.');
   });
 
   it('the tab reads plain "Mail", with no zero', () => {
@@ -734,18 +775,18 @@ describe('day 1, before any letter has arrived', () => {
     ['WhatsApp', { ...empty, whatsapp: { lastStoredAt: at } }],
     ['Mudavym mail', { ...empty, mudavymMail: { lastStoredAt: at } }],
   ])('one letter by %s is enough to say "No one is waiting on you."', (_door, doors) => {
-    expect(headerSentence(summary({ doors }), { failed: false, now: NOW })).toBe('No one is waiting on you.');
+    expect(headerSentence(summary({ doors }), { failed: false, now: NOW, on: 'you' })).toBe('No one is waiting on you.');
     expect(mailTabLabel(summary({ doors }))).toBe('Mail · 0');
   });
 
   it('someone waiting is said as before, whatever the doors say', () => {
     const s = summary({ waitingPeople: 2 });
-    expect(headerSentence(s, { failed: false, now: NOW })).toBe('2 vendors are waiting on you.');
+    expect(headerSentence(s, { failed: false, now: NOW, on: 'you' })).toBe('2 vendors are waiting on you.');
     expect(mailTabLabel(s)).toBe('Mail · 2');
   });
 
   it('a summary without doors does not crash the header', () => {
     const s = { ...summary(), doors: undefined } as unknown as MailSummary;
-    expect(() => headerSentence(s, { failed: false, now: NOW })).not.toThrow();
+    expect(() => headerSentence(s, { failed: false, now: NOW, on: 'you' })).not.toThrow();
   });
 });
