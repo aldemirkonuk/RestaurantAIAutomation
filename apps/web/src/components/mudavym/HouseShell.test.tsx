@@ -16,6 +16,13 @@ import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 
 const readCounter = vi.hoisted(() => vi.fn());
 const checkFlag = vi.hoisted(() => vi.fn());
+// The house's setup read (Get started / Learn & Help, r33 w1 F1). Default:
+// still being read, so no door is drawn and every older case is unchanged.
+const onboardingRead = vi.hoisted(() => vi.fn());
+const updateProgress = vi.hoisted(() => vi.fn());
+vi.mock('../../hooks/queries/useOnboardingProgress', () => ({
+  useOnboardingProgress: () => ({ ...onboardingRead(), update: updateProgress, isUpdating: false }),
+}));
 
 vi.mock('../../services/api/houseCounter', () => ({
   readHouseCounter: () => readCounter(),
@@ -44,6 +51,7 @@ vi.mock('../../hooks/useUserPreferences', () => ({
 }));
 vi.mock('../../guidance/GuidanceProvider', () => ({
   GuidanceProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useGuidanceOptional: () => null,
 }));
 vi.mock('../../guidance/components/PageTipStrip', () => ({ PageTipStrip: () => null }));
 vi.mock('../../guidance/components/SetupNudgeBanner', () => ({ SetupNudgeBanner: () => null }));
@@ -56,6 +64,8 @@ import { clearMudavymDesignCache } from '../../lib/mudavym/useMudavymDesign';
 import { prefsKeyFor } from '../../lib/mudavym/counterPrefs';
 import { resetHouseSaid } from '../../lib/mudavym/houseSaid';
 import type { HouseCounterRead } from '../../lib/mudavym/counterRead';
+import type { OnboardingProgress } from '../../services/api/menus';
+import { learnDoorFor } from './houseLearnDoor';
 
 const T = '2026-09-21T14:02:11Z';
 const READ: HouseCounterRead = {
@@ -107,6 +117,9 @@ beforeEach(() => {
   readCounter.mockResolvedValue(READ);
   checkFlag.mockReset();
   checkFlag.mockResolvedValue({ active: false, enabled: false });
+  onboardingRead.mockReset();
+  onboardingRead.mockReturnValue({ progress: null, isLoading: true, isError: false });
+  updateProgress.mockReset();
   setWidth(1440);
 });
 afterEach(() => setWidth(1024));
@@ -383,5 +396,149 @@ describe('the Ask panel in the counter slot', () => {
     mount('/orders');
     fireEvent.click(screen.getByRole('button', { name: /^Ask$/ }));
     expect(await screen.findByRole('dialog', { name: /Ask Mudavym/ })).toBeTruthy();
+  });
+});
+
+// ── Get started / Learn & Help in the shell (r33 w1 F1) ─────────────────────
+// The panel was drawn only by the legacy Sidebar, so in the live shell nobody
+// could open it. The door is in the rail (and the phone's Rooms sheet).
+
+function progressOf(over: Partial<OnboardingProgress> = {}): OnboardingProgress {
+  return {
+    id: 'p-1',
+    user_id: 'u-1',
+    restaurant_id: 'r-1',
+    menu_uploaded: true,
+    menu_current: true,
+    vendor_added: false,
+    team_member_invited: false,
+    checklist_dismissed: false,
+    completed_at: null,
+    ...over,
+  } as OnboardingProgress;
+}
+
+function answered(over: Partial<OnboardingProgress> = {}) {
+  onboardingRead.mockReturnValue({ progress: progressOf(over), isLoading: false, isError: false });
+}
+
+describe('learnDoorFor — which door, by role and the house setup', () => {
+  const read = (p: OnboardingProgress | null, isLoading = false, isError = false) => ({ progress: p, isLoading, isError });
+
+  it('staff always get Learn & Help, never the setup count', () => {
+    expect(learnDoorFor('staff', read(progressOf()))).toEqual({ mode: 'learn', done: 0, of: 4, runsSetup: false });
+    expect(learnDoorFor('staff', read(null, true))).toMatchObject({ mode: 'learn' });
+  });
+
+  it('an owner or a manager with setup not done gets Get started with the steps counted', () => {
+    expect(learnDoorFor('owner', read(progressOf()))).toEqual({ mode: 'get-started', done: 2, of: 4, runsSetup: true });
+    expect(learnDoorFor('manager', read(progressOf({ vendor_added: true })))).toMatchObject({ mode: 'get-started', done: 3 });
+    expect(learnDoorFor('owner', read(progressOf({ menu_current: false })))).toMatchObject({ done: 1 });
+    // No row yet (the read answered null, not failed): nothing but the account.
+    expect(learnDoorFor('owner', read(null))).toMatchObject({ mode: 'get-started', done: 1 });
+  });
+
+  it('setup done or put away gives Learn & Help, which keeps the steps to the costs', () => {
+    expect(learnDoorFor('owner', read(progressOf({ completed_at: '2026-11-13T10:00:00Z' })))).toEqual({
+      mode: 'learn', done: 0, of: 4, runsSetup: true,
+    });
+    expect(learnDoorFor('manager', read(progressOf({ checklist_dismissed: true })))).toMatchObject({ mode: 'learn' });
+  });
+
+  it('no door while the role or an owner\'s setup is still being read; a failed read gives Learn & Help', () => {
+    expect(learnDoorFor(null, read(progressOf()))).toBeNull();
+    expect(learnDoorFor('owner', read(null, true))).toBeNull();
+    expect(learnDoorFor('owner', read(null, false, true))).toMatchObject({ mode: 'learn', runsSetup: true });
+  });
+});
+
+describe('the door in the rail', () => {
+  it('a new owner lands on Get started once: it heads the rooms and opens by itself the first time', async () => {
+    answered();
+    const first = mount('/house');
+    const rail = screen.getByRole('navigation', { name: 'The rooms' });
+    const door = within(rail).getByRole('button', { name: /Get started/ });
+    expect(door.textContent).toBe('Get started2/4');
+    // It heads the rooms, above the first group, so it is seen without scrolling.
+    const firstSect = rail.querySelector('.mdv-rail__sect');
+    expect(firstSect).not.toBeNull();
+    expect(door.compareDocumentPosition(firstSect!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const panel = await screen.findByRole('dialog', { name: 'Get started' });
+    expect(within(panel).getByText('2/4 complete')).toBeTruthy();
+    expect(door.getAttribute('aria-expanded')).toBe('true');
+    first.unmount();
+
+    // The next page load does not open it again; the door still does.
+    mount('/house');
+    expect(screen.queryByRole('dialog', { name: 'Get started' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Get started/ }));
+    expect(await screen.findByRole('dialog', { name: 'Get started' })).toBeTruthy();
+  });
+
+  it('closing the panel and putting the checklist away both work from the shell', async () => {
+    answered();
+    mount('/house');
+    const panel = await screen.findByRole('dialog', { name: 'Get started' });
+    fireEvent.click(within(panel).getByRole('button', { name: "Don't show again" }));
+    expect(updateProgress).toHaveBeenCalledWith({ checklist_dismissed: true });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Get started' })).toBeNull());
+  });
+
+  it('a manager sees Get started but it does not open by itself', async () => {
+    answered();
+    mount('/house', 'manager');
+    expect(screen.getByRole('button', { name: /Get started/ })).toBeTruthy();
+    await waitFor(() => expect(readCounter).toHaveBeenCalled());
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('with the rooms tucked, nothing opens by itself', async () => {
+    answered();
+    window.localStorage.setItem(prefsKeyFor('u-1'), JSON.stringify({ railTucked: true }));
+    mount('/house');
+    await waitFor(() => expect(readCounter).toHaveBeenCalled());
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('staff get Learn & Help in the foot: tours and tips, no setup steps', async () => {
+    answered();
+    mount('/house', 'staff');
+    const rail = screen.getByRole('navigation', { name: 'The rooms' });
+    expect(within(rail).queryByRole('button', { name: /Get started/ })).toBeNull();
+    const door = within(rail).getByRole('button', { name: 'Learn & Help' });
+    expect(door.closest('.mdv-rail__foot')).not.toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(door);
+    const panel = await screen.findByRole('dialog', { name: 'Learn & Help' });
+    expect(within(panel).queryByText(/complete$/)).toBeNull();
+    expect(within(panel).queryByTestId('setup-next-steps')).toBeNull();
+    fireEvent.click(door);
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Learn & Help' })).toBeNull());
+  });
+
+  it('an owner whose setup is done gets Learn & Help, and nothing opens by itself', async () => {
+    answered({ vendor_added: true, team_member_invited: true, completed_at: '2026-11-13T10:00:00Z' });
+    mount('/house');
+    await waitFor(() => expect(readCounter).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: /Get started/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Learn & Help' })).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
+
+describe('the door on the phone', () => {
+  beforeEach(() => setWidth(390));
+
+  it('is in the Rooms sheet; choosing it closes the sheet and opens the panel, never by itself', async () => {
+    answered();
+    mount('/house');
+    await waitFor(() => expect(readCounter).toHaveBeenCalled());
+    expect(screen.queryByRole('dialog', { name: 'Get started' })).toBeNull();
+    const doors = screen.getByRole('navigation', { name: 'The four doors' });
+    fireEvent.click(within(doors).getByRole('button', { name: /^Rooms/ }));
+    const entry = await screen.findByRole('button', { name: /Get started/ });
+    fireEvent.click(entry);
+    expect(await screen.findByRole('dialog', { name: 'Get started' })).toBeTruthy();
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Get started/ })).toBeNull());
   });
 });

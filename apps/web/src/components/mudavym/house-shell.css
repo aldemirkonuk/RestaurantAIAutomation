@@ -162,6 +162,41 @@
   outline-offset: 1px;
 }
 
+/* Get started / Learn & Help (r33 w1 F1): a button dressed as a room. */
+button.mdv-rail__learn {
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  gap: 8px;
+}
+
+button.mdv-rail__learn[aria-expanded='true'] {
+  background: var(--paper-1);
+  color: var(--ink-1);
+}
+
+.mdv-rail__learn--start {
+  color: var(--ink-1);
+  font-weight: 500;
+}
+
+.mdv-rail__learncount {
+  margin-left: auto;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+
+.mdv-rail__start {
+  margin: 0 0 4px !important;
+  padding: 0 !important;
+  list-style: none;
+}
+
 .mdv-rail__foot {
   margin-top: 10px !important;
   padding-top: 8px !important;
