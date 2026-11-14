@@ -95,6 +95,13 @@ describe('the count step waits for a count, not for the list', () => {
     steps({ goods_listed: true, mailbox_connected: false, invoice: 'none' })
     expect(within(goods()).getByText('Put your first goods on the list')).toBeInTheDocument()
     expect(within(goods()).queryByText(/Count your first goods|Count the goods on your list/)).toBeNull()
+    expect(ticked()).toBe(true)
+  })
+
+  it('an older gateway with nothing on the list leaves the step open', () => {
+    steps({ goods_listed: false, mailbox_connected: false, invoice: 'none' })
+    expect(within(goods()).getByText('Put your first goods on the list')).toBeInTheDocument()
+    expect(ticked()).toBe(false)
   })
 
   it('past setup, Learn & Help keeps the steps while the list is uncounted', () => {
