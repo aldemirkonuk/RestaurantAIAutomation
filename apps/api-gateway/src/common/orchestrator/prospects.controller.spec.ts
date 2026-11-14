@@ -12,6 +12,7 @@
  * server listens on 127.0.0.1 inside this process; nothing leaves it.
  */
 import {
+  ConflictException,
   ExecutionContext,
   INestApplication,
   ServiceUnavailableException,
@@ -38,6 +39,7 @@ const prospects = {
   promote: jest.fn(),
   dismiss: jest.fn(),
   restore: jest.fn(),
+  fileHeldLetter: jest.fn(),
 };
 
 let app: INestApplication;
@@ -110,6 +112,14 @@ beforeEach(() => {
   });
   prospects.dismiss.mockResolvedValue({ dismissed: true });
   prospects.restore.mockResolvedValue({ restored: true });
+  prospects.fileHeldLetter.mockResolvedValue({
+    filed: true,
+    conversationId: "c-1",
+    threadKey: "gm:t-1",
+    providerId: "p-1",
+    providerName: "Quiet Dairy",
+    alreadyStored: false,
+  });
 });
 
 describe("who may add a prospect as a vendor", () => {
@@ -168,5 +178,41 @@ describe("the gate did not widen past promote", () => {
     expect(prospects.list).toHaveBeenCalledWith(HOUSE);
     expect(prospects.dismiss).toHaveBeenCalledWith(HOUSE, PROSPECT);
     expect(prospects.restore).toHaveBeenCalledWith(HOUSE, PROSPECT);
+  });
+});
+
+describe("who may file a held letter under a vendor (r35 mail, gap 9)", () => {
+  const path = `/prospects/${PROSPECT}/file-under-vendor`;
+
+  it("refuses a staff member with 403 and files nothing", async () => {
+    const res = await call("POST", path, "staff");
+    expect(res.status).toBe(403);
+    expect(prospects.fileHeldLetter).not.toHaveBeenCalled();
+  });
+
+  it.each(["owner", "manager"])(
+    "admits %s, filing inside the token's house and naming who vouched",
+    async (role) => {
+      const res = await call("POST", path, role);
+      expect(res.status).toBe(201);
+      expect(res.body).toMatchObject({ filed: true, providerName: "Quiet Dairy", threadKey: "gm:t-1" });
+      expect(prospects.fileHeldLetter).toHaveBeenCalledWith(HOUSE, PROSPECT, "user-1");
+    },
+  );
+
+  it("keeps a refusal's status and words", async () => {
+    prospects.fileHeldLetter.mockRejectedValue(
+      new ConflictException("That letter is already filed under a vendor."),
+    );
+    const res = await call("POST", path, "owner");
+    expect(res.status).toBe(409);
+    expect(res.body.message).toBe("That letter is already filed under a vendor.");
+  });
+
+  it("answers an unexpected throw as 503 that says the letter is still held", async () => {
+    prospects.fileHeldLetter.mockRejectedValue(new Error("socket hang up"));
+    const res = await call("POST", path, "manager");
+    expect(res.status).toBe(503);
+    expect(res.body.message).toBe("The letter could not be filed just now; it is still held.");
   });
 });

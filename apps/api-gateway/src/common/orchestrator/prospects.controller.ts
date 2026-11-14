@@ -20,8 +20,9 @@ import { ProspectsService } from "./prospects.service";
  * Manager surface for the D1 Prospects lane: list captured cold-email outreach, add a prospect
  * as a real vendor (one tap), dismiss it, or undo a dismiss. Never sends anything.
  *
- * Adding a prospect as a vendor is owner or manager only (see `promote`). Listing, dismissing
- * and restoring stay open to any member of the house.
+ * Adding a prospect as a vendor, and filing a held letter under a vendor (`file-under-vendor`),
+ * are owner or manager only. Listing, dismissing and restoring stay open to any member of the
+ * house.
  *
  * The `/triage` endpoint is operator-only (unattributed cold email that could belong to any
  * tenant) and is gated by the PLATFORM_ADMIN_USER_IDS allowlist — never a tenant role, since
@@ -111,6 +112,38 @@ export class ProspectsController {
       throw new HttpException(
         error.message || "Failed to add prospect as vendor",
         HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * File a held letter under the vendor its address belongs to (r35 mail,
+   * gap 9). A person vouches that a letter the receiving server could not
+   * confirm is really the vendor's; the letter then joins that vendor's mail,
+   * its files the vendor's files. Owner or manager only, as adding a vendor
+   * is: the house's books may read what it carries. 400 for a bad id, 404
+   * for another house's letter, 409 when it cannot be filed (not held as
+   * unconfirmed, already filed or put away, no single vendor lists the
+   * address), 503 when a read or write failed and nothing was filed.
+   */
+  @Post(":id/file-under-vendor")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  async fileUnderVendor(
+    @Param("id") id: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    try {
+      return await this.prospects.fileHeldLetter(
+        user.restaurantId,
+        id,
+        user.userId,
+      );
+    } catch (error: any) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        "The letter could not be filed just now; it is still held.",
+        HttpStatus.SERVICE_UNAVAILABLE,
       );
     }
   }

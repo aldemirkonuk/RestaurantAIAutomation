@@ -199,6 +199,10 @@
     "owner",
     "manager"
   ],
+  "POST /prospects/:id/file-under-vendor (ProspectsController.fileUnderVendor)": [
+    "owner",
+    "manager"
+  ],
   "POST /prospects/:id/dismiss (ProspectsController.dismiss)": "open",
   "POST /prospects/:id/restore (ProspectsController.restore)": "open",
   "POST /senders/trust (SenderTrustController.setTrust)": [
