@@ -73,10 +73,13 @@ describe('a value axis title stands on the middle of its axis', () => {
       ['left', 'Taken'],
       ['right', 'Average check'],
     ]);
-    // The right title stands inside the right edge, the left one inside the left.
+    // The right title stands in the outer half of the right axis (52 px wide,
+    // inside a 2 px margin), the left one in the outer half of the left.
     const right = ts.find((t) => t.side === 'right');
-    expect(right!.x).toBeGreaterThan(size.width / 2);
+    const left = ts.find((t) => t.side === 'left');
+    expect(right!.x).toBeGreaterThan(size.width - 2 - 52 / 2);
     expect(right!.x).toBeLessThan(size.width);
+    expect(left!.x).toBeLessThan(2 + 52 / 2);
     // No title is left anchored at one end by recharts' own Label.
     expect(container.querySelector('text.recharts-label[text-anchor="end"]')).toBeNull();
   });
