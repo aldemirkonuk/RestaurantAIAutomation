@@ -2,7 +2,7 @@ import { ConflictException, InternalServerErrorException, NotFoundException } fr
 
 /**
  * Setting a kept menu aside, and bringing it back (r36 menu audit N9, r40
- * 2026-11-14; migration 20271118041300_a_kept_menu_can_be_set_aside.sql).
+ * 2026-11-14; migration 20271118141300_a_kept_menu_can_be_set_aside.sql).
  *
  * Every read is kept on purpose, so a misread photo, a test file or a menu
  * read twice stayed under "Menus kept" for good, each with its own "Make
