@@ -18,8 +18,10 @@ import { B_DISH, GONE, HOUSE_A, HOUSE_B, SOUP, TART, V_TART_1, V_TART_2, fakeDb,
  */
 
 /** Every route the controller declares, and which of them write. */
-const DECLARED = ["getDishRecipe", "listDishVersions", "previewDishCost", "readDishVersion", "saveDishRecipe"];
-const WRITES = ["previewDishCost", "saveDishRecipe"];
+const DECLARED = [
+  "createDish", "getDishRecipe", "listDishes", "listDishVersions", "previewDishCost", "readDishVersion", "saveDishRecipe", "updateDish",
+];
+const WRITES = ["createDish", "previewDishCost", "saveDishRecipe", "updateDish"];
 
 type Route = { handler: string; method: number; path: string };
 const proto = DishesController.prototype as unknown as Record<string, object>;

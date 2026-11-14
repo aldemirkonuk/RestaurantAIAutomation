@@ -4,10 +4,11 @@ import { AuthModule } from "../auth/auth.module";
 import { RecipesController } from "./recipes.controller";
 import { RecipesService } from "./recipes.service";
 import { DishesController } from "./dishes.controller";
+import { DishesService } from "./dishes.service";
 
 @Module({
   imports: [DatabaseModule, AuthModule],
   controllers: [RecipesController, DishesController],
-  providers: [RecipesService],
+  providers: [RecipesService, DishesService],
 })
 export class RecipesModule {}
