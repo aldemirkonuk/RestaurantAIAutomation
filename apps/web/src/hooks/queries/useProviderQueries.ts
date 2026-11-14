@@ -158,9 +158,17 @@ function isNetworkFailure(error: unknown): boolean {
  * sweep 2026-09-28, row 15). Any answer from the server now rejects, and the
  * caller shows it.
  */
-export function useCreateProvider() {
+export function useCreateProvider(options: { quiet?: boolean } = {}) {
   const queryClient = useQueryClient()
-  const toast = useNotificationStore()
+  const store = useNotificationStore()
+  // `quiet`: the caller says the outcome in place (NewVendorSheet). Since the
+  // store's toasts are drawn (receipts walk item 5), a second voice would
+  // repeat it, and its "Failed to create provider" would contradict the
+  // sheet's "could not be confirmed" for a timeout the server may have
+  // committed (fix round 2026-11-12, finding on #1112).
+  const toast = options.quiet
+    ? { info: () => undefined, success: () => undefined, error: () => undefined }
+    : store
   
   return useMutation({
     mutationFn: async (data: CreateProviderInput) => {

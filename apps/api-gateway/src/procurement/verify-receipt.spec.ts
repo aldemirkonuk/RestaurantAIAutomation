@@ -184,6 +184,8 @@ function makeDb(opts: {
   latestReconciledEvent?: Row | null;
   /** The idempotence check's read of the latest `reconciled` event fails with this. */
   latestReconciledReadError?: { message: string } | null;
+  /** What `revalue_lot` answers. Default: null data, as every other RPC. */
+  revalueReceipt?: Row | null;
 }) {
   const calls: Calls = {
     orderUpdates: [],
@@ -329,6 +331,8 @@ function makeDb(opts: {
     },
     rpc: async (name: string, args: Row) => {
       calls.rpc.push({ name, args });
+      if (name === "revalue_lot")
+        return { data: opts.revalueReceipt ?? null, error: null };
       return { data: null, error: null };
     },
     storage: { from: () => ({}) },
@@ -1497,5 +1501,46 @@ describe("verifyReceipt — a repeated identical 'Counts match' tap writes nothi
     ).rejects.toThrow(/could not be checked.*nothing was changed/);
     expect(calls.receiptEvents).toEqual([]);
     expect(calls.orderUpdates).toEqual([]);
+  });
+});
+
+describe("verifyReceipt — the answer says what the verified price restated (receipts walk item 5)", () => {
+  // The local-stack check of #1087 (2026-11-11): 6 booked unpriced, 2 sold,
+  // invoice verified at 25 — revalue_lot settled the sale and the lot, and the
+  // 201 answer carried neither, so the screen said "Receipt verified" and
+  // nothing about the bottles already sold.
+  const priced = {
+    invoiceQuantity: 10,
+    invoiceUnitPrice: 40,
+    invoiceCurrency: "USD",
+    acceptedQuantity: 10,
+    rejectedQuantity: 0,
+  };
+
+  it("carries revalue_lot's receipt: bottles on the shelf and earlier sales settled", async () => {
+    const { db } = makeDb({
+      orderRow: deliveredOrder,
+      revalueReceipt: { lots_matched: 1, lots_revalued: 1, bottles_revalued: 8, draws_settled: 1 },
+    });
+    const out: any = await service(db).verifyReceipt(REST, ORDER, USER, priced as any);
+    expect(out.costCorrection).toEqual({ unitCost: 40, bottlesRevalued: 8, salesSettled: 1 });
+  });
+
+  it("a sold-out delivery still says its sales were settled", async () => {
+    const { db } = makeDb({
+      orderRow: deliveredOrder,
+      revalueReceipt: { lots_matched: 0, lots_revalued: 0, bottles_revalued: 0, draws_settled: 3 },
+    });
+    const out: any = await service(db).verifyReceipt(REST, ORDER, USER, priced as any);
+    expect(out.costCorrection).toEqual({ unitCost: 40, bottlesRevalued: 0, salesSettled: 3 });
+  });
+
+  it("no price verified, no revaluation, no costCorrection key", async () => {
+    const { db, calls } = makeDb({ orderRow: deliveredOrder });
+    const out: any = await service(db).verifyReceipt(REST, ORDER, USER, {
+      adjustments: [{ inventoryId: OWN_INVENTORY, delta: 1, reason: "extra" }],
+    } as any);
+    expect(calls.rpc.some((c) => c.name === "revalue_lot")).toBe(false);
+    expect("costCorrection" in out).toBe(false);
   });
 });
