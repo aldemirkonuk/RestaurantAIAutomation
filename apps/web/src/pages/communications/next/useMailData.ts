@@ -54,6 +54,16 @@ export function useMailSummary(poll: boolean) {
 }
 
 /**
+ * The house's time zone, from the summary Mail already reads (the same cache
+ * entry, no request of its own and no poll): dates on Mail are the house's,
+ * as its "Today" line is (r36 mail gap 13). Null until the summary answers,
+ * or when the house has no zone; dates then use the browser's.
+ */
+export function useHouseZone(): string | null {
+  return useMailSummary(false).data?.zone?.zone ?? null;
+}
+
+/**
  * GET /mail/people, cursor-paged; "Show older people" appends the next page.
  * `search` (r28 mail gap 16) is the trimmed term, '' for none: the server
  * searches, so a person past the first page is found too. While a new term

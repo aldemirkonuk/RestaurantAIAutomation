@@ -56,7 +56,7 @@ import {
   type MailPersonRow,
   type TestArrival,
 } from './mail-format';
-import { useMailIntake, useMailPeople, useMailSender, useMailSummary, useMailThreads } from './useMailData';
+import { useHouseZone, useMailIntake, useMailPeople, useMailSender, useMailSummary, useMailThreads } from './useMailData';
 import { useMailSetup } from './useMailSetup';
 
 const QUIET = { fontSize: 11.5, color: 'var(--ink-4, #665D50)' } as const;
@@ -94,7 +94,7 @@ function WaitingDot({ on }: { on: WaitingOn }) {
   );
 }
 
-function PersonRow({ p, on, onOpen }: { p: MailPersonRow; on: WaitingOn; onOpen: () => void }) {
+function PersonRow({ p, on, zone, onOpen }: { p: MailPersonRow; on: WaitingOn; zone: string | null; onOpen: () => void }) {
   return (
     <li style={{ borderBottom: '1px solid var(--paper-2, #EAE4D8)' }}>
       <button
@@ -127,7 +127,7 @@ function PersonRow({ p, on, onOpen }: { p: MailPersonRow; on: WaitingOn; onOpen:
           )}
           {p.openThreads > 1 && <span style={QUIET}>{p.openThreads} open threads</span>}
           <span className="ml-auto" style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>
-            {fmtWhen(p.lastAt)}
+            {fmtWhen(p.lastAt, { zone })}
           </span>
         </span>
         <span
@@ -159,6 +159,7 @@ function PersonThreads({
   onOpenThread: (key: string) => void;
 }) {
   const q = useMailThreads(withKey);
+  const zone = useHouseZone();
   const pages = q.data?.pages ?? [];
   const person = pages[0]?.person ?? null;
   const threads = pages.flatMap((p) => p.threads);
@@ -201,7 +202,7 @@ function PersonThreads({
                       <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-2, #4F473C)' }}>order {t.orderNumber}</span>
                     )}
                     <span className="ml-auto" style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>
-                      {fmtWhen(t.lastAt)}
+                      {fmtWhen(t.lastAt, { zone })}
                     </span>
                   </span>
                   <span data-testid="mail-thread-count" style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
@@ -258,6 +259,7 @@ function People({
   setupWords: string;
 }) {
   const q = useMailPeople(waitingOnly, search);
+  const zone = useHouseZone();
   const pages = q.data?.pages ?? [];
   const people = pages.flatMap((p) => p.people);
   const storedKinds = pages[0]?.storedKinds ?? null;
@@ -292,7 +294,7 @@ function People({
       ) : (
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
           {people.map((p) => (
-            <PersonRow key={p.key} p={p} on={on} onOpen={() => onOpenPerson(p.key)} />
+            <PersonRow key={p.key} p={p} on={on} zone={zone} onOpen={() => onOpenPerson(p.key)} />
           ))}
         </ul>
       )}

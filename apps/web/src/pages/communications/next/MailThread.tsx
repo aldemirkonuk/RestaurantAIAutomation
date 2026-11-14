@@ -40,7 +40,7 @@ import {
 } from './mail-format';
 import { LetterFiles } from './LetterFiles';
 import { QueuedPullBack } from './QueuedPullBack';
-import { useMailThread, useNoReplyMark } from './useMailData';
+import { useHouseZone, useMailThread, useNoReplyMark } from './useMailData';
 
 const QUIET = { fontSize: 11, color: 'var(--ink-4, #665D50)' } as const;
 
@@ -59,12 +59,15 @@ export interface LetterFacts {
 function Letter({
   m,
   vendor,
+  zone,
   facts,
   onTakeBack,
   takingBack,
 }: {
   m: MailMessage;
   vendor: string;
+  /** The house's time zone, null for the browser's (r36 mail gap 13). */
+  zone: string | null;
   facts: LetterFacts | undefined;
   /** Set only on the newest marked letter, for an owner or manager. */
   onTakeBack?: () => void;
@@ -88,7 +91,7 @@ function Letter({
         <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
           {inbound ? vendor : 'The house'}
         </span>
-        <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>{fmtWhen(letterAt(m))}</span>
+        <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>{fmtWhen(letterAt(m), { zone, withTime: true })}</span>
         {look.chip && (
           <span
             data-testid="letter-chip"
@@ -157,7 +160,7 @@ function Letter({
       {look.queued && <QueuedPullBack id={m.id} />}
       {inbound && m.noReplyMarkedAt && (
         <p data-testid="letter-no-reply" className="flex flex-wrap items-baseline gap-2" style={{ ...QUIET, margin: 0 }}>
-          <span>Marked as needing no reply, {fmtWhen(m.noReplyMarkedAt)}.</span>
+          <span>Marked as needing no reply, {fmtWhen(m.noReplyMarkedAt, { zone })}.</span>
           {onTakeBack && (
             <button
               type="button"
@@ -200,6 +203,7 @@ export function MailThread({
   bookFacts?: ReadonlyMap<string, LetterFacts>;
 }) {
   const q = useMailThread(threadKey);
+  const zone = useHouseZone();
   const pages = q.data?.pages ?? [];
   const head = pages[0] ?? null;
   // Pages are held newest-first; the reader joins them oldest-first.
@@ -313,6 +317,7 @@ export function MailThread({
                 key={m.id}
                 m={m}
                 vendor={vendor}
+                zone={zone}
                 facts={bookFacts?.get(m.id)}
                 onTakeBack={m.id === undoId ? () => noReply.mutate({ id: m.id, marked: false }) : undefined}
                 takingBack={noReply.isPending && noReply.variables?.marked === false}
