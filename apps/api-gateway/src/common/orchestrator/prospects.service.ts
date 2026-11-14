@@ -9,6 +9,10 @@ import {
   likeExactly,
   senderDomain,
 } from "../../communications/inbound-headers";
+import {
+  findSenderVendor,
+  type SenderVendor,
+} from "../../communications/sender-vendor";
 
 /** A persisted attachment reference stored on a prospect (bytes live in Storage). */
 export interface ProspectAttachmentRef {
@@ -397,7 +401,10 @@ export class ProspectsService {
         .eq("status", "new")
         .order("last_seen_at", { ascending: false })
         .limit(100);
-      return ((data as any[]) || []).map((r) => this.toDto(r));
+      return await this.withHeldVendors(
+        ((data as any[]) || []).map((r) => this.toDto(r)),
+        restaurantId,
+      );
     } catch {
       return [];
     }
@@ -467,10 +474,51 @@ export class ProspectsService {
         .eq("status", "new")
         .order("last_seen_at", { ascending: false })
         .limit(300);
-      return ((data as any[]) || []).map((r) => this.toDto(r));
+      return await this.withHeldVendors(
+        ((data as any[]) || []).map((r) => this.toDto(r)),
+        null,
+      );
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Each held letter whose sender could not be confirmed names the vendor
+   * its address belongs to in its house's book, the vendor "File it under"
+   * would use (r35 mail, gap 9): `held_vendor` is `{ id, name }`, or null
+   * when no single live vendor lists the address. `held_vendor_unread` is
+   * true when the book could not be read, which is not "no vendor".
+   * Read once per (house, address); held letters are few. `house` names
+   * the house for rows read without their `restaurant_id` (`list`).
+   */
+  private async withHeldVendors(
+    rows: any[],
+    house: string | null,
+  ): Promise<any[]> {
+    const memo = new Map<string, Promise<SenderVendor | null>>();
+    return Promise.all(
+      rows.map(async (r) => {
+        const rowHouse: string | null = r.restaurant_id ?? house;
+        if (r.held_reason !== "sender_unconfirmed" || !r.sender_email || !rowHouse) {
+          return r;
+        }
+        const key = `${rowHouse} ${String(r.sender_email).toLowerCase()}`;
+        if (!memo.has(key)) {
+          memo.set(
+            key,
+            findSenderVendor(this.databaseService.supabase, rowHouse, r.sender_email),
+          );
+        }
+        try {
+          const v = await memo.get(key)!;
+          return { ...r, held_vendor: v ? { id: v.id, name: v.name } : null, held_vendor_unread: false };
+        } catch (err: any) {
+          this.logger.warn(`list: the vendor of a held letter could not be read — ${err?.message}`);
+          return { ...r, held_vendor: null, held_vendor_unread: true };
+        }
+      }),
+    );
   }
 
   /** Normalize a row into the DTO the surface expects (attachment metadata only, no URLs). */
