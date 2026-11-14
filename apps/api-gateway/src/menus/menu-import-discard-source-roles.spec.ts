@@ -110,3 +110,26 @@ describe("GET /menu-versions/:menuId/source -- owner or manager only", () => {
     expect(sourceUrl).not.toHaveBeenCalled();
   });
 });
+
+describe("PATCH /menu-versions/:menuId/items/:itemId/house-good -- owner or manager only (r28 G21)", () => {
+  const MENU = "00000000-0000-4000-8000-000000000001";
+  const ITEM = "00000000-0000-4000-8000-000000000002";
+  const GOOD = "00000000-0000-4000-8000-000000000003";
+  function controller(role: string | null) {
+    const linkLineToHouseGood = jest.fn(async () => ({ menuItemId: ITEM, inventoryItemId: GOOD, goodName: "House Red" }));
+    const c = new MenuVersionsController({ linkLineToHouseGood } as any, orgs(role));
+    return { c, linkLineToHouseGood };
+  }
+
+  it.each(["owner", "manager"])("a %s links the line, in the session's own house", async (role) => {
+    const { c, linkLineToHouseGood } = controller(role);
+    await expect(c.linkHouseGood("rest-1", "u-1", MENU, ITEM, { inventoryItemId: GOOD })).resolves.toMatchObject({ goodName: "House Red" });
+    expect(linkLineToHouseGood).toHaveBeenCalledWith("rest-1", MENU, ITEM, GOOD);
+  });
+
+  it.each(["staff", null])("%s is refused, and nothing is linked", async (role) => {
+    const { c, linkLineToHouseGood } = controller(role as string | null);
+    await expect(c.linkHouseGood("rest-1", "u-1", MENU, ITEM, { inventoryItemId: GOOD })).rejects.toBeInstanceOf(ForbiddenException);
+    expect(linkLineToHouseGood).not.toHaveBeenCalled();
+  });
+});

@@ -2597,6 +2597,112 @@ describe("a menu line finds the house's own good before the library (r21 D1)", (
     expect(price[0][1]).toMatchObject({ p_inventory_id: "inv-gin", p_bottle_price: 40 });
     expect(tables.restaurant_inventory).toHaveLength(1);
   });
+
+  /**
+   * r28 G21: a line that fits two of the house's goods is linked to neither and
+   * goes to the library, and choosing the menu then made a second good beside
+   * the house's. An owner or a manager now picks the good on the kept menu.
+   */
+  describe("linkLineToHouseGood (r28 G21)", () => {
+    function twoReds(extra: Row[] = []) {
+      const lib = spyLibrary();
+      const calls: RpcCall[] = [];
+      const tables: Record<string, Row[]> = {
+        restaurant_menus: [{ id: "menu-old", restaurant_id: "rest-1", status: "active" }],
+        restaurants: [{ id: "rest-1", default_threshold_min: 3 }],
+        restaurant_inventory: [
+          good({ id: "inv-a", master_wine_id: "mw-a", display_name: "House Red", kind: "wine" }),
+          good({ id: "inv-b", master_wine_id: null, wine_name: "HOUSE RED", display_name: "House red.", kind: "wine" }),
+          ...extra,
+        ],
+        menu_items: [],
+        user_onboarding_progress: [],
+        master_wine_library_submissions: [],
+      };
+      const service = makeService(tables, {
+        wineSubmissions: lib,
+        rpcCalls: calls,
+        rpc: (fn: string, args: Row) => {
+          if (fn === "make_menu_current") {
+            for (const m of tables.restaurant_menus) m.status = m.id === args.p_menu_id ? "active" : "archived";
+            return { data: { outcome: "made_current", previous_menu_ids: ["menu-old"], made_current_at: "2026-11-13T12:00:00Z" }, error: null };
+          }
+          return priceRpc(fn);
+        },
+        scanParser: {
+          parseWithWarnings: async () => ({
+            items: [
+              { name: "House Red", category: "Red wine", bottle_price: 40 },
+              { name: "Künefe", category: "Tatlılar", bottle_price: 140 },
+            ],
+            warnings: [],
+          }),
+        },
+      });
+      return { tables, service, calls };
+    }
+    async function read(service: MenusService, tables: Record<string, Row[]>) {
+      const r = await service.importMenu(
+        { method: "scan", data: { imageBase64: Buffer.from("%PDF").toString("base64") }, restaurantId: "rest-1" } as any,
+        "user-1",
+      );
+      await (service as any).whenRead?.(r.menuId);
+      const red = tables.menu_items.find((m) => m.menu_id === r.menuId && m.name === "House Red")!;
+      const dish = tables.menu_items.find((m) => m.menu_id === r.menuId && m.name === "Künefe")!;
+      return { r, red, dish };
+    }
+
+    it("links the line to the picked good and its library wine; the plan and the choice carry it there, and no second good is made", async () => {
+      const { tables, service, calls } = twoReds();
+      const { r, red } = await read(service, tables);
+      expect(r.items.find((i) => i.name === "House Red")?.houseCandidates?.map((c) => c.inventoryItemId)).toEqual(["inv-a", "inv-b"]);
+      expect(red).toMatchObject({ wine_library_id: "mw-new" });
+      const before = await service.planFor("rest-1", r.menuId);
+
+      const linked = await service.linkLineToHouseGood("rest-1", r.menuId, red.id, "inv-a");
+      expect(linked).toEqual({ menuItemId: red.id, inventoryItemId: "inv-a", goodName: "House Red" });
+      expect(red).toMatchObject({ inventory_item_id: "inv-a", wine_library_id: "mw-a" });
+
+      const plan = await service.planFor("rest-1", r.menuId);
+      expect(plan.fingerprint).not.toBe(before.fingerprint);
+      expect(plan.lines.find((l) => l.menuItemId === red.id)).toMatchObject({ inventoryId: "inv-a" });
+      // A plan shown before the link is a plan nobody chose.
+      await expect(service.makeCurrent("rest-1", r.menuId, "user-2", before.fingerprint)).rejects.toMatchObject({ status: 409 });
+      await service.makeCurrent("rest-1", r.menuId, "user-2", plan.fingerprint);
+      const price = calls.filter(([fn]) => fn === "set_house_menu_price");
+      expect(price.map(([, a]) => a.p_inventory_id)).toEqual(["inv-a"]);
+      expect(tables.restaurant_inventory).toHaveLength(2);
+    });
+
+    it("a good with no library wine leaves the line carried by the good alone", async () => {
+      const { tables, service } = twoReds();
+      const { r, red } = await read(service, tables);
+      await service.linkLineToHouseGood("rest-1", r.menuId, red.id, "inv-b");
+      expect(red).toMatchObject({ inventory_item_id: "inv-b", wine_library_id: null });
+    });
+
+    it("refuses the current menu, a dish, another house's or a removed good, and a line of another menu; nothing is written", async () => {
+      const { tables, service } = twoReds([
+        { id: "inv-x", restaurant_id: "rest-2", master_wine_id: null, display_name: "House Red", kind: "wine", is_active: true, deleted_at: null },
+        good({ id: "inv-off", master_wine_id: null, display_name: "Old Red", kind: "wine", is_active: false }),
+        good({ id: "inv-del", master_wine_id: null, display_name: "Gone Red", kind: "wine", deleted_at: "2026-11-01T00:00:00Z" }),
+      ]);
+      const { r, red, dish } = await read(service, tables);
+      tables.menu_items.push({ id: "mi-old", menu_id: "menu-old", restaurant_id: "rest-1", name: "House Red", category: "Red wine", status: "approved" });
+      const untouched = JSON.stringify(tables.menu_items);
+      await expect(service.linkLineToHouseGood("rest-1", "menu-old", "mi-old", "inv-a")).rejects.toMatchObject({ status: 409 });
+      await expect(service.linkLineToHouseGood("rest-1", r.menuId, dish.id, "inv-a")).rejects.toMatchObject({ status: 400 });
+      await expect(service.linkLineToHouseGood("rest-1", r.menuId, red.id, "inv-x")).rejects.toMatchObject({ status: 404 });
+      await expect(service.linkLineToHouseGood("rest-1", r.menuId, red.id, "inv-off")).rejects.toMatchObject({ status: 409 });
+      await expect(service.linkLineToHouseGood("rest-1", r.menuId, red.id, "inv-del")).rejects.toMatchObject({ status: 409 });
+      await expect(service.linkLineToHouseGood("rest-1", r.menuId, "mi-old", "inv-a")).rejects.toMatchObject({ status: 404 });
+      await expect(service.linkLineToHouseGood("rest-2", r.menuId, red.id, "inv-x")).rejects.toMatchObject({ status: 404 });
+      red.status = "discarded";
+      await expect(service.linkLineToHouseGood("rest-1", r.menuId, red.id, "inv-a")).rejects.toMatchObject({ status: 404 });
+      red.status = "approved";
+      expect(JSON.stringify(tables.menu_items)).toBe(untouched);
+    });
+  });
 });
 
 describe("newestCurrentFirst (r28 G20)", () => {
