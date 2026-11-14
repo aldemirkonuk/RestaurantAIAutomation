@@ -49,6 +49,7 @@ import { addMenuItem, discardMenuItem, getMenu, reviewMenuItem, type MenuLine } 
 import { flagNoteInHouseMoney, housePriceBesideWords, housePriceNote, priceChangeNote, type PriceChange } from './menu-price-note';
 import { MenuVersions } from './MenuVersions';
 import { LockedPrices } from './LockedPrices';
+import { PriceHistory } from './PriceHistory';
 import { settingsApi } from '../../../services/api/settings';
 import { formatMoney } from '@/lib/currency';
 import { housePriceHint } from '@/lib/house-number';
@@ -328,8 +329,10 @@ export function otherCurrentWords(other: number): string {
 const DRINK_COLUMNS = 7;
 const KITCHEN_COLUMNS = 5;
 
-function MenuRow({ line, currency, onDiscard, discarding, testId = 'menu-row', edit, dish = false }: {
+function MenuRow({ line, currency, onDiscard, discarding, testId = 'menu-row', edit, dish = false, history }: {
   line: MenuLine
+  /** Absent unless an owner or a manager, and the line is carried as a house good (r36 N6). */
+  history?: { open: boolean; onToggle: () => void }
   currency: string | null
   testId?: string
   /** A kitchen line: one Price column, no producer or region, no glass box unless it holds a glass price. */
@@ -497,6 +500,20 @@ function MenuRow({ line, currency, onDiscard, discarding, testId = 'menu-row', e
             </button>{' '}
           </>
         ) : null}
+        {history && !editing ? (
+          <>
+            <button
+              type="button"
+              className="cl-btn cl-focus"
+              onClick={history.onToggle}
+              aria-expanded={history.open}
+              aria-label={`${history.open ? 'Hide' : 'Show'} the price history of ${line.name}`}
+              data-testid="menu-price-history-button"
+            >
+              {history.open ? 'Hide history' : 'Price history'}
+            </button>{' '}
+          </>
+        ) : null}
         {onDiscard && !editing ? (
         <button
           type="button"
@@ -525,6 +542,8 @@ export default function MenuNext() {
   const [discardingId, setDiscardingId] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const [pricing, setPricing] = useState<{ id: string; saving: boolean } | null>(null);
+  // The one line whose price history is open (r36 N6); none at first.
+  const [historyId, setHistoryId] = useState<string | null>(null);
   const [priceNote, setPriceNote] = useState<{ lineId: string; tone: 'alert' | 'said'; text: string } | null>(null);
   const lines = q.data?.items ?? [];
   // One price changed at a time, field by field (the gateway corrects one field
@@ -568,6 +587,11 @@ export default function MenuNext() {
       currency={currency}
       testId={testId}
       dish={dish}
+      history={
+        canManage && line.inventory_item_id
+          ? { open: historyId === line.id, onToggle: () => setHistoryId(historyId === line.id ? null : line.id) }
+          : undefined
+      }
       discarding={discard.isPending && discardingId === line.id}
       onDiscard={!canManage ? undefined : () => {
         setDiscardingId(line.id);
@@ -599,6 +623,13 @@ export default function MenuNext() {
           >
             {priceNote.text}
           </p>
+        </td>
+      </tr>
+    ) : null}
+    {historyId === line.id && canManage && line.inventory_item_id ? (
+      <tr>
+        <td colSpan={dish ? KITCHEN_COLUMNS : DRINK_COLUMNS} style={{ paddingTop: 0 }}>
+          <PriceHistory inventoryId={line.inventory_item_id} name={line.name} money={(n) => money(n, currency)} />
         </td>
       </tr>
     ) : null}
