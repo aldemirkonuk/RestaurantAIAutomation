@@ -1467,6 +1467,75 @@ export class MenusService {
     return out.map((row) => lineForViewer(row, view));
   }
 
+  /**
+   * Link one line of a kept menu to one of the house's own goods (r28 G21).
+   *
+   * A read whose line fits two or more of the house's goods (name, kind,
+   * vintage and size) guesses none: the line goes to the library and the reply
+   * names the goods (`houseCandidates`). Choosing that menu then carried the
+   * line by its library wine, which adds a second good beside the house's own
+   * when the house's row names another library wine or none. An owner or a
+   * manager now picks the good, and the line is linked as a single fit would
+   * have linked it: its good, and the good's library wine (or none).
+   *
+   * Only a menu that is not current: the current menu's lines were already
+   * carried, so a new link there would not move what was carried. A kitchen
+   * line is never linked (it is never carried). The good must be this house's
+   * and live. Every read and the write are scoped to the house.
+   */
+  async linkLineToHouseGood(
+    restaurantId: string,
+    menuId: string,
+    menuItemId: string,
+    inventoryItemId: string,
+  ): Promise<{ menuItemId: string; inventoryItemId: string; goodName: string }> {
+    const db = this.dbService.supabase;
+    const { data: menu, error: menuErr } = await db
+      .from("restaurant_menus")
+      .select("id, status")
+      .eq("id", menuId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (menuErr) throw new InternalServerErrorException(`The menu could not be read: ${menuErr.message}. Nothing was changed.`);
+    if (!menu) throw new NotFoundException("No menu of this restaurant by that id. Nothing was changed.");
+    if (menu.status === "active") {
+      throw new ConflictException(
+        "This is the current menu: its lines were carried to the house when it was chosen, so a line is not linked here. Nothing was changed.",
+      );
+    }
+    const { data: line, error: lineErr } = await db
+      .from("menu_items")
+      .select("id, name, category, raw_extracted_text, status")
+      .eq("id", menuItemId)
+      .eq("menu_id", menuId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (lineErr) throw new InternalServerErrorException(`The menu line could not be read: ${lineErr.message}. Nothing was changed.`);
+    if (!line || line.status === "discarded") throw new NotFoundException("No line of this menu by that id. Nothing was changed.");
+    if (isKitchenItem(line as unknown as InsertedMenuItem)) {
+      throw new BadRequestException("This is a dish: it is never carried to the house's goods, so it is not linked to one. Nothing was changed.");
+    }
+    const { data: good, error: goodErr } = await db
+      .from("restaurant_inventory")
+      .select("id, master_wine_id, wine_name, display_name, is_active, deleted_at")
+      .eq("id", inventoryItemId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (goodErr) throw new InternalServerErrorException(`The house's good could not be read: ${goodErr.message}. Nothing was changed.`);
+    if (!good) throw new NotFoundException("No good of this house by that id. Nothing was changed.");
+    if (good.is_active === false || good.deleted_at) {
+      throw new ConflictException("That good is removed on Inventory. Bring it back there first. Nothing was changed.");
+    }
+    const { error: writeErr } = await db
+      .from("menu_items")
+      .update({ inventory_item_id: good.id, wine_library_id: good.master_wine_id ?? null })
+      .eq("id", menuItemId)
+      .eq("menu_id", menuId)
+      .eq("restaurant_id", restaurantId);
+    if (writeErr) throw new InternalServerErrorException(`The line was not linked: ${writeErr.message}. Nothing was changed.`);
+    return { menuItemId, inventoryItemId: String(good.id), goodName: String(good.display_name ?? good.wine_name ?? "") };
+  }
+
   // ── Menu versions (ADR 0193; founder 2026-09-21, answer 7) ────────────────
 
   /**
