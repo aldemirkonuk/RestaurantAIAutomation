@@ -2,7 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { queueResearchIfLibraryLacks } from "../../inventory/house-item-research";
 import { closeDeliveryItemToNameBookedElsewhere } from "../delivery-item-to-name";
-import { isMass, isVolumeItemUnit, massFactor, volumeFactor } from "../documents/document-types";
+import { inItemUnit, isImperial, isMass, isVolumeItemUnit, massFactor, volumeFactor, withStatedUnit } from "../documents/document-types";
 import { LotUnitCost, perBottleLotCost, proposalPerBottle, toCentsAsBooked } from "./lot-unit-cost";
 import {
   LandedBlock,
@@ -206,14 +206,12 @@ export function shelfQuantity(
   if (!weighed && PLAIN_COUNT.has(line.uom ?? "")) return { ok: true, qty: Math.round(n) };
   if (!weighed)
     return { ok: false, reason: `the item this line names is kept in ${itemUom}, but the line counts ${String(line.uom).replace("_", " ")}s, and what one weighs is not known. It is NOT booked; state the line's weight, or count it in ${itemUom}.` };
-  const f = massFactor(String(line.uom), String(itemUom));
-  if (f == null)
+  // R4: a US weight (lb, oz) into g or mg rounds to the nearest one; see `inItemUnit`.
+  const put = inItemUnit(n, String(line.uom), String(itemUom));
+  if (put.ok) return { ok: true, qty: put.qty };
+  if (put.exact == null)
     return { ok: false, reason: `${line.uom} does not convert into ${itemUom}` };
-  const exact = n * f;
-  const whole = Math.round(exact);
-  if (Math.abs(exact - whole) > 1e-9)
-    return { ok: false, reason: `${n} ${line.uom} is ${exact} ${itemUom}, not a whole number of ${itemUom}, the unit the item is kept in. It is NOT rounded; keep the item in a finer unit (g), or count the line in one.` };
-  return { ok: true, qty: whole };
+  return { ok: false, reason: `${n} ${line.uom} is ${put.exact} ${itemUom}, not a whole number of ${itemUom}, the unit the item is kept in. It is NOT rounded; keep the item in a finer unit (g), or count the line in one.` };
 }
 
 /** What one bottle or keg of a line holds in ml, or null when not stated (r21). */
@@ -293,7 +291,12 @@ function inItemUnits(line: LineRow): LineRow {
   const scaled = itemScale(line);
   if (!scaled) return line;
   const f = scaled.factor;
-  const scale = (v: unknown) => (v == null || v === "" || !Number.isFinite(Number(v)) ? v : Number(v) * f);
+  // R4: a US line lists what the door booked from it, rounded the same way
+  // (`inItemUnit`), so 10 lb is 4536 g on both sides and the paper's money is
+  // spread over the grams that are on the shelf.
+  const round = isImperial(line.uom) && line.item_uom != null && inItemUnit(1, String(line.uom), line.item_uom).ok;
+  const scale = (v: unknown) =>
+    v == null || v === "" || !Number.isFinite(Number(v)) ? v : round ? Math.round(Number(v) * f) : Number(v) * f;
   return {
     ...line,
     ...(scaled.volume ? { in_item_unit: true } : {}),
@@ -463,7 +466,7 @@ export class DeliveryStockService {
       .getClient()
       .from("procurement_document_lines")
       .select(
-        "document_id, line_no, inventory_id, qty_bottles, unit_price, description, vendor_sku, uom, format_ml",
+        "document_id, line_no, inventory_id, qty_bottles, unit_price, description, vendor_sku, uom, format_ml, printed",
       )
       .eq("restaurant_id", restaurantId)
       .eq("document_id", documentId);
@@ -475,7 +478,8 @@ export class DeliveryStockService {
         status: 500,
         error: `the counted lines of document ${documentId} could not be read (${read.error.message}), so nothing was booked. Retry is safe — every booking is keyed on (delivery, document, line).`,
       };
-    const lines = (read.data ?? []) as unknown as LineRow[];
+    // R4: a line stored as `each` whose paper printed a weight or volume counts in it.
+    const lines = ((read.data ?? []) as unknown as LineRow[]).map(withStatedUnit);
     if (!lines.length)
       return {
         ok: false,
@@ -1268,7 +1272,8 @@ export class DeliveryStockService {
           status: 500,
           error: `the lines of the documents on delivery ${deliveryId} could not be read: ${read.error.message}`,
         };
-      const rows = (read.data ?? []) as unknown as LineRow[];
+      // R4: a line stored as `each` whose paper printed a weight or volume counts in it.
+      const rows = ((read.data ?? []) as unknown as LineRow[]).map(withStatedUnit);
       // R8: a weighed line is costed per one of its ITEM's unit.
       const units = await this.itemUnits(restaurantId, rows.map((l) => l.inventory_id));
       if (!units.ok) return units;

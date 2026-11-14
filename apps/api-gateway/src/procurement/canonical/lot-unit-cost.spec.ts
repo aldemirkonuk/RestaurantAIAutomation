@@ -128,10 +128,17 @@ describe("perBottleLotCost", () => {
       kind: "refused",
       reason: expect.stringMatching(/does not state how many bottles a case holds/),
     });
-    // An unmapped e-Fatura code kept in printed.uom (#1080) is refused, never a bottle.
+    // An e-Fatura code kept in printed.uom (#1080) is never a bottle. Since
+    // r36 R4 a stored `each` row whose glyph is a weight is read as that
+    // weight, so with no item unit it is refused as a weighed line.
     expect(perBottleLotCost({ unit_price: 120, uom: "each", pack_size: 1, qty_bottles: 3, line_total: 360, printed: { uom: "KGM", qty: "3 KGM" } })).toMatchObject({
       ok: false,
-      reason: expect.stringMatching(/prints its unit as "KGM"/),
+      reason: expect.stringMatching(/weighed in kg, and the item it books into states no unit/),
+    });
+    // An unmapped glyph is still refused by name.
+    expect(perBottleLotCost({ unit_price: 120, uom: "each", pack_size: 1, qty_bottles: 3, line_total: 360, printed: { uom: "kutu" } })).toMatchObject({
+      ok: false,
+      reason: expect.stringMatching(/prints its unit as "kutu"/),
     });
   });
 });
