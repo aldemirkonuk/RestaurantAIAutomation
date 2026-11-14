@@ -45,6 +45,16 @@ export class RecipeLineDto {
   @ApiProperty({ enum: RECIPE_UNITS })
   @IsIn(RECIPE_UNITS as unknown as string[])
   unit!: string;
+
+  /**
+   * The share of what is bought that `qty` is, in percent: 45 means 180 g on
+   * the plate is 400 g bought (r28 recipes gap 5). Absent, null or 100: all
+   * of it. Its bounds are said in the service, in words.
+   */
+  @ApiPropertyOptional({ nullable: true, minimum: 1, maximum: 100 })
+  @IsOptional()
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  usablePct?: number | null;
 }
 
 export class SaveRecipeDto {
@@ -95,6 +105,14 @@ export class PreviewLineDto {
   @ApiProperty({ enum: RECIPE_UNITS })
   @IsIn(RECIPE_UNITS as unknown as string[])
   unitCode!: string;
+
+  /** As on a saved line: the share of what is bought that the amount is, 1 to 100. */
+  @ApiPropertyOptional({ nullable: true, minimum: 1, maximum: 100 })
+  @IsOptional()
+  @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 })
+  @Min(1)
+  @Max(100)
+  usablePct?: number | null;
 }
 
 /** An unsaved draft to be priced. Nothing about it is stored. */

@@ -51,6 +51,12 @@ export interface CostLineInput {
   /** The linked house item, or null when it is not linked or not read. */
   item: CostItem | null;
   lot: LotRollupRow | null;
+  /**
+   * The share of what is bought that the line's amount is, in percent (45:
+   * 180 g on the plate is 400 g bought). Null or absent: all of it (r28
+   * recipes gap 5).
+   */
+  usablePct?: number | string | null;
 }
 
 export interface LineCost {
@@ -201,6 +207,17 @@ export function costPerBaseUnit(item: CostItem, unitCost: number, baseUnit: Base
   return "perBase" in r ? r.perBase : null;
 }
 
+/**
+ * What one unit on the plate takes of what is bought: 1 for all of it, 1 / 0.45
+ * for 45 %. A share outside 1 to 100 (the database holds none) is NaN, so the
+ * line is unknown, never priced from a guess.
+ */
+export function boughtPerUsed(usablePct: number | string | null | undefined): number {
+  if (usablePct === null || usablePct === undefined || usablePct === "") return 1;
+  const n = Number(usablePct);
+  return Number.isFinite(n) && n >= 1 && n <= 100 ? 100 / n : Number.NaN;
+}
+
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
 
@@ -225,7 +242,8 @@ export function recipeCost(lines: CostLineInput[], yieldServes: number): RecipeC
       if (base.needs) out.needs = base.needs;
       return out;
     }
-    const cost = (Number(line.qtyBase) * base.perBase) / serves;
+    // The amount on the plate, grossed up to what is bought for it.
+    const cost = (Number(line.qtyBase) * boughtPerUsed(line.usablePct) * base.perBase) / serves;
     if (!Number.isFinite(cost)) return { status: "linked", costPerServe: null, costPerServeExact: null, costBasis: "unknown" };
     exact[exact.length - 1] = cost;
     priced += 1;

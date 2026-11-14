@@ -346,7 +346,7 @@ export class RecipesService {
       versionQuery.maybeSingle(),
       client
         .from("recipe_lines")
-        .select("id, position, role, inventory_id, label, qty_entered, unit_code, qty_base, base_unit")
+        .select("id, position, role, inventory_id, label, qty_entered, unit_code, qty_base, base_unit, usable_pct")
         .eq("version_id", versionId)
         .eq("restaurant_id", restaurantId)
         .order("position", { ascending: true }),
@@ -376,6 +376,7 @@ export class RecipesService {
         baseUnit: l.base_unit as BaseUnit,
         item: (l.inventory_id && (items.get(l.inventory_id) as CostItem)) || null,
         lot: (l.inventory_id && lots.get(l.inventory_id)) || null,
+        usablePct: l.usable_pct ?? null,
       })),
       Number(v.yield_serves),
     );
@@ -405,6 +406,8 @@ export class RecipesService {
           itemMlGrams: grams(item?.ml_grams),
           qtyEntered: Number(l.qty_entered),
           unitCode: l.unit_code,
+          // How much of what is bought the amount is (r28 recipes gap 5); null is all of it.
+          usablePct: l.usable_pct == null ? null : Number(l.usable_pct),
           qtyBase: Number(l.qty_base),
           baseUnit: l.base_unit,
           status: priced.lines[i].status,
@@ -510,6 +513,7 @@ export class RecipesService {
           baseUnit: q ? q.baseUnit : ("ml10" as BaseUnit),
           item: (inventoryId && (items.get(inventoryId) as CostItem)) || null,
           lot: (inventoryId && lots.get(inventoryId)) || null,
+          usablePct: l.role === "stocked" ? (l.usablePct ?? null) : null,
         };
       }),
       dto.yieldServes,
@@ -677,6 +681,17 @@ export class RecipesService {
       const label = (l.label ?? "").trim();
       if (!label) throw new BadRequestException(`Ingredient ${i + 1} needs a name.`);
       l.label = label;
+      if (l.usablePct !== undefined && l.usablePct !== null) {
+        const u = l.usablePct;
+        if (!(u >= 1 && u <= 100) || Math.abs(Math.round(u * 100) - u * 100) > 1e-6) {
+          throw new BadRequestException(
+            `Ingredient ${i + 1} (${l.label}): the usable share is a number of percent, from 1 to 100.`,
+          );
+        }
+        if (l.role === "untracked" && u !== 100) {
+          throw new BadRequestException(`Ingredient ${i + 1} (${l.label}) is not counted, so it has no usable share.`);
+        }
+      }
       if (l.qty > MAX_LINE_QTY) {
         throw new BadRequestException(
           `Ingredient ${i + 1} (${l.label}) is more than one line can hold. ` +
@@ -703,6 +718,7 @@ export class RecipesService {
         label: l.label,
         qty: l.qty,
         unit: l.unit,
+        usablePct: l.usablePct ?? null,
       })),
     });
     return this.saved(data, error);
@@ -728,6 +744,7 @@ export class RecipesService {
         label: l.label,
         qty: l.qty,
         unit: l.unit,
+        usablePct: l.usablePct ?? null,
       })),
     });
     return this.saved(data, error);
