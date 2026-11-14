@@ -52,7 +52,13 @@ import {
 } from "./insights/insight-implementations";
 import { DataRequirement } from "./insights/insight-catalog";
 import { DayExclusionsService } from "./insights/day-exclusions.service";
-import { lensHidden, seesFor, withheldLens } from "./role-reads";
+import {
+  insightReadable,
+  insightsForRole,
+  lensHidden,
+  seesFor,
+  withheldLens,
+} from "./role-reads";
 import { Persona } from "./metric-registry";
 
 /**
@@ -486,16 +492,40 @@ export class AnalyticsController {
     @Query("categories") categoriesStr?: string,
     @Query("limit") limitStr?: string,
     @Query("candidateKey") candidateKey?: string,
-    @CurrentUser() user?: { userId?: string },
+    @CurrentUser() user?: { userId?: string; role?: string | null },
   ) {
+    const sees = seesFor(user);
+    // A forced compute of one type the caller may not read is not run: the
+    // type is named by the caller, so its sentence would be theirs alone.
+    if (candidateKey?.trim() && !insightReadable(candidateKey.trim(), sees))
+      return { source: "withheld", insights: [], withheldForRole: 1 };
     try {
-      const answer = await this.readInsights(
+      const raw = await this.readInsights(
         restaurantId,
         refresh,
         categoriesStr,
         limitStr,
         candidateKey,
       );
+      // Staff read the sentences of the classes they see (ADR 0348 decision
+      // 3): never a named server's ranking, the till, a spend or a margin.
+      const answer = Array.isArray((raw as { insights?: unknown }).insights)
+        ? (() => {
+            const held = insightsForRole(
+              (raw as { insights: unknown[] }).insights,
+              sees,
+            );
+            // Said only when something was withheld: a holder's answer is
+            // the one it always was.
+            return held.withheldForRole > 0
+              ? {
+                  ...raw,
+                  insights: held.kept,
+                  withheldForRole: held.withheldForRole,
+                }
+              : raw;
+          })()
+        : raw;
       return await this.forViewer(restaurantId, user, answer);
     } catch (error) {
       throw new HttpException(

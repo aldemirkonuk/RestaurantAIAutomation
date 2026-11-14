@@ -13,7 +13,9 @@
  * The second slice (2026-11-13) adds the money lenses: menu engineering,
  * cashflow, the vendor scorecard and wine 360 answer a staff login
  * `withheldForRole` with the classes they are made of, and are never read;
- * the overview is told the caller's classes.
+ * the overview is told the caller's classes. The third adds the insight feed:
+ * staff read the stock and volume sentences only, never a named server's
+ * ranking, the till, a spend or a margin, and are told how many were withheld.
  *
  * Tests marked [REVERT-FAILS] fail against the controller before this change.
  */
@@ -99,7 +101,32 @@ const advanced = {
   getWine360: jest.fn(async () => ({ margin: 410 })),
   getOverview: jest.fn(async () => ({ financial: null })),
 };
-const STUBS = [goals, analytics, tables, advanced];
+const FEED = [
+  { candidateKey: "waiter.avg_check.peer_rank", category: "staff", sentence: "Ayşe's average check is first of five." },
+  { candidateKey: "overall.revenue.vs_prev_period_7d", category: "sales", sentence: "Sales are up 12% on last week." },
+  { candidateKey: "overall.purchase_spend.trend_direction", category: "purchasing", sentence: "Spend is rising." },
+  { candidateKey: "table.avg_check.peer_rank", category: "tables", sentence: "Table 4 has the highest check." },
+  { candidate_key: "wine.stockout_risk.peer_rank", category: "risk", sentence: "Öküzgözü runs out first." },
+  { candidate_key: "overall.bottles.vs_prev_period_7d", category: "sales", sentence: "Bottles are up 4 on last week." },
+  { candidate_key: "not.a.catalogue.type", category: "sales", sentence: "Unknown." },
+];
+const insightGenerator = {
+  readStored: jest.fn(async () => ({
+    rows: FEED,
+    read: FEED.length,
+    withheld: { dismissed: 0 },
+    suppressionsReadable: true,
+  })),
+  generate: jest.fn(async () => ({ insights: FEED.slice(0, 1) })),
+};
+const recommendationActions = {
+  viewFor: jest.fn(async (_r: string, _u: string, list: unknown[]) => ({
+    kept: list,
+    hiddenForYou: 0,
+    personalSnoozesReadable: true,
+  })),
+};
+const STUBS = [goals, analytics, tables, advanced, insightGenerator, recommendationActions];
 
 let app: INestApplication;
 let base: string;
@@ -155,9 +182,9 @@ beforeAll(async () => {
       { provide: GoalsService, useValue: goals },
       { provide: ConsultantsService, useValue: {} },
       { provide: RecommendationsService, useValue: {} },
-      { provide: RecommendationActionsService, useValue: {} },
+      { provide: RecommendationActionsService, useValue: recommendationActions },
       { provide: GoalScenarioRequestsService, useValue: {} },
-      { provide: InsightGeneratorService, useValue: {} },
+      { provide: InsightGeneratorService, useValue: insightGenerator },
       { provide: InsightSchedulerService, useValue: {} },
       { provide: DayExclusionsService, useValue: {} },
     ],
@@ -284,5 +311,51 @@ describe.each(["owner", "manager"] as const)("the money lenses as %s of the hous
     expect(res.status).toBe(200);
     expect(res.body.withheldForRole).toBeUndefined();
     expect(serviceCalls()).toHaveLength(1);
+  });
+});
+
+const sentences = (body: { insights: Array<{ sentence: string }> }) =>
+  body.insights.map((r) => r.sentence);
+
+describe.each(WITHOUT_SALES)("the insight feed as %s of the house", (who) => {
+  it("[REVERT-FAILS] keeps the stock and volume sentences only, and counts the rest", async () => {
+    const res = await get(`/analytics/insights/${HOUSE}`, who);
+    expect(res.status).toBe(200);
+    expect(sentences(res.body)).toEqual([
+      "Öküzgözü runs out first.",
+      "Bottles are up 4 on last week.",
+    ]);
+    expect(res.body.withheldForRole).toBe(5);
+    expect(JSON.stringify(res.body)).not.toMatch(/Ayşe|Table 4|Sales are up|Spend is/);
+  });
+
+  it("[REVERT-FAILS] a forced compute of a type the role may not read is not run", async () => {
+    const res = await get(
+      `/analytics/insights/${HOUSE}?candidateKey=waiter.avg_check.peer_rank`,
+      who,
+    );
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ source: "withheld", insights: [], withheldForRole: 1 });
+    expect(insightGenerator.generate).not.toHaveBeenCalled();
+  });
+});
+
+describe.each(["owner", "manager"] as const)("the insight feed as %s of the house", (who) => {
+  it("is read whole, and says nothing was withheld", async () => {
+    const res = await get(`/analytics/insights/${HOUSE}`, who);
+    expect(res.status).toBe(200);
+    // A key outside the catalogue is read only by a row that sees every class.
+    expect(res.body.insights).toHaveLength(FEED.length);
+    expect(res.body.withheldForRole).toBeUndefined();
+  });
+
+  it("a forced compute of the ranking is run", async () => {
+    const res = await get(
+      `/analytics/insights/${HOUSE}?candidateKey=waiter.avg_check.peer_rank`,
+      who,
+    );
+    expect(res.status).toBe(200);
+    expect(insightGenerator.generate).toHaveBeenCalledTimes(1);
+    expect(res.body.insights).toHaveLength(1);
   });
 });
