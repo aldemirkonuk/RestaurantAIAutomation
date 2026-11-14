@@ -6,6 +6,8 @@ import { isMass, isVolumeItemUnit, massFactor, volumeFactor } from "../documents
 import { LotUnitCost, perBottleLotCost, proposalPerBottle, toCentsAsBooked } from "./lot-unit-cost";
 import { doorCountsOfPapers, withTheDoorsPack } from "./door-received";
 import {
+  HouseTaxRow,
+  houseTaxForLotCost,
   LandedBlock,
   landDelivery,
   paidBottles,
@@ -14,6 +16,7 @@ import {
   PaperNote,
   notHouseMoney,
 } from "./paper-landed-cost";
+import { CostTaxBasis, HouseTax } from "../landed-cost";
 
 /**
  * DeliveryStockService — ADR 0103 A1 + A5: stock at the door, cost at VERIFIED.
@@ -109,6 +112,15 @@ export interface FinalisedItem {
   basis?: string;
   /** How an invoice price became this cost (lane 1.4); absent for a proposal. */
   landed?: LandedBlock;
+  /**
+   * ADR 0359 C3: what the posted cost holds for tax, as stamped on its lots.
+   * Null when it is not stated: the house has not answered, the paper does
+   * not say enough, the price is a settled proposal's, or the stamp could not
+   * be written (then `taxStampError` says so).
+   */
+  costTaxBasis: CostTaxBasis;
+  /** The cost posted but its stamp did not: the lots read "not stated". */
+  taxStampError?: string;
 }
 
 /** A lot a re-verify left at its cost, and why (QA 9a / 10a). */
@@ -750,7 +762,7 @@ export class DeliveryStockService {
         continue;
       }
 
-      const posted = await this.post(deliveryId, inventoryId, price, userId, `delivery ${deliveryId} verified (ADR 0103 A1)`);
+      const posted = await this.post(restaurantId, deliveryId, inventoryId, price, userId, `delivery ${deliveryId} verified (ADR 0103 A1)`);
       if (!posted.ok)
         return {
           ok: false,
@@ -871,7 +883,7 @@ export class DeliveryStockService {
           continue;
         }
         if (fix.unitCost === booked) continue;
-        const posted = await this.post(deliveryId, id, fix, userId, `delivery ${deliveryId} re-verified: the printed ${booked} was booked as a bottle's cost (QA 7c B1)`);
+        const posted = await this.post(restaurantId, deliveryId, id, fix, userId, `delivery ${deliveryId} re-verified: the printed ${booked} was booked as a bottle's cost (QA 7c B1)`);
         if (!posted.ok)
           return { ok: false, status: 503, error: `the cost of item ${id} could not be corrected: ${posted.error}. This is safe to retry.` };
         out.repaired.push(posted.value);
@@ -893,6 +905,7 @@ export class DeliveryStockService {
 
   /** One `finalise_delivery_cost` call, and its receipt. */
   private async post(
+    restaurantId: string,
     deliveryId: string,
     inventoryId: string,
     price: AgreedPrice,
@@ -911,6 +924,7 @@ export class DeliveryStockService {
       });
     if (rpc.error) return { ok: false, status: 503, error: rpc.error.message };
     const receipt = (rpc.data ?? {}) as Record<string, unknown>;
+    const stamped = await this.stampTaxBasis(restaurantId, deliveryId, inventoryId, price);
     return {
       ok: true,
       value: {
@@ -923,8 +937,45 @@ export class DeliveryStockService {
         source: price.source,
         ...(price.basis ? { basis: price.basis } : {}),
         ...(price.landed ? { landed: price.landed } : {}),
+        costTaxBasis: stamped.basis,
+        ...(stamped.error ? { taxStampError: stamped.error } : {}),
       },
     };
+  }
+
+  /**
+   * ADR 0359 C3: say on the lots what the cost just posted holds for tax.
+   *
+   * Only an invoice's landed cost carries a stamp: a settled proposal's price
+   * was typed by a person, and nothing says whether tax is inside it. A null
+   * stamp writes nothing, because the lots already read "not stated" (a new
+   * cost clears the old stamp by trigger). A failed stamp does not undo the
+   * cost, which is right either way; the lots read "not stated", the receipt
+   * says why, and nothing claims a basis no row holds.
+   */
+  private async stampTaxBasis(
+    restaurantId: string,
+    deliveryId: string,
+    inventoryId: string,
+    price: AgreedPrice,
+  ): Promise<{ basis: CostTaxBasis; error?: string }> {
+    const basis = price.provenance === "invoice" ? (price.landed?.costTaxBasis ?? null) : null;
+    if (basis == null) return { basis: null };
+    const rpc = await this.db
+      .getClient()
+      .rpc("stamp_delivery_cost_tax_basis", {
+        p_restaurant_id: restaurantId,
+        p_delivery_id: deliveryId,
+        p_inventory_id: inventoryId,
+        p_unit_cost: price.unitCost,
+        p_cost_tax_basis: basis,
+      });
+    if (rpc.error)
+      return {
+        basis: null,
+        error: `the cost posted, but what it holds for tax (${basis === "net" ? "before tax" : "with tax"}) could not be written on its lots, so they read "not stated": ${rpc.error.message}`,
+      };
+    return { basis };
   }
 
   // -------------------------------------------------------------------------
@@ -1277,7 +1328,7 @@ export class DeliveryStockService {
         .getClient()
         .from("procurement_documents")
         .select(
-          "id, doc_number, currency, subtotal, discount_total, freight, fuel_surcharge, split_case_fee, delivery_fee, other_charges, deposit_total, tax, extracted_lines:extracted->lines",
+          "id, doc_number, currency, subtotal, discount_total, freight, fuel_surcharge, split_case_fee, delivery_fee, other_charges, deposit_total, tax, total, extracted_lines:extracted->lines, tax_breakdown:extracted->taxBreakdown, einvoice:extracted->einvoice",
         )
         .eq("restaurant_id", restaurantId)
         .in("id", invoiceIds);
@@ -1289,22 +1340,27 @@ export class DeliveryStockService {
         };
       papers = (heads.data ?? []) as unknown as PaperHeaderRow[];
     }
-    // QA 15 (5): an unreadable house is not "no currency named".
+    // QA 15 (5): an unreadable house is not "no currency named". ADR 0359
+    // C2: nor is it "has not said whether it reclaims tax" — the same read
+    // carries both, and a failure refuses both.
     let houseCurrency: string | null = null;
+    let houseTax: HouseTax = houseTaxForLotCost();
     if (papers.length) {
       const house = await this.db
         .getClient()
         .from("restaurants")
-        .select("currency")
+        .select("currency, tax_basis, reclaims_input_tax")
         .eq("id", restaurantId)
         .maybeSingle();
       if (house.error)
         return {
           ok: false,
           status: 500,
-          error: `the currency this house keeps its costs in could not be read: ${house.error.message}`,
+          error: `the currency this house keeps its costs in could not be read: ${house.error.message}. Whether the house reclaims the tax it pays is in the same read, so no cost is posted on a guess about either.`,
         };
-      houseCurrency = ((house.data ?? null) as { currency?: string | null } | null)?.currency ?? null;
+      const row = (house.data ?? null) as ({ currency?: string | null } & HouseTaxRow) | null;
+      houseCurrency = row?.currency ?? null;
+      houseTax = houseTaxForLotCost(row);
     }
     const moneyOfPaper = new Map(papers.map((r) => [r.id, notHouseMoney(r.currency, houseCurrency)]));
 
@@ -1385,7 +1441,7 @@ export class DeliveryStockService {
       }
     }
 
-    const landed = landDelivery({ papers, lines: fed, booked, houseCurrency });
+    const landed = landDelivery({ papers, lines: fed, booked, houseCurrency, houseTax });
     const refused = landed.refused;
     const held = landed.held;
     for (const [id, p] of [...lineOnly]) {
