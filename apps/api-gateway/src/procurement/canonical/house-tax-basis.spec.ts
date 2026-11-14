@@ -58,6 +58,33 @@ describe("houseTaxForLotCost reads the house's two answers", () => {
   });
 });
 
+describe("landDelivery hands the house's answers to the landed rule", () => {
+  const run = (houseTax?: ReturnType<typeof houseTaxForLotCost>) =>
+    paper.landDelivery({
+      papers: [{ id: "inv-1", doc_number: "A-1", currency: "TRY" }],
+      lines: [
+        {
+          row: { document_id: "inv-1", line_no: 1, inventory_id: ITEM, qty_bottles: 10, unit_price: 100, uom: "bottle", line_total: 1000 },
+          cost: { ok: true, unitCost: 100, basis: "SYNTHETIC per bottle" } as never,
+        },
+      ],
+      booked: new Map([[ITEM, 10]]),
+      houseCurrency: "TRY",
+      ...(houseTax ? { houseTax } : {}),
+    });
+
+  it("a house with no answer is costed as printed because it has not said", () => {
+    expect(run().byItem.get(ITEM)?.taxSaid).toMatch(/the house has not set its tax basis/);
+  });
+
+  it("a house that answered is costed as printed only because the paper does not say", () => {
+    const r = run({ tax_basis: "prices_include_tax", reclaims_input_tax: true });
+    expect(r.byItem.get(ITEM)?.unitCost).toBe(100);
+    expect(r.byItem.get(ITEM)?.taxSaid).not.toMatch(/the house has not set its tax basis/);
+    expect(r.byItem.get(ITEM)?.taxSaid).toMatch(/the paper does not say enough about the tax/);
+  });
+});
+
 describe("DeliveryStockService at VERIFIED — the house's tax and the cost's stamp", () => {
   let db: MockDb;
   let service: DeliveryStockService;
@@ -79,7 +106,8 @@ describe("DeliveryStockService at VERIFIED — the house's tax and the cost's st
           chargeShare: 0,
           discountShare: 0,
           acceptedBottles: 10,
-          landedCostPerBottle: 100,
+          // Before rounding: the stamp must name the cost POSTED, not this.
+          landedCostPerBottle: 100.0000004,
           costTaxBasis,
           basis: "SYNTHETIC landed",
           taxSaid: "",
