@@ -106,6 +106,17 @@ describe('an opened drink is brought into view', () => {
     expect(scrolled).toHaveBeenCalledTimes(2);
   });
 
+  it('a drink hidden by a search and shown again is brought into view again', () => {
+    mount();
+    click('House G&T');
+    const search = screen.getByPlaceholderText('Search cocktail, section, method…');
+    fireEvent.change(search, { target: { value: 'Sour' } });
+    expect(screen.queryByTestId('cocktail-leaf')).toBeNull();
+    fireEvent.change(search, { target: { value: '' } });
+    expect(screen.getByTestId('cocktail-leaf')).toBeInTheDocument();
+    expect(scrolled).toHaveBeenCalledTimes(2);
+  });
+
   it('closing a drink does not scroll', () => {
     mount();
     click('House G&T');
