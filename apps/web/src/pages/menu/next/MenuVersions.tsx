@@ -96,6 +96,21 @@ function day(iso: string | null): string {
   return iso ? iso.slice(0, 10) : EM;
 }
 
+/**
+ * The second half of the standing line. "No earlier menu has been used" is
+ * not so while another menu is still marked current (r33 w1 F10, a house
+ * from before choosing a menu set the others aside): that menu is in use.
+ */
+export function standingSecond(
+  data: { current: { menuId: string } | null; lastUsed: MenuVersion | null; versions: { menuId: string; current: boolean }[] } | undefined,
+): string {
+  if (data?.lastUsed) return `Last one used: ${versionLabel(data.lastUsed)}.`;
+  const others = (data?.versions ?? []).filter((v) => v.current && v.menuId !== data?.current?.menuId).length;
+  if (others > 0)
+    return `${others === 1 ? '1 other menu is' : `${others} other menus are`} also marked current; none has been set aside yet.`;
+  return 'No earlier menu has been used.';
+}
+
 /** How a kept menu is named in a sentence: its own date if it has one, else when it was read. */
 export function versionLabel(v: MenuVersion): string {
   const date = v.menuDate
@@ -446,7 +461,7 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
         <>
           <p className="cl-standing" style={{ marginTop: 12 }} data-testid="menu-versions-standing">
             {q.data?.current ? `Current: ${versionLabel(q.data.current)}.` : 'No menu is current yet.'}{' '}
-            {q.data?.lastUsed ? `Last one used: ${versionLabel(q.data.lastUsed)}.` : 'No earlier menu has been used.'}
+            {standingSecond(q.data)}
           </p>
           {q.data && q.data.versions.length > 0 ? (
             <>
