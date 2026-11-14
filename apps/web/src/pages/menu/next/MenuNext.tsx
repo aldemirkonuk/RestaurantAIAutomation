@@ -326,8 +326,14 @@ function MenuRow({ line, currency, onDiscard, discarding, testId = 'menu-row', e
   // nothing (r24 walk). Opening puts the cursor in the first box; closing (saved,
   // cancelled, Escape) gives it back to "Change price" instead of dropping it on
   // the page, so a keyboard user stays on the line they were changing.
+  // r33 walk: the box opens holding the price it has, so typing "150,50" after
+  // opening gave "140,00150,50", which was refused. The text is selected as the
+  // box opens, so what is typed replaces it; the arrows still edit it in place.
   useEffect(() => {
-    if (editing && !wasEditing.current) firstBox.current?.focus();
+    if (editing && !wasEditing.current) {
+      firstBox.current?.focus();
+      firstBox.current?.select();
+    }
     if (!editing && wasEditing.current) {
       const lost = !document.activeElement || document.activeElement === document.body;
       if (lost) changeButton.current?.focus();
@@ -394,7 +400,7 @@ function MenuRow({ line, currency, onDiscard, discarding, testId = 'menu-row', e
       )}
       <td>
         {(() => {
-          const s = lineStatusWords(line);
+          const s = lineStatusWords(line, { dish });
           return (
             <>
               <span className="cl-chip" data-seal={s.sealed ? 'true' : 'false'} title={s.why ?? undefined} data-testid="menu-line-status">
