@@ -239,7 +239,9 @@ export default function LineRow({
   const stocked = row.role === 'stocked';
   const qty = rowQty(row);
 
-  const pick = (item: ShelfItem) => {
+  const [added, setAdded] = useState<string | null>(null);
+  const pick = (item: ShelfItem, said?: string) => {
+    setAdded(said ?? null);
     onChange({
       inventoryId: item.id,
       itemName: item.name,
@@ -345,7 +347,17 @@ export default function LineRow({
         </button>
       </div>
       {picking ? (
-        <ShelfPicker initial={row.inventoryId ? '' : row.label} onPick={pick} onClose={() => setPicking(false)} />
+        <ShelfPicker
+          initial={row.inventoryId ? '' : row.label}
+          onPick={pick}
+          onClose={() => setPicking(false)}
+          addFor={{ unit: row.unit, kind: kind ?? 'cocktail' }}
+        />
+      ) : null}
+      {added ? (
+        <p className="cl-rcp-note" role="status" data-testid="shelf-added">
+          {added}
+        </p>
       ) : null}
       <Note note={rowNote(row, say, words)} />
       {say && weightNeeded(row) && row.inventoryId ? (

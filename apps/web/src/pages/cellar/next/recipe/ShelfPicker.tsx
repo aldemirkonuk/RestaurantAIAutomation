@@ -10,6 +10,9 @@ import { useEffect, useId, useState } from 'react';
 import { AlertTriangle, Search } from 'lucide-react';
 import type { ShelfItem } from '../../../../services/api/recipes';
 import { useShelf } from './useRecipe';
+import AddToShelf from './AddToShelf';
+import type { RecipeUnit } from './units';
+import type { RecipeKind } from './recipeWords';
 
 const DEBOUNCE_MS = 250;
 
@@ -23,10 +26,13 @@ export default function ShelfPicker({
   initial,
   onPick,
   onClose,
+  addFor,
 }: {
   initial: string;
-  onPick: (item: ShelfItem) => void;
+  onPick: (item: ShelfItem, said?: string) => void;
   onClose: () => void;
+  /** When given, a search that finds nothing offers to add the good (r28 gap 8). */
+  addFor?: { unit: RecipeUnit | '' | null | undefined; kind: RecipeKind };
 }) {
   const id = useId();
   const [text, setText] = useState(initial);
@@ -69,9 +75,12 @@ export default function ShelfPicker({
           Your shelf could not be read just now ({shelf.error}). Nothing is listed rather than a wrong list.
         </p>
       ) : (shelf.data ?? []).length === 0 ? (
-        <p className="cl-note" role="status">
-          {search ? `Nothing on your shelf matches “${search}”.` : 'Your shelf has nothing on it yet.'}
-        </p>
+        <>
+          <p className="cl-note" role="status">
+            {search ? `Nothing on your shelf matches “${search}”.` : 'Your shelf has nothing on it yet.'}
+          </p>
+          {addFor && search ? <AddToShelf key={search} name={search} unit={addFor.unit} kind={addFor.kind} onAdded={onPick} /> : null}
+        </>
       ) : (
         <ul className="cl-rcp-picks" aria-label="On your shelf">
           {(shelf.data ?? []).map((item) => (

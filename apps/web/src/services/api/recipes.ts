@@ -210,6 +210,20 @@ export interface SaveRecipeResult {
   lines: unknown[];
 }
 
+/** POST /inventory/:rid/house-items, as house-item.service.ts takes it. */
+export interface AddToShelfBody {
+  kind: string;
+  uom: string;
+  displayName: string;
+}
+
+export interface AddedToShelf {
+  id: string;
+  kind: string;
+  uom: string;
+  displayName: string;
+}
+
 export interface ShelfItem {
   id: string;
   name: string;
@@ -281,6 +295,17 @@ export const recipesApi = {
   /** Proposes a shelf item for each pasted label; writes nothing. */
   async matchShelf(restaurantId: string, labels: string[]): Promise<ShelfMatch[]> {
     const r = await apiClient.post<ShelfMatch[]>(`${base(restaurantId)}/shelf/match`, { labels });
+    return r.data;
+  },
+
+  /**
+   * Adds a good to the house's shelf from a recipe line that found none (r28
+   * gap 8): the inventory's own "carry this" route (POST /inventory/:rid/
+   * house-items, owner or manager), so there is one writer of a house good.
+   * Stock is never entered here: it arrives with a delivery.
+   */
+  async addToShelf(restaurantId: string, body: AddToShelfBody): Promise<AddedToShelf> {
+    const r = await apiClient.post<AddedToShelf>(`/inventory/${encodeURIComponent(restaurantId)}/house-items`, body);
     return r.data;
   },
 
