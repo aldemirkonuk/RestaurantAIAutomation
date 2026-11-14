@@ -43,6 +43,10 @@ import { ANALYSIS_IDS, type AnalysisId } from './rp-sheet';
 import type { ArrangeApi } from './rp-arrange';
 import { REGISTER_FRESH_MS, useReportsNextData, type Register } from './useReportsNextData';
 
+// The page's word for "fresh" is five minutes; the tests below use literal times
+// so a change to the constant is caught, not followed.
+it('a register counts as fresh for five minutes', () => expect(REGISTER_FRESH_MS).toBe(5 * 60_000));
+
 const SHOWING: AnalysisId[] = ['till'];
 const READING = '/analytics/insights/r1?limit=40';
 const tillPath = (rid: string, days: number) => `/analytics/pos-revenue/${rid}?days=${days}`;
@@ -238,7 +242,7 @@ describe('a return to the tab reads again only once the figures are five minutes
     const { result } = mountAt(30);
     await waitFor(() => expect(result.current.registers.till?.data).toBeDefined());
     const before = calls(tillPath('r1', 30));
-    await comeBack(REGISTER_FRESH_MS + 60_000);
+    await comeBack(6 * 60_000);
     await waitFor(() => expect(calls(tillPath('r1', 30))).toBeGreaterThan(before));
   });
 });
