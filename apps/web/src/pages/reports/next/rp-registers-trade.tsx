@@ -20,7 +20,7 @@ import {
   categoryLabel,
   countOf,
   figure,
-  money,
+  moneyIn,
   num,
   pct,
   ratioPct,
@@ -162,7 +162,8 @@ const till = analysis<TillWindow>({
       })),
     };
   },
-  view: (w) => {
+  view: (w, ctx) => {
+    const money = moneyIn(ctx.currency);
     if (!w.posConnected)
       return {
         say: (
@@ -329,7 +330,8 @@ const pacing = analysis<PacingRegister>({
       },
     };
   },
-  view: (c) => {
+  view: (c, ctx) => {
+    const money = moneyIn(ctx.currency);
     const figures = [
       { label: 'Pace', value: pct(c.paceDeltaPct), note: 'Needs two comparable 30-day windows' },
       {
