@@ -175,7 +175,19 @@ export interface PriceLock {
   dormant: boolean | null
   menuPrice: number | null
   markers: LockMarker[]
-  advice: { state: string; sentence: string; advisedPrice: number | null; gapPct: number | null } | null
+  /**
+   * `price`, `currentMarginPct` and `targetPct` are the sentence's own figures
+   * (r26 walk); an older gateway does not send them, so they may be absent.
+   */
+  advice: {
+    state: string
+    sentence: string
+    advisedPrice: number | null
+    gapPct: number | null
+    price?: number | null
+    currentMarginPct?: number | null
+    targetPct?: number | null
+  } | null
   adviceUnknownReason: string | null
 }
 
