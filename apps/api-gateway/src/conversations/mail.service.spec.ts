@@ -37,6 +37,7 @@ function builder(q: Query): any {
   for (const m of [
     "select",
     "eq",
+    "in",
     "or",
     "not",
     "order",
@@ -289,8 +290,10 @@ describe("getThread", () => {
   it("is one read of mail_thread_letters, never the table itself", async () => {
     resolve = threadResolver([letter(0)]);
     await service().getThread(HOUSE, "staff", { key: "t-1" });
+    // The letters' files are read after, by the letters' own ids (gap 13).
     expect(queries.map((q) => `${q.kind}:${q.name}`)).toEqual([
       "rpc:mail_thread_letters",
+      "from:conversation_attachments",
     ]);
     expect(queries[0].payload).toEqual({
       p_restaurant_id: HOUSE,
@@ -452,6 +455,7 @@ describe("getThread", () => {
       messages: [],
       before: null,
       waiting: false,
+      attachmentsRead: true,
     });
   });
 });
@@ -478,7 +482,7 @@ describe("getThread: one key, two vendors", () => {
       key: "gm:shared",
       with: `vendor:${V2.toUpperCase()}`,
     });
-    expect(queries).toHaveLength(1);
+    expect(queries.filter((q) => q.name !== "conversation_attachments")).toHaveLength(1);
     expect(queries[0].payload).toMatchObject({
       p_thread_key: "gm:shared",
       p_provider_id: V2,
@@ -507,7 +511,10 @@ describe("getThread: one key, two vendors", () => {
     const page = await service().getThread(HOUSE, "owner", {
       key: "gm:shared",
     });
-    expect(queries.map((q) => q.name)).toEqual(["mail_thread_letters"]);
+    expect(queries.map((q) => q.name)).toEqual([
+      "mail_thread_letters",
+      "conversation_attachments",
+    ]);
     expect(queries[0].payload).toMatchObject({ p_provider_id: null });
     expect(page.person?.providerId).toBe(V1);
     expect(page.messages.map((m) => m.text)).toEqual(["from v1"]);

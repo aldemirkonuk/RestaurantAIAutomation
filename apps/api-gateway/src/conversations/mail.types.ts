@@ -129,6 +129,32 @@ export interface MailMessage {
    * 4); null when nobody did. Only a letter the house received is marked.
    */
   noReplyMarkedAt: string | null;
+  /**
+   * The files the letter carried, as stored when it arrived (r28 mail gap
+   * 13): a price list, an invoice, a photo. Empty when it carried none, or
+   * when the page's `attachmentsRead` is false.
+   */
+  attachments: MailAttachment[];
+}
+
+/** One file a letter carried. Opened through GET /mail/attachments/:id/link. */
+export interface MailAttachment {
+  id: string;
+  filename: string;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  /** When the file itself was removed under the retention rule; its name stays. */
+  removedAt: string | null;
+}
+
+/** The answer to GET /mail/attachments/:id/link: a short-lived address. */
+export interface MailAttachmentLink {
+  id: string;
+  filename: string;
+  mimeType: string | null;
+  url: string;
+  /** How long `url` works, from when it was made. */
+  expiresInSeconds: number;
 }
 
 export interface MailOrderRef {
@@ -152,6 +178,12 @@ export interface MailThreadPage {
    * thread, not this page.
    */
   waiting: boolean;
+  /**
+   * False when the letters' files could not be read with this page: the
+   * letters are shown, and the page must say their files could not be read,
+   * never that they carried none.
+   */
+  attachmentsRead: boolean;
 }
 
 /** The answer to POST/DELETE /mail/letters/:id/no-reply-needed. */
