@@ -674,6 +674,13 @@ function Placed({
   );
 }
 
+/** 'weight' or 'volume' for a good kept by either, else null (a count, a case or a pack). */
+export function measuredBy(uom: string | null | undefined): 'weight' | 'volume' | null {
+  if (uom === 'g' || uom === 'kg' || uom === 'mg') return 'weight';
+  if (uom === 'ml' || uom === 'l') return 'volume';
+  return null;
+}
+
 export function OrderSheet({
   row,
   onClose,
@@ -731,8 +738,19 @@ export function OrderSheet({
   const sealedLabel = merged ? 'Changed on Orders' : 'Placed on Orders';
   const vendorName = providers?.find((p) => p.id === vendorId)?.name ?? 'this vendor';
   const noVendors = !providersError && providers !== null && providers.length === 0;
+  // No order anywhere in Mudavym states a weight (the order unit CHECK has no
+  // kg or g, and #1110 refuses them by name), so a good kept by weight is sent
+  // the way it really comes in: the vendor's own order, a count, and the
+  // vendor's invoice on Receipts. Orders does take litres, so a good kept by
+  // volume is sent there, and told that its stock comes from a count or the
+  // invoice, not from the order (#1367, #1444).
+  const measured = measuredBy(uom);
   const blocked = orderUnit === null
-    ? `This good is kept in ${unitWords.base === 'g' ? 'grams' : unitWords.base === 'ml' ? 'millilitres' : unitWords.fieldUnit}, and an order from here is placed in bottles, kegs or items, so it is not ordered from this sheet. Place it on Orders, where the vendor's own unit is written down.`
+    ? measured === 'weight'
+      ? `${titleOf(row)} is kept by weight, and an order from Mudavym is placed in bottles, kegs, items or litres, never by weight, so it is not ordered from here. Order it from the vendor as you do now; when it comes, count it here and put the vendor's invoice on Receipts.`
+      : measured === 'volume'
+        ? `${titleOf(row)} is kept by volume, and an order from here is placed in bottles, kegs or items, so it is not ordered from this sheet. Orders can place it in litres; when it comes, count it here and put the vendor's invoice on Receipts.`
+        : `This good is kept in ${unitWords.fieldUnit}, and an order from here does not ask how much one of them holds, so it is not ordered from this sheet. Orders asks it.`
     : providersError
     ? `The vendor book could not be read — ${providersError}. No vendor can be chosen, so nothing can be ordered from here.`
     : noVendors
@@ -762,14 +780,20 @@ export function OrderSheet({
     >
       {orderUnit === null ? (
         // A good this sheet cannot order (kept in g, ml, case or pack) gets the
-        // reason and the way to Orders, and no vendor picker or amount box it
+        // reason and the way it does come in, and no vendor picker or amount box it
         // could never use (browser walk 2026-11-11: the fields sat above a
         // refusal, a form that led nowhere).
         <p className="iv-note" data-testid="iv-order-unit-blocked">
           {blocked}{' '}
-          <Link to="/orders" className="iv-linkish iv-focus">
-            Go to Orders
-          </Link>
+          {measured === 'weight' ? (
+            <Link to="/receipts" className="iv-linkish iv-focus">
+              Go to Receipts
+            </Link>
+          ) : (
+            <Link to="/orders" className="iv-linkish iv-focus">
+              Go to Orders
+            </Link>
+          )}
         </p>
       ) : (
       <>
