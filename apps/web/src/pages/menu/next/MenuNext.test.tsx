@@ -637,14 +637,26 @@ describe('MenuNext — a dish has one price (r28 G13)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Change the price of Tiramisu' }));
     const dish = screen.getByTestId('menu-kitchen-row');
     expect(within(dish).getAllByRole('textbox')).toHaveLength(1);
-    const box = within(dish).getByLabelText('Price of Tiramisu');
+    const box = within(dish).getByLabelText('Price of Tiramisu') as HTMLInputElement;
     expect(box).toHaveFocus();
+    // r33 walk: the price it holds is selected, so what is typed replaces it.
+    expect(box.value).not.toBe('');
+    expect([box.selectionStart, box.selectionEnd]).toEqual([0, box.value.length]);
     expect(within(dish).queryByLabelText(/Glass/)).not.toBeInTheDocument();
     expect(within(dish).queryByLabelText(/Bottle/)).not.toBeInTheDocument();
     fireEvent.change(box, { target: { value: '11' } });
     fireEvent.click(screen.getByTestId('menu-price-save'));
     await waitFor(() => expect(mockReview).toHaveBeenCalledWith('k1', 'bottle_price', '11'));
     expect(mockReview).toHaveBeenCalledTimes(1);
+  });
+
+  it('a dish set by hand says "its price" on its line, a drink keeps "its bottle price" (r33 walk)', async () => {
+    const hand = { status: 'flagged', flag_reason: 'corrected', flag_field: 'bottle_price' } as Partial<MenuLine>;
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ ...chianti(), ...hand }), tiramisu(hand)] }));
+    mount();
+    const dish = await screen.findByTestId('menu-kitchen-row');
+    expect(within(dish).getByTestId('menu-line-status')).toHaveTextContent(/^set by hand: its price$/);
+    expect(within(screen.getByTestId('menu-row')).getByTestId('menu-line-status')).toHaveTextContent(/^set by hand: its bottle price$/);
   });
 
   it('a dish that holds a glass-column price still shows it, and its box, named apart', async () => {
