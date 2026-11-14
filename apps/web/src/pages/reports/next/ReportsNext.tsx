@@ -79,6 +79,7 @@ import {
 import { heldMark, layoutFor } from './rp-readable';
 import { flatAsked, flatVisit, refusedFlatSentence } from './rp-flat-visit';
 import { FLAT_PARAM } from './CuttingFlat';
+import { NextStep } from './rp-next-step';
 import { readingAge } from './rp-registers-trade';
 import type { ComboPick } from './rp-combo';
 import ExportsShelf from './ExportsShelf';
@@ -411,6 +412,9 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     const top = data.reading.data[0];
     return top ? top.sentence : 'The engine has nothing to say about this restaurant yet.';
   }, [data.reading]);
+  /** True when the engine answered and has nothing to say: day 1 for a new house (r36 gap 5). */
+  const openingSilent =
+    !data.reading.failure && Array.isArray(data.reading.data) && data.reading.data.length === 0;
   /** When the opening sentence was written; it can be a day older than the registers (r36 gap 4). */
   const openingAge = useMemo(() => {
     const top = data.reading.failure ? undefined : data.reading.data?.[0];
@@ -539,6 +543,11 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
             {/* Fraunces speaks only what the ENGINE said — verbatim, or the truth
                 about why it said nothing. This page never writes a sentence. */}
             <p className="rp-voice">{opening}</p>
+            {openingSilent && (
+              <p className="rp-cap" data-testid="rp-opening-step">
+                <NextStep source="start" />
+              </p>
+            )}
             {openingAge && (
               <p className="rp-cap" data-testid="rp-opening-age">
                 Written by the engine {openingAge}. The registers below are read live.
