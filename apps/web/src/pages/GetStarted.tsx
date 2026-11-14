@@ -35,10 +35,13 @@ const SIGN_IN_THEN_GET_STARTED = '/login?redirect=%2Fget-started'
 
 /**
  * The entry rule (BL-1, B-12; fork F8), from the session's house and role:
- * staff and managers go to the desk, never owner onboarding; an owner (or no
- * role) resumes at the menu step; no house starts at the first step.
+ * staff go to the desk, never owner onboarding; a manager goes to /menu, where
+ * a manager reads the house's menu and makes it current (r36 onboarding gap
+ * 5: Learn & Help's "Read it now" and the guide links land here, and the desk
+ * was a dead end; the banner already sends a manager to /menu); an owner (or
+ * no role) resumes at the menu step; no house starts at the first step.
  */
-type Entry = 'sign-in' | 'verify' | 'desk' | 'menu' | 'restaurant'
+type Entry = 'sign-in' | 'verify' | 'desk' | 'house-menu' | 'menu' | 'restaurant'
 
 function entryFor(user: Pick<User, 'restaurantId' | 'role' | 'emailVerified'> | null): Entry {
   if (!user) return 'sign-in'
@@ -48,7 +51,8 @@ function entryFor(user: Pick<User, 'restaurantId' | 'role' | 'emailVerified'> | 
   // house." Only an explicit `false` counts, as on /choose-house.
   if (user.emailVerified === false) return 'verify'
   if (user.restaurantId) {
-    return user.role === 'staff' || user.role === 'manager' ? 'desk' : 'menu'
+    if (user.role === 'staff') return 'desk'
+    return user.role === 'manager' ? 'house-menu' : 'menu'
   }
   return 'restaurant'
 }
@@ -254,6 +258,7 @@ export default function GetStarted() {
     if (entry === 'sign-in') navigate(SIGN_IN_THEN_GET_STARTED, { replace: true })
     else if (entry === 'verify') navigate('/verify-email', { replace: true })
     else if (entry === 'desk') navigate('/', { replace: true })
+    else if (entry === 'house-menu') navigate('/menu', { replace: true })
     else {
       if (entry === 'menu') setStep('menu')
       setEntered(true)
@@ -311,6 +316,7 @@ export default function GetStarted() {
       setNotice(null)
       setStep('menu')
     } else if (entry === 'desk') navigate('/', { replace: true })
+    else if (entry === 'house-menu') navigate('/menu', { replace: true })
     else if (entry === 'sign-in') navigate(SIGN_IN_THEN_GET_STARTED, { replace: true })
     else if (entry === 'verify') navigate('/verify-email', { replace: true })
     else navigate('/choose-house', { replace: true })

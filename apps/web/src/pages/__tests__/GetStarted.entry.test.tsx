@@ -80,15 +80,23 @@ describe('GetStarted entry rule', () => {
     expect(screen.getByRole('heading', { name: 'Your menu' })).toBeInTheDocument()
   })
 
-  it('(t2) staff or a manager with a house goes to the desk, never owner onboarding', () => {
-    for (const role of ['staff', 'manager']) {
-      navigate.mockClear()
-      auth.user = { ...owner, role }
-      const view = render(page())
-      expect(navigate).toHaveBeenCalledWith('/', { replace: true })
-      expect(screen.queryByText('Welcome')).toBeNull()
-      view.unmount()
-    }
+  it('(t2) staff with a house goes to the desk, never owner onboarding', () => {
+    auth.user = { ...owner, role: 'staff' }
+    render(page())
+    expect(navigate).toHaveBeenCalledWith('/', { replace: true })
+    expect(navigate).not.toHaveBeenCalledWith('/menu', { replace: true })
+    expect(screen.queryByText('Welcome')).toBeNull()
+  })
+
+  // r36 onboarding gap 5: Learn & Help's "Read it now" sends every role
+  // here, and a manager used to land on the desk with no word of the menu.
+  it('(t2) a manager with a house goes to /menu, where a manager reads and chooses the menu', () => {
+    auth.user = { ...owner, role: 'manager' }
+    render(page())
+    expect(navigate).toHaveBeenCalledWith('/menu', { replace: true })
+    expect(navigate).not.toHaveBeenCalledWith('/', { replace: true })
+    expect(screen.queryByText('Welcome')).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Your menu' })).toBeNull()
   })
 
   it('(t3) an anonymous visitor is sent to sign in and back here', () => {
@@ -117,6 +125,26 @@ describe('GetStarted entry rule', () => {
     expect(signInWithSession).toHaveBeenCalledWith({ accessToken: 'access', refreshToken: 'refresh' })
     expect(document.body.textContent).not.toMatch(ALREADY_OPEN)
     expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('(t4) a 409 whose session is a manager in the house goes to /menu', async () => {
+    auth.user = { name: 'Selin Kaya', restaurantId: '', role: null, emailVerified: true }
+    localStorage.setItem('accessToken', 'access')
+    localStorage.setItem('refreshToken', 'refresh')
+    createFirstHouse.mockRejectedValue({ response: { status: 409, data: { message: 'x' } } })
+    signInWithSession.mockImplementation(async () => {
+      auth.user = { ...owner, role: 'manager' }
+    })
+    render(page())
+    await screen.findByRole('heading', { name: 'Your restaurant' })
+    fireEvent.change(screen.getByLabelText('Restaurant name'), { target: { value: 'Meyhane' } })
+    fireEvent.change(screen.getByLabelText('Address'), { target: { value: '1 House Street' } })
+    fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Istanbul' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Choose Türkiye' }))
+    fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
+
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/menu', { replace: true }))
+    expect(screen.queryByRole('heading', { name: 'Your menu' })).toBeNull()
   })
 })
 

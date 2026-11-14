@@ -108,12 +108,15 @@ describe('GetStarted: a house that already has a menu', () => {
     expect(navigate).not.toHaveBeenCalled()
   })
 
-  it('staff and managers are never read for the menu: they go to the desk', () => {
-    for (const role of ['staff', 'manager']) {
+  it('staff and managers are never read for the menu here: staff go to the desk, a manager to /menu', () => {
+    for (const [role, to] of [
+      ['staff', '/'],
+      ['manager', '/menu'],
+    ]) {
       navigate.mockClear()
       auth.user = { ...owner, role }
       const view = render(page())
-      expect(navigate).toHaveBeenCalledWith('/', { replace: true })
+      expect(navigate).toHaveBeenCalledWith(to, { replace: true })
       view.unmount()
     }
     expect(readHouseMenuStanding).not.toHaveBeenCalled()
