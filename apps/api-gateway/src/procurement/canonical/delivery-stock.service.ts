@@ -1326,7 +1326,7 @@ export class DeliveryStockService {
         .getClient()
         .from("procurement_documents")
         .select(
-          "id, doc_number, currency, subtotal, discount_total, freight, fuel_surcharge, split_case_fee, delivery_fee, other_charges, deposit_total, tax, extracted_lines:extracted->lines",
+          "id, doc_number, currency, subtotal, discount_total, freight, fuel_surcharge, split_case_fee, delivery_fee, other_charges, deposit_total, tax, total, extracted_lines:extracted->lines, tax_breakdown:extracted->taxBreakdown, einvoice:extracted->einvoice",
         )
         .eq("restaurant_id", restaurantId)
         .in("id", invoiceIds);
