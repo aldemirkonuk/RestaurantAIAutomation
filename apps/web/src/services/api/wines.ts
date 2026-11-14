@@ -62,25 +62,49 @@ export async function getWineById(wineId: string): Promise<Wine | null> {
 export const WINE_IDS_PER_REQUEST = 100;
 
 /**
- * Get wines by IDs, in requests of at most `WINE_IDS_PER_REQUEST` ids.
+ * Most chunk requests in flight at once. One after another, 1,000 wines were
+ * ten round trips in a row after the list itself, and the Type filter and the
+ * producer and grape columns waited on all ten (inventory r36 audit, gap 12).
+ * Four at a time keeps a 5,000-wine house from opening fifty requests at once.
+ */
+export const WINE_CHUNKS_AT_ONCE = 4;
+
+/**
+ * Get wines by IDs, in requests of at most `WINE_IDS_PER_REQUEST` ids, up to
+ * `WINE_CHUNKS_AT_ONCE` of them at a time. The wines come back in the order
+ * the ids were asked, whatever order the chunks answer in.
  *
- * The chunks are read one after another, and any chunk that fails fails the
- * whole read: a library join with a third of its wines missing would render as
- * wines with no name, which is a failed read shown as an empty one (ADR 0020).
+ * Any chunk that fails fails the whole read: a library join with a third of
+ * its wines missing would render as wines with no name, which is a failed
+ * read shown as an empty one (ADR 0020). No chunk is started after one fails.
  */
 export async function getWinesByIds(wineIds: string[]): Promise<Wine[]> {
   const unique = Array.from(new Set(wineIds.filter(Boolean)));
   if (unique.length === 0) return [];
 
-  const wines: Wine[] = [];
+  const chunks: string[][] = [];
   for (let i = 0; i < unique.length; i += WINE_IDS_PER_REQUEST) {
-    const chunk = unique.slice(i, i + WINE_IDS_PER_REQUEST);
-    const response = await apiClient.get<Wine[]>(WINES_PATH, {
-      params: { ids: chunk.join(',') },
-    });
-    wines.push(...response.data);
+    chunks.push(unique.slice(i, i + WINE_IDS_PER_REQUEST));
   }
-  return wines;
+  const answers: Wine[][] = new Array(chunks.length);
+  let next = 0;
+  let failed = false;
+  const worker = async () => {
+    while (!failed && next < chunks.length) {
+      const at = next++;
+      try {
+        const response = await apiClient.get<Wine[]>(WINES_PATH, {
+          params: { ids: chunks[at].join(',') },
+        });
+        answers[at] = response.data;
+      } catch (e) {
+        failed = true;
+        throw e;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(WINE_CHUNKS_AT_ONCE, chunks.length) }, worker));
+  return answers.flat();
 }
 
 /**
