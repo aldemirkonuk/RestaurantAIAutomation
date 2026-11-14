@@ -28,10 +28,12 @@ function pagingClient(tables: Record<string, any[]>, failOn?: string) {
       let cursor: string | null = null;
       let lim: number | null = null;
       let counted = false;
+      let orderBy: string | null = null;
       const b: any = {};
       for (const m of ["eq", "in", "gte", "or", "order"])
         b[m] = (...args: any[]) => {
           calls.push({ table, method: m, args });
+          if (m === "order" && args[0] !== "id") orderBy = String(args[0]);
           return b;
         };
       b.select = (_cols: string, opts?: { count?: string }) => {
@@ -53,7 +55,8 @@ function pagingClient(tables: Record<string, any[]>, failOn?: string) {
             data: null,
             error: { code: "57014", message: "canceling statement due to statement timeout" },
           }).then(resolve, reject);
-        const sorted = [...all].sort((x, y) => String(x.id).localeCompare(String(y.id)));
+        const key = orderBy ?? "id";
+        const sorted = [...all].sort((x, y) => String(x[key]).localeCompare(String(y[key])));
         const past = cursor === null ? sorted : sorted.filter((r) => String(r.id) > (cursor as string));
         const page = past.slice(0, lim ?? 1000);
         return Promise.resolve({
@@ -144,7 +147,12 @@ describe("cashflow files spend on the house's day (audit G7, G8)", () => {
   it("projects on complete weeks: 180 days give 25 whole weeks ending yesterday", async () => {
     const out: any = await svcOver(
       pagingClient({
-        procurement_orders: Array.from({ length: 30 }, (_, i) => delivered(i, day(i * 5 + 1))),
+        // The house's first order is older than the window, so all 180 days
+        // are records (purchasing-span.ts).
+        procurement_orders: [
+          ...Array.from({ length: 30 }, (_, i) => delivered(i, day(i * 5 + 1))),
+          delivered(99, day(400)),
+        ],
         restaurants: UTC_HOUSE,
       }),
     ).getCashflow(RID);
