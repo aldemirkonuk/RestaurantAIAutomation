@@ -290,10 +290,13 @@ describe("getThread", () => {
   it("is one read of mail_thread_letters, never the table itself", async () => {
     resolve = threadResolver([letter(0)]);
     await service().getThread(HOUSE, "staff", { key: "t-1" });
-    // The letters' files are read after, by the letters' own ids (gap 13).
+    // The letters' files are read after, by the letters' own ids (gap 13),
+    // and so is the mark a person left filing a held one (r37 w3 M-F2): the
+    // letters themselves come only from mail_thread_letters.
     expect(queries.map((q) => `${q.kind}:${q.name}`)).toEqual([
       "rpc:mail_thread_letters",
       "from:conversation_attachments",
+      "from:procurement_conversations",
     ]);
     expect(queries[0].payload).toEqual({
       p_restaurant_id: HOUSE,
@@ -456,6 +459,7 @@ describe("getThread", () => {
       before: null,
       waiting: false,
       attachmentsRead: true,
+      heldMarksRead: true,
     });
   });
 });
@@ -482,7 +486,11 @@ describe("getThread: one key, two vendors", () => {
       key: "gm:shared",
       with: `vendor:${V2.toUpperCase()}`,
     });
-    expect(queries.filter((q) => q.name !== "conversation_attachments")).toHaveLength(1);
+    expect(
+      queries.filter(
+        (q) => !["conversation_attachments", "procurement_conversations"].includes(q.name),
+      ),
+    ).toHaveLength(1);
     expect(queries[0].payload).toMatchObject({
       p_thread_key: "gm:shared",
       p_provider_id: V2,
@@ -514,6 +522,7 @@ describe("getThread: one key, two vendors", () => {
     expect(queries.map((q) => q.name)).toEqual([
       "mail_thread_letters",
       "conversation_attachments",
+      "procurement_conversations",
     ]);
     expect(queries[0].payload).toMatchObject({ p_provider_id: null });
     expect(page.person?.providerId).toBe(V1);
@@ -712,5 +721,82 @@ describe("a failed read says it failed", () => {
     await expect(service().summary(HOUSE, "owner")).rejects.toThrow(
       ServiceUnavailableException,
     );
+  });
+});
+
+describe("getThread: a letter a person filed from Who is writing (r37 w3 M-F2)", () => {
+  const VOUCHER = "e0000000-0000-4000-8000-000000000001";
+  const held = { ...letter(0), message_text: "Subject: Bank details changed\nNew IBAN" };
+  const plain = { ...letter(2) };
+  const mark = {
+    prospect_id: "p-1",
+    held_reason: "sender_unconfirmed",
+    by_user_id: VOUCHER,
+    at: "2026-11-13T15:00:00Z",
+    words_cut: false,
+  };
+  const answer =
+    (over: { headers?: Result; users?: Result } = {}) =>
+    (q: Query): Result => {
+      if (q.kind === "rpc") return { data: [held, plain], error: null };
+      if (q.name === "conversation_attachments") return { data: [], error: null };
+      if (q.name === "procurement_conversations")
+        return (
+          over.headers ?? {
+            data: [
+              { id: held.id, email_headers: { from: "x@y.example", filed_from_held: mark } },
+              { id: plain.id, email_headers: { from: "x@y.example" } },
+            ],
+            error: null,
+          }
+        );
+      if (q.name === "users")
+        return over.users ?? { data: [{ user_id: VOUCHER, name: "Deniz Kaya" }], error: null };
+      return { data: null, error: { message: `unexpected read ${q.name}` } };
+    };
+
+  it("says who filed it, when, and why it was held; a plain letter carries no mark", async () => {
+    resolve = answer();
+    const page = await service().getThread(HOUSE, "owner", { key: "t-1" });
+    const byId = new Map(page.messages.map((m) => [m.id, m]));
+    expect(byId.get(held.id)?.filedFromHeld).toEqual({
+      heldReason: "sender_unconfirmed",
+      byName: "Deniz Kaya",
+      byRecorded: true,
+      at: "2026-11-13T15:00:00Z",
+    });
+    expect(byId.get(plain.id)?.filedFromHeld).toBeNull();
+    expect(page.heldMarksRead).toBe(true);
+    const read = queries.find((q) => q.name === "procurement_conversations")!;
+    // Only this house's rows, and only the received letters of the page.
+    expect(read.calls).toEqual(
+      expect.arrayContaining([
+        { method: "eq", args: ["restaurant_id", HOUSE] },
+        { method: "in", args: ["id", [held.id, plain.id]] },
+      ]),
+    );
+  });
+
+  it("a person with no name on record is said to be recorded, not named", async () => {
+    resolve = answer({ users: { data: [], error: null } });
+    const page = await service().getThread(HOUSE, "owner", { key: "t-1" });
+    expect(page.messages.find((m) => m.id === held.id)?.filedFromHeld).toMatchObject({
+      byName: null,
+      byRecorded: true,
+    });
+  });
+
+  it("a failed read says the marks could not be read, never that there are none", async () => {
+    for (const over of [
+      { headers: { data: null, error: { message: "boom" } } },
+      { users: { data: null, error: { message: "boom" } } },
+    ]) {
+      resolve = answer(over);
+      const page = await service().getThread(HOUSE, "owner", { key: "t-1" });
+      expect(page.heldMarksRead).toBe(false);
+      expect(page.messages.every((m) => m.filedFromHeld === null)).toBe(true);
+      // The letters are still shown.
+      expect(page.messages).toHaveLength(2);
+    }
   });
 });

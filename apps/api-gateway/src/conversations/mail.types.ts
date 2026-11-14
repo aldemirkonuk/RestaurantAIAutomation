@@ -135,6 +135,25 @@ export interface MailMessage {
    * when the page's `attachmentsRead` is false.
    */
   attachments: MailAttachment[];
+  /**
+   * Set when a person filed this letter from Who is writing after it was
+   * held, because the receiving server could not confirm its sender (r37
+   * walk w3 M-F2; written by `fileHeldLetter` as
+   * `email_headers.filed_from_held`). Null for every other letter, and when
+   * the page's `heldMarksRead` is false.
+   */
+  filedFromHeld: MailFiledFromHeld | null;
+}
+
+/** Who vouched for a held letter, when, and why it had been held. */
+export interface MailFiledFromHeld {
+  /** Why it was held, as stored: today only "sender_unconfirmed". */
+  heldReason: string | null;
+  /** The person's name; null when the account has no name or is gone. */
+  byName: string | null;
+  /** True when a person was recorded at all (a name may still be missing). */
+  byRecorded: boolean;
+  at: string | null;
 }
 
 /** One file a letter carried. Opened through GET /mail/attachments/:id/link. */
@@ -184,6 +203,11 @@ export interface MailThreadPage {
    * never that they carried none.
    */
   attachmentsRead: boolean;
+  /**
+   * False when whether a person filed these letters from Who is writing
+   * could not be read: the page must say so, never show them as plain mail.
+   */
+  heldMarksRead: boolean;
 }
 
 /** The answer to POST/DELETE /mail/letters/:id/no-reply-needed. */

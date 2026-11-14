@@ -14,6 +14,7 @@ import { readHouseZone, type HouseZone } from "../common/house-day";
 import type {
   MailAttachment,
   MailAttachmentLink,
+  MailFiledFromHeld,
   MailMessage,
   MailNoReplyAnswer,
   MailOrderRef,
@@ -71,6 +72,7 @@ function emptyThread(key: string): MailThreadPage {
     before: null,
     waiting: false,
     attachmentsRead: true,
+    heldMarksRead: true,
   };
 }
 
@@ -309,7 +311,13 @@ export class MailService {
 
     const kept = rows.slice(0, MAIL_THREAD_PAGE);
     const oldest = kept[kept.length - 1];
-    const files = await this.readAttachments(kept.map((m) => m.id));
+    const [files, vouched] = await Promise.all([
+      this.readAttachments(kept.map((m) => m.id)),
+      this.readFiledFromHeld(
+        houseId,
+        kept.filter((m) => direction(m.direction) === "inbound").map((m) => m.id),
+      ),
+    ]);
     return {
       key,
       subject:
@@ -342,6 +350,7 @@ export class MailService {
                 ? m.no_reply_marked_at
                 : null,
             attachments: files?.get(m.id) ?? [],
+            filedFromHeld: vouched?.get(m.id) ?? null,
           }),
         ),
       before:
@@ -351,7 +360,71 @@ export class MailService {
       // Every row carries the same thread-wide answer; the newest is read.
       waiting: head.thread_waiting === true,
       attachmentsRead: files !== null,
+      heldMarksRead: vouched !== null,
     };
+  }
+
+  /**
+   * Which of a page's received letters a person filed from Who is writing
+   * after they were held (r37 walk w3 M-F2), and who. Read by the letters'
+   * own ids, which mail_thread_letters has already proven are this house's
+   * and readable by this caller, as `readAttachments` reads them. Null when
+   * either read fails: the page says so rather than show a vouched letter
+   * as plain mail.
+   */
+  private async readFiledFromHeld(
+    houseId: string,
+    letterIds: string[],
+  ): Promise<Map<string, MailFiledFromHeld> | null> {
+    const out = new Map<string, MailFiledFromHeld>();
+    if (!letterIds.length) return out;
+    try {
+      const res = await this.db
+        .from("procurement_conversations")
+        .select("id, email_headers")
+        .eq("restaurant_id", houseId)
+        .in("id", letterIds);
+      if (res.error) throw new Error(res.error.message);
+      const marks = new Map<string, Record<string, unknown>>();
+      for (const r of (res.data ?? []) as any[]) {
+        const f = r?.email_headers?.filed_from_held;
+        if (f && typeof f === "object") marks.set(String(r.id), f);
+      }
+      if (!marks.size) return out;
+      const ids = [
+        ...new Set(
+          [...marks.values()]
+            .map((f) => f.by_user_id)
+            .filter((v): v is string => typeof v === "string" && v.length > 0),
+        ),
+      ];
+      const names = new Map<string, string>();
+      if (ids.length) {
+        const people = await this.db
+          .from("users")
+          .select("user_id, name")
+          .in("user_id", ids);
+        if (people.error) throw new Error(people.error.message);
+        for (const u of (people.data ?? []) as any[])
+          if (typeof u.name === "string" && u.name.trim())
+            names.set(String(u.user_id), u.name.trim());
+      }
+      for (const [id, f] of marks) {
+        const by = typeof f.by_user_id === "string" ? f.by_user_id : null;
+        out.set(id, {
+          heldReason: typeof f.held_reason === "string" ? f.held_reason : null,
+          byName: by ? (names.get(by) ?? null) : null,
+          byRecorded: by !== null,
+          at: typeof f.at === "string" ? f.at : null,
+        });
+      }
+      return out;
+    } catch (e) {
+      this.logger.error(
+        `mail filed-from-held read failed: ${(e as Error)?.message ?? "unknown"}`,
+      );
+      return null;
+    }
   }
 
   /**

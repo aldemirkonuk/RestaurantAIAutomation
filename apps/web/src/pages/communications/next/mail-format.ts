@@ -11,7 +11,7 @@
  * - an outbound letter that has not left never looks sent (prc-02).
  */
 
-import { EM, sendState } from './cm-format';
+import { EM, fmtWhen, sendState } from './cm-format';
 
 /** The shapes GET /mail/* answers with (apps/api-gateway/src/conversations/mail.types.ts). */
 export type MailDoor = 'house_mailbox' | 'whatsapp' | 'mudavym_mail' | 'from_house';
@@ -91,6 +91,35 @@ export interface MailMessage {
    * that predates them: read as none known, never as "carried none".
    */
   attachments?: MailAttachment[];
+  /**
+   * Set when a person filed this letter from Who is writing after it was held
+   * (r37 walk w3 M-F2). Absent from a gateway that predates it.
+   */
+  filedFromHeld?: MailFiledFromHeld | null;
+}
+
+/** Who vouched for a held letter, as GET /mail/thread says it. */
+export interface MailFiledFromHeld {
+  heldReason: string | null;
+  byName: string | null;
+  byRecorded: boolean;
+  at: string | null;
+}
+
+/**
+ * The line under a letter a person vouched for (r37 walk w3 M-F2): why it
+ * was held, under whom it was filed, by whom and when. With "Bank details
+ * changed" as the stock example of a forged letter, a letter that only a
+ * person's word put on a vendor's thread must not read like any other.
+ */
+export function filedFromHeldWords(f: MailFiledFromHeld, vendor: string): string {
+  const why =
+    f.heldReason === 'sender_unconfirmed'
+      ? 'Held because the receiving mail server could not confirm the sender'
+      : 'Held before it was filed';
+  const who = f.byName ?? (f.byRecorded ? 'someone whose name is not on record' : 'nobody recorded');
+  const when = f.at ? `, ${fmtWhen(f.at)}` : '';
+  return `${why}; filed under ${vendor} by ${who}${when}.`;
 }
 
 /** One file a letter carried, as GET /mail/thread lists it. */
@@ -117,6 +146,8 @@ export interface MailThreadPage {
   waiting?: boolean;
   /** False when the letters' files could not be read with this page (gap 13). */
   attachmentsRead?: boolean;
+  /** False when whether a person filed these letters from Who is writing could not be read (M-F2). */
+  heldMarksRead?: boolean;
 }
 
 export interface MailSummary {
