@@ -1355,3 +1355,38 @@ describe('a pasted line proposes its shelf item by exact name (ADR 0366 item 7)'
     expect(fromProposal({ ...p, link: { status: 'looking' } }).inventoryId).toBeNull();
   });
 });
+
+describe('a fresh line starts in the unit its kind measures by', () => {
+  function mountDish() {
+    h.get.mockImplementation(async (url: string) => {
+      if (url === '/settings/currency') return { data: { restaurantId: RID, code: 'TRY', country: 'Turkey', readable: true, reason: null, statedAt: null } };
+      if (url === `/recipes/${RID}/dishes/${CID}`) {
+        const { cocktail, ...rest } = EMPTY;
+        return { data: { ...rest, dish: { id: cocktail.id, name: 'Lemon Tart', section: null, price: null, description: null } } };
+      }
+      if (url === `/recipes/${RID}/shelf`) return { data: [] };
+      if (url === `/recipes/${RID}/dishes/${CID}/versions`) return { data: [] };
+      throw new Error(`unexpected GET ${url}`);
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const wrap = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+    return render(<RecipeSheet dishId={CID} />, { wrapper: wrap });
+  }
+  const lastUnit = () => {
+    const units = document.querySelectorAll<HTMLSelectElement>('select.cl-rcp-unit');
+    return units[units.length - 1].value;
+  };
+
+  it('a dish line starts in grams', async () => {
+    mountDish();
+    fireEvent.click(await screen.findByRole('button', { name: 'Add an ingredient' }));
+    expect(lastUnit()).toBe('g');
+  });
+
+  it('a drink line still starts in ml', async () => {
+    serve(EMPTY);
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Add an ingredient' }));
+    expect(lastUnit()).toBe('ml');
+  });
+});

@@ -10,7 +10,7 @@
 import { useId, useState } from 'react';
 import { Link2, Trash2 } from 'lucide-react';
 import type { RecipeLineRole, RecipeLineStatus, ShelfItem } from '../../../../services/api/recipes';
-import { RECIPE_UNITS, amountWithUnit, qtyText, readQty, unitWord, type RecipeUnit } from './units';
+import { amountWithUnit, qtyText, readQty, unitChoices, unitWord, type RecipeUnit } from './units';
 import ShelfPicker, { kindWords } from './ShelfPicker';
 import { recipeWords, type RecipeKind, type RecipeWords } from './recipeWords';
 
@@ -263,7 +263,7 @@ export default function LineRow({
           onChange={(e) => onChange({ unit: e.target.value as RecipeUnit | '', saved: null })}
         >
           <option value="">unit</option>
-          {RECIPE_UNITS.map((u) => (
+          {unitChoices(words.units, row.unit).map((u) => (
             <option key={u} value={u}>{unitWord(u, rowQty(row))}</option>
           ))}
         </select>

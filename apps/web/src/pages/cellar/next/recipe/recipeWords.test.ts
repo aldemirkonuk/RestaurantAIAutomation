@@ -72,4 +72,15 @@ describe('recipeWords', () => {
     expect(whyBlocked([row()], 0, recipeWords('dish'))).toMatch(/^Say how many plates it makes/);
     expect(whyBlocked([row()], 0)).toMatch(/^Say how many serves it makes/);
   });
+
+  it('a dish offers kitchen units; a drink keeps the bar list', () => {
+    expect(recipeWords('dish').units).toEqual(['g', 'kg', 'ml', 'l', 'tsp', 'tbsp', 'each']);
+    expect(recipeWords('cocktail').units).toContain('barspoon');
+    expect(recipeWords(null).units).toHaveLength(11);
+  });
+
+  it('a fresh dish line starts in grams; a fresh drink line in ml', () => {
+    expect(recipeWords('dish').newLineUnit).toBe('g');
+    expect(recipeWords('cocktail').newLineUnit).toBe('ml');
+  });
 });

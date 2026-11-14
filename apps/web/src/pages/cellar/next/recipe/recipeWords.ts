@@ -12,6 +12,8 @@
  * strength, and cooking drives an unknown share of that off, so a figure would
  * read as a measured amount it is not.
  */
+import { RECIPE_UNITS, type RecipeUnit } from './units';
+
 export type RecipeKind = 'cocktail' | 'dish';
 
 export interface RecipeWords {
@@ -36,7 +38,19 @@ export interface RecipeWords {
   notCountedPlaceholder: string;
   /** Whether a pure-alcohol figure is shown at all. */
   alcohol: boolean;
+  /**
+   * The units a line's picker offers. A bar's dashes, barspoons and US fluid
+   * ounces are not how a kitchen measures, so a dish line offers weight,
+   * volume, spoons and a count. A line that already carries another unit
+   * keeps it (LineRow adds it back), so nothing saved is hidden.
+   */
+  units: readonly RecipeUnit[];
+  /** The unit a fresh line starts in: a bar pours by the ml, a kitchen weighs by the gram. */
+  newLineUnit: RecipeUnit;
 }
+
+/** A kitchen measures by weight, volume, the spoon and the piece. */
+const DISH_UNITS: readonly RecipeUnit[] = ['g', 'kg', 'ml', 'l', 'tsp', 'tbsp', 'each'];
 
 const DRINK: RecipeWords = {
   unit: 'serve',
@@ -51,6 +65,8 @@ const DRINK: RecipeWords = {
   methodPlaceholder: 'Stir with ice, strain over a large cube',
   notCountedPlaceholder: 'Orange twist',
   alcohol: true,
+  units: RECIPE_UNITS,
+  newLineUnit: 'ml',
 };
 
 const DISH: RecipeWords = {
@@ -67,6 +83,8 @@ const DISH: RecipeWords = {
   methodPlaceholder: 'Bake at 180 °C for 35 minutes; rest 10 before cutting',
   notCountedPlaceholder: 'Chopped parsley',
   alcohol: false,
+  units: DISH_UNITS,
+  newLineUnit: 'g',
 };
 
 /** The words for a recipe's kind. Anything but a dish reads as a drink, as before. */
