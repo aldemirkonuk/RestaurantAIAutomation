@@ -179,6 +179,9 @@ describe('who may file it, and when there is nothing to file under', () => {
       held({ id: 'a', held_reason: 'sender_unreadable', held_vendor: undefined, held_vendor_unread: undefined }),
       held({ id: 'b', held_reason: null, capture_reason: 'attachment', held_vendor: undefined, held_vendor_unread: undefined, sender_name: 'Rep' }),
       held({ id: 'c', held_vendor: undefined, held_vendor_unread: undefined, sender_name: 'Old' }),
+      // A From the server could not vouch for at all: even if a vendor lists the
+      // address it claims, that claim is the thing nobody can check.
+      held({ id: 'd', held_reason: 'sender_unreadable', sender_name: 'Forged' }),
     ]);
     render();
     expect(screen.queryByRole('button', { name: /file it there/ })).toBeNull();
