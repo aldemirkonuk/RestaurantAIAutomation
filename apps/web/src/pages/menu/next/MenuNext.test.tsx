@@ -572,6 +572,47 @@ describe('MenuNext — a price changes on its line', () => {
     expect(screen.getByRole('button', { name: 'Change the price of Chianti' })).toHaveFocus();
   });
 
+  // r21 production-build walk: staff were handed Glass/Bottle boxes on the
+  // add form, and a priced add came back "Request failed with status code 403".
+  // r21 let staff add an unpriced line; r35 G14 (#1517) closed the add to
+  // staff on the current menu (a line joins the house's goods at once). The
+  // r21 intent that survives: a role that turns to staff mid-typing sends nothing.
+  it('a role that turns to staff takes the add form away, and nothing is sent', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    mockAdd.mockResolvedValue({} as never);
+    const view = mount();
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Raki' } });
+    fireEvent.change(screen.getByLabelText('Bottle'), { target: { value: '30' } });
+    role = 'staff';
+    view.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <MenuNext />
+      </QueryClientProvider>,
+    );
+    await screen.findByTestId('menu-add-staff-note');
+    expect(screen.queryByRole('button', { name: /Add to menu/ })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Bottle')).not.toBeInTheDocument();
+    expect(mockAdd).not.toHaveBeenCalled();
+  });
+
+  it('a manager keeps the price boxes', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    mount();
+    await screen.findByLabelText('Name');
+    expect(screen.getByLabelText('Glass')).toBeInTheDocument();
+    expect(screen.queryByTestId('menu-add-unpriced')).not.toBeInTheDocument();
+  });
+
+  it('a refused add says the gateway\'s words, not the status', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    const said = 'Only managers and owners can put a price on the current menu: it sets the house\'s own price. Nothing was added.';
+    mockAdd.mockRejectedValue(Object.assign(new Error('Request failed with status code 403'), { response: { status: 403, data: { message: said } } }));
+    mount();
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Raki' } });
+    fireEvent.click(screen.getByRole('button', { name: /Add to menu/ }));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(said));
+  });
+
   it('staff are offered no price change', async () => {
     role = 'staff';
     mockGetMenu.mockResolvedValue(menu({ items: [chianti()] }));
