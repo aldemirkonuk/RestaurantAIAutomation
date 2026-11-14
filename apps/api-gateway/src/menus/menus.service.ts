@@ -70,6 +70,12 @@ interface ResolvedItem {
    * ahead of the version write (#773) and the write lost the local list.
    */
   kitchen?: boolean;
+  /**
+   * Why the line took no price: its menu prints the price only in another
+   * money (r36 N1, menu-money.ts). Carried on the line since the r37 meet,
+   * because resolving and writing are two steps on the menu chain.
+   */
+  heldNote?: string;
 }
 
 interface HouseCandidate {
@@ -3207,6 +3213,7 @@ export class MenusService {
             libraryTier: null,
             confidence: null,
             houseItemId: h.good.id,
+            ...(held.has(item) ? { heldNote: held.get(item) } : {}),
           };
         }
         const r = kitchen[idx] ? undefined : drinkResults[next++];
@@ -3217,6 +3224,7 @@ export class MenusService {
           matched: r?.matched ?? false,
           libraryTier: r?.libraryTier ?? null,
           confidence: r?.confidence ?? null,
+          ...(held.has(item) ? { heldNote: held.get(item) } : {}),
           ...(h.outcome === "many"
             ? {
                 houseCandidates: h.goods.map((g) => ({
@@ -3270,7 +3278,7 @@ export class MenusService {
       }
     }
 
-    const menuItemRows = resolved.map(({ item, masterWineId, houseItemId }) => ({
+    const menuItemRows = resolved.map(({ item, masterWineId, houseItemId, heldNote }) => ({
       menu_id: menuId,
       restaurant_id: restaurantId,
       name: item.name,
@@ -3282,7 +3290,7 @@ export class MenusService {
       by_glass_price: item.by_glass_price ?? null,
       bottle_price: item.bottle_price ?? null,
       raw_extracted_text: item.raw_text ?? null,
-      ...(held.has(item) ? { price_flag: "other_currency", price_flag_note: held.get(item) } : {}),
+      ...(heldNote ? { price_flag: "other_currency", price_flag_note: heldNote } : {}),
       wine_library_id: masterWineId,
       ...(houseItemId ? { inventory_item_id: houseItemId } : {}),
       source: method,
@@ -3387,10 +3395,10 @@ export class MenusService {
           ? (priceSync.get(menuItem.id)?.error ?? null)
           : null,
         priceFlag: menuItem
-          ? (priceSync.get(menuItem.id)?.flag ?? (held.has(r.item) ? "other_currency" : null))
+          ? (priceSync.get(menuItem.id)?.flag ?? (r.heldNote ? "other_currency" : null))
           : null,
         priceFlagNote: menuItem
-          ? (priceSync.get(menuItem.id)?.flagNote ?? held.get(r.item) ?? null)
+          ? (priceSync.get(menuItem.id)?.flagNote ?? r.heldNote ?? null)
           : null,
         priceHeld: menuItem ? (priceSync.get(menuItem.id)?.held ?? []) : [],
         ...(r.houseCandidates ? { houseCandidates: r.houseCandidates } : {}),

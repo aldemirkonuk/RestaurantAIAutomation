@@ -1500,10 +1500,13 @@ describe("MenusService — every menu read is kept as its own version", () => {
           rpc: makeCurrentRpc(tables),
           scanParser: { parseWithWarnings: async () => ({ items: lines, warnings: [] }) },
         });
-        const read = await service.importMenu(
+        let read: any = await service.importMenu(
           { method: "scan", data: { imageBase64: Buffer.from("%PDF").toString("base64") }, restaurantId: "rest-1" } as any,
           "user-1",
         );
+        // r37 meet: a scan is read in the background on the menu chain; wait for it.
+        await (service as any).whenRead?.(read.menuId);
+        if (read.reading) read = (await service.readStatus("rest-1", read.menuId)).reply;
         const row = tables.menu_items.find((m) => m.menu_id === read.menuId)!;
         return { calls, tables, service, read, row };
       }
