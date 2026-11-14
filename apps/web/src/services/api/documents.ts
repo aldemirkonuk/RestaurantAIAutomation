@@ -159,7 +159,15 @@ export const documentsApi = {
     return { documents: data.items ?? [], order: data.order ?? null }
   },
 
-  /** All documents for the restaurant, optionally filtered by status (needs_review / verified). */
+  /**
+   * All documents for the restaurant, optionally filtered by status (needs_review / verified).
+   *
+   * Asks for the SUMMARY rows (r41 invoices gap 2): each row leaves out the
+   * parsed paper (`extracted`) and the EDI text (`raw_payload`), which no list
+   * screen reads; the gateway derives the row's verdict, vendor name and money
+   * state from them before leaving them out. `forOrder` keeps the full rows:
+   * the receiving workspace pre-fills from `extracted.lines`.
+   */
   async list(opts: {
     status?: string
     docType?: string
@@ -170,6 +178,7 @@ export const documentsApi = {
         status: opts.status,
         docType: opts.docType,
         limit: opts.limit ?? 100,
+        view: 'summary',
       },
     })
     return data.items ?? []

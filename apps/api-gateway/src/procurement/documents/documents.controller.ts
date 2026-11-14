@@ -12,6 +12,7 @@ import {
   UseGuards,
   Logger,
 } from "@nestjs/common";
+import { leaveOutThePaper, wantsSummary } from "./list-summary";
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -1328,12 +1329,19 @@ export class DocumentsController {
       "Only documents linked to this order. Resolved through procurement_document_links, which is many-to-many because one distributor invoice routinely covers several POs.",
   })
   @ApiQuery({ name: "limit", required: false })
+  @ApiQuery({
+    name: "view",
+    required: false,
+    description:
+      "summary: each row leaves out the parsed paper (extracted) and the EDI text (raw_payload). The derived fields are computed before they are left out.",
+  })
   async list(
     @CurrentUser() user: AuthedUser,
     @Query("status") status?: string,
     @Query("docType") docType?: string,
     @Query("orderId") orderId?: string,
     @Query("limit") limit?: string,
+    @Query("view") view?: string,
   ) {
     const n = Math.min(200, Math.max(1, parseInt(limit ?? "50", 10) || 50));
 
@@ -1408,6 +1416,9 @@ export class DocumentsController {
         row as { currency?: string | null; extracted?: unknown },
       ),
     }));
+    // r41 gap 2: the summary view leaves the paper off each row, after every
+    // field above was derived from it (list-summary.ts).
+    if (wantsSummary(view)) items.forEach(leaveOutThePaper);
 
     if (!orderId) return { items };
 
