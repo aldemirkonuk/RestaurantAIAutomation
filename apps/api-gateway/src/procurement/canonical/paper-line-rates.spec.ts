@@ -131,6 +131,17 @@ describe("paperTaxFacts — each line's own printed rate", () => {
     expect(f.lineRates).toBeNull();
   });
 
+  it("rates that would make the tax with it inside prove nothing when the lines do not add up to the total (230 against 999)", () => {
+    const f = paperTaxFacts({ tax: 30, total: 999 }, [at(110, 10, 1), at(120, 20, 2)]);
+    expect(f).toMatchObject({ basis: null, lineRates: null });
+  });
+
+  it("a rate beside a line that is not a rate (120 %) keeps every rate off, and says so", () => {
+    const f = paperTaxFacts({ tax: 124, total: 1124 }, [at(600, 120, 1), at(400, 1, 2)]);
+    expect(f.lineRates).toBeNull();
+    expect(f.said).toMatch(/A rate printed beside a line is not a rate, so none is used/);
+  });
+
   it("a deposit or unpriced line on the paper keeps every line's own rate off", () => {
     const deposit: PaperTaxLine = { ...at(0, 0, 3), kind: "not_stocked" };
     expect(paperTaxFacts({ tax: 124, total: 1124 }, [at(600, 20, 1), at(400, 1, 2), deposit]).lineRates).toBeNull();
