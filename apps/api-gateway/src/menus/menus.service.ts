@@ -534,6 +534,57 @@ export function addedPrice(
   return read.value;
 }
 
+/** The text fields a typed line may carry; anything else a client sends is dropped. */
+const TYPED_TEXT_FIELDS = ["producer", "category", "vintage", "region", "grape_variety"] as const;
+
+/**
+ * r41 R1: the lines a person typed, as `POST /menus/import` method "manual"
+ * keeps them. /menu's "Type the menu" sends each price as typed text
+ * (`by_glass_typed`, `bottle_typed`), read by parseMenuPrice exactly as the
+ * Add form's boxes are; onboarding's typed table sends numbers. Before this,
+ * the typed list was kept as sent: a negative or a non-number price, a line
+ * with no name and any extra field went into the kept menu. Now a line with
+ * no name, or a price that is not one, refuses the whole read and names the
+ * line, and nothing is kept. Only the known fields are kept.
+ */
+export function readTypedLines(raw: unknown): WineExtractItem[] {
+  if (!Array.isArray(raw)) {
+    throw new BadRequestException("The typed lines did not come as a list. Nothing was kept.");
+  }
+  return raw.map((entry, at) => {
+    const line = (entry ?? {}) as Record<string, unknown>;
+    const n = at + 1;
+    const name = typeof line.name === "string" ? line.name.trim() : "";
+    if (!name) throw new BadRequestException(`Line ${n} has no name. Every typed line names what is on the menu. Nothing was kept.`);
+    const price = (label: "glass" | "bottle", sentKey: "by_glass_price" | "bottle_price", typedKey: string): number | undefined => {
+      const sent = line[sentKey];
+      if (sent !== undefined && sent !== null && (typeof sent !== "number" || !Number.isFinite(sent) || sent < 0)) {
+        throw new BadRequestException(`Line ${n} (${name}): the ${label} price ${JSON.stringify(sent)} is not a price. Nothing was kept.`);
+      }
+      const typed = line[typedKey];
+      if (typed !== undefined && typed !== null && typeof typed !== "string") {
+        throw new BadRequestException(`Line ${n} (${name}): the ${label} price was not sent as text. Nothing was kept.`);
+      }
+      try {
+        return addedPrice(sent as number | null | undefined, typed as string | null | undefined, label);
+      } catch (err) {
+        const said = err instanceof BadRequestException ? String(err.message) : String(err);
+        throw new BadRequestException(`Line ${n} (${name}): ${said.replace("Nothing was added.", "Nothing was kept.")}`);
+      }
+    };
+    const item: WineExtractItem = { name };
+    for (const f of TYPED_TEXT_FIELDS) {
+      const v = line[f];
+      if (typeof v === "string" && v.trim()) item[f] = v.trim();
+    }
+    const glass = price("glass", "by_glass_price", "by_glass_typed");
+    const bottle = price("bottle", "bottle_price", "bottle_typed");
+    if (glass !== undefined) item.by_glass_price = glass;
+    if (bottle !== undefined) item.bottle_price = bottle;
+    return item;
+  });
+}
+
 /** A `YYYY-MM-DD` or `YYYY-MM` that is a real date, as the stored date and its precision. */
 export function parseMenuDate(
   raw: string | null | undefined,
@@ -810,7 +861,8 @@ export class MenusService {
         sourceMime = { mime: "text/csv", ext: "csv" };
       }
     } else {
-      items = dto.data.items ?? [];
+      // r41 R1: typed lines are read, never kept as sent.
+      items = readTypedLines(dto.data.items ?? []);
     }
 
     // 1b. A read with no line is refused BEFORE anything is written: no source

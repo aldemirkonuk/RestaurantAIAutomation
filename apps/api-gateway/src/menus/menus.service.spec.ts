@@ -1251,6 +1251,94 @@ describe("MenusService — every menu read is kept as its own version", () => {
     for (const l of lines) expect(l).toMatchObject({ status: "approved", review_notes: null, source: "manual" });
   });
 
+  // r41 R1: /menu's "Type the menu" sends prices as typed, read as the Add form's are.
+  describe("r41 R1: typed lines are read, never kept as sent", () => {
+    const typed = (items: unknown) => ({ method: "manual", data: { items }, restaurantId: "rest-1" }) as any;
+
+    it("a typed price is read by parseMenuPrice, the menu is kept and not current, and only known fields are kept", async () => {
+      const tables: Record<string, Row[]> = base();
+      const service = makeService(tables, { wineSubmissions });
+      const r = await service.importMenu(
+        typed([
+          { name: "  Raki  ", category: "spirit", by_glass_typed: "120", bottle_typed: "1.250,00" },
+          { name: "Mercimek", category: "  ", bottle_typed: "45,50", menu_id: "menu-old", status: "active" },
+          { name: "Su" },
+        ]),
+        "user-1",
+      );
+      expect(r.current).toBe(false);
+      const kept = tables.restaurant_menus.find((m) => m.id === r.menuId)!;
+      expect(kept).toMatchObject({ status: "draft", source_method: "manual" });
+      expect(kept.extraction).toEqual([
+        { name: "Raki", category: "spirit", by_glass_price: 120, bottle_price: 1250 },
+        { name: "Mercimek", bottle_price: 45.5 },
+        { name: "Su" },
+      ]);
+      const lines = tables.menu_items.filter((m) => m.menu_id === r.menuId);
+      expect(lines.map((l) => [l.name, l.bottle_price ?? null, l.by_glass_price ?? null])).toEqual([
+        ["Raki", 1250, 120],
+        ["Mercimek", 45.5, null],
+        ["Su", null, null],
+      ]);
+      // The current menu is not touched by a typed read.
+      expect(tables.restaurant_menus.find((m) => m.id === "menu-old")!.status).toBe("active");
+    });
+
+    it("a price that is not one refuses the whole read, names the line, and keeps nothing", async () => {
+      const tables: Record<string, Row[]> = base();
+      const service = makeService(tables, { wineSubmissions });
+      await expect(
+        service.importMenu(typed([{ name: "Raki", bottle_typed: "900" }, { name: "Efes", bottle_typed: "-45" }]), "user-1"),
+      ).rejects.toThrow('Line 2 (Efes): The bottle price "-45" is not a price: a price is written in digits, with no minus, no letters and at most one decimal mark. Nothing was kept.');
+      expect(tables.restaurant_menus).toHaveLength(1);
+      expect(tables.menu_items).toHaveLength(0);
+    });
+
+    it("a price that could be two amounts is refused with both, never guessed", async () => {
+      const service = makeService(base(), { wineSubmissions });
+      await expect(service.importMenu(typed([{ name: "Raki", by_glass_typed: "1.250" }]), "user-1")).rejects.toThrow(
+        'Line 1 (Raki): The glass price "1.250" is not a price: it could be 1250 or 1.25; write it as 1250 or 1.25. Nothing was kept.',
+      );
+    });
+
+    it("a line with no name refuses the read and says which line", async () => {
+      const tables: Record<string, Row[]> = base();
+      const service = makeService(tables, { wineSubmissions });
+      await expect(service.importMenu(typed([{ name: "Raki" }, { name: "   ", bottle_typed: "40" }]), "user-1")).rejects.toThrow(
+        "Line 2 has no name. Every typed line names what is on the menu. Nothing was kept.",
+      );
+      expect(tables.restaurant_menus).toHaveLength(1);
+    });
+
+    it("a number price must be a price: a negative, a text in the number field and a price sent twice are refused", async () => {
+      const service = makeService(base(), { wineSubmissions });
+      await expect(service.importMenu(typed([{ name: "Raki", bottle_price: -5 }]), "user-1")).rejects.toThrow(
+        "Line 1 (Raki): the bottle price -5 is not a price. Nothing was kept.",
+      );
+      await expect(service.importMenu(typed([{ name: "Raki", by_glass_price: "12" }]), "user-1")).rejects.toThrow(
+        'Line 1 (Raki): the glass price "12" is not a price. Nothing was kept.',
+      );
+      await expect(service.importMenu(typed([{ name: "Raki", bottle_typed: 12 }]), "user-1")).rejects.toThrow(
+        "Line 1 (Raki): the bottle price was not sent as text. Nothing was kept.",
+      );
+      await expect(service.importMenu(typed([{ name: "Raki", bottle_price: 12, bottle_typed: "12" }]), "user-1")).rejects.toThrow(
+        "Line 1 (Raki): The bottle price was sent twice, as a number and as typed text. Nothing was kept.",
+      );
+      await expect(service.importMenu(typed({ name: "Raki" }), "user-1")).rejects.toThrow(
+        "The typed lines did not come as a list. Nothing was kept.",
+      );
+    });
+
+    it("onboarding's typed table still sends numbers, and a zero price is a price", async () => {
+      const tables: Record<string, Row[]> = base();
+      const service = makeService(tables, { wineSubmissions });
+      const r = await service.importMenu(typed([{ name: "Opus One", producer: "Opus", vintage: "2019", bottle_price: 60, by_glass_price: 0 }]), "user-1");
+      expect(tables.restaurant_menus.find((m) => m.id === r.menuId)!.extraction).toEqual([
+        { name: "Opus One", producer: "Opus", vintage: "2019", by_glass_price: 0, bottle_price: 60 },
+      ]);
+    });
+  });
+
   // QA B-5: a read with no line used to make a "Wine List" draft and answer 200
   // with itemsExtracted 0. It is refused, and nothing is written.
   it("a read that found no line is REFUSED with a sentence, and keeps no version, no file and no onboarding mark", async () => {
