@@ -17,13 +17,32 @@
  * and keeping the wait with failure read as ON (still one round trip on every
  * first visit).]
  */
+import { Suspense } from 'react';
 import { useMudavymDesignOnUnlessOff } from '../../../lib/mudavym/useMudavymDesign';
-import { InventoryCommandPage } from '../command/InventoryCommandPage';
+import { lazyWithRefresh } from '../../../lib/lazyWithRefresh';
 import InventoryNext from './InventoryNext';
+
+/* [2026-11-14, r41 inventory audit gap 1: the command page is drawn only for
+   a house whose flag answers OFF (none today), so it is read only then; it
+   was 261 KB (70 KB gz) of every /inventory visit.] */
+const InventoryCommandPage = lazyWithRefresh(() =>
+  import('../command/InventoryCommandPage').then((m) => ({ default: m.InventoryCommandPage })),
+);
 
 export function InventoryRoute() {
   const next = useMudavymDesignOnUnlessOff('inventory_next');
-  return next ? <InventoryNext /> : <InventoryCommandPage />;
+  if (next) return <InventoryNext />;
+  return (
+    <Suspense
+      fallback={
+        <main aria-busy="true" data-testid="inventory-route-reading">
+          <p className="sr-only">Reading this house’s inventory…</p>
+        </main>
+      }
+    >
+      <InventoryCommandPage />
+    </Suspense>
+  );
 }
 
 export default InventoryRoute;

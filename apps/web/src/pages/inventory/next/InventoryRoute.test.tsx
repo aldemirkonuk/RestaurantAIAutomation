@@ -89,10 +89,10 @@ describe('InventoryRoute', () => {
     expect(screen.queryByTestId('command')).toBeNull();
   });
 
-  it('keeps the command page, without waiting, where no house is chosen', () => {
+  it('keeps the command page, without asking the flag, where no house is chosen', async () => {
     window.localStorage.removeItem('activeRestaurantId');
     render(<InventoryRoute />);
-    expect(screen.getByTestId('command')).toBeTruthy();
+    expect(await screen.findByTestId('command')).toBeTruthy();
     expect(checkFeatureFlag).not.toHaveBeenCalled();
   });
 });
