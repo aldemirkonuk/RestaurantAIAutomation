@@ -20,6 +20,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const documentMock = vi.fn()
 const zoneMock = vi.fn()
 const eventMock = vi.fn()
+const proposalsMock = vi.fn()
 
 vi.mock('../../../services/api/client', () => ({
   apiClient: {
@@ -32,7 +33,7 @@ vi.mock('../../../services/api/client', () => ({
 vi.mock('../../../services/api/deliveries', () => ({
   deliveriesApi: {
     event: () => eventMock(),
-    proposals: vi.fn().mockResolvedValue([]),
+    proposals: () => proposalsMock(),
     recordDoorCount: vi.fn(),
   },
 }))
@@ -215,6 +216,26 @@ const event = {
   amendedAt: null,
 }
 
+const proposal = {
+  id: 'prop-syn',
+  delivery_id: 'del-syn',
+  document_id: 'doc-syn',
+  line_no: 1,
+  side: 'restaurant',
+  reason: 'SHORT_SHIPPED',
+  qty_proposed: 5,
+  unit_price_proposed: null,
+  money_at_risk: null,
+  evidence: [],
+  note: 'SYNTHETIC one bottle short',
+  status: 'open',
+  counters_proposal_id: null,
+  proposed_by: null,
+  proposed_at: AT,
+  responded_at: null,
+  responded_by: null,
+}
+
 function mount() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
@@ -246,6 +267,8 @@ describe('the document page reads every moment on the house’s clock', () => {
     zoneMock.mockReset()
     eventMock.mockReset()
     eventMock.mockResolvedValue(event)
+    proposalsMock.mockReset()
+    proposalsMock.mockResolvedValue([proposal])
   })
 
   it.each([
@@ -265,6 +288,8 @@ describe('the document page reads every moment on the house’s clock', () => {
       await waitFor(() =>
         expect(screen.getByTestId('delivery-gates')).toHaveTextContent(`Agreed ${stamp}`),
       )
+      // A position put on the delivery: was the reader's clock.
+      expect(screen.getByTestId('proposal-row')).toHaveTextContent(`${stamp} · open`)
       // The delivery day: was UTC's day, in the American shape.
       expect(screen.getByText(new RegExp(`documents · ${day.replace(/\./g, '\\.')}`))).toBeTruthy()
       expect(screen.queryByText(/2026-11-14 03:28/)).toBeNull()
