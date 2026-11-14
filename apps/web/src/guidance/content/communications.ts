@@ -39,8 +39,12 @@ export const communicationsTour: TourDefinition = {
     {
       element: 'section[aria-label="People"]',
       title: 'Mail by person',
+      // r40: one tour for every role, and the chip says "Waiting on you" only
+      // to those who can answer (owner, manager); staff see "Waiting on the
+      // house" (mail-format.ts waitingChipWords). The step names both so it
+      // never tells staff a vendor waits on them.
       description:
-        'Everyone the house has mail with. Open a person to read their threads; "Waiting on you" keeps only the ones waiting on a reply.',
+        'Everyone the house has mail with. Open a person to read their threads; "Waiting on you" (or "Waiting on the house", if you cannot answer vendors) keeps only the vendors waiting on a reply.',
     },
     {
       element: 'section[aria-label="Who is writing"]',
