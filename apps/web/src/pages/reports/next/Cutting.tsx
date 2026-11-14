@@ -271,7 +271,8 @@ export interface CuttingProps {
   ctx: ViewCtx;
   arranging: boolean;
   /** Every analysis, with the ones already on the sheet marked. */
-  swapOptions: Array<{ id: AnalysisId; taken: boolean }>;
+  /** `held`: who a held analysis is written for, " (owners and managers)". */
+  swapOptions: Array<{ id: AnalysisId; taken: boolean; held?: string }>;
   /** The keyboard/button path over the same layout state (`rp-arrange.ts`). */
   arrange: ArrangeApi;
   /** The page's memory of which measure is bars and which is the line, by cutting. */
@@ -428,6 +429,7 @@ export default function Cutting({
               {swapOptions.map((o) => (
                 <option key={o.id} value={o.id} disabled={o.taken && o.id !== id}>
                   {CATALOGUE[o.id].title}
+                  {o.held ?? ''}
                   {o.taken && o.id !== id ? ' (already on the sheet)' : ''}
                 </option>
               ))}

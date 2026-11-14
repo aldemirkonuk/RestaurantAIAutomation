@@ -37,13 +37,13 @@ import { useUserPreferences } from '@/hooks/useUserPreferences';
 import { useAuthStore } from '@/stores/authStore';
 import { failureOf, failureReason, heldBackFailure, num, type Failure } from './rp-format';
 import { CATALOGUE, defaultGraph, graphOrDefault, type ReadingRow } from './rp-catalogue';
-import { readsRegister } from './rp-spec';
+import { readsRegister, type HouseRole } from './rp-spec';
+import { defaultIdsFor } from './rp-readable';
 import type { ComboPick } from './rp-combo';
 import { useGoalsDesk, type GoalsDesk } from './useGoalsDesk';
 import { useReportExports, type ExportDesk } from './useReportExports';
 import {
   ANALYSIS_IDS,
-  DEFAULT_ON,
   DEFAULT_SLOTS,
   IDS_ADDED_IN_V3,
   isAnalysisId,
@@ -126,11 +126,16 @@ interface StoredSheet {
   blocks?: StoredBlock[];
 }
 
-export function defaultSheet(): SheetState {
+/**
+ * The house sheet for `role`: what that role can read (r36 reports gap 3,
+ * `rp-readable.ts`). An unknown role gets the house sheet unchanged.
+ */
+export function defaultSheet(role: HouseRole | null = null): SheetState {
+  const { ids, slots } = defaultIdsFor(role);
   return {
-    cuttings: DEFAULT_ON.map((id) => ({
+    cuttings: ids.map((id) => ({
       id,
-      slot: DEFAULT_SLOTS[id],
+      slot: slots[id],
       graph: defaultGraph(id),
     })),
   };
@@ -147,10 +152,10 @@ export function defaultSheet(): SheetState {
  * A sheet the reader deliberately emptied is NOT the same as a corrupt one:
  * an empty sheet whose blob still named known ids is honoured as empty.
  */
-export function decodeSheet(stored: unknown): SheetState {
+export function decodeSheet(stored: unknown, role: HouseRole | null = null): SheetState {
   const s = stored as StoredSheet | undefined;
   if (!s || !Array.isArray(s.blocks) || !SHEET_PREF_KEY_VERSIONS.includes(Number(s.v)))
-    return defaultSheet();
+    return defaultSheet(role);
   const cuttings: Cutting[] = [];
   const seen = new Set<AnalysisId>();
   for (const b of s.blocks) {
@@ -170,7 +175,7 @@ export function decodeSheet(stored: unknown): SheetState {
     const combo = decodeCombo(b?.c);
     cuttings.push(combo ? { id, slot, graph, combo } : { id, slot, graph });
   }
-  if (seen.size === 0) return defaultSheet();
+  if (seen.size === 0) return defaultSheet(role);
 
   // An analysis introduced after this blob was written was never offered to
   // this reader, so its absence is not a decision. It lands at the foot, where
@@ -228,6 +233,8 @@ export function encodeSheet(state: SheetState): StoredSheet {
 
 export interface ReportsNextData {
   restaurantId: string | null;
+  /** The house role the registers are gated on (`activeRole`); null while unknown. */
+  role?: HouseRole | null;
   /**
    * The goals desk's writes. It lives behind this hook rather than beside it so
    * the page has exactly ONE data seam: everything the page does to the
@@ -344,7 +351,10 @@ export function useReportsNextData(
           )}), so the house sheet is shown. Arranging is off until it can be read.`
         : null;
 
-  const sheet = useMemo(() => decodeSheet(preferences?.[SHEET_PREF_KEY]), [preferences]);
+  const sheet = useMemo(
+    () => decodeSheet(preferences?.[SHEET_PREF_KEY], activeRole),
+    [preferences, activeRole],
+  );
 
   /** What is actually fetched: the sheet's readable cuttings, plus the feed
    *  the palette needs. The writing desk has no path and is never fetched. */
@@ -488,6 +498,7 @@ export function useReportsNextData(
 
   return {
     restaurantId: rid,
+    role: activeRole,
     goalsDesk,
     exportDesk,
     registers,
