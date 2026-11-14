@@ -4,7 +4,7 @@
  * badge, whatever the house's setup says.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 
@@ -102,5 +102,28 @@ describe('Sidebar — Get started is for the people who run setup', () => {
     renderSidebar()
     expect(screen.queryByText('Get started')).toBeNull()
     expect(screen.getByText('Learn & Help')).toBeInTheDocument()
+  })
+
+  it('an owner past setup opens Learn & Help and still sees the steps to the costs', () => {
+    role = 'owner'
+    progress = {
+      ...unfinished,
+      menu_current: true,
+      vendor_added: true,
+      completed_at: '2026-11-13T09:00:00Z',
+      next_steps: { goods_listed: false, mailbox_connected: false, invoice: 'none' },
+    }
+    renderSidebar()
+    fireEvent.click(screen.getByText('Learn & Help'))
+    expect(screen.getByTestId('setup-next-steps')).toBeInTheDocument()
+  })
+
+  it('staff open Learn & Help and see no steps to the costs', () => {
+    role = 'staff'
+    progress = { ...unfinished, next_steps: { goods_listed: false, mailbox_connected: false, invoice: 'none' } }
+    renderSidebar()
+    fireEvent.click(screen.getByText('Learn & Help'))
+    expect(screen.getByRole('dialog', { name: 'Learn & Help' })).toBeInTheDocument()
+    expect(screen.queryByTestId('setup-next-steps')).toBeNull()
   })
 })
