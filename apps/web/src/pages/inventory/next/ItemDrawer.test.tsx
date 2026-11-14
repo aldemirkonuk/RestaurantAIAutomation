@@ -236,7 +236,7 @@ describe('the item drawer', () => {
     expect(within(screen.getByTestId('ivd-evidence')).getByTestId('row-dropdown').dataset.sections).toBe('facts,where,pace,cost,paper');
   });
 
-  it('the cost evidence is handed the settled prices the figures read, and nothing while it reads or after it failed', async () => {
+  it('the cost evidence is handed the settled prices the figures read, and says it reads or failed rather than nothing (r36, gap 9)', async () => {
     open(row());
     await waitFor(() => expect(screen.getByTestId('ivd-card-cost').textContent).toContain('Up 8% since August'));
     fireEvent.click(screen.getByTestId('ivd-card-cost'));
@@ -252,7 +252,10 @@ describe('the item drawer', () => {
     api.figures.mockRejectedValue(new Error('Network Error'));
     open(row());
     fireEvent.click(screen.getByTestId('ivd-card-cost'));
-    expect(within(screen.getByTestId('ivd-evidence')).getByTestId('row-dropdown').dataset.settled).toBe('null');
+    expect(within(screen.getByTestId('ivd-evidence')).getByTestId('row-dropdown').dataset.settled).toBe('"reading"');
+    await waitFor(() =>
+      expect(within(screen.getByTestId('ivd-evidence')).getByTestId('row-dropdown').dataset.settled).toBe('"failed"'),
+    );
   });
 
   it('a food its counts have not measured says how to measure it, never "not enough history"', () => {

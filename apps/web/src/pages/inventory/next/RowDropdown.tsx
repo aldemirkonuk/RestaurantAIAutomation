@@ -110,9 +110,16 @@ export interface RowDropdownProps {
    * What each delivery's price was settled at, first to last (the figures
    * route's cost trend: a verified invoice or a hand-set price). Absent or
    * null, "Last bought" reads the ledger's priced purchases as before.
+   * 'reading' and 'failed' are the figures read itself: while it reads or
+   * after it failed, whether a price was settled is not known, so "Last
+   * bought" says so and never falls back to the ledger, whose door lines carry
+   * no cost and would read "none on the ledger" under a Cost card that says
+   * the costs could not be read (inventory r36, gap 9).
    */
-  settled?: ReadonlyArray<{ receivedAt: string; unitCost: number }> | null;
+  settled?: SettledProp;
 }
+
+export type SettledProp = ReadonlyArray<{ receivedAt: string; unitCost: number }> | 'reading' | 'failed' | null;
 
 /** The panels the opened row draws: facts and naming, where, pace, cost, paperwork. */
 export type EvidenceSection = 'facts' | 'where' | 'pace' | 'cost' | 'paper';
@@ -766,7 +773,7 @@ function WhatItHasCost({
   uom: string | null;
   kind: string | null;
   canManage: boolean;
-  settled: ReadonlyArray<{ receivedAt: string; unitCost: number }> | null;
+  settled: SettledProp;
 }) {
   // A food or supply is costed, not priced (ADR 0051/0053): no btl · glass price,
   // margin, market or auction lots, and its costs, stored a g, ml or piece
@@ -795,14 +802,19 @@ function WhatItHasCost({
   // purchases are read only when no price was ever settled. The two are not
   // merged: a ledger line may carry the estimate that a settled price later
   // replaced, and the same delivery would then count twice.
-  const fromSettled = settled !== null && settled.length > 0;
+  const figuresState = settled === 'reading' || settled === 'failed' ? settled : null;
+  const points = settled === 'reading' || settled === 'failed' ? null : settled;
+  const fromSettled = points !== null && points.length > 0;
+  const fromLedger = !fromSettled && figuresState === null;
   const priced: Array<{ unitCost: number | null; at: string | null }> = fromSettled
-    ? [...settled].reverse().map((p) => ({ unitCost: p.unitCost, at: p.receivedAt }))
-    : (detail.purchases ?? []).filter((l: PurchaseLine) => l.unitCost !== null);
+    ? [...points].reverse().map((p) => ({ unitCost: p.unitCost, at: p.receivedAt }))
+    : fromLedger
+      ? (detail.purchases ?? []).filter((l: PurchaseLine) => l.unitCost !== null)
+      : [];
   const last = priced[0] ?? null;
   const before = priced[1] ?? null;
-  const unread = !fromSettled && detail.purchasesError !== null;
-  const reading = !fromSettled && detail.purchases === null && !unread;
+  const unread = figuresState === 'failed' || (fromLedger && detail.purchasesError !== null);
+  const reading = figuresState === 'reading' || (fromLedger && detail.purchases === null && !unread);
   const bought = (l: { unitCost: number | null; at: string | null } | null) =>
     reading ? EM : unread ? 'could not be read' : l === null ? (fromSettled ? 'none settled before it' : 'none on the ledger') : (
       <>
