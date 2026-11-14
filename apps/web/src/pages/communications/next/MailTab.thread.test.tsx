@@ -491,3 +491,39 @@ describe('no confidence numbers', () => {
     expect(shown()).not.toMatch(/%|score|confidence/i);
   });
 });
+
+describe('mail setup reads whether the house reads a mailbox (r28 gap 10)', () => {
+  const SETUP_VIEW = {
+    canChange: true,
+    senders: { failed: null, chosenConnectionId: null, choices: [] },
+    arrival: { domainReady: true, address: 'bodega@in.mudavym.com', failed: null },
+    testLetter: { failed: null, latest: null },
+  };
+  const CATALOG = {
+    success: true,
+    integrations: ['gmail_send', 'gmail_read'].map((id) => ({ id, available: true, unavailableReason: null })),
+  };
+
+  it.each([
+    [false, true],
+    [true, false],
+  ])('reader granted %p: the reading consent is offered %p', async (granted, offered) => {
+    routes['/communications/mail-setup'] = () => SETUP_VIEW;
+    routes['/integrations/oauth/catalog'] = () => CATALOG;
+    routes['/communications/letters/sender'] = () => ({ ...SENDER, reader: { ...SENDER.reader, granted } });
+    mount('/communications?tab=mail&setup=1');
+    await screen.findByTestId('setup-connect-send');
+    expect(screen.queryByTestId('setup-reader-none') !== null).toBe(offered);
+  });
+
+  it('a sender read that failed offers no reading consent', async () => {
+    routes['/communications/mail-setup'] = () => SETUP_VIEW;
+    routes['/integrations/oauth/catalog'] = () => CATALOG;
+    routes['/communications/letters/sender'] = () => {
+      throw Object.assign(new Error('x'), { response: { status: 503 } });
+    };
+    mount('/communications?tab=mail&setup=1');
+    await screen.findByTestId('setup-connect-send');
+    expect(screen.queryByTestId('setup-reader-none')).toBeNull();
+  });
+});

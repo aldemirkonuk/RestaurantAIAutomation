@@ -3,7 +3,8 @@ import { useSearchParams } from 'react-router-dom'
 import { AuthContext } from '../../contexts/AuthContext'
 import { integrationsApi } from '../../services/api/integrations'
 
-const REASONS: Record<string, string> = {
+/** Why a consent flow came back unfinished, in words. Mail setup says the same (r28 gap 10). */
+export const REASONS: Record<string, string> = {
   denied: 'The provider returned a declined permission.',
   provider_error: 'The provider could not finish the permission.',
   missing_state: 'The return did not contain a permission reference.',
