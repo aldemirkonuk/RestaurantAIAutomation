@@ -85,6 +85,9 @@ export const bench = analysis<BenchRegister>({
     'How this house stands against its own past — and, plainly, that no other house is in this comparison',
   window: () => '180 days of buying, 90 days of weekdays, each goal since it was set',
   path: (rid) => `/analytics/overview/${rid}`,
+  // Every pair here is the house's spend, its weekday trade or a goal's
+  // figure (ADR 0348): staff keep the page, and this register is held back.
+  readers: ['owner', 'manager'],
   graphs: ['bars', 'table', 'figure'],
   graphNote:
     'Bars draw the one pair that shares a unit — money paid to vendors this month against last. No line or area: two windows are not a sequence. No scatter and no heat map: there is no second axis and no second dimension to lay one out on.',

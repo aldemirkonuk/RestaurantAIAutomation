@@ -1014,8 +1014,11 @@ describe("the controller's doors, round 3", () => {
         return { ...personalView(items, targetOf, book), personalSnoozesReadable: true };
       },
     };
+    // A manager's token: the rows are a revenue and a spend sentence, which
+    // a staff row does not see (ADR 0348 decision 3).
     const out = await self.getInsights(RID, undefined, undefined, undefined, undefined, {
       userId: "u-staff",
+      role: "manager",
     });
     expect(asked).toEqual(["u-staff"]);
     expect(out.insights).toHaveLength(1);

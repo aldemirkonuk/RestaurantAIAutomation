@@ -52,6 +52,15 @@ import {
 } from "./insights/insight-implementations";
 import { DataRequirement } from "./insights/insight-catalog";
 import { DayExclusionsService } from "./insights/day-exclusions.service";
+import {
+  insightReadable,
+  insightsForRole,
+  lensHidden,
+  reorderCostReadable,
+  riskForRole,
+  seesFor,
+  withheldLens,
+} from "./role-reads";
 import { Persona } from "./metric-registry";
 
 /**
@@ -222,6 +231,11 @@ export class AnalyticsController {
     @Query("labor") laborStr?: string,
     @CurrentUser() user?: { role?: string | null },
   ) {
+    // Every figure of record is money, the till or vendor spend: a role that
+    // does not see them is told so, and the lens is never read (ADR 0348
+    // decision 3, slice 4).
+    const hidden = lensHidden("financial", seesFor(user));
+    if (hidden.length) return withheldLens(restaurantId, hidden);
     try {
       const labor = laborStr ? parseFloat(laborStr) : 0;
       return await this.analyticsService.getFinancialSummary(
@@ -258,11 +272,15 @@ export class AnalyticsController {
     @Param("restaurantId") restaurantId: string,
     @Query("serviceLevel") serviceLevelStr?: string,
     @Query("leadTimeDays") leadTimeStr?: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     try {
+      // Staff restock from this lens, so it stays open; its cost columns are
+      // withheld from a role that does not see money (ADR 0348, slice 4).
       return await this.analyticsService.getInventoryScience(restaurantId, {
         serviceLevel: serviceLevelStr ? parseFloat(serviceLevelStr) : undefined,
         leadTimeDays: leadTimeStr ? parseFloat(leadTimeStr) : undefined,
+        withCost: reorderCostReadable(seesFor(user)),
       });
     } catch (error) {
       throw new HttpException(
@@ -284,9 +302,14 @@ export class AnalyticsController {
     @CurrentUser() user?: { role?: string | null },
   ) {
     try {
-      return await this.analyticsService.getRiskProfile(
-        restaurantId,
-        salesGateFor(user),
+      // The concentration parts are spend and value shares; demand risk is
+      // volumes and stays open (ADR 0348, slice 4).
+      return riskForRole(
+        await this.analyticsService.getRiskProfile(
+          restaurantId,
+          salesGateFor(user),
+        ),
+        seesFor(user),
       );
     } catch (error) {
       throw new HttpException(
@@ -485,16 +508,40 @@ export class AnalyticsController {
     @Query("categories") categoriesStr?: string,
     @Query("limit") limitStr?: string,
     @Query("candidateKey") candidateKey?: string,
-    @CurrentUser() user?: { userId?: string },
+    @CurrentUser() user?: { userId?: string; role?: string | null },
   ) {
+    const sees = seesFor(user);
+    // A forced compute of one type the caller may not read is not run: the
+    // type is named by the caller, so its sentence would be theirs alone.
+    if (candidateKey?.trim() && !insightReadable(candidateKey.trim(), sees))
+      return { source: "withheld", insights: [], withheldForRole: 1 };
     try {
-      const answer = await this.readInsights(
+      const raw = await this.readInsights(
         restaurantId,
         refresh,
         categoriesStr,
         limitStr,
         candidateKey,
       );
+      // Staff read the sentences of the classes they see (ADR 0348 decision
+      // 3): never a named server's ranking, the till, a spend or a margin.
+      const answer = Array.isArray((raw as { insights?: unknown }).insights)
+        ? (() => {
+            const held = insightsForRole(
+              (raw as { insights: unknown[] }).insights,
+              sees,
+            );
+            // Said only when something was withheld: a holder's answer is
+            // the one it always was.
+            return held.withheldForRole > 0
+              ? {
+                  ...raw,
+                  insights: held.kept,
+                  withheldForRole: held.withheldForRole,
+                }
+              : raw;
+          })()
+        : raw;
       return await this.forViewer(restaurantId, user, answer);
     } catch (error) {
       throw new HttpException(
@@ -1173,7 +1220,12 @@ export class AnalyticsController {
     description:
       "Stars / Plowhorses / Puzzles / Dogs from margin (unit_price − WAC) × velocity, with a concrete action per quadrant.",
   })
-  async getMenuEngineering(@Param("restaurantId") restaurantId: string) {
+  async getMenuEngineering(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string | null },
+  ) {
+    const hidden = lensHidden("menuEngineering", seesFor(user));
+    if (hidden.length) return withheldLens(restaurantId, hidden);
     return this.advanced.getMenuEngineering(restaurantId);
   }
 
@@ -1183,7 +1235,12 @@ export class AnalyticsController {
     description:
       "Per-vendor lead-time distribution (mean/median/p90/σ), on-time rate, unit-price trend, spend share + HHI.",
   })
-  async getVendorScorecard(@Param("restaurantId") restaurantId: string) {
+  async getVendorScorecard(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string | null },
+  ) {
+    const hidden = lensHidden("vendorScorecard", seesFor(user));
+    if (hidden.length) return withheldLens(restaurantId, hidden);
     return this.advanced.getVendorScorecard(restaurantId);
   }
 
@@ -1203,7 +1260,12 @@ export class AnalyticsController {
     description:
       "30-day purchasing spend vs prior, Holt 4-week projection, committed open-order exposure.",
   })
-  async getCashflow(@Param("restaurantId") restaurantId: string) {
+  async getCashflow(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string | null },
+  ) {
+    const hidden = lensHidden("cashflow", seesFor(user));
+    if (hidden.length) return withheldLens(restaurantId, hidden);
     return this.advanced.getCashflow(restaurantId);
   }
 
@@ -1216,7 +1278,10 @@ export class AnalyticsController {
   async getWine360(
     @Param("restaurantId") restaurantId: string,
     @Param("masterWineId") masterWineId: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
+    const hidden = lensHidden("wine360", seesFor(user));
+    if (hidden.length) return withheldLens(restaurantId, hidden);
     return this.advanced.getWine360(restaurantId, masterWineId);
   }
 
@@ -1299,7 +1364,11 @@ export class AnalyticsController {
     @Param("restaurantId") restaurantId: string,
     @CurrentUser() user?: { role?: string | null },
   ) {
-    return this.advanced.getOverview(restaurantId, salesGateFor(user));
+    return this.advanced.getOverview(
+      restaurantId,
+      salesGateFor(user),
+      seesFor(user),
+    );
   }
 
   @Get("recommendations/:restaurantId")

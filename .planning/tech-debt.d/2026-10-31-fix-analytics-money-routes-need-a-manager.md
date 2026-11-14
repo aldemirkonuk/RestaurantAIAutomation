@@ -74,3 +74,43 @@ empty days. Still open from the list above: `insights` (`peer_rank`),
 the till, `inventory-science`, `risk`, `consult`, `menu-engineering`,
 `vendor-scorecard`, `cashflow`, `wine`, `overview`, the four writes, and
 `/toast/sales`. The entry stays OPEN.
+
+**2026-11-13, r30 slice 2 (`fix/money-lenses-withheld-from-staff`, on
+#1362).** `analytics/role-reads.ts` reads the caller's ROLE_POLICY row
+(`seesFor`). GET `menu-engineering`, `cashflow`, `vendor-scorecard` and `wine`
+answer a role that does not see their classes `{ restaurantId,
+withheldForRole }` and never ask their service; GET `overview` does not read
+menu engineering or cashflow for it. An export reads the overview as a
+manager. New claim `A-MONEY-LENSES-WITHHELD-FROM-STAFF`. Bottle volumes
+(seasonality, forecast) stay open: ADR 0348 item 3 does not name them.
+
+**2026-11-13, r30 slice 3 (`fix/insight-feed-withheld-from-staff`).** GET
+`insights` keeps the sentences whose classes the caller's row sees and says
+how many it withheld (`withheldForRole`, only when above 0). A type's classes
+come from the insight catalogue: the till (`checks`) is sales, the order book
+suppliers, a currency measure money, a server people; volumes add none. A
+forced `?candidateKey=` compute of a type the role may not read is not run.
+The overview filters its stored feed the same way. Claim
+`A-POS-MONEY-ANALYTICS-ROUTES-ARE-A-HOLDERS` is resolved. Still open:
+`recommendations` (`staff_spread`, dead-stock value, spend, price advice),
+POST `goals` baselines, `financial` and `risk` money (they gate sales only),
+`inventory-science` unit cost, `consult`, the four role-less writes and
+`/toast/sales` (ADR 0348 item 5).
+
+**2026-11-13, r32 slice 4 (`fix/ledger-and-restock-money-withheld-from-staff`,
+on #1436).** GET `financial` answers a role that does not see money, sales and
+suppliers `{ restaurantId, withheldForRole }` and is never read: every figure
+of record is one of the three. GET `inventory-science` stays open to staff,
+who restock from it, but is read `withCost: false` for them: unit cost, value
+at cost, EOQ (the cost reads back out of it) and the ABC class (a rank by
+value) are null, `costWithheld: true`, and the rows are ranked by bottles on
+hand, not by value. GET `risk` withholds vendor concentration (spend shares)
+and revenue concentration (value shares) part by part and keeps demand risk
+(volumes). The overview does the same three. The web half
+(`fix/reports-ledger-held-for-staff`, stacked on it) holds "Figures of
+record" back for staff on /reports. New claim
+`A-LEDGER-REORDER-RISK-WITHHELD-FROM-STAFF`.
+Still open: `recommendations` (`staff_spread`, dead-stock value, spend, price
+advice), POST `goals` baselines, `consult` (it reads the financial and risk
+lenses whole for its consultants), the four role-less writes and
+`/toast/sales` (ADR 0348 item 5).
