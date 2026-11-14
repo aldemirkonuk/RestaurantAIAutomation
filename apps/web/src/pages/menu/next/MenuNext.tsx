@@ -754,7 +754,8 @@ export default function MenuNext() {
                 </div>
               </section>
             ) : null}
-            {discarded && !discard.isError ? (
+            {/* Each tap clears it first, so it never stands beside a refusal. */}
+            {discarded ? (
               <p role="status" className="cl-said" style={{ marginTop: 8 }} data-testid="menu-discard-said">
                 {discarded}
               </p>
