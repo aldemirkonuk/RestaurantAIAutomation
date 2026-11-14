@@ -59,6 +59,8 @@ export interface DishFigures {
     of: number;
     complete: boolean;
     partial: number;
+    /** Priced lines whose good has nothing priced on hand, at what it was last bought at. */
+    lastBought: number;
   } | null;
 }
 
@@ -256,6 +258,7 @@ export class DishesService {
           of: priced.of,
           complete: priced.complete,
           partial: priced.partial,
+          lastBought: priced.lastBought,
         };
       }
       out.set(p.ownerId, { versionId: p.versionId, yieldServes, lineCount: rows.length, cost });

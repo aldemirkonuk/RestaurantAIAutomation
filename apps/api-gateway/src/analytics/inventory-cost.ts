@@ -52,6 +52,7 @@ export type CostBasis =
   | "invoice_lot_wac"
   | "invoice_lot_wac_partial"
   | "agreed_lot_wac"
+  | "last_known_lot_cost"
   | "last_purchase_price"
   | "unknown";
 
@@ -59,6 +60,11 @@ export interface ResolvedUnitCost {
   /** Dollars per bottle. `null` means unknown — never substitute a guess. */
   unitCost: number | null;
   costBasis: CostBasis;
+  /**
+   * Set only with `last_known_lot_cost`: when the lot it was read from was
+   * received, so a reader can say how old the price is.
+   */
+  boughtAt?: string | null;
 }
 
 /** Human-readable source for each basis, for `basis` payload strings. */
@@ -68,6 +74,8 @@ export const COST_BASIS_LABEL: Record<CostBasis, string> = {
     "invoiced lot WAC covering only part of the on-hand quantity (inventory_lot_rollup.wac)",
   agreed_lot_wac:
     "agreed lot cost, settled at delivery (inventory_lot_agreed_cost.agreed_wac)",
+  last_known_lot_cost:
+    "the cost of the newest lot with a known cost, none of it priced on hand (inventory_lot_last_known_cost.last_unit_cost)",
   last_purchase_price: "restaurant_inventory.last_purchase_price",
   unknown: "no recorded cost",
 };
@@ -106,14 +114,24 @@ export interface LotRollupRow {
   invoice_qty?: unknown;
   settled_qty?: unknown;
   stock_qty?: unknown;
+  /**
+   * From `inventory_lot_last_known_cost`, merged in by `mergeLastKnownLotCost`:
+   * the cost of the newest lot with a known cost, used up or not (r36 recipes
+   * gap 1). Optional; a caller that has not joined the view is unchanged.
+   */
+  last_unit_cost?: unknown;
+  last_received_at?: unknown;
 }
 
 /**
  * Best *recorded* unit cost, or null.
  *
- * Order: invoiced lot WAC → agreed lot cost → recorded last purchase price →
- * unknown. The agreed cost is a price settled at delivery but not printed on an
- * invoice, so it sits below the invoice and is never labelled one.
+ * Order: invoiced lot WAC → agreed lot cost → the newest known lot cost →
+ * recorded last purchase price → unknown. The agreed cost is a price settled
+ * at delivery but not printed on an invoice, so it sits below the invoice and
+ * is never labelled one. The newest known lot cost is what the good was last
+ * bought at when nothing on hand is priced (sold out, or only estimated stock
+ * left): a real price, never quoted as the cost of what is on hand.
  *
  * Two deliberate judgement calls, both narrower than they look:
  *
@@ -181,6 +199,16 @@ export function resolveUnitCost(
     if (Number.isFinite(agreed) && agreed > 0)
       return { unitCost: agreed, costBasis: "agreed_lot_wac" };
   }
+  const rawLastLot = lot?.last_unit_cost;
+  if (rawLastLot != null) {
+    const lastLot = Number(rawLastLot);
+    if (Number.isFinite(lastLot) && lastLot > 0)
+      return {
+        unitCost: lastLot,
+        costBasis: "last_known_lot_cost",
+        boughtAt: lot?.last_received_at == null ? null : String(lot.last_received_at),
+      };
+  }
   const rawLast = row?.last_purchase_price;
   if (rawLast != null) {
     const last = Number(rawLast);
@@ -238,6 +266,28 @@ export function mergeInvoiceLotCost<M extends Map<string, any>>(
   return lots;
 }
 
+/**
+ * Merge `inventory_lot_last_known_cost` rows into lot rows keyed by
+ * inventory_id (r36 recipes gap 1). The live cost views read stock on hand
+ * only, so without this a good that has sold out reads as unknown the moment
+ * its last unit is used. Mutates and returns `lots`.
+ */
+export function mergeLastKnownLotCost<M extends Map<string, any>>(
+  lots: M,
+  lastRows: ReadonlyArray<Record<string, unknown>> | null | undefined,
+): M {
+  for (const r of lastRows ?? []) {
+    const id = String(r.inventory_id);
+    lots.set(id, {
+      ...lots.get(id),
+      inventory_id: r.inventory_id,
+      last_unit_cost: r.last_unit_cost,
+      last_received_at: r.last_received_at,
+    });
+  }
+  return lots;
+}
+
 /** The columns of `inventory_lot_agreed_cost` that `resolveUnitCost` reads. */
 export const AGREED_LOT_COST_SELECT = "inventory_id, has_agreed_cost, agreed_wac";
 
@@ -282,6 +332,7 @@ export function summarizeCostBasis(
     invoice_lot_wac: 0,
     invoice_lot_wac_partial: 0,
     agreed_lot_wac: 0,
+    last_known_lot_cost: 0,
     last_purchase_price: 0,
     unknown: 0,
   };

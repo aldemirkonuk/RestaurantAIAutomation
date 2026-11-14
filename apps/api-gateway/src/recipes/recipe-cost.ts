@@ -81,6 +81,11 @@ export interface LineCost {
    * and let a mistyped weight be changed (r28 gap 7).
    */
   weighed?: StatedBridge;
+  /**
+   * Set only on a line priced at what its good was last bought at, nothing on
+   * hand being priced (`last_known_lot_cost`, r36 gap 1): when that lot came in.
+   */
+  boughtAt?: string | null;
 }
 
 /** A stated weight a line was priced through. */
@@ -99,6 +104,11 @@ export interface RecipeCost {
   complete: boolean;
   /** Priced lines whose average covers only part of the stock on hand. */
   partial: number;
+  /**
+   * Priced lines whose good has nothing priced on hand (sold out, or only
+   * estimated stock), priced at what it was last bought at (r36 gap 1).
+   */
+  lastBought: number;
 }
 
 // One bottle or keg is the container `bottle_size_ml` measures.
@@ -226,6 +236,7 @@ export function recipeCost(lines: CostLineInput[], yieldServes: number): RecipeC
   let priced = 0;
   let of = 0;
   let partial = 0;
+  let lastBought = 0;
   const exact: Array<number | null> = [];
   const out: LineCost[] = lines.map((line) => {
     exact.push(null);
@@ -234,7 +245,7 @@ export function recipeCost(lines: CostLineInput[], yieldServes: number): RecipeC
     if (!line.inventoryId || !line.item) {
       return { status: "not_linked", costPerServe: null, costPerServeExact: null, costBasis: null };
     }
-    const { unitCost, costBasis } = resolveUnitCost(line.item, line.lot);
+    const { unitCost, costBasis, boughtAt } = resolveUnitCost(line.item, line.lot);
     if (unitCost == null) return { status: "linked", costPerServe: null, costPerServeExact: null, costBasis };
     const base = baseUnitCost(line.item, unitCost, line.baseUnit);
     if ("why" in base) {
@@ -248,15 +259,17 @@ export function recipeCost(lines: CostLineInput[], yieldServes: number): RecipeC
     exact[exact.length - 1] = cost;
     priced += 1;
     if (costBasis === "invoice_lot_wac_partial") partial += 1;
+    if (costBasis === "last_known_lot_cost") lastBought += 1;
     // Cents from the six-place figure, so two lines that cost the same to six
     // places never fall on different sides of a half cent.
     const done: LineCost = { status: "linked", costPerServe: round2(round6(cost)), costPerServeExact: round6(cost), costBasis };
     if (base.weighed) done.weighed = base.weighed;
+    if (costBasis === "last_known_lot_cost") done.boughtAt = boughtAt ?? null;
     return done;
   });
   const complete = of > 0 && priced === of;
-  if (!complete) return { lines: out, perServe: null, perServeExact: null, priced, of, complete, partial };
+  if (!complete) return { lines: out, perServe: null, perServeExact: null, priced, of, complete, partial, lastBought };
 
   const sum = exact.reduce<number>((a, x) => a + (x ?? 0), 0);
-  return { lines: out, perServe: round2(round6(sum)), perServeExact: round6(sum), priced, of, complete, partial };
+  return { lines: out, perServe: round2(round6(sum)), perServeExact: round6(sum), priced, of, complete, partial, lastBought };
 }

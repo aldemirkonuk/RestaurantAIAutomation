@@ -94,7 +94,7 @@ describe("RecipesService.getRecipe: money only for roles that see it", () => {
   it("gives an owner the price and the cost per serve", async () => {
     const r: any = await new RecipesService(tables().db).getRecipe(HOUSE, DRINK, "owner");
     expect(r.cocktail.price).toBe(450);
-    expect(r.cost).toEqual({ perServe: 30, perServeExact: 30, priced: 1, of: 1, complete: true, partial: 0 });
+    expect(r.cost).toEqual({ perServe: 30, perServeExact: 30, priced: 1, of: 1, complete: true, partial: 0, lastBought: 0 });
     expect(r.current.lines[0]).toMatchObject({ status: "linked", itemName: "Gin", costPerServe: 30 });
   });
 
@@ -152,7 +152,7 @@ describe("RecipesService.getRecipe: money only for roles that see it", () => {
     const r: any = await new RecipesService(t.db).getRecipe(HOUSE, DRINK, "owner");
     expect(r.whatIsIn).toEqual({ readable: false, sentence: expect.stringContaining("could not be read") });
     expect(JSON.stringify(r.whatIsIn)).not.toContain("does not exist");
-    expect(r.cost).toEqual({ perServe: null, perServeExact: null, priced: 1, of: 2, complete: false, partial: 0 });
+    expect(r.cost).toEqual({ perServe: null, perServeExact: null, priced: 1, of: 2, complete: false, partial: 0, lastBought: 0 });
     expect(r.current.lines).toHaveLength(2);
   });
 
