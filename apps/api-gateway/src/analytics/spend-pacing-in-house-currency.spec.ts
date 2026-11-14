@@ -34,6 +34,9 @@ describe("spend pacing and the vendor scorecard", () => {
     expect(out.projectedNext4Weeks).toBeNull();
     expect(out.notInHouseCurrency.last30d).toEqual({ EUR: 1 });
     expect(out.notInHouseCurrency.prev30d).toEqual({});
+    // r33 meet with the house-day frame: a euro order is counted as other
+    // money, never also as an uncosted one.
+    expect(out.uncostedOrders.last30d).toBe(0);
     expect(out.unread.spendLast30d).toContain(
       "1 of the 2 delivered orders in this window is not in house currency (1 in EUR; the house keeps TRY)",
     );
