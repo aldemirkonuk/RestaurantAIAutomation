@@ -360,7 +360,9 @@ describe("an empty book is not an unbounded read", () => {
 
     expect(run.outcomes[0].outcome).toBe("empty_book");
     expect(run.outcomes[0].cursorAdvancedTo).toBe(now);
-    expect(run.outcomes[0].says).toContain("once a vendor's address is added");
+    expect(run.outcomes[0].says).toContain(
+      `Reading starts at ${new Date(now).toISOString()}: once a vendor's address is added`,
+    );
     const seeds = rec.inserts.filter((i) => i.table === "house_inbox_cursors");
     expect(seeds).toHaveLength(1);
     expect(seeds[0].body).toMatchObject({
