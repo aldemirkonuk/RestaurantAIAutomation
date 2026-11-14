@@ -41,6 +41,7 @@ import {
 } from '../../../services/api/menus';
 import { useAuthStore } from '../../../stores';
 import { MenuPlan } from './MenuPlan';
+import { takenOffSentence } from './menu-take-off';
 import { formatMoney } from '../../../lib/currency';
 import { useHouseCurrencyCode } from '../../../hooks/queries/useHouseCurrencyCode';
 
@@ -322,7 +323,7 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
               onDone={(r) => {
                 setPlanning(false);
                 setMadeCurrent(true);
-                setChosen(makeCurrentSentence(r, currency));
+                setChosen(makeCurrentSentence(r, currency) + takenOffSentence(r, currency));
                 void queryClient.invalidateQueries({ queryKey: ['menu'] });
                 onRead();
               }}
@@ -483,7 +484,7 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
                 onCancel={() => setPlanFor(null)}
                 onDone={(r) => {
                   setPlanFor(null);
-                  setSaid(makeCurrentSentence(r, currency));
+                  setSaid(makeCurrentSentence(r, currency) + takenOffSentence(r, currency));
                   refresh();
                 }}
               />
