@@ -10,6 +10,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
   Min,
   ValidateIf,
@@ -71,6 +72,47 @@ export class SaveRecipeDto {
   lines!: RecipeLineDto[];
 }
 
+/** One line of an unsaved draft, as a cost preview takes it. */
+export class PreviewLineDto {
+  @ApiProperty({ enum: ["stocked", "untracked"] })
+  @IsIn(["stocked", "untracked"])
+  role!: "stocked" | "untracked";
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsUUID()
+  inventoryId?: string | null;
+
+  // 100,000 is the most one saved line holds (MAX_LINE_QTY in recipes.service.ts,
+  // which imports this file, so the number is repeated here).
+  @ApiProperty()
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  @Min(Number.MIN_VALUE)
+  @Max(100_000)
+  qtyEntered!: number;
+
+  @ApiProperty({ enum: RECIPE_UNITS })
+  @IsIn(RECIPE_UNITS as unknown as string[])
+  unitCode!: string;
+}
+
+/** An unsaved draft to be priced. Nothing about it is stored. */
+export class PreviewCostDto {
+  @ApiProperty()
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  yieldServes!: number;
+
+  @ApiProperty({ type: [PreviewLineDto] })
+  @IsArray()
+  @ArrayMaxSize(60)
+  @ValidateNested({ each: true })
+  @Type(() => PreviewLineDto)
+  lines!: PreviewLineDto[];
+}
+
 export class ShelfQueryDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(100) search?: string;
 
@@ -80,4 +122,63 @@ export class ShelfQueryDto {
   @IsInt()
   @Min(1)
   limit?: number;
+}
+
+/** A new dish (ADR 0366). A price is the menu price as listed; none is null, never 0. */
+export class CreateDishDto {
+  @ApiProperty() @IsString() @MaxLength(200) name!: string;
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsString()
+  @MaxLength(200)
+  section?: string | null;
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(9_999_999_999)
+  price?: number | null;
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsString()
+  @MaxLength(4000)
+  description?: string | null;
+}
+
+/** A change to a dish; a field left out is left as it is, a null clears it (not the name). */
+export class UpdateDishDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) name?: string;
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsString()
+  @MaxLength(200)
+  section?: string | null;
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(9_999_999_999)
+  price?: number | null;
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsString()
+  @MaxLength(4000)
+  description?: string | null;
+}
+
+/** The pasted labels to look up on the shelf by exact folded name (ADR 0366 item 7). */
+export class ShelfMatchDto {
+  @ApiProperty({ type: [String] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(60)
+  @IsString({ each: true })
+  @MaxLength(200, { each: true })
+  labels!: string[];
 }

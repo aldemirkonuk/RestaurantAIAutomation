@@ -68,6 +68,7 @@ export const ROOM_GROUPS: readonly RoomGroup[] = [
     name: 'The cellar',
     rooms: [
       { name: 'Inventory', path: '/inventory' },
+      { name: 'Dishes', path: '/dishes' },
       { name: 'Cellar', path: '/cellar' },
     ],
   },

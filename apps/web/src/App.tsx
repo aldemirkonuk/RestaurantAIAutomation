@@ -102,6 +102,7 @@ const SettingsNext = lazyWithRefresh(() => import('./pages/settings/next/Setting
 const ProfileNext = lazyWithRefresh(() => import('./pages/profile/next/ProfileNext'))
 const ConnectionsNext = lazyWithRefresh(() => import('./pages/connections/next/ConnectionsNext'))
 const CellarNext = lazyWithRefresh(() => import('./pages/cellar/next/CellarNext'))
+const DishesPage = lazyWithRefresh(() => import('./pages/dishes/DishesPage'))
 // A NEW route (ADR 0160 sec110 item 7), not a redesign of a shipping page —
 // no `mudavym_design_*` flag (`LIVE_PAGES` in useMudavymDesign.ts makes
 // it on for every house with no per-house column). It still goes through
@@ -432,6 +433,7 @@ function App() {
                   <Route path="/beer" element={<PageGate page="cellar" next={<CellarNext category="beer" />} />} />
                   <Route path="/whiskey" element={<PageGate page="cellar" next={<CellarNext category="whiskey" />} />} />
                   <Route path="/cocktails" element={<PageGate page="cellar" next={<CellarNext category="cocktails" />} />} />
+                  <Route path="/dishes" element={<PageGate page="inventory" next={<DishesPage />} />} />
                   <Route path="/spirits" element={<PageGate page="cellar" next={<CellarNext category="spirits" />} />} />
                   <Route path="/non-alcoholic" element={<PageGate page="cellar" next={<CellarNext category="non_alcoholic" />} />} />
                   <Route path="/soft-drinks" element={<PageGate page="cellar" next={<CellarNext category="soft_drinks" />} />} />
