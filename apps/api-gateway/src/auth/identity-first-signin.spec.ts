@@ -565,13 +565,16 @@ describe("findOrCreateOAuthUser — resolves, never provisions", () => {
       if (table !== "users") throw new Error(`unexpected table: ${table}`);
       // A row answers the address it is stored under (any address when the
       // fixture names none), the way findUserBySignInAddress reads it: as
-      // typed, then folded.
+      // typed, then folded, then through the `email_folded` filter.
       const matches = (val: unknown) =>
         !!opts.row && (opts.row.email === undefined || opts.row.email === val);
       const chain: any = {
         select: () => chain,
-        eq: (_col: string, val: unknown) => {
+        eq: (col: string, val: unknown) => {
           chain._email = val;
+          if (col === "email_folded") {
+            return Promise.resolve({ data: matches(val) ? [opts.row] : [], error: null });
+          }
           return chain;
         },
         maybeSingle: () =>

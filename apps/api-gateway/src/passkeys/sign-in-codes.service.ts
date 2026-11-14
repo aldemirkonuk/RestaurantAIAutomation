@@ -79,30 +79,47 @@ export function normalizeEmail(raw: unknown): string {
   return raw.trim().toLowerCase();
 }
 
+/**
+ * The column migration a_sign_in_address_is_kept_in_lower_case gives
+ * `users` for the third read: `public.email_folded(users)`, a PostgREST
+ * computed field over the indexed `public.sign_in_address_fold(email)`.
+ */
+export const EMAIL_FOLDED = "email_folded";
+
+/**
+ * `public.sign_in_address_fold` in TypeScript: A-Z to a-z and nothing else,
+ * on an address already trimmed by `String.prototype.trim` (the SQL fold
+ * trims exactly that set). Locale-free on both sides.
+ */
+export function asciiFoldAddress(trimmed: string): string {
+  return trimmed.replace(/[A-Z]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 32));
+}
+
 export interface SignInAddressMatch<T> {
   /** The one account the address names, or null. */
   user: T | null;
   /** A failed read: never an answer about the address. */
   error: { message: string } | null;
-  /**
-   * More than one account holds this address under the fold (held twins).
-   * Always false until the SQL-fold read exists; callers already honour it.
-   */
+  /** More than one account holds this address under the fold (held twins). */
   ambiguous: boolean;
 }
 
 /**
  * The account a typed sign-in address names (QA rounds 11 and 13: R11-01,
  * R11-02). Every door that looks an account up by address goes through here,
- * so sign-in, registration's "already registered" and the dev bypass agree on
- * which row an address means.
+ * so sign-in, reset, the emailed code, Google/Microsoft and registration's
+ * "already registered" agree on which row an address means.
  *
- * Two reads, the second only when the first found nothing:
+ * Three reads, each only when the one before found nothing:
  *  1. the address exactly as typed, trimmed -- only when that differs from the
- *     folded spelling. A row stored unfolded keeps answering to the spelling
+ *     folded spelling. A row the backfill held unfolded (its lower-case twin
+ *     exists, or it has a non-ASCII letter) keeps answering to the spelling
  *     its owner always used, ahead of a lower-case twin someone else holds;
  *  2. the folded spelling (`normalizeEmail`) -- every row written since
- *     registration folded.
+ *     registration folded, and every row the backfill folded;
+ *  3. the SQL fold (`email_folded`: trim + ASCII-only lower case, indexed) --
+ *     a held row typed in another case. Two holders is `ambiguous` and names
+ *     nobody: a person decides which account keeps the address.
  *
  * `usersRead` is the caller's own `from("users").select("<literal columns>")`,
  * built fresh for each read: the column list stays a literal at the call site,
@@ -127,7 +144,16 @@ export async function findUserBySignInAddress<T = any>(
     if (exact.error || exact.user) return { ...exact, ambiguous: false };
   }
   const plain = await byAddress(folded);
-  return { ...plain, ambiguous: false };
+  if (plain.error || plain.user) return { ...plain, ambiguous: false };
+
+  const { data, error } = await usersRead()
+    // No .limit: the rows sharing one folded address are the held twins, a
+    // handful at most, and two or more is the answer "ambiguous".
+    .eq(EMAIL_FOLDED, asciiFoldAddress(asTyped));
+  if (error) return { user: null, error, ambiguous: false };
+  const rows = (data ?? []) as T[];
+  if (rows.length > 1) return { user: null, error: null, ambiguous: true };
+  return { user: rows[0] ?? null, error: null, ambiguous: false };
 }
 
 interface CodeRow {

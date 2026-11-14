@@ -3,34 +3,47 @@ import * as bcrypt from "bcrypt";
 import { AuthService } from "./auth.service";
 import { asDatabaseService, makeStubDb } from "../team/testing/supabase-stub";
 import {
+  asciiFoldAddress,
   findUserBySignInAddress,
   SignInCodesService,
 } from "../passkeys/sign-in-codes.service";
 import { FakeDb } from "../passkeys/testing/passkey-harness";
 
 /**
- * Password sign-in finds the account the way registration now stores it (QA
- * round 13 on PR #853; QA round 11 R11-02).
+ * Every door finds the account the way registration now stores it (QA round
+ * 13 on PR #853; QA round 11 R11-01 and R11-02).
  *
  * Registration folds the address (`chef@bistro.com`), but password sign-in
  * looked it up exactly as typed: an owner who typed `Chef@Bistro.com` at
- * sign-up and again at /login got "Invalid credentials".
- * `findUserBySignInAddress` reads the address as typed, then folded.
+ * sign-up and again at /login got "Invalid credentials". And the backfill
+ * holds two kinds of existing row unfolded -- a row whose lower-case twin
+ * exists, and a row with a non-ASCII letter -- which the folded lookup alone
+ * can never reach. `findUserBySignInAddress` reads the address as typed, then
+ * folded, then through the SQL fold (`users.email_folded`, a computed field
+ * the stub cannot run, so the fixture carries the value the SQL would compute
+ * -- the SQL side is proved by the migration's own supabase/tests file).
  *
- * PRE-FIX PROOF: with auth.service.ts at the PR's previous head (32e406a54),
- * this file does not compile (no findUserBySignInAddress), and the validateUser
- * cases fail on their own: "Invalid credentials" for the mixed-case and padded
- * spellings.
+ * PRE-FIX PROOF: with auth.service.ts and sign-in-codes.service.ts at the PR's
+ * previous head (32e406a54), this file does not compile (no
+ * findUserBySignInAddress / asciiFoldAddress), and the four validateUser
+ * cases fail on their own: "Invalid credentials" for the mixed-case and
+ * padded spellings and the held non-ASCII row, and the held twin's owner
+ * meets the same refusal (the folded read finds the twin).
  */
 
 const PASSWORD = "the-right-password";
 const OTHER = "somebody-elses-password";
 const HASH = bcrypt.hashSync(PASSWORD, 4);
+const OTHER_HASH = bcrypt.hashSync(OTHER, 4);
+
+/** What `public.sign_in_address_fold` returns, for the fixture's computed field. */
+const sqlFold = (email: string) => asciiFoldAddress(email.trim());
 
 function account(user_id: string, email: string, password_hash = HASH) {
   return {
     user_id,
     email,
+    email_folded: sqlFold(email),
     name: user_id,
     password_hash,
     email_verified: true,
@@ -77,7 +90,75 @@ describe("password sign-in finds the folded row (R11-02, the #853 regression)", 
   });
 });
 
+describe("rows the backfill held stay reachable (R11-01, existing owners)", () => {
+  it("a held twin's owner signs in by their own spelling, ahead of the lower-case twin", async () => {
+    const { svc } = service([
+      account("real-owner", "Victim@Gmail.com"),
+      account("squatter", "victim@gmail.com", OTHER_HASH),
+    ]);
+    await expect(svc.validateUser("Victim@Gmail.com", PASSWORD)).resolves.toMatchObject({
+      user_id: "real-owner",
+    });
+    // The lower-case row is still its own holder's.
+    await expect(svc.validateUser("victim@gmail.com", OTHER)).resolves.toMatchObject({
+      user_id: "squatter",
+    });
+  });
+
+  it("a held non-ASCII row is found typed in another ASCII case, through the SQL fold", async () => {
+    const { svc } = service([account("ilker", "İLKER@X.com")]);
+    await expect(svc.validateUser("İlker@x.COM", PASSWORD)).resolves.toMatchObject({
+      user_id: "ilker",
+    });
+    await expect(svc.validateUser("İLKER@X.com", PASSWORD)).resolves.toMatchObject({
+      user_id: "ilker",
+    });
+  });
+
+  it("a password reset for a held row typed in another case is filed for that account", async () => {
+    const { svc, db } = service([account("ilker", "İLKER@X.com")]);
+    await expect(svc.requestPasswordReset("İlker@x.com", null)).resolves.toEqual({
+      sent: true,
+    });
+    expect(db.tables.password_resets).toHaveLength(1);
+    expect(db.tables.password_resets[0].user_id).toBe("ilker");
+  });
+
+  it("two unfolded twins: an ambiguous spelling names nobody, and registration refuses it", async () => {
+    const { svc } = service([
+      account("twin-a", "Twin@Example.com"),
+      account("twin-b", "TWIN@example.com"),
+    ]);
+    await expect(svc.validateUser("twin@example.com", PASSWORD)).rejects.toThrow(
+      UnauthorizedException,
+    );
+    // Each twin still answers to its own spelling.
+    await expect(svc.validateUser("TWIN@example.com", PASSWORD)).resolves.toMatchObject({
+      user_id: "twin-b",
+    });
+    // No third account is written beside them.
+    await expect(svc.checkEmailExists("twin@example.com")).resolves.toBe(true);
+  });
+
+  it("registration refuses an address a held row answers to under the fold", async () => {
+    const { svc } = service([account("ilker", "İLKER@X.com")]);
+    await expect(svc.checkEmailExists("İlker@X.COM")).resolves.toBe(true);
+    await expect(svc.checkEmailExists("someone-else@x.com")).resolves.toBe(false);
+  });
+});
+
 describe("findUserBySignInAddress", () => {
+  it("reads as typed, then folded, then the SQL fold -- and stops at the first hit", async () => {
+    const db = makeStubDb({ users: [account("owner", "chef@bistro.com")] });
+    const hit = await findUserBySignInAddress(
+      () => (db.supabase as any).from("users").select("user_id"),
+      "Chef@Bistro.com",
+    );
+    expect(hit).toMatchObject({ user: { user_id: "owner" }, error: null, ambiguous: false });
+    const reads = db.opsOn("users", "select");
+    expect(reads.length).toBe(2); // as typed (miss), folded (hit); no third read
+  });
+
   it("a failed read is an error, never 'no account'", async () => {
     const db = makeStubDb(
       { users: [account("owner", "chef@bistro.com")] },
@@ -89,6 +170,12 @@ describe("findUserBySignInAddress", () => {
     );
     expect(got.user).toBeNull();
     expect(got.error).toEqual({ message: "connection reset" });
+  });
+
+  it("the TypeScript fold is trim + A-Z only, like the SQL one", () => {
+    expect(asciiFoldAddress("MiXeD.I@Example.COM")).toBe("mixed.i@example.com");
+    // Non-ASCII letters are left alone on both sides (JS toLowerCase is not).
+    expect(asciiFoldAddress("İLKER@X.com")).toBe("İlker@x.com");
   });
 });
 
