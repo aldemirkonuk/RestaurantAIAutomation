@@ -1,4 +1,4 @@
-import { Injectable, Logger, Optional } from "@nestjs/common";
+import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { NotificationsService } from "../../notifications/notifications.service";
 import { DeliveryClockService } from "./delivery-clock.service";
@@ -143,7 +143,13 @@ export class DeliveryService {
     // F3): its owners and managers, the only people `return-stock` lets
     // try again. Optional so a server or a spec without it still tells the
     // house rather than nobody.
+    //
+    // The token is named because the type below is a `Pick<>`: decorator
+    // metadata erases it to `Object`, so without `@Inject` Nest resolved
+    // nothing and `@Optional()` quietly gave every real server `undefined`,
+    // sending the notice to the whole house (r39 walk-w2).
     @Optional()
+    @Inject(VendorSendAuthorityService)
     private readonly authority?: Pick<VendorSendAuthorityService, "ownersAndManagers">,
   ) {}
 
