@@ -8,7 +8,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MenuPlan, chooseFailedSentence, kindWords, notOnFileWords, orderedRows, planSentence } from './MenuPlan';
+import { MenuPlan, chooseFailedSentence, kindWords, notOnFileWords, orderedRows, planSentence, takenOffWords } from './MenuPlan';
 import { canTakeOff, takenOffSentence } from './menu-take-off';
 import { getMenuPlan, linkMenuLineToHouseGood, makeMenuCurrent, type MenuPlan as Plan, type PlanLine } from '../../../services/api/menus';
 import { lockPrice, releasePriceLock } from '../../../services/api/pricing';
@@ -221,6 +221,37 @@ describe('2d: not on this file -- shown, never acted on (L12)', () => {
       );
       expect(planSentence(plan({ dormantLocks: [], notOnThisFile: [CHIANTI_GONE] }), 1)).toBe(
         'Choosing this menu will set 1 price from this menu, leave 1 locked price as it is. 1 drink on the current menu is not on this file: 1 is taken off sale, its price cleared.',
+      );
+    });
+
+    // r37 walk w1 M-F2: Chianti's bottle was locked, and the plan still said "its price cleared".
+    it('a ticked drink with a locked kind is said to keep that price', () => {
+      // Barolo: bottle 80 locked, glass 14 free.
+      expect(planSentence(plan({ dormantLocks: [], notOnThisFile: [BAROLO_GONE, HOUSE_RED] }), [BAROLO_GONE])).toBe(
+        'Choosing this menu will set 1 price from this menu, leave 1 locked price as it is. 2 drinks on the current menu are not on this file: 1 is taken off sale: its glass price is cleared, and a lock keeps its bottle price, and 1 keeps its price.',
+      );
+      const both = { ...CHIANTI_GONE, glass: 9 };
+      expect(takenOffWords(1, [both])).toBe('1 is taken off sale, its price cleared');
+      expect(takenOffWords(1, [{ ...both, locked: ['glass'] }])).toBe(
+        '1 is taken off sale: its bottle price is cleared, and a lock keeps its glass price',
+      );
+      expect(takenOffWords(2, [both, BAROLO_GONE])).toBe(
+        "2 are taken off sale and their prices cleared, except what a lock keeps: Barolo's bottle price",
+      );
+      expect(takenOffWords(2, [both, { ...both, name: 'Rioja' }])).toBe('2 are taken off sale, their price cleared');
+    });
+
+    it('the plan on the page names the lock once a locked drink is ticked', async () => {
+      mockPlan.mockResolvedValue(plan({ notOnThisFile: [BAROLO_GONE, CHIANTI_GONE] }));
+      mount(true);
+      await screen.findByTestId('menu-plan-not-on-file');
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Take Barolo off sale' }));
+      expect(screen.getByTestId('menu-plan-sentence')).toHaveTextContent(
+        '1 is taken off sale: its glass price is cleared, and a lock keeps its bottle price, and 1 keeps its price',
+      );
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Take Chianti off sale' }));
+      expect(screen.getByTestId('menu-plan-sentence')).toHaveTextContent(
+        "2 are taken off sale and their prices cleared, except what a lock keeps: Barolo's bottle price",
       );
     });
 

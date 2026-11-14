@@ -111,8 +111,12 @@ export function removedClause(lines: PlanLine[]): string | null {
 /** The plan in one sentence, in the order a person reads a menu change. */
 export function planSentence(
   plan: Pick<Plan, 'counts' | 'dormantLocks' | 'current' | 'lines' | 'kitchenLines' | 'notOnThisFile'>,
-  /** r35 G10: how many of the drinks not on this file are ticked to come off sale. */
-  takingOff = 0,
+  /**
+   * r35 G10: the drinks not on this file that are ticked to come off sale, or
+   * only how many (then no lock is named). r37 walk w1 M-F2: a ticked drink
+   * whose bottle is locked keeps that price, and the sentence says so.
+   */
+  takingOff: number | NonNullable<Plan['notOnThisFile']> = 0,
 ): string {
   const c = plan.counts;
   if (plan.current) {
@@ -160,7 +164,8 @@ export function planSentence(
       `${plural(fits, 'line fits', 'lines fit')} the house's own goods and ${fits === 1 ? 'is' : 'are'} linked to none, so ${fits === 1 ? 'it is' : 'each is'} carried as a good of its own unless the good is chosen below`,
     );
   const gone = plan.notOnThisFile ?? [];
-  const off = Math.min(takingOff, gone.length);
+  const ticked = typeof takingOff === 'number' ? [] : takingOff;
+  const off = Math.min(typeof takingOff === 'number' ? takingOff : takingOff.length, gone.length);
   const stay = gone.length - off;
   if (gone.length > 0 && off === 0)
     more.push(
@@ -169,13 +174,34 @@ export function planSentence(
     );
   else if (off > 0)
     more.push(
-      `${plural(gone.length, 'drink on the current menu is', 'drinks on the current menu are')} not on this file: ${plural(off, 'is', 'are')} taken off sale, ${off === 1 ? 'its' : 'their'} price cleared${stay > 0 ? `, and ${plural(stay, 'keeps its', 'keep their')} price` : ''}`,
+      `${plural(gone.length, 'drink on the current menu is', 'drinks on the current menu are')} not on this file: ${takenOffWords(off, ticked)}${stay > 0 ? `, and ${plural(stay, 'keeps its', 'keep their')} price` : ''}`,
     );
   if (plan.dormantLocks.length > 0)
     more.push(
       `${plural(plan.dormantLocks.length, 'locked price is', 'locked prices are')} not on this menu and ${plan.dormantLocks.length === 1 ? 'stays' : 'stay'} locked`,
     );
   return more.length ? `${lead} ${more.join('; ')}.` : lead;
+}
+
+/**
+ * What ticking drinks off sale does to their prices, said BEFORE the choice
+ * (r37 walk w1 M-F2). Make-current clears a ticked drink's bottle and glass
+ * price, but a lock still holds its kind: the result said "glass cleared,
+ * bottle held", while this sentence said "its price cleared" for the same
+ * drink. A ticked drink with a locked kind is now named with what the lock
+ * keeps.
+ */
+export function takenOffWords(off: number, ticked: NonNullable<Plan['notOnThisFile']>): string {
+  const kinds = ['bottle', 'glass'] as const;
+  const held = ticked.filter((n) => n.locked.length > 0);
+  if (held.length === 0) return `${plural(off, 'is', 'are')} taken off sale, ${off === 1 ? 'its' : 'their'} price cleared`;
+  if (off === 1) {
+    const n = held[0];
+    const cleared = kinds.filter((k) => n[k] !== null && !n.locked.includes(k));
+    return `1 is taken off sale: its ${cleared.join(' and ')} price ${cleared.length > 1 ? 'are' : 'is'} cleared, and a lock keeps its ${n.locked.join(' and ')} price`;
+  }
+  const keeps = held.map((n) => `${n.name}'s ${n.locked.join(' and ')} price`);
+  return `${plural(off, 'is', 'are')} taken off sale and their prices cleared, except what a lock keeps: ${keeps.join('; ')}`;
 }
 
 /** Who set the price that would be replaced, in words. */
@@ -378,7 +404,10 @@ export function MenuPlan({
         {plan.current ? 'Before its prices are carried again' : 'Before it becomes current'}
       </h3>
       <p className="cl-standing" style={{ marginTop: 6 }} data-testid="menu-plan-sentence">
-        {planSentence(plan, takeOff.length)}
+        {planSentence(
+          plan,
+          offerable.filter((n) => off.has(n.menuItemId)),
+        )}
       </p>
       {moved ? (
         <p role="status" className="cl-said" style={{ marginTop: 6 }} data-testid="menu-plan-moved">
