@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { WineExtractItem } from "../wine-extract-item.interface";
 import { MenuPriceReason, readMenuPrice } from "./menu-price";
+import { cellMoneyMark, differentMoney, excelFormatMark, headerMoneyMark, oneMoneyOf } from "./price-mark";
 
 // Aliases by field, against `headerKey`: "Şişe Fiyatı (TL)" is `sise_fiyati`.
 const ALIASES: Array<[keyof WineExtractItem, string]> = [
@@ -171,9 +172,10 @@ export class CsvParserService {
         issues: [...issues, { row: records[0].row, reason: "no_name_column" }],
       };
 
+    const marks = records[0].cells.map((h) => headerMoneyMark(h));
     const items: WineExtractItem[] = [];
     for (const record of records.slice(1)) {
-      const item = this.buildItem(fieldMap, record.cells, record.row, issues);
+      const item = this.buildItem(fieldMap, record.cells, record.row, issues, marks);
       if (item) {
         item.raw_text = record.raw.trim();
         items.push(item);
@@ -226,11 +228,17 @@ export class CsvParserService {
         issues: [...issues, { row: 1, reason: "no_name_column" }],
       };
 
+    const headerMarks = headers.map((h) => headerMoneyMark(h));
     const items: WineExtractItem[] = [];
     worksheet.eachRow((row, rowNumber) => {
       if (rowNumber === 1) return; // header row
       const cols: Cell[] = [];
+      // A stored number has no mark of its own: its cell's number format is
+      // what the owner sees ("₺1.250,00"), else the header's money (r40 N1).
+      const marks: Array<string | null> = [...headerMarks];
       row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+        const shown = excelFormatMark(cell.numFmt);
+        if (shown) marks[colNumber - 1] = shown;
         const v = this.cellValue(cell.value);
         if (typeof v !== "object") return void (cols[colNumber - 1] = v);
         // An error is left empty and said, for a column that is read.
@@ -244,7 +252,7 @@ export class CsvParserService {
             raw: v.error,
           });
       });
-      const item = this.buildItem(fieldMap, cols, rowNumber, issues);
+      const item = this.buildItem(fieldMap, cols, rowNumber, issues, marks);
       if (item) {
         item.raw_text = cols.join(",");
         items.push(item);
@@ -322,36 +330,69 @@ export class CsvParserService {
     return "";
   }
 
+  /**
+   * One row as a line. `marks` is each column's money as the file shows it
+   * without the cell's own text (the header's, or an Excel cell's format);
+   * a price cell's own mark ("€12") comes first (r40, r36 N1).
+   *
+   * The line's prices and the money they are in go together: the first money
+   * a read price names is the line's `currency`, and a price cell with no mark
+   * joins it. A price whose money is certainly another one (a "(EUR)" column
+   * beside a "(TL)" one, or a second bottle column in another money, which was
+   * never read before) is kept in `also_priced` under its own money. Nothing
+   * converts here or anywhere: `menu-money.ts` takes the column in the house's
+   * money, and holds a line printed only in another.
+   */
   private buildItem(
     fieldMap: Array<keyof WineExtractItem | null>,
     cols: Cell[],
     row: number,
     issues: CsvRowIssue[],
+    marks: ReadonlyArray<string | null> = [],
   ): WineExtractItem | null {
     const item: Partial<WineExtractItem> = {};
     const found: CsvRowIssue[] = [];
 
     fieldMap.forEach((field, colIdx) => {
-      if (!field || item[field] !== undefined) return;
+      if (!field) return;
       const value = cols[colIdx];
-      if (typeof value === "number") {
-        if (PRICE_FIELDS.has(field)) {
-          if (Number.isFinite(value) && value >= 0)
-            (item as any)[field] = value;
-        } else (item as any)[field] = String(value);
+      const isPrice = PRICE_FIELDS.has(field);
+      if (!isPrice && item[field] !== undefined) return;
+      if (!isPrice) {
+        if (typeof value === "number") (item as any)[field] = String(value);
+        else if ((value ?? "").trim()) (item as any)[field] = (value ?? "").trim();
         return;
       }
-      const raw = (value ?? "").trim();
-      if (!raw) return;
+      const raw = typeof value === "number" ? "" : (value ?? "").trim();
+      const mark = (raw ? cellMoneyMark(raw) : null) ?? marks[colIdx] ?? null;
+      // A second column of a price the line already has is read only when it
+      // is certainly in another money; any other is passed over, as before.
+      const taken = item[field] !== undefined;
+      const elsewhere = differentMoney(mark, item.currency);
+      if (taken && !elsewhere) return;
 
-      if (PRICE_FIELDS.has(field)) {
+      let amount: number | null = null;
+      if (typeof value === "number") {
+        if (Number.isFinite(value) && value >= 0) amount = value;
+      } else if (raw) {
         const price = readMenuPrice(raw);
-        if (price.amount !== null) (item as any)[field] = price.amount;
+        if (price.amount !== null) amount = price.amount;
         else if (price.reason && price.reason !== "empty")
           found.push({ row, reason: price.reason, field, raw });
-      } else {
-        (item as any)[field] = raw;
       }
+      if (amount === null) return;
+
+      if (!elsewhere) {
+        (item as any)[field] = amount;
+        if (mark && !item.currency) item.currency = mark;
+        return;
+      }
+      const also = (item.also_priced ??= []);
+      // `mark` names one money here (differentMoney said so): the column in that money, or a new one.
+      let column = also.find((c) => oneMoneyOf(c.currency) === oneMoneyOf(mark));
+      if (!column) also.push((column = { currency: mark! }));
+      if (column[field as "bottle_price" | "by_glass_price"] === undefined)
+        column[field as "bottle_price" | "by_glass_price"] = amount;
     });
 
     if (!item.name) {
