@@ -211,15 +211,15 @@ describe("the goal methods hand their sales gate to the register (ADR 0298 decis
       {} as any,
     );
     expect(await service.listGoals("r1", "all", { withSales: true })).toEqual([
-      dio,
-      revenue,
+      { ...dio, unit: "days" },
+      { ...revenue, unit: "currency" },
     ]);
     // Since ADR 0348 item 3 a revenue goal's reading is withheld too
     // (goal-readings-withheld-from-staff.spec.ts).
     for (const gate of [{ withSales: false }, undefined]) {
       expect(await service.listGoals("r1", "all", gate)).toEqual([
-        { ...dio, current_value: null, baseline_value: null },
-        { ...revenue, current_value: null, baseline_value: null },
+        { ...dio, current_value: null, baseline_value: null, unit: "days" },
+        { ...revenue, current_value: null, baseline_value: null, unit: "currency" },
       ]);
     }
   });

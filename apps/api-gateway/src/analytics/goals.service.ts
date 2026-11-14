@@ -295,9 +295,14 @@ export class GoalsService {
     const { data, error } =
       status === "all" ? await q : await q.eq("status", status);
     if (error) throw new Error(error.message);
-    return (data || []).map((g: any) =>
-      GoalsService.presentGoalRow(g, gate),
-    );
+    // Each row carries its metric's unit, as the overview's goals do (#1382).
+    // The page's bench reads this route, and without it a money goal printed
+    // "60.0K" with no currency and a percent goal "0.6" (r36 reports gap 2).
+    // An unknown metric says null, never a guessed unit.
+    return (data || []).map((g: any) => ({
+      ...GoalsService.presentGoalRow(g, gate),
+      unit: GoalsService.SUPPORTED_METRICS[g.metric_key]?.unit ?? null,
+    }));
   }
 
   /**
