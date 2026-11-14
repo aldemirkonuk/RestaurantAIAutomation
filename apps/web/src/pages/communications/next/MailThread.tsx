@@ -32,6 +32,7 @@ import { EM, MONO, SANS, SERIF, failedReadWords, fmtWhen, heldBecause } from './
 import {
   answerFor,
   letterAt,
+  filedFromHeldWords,
   letterLook,
   noReplyFailWords,
   noReplyTarget,
@@ -130,6 +131,11 @@ function Letter({
       <p data-testid="letter-provenance" style={{ ...QUIET, margin: 0 }}>
         {look.line}
       </p>
+      {inbound && m.filedFromHeld && (
+        <p data-testid="letter-filed-from-held" style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: 0 }}>
+          {filedFromHeldWords(m.filedFromHeld, vendor)}
+        </p>
+      )}
       {!inbound && m.status === 'RELAY_REFUSED' && (
         // ADR 0099, founder 2026-09-21: the draft closed, not retried, and
         // the manager sees why — the gateway's own sentence, verbatim.
@@ -298,6 +304,12 @@ export function MailThread({
           {q.isFetchNextPageError && (
             <p role="alert" style={{ margin: 0, fontSize: 12, color: 'var(--alarm-deep, #8C3322)' }}>
               The earlier letters could not be read ({failedReadWords(q.error)}).
+            </p>
+          )}
+
+          {pages.some((p) => p.heldMarksRead === false) && (
+            <p role="status" data-testid="thread-held-marks-unread" style={{ ...QUIET, margin: 0 }}>
+              Whether a person filed any of these letters after it was held could not be read just now.
             </p>
           )}
 
