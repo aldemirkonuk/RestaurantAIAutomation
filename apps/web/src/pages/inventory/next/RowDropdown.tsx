@@ -106,6 +106,12 @@ export interface RowDropdownProps {
    */
   sheet?: SheetId | null;
   onSheet?: (sheet: SheetId | null) => void;
+  /**
+   * What each delivery's price was settled at, first to last (the figures
+   * route's cost trend: a verified invoice or a hand-set price). Absent or
+   * null, "Last bought" reads the ledger's priced purchases as before.
+   */
+  settled?: ReadonlyArray<{ receivedAt: string; unitCost: number }> | null;
 }
 
 /** The panels the opened row draws: facts and naming, where, pace, cost, paperwork. */
@@ -353,7 +359,15 @@ export default function RowDropdown(props: RowDropdownProps) {
           {has('where') ? <WhereTheCountComesFrom row={row} zoneName={zoneName} onCount={() => setSheet('count')} /> : null}
           {has('pace') ? <HowFastItPours row={row} uom={props.uom ?? null} kind={props.kind ?? null} /> : null}
           {has('cost') ? (
-          <WhatItHasCost row={row} currency={currency} detail={detail} uom={props.uom ?? null} kind={props.kind ?? null} canManage={canManage} />
+          <WhatItHasCost
+            row={row}
+            currency={currency}
+            detail={detail}
+            uom={props.uom ?? null}
+            kind={props.kind ?? null}
+            canManage={canManage}
+            settled={props.settled ?? null}
+          />
         ) : null}
         </div>
       ) : null}
@@ -744,6 +758,7 @@ function WhatItHasCost({
   uom,
   kind,
   canManage,
+  settled,
 }: {
   row: InvRow;
   currency: HouseCurrency;
@@ -751,6 +766,7 @@ function WhatItHasCost({
   uom: string | null;
   kind: string | null;
   canManage: boolean;
+  settled: ReadonlyArray<{ receivedAt: string; unitCost: number }> | null;
 }) {
   // A food or supply is costed, not priced (ADR 0051/0053): no btl · glass price,
   // margin, market or auction lots, and its costs, stored a g, ml or piece
@@ -772,15 +788,26 @@ function WhatItHasCost({
       </>
     );
   };
-  const priced = (detail.purchases ?? []).filter((l) => l.unitCost !== null);
+  // A delivery received at the door is booked with no cost, and its ledger
+  // row is never restated when the invoice settles the price, so the ledger
+  // alone said "none on the ledger" for every good bought that way. A settled
+  // price (the figures route's trend) comes first; the ledger's priced
+  // purchases are read only when no price was ever settled. The two are not
+  // merged: a ledger line may carry the estimate that a settled price later
+  // replaced, and the same delivery would then count twice.
+  const fromSettled = settled !== null && settled.length > 0;
+  const priced: Array<{ unitCost: number | null; at: string | null }> = fromSettled
+    ? [...settled].reverse().map((p) => ({ unitCost: p.unitCost, at: p.receivedAt }))
+    : (detail.purchases ?? []).filter((l: PurchaseLine) => l.unitCost !== null);
   const last = priced[0] ?? null;
   const before = priced[1] ?? null;
-  const unread = detail.purchasesError !== null;
-  const reading = detail.purchases === null && !unread;
-  const bought = (l: PurchaseLine | null) =>
-    reading ? EM : unread ? 'could not be read' : l === null ? 'none on the ledger' : (
+  const unread = !fromSettled && detail.purchasesError !== null;
+  const reading = !fromSettled && detail.purchases === null && !unread;
+  const bought = (l: { unitCost: number | null; at: string | null } | null) =>
+    reading ? EM : unread ? 'could not be read' : l === null ? (fromSettled ? 'none settled before it' : 'none on the ledger') : (
       <>
-        {money(l.unitCost)} · {shortDate(l.at)}
+        {money(l.unitCost)} · {fromSettled ? 'settled ' : ''}
+        {shortDate(l.at)}
       </>
     );
   const change =

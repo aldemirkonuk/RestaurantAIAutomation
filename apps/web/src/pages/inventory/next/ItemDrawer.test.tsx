@@ -4,7 +4,7 @@
  * The page wiring (a row opens it, Back closes it) is in InventoryNext.test.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { InvRow } from './useInventoryNextData';
 import { ALLERGENS, type HouseFields, type ItemFigures, type ItemNutrition } from '../../../services/api/inventory';
@@ -22,9 +22,10 @@ vi.mock('../../../services/api/inventory', async (orig) => ({
   getItemNutrition: api.nutrition,
 }));
 vi.mock('./RowDropdown', () => ({
-  default: (p: { sections?: string[]; actions?: boolean; uom?: string | null; kind?: string | null }) => (
+  default: (p: { sections?: string[]; actions?: boolean; uom?: string | null; kind?: string | null; settled?: unknown }) => (
     <div
       data-testid="row-dropdown"
+      data-settled={p.settled === undefined ? 'absent' : JSON.stringify(p.settled)}
       data-sections={p.sections === undefined ? 'all' : p.sections.join(',')}
       data-actions={String(p.actions !== false)}
       data-uom={p.uom ?? ''}
@@ -233,6 +234,25 @@ describe('the item drawer', () => {
     expect(opened('inside')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'All the evidence' }));
     expect(within(screen.getByTestId('ivd-evidence')).getByTestId('row-dropdown').dataset.sections).toBe('facts,where,pace,cost,paper');
+  });
+
+  it('the cost evidence is handed the settled prices the figures read, and nothing while it reads or after it failed', async () => {
+    open(row());
+    await waitFor(() => expect(screen.getByTestId('ivd-card-cost').textContent).toContain('Up 8% since August'));
+    fireEvent.click(screen.getByTestId('ivd-card-cost'));
+    const panel = within(screen.getByTestId('ivd-evidence')).getByTestId('row-dropdown');
+    expect(JSON.parse(panel.dataset.settled!)).toEqual([
+      { receivedAt: '2026-08-01T10:00:00Z', unitCost: 37 },
+      { receivedAt: '2026-09-01T10:00:00Z', unitCost: 40 },
+    ]);
+    // The acts' own instance draws no cost panel, so it is not handed them.
+    const acts = screen.getAllByTestId('row-dropdown').find((el) => el.dataset.actions === 'true')!;
+    expect(acts.dataset.settled).toBe('absent');
+    cleanup();
+    api.figures.mockRejectedValue(new Error('Network Error'));
+    open(row());
+    fireEvent.click(screen.getByTestId('ivd-card-cost'));
+    expect(within(screen.getByTestId('ivd-evidence')).getByTestId('row-dropdown').dataset.settled).toBe('null');
   });
 
   it('a food its counts have not measured says how to measure it, never "not enough history"', () => {
