@@ -12,6 +12,7 @@ import { seesHouseAmounts } from "../dashboard/amounts-for-role";
 import { BaseUnit, CostItem, recipeCost } from "./recipe-cost";
 import { CreateDishDto, UpdateDishDto } from "./dto/recipes.dto";
 import { DISH_NOT_THIS_HOUSE, RecipesService } from "./recipes.service";
+import { foldName } from "./name-fold";
 
 export const DISHES_UNREAD = "Your dishes could not be read just now. Nothing is shown rather than a wrong list.";
 export const DISH_USE_UNREAD = "Which dishes use this item could not be read just now.";
@@ -31,8 +32,8 @@ export const PAGE = 1000;
 /** Ids sent in one `in()` filter, so the URL stays short. 20 versions x 40 lines < PAGE. */
 export const ID_CHUNK = 20;
 
-/** A name as two people would agree it is "the same name": spaces and case folded, nothing else. */
-export const foldName = (s: string) => s.normalize("NFC").trim().replace(/\s+/g, " ").toLowerCase();
+/** A name as two people would agree it is "the same name" (Turkish-aware; see name-fold.ts). */
+export { foldName };
 
 const chunks = <T>(xs: T[], n = ID_CHUNK): T[][] => {
   const out: T[][] = [];
