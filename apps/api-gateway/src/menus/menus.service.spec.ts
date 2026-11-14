@@ -3108,3 +3108,263 @@ describe("newestCurrentFirst (r28 G20)", () => {
     expect(newestCurrentFirst([...rows].reverse()).map((r) => r.id)).toEqual(["b", "a", "c", "d", "e", "f"]);
   });
 });
+
+describe("MenusService.getOnboardingProgress — the self-heal counts the lines a house has", () => {
+  // A fake for this block alone, closer to PostgREST than the shared one where
+  // it matters here: `.maybeSingle()` answers MORE than one row with an error
+  // (postgrest-js PGRST116), `limit` limits, and a `menu_items` read embeds
+  // `restaurant_menus!inner(...)` by `menu_id`, so a filter on
+  // `restaurant_menus.<col>` drops the line when its version fails it (or is
+  // missing), as an inner embed does. `readFails[table]` makes every read of
+  // that table fail, or only its Nth read when given `{ message, nth }`
+  // (1-based); writes still land.
+  type ReadFail = string | { message: string; nth: number };
+  function onboardingDb(
+    tables: Record<string, Row[]>,
+    readFails: Record<string, ReadFail> = {},
+  ) {
+    const reads: string[] = [];
+    function from(table: string) {
+      const preds: Array<(r: Row) => boolean> = [];
+      let patch: Row | null = null;
+      let cap = Infinity;
+      const col = (r: Row, c: string) => {
+        if (!c.includes(".")) return r[c];
+        const [embedded, field] = c.split(".");
+        if (table !== "menu_items" || embedded !== "restaurant_menus") {
+          throw new Error(`fake: no embed ${embedded} on ${table}`);
+        }
+        const version = (tables.restaurant_menus || []).find(
+          (m) => m.id === r.menu_id,
+        );
+        return version ? version[field] : undefined;
+      };
+      const hasEmbed = (c: string, r: Row) =>
+        !c.includes(".") ||
+        (tables.restaurant_menus || []).some((m) => m.id === r.menu_id);
+      const rows = () =>
+        (tables[table] || [])
+          .filter((r) => preds.every((p) => p(r)))
+          .slice(0, cap);
+      const read = () => {
+        reads.push(table);
+        const fail = readFails[table];
+        if (!fail) return null;
+        if (typeof fail === "string") return { message: fail };
+        const nth = reads.filter((t) => t === table).length;
+        return nth === fail.nth ? { message: fail.message } : null;
+      };
+      const api: any = {
+        select: () => api,
+        eq: (c: string, v: any) => (
+          preds.push((r) => hasEmbed(c, r) && col(r, c) === v),
+          api
+        ),
+        neq: (c: string, v: any) => (
+          preds.push((r) => hasEmbed(c, r) && col(r, c) !== v),
+          api
+        ),
+        // gt/is are kept so the specs can run against the earlier rule (by
+        // lines_extracted) and show it fails for the reason they name.
+        gt: (c: string, v: number) => (
+          preds.push((r) => col(r, c) != null && col(r, c) > v),
+          api
+        ),
+        is: (c: string, v: null) => (
+          preds.push((r) => (col(r, c) ?? null) === v),
+          api
+        ),
+        // PostgREST `or` ("col.not.is.null" / "col.gt.<value>"), as the
+        // invite read uses it.
+        or: (expr: string) => {
+          const terms = expr.split(",").map((t) => {
+            const [c, ...rest] = t.split(".");
+            const op = rest.join(".");
+            return op === "not.is.null"
+              ? (r: Row) => (r[c] ?? null) !== null
+              : (r: Row) => r[c] != null && String(r[c]) > op.slice(3);
+          });
+          preds.push((r) => terms.some((f) => f(r)));
+          return api;
+        },
+        limit: (n: number) => ((cap = n), api),
+        order: () => api,
+        update: (p: Row) => ((patch = p), api),
+        maybeSingle: async () => {
+          const err = read();
+          if (err) return { data: null, error: err };
+          const found = rows();
+          if (found.length > 1) {
+            return {
+              data: null,
+              error: {
+                code: "PGRST116",
+                message:
+                  "JSON object requested, multiple (or no) rows returned",
+              },
+            };
+          }
+          return { data: found[0] ?? null, error: null };
+        },
+        then(resolve: any) {
+          if (patch) {
+            for (const r of rows()) Object.assign(r, patch);
+            return resolve({ data: null, error: null });
+          }
+          const err = read();
+          resolve(
+            err ? { data: null, error: err } : { data: rows(), error: null },
+          );
+        },
+      };
+      return api;
+    }
+    return { db: { from } as any, reads };
+  }
+
+  function serviceOn(
+    menus: Row[],
+    items: Row[],
+    readFails: Record<string, ReadFail> = {},
+  ) {
+    const tables: Record<string, Row[]> = {
+      user_onboarding_progress: [
+        {
+          id: "uop-1",
+          user_id: "invitee-1",
+          restaurant_id: "rest-1",
+          menu_uploaded: false,
+          completed_at: null,
+        },
+      ],
+      restaurant_menus: menus,
+      menu_items: items,
+      restaurants: [{ id: "rest-1", threshold_configured: true }],
+    };
+    const { db, reads } = onboardingDb(tables, readFails);
+    const service = new MenusService(
+      { supabase: db } as unknown as DatabaseService,
+      undefined as any,
+      undefined as any,
+      undefined as any,
+    );
+    return { service, tables, reads };
+  }
+
+  // `lines_extracted` is what the read counted when the version was made; the
+  // self-heal must not trust it, so most versions here carry a count that
+  // disagrees with the lines they hold.
+  const menu = (
+    id: string,
+    status: string,
+    linesExtracted: number | null,
+    source_method = "scan",
+    restaurant_id = "rest-1",
+  ) => ({
+    id,
+    restaurant_id,
+    status,
+    source_method,
+    lines_extracted: linesExtracted,
+  });
+  const line = (
+    id: string,
+    menu_id: string,
+    status = "approved",
+    restaurant_id = "rest-1",
+  ) => ({ id, menu_id, restaurant_id, status });
+
+  it("a read that found no line, then lines typed in during review, reads as uploaded for a later invitee", async () => {
+    // QA round 4 (#770): addMenuItem adds rows and never moves lines_extracted.
+    const { service, tables } = serviceOn(
+      [menu("m-1", "active", 0)],
+      [line("i-1", "m-1", "flagged"), line("i-2", "m-1", "flagged")],
+    );
+    const progress = await service.getOnboardingProgress("invitee-1", "rest-1");
+    expect(progress.menu_uploaded).toBe(true);
+    expect(progress.activated).toBe(true);
+    // OB-1: the read writes nothing; the fact is read from the house.
+    expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(false);
+  });
+
+  it("a CSV version and a manual version each count by their lines", async () => {
+    const csv = serviceOn(
+      [menu("m-1", "draft", 0, "csv")],
+      [line("i-1", "m-1")],
+    );
+    const fromCsv = await csv.service.getOnboardingProgress("invitee-1", "rest-1");
+    expect(fromCsv.menu_uploaded).toBe(true);
+    const manual = serviceOn(
+      [menu("m-1", "draft", null, "manual")],
+      [line("i-1", "m-1", "flagged")],
+    );
+    const typed = await manual.service.getOnboardingProgress("invitee-1", "rest-1");
+    expect(typed.menu_uploaded).toBe(true);
+  });
+
+  it("a version whose every line was discarded does not count, whatever its read count says", async () => {
+    const { service, tables } = serviceOn(
+      [menu("m-1", "active", 9)],
+      [line("i-1", "m-1", "discarded"), line("i-2", "m-1", "discarded")],
+    );
+    const progress = await service.getOnboardingProgress("invitee-1", "rest-1");
+    expect(progress.menu_uploaded).toBe(false);
+    expect(progress.activated).toBe(false);
+    expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(false);
+  });
+
+  it("a version with no line at all does not count, even active and with no read count", async () => {
+    const { service } = serviceOn([menu("m-1", "active", null)], []);
+    const progress = await service.getOnboardingProgress("invitee-1", "rest-1");
+    expect(progress.menu_uploaded).toBe(false);
+  });
+
+  it("a house holding two active versions with lines reads as uploaded, and nothing is written", async () => {
+    const { service, tables } = serviceOn(
+      [menu("m-1", "active", 12), menu("m-2", "active", 9)],
+      [line("i-1", "m-1"), line("i-2", "m-2")],
+    );
+    const progress = await service.getOnboardingProgress("invitee-1", "rest-1");
+    expect(progress.menu_uploaded).toBe(true);
+    expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(false);
+  });
+
+  it("a draft-only house with lines reads as uploaded for an invitee", async () => {
+    const { service } = serviceOn(
+      [menu("m-1", "draft", 7)],
+      [line("i-1", "m-1")],
+    );
+    const progress = await service.getOnboardingProgress("invitee-1", "rest-1");
+    expect(progress.menu_uploaded).toBe(true);
+  });
+
+  it("lines on an archived version do not count, nor another house's lines", async () => {
+    const { service } = serviceOn(
+      [menu("m-1", "archived", 30), menu("m-2", "draft", 4, "scan", "rest-2")],
+      [line("i-1", "m-1"), line("i-2", "m-2", "approved", "rest-2")],
+    );
+    const progress = await service.getOnboardingProgress("invitee-1", "rest-1");
+    expect(progress.menu_uploaded).toBe(false);
+  });
+
+  it("a failed read of the house's lines is said, not read as 'not uploaded'", async () => {
+    const { service, tables } = serviceOn(
+      [menu("m-1", "active", 12)],
+      [line("i-1", "m-1")],
+      { menu_items: "connection reset" },
+    );
+    await expect(service.getOnboardingProgress("invitee-1", "rest-1")).rejects.toThrow(
+      /connection reset/,
+    );
+    expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(false);
+  });
+
+  it("a stored flag set true says nothing: a house with no line reads as not uploaded (OB-1)", async () => {
+    const { service, tables, reads } = serviceOn([], []);
+    tables.user_onboarding_progress[0].menu_uploaded = true;
+    const progress = await service.getOnboardingProgress("invitee-1", "rest-1");
+    expect(progress.menu_uploaded).toBe(false);
+    expect(progress.activated).toBe(false);
+    expect(reads).toContain("menu_items");
+  });
+});

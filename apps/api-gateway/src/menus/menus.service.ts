@@ -3462,61 +3462,224 @@ export class MenusService {
     }
   }
 
-  async getOnboardingProgress(userId: string) {
-    const { data, error } = await this.dbService.supabase
-      .from("user_onboarding_progress")
-      .select("*")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    if (error) throw error;
-    if (!data)
+  /**
+   * A person's setup, read from the house their session is in (OB-1, the
+   * session's call under the 2026-11-07 /goal). The house facts (a menu
+   * read, a menu made current, a supplier, an invite) come from the house's
+   * own tables every time; the person's row keeps only checklist_dismissed.
+   * A GET writes nothing; an invitee with no row still reads their house.
+   * "Activated" = a CURRENT menu with a live line (ADR 0193: a kept draft
+   * gives no stock and no prices); the threshold no longer gates it. This
+   * read does not make any menu current: that is the person's choice, on the
+   * first proof (#1053) or on /menu, and the web says which one is missing.
+   * `completed_at` = when the last of current menu, supplier and invite held.
+   * It is derived, not remembered: if the house loses its only supplier or
+   * its current menu, the step is undone again and the checklist says so
+   * (putting the checklist away, `checklist_dismissed`, is what is kept).
+   * An invite counts while it can still be used or once it was used; an
+   * expired, unused invite does not (a revoked one is deleted, so it never
+   * counts). A supplier counts whoever added it -- the person, a promoted
+   * prospect, or a seller read off the house's own invoice.
+   * A failed read throws; it is never taken for "not yet".
+   * `next_steps` (readNextSteps) are read alongside and never throw: each
+   * gives null when its own read fails.
+   */
+  async getOnboardingProgress(userId: string, restaurantId: string | null | undefined) {
+    if (!restaurantId) {
       throw new NotFoundException(
-        "Onboarding progress not found for this user",
+        "This session is in no house yet, so there is no house setup to read.",
+      );
+    }
+    const supabase = this.dbService.supabase;
+    const fail = (what: string, message: string) =>
+      new InternalServerErrorException(
+        `Could not read this house's ${what} for its setup: ${message}`,
       );
 
-    // Restaurant-scoped self-heal: user_onboarding_progress is keyed by
-    // user_id, so an invitee who joins after the owner already uploaded a
-    // menu would otherwise see "Upload your wine menu" as still pending.
-    // Auto-satisfy it from the restaurant's actual state instead.
-    let menuUploaded = !!data.menu_uploaded;
-    if (!menuUploaded) {
-      const { data: activeMenu } = await this.dbService.supabase
-        .from("restaurant_menus")
-        .select("id")
-        .eq("restaurant_id", data.restaurant_id)
-        .eq("status", "active")
-        .maybeSingle();
-
-      if (activeMenu) {
-        menuUploaded = true;
-        const { error: healErr } = await this.dbService.supabase
+    const [own, menuRead, menuCurrent, supplier, invite, house, nextSteps] =
+      await Promise.all([
+        supabase
           .from("user_onboarding_progress")
-          .update({ menu_uploaded: true })
-          .eq("id", data.id);
-        if (healErr) {
-          this.logger.warn(
-            `Failed to self-heal menu_uploaded for onboarding row ${data.id}: ${healErr.message}`,
-          );
-        }
-      }
-    }
+          .select("id, checklist_dismissed")
+          .eq("user_id", userId)
+          .maybeSingle(),
+        this.firstLiveMenuLine(restaurantId, "read"),
+        this.firstLiveMenuLine(restaurantId, "current"),
+        supabase
+          .from("providers")
+          .select("created_at")
+          .eq("restaurant_id", restaurantId)
+          .is("deleted_at", null)
+          .order("created_at", { ascending: true })
+          .limit(1),
+        supabase
+          .from("organization_invites")
+          .select("created_at")
+          .eq("restaurant_id", restaurantId)
+          .or(`used_at.not.is.null,expires_at.gt.${new Date().toISOString()}`)
+          .order("created_at", { ascending: true })
+          .limit(1),
+        supabase
+          .from("restaurants")
+          .select("threshold_configured")
+          .eq("id", restaurantId)
+          .maybeSingle(),
+        this.readNextSteps(restaurantId),
+      ]);
+    if (own.error) throw fail("setup row", own.error.message);
+    if (supplier.error) throw fail("suppliers", supplier.error.message);
+    if (invite.error) throw fail("invites", invite.error.message);
+    if (house.error) throw fail("settings", house.error.message);
 
-    const { data: restaurant } = await this.dbService.supabase
-      .from("restaurants")
-      .select("threshold_configured")
-      .eq("id", data.restaurant_id)
-      .maybeSingle();
-    const thresholdConfigured = !!restaurant?.threshold_configured;
+    // A fact holds when its first row exists; `since` is that row's time.
+    const supplierRow = (supplier.data ?? [])[0] ?? null;
+    const inviteRow = (invite.data ?? [])[0] ?? null;
+    const times = [menuCurrent?.since, supplierRow?.created_at, inviteRow?.created_at];
+    const completedAt =
+      menuCurrent && supplierRow && inviteRow && times.every(Boolean)
+        ? (times as string[]).reduce((a, b) =>
+            Date.parse(b) > Date.parse(a) ? b : a,
+          )
+        : null;
 
     return {
-      ...data,
-      menu_uploaded: menuUploaded,
-      threshold_configured: thresholdConfigured,
-      // "Activated" = the two soft-gate essentials — the manager has a
-      // working inventory and a low-stock signal. Vendor/team are optional.
-      activated: menuUploaded && thresholdConfigured,
+      id: own.data?.id ?? null,
+      user_id: userId,
+      restaurant_id: restaurantId,
+      menu_uploaded: menuRead !== null,
+      menu_current: menuCurrent !== null,
+      vendor_added: supplierRow !== null,
+      team_member_invited: inviteRow !== null,
+      checklist_dismissed: !!own.data?.checklist_dismissed,
+      completed_at: completedAt,
+      threshold_configured: !!house.data?.threshold_configured,
+      activated: menuCurrent !== null,
+      next_steps: nextSteps,
     };
+  }
+
+  /**
+   * What leads past the menu to the house's costs (r28 onboarding gap 3, the
+   * session's call under the 2026-11-07 /goal): the first goods on the list,
+   * the house's mailbox, and the first invoice checked. These are the next
+   * steps, not setup: they never decide `completed_at` or `activated`, so a
+   * house that finished setup is not sent back into it.
+   *
+   * Each fact is read on its own. A read that fails gives `null` (not read),
+   * never `false`: the setup above still answers, and the panel says the step
+   * could not be read instead of calling it not done (absence is not health,
+   * and a failed read is not absence).
+   *
+   * - goods_listed: an active good on the house's list (the desk's count).
+   * - mailbox_connected: a live Gmail grant held for this house, to send or
+   *   to read (the only mailbox a house can connect today).
+   * - invoice: "checked" once an invoice is verified (its costs are applied),
+   *   else "waiting" while one is in and not yet checked, else "none".
+   *   A rejected or superseded paper is neither.
+   */
+  private async readNextSteps(restaurantId: string): Promise<{
+    goods_listed: boolean | null;
+    mailbox_connected: boolean | null;
+    invoice: "none" | "waiting" | "checked" | null;
+  }> {
+    const supabase = this.dbService.supabase;
+    // A read that throws or rejects (a dropped connection) is a failed read
+    // like any other: it gives this fact `null` and never fails the setup.
+    const settle = (
+      query: () => PromiseLike<{ data: unknown[] | null; error: unknown }>,
+    ): Promise<{ data: unknown[] | null; error: unknown }> =>
+      new Promise<PromiseLike<{ data: unknown[] | null; error: unknown }>>(
+        (resolve) => resolve(query()),
+      ).then(
+        (read) => read,
+        (error: unknown) => ({ data: null, error: error ?? "rejected" }),
+      );
+    const [goods, mailbox, checked, waiting] = await Promise.all([
+      settle(() =>
+        supabase
+          .from("restaurant_inventory")
+          .select("id")
+          .eq("restaurant_id", restaurantId)
+          .is("deleted_at", null)
+          .eq("is_active", true)
+          .limit(1),
+      ),
+      settle(() =>
+        supabase
+          .from("integration_oauth_connections")
+          .select("id")
+          .eq("restaurant_id", restaurantId)
+          .in("integration_id", ["gmail_send", "gmail_read"])
+          .is("revoked_at", null)
+          .limit(1),
+      ),
+      settle(() =>
+        supabase
+          .from("procurement_documents")
+          .select("id")
+          .eq("restaurant_id", restaurantId)
+          .eq("doc_type", "invoice")
+          .eq("status", "verified")
+          .limit(1),
+      ),
+      settle(() =>
+        supabase
+          .from("procurement_documents")
+          .select("id")
+          .eq("restaurant_id", restaurantId)
+          .eq("doc_type", "invoice")
+          .in("status", ["received", "extracting", "needs_review"])
+          .limit(1),
+      ),
+    ]);
+    const held = (read: { data: unknown[] | null; error: unknown }) =>
+      read.error ? null : (read.data ?? []).length > 0;
+    const isChecked = held(checked);
+    const isWaiting = held(waiting);
+    let invoice: "none" | "waiting" | "checked" | null;
+    if (isChecked === true) invoice = "checked";
+    else if (isChecked === null) invoice = null;
+    else if (isWaiting === null) invoice = null;
+    else invoice = isWaiting ? "waiting" : "none";
+    return {
+      goods_listed: held(goods),
+      mailbox_connected: held(mailbox),
+      invoice,
+    };
+  }
+
+  /**
+   * The house's first live menu line (a `menu_items` row
+   * that is not discarded), on a version that is not archived ("read") or on
+   * the current version ("current"), with when it was written; null when
+   * there is none. Lines are
+   * counted where they live, whatever put them there -- a read, a CSV, lines
+   * typed in review -- never from `lines_extracted` (#770). A failed read
+   * throws.
+   */
+  private async firstLiveMenuLine(
+    restaurantId: string,
+    which: "read" | "current",
+  ): Promise<{ since: string | null } | null> {
+    let query = this.dbService.supabase
+      .from("menu_items")
+      .select("created_at, restaurant_menus!inner(status)")
+      .eq("restaurant_id", restaurantId)
+      .neq("status", "discarded");
+    query =
+      which === "current"
+        ? query.eq("restaurant_menus.status", "active")
+        : query.neq("restaurant_menus.status", "archived");
+    const { data, error } = await query
+      .order("created_at", { ascending: true })
+      .limit(1);
+    if (error) {
+      throw new InternalServerErrorException(
+        `Could not read this house's menus for its setup: ${error.message}`,
+      );
+    }
+    const first = (data ?? [])[0];
+    return first ? { since: first.created_at ?? null } : null;
   }
 
   async setDefaultThreshold(
@@ -3538,39 +3701,58 @@ export class MenusService {
     return { default_threshold_min: thresholdMin, threshold_configured: true };
   }
 
+  /**
+   * Only the person's own flag is written: putting the checklist away. The
+   * house facts (menu, supplier, invite) are read from the house in
+   * `getOnboardingProgress` and a client cannot set them; a body that names
+   * them changes nothing (older clients still send `vendor_added`). A person
+   * with no row gets one, in the session's house. Answers the progress read.
+   */
   async updateOnboardingProgress(
     userId: string,
+    restaurantId: string | null | undefined,
     dto: UpdateOnboardingProgressDto,
   ) {
-    const updates: Record<string, boolean | string> = {};
-    if (dto.menu_uploaded !== undefined)
-      updates.menu_uploaded = dto.menu_uploaded;
-    if (dto.vendor_added !== undefined) updates.vendor_added = dto.vendor_added;
-    if (dto.team_member_invited !== undefined)
-      updates.team_member_invited = dto.team_member_invited;
-    if (dto.checklist_dismissed !== undefined)
-      updates.checklist_dismissed = dto.checklist_dismissed;
-
-    // Auto-set completed_at when all three tasks become true
-    const current = await this.getOnboardingProgress(userId);
-    const merged = { ...current, ...updates };
-    if (
-      merged.menu_uploaded &&
-      merged.vendor_added &&
-      merged.team_member_invited &&
-      !current.completed_at
-    ) {
-      updates.completed_at = new Date().toISOString();
+    if (dto.checklist_dismissed !== undefined) {
+      if (!restaurantId) {
+        throw new NotFoundException(
+          "This session is in no house yet, so there is no checklist to put away.",
+        );
+      }
+      // Update the person's row (user_id is UNIQUE); with none, insert one.
+      // Two first-time PATCHes at once both find no row: the loser's insert
+      // hits the unique index (23505) and updates the winner's row instead
+      // of answering 500. Not an upsert: that would rewrite the row's
+      // restaurant_id, which the menu self-heal still keys on.
+      const dismissed = { checklist_dismissed: dto.checklist_dismissed };
+      const updateOwn = () =>
+        this.dbService.supabase
+          .from("user_onboarding_progress")
+          .update(dismissed)
+          .eq("user_id", userId)
+          .select("id");
+      const notPutAway = (message: string) =>
+        new InternalServerErrorException(
+          `The checklist was not put away: ${message}`,
+        );
+      const updated = await updateOwn();
+      if (updated.error) throw notPutAway(updated.error.message);
+      if ((updated.data ?? []).length === 0) {
+        const inserted = await this.dbService.supabase
+          .from("user_onboarding_progress")
+          .insert({
+            user_id: userId,
+            restaurant_id: restaurantId,
+            ...dismissed,
+          });
+        if (inserted.error?.code === "23505") {
+          const again = await updateOwn();
+          if (again.error) throw notPutAway(again.error.message);
+        } else if (inserted.error) {
+          throw notPutAway(inserted.error.message);
+        }
+      }
     }
-
-    const { data, error } = await this.dbService.supabase
-      .from("user_onboarding_progress")
-      .update(updates)
-      .eq("user_id", userId)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data;
+    return this.getOnboardingProgress(userId, restaurantId);
   }
 }

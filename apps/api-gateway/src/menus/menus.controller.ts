@@ -292,31 +292,69 @@ export class OnboardingController {
   constructor(
     private readonly menusService: MenusService,
     private readonly inboundAddress: InboundAddressService,
+    private readonly organizations: OrganizationsService,
   ) {}
 
   @Get("progress")
-  @ApiOperation({ summary: "Get the authenticated user's onboarding progress" })
-  async getProgress(@CurrentUser() user: { userId: string }) {
-    return this.menusService.getOnboardingProgress(user.userId);
+  @ApiOperation({
+    summary: "The setup of the house this session is in",
+    description:
+      "Read from the house's own tables every time: a menu read, a menu made current, a supplier, an invite. A GET writes nothing. activated = the house has a current menu with a live line. next_steps (goods_listed, mailbox_connected, invoice: none/waiting/checked) lead past the menu to the house's costs; they never decide completed_at or activated, and a fact whose read failed is null, not false. 404 when the session is in no house.",
+  })
+  async getProgress(
+    @CurrentUser() user: { userId: string; restaurantId?: string },
+  ) {
+    return this.menusService.getOnboardingProgress(
+      user.userId,
+      user.restaurantId,
+    );
   }
 
   @Patch("progress")
-  @ApiOperation({ summary: "Update onboarding progress fields" })
+  @ApiOperation({
+    summary: "Put the setup checklist away (the person's own flag)",
+    description:
+      "Only checklist_dismissed is written. menu_uploaded, vendor_added and team_member_invited are read from the house and a body that names them changes nothing. Answers the progress read.",
+  })
   async updateProgress(
     @Body() dto: UpdateOnboardingProgressDto,
-    @CurrentUser() user: { userId: string },
+    @CurrentUser() user: { userId: string; restaurantId?: string },
   ) {
-    return this.menusService.updateOnboardingProgress(user.userId, dto);
+    return this.menusService.updateOnboardingProgress(
+      user.userId,
+      user.restaurantId,
+      dto,
+    );
   }
 
   @Patch("threshold")
   @ApiOperation({
     summary:
-      "Set the restaurant's default low-stock threshold (get-started step 3)",
+      "Set the house's default low-stock threshold (an owner or a manager, in the session's house)",
   })
-  async setThreshold(@Body() dto: SetThresholdDto) {
+  async setThreshold(
+    @Body() dto: SetThresholdDto,
+    @CurrentUser() user: { userId: string; restaurantId?: string },
+  ) {
+    // The house is the session's. A body that names another house is refused,
+    // never followed (it used to be taken from the body alone).
+    if (!user.restaurantId) {
+      throw new ForbiddenException(
+        "This session is in no house, so no threshold was set.",
+      );
+    }
+    if (dto.restaurantId && dto.restaurantId !== user.restaurantId) {
+      throw new ForbiddenException(
+        "That is not the house this session is in. No threshold was set.",
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(
+      user.userId,
+      user.restaurantId,
+      "set the low-stock threshold",
+    );
     return this.menusService.setDefaultThreshold(
-      dto.restaurantId,
+      user.restaurantId,
       dto.thresholdMin,
     );
   }
