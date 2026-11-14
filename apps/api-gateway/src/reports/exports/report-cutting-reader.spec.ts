@@ -125,11 +125,14 @@ const PAGE: Record<
   week: { path: "`/analytics/seasonality/${rid}`", call: (c) => c.getSeasonality(RID) },
   ahead: { path: "`/analytics/forecast/${rid}?horizon=14`", call: (c) => c.getForecast(RID, undefined, "14") },
   quadrants: { path: "`/analytics/menu-engineering/${rid}`", call: (c) => c.getMenuEngineering(RID) },
-  ledger: { path: "`/analytics/financial/${rid}`", call: (c) => c.getFinancial(RID, undefined, HOLDER) },
+  ledger: { path: "`/analytics/financial/${rid}?days=${ctx.days}`", call: (c, d) => c.getFinancial(RID, undefined, HOLDER, String(d)) },
   seats: { path: "`/analytics/table-performance/${rid}?sinceDays=90`", call: (c) => c.getTablePerformance(RID, "90") },
   service: { path: "`/analytics/waiters/${rid}?sinceDays=90`", call: (c) => c.getWaiters(RID, "90") },
   restock: { path: "`/analytics/inventory-science/${rid}`", call: (c) => c.getInventoryScience(RID, undefined, undefined) },
 };
+
+/** The cuttings whose path carries the till window (r36 invoices R2 added the ledger). */
+const WINDOWED: readonly string[] = ["till", "ledger"];
 
 describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () => {
   it("covers every exportable cutting, with the path the page's catalogue actually requests", () => {
@@ -143,7 +146,7 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
       )
       .join("\n");
     for (const [id, p] of Object.entries(PAGE))
-      expect([id, web.includes(`path: (rid${id === "till" ? ", ctx" : ""}) => ${p.path}`)]).toEqual([id, true]);
+      expect([id, web.includes(`path: (rid${WINDOWED.includes(id) ? ", ctx" : ""}) => ${p.path}`)]).toEqual([id, true]);
   });
 
   for (const id of EXPORTABLE_CUTTINGS) {
@@ -151,7 +154,7 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
       const days = 7;
       const { controller, reader } = build();
       const fromPage = (await PAGE[id].call(controller, days)) as Record<string, unknown>;
-      const fromExport = await reader.read(RID, id, id === "till" ? days : null);
+      const fromExport = await reader.read(RID, id, WINDOWED.includes(id) ? days : null);
       if (id === "till") {
         // The endpoint also attaches a per-wine consumption breakdown that the
         // till cutting never reads; everything else must match.

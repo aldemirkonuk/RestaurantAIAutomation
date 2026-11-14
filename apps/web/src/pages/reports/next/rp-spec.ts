@@ -16,7 +16,7 @@ import type { GoalsDesk } from './useGoalsDesk';
 export type HouseRole = NonNullable<AuthContextType['activeRole']>;
 
 export interface ViewCtx {
-  /** The till window the reader picked. Only `till` takes one. */
+  /** The till window the reader picked. The till and the figures of record take it. */
   days: number;
   /**
    * The house's ISO 4217 code from `GET /settings/currency`; null or absent
@@ -53,7 +53,7 @@ export interface AnalysisSpec {
   graphs: GraphType[];
   /** One line on what is NOT offered here, and why. */
   graphNote: string;
-  /** True for the one register whose endpoint takes a `days` parameter. */
+  /** True for a register whose endpoint takes a `days` parameter: the till and the figures of record. */
   takesWindow?: boolean;
   /**
    * The house roles the endpoint admits, when it names any (its `@Roles`).

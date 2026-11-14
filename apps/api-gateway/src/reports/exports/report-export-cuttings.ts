@@ -594,6 +594,8 @@ function writeQuadrants(payload: unknown): ExportDoc {
 
 function writeLedger(payload: unknown): ExportDoc {
   const d = obj(payload);
+  // The days the gateway computed over; a payload with none is the old fixed year.
+  const w = `${num(d.tillWindowDays) ?? 365}d`;
   const b = obj(d.basis);
   const cc = d.costCoverage == null ? null : obj(d.costCoverage);
   const cg = d.cogsCoverage == null ? null : obj(d.cogsCoverage);
@@ -617,8 +619,8 @@ function writeLedger(payload: unknown): ExportDoc {
     figures: [
       // Cost-math lane 3.1: what sold and what it cost come from the till;
       // what was bought keeps its own name and feeds no ratio.
-      f("Sold, net (365d)", figure(d.revenue, withheld ?? "No closed check, or a till line could not be read"), "money"),
-      f("What it cost (365d)", figure(d.cogs, withheld ?? costGap ?? "The till moved no stocked item, or its movements could not be read"), "money"),
+      f(`Sold, net (${w})`, figure(d.revenue, withheld ?? "No closed check, or a till line could not be read"), "money"),
+      f(`What it cost (${w})`, figure(d.cogs, withheld ?? costGap ?? "The till moved no stocked item, or its movements could not be read"), "money"),
       f("Kept", figure(d.grossMarginDollars, both), "money"),
       f("Kept, of sales", figure(d.grossMargin, both), "ratio"),
       f("Cost of sales", figure(d.cogsRatio, both), "ratio"),
@@ -626,7 +628,7 @@ function writeLedger(payload: unknown): ExportDoc {
       f("Inventory turns", figure(d.inventoryTurnover, span), "count"),
       f("Days of inventory", figure(d.daysInventoryOutstanding, span), "days"),
       f("GMROI", figure(d.gmroi, span), "count"),
-      f("Bought (365d)", figure(d.deliveredPurchases, "No delivered order came back, or one carries no recorded cost"), "money"),
+      f(`Bought (${w})`, figure(d.deliveredPurchases, "No delivered order came back, or one carries no recorded cost"), "money"),
       f("Capital sitting still", figure(d.deadStockCapital, "No movement signal recorded, or an idle row has no cost"), "money"),
     ],
     notes: [
@@ -1121,7 +1123,7 @@ export const EXPORT_CUTTINGS: Readonly<Record<ExportableCutting, CuttingSpec>> =
     week: { title: "The week’s shape", window: () => "the last 90 days of the consumption log", takesWindow: false, write: writeWeek },
     ahead: { title: "What’s coming", window: () => "120 days of history, 14 days ahead", takesWindow: false, write: writeAhead },
     quadrants: { title: "Margin against movement", window: () => "the list as it stands, against 90 days of movement", takesWindow: false, write: writeQuadrants },
-    ledger: { title: "Figures of record", window: () => "365 days of the till; the cellar as it stands today", takesWindow: false, write: writeLedger },
+    ledger: { title: "Figures of record", window: (days) => `the last ${days ?? 30} days of the till; the cellar as it stands today`, takesWindow: true, write: writeLedger },
     seats: { title: "The room", window: () => "the last 90 days of POS checks", takesWindow: false, write: writeSeats },
     service: { title: "Who served it", window: () => "the last 90 days of POS checks", takesWindow: false, write: writeService },
     restock: { title: "What to buy back", window: () => "demand over the last 90 days, at the service level in the params", takesWindow: false, write: writeRestock },

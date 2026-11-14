@@ -162,9 +162,9 @@ describe("the catalogue itself", () => {
     }
   });
 
-  it("offers a window on exactly one analysis — the only endpoint that takes one", () => {
+  it("offers a window on the two analyses whose endpoints take one: the till and the figures of record", () => {
     const windowed = CUTTING_IDS.filter((id) => CUTTING_CATALOGUE[id].takesWindow);
-    expect(windowed).toEqual(["till"]);
+    expect(windowed).toEqual(["till", "ledger"]);
     expect(CUTTING_WINDOWS).toEqual([7, 30, 90]);
   });
 

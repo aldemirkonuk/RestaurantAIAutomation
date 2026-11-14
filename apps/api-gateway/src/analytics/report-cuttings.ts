@@ -54,7 +54,7 @@ export interface CuttingEntry {
   readonly answers: string;
   /** Drawings that are TRUE of this register's data, best first. */
   readonly graphs: readonly CuttingGraph[];
-  /** The one register whose endpoint takes a day window. */
+  /** A register whose endpoint takes a day window: the till, and the figures of record. */
   readonly takesWindow?: boolean;
 }
 
@@ -102,6 +102,8 @@ export const CUTTING_CATALOGUE: Readonly<Record<string, CuttingEntry>> =
     ledger: {
       answers: "What the cellar is worth, and how hard that capital is working",
       graphs: ["table", "figure"],
+      // What sold and what it cost follow the till window (r36 invoices R2).
+      takesWindow: true,
     },
     seats: {
       answers: "Which tables earn, and which seats sit idle",
@@ -127,14 +129,14 @@ export const CUTTING_IDS: readonly string[] = Object.freeze(
   Object.keys(CUTTING_CATALOGUE),
 );
 
-/** The only windows the till cutting accepts, mirroring `TillWindowPicker`. */
+/** The only windows the till and figures-of-record cuttings accept, mirroring `TillWindowPicker`. */
 export const CUTTING_WINDOWS: readonly number[] = Object.freeze([7, 30, 90]);
 
 /** A spec that survived validation — three enum values and a reason. */
 export interface CuttingSpec {
   analysisId: string;
   graph: CuttingGraph;
-  /** Present only for the one analysis whose endpoint takes a window. */
+  /** Present only for an analysis whose endpoint takes a window. */
   days: number | null;
   /**
    * The model's one sentence about WHY. It is shown to the reader as a

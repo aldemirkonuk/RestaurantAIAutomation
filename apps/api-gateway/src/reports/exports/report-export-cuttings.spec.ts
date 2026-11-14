@@ -64,9 +64,10 @@ describe("the exportable cuttings (OD-81)", () => {
         CUTTING_CATALOGUE[id].takesWindow === true,
       ]);
     }
-    // The page says the same: exactly one register takes a window.
-    expect(webSource.match(/takesWindow: true/g)).toHaveLength(1);
-    expect(EXPORTABLE_CUTTINGS.filter((id) => EXPORT_CUTTINGS[id].takesWindow)).toEqual(["till"]);
+    // The page says the same: the till and the figures of record take a
+    // window (r36 invoices R2), and no other register does.
+    expect(webSource.match(/takesWindow: true/g)).toHaveLength(2);
+    expect(EXPORTABLE_CUTTINGS.filter((id) => EXPORT_CUTTINGS[id].takesWindow)).toEqual(["till", "ledger"]);
   });
 
   it("carry the page's own title and window line, verbatim", () => {
@@ -79,6 +80,20 @@ describe("the exportable cuttings (OD-81)", () => {
     // The till's window is the one the reader picked.
     expect(webSource).toContain("window: (ctx) => `the last ${ctx.days} days of POS checks`");
     expect(EXPORT_CUTTINGS.till.window(7)).toBe("the last 7 days of POS checks");
+    // The figures of record follow the same window (r36 invoices R2).
+    expect(webSource).toContain("window: (ctx) => `the last ${ctx.days} days of the till; the cellar as it stands today`");
+    expect(EXPORT_CUTTINGS.ledger.window(7)).toBe("the last 7 days of the till; the cellar as it stands today");
+    expect(EXPORT_CUTTINGS.ledger.window(null)).toBe("the last 30 days of the till; the cellar as it stands today");
+  });
+
+  it("figures of record: what sold, what it cost and what was bought are labelled by the days the gateway computed", () => {
+    const labels = (payload: unknown) =>
+      EXPORT_CUTTINGS.ledger.write(payload, { days: 30 }).figures.map((x) => x.label);
+    const thirty = labels({ ...(PAYLOADS.ledger as object), tillWindowDays: 30 });
+    expect(thirty).toEqual(expect.arrayContaining(["Sold, net (30d)", "What it cost (30d)", "Bought (30d)"]));
+    expect(thirty.filter((l) => l.includes("365d"))).toEqual([]);
+    // A payload from a gateway that computed the fixed year names the year.
+    expect(labels(PAYLOADS.ledger)).toEqual(expect.arrayContaining(["Sold, net (365d)", "What it cost (365d)", "Bought (365d)"]));
   });
 
   it("write every fixture payload without throwing", () => {

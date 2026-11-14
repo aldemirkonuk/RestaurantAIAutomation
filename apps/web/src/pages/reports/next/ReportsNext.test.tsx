@@ -502,7 +502,7 @@ describe('ReportsNext — the sheet', () => {
     ).toBeInTheDocument();
     expect(
       within(screen.getByRole('region', { name: 'Figures of record' })).getByText(
-        '365 days of the till; the cellar as it stands today',
+        'the last 30 days of the till; the cellar as it stands today',
       ),
     ).toBeInTheDocument();
     expect(
@@ -535,15 +535,30 @@ describe('ReportsNext — the sheet', () => {
     expect(screen.getByText('Ruled off.')).toBeInTheDocument();
   });
 
-  it('carries exactly one period control, and it lives inside the cutting it governs', () => {
+  it('carries the period control only inside the cuttings it governs', () => {
     paint();
     const till = screen.getByRole('region', { name: 'Through the till' });
-    // Exactly one window picker exists, and it is inside the ONE cutting whose
-    // endpoint takes a `days` parameter. A page-level 7/30/90 selector would be
-    // lying about the ten registers whose window the server fixes.
-    expect(screen.getAllByRole('group', { name: 'Till window' })).toHaveLength(1);
+    const ledger = screen.getByRole('region', { name: 'Figures of record' });
+    // A window picker sits inside each cutting whose endpoint takes a `days`
+    // parameter: the till, and the figures of record, which speak about the
+    // same days of the till (r36 invoices R2). A page-level 7/30/90 selector
+    // would be lying about the registers whose window the server fixes.
+    expect(screen.getAllByRole('group', { name: 'Till window' })).toHaveLength(2);
     expect(within(till).getByRole('group', { name: 'Till window' })).toBeInTheDocument();
+    expect(within(ledger).getByRole('group', { name: 'Till window' })).toBeInTheDocument();
     expect(within(screen.getByRole('banner')).queryByRole('group')).toBeNull();
+  });
+
+  it('labels what sold, what it cost and what was bought by the days the gateway computed', () => {
+    const b = base();
+    const ledgerData = (b.registers.ledger as { data: Record<string, unknown> }).data;
+    hook.current = withRegister('ledger', ok({ ...ledgerData, tillWindowDays: 30 }));
+    paint();
+    const ledger = screen.getByRole('region', { name: 'Figures of record' });
+    expect(within(ledger).getByText('Sold, net (last 30 days)')).toBeInTheDocument();
+    expect(within(ledger).getByText('What it cost (last 30 days)')).toBeInTheDocument();
+    expect(within(ledger).getByText('Bought (last 30 days)')).toBeInTheDocument();
+    expect(within(ledger).queryByText(/last 365 days/)).toBeNull();
   });
 
   it('asks nothing while you are reading: no drawing or subject control until Arrange', () => {

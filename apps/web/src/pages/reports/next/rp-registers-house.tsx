@@ -264,6 +264,8 @@ export interface LedgerRegister {
   gmroi: number | null;
   deliveredPurchases: number | null;
   deadStockCapital: number | null;
+  /** The days of the till what sold, what it cost and what was bought speak about. */
+  tillWindowDays: number;
 }
 
 export interface HeldBack {
@@ -319,8 +321,12 @@ const ledger = analysis<LedgerRegister>({
   title: 'Figures of record',
   register: 'financial register',
   answers: 'What sold, what it cost, what was kept, and how hard the cellar works',
-  window: () => '365 days of the till; the cellar as it stands today',
-  path: (rid) => `/analytics/financial/${rid}`,
+  // What sold, what it cost and what was bought follow the till window the
+  // reader picked (r36 invoices R2): a fixed year withheld what it cost for a
+  // year over one bottle sold with no cost, and no month could be read.
+  window: (ctx) => `the last ${ctx.days} days of the till; the cellar as it stands today`,
+  path: (rid, ctx) => `/analytics/financial/${rid}?days=${ctx.days}`,
+  takesWindow: true,
   graphs: ['table', 'figure'],
   graphNote:
     'No bars, line or area: these figures are in four different units — money, a ratio, a count of turns, a count of days — and one axis across them would compare money with days.',
@@ -371,6 +377,9 @@ const ledger = analysis<LedgerRegister>({
       gmroi: num(d.gmroi),
       deliveredPurchases: num(d.deliveredPurchases),
       deadStockCapital: num(d.deadStockCapital),
+      // The days the gateway computed over. A gateway that predates the
+      // window sends none and computed the fixed year.
+      tillWindowDays: num(d.tillWindowDays) ?? 365,
     };
   },
   view: (f, ctx) => {
@@ -382,14 +391,17 @@ const ledger = analysis<LedgerRegister>({
       cg && cg.itemsMoved > 0 && cg.itemsCosted < cg.itemsMoved
         ? `Cost known for ${figure(cg.itemsCosted)} of ${figure(cg.itemsMoved)} items sold`
         : undefined;
+    // A payload with no window is the fixed year an older gateway computed.
+    const tillDays = typeof f.tillWindowDays === 'number' ? f.tillWindowDays : 365;
+    const over = `last ${tillDays === 1 ? 'day' : `${tillDays} days`}`;
     const figures = [
       {
-        label: 'Sold, net (last 365 days)',
+        label: `Sold, net (${over})`,
         value: money(f.revenue),
         note: f.salesWithheld ? withheld : 'No closed check, or a till line could not be read',
       },
       {
-        label: 'What it cost (last 365 days)',
+        label: `What it cost (${over})`,
         value: money(f.cogs),
         note: f.salesWithheld ? withheld : (costGap ?? 'The till moved no stocked item, or its movements could not be read'),
       },
@@ -411,7 +423,7 @@ const ledger = analysis<LedgerRegister>({
       // held at cost.
       { label: 'Return on stock', value: figureTo(f.gmroi, 2), note: 'What was kept for each 1 held in stock at cost. Needs the till’s goods at cost, what was kept, and 28 days of the till' },
       {
-        label: 'Bought (last 365 days)',
+        label: `Bought (${over})`,
         value: money(f.deliveredPurchases),
         note: 'No delivered order came back, or one carries no recorded cost',
       },

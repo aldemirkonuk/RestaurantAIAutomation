@@ -102,7 +102,7 @@ describe("ReportExportsService — a report export is written, or says why not (
     expect(started.export).toMatchObject({
       cutting: "ledger",
       title: "Figures of record",
-      windowLabel: "365 days of the till; the cellar as it stands today",
+      windowLabel: "the last 30 days of the till; the cellar as it stands today",
       status: "queued",
       failureReason: null,
       attempts: 1,
@@ -123,7 +123,8 @@ describe("ReportExportsService — a report export is written, or says why not (
     expect(row.html_bytes).toBe(Buffer.byteLength(row.html as string, "utf8"));
     expect(row.withheld_count).toBe(10);
     expect(row.finished_at).not.toBeNull();
-    expect(analytics.getFinancialSummary).toHaveBeenCalledWith(HOUSE_A, 0, { withSales: true });
+    // A ledger asked with no window reads the till window the page opens on (r36 invoices R2).
+    expect(analytics.getFinancialSummary).toHaveBeenCalledWith(HOUSE_A, 0, { withSales: true, tillDays: 30 });
   });
 
   it("writes the engine's nulls as withheld in both files, and the house's own currency", async () => {
@@ -396,7 +397,8 @@ describe("ReportExportsService — a report export is written, or says why not (
     const { mem, service } = build();
     expect(await statusOf(service.requestExport(HOUSE_A, MANAGER_A, { cutting: "writing" }))).toBe(400);
     expect(await statusOf(service.requestExport(HOUSE_A, MANAGER_A, { cutting: "revenue_by_moon" }))).toBe(400);
-    expect(await statusOf(service.requestExport(HOUSE_A, MANAGER_A, { cutting: "ledger", days: 7 }))).toBe(400);
+    expect(await statusOf(service.requestExport(HOUSE_A, MANAGER_A, { cutting: "pacing", days: 7 }))).toBe(400);
+    expect(await statusOf(service.requestExport(HOUSE_A, MANAGER_A, { cutting: "ledger", days: 366 }))).toBe(400);
     expect(await statusOf(service.requestExport(HOUSE_A, MANAGER_A, { cutting: "till", days: 366 }))).toBe(400);
     expect(await statusOf(service.requestExport(HOUSE_A, MANAGER_A, { cutting: "till", days: 7.5 }))).toBe(400);
     expect(exportsOf(mem)).toHaveLength(0);
