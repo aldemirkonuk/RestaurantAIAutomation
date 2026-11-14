@@ -230,10 +230,17 @@ export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: Co
     send.kind === 'asked' ||
     discarded !== null ||
     (!!draftId && send.kind === 'cancelled');
-  const changed =
-    (to !== null && to.email.toLowerCase() !== (base.to ?? '').toLowerCase()) ||
-    subject.trim() !== base.subject.trim() ||
-    body.trim() !== base.body.trim();
+  // A reply opened from Mail starts from its own "Re:" subject and its
+  // vendor, so closing it unwritten writes nothing and holds nothing (r31 walk:
+  // the held "Re:" stub then came back as "Write a letter"). Its vendor is
+  // compared by id: the address is only chosen once the book is read.
+  const changed = replyVendor
+    ? (to !== null && to.providerId !== replyVendor) ||
+      subject.trim() !== (prefill?.subject ?? '').trim() ||
+      body.trim() !== ''
+    : (to !== null && to.email.toLowerCase() !== (base.to ?? '').toLowerCase()) ||
+      subject.trim() !== base.subject.trim() ||
+      body.trim() !== base.body.trim();
   const dirty = !gone && changed;
   const leave = () => {
     if (dirty) onHold?.({ to, subject, body, insights: chosen, templateId, answers });
