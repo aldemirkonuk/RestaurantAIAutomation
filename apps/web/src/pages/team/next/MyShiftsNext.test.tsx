@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
@@ -20,12 +20,13 @@ import type { ReactNode } from 'react';
 // spy's own bookkeeping of a rejected result is reported as unhandled.
 const api = vi.hoisted(() => ({
   myWeek: (() => Promise.resolve({})) as (weekStart: string) => Promise<unknown>,
+  assign: (() => Promise.resolve({})) as () => Promise<unknown>,
 }));
 
 vi.mock('../../../services/api/team', () => ({
   getMyWeek: (weekStart: string) => api.myWeek(weekStart),
   acknowledgeSchedule: vi.fn(() => Promise.resolve({ acknowledged: true })),
-  assignCover: vi.fn(() => Promise.resolve({})),
+  assignCover: () => api.assign(),
   createTimeOff: vi.fn(() => Promise.resolve({})),
   getTeamNotes: () => Promise.resolve({ notes: [], readable: true, reason: null }),
   openTeamNote: vi.fn(() => Promise.resolve({})),
@@ -121,5 +122,81 @@ describe('MyShiftsNext', () => {
     wrap(<MyShiftsNext />);
     expect(await screen.findAllByText('Off')).toHaveLength(7);
     expect(screen.queryByText('Not published yet')).toBeNull();
+  });
+
+  // r29 walk: the gateway sends a cover shift's note to staff ("Cover for Sam
+  // Rivera, who called out"; the call-out reason stays on the original), but
+  // the list of open shifts never printed it.
+  it('an open shift a staff member can pick up shows its own note', async () => {
+    api.myWeek = async () => ({
+      member,
+      schedule: { id: 's1', week_start: WEEK, status: 'published' },
+      mine: [],
+      open: [
+        {
+          id: 'sh-cover',
+          shift_date: WEEK,
+          start_time: '17:00',
+          end_time: '23:00',
+          role: 'Floor',
+          shift_type: 'open',
+          state: 'open',
+          note: 'Cover for Sam Rivera, who called out',
+          draft: false,
+        },
+        {
+          id: 'sh-plain',
+          shift_date: WEEK,
+          start_time: '12:00',
+          end_time: '16:00',
+          role: 'Patio',
+          shift_type: 'open',
+          state: 'open',
+          note: null,
+          draft: false,
+        },
+      ],
+      acknowledged: true,
+      published: true,
+      draftsWithheld: false,
+    });
+    wrap(<MyShiftsNext />);
+    expect(await screen.findByText('Cover for Sam Rivera, who called out')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Take it' })).toHaveLength(2);
+  });
+
+  // r29 walk: a refused claim printed only "The shift was not claimed" while
+  // the gateway's 403 said why and what to do.
+  describe('a refused claim says why', () => {
+    const week = async () => ({
+      member,
+      schedule: { id: 's1', week_start: WEEK, status: 'published' },
+      mine: [],
+      open: [
+        { id: 'sh-bar', shift_date: WEEK, start_time: '12:00', end_time: '16:00', role: 'Bartender', shift_type: 'open', state: 'open', note: null, draft: false },
+      ],
+      acknowledged: true,
+      published: true,
+      draftsWithheld: false,
+    });
+    const SAID =
+      'This shift is for Bartender, and your position and skills on the team do not list it. A manager can still give it to you. Nothing was changed.';
+
+    it("prints the gateway's sentence", async () => {
+      api.myWeek = week;
+      api.assign = () => Promise.reject(Object.assign(new Error('Request failed with status code 403'), { response: { status: 403, data: { message: SAID } } }));
+      wrap(<MyShiftsNext />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Take it' }));
+      expect(await screen.findByText(SAID)).toBeTruthy();
+      expect(screen.queryByText(/still open for someone else/)).toBeNull();
+    });
+
+    it('with no sentence (offline) it keeps the fixed line', async () => {
+      api.myWeek = week;
+      api.assign = () => Promise.reject(new Error('Network Error'));
+      wrap(<MyShiftsNext />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Take it' }));
+      expect(await screen.findByText(/The shift was not claimed — it is still open for someone else\./)).toBeTruthy();
+    });
   });
 });
