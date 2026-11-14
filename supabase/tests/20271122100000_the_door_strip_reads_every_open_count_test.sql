@@ -60,6 +60,9 @@ select pg_temp.order_row('a', 'sign', 'IN_TRANSIT');          -- open, only sign
 select pg_temp.ev('a', 'sign', 'signed_at_door', null, 80);
 select pg_temp.order_row('a', 'nullq', 'PARTIALLY_RECEIVED'); -- open, a count with no bottles
 select pg_temp.ev('a', 'nullq', 'case_count', null, 70);
+select pg_temp.order_row('a', 'lsign', 'PARTIALLY_RECEIVED'); -- open, signed for AFTER its count: the count's hour stands
+select pg_temp.ev('a', 'lsign', 'case_count', 10, 60);
+select pg_temp.ev('a', 'lsign', 'signed_at_door', null, 55);
 select pg_temp.order_row('a', 'btl', 'PARTIALLY_RECEIVED');   -- closed by a bottle count
 select pg_temp.ev('a', 'btl', 'case_count', 24, 60);
 select pg_temp.ev('a', 'btl', 'bottle_count', 22, 59);
@@ -114,7 +117,7 @@ begin
                     ',' order by v.order_number)
     into got
     from public.procurement_door_counts_open v where v.restaurant_id = pg_temp.house('a');
-  want := 'SYN-A-nullq|null|70|t,SYN-A-old|24.000|216|t,SYN-A-sign|null|80|t,SYN-A-twice|18.000|90|t';
+  want := 'SYN-A-lsign|10.000|60|t,SYN-A-nullq|null|70|t,SYN-A-old|24.000|216|t,SYN-A-sign|null|80|t,SYN-A-twice|18.000|90|t';
   assert got = want, format('V1 FAIL: got %s, want %s', got, want);
 end $$;
 

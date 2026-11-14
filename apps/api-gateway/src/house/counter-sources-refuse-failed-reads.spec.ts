@@ -75,17 +75,22 @@ describe("unverified deliveries: a failed read is not 'none open'", () => {
   // an empty queue, and a real empty queue is still [].
   function svc(result: { data: unknown; error: { message: string } | null }) {
     const tables: string[] = [];
+    const filters: Array<[string, unknown]> = [];
     const db = {
       getClient: () => ({
         from: (table: string) => {
           tables.push(table);
           const q: any = query(result);
           q.gt = () => q;
+          q.eq = (col: string, val: unknown) => {
+            filters.push([col, val]);
+            return q;
+          };
           return q;
         },
       }),
     };
-    return { service: new ReceivingService(db as any), tables };
+    return { service: new ReceivingService(db as any), tables, filters };
   }
 
   it("rejects when the read fails, rather than answering an empty queue", async () => {
@@ -101,7 +106,7 @@ describe("unverified deliveries: a failed read is not 'none open'", () => {
   });
 
   it("lists an open one, read from the open-counts view", async () => {
-    const { service, tables } = svc({
+    const { service, tables, filters } = svc({
       data: [
         {
           id: "o-open",
@@ -115,6 +120,8 @@ describe("unverified deliveries: a failed read is not 'none open'", () => {
     const out = await service.listUnverified(HOUSE);
     expect(out.map((d) => d.orderNumber)).toEqual(["ORD-1"]);
     expect(tables).toEqual(["procurement_door_counts_open"]);
+    // The view holds every house's open counts: the read names this one.
+    expect(filters).toEqual([["restaurant_id", HOUSE]]);
   });
 });
 
