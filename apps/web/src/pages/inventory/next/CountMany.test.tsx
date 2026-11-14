@@ -79,6 +79,16 @@ describe('CountMany: before the seal', () => {
     expect(screen.getByRole('button', { name: 'Hold to record 1 count' })).not.toBeDisabled();
   });
 
+  it('holds back every count while one box cannot be read', () => {
+    mount([BAROLO, FLOUR]);
+    type('Barolo', '5');
+    type('Flour', '5');
+    const hold = screen.getByRole('button', { name: 'Put right 1 amount first' });
+    expect(hold).toBeDisabled();
+    holdByKeyboard(hold);
+    expect(api.submit).not.toHaveBeenCalled();
+  });
+
   it('says how many boxes carry an amount and how many are blank', () => {
     mount([BAROLO, CHABLIS, RIOJA]);
     type('Barolo', '5');
