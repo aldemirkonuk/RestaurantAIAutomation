@@ -20,6 +20,7 @@ import {
   Uom,
   UOMS,
   volumeFactor,
+  withStatedUnit,
 } from "../documents/document-types";
 
 /**
@@ -90,7 +91,8 @@ export function perBottleLotCost(line: LotCostLine, item?: LotCostItem): LotUnit
   // Skipped before this existed, and still: not a price anybody agreed.
   if (price == null || price <= 0) return { ok: false, kind: "no_price" };
   // `printed` lets a re-verify spot a lot booked AT the printed price (QA 9a).
-  return { ...resolve(line, price, item), printed: toLotCostPrecision(price) } as LotUnitCost;
+  // R4: a line stored as `each` whose paper printed `LB` is costed per pound.
+  return { ...resolve(withStatedUnit(line), price, item), printed: toLotCostPrecision(price) } as LotUnitCost;
 }
 
 function resolve(line: LotCostLine, price: number, item?: LotCostItem): LotUnitCost {

@@ -335,6 +335,13 @@ const UNIT_WORDS: Record<string, readonly [string, string]> = {
   split_case: ['split case', 'split cases'],
   each: ['each', 'each'],
   liter: ['liter', 'liters'],
+  // Weights and US units a line may be read in (R8; r36 R4).
+  kg: ['kg', 'kg'],
+  g: ['g', 'g'],
+  lb: ['lb', 'lb'],
+  oz: ['oz', 'oz'],
+  gal: ['gallon', 'gallons'],
+  floz: ['fl oz', 'fl oz'],
 }
 export function unitWord(unit: string, qty: unknown): string {
   const words = UNIT_WORDS[unit]
