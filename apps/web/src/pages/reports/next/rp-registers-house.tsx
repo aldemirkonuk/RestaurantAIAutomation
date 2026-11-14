@@ -226,6 +226,12 @@ export interface LedgerRegister {
     itemsCosted: number;
     bottlesUncosted: number;
   } | null;
+  /**
+   * While what it cost is withheld: the goods that hold it back, by the
+   * house's name (r36 invoices R2), at most eight with the rest counted.
+   * Absent from an older gateway, and then nothing is said.
+   */
+  cogsHeldBack?: HeldBack | null;
   salesWithheld?: boolean;
   inventoryValue: number | null;
   /**
@@ -260,6 +266,55 @@ export interface LedgerRegister {
   deadStockCapital: number | null;
 }
 
+export interface HeldBack {
+  goods: Array<{ inventoryId: string; name: string | null }>;
+  more: number;
+}
+
+/** The server's list, read defensively: a good with no id is dropped, never invented. */
+export function readHeldBack(raw: unknown): HeldBack | null {
+  if (raw == null) return null;
+  const h = obj(raw);
+  const goods = arr(h.goods)
+    .map((g) => obj(g))
+    .filter((g) => str(g.inventoryId) !== '')
+    .map((g) => ({ inventoryId: str(g.inventoryId), name: str(g.name).trim() === '' ? null : str(g.name) }));
+  const more = Math.max(0, num(h.more) ?? 0);
+  return goods.length === 0 && more === 0 ? null : { goods, more };
+}
+
+const goodWord = (g: { name: string | null }) => g.name ?? 'a good no longer on the list';
+
+/** The same list in one sentence, for the notes an export or the full screen prints. */
+export function heldBackNote(h: HeldBack): string {
+  const named = h.goods.map(goodWord);
+  const tail = h.more > 0 ? `, and ${countOf(h.more, 'more good', 'more goods')}` : '';
+  const one = h.goods.length + h.more === 1;
+  return (
+    `What it cost waits on ${one ? 'this good' : 'these goods'}: ${named.join(', ')}${tail}. ` +
+    `Some of ${one ? 'it' : 'them'} sold with no cost yet; verify ${one ? 'its' : 'their'} delivery, or state what ${one ? 'it' : 'they'} cost on the Inventory page if ${one ? 'it' : 'they'} came in without one.`
+  );
+}
+
+function HeldBackList({ h }: { h: HeldBack }) {
+  return (
+    <p className="rp-note" data-testid="cogs-held-back">
+      What it cost waits on:{' '}
+      {h.goods.map((g, i) => (
+        <span key={g.inventoryId}>
+          {i > 0 ? ', ' : null}
+          {g.name === null ? (
+            goodWord(g)
+          ) : (
+            <Link to={`/inventory?open=${encodeURIComponent(g.inventoryId)}`}>{g.name}</Link>
+          )}
+        </span>
+      ))}
+      {h.more > 0 ? `, and ${countOf(h.more, 'more good', 'more goods')}` : null}.
+    </p>
+  );
+}
+
 const ledger = analysis<LedgerRegister>({
   title: 'Figures of record',
   register: 'financial register',
@@ -285,6 +340,7 @@ const ledger = analysis<LedgerRegister>({
             bottlesUncosted: num(cg.bottlesUncosted) ?? 0,
           }
         : null,
+      cogsHeldBack: readHeldBack(d.cogsHeldBack),
       salesWithheld: d.salesWithheld === true,
       inventoryValue: num(d.inventoryValue),
       tillStock: ts
@@ -370,6 +426,10 @@ const ledger = analysis<LedgerRegister>({
       notes.push(
         `${costGap}; ${figure(cg!.bottlesUncosted)} bottle${cg!.bottlesUncosted === 1 ? '' : 's'} left or came back with no invoice cost yet, so what it cost reads ${EM} rather than a smaller number.`,
       );
+    // Which goods to cost, by name (r36 invoices R2): the count alone left
+    // the owner nowhere to start.
+    const held = costGap && !f.salesWithheld ? (f.cogsHeldBack ?? null) : null;
+    if (held) notes.push(heldBackNote(held));
     // The known part, by name and apart: exact for those items, not what it
     // cost, and divided into nothing (batch review 2026-11-11, finding 2).
     const kp = f.costOfCostedItems;
@@ -415,11 +475,14 @@ const ledger = analysis<LedgerRegister>({
       // record — so it is rendered as the figure list rather than as a grid
       // repeating every label twice.
       node: (
-        <dl className="rp-dl">
-          {figures.map((x) => (
-            <FigureRow key={x.label} label={x.label} value={x.value} note={x.note} />
-          ))}
-        </dl>
+        <>
+          <dl className="rp-dl">
+            {figures.map((x) => (
+              <FigureRow key={x.label} label={x.label} value={x.value} note={x.note} />
+            ))}
+          </dl>
+          {held ? <HeldBackList h={held} /> : null}
+        </>
       ),
       figures,
       notes,
