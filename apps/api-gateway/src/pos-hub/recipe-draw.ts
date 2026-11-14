@@ -274,3 +274,48 @@ export function unsettle(
   if (units > BigInt(Number.MAX_SAFE_INTEGER)) throw new RangeError("draw too large to give back");
   return { units: Number(units), carryOut: units * unitMicro - owed };
 }
+
+/** One draw as `record_recipe_draw` takes it. Big integers travel as strings. */
+export interface DrawArg {
+  inventory_id: string;
+  via: DrawVia;
+  base_unit: BaseUnit;
+  base_per_unit: string;
+  exact_micro: string;
+}
+
+/**
+ * The arguments of `record_recipe_draw` for a plan that draws. The database
+ * re-checks every item's house and route under its lock and settles the
+ * carry there; this only carries the plan across. A plan that waits has
+ * nothing to send.
+ */
+export function drawArgs(
+  restaurantId: string,
+  saleKey: string,
+  cocktailId: string | null,
+  plan: Extract<DrawPlan, { kind: "draw" }>,
+  occurredAt: string | null,
+): {
+  p_restaurant: string;
+  p_sale_key: string;
+  p_version_id: string;
+  p_cocktail_id: string | null;
+  p_draws: DrawArg[];
+  p_occurred_at: string | null;
+} {
+  return {
+    p_restaurant: restaurantId,
+    p_sale_key: saleKey,
+    p_version_id: plan.versionId,
+    p_cocktail_id: cocktailId,
+    p_draws: plan.draws.map((d) => ({
+      inventory_id: d.inventoryId,
+      via: d.via,
+      base_unit: d.baseUnit,
+      base_per_unit: d.basePerUnit.toString(),
+      exact_micro: d.exactMicro.toString(),
+    })),
+    p_occurred_at: occurredAt,
+  };
+}
