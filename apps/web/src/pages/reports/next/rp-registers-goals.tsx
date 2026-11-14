@@ -153,6 +153,24 @@ function paceAwaitsZone(g: GoalRow): boolean {
 
 const PERIODS = ['day', 'week', 'month', 'quarter', 'custom'];
 
+/**
+ * A percent goal's target, as a person types it and as the engine keeps it
+ * (r31 walk w3, F1). The engine scores a percent measure as a 0-1 share
+ * (`ratioPct` draws 0.5 as "50.0%"), and the form sent the typed figure as it
+ * stood: "50" for a wine attach rate was kept as 50 and read "5000.0%". A
+ * percent target is typed in per cent and sent as a share; an edit shows the
+ * stored share back in per cent. Every other unit is sent as typed.
+ */
+export function targetToSend(typed: number | null, unit: string | undefined): number | null {
+  if (typed === null) return null;
+  return unit === 'percent' ? Number((typed / 100).toPrecision(12)) : typed;
+}
+
+export function targetShown(stored: number | null | undefined, unit: string | undefined): string {
+  if (stored == null) return '';
+  return String(unit === 'percent' ? Number((stored * 100).toPrecision(12)) : stored);
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="rp-field">
@@ -408,7 +426,7 @@ function ScenarioPicker({
   );
 }
 
-function GoalForm({
+export function GoalForm({
   metrics,
   scenarios,
   scenarioRequest,
@@ -436,7 +454,7 @@ function GoalForm({
 }) {
   const [name, setName] = useState(initial?.name ?? '');
   const [metricKey, setMetricKey] = useState(initial?.metricKey ?? metrics[0]?.key ?? '');
-  const [target, setTarget] = useState(initial?.target != null ? String(initial.target) : '');
+  const [target, setTarget] = useState(targetShown(initial?.target, initial?.unit));
   const [deadline, setDeadline] = useState(initial?.deadline ?? '');
   const [direction, setDirection] = useState<'at_least' | 'at_most'>(
     initial?.direction === 'at_most' ? 'at_most' : 'at_least',
@@ -445,8 +463,13 @@ function GoalForm({
   const [scenarioId, setScenarioId] = useState('');
   const editing = !!initial?.id;
 
-  const targetValue = num(target);
-  const ready = name.trim() !== '' && targetValue !== null && targetValue > 0 && metricKey !== '';
+  const unit = metrics.find((m) => m.key === metricKey)?.unit;
+  const percent = unit === 'percent';
+  const typed = num(target);
+  const targetValue = targetToSend(typed, unit);
+  // A share is at most the whole: no more than 100 per cent of checks can carry a wine.
+  const overWhole = percent && typed !== null && typed > 100;
+  const ready = name.trim() !== '' && targetValue !== null && targetValue > 0 && !overWhole && metricKey !== '';
 
   /**
    * Choosing a scenario fills four fields and deliberately leaves the fifth.
@@ -527,12 +550,12 @@ function GoalForm({
           <option value="at_most">Keep at most</option>
         </select>
       </Field>
-      <Field label="Target">
+      <Field label={percent ? 'Target (%)' : 'Target'}>
         <input
           className="rp-input rp-focus"
           value={target}
           inputMode="decimal"
-          placeholder="9000"
+          placeholder={percent ? '50' : '9000'}
           onChange={(e) => setTarget(e.target.value)}
         />
       </Field>
@@ -571,8 +594,10 @@ function GoalForm({
           every figure above is counted from that baseline. Archive it and set a new one instead.
         </p>
       )}
-      {!ready && (
-        <p className="rp-cap">A goal needs a name and a target above zero before it can be set.</p>
+      {overWhole ? (
+        <p className="rp-cap">A share is at most 100%: type the target in per cent, like 50 for half.</p>
+      ) : (
+        !ready && <p className="rp-cap">A goal needs a name and a target above zero before it can be set.</p>
       )}
     </form>
   );
