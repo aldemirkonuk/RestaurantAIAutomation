@@ -93,6 +93,28 @@ describe("a recipe list says its allergens (gap 8)", () => {
     expect(tart.cost).toMatchObject({ priced: 2, of: 3 });
   });
 
+  it("names a line by the label the list reads, so the line read asks for it", async () => {
+    // The fake answers every column; PostgREST answers only the ones asked for.
+    const fake = fakeDb(rows());
+    const client: any = fake.db.getClient();
+    const from = client.from;
+    client.from = (t: string) => {
+      const q = from(t);
+      if (t !== "recipe_lines") return q;
+      const select = q.select;
+      q.select = (cols: string, o?: unknown) => {
+        const keep = cols.split(",").map((c) => c.trim());
+        const then = q.then;
+        q.then = (ok: (v: any) => unknown) =>
+          then((r: any) => ok({ ...r, data: (r.data ?? []).map((x: Row) => Object.fromEntries(keep.map((k) => [k, x[k]]))) }));
+        return select(cols, o);
+      };
+      return q;
+    };
+    const out = await new DishesService(fake.db, new RecipesService(fake.db)).listDishes(HOUSE_A, "staff");
+    expect((out.find((d) => d.id === TART)!.allergens as any).unstatedBy).toEqual(["Lemons"]);
+  });
+
   it("a dish with no recipe says nothing of allergens", async () => {
     const r = rows();
     r.recipe_current_dish = r.recipe_current_dish.filter((p) => p.dish_id !== SOUP);
