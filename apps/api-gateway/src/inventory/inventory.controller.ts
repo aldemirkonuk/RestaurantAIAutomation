@@ -30,6 +30,7 @@ import {
   AuctionLotRecordResponseDto,
 } from "./dto/inventory.dto";
 import { AuctionLotRecordsService } from "./auction-lot-records.service";
+import { OpeningCostService } from "./opening-cost.service";
 
 @ApiTags("inventory")
 @Controller("inventory")
@@ -42,6 +43,8 @@ export class InventoryController {
     // is resolved from the house's access rows, not from the token's claim.
     private readonly organizations: OrganizationsService,
     private readonly auctionLotRecords: AuctionLotRecordsService,
+    // r36 R1: stating what stock from no delivery cost is an owner/manager act.
+    private readonly openingCost: OpeningCostService,
   ) {}
 
   /**
@@ -553,6 +556,28 @@ export class InventoryController {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  @Post(":restaurantId/item/:itemId/opening-cost")
+  @ApiOperation({
+    summary: "State what an item's stock from no delivery cost (r36 R1)",
+    description:
+      "Opening stock, a menu-scan import, an item added with no price and a count that found more are booked as lots with no cost, and the till draws them first. This states one cost per one of the item's own unit, in the house's money, for those lots only; the bottles already sold from them are settled at it. A delivery's or an order's lots are never touched, nor a lot that already has a final cost. Owner or manager of the house only.",
+  })
+  async stateOpeningCost(
+    @Param("restaurantId") restaurantId: string,
+    @Param("itemId") itemId: string,
+    @Body() dto: { unitCost: number | string; stockState?: "live" | "shadow" },
+    @CurrentUser() user?: { userId?: string },
+  ) {
+    if (!user?.userId)
+      throw new HttpException(
+        "A stated cost names the person who stated it, and this session names nobody. Nothing was changed.",
+        HttpStatus.FORBIDDEN,
+      );
+    await this.organizations.assertCanManageRestaurant(user.userId, restaurantId, "state what stock cost");
+    const stockState = dto?.stockState === "shadow" ? "shadow" : "live";
+    return this.openingCost.state(restaurantId, itemId, dto?.unitCost, user.userId, stockState);
   }
 
   @Post(":restaurantId/item/:itemId/count-photo-estimate")

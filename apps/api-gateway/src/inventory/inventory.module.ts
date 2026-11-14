@@ -3,6 +3,7 @@ import { InventoryController } from "./inventory.controller";
 import { InventoryService } from "./inventory.service";
 import { PhotoCountService } from "./photo-count.service";
 import { AuctionLotRecordsService } from "./auction-lot-records.service";
+import { OpeningCostService } from "./opening-cost.service";
 import { AuthModule } from "../auth/auth.module";
 import { OrchestratorModule } from "../common/orchestrator/orchestrator.module";
 import { NotificationsModule } from "../notifications/notifications.module";
@@ -24,7 +25,7 @@ import { OrganizationsModule } from "../organizations/organizations.module";
     OrganizationsModule,
   ],
   controllers: [InventoryController],
-  providers: [InventoryService, PhotoCountService, AuctionLotRecordsService],
+  providers: [InventoryService, PhotoCountService, AuctionLotRecordsService, OpeningCostService],
   exports: [InventoryService],
 })
 export class InventoryModule {}
