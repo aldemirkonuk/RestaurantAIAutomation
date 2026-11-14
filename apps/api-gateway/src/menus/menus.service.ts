@@ -2261,6 +2261,9 @@ export class MenusService {
    *   (r36 onboarding gap 1).
    * - mailbox_connected: a live Gmail grant held for this house, to send or
    *   to read (the only mailbox a house can connect today).
+   * - mailbox_sends: a live Gmail grant to SEND, held for this house. The
+   *   step says orders leave from the house's address, and a reading grant
+   *   sends nothing, so the step ticks on this one (r36 onboarding gap 2).
    * - invoice: "checked" once an invoice is verified (its costs are applied),
    *   else "waiting" while one is in and not yet checked, else "none".
    *   A rejected or superseded paper is neither.
@@ -2269,6 +2272,7 @@ export class MenusService {
     goods_listed: boolean | null;
     goods_counted: boolean | null;
     mailbox_connected: boolean | null;
+    mailbox_sends: boolean | null;
     invoice: "none" | "waiting" | "checked" | null;
   }> {
     const supabase = this.dbService.supabase;
@@ -2306,11 +2310,10 @@ export class MenusService {
       settle(() =>
         supabase
           .from("integration_oauth_connections")
-          .select("id")
+          .select("integration_id")
           .eq("restaurant_id", restaurantId)
           .in("integration_id", ["gmail_send", "gmail_read"])
-          .is("revoked_at", null)
-          .limit(1),
+          .is("revoked_at", null),
       ),
       settle(() =>
         supabase
@@ -2344,6 +2347,11 @@ export class MenusService {
       goods_listed: held(goods),
       goods_counted: held(counted),
       mailbox_connected: held(mailbox),
+      mailbox_sends: mailbox.error
+        ? null
+        : ((mailbox.data ?? []) as Array<{ integration_id?: unknown }>).some(
+            (grant) => grant.integration_id === "gmail_send",
+          ),
       invoice,
     };
   }

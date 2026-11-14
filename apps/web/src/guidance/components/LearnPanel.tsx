@@ -181,8 +181,11 @@ export function LearnPanel({
           id: 'mailbox',
           label: "Connect the house's Gmail",
           why: "Orders to vendors leave from the house's own address.",
-          done: next.mailbox_connected === true,
-          unread: next.mailbox_connected === null,
+          // Ticks on a grant to send (r36 gap 2): the step says orders leave
+          // from the house's address, and a reading grant sends nothing. An
+          // older gateway names only "a grant"; then that is what is read.
+          done: (next.mailbox_sends === undefined ? next.mailbox_connected : next.mailbox_sends) === true,
+          unread: (next.mailbox_sends === undefined ? next.mailbox_connected : next.mailbox_sends) === null,
           cta: {
             label: 'Connect it',
             onClick: go(`/authorize/gmail_send?returnPath=${encodeURIComponent('/communications')}`),
