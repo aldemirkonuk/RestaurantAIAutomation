@@ -17,11 +17,7 @@ export class UpdateOnboardingProgressDto {
   @IsOptional()
   checklist_dismissed?: boolean;
 
-  /**
-   * The person's answer on the invite step: the house has no team yet (true)
-   * or that answer is taken back (false). Settles the team step while the
-   * house has no invite.
-   */
+  /** "No team yet" on the invite step (true), or taken back (false). */
   @IsBoolean()
   @IsOptional()
   no_team_yet?: boolean;

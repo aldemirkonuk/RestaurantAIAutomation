@@ -120,11 +120,7 @@ export interface OnboardingProgress {
   menu_current: boolean
   vendor_added: boolean
   team_member_invited: boolean
-  /**
-   * This person answered "No team yet" and the house has no invite: the team
-   * step is settled by that answer. Absent from an older gateway. Sent as
-   * `true` in a PATCH to answer, `false` to take it back.
-   */
+  /** This person answered "No team yet" and the house has no invite. Absent from an older gateway. */
   no_team_yet?: boolean
   checklist_dismissed: boolean
   /** When the last of current menu, supplier and invite (or, with none, this person's "No team yet") held; null while one is missing (derived, not remembered). */

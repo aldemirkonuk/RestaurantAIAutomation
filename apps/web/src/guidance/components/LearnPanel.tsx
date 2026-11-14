@@ -74,12 +74,8 @@ export function LearnPanel({
   }
 
   // "No team yet" (r36 onboarding gap 12): a house run by its owner alone
-  // never finished its setup, because the last step waited for an invite.
-  // The person can answer instead; the gateway keeps the answer on their own
-  // row and settles the team step with it while the house has no invite.
-  // Saved here, not through a prop, so every place that opens this panel
-  // (the legacy Sidebar and the house shell's rail) offers it; the progress
-  // read is refreshed by its shared query key.
+  // never finished setup, which waited for an invite. Saved here, not
+  // through a prop, so the Sidebar and the shell's rail both offer it.
   const queryClient = useContext(QueryClientContext)
   const [noTeamSaving, setNoTeamSaving] = useState<'idle' | 'saving' | 'failed'>('idle')
   const sayNoTeamYet = async () => {
@@ -162,8 +158,7 @@ export function LearnPanel({
           onClose()
         },
       },
-      // Only a gateway that knows the answer is offered it (an older one
-      // sends no `no_team_yet`, and would refuse the field).
+      // Only offered when the gateway knows the answer.
       ...(progress && 'no_team_yet' in progress
         ? {
             alt: {

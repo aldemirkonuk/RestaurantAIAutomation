@@ -2164,13 +2164,10 @@ export class MenusService {
    * read does not make any menu current: that is the person's choice, on the
    * first proof (#1053) or on /menu, and the web says which one is missing.
    * `completed_at` = when the last of current menu, supplier and invite held.
-   * A person who answered "No team yet" (`no_team_yet_at`, r36 onboarding
-   * gap 12) has the team step settled from that answer while the house has
-   * no invite: a house run by its owner alone finishes its setup. The answer
-   * is the person's, like `checklist_dismissed`; an invite, once there,
-   * settles the step for everyone and is what `completed_at` reads. It is
-   * read on its own: a failed read (or a database the column has not reached
-   * yet) is no answer, and never fails the setup read.
+   * While the house has no invite, the person's own "No team yet"
+   * (`no_team_yet_at`, r36 onboarding gap 12) settles the team step, so a
+   * house run by its owner alone finishes. Read on its own: a failed read is
+   * no answer and never fails the setup read.
    * It is derived, not remembered: if the house loses its only supplier or
    * its current menu, the step is undone again and the checklist says so
    * (putting the checklist away, `checklist_dismissed`, is what is kept).
@@ -2260,12 +2257,7 @@ export class MenusService {
     };
   }
 
-  /**
-   * When this person answered "No team yet" on the setup's invite step, or
-   * null: not answered, taken back, or not read. Read on its own and never
-   * thrown: the answer only settles a step, so a failed read leaves the step
-   * open as it was before the answer existed.
-   */
+  /** When this person answered "No team yet", or null (not answered, taken back, or not read). */
   private async readNoTeamYet(userId: string): Promise<string | null> {
     try {
       const { data, error } = await this.dbService.supabase

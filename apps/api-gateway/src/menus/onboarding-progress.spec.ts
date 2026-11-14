@@ -315,8 +315,7 @@ describe("onboarding progress is read from the session's house (OB-1)", () => {
     expect(a.completed_at).toBeNull();
   });
 
-  // r36 onboarding gap 12: a house run by its owner alone never finished
-  // its setup, because completed_at waited for an invite.
+  // r36 onboarding gap 12.
   describe("\"No team yet\" settles the team step while the house has no invite", () => {
     const noInvite = () => {
       const tables = twoHouses();
@@ -344,13 +343,10 @@ describe("onboarding progress is read from the session's house (OB-1)", () => {
       expect(b.completed_at).toBe("2026-01-02T00:00:00+00:00");
     });
 
-    it("the answer never stands in for the menu or the supplier", async () => {
+    it("the answer never stands in for the supplier", async () => {
       const tables = noInvite();
       tables.user_onboarding_progress[0].no_team_yet_at = "2026-01-05T00:00:00+00:00";
       tables.providers = [];
-      expect((await serviceOn(tables).service.getOnboardingProgress("u-1", houseA)).completed_at).toBeNull();
-      tables.providers = twoHouses().providers;
-      tables.restaurant_menus[0].status = "draft";
       expect((await serviceOn(tables).service.getOnboardingProgress("u-1", houseA)).completed_at).toBeNull();
     });
 

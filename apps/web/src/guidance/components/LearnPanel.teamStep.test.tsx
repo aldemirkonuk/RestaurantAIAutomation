@@ -1,9 +1,4 @@
-/**
- * r36 onboarding gap 12: the last setup step waited for an invite, so a
- * house run by its owner alone never finished its setup. The person can now
- * answer "No team yet"; the gateway keeps it on their own row and settles the
- * team step with it while the house has no invite.
- */
+/** r36 onboarding gap 12: the team step takes "No team yet". */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
