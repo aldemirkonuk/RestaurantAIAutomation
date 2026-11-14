@@ -2540,14 +2540,14 @@ describe("MenusService — the plan before a menu is chosen, and the locks it re
       const t0 = Date.now();
       const plan = await service.planFor("rest-1", "menu-new");
       const took = Date.now() - t0;
+      // eslint-disable-next-line no-console
+      console.log(`R3TIME planFor reads=${stat.reads} mostInFlight=${stat.most} ms=${took}`);
       expect(plan.fingerprint).toBe(expected.fingerprint);
       expect(plan.lines).toEqual(expected.lines);
       expect(plan.dormantLocks).toEqual(expected.dormantLocks);
       // Row and lines together, then the house, the locks, the price versions
       // and the current menu together: never fewer than four in flight.
       expect(stat.most).toBeGreaterThanOrEqual(4);
-      // eslint-disable-next-line no-console
-      console.log(`R3TIME planFor reads=${stat.reads} mostInFlight=${stat.most} ms=${took}`);
     });
 
     it("make-current reads its lines and its row together, and still chooses", async () => {
