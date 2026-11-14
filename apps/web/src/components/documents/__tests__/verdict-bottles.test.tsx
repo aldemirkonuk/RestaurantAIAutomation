@@ -44,6 +44,8 @@ describe('the verdict card says a case line in bottles (r31 w2 F2)', () => {
     const s = said(sheet({ received: 24, billed: 2, verdict: 'over_ship' }))
     expect(s).toEqual(['Local Check Brut NV — received 24 bottles against 2 cases billed.'])
     expect(s.join(' ')).not.toContain('24 cases')
+    // The paper's pack column stores 1 for "never stated": that is no pack.
+    expect(said(sheet({ received: 24, billed: 2, verdict: 'over_ship' }, { pack: 1 }))).toEqual(s)
   })
 
   it('short ship on a case of 12, and a count still to come', () => {
