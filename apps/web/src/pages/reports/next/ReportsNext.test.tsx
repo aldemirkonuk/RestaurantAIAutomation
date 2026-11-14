@@ -2406,3 +2406,28 @@ describe('the till window is kept in the page link (audit gap 16)', () => {
     expect(till?.slot.h).toBe(SHEET_MIN_H);
   });
 });
+
+describe('staff are handed what they can read (r36 reports gap 3)', () => {
+  it('marks held analyses in both pickers, and "Before service" lays only readable ones', () => {
+    hook.current = { ...base(), role: 'staff' } as never;
+    paint();
+    arrange();
+    const till = screen.getByRole('region', { name: 'Through the till' });
+    const swap = within(till).getByLabelText('Show instead of Through the till');
+    expect(within(swap).getByText(/The room \(owners and managers\)/)).toBeInTheDocument();
+    expect(within(swap).getByText(/^The week’s shape/).textContent).not.toMatch(/owners/);
+    expect(screen.getByRole('button', { name: 'Who served it (owners and managers)' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Before service' }));
+    expect(screen.queryByRole('region', { name: 'The room' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Who served it' })).toBeNull();
+    expect(screen.getByRole('region', { name: 'The week’s shape' })).toBeInTheDocument();
+  });
+
+  it('a manager sees no marks', () => {
+    hook.current = { ...base(), role: 'manager' } as never;
+    paint();
+    arrange();
+    expect(screen.getByRole('button', { name: 'Who served it' })).toBeInTheDocument();
+    expect(screen.queryByText(/\(owners and managers\)/)).toBeNull();
+  });
+});

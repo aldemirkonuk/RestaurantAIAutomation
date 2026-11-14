@@ -76,6 +76,7 @@ import {
   type SheetState,
   type Slot,
 } from './rp-sheet';
+import { heldMark, layoutFor } from './rp-readable';
 import type { ComboPick } from './rp-combo';
 import ExportsShelf from './ExportsShelf';
 import Sheet, { type SheetCutting } from './Sheet';
@@ -162,6 +163,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     [],
   );
   const data = useReportsNextData(tillDays, setTillDays, showing, place);
+  const role = data.role ?? null;
   const [asking, setAsking] = useState(false);
   const [ruledOff, setRuledOff] = useState(false);
   /* Ruling off is a WRITE to the reader's preferences, so the page says it is
@@ -256,7 +258,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   /** The paper takes edits only while it is being arranged and not being saved. */
   const editing = arranging && !saving;
 
-  const putBack = useCallback(() => setDraft(defaultSheet()), []);
+  const putBack = useCallback(() => setDraft(defaultSheet(role)), [role]);
 
   const edit = useCallback(
     (fn: (s: SheetState) => SheetState) => setDraft((d) => (d ? fn(d) : d)),
@@ -318,14 +320,16 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
    */
   const applyHouseLayout = useCallback(
     (which: HouseLayoutId) => {
-      const ids = HOUSE_LAYOUT_CUTTINGS[which];
+      // Only what this role is sent: "Before service" was three of five
+      // held back for the people on the floor (r36 reports gap 3).
+      const ids = layoutFor(HOUSE_LAYOUT_CUTTINGS[which], role);
       const slots = packSlots(ids);
       setDraft({
         cuttings: ids.map((id) => ({ id, slot: slots[id], graph: defaultGraph(id) })),
       });
       setArranging(true);
     },
-    [],
+    [role],
   );
 
   const onMove = useCallback(
@@ -403,8 +407,8 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   }, [data.reading]);
 
   const swapOptions = useMemo(
-    () => ANALYSIS_IDS.map((id) => ({ id, taken: onSheet.has(id) })),
-    [onSheet],
+    () => ANALYSIS_IDS.map((id) => ({ id, taken: onSheet.has(id), held: heldMark(id, role) })),
+    [onSheet, role],
   );
 
   /**
@@ -588,6 +592,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
                     onClick={() => onAdd(id)}
                   >
                     {CATALOGUE[id].title}
+                    {heldMark(id, role)}
                   </button>
                 ))}
               </p>
