@@ -14,6 +14,7 @@ import {
   makeCurrentSentence,
   readMenuDate,
   sourceWords,
+  standingSecond,
   versionLabel,
   versionLabels,
 } from './MenuVersions';
@@ -410,6 +411,36 @@ describe('MenuVersions', () => {
     expect(screen.getByTestId('menu-read-error').textContent).not.toMatch(/\.\.$/);
     expect(screen.getByTestId('menu-read-error-warnings')).toHaveTextContent('Pages 1–10 could not be read; send them again.');
     expect(screen.queryByTestId('menu-read-result')).not.toBeInTheDocument();
+  });
+
+  it('r33 w1 F10: with another menu still marked current, it does not say no earlier menu was used', async () => {
+    const newer = version({ menuId: 'm2', status: 'active', current: true, madeCurrentAt: '2026-09-01T00:00:00Z' });
+    mockList.mockResolvedValue({
+      current: newer,
+      lastUsed: null,
+      versions: [newer, version({ menuId: 'm1', status: 'active', current: true, madeCurrentAt: '2026-08-01T00:00:00Z' })],
+    });
+    mount(true);
+    const standing = await screen.findByTestId('menu-versions-standing');
+    expect(standing).toHaveTextContent('1 other menu is also marked current; none has been set aside yet.');
+    expect(standing).not.toHaveTextContent('No earlier menu has been used');
+  });
+
+  it('r33 w1 F10: the standing line in each state', () => {
+    const cur = version({ menuId: 'a', status: 'active', current: true });
+    const two = [cur, version({ menuId: 'b', current: true }), version({ menuId: 'c', current: true })];
+    expect(standingSecond({ current: cur, lastUsed: null, versions: two })).toBe(
+      '2 other menus are also marked current; none has been set aside yet.',
+    );
+    // The current menu itself is never counted as "other".
+    expect(standingSecond({ current: cur, lastUsed: null, versions: [cur] })).toBe('No earlier menu has been used.');
+    expect(standingSecond({ current: null, lastUsed: null, versions: [version({ menuId: 'x', current: false })] })).toBe(
+      'No earlier menu has been used.',
+    );
+    // A menu set aside before still names the last one used.
+    expect(standingSecond({ current: cur, lastUsed: version({ menuId: 'z', status: 'archived' }), versions: two })).toMatch(
+      /^Last one used: /,
+    );
   });
 
   it('names the current menu and the last one used, and lists every kept menu', async () => {
