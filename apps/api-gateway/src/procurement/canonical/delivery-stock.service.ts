@@ -445,6 +445,24 @@ export async function deliveryHasBookedOrder(
   return { ok: true, value: { booked: ids.length > 0, deliveryIds: ids } };
 }
 
+/**
+ * Why a give-back did not move the shelf, in words about giving back (r31
+ * walk w2, F4). The booking's own sentence ("retrying books exactly what is
+ * missing") was quoted inside the return notice, where nothing is being
+ * booked. The ledger refuses a return that would leave fewer than none
+ * ("stock would go negative: 4 + -6"); that is said as the shelf and the
+ * return it could not hold. Anything else is said as it came, with no stop
+ * of its own, so the caller's sentence can carry on after it.
+ */
+export function givingBackFailure(dbMessage: string): string {
+  const below = /stock would go negative:\s*(-?\d+(?:\.\d+)?)\s*\+\s*-(\d+(?:\.\d+)?)/.exec(dbMessage);
+  if (below) {
+    const [, have, give] = below;
+    return `giving it back would take the shelf below zero (${Number(have)} on hand, ${Number(give)} to give back)`;
+  }
+  return `the shelf could not be moved (${dbMessage.trim().replace(/[.\s]+$/, "")})`;
+}
+
 @Injectable()
 export class DeliveryStockService {
   private readonly logger = new Logger(DeliveryStockService.name);
@@ -1033,6 +1051,7 @@ export class DeliveryStockService {
         transactionType: "adjustment",
         reason: `delivery ${deliveryId} reversed: ${why}`,
         idempotencyKey: `delivery-reversal:${deliveryId}:${inventoryId}`,
+        failed: givingBackFailure,
       });
       if (!moved.ok) return moved;
       bottlesReturned += qty;
@@ -1063,6 +1082,8 @@ export class DeliveryStockService {
     transactionType: string;
     reason: string;
     idempotencyKey: string;
+    /** The words when the shelf refuses, for a movement that is not a booking. */
+    failed?: (dbMessage: string) => string;
   }): Promise<StockResult<string | null>> {
     const rpc = await this.db.getClient().rpc("apply_stock_movement", {
       p_inventory_id: input.inventoryId,
@@ -1096,7 +1117,9 @@ export class DeliveryStockService {
       return {
         ok: false,
         status: 503,
-        error: `The count is recorded but the shelf could not be moved (${rpc.error.message}). Nothing was lost and nothing was half-booked: every movement is keyed on (delivery, document, line), so retrying books exactly what is missing.`,
+        error: input.failed
+          ? input.failed(rpc.error.message)
+          : `The count is recorded but the shelf could not be moved (${rpc.error.message}). Nothing was lost and nothing was half-booked: every movement is keyed on (delivery, document, line), so retrying books exactly what is missing.`,
       };
     }
     return { ok: true, value: (rpc.data as string | null) ?? null };
