@@ -241,8 +241,16 @@ const CATEGORY_LABEL: Record<string, string> = {
   goals: 'Goals',
 };
 
+/** The category a sentence arrives without (r28 gap 20): never filed as sales. */
+export const UNFILED = 'unfiled';
+
 export function categoryLabel(c: string): string {
-  return CATEGORY_LABEL[c] ?? c;
+  if (c === UNFILED || c === '') return 'Not filed';
+  const known = CATEGORY_LABEL[c];
+  if (known) return known;
+  // A category the page has no word for yet is said plainly, never as a key.
+  const words = c.replace(/[_.-]+/g, ' ').trim();
+  return words ? words[0].toUpperCase() + words.slice(1) : 'Not filed';
 }
 
 /* ─────────────────────────────────── the calendar, for the heat map ────── */
@@ -300,8 +308,35 @@ export function failureOf(error: unknown): Failure | null {
   const response = (error as { response?: { status?: unknown; data?: unknown } })?.response;
   const status = num(response?.status);
   const message = (error as { message?: string })?.message || 'the request failed';
-  const said = gatewaySentence(response?.data);
+  // A 500 carries whatever the service threw: a database or library message
+  // with working names in it, not a sentence written for the house. Only a
+  // refusal the gateway words on purpose (a 4xx, the whole-read 503) is said.
+  const said = status === 500 ? null : gatewaySentence(response?.data);
   return { status, message, forbidden: status === 403 || status === 401, ...(said ? { said } : {}) };
+}
+
+/**
+ * Why a read failed, in the house's words (audit G-err, r28 gap 17). The HTTP
+ * client's own sentences ("Network Error", "Request failed with status code
+ * 502", "timeout of 30000ms exceeded") are the transport talking; each is
+ * turned into what happened. A message that is not the transport's (the
+ * export shelf hands the gateway's own reason) is kept as it is.
+ */
+export function failureReason(f: Pick<Failure, 'status' | 'message'>): string {
+  const m = (f.message ?? '').trim();
+  if (/^timeout of \d+ms exceeded$/i.test(m) || /ECONNABORTED|ETIMEDOUT/.test(m))
+    return 'Mudavym took too long to answer';
+  if (/^(canceled|request aborted)$/i.test(m)) return 'the request was stopped before it was answered';
+  const transport = m === '' || /^network error$/i.test(m) || /^request failed with status code \d+$/i.test(m);
+  if (!transport) return m;
+  // The client names the status in its sentence even when no response object
+  // came with the error; read it there before calling the server unreachable.
+  const s = f.status ?? num(/status code (\d+)$/i.exec(m)?.[1]);
+  if (s === null) return 'Mudavym could not be reached from this device';
+  if (s === 404) return 'Mudavym did not find it';
+  if (s === 429) return 'too many reads were asked for at once; it can be read again in a minute';
+  if (s >= 500) return 'Mudavym’s side failed while reading it';
+  return 'Mudavym refused the request';
 }
 
 /**
@@ -364,7 +399,7 @@ export function failureLine(register: string, f: Failure): string {
     return /nothing is reported|nothing below/i.test(f.said)
       ? `The ${register} could not be read. ${f.said}`
       : `The ${register} could not be read. ${f.said} Nothing below is claimed.`;
-  return `The ${register} could not be read (${f.message}). Nothing below is claimed.`;
+  return `The ${register} could not be read (${failureReason(f)}). Nothing below is claimed.`;
 }
 
 /* ───────────────────────────────────────────── the house serif ─────────── */

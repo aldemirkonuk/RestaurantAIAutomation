@@ -51,11 +51,11 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Seal, Wordmark } from '@/components/mudavym';
 import { animate, settle } from '@/lib/mudavym';
 import AskTheBook from './AskTheBook';
-import Cutting from './Cutting';
+import Cutting, { DAYS_PARAM, DEFAULT_TILL_DAYS, tillDaysOf } from './Cutting';
 import { ArrangeAnnouncer, ArrangeHelp } from './Placing';
 import { useArrange } from './rp-arrange';
 import { CATALOGUE, defaultGraph } from './rp-catalogue';
@@ -118,7 +118,29 @@ function Action({
 }
 
 export default function ReportsNext({ ground }: ReportsNextProps) {
-  const [tillDays, setTillDays] = useState(30);
+  // The till window lives in the page link (`?days=90`), so a reload, Back,
+  // full screen and a shared link all open on the window the reader picked.
+  // Not the sheet: a window is a way of looking, and a sheet write here would
+  // race the arranging save. Replaced in place, and the entry's state is
+  // deliberately NOT carried: a full-screen view that this page opened closes
+  // by going back one entry, and that entry predates the pick, so carrying
+  // the mark would close onto the old window. Without it the view closes in
+  // place and keeps the window; Back still returns to the window before.
+  const [params, setParams] = useSearchParams();
+  const tillDays = tillDaysOf(params.get(DAYS_PARAM));
+  const setTillDays = useCallback(
+    (d: number) =>
+      setParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (d === DEFAULT_TILL_DAYS) next.delete(DAYS_PARAM);
+          else next.set(DAYS_PARAM, String(d));
+          return next;
+        },
+        { replace: true },
+      ),
+    [setParams],
+  );
   // A bars-and-line pick made before the reader's own sheet is known: shown
   // for this visit, never written (a write then could put the house sheet
   // over theirs). Once the sheet is known the pick lives on the sheet itself.
