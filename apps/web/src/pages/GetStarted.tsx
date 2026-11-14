@@ -15,6 +15,7 @@ import { settingsApi } from '../services/api/settings'
 import { getBrowserTimezone } from '../lib/browserTimezone'
 import { countryCodeFor } from '../lib/countries'
 import { zoneForPlace } from '../lib/zoneForPlace'
+import { zoneLabel } from '../lib/zoneLabel'
 import { writeProof } from '../lib/firstProof'
 import { fitPhotoForReading } from '../lib/fitPhoto'
 import { readHouseMenuStanding, type HouseMenuStanding } from '../lib/houseMenuStanding'
@@ -608,7 +609,7 @@ export default function GetStarted() {
                 >
                   <option value="">Choose…</option>
                   {zone.choices.map((choice) => (
-                    <option key={choice} value={choice}>{choice}</option>
+                    <option key={choice} value={choice}>{zoneLabel(choice)}</option>
                   ))}
                 </select>
               </label>
@@ -616,7 +617,7 @@ export default function GetStarted() {
               <span className="mr-6">Clock · Not detected. Set it in Settings › Time zone once the house is open.</span>
             ) : (
               <span className="mr-6">
-                Clock · {timezone ?? 'Not detected'}
+                Clock · {timezone ? zoneLabel(timezone) : 'Not detected'}
                 {timezone && (zone.source === 'country' ? ' (from the country)' : ' (from this browser)')}
               </span>
             )}
