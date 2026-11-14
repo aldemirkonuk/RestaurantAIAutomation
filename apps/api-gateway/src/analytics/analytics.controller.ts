@@ -45,6 +45,7 @@ import { Roles } from "../auth/decorators/roles.decorator";
 import { Public } from "../auth/decorators/public.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
+import { ColdStartMemo } from "./insights/cold-start-memo";
 import { InsightSchedulerService } from "./insights/insight-scheduler.service";
 import {
   annotatedCandidates,
@@ -521,10 +522,16 @@ export class AnalyticsController {
       });
     }
     if (refresh === "true") {
-      return await this.insightGenerator.generate(restaurantId, {
+      // A refresh always computes. Its own clean "nothing to say" is then
+      // what the next plain read carries, instead of a second compute of the
+      // same nothing (r39 walk w6); any other answer is stored or retried.
+      this.coldStart.clear(restaurantId);
+      const fresh = await this.insightGenerator.generate(restaurantId, {
         categories,
         persist: true,
       });
+      this.coldStart.hold(ColdStartMemo.keyOf(restaurantId, categories), fresh);
+      return fresh;
     }
     const stored = await this.insightGenerator.readStored(restaurantId, {
       categories,
@@ -542,12 +549,23 @@ export class AnalyticsController {
         withheld: stored.withheld,
         suppressionsReadable: stored.suppressionsReadable,
       };
-    // cold start: compute live once and persist
-    return await this.insightGenerator.generate(restaurantId, {
-      categories,
-      persist: true,
-    });
+    // cold start: compute live once and persist. A clean answer of nothing
+    // is held a while, so a quiet house does not recompute on every load
+    // (r36 reports gap 8, `cold-start-memo.ts`).
+    return await this.coldStart.run(
+      ColdStartMemo.keyOf(restaurantId, categories),
+      () =>
+        this.insightGenerator.generate(restaurantId, {
+          categories,
+          persist: true,
+        }),
+    );
   }
+
+  /** The held "nothing to say" answers of the cold start (r36 gap 8). */
+  private readonly coldStart = new ColdStartMemo<
+    Awaited<ReturnType<InsightGeneratorService["generate"]>>
+  >();
 
   @Get("insight-prefs/:restaurantId")
   @ApiOperation({ summary: "Per-category insight refresh preferences" })
