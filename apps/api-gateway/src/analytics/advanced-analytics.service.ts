@@ -2,6 +2,14 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { readWholeWindow } from "../common/read-whole-window";
 import * as E from "./engine";
+import {
+  FirstRecord,
+  MIN_PLAN_DAYS,
+  observedWindow,
+  readFirstRecord,
+  trimToObserved,
+  windowWords,
+} from "./observed-window";
 import { AnalyticsService, SalesGate } from "./analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { GoalsService } from "./goals.service";
@@ -28,14 +36,6 @@ import { overdueStanding } from "../procurement/overdue-order";
 import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
 import { readOverdueContext } from "../procurement/overdue-order-reads";
 import { HouseFrame, houseFrame } from "../common/house-frame";
-import {
-  FirstRecord,
-  MIN_PLAN_DAYS,
-  observedWindow,
-  readFirstRecord,
-  trimToObserved,
-  windowWords,
-} from "./observed-window";
 
 /**
  * AdvancedAnalyticsService — the second wave of catalogue features.
@@ -63,6 +63,24 @@ export class AdvancedAnalyticsService {
     private readonly insightGenerator: InsightGeneratorService,
     private readonly goalsService: GoalsService,
   ) {}
+
+  /**
+   * The house's first consumption line ever: menu speed and the week's shape
+   * start there, not at the window's first day (r36 reports gap 1). Never
+   * throws; a failed read falls back to the whole window and says so.
+   */
+  private async firstConsumption(restaurantId: string): Promise<FirstRecord> {
+    const first = await readFirstRecord(
+      this.dbService.getClient(),
+      "wine_consumption_log",
+      restaurantId,
+    );
+    if (first.read === "could_not_read")
+      this.logger.warn(
+        `first consumption line could not be read; rates use the whole window: ${first.error}`,
+      );
+    return first;
+  }
 
   // =========================================================================
   // Shared lean loaders
@@ -173,24 +191,6 @@ export class AdvancedAnalyticsService {
         date: (c.created_at || "").substring(0, 10),
       };
     });
-  }
-
-  /**
-   * The house's first consumption line ever: menu speed and the week's shape
-   * start there, not at the window's first day (r36 reports gap 1). Never
-   * throws; a failed read falls back to the whole window and says so.
-   */
-  private async firstConsumption(restaurantId: string): Promise<FirstRecord> {
-    const first = await readFirstRecord(
-      this.dbService.getClient(),
-      "wine_consumption_log",
-      restaurantId,
-    );
-    if (first.read === "could_not_read")
-      this.logger.warn(
-        `first consumption line could not be read; rates use the whole window: ${first.error}`,
-      );
-    return first;
   }
 
   /** Wines with at least one line that carries no bottle figure. */

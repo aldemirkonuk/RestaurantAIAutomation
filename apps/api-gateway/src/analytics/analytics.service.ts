@@ -2,6 +2,14 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { readWholeWindow } from "../common/read-whole-window";
 import * as E from "./engine";
+import {
+  FirstRecord,
+  MIN_PLAN_DAYS,
+  observedWindow,
+  readFirstRecord,
+  trimToObserved,
+  windowWords,
+} from "./observed-window";
 import { METRIC_REGISTRY, MetricDefinition, Persona } from "./metric-registry";
 import {
   costBasisSentence,
@@ -17,14 +25,6 @@ import {
 } from "./consumption-units";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
 import { houseDayBounds } from "../common/house-day";
-import {
-  FirstRecord,
-  MIN_PLAN_DAYS,
-  observedWindow,
-  readFirstRecord,
-  trimToObserved,
-  windowWords,
-} from "./observed-window";
 
 /**
  * AnalyticsService — the quantitative heart of WineOps.
@@ -89,6 +89,24 @@ export class AnalyticsService {
   private readonly HOLDING_RATE = 0.26; // capital+storage+spoilage, %/yr
 
   constructor(private readonly dbService: DatabaseService) {}
+
+  /**
+   * The house's first consumption line ever: a rate starts there, not at the
+   * window's first day (r36 reports gap 1). Never throws; a failed read
+   * falls back to the whole window and the basis says so.
+   */
+  private async firstConsumption(restaurantId: string): Promise<FirstRecord> {
+    const first = await readFirstRecord(
+      this.dbService.getClient(),
+      "wine_consumption_log",
+      restaurantId,
+    );
+    if (first.read === "could_not_read")
+      this.logger.warn(
+        `first consumption line could not be read; rates use the whole window: ${first.error}`,
+      );
+    return first;
+  }
 
   // =========================================================================
   // Metric catalog (registry) — the "formula library"
@@ -275,24 +293,6 @@ export class AnalyticsService {
         date: (c.created_at || "").substring(0, 10),
       };
     });
-  }
-
-  /**
-   * The house's first consumption line ever: a rate starts there, not at the
-   * window's first day (r36 reports gap 1). Never throws; a failed read
-   * falls back to the whole window and the basis says so.
-   */
-  private async firstConsumption(restaurantId: string): Promise<FirstRecord> {
-    const first = await readFirstRecord(
-      this.dbService.getClient(),
-      "wine_consumption_log",
-      restaurantId,
-    );
-    if (first.read === "could_not_read")
-      this.logger.warn(
-        `first consumption line could not be read; rates use the whole window: ${first.error}`,
-      );
-    return first;
   }
 
   /** Wines with at least one line that carries no bottle figure. */
