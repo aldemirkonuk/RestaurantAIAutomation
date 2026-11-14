@@ -169,3 +169,72 @@ describe("restock: a good added last week to an old house", () => {
     expect(out.basis.demand).toContain("; 1 good was added");
   });
 });
+
+describe("restock: a young house's goods keep the house's start", () => {
+  it("a good with no added day in a young house names no start of its own", async () => {
+    const svc = oldHouse([good("mw-a", 10, null)], lines("mw-a", 30, 1));
+    jest
+      .spyOn(svc as any, "firstConsumption")
+      .mockResolvedValue({ read: "read", day: day(29) });
+    const out: any = await svc.getInventoryScience("r-young");
+    expect(out.observed.since).toBe(day(29));
+    expect(out.skus[0].avgDailyDemand).toBeCloseTo(1, 9);
+    expect(out.skus[0].demandSince).toBeNull();
+    expect(out.basis.demand).not.toContain("added to the house's list");
+  });
+});
+
+describe("loadInventory carries the day a good was added", () => {
+  /** PostgREST returns only the columns the select names. */
+  function client(row: Record<string, unknown>) {
+    return {
+      from: (table: string) => {
+        const b: any = {};
+        let cols: string[] = [];
+        b.select = (c: string) => {
+          cols = c.split(",").map((x) => x.trim().split("(")[0]);
+          return b;
+        };
+        b.eq = () => b;
+        b.then = (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) =>
+          Promise.resolve(
+            table === "restaurant_inventory"
+              ? {
+                  data: [
+                    Object.fromEntries(
+                      Object.entries(row).filter(([k]) => cols.includes(k)),
+                    ),
+                  ],
+                  error: null,
+                }
+              : { data: [], error: null },
+          ).then(res, rej);
+        return b;
+      },
+    };
+  }
+
+  it("reads created_at and dates it as consumption lines are dated", async () => {
+    const svc = new AnalyticsService({
+      getClient: () =>
+        client({
+          id: "inv-1",
+          wine_name: "House red",
+          stock_live: 4,
+          master_wine_id: "mw-1",
+          created_at: "2026-11-08T22:15:00+00:00",
+        }),
+    } as any);
+    const [row]: any[] = await (svc as any).loadInventory("r-1");
+    expect(row.addedAt).toBe("2026-11-08");
+  });
+
+  it("a row with no created_at has no added day", async () => {
+    const svc = new AnalyticsService({
+      getClient: () =>
+        client({ id: "inv-1", wine_name: "House red", stock_live: 4 }),
+    } as any);
+    const [row]: any[] = await (svc as any).loadInventory("r-1");
+    expect(row.addedAt).toBeNull();
+  });
+});
