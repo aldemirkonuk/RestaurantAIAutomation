@@ -1,10 +1,11 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { NotificationsService } from "../../notifications/notifications.service";
 import { DeliveryClockService } from "./delivery-clock.service";
 import { ReadResult } from "./canonical-document.service";
 import { matchLines, MatchableLine } from "../documents/line-matcher";
 import { DeliveryStockService, CostReceipt, CostRepair } from "./delivery-stock.service";
+import { VendorSendAuthorityService } from "../../organizations/vendor-send-authority.service";
 
 /**
  * DeliveryService — the delivery's own doors (ADR 0103 D1/D3/D5/D6/D7, A2, A4, A6).
@@ -138,6 +139,12 @@ export class DeliveryService {
     private readonly clocks: DeliveryClockService,
     private readonly notifications: NotificationsService,
     private readonly stock: DeliveryStockService,
+    // Who is told a closed delivery's stock was not given back (r34 walk w2
+    // F3): its owners and managers, the only people `return-stock` lets
+    // try again. Optional so a server or a spec without it still tells the
+    // house rather than nobody.
+    @Optional()
+    private readonly authority?: Pick<VendorSendAuthorityService, "ownersAndManagers">,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -656,6 +663,7 @@ export class DeliveryService {
       // r31 w2 F4: the reason is a clause, so a stop it carries is not doubled.
       `The delivery is closed, but what its door count put on the shelf was not given back: ${back.error.trim().replace(/[.\s]+$/, "")}. ` +
       "Those bottles still count as stock. Fix the cause, then give the stock back from the delivery.";
+    const audience = await this.whoGivesStockBack(restaurantId, deliveryId);
     await this.notifications.persistForRestaurant(
       restaurantId,
       {
@@ -668,9 +676,49 @@ export class DeliveryService {
         groupKey: `delivery-stock-not-returned:${deliveryId}`,
         metadata: { deliveryId },
       },
-      { dedupeWithinMinutes: 60 },
+      {
+        dedupeWithinMinutes: 60,
+        ...(audience ? { onlyUserIds: audience } : {}),
+      },
     );
     return { returned: false, error: sentence };
+  }
+
+  /**
+   * The people the "stock was not given back" notice is for: this house's
+   * owners and managers, because only they may give the stock back
+   * (`POST deliveries/:id/return-stock`, `assertSettlesDeliveryMoney`). Staff
+   * were told something they could not act on (r34 walk w2 F3).
+   *
+   * Null means "the whole house": when the owners and managers cannot be
+   * read, or the house has none, the notice still goes out. A stuck shelf
+   * nobody hears about is worse than a notice a staff member cannot act on,
+   * and the sentence carries bottle counts only, no money.
+   */
+  private async whoGivesStockBack(
+    restaurantId: string,
+    deliveryId: string,
+  ): Promise<string[] | null> {
+    if (!this.authority) {
+      this.logger.warn(
+        `delivery ${deliveryId}: the owners and managers cannot be read on this server, so the stock notice goes to the whole house.`,
+      );
+      return null;
+    }
+    try {
+      const { owners, managers } = await this.authority.ownersAndManagers(restaurantId);
+      const audience = [...new Set([...owners, ...managers])];
+      if (audience.length > 0) return audience;
+      this.logger.warn(
+        `delivery ${deliveryId}: this house has no owner or manager on record, so the stock notice goes to the whole house.`,
+      );
+      return null;
+    } catch (err) {
+      this.logger.warn(
+        `delivery ${deliveryId}: the owners and managers could not be read (${err instanceof Error ? err.message : String(err)}), so the stock notice goes to the whole house.`,
+      );
+      return null;
+    }
   }
 
   /**
