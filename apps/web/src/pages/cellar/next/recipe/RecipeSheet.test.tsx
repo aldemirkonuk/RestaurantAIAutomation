@@ -466,6 +466,17 @@ describe('RecipeSheet', () => {
     expect(amount(0)).toBe('45');
   });
 
+  it('r36 gap 1: a line priced at what its good last cost carries its bought day onto the sheet', async () => {
+    const base = negroni();
+    const at = new Date().getFullYear() + '-03-07T09:00:00Z';
+    const lines = base.current!.lines.map((l, i) =>
+      i === 1 ? { ...l, costPerServe: 4, costBasis: 'last_known_lot_cost', boughtAt: at } : l,
+    );
+    serve(negroni({ current: { ...base.current!, lines } }));
+    mount();
+    expect(await screen.findByText(/at what Campari last cost \(bought 7 Mar\)/)).toBeInTheDocument();
+  });
+
   it('a manager sees the price and each line’s cost; staff see neither', async () => {
     serve(negroni());
     const { unmount } = mount();

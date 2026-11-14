@@ -53,6 +53,12 @@ export interface RecipeLine {
    * one (2 eggs against eggs kept by the kg). Absent from an older gateway.
    */
   weighed?: WeighedBy | null;
+  /**
+   * Beside costBasis "last_known_lot_cost" (nothing on hand is priced, so the
+   * line is priced at what its good was last bought at): when that lot came
+   * in. Absent from an older gateway.
+   */
+  boughtAt?: string | null;
   /** What one piece of the linked good weighs, in g, as the house stated it. */
   itemPieceGrams?: number | null;
   /** What one ml of the linked good weighs, in g, as the house stated it. */
@@ -99,6 +105,8 @@ export interface RecipeCost {
   complete: boolean;
   /** Priced lines whose average covers only part of the stock on hand. */
   partial?: number;
+  /** Priced lines whose good has nothing priced on hand, at what it last cost. */
+  lastBought?: number;
 }
 
 export interface LegacyRecipeLine {

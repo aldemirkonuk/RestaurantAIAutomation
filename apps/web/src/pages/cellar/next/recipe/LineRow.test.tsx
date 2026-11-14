@@ -18,7 +18,7 @@ const h = vi.hoisted(() => ({ get: vi.fn(), rid: '11111111-1111-4111-8111-111111
 vi.mock('../../../../services/api/client', () => ({ apiClient: { get: h.get } }));
 vi.mock('../../../../contexts/AuthContext', () => ({ useAuth: () => ({ activeRestaurantId: h.rid }) }));
 
-import LineRow, { LineRowRead, rowQty, type DraftRow } from './LineRow';
+import LineRow, { LineRowRead, boughtDay, rowQty, type DraftRow } from './LineRow';
 import { amountWithUnit, qtyText, readQty, unitWord } from './units';
 import { useShelf } from './useRecipe';
 
@@ -79,7 +79,11 @@ describe('LineRow', () => {
     const { unmount } = mount(
       <Harness start={{ ...linked, saved: { status: 'linked', costPerServe: null, costBasis: 'unknown' } }} say={say} />,
     );
-    expect(screen.getByText('No price yet: it will cost once a delivery of it is checked in.')).toBeInTheDocument();
+    // r36 gap 12: a delivery checked in at the door has no price until it is verified.
+    expect(
+      screen.getByText('No price yet: nothing says what gin cost. It is priced once a delivery of it is verified with its invoice or an agreed price.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/checked in/)).toBeNull();
     unmount();
     mount(<Harness start={{ ...linked, saved: { status: 'linked', costPerServe: 30, costBasis: 'lot_wac' } }} say={say} />);
     expect(screen.getByText('₺30.00 a serve')).toBeInTheDocument();
@@ -135,6 +139,26 @@ describe('LineRow', () => {
     // A good that truly costs nothing, or an older gateway with no six-place figure, reads as the cents say.
     mount(<Harness start={{ ...linked, saved: { status: 'linked', costPerServe: 0, costPerServeExact: 0, costBasis: 'lot_wac' } }} say={say} />);
     expect(screen.getByText('₺0.00 a serve')).toBeInTheDocument();
+  });
+
+  it('r36 gap 1: a line priced at what its good last cost says so, and when it was bought', () => {
+    const linked = { ...blank, inventoryId: GIN, itemName: 'Campari', label: 'campari' };
+    const at = new Date().getFullYear() + '-03-07T09:00:00Z';
+    const { unmount } = mount(
+      <Harness start={{ ...linked, saved: { status: 'linked', costPerServe: 4, costBasis: 'last_known_lot_cost', boughtAt: at } }} say={(n) => `₺${n.toFixed(2)}`} />,
+    );
+    expect(screen.getByText('₺4.00 a serve, at what Campari last cost (bought 7 Mar); nothing on hand has a price.')).toBeInTheDocument();
+    unmount();
+    mount(<Harness start={{ ...linked, saved: { status: 'linked', costPerServe: 4, costBasis: 'last_known_lot_cost', boughtAt: null } }} say={(n) => `₺${n.toFixed(2)}`} />);
+    expect(screen.getByText('₺4.00 a serve, at what Campari last cost; nothing on hand has a price.')).toBeInTheDocument();
+  });
+
+  it('r36 gap 1: a bought day outside this year carries its year, and no date is made up', () => {
+    const now = new Date('2026-11-13T12:00:00Z');
+    expect(boughtDay('2025-11-01T09:00:00Z', now)).toBe('1 Nov 2025');
+    expect(boughtDay('2026-11-01T09:00:00Z', now)).toBe('1 Nov');
+    expect(boughtDay('not a date', now)).toBeNull();
+    expect(boughtDay(null, now)).toBeNull();
   });
 
   it('a line priced from part of the stock says so beside its cost', () => {

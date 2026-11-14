@@ -141,6 +141,7 @@ function fromServer(l: RecipeLine): DraftRow {
       costBasis: l.costBasis,
       needs: l.needs ?? null,
       weighed: l.weighed ?? null,
+      boughtAt: l.boughtAt ?? null,
     },
   };
 }
