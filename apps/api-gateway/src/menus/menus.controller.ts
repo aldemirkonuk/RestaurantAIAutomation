@@ -258,7 +258,7 @@ export class OnboardingController {
   @ApiOperation({
     summary: "The setup of the house this session is in",
     description:
-      "Read from the house's own tables every time: a menu read, a menu made current, a supplier, an invite. A GET writes nothing. activated = the house has a current menu with a live line. next_steps (goods_listed, goods_counted = an active good someone has counted, mailbox_connected, invoice: none/waiting/checked) lead past the menu to the house's costs; they never decide completed_at or activated, and a fact whose read failed is null, not false. 404 when the session is in no house.",
+      "Read from the house's own tables every time: a menu read, a menu made current, a supplier, an invite. A GET writes nothing. activated = the house has a current menu with a live line. next_steps (goods_listed, goods_counted = an active good someone has counted, mailbox_connected, mailbox_sends = a live Gmail grant to send, invoice: none/waiting/checked) lead past the menu to the house's costs; they never decide completed_at or activated, and a fact whose read failed is null, not false. 404 when the session is in no house.",
   })
   async getProgress(
     @CurrentUser() user: { userId: string; restaurantId?: string },

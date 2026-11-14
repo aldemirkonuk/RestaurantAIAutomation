@@ -146,6 +146,12 @@ export interface OnboardingNextSteps {
   goods_counted?: boolean | null
   /** A live Gmail grant held for this house (sending or reading). */
   mailbox_connected: boolean | null
+  /**
+   * A live Gmail grant to send, held for this house. The mailbox step says
+   * orders leave from the house's address, so it ticks on this one; a
+   * reading grant sends nothing. Absent from an older gateway.
+   */
+  mailbox_sends?: boolean | null
   /** "checked" once an invoice is verified, "waiting" while one is in, else "none". */
   invoice: 'none' | 'waiting' | 'checked' | null
 }

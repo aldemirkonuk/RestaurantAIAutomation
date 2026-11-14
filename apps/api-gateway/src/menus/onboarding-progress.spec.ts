@@ -40,8 +40,18 @@ function fakeDb(
       }
       return out.slice(0, cap);
     };
+    // A plain column list is projected, as PostgREST does: a read that asks
+    // for `id` never sees `integration_id`. Embeds and `*` are left whole.
+    let picked: string[] | null = null;
+    const project = (r: Row) =>
+      picked ? Object.fromEntries(picked.map((c) => [c, r[c]])) : r;
     const api: any = {
-      select: () => api,
+      select: (cols?: string) => {
+        if (cols && !cols.includes("(") && !cols.includes("*")) {
+          picked = cols.split(",").map((c) => c.trim());
+        }
+        return api;
+      },
       eq: (c: string, v: any) => (preds.push((r) => col(r, c) === v), api),
       neq: (c: string, v: any) => (preds.push((r) => col(r, c) !== undefined && col(r, c) !== v), api),
       is: (c: string, v: null) => (preds.push((r) => (r[c] ?? null) === v), api),
@@ -72,7 +82,7 @@ function fakeDb(
         if (readFails[table]) return { data: null, error: { message: readFails[table] } };
         const found = rows();
         if (found.length > 1) return { data: null, error: { code: "PGRST116", message: "multiple rows" } };
-        return { data: found[0] ?? null, error: null };
+        return { data: found[0] ? project(found[0]) : null, error: null };
       },
       then(resolve: any) {
         if (write) {
@@ -91,7 +101,7 @@ function fakeDb(
           return resolve({ data: null, error: null });
         }
         if (readFails[table]) return resolve({ data: null, error: { message: readFails[table] } });
-        resolve({ data: rows(), error: null });
+        resolve({ data: rows().map(project), error: null });
       },
     };
     return api;
@@ -342,16 +352,16 @@ describe("next steps lead past the menu to the house's costs (r28 gap 3)", () =>
 
   it("a house with no goods, no mailbox and no invoice says so, and its setup still answers", async () => {
     const a = await serviceOn(twoHouses()).service.getOnboardingProgress("u-1", houseA);
-    expect(a.next_steps).toEqual({ goods_listed: false, goods_counted: false, mailbox_connected: false, invoice: "none" });
+    expect(a.next_steps).toEqual({ goods_listed: false, goods_counted: false, mailbox_connected: false, mailbox_sends: false, invoice: "none" });
     expect(a.menu_current).toBe(true);
   });
 
   it("house A's good, grant and checked invoice count for A and never for B", async () => {
     const { service } = serviceOn(withValue());
     const a = await service.getOnboardingProgress("u-1", houseA);
-    expect(a.next_steps).toEqual({ goods_listed: true, goods_counted: true, mailbox_connected: true, invoice: "checked" });
+    expect(a.next_steps).toEqual({ goods_listed: true, goods_counted: true, mailbox_connected: true, mailbox_sends: true, invoice: "checked" });
     const b = await service.getOnboardingProgress("u-1", houseB);
-    expect(b.next_steps).toEqual({ goods_listed: false, goods_counted: false, mailbox_connected: false, invoice: "none" });
+    expect(b.next_steps).toEqual({ goods_listed: false, goods_counted: false, mailbox_connected: false, mailbox_sends: false, invoice: "none" });
   });
 
   it("a good put away or deleted is not on the list", async () => {
@@ -407,6 +417,29 @@ describe("next steps lead past the menu to the house's costs (r28 gap 3)", () =>
     expect(await mailbox()).toBe(true);
   });
 
+  // r36 onboarding gap 2: the step says orders leave from the house's
+  // address. A reading grant sends nothing, so it does not tick the step.
+  it("only a live grant to send, held for this house, sends; a reading grant does not", async () => {
+    const tables = withValue();
+    const sends = async () =>
+      (await serviceOn(tables).service.getOnboardingProgress("u-1", houseA)).next_steps;
+    tables.integration_oauth_connections = [
+      { id: "c-R", restaurant_id: houseA, integration_id: "gmail_read", revoked_at: null },
+    ];
+    expect((await sends()).mailbox_sends).toBe(false);
+    expect((await sends()).mailbox_connected).toBe(true);
+    tables.integration_oauth_connections.push(
+      { id: "c-S", restaurant_id: houseA, integration_id: "gmail_send", revoked_at: "2026-01-05T00:00:00+00:00" },
+      { id: "c-B", restaurant_id: houseB, integration_id: "gmail_send", revoked_at: null },
+      { id: "c-D", restaurant_id: houseA, integration_id: "google_drive", revoked_at: null },
+    );
+    expect((await sends()).mailbox_sends).toBe(false);
+    tables.integration_oauth_connections.push(
+      { id: "c-S2", restaurant_id: houseA, integration_id: "gmail_send", revoked_at: null },
+    );
+    expect((await sends()).mailbox_sends).toBe(true);
+  });
+
   it("an invoice in and not checked is waiting; a rejected one, or a checked credit memo, is no invoice", async () => {
     const tables = withValue();
     const invoice = async () =>
@@ -429,7 +462,7 @@ describe("next steps lead past the menu to the house's costs (r28 gap 3)", () =>
   it("a failed read is null for that step only, never false, and the setup still answers", async () => {
     for (const [table, keys] of [
       ["restaurant_inventory", ["goods_listed", "goods_counted"]],
-      ["integration_oauth_connections", ["mailbox_connected"]],
+      ["integration_oauth_connections", ["mailbox_connected", "mailbox_sends"]],
       ["procurement_documents", ["invoice"]],
     ] as const) {
       const a = await serviceOn(withValue(), { [table]: "statement timeout" }).service.getOnboardingProgress("u-1", houseA);
@@ -460,6 +493,7 @@ describe("next steps lead past the menu to the house's costs (r28 gap 3)", () =>
     };
     const a = await service.getOnboardingProgress("u-1", houseA);
     expect(a.next_steps.mailbox_connected).toBeNull();
+    expect(a.next_steps.mailbox_sends).toBeNull();
     expect(a.next_steps.goods_listed).toBe(true);
     expect(a.activated).toBe(true);
   });
@@ -496,7 +530,7 @@ describe("next steps lead past the menu to the house's costs (r28 gap 3)", () =>
     const tables = withValue();
     tables.providers = [];
     const a = await serviceOn(tables).service.getOnboardingProgress("u-1", houseA);
-    expect(a.next_steps).toEqual({ goods_listed: true, goods_counted: true, mailbox_connected: true, invoice: "checked" });
+    expect(a.next_steps).toEqual({ goods_listed: true, goods_counted: true, mailbox_connected: true, mailbox_sends: true, invoice: "checked" });
     expect(a.completed_at).toBeNull();
     tables.menu_items = [];
     const b = await serviceOn(tables).service.getOnboardingProgress("u-1", houseA);
