@@ -18,6 +18,10 @@
 .ivn-fig dt {
   color: var(--ink-2);
 }
+.ivn-fig-sub dt {
+  padding-left: 12px;
+  font-size: 0.95em;
+}
 .ivn-fig dd {
   margin: 0;
   text-align: right;

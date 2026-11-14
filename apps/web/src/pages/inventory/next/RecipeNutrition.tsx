@@ -10,8 +10,9 @@ const ROWS: Array<[SumKey, string, 'kcal' | 'g']> = [
   ['energyKcal', 'Energy', 'kcal'],
   ['proteinG', 'Protein', 'g'],
   ['fatG', 'Fat', 'g'],
+  ['saturatesG', 'of which saturates', 'g'],
   ['carbohydrateG', 'Carbohydrate', 'g'],
-  ['sugarsG', 'Sugar', 'g'],
+  ['sugarsG', 'of which sugars', 'g'],
   ['saltG', 'Salt', 'g'],
 ];
 

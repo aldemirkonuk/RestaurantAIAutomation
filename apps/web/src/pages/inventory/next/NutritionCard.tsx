@@ -3,7 +3,8 @@
  * NutritionCard slot, at the top of the detail card every KPI card opens
  * (founder /goal 2026-11-07: "a nutrition card of the item").
  *
- * Simple for people: energy, protein, fat, carbohydrate, sugar and salt per
+ * Simple for people: energy, protein, fat (of which saturates), carbohydrate
+ * (of which sugars) and salt per
  * 100 g or 100 ml, and the allergens as words. The rules it keeps:
  * - a figure nobody stated reads "not known", never 0;
  * - every figure says per 100 g or per 100 ml;
@@ -23,13 +24,19 @@ import NutritionForm from './NutritionForm';
 import './nutrition-card.css';
 import { allergenLines, figureWords, PER, SOURCE_WORDS } from './nutrition-words';
 
+const SUB_SATURATES = 'of which saturates';
+const SUB_SUGARS = 'of which sugars';
+
 function Figures({ f }: { f: StoredNutrition }) {
+  // Saturates and sugars are parts of fat and carbohydrate, so they read as
+  // "of which", as a pack's label has them, under the figure they belong to.
   const rows: Array<[string, string, string?]> = [
     ['Energy', figureWords(f.energyKcal, 'kcal'), f.energyFromAbv ? 'from the alcohol alone, at least: any sugar is not counted' : undefined],
     ['Protein', figureWords(f.proteinG, 'g')],
     ['Fat', figureWords(f.fatG, 'g')],
+    [SUB_SATURATES, figureWords(f.saturatesG, 'g')],
     ['Carbohydrate', figureWords(f.carbohydrateG, 'g')],
-    ['Sugar', figureWords(f.sugarsG, 'g')],
+    [SUB_SUGARS, figureWords(f.sugarsG, 'g')],
     ['Salt', figureWords(f.saltG, 'g')],
   ];
   if (f.abvPct !== null) rows.push(['Alcohol', figureWords(f.abvPct, '%')]);
@@ -38,7 +45,7 @@ function Figures({ f }: { f: StoredNutrition }) {
       <h4 className="ivd-used-h">{PER[f.basis]}</h4>
       <dl className="ivn-figs" data-testid="ivn-figures">
         {rows.map(([k, v, note]) => (
-          <div key={k} className="ivn-fig">
+          <div key={k} className={k === SUB_SATURATES || k === SUB_SUGARS ? 'ivn-fig ivn-fig-sub' : 'ivn-fig'}>
             <dt>{k}</dt>
             <dd data-unknown={v === 'not known' ? 'true' : undefined}>
               {v}
