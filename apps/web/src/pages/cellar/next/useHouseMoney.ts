@@ -48,6 +48,10 @@ export function useHouseMoney(): SayMoney {
     enabled: Boolean(activeRestaurantId),
     queryFn: () => settingsApi.houseCurrency(),
     staleTime: 5 * 60_000,
+    // App.tsx's default `refetchOnMount: 'always'` ignores the staleTime, so
+    // every recipe sheet opened read the house's money again (r41 recipes
+    // audit, gap 5). A mount while the answer is fresh uses it.
+    refetchOnMount: true,
   });
   const unread = q.isError || (q.data !== undefined && q.data.readable === false);
   const code = q.data?.readable ? q.data.code : null;

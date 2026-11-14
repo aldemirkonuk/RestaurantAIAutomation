@@ -147,6 +147,23 @@ function drinkCells(
   };
 }
 
+/** Room below an opened recipe's top edge for its heading and first line, in px. */
+export const LEAF_HEAD_ROOM = 160;
+
+/**
+ * Scrolls an opened recipe to the top of the screen when its heading would
+ * not be seen: above the screen, or below `innerHeight - LEAF_HEAD_ROOM`. A
+ * recipe already in view does not move the page. Measured on its top edge,
+ * not its height: it is still opening (0 tall) when this runs.
+ */
+export function bringIntoView(el: HTMLElement | null) {
+  if (!el) return;
+  const top = el.getBoundingClientRect().top;
+  if (top >= 0 && top <= window.innerHeight - LEAF_HEAD_ROOM) return;
+  const still = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  el.scrollIntoView?.({ block: 'start', behavior: still ? 'auto' : 'smooth' });
+}
+
 /* ── the register ───────────────────────────────────────────────────────── */
 
 export default function CocktailRegister({
@@ -207,13 +224,9 @@ export default function CocktailRegister({
   const [allergen, setAllergen] = useState('');
   const [onlyBare, setOnlyBare] = useState(false);
 
-  // Opened from a link: bring the drink into view once the list has it. A
-  // link to a drink this house's list does not hold is said, not ignored.
+  // A link to a drink this house's list does not hold is said, not ignored.
   const linkedRow = openParam ? (data?.rows ?? []).find((c) => c.id === openParam) ?? null : null;
   const linkedMissing = Boolean(openParam && data && !linkedRow);
-  useEffect(() => {
-    if (linkedRow && openId === linkedRow.id) leafRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
-  }, [linkedRow, openId]);
 
   const searched = (data?.rows ?? []).filter((c) => {
     const q = query.trim().toLowerCase();
@@ -226,6 +239,14 @@ export default function CocktailRegister({
   const bareIds = figures.byId ? (data?.rows ?? []).filter((c) => !figures.byId?.get(c.id)?.hasRecipe).map((c) => c.id) : [];
   const rows = seesCost && onlyBare ? byAllergen.filter((c) => bareIds.includes(c.id)) : byAllergen;
   const openShown = Boolean(openId && rows.some((x) => x.id === openId));
+  // The recipe opens below the whole list, so a drink opened by a click (or a
+  // link) is brought into view whenever its heading would land off the screen;
+  // otherwise a click on a top row of a long list seemed to do nothing
+  // (r41 recipes audit, gap 7). Once per drink opened, not on every render.
+  const shownId = openShown ? openId : null;
+  useEffect(() => {
+    if (shownId) bringIntoView(leafRef.current);
+  }, [shownId]);
 
   const priceRead = readPrice(draft?.priceText ?? '');
 
