@@ -61,7 +61,9 @@ import {
   Optional,
   UnprocessableEntityException,
 } from "@nestjs/common";
+import { randomUUID } from "crypto";
 import { DatabaseService } from "../../database/database.service";
+import { InboundAddressService } from "../../common/orchestrator/inbound-address.service";
 import { SealChallengeService } from "../../common/seal/seal-challenge.service";
 import {
   VendorSendAuthorityService,
@@ -80,6 +82,7 @@ import { composeCreditLetter } from "./credit-letter";
 import {
   addressListHeader,
   base64Body,
+  messageIdHeader,
   threadingHeader,
   unstructuredHeader,
 } from "../mime-headers";
@@ -212,7 +215,44 @@ export class HouseLettersService {
     // Staff ask a manager to send a letter (founder answer 3, 2026-09-21).
     // Supplied by VendorSendAuthorityModule; the ask route refuses without it.
     @Optional() private readonly requests?: VendorSendRequestsService,
+    // The house's Mudavym address, the Reply-To of every letter it writes
+    // (r36 mail audit, gap 1). Supplied by OrchestratorModule; without it a
+    // letter leaves with no Reply-To, as it did before.
+    @Optional() private readonly inboundAddress?: InboundAddressService,
   ) {}
+
+  /**
+   * Where a vendor's answer to a house letter should go: the house's Mudavym
+   * address, or null when the deployment has none.
+   *
+   * WHY ALWAYS, AND NOT ONLY WHEN THE SENDING MAILBOX IS NOT READ. A letter
+   * leaves through a `gmail_send` grant, which records no address, and the
+   * reading grant is a separate row; nothing held proves the mailbox that is
+   * read is the mailbox that sent. Without a Reply-To the answer goes to that
+   * sending mailbox, and when it is not read the answer never reaches Mail
+   * (the usual day-1 state: setup asks for sending first). Order letters
+   * already carry this Reply-To (ProcurementService.sendProviderEmail), so
+   * both kinds of letter are answered to one place.
+   *
+   * It is the same call as the order path: `addressFor` makes the address on
+   * first use when the deployment has an inbound domain. Sending is an act,
+   * not a read, so QA M-12 (a read never provisions) is not crossed.
+   *
+   * A failure here never stops the letter: it leaves without a Reply-To, as
+   * every house letter did before, and the log says why.
+   */
+  private async replyAddress(restaurantId: string): Promise<string | null> {
+    if (!this.inboundAddress) return null;
+    try {
+      const address = await this.inboundAddress.addressFor(restaurantId);
+      return typeof address === "string" && address.trim() ? address.trim() : null;
+    } catch (err) {
+      this.logger.error(
+        `house ${restaurantId}'s Mudavym address could not be read, so its letter leaves with no Reply-To: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
+  }
 
   private requireGates(): { authority: VendorSendAuthorityService; seal: SealChallengeService } {
     if (!this.authority || !this.seal) {
@@ -1785,12 +1825,20 @@ export class HouseLettersService {
           restaurantId,
           identity.grant.integrationId as IntegrationId,
         );
-        const messageId = await sendThroughGrant({
+        // The answer finds its letter (r36 mail audit, gap 2): the letter
+        // carries a Message-ID minted here, and the book keeps it with the
+        // Gmail thread, so the vendor's In-Reply-To (or a later read of the
+        // same Gmail thread) joins the letter's own thread.
+        const outboundMessageId = mintHouseMessageId();
+        const replyTo = await this.replyAddress(restaurantId);
+        const sentAs = await sendThroughGrantWithThread({
           token,
           from: identity.address ?? identity.grant.accountEmail ?? "",
           to,
           subject,
           text: String(row.message_text ?? ""),
+          messageId: outboundMessageId,
+          ...(replyTo ? { replyTo } : {}),
           // A reply from Mail carries the letter it answers (queue, step 2b).
           ...(typeof headers.in_reply_to === "string" && headers.in_reply_to
             ? { inReplyTo: headers.in_reply_to }
@@ -1806,7 +1854,14 @@ export class HouseLettersService {
             status: LETTER_STATUS.SENT,
             sent_at: new Date().toISOString(),
             delivery_status: "sent",
-            gmail_message_id: messageId,
+            gmail_message_id: sentAs.id,
+            gmail_thread_id: sentAs.threadId,
+            message_id: outboundMessageId,
+            email_headers: {
+              ...headers,
+              message_id: outboundMessageId,
+              ...(replyTo ? { reply_to: replyTo } : {}),
+            },
             scheduled_send_at: null,
           })
           .eq("id", id);
@@ -2035,6 +2090,23 @@ export function mergeFieldsIn(
 }
 
 /**
+ * A Message-ID for a letter the house writes, minted before the send (r36
+ * mail audit, gap 2). The same form as an order letter's
+ * (ProcurementService.mintRfc822MessageId), so the bridge and the thread-key
+ * trigger meet one shape whichever path sent the letter.
+ */
+export function mintHouseMessageId(): string {
+  return `<mudavym-${randomUUID()}@wineops.ai>`;
+}
+
+/** {@link sendThroughGrantWithThread}, returning only Gmail's message id. */
+export async function sendThroughGrant(
+  params: Parameters<typeof sendThroughGrantWithThread>[0],
+): Promise<string | null> {
+  return (await sendThroughGrantWithThread(params)).id;
+}
+
+/**
  * Send one letter through the granting account's own Gmail mailbox.
  *
  * Deliberately NOT `GmailService`: that service is built on the deployment's
@@ -2064,7 +2136,7 @@ export function mergeFieldsIn(
  *
  * Exported so the spec can prove the request shape without a network.
  */
-export async function sendThroughGrant(params: {
+export async function sendThroughGrantWithThread(params: {
   token: string;
   from: string;
   to: string | string[];
@@ -2076,8 +2148,10 @@ export async function sendThroughGrant(params: {
   threadId?: string;
   inReplyTo?: string;
   references?: string;
+  /** Our own Message-ID, minted before the send; refused on a control character. */
+  messageId?: string;
   fetchImpl?: typeof fetch;
-}): Promise<string | null> {
+}): Promise<{ id: string | null; threadId: string | null }> {
   // `From` is emitted only when we actually know the address. The `gmail_send`
   // grant asks for the send scope and nothing else, so it carries no
   // `openid`/`email` and no address was ever read for it — and `From: ` with
@@ -2104,6 +2178,7 @@ export async function sendThroughGrant(params: {
     ...(params.replyTo
       ? [addressListHeader("Reply-To", [params.replyTo])]
       : []),
+    ...(params.messageId ? [messageIdHeader("Message-ID", params.messageId)] : []),
     ...(inReplyTo ? [inReplyTo] : []),
     ...(references ? [references] : []),
     "MIME-Version: 1.0",
@@ -2145,6 +2220,10 @@ export async function sendThroughGrant(params: {
 
   const payload = (await response.json().catch(() => null)) as {
     id?: string;
+    threadId?: string;
   } | null;
-  return payload?.id ?? null;
+  return {
+    id: payload?.id ?? null,
+    threadId: typeof payload?.threadId === "string" && payload.threadId ? payload.threadId : null,
+  };
 }
