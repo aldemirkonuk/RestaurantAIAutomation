@@ -136,6 +136,10 @@ export function OpeningCost({
   canManage: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  // What the sheet was opened on. The read is refetched once the cost is
+  // stated and then answers "nothing waits", so the sheet keeps this copy and
+  // stays open with the server's sentence until it is closed.
+  const [asked, setAsked] = useState<UncostedOpeningStock | null>(null);
   const [said, setSaid] = useState<string | null>(null);
   const enabled = canManage && restaurantId !== null;
   const q = useQuery({
@@ -147,7 +151,7 @@ export function OpeningCost({
 
   if (!enabled) return null;
   const waiting = q.data && q.data.lots > 0 ? q.data : null;
-  if (waiting === null && said === null) return null;
+  if (waiting === null && said === null && !open) return null;
 
   return (
     <div className="iv-opening-cost" data-testid="opening-cost">
@@ -157,7 +161,10 @@ export function OpeningCost({
           <p className="iv-note" data-testid="opening-cost-waiting">
             {waitingWords(waiting, uom)}
           </p>
-          <button type="button" className="iv-btn iv-focus" data-seal="true" onClick={() => setOpen(true)}>
+          <button type="button" className="iv-btn iv-focus" data-seal="true" onClick={() => {
+              setAsked(waiting);
+              setOpen(true);
+            }}>
             State what it cost
           </button>
         </>
@@ -167,14 +174,14 @@ export function OpeningCost({
           {said}
         </p>
       ) : null}
-      {open && waiting ? (
+      {open && asked ? (
         <OpeningCostSheet
           restaurantId={restaurantId as string}
           inventoryId={inventoryId}
           title={title}
           uom={uom}
           currency={currency}
-          waiting={waiting}
+          waiting={asked}
           onSaid={setSaid}
           onClose={() => setOpen(false)}
         />

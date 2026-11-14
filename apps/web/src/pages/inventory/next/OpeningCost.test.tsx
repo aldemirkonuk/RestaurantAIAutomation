@@ -140,6 +140,22 @@ describe('OpeningCost', () => {
     );
   });
 
+  it('the re-read that finds nothing waiting keeps the sheet and its sentence, and the dropdown says it once closed (r39 walk)', async () => {
+    api.get.mockResolvedValueOnce(waitingAnswer({ units: 2000 })).mockResolvedValue(waitingAnswer({ lots: 0, units: 0 }));
+    api.post.mockResolvedValue({ data: { lotsStated: 1, drawsSettled: 0, said: 'Stated on 1 lot (2000 units on the shelf).' } });
+    mount(<OpeningCost restaurantId="r1" inventoryId="i1" title="Sugar" uom="g" currency={EUR} canManage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'State what it cost' }));
+    fireEvent.change(screen.getByLabelText('Cost a kg'), { target: { value: '20' } });
+    holdByKeyboard(screen.getByRole('button', { name: /^Hold to state/ }));
+    // the stated cost is re-read, and the read now says nothing waits
+    await waitFor(() => expect(api.get.mock.calls.length).toBeGreaterThanOrEqual(2));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.getByTestId('opening-cost-sheet-said').textContent).toBe('Stated on 1 lot (2000 units on the shelf).');
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect((await screen.findByTestId('opening-cost-said')).textContent).toBe('Stated on 1 lot (2000 units on the shelf).');
+    expect(screen.queryByText('What did these cost?')).toBeNull();
+  });
+
   it('a bottle is costed a bottle, as typed', async () => {
     api.get.mockResolvedValue(waitingAnswer());
     api.post.mockResolvedValue({ data: { lotsStated: 2, drawsSettled: 0, said: 'Stated on 2 lots (9 units on the shelf).' } });
