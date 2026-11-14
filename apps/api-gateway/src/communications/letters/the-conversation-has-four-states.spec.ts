@@ -400,6 +400,29 @@ describe("the words say where an answer goes and which mailbox is read", () => {
     );
   });
 
+  it("says whether an answer reaches Mail, as a field the composer can read", async () => {
+    // Sending only, no Mudavym address: the answer goes to an unread mailbox.
+    expect((await resolveWith([sendGrant], READER_OFF)).conversation.answerReachesMail).toBe(false);
+    // Sending only, with one: the answer comes back to it.
+    expect((await withDoor([sendGrant], READER_OFF)).conversation.answerReachesMail).toBe(true);
+    // Both, sameness not recorded: not known, never a false alarm.
+    expect((await resolveWith([sendGrant, readGrant], READER_ON)).conversation.answerReachesMail).toBeNull();
+    // Both, the same recorded address.
+    expect(
+      (await resolveWith([named(sendGrant, "o@house.test"), named(readGrant, "o@house.test")], READER_ON)).conversation
+        .answerReachesMail,
+    ).toBe(true);
+    // Both, two different recorded addresses.
+    expect(
+      (await resolveWith([named(sendGrant, "o@house.test"), named(readGrant, "m@house.test")], READER_ON)).conversation
+        .answerReachesMail,
+    ).toBe(false);
+    // No letter written here can leave: the question does not arise.
+    expect((await resolveWith([readGrant], READER_ON)).conversation.answerReachesMail).toBeNull();
+    expect((await resolveWith([], READER_OFF)).conversation.answerReachesMail).toBeNull();
+    expect((await resolveWith({ error: { message: "x" } }, READER_OFF)).conversation.answerReachesMail).toBeNull();
+  });
+
   it("neither, with no Mudavym address: an order's answer arrives at the shared address", async () => {
     const identity = await resolveWith([], READER_OFF);
     expect(identity.conversation.words).toContain(

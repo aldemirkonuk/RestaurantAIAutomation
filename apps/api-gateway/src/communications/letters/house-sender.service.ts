@@ -176,6 +176,15 @@ export interface HouseConversationState {
     /** The flag whose value `switchedOn` is, named so it can be found. */
     switch: string;
   };
+  /**
+   * Does a vendor's answer to a letter written here reach Mail? (r36 mail
+   * audit, gap 1.) True when the answer comes back to the house's Mudavym
+   * address, or to a sending mailbox known to be the one that is read;
+   * false when it goes back to a sending mailbox nothing reads; null when it
+   * is not known or no letter written here can leave. Absent on a gateway
+   * that predates it. The composer warns before Send only on `false`.
+   */
+  answerReachesMail: boolean | null;
 }
 
 export interface HouseSenderIdentity {
@@ -650,6 +659,7 @@ export class HouseSenderService {
           "Which mailbox this house's letters use could not be read just now, so nothing is said about it. This is a failed read, not an answer: the house may well have both mailbox connections. Try again before concluding anything.",
         sending,
         receiving,
+        answerReachesMail: null,
       };
     }
 
@@ -706,6 +716,9 @@ export class HouseSenderService {
         words: `${same && !door ? "The whole conversation is on this house's mailbox." : "This house sends and reads its own vendor mail."}${which}${answer}${orderLine}`,
         sending,
         receiving,
+        // Two known, different addresses is "false"; an unrecorded sending
+        // address is not: that mailbox may well be the one read.
+        answerReachesMail: door || same ? true : sendKey && readAddresses.length ? false : null,
       };
     }
 
@@ -718,6 +731,7 @@ export class HouseSenderService {
         words: `Letters written here leave from${from}, so a vendor sees this house's own address.${answer}${orderLine}${readCaveat}`,
         sending,
         receiving,
+        answerReachesMail: door,
       };
     }
 
@@ -727,6 +741,7 @@ export class HouseSenderService {
         words: `A vendor's reply to this house is read from its own mailbox and filed in the book, so nothing arrives only in one person's inbox — but no letter may leave from it, because nobody here has consented to sending. Order letters leave from ${deploymentAddress}, the address every restaurant on this deployment shares, and a letter written here to a vendor cannot leave until a mailbox is connected for sending. Connect "${GMAIL_SEND_DEFINITION.label}" on the Connections page; it asks for one permission, to send, and cannot read a single message.`,
         sending,
         receiving,
+        answerReachesMail: null,
       };
     }
 
@@ -739,6 +754,7 @@ export class HouseSenderService {
       words: `Nothing runs through a mailbox of this house's own yet. Order letters leave from ${deploymentAddress}, the address every restaurant on this deployment shares, and a letter written here to a vendor cannot leave until a mailbox is connected. A vendor's answer to an order ${door ? "comes back to this house's Mudavym address" : `arrives at ${deploymentAddress}`} and is filed in this house's book. Two connections move this onto your own mailbox, and each asks for one thing: "${GMAIL_SEND_DEFINITION.label}" and "${INTEGRATION_DEFINITIONS.gmail_read.label}".${readConsented ? readCaveat : ""}`,
       sending,
       receiving,
+      answerReachesMail: null,
     };
   }
 }
