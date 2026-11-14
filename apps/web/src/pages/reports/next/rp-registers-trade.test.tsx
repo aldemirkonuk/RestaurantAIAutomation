@@ -285,3 +285,54 @@ describe("a goal's pace in a house with no time zone (ADR 0296)", () => {
     expect(paceOf(toProgressRow(NO_DEADLINE))).toBe('No deadline');
   });
 });
+
+describe('the money registers and the feed for staff (ADR 0348 decision 3)', () => {
+  it('[REVERT-FAILS] names owner and manager as the readers of menu engineering, spend pacing and the bench', async () => {
+    const { quadrants } = await import('./rp-registers-house');
+    const { bench } = await import('./rp-registers-bench');
+    const { pacing } = await import('./rp-registers-trade');
+    expect(quadrants.readers).toEqual(['owner', 'manager']);
+    expect(pacing.readers).toEqual(['owner', 'manager']);
+    expect(bench.readers).toEqual(['owner', 'manager']);
+  });
+
+  it('[REVERT-FAILS] a feed with every sentence withheld says so, never "no insight yet"', async () => {
+    const { reading } = await import('./rp-registers-trade');
+    const rows = reading.select({ source: 'stored', insights: [], withheldForRole: 5 });
+    const view = reading.view(rows, ctx);
+    expect(view.say).toBe(
+      'Nothing here is written for your role. 5 sentences are about money, the till or a named person, and are written for owners and managers.',
+    );
+    expect(view.figures).toEqual([]);
+  });
+
+  it('[REVERT-FAILS] a feed with some sentences withheld counts them in a note', async () => {
+    const { reading } = await import('./rp-registers-trade');
+    const rows = reading.select({
+      insights: [{ candidate_key: 'wine.stockout_risk.peer_rank', sentence: 'Öküzgözü runs out first.', category: 'risk', score: 1 }],
+      withheldForRole: 1,
+    });
+    expect(rows).toHaveLength(1);
+    const view = reading.view(rows, ctx);
+    expect(view.notes).toContain(
+      '1 sentence is about money, the till or a named person, and is written for owners and managers.',
+    );
+  });
+
+  it('reads a feed with nothing withheld as it always did', async () => {
+    const { reading } = await import('./rp-registers-trade');
+    const rows = reading.select({ insights: [] }) as import('./rp-registers-trade').ReadingRows;
+    expect(rows.withheldForRole).toBeUndefined();
+    expect(String(reading.view(rows, ctx).say)).toMatch(/^The engine has produced no insight/);
+  });
+
+  it('withheldByGateway reads a withheld lens and the withheld till, and nothing else', async () => {
+    const { withheldByGateway } = await import('./useReportsNextData');
+    expect(withheldByGateway({ withheldForRole: ['money'] })).toBe(true);
+    expect(withheldByGateway({ salesWithheld: true })).toBe(true);
+    expect(withheldByGateway({ withheldForRole: [] })).toBe(false);
+    expect(withheldByGateway({ insights: [], withheldForRole: 3 })).toBe(false);
+    expect(withheldByGateway([])).toBe(false);
+    expect(withheldByGateway(null)).toBe(false);
+  });
+});

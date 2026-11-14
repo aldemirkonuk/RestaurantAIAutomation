@@ -169,3 +169,52 @@ describe('useReportsNextData — the till is not sent for staff (ADR 0298 decisi
     expect(result.current.registers.till!.failure).toBeNull();
   });
 });
+
+describe('useReportsNextData — the money lenses are not sent for staff (ADR 0348 decision 3)', () => {
+  const QUADRANTS = '/analytics/menu-engineering/r1';
+  const PACING = '/analytics/cashflow/r1';
+  const BENCH = '/analytics/overview/r1';
+  const MONEY: AnalysisId[] = ['quadrants', 'pacing', 'bench'];
+  let answer: Record<string, unknown>;
+
+  beforeEach(() => {
+    auth.rid = 'r1';
+    answer = {};
+    api.get.mockReset();
+    api.get.mockImplementation(async (path: string) => {
+      if (path === READING) return { data: { insights: [] } };
+      if (path in answer) return { data: answer[path] };
+      if ([QUADRANTS, PACING, BENCH].includes(path)) return { data: {} };
+      throw new Error(`unexpected GET ${path}`);
+    });
+  });
+
+  const mountMoney = () =>
+    renderHook(() => useReportsNextData(30, () => {}, MONEY), { wrapper: wrapper() });
+
+  it('[REVERT-FAILS] staff: no request to menu engineering, cashflow or the overview, and each says it is held back', async () => {
+    auth.role = 'staff';
+    const { result } = mountMoney();
+    await waitFor(() => expect(paths()).toContain(READING));
+    for (const p of [QUADRANTS, PACING, BENCH]) expect(paths()).not.toContain(p);
+    for (const id of MONEY)
+      expect(result.current.registers[id]!.failure).toMatchObject({
+        forbidden: true,
+        heldBack: { readers: ['owner', 'manager'], known: true },
+      });
+  });
+
+  it('[REVERT-FAILS] a lens the gateway withheld for the role reads as held back, never as an empty register', async () => {
+    auth.role = 'manager';
+    answer[QUADRANTS] = { restaurantId: 'r1', withheldForRole: ['money', 'sales'] };
+    const { result } = mountMoney();
+    await waitFor(() => expect(result.current.registers.quadrants!.loading).toBe(false));
+    expect(result.current.registers.quadrants!.data).toBeUndefined();
+    expect(result.current.registers.quadrants!.failure).toMatchObject({
+      forbidden: true,
+      heldBack: { readers: ['owner', 'manager'], known: true },
+    });
+    await waitFor(() => expect(result.current.registers.pacing!.loading).toBe(false));
+    expect(result.current.registers.pacing!.failure).toBeNull();
+  });
+});
