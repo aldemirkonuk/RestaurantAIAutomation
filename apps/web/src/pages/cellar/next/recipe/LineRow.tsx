@@ -10,10 +10,11 @@
 import { useId, useState } from 'react';
 import { Link, useInRouterContext } from 'react-router-dom';
 import { Link2, Trash2 } from 'lucide-react';
-import type { RecipeLineRole, RecipeLineStatus, ShelfItem } from '../../../../services/api/recipes';
+import type { RecipeLineRole, RecipeLineStatus, ShelfItem, StatedWeights, WeightNeeded } from '../../../../services/api/recipes';
 import { amountWithUnit, qtyText, readQty, unitChoices, unitWord, type RecipeUnit } from './units';
 import ShelfPicker, { kindWords } from './ShelfPicker';
 import { recipeWords, type RecipeKind, type RecipeWords } from './recipeWords';
+import WeighBox from './WeighBox';
 
 export interface DraftRow {
   key: string;
@@ -42,7 +43,16 @@ export interface DraftRow {
     /** The same cost at six places, so a line under half a cent is not said as free. */
     costPerServeExact?: number | null;
     costBasis: string | null;
+    /** The weight the house can state so this line is priced (r28 gap 7). */
+    needs?: WeightNeeded | null;
   } | null;
+}
+
+/** The weight a saved line waits for, when its good can take one and the person can act on it. */
+export function weightNeeded(row: DraftRow): WeightNeeded | null {
+  if (row.role !== 'stocked' || !row.inventoryId || row.itemGone || !row.saved) return null;
+  if (row.saved.costBasis !== 'unit_mismatch' || row.saved.costPerServe != null) return null;
+  return row.saved.needs ?? null;
 }
 
 /** The line's amount: the stored number while the box is as loaded, else what was typed. */
@@ -129,6 +139,13 @@ export function rowNote(
       text: `No price: ${item} is counted ${countedHow(row.itemUom)}, and your shelf doesn't say what one holds. ${fix}`,
     };
   }
+  const needs = weightNeeded(row);
+  if (needs) {
+    return {
+      tone: 'warn',
+      text: `No price yet: this line is ${measuredHow(row.unit)}, but ${item} is counted ${countedHow(row.itemUom)}. Say what ${needs === 'piece_grams' ? 'one weighs' : 'one ml of it weighs'}, and every ${words.thing} with ${item} is priced from that.`,
+    };
+  }
   if (basis === 'unit_mismatch') {
     return {
       tone: 'warn',
@@ -205,6 +222,7 @@ export default function LineRow({
   onChange,
   onRemove,
   kind,
+  onWeighed,
 }: {
   row: DraftRow;
   say: ((n: number) => string) | null;
@@ -212,6 +230,8 @@ export default function LineRow({
   onRemove: () => void;
   /** What the recipe is for; a dish's notes and examples say plate, not serve. */
   kind?: RecipeKind;
+  /** Told when a weight this line waited for is kept. */
+  onWeighed?: (itemId: string, weights: StatedWeights) => void | Promise<void>;
 }) {
   const words = recipeWords(kind);
   const id = useId();
@@ -328,6 +348,14 @@ export default function LineRow({
         <ShelfPicker initial={row.inventoryId ? '' : row.label} onPick={pick} onClose={() => setPicking(false)} />
       ) : null}
       <Note note={rowNote(row, say, words)} />
+      {say && weightNeeded(row) && row.inventoryId ? (
+        <WeighBox
+          itemId={row.inventoryId}
+          item={row.itemName ?? rowName(row)}
+          needs={weightNeeded(row) as WeightNeeded}
+          onWeighed={onWeighed}
+        />
+      ) : null}
     </li>
   );
 }

@@ -43,6 +43,30 @@ export interface RecipeLine {
    * size), pack_size_not_known (case, pack, glass, shot), unit_mismatch.
    */
   costBasis: string | null;
+  /**
+   * Beside costBasis "unit_mismatch": the weight the house can state for the
+   * linked good so the line is priced (r28 gap 7). Absent from an older gateway.
+   */
+  needs?: WeightNeeded | null;
+  /** What one piece of the linked good weighs, in g, as the house stated it. */
+  itemPieceGrams?: number | null;
+  /** What one ml of the linked good weighs, in g, as the house stated it. */
+  itemMlGrams?: number | null;
+}
+
+/** piece_grams: what one piece weighs; ml_grams: what one ml weighs. */
+export type WeightNeeded = 'piece_grams' | 'ml_grams';
+
+/** PUT .../items/:itemId/weights: a field left out is kept, null takes it off. */
+export interface StateWeightsBody {
+  pieceGrams?: number | null;
+  mlGrams?: number | null;
+}
+
+export interface StatedWeights {
+  id: string;
+  pieceGrams: number | null;
+  mlGrams: number | null;
 }
 
 export interface RecipeVersion {
@@ -177,7 +201,7 @@ export interface PreviewCostBody {
 
 /** What a draft would cost at today's prices: the saved cost's shape, plus each line in the order sent. */
 export interface CostPreview extends RecipeCost {
-  lines: Array<{ status: RecipeLineStatus; costPerServe: number | null; costBasis: string | null }>;
+  lines: Array<{ status: RecipeLineStatus; costPerServe: number | null; costBasis: string | null; needs?: WeightNeeded | null }>;
 }
 
 export interface SaveRecipeResult {
@@ -257,6 +281,12 @@ export const recipesApi = {
   /** Proposes a shelf item for each pasted label; writes nothing. */
   async matchShelf(restaurantId: string, labels: string[]): Promise<ShelfMatch[]> {
     const r = await apiClient.post<ShelfMatch[]>(`${base(restaurantId)}/shelf/match`, { labels });
+    return r.data;
+  },
+
+  /** States what one piece and one ml of a good weigh (owner or manager); the gateway bounds both. */
+  async stateWeights(restaurantId: string, itemId: string, body: StateWeightsBody): Promise<StatedWeights> {
+    const r = await apiClient.put<StatedWeights>(`${base(restaurantId)}/items/${encodeURIComponent(itemId)}/weights`, body);
     return r.data;
   },
 

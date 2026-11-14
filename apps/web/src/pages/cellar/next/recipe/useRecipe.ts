@@ -16,7 +16,14 @@ import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { draftId, draftKey, dropDraft } from './drafts';
-import { ownerOf, recipesApi, type PreviewCostBody, type RecipeOwner, type SaveRecipeBody } from '../../../../services/api/recipes';
+import {
+  ownerOf,
+  recipesApi,
+  type PreviewCostBody,
+  type RecipeOwner,
+  type SaveRecipeBody,
+  type StateWeightsBody,
+} from '../../../../services/api/recipes';
 import { getErrorStatus } from '../../../../services/api/client';
 import { managesHouse } from '../../../communications/next/cm-format';
 
@@ -140,6 +147,21 @@ export function useSaveRecipe(cocktailId: string | RecipeOwner) {
       if (ownerOf(cocktailId).kind === 'dish') void qc.invalidateQueries({ queryKey: dishesKey(activeRestaurantId) });
       return qc.invalidateQueries({ queryKey: recipeKey(activeRestaurantId, cocktailId) });
     },
+  });
+}
+
+/**
+ * States what one piece or one ml of a good weighs (r28 gap 7). A good is in
+ * many recipes, so every recipe read of the house is read again: each sheet,
+ * its cost preview, and the dish list's cost per plate.
+ */
+export function useStateWeights() {
+  const { activeRestaurantId } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ itemId, body }: { itemId: string; body: StateWeightsBody }) =>
+      recipesApi.stateWeights(activeRestaurantId as string, itemId, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['recipes', activeRestaurantId ?? null] }),
   });
 }
 

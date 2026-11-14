@@ -133,7 +133,13 @@ function fromServer(l: RecipeLine): DraftRow {
     qtyText: qtyText(l.qtyEntered),
     storedQty: l.qtyEntered,
     unit: (l.unitCode as DraftRow['unit']) ?? '',
-    saved: { status: l.status, costPerServe: l.costPerServe, costPerServeExact: l.costPerServeExact ?? null, costBasis: l.costBasis },
+    saved: {
+      status: l.status,
+      costPerServe: l.costPerServe,
+      costPerServeExact: l.costPerServeExact ?? null,
+      costBasis: l.costBasis,
+      needs: l.needs ?? null,
+    },
   };
 }
 
@@ -531,6 +537,9 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
     seed(data);
   }, [data, versionId, dirty, seed]);
 
+  const dirtyNow = useRef(dirty);
+  dirtyNow.current = dirty;
+
   const shownMeta = meta ?? metaOf(data?.current);
   const blocked = useMemo(() => whyBlocked(rows ?? [], shownMeta.yieldServes, words), [rows, shownMeta.yieldServes, words]);
 
@@ -580,6 +589,19 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
   };
   const patch = (key: string, p: Partial<DraftRow>) =>
     edit((rs) => rs.map((r) => (r.key === key ? { ...r, ...p } : r)));
+
+  // A kept weight changes no version, so the seed above would not run again.
+  // A clean sheet is seeded from a fresh read, unless something was typed
+  // while it was read. An unsaved draft keeps every typed line: its lines on
+  // that good drop what the server last said, and the draft is priced again.
+  const weighed = async (itemId: string) => {
+    if (dirtyNow.current) {
+      setRows((rs) => (rs ?? []).map((r) => (r.inventoryId === itemId ? { ...r, saved: null } : r)));
+      return;
+    }
+    const r = await recipe.refetch();
+    if (!r.isError && r.data && !dirtyNow.current) seed(r.data);
+  };
 
   const putBack = () => {
     if (!setAside) return;
@@ -711,6 +733,7 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
                 onChange={(p) => patch(r.key, p)}
                 onRemove={() => edit((rs) => rs.filter((x) => x.key !== r.key))}
                 kind={owner.kind}
+                onWeighed={weighed}
               />
             ) : (
               <LineRowRead key={r.key} row={r} />
