@@ -396,6 +396,22 @@ export const dishesApi = {
     return r.data;
   },
 
+  /**
+   * The current menu's cocktails not on the cocktail list yet, by name or
+   * shown name; owner and manager only (r36 recipes audit, gap 3). Same
+   * shape as the dish offer; `dishes` is named `drinks` here.
+   */
+  async menuDrinks(restaurantId: string): Promise<{ currentMenus: number; drinks: MenuDishOffer[] }> {
+    const r = await apiClient.get<{ currentMenus: number; drinks: MenuDishOffer[] }>(`${base(restaurantId)}/drinks/from-menu`);
+    return r.data;
+  },
+
+  /** Puts the named menu cocktails on the list in one write; none is added when it fails. */
+  async addMenuDrinks(restaurantId: string, names: string[]): Promise<MenuDishesAdded> {
+    const r = await apiClient.post<MenuDishesAdded>(`${base(restaurantId)}/drinks/from-menu`, { names });
+    return r.data;
+  },
+
   async create(restaurantId: string, body: DishBody): Promise<Dish> {
     const r = await apiClient.post<Dish>(`${base(restaurantId)}/dishes`, body);
     return r.data;
