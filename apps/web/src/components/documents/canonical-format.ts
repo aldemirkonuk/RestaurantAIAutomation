@@ -360,55 +360,89 @@ export function nameCarriesYear(description: string | null, vintage: number | nu
 }
 
 /**
- * The sentences a RE-VERIFY's cost check puts on screen (QA 10a (5)). Turkish
- * or English by the same fork `fmtDate` uses. The gateway's reason is kept in
- * its own words: paraphrasing it would lose the part that says what to do.
+ * The sentences a RE-VERIFY's cost check puts on screen (QA 10a (5)), in the
+ * page's language. They used to fork to Turkish on the delivery's
+ * jurisdiction, so a TR house read a Turkish note and button on an English
+ * page (r33 w2 F1). They are the app's own words, not a legal text, so they
+ * follow the page; the date and number forms beside them still follow the
+ * house. The gateway's reason is kept in its own words: paraphrasing it would
+ * lose the part that says what to do.
  */
-export function costRepairSentences(
-  repair: {
-    repaired: readonly unknown[]
-    flagged: readonly { kind: 'refused' | 'line_changed'; reason: string }[]
-  },
-  jurisdiction?: string | null,
-  currency?: string | null,
-): string[] {
-  const turkish = jurisdiction === 'TR' || (jurisdiction !== 'US-CA' && currency === 'TRY')
+export function costRepairSentences(repair: {
+  repaired: readonly unknown[]
+  flagged: readonly { kind: 'refused' | 'line_changed'; reason: string }[]
+  /** Items the re-check took from provisional to the agreed price (r33 w2 F2). */
+  posted?: number
+}): string[] {
   const out: string[] = []
+  const p = repair.posted ?? 0
+  if (p > 0)
+    out.push(
+      `Cost posted: ${p} item${p === 1 ? '' : 's'} still provisional ${p === 1 ? 'is' : 'are'} now costed at the agreed price.`,
+    )
   const n = repair.repaired.length
   if (n)
     out.push(
-      turkish
-        ? `Maliyet düzeltildi: ${n} kalem faturadaki basılı fiyatla kaydedilmişti, artık bir şişenin maliyetini taşıyor.`
-        : `Cost corrected: ${n} item${n === 1 ? '' : 's'} had been booked at the invoice's printed price and now carr${n === 1 ? 'ies' : 'y'} the cost of one bottle.`,
+      `Cost corrected: ${n} item${n === 1 ? '' : 's'} had been booked at the invoice's printed price and now carr${n === 1 ? 'ies' : 'y'} the cost of one bottle.`,
     )
   for (const f of repair.flagged)
-    out.push(
-      f.kind === 'refused'
-        ? `${turkish ? 'Reddedildi' : 'Refused'}: ${f.reason}`
-        : `${turkish ? 'Düzeltilmedi' : 'Not corrected'}: ${f.reason}`,
-    )
-  if (!out.length)
-    out.push(
-      turkish
-        ? 'Maliyet yeniden denetlendi: düzeltilecek bir şey yok.'
-        : 'Cost checked again: nothing needed correcting.',
-    )
+    out.push(f.kind === 'refused' ? `Refused: ${f.reason}` : `Not corrected: ${f.reason}`)
+  if (!out.length) out.push('Cost checked again: nothing needed correcting.')
   return out
 }
 
 /**
  * What a verify response puts on screen (QA 12b): a re-verify's repair, or a
  * first verify's lots that stayed provisional, each with the gateway's reason.
+ *
+ * A re-verify ("Check the cost again") also posts the cost of lots that were
+ * still provisional, such as a door count booked after the first verify
+ * (r33 w2 F2). Those come back in `cost.finalised` and are said as posted,
+ * never as "nothing needed correcting"; a lot it still could not cost is
+ * named with its reason.
  */
+type CostFlagOut = { inventoryId: string; kind: 'refused' | 'line_changed'; reason: string }
+
+/**
+ * A FIRST verify's own sentence about the cost (r34 walk w2 F2): what it
+ * posted, what it left provisional and why, and once per invoice what the
+ * paper carries outside any bottle's cost and what was done with its tax
+ * ("…prices include 20% tax, which this house reclaims, so the cost is net").
+ * The gateway writes it as `costNote`; the page used to drop it, so the tax
+ * sentence the owner answered for in Settings never reached the document.
+ *
+ * Only a first verify (`alreadyVerified === false`): a re-check says what it
+ * did through `costNoticeOf`. Null when the answer carries no sentence.
+ */
+export function verifyCostNoteOf(result: unknown): string | null {
+  const r = result as { alreadyVerified?: unknown; costNote?: unknown } | null | undefined
+  if (!r || r.alreadyVerified !== false) return null
+  return typeof r.costNote === 'string' && r.costNote.trim() !== '' ? r.costNote.trim() : null
+}
+
 export function costNoticeOf(result: unknown): {
   repaired: readonly unknown[]
-  flagged: { inventoryId: string; kind: 'refused' | 'line_changed'; reason: string }[]
+  flagged: CostFlagOut[]
+  posted?: number
 } | null {
   const r = result as {
-    repair?: { repaired: unknown[]; flagged: { inventoryId: string; kind: 'refused' | 'line_changed'; reason: string }[] } | null
-    cost?: { stillProvisional?: { inventoryId: string; reason: string }[] } | null
+    alreadyVerified?: boolean
+    repair?: { repaired: unknown[]; flagged: CostFlagOut[] } | null
+    cost?: { finalised?: unknown[]; stillProvisional?: { inventoryId: string; reason: string }[] } | null
   } | null | undefined
+  const held = (r?.cost?.stillProvisional ?? []).map((h) => ({ ...h, kind: 'refused' as const }))
+  if (r?.alreadyVerified) {
+    const posted = r.cost?.finalised?.length ?? 0
+    const base = r.repair ?? (posted > 0 || held.length > 0 ? { repaired: [], flagged: [] } : null)
+    if (!base) return null
+    const named = new Set(base.flagged.map((f) => f.inventoryId))
+    const flagged = [...base.flagged, ...held.filter((h) => !named.has(h.inventoryId))]
+    return posted > 0 ? { ...base, flagged, posted } : { ...base, flagged }
+  }
   if (r?.repair) return r.repair
-  const held = r?.cost?.stillProvisional ?? []
-  return held.length ? { repaired: [], flagged: held.map((h) => ({ ...h, kind: 'refused' as const })) } : null
+  // A first verify that says its own cost sentence names each provisional
+  // item's reason in it (`verifyCostNoteOf`); listing them again here would
+  // say every reason twice.
+  if (verifyCostNoteOf(result)) return null
+  return held.length ? { repaired: [], flagged: held } : null
 }

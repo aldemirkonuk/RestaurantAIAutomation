@@ -79,7 +79,7 @@ import {
   printedVintageOf,
   sourceSentence,
 } from '../../../components/documents'
-import { costNoticeOf } from '../../../components/documents/canonical-format'
+import { costNoticeOf, verifyCostNoteOf } from '../../../components/documents/canonical-format'
 import { AuthContext } from '@/contexts/AuthContext'
 import { canonicalApi } from '../../../services/api/canonical'
 import { getInventory } from '../../../services/api/inventory'
@@ -151,6 +151,8 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
     deliveryId: string
     value: StockReturn
   } | null>(null)
+  // r34 w2 F2: a first verify's own sentence about the cost and the tax.
+  const [verifyNote, setVerifyNote] = useState<string | null>(null)
 
   /**
    * Every key below names the house (ADR 0051). The gateway scopes these reads
@@ -310,10 +312,12 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
     setWriting(true)
     setDeliveryError(null)
     setCostRepair(null)
+    setVerifyNote(null)
     try {
       const result = await fn()
       const repair = costNoticeOf(result) as CostRepair | null
       if (repair) setCostRepair(repair)
+      setVerifyNote(verifyCostNoteOf(result))
       await Promise.all([q.refetch(), eventQ.refetch(), proposalsQ.refetch()])
     } catch (err) {
       setDeliveryError(messageFrom(err))
@@ -591,6 +595,7 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
                 deliveryWrite(() => deliveriesApi.verify(soleDelivery.deliveryId))
               }
               repair={costRepair}
+              verifyNote={verifyNote}
               currency={doc.layer1.currency.value}
               settlesMoney={settlesMoney}
             />

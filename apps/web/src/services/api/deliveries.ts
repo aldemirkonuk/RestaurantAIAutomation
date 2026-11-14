@@ -113,6 +113,8 @@ function toEvent(row: Record<string, unknown>): DeliveryEvent {
 export interface CostRepair {
   repaired: { inventoryId: string; unitCost: number; bottlesFinalised: number }[];
   flagged: { inventoryId: string; kind: 'refused' | 'line_changed'; reason: string }[];
+  /** A re-check's lots taken from provisional to the agreed price (r33 w2 F2). */
+  posted?: number;
 }
 
 export interface DoorCountLine {

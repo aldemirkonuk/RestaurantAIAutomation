@@ -25,7 +25,7 @@ import { DegradedNotice, degradedReasons } from '../DegradedNotice'
 import { DoorFrame } from '../DoorFrame'
 import { ProposalThread } from '../ProposalThread'
 import { DeliveryGates } from '../DeliveryGates'
-import { costNoticeOf } from '../canonical-format'
+import { costNoticeOf, costRepairSentences, verifyCostNoteOf } from '../canonical-format'
 import type { DeliveryEvent, Proposal } from '../../../services/api/deliveries'
 import type {
   AdjudicatedLine,
@@ -918,7 +918,7 @@ describe('DeliveryGates — the two gates, explained before they are pressed', (
     )
   })
 
-  it('QA 10a (5): a re-check of a VERIFIED delivery says what it did to the cost, in the house’s language', async () => {
+  it('QA 10a (5) + r33 w2 F1: a re-check of a VERIFIED delivery says what it did to the cost, in the page’s language, in a TR house too', async () => {
     let rechecked = 0
     const verified = event({
       state: 'VERIFIED',
@@ -935,27 +935,24 @@ describe('DeliveryGates — the two gates, explained before they are pressed', (
       ],
     }
     const { rerender } = render(
-      <DeliveryGates delivery={verified} onRecheck={async () => { rechecked++ }} repair={repair} />,
+      <DeliveryGates delivery={verified} currency="TRY" onRecheck={async () => { rechecked++ }} repair={repair} />,
     )
-    await userEvent.click(screen.getByTestId('recheck-cost-button'))
+    const button = screen.getByTestId('recheck-cost-button')
+    expect(button.textContent).toBe('Check the cost again')
+    await userEvent.click(button)
     expect(rechecked).toBe(1)
-    const tr = screen.getByTestId('cost-repair-notice')
-    expect(tr.getAttribute('role')).toBe('status')
-    expect(tr.textContent).toMatch(/Maliyet düzeltildi: 1 kalem/)
-    expect(tr.textContent).toContain('Reddedildi: the invoice prints its unit as "kutu"')
-    expect(tr.textContent).toContain('Düzeltilmedi: its invoice line now makes 30 a bottle')
+    const note = screen.getByTestId('cost-repair-notice')
+    expect(note.getAttribute('role')).toBe('status')
+    expect(note.textContent).toMatch(/Cost corrected: 1 item had been booked at the invoice's printed price/)
+    expect(note.textContent).toContain('Refused: the invoice prints its unit as "kutu"')
+    expect(note.textContent).toContain('Not corrected: its invoice line now makes 30 a bottle')
+    // Nothing Turkish on an English page: not the note, not the button.
+    expect(screen.getByTestId('delivery-gates').textContent).not.toMatch(/Maliyet|Reddedildi|Düzeltilmedi|denetle/i)
 
     rerender(
-      <DeliveryGates delivery={{ ...verified, jurisdiction: 'US-CA' }} onRecheck={async () => {}} repair={repair} />,
+      <DeliveryGates delivery={verified} currency="TRY" repair={{ repaired: [], flagged: [] }} />,
     )
-    const en = screen.getByTestId('cost-repair-notice').textContent ?? ''
-    expect(en).toMatch(/Cost corrected: 1 item had been booked at the invoice's printed price/)
-    expect(en).toContain('Refused: the invoice prints its unit as "kutu"')
-
-    rerender(
-      <DeliveryGates delivery={{ ...verified, jurisdiction: 'US-CA' }} repair={{ repaired: [], flagged: [] }} />,
-    )
-    expect(screen.getByTestId('cost-repair-notice').textContent).toMatch(/nothing needed correcting/)
+    expect(screen.getByTestId('cost-repair-notice').textContent).toBe('Cost checked again: nothing needed correcting.')
   })
 
   it('QA 10a (5): the page keeps the verify response instead of discarding it', () => {
@@ -966,6 +963,29 @@ describe('DeliveryGates — the two gates, explained before they are pressed', (
     expect(src).toMatch(/repair=\{costRepair\}/)
   })
 
+  it('r34 w2 F2: only a first verify\'s own cost sentence is kept, trimmed', () => {
+    expect(verifyCostNoteOf({ alreadyVerified: false, costNote: '  Cost posted for 1 item(s). ' })).toBe('Cost posted for 1 item(s).')
+    expect(verifyCostNoteOf({ alreadyVerified: true, costNote: 'already verified' })).toBeNull()
+    expect(verifyCostNoteOf({ costNote: 'no flag says it was a first verify' })).toBeNull()
+    expect(verifyCostNoteOf({ alreadyVerified: false, costNote: '   ' })).toBeNull()
+    expect(verifyCostNoteOf({ alreadyVerified: false, costNote: 7 })).toBeNull()
+    expect(verifyCostNoteOf(null)).toBeNull()
+    // With its sentence, a first verify's provisional items are not listed again.
+    const held = { inventoryId: 'i2', reason: 'no agreed price' }
+    expect(costNoticeOf({ alreadyVerified: false, costNote: 'No cost was posted.', cost: { finalised: [], stillProvisional: [held] } })).toBeNull()
+    // Without one, they still are (QA 12b).
+    expect(costNoticeOf({ alreadyVerified: false, cost: { finalised: [], stillProvisional: [held] } })).toEqual({
+      repaired: [],
+      flagged: [{ ...held, kind: 'refused' }],
+    })
+  })
+
+  it('r34 w2 F2: the Verified gate renders the sentence it is given', () => {
+    const verified = event({ state: 'VERIFIED', agreedAt: '2026-08-15T10:00:00Z', agreedRule: 'both_sides_recorded', verifiedAt: '2026-08-15T11:00:00Z' })
+    render(<DeliveryGates delivery={verified} verifyNote="Cost posted for 2 item(s); 0 left provisional." />)
+    expect(screen.getByTestId('verify-cost-note').textContent).toBe('Cost posted for 2 item(s); 0 left provisional.')
+  })
+
   it('QA 12b: a first verify that leaves a lot provisional says why on screen', () => {
     const held = { inventoryId: 'i2', reason: 'the accepted proposal names no invoice line' }
     expect(costNoticeOf({ cost: { finalised: [], stillProvisional: [held] } })).toEqual({
@@ -974,6 +994,40 @@ describe('DeliveryGates — the two gates, explained before they are pressed', (
     })
     expect(costNoticeOf({ cost: { finalised: [], stillProvisional: [] } })).toBeNull()
     expect(costNoticeOf({ repair: { repaired: [], flagged: [] } })).toEqual({ repaired: [], flagged: [] })
+  })
+
+  it('r33 w2 F2: a re-check that posts a provisional lot says so, not "nothing needed correcting"', () => {
+    const posted = { inventoryId: 'inv-late', unitCost: 22, bottlesFinalised: 12 }
+    const notice = costNoticeOf({
+      alreadyVerified: true,
+      cost: { finalised: [posted], stillProvisional: [] },
+      repair: { repaired: [], flagged: [] },
+    })
+    expect(notice).toEqual({ repaired: [], flagged: [], posted: 1 })
+    expect(costRepairSentences(notice!)).toEqual(['Cost posted: 1 item still provisional is now costed at the agreed price.'])
+    // Two, and a gateway that sends no repair (the re-check's cost alone).
+    const two = costNoticeOf({ alreadyVerified: true, cost: { finalised: [posted, posted], stillProvisional: [] } })
+    expect(costRepairSentences(two!)).toEqual(['Cost posted: 2 items still provisional are now costed at the agreed price.'])
+    // A lot the re-check still could not cost is named, once, with its reason.
+    const held = { inventoryId: 'inv-x', reason: 'no agreed price for this item' }
+    const stuck = costNoticeOf({
+      alreadyVerified: true,
+      cost: { finalised: [], stillProvisional: [held] },
+      repair: { repaired: [], flagged: [{ ...held, kind: 'refused' as const }] },
+    })
+    expect(stuck).toEqual({ repaired: [], flagged: [{ ...held, kind: 'refused' }] })
+    expect(costRepairSentences(stuck!)).toEqual(['Refused: no agreed price for this item'])
+    // A re-check that posted nothing and had nothing to repair still says so.
+    expect(costRepairSentences(costNoticeOf({ alreadyVerified: true, cost: { finalised: [], stillProvisional: [] }, repair: { repaired: [], flagged: [] } })!)).toEqual([
+      'Cost checked again: nothing needed correcting.',
+    ])
+    // With no repair sent, a lot still provisional is still named.
+    expect(costNoticeOf({ alreadyVerified: true, cost: { finalised: [], stillProvisional: [held] } })).toEqual({
+      repaired: [],
+      flagged: [{ ...held, kind: 'refused' }],
+    })
+    // A re-check with no cost and no repair puts up no notice.
+    expect(costNoticeOf({ alreadyVerified: true, cost: null, repair: null })).toBeNull()
   })
 
   it('marks an UNORDERED delivery permanently, not as a step to complete', () => {
