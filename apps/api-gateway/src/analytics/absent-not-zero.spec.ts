@@ -249,7 +249,10 @@ describe("seasonality withholds a day it cannot separate", () => {
     expect(out.bestDay).toBeNull();
     expect(out.worstDay).toBeNull();
     expect(out.tie).toBe(true);
-    expect(out.basis.extremes).toContain("arbitrary tie-break");
+    // No weekday has a counted line, so it is not a tie to break (r37 w3
+    // R-F10): the working line says there is nothing to rank.
+    expect(out.basis.extremes).toContain("no weekday has a counted line");
+    expect(out.basis.extremes).not.toContain("arbitrary tie-break");
   });
 
   it("does not report the same day as both busiest and quietest", async () => {
