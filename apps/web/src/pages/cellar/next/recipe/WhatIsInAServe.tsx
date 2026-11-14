@@ -95,7 +95,9 @@ function Allergens({ w }: { w: Extract<NonNullable<CocktailRecipe['whatIsIn']>, 
 /**
  * `id` lets the energy and pure-alcohol cards above open this card (r36
  * recipes audit, gap 9): it lands on the section, or on the sentence that
- * says it could not be read, and either takes the focus (tabIndex -1).
+ * says it could not be read, and either takes the focus (tabIndex -1). The
+ * ring shows whether the card was opened by key or by mouse (`cl-rcp-target`,
+ * r39 walk: a click moved the focus with no ring to show where it went).
  */
 export default function WhatIsInAServe({ data, unsaved, id }: { data: CocktailRecipe; unsaved: boolean; id?: string }) {
   if (!data.current) return null;
@@ -104,7 +106,7 @@ export default function WhatIsInAServe({ data, unsaved, id }: { data: CocktailRe
   const w = data.whatIsIn;
   if (w === undefined || w === null || !w.readable) {
     return (
-      <p className="cl-note" role="status" data-testid="recipe-whatisin-unread" id={id} tabIndex={id ? -1 : undefined}>
+      <p className={id ? 'cl-note cl-rcp-target' : 'cl-note'} role="status" data-testid="recipe-whatisin-unread" id={id} tabIndex={id ? -1 : undefined}>
         {w && !w.readable ? w.sentence : `${title} was not read here, so nothing about it is shown as known.`}
       </p>
     );
@@ -112,7 +114,7 @@ export default function WhatIsInAServe({ data, unsaved, id }: { data: CocktailRe
   // A dish has no pure-alcohol row: cooking drives off an unknown share (recipeWords.ts).
   const alcohol = words.alcohol ? w.figures.alcoholMl : undefined;
   return (
-    <section className="cl-rcp-nutrition" data-testid="recipe-whatisin" aria-label={title} id={id} tabIndex={id ? -1 : undefined}>
+    <section className={id ? 'cl-rcp-nutrition cl-rcp-target' : 'cl-rcp-nutrition'} data-testid="recipe-whatisin" aria-label={title} id={id} tabIndex={id ? -1 : undefined}>
       <h5 className="cl-sec" style={{ margin: '0 0 4px' }}>{title}</h5>
       {unsaved ? <p className="cl-note">This is the saved recipe. Save to count your changes.</p> : null}
       <Allergens w={w} />

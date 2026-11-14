@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import type { CocktailRecipe, CostPreview, RecipeLine, WhatIsIn } from '../../../../services/api/recipes';
 import DrinkCards, { POUR_COST_BASIS, marginPerServe, pourCostShare, type DraftCost } from './DrinkCards';
@@ -390,6 +391,25 @@ describe('the energy and alcohol cards open what is in a serve (r36 recipes audi
     expect(document.activeElement).toBe(section);
     // The card still reads as before: the button is its face, not new words.
     expect(screen.getByTestId('drink-card-energy').textContent).toBe('Energy a serveat least 178.5 kcalUnknown for Angostura.');
+  });
+
+  it('rings the card it opens whether the focus came by key or by mouse', () => {
+    // r39 walk: after a click the moved focus is not :focus-visible, so the
+    // card is ringed on :focus.
+    const unread = gAndT();
+    render(
+      <>
+        <WhatIsInAServe data={data} unsaved={false} id="n-4" />
+        <WhatIsInAServe data={unread} unsaved={false} id="n-5" />
+        <WhatIsInAServe data={data} unsaved={false} />
+      </>,
+    );
+    const [opened, plain] = screen.getAllByTestId('recipe-whatisin');
+    expect(opened).toHaveClass('cl-rcp-target');
+    expect(screen.getByTestId('recipe-whatisin-unread')).toHaveClass('cl-rcp-target');
+    expect(plain).not.toHaveClass('cl-rcp-target');
+    const css = readFileSync(`${__dirname}/../cellar-next.css`, 'utf8').replace(/\s+/g, ' ');
+    expect(css).toMatch(/\.cl-rcp-target:focus \{ outline: 2px solid var\(--seal\);/);
   });
 
   it('opens the sentence that says it could not be read, when it could not', () => {

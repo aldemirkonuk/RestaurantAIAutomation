@@ -997,6 +997,12 @@ textarea.cl-field {
 .cl-rcp-card[data-known='false'] .cl-rcp-card-fig { color: var(--ink-4); font-size: 15px; }
 .cl-rcp-card[data-warn='true'] { border-color: var(--warn); }
 .cl-rcp-card-said { font-size: 11.5px; line-height: 1.4; color: var(--ink-4); }
+/* The card a figure opens shows where the focus landed, by key or by mouse:
+   a moved focus is not :focus-visible after a click (r39 walk). */
+.cl-rcp-target:focus {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+}
 .cl-rcp-nutrition {
   margin-bottom: 12px;
   padding: 10px 12px;
