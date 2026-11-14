@@ -297,4 +297,12 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
     await expect(broken.read(RID, "ledger", null)).rejects.toThrow("boom");
     await expect(reader.read(RID, "ledger", null)).resolves.toBeDefined();
   });
+
+  it("the figures of record read the window asked, else the 30 days every windowed cutting defaults to", async () => {
+    const getFinancialSummary = jest.fn(async () => ({}));
+    const reader = new ReportCuttingReader({ getFinancialSummary } as never, null as never, null as never, null as never, null as never);
+    await reader.read(RID, "ledger", 90);
+    await reader.read(RID, "ledger", null);
+    expect(getFinancialSummary.mock.calls.map((c: unknown[]) => (c[2] as { tillDays: number }).tillDays)).toEqual([90, 30]);
+  });
 });
