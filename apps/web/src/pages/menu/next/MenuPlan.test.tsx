@@ -361,6 +361,27 @@ describe('MenuPlan -- the section before the choice (L13)', () => {
     expect(screen.getByTestId('menu-plan-dormant')).toHaveTextContent(shown(`Old Rioja (bottle) at ${m(80)}, removed from inventory`));
   });
 
+  it('a price someone set since the menu was chosen reads as staying, not as becoming the menu price', async () => {
+    const kept = line({
+      bottle: {
+        kind: 'bottle',
+        menuPrice: 480,
+        housePrice: 520,
+        result: 'kept_newer',
+        lastSet: { by: person('Deniz'), at: '2026-09-12T08:00:00Z', source: 'manual' },
+        lock: null,
+      },
+    });
+    mockPlan.mockResolvedValue(plan({ current: true, lines: [kept], counts: { ...plan().counts, change: 0, new_wine: 0, kept_newer: 1 } }));
+    mount(true);
+    const rows = await screen.findAllByTestId('menu-plan-row');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent(
+      shown(`Stays ${m(520)}, set since this menu was chosen (the menu says ${m(480)}); it was set by hand by Deniz on 2026-09-12`),
+    );
+    expect(rows[0]).not.toHaveTextContent('Becomes');
+  });
+
   it('Keep locks that price there and then, and the plan is read again', async () => {
     mockPlan.mockResolvedValueOnce(plan());
     mockPlan.mockResolvedValue(plan({ fingerprint: 'fp-2' }));
