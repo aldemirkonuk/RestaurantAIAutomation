@@ -168,6 +168,7 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
       "procurement/documents/credits.controller.ts",
       "procurement/receiving.controller.ts",
       "promotions/promotions.controller.ts",
+      "recipes/dishes.controller.ts",
       "recipes/recipes.controller.ts",
       "reports/exports/report-exports.controller.ts",
       "vendor-intel/vendor-intel.controller.ts",

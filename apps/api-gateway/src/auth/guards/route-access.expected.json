@@ -585,6 +585,35 @@
   ],
   "GET /recipes/:restaurantId/cocktails/:cocktailId/versions/:versionId (RecipesController.readVersion)": "open",
   "GET /recipes/:restaurantId/shelf (RecipesController.shelf)": "open",
+  "GET /recipes/:restaurantId/dishes (DishesController.listDishes)": "open",
+  "POST /recipes/:restaurantId/dishes (DishesController.createDish)": [
+    "owner",
+    "manager"
+  ],
+  "PATCH /recipes/:restaurantId/dishes/:dishId (DishesController.updateDish)": [
+    "owner",
+    "manager"
+  ],
+  "DELETE /recipes/:restaurantId/dishes/:dishId (DishesController.removeDish)": [
+    "owner",
+    "manager"
+  ],
+  "GET /recipes/:restaurantId/dishes/:dishId (DishesController.getDishRecipe)": "open",
+  "GET /recipes/:restaurantId/dishes/:dishId/versions (DishesController.listDishVersions)": "open",
+  "GET /recipes/:restaurantId/dishes/:dishId/versions/:versionId (DishesController.readDishVersion)": "open",
+  "PUT /recipes/:restaurantId/dishes/:dishId (DishesController.saveDishRecipe)": [
+    "owner",
+    "manager"
+  ],
+  "POST /recipes/:restaurantId/dishes/:dishId/cost-preview (DishesController.previewDishCost)": [
+    "owner",
+    "manager"
+  ],
+  "GET /recipes/:restaurantId/items/:itemId/dishes (DishesController.dishesUsingItem)": "open",
+  "POST /recipes/:restaurantId/shelf/match (DishesController.matchShelf)": [
+    "owner",
+    "manager"
+  ],
   "POST /reports/exports (ReportExportsController.request)": [
     "owner",
     "manager"
