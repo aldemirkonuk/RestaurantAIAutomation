@@ -1166,4 +1166,32 @@ describe('Last bought reads the settled price, not only the ledger (r35, gap 8 s
     renderDrop({ row: food, kind: 'food', uom: 'g', settled: [{ receivedAt: '2026-11-01T10:00:00Z', unitCost: 0.009 }] });
     expect(kv('Last bought')).toContain(kg(9));
   });
+
+  // r36 inventory audit, gap 9: while the figures read, or after they failed,
+  // whether a price was settled is not known. The ledger's door lines carry no
+  // cost, so falling back to it said "none on the ledger" under a Cost card
+  // that says the costs could not be read.
+  it('while the figures read, Last bought reads a dash, never the ledger', () => {
+    renderDrop({ row: food, kind: 'food', uom: 'g', settled: 'reading' });
+    expect(kv('Last bought')).toContain('—');
+    expect(screen.getByTestId('row-dropdown').textContent).not.toContain('none on the ledger');
+  });
+
+  it('after the figures failed, Last bought says it could not be read, even with a priced ledger line', () => {
+    renderDrop({ row: food, kind: 'food', uom: 'g', settled: 'failed' });
+    expect(kv('Last bought')).toContain('could not be read');
+    expect(screen.getByTestId('row-dropdown').textContent).not.toContain('none on the ledger');
+    cleanup();
+    reads.detail = {
+      purchases: [
+        { id: 'l1', at: '2026-11-10T10:00:00Z', qty: 5000, unitCost: 0.008, orderId: null },
+        { id: 'l0', at: '2026-10-10T10:00:00Z', qty: 5000, unitCost: 0.006, orderId: null },
+      ],
+    };
+    renderDrop({ row: food, kind: 'food', uom: 'g', settled: 'failed' });
+    expect(kv('Last bought')).toContain('could not be read');
+    expect(kv('Last bought')).not.toContain(kg(8));
+    // no change is worked out from a ledger the figures may have replaced
+    expect(kv('Was → now')).not.toContain('%');
+  });
 });
