@@ -23,12 +23,21 @@
  *   that states no strength stays unknown even if it looks like a garnish: a
  *   brandied cherry or an absinthe sugar cube is counted in pieces too, and
  *   understating alcohol is the direction that hurts;
+ * - the other exception: a line not counted from the shelf that is plain ice
+ *   or plain water (`addsNothing`, r36 recipes gap 6) is a known zero. It adds
+ *   0 to every figure and is free of every allergen, so a drink served over
+ *   ice can still have a whole card. The words are the paste reader's own
+ *   (parseSpec ICE_OR_WATER) plus their Turkish forms, matched on the whole
+ *   folded label: "tonic water", "soda water", "coconut water" and "ice
+ *   cream" are not plain water or ice and stay unknown, and so does every
+ *   garnish (a peel, a cherry and a mint sprig each carry something);
  * - an allergen is free only when every line, untracked too, states it free;
  * - the lines that leave any allergen unstated are named (allergensUnstatedBy),
  *   so a sheet can say which ingredients stop "free of" being said, instead of
  *   saying nothing and reading as allergen-free.
  */
 import type { BaseUnit } from "./recipe-cost";
+import { foldName } from "./name-fold";
 
 export const FIGURE_KEYS = [
   "energyKcal",
@@ -119,12 +128,25 @@ function amountOf(line: NutritionLineInput): { amount: number } | { why: string 
   return { amount: qty / 1000 / mlG };
 }
 
+/**
+ * Plain ice or plain water, by the whole folded label: the paste reader's
+ * ICE_OR_WATER (parseSpec.ts) and the same words in Turkish. Nothing else.
+ */
+const ICE_OR_WATER =
+  /^(?:(?:crushed|cubed|cracked|block|large)\s+)?ice(?:\s+cubes?)?$|^(?:(?:still|plain|hot|cold|filtered|tap)\s+)?water$|^(?:(?:kirik|kirma|kup|blok)\s+)?buz$|^(?:(?:soguk|sicak|icme)\s+)?su(?:yu)?$/;
+
+/** A line not counted from the shelf that is plain ice or water: it adds nothing (r36 gap 6). */
+export function addsNothing(l: NutritionLineInput): boolean {
+  return l.role === "untracked" && ICE_OR_WATER.test(foldName(l.label ?? ""));
+}
+
 /** Linked to an item that states 0% alcohol (a strength is per 100 ml by the schema's CHECK). */
 function statesNoAlcohol(l: NutritionLineInput): boolean {
   return l.role === "stocked" && Boolean(l.inventoryId) && l.figures?.basis === "100ml" && l.figures.alcoholMl === 0;
 }
 
 function leavesAllergenUnstated(l: NutritionLineInput): boolean {
+  if (addsNothing(l)) return false;
   if (l.role === "untracked" || !l.inventoryId) return true;
   return ALLERGENS.some((a) => {
     const s = l.allergens.find((x) => x.allergen === a)?.status;
@@ -134,6 +156,7 @@ function leavesAllergenUnstated(l: NutritionLineInput): boolean {
 
 function allergenOf(lines: NutritionLineInput[], a: Allergen): AllergenStatus {
   const statuses = lines.map((l) => {
+    if (addsNothing(l)) return "free";
     if (l.role === "untracked" || !l.inventoryId) return "not_stated";
     const s = l.allergens.find((x) => x.allergen === a)?.status;
     return s === "contains" || s === "may_contain" || s === "free" ? s : "not_stated";
@@ -149,7 +172,11 @@ export function serveNutrition(lines: NutritionLineInput[], yieldServes: number)
   const notCounted: ServeNutrition["notCounted"] = [];
   const counted: Array<{ line: NutritionLineInput; amount: number }> = [];
   const leftLines: NutritionLineInput[] = [];
+  // Ice and water: known zeros, so neither counted by amount nor unknown.
+  const nothing = lines.filter(addsNothing);
+  const allNothing = nothing.length > 0 && nothing.length === lines.length;
   for (const line of lines) {
+    if (nothing.includes(line)) continue;
     const a = amountOf(line);
     if ("why" in a) {
       notCounted.push({ label: line.label, why: a.why });
@@ -163,7 +190,10 @@ export function serveNutrition(lines: NutritionLineInput[], yieldServes: number)
     // A not-counted line stating 0% adds 0 alcohol (see the header), so it is
     // not "unknown for" it; for every other figure it is.
     const zero = k === "alcoholMl" ? leftLines.filter(statesNoAlcohol) : [];
-    let total: number | null = zero.length > 0 ? 0 : null;
+    // Ice and water state 0 of everything, but a 0 they start would read as
+    // "at least 0" beside a line that states nothing: they make a figure 0
+    // only when every line is ice or water.
+    let total: number | null = zero.length > 0 || allNothing ? 0 : null;
     const missing = leftLines.filter((l) => !zero.includes(l)).map((l) => l.label);
     let atLeast = missing.length > 0;
     for (const { line, amount } of counted) {
@@ -190,5 +220,5 @@ export function serveNutrition(lines: NutritionLineInput[], yieldServes: number)
     AllergenStatus
   >;
   const allergensUnstatedBy = [...new Set(lines.filter(leavesAllergenUnstated).map((l) => l.label))];
-  return { figures, notCounted, allergens, allergensUnstatedBy, counted: usedLines.size, of: lines.length };
+  return { figures, notCounted, allergens, allergensUnstatedBy, counted: usedLines.size + nothing.length, of: lines.length };
 }
