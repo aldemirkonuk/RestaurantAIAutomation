@@ -1,13 +1,7 @@
 /**
- * The house's clock for a document page (r34 walk w2 F1, 2026-11-13).
- *
- * The walker's Istanbul house showed three clocks on one paper: the door count
- * in UTC, the agreement on the reader's clock and the delivery day as UTC's.
- * Every moment on the page now reads on the zone `GET /settings/time-zone`
- * answers (open to every member of the house; ADR 0207 round 3). When there is
- * no zone to read on, the page still keeps ONE clock, the reader's, and says
- * so in one line, because an unlabelled local time is a confident wrong answer
- * (lib/venueTime.ts).
+ * The house's clock for a document page (r34 walk w2 F1): the zone
+ * `GET /settings/time-zone` answers. Without one the page keeps ONE clock, the
+ * reader's, and says so (lib/venueTime.ts).
  */
 import { apiClient } from '../../../services/api/client'
 import { knownZone } from '../../../components/documents/canonical-format'
@@ -36,10 +30,7 @@ export function houseZoneOf(
   return knownZone(read.data.zone)
 }
 
-/**
- * The one line that says which clock the page is on, when it is not the
- * house's. Null when the house's zone is in use, or while it is being read.
- */
+/** Which clock the page is on, when it is not the house's; null otherwise. */
 export function deviceClockNote(
   read: { data?: HouseClockReadout; isError: boolean; isPending: boolean },
 ): string | null {

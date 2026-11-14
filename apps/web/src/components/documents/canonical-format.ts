@@ -219,14 +219,9 @@ export function showsClaimBlock(docType: string): boolean {
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 /**
- * The wall clock an instant reads on `zone`, or on the reader's own clock when
- * no zone is given or the zone is not one this browser knows (an unknown zone
- * is a missing one, as in lib/venueTime.ts — never a reason to throw).
- *
- * r34 walk w2 F1 (2026-11-13): one document page for an Istanbul house showed
- * three clocks — the door count in UTC ("2026-11-14 03:28"), the agreement on
- * the reader's ("13.11 22:28") and the delivery day as UTC's ("Nov 14, 2026").
- * Every instant on that page now reads through this, on the house's clock.
+ * The wall clock an instant reads on `zone`; the reader's own when no zone is
+ * given or the browser does not know it (an unknown zone is a missing one,
+ * lib/venueTime.ts). r34 w2 F1: one document page showed three clocks.
  */
 export function wallClock(
   d: Date,
@@ -278,11 +273,8 @@ export function knownZone(zone: string | null | undefined): string | null {
  * form is written out for the same reason `fmtDate` writes it out — a shape that
  * changes with the runtime's ICU data is not a transcription of anything.
  *
- * `zone` is the house's clock (r34 w2 F1). The delivery's own moments — counted
- * at the door, agreed, verified, a proposal put — are passed it, so the page
- * keeps one clock. Without it the time is the READER's, which is still what the
- * correction log asks ("when did Ayşe change this" is about the person at the
- * keyboard).
+ * `zone` is the house's clock (r34 w2 F1), passed for the delivery's moments.
+ * Without it the time is the READER's, which the correction log still uses.
  */
 export function fmtStamp(
   iso: string | null | undefined,
@@ -302,13 +294,8 @@ export function fmtStamp(
 }
 
 /**
- * The day an INSTANT fell on, on the house's clock, in the document's
- * convention (`14.11.2026` / `Nov 14, 2026`).
- *
- * `fmtDate` is for a printed date: it reads the first ten characters and so,
- * handed a timestamp, names UTC's day — 03:28 UTC is still the 13th in New
- * York and already the 14th in Istanbul. A delivery's `deliveredAt` is an
- * instant, so it is read here.
+ * The day an INSTANT fell on at the house, in the document's convention.
+ * `fmtDate` is for a printed date: handed a timestamp it names UTC's day.
  */
 export function fmtDayOf(
   iso: string | null | undefined,
