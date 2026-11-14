@@ -512,7 +512,9 @@ describe('VerdictBlock — unit words (walk-through W6, 2026-10-01)', () => {
     e.layer1.lines = [line({ unit: env('split_case') })]
     e.layer3.lines = [adjudicated({ verdict: 'short_ship', received: 1, billed: 2, moneyAtRisk: 70 })]
     const { container } = render(<VerdictBlock doc={e} />)
-    expect(container.textContent).toMatch(/billed 2 split cases, received 1 split case/)
+    // r31 w2 F2: what was received is booked in bottles, so it is said in
+    // bottles; the paper's 2 split cases (no pack stated) stay its own count.
+    expect(container.textContent).toMatch(/billed 2 split cases, received 1 bottle/)
     expect(container.textContent).not.toMatch(/split_case/)
   })
 })
