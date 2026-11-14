@@ -121,7 +121,6 @@ export type DrawPlan =
 export const MICRO = 1_000_000n;
 
 const POURABLE = new Set(["bottle", "keg"]);
-const CONTAINER_COUNT = new Set(["bottle", "case", "keg", "pack", "glass", "shot"]);
 
 /** How a base unit reaches an item kept in `uom`, or why it cannot. */
 export function route(
@@ -147,8 +146,13 @@ export function route(
     if (uom === "kg") return { via: "book", basePerUnit: 1_000_000n };
     return { wait: "measure_mismatch" };
   }
-  // each_milli
-  if (uom === "each" || CONTAINER_COUNT.has(uom)) return { via: "book", basePerUnit: 1_000n };
+  // each_milli: a piece meets only a good the shelf counts in pieces, as the
+  // cost side has it (recipe-cost.ts directCost). "1 lime" linked to Limes
+  // kept by the case would otherwise take a whole case a serve, and "2 eggs"
+  // two packs (r36 recipes gap 4). A bottle, a keg, a glass or a shot is
+  // never assumed to be one piece either: the line waits until it is linked
+  // to a good counted each, or measured the way the good is kept.
+  if (uom === "each") return { via: "book", basePerUnit: 1_000n };
   return { wait: "measure_mismatch" };
 }
 

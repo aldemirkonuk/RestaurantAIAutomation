@@ -32,12 +32,15 @@ insert into _route values
   ('R12', 'mg', 'ml', null, null, null, 'measure_mismatch'),
   ('R13', 'mg', 'each', null, null, null, 'measure_mismatch'),
   ('R14', 'each_milli', 'each', null, 'book', 1000, null),
-  ('R15', 'each_milli', 'bottle', 700, 'book', 1000, null),
-  ('R16', 'each_milli', 'case', null, 'book', 1000, null),
-  ('R17', 'each_milli', 'shot', null, 'book', 1000, null),
+  ('R15', 'each_milli', 'bottle', 700, null, null, 'measure_mismatch'),
+  ('R16', 'each_milli', 'case', null, null, null, 'measure_mismatch'),
+  ('R17', 'each_milli', 'shot', null, null, null, 'measure_mismatch'),
   ('R18', 'each_milli', 'g', null, null, null, 'measure_mismatch'),
   ('R19', 'ml10', null, null, null, null, 'no_unit'),
-  ('R20', 'mg', '', null, null, null, 'no_unit');
+  ('R20', 'mg', '', null, null, null, 'no_unit'),
+  ('R21', 'each_milli', 'pack', null, null, null, 'measure_mismatch'),
+  ('R22', 'each_milli', 'keg', 30000, null, null, 'measure_mismatch'),
+  ('R23', 'each_milli', 'glass', null, null, null, 'measure_mismatch');
 -- parity:route:end
 
 insert into _t
