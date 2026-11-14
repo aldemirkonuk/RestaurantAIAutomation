@@ -33,6 +33,7 @@ vi.mock('../../../contexts/AuthContext', async (importOriginal) => ({
 }));
 
 import WhoIsWriting from './WhoIsWriting';
+import { fmtDay } from './senders-format';
 
 const render = () =>
   rtlRender(
@@ -63,7 +64,7 @@ const held = (over: Partial<ProspectDto> = {}): ProspectDto => ({
   ...over,
 });
 const ok = (data: unknown) => ({ data, isLoading: false, isError: false, error: null, refetch: vi.fn() });
-const FILE_ASK = 'It is from Quiet Dairy: file it there…';
+const FILE_ASK = `It is from Quiet Dairy: file it there… (Invoice 2211, ${fmtDay('2026-11-12T09:30:00Z')})`;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -199,5 +200,46 @@ describe('who may file it, and when there is nothing to file under', () => {
     };
     render();
     expect(screen.queryByRole('button', { name: /file it there/ })).toBeNull();
+  });
+});
+
+// r37 walk w3 M-F3: focus is kept on the file-under act, and two held rows
+// from one vendor are told apart by name.
+describe('the file-under ask keeps the keyboard where it was', () => {
+  it('takes focus when it opens, and gives it back to its button on Cancel', () => {
+    render();
+    const opener = screen.getByRole('button', { name: FILE_ASK });
+    opener.focus();
+    fireEvent.click(opener);
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'File it under Quiet Dairy' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: FILE_ASK }));
+  });
+
+  it('Escape closes the ask like Cancel, files nothing, and gives focus back', () => {
+    render();
+    fireEvent.click(screen.getByRole('button', { name: FILE_ASK }));
+    fireEvent.keyDown(screen.getByRole('button', { name: 'File it under Quiet Dairy' }), { key: 'Escape' });
+    expect(screen.queryByRole('group', { name: 'File it under Quiet Dairy' })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: FILE_ASK }));
+    expect(h.fileHeld.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('two held letters from one vendor get two names, each starting with what the button shows', () => {
+    h.strangers = ok([
+      held({ id: 'p-1', subject: 'Bank details changed' }),
+      held({ id: 'p-2', subject: '  ' }),
+    ]);
+    render();
+    const names = screen
+      .getAllByRole('button', { name: /^It is from Quiet Dairy: file it there…/ })
+      .map((b) => b.getAttribute('aria-label'));
+    const day = fmtDay('2026-11-12T09:30:00Z');
+    expect(names).toEqual([
+      `It is from Quiet Dairy: file it there… (Bank details changed, ${day})`,
+      `It is from Quiet Dairy: file it there… (no subject, ${day})`,
+    ]);
+    for (const b of screen.getAllByRole('button', { name: /^It is from Quiet Dairy/ }))
+      expect(b).toHaveTextContent('It is from Quiet Dairy: file it there…');
   });
 });
