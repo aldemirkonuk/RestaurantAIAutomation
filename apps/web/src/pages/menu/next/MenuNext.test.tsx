@@ -263,6 +263,15 @@ describe('r41 R10: money on its way is not money "not recorded"', () => {
     expect(row.textContent).not.toContain('currency not recorded');
   });
 
+  it('an answer that says it could not read the money is not taken for a code', async () => {
+    mockCurrency.mockResolvedValue(currency({ code: 'TRY', readable: false, reason: 'the settings could not be read' }));
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ by_glass_price: 62 })] }));
+    mount();
+    const row = (await screen.findAllByTestId('menu-row'))[0];
+    expect(row.textContent).toContain('currency not recorded');
+    expect(row.textContent).not.toMatch(/TRY/);
+  });
+
   it('a money read that fails is said as not recorded, and the menu is shown', async () => {
     mockCurrency.mockRejectedValue(new Error('timeout'));
     mockGetMenu.mockResolvedValue(menu({ items: [line({ by_glass_price: 62 })] }));
