@@ -125,7 +125,7 @@ describe('the plan in one sentence', () => {
     ).toBe('Choosing this menu changes no price. 1 line shows no price and the house has none either, so it stays unpriced, and the line carries a note saying so; 1 line is not matched to a wine, so no price.');
     // r28 G1: "changes nothing" only when no price on the house differs from the current menu.
     expect(planSentence(plan({ current: true }))).toBe(
-      'This is the current menu, and 1 price on the house differs from it. Carrying its prices again sets the ones its choice did not reach; a price someone set since it was chosen stays.',
+      'This is the current menu, and 1 price on the house differs from it. Carrying its prices again sets it.',
     );
     expect(planSentence(plan({ current: true, counts: { ...plan().counts, change: 0, new_wine: 0 } }))).toBe(
       'This is the current menu, and every price on it already reached the house.',
@@ -159,6 +159,23 @@ describe('the plan in one sentence', () => {
     ).toBe(
       "Choosing this menu will change the price of 1 wine the house already has, add 1 wine new to the house at its menu price and keep 1 wine already at the menu's price.",
     );
+  });
+
+  // r31 w1 F2: the walk's plan said "3 prices on the house differ … becomes
+  // 501.00", and the carry then set 0 and kept 3 set since the choice.
+  it('a price set since the current menu was chosen is counted apart: the carry keeps it (r31 w1 F2)', () => {
+    expect(planSentence(plan({ current: true, counts: { ...plan().counts, change: 0, new_wine: 0, kept_newer: 3 } }))).toBe(
+      'This is the current menu, and every price its choice set reached the house; 3 prices someone set since it was chosen stay, and carrying again leaves them as they are.',
+    );
+    expect(planSentence(plan({ current: true, counts: { ...plan().counts, change: 2, new_wine: 0, kept_newer: 1 } }))).toBe(
+      'This is the current menu, and 2 prices on the house differ from it. Carrying its prices again sets them; 1 price someone set since it was chosen stays, and carrying again leaves it as it is.',
+    );
+  });
+
+  it('a kept-newer kind reads as staying, and is listed with who set it (r31 w1 F2)', () => {
+    const kept = line({ menuItemId: 'k9', bottle: { ...line().bottle, result: 'kept_newer', menuPrice: 501, housePrice: 480, setAfterRead: false } });
+    expect(kindWords(kept, kept.bottle, 'TRY')).toBe(`stays ${m(480)}, set since this menu was chosen (the menu says ${m(501)})`);
+    expect(orderedRows([kept]).map((r) => r.k.result)).toContain('kept_newer');
   });
   it('names the kitchen lines it leaves on the menu and carries nowhere', () => {
     expect(planSentence(plan({ dormantLocks: [], kitchenLines: [{ menuItemId: 'k1', name: 'Tiramisu' }] }))).toBe(
@@ -233,6 +250,27 @@ describe('MenuPlan -- the section before the choice (L13)', () => {
     expect(back).toHaveTextContent("Barolo comes back with this menu and its lock still holds (the house's Barolo 2019).");
     expect(back).toHaveTextContent('Check this one: the menu reads Barolo 2020, and the locked wine it is linked to is the 2019 vintage.');
     expect(screen.getByTestId('menu-plan-dormant')).toHaveTextContent(shown(`Old Rioja (bottle) at ${m(80)}, removed from inventory`));
+  });
+
+  it('a price someone set since the menu was chosen reads as staying, not as becoming the menu price', async () => {
+    const kept = line({
+      bottle: {
+        kind: 'bottle',
+        menuPrice: 480,
+        housePrice: 520,
+        result: 'kept_newer',
+        lastSet: { by: person('Deniz'), at: '2026-09-12T08:00:00Z', source: 'manual' },
+        lock: null,
+      },
+    });
+    mockPlan.mockResolvedValue(plan({ current: true, lines: [kept], counts: { ...plan().counts, change: 0, new_wine: 0, kept_newer: 1 } }));
+    mount(true);
+    const rows = await screen.findAllByTestId('menu-plan-row');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent(
+      shown(`Stays ${m(520)}, set since this menu was chosen (the menu says ${m(480)}); it was set by hand by Deniz on 2026-09-12`),
+    );
+    expect(rows[0]).not.toHaveTextContent('Becomes');
   });
 
   it('Keep locks that price there and then, and the plan is read again', async () => {

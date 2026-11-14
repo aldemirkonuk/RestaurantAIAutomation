@@ -137,8 +137,11 @@ type PriceFlag = "blank_kept_last_known" | "blank_no_house_price";
  *   blank_never_priced  the line shows no price and the house has none either
  *   not_linked          the line matched no wine, so there is no house price
  *   new_wine            the house has no row for this wine yet; it is added with the menu's price
+ *   kept_newer          a price someone set after this menu was chosen stands: the carry is
+ *                       dated by the choice, and the writer answers it "stale" (L14; r31 w1 F2)
  */
 export type PlanResult =
+  | "kept_newer"
   | "change"
   | "unchanged"
   | "held_by_lock"
@@ -333,6 +336,7 @@ export function newestCurrentFirst(rows: CurrentMenuRow[]): CurrentMenuRow[] {
 function emptyPlanCounts(): Record<PlanResult, number> {
   return {
     change: 0,
+    kept_newer: 0,
     unchanged: 0,
     held_by_lock: 0,
     blank_kept: 0,
@@ -375,6 +379,28 @@ function assertReadFinished(row: Record<string, unknown>): void {
 function readMomentOf(row: Record<string, unknown>): string | null {
   const at = row.extracted_at ?? row.created_at ?? null;
   return typeof at === "string" && at !== "" ? at : null;
+}
+
+/**
+ * THE MOMENT A CARRY OF THIS MENU IS DATED BY (r31 walk w1, F2). A menu that
+ * is current was chosen at `made_current_at`, and carrying it again writes
+ * every price dated by that moment, so the writer keeps any price that took
+ * effect after it ("stale", L14). A menu not yet current is chosen now, and
+ * nothing in effect is newer than now: null. The plan and the carry read this
+ * one moment, so "Check its prices" never promises a price the carry keeps.
+ */
+export function carryMomentOf(row: Record<string, unknown>): string | null {
+  if (row.status !== "active") return null;
+  const at = row.made_current_at;
+  return typeof at === "string" && at !== "" ? at : null;
+}
+
+/** A price in effect that took effect after the carry's moment stands (the writer's `stale`). */
+export function keptFromTheCarry(set: { at: string | null } | null, carryAt: string | null): boolean {
+  if (!set?.at || !carryAt) return false;
+  const a = Date.parse(set.at);
+  const c = Date.parse(carryAt);
+  return Number.isFinite(a) && Number.isFinite(c) && a > c;
 }
 
 /**
@@ -2235,7 +2261,7 @@ export class MenusService {
     const row = await this.readVersionRow(restaurantId, menuId);
     assertReadFinished(row);
     const lines = (await this.readLines(menuId, restaurantId)) as unknown as InsertedMenuItem[];
-    const plan = await this.computePlan(restaurantId, menuId, await this.isOnlyCurrent(restaurantId, menuId, row), lines, readMomentOf(row));
+    const plan = await this.computePlan(restaurantId, menuId, await this.isOnlyCurrent(restaurantId, menuId, row), lines, readMomentOf(row), carryMomentOf(row));
     // Names are for reading the plan; they never decide it (the fingerprint
     // leaves them out). A failed read is said.
     const ids = new Set<string>();
@@ -2275,6 +2301,8 @@ export class MenusService {
     current: boolean,
     lines: InsertedMenuItem[],
     readAt: string | null,
+    /** r31 w1 F2: the moment a carry of this menu is dated by; null when it is chosen now. */
+    carryAt: string | null = null,
   ): Promise<MenuPlan> {
     const client = this.dbService.supabase;
     const fail = (what: string, message: string): never => {
@@ -2388,16 +2416,17 @@ export class MenusService {
         else if (menuPrice === null) result = housePrice === null ? "blank_never_priced" : "blank_kept";
         else if (lock) result = "held_by_lock";
         else if (housePrice !== null && Math.abs(menuPrice - housePrice) < 0.005) result = "unchanged";
+        else if (keptFromTheCarry(lastSet.get(String(row.id)) ?? null, carryAt)) result = "kept_newer";
         else result = "change";
         counts[result] += 1;
-        const set = row && result === "change" ? (lastSet.get(String(row.id)) ?? null) : null;
+        const set = row && (result === "change" || result === "kept_newer") ? (lastSet.get(String(row.id)) ?? null) : null;
         return {
           kind,
           menuPrice,
           housePrice,
           result,
           lastSet: set ? { by: { userId: set.by, name: null }, at: set.at, source: set.source } : null,
-          setAfterRead: !!set && setByAPersonAfter(set, readAt),
+          setAfterRead: result === "change" && !!set && setByAPersonAfter(set, readAt),
           lock: lock
             ? { lockId: lock.lockId, lockedPrice: lock.lockedPrice, lockedBy: { userId: lock.lockedBy, name: null }, lockedAt: lock.lockedAt }
             : null,
@@ -2593,7 +2622,7 @@ export class MenusService {
     const lines = (await this.readLines(menuId, restaurantId)) as unknown as InsertedMenuItem[];
     const version = await this.readVersionRow(restaurantId, menuId);
     assertReadFinished(version);
-    const plan = await this.computePlan(restaurantId, menuId, await this.isOnlyCurrent(restaurantId, menuId, version), lines, readMomentOf(version));
+    const plan = await this.computePlan(restaurantId, menuId, await this.isOnlyCurrent(restaurantId, menuId, version), lines, readMomentOf(version), carryMomentOf(version));
     if (plan.fingerprint !== fingerprint.trim()) {
       throw new ConflictException(
         "What choosing this menu would do has changed since it was shown (a price or a lock moved). Nothing was changed; look at the plan again.",
