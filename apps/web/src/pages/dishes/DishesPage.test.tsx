@@ -80,7 +80,8 @@ describe('DishesPage', () => {
     expect(a.textContent).not.toContain('33.3%');
     expect(screen.getByRole('columnheader', { name: 'Cost per plate' })).toBeInTheDocument();
     // An incomplete cost has no cost and no %, even with a price.
-    expect(screen.getByTestId(`dish-row-${B}`).textContent).toMatch(/Not knownNot known/);
+    // It says what the cost waits for: one of the two ingredients has a price.
+    expect(screen.getByTestId(`dish-row-${B}`).textContent).toMatch(/Not known1 of 2 ingredients pricedNot known/);
     expect(screen.getByTestId(`dish-row-${B}`).textContent).not.toMatch(/%/);
     // A complete cost with no price: a cost, no %.
     expect(screen.getByTestId(`dish-row-${D}`)).toHaveTextContent('No price');
@@ -303,5 +304,33 @@ describe('readPrice', () => {
     ['1.250', null, true], ['1,250', null, true], ['12,505', null, true], ['-3', null, true], ['abc', null, true], ['1.2.3', null, true],
   ])('%j reads as %j (bad %j)', (text, price, bad) => {
     expect(readPrice(text)).toEqual({ price, bad });
+  });
+});
+
+describe('DishesPage: dishes with no recipe yet (r40)', () => {
+  it('a manager is told how many have no recipe, and can show only those', async () => {
+    mount();
+    await screen.findByTestId(`dish-row-${A}`);
+    expect(screen.getByTestId('no-recipe-yet')).toHaveTextContent('1 of 4 dishes has no recipe yet, so what it costs is not known.');
+    fireEvent.click(screen.getByLabelText(/Show only that one/));
+    expect(screen.getByTestId(`dish-row-${C}`)).toBeInTheDocument();
+    expect(screen.queryByTestId(`dish-row-${A}`)).toBeNull();
+    fireEvent.click(screen.getByLabelText(/Show only that one/));
+    expect(screen.getByTestId(`dish-row-${A}`)).toBeInTheDocument();
+  });
+
+  it('the allergen check counts only the dishes it hid, not the ones the box hid', async () => {
+    mount();
+    await screen.findByTestId(`dish-row-${A}`);
+    fireEvent.click(screen.getByLabelText(/Show only that one/));
+    fireEvent.change(screen.getByLabelText(/Check an allergen/), { target: { value: 'milk' } });
+    expect(screen.getByTestId('allergen-check-said')).toHaveTextContent('None says it is free of milk.');
+  });
+
+  it('staff are not told, and see every dish', async () => {
+    h.auth = { activeRestaurantId: RID, activeRole: 'staff', user: { userId: 'u1', role: 'staff' } };
+    mount();
+    await screen.findByTestId(`dish-row-${A}`);
+    expect(screen.queryByTestId('no-recipe-yet')).toBeNull();
   });
 });

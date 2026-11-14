@@ -42,6 +42,7 @@ import { reason, useCanEditRecipe, useCreateDish, useDishes, useHouseMoney, useM
 import { MENU_PRICES_UNREAD, MenuPriceCell } from '../cellar/next/recipe/MenuPriceCell';
 import MenuDishesOffer from './MenuDishesOffer';
 import { AllergenCell, AllergenCheck, keptFor } from '../cellar/next/recipe/ListAllergens';
+import { CostWaits, NoRecipeYet } from '../cellar/next/recipe/ListCostWaits';
 import type { DishListRow } from '../../services/api/recipes';
 import { EM, SANS } from '../cellar/next/cellar-format';
 import '../cellar/next/cellar-next.css';
@@ -63,7 +64,10 @@ function cells(d: DishListRow, say: Say, sayPct: SayPercent) {
     price: d.price != null ? say(d.price) : 'No price',
     cost:
       per == null ? (
-        'Not known'
+        <>
+          Not known
+          <CostWaits id={d.id} cost={d.cost} />
+        </>
       ) : part > 0 ? (
         <>
           {say(per)}
@@ -284,7 +288,10 @@ export default function DishesPage() {
   const asked = params.get('open');
   const [allergen, setAllergen] = useState('');
   const all = dishes.data ?? [];
-  const rows = all.filter((d) => keptFor(d.allergens, allergen));
+  const [onlyBare, setOnlyBare] = useState(false);
+  const byAllergen = all.filter((d) => keptFor(d.allergens, allergen));
+  const bare = all.filter((d) => !d.hasRecipe).length;
+  const rows = canEdit && onlyBare ? byAllergen.filter((d) => !d.hasRecipe) : byAllergen;
   const openId = rows.some((d) => d.id === asked) ? asked : null;
 
   const open = (id: string | null) =>
@@ -333,7 +340,8 @@ export default function DishesPage() {
           <p className="cl-said" style={{ marginTop: 12 }} data-testid="dishes-empty">No dishes yet.</p>
         ) : (
           <>
-          <AllergenCheck value={allergen} onChange={setAllergen} hidden={all.length - rows.length} noun="dishes" />
+          {canEdit ? <NoRecipeYet bare={bare} of={all.length} noun="dishes" only={onlyBare} onOnly={setOnlyBare} /> : null}
+          <AllergenCheck value={allergen} onChange={setAllergen} hidden={all.length - byAllergen.length} noun="dishes" />
           <div style={{ marginTop: 12, overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10 }}>
             <table className="cl-table">
               <thead>

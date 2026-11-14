@@ -114,7 +114,7 @@ describe('the cocktail list cost columns', () => {
 
   it('an incomplete cost is "Not known", never a smaller figure, and makes no pour cost', async () => {
     mount();
-    await waitFor(() => expect(text(`drink-cost-${SOUR}`)).toBe('Not known'));
+    await waitFor(() => expect(text(`drink-cost-${SOUR}`)).toBe('Not known1 of 2 ingredients priced'));
     expect(text(`drink-share-${SOUR}`)).toBe('Not known');
   });
 
@@ -219,5 +219,25 @@ describe('the cocktail list allergens', () => {
     expect(await screen.findByTestId('cocktails-allergens-unread')).toHaveTextContent(DRINK_ALLERGENS_UNREAD);
     fireEvent.change(screen.getByLabelText(/Check an allergen/), { target: { value: 'eggs' } });
     expect(screen.getByTestId(`allergens-${GT}`)).toBeInTheDocument();
+  });
+});
+
+describe('the cocktail list: drinks with no recipe yet (r40)', () => {
+  it('a manager is told how many drinks have no recipe, and can show only those', async () => {
+    mount();
+    expect(await screen.findByTestId('no-recipe-yet')).toHaveTextContent('1 of 4 drinks has no recipe yet, so what it costs is not known.');
+    fireEvent.click(screen.getByLabelText(/Show only that one/));
+    expect(screen.getByTestId(`drink-cost-${BARE}`)).toBeInTheDocument();
+    expect(screen.queryByTestId(`drink-cost-${GT}`)).toBeNull();
+  });
+
+  it('staff are not told', async () => {
+    h.role = 'staff';
+    const { qc } = mount();
+    await waitFor(() => expect(h.get).toHaveBeenCalledWith(FIGURES));
+    // Once the figures are in, a drink with no recipe is known; staff are still not told.
+    await waitFor(() => expect(qc.isFetching()).toBe(0));
+    expect(qc.getQueryCache().findAll().some((q) => JSON.stringify(q.state.data ?? '').includes('cocktailId'))).toBe(true);
+    expect(screen.queryByTestId('no-recipe-yet')).toBeNull();
   });
 });
