@@ -19,6 +19,7 @@
  */
 import type { CocktailRecipe, CostPreview, RecipeCost, RecipeLine } from '../../../../services/api/recipes';
 import { alcoholGrams, figureAmount, figureUnknown, names } from './WhatIsInAServe';
+import { recipeWords, type RecipeWords } from './recipeWords';
 
 interface Card {
   id: string;
@@ -43,7 +44,13 @@ export interface DraftCost {
   labels: string[];
 }
 
-function costCard(cost: RecipeCost | null, missing: string, sayMoney: (n: number) => string, draft: boolean): Card | null {
+function costCard(
+  cost: RecipeCost | null,
+  missing: string,
+  sayMoney: (n: number) => string,
+  draft: boolean,
+  words: RecipeWords,
+): Card | null {
   if (!cost) return null;
   const base = { id: 'cost', label: 'Cost a serve' };
   if (cost.complete && cost.perServe != null) {
@@ -58,7 +65,7 @@ function costCard(cost: RecipeCost | null, missing: string, sayMoney: (n: number
       known: true,
       said:
         part > 0
-          ? `${lead}; ${count(part, 'ingredient is', 'ingredients are')} priced from the bottles with an invoice only.`
+          ? `${lead}; ${count(part, 'ingredient is', 'ingredients are')} priced from the ${words.stockWord} with an invoice only.`
           : `${lead}${priced}.`,
     };
   }
@@ -74,10 +81,10 @@ function costCard(cost: RecipeCost | null, missing: string, sayMoney: (n: number
   };
 }
 
-function priceCard(data: CocktailRecipe, sayMoney: (n: number) => string): Card {
+function priceCard(data: CocktailRecipe, sayMoney: (n: number) => string, words: RecipeWords): Card {
   const price = data.cocktail.price;
   return price != null
-    ? { id: 'price', label: 'Price', figure: sayMoney(price), known: true, said: 'A serve, as your list has it.' }
+    ? { id: 'price', label: 'Price', figure: sayMoney(price), known: true, said: `A ${words.unit}, as your list has it.` }
     : { id: 'price', label: 'Price', figure: 'No price', known: false, said: 'Your list has no price for it.' };
 }
 
@@ -128,11 +135,11 @@ function ingredientsCard(data: CocktailRecipe): Card | null {
   };
 }
 
-function nutritionCards(data: CocktailRecipe): Card[] {
+function nutritionCards(data: CocktailRecipe, words: RecipeWords): Card[] {
   const w = data.whatIsIn;
   if (!data.current) return [];
   if (!w || !w.readable) {
-    const said = 'What is in a serve could not be read here, so it is not shown as known.';
+    const said = `What is in a ${words.unit} could not be read here, so it is not shown as known.`;
     return [
       { id: 'energy', label: 'Energy a serve', figure: 'Not read', known: false, said },
       { id: 'alcohol', label: 'Pure alcohol a serve', figure: 'Not read', known: false, said },
@@ -192,6 +199,7 @@ export default function DrinkCards({
   draftCost?: DraftCost | null;
 }) {
   const isDish = data.kind === 'dish';
+  const words = recipeWords(data.kind);
   const draft = unsaved && draftCost ? draftCost : null;
   // A drink never saved has no saved figures; its only card is the draft's
   // cost (and the list's price), once its lines are whole enough to price.
@@ -206,19 +214,20 @@ export default function DrinkCards({
           names(draft.cost.lines.flatMap((l, i) => (l.status !== 'untracked' && l.costPerServe == null ? [draft.labels[i] ?? 'a line'] : []))),
           sayMoney,
           true,
+          words,
         )
       : data.current
-        ? costCard(data.cost, unpricedNames(data.current.lines), sayMoney, false)
+        ? costCard(data.cost, unpricedNames(data.current.lines), sayMoney, false, words)
         : null;
   const cards = [
     cost,
-    sayMoney ? priceCard(data, sayMoney) : null,
+    sayMoney ? priceCard(data, sayMoney, words) : null,
     sayMoney ? pourCostCard(shownCost, data.cocktail.price) : null,
     ingredientsCard(data),
-    ...nutritionCards(data),
+    ...nutritionCards(data, words),
   ]
     .filter((c): c is Card => c !== null)
-    .filter((c) => !isDish || c.id !== 'alcohol')
+    .filter((c) => words.alcohol || c.id !== 'alcohol')
     .map((c) => (isDish && DISH_LABELS[c.id] ? { ...c, label: DISH_LABELS[c.id] } : c));
   return (
     <section className="cl-rcp-kpis" data-testid="drink-cards" aria-label={isDish ? 'This dish in figures' : 'This drink in figures'}>
