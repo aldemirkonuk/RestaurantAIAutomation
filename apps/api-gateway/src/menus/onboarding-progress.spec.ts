@@ -371,6 +371,11 @@ describe("onboarding progress is read from the session's house (OB-1)", () => {
       expect(a.completed_at).toBeNull();
       tables.user_onboarding_progress[0].no_team_yet_at = null;
       expect((await serviceOn(tables).service.getOnboardingProgress("u-1", houseA)).no_team_yet).toBe(false);
+      // A person with no row of their own reads no one else's answer.
+      tables.user_onboarding_progress = [tables.user_onboarding_progress[1]];
+      const invitee = await serviceOn(tables).service.getOnboardingProgress("u-1", houseA);
+      expect(invitee.no_team_yet).toBe(false);
+      expect(invitee.completed_at).toBeNull();
     });
 
     it("an answer that cannot be read is no answer, and the setup still answers", async () => {
