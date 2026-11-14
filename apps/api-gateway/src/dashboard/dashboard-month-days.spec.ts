@@ -38,13 +38,14 @@ const HOUSE = "house-1";
 const LA = "America/Los_Angeles";
 
 const COLUMNS: Record<string, string[]> = {
-  restaurants: ["id", "timezone", "country"],
+  restaurants: ["id", "timezone", "country", "currency"],
   procurement_orders: [
     "id",
     "restaurant_id",
     "status",
     "final_price",
     "total_cost",
+    "currency",
     "bottles_total",
     "quantity",
     "delivered_at",

@@ -128,6 +128,15 @@ export class ProcurementSpendSummaryDto {
 
   @ApiProperty({
     description:
+      "Delivered orders not in the house's money, by currency code; any makes that figure null (nothing is converted)",
+  })
+  notInHouseCurrency: {
+    total: Record<string, number>;
+    thisMonth: Record<string, number>;
+  };
+
+  @ApiProperty({
+    description:
       "Why each figure is null; null where stated",
   })
   unread: {
@@ -140,7 +149,7 @@ export class ProcurementSpendSummaryDto {
 
   @ApiProperty({
     description:
-      "Vendor spend by month [{month, spend, bottles, uncosted, unread}]; spend is null for a month with an uncosted order",
+      "Vendor spend by month [{month, spend, bottles, uncosted, notInHouseCurrency, unread}]; spend is null for a month with an uncosted order or one not in the house's money",
   })
   spendByMonth: any[];
 }
@@ -227,7 +236,23 @@ export class DashboardStatsDto {
 
   @ApiProperty({
     description:
-      "Why each spend window is null for want of a recorded cost; null where stated or withheld by role",
+      "Delivered orders not in the house's money per spend window, by currency code; any makes that window's spend null (nothing is converted)",
+  })
+  notInHouseCurrency: {
+    today: Record<string, number>;
+    week: Record<string, number>;
+    month: Record<string, number>;
+  };
+
+  @ApiProperty({
+    description:
+      "True when a delivered order names a currency and the house's own could not be read; each spend window holding such an order is null",
+  })
+  houseCurrencyUnread: boolean;
+
+  @ApiProperty({
+    description:
+      "Why each spend window is null: no recorded cost, or an order not in the house's money; null where stated",
   })
   unread: {
     todayProcurementSpend: string | null;
@@ -308,6 +333,12 @@ export class SalesChartPointDto {
 
   @ApiProperty({ description: "Orders in this bucket with no recorded cost" })
   uncosted: number;
+
+  @ApiProperty({
+    description:
+      "Orders in this bucket not in the house's money, by currency code; any makes procurementSpend null",
+  })
+  notInHouseCurrency: Record<string, number>;
 
   @ApiProperty({
     nullable: true,
