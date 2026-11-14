@@ -50,8 +50,11 @@ function attributionAt(lines: string[], i: number): 0 | 1 | 2 {
   if (QUOTED.test(one)) return 0;
   if (one.length <= ATTRIBUTION_MAX && ATTRIBUTION_END.test(one)) return 1;
   // Gmail wraps a long attribution: "On Mon, 13 Nov 2026 at 09:00, Bodega <a@b>\nwrote:".
+  // The wrapped part is the verb alone (at most three words); a whole attribution
+  // under the writer's last line is its own line, not the end of that one.
   const next = lines[i + 1];
   if (next === undefined || !hasWords(one) || QUOTED.test(next)) return 0;
+  if (next.trim().split(/\s+/).length > 3) return 0;
   const two = `${one} ${next}`;
   return two.length <= ATTRIBUTION_MAX && ATTRIBUTION_END.test(two) ? 2 : 0;
 }

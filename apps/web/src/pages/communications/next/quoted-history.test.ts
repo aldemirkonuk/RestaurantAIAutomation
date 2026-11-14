@@ -28,6 +28,12 @@ describe('splitQuotedHistory: where the cut falls', () => {
     expect(r.quoted?.startsWith('On Mon, 13 Nov 2026')).toBe(true);
   });
 
+  it('the writer\'s last line directly above a whole attribution stays theirs', () => {
+    const r = folds('Yes, 40.\nOn Mon, 13 Nov 2026 at 09:00, Bodega <b@example.com> wrote:\n> Can you do 40?');
+    expect(r.said).toBe('Yes, 40.');
+    expect(r.quotedLines).toBe(2);
+  });
+
   it('Turkish Gmail: "… tarihinde … şunu yazdı:" is a cut', () => {
     const r = folds('Tamam, salı.\n\n13 Kas 2026 Pzt, 09:00 tarihinde Bodega <b@example.com> şunu yazdı:\n> Salı olur mu?');
     expect(r.said).toBe('Tamam, salı.');
