@@ -29,6 +29,50 @@ function unitSuffix(unit: string, qty: unknown): string {
   return ` ${unitWord(unit, qty)}`
 }
 
+/** Units whose bottles depend on the pack, as the gateway names them. */
+const PACKED_UNITS = new Set(['case', 'pack', 'split_case'])
+
+function bottles(q: number, currency: string | null | undefined): string {
+  return `${fmtQty(q, currency)} ${q === 1 ? 'bottle' : 'bottles'}`
+}
+
+/**
+ * A packed line's figures, in words (r31 walk w2, F2). Layer 3 counts a case
+ * line in bottle-equivalents: the door books bottles, and a paper whose pack
+ * is known bills qty x pack. Printed with the paper's unit word, P1 read
+ * "received 24 cases against 2 cases billed". The same rule as the door's
+ * frame (`paperworkWords` / `countedWords`, #1370): what was received is said
+ * in bottles; what was billed goes back to the paper's count with the bottles
+ * beside it when the pack is known, and IS the paper's count when it is not.
+ */
+export function billedWords(
+  q: number | null | undefined,
+  unit: string,
+  packed: boolean,
+  pack: number | null,
+  currency: string | null | undefined,
+): string {
+  if (q == null || !packed || pack === null) return `${fmtQty(q, currency)}${unitSuffix(unit, q)}`
+  if (q % pack === 0) return `${fmtQty(q / pack, currency)}${unitSuffix(unit, q / pack)} (${bottles(q, currency)})`
+  return bottles(q, currency)
+}
+
+export function receivedWords(
+  q: number | 'not_counted' | null | undefined,
+  unit: string,
+  packed: boolean,
+  currency: string | null | undefined,
+): string {
+  if (q === 'not_counted' || q == null) return fmtReceived(q, currency)
+  return packed ? bottles(q, currency) : `${fmtQty(q, currency)}${unitSuffix(unit, q)}`
+}
+
+/** A pack that says how many bottles: a whole number of 2 or more, else null. */
+function statedPack(n: unknown): number | null {
+  const v = Number(n)
+  return n != null && Number.isInteger(v) && v >= 2 ? v : null
+}
+
 /**
  * Whether this line had anything to be compared AGAINST.
  *
@@ -63,8 +107,12 @@ export function exceptionSentences(doc: CanonicalDocument): {
       const line = doc.layer1.lines[l.lineIndex]
       const name = line?.description.value ?? `Line ${l.lineIndex + 1}`
       const unit = line?.unit.value ?? ''
-      const billedUnit = unitSuffix(unit, l.billed)
-      const receivedUnit = unitSuffix(unit, l.received)
+      const resolved = doc.layer2?.lines?.find((r) => r.lineIndex === l.lineIndex)
+      const uom = resolved?.canonicalUom ?? unit
+      const packed = PACKED_UNITS.has(uom)
+      const pack = statedPack(resolved?.packSize)
+      const billed = billedWords(l.billed, unit, packed, pack, currency)
+      const received = receivedWords(l.received, unit, packed, currency)
       /**
        * NOT COMPARED IS NOT A DIFFERENCE.
        *
@@ -83,8 +131,8 @@ export function exceptionSentences(doc: CanonicalDocument): {
           // would be the same mis-column the four-way table just stopped making.
           sentence:
             l.billed == null && l.received !== 'not_counted'
-              ? `${name} — counted ${fmtReceived(l.received, currency)}${receivedUnit} at the door. Nothing has been ordered, despatched or billed against it, so nothing was compared.`
-              : `${name} — billed ${fmtQty(l.billed, currency)}${billedUnit}. Nothing was ordered, despatched or counted against it, so nothing was compared.`,
+              ? `${name} — counted ${received} at the door. Nothing has been ordered, despatched or billed against it, so nothing was compared.`
+              : `${name} — billed ${billed}. Nothing was ordered, despatched or counted against it, so nothing was compared.`,
           money: null,
           compared: false,
           counted: l.billed == null && l.received !== 'not_counted',
@@ -92,10 +140,10 @@ export function exceptionSentences(doc: CanonicalDocument): {
       let sentence: string
       switch (l.verdict) {
         case 'short_ship':
-          sentence = `${name} — billed ${fmtQty(l.billed, currency)}${billedUnit}, received ${fmtReceived(l.received, currency)}${l.received === 'not_counted' ? '' : receivedUnit}.`
+          sentence = `${name} — billed ${billed}, received ${received}.`
           break
         case 'over_ship':
-          sentence = `${name} — received ${fmtReceived(l.received, currency)}${receivedUnit} against ${fmtQty(l.billed, currency)}${billedUnit} billed.`
+          sentence = `${name} — received ${received} against ${billed} billed.`
           break
         case 'price_variance':
           sentence = `${name} — the unit price differs from what was agreed.`

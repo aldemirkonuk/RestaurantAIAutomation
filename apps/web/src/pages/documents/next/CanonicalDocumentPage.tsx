@@ -80,15 +80,21 @@ import {
   sourceSentence,
 } from '../../../components/documents'
 import { costNoticeOf, verifyCostNoteOf } from '../../../components/documents/canonical-format'
+import { ItemChooser } from '../../../components/documents/ItemChooser'
+import type { LineFacts } from '../../../components/documents/newGoodFromLine'
+import { goodSizeSuffix } from '../../../components/documents/newGoodFromLine'
+import { addHouseGood, carryThenPair, type GoodBody } from '../../../services/api/houseGoods'
 import { AuthContext } from '@/contexts/AuthContext'
 import { canonicalApi } from '../../../services/api/canonical'
 import { getInventory } from '../../../services/api/inventory'
 import {
   deliveriesApi,
   type CostRepair,
+  type DoorBooking,
   type ProposalBody,
   type StockReturn,
 } from '../../../services/api/deliveries'
+import { lastCountedAt, paperCountBody, showsTheDoor } from './door-paper'
 import './canonical-document.css'
 
 type Tab = 'sheet' | 'door'
@@ -136,6 +142,8 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
    */
   const [writeError, setWriteError] = useState<string | null>(null)
   const [writing, setWriting] = useState(false)
+  /** The line whose by-hand item chooser is open, or null (#347). */
+  const [choosingLineId, setChoosingLineId] = useState<string | null>(null)
   /** The gateway's words when a GATE or a proposal refused, kept apart from a
    *  correction's error so one does not overwrite the other on screen. */
   const [deliveryError, setDeliveryError] = useState<string | null>(null)
@@ -153,6 +161,8 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
   } | null>(null)
   // r34 w2 F2: a first verify's own sentence about the cost and the tax.
   const [verifyNote, setVerifyNote] = useState<string | null>(null)
+  /** What the last door count put on the shelf (r24). */
+  const [doorBooking, setDoorBooking] = useState<DoorBooking | null>(null)
 
   /**
    * Every key below names the house (ADR 0051). The gateway scopes these reads
@@ -195,7 +205,7 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
     if (!it) return null
     if (!it.wineName) return null
     const vintage = it.wineVintage ? ` ${it.wineVintage}` : ''
-    const size = it.bottleSizeMl ? ` · ${it.bottleSizeMl} ml` : ''
+    const size = goodSizeSuffix(it as Parameters<typeof goodSizeSuffix>[0])
     return `${it.wineName}${vintage}${size}`
   }
   const itemVintage = (inventoryId: string): number | null => {
@@ -236,9 +246,41 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
     }
   }
 
+  /** Pair a line by hand: the one door the memory cannot learn its first pairing from. */
+  const pickItem = async (lineId: string, inventoryId: string) => {
+    await linkItem(lineId, inventoryId, 'chosen')
+    setChoosingLineId(null)
+  }
+
   const fetchedAt = q.dataUpdatedAt || Date.now()
   const res = q.data
   const doc = res?.canonical
+
+  /** What a line says of itself, for "add as a new good" (r21). */
+  const lineFacts = (lineId: string): LineFacts | undefined => {
+    const r = doc?.layer2.lines.find((l) => l.lineId === lineId)
+    const l = r ? doc?.layer1.lines[r.lineIndex] : undefined
+    if (!l) return undefined
+    return { description: l.description.value ?? null, uom: l.unit.value ?? null, formatMl: l.formatMl.value ?? null }
+  }
+
+  /** Carry the line's good, then pair the line with it (r21; rules in `carryThenPair`). */
+  const createGood = async (
+    lineId: string,
+    body: GoodBody,
+  ): Promise<string | null> => {
+    const out = await carryThenPair(
+      body,
+      (b) => addHouseGood(b, rid ?? undefined),
+      async (goodId) => {
+        await itemsQ.refetch()
+        await pickItem(lineId, goodId)
+      },
+      messageFrom,
+    )
+    if (out.note) setWriteError(out.note)
+    return out.refused
+  }
 
   /**
    * The delivery this document sits on — the FIRST one, and only when there is
@@ -481,7 +523,8 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
   const doorDelivery = (res.deliveries ?? []).find((d) =>
     d.documents.some((doc2) => doc2.role === 'door_count'),
   )
-  const showDoorTab = doc.docType === 'receiving_advice' || !!doorDelivery
+  // r24: a paper that came with goods is counted at its door, order or no order.
+  const showDoorTab = showsTheDoor(doc, doorDelivery)
 
   return shell(
     <>
@@ -727,6 +770,20 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
                 setTicking({ path, label })
               }}
               onLinkItem={linkItem}
+              onChooseItem={(lineId) => setChoosingLineId(lineId)}
+              choosingLineId={choosingLineId}
+              renderChooser={(lineId) => (
+                <ItemChooser
+                  items={itemsQ.data ?? []}
+                  itemLabel={itemName}
+                  itemsFailed={itemsQ.isError}
+                  busy={writing}
+                  onPick={(inventoryId) => void pickItem(lineId, inventoryId)}
+                  line={lineFacts(lineId)}
+                  onCreate={(body) => createGood(lineId, body)}
+                  onCancel={() => setChoosingLineId(null)}
+                />
+              )}
               itemName={itemName}
               itemVintage={itemVintage}
             />
@@ -735,6 +792,8 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
               doc={doc}
               busy={writing}
               error={deliveryError}
+              countedAt={lastCountedAt(doorDelivery)}
+              booking={doorBooking}
               /* The count is a WRITE — unless this document IS a door count, in
                  which case the frame shows what was counted and correcting it
                  means recording another count, never editing this one. */
@@ -742,15 +801,17 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
                 doc.docType === 'receiving_advice'
                   ? undefined
                   : (input) =>
-                      deliveryWrite(() =>
-                        deliveriesApi.recordDoorCount({
-                          ...input,
-                          ...(soleDelivery
-                            ? { deliveryId: soleDelivery.deliveryId }
-                            : { createDelivery: true }),
-                          ...(doc.jurisdiction ? { jurisdiction: doc.jurisdiction } : {}),
-                        }),
-                      )
+                      deliveryWrite(async () => {
+                        setDoorBooking(null)
+                        const out = await deliveriesApi.recordDoorCount(
+                          paperCountBody(input, {
+                            documentId: doc.documentId,
+                            jurisdiction: doc.jurisdiction ?? null,
+                            soleDeliveryId: soleDelivery?.deliveryId ?? null,
+                          }),
+                        )
+                        setDoorBooking(out.booking ?? null)
+                      })
               }
             />
           )}

@@ -37,6 +37,12 @@ export interface RememberedShelfProps {
   ) => Promise<void>
   /** Opens the picker for a line with no proposal. Optional. */
   onChoose?: (lineId: string) => void
+  /**
+   * The picker itself, drawn in place of the row while this line is the one
+   * being chosen for (#347). Optional: omitted, nothing changes.
+   */
+  choosing?: boolean
+  renderChooser?: (lineId: string) => React.ReactNode
   busy?: boolean
   /**
    * The vintage this line prints, and the vintage of an item (walk-through W8,
@@ -73,6 +79,8 @@ export function RememberedShelf({
   itemName,
   onLink,
   onChoose,
+  choosing = false,
+  renderChooser,
   busy,
   printedVintage = null,
   itemVintage,
@@ -130,8 +138,26 @@ export function RememberedShelf({
     )
   }
 
+  // A person may always choose by hand, so the chooser replaces the row in
+  // both states that offer no tick (2 and 4).
+  const chooser =
+    choosing && renderChooser && line.lineId ? renderChooser(line.lineId) : null
+  const chooseButton =
+    onChoose && line.lineId ? (
+      <button
+        type="button"
+        style={TICK}
+        disabled={disabled}
+        onClick={() => onChoose(line.lineId as string)}
+        data-testid="shelf-choose"
+      >
+        Choose an item
+      </button>
+    ) : null
+
   // 2. The memory could not be read. Said out loud, never drawn as "nothing".
   if (line.proposalUnavailable) {
+    if (chooser) return chooser
     return (
       <div style={{ ...ROW, color: 'var(--warn, #946A1A)' }} data-testid="shelf-unavailable">
         <span>
@@ -141,6 +167,7 @@ export function RememberedShelf({
             ? ` (${line.proposalUnavailableReason})`
             : ''}
         </span>
+        {chooseButton}
       </div>
     )
   }
@@ -168,20 +195,11 @@ export function RememberedShelf({
   }
 
   // 4. Nothing remembered, and we know that for a fact.
+  if (chooser) return chooser
   return (
     <div style={ROW} data-testid="shelf-none">
       <span>Names no shelf yet.</span>
-      {onChoose && line.lineId && (
-        <button
-          type="button"
-          style={TICK}
-          disabled={disabled}
-          onClick={() => onChoose(line.lineId as string)}
-          data-testid="shelf-choose"
-        >
-          Choose an item
-        </button>
-      )}
+      {chooseButton}
     </div>
   )
 }
