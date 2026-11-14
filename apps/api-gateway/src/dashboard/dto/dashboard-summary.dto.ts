@@ -212,6 +212,12 @@ export class DashboardStatsDto {
   @ApiProperty() lowStockItems: number;
   @ApiProperty() pendingOrders: number;
 
+  @ApiProperty({ description: "Active goods counted at least once (last_counted_at set)" })
+  countedGoods: number;
+
+  @ApiProperty({ description: "Active goods never counted, cocktails left out (they are mixed, not counted)" })
+  goodsNotCounted: number;
+
   // These three were `todaySales` / `weekSales` / `monthSales`, and `monthSales`
   // is what the web dashboard rendered under the heading "Total Revenue". They
   // are sums of `procurement_orders.total_cost` for delivered orders — vendor

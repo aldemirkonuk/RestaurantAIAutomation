@@ -1226,7 +1226,7 @@ export class DashboardService {
         await Promise.allSettled([
           client
             .from("restaurant_inventory")
-            .select("id, stock_live, bottle_size_ml")
+            .select("id, stock_live, bottle_size_ml, last_counted_at, kind")
             .eq("restaurant_id", restaurantId)
             .is("deleted_at", null)
             .eq("is_active", true),
@@ -1252,6 +1252,18 @@ export class DashboardService {
       const orders = rowsOrThrow(ordersResult, "procurement_orders");
       const zone = valueOrThrow(zoneResult);
       const totalWines = inventory.length;
+      // r36 onboarding gap 1: a good on the list is not a good counted. A
+      // menu made current lists its drinks at stock 0, and the desk read that
+      // list as a known cellar ("Nothing is running low"). These two say how
+      // much of the list has been counted (OD-161: `last_counted_at`, the
+      // fact the setup step reads too). A cocktail is mixed, not shelved, so
+      // it is never one of the goods waiting for a count.
+      const countedGoods = inventory.filter(
+        (i) => i.last_counted_at != null,
+      ).length;
+      const goodsNotCounted = inventory.filter(
+        (i) => i.last_counted_at == null && i.kind !== "cocktail",
+      ).length;
       const totalBottles = inventory.reduce(
         (sum, i) => sum + (i.stock_live || 0),
         0,
@@ -1317,6 +1329,8 @@ export class DashboardService {
       return {
         totalWines,
         totalBottles,
+        countedGoods,
+        goodsNotCounted,
         totalVolumeMl,
         totalVolumeOz,
         lowStockItems,

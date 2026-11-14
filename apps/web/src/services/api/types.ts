@@ -641,6 +641,13 @@ export interface ToastSalesResponse {
 export interface DashboardStats {
   totalWines: number;
   totalBottles: number;
+  /**
+   * Active goods counted at least once, and active goods never counted
+   * (cocktails left out: mixed, not counted). Absent on a gateway older than
+   * these fields, and then nothing is said about counting.
+   */
+  countedGoods?: number;
+  goodsNotCounted?: number;
   totalVolumeMl: number;
   totalVolumeOz: number;
   lowStockItems: number;
