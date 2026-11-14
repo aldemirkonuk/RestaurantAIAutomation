@@ -49,6 +49,7 @@ import InventoryTable from './InventoryTable';
 import ItemDrawer from './ItemDrawer';
 import CarryThis from './CarryThis';
 import CountMany from './CountMany';
+import CarryMany from './CarryMany';
 import { removeBlocked, removeTarget } from './RowDropdown';
 import { RemoveFromInventoryModal } from '../../../components/inventory/RemoveFromInventoryModal';
 import { blank, costColumnsFor, daysSinceCountedCell, oneLine, runExport, today, valuationColumns } from './iv-export';
@@ -318,6 +319,8 @@ export default function InventoryNext() {
   const [removeSel, setRemoveSel] = useState<InvRow[] | null>(null);
   // Count many (inventory r36 gap 6): the listed or the selected titles, one box each.
   const [counting, setCounting] = useState<{ rows: InvRow[]; what: string } | null>(null);
+  // Carry many (inventory r40): a pasted list of goods, one a line.
+  const [carryingMany, setCarryingMany] = useState(false);
   const uomOf = useMemo(() => {
     const u = new Map(data.rawItems.map((i) => [i.id, houseFieldsOf(i).uom]));
     return (r: InvRow) => u.get(r.id) ?? null;
@@ -1012,6 +1015,11 @@ export default function InventoryNext() {
                     Carry a food or supply
                   </button>
                 ) : null}
+                {data.canManage ? (
+                  <button type="button" className="iv-btn iv-focus" onClick={() => setCarryingMany(true)}>
+                    Carry many at once
+                  </button>
+                ) : null}
                 <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('locations')}>
                   Storage locations
                 </button>
@@ -1151,10 +1159,17 @@ export default function InventoryNext() {
         <ManualReceiptWorkspace isOpen onClose={() => setPanel(null)} onSaved={refreshStock} />
       ) : null}
       {counting ? <CountMany rows={counting.rows} uomOf={uomOf} what={counting.what} onClose={() => setCounting(null)} /> : null}
+      {carryingMany ? (
+        <CarryMany restaurantId={data.rid} listedNames={(rows ?? []).map((r) => r.name)} onClose={() => setCarryingMany(false)} />
+      ) : null}
       {panel === 'carry' ? (
         <CarryThis
           restaurantId={data.rid}
           onClose={() => setPanel(null)}
+          onMany={() => {
+            setPanel(null);
+            setCarryingMany(true);
+          }}
           onCarried={(item) => {
             setPanel(null);
             refreshStock();
