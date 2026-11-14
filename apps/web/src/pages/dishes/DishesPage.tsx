@@ -35,6 +35,7 @@ import { MENU_PRICES_UNREAD, MenuPriceCell } from '../cellar/next/recipe/MenuPri
 import type { DishListRow } from '../../services/api/recipes';
 import { EM, SANS } from '../cellar/next/cellar-format';
 import '../cellar/next/cellar-next.css';
+import './dishes-page.css';
 
 type Say = (n: number | null | undefined) => string;
 
@@ -319,7 +320,11 @@ export default function DishesPage() {
         ) : rows.length === 0 ? (
           <p className="cl-said" style={{ marginTop: 12 }} data-testid="dishes-empty">No dishes yet.</p>
         ) : (
-          <div style={{ marginTop: 12, overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10 }}>
+          <div
+            className="dishes-scroll"
+            data-testid="dishes-scroll"
+            style={{ marginTop: 12, overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10 }}
+          >
             <table className="cl-table">
               <thead>
                 <tr>

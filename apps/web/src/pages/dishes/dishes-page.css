@@ -1,0 +1,26 @@
+/*
+ * /dishes on a phone (r34 walk w1 F11).
+ *
+ * An opened dish's sheet (its details and its recipe) is drawn in a row of
+ * the dish table, and the table scrolls sideways inside its box when its
+ * columns are wider than the screen. At 375 px the box was 341 wide and the
+ * table 573, so the sheet was 573 wide too: the unit selects, Save, the
+ * Section field and the second card column sat off-screen until the reader
+ * scrolled sideways.
+ *
+ * The scroll box is a size container, and each child of the open row's one
+ * cell (the row that spans every column) is exactly as wide as the box and
+ * sticks to its left edge. So the sheet is never wider than what is on
+ * screen, wherever the table is scrolled to, and on a wide screen, where the
+ * table fits, it is the width it always was.
+ */
+.dishes-scroll {
+  container-type: inline-size;
+}
+.dishes-scroll td[colspan] > * {
+  position: sticky;
+  left: 10px; /* the cell's own padding, so the sheet keeps its inset */
+  box-sizing: border-box;
+  width: calc(100cqw - 20px);
+  max-width: calc(100cqw - 20px);
+}
