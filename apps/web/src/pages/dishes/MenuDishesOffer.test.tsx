@@ -131,7 +131,8 @@ describe('/dishes offers the menu’s dishes', () => {
     expect(screen.queryByRole('button', { name: /menu’s/ })).toBeNull();
   });
 
-  it('offers nothing when every menu dish is listed', async () => {
+  it('offers nothing when every menu dish is listed, two menus current or one', async () => {
+    h.current = 2;
     h.offer = [];
     mount();
     await screen.findByTestId('dishes-empty');
