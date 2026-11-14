@@ -4,9 +4,11 @@ import {
   HttpStatus,
   Logger,
   ServiceUnavailableException,
+  UnprocessableEntityException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import {
+  ModelClientError,
   ModelClientService,
   ModelSpendCeilingError,
   ModelSpendLedgerUnreadableError,
@@ -22,6 +24,31 @@ import {
 } from "../wine-extract-item.interface";
 
 type PageRange = { first: number; last: number };
+
+/**
+ * The reader's answer when the model refused the FILE, not the service (r36
+ * menu audit N3). Every failed call used to be "Menu scan service temporarily
+ * unavailable", so a phone photo past the model's 5 MB was told to try again
+ * later, and failed again. A 413, or a 400 whose message is about the image or
+ * document, is an answer about the file: it is said, with what to do, as a 422.
+ * Anything else (401/403 is the key, 429 and 5xx are the service, a timeout
+ * has no status) stays "temporarily unavailable".
+ */
+export function fileRefusal(error: unknown, isPdf: boolean): string | null {
+  if (!(error instanceof ModelClientError) || error.status === null) return null;
+  const said = (error.apiMessage ?? "").trim();
+  const aboutFile = /image|document|pdf|file|media|size|bytes|dimension|pixel|exceed|too large|too big|too long|maximum/i;
+  if (error.status !== 413 && !(error.status === 400 && aboutFile.test(said))) return null;
+  const what = isPdf ? "PDF" : "photo";
+  const theirWords = said ? ` (the reader said: ${said.slice(0, 200)})` : "";
+  const tooLarge = error.status === 413 || /size|bytes|dimension|pixel|exceed|too large|too big|too long|maximum/i.test(said);
+  if (tooLarge) {
+    return isPdf
+      ? `This PDF is too large for the menu reader${theirWords}. Divide the menu into smaller files and read each one. Nothing was read.`
+      : `This photo is too large for the menu reader${theirWords}. Take it again a little further back, or save it as a JPEG under 5 MB, and read it again. Nothing was read.`;
+  }
+  return `The menu reader could not open this ${what}${theirWords}. Send it as a JPEG, PNG or PDF. Nothing was read.`;
+}
 
 /**
  * The menu read is WAITING, not broken: the house's AI spend record could not
@@ -639,6 +666,8 @@ export class ScanParserService {
         throw new MenuReadWaitingException(error.message);
       }
       this.logger.error(`Scan parser LLM call failed: ${error.message}`);
+      const aboutTheFile = fileRefusal(error, isPdf);
+      if (aboutTheFile !== null) throw new UnprocessableEntityException(aboutTheFile);
       throw new ServiceUnavailableException(
         "Menu scan service temporarily unavailable",
       );
