@@ -32,6 +32,8 @@ export interface DeliveryGatesProps {
   busy?: boolean
   /** The gateway's own words when it refused. Never paraphrased. */
   error?: string | null
+  /** The house's clock (IANA zone); absent = the reader's. r34 w2 F1. */
+  zone?: string | null
 }
 
 const AGREE_RULES: Record<string, string> = {
@@ -47,6 +49,7 @@ export function DeliveryGates({
   onVerify,
   busy,
   error,
+  zone,
 }: DeliveryGatesProps) {
   const agreed = !!delivery.agreedAt
   const verified = !!delivery.verifiedAt
@@ -110,7 +113,7 @@ export function DeliveryGates({
           <p style={{ margin: '1px 0 0', fontSize: 10.5, color: 'var(--ink-2, #4F473C)' }}>
             {agreed ? (
               <>
-                Agreed {fmtStamp(delivery.agreedAt, delivery.jurisdiction)} because{' '}
+                Agreed {fmtStamp(delivery.agreedAt, delivery.jurisdiction, null, zone)} because{' '}
                 <strong data-testid="agreed-rule">
                   {AGREE_RULES[delivery.agreedRule ?? ''] ??
                     `the rule recorded is “${delivery.agreedRule ?? 'not recorded'}”`}
@@ -147,7 +150,7 @@ export function DeliveryGates({
           <p style={{ margin: '1px 0 0', fontSize: 10.5, color: 'var(--ink-2, #4F473C)' }}>
             {verified ? (
               <>
-                Verified {fmtStamp(delivery.verifiedAt, delivery.jurisdiction)} by a
+                Verified {fmtStamp(delivery.verifiedAt, delivery.jurisdiction, null, zone)} by a
                 named person. Nothing was posted to inventory or cost by this step
                 on this build.
               </>

@@ -25,6 +25,7 @@ import {
   ROLE_LABELS,
   STATE_LADDER,
   fmtDate,
+  fmtDayOf,
   fmtMoney,
 } from './canonical-format'
 
@@ -35,6 +36,8 @@ export interface DeliverySpineProps {
   /** Which document the page is showing, so its card is marked. */
   selectedDocumentId: string
   onOpenDocument?: (documentId: string) => void
+  /** The house's clock (IANA zone); absent = the reader's. r34 w2 F1. */
+  zone?: string | null
 }
 
 function Ladder({ state }: { state: string }) {
@@ -158,6 +161,7 @@ export function DeliverySpine({
   failedRead,
   selectedDocumentId,
   onOpenDocument,
+  zone,
 }: DeliverySpineProps) {
   // Collapsed by default; opened when the event is big enough to be the story.
   const [openIds, setOpenIds] = useState<string[]>([])
@@ -229,7 +233,7 @@ export function DeliverySpine({
                 </span>
                 {d.documents.length}{' '}
                 {d.documents.length === 1 ? 'document' : 'documents'} ·{' '}
-                {d.deliveredAt ? fmtDate(d.deliveredAt) : 'not yet delivered'}
+                {d.deliveredAt ? fmtDayOf(d.deliveredAt, d.jurisdiction, null, zone) : 'not yet delivered'}
                 {d.provenance === 'UNORDERED' && (
                   <strong
                     data-testid="unordered-mark"

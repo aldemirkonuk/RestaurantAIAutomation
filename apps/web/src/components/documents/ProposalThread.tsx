@@ -42,6 +42,8 @@ export interface ProposalThreadProps {
   failedRead?: string | null
   jurisdiction?: string | null
   currency?: string | null
+  /** The house's clock (IANA zone); absent = the reader's. r34 w2 F1. */
+  zone?: string | null
   /** Absent = read-only (no delivery, or the caller has no write path). */
   onPropose?: (body: {
     side: 'restaurant' | 'vendor'
@@ -79,6 +81,7 @@ export function ProposalThread({
   failedRead,
   jurisdiction,
   currency,
+  zone,
   onPropose,
   onCounter,
   onAccept,
@@ -182,7 +185,7 @@ export function ProposalThread({
                 : ''}
             </span>
             <span style={{ display: 'block', fontFamily: MONO, fontSize: 9, color: 'var(--ink-4, #665D50)' }}>
-              {fmtStamp(p.proposed_at, jurisdiction, currency)} · {p.status}
+              {fmtStamp(p.proposed_at, jurisdiction, currency, zone)} · {p.status}
               {p.counters_proposal_id ? ' · answers an earlier position' : ''}
             </span>
 

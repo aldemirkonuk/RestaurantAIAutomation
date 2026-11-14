@@ -216,31 +216,116 @@ export function showsClaimBlock(docType: string): boolean {
   return docType === 'credit_memo'
 }
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
 /**
- * A date AND a time, in the document's own convention — for the correction log.
+ * The wall clock an instant reads on `zone`, or on the reader's own clock when
+ * no zone is given or the zone is not one this browser knows (an unknown zone
+ * is a missing one, as in lib/venueTime.ts — never a reason to throw).
+ *
+ * r34 walk w2 F1 (2026-11-13): one document page for an Istanbul house showed
+ * three clocks — the door count in UTC ("2026-11-14 03:28"), the agreement on
+ * the reader's ("13.11 22:28") and the delivery day as UTC's ("Nov 14, 2026").
+ * Every instant on that page now reads through this, on the house's clock.
+ */
+export function wallClock(
+  d: Date,
+  zone?: string | null,
+): { year: number; month: number; day: number; hour: number; minute: number } {
+  if (zone) {
+    try {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: zone,
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: 'numeric',
+        hourCycle: 'h23',
+      }).formatToParts(d)
+      const n = (t: string) => Number(parts.find((x) => x.type === t)?.value)
+      // Some engines still say 24 for midnight under h23.
+      return { year: n('year'), month: n('month'), day: n('day'), hour: n('hour') % 24, minute: n('minute') }
+    } catch {
+      // Fall through: an unknown zone is a missing one.
+    }
+  }
+  return {
+    year: d.getFullYear(),
+    month: d.getMonth() + 1,
+    day: d.getDate(),
+    hour: d.getHours(),
+    minute: d.getMinutes(),
+  }
+}
+
+/** Whether `zone` is a zone this browser can read a clock on. */
+export function knownZone(zone: string | null | undefined): string | null {
+  if (!zone) return null
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: zone })
+    return zone
+  } catch {
+    return null
+  }
+}
+
+/**
+ * A date AND a time, in the document's own convention.
  *
  * ADR 0104 D5's example sentence is "Corrected by Ayşe 14.08 09:40": a Turkish
  * document says `14.08 09:40`, a Californian one `Aug 14, 09:40`. The Turkish
  * form is written out for the same reason `fmtDate` writes it out — a shape that
  * changes with the runtime's ICU data is not a transcription of anything.
  *
- * The time is rendered in the READER's zone, deliberately: "when did Ayşe
- * change this" is a question about the person at the keyboard, not about the
- * document's jurisdiction.
+ * `zone` is the house's clock (r34 w2 F1). The delivery's own moments — counted
+ * at the door, agreed, verified, a proposal put — are passed it, so the page
+ * keeps one clock. Without it the time is the READER's, which is still what the
+ * correction log asks ("when did Ayşe change this" is about the person at the
+ * keyboard).
  */
 export function fmtStamp(
   iso: string | null | undefined,
   jurisdiction?: string | null,
   currency?: string | null,
+  zone?: string | null,
 ): string {
   if (!iso) return EM
   const d = new Date(iso)
   if (!Number.isFinite(d.getTime())) return EM
+  const w = wallClock(d, zone)
   const p = (n: number) => String(n).padStart(2, '0')
-  const clock = `${p(d.getHours())}:${p(d.getMinutes())}`
+  const clock = `${p(w.hour)}:${p(w.minute)}`
   const turkish = jurisdiction === 'TR' || (jurisdiction !== 'US-CA' && currency === 'TRY')
-  if (turkish) return `${p(d.getDate())}.${p(d.getMonth() + 1)} ${clock}`
-  return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${clock}`
+  if (turkish) return `${p(w.day)}.${p(w.month)} ${clock}`
+  return `${MONTHS[w.month - 1]} ${w.day}, ${clock}`
+}
+
+/**
+ * The day an INSTANT fell on, on the house's clock, in the document's
+ * convention (`14.11.2026` / `Nov 14, 2026`).
+ *
+ * `fmtDate` is for a printed date: it reads the first ten characters and so,
+ * handed a timestamp, names UTC's day — 03:28 UTC is still the 13th in New
+ * York and already the 14th in Istanbul. A delivery's `deliveredAt` is an
+ * instant, so it is read here.
+ */
+export function fmtDayOf(
+  iso: string | null | undefined,
+  jurisdiction?: string | null,
+  currency?: string | null,
+  zone?: string | null,
+): string {
+  if (!iso) return EM
+  const d = new Date(iso)
+  if (!Number.isFinite(d.getTime())) return EM
+  const w = wallClock(d, zone)
+  const turkish = jurisdiction === 'TR' || (jurisdiction !== 'US-CA' && currency === 'TRY')
+  if (turkish) {
+    const p = (n: number) => String(n).padStart(2, '0')
+    return `${p(w.day)}.${p(w.month)}.${w.year}`
+  }
+  return `${MONTHS[w.month - 1]} ${w.day}, ${w.year}`
 }
 
 /**
