@@ -67,9 +67,20 @@ export class MenuReadWaitingException extends ServiceUnavailableException {}
  * becomes beverage_kind='beer' and lights the Beer register, and one whose
  * category is absent or free-text becomes 'unknown' and lights nothing. See
  * MENU_CATEGORY_VOCABULARY for why the member, not the printed heading.
+ *
+ * A DISH IS READ TOO (r28 onboarding audit, gap 1, 2026-11-13). The prompt
+ * used to say "a restaurant beverage menu ... Extract EVERY drink", so a photo
+ * of a food menu came back empty, while a typed or CSV dish was kept. A dish
+ * now comes back with category exactly "food", the word the typed line sends
+ * (MenuManualEntry's "Food" kind) and a kitchen hint (menu-line-view.ts
+ * isKitchenLine). So a read dish takes the path every other dish takes: kept
+ * on the menu, set aside from the drinks, never sent to the library resolver
+ * (#1098). Its one price goes in bottle_price, as a typed dish's does. "food"
+ * is deliberately NOT a MENU_CATEGORY_VOCABULARY member: that list says what
+ * kind of drink a line is, and a dish is not one.
  */
 const CATEGORY_VOCABULARY_CLAUSE =
-  "category MUST be exactly one of: " +
+  "For a drink, category MUST be exactly one of: " +
   MENU_CATEGORY_VOCABULARY.join(", ") +
   ". Choose it from the menu's own section heading where there is one " +
   "(a line under 'Draft Beer' is beer; under 'Reds by the Glass' is red), " +
@@ -77,14 +88,25 @@ const CATEGORY_VOCABULARY_CLAUSE =
   "above, never the heading as printed, and never a word outside the list. " +
   "Omit category only when the line gives no basis at all for choosing one. ";
 
-const WINE_EXTRACTION_PROMPT =
-  "You are analyzing a restaurant beverage menu image. " +
+/** What a dish carries. See "A DISH IS READ TOO" above. */
+const DISH_CLAUSE =
+  "A dish (any food: starters, mains, sides, salads, pasta, pizza, desserts " +
+  "and anything else the kitchen serves) is not a drink: its category is " +
+  'exactly "food", whatever its section is called. Give a dish its name and ' +
+  "its one price in bottle_price, and omit producer, vintage, region, " +
+  "grape_variety and by_glass_price for it (e.g. 'Tiramisu 9' is " +
+  '{"name":"Tiramisu","category":"food","bottle_price":9}). A dessert wine, ' +
+  "port or sherry is a drink, not a dish. ";
+
+export const WINE_EXTRACTION_PROMPT =
+  "You are analyzing a restaurant menu image. " +
   "Extract EVERY drink listed, not only the wines — beer, cider, sake, " +
   "spirits, whiskey, cocktails, soft drinks and non-alcoholic listings all " +
   "count, and a menu that prints them in their own sections still prints " +
-  "them. For each item return JSON: " +
+  "them — and EVERY dish listed as well. For each item return JSON: " +
   "{ name, producer, category, vintage, region, grape_variety, by_glass_price, bottle_price }. " +
   CATEGORY_VOCABULARY_CLAUSE +
+  DISH_CLAUSE +
   "producer is the winery/estate/château name, or the brewery/distillery for " +
   "a beer or a spirit. " +
   "vintage, region and grape_variety describe wine — omit all three on a " +
@@ -123,6 +145,84 @@ const WINE_EXTRACTION_PROMPT =
 /** What a house is told when this gateway has no menu reader switched on. */
 export const MENU_READER_OFF =
   "The menu reader is not switched on here, so nothing was read. Type the lines in instead, or try again later.";
+
+function countOf(parts: WineExtractItem[][]): number {
+  return parts.reduce((n, p) => n + p.length, 0);
+}
+
+/** How many lines either side of a seam are compared. */
+export const SEAM_WINDOW = 3;
+
+/**
+ * A line folded for comparison: every letter and digit of any script kept,
+ * accents dropped, case and punctuation ignored. Cyrillic, Greek and Arabic
+ * names keep their letters (the old fold kept a-z0-9 only, so they folded to
+ * nothing and every such line after the first was dropped).
+ */
+function fold(v: unknown): string {
+  return String(v ?? "")
+    .normalize("NFKD")
+    .replace(/\p{M}+/gu, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+/**
+ * The whole printed line as a key, or null when its name has no letter or
+ * digit to compare: such a line is never taken for a repeat.
+ */
+function lineKey(item: WineExtractItem): string | null {
+  const name = fold(item.name);
+  if (name === "") return null;
+  const price = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? String(v) : fold(v));
+  return [
+    fold(item.producer),
+    name,
+    fold(item.vintage),
+    fold(item.category),
+    price(item.by_glass_price),
+    price(item.bottle_price),
+  ].join("|");
+}
+
+/**
+ * Join the chunks of a split PDF, dropping a line only when it is the SAME
+ * printed line read twice across a seam (r36 menu audit N8).
+ *
+ * Chunks are page ranges that do not overlap, so a line can come back twice
+ * only at a page break: the last lines of one range and the first lines of the
+ * next. The old dedupe compared every line with every other on
+ * producer|name|vintage folded to a-z0-9, so it also dropped real lines: a
+ * dish ("Salad") or "House Red" printed again pages later, two sizes of one
+ * beer, and every Cyrillic, Greek or Arabic name after the first (they folded
+ * to an empty key). Now a line is dropped only when it is among the first
+ * SEAM_WINDOW lines of a chunk, its whole line (producer, name, vintage,
+ * category and both prices) equals one of the last SEAM_WINDOW lines of the
+ * chunk before, and its name has a letter or digit. A repeat kept by mistake
+ * is a line the person can see and discard; a line dropped by mistake is gone
+ * without a trace.
+ */
+export function dropSeamRepeats(parts: WineExtractItem[][]): WineExtractItem[] {
+  const out: WineExtractItem[] = [];
+  let tail = new Set<string>();
+  for (const part of parts) {
+    part.forEach((item, idx) => {
+      const key = idx < SEAM_WINDOW ? lineKey(item) : null;
+      if (key !== null && tail.has(key)) return;
+      out.push(item);
+    });
+    // An empty or failed chunk ends the seam: the next chunk's pages do not
+    // follow the ones before it.
+    tail = new Set(
+      part
+        .slice(-SEAM_WINDOW)
+        .map(lineKey)
+        .filter((k): k is string => k !== null),
+    );
+  }
+  return out;
+}
 
 @Injectable()
 export class ScanParserService {
@@ -291,7 +391,8 @@ export class ScanParserService {
     // reports truncation — the cap itself is the signal. Bounded so a
     // pathological PDF cannot recurse indefinitely.
     const MAX_SPLIT_DEPTH = 3;
-    const all: WineExtractItem[] = [];
+    // One list per chunk, in page order: a seam is between two of them.
+    const parts: WineExtractItem[][] = [];
     const failed: number[] = [];
 
     for (let i = 0; i < chunks.length; i++) {
@@ -334,10 +435,10 @@ export class ScanParserService {
             );
             // Never regress: keep whichever pass recovered more.
             if (arrival || deeper.length >= items.length) {
-              all.push(...deeper);
+              parts.push(deeper);
               warnings.push(...deeperWarnings);
             } else {
-              all.push(...items);
+              parts.push(items);
               warnings.push({ kind: "truncated", pages });
             }
             continue;
@@ -350,7 +451,7 @@ export class ScanParserService {
           throw new ServiceUnavailableException(
             "A menu page range was incomplete.",
           );
-        all.push(...items);
+        parts.push(items);
         if (truncated) warnings.push({ kind: "truncated", pages });
         else if (unreadable) warnings.push({ kind: "unreadable_reply", pages });
         this.logger.log(
@@ -362,6 +463,7 @@ export class ScanParserService {
         // Not a gap in the menu: the whole read waits and says why.
         if (err instanceof MenuReadWaitingException) throw err;
         failed.push(i + 1);
+        parts.push([]);
         warnings.push({ kind: "chunk_failed", pages });
         this.logger.error(
           `Menu chunk ${i + 1}/${chunks.length} failed: ${err?.message}`,
@@ -381,40 +483,16 @@ export class ScanParserService {
         );
       this.logger.error(
         `Menu extracted with gaps — chunk(s) ${failed.join(", ")} of ` +
-          `${chunks.length} failed; ${all.length} item(s) recovered`,
+          `${chunks.length} failed; ${countOf(parts)} item(s) recovered`,
       );
     }
 
-    const merged = this.dedupe(all);
+    const merged = dropSeamRepeats(parts);
     this.logger.log(
-      `Menu split into ${chunks.length} chunk(s): ${all.length} item(s) ` +
+      `Menu split into ${chunks.length} chunk(s): ${countOf(parts)} item(s) ` +
         `-> ${merged.length} after dedupe`,
     );
     return merged;
-  }
-
-  /**
-   * Drop repeats across chunk boundaries. A wine printed in a section header
-   * that spans a page break can legitimately appear in two chunks; the same
-   * (producer, name, vintage) twice is a seam artifact, not two wines.
-   */
-  private dedupe(items: WineExtractItem[]): WineExtractItem[] {
-    const seen = new Set<string>();
-    const out: WineExtractItem[] = [];
-    for (const item of items) {
-      const norm = (v: unknown) =>
-        String(v ?? "")
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, " ")
-          .trim();
-      const key = `${norm(item.producer)}|${norm(item.name)}|${norm(
-        (item as any).vintage,
-      )}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(item);
-    }
-    return out;
   }
 
   private async parseOne(
