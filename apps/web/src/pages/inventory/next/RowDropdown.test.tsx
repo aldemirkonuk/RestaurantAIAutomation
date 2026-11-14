@@ -328,6 +328,42 @@ describe('RowDropdown head facts (INV-W13, W16, W17)', () => {
     );
   });
 
+  it('the note under a counted pace says it is read from the counts, not sales (r39 walk)', () => {
+    renderDrop({
+      row: row({
+        velocity: 200,
+        runway: 19,
+        usageSource: 'counts',
+        usageSince: '2026-11-03T09:00:00Z',
+        usageUntil: '2026-11-13T09:00:00Z',
+        usageQty: 2000,
+      }),
+      uom: 'ml',
+      kind: 'food',
+    });
+    expect(screen.getByTestId('velocity-none').textContent).toBe(
+      'That pace is read from the counts above, not from sales. The day-by-day chart is not drawn for this title yet.',
+    );
+  });
+
+  it('the note under a pace from 2 days of sales says 2 days, not 30 (r39 walk)', () => {
+    renderDrop({
+      row: row({ velocity: 1, runway: 10, usageSource: 'sales', usageSince: '2026-11-12T09:00:00Z', usageUntil: '2026-11-14T09:00:00Z', usageQty: 2 }),
+    });
+    expect(screen.getByTestId('velocity-none').textContent).toBe(
+      'That pace is the sales on the books in the last 2 days. The day-by-day chart is not drawn for this title yet.',
+    );
+  });
+
+  it('the note under a pace from a full 30-day window keeps "the last 30 days" (r39 walk)', () => {
+    renderDrop({
+      row: row({ velocity: 1, runway: 10, usageSource: 'sales', usageSince: '2026-10-15T09:00:00Z', usageUntil: '2026-11-14T09:00:00Z', usageQty: 30 }),
+    });
+    expect(screen.getByTestId('velocity-none').textContent).toBe(
+      'That pace is the last 30 days of sales on the books. The day-by-day chart is not drawn for this title yet.',
+    );
+  });
+
   it('a good carried one day says "the last day" (r36 inventory gap 10)', () => {
     renderDrop({
       row: row({ velocity: 3, runway: 1, usageSource: 'sales', usageSince: '2026-11-11T09:00:00Z', usageUntil: '2026-11-12T09:00:00Z', usageQty: 3 }),
