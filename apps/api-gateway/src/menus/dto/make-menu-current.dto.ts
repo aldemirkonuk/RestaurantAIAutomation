@@ -1,5 +1,5 @@
-import { ApiProperty } from "@nestjs/swagger";
-import { IsNotEmpty, IsString, MaxLength } from "class-validator";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { ArrayMaxSize, IsArray, IsNotEmpty, IsOptional, IsString, MaxLength } from "class-validator";
 
 /**
  * The body of `POST /menu-versions/:menuId/make-current` (ADR 0193 round 3,
@@ -14,4 +14,21 @@ export class MakeMenuCurrentDto {
   @IsNotEmpty()
   @MaxLength(128)
   fingerprint: string;
+
+  /**
+   * r35 G10: the drinks to take off sale -- line ids from the plan's
+   * `notOnThisFile` the person ticked. Their bottle and glass price are
+   * cleared once the menu is current; any other drink keeps its price (L12).
+   */
+  @ApiPropertyOptional({
+    description:
+      "Line ids from the plan's notOnThisFile whose house price is cleared once this menu is current. An id the plan does not offer is a 400, and nothing is changed.",
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(2000)
+  @IsString({ each: true })
+  @MaxLength(64, { each: true })
+  takeOff?: string[];
 }
