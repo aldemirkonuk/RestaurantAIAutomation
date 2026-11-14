@@ -1009,6 +1009,20 @@ describe('counts read with grouped digits, as money does (INV-W33)', () => {
       expect(s).not.toContain('cellar');
     });
 
+    it('on the page, a supply the house carries makes it goods too', () => {
+      mock.data = data({
+        rows: [
+          row({ id: 'w', stock: 3, par: 2, standing: 'above', value: 20, zones: null }),
+          row({ id: 's', wineId: null, name: 'Napkins', type: null, kind: null, stock: 3, par: 2, standing: 'above', value: 9, zones: null }),
+        ],
+        rawItems: [{ id: 's', kind: 'supply', uom: 'pack', display_name: 'Napkins' }],
+      });
+      renderPage();
+      const s = screen.getByTestId('inventory-read-sentence').textContent ?? '';
+      expect(s).toContain('2 goods,');
+      expect(s).toContain('At cost the house holds');
+    });
+
     it('on the page, a drinks-only list keeps titles and the cellar', () => {
       mock.data = data({
         rows: [row({ id: 'w', stock: 3, par: 2, standing: 'above', value: 20, zones: null })],
