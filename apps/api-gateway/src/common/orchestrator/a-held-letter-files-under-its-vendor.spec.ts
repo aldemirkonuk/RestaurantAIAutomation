@@ -6,11 +6,10 @@
  * "Put away" as its only act. An owner or a manager can now say it is the
  * vendor's: `ProspectsService.fileHeldLetter` writes it as that vendor's
  * inbound letter, with its files, and marks the held row `filed`. The list
- * names that vendor beforehand (`held_vendor`).
+ * names that vendor beforehand (`a-held-letter-names-its-vendor.spec.ts`).
  *
- * The store below keeps rows and applies filters, updates and deletes the
- * way PostgREST does for the calls this service makes, so a test can read
- * what the tables hold afterwards rather than which calls were made.
+ * The store (`communications/testing/held-letter-store`) keeps rows the way
+ * PostgREST does, so a test reads what the tables hold afterwards.
  */
 import {
   BadRequestException,
@@ -18,161 +17,18 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
-import { ProspectsService } from "./prospects.service";
-import { likeToRegExp } from "../../communications/testing/mail-store";
-
-const HOUSE = "11111111-1111-4111-8111-111111111111";
-const OTHER = "22222222-2222-4222-8222-222222222222";
-const HELD = "33333333-3333-4333-8333-333333333333";
-const VENDOR = "44444444-4444-4444-8444-444444444444";
-const USER = "55555555-5555-4555-8555-555555555555";
-
-type Row = Record<string, any>;
-type Op = "select" | "insert" | "update" | "delete";
-
-/**
- * `fail` names `table:op` pairs whose next call answers `{ data: null, error }`.
- * `before` runs before a `table:op` call is answered (to race a write).
- */
-function store(
-  tables: Record<string, Row[]>,
-  fail: string[] = [],
-  before: Record<string, () => void> = {},
-) {
-  let n = 0;
-  const from = (table: string) => {
-    const rows = (tables[table] ??= []);
-    const filters: Array<(r: Row) => boolean> = [];
-    let op: Op = "select";
-    let payload: any;
-    let single = false;
-    let returning = false;
-    let lim = Infinity;
-    let columns: string[] | null = null;
-    const field = (r: Row, c: string) => {
-      const [col, f] = c.split("->>");
-      return f === undefined ? r[col] : r[col]?.[f];
-    };
-    const qb: any = {
-      // A read returns only the columns it names, as PostgREST does.
-      select: (cols?: string) => {
-        if (op !== "select") returning = true;
-        else if (cols && cols !== "*") columns = cols.split(",").map((c) => c.trim());
-        return qb;
-      },
-      eq: (c: string, v: any) => (filters.push((r) => field(r, c) === v), qb),
-      is: (c: string, v: any) => (
-        filters.push((r) => (v === null ? field(r, c) == null : field(r, c) === v)),
-        qb
-      ),
-      in: (c: string, v: any[]) => (filters.push((r) => v.includes(field(r, c))), qb),
-      ilike: (c: string, v: string) => {
-        const re = likeToRegExp(v);
-        filters.push((r) => re.test(String(field(r, c) ?? "")));
-        return qb;
-      },
-      order: () => qb,
-      limit: (k: number) => ((lim = k), qb),
-      single: () => ((single = true), qb),
-      maybeSingle: () => ((single = true), qb),
-      insert: (p: any) => ((op = "insert"), (payload = p), qb),
-      update: (p: any) => ((op = "update"), (payload = p), qb),
-      delete: () => ((op = "delete"), qb),
-      then: (res: any, rej: any) => {
-        const key = `${table}:${op}`;
-        before[key]?.();
-        let out: any;
-        const at = fail.indexOf(key);
-        if (at >= 0) {
-          fail.splice(at, 1);
-          out = { data: null, error: { message: `${key} refused` } };
-        } else if (op === "insert") {
-          const list = (Array.isArray(payload) ? payload : [payload]).map((p) => ({
-            id: `${table}-${++n}`,
-            ...(table === "procurement_conversations"
-              ? { thread_key: p.gmail_thread_id ? `gm:${p.gmail_thread_id}` : `msg:${table}-${n}` }
-              : {}),
-            ...p,
-          }));
-          rows.push(...list);
-          out = { data: single ? list[0] : list, error: null };
-        } else {
-          const hit = rows.filter((r) => filters.every((f) => f(r)));
-          if (op === "update") {
-            for (const r of hit) Object.assign(r, payload);
-            out = { data: returning ? hit.map((r) => ({ id: r.id })) : null, error: null };
-          } else if (op === "delete") {
-            for (const r of hit) rows.splice(rows.indexOf(r), 1);
-            out = { data: null, error: null };
-          } else {
-            const m = hit
-              .slice(0, lim)
-              .map((r) =>
-                columns ? Object.fromEntries(columns.filter((c) => c in r).map((c) => [c, r[c]])) : { ...r },
-              );
-            out = { data: single ? (m[0] ?? null) : m, error: null };
-          }
-        }
-        return Promise.resolve(out).then(res, rej);
-      },
-    };
-    return qb;
-  };
-  return { supabase: { from } };
-}
-
-const heldRow = (o: Row = {}): Row => ({
-  id: HELD,
-  restaurant_id: HOUSE,
-  domain: "dairy.example",
-  sender_email: "orders@dairy.example",
-  sender_name: "Dairy Orders",
-  subject: "Invoice 2211",
-  body_preview: "Please find the invoice for last week attached.",
-  snippet: "Please find the invoice",
-  capture_reason: "sender_unconfirmed",
-  held_reason: "sender_unconfirmed",
-  attachments: [
-    {
-      filename: "invoice-2211.pdf",
-      mime_type: "application/pdf",
-      size_bytes: 1234,
-      storage_path: "prospects/dairy.example/abc-invoice-2211.pdf",
-      sha256: "abc",
-    },
-  ],
-  has_attachments: true,
-  message_count: 1,
-  status: "new",
-  gmail_message_id: "gm-msg-1",
-  gmail_thread_id: "gm-thread-1",
-  first_seen_at: "2026-11-12T09:30:00.000Z",
-  last_seen_at: "2026-11-12T09:30:00.000Z",
-  ...o,
-});
-
-const vendorRow = (o: Row = {}): Row => ({
-  id: VENDOR,
-  restaurant_id: HOUSE,
-  name: "Quiet Dairy",
-  contact_email: "orders@dairy.example",
-  primary_contact: {},
-  deleted_at: null,
-  ...o,
-});
-
-function world(o: { held?: Row[]; providers?: Row[]; contacts?: Row[]; conversations?: Row[] } = {}) {
-  return {
-    email_prospects: o.held ?? [heldRow()],
-    providers: o.providers ?? [vendorRow()],
-    provider_contacts: o.contacts ?? [],
-    procurement_conversations: o.conversations ?? [],
-    conversation_attachments: [] as Row[],
-  };
-}
-
-const svc = (db: unknown) =>
-  new ProspectsService(db as any, { get: () => undefined } as any);
+import {
+  HELD,
+  HOUSE,
+  OTHER,
+  USER,
+  VENDOR,
+  heldRow,
+  store,
+  svc,
+  vendorRow,
+  world,
+} from "../../communications/testing/held-letter-store";
 
 describe("fileHeldLetter: a held letter is filed under the vendor a person vouches for", () => {
   it("writes it as the vendor's inbound letter and marks the held row filed", async () => {
@@ -400,46 +256,5 @@ describe("fileHeldLetter: what it refuses, and that a refusal leaves the letter 
         USER,
       ),
     ).rejects.toThrow(/could not be undone/);
-  });
-});
-
-describe("the strangers list names the vendor a held letter would be filed under", () => {
-  const stranger = (o: Row = {}) =>
-    heldRow({ id: "s-1", held_reason: null, capture_reason: "offer", sender_email: "rep@new.example", ...o });
-
-  it("names the vendor for an unconfirmed letter, and touches no other row", async () => {
-    const t = world({ held: [heldRow(), stranger()] });
-    const rows = await svc(store(t)).list(HOUSE);
-    const held = rows.find((r) => r.id === HELD);
-    const plain = rows.find((r) => r.id === "s-1");
-    expect(held).toMatchObject({ held_vendor: { id: VENDOR, name: "Quiet Dairy" }, held_vendor_unread: false });
-    expect(plain).not.toHaveProperty("held_vendor");
-  });
-
-  it("names no vendor when no single live vendor lists the address", async () => {
-    const t = world({ providers: [vendorRow({ deleted_at: "2026-11-01T00:00:00Z" })] });
-    const [row] = await svc(store(t)).list(HOUSE);
-    expect(row).toMatchObject({ held_vendor: null, held_vendor_unread: false });
-  });
-
-  it("says the book was unread rather than naming no vendor", async () => {
-    const t = world();
-    const [row] = await svc(store(t, ["providers:select"])).list(HOUSE);
-    expect(row).toMatchObject({ held_vendor: null, held_vendor_unread: true });
-  });
-
-  it("reads each row's own house across houses", async () => {
-    const t = world({
-      held: [heldRow({ restaurant_id: OTHER })],
-      providers: [vendorRow({ restaurant_id: HOUSE })],
-    });
-    const [row] = await svc(store(t)).listAcross([HOUSE, OTHER]);
-    expect(row).toMatchObject({ held_vendor: null });
-  });
-
-  it("names nothing for a letter whose sender could not be read", async () => {
-    const t = world({ held: [heldRow({ held_reason: "sender_unreadable", sender_email: null })] });
-    const [row] = await svc(store(t)).list(HOUSE);
-    expect(row).not.toHaveProperty("held_vendor");
   });
 });
