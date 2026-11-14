@@ -17,6 +17,7 @@
  * is still open (ADR 0359, #784), so the card says the % is of the price as
  * the list has it, and that whether that price includes tax is not recorded.
  */
+import type { SayPercent } from './useHousePercent';
 import type { CocktailRecipe, CostPreview, RecipeCost, RecipeLine } from '../../../../services/api/recipes';
 import { alcoholGrams, figureAmount, figureUnknown, names } from './WhatIsInAServe';
 import { recipeWords, type RecipeWords } from './recipeWords';
@@ -52,7 +53,7 @@ function costCard(
   words: RecipeWords,
 ): Card | null {
   if (!cost) return null;
-  const base = { id: 'cost', label: 'Cost a serve' };
+  const base = { id: 'cost', label: 'Cost per serve' };
   if (cost.complete && cost.perServe != null) {
     const exact = cost.perServeExact ?? null;
     const figure = cost.perServe === 0 && exact != null && exact > 0 ? `Under ${sayMoney(0.01)}` : sayMoney(cost.perServe);
@@ -92,7 +93,7 @@ function priceCard(data: CocktailRecipe, sayMoney: (n: number) => string, words:
 export const POUR_COST_BASIS = 'Of the price as your list has it; whether that price includes tax is not recorded.';
 
 /**
- * Cost a serve over the price, as a % to one decimal; or what is missing.
+ * Cost per serve over the price, as a % to one decimal; or what is missing.
  * Only a complete cost and a price above 0 make a %: a partial cost would
  * read as a cheaper pour than the real one (ADR 0051).
  */
@@ -106,11 +107,14 @@ export function pourCostShare(cost: RecipeCost | null, price: number | null): { 
   return { pct: Math.round((exact / price) * 1000) / 10 };
 }
 
-function pourCostCard(cost: RecipeCost | null, price: number | null): Card {
+/** A share in the reader's own form, for a caller that does not know the house's. */
+const readerPercent: SayPercent = (points) => `${points.toFixed(1)}%`;
+
+function pourCostCard(cost: RecipeCost | null, price: number | null, sayPct: SayPercent): Card {
   const share = pourCostShare(cost, price);
   const base = { id: 'pour-cost', label: 'Pour cost' };
   return 'pct' in share
-    ? { ...base, figure: `${share.pct.toFixed(1)}%`, known: true, said: POUR_COST_BASIS }
+    ? { ...base, figure: sayPct(share.pct), known: true, said: POUR_COST_BASIS }
     : { ...base, figure: 'Not known', known: false, said: `${capital(share.missing.join(' and '))}.` };
 }
 
@@ -177,7 +181,7 @@ function nutritionCards(data: CocktailRecipe, words: RecipeWords): Card[] {
 }
 
 /** A dish says plate and food cost, and has no alcohol card (ADR 0366). */
-const DISH_LABELS: Record<string, string> = { cost: 'Cost a plate', 'pour-cost': 'Food cost', energy: 'Energy a plate' };
+const DISH_LABELS: Record<string, string> = { cost: 'Cost per plate', 'pour-cost': 'Food cost', energy: 'Energy a plate' };
 
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -186,6 +190,7 @@ export default function DrinkCards({
   sayMoney,
   unsaved,
   draftCost,
+  sayPct = readerPercent,
 }: {
   data: CocktailRecipe;
   /** Null for a role that does not see money: then no cost or price card. */
@@ -197,6 +202,12 @@ export default function DrinkCards({
    * enough to price: then the cost card keeps the saved recipe's figure.
    */
   draftCost?: DraftCost | null;
+  /**
+   * Writes the pour/food cost share in the house's form ("%18,7" in a lira
+   * house), as /dishes and the inventory drawer write it (r28 recipes audit,
+   * gap 15). The reader's own form when not given.
+   */
+  sayPct?: SayPercent;
 }) {
   const isDish = data.kind === 'dish';
   const words = recipeWords(data.kind);
@@ -222,7 +233,7 @@ export default function DrinkCards({
   const cards = [
     cost,
     sayMoney ? priceCard(data, sayMoney, words) : null,
-    sayMoney ? pourCostCard(shownCost, data.cocktail.price) : null,
+    sayMoney ? pourCostCard(shownCost, data.cocktail.price, sayPct) : null,
     ingredientsCard(data),
     ...nutritionCards(data, words),
   ]

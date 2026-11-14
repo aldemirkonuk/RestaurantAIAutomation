@@ -208,12 +208,21 @@ describe('RecipeSheet', () => {
     mount();
     const card = await screen.findByTestId('drink-card-cost');
     expect(card).toHaveAttribute('data-known', 'false');
-    expect(card).toHaveTextContent('Cost a serve');
+    expect(card).toHaveTextContent('Cost per serve');
     expect(card).toHaveTextContent('Not known');
     expect(card).toHaveTextContent('2 of 3 ingredients priced; no price yet for sweet vermouth.');
     // 30 + 15 of the priced lines is never shown as the drink's cost.
     expect(card.textContent).not.toMatch(/₺|45/);
     expect(screen.getByTestId('drink-card-ingredients')).toHaveTextContent('3 from your shelf.');
+  });
+
+  it('the pour cost is written the lira way in a lira house (r28 recipes audit, gap 15)', async () => {
+    serve(negroni({ cocktail: { ...negroni().cocktail, price: 20 }, cost: { perServe: 3, perServeExact: 3, priced: 3, of: 3, complete: true } }));
+    mount();
+    const card = await screen.findByTestId('drink-card-pour-cost');
+    // 3 over 20 is 15 %; the currency is read once and the share follows it.
+    await waitFor(() => expect(card).toHaveTextContent('%15,0'));
+    expect(card.textContent).not.toMatch(/15\.0%/);
   });
 
   it('the cards say a complete cost, the price, and what a serve holds; a line under a cent is not free', async () => {
