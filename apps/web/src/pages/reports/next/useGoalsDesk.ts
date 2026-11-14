@@ -125,6 +125,15 @@ export interface GoalsDeskOptions {
   queryRoot: string;
 }
 
+/**
+ * What a reader who is not an owner or a manager is told above the goals.
+ * It used to add "You can read every figure here", which stopped being true
+ * once a goal read from the house's money or till shows its target only
+ * (ADR 0348, #1496/#1498; walk r37 w3): each such card says so itself.
+ */
+export const GOALS_DESK_NOT_YOURS =
+  'Goals are set by owners and managers, and the controls are theirs.';
+
 export function useGoalsDesk({ place, queryRoot }: GoalsDeskOptions): GoalsDesk {
   const { activeRestaurantId, activeRole } = useAuth();
   const qc = useQueryClient();
@@ -139,7 +148,7 @@ export function useGoalsDesk({ place, queryRoot }: GoalsDeskOptions): GoalsDesk 
     ? null
     : activeRole === null
       ? 'Your role at this restaurant is not known yet, so the desk is read-only until it is.'
-      : 'Goals are set by owners and managers. You can read every figure here; the controls are theirs.';
+      : GOALS_DESK_NOT_YOURS;
 
   const refresh = useCallback(() => {
     void qc.invalidateQueries({ queryKey: [queryRoot, 'goals'] });

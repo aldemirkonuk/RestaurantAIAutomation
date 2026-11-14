@@ -90,7 +90,18 @@ export interface GoalRow {
    * does the card draw the time-zone Settings link beside the reason.
    */
   zoneUnset: boolean;
+  /**
+   * True when the gateway withheld this goal's reading from the reader's role
+   * (ADR 0348 item 3: `withheldForRole` on the entry). The goal's own setting
+   * (name, measure, target, date) is still sent; the reading and everything
+   * scored from it are not. It is not a goal that "could not be scored".
+   */
+  withheld: boolean;
 }
+
+/** What a goal whose reading is withheld says in place of the reading. */
+export const GOAL_READING_WITHHELD =
+  'How far along it is is written for owners and managers: it is read from the house’s money or its till. Nothing below it is claimed.';
 
 export interface GoalsRegister {
   goals: GoalRow[];
@@ -742,7 +753,18 @@ function Desk({
                   )}
                 </div>
 
-                {g.unreadable ? (
+                {g.withheld ? (
+                  <>
+                    <p className="rp-goal__line">
+                      Target <span className="rp-mono">{inUnit(g.target, g.unit, currency)}</span> ·{' '}
+                      {g.metricLabel} · {g.direction === 'at_most' ? 'keep at most' : 'reach at least'}
+                      {g.deadline ? ` · by ${deadlineWords(g.deadline)}` : ' · no deadline'}
+                    </p>
+                    <p className="rp-cap" role="status" data-testid="rp-goal-withheld">
+                      {GOAL_READING_WITHHELD}
+                    </p>
+                  </>
+                ) : g.unreadable ? (
                   <p className="rp-cap" role="status">
                     This goal could not be scored ({inParens(g.unreadable)}). Nothing below it is claimed.
                     {/* The same link as beside the pace reason below. */}
@@ -856,6 +878,7 @@ export const goals = analysis<GoalsRegister>({
     const rows = arr(d.goals).map((entry): GoalRow => {
       const g = obj(entry.goal);
       const unreadable = entry.unreadable === true ? str(entry.reason) || 'reason not given' : null;
+      const withheld = arr(entry.withheldForRole).length > 0;
       return {
         id: str(g.id),
         name: str(g.name) || 'Untitled goal',
@@ -878,6 +901,7 @@ export const goals = analysis<GoalsRegister>({
         baseline: num(g.baseline_value),
         unreadable,
         zoneUnset: unreadable !== null && entry.zoneUnset === true,
+        withheld,
       };
     });
     const basis = obj(d.basis);
@@ -897,6 +921,7 @@ export const goals = analysis<GoalsRegister>({
     const scored = reg.goals.filter((g) => !g.unreadable && g.progressPct !== null);
     const onTrack = reg.goals.filter((g) => g.onTrack === true).length;
     const behind = reg.goals.filter((g) => g.onTrack === false).length;
+    const withheld = reg.goals.filter((g) => g.withheld).length;
 
     const figures = [
       { label: 'Goals running', value: figure(reg.total) },
@@ -919,6 +944,17 @@ export const goals = analysis<GoalsRegister>({
         label: 'Could not be scored',
         value: figure(reg.goals.filter((g) => g.unreadable).length),
       },
+      // Only when some are: a staff reader is told how many readings are not
+      // theirs, never that those goals failed.
+      ...(withheld > 0
+        ? [
+            {
+              label: 'Written for owners and managers',
+              value: figure(withheld),
+              note: 'goals whose reading is the house’s money or its till',
+            },
+          ]
+        : []),
     ];
 
     return {
@@ -961,6 +997,9 @@ export const goals = analysis<GoalsRegister>({
         ctx.goals
           ? null
           : 'The desk is not wired on this rendering, so this cutting is read-only here.',
+        withheld > 0
+          ? `${countOf(withheld, 'goal’s reading is', 'goals’ readings are')} written for owners and managers, so ${withheld === 1 ? 'it is' : 'they are'} neither drawn nor counted on pace.`
+          : null,
         'Every figure is this house against its own baseline. No other restaurant’s books are in it.',
       ].filter((n): n is string => n !== null),
       basis: reg.basis,
