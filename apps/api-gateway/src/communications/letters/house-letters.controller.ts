@@ -70,12 +70,18 @@ export class HouseLettersController {
     // `userId`, never `id`: JwtStrategy.validate has no `id`, and reading one
     // made `mine` false for every caller, so nobody's own grant was preferred.
     const { userId, restaurantId } = houseActor(user);
-    const identity = await this.sender.resolve(restaurantId, userId);
-    return {
-      ...identity,
+    // Three independent reads, started together: each is a database round trip,
+    // and Mail polls this route.
+    const [identity, sendOrAsk, readerStanding] = await Promise.all([
+      this.sender.resolve(restaurantId, userId),
       // Whether THIS person's hold sends (ADR 0175 D10; 2026-09-21) — read
       // before the hold so the sheet never discovers it as a refusal after.
-      sendOrAsk: await this.letters.sendOrAsk(userId, restaurantId),
+      this.letters.sendOrAsk(userId, restaurantId),
+      this.inbox.statusFor(restaurantId),
+    ]);
+    return {
+      ...identity,
+      sendOrAsk,
       dispatcher: this.cron.lastRun(),
       // The receive half's own report. `dispatcher` says whether letters can
       // still leave; this says whether replies are still arriving, and from
@@ -83,7 +89,7 @@ export class HouseLettersController {
       // "nothing to do".
       reader: {
         lastRun: this.inboxCron.lastRun(),
-        ...(await this.inbox.statusFor(restaurantId)),
+        ...readerStanding,
       },
       categories: LETTER_CATEGORIES,
     };
