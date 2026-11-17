@@ -69,6 +69,7 @@ import {
   serverMessage,
 } from './rc2-format';
 import { DOC_TYPE_LABELS, nameCarriesYear } from '../../../components/documents/canonical-format';
+import { doorAgeSaid } from './door-age';
 import { SwipeToConfirm } from './SwipeToConfirm';
 import {
   RECEIPTS_SERVER_WINDOWS,
@@ -1890,7 +1891,7 @@ export default function ReceiptsNext() {
                 <span key={d.orderId} style={{ marginRight: 16 }}>
                   {/* "btl" was a wine word; the count is of whatever came in (W38). */}
                   {d.orderNumber ?? 'an order with no number'} · {d.countedQtyBottles} counted ·{' '}
-                  {Math.round(d.ageHours)}h ago
+                  {doorAgeSaid(d.ageHours, d.severity)}
                 </span>
               ))}
             </div>
