@@ -215,6 +215,10 @@ export function useCreateProvider() {
       // it closes, is toasted.
       if (!(newProvider as any)._pending) {
         toast.success('Vendor added', `${newProvider.name} is in your vendors.`)
+        // A vendor the gateway holds is the setup's vendor step; one only
+        // queued for later is not. The rail keeps the setup it read until the
+        // window is next focused, so it is asked again here.
+        queryClient.invalidateQueries({ queryKey: ['onboarding-progress'] })
       }
     },
     onError: (_error: any, _, context) => {
