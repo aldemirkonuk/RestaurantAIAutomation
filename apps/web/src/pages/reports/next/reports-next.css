@@ -641,6 +641,20 @@
      becoming a two-line insight does not push the sheet down (r41 gap 7). */
   min-height: calc(2 * 1.5em);
 }
+/* On a narrower window the same opening wraps to three lines (48 px late at
+   1024 px, r48 w1 F4), so the slot keeps three there and the sheet stays put. */
+@media (max-width: 1100px) {
+  .rp-voice {
+    min-height: calc(3 * 1.5em);
+  }
+  /* The opening's column has a width of its own here. Sized by its content it
+     grew from a short caption to the full sentence, and the buttons beside it
+     wrapped under it 48 px late (r50 w3, 1024 px). */
+  .rp-head > div:first-child {
+    flex: 1 1 340px;
+    min-width: 0;
+  }
+}
 /* The captions under the opening (day-one next step, age, money line) share one
    slot as tall as the tallest, the next step (65 px at 1440 px), so none of them
    landing moves the sheet (r47 w3 F1). */
