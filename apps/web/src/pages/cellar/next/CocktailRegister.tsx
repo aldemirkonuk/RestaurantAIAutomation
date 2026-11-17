@@ -406,7 +406,7 @@ export default function CocktailRegister({
             </p>
           ) : null}
 
-          {seesCost && figures.error ? (
+          {seesCost && (figures.error || figures.costsUnread) ? (
             <p className="cl-said" role="status" style={{ marginTop: 12 }} data-testid="cocktails-costs-unread">
               {DRINK_COSTS_UNREAD}
             </p>
@@ -454,7 +454,7 @@ export default function CocktailRegister({
                 <tbody>
                   {rows.map((c) => {
                     const fc = seesCost
-                      ? drinkCells(c.id, c.price ?? null, figures.byId?.get(c.id), Boolean(figures.byId), money, sayPct)
+                      ? drinkCells(c.id, c.price ?? null, figures.byId?.get(c.id), Boolean(figures.byId) && !figures.costsUnread, money, sayPct)
                       : null;
                     return (
                     <tr

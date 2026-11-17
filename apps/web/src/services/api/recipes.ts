@@ -314,6 +314,12 @@ export interface DishFigureRow {
   allergens?: RowAllergens | null;
 }
 
+/** GET /recipes/:rid/drinks/figures. `costsUnread`: the pricing read failed, every cost is null. */
+export interface DrinkFiguresAnswer {
+  costsUnread: boolean;
+  drinks: DrinkFigureRow[];
+}
+
 /** GET /recipes/:rid/dishes/figures. `costsUnread`: the pricing read failed, every cost is null. */
 export interface DishFiguresAnswer {
   costsUnread: boolean;
@@ -415,9 +421,10 @@ export const dishesApi = {
   },
 
   /** Every drink on the list with its cost a serve, in one read (r28 recipes audit, gap 9). */
-  async drinkFigures(restaurantId: string): Promise<DrinkFigureRow[]> {
-    const r = await apiClient.get<{ drinks: DrinkFigureRow[] }>(`${base(restaurantId)}/drinks/figures`);
-    return r.data.drinks;
+  async drinkFigures(restaurantId: string): Promise<DrinkFiguresAnswer> {
+    const r = await apiClient.get<{ costsUnread?: boolean; drinks: DrinkFigureRow[] }>(`${base(restaurantId)}/drinks/figures`);
+    // An older gateway sends no flag: its costs were read, or the whole read failed.
+    return { costsUnread: r.data.costsUnread === true, drinks: r.data.drinks };
   },
 
   /** The current menu's price beside each dish and drink, in one read (r28 recipes audit, gap 2). */

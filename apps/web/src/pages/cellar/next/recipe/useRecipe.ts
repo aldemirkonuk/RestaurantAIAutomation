@@ -59,7 +59,9 @@ export function useDrinkFigures(enabled: boolean) {
   return {
     // A failed re-read keeps the last figures in the cache; they are not shown
     // beside the sentence that says none is shown, so an error blanks them.
-    byId: q.data && !q.isError ? new Map(q.data.map((d) => [d.cocktailId, d])) : null,
+    byId: q.data && !q.isError ? new Map(q.data.drinks.map((d) => [d.cocktailId, d])) : null,
+    // The gateway read the drinks but could not price them: every cost is null.
+    costsUnread: q.data && !q.isError ? q.data.costsUnread : false,
     loading: q.isLoading,
     error: q.isError ? reason(q.error) : null,
   };
