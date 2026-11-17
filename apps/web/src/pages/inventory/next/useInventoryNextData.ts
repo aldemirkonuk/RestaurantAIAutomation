@@ -215,6 +215,31 @@ export function typeLabel(key: string): string {
 /** The Type filter's value for every wine at once, shown only when the house holds other drinks too. */
 export const ALL_WINE = 'kind:wine';
 
+/**
+ * The gateway row carries the library's type, grape, kind, producer, vintage
+ * and display name (`libraryType`, `libraryGrape`, `libraryKind`,
+ * `libraryProducer`, `libraryVintage`, `libraryDisplayName`). A value there is
+ * the answer, null included
+ * ("the library records none"); only an absent field (an older gateway) falls
+ * back to the library wine read.
+ */
+function fromRow(onRow: unknown, onWine: unknown): unknown {
+  return onRow === undefined ? onWine : onRow;
+}
+
+/** True when a row carries what the library read would add, so that read can be skipped. */
+export function carriesLibraryType(item: ApiItem): boolean {
+  const r = item as unknown as Raw;
+  return (
+    r.libraryType !== undefined &&
+    r.libraryGrape !== undefined &&
+    r.libraryKind !== undefined &&
+    r.libraryProducer !== undefined &&
+    r.libraryVintage !== undefined &&
+    r.libraryDisplayName !== undefined
+  );
+}
+
 /** One gateway row (already through `normalizeInventoryItem`) and its library wine. */
 export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
   const r = item as unknown as Raw;
@@ -229,7 +254,7 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
   const wac = num(r.wac);
   // `wineName` is the house's alias when it set one; `libraryName` is the
   // library's own name, carried beside it (inventory.service.ts:95-103).
-  const name = text(r.wineName) ?? text(w?.displayName) ?? text(w?.name);
+  const name = text(r.wineName) ?? text(fromRow(r.libraryDisplayName, w?.displayName)) ?? text(w?.name);
   const library = text(r.libraryName) ?? text(w?.name);
   const zones = Array.isArray(r.locations)
     ? (r.locations as Raw[])
@@ -242,10 +267,10 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
     wineId: text(r.wineId),
     name,
     libraryName: library && library !== name ? library : null,
-    producer: text(r.wineProducer) ?? text(w?.producer),
-    ...typeOf(w?.category, w?.beverageKind),
-    vintage: num(r.wineVintage) ?? num(w?.vintage),
-    grape: text(w?.grapeVariety),
+    producer: text(r.wineProducer) ?? text(fromRow(r.libraryProducer, w?.producer)),
+    ...typeOf(fromRow(r.libraryType, w?.category), fromRow(r.libraryKind, w?.beverageKind)),
+    vintage: num(r.wineVintage) ?? num(fromRow(r.libraryVintage, w?.vintage)),
+    grape: text(fromRow(r.libraryGrape, w?.grapeVariety)),
     bottleSizeMl: num(r.bottleSizeMl) ?? num(w?.bottleSizeMl),
     bottleSizeRecordedMl: ('bottle_size_ml' in r ? num(r.bottle_size_ml) : num(r.bottleSizeMl)) ?? num(w?.bottleSizeMl),
     stock,
@@ -624,8 +649,17 @@ export function useInventoryNextData() {
   const list = useInventory();
   const items = list.data ?? null;
 
+  // Only a row that does not carry its library type, grape and kind (an older
+  // gateway) sends the page to /wines for them.
   const wineIds = useMemo(
-    () => [...new Set((items ?? []).map((i) => i.wineId).filter((id): id is string => !!id))],
+    () => [
+      ...new Set(
+        (items ?? [])
+          .filter((i) => !carriesLibraryType(i))
+          .map((i) => i.wineId)
+          .filter((id): id is string => !!id),
+      ),
+    ],
     [items],
   );
   const wines = useWinesByIds(wineIds);

@@ -115,6 +115,13 @@ export class InventoryService {
       row.master_wine_library?.retail_price_avg ?? null;
     const markupRatio: number | null = row.markup_ratio ?? null;
 
+    // The library's wine style, grape, drink kind, producer and vintage, so the
+    // list page need not ask /wines a second time for them. A column the join did not select is
+    // left undefined (and so off the wire); null means the library has none.
+    const lib: Record<string, any> | null = row.master_wine_library ?? null;
+    const libraryField = (column: string): string | null | undefined =>
+      lib && column in lib ? (lib[column] ?? null) : undefined;
+
     const result = { ...row };
     if (row.master_wine_library) delete result.master_wine_library;
     if (row.restaurants) delete result.restaurants;
@@ -126,6 +133,14 @@ export class InventoryService {
       // The library's own name, for search only. `wineName` stays the one
       // displayed value so no surface has to choose.
       libraryName,
+      libraryType: libraryField("primary_type"),
+      libraryGrape: libraryField("grape_variety"),
+      libraryKind: libraryField("beverage_kind"),
+      // The rest of what the page took from /wines: the producer and vintage
+      // (the inventory row has neither) and the library's own display name.
+      libraryProducer: libraryField("producer"),
+      libraryVintage: libraryField("vintage"),
+      libraryDisplayName: libraryField("display_name"),
       // Whether the house has actually set an alias, told apart from the
       // fallback: `wineName` is non-null either way, so without this a caller
       // cannot see that a name is the library's rather than the house's.
