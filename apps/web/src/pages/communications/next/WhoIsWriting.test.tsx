@@ -41,6 +41,7 @@ vi.mock('./useSendersDeskData', () => ({
   usePutAwayStranger: () => h.putAway,
   useRestoreStranger: () => h.restore,
 }));
+vi.mock('./useMailData', () => ({ useHouseZone: () => null }));
 vi.mock('../../../contexts/AuthContext', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../contexts/AuthContext')>()),
   useAuth: () => h.auth,
@@ -115,7 +116,7 @@ describe('the two registers', () => {
     expect(screen.getByText('skurnik.com')).toBeInTheDocument();
     // COMMS-W30: a long domain wraps instead of pushing the page sideways.
     expect(screen.getByText('skurnik.com').style.overflowWrap).toBe('anywhere');
-    expect(screen.getByText(/not trusted · updated 9 Sep/)).toBeInTheDocument();
+    expect(screen.getByText(/not trusted · updated 9 Sep( \d{4})?/)).toBeInTheDocument();
     expect(screen.getByText(/18 orders · 0 with hidden instructions · 1 spam/)).toBeInTheDocument();
     expect(screen.getByText('Tuscan Direct Imports')).toBeInTheDocument();
     expect(screen.getByText('Tuscan Direct Imports').style.overflowWrap).toBe('anywhere');
