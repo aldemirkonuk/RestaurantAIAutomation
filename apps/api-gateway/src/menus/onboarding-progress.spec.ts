@@ -745,31 +745,42 @@ describe("next steps lead past the menu to the house's costs (r28 gap 3)", () =>
       expect(await moneyOf(tables, houseB)).toBe(true);
     });
 
-    it("is null, not false, when the read rejects; the other steps and the setup still answer", async () => {
+    it("reads the house's row once for the whole setup, threshold and money from the same answer", async () => {
+      const { service } = serviceOn(withValue());
+      const db = (service as any).dbService.supabase;
+      const from = db.from;
+      let reads = 0;
+      db.from = (table: string) => {
+        if (table === "restaurants") reads += 1;
+        return from(table);
+      };
+      const a = await service.getOnboardingProgress("u-1", houseA);
+      expect(reads).toBe(1);
+      expect(a.next_steps.money_set).toBe(true);
+      expect(a.threshold_configured).toBe(true);
+    });
+
+    it("says a rejected house read as a failed setup, never as money not set", async () => {
       const { service } = serviceOn(withValue());
       const db = (service as any).dbService.supabase;
       const from = db.from;
       db.from = (table: string) => {
         const q = from(table);
         if (table !== "restaurants") return q;
-        // Only the list read (then) fails; the setup's own maybeSingle read answers.
         const thenable: any = new Proxy(q, {
           get: (target, prop) =>
             prop === "then"
               ? (_ok: any, fail: any) => Promise.reject(new Error("socket hang up")).then(_ok, fail)
               : typeof target[prop] === "function"
                 ? (...args: any[]) => {
-                    const out = target[prop](...args);
-                    return prop === "maybeSingle" ? out : thenable;
+                    target[prop](...args);
+                    return thenable;
                   }
                 : target[prop],
         });
         return thenable;
       };
-      const a = await service.getOnboardingProgress("u-1", houseA);
-      expect(a.next_steps.money_set).toBeNull();
-      expect(a.next_steps.invoice).toBe("checked");
-      expect(a.threshold_configured).toBe(true);
+      await expect(service.getOnboardingProgress("u-1", houseA)).rejects.toThrow(/socket hang up/);
     });
 
     it("is null when the house has no row to read", async () => {
