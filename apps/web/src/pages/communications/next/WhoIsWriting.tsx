@@ -22,11 +22,11 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../../contexts/AuthContext';
 import type { ProspectDto, SenderReputationDto } from '../../../hooks/queries/usePromotionsQueries';
-import { MONO, SANS, failedReadWords, fmtAsOf, managesHouse, readAgainFailed } from './cm-format';
+import { MONO, SANS, failedReadWords, fmtAsOf, fmtWhen, managesHouse, readAgainFailed } from './cm-format';
+import { useHouseZone } from './useMailData';
 import { AddVendorPanel, BTN_PRIMARY, BTN_QUIET, TrustPanel } from './SenderActs';
 import {
   fmtCount,
-  fmtDay,
   readFailure,
   readFailureSentence,
   senderState,
@@ -125,6 +125,7 @@ function TrustedSenders({
   manages: boolean;
 }) {
   const setTrust = useSetSenderTrust();
+  const zone = useHouseZone();
   const [trusting, setTrusting] = useState<SenderReputationDto | null>(null);
   const [untrustFailure, setUntrustFailure] = useState<string | null>(null);
   const { data, isLoading, isError, error, refetch } = senders;
@@ -194,7 +195,7 @@ function TrustedSenders({
                             : 'var(--ink-4, #665D50)',
                     }}
                   >
-                    {st.word} · updated {fmtDay(s.updated_at)}
+                    {st.word} · updated {fmtWhen(s.updated_at, { zone })}
                   </span>
                   <span style={{ display: 'block', fontFamily: MONO, fontSize: 11, color: 'var(--ink-2, #4F473C)', marginTop: 2 }} title="Completed orders · mail that tried to give Mudavym instructions · mail that looked like spam — as Mudavym counted them, not a judgement of the vendor">
                     {fmtCount(s.completed_orders)} orders · {fmtCount(s.injection_signals)} with hidden instructions · {fmtCount(s.spam_signals)} spam
@@ -255,6 +256,7 @@ function Strangers({
   setAllHouses: (v: boolean) => void;
 }) {
   const promote = usePromoteStranger();
+  const zone = useHouseZone();
   const putAway = usePutAwayStranger();
   const restore = useRestoreStranger();
   const [adding, setAdding] = useState<ProspectDto | null>(null);
@@ -347,7 +349,7 @@ function Strangers({
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ fontFamily: SANS, fontSize: 13, fontWeight: 600, color: 'var(--ink-1, #211C16)', overflowWrap: 'anywhere' }}>{name}</span>
                   <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)', overflowWrap: 'anywhere', minWidth: 0 }}>
-                    {p.sender_email ? `<${p.sender_email}>` : p.domain} · {fmtDay(p.last_seen_at ?? p.first_seen_at)}
+                    {p.sender_email ? `<${p.sender_email}>` : p.domain} · {fmtWhen(p.last_seen_at ?? p.first_seen_at, { zone })}
                   </span>
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '5px 0' }}>
