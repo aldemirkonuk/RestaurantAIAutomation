@@ -334,6 +334,15 @@ describe('ReceiptsNext', () => {
     expect(container.textContent).not.toContain('o9abcdef');
   });
 
+  it('an open count a year old says days and overdue, not thousands of hours', async () => {
+    api.unverified = {
+      items: [{ orderId: 'o8', orderNumber: 'PO-8', countedQtyBottles: 3, countedAt: '', ageHours: 7199, severity: 'overdue' }],
+    };
+    render(<ReceiptsNext />, { wrapper });
+    expect(await screen.findByText(/PO-8 · 3 counted · 299 days ago, overdue/)).toBeInTheDocument();
+    expect(screen.queryByText(/7199h/)).not.toBeInTheDocument();
+  });
+
   it('a null tie-out is untestable, never a pass or a fail', async () => {
     const { container } = render(<ReceiptsNext />, { wrapper });
     await screen.findByLabelText('Awaiting review');
