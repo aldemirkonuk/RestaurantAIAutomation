@@ -56,6 +56,14 @@ SELECT pg_temp.ok(
                 '21000000-0000-4000-8000-000000000003')) = 1,
   'T1c the root and both replies are one thread');
 
+-- The vendor changes the subject but cites the root: the cited letter wins
+-- over the subject.
+SELECT pg_temp.letter('21000000-0000-4000-8000-000000000004', '<root-2b@vendor.example>',
+                      '{"subject":"Something else entirely","in_reply_to":"<root-1@vendor.example>"}',
+                      'New subject, same thread', '2026-11-10 12:00+00');
+SELECT pg_temp.ok(pg_temp.key('21000000-0000-4000-8000-000000000004') = pg_temp.key('21000000-0000-4000-8000-000000000001'),
+                  'T1d a reply that changes the subject but cites the root still joins the root');
+
 -- ── T2: an In-Reply-To no stored letter carries: the subject decides ─────
 -- The reply answers a letter the house never stored. It has the root's
 -- subject, so it falls back to the subject and meets the root there.
