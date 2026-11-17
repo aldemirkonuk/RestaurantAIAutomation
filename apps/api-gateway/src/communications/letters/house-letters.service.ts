@@ -73,6 +73,7 @@ import {
   VendorSendRequestsService,
   type VendorSendRequestView,
 } from "../../organizations/vendor-send-requests.service";
+import { houseFrame } from "../../common/house-frame";
 import { assertNamedActor } from "./house-letters.actor";
 import { composerGuardrails, type GuardrailHit } from "./composer-guardrails";
 import { IntegrationsOauthService } from "../../integrations/integrations-oauth.service";
@@ -252,6 +253,38 @@ export class HouseLettersService {
       );
       return null;
     }
+  }
+
+  /**
+   * The moment a queued letter leaves, in the house's own clock and language
+   * (r39 walk, F4): the line used to print the ISO instant ("…T12:57:02.370Z"),
+   * which no cook reads. The zone and locale come from the house record, the
+   * way every other house-day figure gets them. A house with no readable zone,
+   * or a record that could not be read, gets UTC and the word UTC after the
+   * time, never a guess at a zone.
+   */
+  private async houseClockWords(restaurantId: string, instant: Date): Promise<string> {
+    let frame: ReturnType<typeof houseFrame> | null = null;
+    try {
+      const { data, error } = await this.db.client
+        .from("restaurants")
+        .select("timezone, country")
+        .eq("id", restaurantId)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      frame = houseFrame(data as { timezone?: string; country?: string } | null);
+    } catch (err) {
+      this.logger.warn(
+        `house ${restaurantId}'s clock could not be read, so the queued line names the time in UTC: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    const zone = frame?.zone ?? null;
+    const at = new Intl.DateTimeFormat(zone ? (frame?.locale ?? "en-US") : "en-US", {
+      timeZone: zone ?? "UTC",
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(instant);
+    return zone ? at : `${at} UTC`;
   }
 
   private requireGates(): { authority: VendorSendAuthorityService; seal: SealChallengeService } {
@@ -929,7 +962,7 @@ export class HouseLettersService {
       sender: identity.address,
       says:
         identity.ceremony === "undo"
-          ? `Queued to leave from ${identity.address} at ${dispatchAt}. It has not been sent. Until then it can be pulled back, and Mail in Communications shows it as queued, never as sent.`
+          ? `Queued to leave from ${identity.address} at ${await this.houseClockWords(restaurantId, new Date(dispatchAt))}. It has not been sent. Until then it can be pulled back, and Mail in Communications shows it as queued, never as sent.`
           : `Queued to leave from ${identity.address}. It has not been sent yet; Mail in Communications will say so when it has.`,
       notices: hits.filter((h) => !h.blocking),
       insightsRecorded: verified.length,
