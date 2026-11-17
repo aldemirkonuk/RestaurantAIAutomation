@@ -22,6 +22,8 @@ import { NameHint } from './NameThisWine';
 
 export interface InventoryTableProps extends Omit<RowDropdownProps, 'row'> {
   rows: InvRow[];
+  /** What one row is called in the table's caption: "title" for a drink, "good" for a house of goods. */
+  thing?: string;
   /** The wine library did not answer: a missing type is unknown, not "not recorded" (INV-W28). */
   libraryUnread?: boolean;
   /** Head the rows by severity (the "Needs you first" sort). */
@@ -93,7 +95,7 @@ export default function InventoryTable(props: InventoryTableProps) {
       <table className="iv-table" data-testid="inventory-table">
         {/* INV-W39: the book had no name and no heading, so a screen reader
             went from the page title straight to Tools. */}
-        <caption className="sr-only">The book: every title on hand</caption>
+        <caption className="sr-only">The book: every {props.thing ?? 'title'} on hand</caption>
         <thead>
           <tr>
             {selecting ? (

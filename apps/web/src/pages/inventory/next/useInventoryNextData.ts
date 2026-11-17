@@ -47,6 +47,7 @@ import { fmtMoney } from '../../../lib/mudavym/format';
 import { queryKeys } from '../../../lib/query-keys';
 import { pendingSpotCountCount, watchSpotCountOutbox } from '../../../lib/spotCountOutbox';
 import { num, text } from '../../cellar/next/cellar-format';
+import { DRINK_WORDS, type HouseWords } from './iv-house-words';
 import type { MapTone } from '../command/CellarMapView';
 import type { InventoryItem as LegacyItem } from '../useInventoryPage';
 import { COUNT_DUE_DAYS } from '../command/bits';
@@ -350,12 +351,12 @@ export const SORT_LABEL: Record<SortId, string> = {
  * listed title the value sort has nothing to sort by and falls back to Needs
  * you first (sortRows below); the line says so instead of going quiet.
  */
-export function sortWords(sort: SortId, rows: InvRow[]): string {
+export function sortWords(sort: SortId, rows: InvRow[], words: HouseWords = DRINK_WORDS): string {
   if (sort === 'value' && rows.length > 0 && rows.every((r) => r.value === null)) {
-    return 'sorted Value at cost, though no title listed has a cost yet, so they stay in Needs you first order';
+    return `sorted Value at cost, though no ${words.one} listed has a cost yet, so they stay in Needs you first order`;
   }
   if (sort === 'pace' && rows.length > 0 && rows.every((r) => r.velocity === null)) {
-    return 'sorted Fastest moving, though no pace was read for any title listed, so they stay in Needs you first order';
+    return `sorted Fastest moving, though no pace was read for any ${words.one} listed, so they stay in Needs you first order`;
   }
   return `sorted ${SORT_LABEL[sort]}`;
 }
@@ -558,7 +559,12 @@ export function dryTomorrow(row: InvRow): boolean {
  * The one read sentence at the top (no KPI tiles). Every number in it is a
  * count of what was read; what was not read is named, never folded into a 0.
  */
-export function readSentence(rows: InvRow[], currency: HouseCurrency, zonesReadable: boolean): string {
+export function readSentence(
+  rows: InvRow[],
+  currency: HouseCurrency,
+  zonesReadable: boolean,
+  words: HouseWords = DRINK_WORDS,
+): string {
   const n = rows.length;
   const read = rows.filter((r) => r.stock !== null);
   const bottles = read.reduce((sum, r) => sum + Math.max(0, r.stock ?? 0), 0);
@@ -566,19 +572,32 @@ export function readSentence(rows: InvRow[], currency: HouseCurrency, zonesReada
   for (const r of rows) for (const z of r.zones ?? []) if (z.locationId !== null && z.qty > 0) zoneIds.add(z.locationId);
   const parts: string[] = [];
 
-  let first =
-    read.length === 0
-      ? `${plural(n, 'title', 'titles')}; no title's stock could be read, so the bottle count is unknown`
-      : read.length < n
-        ? `${plural(n, 'title', 'titles')}, ${plural(bottles, 'bottle', 'bottles')} on the ${fmtCount(read.length)} whose stock was read (${fmtCount(n - read.length)} could not be read)`
-        : `${plural(n, 'title', 'titles')}, ${plural(bottles, 'bottle', 'bottles')}`;
+  const count = plural(n, words.one, words.many);
+  let first: string;
+  if (!words.bottles) {
+    // Kilograms, litres and each do not add up to one number, so a house of
+    // goods says how many it carries and how many were read, and no sum.
+    first =
+      read.length === 0
+        ? `${count}; no ${words.one}'s stock could be read, so what is on hand is unknown`
+        : read.length < n
+          ? `${count}, ${fmtCount(read.length)} with stock read (${fmtCount(n - read.length)} could not be read)`
+          : count;
+  } else {
+    first =
+      read.length === 0
+        ? `${count}; no ${words.one}'s stock could be read, so the bottle count is unknown`
+        : read.length < n
+          ? `${count}, ${plural(bottles, 'bottle', 'bottles')} on the ${fmtCount(read.length)} whose stock was read (${fmtCount(n - read.length)} could not be read)`
+          : `${count}, ${plural(bottles, 'bottle', 'bottles')}`;
+  }
   if (zonesReadable && zoneIds.size > 0) first += ` across ${plural(zoneIds.size, 'zone', 'zones')}`;
   parts.push(`${first}.`);
 
   const out = rows.filter((r) => r.standing === 'out').length;
   const below = rows.filter((r) => r.standing === 'below').length;
   const dry = rows.filter(dryTomorrow).length;
-  const lead = read.length < n ? 'Of the titles read, nothing' : 'Nothing';
+  const lead = read.length < n ? `Of the ${words.many} read, nothing` : 'Nothing';
   if (read.length === 0) {
     // No stock was read, so nothing can be said to be out or fine.
   } else if (out === 0 && below === 0) {
@@ -594,12 +613,12 @@ export function readSentence(rows: InvRow[], currency: HouseCurrency, zonesReada
 
   const priced = rows.filter((r) => r.value !== null);
   if (priced.length === 0) {
-    parts.push('No title has a cost on the books yet, so the value at cost reads —, not 0.');
+    parts.push(`No ${words.one} has a cost on the books yet, so the value at cost reads —, not 0.`);
   } else {
     const total = priced.reduce((sum, r) => sum + (r.value ?? 0), 0);
     const missing = n - priced.length;
     parts.push(
-      `At cost the cellar holds ${cellMoney(total, currency)}, with ${fmtCount(priced.length)} of ${fmtCount(n)} titles priced${
+      `At cost the ${words.place} holds ${cellMoney(total, currency)}, with ${fmtCount(priced.length)} of ${fmtCount(n)} ${words.many} priced${
         missing > 0 ? `; the ${fmtCount(missing)} without a cost show —, never 0` : ''
       }.`,
     );
