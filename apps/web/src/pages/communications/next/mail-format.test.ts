@@ -348,6 +348,61 @@ describe('the house mailbox door', () => {
   });
 });
 
+describe('a trouble line names the weakest mailbox when the house has more than one (r36 mail gap 3)', () => {
+  const st = (r: MailboxReader) => houseMailboxStatus(r, { readFailed: false, now: NOW });
+  const two = { mailboxes: 2, mailbox: 'ops@bodega.example' };
+
+  it('a failing read says which of the mailboxes it is', () => {
+    expect(st(reader({ lastError: 'invalid_grant', ...two })).words).toBe(
+      'Google no longer lets Mudavym read your mailbox. Connect it again in Connections. That is the weakest of your 2 mailboxes: ops@bodega.example.',
+    );
+    expect(st(reader({ lastError: 'HTTP 500', ...two })).words).toBe(
+      'The last read of your mailbox failed. That is the weakest of your 2 mailboxes: ops@bodega.example.',
+    );
+  });
+
+  it('a late read and a never-read mailbox say it too', () => {
+    const late = reader({ lastReadAt: new Date(NOW - 180 * MIN).toISOString(), ...two });
+    expect(st(late).words).toBe('Behind: last read 3 h ago. That is the weakest of your 2 mailboxes: ops@bodega.example.');
+    expect(st(reader({ lastReadAt: null, ...two })).words).toBe(
+      'Cannot tell yet: no read has been recorded. That is the weakest of your 2 mailboxes: ops@bodega.example.',
+    );
+  });
+
+  it('with no address known it still says how many, and does not invent one', () => {
+    expect(st(reader({ lastError: 'HTTP 500', mailboxes: 3, mailbox: null })).words).toBe(
+      'The last read of your mailbox failed. That is the weakest of your 3 mailboxes.',
+    );
+    expect(st(reader({ lastError: 'HTTP 500', mailboxes: 3, mailbox: '  ' })).words).toBe(
+      'The last read of your mailbox failed. That is the weakest of your 3 mailboxes.',
+    );
+  });
+
+  it('one mailbox, or a gateway that does not say, keeps the old words', () => {
+    expect(st(reader({ lastError: 'HTTP 500', mailboxes: 1, mailbox: 'ops@bodega.example' })).words).toBe('The last read of your mailbox failed.');
+    expect(st(reader({ lastError: 'HTTP 500' })).words).toBe('The last read of your mailbox failed.');
+    expect(st(reader({ lastError: 'HTTP 500', mailboxes: null, mailbox: 'ops@bodega.example' })).words).toBe('The last read of your mailbox failed.');
+  });
+
+  it('a healthy reading mailbox says nothing about the others', () => {
+    expect(st(reader(two)).words).toBe('Reading. Last read 3 min ago.');
+  });
+
+  it('the status line carries it, for a failing read and for a late one', () => {
+    const line = (r: MailboxReader) =>
+      mailStatusLine(r, summary({ address: { configured: true, address: null } }), {
+        readerFailed: false,
+        summaryFailed: false,
+        now: NOW,
+      });
+    expect(line(reader({ lastError: 'HTTP 500', ...two })).words).toBe(
+      'Needs attention · The last read of your mailbox failed. That is the weakest of your 2 mailboxes: ops@bodega.example.',
+    );
+    const late = line(reader({ lastReadAt: new Date(NOW - 180 * MIN).toISOString(), ...two })).words;
+    expect(late).toContain('your mailbox was last read 3 h ago (the weakest of your 2 mailboxes: ops@bodega.example)');
+  });
+});
+
 describe('a letter in a thread', () => {
   it('an inbound letter says which door it came by', () => {
     expect(letterLook(msg({ direction: 'inbound', door: 'house_mailbox', status: 'DRAFT' }))).toMatchObject({
