@@ -17,6 +17,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import { useAuth } from '../../../contexts/AuthContext';
 import { apiClient } from '../../../services/api/client';
 import type { SenderIdentity } from './Compose/useComposeData';
+import { useLetterSenderRead } from './letter-sender-read';
 import type {
   IntakeRead,
   MailIntakeResponse,
@@ -143,13 +144,7 @@ export interface SenderWithReader extends SenderIdentity {
 /** `poll`: re-read every 30 s while the Mail tab is shown (QA round 16, finding 6). */
 export function useMailSender(poll = false) {
   const house = useHouse();
-  return useQuery<SenderWithReader>({
-    queryKey: ['house-letter-sender', house],
-    queryFn: async () => (await apiClient.get<SenderWithReader>('/communications/letters/sender')).data,
-    enabled: Boolean(house),
-    staleTime: 60_000,
-    refetchInterval: poll ? MAIL_POLL_MS : false,
-  });
+  return useLetterSenderRead<SenderWithReader>(house, { refetchMs: poll ? MAIL_POLL_MS : false, enabled: Boolean(house) });
 }
 
 const intakeKey = (house: string) => ['mail-intake', house] as const;

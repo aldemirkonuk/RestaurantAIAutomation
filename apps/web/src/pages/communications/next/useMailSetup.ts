@@ -12,6 +12,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../../services/api/client';
 import { mailKeys, useHouse } from './useMailData';
+import { letterSenderKey } from './letter-sender-read';
 
 export interface MailSenderChoice {
   connectionId: string;
@@ -85,7 +86,7 @@ function useSetupAct<V>(send: (v: V) => Promise<MailSetupView>) {
     mutationFn: send,
     onSuccess: (view) => {
       qc.setQueryData(mailSetupKey(house), view);
-      void qc.invalidateQueries({ queryKey: ['house-letter-sender', house] });
+      void qc.invalidateQueries({ queryKey: letterSenderKey(house) });
       void qc.invalidateQueries({ queryKey: mailKeys.summary(house) });
     },
   });

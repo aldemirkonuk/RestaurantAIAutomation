@@ -27,6 +27,7 @@ import { useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { apiClient } from '../../../../services/api/client';
+import { useLetterSenderRead } from '../letter-sender-read';
 
 export interface SenderIdentity {
   kind: 'house_mailbox' | 'mudavym_subdomain' | 'none' | 'unknown';
@@ -150,14 +151,7 @@ export function useComposeData() {
   const restaurantId = activeRestaurantId ?? user?.restaurantId ?? '';
   const queryClient = useQueryClient();
 
-  const senderQ = useQuery<SenderIdentity>({
-    queryKey: ['house-letter-sender', restaurantId],
-    queryFn: async () => {
-      const { data } = await apiClient.get<SenderIdentity>('/communications/letters/sender');
-      return data;
-    },
-    staleTime: 60_000,
-  });
+  const senderQ = useLetterSenderRead(restaurantId);
 
   const bookQ = useQuery<BookEntry[]>({
     queryKey: ['house-letter-book', restaurantId],
@@ -282,15 +276,7 @@ export function useLetterSenderStanding(): {
 } {
   const { user, activeRestaurantId } = useAuth();
   const restaurantId = activeRestaurantId ?? user?.restaurantId ?? '';
-  const senderQ = useQuery<SenderIdentity>({
-    queryKey: ['house-letter-sender', restaurantId],
-    queryFn: async () => {
-      const { data } = await apiClient.get<SenderIdentity>('/communications/letters/sender');
-      return data;
-    },
-    staleTime: 60_000,
-    enabled: Boolean(restaurantId),
-  });
+  const senderQ = useLetterSenderRead(restaurantId, { enabled: Boolean(restaurantId) });
   const standing = senderQ.data?.sendOrAsk;
   return {
     restaurantId,
