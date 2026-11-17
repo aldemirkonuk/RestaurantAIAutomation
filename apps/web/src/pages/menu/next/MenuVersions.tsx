@@ -41,6 +41,7 @@ import { oneNounFor, type KindNoun } from './menu-line-kind';
 import { useAuthStore } from '../../../stores';
 import { MenuPlan } from './MenuPlan';
 import { deviceClockNote, houseDay, houseMoment } from './menu-clock';
+import { versionsPollMs } from './menu-read-poll';
 import { isPhoto, pagesProblem, photoToJpegBase64, photosToPages } from '../../../lib/menuPhotos';
 
 const EM = '—';
@@ -580,7 +581,7 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
     queryKey: ['menu', 'versions', house],
     queryFn: listMenuVersions,
     // A read in the background finishes on the server: look again until none is left reading.
-    refetchInterval: (query) => (query.state.data?.versions.some((v) => v.readState === 'reading') ? 5000 : false),
+    refetchInterval: (query) => versionsPollMs(query.state.data?.versions),
   });
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu'] });
   const zone = q.data?.timezone ?? null;
