@@ -222,6 +222,20 @@ describe("CsvParserService.parseExcel", () => {
     ]);
   });
 
+  it("says a stored number below zero was left out, as it says a typed minus", async () => {
+    const report = await parser().readExcel(
+      await xlsx([
+        ["Name", "Bottle"],
+        ["İndirim", -10],
+        ["Narince", 120],
+      ]),
+    );
+    expect(report.items.map((i) => i.bottle_price)).toEqual([undefined, 120]);
+    expect(report.issues).toEqual([
+      { row: 2, reason: "negative", field: "bottle_price", raw: "-10" },
+    ]);
+  });
+
   it("maps Turkish headers, takes a stored number as is, reads a text price, and sets the raw row", async () => {
     const items = await parser().parseExcel(
       await xlsx([
