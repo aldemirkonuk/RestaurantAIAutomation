@@ -8,7 +8,7 @@
 import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, focusManager, useQuery } from '@tanstack/react-query';
 import { MenuPlan, chooseFailedSentence, kindWords, notOnFileWords, orderedRows, planSentence } from './MenuPlan';
 import { getMenuPlan, makeMenuCurrent, type MenuPlan as Plan, type PlanLine } from '../../../services/api/menus';
 import { lockPrice, releasePriceLock } from '../../../services/api/pricing';
@@ -551,5 +551,28 @@ describe('r41 R2: the plan just chosen is not worked out again; another open pla
     await waitFor(() => expect(mockPlan).toHaveBeenCalledTimes(2));
     await new Promise((r) => setTimeout(r, 60));
     expect(mockPlan).toHaveBeenCalledTimes(2);
+  });
+});
+
+// r41 R5: returning to the tab (from the menu's file) must not read it again.
+describe('the plan, coming back to the tab', () => {
+  it('does not read again within a minute, and does after one', async () => {
+    mockPlan.mockResolvedValue(plan());
+    mount(true);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Make it current' })).toBeInTheDocument());
+    expect(mockPlan).toHaveBeenCalledTimes(1);
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(mockPlan).toHaveBeenCalledTimes(1);
+    const later = Date.now() + 61_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => later);
+    try {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+      await waitFor(() => expect(mockPlan).toHaveBeenCalledTimes(2));
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 });

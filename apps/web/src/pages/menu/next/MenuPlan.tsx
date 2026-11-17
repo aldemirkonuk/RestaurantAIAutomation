@@ -38,6 +38,7 @@ import { formatMoney } from '../../../lib/currency';
 import { useHouseCurrencyCode } from '../../../hooks/queries/useHouseCurrencyCode';
 // Drawn with the cellar's classes wherever it is shown (/menu and onboarding).
 import '../../cellar/next/cellar-next.css';
+import { MENU_READ_FRESH_MS } from './menu-read-fresh';
 
 const EM = '—';
 
@@ -298,7 +299,10 @@ export function MenuPlan({
   const queryClient = useQueryClient();
   const [said, setSaid] = useState<string | null>(null);
   const [moved, setMoved] = useState(false);
-  const q = useQuery({ queryKey: ['menu', 'plan', menuId], queryFn: () => getMenuPlan(menuId) });
+  // r41 R5: coming back from the menu's file in another tab does not plan it
+  // again (8 or more trips) unless a minute has passed. A choice, a lock and a
+  // refresh invalidate it, which does not wait for this.
+  const q = useQuery({ queryKey: ['menu', 'plan', menuId], queryFn: () => getMenuPlan(menuId), staleTime: MENU_READ_FRESH_MS });
   const currency = useHouseCurrencyCode();
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu', 'plan', menuId] });
 
