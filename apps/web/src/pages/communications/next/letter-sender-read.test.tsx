@@ -34,6 +34,18 @@ describe('the sender read is defined once', () => {
     expect(qc.getQueryData(letterSenderKey('r1'))).toBeTruthy();
   });
 
+  it('[REVERT-FAILS] a reader that mounts later inside the minute does not ask again, under the app\'s refetch-on-mount default', async () => {
+    h.get.mockReset();
+    h.get.mockResolvedValue({ data: { sendable: true, sendOrAsk: { readable: true, maySend: true } } });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnMount: 'always' } } });
+    const wrap = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+    const mail = renderHook(() => useMailSender(false), { wrapper: wrap });
+    await waitFor(() => expect(mail.result.current.data).toBeTruthy());
+    const standing = renderHook(() => useLetterSenderStanding(), { wrapper: wrap });
+    await waitFor(() => expect(standing.result.current.canRelease).toBe(true));
+    expect(h.get).toHaveBeenCalledTimes(1);
+  });
+
   it('only letter-sender-read.ts spells the cache key', () => {
     const root = join(__dirname, '..', '..', '..');
     const hits: string[] = [];
