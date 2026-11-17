@@ -47,6 +47,7 @@ import { formatMoney } from '../../../lib/currency';
 import { useHouseCurrencyCode } from '../../../hooks/queries/useHouseCurrencyCode';
 import { fitPhotoForReading } from '../../../lib/fitPhoto';
 import { fittedPhotoRefusal, pickedSizeRefusal } from './menu-read-size';
+import { MENU_READ_FRESH_MS } from './menu-read-fresh';
 
 const EM = '—';
 
@@ -479,7 +480,8 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
   // The house is in the key: one house's versions never stand under
   // another's name (MENU-01).
   const house = useAuthStore((s) => s.activeRestaurantId) ?? null;
-  const q = useQuery({ queryKey: ['menu', 'versions', house], queryFn: listMenuVersions });
+  // r41 R5: the kept list is not read again at every return to the tab, only after a minute.
+  const q = useQuery({ queryKey: ['menu', 'versions', house], queryFn: listMenuVersions, staleTime: MENU_READ_FRESH_MS });
   const currency = useHouseCurrencyCode();
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu'] });
   // r36 N9: a menu put away is kept whole and folded out of the list; it comes back with one tap.

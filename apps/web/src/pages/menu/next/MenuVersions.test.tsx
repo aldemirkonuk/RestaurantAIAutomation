@@ -6,7 +6,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import {
   MENU_FILE_ACCEPT,
   MenuVersions,
@@ -689,5 +689,28 @@ describe('r41 R2: a menu made current is read once, and its plan is not worked o
     expect(mockMake).toHaveBeenCalledTimes(1);
     expect(mockPlan).toHaveBeenCalledTimes(1);
     expect(mockList).toHaveBeenCalledTimes(3);
+  });
+});
+
+// r41 R5: returning to the tab (from the menu's file) must not read it again.
+describe('Menus kept, coming back to the tab', () => {
+  it('does not read again within a minute, and does after one', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [version({ menuId: 'm2' })] });
+    mount(false);
+    await screen.findAllByTestId('menu-version-row');
+    expect(mockList).toHaveBeenCalledTimes(1);
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(mockList).toHaveBeenCalledTimes(1);
+    const later = Date.now() + 61_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => later);
+    try {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+      await waitFor(() => expect(mockList).toHaveBeenCalledTimes(2));
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 });
