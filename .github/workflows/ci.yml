@@ -200,6 +200,30 @@ jobs:
           echo "::notice::STALE or REDUNDANT allowlist entries fail on purpose. The list shrinks; a list nobody prunes is a list nobody reads."
           echo "::notice::CANNOT CHECK (exit 2) means the voice module or the gate function is gone. That is a move or a rename, not a pass; repoint the guard."
 
+  # r42 inject-sweep. NestJS reads a constructor parameter's token from emitted
+  # type metadata; Pick<>/Partial<>/an interface emits `Object`, and with
+  # @Optional() Nest answers that with `undefined` instead of an error. PR 1560
+  # found a service whose "optional" dependency was never there in production.
+  # This fails any @Optional() parameter of that shape that lacks @Inject(Class).
+  # Stdlib only, no install step. Exit 2 (cannot check) blocks too.
+  optional-inject-tokens:
+    name: Every @Optional() constructor parameter has a DI token
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: No @Optional() parameter is typed Pick/Partial/interface without @Inject
+        run: python3 scripts/check_optional_inject_tokens.py
+
+      - name: The guard still fires on the shapes it exists to catch
+        run: python3 scripts/check_optional_inject_tokens.py --self-test
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::A flagged parameter is injected as undefined by Nest, silently, because its type erases to Object. Add @Inject(TheClass) beside @Optional(); keep the narrow Pick<> type if you like."
+
   # P1 §5 item 4. Defect D3 was that the entire NestJS gateway wrote nothing to
   # the spend ledger: seven raw `fetch("https://api.anthropic.com/...")` call
   # sites, and `grep -c api_spend apps/api-gateway/src` returning 0. Every one of
@@ -1821,6 +1845,8 @@ jobs:
         # Added 2026-09-05 with the job itself, per the rule this list exists to
         # enforce.
         migration-versions-unique,
+        # Added 2026-11-17 with the job itself, per the rule this list enforces.
+        optional-inject-tokens,
       ]
     steps:
       - name: Checkout code
