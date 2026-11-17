@@ -219,7 +219,7 @@ export default function Cutting({
 }: CuttingProps) {
   const spec = CATALOGUE[id];
   const drawn = graphOrDefault(id, graph);
-  const windowLine = spec.window(ctx);
+  const windowLine = spec.window(ctx, register?.data);
 
   const body = spec.path ? (
     <RegisterBody

@@ -12,7 +12,8 @@
 
 import { Link } from 'react-router-dom';
 import { FigureRow } from './rp-plot';
-import { EM, MONO, countOf, figure, money, num, ratioPct } from './rp-format';
+import { EM, MONO, countOf, figure, money, num, observedSince, ratioPct, readObserved } from './rp-format';
+import type { ObservedBlock } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
 
 /* ────────────────────────────────────────── 6. margin against movement ── */
@@ -608,7 +609,17 @@ const service = analysis<ServiceRegister>({
 /* ──────────────────────────────────────────── 10. what to buy back ────── */
 
 export interface RestockRegister {
-  params: { serviceLevel: number | null; leadTimeDays: number | null; demandWindowDays: number | null };
+  params: {
+    serviceLevel: number | null;
+    leadTimeDays: number | null;
+    demandWindowDays: number | null;
+    /** Wines whose vendor has no lead recorded, so `leadTimeDays` stands in (#1570). */
+    leadTimeAssumed: number | null;
+    /** Whose lead it is; null on a gateway that does not say. */
+    leadTimeSource: 'vendor' | 'requested' | null;
+  };
+  /** The days the house has recorded (r36 reports gap 1). */
+  observed?: ObservedBlock | null;
   basis?: Record<string, string>;
   skuCount: number;
   reorderCount: number;
@@ -652,11 +663,28 @@ function barsKeepingTies(
   return rows.slice(0, end);
 }
 
+/**
+ * Where a restock figure's lead time comes from. Each wine takes its own
+ * vendor's lead; "7 days" is only the stand-in for the wines whose vendor has
+ * none recorded, and the figure says how many (r39 walk, F3).
+ */
+function leadWords(p: RestockRegister['params'], skuCount: number): string {
+  const days = figure(p.leadTimeDays);
+  if (p.leadTimeSource === 'requested') return `${days} days, as asked`;
+  if (p.leadTimeSource !== 'vendor' || p.leadTimeAssumed === null) return `${days} days where no lead is known`;
+  if (p.leadTimeAssumed === 0) return "Each vendor's own";
+  if (skuCount > 0 && p.leadTimeAssumed >= skuCount) return `${days} days for every wine; no vendor lead is recorded`;
+  return `Each vendor's own; ${days} days for ${figure(p.leadTimeAssumed)} of ${figure(skuCount)}`;
+}
+
 const restock = analysis<RestockRegister>({
   title: 'What to buy back',
   register: 'reorder register',
   answers: 'What is about to run out, and how likely it is to run out first',
-  window: () => 'demand over the last 90 days, at the service level in the params',
+  window: (_ctx, r) => {
+    const s = observedSince(r?.observed);
+    return `demand over ${s ? `${s.days} days since ${s.date}` : 'the last 90 days'}, at the service level in the params`;
+  },
   path: (rid) => `/analytics/inventory-science/${rid}`,
   graphs: ['table', 'bars'],
   graphNote:
@@ -669,7 +697,10 @@ const restock = analysis<RestockRegister>({
         serviceLevel: num(p.serviceLevel),
         leadTimeDays: num(p.leadTimeDays),
         demandWindowDays: num(p.demandWindowDays),
+        leadTimeAssumed: num(p.leadTimeAssumed),
+        leadTimeSource: p.leadTimeSource === 'vendor' || p.leadTimeSource === 'requested' ? p.leadTimeSource : null,
       },
+      observed: readObserved(d.observed),
       basis: d.basis as Record<string, string>,
       skuCount: num(d.skuCount) ?? 0,
       reorderCount: num(d.reorderCount) ?? 0,
@@ -690,7 +721,7 @@ const restock = analysis<RestockRegister>({
       { label: 'Wines on the register', value: figure(r.skuCount) },
       { label: 'Below their reorder point', value: figure(r.reorderCount) },
       { label: 'Service level', value: ratioPct(r.params.serviceLevel, 0) },
-      { label: 'Lead time assumed', value: figure(r.params.leadTimeDays) },
+      { label: 'Lead time', value: leadWords(r.params, r.skuCount) },
     ];
     if (r.skuCount === 0)
       return {

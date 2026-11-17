@@ -38,7 +38,7 @@ export interface AnalysisSpec {
   /** What this analysis answers, in the reader's words. Shown while arranging. */
   answers: string;
   /** The window it is computed over. Shown under the title, always. */
-  window: (ctx: ViewCtx) => string;
+  window: (ctx: ViewCtx, data?: unknown) => string;
   /** `null` for an analysis with no endpoint — the writing desk. */
   path: ((rid: string, ctx: ViewCtx) => string) | null;
   /** Truthful drawings, best first. `graphs[0]` is the default. */
@@ -64,7 +64,8 @@ export function analysis<T>(spec: {
   title: string;
   register: string;
   answers: string;
-  window: (ctx: ViewCtx) => string;
+  /** `data` is the selected payload once it has arrived, so a window can say the days the house really has. */
+  window: (ctx: ViewCtx, data?: T) => string;
   path: ((rid: string, ctx: ViewCtx) => string) | null;
   graphs: GraphType[];
   graphNote: string;
@@ -75,6 +76,7 @@ export function analysis<T>(spec: {
 }): AnalysisSpec {
   return {
     ...spec,
+    window: spec.window as (ctx: ViewCtx, data?: unknown) => string,
     select: spec.select as (raw: unknown) => unknown,
     view: spec.view as (data: unknown, ctx: ViewCtx) => AnalysisView,
   };
