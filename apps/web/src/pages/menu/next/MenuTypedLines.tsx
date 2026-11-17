@@ -60,6 +60,9 @@ export function MenuTypedLines({ rows, onChange, refusal }: {
     onChange(rows.map((r) => (r.key === key ? { ...r, [field]: value } : r)));
   return (
     <div data-testid="menu-typed-lines" style={{ width: '100%' }}>
+      {/* Four columns are wider than a phone: the rows scroll inside this box,
+          never the whole page (r43 walk, 375 px: the page was 619 wide). */}
+      <div data-testid="menu-typed-scroll" style={{ overflowX: 'auto' }}>
       <table className="cl-table" style={{ width: '100%' }}>
         <thead>
           <tr>
@@ -130,6 +133,7 @@ export function MenuTypedLines({ rows, onChange, refusal }: {
           ))}
         </tbody>
       </table>
+      </div>
       {refusal && anyTyped(rows) ? (
         <p role="status" className="cl-said" style={{ marginTop: 6 }} data-testid="menu-typed-refused">
           {refusal}

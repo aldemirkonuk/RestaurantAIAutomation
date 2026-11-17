@@ -161,4 +161,12 @@ describe('Type the menu on /menu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'A file' }));
     expect(screen.getByRole('button', { name: 'Read this menu' })).toBeDisabled();
   });
+
+  it('the typed rows scroll inside their own box, so a phone page does not widen (r43 walk, 375 px)', async () => {
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Type the menu' }));
+    const box = screen.getByTestId('menu-typed-scroll');
+    expect(box.style.overflowX).toBe('auto');
+    expect(box.querySelector('table')).not.toBeNull();
+  });
 });
