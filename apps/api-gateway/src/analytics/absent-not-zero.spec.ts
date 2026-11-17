@@ -1,6 +1,7 @@
 import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { separableExtremes, type WeekdayProfile } from "./engine/comparisons";
+import { EXTREMES_TOO_FEW } from "./engine/weekday-extremes-basis";
 
 /**
  * Regression guard — three places where analytics answered an ABSENCE with a
@@ -248,8 +249,10 @@ describe("seasonality withholds a day it cannot separate", () => {
     const out: any = await advanced({}).getSeasonality(RESTAURANT);
     expect(out.bestDay).toBeNull();
     expect(out.worstDay).toBeNull();
-    expect(out.tie).toBe(true);
-    expect(out.basis.extremes).toContain("arbitrary tie-break");
+    // Since r40 (R-F10) a weekday with no line is not measured, so a week
+    // with no line at all has no weekday to rank, rather than seven tied at 0.
+    expect(out.weekdayProfile).toEqual([]);
+    expect(out.basis.extremes).toBe(EXTREMES_TOO_FEW);
   });
 
   it("does not report the same day as both busiest and quietest", async () => {
