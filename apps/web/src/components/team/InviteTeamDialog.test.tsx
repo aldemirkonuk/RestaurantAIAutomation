@@ -13,6 +13,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { InviteTeamDialog } from './InviteTeamDialog'
 import { apiClient } from '../../services/api/client'
 import { toast } from 'sonner'
@@ -35,18 +36,20 @@ const INVITE = {
   inviteUrl: 'https://app.mudavym.com/invite/AB12CD34',
 }
 
-function draw(shellOn: boolean, opts: { anchored?: boolean } = {}) {
+function draw(shellOn: boolean, opts: { anchored?: boolean; client?: QueryClient } = {}) {
   if (shellOn) claimMudavymShell(Symbol('page'), 'paper')
   const anchor = document.createElement('button')
   document.body.appendChild(anchor)
   const onClose = vi.fn()
   const view = render(
-    <InviteTeamDialog
-      open
-      onClose={onClose}
-      restaurantId="rest-1"
-      anchorRef={opts.anchored ? { current: anchor } : undefined}
-    />,
+    <QueryClientProvider client={opts.client ?? new QueryClient()}>
+      <InviteTeamDialog
+        open
+        onClose={onClose}
+        restaurantId="rest-1"
+        anchorRef={opts.anchored ? { current: anchor } : undefined}
+      />
+    </QueryClientProvider>,
   )
   return { ...view, onClose }
 }
@@ -193,5 +196,29 @@ describe('least privilege and an honest copy (QA round 4 H3)', () => {
       expect(screen.queryByRole('button', { name: /Copied!/ })).toBeNull()
       view.unmount()
     }
+  })
+})
+
+describe('the house setup learns of an invite at once', () => {
+  const generate = () => fireEvent.click(screen.getAllByRole('button', { name: 'Generate Invite Link' })[0])
+
+  it('an invite that was made asks the setup read again', async () => {
+    const client = new QueryClient()
+    client.setQueryData(['onboarding-progress'], { team_member_invited: false })
+    draw(false, { client })
+    expect(client.getQueryState(['onboarding-progress'])?.isInvalidated).toBe(false)
+    generate()
+    await waitFor(() => expect(screen.getByText(INVITE.inviteUrl)).toBeInTheDocument())
+    expect(client.getQueryState(['onboarding-progress'])?.isInvalidated).toBe(true)
+  })
+
+  it('an invite that was refused leaves the setup read as it was', async () => {
+    vi.mocked(apiClient.post).mockRejectedValue(new Error('no'))
+    const client = new QueryClient()
+    client.setQueryData(['onboarding-progress'], { team_member_invited: false })
+    draw(false, { client })
+    generate()
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    expect(client.getQueryState(['onboarding-progress'])?.isInvalidated).toBe(false)
   })
 })
