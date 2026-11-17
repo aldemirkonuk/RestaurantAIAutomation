@@ -676,6 +676,39 @@ describe("summary: the house's day (D7)", () => {
   });
 });
 
+describe("summary: the address is asked while the zone is read (r41 mail gap 13)", () => {
+  it("starts the address read before the house row has answered", async () => {
+    inboundDomain = "in.example.test";
+    let release: (r: Result) => void = () => {};
+    const held = new Promise<Result>((r) => (release = r));
+    resolve = (q) =>
+      q.kind === "from" && q.name === "restaurants"
+        ? (held as unknown as Result)
+        : q.kind === "rpc"
+          ? { data: [SUMMARY_ROW], error: null }
+          : { data: [{ address: "house-1@in.example.test" }], error: null };
+    const pending = service().summary(HOUSE, "owner");
+    await new Promise((r) => setImmediate(r));
+    // The house row has not answered; the address read must already be out,
+    // and the summary read (which needs the zone) must not be.
+    expect(queries.map((q) => q.name)).toContain("restaurant_inbound_addresses");
+    expect(queries.some((q) => q.name === "mail_inbox_summary")).toBe(false);
+    release(houseRow);
+    const s = await pending;
+    expect(s.address).toEqual({ configured: true, address: "house-1@in.example.test" });
+  });
+
+  it("a failed house row is still a 503 with the address read in flight", async () => {
+    inboundDomain = "in.example.test";
+    houseRow = { data: null, error: { message: "connection reset" } };
+    resolve = withHouse(() => ({ data: [{ address: "a@in.example.test" }], error: null }));
+    await expect(service().summary(HOUSE, "owner")).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+    expect(queries.some((q) => q.name === "mail_inbox_summary")).toBe(false);
+  });
+});
+
 describe("a failed read says it failed", () => {
   const boom = { data: null, error: { message: "connection reset" } };
 
