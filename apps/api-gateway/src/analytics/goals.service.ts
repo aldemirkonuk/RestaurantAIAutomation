@@ -1155,14 +1155,12 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
      * Days of stock, before everything else, and deliberately OUTSIDE the
      * try/catch below.
      *
-     * That catch logs and falls through to a sum of nothing, which returns
-     * `0` — the shape that lets a failed query read as "this house bought
-     * nothing". The other six metrics have lived with it since before this
-     * change and repairing them is its own piece of work (since ADR 0292 the
-     * check, consumption and, since reports lane r3, order reads refuse
-     * through it with `WholeReadError`); what must not happen
-     * is a NEW metric inheriting it, because a days-of-stock goal reading
-     * "0 days" is not a light cellar, it is an unread one.
+     * That catch used to log and fall through to a sum of nothing, which
+     * returns `0` — the shape that lets a failed query read as "this house
+     * bought nothing". It now rethrows what it does not recognise, as it
+     * always did the typed refusals (`WholeReadError` and the rest). This
+     * metric stays outside it because it has nothing to sum: a days-of-stock
+     * goal reading "0 days" is not a light cellar, it is an unread one.
      *
      * `daysInventoryOutstanding` is `null` unless every on-hand row carries a
      * recorded cost (ADR 0051), so a null is thrown rather than zeroed. It
@@ -1431,7 +1429,11 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       if (err instanceof UncountedConsumptionError) throw err;
       // And for a spend that would rest on an order with no recorded cost.
       if (err instanceof UncostedOrdersError) throw err;
+      // Anything else is a read that failed, not a window with nothing in it:
+      // summing nothing here read a broken query as 0 sales, 0 checks or 0
+      // spend. It reaches the caller, which says the goal could not be read.
       this.logger.warn(`computeMetric(${metricKey}) failed: ${err?.message}`);
+      throw err;
     }
 
     const dates = Array.from(daily.keys()).sort();
@@ -1452,10 +1454,8 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
    * this month". Without it, a connected-but-quiet week and a restaurant with
    * no POS at all would both read as `0`, and only one of those is true.
    *
-   * Errors are NOT swallowed. `computeMetricWithSeries` catches and returns 0,
-   * which is the pattern that lets a broken query masquerade as "no sales";
-   * here a failure must reach the caller so the UI can say "couldn't load"
-   * rather than "no POS connected".
+   * Errors are NOT swallowed: a failure must reach the caller so the UI can
+   * say "couldn't load" rather than "no POS connected".
    */
   private async hasPosHistory(restaurantId: string): Promise<boolean> {
     const { data, error } = await this.dbService
