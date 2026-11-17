@@ -268,6 +268,13 @@ export const BASKET_MIN_LIFT = 1.3;
  *       spend sentence that counted an uncosted order as $0, or summed the
  *       first 1,000 orders, so it is recomputed, not served. Re-checked at
  *       merge: one past the version on `main` then.
+ *  18 — 2026-11-17 (r42): an item with no name in the inventory list is
+ *       "An item", never its id. The week-over-week mover and the stockout
+ *       rank fell back to the item's id, so a card opened with a UUID. A row
+ *       below 18 may hold such a sentence, so it is recomputed, not served.
+ *       The card's suppression subject stays the item's id. Numbered 18: the
+ *       highest value on any branch is 17. Re-checked at merge: one past
+ *       the version on `main` then.
  *  17 — 2026-11-12 (r8): every amount prints in the house's currency, not
  *       `$` (`insight-verbalizer.ts` `fmtMoney`); a house with none stated
  *       gets bare amounts and "The house's currency is not recorded."; a
@@ -280,7 +287,20 @@ export const BASKET_MIN_LIFT = 1.3;
  *       (`fix/sim-w113-*`, `fix/sim-w114-*`), so this takes a gap past them.
  *       Re-checked at merge: one past the version on `main` then.
  */
-export const INSIGHT_GENERATOR_VERSION = 17;
+export const INSIGHT_GENERATOR_VERSION = 18;
+
+/**
+ * What a sentence calls an item that has no name. An id is never a name: a
+ * card that opens "10ca1c4e-6b7d-… bottles sold rose 250%" tells nobody which
+ * wine moved (r39 walk, F5). The item's own id still keys the card
+ * (`subject`), so two unnamed items stay two cards.
+ */
+export const UNNAMED_ITEM = "An item";
+
+/** The inventory list's name for an item, or null when it holds none. */
+function nameOrNull(raw: unknown): string | null {
+  return typeof raw === "string" && raw.trim() ? raw.trim() : null;
+}
 
 /**
  * Each of the bundle's reads, in the words the house uses for it.
@@ -1291,7 +1311,7 @@ export class InsightGeneratorService {
     const nameByWine = new Map<string, string>();
     for (const i of bundle.inventory)
       if (i.master_wine_id)
-        nameByWine.set(i.master_wine_id, i.wine_name || i.master_wine_id);
+        nameByWine.set(i.master_wine_id, nameOrNull(i.wine_name) ?? "");
 
     const byWine = new Map<string, Array<{ date: string; value: number }>>();
     for (const c of counted) {
@@ -1322,7 +1342,7 @@ export class InsightGeneratorService {
         Math.abs(cmp.deltaPct) > Math.abs(bestMove.cmp.deltaPct ?? 0)
       )
         bestMove = {
-          wine: nameByWine.get(wineId) || wineId,
+          wine: nameByWine.get(wineId) || UNNAMED_ITEM,
           wineId,
           // The two weeks the comparison reads, for its label.
           days: daily.dates.slice(-14),
@@ -1347,6 +1367,8 @@ export class InsightGeneratorService {
             effectPct: bestMove.cmp.deltaPct,
             n: 14,
             entityLabel: bestMove.wine,
+            // An unnamed item keeps its own card: the key is its id.
+            ...(nameByWine.get(movedId) ? {} : { subject: movedId }),
           }),
           this.unitsOf(
             bundle.consumption.filter(
@@ -1552,6 +1574,7 @@ export class InsightGeneratorService {
     const ranked: Array<{
       id: string;
       name: string;
+      named: boolean;
       stockoutProbability: number;
       daysOfCover: number | null;
       onHand: number;
@@ -1581,7 +1604,8 @@ export class InsightGeneratorService {
         const onHand = item.stock_live || 0;
         ranked.push({
           id: String(item.id ?? item.master_wine_id),
-          name: item.wine_name || item.master_wine_id,
+          name: nameOrNull(item.wine_name) ?? UNNAMED_ITEM,
+          named: nameOrNull(item.wine_name) !== null,
           stockoutProbability: prob,
           daysOfCover: E.daysOfCover(onHand, profile.mean),
           onHand,
@@ -1616,6 +1640,8 @@ export class InsightGeneratorService {
             z: null,
             n: worst.rows,
             boost: 1.5,
+            // An unnamed item keeps its own card: the key is its id.
+            ...(worst.named ? {} : { subject: worst.wineId }),
           }),
           // Its demand's bottle basis (ADR 0297).
           this.unitsOf(
