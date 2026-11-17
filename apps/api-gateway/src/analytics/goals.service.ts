@@ -660,6 +660,30 @@ export class GoalsService {
     };
   }
 
+  /** How long a stored reading that has not changed stands before it is stamped again. */
+  static readonly READING_HEARTBEAT_MS = 10 * 60 * 1000;
+
+  /**
+   * True when the row already holds this very reading, unrefused and stamped
+   * within the heartbeat. A row with no usable stamp, a stored refusal, a
+   * different number or an older stamp is written.
+   */
+  static readingAlreadyStored(
+    stored: Record<string, any>,
+    current: number,
+    now: number,
+  ): boolean {
+    if (typeof stored.current_unread === "string" && stored.current_unread !== "")
+      return false;
+    if (stored.current_value === null || stored.current_value === undefined)
+      return false;
+    const was = Number(stored.current_value);
+    if (!Number.isFinite(was) || was !== current) return false;
+    const at = Date.parse(String(stored.current_read_at ?? ""));
+    // An unparsable stamp is NaN, and every comparison with NaN is false.
+    return now >= at && now - at < GoalsService.READING_HEARTBEAT_MS;
+  }
+
   /** Recomputing progress is several queries per goal; six is a screenful. */
   static readonly MAX_PROGRESS_GOALS = 6;
 
@@ -732,12 +756,18 @@ export class GoalsService {
     }
     const { current, dailySeries, units } = reading;
     const readAt = new Date();
-    await this.recordReading(restaurantId, goalId, {
-      current_value: current,
-      current_unread: null,
-      current_read_at: readAt.toISOString(),
-      updated_at: readAt.toISOString(),
-    });
+    // The same reading, stored a moment ago, is not stored again: every
+    // viewer's load or return to the tab reads each goal, and an UPDATE per
+    // goal made the page's answer wait on writes that changed nothing
+    // (r41 reports gap 6). The stamp still moves once per heartbeat, so a
+    // pace claim made from the stored row is never older than that.
+    if (!GoalsService.readingAlreadyStored(goal, current, readAt.getTime()))
+      await this.recordReading(restaurantId, goalId, {
+        current_value: current,
+        current_unread: null,
+        current_read_at: readAt.toISOString(),
+        updated_at: readAt.toISOString(),
+      });
 
     const target = Number(goal.target_value) || 0;
 
