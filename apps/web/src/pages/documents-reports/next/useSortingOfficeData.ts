@@ -249,10 +249,10 @@ export function useSortingOfficeData(): SortingOfficeData {
         key: `door-${u.orderId}`,
         since: u.countedAt,
         // What the endpoint actually means. It said "no paperwork", which sent
-        // a manager hunting for an invoice; the debt is a bottle count, and
+        // a manager hunting for an invoice; the debt is a count of each one, and
         // the stock number stays approximate until somebody makes it.
-        title: `${u.orderNumber ?? u.orderId.slice(0, 8)} counted by the case, not yet by bottle`,
-        detail: `${u.countedQtyBottles} btl booked at the door · counted ${doorAgeSaid(u.ageHours, u.severity)}`,
+        title: `${u.orderNumber ?? u.orderId.slice(0, 8)} counted by the case, not yet one by one`,
+        detail: `${u.countedQtyBottles} booked at the door · counted ${doorAgeSaid(u.ageHours, u.severity)}`,
         href: '/receipts',
       });
     }

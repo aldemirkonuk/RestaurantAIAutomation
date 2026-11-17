@@ -520,7 +520,7 @@ describe('F5 — a windowed figure renders as a floor (ADR 0051 clause 2)', () =
       }),
     )
     harness(ManagerBody)
-    expect(await screen.findByText(/counted by case and not yet by bottle/)).toBeInTheDocument()
+    expect(await screen.findByText(/counted by case and not yet one by one/)).toBeInTheDocument()
     expect(screen.queryByText('≥1')).toBeNull()
     expect(screen.queryByTitle(/receipt events/)).toBeNull()
   })
@@ -590,10 +590,11 @@ describe('F6 — $0 measured and $— unknown are different facts', () => {
     expect(within(row).getByText('—')).toBeInTheDocument()
   })
 
-  it('states what is still owed in bottles, from the ledger (ADR 0192 amendment)', async () => {
+  it('states what is still owed, from the ledger, in no unit a food house would not use', async () => {
     get.mockResolvedValue(queuePayload({ items: [queueItem({ backorderBottles: 2 })], totalAtRisk: 120 }))
     harness(ManagerBody)
-    expect(await screen.findByText(/2 bottles still on backorder/)).toBeInTheDocument()
+    expect(await screen.findByText(/2 still on backorder/)).toBeInTheDocument()
+    expect(screen.queryByText(/bottles? still on backorder/)).toBeNull()
   })
 
   it('an unreadable backorder says it is not known, never that nothing is owed', async () => {

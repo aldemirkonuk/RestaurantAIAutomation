@@ -408,7 +408,7 @@ describe('DocumentsReportsNext', () => {
     };
     renderPage();
     await waitFor(() => expect(screen.getByText(/PO-77/)).toBeTruthy());
-    expect(screen.getByText(/PO-77/).textContent).toMatch(/bottle/i);
+    expect(screen.getByText(/PO-77/).textContent).toMatch(/counted by the case, not yet one by one/);
     expect(screen.queryByText(/no paperwork/i)).toBeNull();
   });
 
@@ -423,6 +423,20 @@ describe('DocumentsReportsNext', () => {
     const detail = (r.result.current.waiting ?? [])[0].detail;
     expect(detail).toContain('299 days ago, overdue');
     expect(detail).not.toContain('7199');
+  });
+
+  it('a door count names no bottle: a house of foods books the same row', async () => {
+    api.unverified = {
+      items: [
+        { orderId: 'o1', orderNumber: 'PO-77', countedAt: '2026-08-25T08:00:00Z', countedQtyBottles: 12, ageHours: 5, severity: 'fresh' },
+      ],
+    };
+    const r = renderHook(() => useSortingOfficeData(), { wrapper });
+    await waitFor(() => expect(r.result.current.waiting).not.toBeNull());
+    const row = (r.result.current.waiting ?? [])[0];
+    expect(row.title).toBe('PO-77 counted by the case, not yet one by one');
+    expect(row.detail).toMatch(/^12 booked at the door · counted /);
+    expect(`${row.title} ${row.detail}`).not.toMatch(/bottle|btl/i);
   });
 
   it('a filled timeline window whose oldest event is still today floors the routine count', async () => {
