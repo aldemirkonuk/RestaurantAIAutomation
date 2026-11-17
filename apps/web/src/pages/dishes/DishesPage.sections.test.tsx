@@ -1,6 +1,6 @@
 /** /dishes: the Section box offers the sections already on the list, so "Mains" and "mains" are not typed as two. */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 
