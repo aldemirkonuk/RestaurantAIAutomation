@@ -296,40 +296,62 @@ export class CanonicalDocumentService {
     }
     const row = docRead.data as unknown as DocumentRow;
 
-    let lineRead: RawRead = (await this.db
-      .getClient()
-      .from("procurement_document_lines")
-      .select(LINE_COLUMNS)
-      .eq("document_id", documentId)
-      .order("line_no", { ascending: true })) as RawRead;
+    /**
+     * THE READS THAT FOLLOW THE DOCUMENT ROW ARE ASKED TOGETHER (r41 invoices
+     * gap P9). Each one needs only the document id, the house or the provider
+     * the row names, so they were awaited one after another for no reason: the
+     * lines, the door's count, the corrections, the line mapping, the parties
+     * and the vendor's resolution were six or more round trips in a chain for
+     * every paper opened. They are started here, every one is awaited (so none
+     * can end unhandled), and the answers are then READ IN THE ORDER THEY WERE
+     * ONCE AWAITED, so when two fail the same one is reported as before and the
+     * notes keep their order.
+     */
+    const linesP = this.readLineRows(documentId);
+    const doorP = opts?.door
+      ? receivedAtTheDoor(this.db.getClient(), restaurantId, documentId)
+      : null;
+    const historyP = this.readCorrections(documentId);
+    // Naming the lines needs the lines, so it starts the moment they land and
+    // runs beside the reads that do not.
+    const resolvedP = linesP.then((l) =>
+      l.read.error
+        ? null
+        : this.resolveLines(
+            restaurantId,
+            (l.read.data ?? []) as unknown as LineRow[],
+            row.provider_id,
+          ),
+    );
+    const partiesP = this.resolveParties(restaurantId, row.provider_id);
+    const latestP = this.vendorResolution.latestFor(restaurantId, documentId);
+    const [lines, door, history, resolved, parties, latest] = await Promise.all([
+      linesP,
+      doorP,
+      historyP,
+      resolvedP,
+      partiesP,
+      latestP,
+    ]);
 
-    if (isUndefinedColumn(lineRead.error)) {
-      if (!notes.includes(SCHEMA_LAG_NOTE)) notes.push(SCHEMA_LAG_NOTE);
-      lineRead = (await this.db
-        .getClient()
-        .from("procurement_document_lines")
-        .select(LINE_COLUMNS_BASE)
-        .eq("document_id", documentId)
-        .order("line_no", { ascending: true })) as RawRead;
-    }
-
-    if (lineRead.error) {
+    if (lines.lagged && !notes.includes(SCHEMA_LAG_NOTE))
+      notes.push(SCHEMA_LAG_NOTE);
+    if (lines.read.error) {
       // Deliberately NOT "a document with zero lines". A read that failed and a
       // credit memo that genuinely has no lines must not produce the same object.
       return {
         ok: false,
-        error: `procurement_document_lines read failed for ${documentId}: ${lineRead.error.message}`,
+        error: `procurement_document_lines read failed for ${documentId}: ${lines.read.error.message}`,
       };
     }
-    const lineRows = (lineRead.data ?? []) as unknown as LineRow[];
+    const lineRows = (lines.read.data ?? []) as unknown as LineRow[];
 
     let parsed = this.toParsedDocument(row, lineRows);
 
     // r24: the door's count of THIS paper, by its own line numbers. A failed
     // read is said, never shown as "nobody counted" without a word.
     let spine: Record<number, { received: number }> | undefined;
-    if (opts?.door) {
-      const door = await receivedAtTheDoor(this.db.getClient(), restaurantId, documentId);
+    if (door) {
       if (!door.ok)
         notes.push(`What the door counted of this paper ${door.error}, so Received may read "not counted" where it was counted.`);
       else if (door.value.size) {
@@ -350,7 +372,6 @@ export class CanonicalDocumentService {
      * them; an overlay would leave layer 3 grading numbers the page no longer
      * shows and reporting "ties out" about figures nobody is looking at.
      */
-    const history = await this.readCorrections(documentId);
     if (!history.ok) return history;
     for (const c of history.value.entries) {
       if (c.kind === "correction")
@@ -362,11 +383,8 @@ export class CanonicalDocumentService {
         );
     }
 
-    const resolved = await this.resolveLines(
-      restaurantId,
-      lineRows,
-      row.provider_id,
-    );
+    // `resolved` is null only when the lines read failed, which returned above.
+    if (!resolved) throw new Error("canonical build: lines read failed unreported");
     if (!resolved.ok) return resolved;
     // Layer 2 is read from the LINE ROWS, which a correction does not touch, so
     // the two fields a correction can move there are re-derived from the
@@ -379,7 +397,6 @@ export class CanonicalDocumentService {
       rl.vintage = line.vintage ?? null;
     }
 
-    const parties = await this.resolveParties(restaurantId, row.provider_id);
     if (!parties.ok) return parties;
 
     /**
@@ -391,10 +408,6 @@ export class CanonicalDocumentService {
      * defect. It does not fail the build: the sheet is still worth showing
      * without its provenance line.
      */
-    const latest = await this.vendorResolution.latestFor(
-      restaurantId,
-      documentId,
-    );
     const vendorResolution = latest.ok
       ? latest.value
         ? {
@@ -480,6 +493,30 @@ export class CanonicalDocumentService {
             withRegradedVerdicts(mapped)
           : mapped,
     };
+  }
+
+  /**
+   * The document's lines, with the one fallback the document read also has: a
+   * database that has not applied the printed-columns migration is asked again
+   * without them, and `lagged` says so, so the caller can say it in `notes`.
+   */
+  private async readLineRows(
+    documentId: string,
+  ): Promise<{ read: RawRead; lagged: boolean }> {
+    let read: RawRead = (await this.db
+      .getClient()
+      .from("procurement_document_lines")
+      .select(LINE_COLUMNS)
+      .eq("document_id", documentId)
+      .order("line_no", { ascending: true })) as RawRead;
+    if (!isUndefinedColumn(read.error)) return { read, lagged: false };
+    read = (await this.db
+      .getClient()
+      .from("procurement_document_lines")
+      .select(LINE_COLUMNS_BASE)
+      .eq("document_id", documentId)
+      .order("line_no", { ascending: true })) as RawRead;
+    return { read, lagged: true };
   }
 
   /**

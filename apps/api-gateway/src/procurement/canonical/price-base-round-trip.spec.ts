@@ -245,10 +245,9 @@ describe("price base and printed literals — read back", () => {
       error: { message: string; code?: string } | null;
     }
   >;
-  let currentTable = "";
-  let lastColumns = "";
-
-  const chain = () => {
+  // Both are the chain's own: reads that run together must not share them.
+  const chain = (currentTable: string) => {
+    let lastColumns = "";
     const c: Record<string, unknown> = {};
     const self = () => c;
     for (const verb of ["eq", "in", "order", "limit"]) {
@@ -281,10 +280,7 @@ describe("price base and printed literals — read back", () => {
   };
 
   const client = {
-    from: jest.fn((table: string) => {
-      currentTable = table;
-      return chain();
-    }),
+    from: jest.fn((table: string) => chain(table)),
   };
 
   const DOC_ROW = {
