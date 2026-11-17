@@ -95,9 +95,16 @@ export class InventoryService {
         : undefined);
 
     // Extract wine name before stripping the nested master_wine_library object.
-    // Prefer the denormalized column; fall back to the joined library row.
+    // Prefer the denormalized column; fall back to the joined library row, and
+    // last to the name the house declared the good under (`display_name`, which
+    // every row has). A good that is not a wine has neither of the first two,
+    // and without this it drew as "Unnamed title".
+    const declaredName: string | null =
+      typeof row.display_name === "string" && row.display_name.trim()
+        ? row.display_name.trim()
+        : null;
     const wineName: string | null =
-      row.wine_name || row.master_wine_library?.name || null;
+      row.wine_name || row.master_wine_library?.name || declaredName;
 
     // BOTH NAMES TRAVEL (ADR 0124, the naming rule, founder 2026-09-05: "both
     // names searchable"). `wineName` above collapses the two into whichever one
