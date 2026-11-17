@@ -5,6 +5,7 @@
  */
 
 import { fmtMoney } from './format';
+import { doorAgeSaid } from '../../pages/receipts/next/door-age';
 import type {
   CounterCreditRow,
   CounterDeliveryRow,
@@ -73,10 +74,7 @@ function deliveryLine(d: CounterDeliveryRow): ActLine {
   return {
     id: d.orderId,
     what: `Order ${d.orderNumber ?? EM} · ${d.countedQtyBottles} bottles counted by case`,
-    detail:
-      d.severity === 'overdue'
-        ? `not counted by the bottle · ${d.ageHours} h, overdue`
-        : `not counted by the bottle · ${d.ageHours} h`,
+    detail: `not counted by the bottle · ${doorAgeSaid(d.ageHours, d.severity)}`,
     at: shortWhen(d.countedAt),
   };
 }
