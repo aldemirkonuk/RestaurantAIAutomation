@@ -8,6 +8,7 @@ import {
   actsWaiting,
   counterHead,
   REGISTER_ROOM,
+  REGISTER_WORD,
   roomForAct,
   verbMark,
   type CounterRegister,
@@ -147,5 +148,15 @@ describe('a vendor waiting reads as Mail says it (r36 mail gap 7)', () => {
     const line = actLine('threads', { ...row, vendor: null, orderNumber: null, orderId: null }, null);
     expect(line.what).toBe('A vendor with no name on file');
     expect(line.detail).toBe("waiting for the house's reply");
+  });
+});
+
+describe('the mail register names what it counts (r41 mail gap 12)', () => {
+  // The count is vendors waiting (mail.service.ts: count = waiting_people), so
+  // "3 replies waiting" beside Mail's "2 vendors are waiting" read as a
+  // contradiction when one vendor had two open threads.
+  it('says vendors, not replies', () => {
+    expect(REGISTER_WORD.threads).toBe('Vendors waiting for a reply');
+    expect(REGISTER_WORD.threads).not.toMatch(/replies/i);
   });
 });

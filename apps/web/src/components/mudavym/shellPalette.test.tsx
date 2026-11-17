@@ -109,7 +109,7 @@ describe('counterPaletteRows — the counter as palette rows', () => {
     expect(rows.map((r) => r.id)).toEqual(['counter-orders-o-1', 'counter-unread-threads']);
     expect(rows[0].title).toBe('Kermit Lynch — Chablis');
     expect(rows[0].subtitle).toContain('Seal');
-    expect(rows[1].title).toBe('Replies waiting · not read');
+    expect(rows[1].title).toBe('Vendors waiting for a reply · not read');
     // Never a zero for the register that did not answer.
     expect(rows[1].title).not.toMatch(/\b0\b/);
 
@@ -185,7 +185,7 @@ describe('the palette under the shell', () => {
     });
     const options = screen.getAllByRole('option');
     expect(options[0].textContent).toContain('Kermit Lynch — Chablis');
-    expect(options[1].textContent).toContain('Replies waiting · not read');
+    expect(options[1].textContent).toContain('Vendors waiting for a reply · not read');
     expect(screen.getByText('On the counter')).toBeTruthy();
     expect(screen.getByText('Rooms')).toBeTruthy();
     // The rooms are the table's words, not the legacy list's.

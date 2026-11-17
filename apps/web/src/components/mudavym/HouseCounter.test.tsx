@@ -108,7 +108,7 @@ describe('answered', () => {
 
   it('an empty register that answered says so in words', () => {
     mount(state());
-    expect(screen.getByText('Replies waiting · none waiting')).toBeTruthy();
+    expect(screen.getByText('Vendors waiting for a reply · none waiting')).toBeTruthy();
   });
 
   it('the head counts registers from the outcomes, never acts', () => {

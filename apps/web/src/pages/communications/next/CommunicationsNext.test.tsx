@@ -558,7 +558,7 @@ describe('drafted letters (ADR 0230)', () => {
   });
 });
 
-// COMMS-W19: the house counter's "Replies waiting" act links here with
+// COMMS-W19: the house counter's "Vendors waiting for a reply" act links here with
 // `?reply=<orderId>` (shared batch 2, DASH-W16e).
 describe('the counter link to a waiting reply', () => {
   const waiting = {

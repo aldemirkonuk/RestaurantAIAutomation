@@ -211,7 +211,7 @@ export default function CommunicationsNext() {
     }
   };
 
-  /* `?reply=<orderId>` is the house counter's "Replies waiting" link (COMMS-W19,
+  /* `?reply=<orderId>` is the house counter's "Vendors waiting for a reply" link (COMMS-W19,
      shared batch 2 / DASH-W16e). Once the drafts read has answered it opens that
      order's drafted reply, as clicking its row does; when no draft matches, the
      page says so rather than opening nothing. The param goes when the panel or
