@@ -22,6 +22,7 @@ import {
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
+import { withoutCost } from "./ledger-cost-view";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { InventoryLedgerService } from "./inventory-ledger.service";
 import {
@@ -135,13 +136,17 @@ export class InventoryLedgerController {
   })
   async listTransactions(
     @Query() query: GetTransactionsQueryDto,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser() user: { userId: string; restaurantId: string; role?: string | null },
   ): Promise<TransactionsListResponseDto> {
     try {
-      return await this.ledgerService.listTransactions(
+      const list = await this.ledgerService.listTransactions(
         user.restaurantId,
         query,
       );
+      return {
+        ...list,
+        transactions: list.transactions.map((t) => withoutCost(t, user)),
+      };
     } catch (error) {
       this.logger.error({
         message: "List transactions failed",
@@ -165,12 +170,12 @@ export class InventoryLedgerController {
   })
   async getTransaction(
     @Param("transactionId") transactionId: string,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser() user: { userId: string; restaurantId: string; role?: string | null },
   ): Promise<InventoryTransactionResponseDto> {
     try {
-      return await this.ledgerService.getTransaction(
-        user.restaurantId,
-        transactionId,
+      return withoutCost(
+        await this.ledgerService.getTransaction(user.restaurantId, transactionId),
+        user,
       );
     } catch (error) {
       this.logger.error({
@@ -238,14 +243,15 @@ export class InventoryLedgerController {
   async getTransactionHistory(
     @Param("inventoryId") inventoryId: string,
     @Query("days") days: number = 30,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser() user: { userId: string; restaurantId: string; role?: string | null },
   ): Promise<InventoryTransactionResponseDto[]> {
     try {
-      return await this.ledgerService.getTransactionHistory(
+      const rows = await this.ledgerService.getTransactionHistory(
         user.restaurantId,
         inventoryId,
         days,
       );
+      return rows.map((t) => withoutCost(t, user));
     } catch (error) {
       this.logger.error({
         message: "Get history failed",
@@ -322,10 +328,10 @@ export class InventoryLedgerController {
       notes?: string;
       clientCountId?: string;
     },
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser() user: { userId: string; restaurantId: string; role?: string | null },
   ): Promise<ReconcileResultDto> {
     try {
-      return await this.ledgerService.reconcileInventory(
+      const result = await this.ledgerService.reconcileInventory(
         user.restaurantId,
         user.userId,
         inventoryId,
@@ -334,6 +340,7 @@ export class InventoryLedgerController {
         body.notes,
         body.clientCountId,
       );
+      return { ...result, transaction: withoutCost(result.transaction, user) };
     } catch (error) {
       this.logger.error({
         message: "Reconciliation failed",

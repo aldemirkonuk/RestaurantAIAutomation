@@ -228,9 +228,13 @@ export default function RowDropdown(props: RowDropdownProps) {
   // 'reading' and 'failed' are not an absent price: no ledger then (gap 9).
   const costFromLedger = Array.isArray(settledNow) ? settledNow.length === 0 : settledNow === null;
   const kitchenGood = props.kind === 'food' || props.kind === 'supply';
+  // The Paperwork table prints each purchase's unit cost, so it is a manager's
+  // too: a staff reader's drawer draws it nowhere and reads nothing for it
+  // (r39 walk-w5 F3).
+  const paperShown = has('paper') && canManage;
   const detail = useRowDetail(row.id, {
-    purchases: has('paper') || (costShown && costFromLedger),
-    paper: has('paper'),
+    purchases: paperShown || (costShown && costFromLedger),
+    paper: paperShown,
     lots: costShown && !kitchenGood,
   });
   const acts = props.actions !== false;
@@ -392,7 +396,7 @@ export default function RowDropdown(props: RowDropdownProps) {
         </div>
       ) : null}
 
-      {has('paper') ? <Paperwork detail={detail} currency={currency} providers={props.providers} /> : null}
+      {paperShown ? <Paperwork detail={detail} currency={currency} providers={props.providers} /> : null}
 
       {acts ? (
       <div className="iv-actions" role="group" aria-label="What to do with this title">

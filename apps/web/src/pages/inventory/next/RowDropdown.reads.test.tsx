@@ -6,7 +6,7 @@
  * stub recording what it was asked for.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { InvRow } from './useInventoryNextData';
@@ -194,9 +194,20 @@ describe('RowDropdown asks only for what it draws', () => {
     expect(last()).toEqual({ purchases: true, paper: false, lots: false });
   });
 
-  it('the paperwork reads the purchases and their paper, for anyone', () => {
-    renderDrop({ canManage: false, sections: ['paper'] });
+  it('the paperwork reads the purchases and their paper for a manager', () => {
+    renderDrop({ canManage: true, sections: ['paper'] });
     expect(last()).toEqual({ purchases: true, paper: true, lots: false });
+  });
+
+  it('a staff reader with the paperwork open reads no purchases and no paper, and draws none', () => {
+    renderDrop({ canManage: false, sections: ['paper'] });
+    expect(last()).toEqual({ purchases: false, paper: false, lots: false });
+    expect(screen.queryByText('Paperwork')).toBeNull();
+  });
+
+  it('the whole row for a staff reader reads nothing', () => {
+    renderDrop({ canManage: false });
+    expect(last()).toEqual({ purchases: false, paper: false, lots: false });
   });
 
   it('the whole row, as the legacy expansion drew it, reads all three', () => {
