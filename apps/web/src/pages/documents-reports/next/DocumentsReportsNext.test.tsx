@@ -412,6 +412,19 @@ describe('DocumentsReportsNext', () => {
     expect(screen.queryByText(/no paperwork/i)).toBeNull();
   });
 
+  it('the waiting drawer says an old door count in days, never thousands of hours', async () => {
+    api.unverified = {
+      items: [
+        { orderId: 'o1', orderNumber: 'PO-77', countedAt: '', countedQtyBottles: 12, ageHours: 7199, severity: 'overdue' },
+      ],
+    };
+    const r = renderHook(() => useSortingOfficeData(), { wrapper });
+    await waitFor(() => expect(r.result.current.waiting).not.toBeNull());
+    const detail = (r.result.current.waiting ?? [])[0].detail;
+    expect(detail).toContain('299 days ago, overdue');
+    expect(detail).not.toContain('7199');
+  });
+
   it('a filled timeline window whose oldest event is still today floors the routine count', async () => {
     // The strip renders a count filtered out of a 100-row window. The window
     // being full is not on its own enough to floor it — see the next test.
