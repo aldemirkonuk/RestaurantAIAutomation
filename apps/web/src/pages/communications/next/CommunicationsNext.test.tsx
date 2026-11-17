@@ -39,7 +39,15 @@ const HELD_LETTER = vi.hoisted(() => ({
 const composerMounts = vi.hoisted(() => ({ n: 0 }));
 // What the composer hands back when left; a test may swap it for its own words.
 const mockHeld = vi.hoisted(() => ({ current: null as null | Record<string, unknown> }));
+// r41 mail gap 10: how many times each sheet's module has been loaded. A mock
+// factory runs when its module is first imported, so a count is a load.
+const sheetLoads = vi.hoisted(() => ({ compose: 0, template: 0, reply: 0 }));
+vi.mock('./DraftedReplyPanel', async (importOriginal) => {
+  sheetLoads.reply += 1;
+  return importOriginal<typeof import('./DraftedReplyPanel')>();
+});
 vi.mock('./Compose/ComposeSheet', async () => {
+  sheetLoads.compose += 1;
   const { useState } = await import('react');
   return { ComposeSheet: function ComposeSheet({
     open,
@@ -88,7 +96,9 @@ const HELD_TEMPLATE = vi.hoisted(() => ({
   draft: { name: 'Price ask', category: 'price_query', subject: '', body: 'Could you quote' },
   opened: { name: '', category: 'price_query', subject: '', body: '' },
 }));
-vi.mock('./TemplateSheet', () => ({
+vi.mock('./TemplateSheet', () => {
+  sheetLoads.template += 1;
+  return {
   TemplateSheet: ({
     onClose,
     onHold,
@@ -110,7 +120,8 @@ vi.mock('./TemplateSheet', () => ({
       </button>
     </div>
   ),
-}));
+  };
+});
 // The letters staff asked a manager to send (founder answer 3) are proved in
 // LetterRequests.test.tsx; here the panel is stubbed and its standing is fixed.
 const mockLetters = vi.hoisted(() => ({
@@ -233,6 +244,29 @@ beforeEach(() => {
   mockDrafts.current = { drafts: [], failed: false, error: null, refetch: () => {} };
 });
 
+// r41 mail gap 10. These two come first on purpose: a module loads once per
+// file, so only before any other test opens a sheet can "not yet loaded" be seen.
+const loadedWithThePage = { ...sheetLoads };
+
+describe('the sheets load when they are wanted (r41 mail gap 10)', () => {
+  it('the page itself brings none of the three sheets with it', () => {
+    expect(loadedWithThePage).toEqual({ compose: 0, template: 0, reply: 0 });
+  });
+
+  it('a moment after the page settles the sheets are fetched, so the first click does not wait', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      render(<CommunicationsNext />);
+      await vi.advanceTimersByTimeAsync(2400);
+      expect(sheetLoads).toEqual({ compose: 0, template: 0, reply: 0 });
+      await vi.advanceTimersByTimeAsync(200);
+      await vi.waitFor(() => expect(sheetLoads).toEqual({ compose: 1, template: 1, reply: 1 }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('CommunicationsNext', () => {
   it('shows the glance strip from settled queries and EM for unanswered ones', () => {
     mockData.current = {
@@ -277,17 +311,17 @@ describe('CommunicationsNext', () => {
   });
 
   // ── ADR 0118: the legacy builders are retired from the rebuilt page ───────
-  it('opens the house composer, not a template builder', () => {
+  it('opens the house composer, not a template builder', async () => {
     render(<CommunicationsNext />);
     expect(screen.queryByTestId('composer')).toBeNull();
     fireEvent.click(screen.getByText('Write a letter'));
-    expect(screen.getByTestId('composer')).toBeInTheDocument();
+    expect(await screen.findByTestId('composer')).toBeInTheDocument();
   });
 
-  it('opens the house letter library', () => {
+  it('opens the house letter library', async () => {
     render(<CommunicationsNext />);
     fireEvent.click(screen.getByText("The house's letter templates"));
-    expect(screen.getByTestId('letter-library')).toBeInTheDocument();
+    expect(await screen.findByTestId('letter-library')).toBeInTheDocument();
   });
 
   it('offers no template workshop at all', () => {
@@ -575,10 +609,10 @@ describe('the counter link to a waiting reply', () => {
     subject: 'Albariño 2022',
   };
 
-  it('opens that order\'s drafted reply, as clicking its row does', () => {
+  it('opens that order\'s drafted reply, as clicking its row does', async () => {
     mockData.current = { ...base, drafts: [waiting] };
     render(<CommunicationsNext />, '/communications?reply=o1');
-    expect(screen.getByText("The house's reply, drafted")).toBeInTheDocument();
+    expect(await screen.findByText("The house's reply, drafted")).toBeInTheDocument();
     expect(screen.queryByTestId('reply-link-missing')).toBeNull();
   });
 
@@ -613,7 +647,7 @@ describe('the counter link to a waiting reply', () => {
     expect(screen.queryByText(/no longer waiting/)).toBeNull();
   });
 
-  it('does not call a reply it opened "gone" once it is sent and leaves the list', () => {
+  it('does not call a reply it opened "gone" once it is sent and leaves the list', async () => {
     mockData.current = { ...base, drafts: [waiting] };
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const tree = () => (
@@ -624,13 +658,13 @@ describe('the counter link to a waiting reply', () => {
       </MemoryRouter>
     );
     const { rerender } = rtlRender(tree());
-    expect(screen.getByText("The house's reply, drafted")).toBeInTheDocument();
+    expect(await screen.findByText("The house's reply, drafted")).toBeInTheDocument();
     mockData.current = { ...base, drafts: [] };
     rerender(tree());
     expect(screen.queryByTestId('reply-link-missing')).toBeNull();
   });
 
-  it('drops the link from the address when the reply is closed', () => {
+  it('drops the link from the address when the reply is closed', async () => {
     mockData.current = { ...base, drafts: [waiting] };
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     function Where() {
@@ -646,6 +680,7 @@ describe('the counter link to a waiting reply', () => {
       </MemoryRouter>,
     );
     expect(screen.getByTestId('where')).toHaveTextContent('/communications?reply=o1');
+    await screen.findByText("The house's reply, drafted");
     fireEvent.click(screen.getAllByRole('button', { name: 'Leave it waiting' })[0]);
     expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications$/);
   });
@@ -944,7 +979,7 @@ describe('what the address keeps (COMMS-W35)', () => {
     expect(screen.queryByText(/no longer a draft/)).toBeNull();
   });
 
-  it('a drafted reply opened from its row is in the address until it closes, and sending it is not a lost link', () => {
+  it('a drafted reply opened from its row is in the address until it closes, and sending it is not a lost link', async () => {
     mockData.current = { ...base, drafts: [waiting] };
     const client = qc();
     const { rerender } = rtlRender(tree(client));
@@ -955,6 +990,7 @@ describe('what the address keeps (COMMS-W35)', () => {
     expect(screen.queryByTestId('reply-link-missing')).toBeNull();
     mockData.current = { ...base, drafts: [waiting] };
     rerender(tree(client));
+    await screen.findByText("The house's reply, drafted");
     fireEvent.click(screen.getAllByRole('button', { name: 'Leave it waiting' })[0]);
     expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications$/);
   });
@@ -1086,12 +1122,12 @@ describe('Mail and Letters', () => {
   });
 
   // Spec (h): the counter's and the credit's links still land where they did.
-  it('?reply= still opens the drafted reply on Letters', () => {
+  it('?reply= still opens the drafted reply on Letters', async () => {
     mockData.current = { ...base, drafts: [waiting] };
     at('/communications?reply=o1');
     expect(screen.queryByTestId('mail-tab-stub')).toBeNull();
     expect(tabs()[1]).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByText("The house's reply, drafted")).toBeInTheDocument();
+    expect(await screen.findByText("The house's reply, drafted")).toBeInTheDocument();
   });
 
   it('?draft= still opens the drafted letter on Letters', () => {
@@ -1145,11 +1181,11 @@ describe('Mail and Letters', () => {
     expect(screen.getByText('Replies · 30 days')).toBeInTheDocument();
   });
 
-  it("hands Mail the orders that have a drafted reply, and Mail's reply act opens it", () => {
+  it("hands Mail the orders that have a drafted reply, and Mail's reply act opens it", async () => {
     mockData.current = { ...base, drafts: [waiting] };
     at('/communications?thread=gm%3Aabc');
     expect(screen.getByTestId('mail-tab-stub').getAttribute('data-drafted')).toBe('o1');
     fireEvent.click(screen.getByText('stub open reply'));
-    expect(screen.getByText("The house's reply, drafted")).toBeInTheDocument();
+    expect(await screen.findByText("The house's reply, drafted")).toBeInTheDocument();
   });
 });

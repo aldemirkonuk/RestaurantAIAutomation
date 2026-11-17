@@ -27,7 +27,7 @@
  * them any more.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { PenLine, Library } from 'lucide-react';
@@ -44,10 +44,10 @@ import {
   readAgainFailed,
   type FailedRead,
 } from './cm-format';
-import { TemplateSheet, type HeldTemplate } from './TemplateSheet';
+import type { HeldTemplate } from './TemplateSheet';
 import { changedLine, heldLine, useHeldWords } from './held-words';
-import { ComposeSheet, type HeldLetter } from './Compose/ComposeSheet';
-import { DraftedReplyPanel, type DraftedReply } from './DraftedReplyPanel';
+import type { HeldLetter } from './Compose/ComposeSheet';
+import type { DraftedReply } from './DraftedReplyPanel';
 import { LetterRequestsPanel, PILL, useLetterRequests } from './LetterRequestsPanel';
 import { useLetterSenderStanding } from './Compose/useComposeData';
 import { HouseDrafts, useHouseDrafts, type HouseDraft } from './Compose/HouseDrafts';
@@ -56,6 +56,29 @@ import { MailTab } from './MailTab';
 import WhoIsWriting from './WhoIsWriting';
 import { mailTabLabel, type MailAnswer } from './mail-format';
 import { useMailSummary } from './useMailData';
+
+/*
+ * The three sheets only matter once somebody opens one, and together they are
+ * about 40% of this page's code (r41 mail gap 10). They load on first use, and
+ * again a moment after the page settles so the first click is not waiting on
+ * the network. Each has its own Suspense, so one loading never hides another.
+ */
+const loadComposeSheet = () => import('./Compose/ComposeSheet');
+const loadTemplateSheet = () => import('./TemplateSheet');
+const loadDraftedReplyPanel = () => import('./DraftedReplyPanel');
+const ComposeSheet = lazy(() => loadComposeSheet().then((m) => ({ default: m.ComposeSheet })));
+const TemplateSheet = lazy(() => loadTemplateSheet().then((m) => ({ default: m.TemplateSheet })));
+const DraftedReplyPanel = lazy(() => loadDraftedReplyPanel().then((m) => ({ default: m.DraftedReplyPanel })));
+
+/** Wait this long after the page mounts before fetching the sheets nobody has opened yet. */
+const WARM_SHEETS_AFTER_MS = 2500;
+
+/** True from the first render the flag is true, and stays true: a sheet that has been shown keeps its place (and its closing motion). */
+function useOnceTrue(flag: boolean): boolean {
+  const [seen, setSeen] = useState(flag);
+  if (flag && !seen) setSeen(true);
+  return seen || flag;
+}
 
 function GlanceFigure({
   label,
@@ -152,6 +175,15 @@ export default function CommunicationsNext() {
   const templatesHeld = useHeldWords<HeldTemplate>();
   const [draftFrom, setDraftFrom] = useState<HeldLetter | null>(null);
   const [composeKey, setComposeKey] = useState(0);
+  const composeShown = useOnceTrue(compose);
+  const replyShown = useOnceTrue(draftOpen !== null);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      // A failed warm-up is not an error: the sheet asks again when opened.
+      for (const load of [loadComposeSheet, loadDraftedReplyPanel, loadTemplateSheet]) void load().catch(() => {});
+    }, WARM_SHEETS_AFTER_MS);
+    return () => clearTimeout(t);
+  }, []);
   const [composeFrom, setComposeFrom] = useState<HeldLetter | null>(null);
   // "Write a reply" in a Mail thread (r28 gap 3): the composer opens on an
   // answer to that thread's newest letter.
@@ -800,62 +832,74 @@ export default function CommunicationsNext() {
         )}
       </div>
 
-      <ComposeSheet
-        key={composeKey}
-        open={compose}
-        onClose={() => setCompose(false)}
-        onHold={(w) => letters.hold('new', w)}
-        prefill={
-          composeFrom
-            ? {
-                providerId: composeFrom.to?.providerId,
-                to: composeFrom.to?.email ?? null,
-                subject: composeFrom.subject,
-                body: composeFrom.body,
-                insights: composeFrom.insights,
-                templateId: composeFrom.templateId,
-                answers: composeFrom.answers,
-              }
-            : answerFrom
-              ? { providerId: answerFrom.providerId, subject: answerFrom.subject, answers: answerFrom.answers }
-              : null
-        }
-      />
+      {composeShown && (
+        <Suspense fallback={null}>
+          <ComposeSheet
+            key={composeKey}
+            open={compose}
+            onClose={() => setCompose(false)}
+            onHold={(w) => letters.hold('new', w)}
+            prefill={
+              composeFrom
+                ? {
+                    providerId: composeFrom.to?.providerId,
+                    to: composeFrom.to?.email ?? null,
+                    subject: composeFrom.subject,
+                    body: composeFrom.body,
+                    insights: composeFrom.insights,
+                    templateId: composeFrom.templateId,
+                    answers: composeFrom.answers,
+                  }
+                : answerFrom
+                  ? { providerId: answerFrom.providerId, subject: answerFrom.subject, answers: answerFrom.answers }
+                  : null
+            }
+          />
+        </Suspense>
+      )}
       {draft && (
-        <ComposeSheet
-          key={draft.id}
-          open
-          onClose={closeDraft}
-          onHold={(w) => letters.hold(draft.id, w)}
-          onDiscarded={houseDrafts.refetch}
-          prefill={{
-            draftId: draft.id,
-            providerId: draftFrom?.to?.providerId ?? draft.providerId,
-            to: draftFrom?.to?.email ?? draft.to,
-            subject: draftFrom?.subject ?? draft.subject ?? '',
-            body: draftFrom?.body ?? draft.body,
-            insights: draftFrom?.insights,
-            templateId: draftFrom?.templateId,
-            baseline: { subject: draft.subject ?? '', body: draft.body, to: draft.to },
-          }}
-        />
+        <Suspense fallback={null}>
+          <ComposeSheet
+            key={draft.id}
+            open
+            onClose={closeDraft}
+            onHold={(w) => letters.hold(draft.id, w)}
+            onDiscarded={houseDrafts.refetch}
+            prefill={{
+              draftId: draft.id,
+              providerId: draftFrom?.to?.providerId ?? draft.providerId,
+              to: draftFrom?.to?.email ?? draft.to,
+              subject: draftFrom?.subject ?? draft.subject ?? '',
+              body: draftFrom?.body ?? draft.body,
+              insights: draftFrom?.insights,
+              templateId: draftFrom?.templateId,
+              baseline: { subject: draft.subject ?? '', body: draft.body, to: draft.to },
+            }}
+          />
+        </Suspense>
       )}
       {library && (
-        <TemplateSheet held={templateFrom} onHold={(h) => templatesHeld.hold('t', h)} onClose={() => setLibrary(false)} />
+        <Suspense fallback={null}>
+          <TemplateSheet held={templateFrom} onHold={(h) => templatesHeld.hold('t', h)} onClose={() => setLibrary(false)} />
+        </Suspense>
       )}
 
-      <DraftedReplyPanel
-        open={draftOpen !== null}
-        reply={
-          (data.drafts.find((d) => d.orderId === draftOpen) as DraftedReply | undefined) ?? null
-        }
-        onClose={() => {
-          setDraftOpen(null);
-          dropReply();
-        }}
-        onSent={() => data.refetch()}
-        onDiscarded={() => data.refetch()}
-      />
+      {replyShown && (
+        <Suspense fallback={null}>
+          <DraftedReplyPanel
+            open={draftOpen !== null}
+            reply={
+              (data.drafts.find((d) => d.orderId === draftOpen) as DraftedReply | undefined) ?? null
+            }
+            onClose={() => {
+              setDraftOpen(null);
+              dropReply();
+            }}
+            onSent={() => data.refetch()}
+            onDiscarded={() => data.refetch()}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
