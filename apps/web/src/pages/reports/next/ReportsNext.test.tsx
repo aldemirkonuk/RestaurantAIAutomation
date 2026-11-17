@@ -33,6 +33,7 @@ import { decodeSheet, defaultSheet, encodeSheet } from './useReportsNextData';
 import { CATALOGUE } from './rp-catalogue';
 import { DEFAULT_SLOTS, SHEET_MIN_H, SHEET_MIN_W } from './rp-sheet';
 import { heldBackFailure } from './rp-format';
+import { defaultIdsFor } from './rp-readable';
 
 /**
  * The two registers added in the fourth pass decode heavily on the way in
@@ -1988,6 +1989,8 @@ describe('ReportsNext — the sheet keeps its places', () => {
     expect(screen.getByRole('button', { name: 'Arrange the sheet' })).toBeDisabled();
     expect(screen.getByText('Reading how you arranged this sheet…')).toBeInTheDocument();
     expect(container.querySelectorAll('.rp-outline').length).toBeGreaterThan(0);
+    // Laid on the house sheet's own slots, not four boxes the sheet then outgrows (r41 gap 7).
+    expect(container.querySelectorAll('.rp-outline').length).toBe(defaultIdsFor(null).ids.length);
     // The house sheet is NOT drawn first and then swapped for the reader's.
     expect(container.querySelector('.rp-sheet')).toBeNull();
     expect(screen.queryByRole('region', { name: 'Through the till' })).toBeNull();

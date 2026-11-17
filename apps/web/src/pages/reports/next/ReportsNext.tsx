@@ -85,6 +85,7 @@ import type { ComboPick } from './rp-combo';
 import ExportsShelf from './ExportsShelf';
 import Sheet, { type SheetCutting } from './Sheet';
 import { defaultSheet, useReportsNextData } from './useReportsNextData';
+import { SheetOutlines } from './rp-outlines';
 import './reports-next.css';
 
 export interface ReportsNextProps {
@@ -691,12 +692,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
              the house sheet: drawing the house sheet first and then swapping it
              for theirs is a layout jump, and arranging it would save it over
              theirs. The reads behind the sheet are already in flight. */
-          <div className="rp-outlines" role="status">
-            <span className="rp-sr-only">Reading how you arranged this sheet…</span>
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="rp-outline" aria-hidden />
-            ))}
-          </div>
+          <SheetOutlines />
         ) : view.cuttings.length === 0 ? (
           <p role="status" className="rp-note">
             Every cutting has been taken off this sheet. Nothing is being read — press “Arrange the
