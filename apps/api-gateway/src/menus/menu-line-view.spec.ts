@@ -17,6 +17,16 @@ describe("menu-line-view", () => {
     expect(isKitchenLine(42, { pasta: true })).toBe(false);
   });
 
+  it("r42: a section that names cocktails is a drink section, even with a course word in it", () => {
+    for (const section of ["Dessert cocktails", "DESSERT COCKTAILS", "Cocktail desserts", "Cocktails", "Dessert Kokteyller", "Kokteyl Menüsü"]) {
+      expect([section, isKitchenLine(section, "Chocolate martini,,,,14")]).toEqual([section, false]);
+    }
+    expect(isKitchenLine("Desserts", "Tiramisu,,,,12")).toBe(true);
+    expect(isKitchenLine("Starters", "Prawn cocktail,,,,11")).toBe(true);
+    expect(isKitchenLine("Cocktail sauce sides", null)).toBe(false);
+    expect(isKitchenLine("Cocktailers' pasta", null)).toBe(true);
+  });
+
   it("r28 G3: a Turkish menu's courses are dishes, however the menu cases them", () => {
     for (const section of ["Ana Yemekler", "ANA YEMEKLER", "Tatlılar", "TATLILAR", "Çorbalar", "ÇORBALAR", "Mezeler", "Soğuk Mezeler", "Izgaralar", "Ara Sıcaklar", "ARA SICAKLAR", "Kebaplar", "Salatalar", "Başlangıçlar", "Pideler", "Yemekler", "Kahvaltı", "Aperatifler", "Köfteler", "Börekler"]) {
       expect([section, isKitchenLine(section, null)]).toEqual([section, true]);
