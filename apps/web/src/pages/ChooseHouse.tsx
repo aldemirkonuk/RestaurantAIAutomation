@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { AuthShell, AuthCard } from "../components/brand/AuthShell";
 import "../components/brand/auth-house.css";
+import { prefetchWhenIdle } from "../lib/stepPrefetch";
 import { useAuth } from "../contexts/AuthContext";
 import { usePublicDesign } from "../lib/mudavym/publicDesign";
 import { ink } from "../lib/mudavym/motion";
@@ -69,6 +70,8 @@ export function ChooseHouse() {
   const navigate = useNavigate();
   const location = useLocation();
   const on = usePublicDesign();
+  // A person who picks no house is sent to open one: get-started.
+  useEffect(() => prefetchWhenIdle(["get-started"]), []);
 
   const from = (
     location.state as { from?: { pathname?: string; search?: string } } | null

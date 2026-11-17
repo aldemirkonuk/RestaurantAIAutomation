@@ -11,6 +11,7 @@ import { ChooseHouse } from "./ChooseHouse";
 import { useAuth } from "../contexts/AuthContext";
 import apiClient from "../services/api/client";
 import { HOUSE_ENDED_KEY, rememberHouse } from "../lib/houseMemory";
+import { prefetchWhenIdle } from "../lib/stepPrefetch";
 
 /**
  * Which house today? (ADR 0164, R7): one row per house, this device's last
@@ -20,6 +21,9 @@ import { HOUSE_ENDED_KEY, rememberHouse } from "../lib/houseMemory";
  */
 
 vi.mock("../contexts/AuthContext", () => ({ useAuth: vi.fn() }));
+vi.mock("../lib/stepPrefetch", () => ({
+  prefetchWhenIdle: vi.fn(() => () => undefined),
+}));
 vi.mock("../services/api/client", () => ({
   default: { get: vi.fn(), post: vi.fn() },
 }));
@@ -91,6 +95,13 @@ beforeEach(() => {
 });
 
 describe("ChooseHouse", () => {
+  it("warms get-started while the person picks a house", async () => {
+    housesAnswer([MODA]);
+    renderAt();
+    await screen.findByRole("list", { name: "Your houses" });
+    expect(prefetchWhenIdle).toHaveBeenCalledWith(["get-started"]);
+  });
+
   it("lists the person's houses by name, with this device's last house first and marked", async () => {
     rememberHouse(U, MODA.id);
     housesAnswer([KADIKOY, MODA, BESIKTAS]);

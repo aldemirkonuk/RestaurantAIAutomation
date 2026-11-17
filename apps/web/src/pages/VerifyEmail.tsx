@@ -1,6 +1,6 @@
 import { PublicShell } from '../components/mudavym/PublicShell'
 import { usePublicDesign } from '../lib/mudavym/publicDesign'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { Mail, CheckCircle, Loader2, AlertCircle } from 'lucide-react'
@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 import { getOnboardingProgress } from '../services/api/menus'
 import { apiClient, getErrorMessage } from '../services/api/client'
 import { storeSession } from '../lib/houseMemory'
+import { prefetchWhenIdle } from '../lib/stepPrefetch'
 
 /**
  * The two answers the verify route gives a click it will not honour (ADR 0229
@@ -37,6 +38,8 @@ export function VerifyEmail() {
   const [error, setError] = useState<string | null>(null)
   const [lastResent, setLastResent] = useState<Date | null>(null)
   const [refusal, setRefusal] = useState<'sign-in' | 'other-account' | null>(null)
+  // The next page is get-started: have it ready while the person reads this one.
+  useEffect(() => prefetchWhenIdle(['get-started']), [])
 
   const token = searchParams.get('token')
   // Back to this very link after signing in (Login honours `redirect`).
