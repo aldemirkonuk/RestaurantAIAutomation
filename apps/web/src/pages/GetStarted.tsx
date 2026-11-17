@@ -8,6 +8,7 @@ import { MenuCsvUpload } from '../components/onboarding/MenuCsvUpload'
 import { MenuScanUpload } from '../components/onboarding/MenuScanUpload'
 import { MenuManualEntry } from '../components/onboarding/MenuManualEntry'
 import { useAuth, type User } from '../contexts/AuthContext'
+import { prefetchWhenIdle } from '../lib/stepPrefetch'
 import { apiClient, getErrorStatus, isUnconfirmedWrite } from '../services/api/client'
 import { importMenu, type MenuImportResult } from '../services/api/menus'
 import { CURRENCY_CODES, currencyForCountry, currencyLabel, currencyToRecord } from '../lib/currency'
@@ -299,6 +300,12 @@ export default function GetStarted() {
       live = false
     }
   }, [step, navigate])
+
+  // On the menu step the next pages are the house and its menu: warm them.
+  useEffect(() => {
+    if (step !== 'menu') return
+    return prefetchWhenIdle(['house', 'house-menu'])
+  }, [step])
 
   // B-14: `user` can arrive late; its name fills unless the person typed.
   useEffect(() => {
