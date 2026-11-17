@@ -1786,6 +1786,30 @@ export class AuthService {
       throw refuseHouseOpening("createFirstHouse", error, this.logger);
     }
 
+    // The house is committed by here, so the owner's first letter can say it
+    // is open. It leaves after the commit only (a refused opening throws
+    // above and sends nothing), and a failed send never fails the opening.
+    try {
+      this.gmailService
+        .sendFirstHouseEmail({
+          to: user.email,
+          ownerName: user.name ?? "",
+          restaurantName: dto.restaurantName,
+          frontendBaseUrl:
+            canonicalOrigin(this.configService.get("FRONTEND_URL")) ||
+            "https://mudavym.com",
+        })
+        .catch((err: Error) =>
+          this.logger.warn(
+            `First-house email failed (non-fatal): ${err.message}`,
+          ),
+        );
+    } catch (err) {
+      this.logger.warn(
+        `First-house email failed (non-fatal): ${(err as Error).message}`,
+      );
+    }
+
     // The house is whole by here, membership row included, so generateTokens
     // finds it and names the new house with its owner role (ADR 0164: every
     // mint is membership-checked in one place). A failed mint leaves the house
