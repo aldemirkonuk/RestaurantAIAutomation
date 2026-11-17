@@ -152,11 +152,11 @@ function AddDish({ onAdded }: { onAdded: (id: string) => void }) {
     >
       <label htmlFor={`${id}-name`}>
         Dish name
-        <input id={`${id}-name`} className="cl-field cl-focus" aria-required="true" value={name} maxLength={200} onChange={(e) => setName(e.target.value)} />
+        <input id={`${id}-name`} className="cl-field cl-focus" aria-required="true" value={name} maxLength={200} onChange={(e) => { setName(e.target.value); setSaid(null); }} />
       </label>
       <label htmlFor={`${id}-section`}>
         Section
-        <input id={`${id}-section`} className="cl-field cl-focus" value={section} maxLength={100} onChange={(e) => setSection(e.target.value)} />
+        <input id={`${id}-section`} className="cl-field cl-focus" value={section} maxLength={100} onChange={(e) => { setSection(e.target.value); setSaid(null); }} />
       </label>
       <label htmlFor={`${id}-price`}>
         Price
@@ -169,7 +169,7 @@ function AddDish({ onAdded }: { onAdded: (id: string) => void }) {
           value={price}
           aria-invalid={priceBad}
           aria-describedby={priceBad ? `${id}-price-said` : undefined}
-          onChange={(e) => setPrice(e.target.value)}
+          onChange={(e) => { setPrice(e.target.value); setSaid(null); }}
         />
       </label>
       {priceBad ? (
@@ -248,11 +248,11 @@ function DishDetails({ dish, onRemoved }: { dish: DishListRow; onRemoved: () => 
     >
       <label htmlFor={`${id}-name`}>
         Dish name
-        <input id={`${id}-name`} className="cl-field cl-focus" aria-required="true" value={name} maxLength={200} onChange={(e) => setName(e.target.value)} />
+        <input id={`${id}-name`} className="cl-field cl-focus" aria-required="true" value={name} maxLength={200} onChange={(e) => { setName(e.target.value); setSaid(null); }} />
       </label>
       <label htmlFor={`${id}-section`}>
         Section
-        <input id={`${id}-section`} className="cl-field cl-focus" value={section} maxLength={100} onChange={(e) => setSection(e.target.value)} />
+        <input id={`${id}-section`} className="cl-field cl-focus" value={section} maxLength={100} onChange={(e) => { setSection(e.target.value); setSaid(null); }} />
       </label>
       <label htmlFor={`${id}-price`}>
         Price
@@ -264,7 +264,7 @@ function DishDetails({ dish, onRemoved }: { dish: DishListRow; onRemoved: () => 
           autoComplete="off"
           value={price}
           aria-invalid={read.bad}
-          onChange={(e) => setPrice(e.target.value)}
+          onChange={(e) => { setPrice(e.target.value); setSaid(null); }}
         />
       </label>
       <button type="submit" className="cl-btn cl-focus" disabled={blocked} style={{ alignSelf: 'end' }}>
