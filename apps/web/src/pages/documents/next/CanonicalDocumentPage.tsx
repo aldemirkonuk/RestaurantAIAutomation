@@ -172,7 +172,13 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
   const itemName = (inventoryId: string): string | null => {
     const it = (itemsQ.data ?? []).find((x) => x.id === inventoryId)
     if (!it) return null
-    if (!it.wineName) return null
+    if (!it.wineName) {
+      // A food or supply good has no wine name; the house's own name for it
+      // is the row's `display_name` (the gateway sends the raw row). A bottle
+      // size or vintage is a wine fact, so none is added to it.
+      const own = (it as { display_name?: string | null }).display_name
+      return typeof own === 'string' && own.trim() ? own.trim() : null
+    }
     const vintage = it.wineVintage ? ` ${it.wineVintage}` : ''
     const size = it.bottleSizeMl ? ` · ${it.bottleSizeMl} ml` : ''
     return `${it.wineName}${vintage}${size}`
