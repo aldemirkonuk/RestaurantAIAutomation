@@ -150,7 +150,9 @@ describe('a thread on screen is read by this person', () => {
     await waitFor(() => expect(seenPosts()).toHaveLength(1));
     expect(seenPosts()[0]).toEqual([
       '/mail/thread/seen',
-      null,
+      // No body at all: axios turns a null body into the text "null" under a JSON
+      // content type, and the gateway's body parser refuses it before the route runs.
+      undefined,
       { params: { key: 'gm:abc', with: 'vendor:p1', through: '2026-11-06 07:30:00.123456+00' } },
     ]);
   });

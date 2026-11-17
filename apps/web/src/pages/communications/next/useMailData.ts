@@ -221,7 +221,7 @@ export function useMarkThreadSeen() {
   const qc = useQueryClient();
   return useMutation<unknown, unknown, SeenMark>({
     mutationFn: async (mark) =>
-      (await apiClient.post('/mail/thread/seen', null, { params: { key: mark.key, with: mark.with, through: mark.through } }))
+      (await apiClient.post('/mail/thread/seen', undefined, { params: { key: mark.key, with: mark.with, through: mark.through } }))
         .data,
     onSuccess: () => {
       for (const root of ['mail-people', 'mail-threads']) {
