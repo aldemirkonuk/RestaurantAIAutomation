@@ -269,6 +269,43 @@ describe('OrderSheet (INV-W20, INV-W21)', () => {
 });
 
 describe('CountSheet (INV-W22, blind count)', () => {
+  describe('the house setup learns of a count at once', () => {
+    const setupAsked = (spy: { mock: { calls: unknown[][] } }) =>
+      spy.mock.calls.some(([f]) => JSON.stringify((f as { queryKey?: unknown })?.queryKey) === '["onboarding-progress"]');
+    const seal = (n: string) => {
+      mount(<CountSheet row={row({ stock: 7 })} onClose={() => {}} />);
+      fireEvent.change(screen.getByRole('textbox', { name: 'Bottles counted' }), { target: { value: n } });
+      holdByKeyboard(screen.getByRole('button', { name: new RegExp(`Hold to record ${n}`) }));
+    };
+
+    it('a count the gateway took asks the setup read again', async () => {
+      const reread = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+      api.submit.mockResolvedValue({ synced: true });
+      seal('5');
+      await waitFor(() => expect(document.body.textContent).toContain('Counted 5'));
+      expect(setupAsked(reread)).toBe(true);
+      reread.mockRestore();
+    });
+
+    it('a count held on the device does not', async () => {
+      const reread = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+      api.submit.mockResolvedValue({ synced: false });
+      seal('5');
+      await waitFor(() => expect(document.body.textContent).toContain('Held on this device'));
+      expect(setupAsked(reread)).toBe(false);
+      reread.mockRestore();
+    });
+
+    it('a refused count does not', async () => {
+      const reread = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+      api.submit.mockRejectedValue(answered(400));
+      seal('5');
+      await alertText();
+      expect(setupAsked(reread)).toBe(false);
+      reread.mockRestore();
+    });
+  });
+
   it('starts empty and does not show the book\'s figure before the seal', () => {
     mount(<CountSheet row={row({ stock: 7 })} onClose={() => {}} />);
     expect((screen.getByRole('textbox', { name: 'Bottles counted' }) as HTMLInputElement).value).toBe('');
