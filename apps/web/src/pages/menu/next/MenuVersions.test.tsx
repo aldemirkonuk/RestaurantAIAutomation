@@ -643,3 +643,28 @@ describe('MenuVersions -- dates on the house clock', () => {
     expect(screen.queryByTestId('menu-versions-clock')).not.toBeInTheDocument();
   });
 });
+
+// Menu r6: the list looks again while a read goes on, and eases off as it goes
+// on (menu-read-poll.ts has the steps); this proves the list uses them.
+describe('MenuVersions -- the list eases off while a read goes on', () => {
+  it('asks the list to look again by how long the newest read has gone on, and not at all when none is reading', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    mockList.mockResolvedValue({
+      current: null,
+      lastUsed: null,
+      versions: [version({ menuId: 'r1', readState: 'reading', linesExtracted: 0, createdAt: tenMinutesAgo })],
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <MenuVersions canManage={true} />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText('being read now')).toBeInTheDocument();
+    const query = client.getQueryCache().findAll({ queryKey: ['menu', 'versions'] })[0];
+    const every = (query.options as { refetchInterval: (q: unknown) => number | false }).refetchInterval;
+    expect(every(query)).toBe(30000);
+
+    expect(every({ state: { data: { versions: [version({ readState: 'done' })] } } })).toBe(false);
+  });
+});
