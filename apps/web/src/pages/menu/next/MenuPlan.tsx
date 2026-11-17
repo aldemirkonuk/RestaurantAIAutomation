@@ -109,6 +109,25 @@ export function removedClause(lines: PlanLine[]): string | null {
   return `${plural(n, 'line is', 'lines are')} a good the house removed from Inventory; ${one ? 'its' : 'their'} price is kept on the removed row and ${one ? 'it stays' : 'they stay'} removed (${removedLines(lines).map((l) => l.name).join(', ')}). Bring ${one ? 'it' : 'them'} back on Inventory to sell ${one ? 'it' : 'them'} from there`;
 }
 
+/**
+ * The lines whose menu prints the price only in a money that is not the
+ * house's (r36 N1; the gateway's #1543 holds them). No price is taken from
+ * such a line and nothing converts, so the house keeps its own. The gateway
+ * counts each blank kind of such a line as `blank_kept` or
+ * `blank_never_priced`, the same as a price the menu left blank; the page
+ * says the difference, because the menu was not blank: it printed "€12".
+ */
+export function otherMoneyLines(lines: PlanLine[]): PlanLine[] {
+  return lines.filter((l) => l.flag === 'other_currency');
+}
+
+/** How many kinds of the held lines the gateway counted as `blank_kept`. */
+function heldKept(lines: PlanLine[]): number {
+  return otherMoneyLines(lines)
+    .flatMap((l) => [l.bottle, l.glass])
+    .filter((k) => k.result === 'blank_kept').length;
+}
+
 /** The plan in one sentence, in the order a person reads a menu change. */
 export function planSentence(
   plan: Pick<Plan, 'counts' | 'dormantLocks' | 'current' | 'lines' | 'kitchenLines' | 'notOnThisFile'>,
@@ -142,7 +161,14 @@ export function planSentence(
   if (c.unchanged > 0) parts.push(`find ${plural(c.unchanged, 'price', 'prices')} already the same`);
   const lead = parts.length ? `Choosing this menu will ${parts.join(', ')}.` : 'Choosing this menu changes no price.';
   const more: string[] = [];
-  if (c.blank_kept > 0) more.push(`${plural(c.blank_kept, 'price is', 'prices are')} blank on the menu, so the house keeps its own (flagged)`);
+  // r36 N1: a price printed in another money is not a blank one; it is said on its own.
+  const blank = c.blank_kept - heldKept(plan.lines);
+  if (blank > 0) more.push(`${plural(blank, 'price is', 'prices are')} blank on the menu, so the house keeps its own (flagged)`);
+  const held = otherMoneyLines(plan.lines).length;
+  if (held > 0)
+    more.push(
+      `${plural(held, 'line is', 'lines are')} priced on the menu only in another money, so no price is taken from ${held === 1 ? 'it' : 'them'} and the house keeps its own; nothing converts (flagged)`,
+    );
   const unpriced = plan.lines.filter((l) => l.flag === 'blank_no_house_price').length;
   if (unpriced > 0) more.push(`${plural(unpriced, 'line shows', 'lines show')} no price and the house has none either (flagged)`);
   const unmatched = plan.lines.filter((l) => l.bottle.result === 'not_linked').length;
@@ -224,8 +250,11 @@ export function kindWords(line: PlanLine, k: PlanKind, currency: string | null =
     case 'held_by_lock':
       return `stays ${money(k.lock?.lockedPrice ?? k.housePrice, currency)}, locked`;
     case 'blank_kept':
-      return `blank on the menu; the house keeps ${money(k.housePrice, currency)} (flagged)`;
+      return line.flag === 'other_currency'
+        ? `no price taken: the menu prints it in another money; the house keeps ${money(k.housePrice, currency)} (flagged)`
+        : `blank on the menu; the house keeps ${money(k.housePrice, currency)} (flagged)`;
     case 'blank_never_priced':
+      if (line.flag === 'other_currency') return 'no price taken: the menu prints it in another money, and the house has none (flagged)';
       return line.flag === 'blank_no_house_price' ? 'no price on the menu or at the house (flagged)' : EM;
     case 'not_linked':
       return 'not matched to a wine, so no price';
@@ -468,6 +497,18 @@ export function MenuPlan({
             <li key={`v-${l.menuItemId}`} role="note">
               Check this one: the menu reads {l.name}
               {l.vintage ? ` ${l.vintage}` : ''}, and the locked wine it is linked to is the {l.house?.vintage ?? 'unknown'} vintage.
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {otherMoneyLines(plan.lines).length > 0 ? (
+        <ul className="cl-said" style={{ marginTop: 10, paddingLeft: 18 }} data-testid="menu-plan-other-money">
+          {otherMoneyLines(plan.lines).map((l) => (
+            <li key={`m-${l.menuItemId}`} role="note">
+              {l.name}
+              {l.vintage ? ` ${l.vintage}` : ''}:{' '}
+              {l.flagNote ?? 'the menu prints this line only in another money, so no price is taken from it and the house keeps its own.'}
             </li>
           ))}
         </ul>
