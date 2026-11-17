@@ -56,6 +56,7 @@ import { housePriceHint } from '@/lib/house-number';
 import { Wordmark } from '@/components/mudavym';
 import { isKitchenLine } from '../../../lib/firstProof';
 import { lineStatusWords } from './menu-line-status';
+import { FIND_FROM_LINES, lineMatches } from './menu-find';
 import '../../cellar/next/cellar-next.css';
 
 const EM = '—';
@@ -516,6 +517,8 @@ export default function MenuNext() {
   const [pricing, setPricing] = useState<{ id: string; saving: boolean } | null>(null);
   const [priceNote, setPriceNote] = useState<{ lineId: string; tone: 'alert' | 'said'; text: string } | null>(null);
   const lines = q.data?.items ?? [];
+  // r41 R4: find a line by a few letters; the whole menu is still read and counted.
+  const [find, setFind] = useState('');
   // One price changed at a time, field by field (the gateway corrects one field
   // per call), and the menu is read again after, so the row shows what was stored.
   const savePrices = async (line: MenuLine, draft: PriceDraft) => {
@@ -547,8 +550,12 @@ export default function MenuNext() {
       await queryClient.invalidateQueries({ queryKey: ['menu', 'active', activeRestaurantId] });
     }
   };
-  const drinks = lines.filter((l) => !isKitchenMenuLine(l));
-  const kitchen = lines.filter(isKitchenMenuLine);
+  const finding = lines.length >= FIND_FROM_LINES && find.trim() !== '';
+  const shown = finding ? lines.filter((l) => lineMatches(l, find)) : lines;
+  const allDrinks = lines.filter((l) => !isKitchenMenuLine(l));
+  const allKitchen = lines.filter(isKitchenMenuLine);
+  const drinks = shown.filter((l) => !isKitchenMenuLine(l));
+  const kitchen = shown.filter(isKitchenMenuLine);
   // The answer to a price change sits right under its line, where the person clicked.
   const row = (line: MenuLine, testId?: string, dish = false) => (
     <Fragment key={line.id}>
@@ -657,9 +664,9 @@ export default function MenuNext() {
                 the name is not said: a menu with a dessert on it is not a wine
                 list, and the kept menus below are told apart by when they were read. */}
             <p className="cl-standing" style={{ fontSize: 15.5 }} data-testid="menu-standing">
-              {drinks.length} {drinks.length === 1 ? 'drink' : 'drinks'} on the current menu
-              {kitchen.length > 0
-                ? `, and ${kitchen.length} ${kitchen.length === 1 ? 'line' : 'lines'} from the kitchen, set apart below`
+              {allDrinks.length} {allDrinks.length === 1 ? 'drink' : 'drinks'} on the current menu
+              {allKitchen.length > 0
+                ? `, and ${allKitchen.length} ${allKitchen.length === 1 ? 'line' : 'lines'} from the kitchen, set apart below`
                 : ''}
               .
             </p>
@@ -704,6 +711,35 @@ export default function MenuNext() {
               })()}
             </div>
 
+            {lines.length >= FIND_FROM_LINES ? (
+              <div className="cl-row-controls" style={{ marginTop: 16 }} data-testid="menu-find">
+                <label className="cl-dim" style={{ fontSize: 12 }} htmlFor="menu-find-input">
+                  Find a line
+                </label>
+                <input
+                  id="menu-find-input"
+                  type="search"
+                  className="cl-field cl-focus"
+                  value={find}
+                  onChange={(e) => setFind(e.target.value)}
+                  placeholder="Name, producer, section, region or year"
+                  style={{ minWidth: 220 }}
+                />
+                {finding ? (
+                  <button type="button" className="cl-btn cl-focus" data-testid="menu-find-clear" onClick={() => setFind('')}>
+                    Show every line
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+            {finding ? (
+              <p className="cl-said" role="status" style={{ fontSize: 12, marginTop: 6 }} data-testid="menu-find-said">
+                {shown.length === 0
+                  ? `No line on the current menu matches "${find.trim()}". The menu has ${lines.length} lines; none was changed.`
+                  : `Showing ${shown.length} of ${lines.length} lines that match "${find.trim()}": ${drinks.length} ${drinks.length === 1 ? 'drink' : 'drinks'}${kitchen.length > 0 ? `, ${kitchen.length} from the kitchen` : ''}.`}
+              </p>
+            ) : null}
+
             <div style={{ overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10, marginTop: 16 }}>
               <table className="cl-table" style={{ width: '100%' }} aria-label="Drinks on the current menu">
                 {head(false)}
@@ -711,7 +747,9 @@ export default function MenuNext() {
                   {drinks.length === 0 ? (
                     <tr>
                       <td colSpan={DRINK_COLUMNS} className="cl-said" style={{ padding: 14 }}>
-                        {kitchen.length === 0
+                        {finding
+                          ? 'No drink matches.'
+                          : kitchen.length === 0
                           ? canManage
                             ? 'Nothing on the menu yet — add the first line above.'
                             : 'Nothing on the menu yet.'
