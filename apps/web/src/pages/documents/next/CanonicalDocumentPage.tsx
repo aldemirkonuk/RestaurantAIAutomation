@@ -171,7 +171,14 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
   })
   const itemName = (inventoryId: string): string | null => {
     const it = (itemsQ.data ?? []).find((x) => x.id === inventoryId)
-    if (!it) return null
+    if (!it) {
+      // Never the raw id. A failed read and a read still on its way are said
+      // as what they are; only a finished read that lacks the id falls to the
+      // shelf row's own "does not name" wording.
+      if (itemsQ.isError) return 'an item (the names could not be loaded)'
+      if (itemsQ.isPending) return 'an item (its name is loading)'
+      return null
+    }
     if (!it.wineName) {
       // A food or supply good has no wine name; the house's own name for it
       // is the row's `display_name` (the gateway sends the raw row). A bottle

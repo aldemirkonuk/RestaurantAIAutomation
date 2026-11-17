@@ -324,4 +324,22 @@ describe('CanonicalDocumentPage — a line that names a good says its name, not 
     const row = await screen.findByTestId('shelf-linked')
     await waitFor(() => expect(row.textContent).toContain('SYNTHETIC Red 2019 · 750 ml'))
   })
+
+  it('a good the list does not carry reads as an unnamed item, never as its id', async () => {
+    documentMock.mockResolvedValue(paper('doc-1', [naming('inv-gone')]))
+    inventoryMock.mockResolvedValue([{ id: 'inv-other', wineName: null, display_name: 'SYNTHETIC Salt' }])
+    render(tree(newClient(), 'rest-A', 'doc-1'))
+    const row = await screen.findByTestId('shelf-linked')
+    await waitFor(() => expect(row.textContent).toContain('the list does not name'))
+    expect(row.textContent).not.toContain('inv-gone')
+  })
+
+  it('a failed names read says the names could not be loaded, not the id', async () => {
+    documentMock.mockResolvedValue(paper('doc-1', [naming('inv-food')]))
+    inventoryMock.mockRejectedValue(new Error('boom'))
+    render(tree(newClient(), 'rest-A', 'doc-1'))
+    const row = await screen.findByTestId('shelf-linked')
+    await waitFor(() => expect(row.textContent).toContain('names could not be loaded'))
+    expect(row.textContent).not.toContain('inv-food')
+  })
 })

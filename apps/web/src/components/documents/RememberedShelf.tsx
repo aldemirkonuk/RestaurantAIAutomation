@@ -48,6 +48,9 @@ export interface RememberedShelfProps {
   itemVintage?: (id: string) => number | null
 }
 
+/** A raw id is not a name a person can check; say the name is missing instead. */
+const UNNAMED = 'an item the list does not name'
+
 const ROW: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
@@ -113,7 +116,7 @@ export function RememberedShelf({
             ? 'From the order line: '
             : 'Linked to '}
           <strong style={{ color: 'var(--ink-1, #2B2721)', fontWeight: 500 }}>
-            {name ?? line.inventoryId}
+            {name ?? UNNAMED}
           </strong>
           {vintageNote(line.inventoryId)}
         </span>
@@ -157,7 +160,7 @@ export function RememberedShelf({
           onClick={() => void run(line.proposedInventoryId, 'remembered')}
           data-testid="shelf-accept"
         >
-          ✓ {name ?? line.proposedInventoryId}
+          ✓ {name ?? UNNAMED}
         </button>
         <span>
           {line.proposedSentence}
