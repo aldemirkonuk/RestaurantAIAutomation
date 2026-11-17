@@ -1179,34 +1179,49 @@ export class ReceivingService {
     if (ordersError) throw new Error(`The deliveries to decide could not be read (${ordersError.message}).`);
     if (creditsError) throw new Error(`The open vendor claims could not be read (${creditsError.message}).`);
 
-    // What is still owed, from the ledger (ADR 0192 amendment, 2026-09-21):
-    // the order's bottles less what the shelf holds, in bottles. It used to be
-    // `procurement_orders.backorder_quantity`, written once per verification
-    // and never moved by a later truck. A failed ledger read reads as
-    // unknown on each row it covered, never as zero owed.
-    const shelf = await readShelfReceived(this.db.getClient(), restaurantId, (orders ?? []) as any[]);
+    // The shelf, the vendors' names and the goods' names need only the
+    // orders, so they are read together: a slow store paid three round trips
+    // in a row for one page (r41 invoices audit, P10). Each keeps its own
+    // failure rule below.
+    const providerIds = Array.from(
+      new Set((orders ?? []).map((o) => o.provider_id).filter(Boolean)),
+    ) as string[];
+    const inventoryIds = Array.from(
+      new Set((orders ?? []).map((o) => o.inventory_id).filter(Boolean)),
+    ) as string[];
+    const client = this.db.getClient();
+    const [shelf, providerRead, itemRead] = await Promise.all([
+      // What is still owed, from the ledger (ADR 0192 amendment, 2026-09-21):
+      // the order's bottles less what the shelf holds, in bottles. It used to
+      // be `procurement_orders.backorder_quantity`, written once per
+      // verification and never moved by a later truck. A failed ledger read
+      // reads as unknown on each row it covered, never as zero owed.
+      readShelfReceived(this.db.getClient(), restaurantId, (orders ?? []) as any[]),
+      providerIds.length > 0
+        ? client.from("providers").select("id, name").in("id", providerIds)
+        : null,
+      inventoryIds.length > 0
+        ? client
+            .from("restaurant_inventory")
+            .select("id, wine_name, display_name")
+            .eq("restaurant_id", restaurantId)
+            .in("id", inventoryIds)
+        : null,
+    ]);
 
     // The vendor box (sketch 107, direction A) needs a name to group by — F2 in
     // 06-pages/receiving.md §15: the old hook read `providerName`, which
     // `mapOrderRow` never emitted. A failed lookup here is named, not silently
     // dropped: `providerNamesUnavailable` lets the grid say so instead of
     // grouping every row under "unknown vendor" as if that were measured.
-    const providerIds = Array.from(
-      new Set((orders ?? []).map((o) => o.provider_id).filter(Boolean)),
-    ) as string[];
     let providerNameById = new Map<string, string>();
     let providerNamesUnavailable = false;
-    if (providerIds.length > 0) {
-      const { data: providers, error: providersErr } = await this.db
-        .getClient()
-        .from("providers")
-        .select("id, name")
-        .in("id", providerIds);
-      if (providersErr) {
+    if (providerRead) {
+      if (providerRead.error) {
         providerNamesUnavailable = true;
       } else {
         providerNameById = new Map(
-          (providers ?? []).map((p: any) => [p.id as string, p.name as string]),
+          (providerRead.data ?? []).map((p: any) => [p.id as string, p.name as string]),
         );
       }
     }
@@ -1215,25 +1230,16 @@ export class ReceivingService {
     // by what was ordered, not only by its order number. Same failure rule
     // as the vendor names: a failed lookup is said once
     // (`itemNamesUnavailable`), and each row's name is null, never a guess.
-    const inventoryIds = Array.from(
-      new Set((orders ?? []).map((o) => o.inventory_id).filter(Boolean)),
-    ) as string[];
     let itemNameById = new Map<string, string>();
     let itemNamesUnavailable = false;
-    if (inventoryIds.length > 0) {
-      const { data: invRows, error: invErr } = await this.db
-        .getClient()
-        .from("restaurant_inventory")
-        .select("id, wine_name, display_name")
-        .eq("restaurant_id", restaurantId)
-        .in("id", inventoryIds);
-      if (invErr) {
+    if (itemRead) {
+      if (itemRead.error) {
         itemNamesUnavailable = true;
       } else {
         const named = (v: unknown) =>
           typeof v === "string" && v.trim() !== "" ? v.trim() : null;
         itemNameById = new Map(
-          (invRows ?? [])
+          (itemRead.data ?? [])
             .map((r: any) => [r.id as string, named(r.wine_name) ?? named(r.display_name)] as const)
             .filter((e): e is readonly [string, string] => e[1] !== null),
         );
