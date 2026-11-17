@@ -220,13 +220,36 @@ export function useMarkThreadSeen() {
   const house = useHouse();
   const qc = useQueryClient();
   return useMutation<unknown, unknown, SeenMark>({
-    mutationFn: async (mark) =>
-      (await apiClient.post('/mail/thread/seen', undefined, { params: { key: mark.key, with: mark.with, through: mark.through } }))
-        .data,
-    onSuccess: () => {
+    mutationFn: async (mark) => {
+      // Opening a thread again in the same session sends nothing when the
+      // gateway already kept this very mark; the mark is idempotent, so this
+      // only saves the round trip and the two list reads that follow it.
+      const id = seenId(house, mark);
+      const kept = keptMarks(qc);
+      if (kept.has(id)) return NOT_SENT;
+      const res = await apiClient.post('/mail/thread/seen', undefined, {
+        params: { key: mark.key, with: mark.with, through: mark.through },
+      });
+      kept.add(id);
+      return res.data;
+    },
+    onSuccess: (sent) => {
+      // Nothing was sent, so nothing on screen can have changed.
+      if (sent === NOT_SENT) return;
       for (const root of ['mail-people', 'mail-threads']) {
         void qc.invalidateQueries({ queryKey: [root, house] });
       }
     },
   });
 }
+
+const NOT_SENT = Symbol('mark already kept');
+
+/** Marks the gateway kept, per query client (so per session, never shared across tests or users). */
+const KEPT_MARKS = new WeakMap<object, Set<string>>();
+function keptMarks(qc: object): Set<string> {
+  let set = KEPT_MARKS.get(qc);
+  if (!set) KEPT_MARKS.set(qc, (set = new Set()));
+  return set;
+}
+const seenId = (house: string, m: SeenMark) => `${house}|${m.with}|${m.key}|${m.through}`;
