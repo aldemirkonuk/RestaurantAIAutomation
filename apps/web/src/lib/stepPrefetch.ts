@@ -9,7 +9,8 @@
  */
 export type PrefetchStep = "get-started" | "house" | "house-menu";
 
-const loaders: Record<PrefetchStep, () => Promise<unknown>> = {
+/** Exported so a test can count calls; nothing else changes it. */
+export const stepLoaders: Record<PrefetchStep, () => Promise<unknown>> = {
   "get-started": () => import("../pages/GetStarted"),
   house: () => import("../pages/HouseContents"),
   "house-menu": () => import("../pages/HouseMenu"),
@@ -33,7 +34,7 @@ export function prefetchStep(name: PrefetchStep): void {
   if (fetched.has(name) || connectionIsThin()) return;
   fetched.add(name);
   try {
-    loaders[name]().catch(() => {});
+    stepLoaders[name]().catch(() => {});
   } catch {
     // A loader that throws before it is a promise is the same as a failed fetch.
   }

@@ -33,11 +33,28 @@ describe("stepPrefetch", () => {
     connection(undefined);
   });
 
-  it("fetches a step once, however many times it is asked for", async () => {
+  it("fetches a step once, however many times it is asked for", () => {
+    const load = vi.fn(async () => undefined);
+    m.stepLoaders["get-started"] = load;
     m.prefetchStep("get-started");
     m.prefetchStep("get-started");
-    await vi.dynamicImportSettled();
-    expect(loaded.names).toEqual(["get-started"]);
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  it("loads the page App.tsx lazy-loads, by its own specifier", async () => {
+    m.prefetchStep("get-started");
+    await vi.waitFor(() => expect(loaded.names).toEqual(["get-started"]));
+  });
+
+  it("drops a failed fetch, and a loader that throws at once", () => {
+    m.stepLoaders.house = () => Promise.reject(new Error("offline"));
+    m.stepLoaders["house-menu"] = () => {
+      throw new Error("sync");
+    };
+    expect(() => {
+      m.prefetchStep("house");
+      m.prefetchStep("house-menu");
+    }).not.toThrow();
   });
 
   it("fetches nothing when the connection asks to save data", async () => {
