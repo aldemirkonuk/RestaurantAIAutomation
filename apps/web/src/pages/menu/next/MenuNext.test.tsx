@@ -897,3 +897,42 @@ describe("MenuNext — a kept price in the flag note is house money (r28 G19)", 
     expect(note.textContent).not.toContain('1250.00');
   });
 });
+
+// r41 R4: a long menu can be found by a few letters.
+describe('MenuNext - find a line (r41 R4)', () => {
+  const many = (n: number) =>
+    Array.from({ length: n }, (_, i) => line({ id: `d${i}`, name: `Wine ${i}`, category: 'red', bottle_price: 30 + i, kitchen_line: false }));
+
+  it('offers no find box on a short menu', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: many(5) }));
+    mount();
+    await screen.findAllByTestId('menu-row');
+    expect(screen.queryByTestId('menu-find')).not.toBeInTheDocument();
+  });
+
+  it('narrows both tables, says how many of how many, and keeps the menu counts', async () => {
+    const items = [
+      ...many(12),
+      line({ id: 'r1', name: 'Yeni Rakı', category: 'spirit', bottle_price: 900, kitchen_line: false }),
+      line({ id: 'k1', name: 'Rakı balığı', category: 'main', bottle_price: 40, kitchen_line: true }),
+    ];
+    mockGetMenu.mockResolvedValue(menu({ items }));
+    mount();
+    fireEvent.change(await screen.findByLabelText('Find a line'), { target: { value: 'RAKI' } });
+    expect(screen.getAllByTestId('menu-row')).toHaveLength(1);
+    expect(screen.getAllByTestId('menu-kitchen-row')).toHaveLength(1);
+    expect(screen.getByTestId('menu-find-said')).toHaveTextContent('Showing 2 of 14 lines that match "RAKI": 1 drink, 1 from the kitchen.');
+    expect(screen.getByTestId('menu-standing')).toHaveTextContent('13 drinks on the current menu, and 1 line from the kitchen');
+    fireEvent.click(screen.getByTestId('menu-find-clear'));
+    expect(screen.getAllByTestId('menu-row')).toHaveLength(13);
+    expect(screen.queryByTestId('menu-find-said')).not.toBeInTheDocument();
+  });
+
+  it('says when nothing matches, and that nothing was changed', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: many(12) }));
+    mount();
+    fireEvent.change(await screen.findByLabelText('Find a line'), { target: { value: 'zzz' } });
+    expect(screen.getByTestId('menu-find-said')).toHaveTextContent('No line on the current menu matches "zzz". The menu has 12 lines; none was changed.');
+    expect(screen.queryAllByTestId('menu-row')).toHaveLength(0);
+  });
+});
