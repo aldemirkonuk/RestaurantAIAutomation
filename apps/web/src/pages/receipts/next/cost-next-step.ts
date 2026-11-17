@@ -45,6 +45,8 @@ export interface SpineState {
   state: string;
   agreedAt: string | null;
   verifiedAt: string | null;
+  /** Lots the door booked under it: 0 is none, null is unread, absent is an older gateway (unread). */
+  goodsOnShelf?: number | null;
 }
 
 export type CostStepKind =
@@ -124,17 +126,28 @@ export function costNextStep(
             'Its delivery is agreed. An owner or a manager verifies it, and these prices become the goods’ cost then.',
           link: null,
         };
+  // Nothing is "on the shelf at a provisional cost" unless the door booked
+  // something: said by what the books hold, never assumed (r39 walk-w2 I2).
+  if (d.goodsOnShelf === 0)
+    return {
+      kind: 'agree',
+      sentence:
+        'No goods from this delivery are on the shelf yet, so there is no cost, provisional or otherwise. Count them at the door; these prices become their cost when the delivery is agreed and then verified.',
+      link: { to: `${page}?view=door`, label: 'Count them at the door' },
+    };
+  const onShelf =
+    typeof d.goodsOnShelf === 'number'
+      ? 'Its goods are on the shelf at a provisional cost, set at the door before any invoice priced them.'
+      : 'Whether its goods are on the shelf could not be read, so their cost is not stated.';
   return settles
     ? {
         kind: 'agree',
-        sentence:
-          'Its goods are on the shelf at a provisional cost. These prices become their cost when the delivery is agreed and then verified.',
+        sentence: `${onShelf} These prices become their cost when the delivery is agreed and then verified.`,
         link: { to: page, label: 'Agree and verify the delivery' },
       }
     : {
         kind: 'agree',
-        sentence:
-          'Its goods are on the shelf at a provisional cost. An owner or a manager agrees and verifies this delivery, and these prices become their cost then.',
+        sentence: `${onShelf} An owner or a manager agrees and verifies this delivery, and these prices become their cost then.`,
         link: null,
       };
 }
