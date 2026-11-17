@@ -324,6 +324,15 @@ describe('ReceiptsNext', () => {
     expect(screen.getByText(/PO-9 · 24 counted · 5h ago/)).toBeInTheDocument();
   });
 
+  it('an old open count says days and overdue, not thousands of hours', async () => {
+    api.unverified = {
+      items: [{ orderId: 'o8', orderNumber: 'PO-8', countedQtyBottles: 12, countedAt: '', ageHours: 7199, severity: 'overdue' }],
+    };
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    expect(await screen.findByText(/PO-8 · 12 counted · 299 days ago, overdue/)).toBeInTheDocument();
+    expect(container.textContent).not.toContain('7199h');
+  });
+
   it('the door strip says neither "btl" nor a slice of the order id (W38)', async () => {
     api.unverified = {
       items: [{ orderId: 'o9abcdef-1234', orderNumber: null, countedQtyBottles: 6, countedAt: '', ageHours: 2, severity: 'fresh' }],
