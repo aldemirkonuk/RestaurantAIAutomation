@@ -244,7 +244,9 @@ export default function RowDropdown(props: RowDropdownProps) {
   const blocked = removeBlocked(row);
   // Only marking INACTIVE is held back; marking a row active again never strands stock.
   const toggleBlocked = row.active === true ? inactiveBlocked(row) : null;
-  const title = row.name ?? 'This title';
+  // What one row is called: a kitchen good is a good, a drink keeps "title".
+  const thing = kitchenGood ? 'good' : 'title';
+  const title = row.name ?? `This ${thing}`;
   const unit = useRestaurantSettingsStore((st) => st.measurementUnit);
 
   // Mark inactive / active: the legacy page's toggleActive
@@ -259,7 +261,7 @@ export default function RowDropdown(props: RowDropdownProps) {
     try {
       await updateInventoryItem(row.id, { isActive: next }, props.restaurantId ?? undefined);
       toast.success(
-        next ? `${title} marked active` : `${title} marked inactive. The book lists active titles only, so it leaves this list.`,
+        next ? `${title} marked active` : `${title} marked inactive. The book lists active ${thing === 'good' ? 'goods' : 'titles'} only, so it leaves this list.`,
       );
       void queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
     } catch (e) {
@@ -340,7 +342,7 @@ export default function RowDropdown(props: RowDropdownProps) {
   const copyName = async () => {
     setMoreOpen(false);
     try {
-      await navigator.clipboard.writeText(oneLine(row.name ?? 'Unnamed title'));
+      await navigator.clipboard.writeText(oneLine(row.name ?? `Unnamed ${thing}`));
       toast.success('Name copied');
     } catch {
       toast.error('Could not copy to the clipboard.');
@@ -364,7 +366,7 @@ export default function RowDropdown(props: RowDropdownProps) {
       className="iv-drop"
       // The drawer mounts an evidence-only copy beside the acts: it is named apart, never a second "opened" row.
       data-testid={acts ? 'row-dropdown' : 'row-evidence'}
-      aria-label={acts ? `${row.name ?? 'This title'}, opened` : `${row.name ?? 'This title'}: the evidence`}
+      aria-label={acts ? `${title}, opened` : `${title}: the evidence`}
     >
       {has('facts') && head.length > 0 ? (
         <dl className="iv-head-facts">
@@ -396,10 +398,10 @@ export default function RowDropdown(props: RowDropdownProps) {
         </div>
       ) : null}
 
-      {paperShown ? <Paperwork detail={detail} currency={currency} providers={props.providers} /> : null}
+      {paperShown ? <Paperwork detail={detail} currency={currency} providers={props.providers} thing={thing} /> : null}
 
       {acts ? (
-      <div className="iv-actions" role="group" aria-label="What to do with this title">
+      <div className="iv-actions" role="group" aria-label={`What to do with this ${thing}`}>
         <button type="button" className="iv-btn iv-focus" onClick={() => setSheet('count')}>
           Record a count
         </button>
@@ -426,7 +428,11 @@ export default function RowDropdown(props: RowDropdownProps) {
           onClose={() => setMoreOpen(false)}
           anchorRef={moreRef}
           width={220}
-          label="More things to do with this title: move bottles between zones, record a pour by hand, reconcile shadow into live, export or copy it, mark it inactive, or remove it from inventory"
+          label={
+            kitchenGood
+              ? `More things to do with this good: move it between zones, reconcile shadow into live, export or copy it, mark it inactive, or remove it from inventory`
+              : `More things to do with this ${thing}: move bottles between zones, record a pour by hand, reconcile shadow into live, export or copy it, mark it inactive, or remove it from inventory`
+          }
         >
           <div className="iv-menu" role="menu" onKeyDown={(e) => onMenuKeys(e, moreRef.current, () => setMoreOpen(false))}>
             <button
@@ -635,6 +641,7 @@ function WhereTheCountComesFrom({
 /* ── column 2 ──────────────────────────────────────────────────────────── */
 
 function HowFastItPours({ row, uom, kind }: { row: InvRow; uom: string | null; kind: string | null }) {
+  const thing = kind === 'food' || kind === 'supply' ? 'good' : 'title';
   const record = useRowRecord(row.name);
   const pos = record.data?.books?.find((b) => b.book === 'pos') ?? null;
   const tillLines: TillLine[] = useMemo(
@@ -657,7 +664,7 @@ function HowFastItPours({ row, uom, kind }: { row: InvRow; uom: string | null; k
       ? `between the counts of ${shortDate(row.usageSince)} and ${shortDate(row.usageUntil)}`
       : 'between its last counts';
   const sentence = !row.analyticsReadable
-    ? 'Selling pace could not be read — the sales figures did not answer for this read. This is a read error, not a title with nothing sold.'
+    ? `Selling pace could not be read — the sales figures did not answer for this read. This is a read error, not a ${thing} with nothing sold.`
     : row.usageSource === 'counts'
       ? row.velocity !== null && row.velocity > 0
         ? `About ${usageWordsOf(row.velocity, uom)} a day: ${row.usageQty === null ? 'what was used' : `${fmtQty(row.usageQty, uom)} used`} ${between}${lasts}`
@@ -665,7 +672,7 @@ function HowFastItPours({ row, uom, kind }: { row: InvRow; uom: string | null; k
       : row.usageSource === null && (kind === 'food' || kind === 'supply')
         ? NOT_DRAWN_BY_SALES
     : row.velocity === null
-      ? 'Selling pace: unmeasured — the analytics have nothing for this title yet.'
+      ? `Selling pace: unmeasured — the analytics have nothing for this ${thing} yet.`
       : row.velocity === 0
         ? 'Nothing sold lately, so there is no runway to give.'
         : row.usageSource === 'sales' && row.usageQty !== null && row.usageSince && row.usageUntil
@@ -689,7 +696,7 @@ function HowFastItPours({ row, uom, kind }: { row: InvRow; uom: string | null; k
           {pos?.readable === false
             ? 'The till could not be read. This is unread, not a quiet night.'
             : row.velocity !== null && row.velocity > 0
-              ? 'That pace is the last 30 days of sales on the books. The day-by-day chart is not drawn for this title yet.'
+              ? `That pace is the last 30 days of sales on the books. The day-by-day chart is not drawn for this ${thing} yet.`
               : row.velocity === 0
                 ? 'No day-by-day chart either: no sales on the books in the last 30 days.'
                 : 'No day-by-day chart either.'}
@@ -989,10 +996,12 @@ function Paperwork({
   detail,
   currency,
   providers,
+  thing,
 }: {
   detail: ReturnType<typeof useRowDetail>;
   currency: HouseCurrency;
   providers: Provider[] | null;
+  thing: string;
 }) {
   const vendorOf = (paper: PaperRead | undefined) => {
     const id = paper?.docs ? invoiceOf(paper.docs)?.provider_id : null;
@@ -1004,7 +1013,7 @@ function Paperwork({
       <h4 className="iv-sec">Paperwork</h4>
       {detail.purchasesError ? (
         <p className="iv-note">
-          The receipts could not be read. This is unread, not a title never bought.{' '}
+          The receipts could not be read. This is unread, not a {thing} never bought.{' '}
           <button type="button" className="iv-linkish iv-focus" onClick={detail.rereadPurchases}>
             Read again
           </button>
@@ -1012,7 +1021,7 @@ function Paperwork({
       ) : detail.purchases === null ? (
         <p className="iv-note">Reading the receipts…</p>
       ) : detail.purchases.length === 0 ? (
-        <p className="iv-note">No delivery of this title is on the ledger.</p>
+        <p className="iv-note">No delivery of this {thing} is on the ledger.</p>
       ) : (
         <>
           <table className="iv-papertable">
@@ -1064,9 +1073,9 @@ function Paperwork({
           <p className="iv-note">
             Receipts opens at the invoice, not the line: it has no link to one line yet.{' '}
             <Link className="iv-linkish iv-focus" to="/receipts">
-              All {detail.purchasesTotal ?? detail.purchases.length} receipts of this title
+              All {detail.purchasesTotal ?? detail.purchases.length} receipts of this {thing}
             </Link>{' '}
-            — Receipts cannot filter by title yet, so this opens the whole list.
+            — Receipts cannot filter by {thing} yet, so this opens the whole list.
           </p>
         </>
       )}
@@ -1075,7 +1084,7 @@ function Paperwork({
         <Link className="iv-linkish iv-focus" to="/documents-reports" data-testid="row-view-ledger">
           View the ledger
         </Link>{' '}
-        — it opens the house’s documents and reports, not this title alone.
+        — it opens the house’s documents and reports, not this {thing} alone.
       </p>
     </section>
   );
