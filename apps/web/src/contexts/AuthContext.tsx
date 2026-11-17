@@ -215,6 +215,14 @@ export interface AuthContextType {
   activeRestaurantId: string | null;
   /** Role at the active branch from user_restaurant_access; null if unknown */
   activeRole: "owner" | "manager" | "staff" | null;
+  /**
+   * Where the role read stands: `loading` while `/auth/me/role` is in flight,
+   * `known` once it named a role, `unknown` when it failed, named none, or there
+   * is no house or token to ask about. `activeRole` is null in the first and
+   * third states alike; a page that must tell "still asking" from "not told"
+   * reads this.
+   */
+  activeRoleState: "loading" | "known" | "unknown";
   availableRestaurants: RestaurantBranch[];
   /**
    * Move the session into another of the person's houses (or choose one when
@@ -370,6 +378,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [activeRole, setActiveRole] = useState<
     "owner" | "manager" | "staff" | null
   >(null);
+  // Starts `loading`: a house is about to be asked, and a first frame that
+  // reads "unknown" would draw a refusal for the length of one request.
+  const [activeRoleState, setActiveRoleState] = useState<
+    "loading" | "known" | "unknown"
+  >("loading");
   const branchFetchSeq = React.useRef(0);
   // Optional on purpose: the app nests this provider inside
   // QueryClientProvider (App.tsx), but `useQueryClient()` throws without one.
@@ -603,15 +616,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!user) {
       setActiveRole(null);
+      setActiveRoleState("unknown");
       return;
     }
     const tid = activeRestaurantId;
     const token = localStorage.getItem("accessToken");
     if (!tid || !token || !isUuid(tid)) {
       setActiveRole(null);
+      setActiveRoleState("unknown");
       return;
     }
     let cancelled = false;
+    setActiveRoleState("loading");
     void (async () => {
       try {
         const { data } = await api.get("/api/v1/auth/me/role", {
@@ -621,9 +637,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const r = data.role as string | null | undefined;
         if (r && ["owner", "manager", "staff"].includes(r)) {
           setActiveRole(r as "owner" | "manager" | "staff");
-        } else setActiveRole(null);
+          setActiveRoleState("known");
+        } else {
+          setActiveRole(null);
+          setActiveRoleState("unknown");
+        }
       } catch {
-        if (!cancelled) setActiveRole(null);
+        if (!cancelled) {
+          setActiveRole(null);
+          setActiveRoleState("unknown");
+        }
       }
     })();
     return () => {
@@ -1101,6 +1124,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       delete api.defaults.headers.common["X-Restaurant-Id"];
       setUser(null);
       setActiveRole(null);
+      setActiveRoleState("unknown");
     }
   }, [queryClient]);
 
@@ -1172,6 +1196,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearError,
     activeRestaurantId,
     activeRole,
+    activeRoleState,
     availableRestaurants,
     setActiveRestaurantId,
     login,

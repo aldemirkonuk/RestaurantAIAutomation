@@ -337,7 +337,9 @@ export function useReportsNextData(
    */
   alsoRead: AnalysisId | null = null,
 ): ReportsNextData {
-  const { activeRestaurantId, activeRole } = useAuth();
+  const { activeRestaurantId, activeRole, activeRoleState } = useAuth();
+  // Only an explicit `loading` waits: a caller that gives no state reads as it did.
+  const roleLoading = activeRoleState === 'loading';
   const rid = activeRestaurantId;
   const qc = useQueryClient();
   const {
@@ -362,7 +364,10 @@ export function useReportsNextData(
   const hadGoodAnswerFor = useRef<string | null>(null);
   if (answeredCleanly) hadGoodAnswerFor.current = userId;
   const hadGoodAnswer = userId !== null && hadGoodAnswerFor.current === userId;
-  const sheetKnown = answeredCleanly || (hadGoodAnswer && !prefsPlaceholder);
+  // While the role is still being asked, `decodeSheet` has no role to clip
+  // the house sheet to, so a staff reader would be shown the whole sheet and
+  // then lose cuttings. The outlines hold until the role answers.
+  const sheetKnown = !roleLoading && (answeredCleanly || (hadGoodAnswer && !prefsPlaceholder));
   const sheetStale = hadGoodAnswer && prefsError
     ? 'The sheet could not be refreshed just now; what is shown is the last one that loaded.'
     : null;
@@ -405,10 +410,11 @@ export function useReportsNextData(
     const out = new Set<AnalysisId>();
     for (const id of active) {
       const readers = CATALOGUE[id].readers;
-      if (readers && (activeRole === null || !readers.includes(activeRole))) out.add(id);
+      if (readers && (roleLoading || activeRole === null || !readers.includes(activeRole)))
+        out.add(id);
     }
     return out;
-  }, [active, activeRole]);
+  }, [active, activeRole, roleLoading]);
 
   /**
    * One raw payload per URL, shared by every register that reads it, so the
@@ -487,6 +493,12 @@ export function useReportsNextData(
       }
       const readers = CATALOGUE[id].readers;
       if (readers && heldBack.has(id)) {
+        if (roleLoading) {
+          // The role is still being asked: nothing is withheld yet, so the
+          // register draws as a skeleton, not as a refusal that then lifts.
+          map[id] = { data: undefined, loading: true, failure: null, refetch: () => {} };
+          return;
+        }
         // Not in flight, not refused by the gateway, not empty: withheld.
         map[id] = {
           data: undefined,
@@ -506,7 +518,7 @@ export function useReportsNextData(
     return map;
     // `results` is a fresh array each render; the ids and their states are what
     // actually matter, and recomputing a map of eight entries is free.
-  }, [active, results, heldBack, activeRole, rid, tillDays]);
+  }, [active, results, heldBack, activeRole, roleLoading, rid, tillDays]);
 
   // One small read, cached with the registers, so every money figure on the
   // sheet prints in the house's own currency rather than `$` (audit G5).
