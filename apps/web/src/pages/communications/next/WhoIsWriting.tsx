@@ -225,6 +225,7 @@ function TrustedSenders({
         key={trusting?.id ?? 'none'}
         sender={trusting}
         houseName={houseName}
+        zone={zone}
         onClose={() => setTrusting(null)}
         onTrust={(s) => writeAndConfirm(s, true)}
       />

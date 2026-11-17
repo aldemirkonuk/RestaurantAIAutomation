@@ -5,7 +5,7 @@
  * zone lands a day early and fails; "1 Jun" with no year fails the year check.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 const h = vi.hoisted(() => ({
@@ -74,5 +74,18 @@ describe("Who is writing's dates are the house's, and say their year", () => {
     h.zone = null;
     mount();
     expect(screen.getByText(/not trusted · updated \d{1,2} Jun 2025/)).toBeInTheDocument();
+  });
+
+  it("the Trust panel's Last changed says the house day and the year", () => {
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Trust skurnik.com' }));
+    expect(screen.getByText('Last changed').nextElementSibling).toHaveTextContent('2 Jun 2025');
+  });
+
+  it("the Trust panel's Last changed with no house zone still says the year", () => {
+    h.zone = null;
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Trust skurnik.com' }));
+    expect(screen.getByText('Last changed').nextElementSibling).toHaveTextContent(/\d{1,2} Jun 2025/);
   });
 });
