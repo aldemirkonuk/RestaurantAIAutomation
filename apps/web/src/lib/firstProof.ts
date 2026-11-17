@@ -69,6 +69,9 @@ const DESSERT_WINE_WORDS = new RegExp(
 type KitchenTestLine = Pick<MenuImportReviewItem, 'category' | 'rawText'> &
   Partial<Pick<MenuImportReviewItem, 'name' | 'producer' | 'vintage' | 'region' | 'grapeVariety'>>
 
+/** The gateway's COCKTAIL_SECTION: a section naming cocktails is a drink section ("Dessert cocktails" is not a dessert). The section only, so a "Prawn cocktail" under Starters stays a dish. */
+const COCKTAIL_SECTION = /(^|[^\p{L}\p{N}])(cocktails?|kokteyl\p{L}*)(?=$|[^\p{L}\p{N}])/u
+
 const filled = (v: string | null | undefined) => typeof v === 'string' && v.trim() !== ''
 
 /**
@@ -87,6 +90,7 @@ export function isKitchenLine(item: KitchenTestLine) {
     return !DESSERT_WINE_WORDS.test(foldForHints(`${item.name ?? ''} ${item.rawText ?? ''}`))
   }
   if (VOCABULARY.has(section)) return false
+  if (COCKTAIL_SECTION.test(foldForHints(section))) return false
   const hay = foldForHints(`${section} ${item.rawText ?? ''}`)
   return HINT_WORDS.test(hay)
 }

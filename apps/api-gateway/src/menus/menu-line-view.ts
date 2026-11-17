@@ -161,6 +161,15 @@ const DESSERT_WINE_WORDS = new RegExp(
 /** The fields of a stored line that only a drink carries. */
 const DRINK_FIELDS = ["vintage", "region", "grape_variety", "producer"] as const;
 
+/**
+ * A section that names cocktails ("Cocktails", "Dessert cocktails", "Kokteyller")
+ * is a drink section, whatever course word shares it: "Dessert cocktails" is not
+ * a dessert. The same word rule as the recipes' `isCocktailLine`, and the web's
+ * `COCKTAIL_SECTION` (firstProof.ts). The section only: a starter called "Prawn
+ * cocktail" sits in a kitchen section and stays a dish.
+ */
+const COCKTAIL_SECTION = /(^|[^\p{L}\p{N}])(cocktails?|kokteyl\p{L}*)(?=$|[^\p{L}\p{N}])/u;
+
 const filled = (v: unknown) => (typeof v === "string" ? v.trim() !== "" : v !== null && v !== undefined);
 
 /**
@@ -186,6 +195,7 @@ export function isKitchenLine(category: unknown, raw: unknown, line?: Record<str
   }
   // "wine" too, as the web's VOCABULARY holds it.
   if (section === "wine" || (MENU_CATEGORY_VOCABULARY as readonly string[]).includes(section)) return false;
+  if (COCKTAIL_SECTION.test(foldForHints(section))) return false;
   const hay = foldForHints(`${section} ${text}`);
   return HINT_WORDS.test(hay);
 }

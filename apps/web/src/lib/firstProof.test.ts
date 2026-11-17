@@ -38,6 +38,15 @@ describe('isKitchenLine (the same test as the gateway\'s menu-line-view.ts)', ()
     expect(isKitchenLine({ category: 'sparkling', rawText: 'Dish Imports, Cava' })).toBe(false)
   })
 
+  it('a section that names cocktails is a drink section, even with a course word in it (r42)', () => {
+    for (const category of ['Dessert cocktails', 'DESSERT COCKTAILS', 'Cocktail desserts', 'Cocktails', 'Dessert Kokteyller', 'Kokteyl Menüsü']) {
+      expect([category, isKitchenLine({ category, rawText: 'Chocolate martini,,,,14' })]).toEqual([category, false])
+    }
+    expect(isKitchenLine({ category: 'Desserts', rawText: 'Tiramisu,,,,12' })).toBe(true)
+    expect(isKitchenLine({ category: 'Starters', rawText: 'Prawn cocktail,,,,11' })).toBe(true)
+    expect(isKitchenLine({ category: "Cocktailers' pasta", rawText: null })).toBe(true)
+  })
+
   it('with no known section, a hint decides as a whole word, plurals too', () => {
     expect(isKitchenLine({ category: null, rawText: 'Desserts: Tiramisu 12' })).toBe(true)
     expect(isKitchenLine({ category: 'Starters', rawText: null })).toBe(true)
