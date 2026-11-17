@@ -324,6 +324,16 @@ export default function DishesPage() {
   const bareIds = figures.byId ? all.filter((d) => !fig(d.id)?.hasRecipe).map((d) => d.id) : [];
   const rows = canEdit && onlyBare ? byAllergen.filter((d) => bareIds.includes(d.id)) : byAllergen;
   const openId = rows.some((d) => d.id === asked) ? asked : null;
+  // A link (the inventory drawer's "used in" lines) to a dish that opens nothing
+  // says why, as /cocktails does: it is not on the list, or the search or a check hides it.
+  const linkNote =
+    asked && dishes.data
+      ? !all.some((d) => d.id === asked)
+        ? 'missing'
+        : openId === null
+          ? 'hidden'
+          : null
+      : null;
 
   const open = (id: string | null) =>
     setParams(
@@ -352,6 +362,17 @@ export default function DishesPage() {
         {say && menu.error ? (
           <p className="cl-said" role="status" style={{ marginTop: 12 }} data-testid="dishes-menu-unread">
             {MENU_PRICES_UNREAD}
+          </p>
+        ) : null}
+
+        {linkNote === 'missing' ? (
+          <p className="cl-said" role="status" style={{ marginTop: 12 }} data-testid="dishes-link-missing">
+            The dish that link names is not on this house’s list. It may have been taken off it.
+          </p>
+        ) : null}
+        {linkNote === 'hidden' ? (
+          <p className="cl-said" role="status" style={{ marginTop: 12 }} data-testid="dishes-link-hidden">
+            The dish that link names is on your list, but the search or a check above hides it.
           </p>
         ) : null}
 
