@@ -7,7 +7,7 @@
  */
 import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider, focusManager, useQuery } from '@tanstack/react-query';
 import { MenuPlan, chooseFailedSentence, kindWords, notOnFileWords, orderedRows, planSentence } from './MenuPlan';
 import { getMenuPlan, makeMenuCurrent, type MenuPlan as Plan, type PlanLine } from '../../../services/api/menus';
@@ -97,8 +97,11 @@ function plan(over: Partial<Plan> = {}): Plan {
   };
 }
 
-function mount(canManage: boolean, onDone = vi.fn()) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function mount(
+  canManage: boolean,
+  onDone = vi.fn(),
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
   render(
     <QueryClientProvider client={client}>
       <MenuPlan menuId="menu-new" canManage={canManage} onDone={onDone} onCancel={vi.fn()} />
@@ -273,6 +276,31 @@ describe('MenuPlan -- the section before the choice (L13)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
     await waitFor(() => expect(mockMake).toHaveBeenCalledWith('menu-new', 'fp-1'));
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(result));
+  });
+
+  it('a menu made current asks the house setup read again; one refused or moved does not', async () => {
+    const setup = () => {
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      client.setQueryData(['onboarding-progress'], { menu_current: false });
+      return client;
+    };
+    const stale = (client: QueryClient) => client.getQueryState(['onboarding-progress'])?.isInvalidated;
+    const press = async () => fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
+
+    mockPlan.mockResolvedValue(plan());
+    mockMake.mockResolvedValue({ outcome: 'made_current' as const, menuId: 'menu-new', previousMenuIds: [], lines: 2, priceSync: { changed: 0, locked: 0 }, flagged: 0, failed: [] });
+    const made = setup();
+    mount(true, vi.fn(), made);
+    await press();
+    await waitFor(() => expect(stale(made)).toBe(true));
+    cleanup();
+
+    mockMake.mockRejectedValue({ response: { status: 409 } });
+    const moved = setup();
+    mount(true, vi.fn(), moved);
+    await press();
+    await screen.findByTestId('menu-plan-moved');
+    expect(stale(moved)).toBe(false);
   });
 
   it('a plan that moved (409) is said, nothing is changed, and it is read again', async () => {
