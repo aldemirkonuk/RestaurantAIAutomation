@@ -622,13 +622,24 @@ export class GoalsService {
     ]);
     const goals = rows.map((g: any) => GoalsService.listedGoal(g, gate));
     const computed = goals.slice(0, GoalsService.MAX_PROGRESS_GOALS);
+    // Goals on one metric whose windows open on the same house day read the
+    // same figure; the list reads it once and hands it to each (r41 reports
+    // gap 6, part 3).
+    const readings = new Map<string, Promise<unknown>>();
     const progress = await Promise.all(
       computed.map(async (g: any, i: number) => {
         try {
           // The stored row just read is the row to score: re-reading it by
           // key per goal was a round trip per goal for the same row (r41
           // reports gap 6).
-          return await this.getGoalProgress(restaurantId, g.id, house, gate, rows[i]);
+          return await this.getGoalProgress(
+            restaurantId,
+            g.id,
+            house,
+            gate,
+            rows[i],
+            readings,
+          );
         } catch (err: any) {
           // One goal whose metric query broke must not blank the other five.
           // `null` progress is rendered as "this goal could not be read",
@@ -714,6 +725,7 @@ export class GoalsService {
     known?: HouseZone,
     gate: SalesGate = {},
     stored?: Record<string, any>,
+    readings?: Map<string, Promise<unknown>>,
   ) {
     const [{ data: goal, error }, house] = await Promise.all([
       stored
@@ -756,14 +768,26 @@ export class GoalsService {
       isSalesGatedGoal(goal.metric_key) && gate.withSales !== true;
     let reading: Awaited<ReturnType<GoalsService["computeMetricWithSeries"]>>;
     try {
-      reading = await this.computeMetricWithSeries(
-        restaurantId,
-        goal.metric_key,
-        periodStart,
-        undefined,
-        zone,
-        gate,
-      );
+      const read = () =>
+        this.computeMetricWithSeries(
+          restaurantId,
+          goal.metric_key,
+          periodStart,
+          undefined,
+          zone,
+          gate,
+        );
+      if (readings) {
+        const key = `${goal.metric_key}|${periodStart}|${zone}`;
+        let shared = readings.get(key);
+        if (!shared) {
+          shared = read();
+          readings.set(key, shared);
+        }
+        reading = (await shared) as typeof reading;
+      } else {
+        reading = await read();
+      }
     } catch (err: any) {
       if (!callerRefused)
         await this.recordReading(restaurantId, goalId, {
