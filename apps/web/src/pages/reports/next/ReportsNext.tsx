@@ -544,26 +544,30 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
             {/* Fraunces speaks only what the ENGINE said — verbatim, or the truth
                 about why it said nothing. This page never writes a sentence. */}
             <p className="rp-voice">{opening}</p>
-            {openingSilent && (
-              <p className="rp-cap" data-testid="rp-opening-step">
-                <NextStep source="start" />
-              </p>
-            )}
-            {openingAge && (
-              <p className="rp-cap" data-testid="rp-opening-age">
-                Written by the engine {openingAge}. The registers below are read live.
-              </p>
-            )}
-            {moneyLine && (
-              <p className="rp-cap" data-testid="rp-money-line">
-                {moneyLine}{' '}
-                {data.currency?.state === 'unstated' && (
-                  <Link to="/settings?tab=currency" className="rp-link rp-ink rp-focus">
-                    Record it in Settings
-                  </Link>
-                )}
-              </p>
-            )}
+            {/* The caption lines live in one slot that keeps the height of the tallest
+                (the day-one next step), so their landing does not move the sheet (r47 w3 F1). */}
+            <div className="rp-caps" data-testid="rp-caps">
+              {openingSilent && (
+                <p className="rp-cap" data-testid="rp-opening-step">
+                  <NextStep source="start" />
+                </p>
+              )}
+              {openingAge && (
+                <p className="rp-cap" data-testid="rp-opening-age">
+                  Written by the engine {openingAge}. The registers below are read live.
+                </p>
+              )}
+              {moneyLine && (
+                <p className="rp-cap" data-testid="rp-money-line">
+                  {moneyLine}{' '}
+                  {data.currency?.state === 'unstated' && (
+                    <Link to="/settings?tab=currency" className="rp-link rp-ink rp-focus">
+                      Record it in Settings
+                    </Link>
+                  )}
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="rp-row" style={{ gap: 8 }}>

@@ -26,6 +26,8 @@
  * case below names a string or a role the scaffold does not have.
  */
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
@@ -2554,5 +2556,20 @@ describe('the opening line leads somewhere on day 1 (r36 reports gap 5)', () => 
       expect(screen.queryByTestId('rp-opening-step')).toBeNull();
       page.unmount();
     }
+  });
+});
+
+describe('the opening captions keep one slot (r47 w3 F1)', () => {
+  it('[REVERT-FAILS] reading, silent and populated all draw the same caption slot, and the stylesheet gives it a height', () => {
+    for (const reading of [pending, ok([]), ok(READING)]) {
+      hook.current = { ...base(), reading } as never;
+      const page = paint();
+      const slot = screen.getByTestId('rp-caps');
+      expect(slot.className).toBe('rp-caps');
+      expect(slot.previousElementSibling?.className).toBe('rp-voice');
+      page.unmount();
+    }
+    const css = readFileSync(join(__dirname, 'reports-next.css'), 'utf8');
+    expect(css).toMatch(/\.rp-caps\s*\{[^}]*min-height:\s*66px/);
   });
 });

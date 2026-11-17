@@ -641,6 +641,12 @@
      becoming a two-line insight does not push the sheet down (r41 gap 7). */
   min-height: calc(2 * 1.5em);
 }
+/* The captions under the opening (day-one next step, age, money line) share one
+   slot as tall as the tallest, the next step (65 px at 1440 px), so none of them
+   landing moves the sheet (r47 w3 F1). */
+.rp-caps {
+  min-height: 66px;
+}
 .rp-stamp {
   display: inline-flex;
   align-items: center;
