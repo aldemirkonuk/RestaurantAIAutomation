@@ -3,6 +3,7 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { motion } from 'framer-motion'
 import { Check, Copy, X, Users } from 'lucide-react'
 import { toast } from 'sonner'
+import { useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { Button } from '../ui/button'
 import { useAnchoredDialogPosition } from '../../hooks/useAnchoredDialogPosition'
@@ -46,6 +47,7 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRos
   const [role, setRole] = useState<'manager' | 'staff'>('staff')
   const [isGenerating, setIsGenerating] = useState(false)
   const [invite, setInvite] = useState<GeneratedInvite | null>(null)
+  const queryClient = useQueryClient()
   const [copied, setCopied] = useState(false)
   const anchorPos = useAnchoredDialogPosition(open, anchorRef)
   const shell = useMudavymShell()
@@ -65,6 +67,10 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRos
         invitationEmail: data.invitationEmail,
         sentTo: targetEmail.trim() || undefined,
       })
+      // The house's setup counts an invite as its team step. The rail keeps
+      // the setup it read until the window is next focused, so it said the
+      // team was still to do after the invite was made; ask it again now.
+      void queryClient.invalidateQueries({ queryKey: ['onboarding-progress'] })
     } catch (err: unknown) {
       toast.error(getErrorMessage(err))
     } finally {
