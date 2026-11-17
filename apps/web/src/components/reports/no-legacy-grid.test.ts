@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest';
  * from coming back, where it would be dead code a reader takes for the live
  * page. Only `./preview` (the letter template builder's overlay) is live here.
  */
-const GONE = ['EditLayoutPanel', 'WidgetSelector', 'ChartArrangementModal', 'DashboardGrid'];
+const GONE = ['EditLayoutPanel', 'WidgetSelector', 'ChartArrangementModal', 'DashboardGrid', 'ChartConfigModal'];
 
 describe('components/reports', () => {
   it('no longer holds the old grid components that were removed', () => {
