@@ -8,7 +8,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import { LockedPrices, markerWords } from './LockedPrices';
 import { housePriceNote } from './menu-price-note';
 import {
@@ -300,5 +300,28 @@ describe('the add-a-line note names a held kind (L5)', () => {
       housePriceNote({ priceSync: 'changed', priceHeld: [{ kind: 'glass', lockId: 'k', lockedPrice: 9, lockedBy: 'u', lockedAt: 't' }] }, 'TRY')?.text,
     ).toBe(`This wine's own price on Inventory was updated where it could be; the glass price is locked at ${m(9)}, so that one was not changed.`);
     expect(housePriceNote({ priceSync: 'changed', priceHeld: [] })?.text).toBe("This wine's own price on Inventory now matches the line.");
+  });
+});
+
+// r46: coming back to the tab must not read the locks again inside a minute.
+describe('Locked prices, coming back to the tab', () => {
+  it('does not read again within a minute, and does after one', async () => {
+    mockList.mockResolvedValue(readout());
+    mount(true);
+    await waitFor(() => expect(mockList).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 30));
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(mockList).toHaveBeenCalledTimes(1);
+    const later = Date.now() + 61_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => later);
+    try {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+      await waitFor(() => expect(mockList).toHaveBeenCalledTimes(2));
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 });
