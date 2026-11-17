@@ -574,6 +574,11 @@ export class DishesService {
    * The same `figures` as the drawer's drink cards, so a drink is never priced
    * two ways. One read of the list (paged), then one per table, never one per
    * drink. A role that does not see money gets no price and no cost.
+   *
+   * As for the dishes, a failed pricing read does not fail the answer: every
+   * cost is null, `costsUnread` is true and the page says so, while each drink
+   * still says whether it has a recipe and what allergens it states. Any other
+   * failed read is a 503 with a sentence.
    */
   async drinkFigures(restaurantId: string, role: string | null | undefined) {
     const money = seesHouseAmounts(role);
@@ -587,10 +592,15 @@ export class DishesService {
         .order("id", { ascending: true })
         .range(from, to),
     );
+    let costsUnread = false;
     const figures = await this.figures(restaurantId, drinks.map((d) => d.id), money, DRINK_FIGURES_UNREAD, "cocktail", {
       allergens: true,
+      pricingUnread: () => {
+        costsUnread = true;
+      },
     });
     return {
+      costsUnread,
       drinks: drinks.map((d) => ({
         cocktailId: d.id,
         price: money && d.price != null ? Number(d.price) : null,
