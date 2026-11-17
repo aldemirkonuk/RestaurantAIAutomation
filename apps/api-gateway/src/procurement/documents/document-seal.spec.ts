@@ -589,8 +589,8 @@ const buildLineRows = () => [
 
 /** A supabase-shaped chain that answers per table. Reads only. */
 function fakeClient(answers: Record<string, { data: unknown; error: null }>) {
-  let table = "";
-  const makeChain = () => {
+  // The table is the chain's own: reads that run together must not share one.
+  const makeChain = (table: string) => {
     const chain: Record<string, unknown> = {};
     const self = () => chain;
     for (const verb of ["select", "eq", "in", "order", "limit"]) {
@@ -610,10 +610,7 @@ function fakeClient(answers: Record<string, { data: unknown; error: null }>) {
     return chain;
   };
   return {
-    from: (t: string) => {
-      table = t;
-      return makeChain();
-    },
+    from: (t: string) => makeChain(t),
   };
 }
 

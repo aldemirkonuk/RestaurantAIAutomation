@@ -108,12 +108,13 @@ describe("CanonicalDocumentService", () => {
     string,
     { data: unknown; error: { message: string } | null }
   >;
-  let currentTable: string;
   /** Every payload handed to .insert(), so the ASSERTION is on what the service
    *  wrote and not on what the mock echoed back. */
   let inserts: { table: string; payload: Record<string, unknown> }[];
 
-  const makeChain = () => {
+  // `currentTable` below is the chain's own: reads that run together must not
+  // answer from whichever table was asked last.
+  const makeChain = (currentTable: string) => {
     const chain: Record<string, unknown> = {};
     const self = () => chain;
     let didInsert = false;
@@ -169,8 +170,7 @@ describe("CanonicalDocumentService", () => {
 
   const client = {
     from: jest.fn((table: string) => {
-      currentTable = table;
-      return makeChain();
+      return makeChain(table);
     }),
   };
 
@@ -178,7 +178,6 @@ describe("CanonicalDocumentService", () => {
     jest.clearAllMocks();
     verbs = [];
     inserts = [];
-    currentTable = "";
     insertAnswers = {
       // What a real .insert(...).select().single() hands back.
       document_revisions: { data: { id: "rev-new", revision: 1 }, error: null },
@@ -426,9 +425,8 @@ describe("CanonicalDocumentService — what the columns cannot hold", () => {
     string,
     { data: unknown; error: { message: string } | null }
   >;
-  let currentTable = "";
 
-  const makeChain = () => {
+  const makeChain = (currentTable: string) => {
     const chain: Record<string, unknown> = {};
     const self = () => chain;
     for (const verb of ["select", "eq", "in", "order", "limit"])
@@ -449,10 +447,7 @@ describe("CanonicalDocumentService — what the columns cannot hold", () => {
   };
 
   const client = {
-    from: jest.fn((table: string) => {
-      currentTable = table;
-      return makeChain();
-    }),
+    from: jest.fn((table: string) => makeChain(table)),
   };
 
   const ROW = {
@@ -504,7 +499,6 @@ describe("CanonicalDocumentService — what the columns cannot hold", () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    currentTable = "";
     answers = {
       procurement_documents: { data: ROW, error: null },
       procurement_document_lines: { data: LINES, error: null },

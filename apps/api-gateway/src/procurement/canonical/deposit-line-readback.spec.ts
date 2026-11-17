@@ -261,7 +261,6 @@ async function persistThroughTheDoor(): Promise<Persisted> {
 
 /** A CanonicalDocumentService reading exactly those rows back. */
 async function serviceReading(rows: Persisted) {
-  let table = "";
   const answers: Record<string, { data: unknown; error: null }> = {
     procurement_documents: { data: rows.document, error: null },
     procurement_document_lines: { data: rows.lines, error: null },
@@ -271,7 +270,7 @@ async function serviceReading(rows: Persisted) {
       error: null,
     },
   };
-  const chain = (): Record<string, unknown> => {
+  const chain = (table: string): Record<string, unknown> => {
     const c: Record<string, unknown> = {};
     for (const verb of ["select", "eq", "in", "order", "limit"])
       c[verb] = () => c;
@@ -287,10 +286,7 @@ async function serviceReading(rows: Persisted) {
     return c;
   };
   const client = {
-    from: (t: string) => {
-      table = t;
-      return chain();
-    },
+    from: (t: string) => chain(t),
   };
   const module: TestingModule = await Test.createTestingModule({
     providers: [
