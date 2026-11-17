@@ -525,6 +525,20 @@ describe('F5 — a windowed figure renders as a floor (ADR 0051 clause 2)', () =
     expect(screen.queryByTitle(/receipt events/)).toBeNull()
   })
 
+  it('says the oldest uncounted delivery in days once it is past two days, never thousands of hours', async () => {
+    get.mockResolvedValue(
+      queuePayload({
+        unverified: [
+          { orderId: 'u1', orderNumber: 'PO-OLD', countedQtyBottles: 6, countedAt: '', ageHours: 7199, severity: 'overdue' },
+          { orderId: 'u2', orderNumber: 'PO-NEW', countedQtyBottles: 6, countedAt: '', ageHours: 30, severity: 'stale' },
+        ],
+      }),
+    )
+    const { container } = harness(ManagerBody)
+    expect(await screen.findByText(/oldest 299 days ago/)).toBeInTheDocument()
+    expect(container.textContent).not.toContain('7199h')
+  })
+
   it('marks every owner figure as a floor — stats read at most 5000 unordered rows', async () => {
     get.mockImplementation(async (url: string) =>
       url.endsWith('/stats')

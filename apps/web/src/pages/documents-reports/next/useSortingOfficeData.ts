@@ -40,6 +40,7 @@ import {
   type ActiveConversationDto,
 } from '../../../hooks/queries/useDraftEmailQueries';
 import { fmtMoney, sortKey } from './so-format';
+import { doorAgeSaid } from '../../receipts/next/door-age';
 
 /**
  * The server-side windows this page reads through, each citing the query that
@@ -251,7 +252,7 @@ export function useSortingOfficeData(): SortingOfficeData {
         // a manager hunting for an invoice; the debt is a bottle count, and
         // the stock number stays approximate until somebody makes it.
         title: `${u.orderNumber ?? u.orderId.slice(0, 8)} counted by the case, not yet by bottle`,
-        detail: `${u.countedQtyBottles} btl booked at the door · ${Math.round(u.ageHours)}h unverified`,
+        detail: `${u.countedQtyBottles} btl booked at the door · counted ${doorAgeSaid(u.ageHours, u.severity)}`,
         href: '/receipts',
       });
     }

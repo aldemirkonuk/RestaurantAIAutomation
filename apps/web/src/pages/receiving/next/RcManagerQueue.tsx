@@ -46,6 +46,7 @@ import { ink, settle } from '@/lib/mudavym/motion';
 import type { UnverifiedDelivery } from '@/services/api/receiving';
 import { RcLineHistory } from './RcLineHistory';
 import { RcTally } from './RcTally';
+import { doorAgeSaid } from '../../receipts/next/door-age';
 import {
   EM,
   GE,
@@ -279,8 +280,8 @@ function UnverifiedStrip({ items, atFloor }: { items: UnverifiedDelivery[]; atFl
         <strong style={{ color: 'var(--ink-1, #211C16)' }}>
           {fmtIntFloor(items.length, atFloor)}
         </strong>{' '}
-        deliver{items.length === 1 ? 'y' : 'ies'} counted by case and not yet by bottle — oldest{' '}
-        {items[0]?.ageHours ?? EM}h.
+        deliver{items.length === 1 ? 'y' : 'ies'} counted by case and not yet by bottle
+        {items[0] ? ` — oldest ${doorAgeSaid(items[0].ageHours, items[0].severity)}` : ''}.
         {overdue > 0 && (
           <strong style={{ color: 'var(--ink-1, #211C16)' }}>
             {' '}
