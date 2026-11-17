@@ -84,16 +84,19 @@ describe('the cocktail list line about the last save', () => {
     expect(said()).toBeNull();
   });
 
-  it('a refusal goes when any field is typed in again', async () => {
-    h.create.mockRejectedValue(new Error('A cocktail named Paloma is already on your list.'));
-    mount();
-    fireEvent.click(screen.getByRole('button', { name: 'Add a cocktail' }));
-    typeIn('Name', 'Paloma');
-    fireEvent.click(screen.getByRole('button', { name: 'Put it on the list' }));
-    await waitFor(() => expect(said()).toHaveTextContent('Nothing was written'));
-    typeIn('Glass', 'Highball');
-    expect(said()).toBeNull();
-  });
+  it.each([['Name', 'Paloma 2'], ['Section', 'Long'], ['Method', 'Built'], ['Glass', 'Highball'], ['Garnish', 'Lime'], ['Price', '9']])(
+    'a refusal goes when %s is typed in again',
+    async (label, value) => {
+      h.create.mockRejectedValue(new Error('A cocktail named Paloma is already on your list.'));
+      mount();
+      fireEvent.click(screen.getByRole('button', { name: 'Add a cocktail' }));
+      typeIn('Name', 'Paloma');
+      fireEvent.click(screen.getByRole('button', { name: 'Put it on the list' }));
+      await waitFor(() => expect(said()).toHaveTextContent('Nothing was written'));
+      typeIn(label, value);
+      expect(said()).toBeNull();
+    },
+  );
 
   it('a refusal goes when the form is left', async () => {
     h.create.mockRejectedValue(new Error('no'));
