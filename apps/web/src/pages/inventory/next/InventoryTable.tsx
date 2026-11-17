@@ -86,6 +86,8 @@ export default function InventoryTable(props: InventoryTableProps) {
   const counts = [0, 0, 0];
   for (const r of rows) counts[severity(r)] += 1;
   const selecting = props.selected !== undefined && props.onSelect !== undefined;
+  const thing = props.thing ?? 'title';
+  const nameHead = thing.charAt(0).toUpperCase() + thing.slice(1);
   const span = COLUMNS.length + (selecting ? 1 : 0);
   const allSelected = selecting && rows.length > 0 && rows.every((r) => props.selected!.has(r.id));
   const someSelected = selecting && !allSelected && rows.some((r) => props.selected!.has(r.id));
@@ -95,7 +97,7 @@ export default function InventoryTable(props: InventoryTableProps) {
       <table className="iv-table" data-testid="inventory-table">
         {/* INV-W39: the book had no name and no heading, so a screen reader
             went from the page title straight to Tools. */}
-        <caption className="sr-only">The book: every {props.thing ?? 'title'} on hand</caption>
+        <caption className="sr-only">The book: every {thing} on hand</caption>
         <thead>
           <tr>
             {selecting ? (
@@ -127,6 +129,8 @@ export default function InventoryTable(props: InventoryTableProps) {
                   <>
                     Value <span className="iv-dim">at cost</span>
                   </>
+                ) : c === 'Title' ? (
+                  nameHead
                 ) : (
                   c
                 );
@@ -189,13 +193,13 @@ export default function InventoryTable(props: InventoryTableProps) {
                       <input
                         type="checkbox"
                         className="iv-focus"
-                        aria-label={`Select ${row.name ?? 'this title'}`}
+                        aria-label={`Select ${row.name ?? `this ${thing}`}`}
                         checked={props.selected!.has(row.id)}
                         onChange={() => props.onSelect!(row.id)}
                       />
                     </td>
                   ) : null}
-                  <td data-label="Title" className="iv-title">
+                  <td data-label={nameHead} className="iv-title">
                     <button
                       type="button"
                       className="iv-titlebtn iv-focus"
@@ -207,7 +211,7 @@ export default function InventoryTable(props: InventoryTableProps) {
                       }}
                     >
                       <span className="iv-name">
-                        {row.name ?? 'Unnamed title'}
+                        {row.name ?? `Unnamed ${thing}`}
                         {row.abc ? (
                           <span className="iv-abc" data-testid="inv-abc" title={`ABC class ${row.abc}`}>
                             {row.abc}
@@ -243,7 +247,7 @@ export default function InventoryTable(props: InventoryTableProps) {
                     {canManage ? (
                       <HousePriceCell
                         inventoryId={row.id}
-                        wineName={row.name ?? 'this title'}
+                        wineName={row.name ?? `this ${thing}`}
                         bottle={row.bottle}
                         glass={row.glass}
                         advice={advice}

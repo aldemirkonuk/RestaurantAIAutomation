@@ -404,7 +404,7 @@ export default function InventoryNext() {
   const selBlocked = selectedRows.filter((r) => removeBlocked(r) !== null).length;
   const copySelectedNames = async () => {
     // One line per name: a newline inside a name would split it into two on paste.
-    const names = selectedRows.map((r) => oneLine(r.name ?? 'Unnamed title')).join('\n');
+    const names = selectedRows.map((r) => oneLine(r.name ?? `Unnamed ${words.one}`)).join('\n');
     try {
       if (!navigator.clipboard) throw new Error('no clipboard');
       await navigator.clipboard.writeText(names);
@@ -451,7 +451,7 @@ export default function InventoryNext() {
       const saleType = sale.get(r.id);
       wines.push({
         id: r.wineId,
-        name: r.name ?? 'Unnamed title',
+        name: r.name ?? `Unnamed ${words.one}`,
         type: r.type ?? '',
         liveStock: r.stock,
         shadowStock: r.shadow,
@@ -879,7 +879,7 @@ export default function InventoryNext() {
                     (r) =>
                       ({
                         inventoryId: r.id,
-                        name: r.name ?? 'Unnamed title',
+                        name: r.name ?? `Unnamed ${words.one}`,
                         liveStock: r.stock,
                         shadowStock: r.shadow,
                         threshold: r.par,
@@ -1077,7 +1077,7 @@ export default function InventoryNext() {
           onClose={() => setPanel(null)}
           inventoryItems={(rows ?? []).map((r) => ({
             id: r.id,
-            name: r.name ?? 'Unnamed title',
+            name: r.name ?? `Unnamed ${words.one}`,
             producer: r.producer ?? '',
             liveStock: r.stock ?? undefined,
             shadowStock: r.shadow ?? undefined,
