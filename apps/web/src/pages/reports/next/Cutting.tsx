@@ -154,7 +154,7 @@ function Undrawable({ graph }: { graph: GraphType }) {
  * exactly once here, so the drawing and the figures below it can never come
  * from two different reads of the same payload.
  */
-function Body({
+export function Body({
   view,
   graph,
   windowLine,
@@ -177,7 +177,10 @@ function Body({
           ))}
         </dl>
       )}
-      {view.notes.map((n, i) => (
+      {(graph === 'table' && view.node && view.notesTheNodeSays
+        ? view.notes.filter((n) => !view.notesTheNodeSays!.includes(n))
+        : view.notes
+      ).map((n, i) => (
         <p key={i} className="rp-cap">
           {n}
         </p>

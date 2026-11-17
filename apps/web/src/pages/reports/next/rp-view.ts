@@ -119,6 +119,8 @@ export interface AnalysisView {
   figures: Fig[];
   /** Sentences printed under the drawing — caveats, counts, what is off-plot. */
   notes: ReactNode[];
+  /** Notes (same strings as in `notes`) that `node` already says when it is drawn: left out then, so a sentence is said once. */
+  notesTheNodeSays?: ReactNode[];
   /** The SERVER's own `basis` strings, verbatim. Nulls are dropped. */
   basis: Array<string | null | undefined>;
 }
