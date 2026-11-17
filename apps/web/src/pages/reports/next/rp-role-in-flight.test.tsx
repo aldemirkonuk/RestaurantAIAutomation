@@ -80,6 +80,16 @@ describe('a role still being asked', () => {
     expect(reg.data).toBeUndefined();
   });
 
+  it('asks for nothing on a role left over from the last house while the new one is read', async () => {
+    auth.role = 'owner';
+    const { result } = renderHook(() => useReportsNextData(30, () => {}, SHOWING), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => expect(paths()).toContain(READING));
+    expect(paths()).not.toContain(SEATS);
+    expect(result.current.registers.seats!.loading).toBe(true);
+  });
+
   it('keeps the sheet behind the outlines, so staff are not shown the house sheet first', () => {
     const { result } = renderHook(() => useReportsNextData(30, () => {}, SHOWING), {
       wrapper: wrapper(),
