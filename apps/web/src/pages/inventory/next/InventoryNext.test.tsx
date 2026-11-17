@@ -1753,6 +1753,24 @@ describe('a house of goods is not a cellar', () => {
     expect(document.body.textContent).not.toMatch(/Unnamed title/);
   });
 
+  it('heads the exported files "Good" in a house of goods, "Title" with one drink', async () => {
+    exportSpy.mockClear();
+    mock.data = data({ rows: [flour(), sugar()], rawItems: goods });
+    renderPage();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export valuation' }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export count sheet' }));
+    });
+    expect(exportSpy).toHaveBeenCalledTimes(2);
+    for (const [opts] of exportSpy.mock.calls) {
+      const cols = (opts as { columns: { header: string }[] }).columns.map((c) => c.header);
+      expect(cols).toContain('Good');
+      expect(cols).not.toContain('Title');
+    }
+  });
+
   it('copies a nameless good as "Unnamed good"', async () => {
     const writeText = vi.fn(async () => undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
