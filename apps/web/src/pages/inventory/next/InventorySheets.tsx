@@ -174,6 +174,7 @@ export function countGapSentence(
 
 export function CountSheet({ row, onClose, uom }: SheetProps) {
   const invalidate = useInvalidateStock();
+  const queryClient = useQueryClient();
   const unit = amountUnit(uom);
   const word = thingWord(unit);
   // A bottle keeps the bare figure it always said; any other unit says itself.
@@ -198,6 +199,11 @@ export function CountSheet({ row, onClose, uom }: SheetProps) {
       }),
     onSuccess: ({ synced }, countedQty) => {
       invalidate();
+      // The house's setup counts a first count as a step. A count held on the
+      // device is not the house's yet; one the gateway took is. The rail keeps
+      // the setup it read until the window is next focused, so it went on
+      // saying nothing was counted.
+      if (synced) void queryClient.invalidateQueries({ queryKey: ['onboarding-progress'] });
       setSaid({
         text: synced
           ? countGapSentence(book, countedQty, titleOf(row, word), words)
