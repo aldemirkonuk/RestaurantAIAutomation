@@ -9,6 +9,7 @@ export * from "./base-template";
 
 // Onboarding
 export * from "./onboarding.template";
+export * from "./first-house.template";
 
 // Studio invite (ADR 0020)
 export * from "./studio-invite.template";

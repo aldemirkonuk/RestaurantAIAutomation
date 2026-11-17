@@ -129,6 +129,7 @@ function makeService(
       data: {
         user_id: "user-1",
         email: "selin@example.com",
+        name: "Selin Kaya",
         role: "owner",
         email_verified: true,
         restaurant_id: null,
@@ -232,6 +233,11 @@ function makeService(
   };
 
   const sign = (claims: object) => JSON.stringify(claims);
+  /** The first-house letter: each call, in the order the opening made them. */
+  const firstHouseMail = jest.fn(async (_letter: Record<string, unknown>) => {
+    calls.push("mail:first-house");
+    return undefined;
+  });
   const svc = new AuthService(
     { sign, signAsync: async (claims: object) => sign(claims) } as any,
     { get: () => undefined } as any,
@@ -240,7 +246,10 @@ function makeService(
       isBlacklisted: async () => false,
       blacklist: async () => undefined,
     } as any,
-    { sendOnboardingEmail: async () => undefined } as any,
+    {
+      sendOnboardingEmail: async () => undefined,
+      sendFirstHouseEmail: firstHouseMail,
+    } as any,
   );
   if (!realTokens)
     (svc as any).generateTokens = jest
@@ -270,6 +279,7 @@ function makeService(
     logLog,
     restaurantRows,
     houseCalls,
+    firstHouseMail,
   };
 }
 
@@ -882,7 +892,10 @@ function makeHouseDb() {
       isBlacklisted: async () => false,
       blacklist: async () => undefined,
     } as any,
-    { sendOnboardingEmail: async () => undefined } as any,
+    {
+      sendOnboardingEmail: async () => undefined,
+      sendFirstHouseEmail: async () => undefined,
+    } as any,
   );
   (svc as any).generateTokens = jest
     .fn()
@@ -891,6 +904,75 @@ function makeHouseDb() {
   jest.spyOn((svc as any).logger, "log").mockImplementation(() => undefined);
   return { svc, rows: () => rows, fail };
 }
+
+describe("createFirstHouse writes the owner's first letter", () => {
+  beforeEach(() => jest.spyOn(Date, "now").mockReturnValue(NOW));
+  afterEach(() => jest.restoreAllMocks());
+
+  it("sends it once, after the house is committed, to the owner (W1)", async () => {
+    const run = makeService();
+    await run.svc.createFirstHouse("user-1", HOUSE);
+    expect(run.firstHouseMail).toHaveBeenCalledTimes(1);
+    expect(run.firstHouseMail).toHaveBeenCalledWith({
+      to: "selin@example.com",
+      ownerName: "Selin Kaya",
+      restaurantName: "Meyhane",
+      frontendBaseUrl: "https://mudavym.com",
+    });
+    expect(run.calls.indexOf("mail:first-house")).toBeGreaterThan(
+      run.calls.indexOf("rpc:open_first_house"),
+    );
+  });
+
+  it("sends nothing when the house was not opened (W2)", async () => {
+    const run = makeService({
+      rpc: {
+        open_first_house: [
+          { data: null, error: { code: "", message: "fetch failed" } },
+        ],
+      },
+    });
+    await refusal(run.svc.createFirstHouse("user-1", HOUSE));
+    expect(run.firstHouseMail).not.toHaveBeenCalled();
+  });
+
+  it("sends nothing when the account already has a house (W3)", async () => {
+    const run = makeService({
+      single: {
+        users: [
+          {
+            data: {
+              user_id: "user-1",
+              email: "selin@example.com",
+              email_verified: true,
+              restaurant_id: "rest-0",
+            },
+            error: null,
+          },
+        ],
+      },
+    });
+    await refusal(run.svc.createFirstHouse("user-1", HOUSE));
+    expect(run.firstHouseMail).not.toHaveBeenCalled();
+  });
+
+  it("still opens the house when the letter cannot be sent (W4)", async () => {
+    const run = makeService();
+    run.firstHouseMail.mockRejectedValue(new Error("gmail is down"));
+    const opened = await run.svc.createFirstHouse("user-1", HOUSE);
+    expect(opened.restaurantId).toBe("rest-1");
+    expect(opened.accessToken).toBe("a");
+  });
+
+  it("still opens the house when the letter throws before it is a promise (W5)", async () => {
+    const run = makeService();
+    run.firstHouseMail.mockImplementation(() => {
+      throw new Error("template broke");
+    });
+    const opened = await run.svc.createFirstHouse("user-1", HOUSE);
+    expect(opened.restaurantId).toBe("rest-1");
+  });
+});
 
 describe("createFirstHouse opens in one transaction (G16, OB-2)", () => {
   afterEach(() => jest.restoreAllMocks());

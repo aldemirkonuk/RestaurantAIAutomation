@@ -34,6 +34,7 @@ import {
   eventPrepTemplate,
   customReminderTemplate,
   onboardingEmailTemplate,
+  firstHouseEmailTemplate,
   studioInviteEmailTemplate,
   type LowStockAlertData,
   type WeeklyReportData,
@@ -887,6 +888,32 @@ This is an automated alert from Mudavym.
     return this.sendEmail({
       to: [data.to],
       subject: `Welcome to Mudavym — ${data.restaurantName} is ready 🍷`,
+      html,
+    });
+  }
+
+  /**
+   * Send the letter a first house's owner gets when the house opens. Unlike
+   * `sendOnboardingEmail` (the older Register road), its steps are the pages
+   * the product asks for now, and it sits on the new road's createFirstHouse.
+   */
+  async sendFirstHouseEmail(data: {
+    to: string;
+    ownerName: string;
+    restaurantName: string;
+    frontendBaseUrl?: string;
+  }): Promise<EmailResult> {
+    const html = firstHouseEmailTemplate({
+      ownerName: data.ownerName,
+      restaurantName: data.restaurantName,
+      frontendBaseUrl: data.frontendBaseUrl || "https://mudavym.com",
+    });
+    // A house name is typed by a person; a line break in it must not reach
+    // the subject header.
+    const house = data.restaurantName.replace(/[\r\n]+/g, " ").trim();
+    return this.sendEmail({
+      to: [data.to],
+      subject: `Welcome to Mudavym — ${house}`,
       html,
     });
   }
