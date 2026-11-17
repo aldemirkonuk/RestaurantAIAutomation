@@ -287,6 +287,20 @@ export class GoalsService {
     status = "active",
     gate: SalesGate = {},
   ) {
+    const rows = await this.readGoalRows(restaurantId, status);
+    return rows.map((g: any) => GoalsService.listedGoal(g, gate));
+  }
+
+  /** Each row carries its metric's unit, as the overview's goals do (#1382). */
+  private static listedGoal(g: any, gate: SalesGate) {
+    return {
+      ...GoalsService.presentGoalRow(g, gate),
+      unit: GoalsService.SUPPORTED_METRICS[g.metric_key]?.unit ?? null,
+    };
+  }
+
+  /** The house's goal rows as stored: no presentation, no gate. */
+  private async readGoalRows(restaurantId: string, status: string): Promise<any[]> {
     const q = this.dbService
       .getClient()
       .from("analytics_goals")
@@ -296,14 +310,11 @@ export class GoalsService {
     const { data, error } =
       status === "all" ? await q : await q.eq("status", status);
     if (error) throw new Error(error.message);
-    // Each row carries its metric's unit, as the overview's goals do (#1382).
-    // The page's bench reads this route, and without it a money goal printed
-    // "60.0K" with no currency and a percent goal "0.6" (r36 reports gap 2).
-    // An unknown metric says null, never a guessed unit.
-    return (data || []).map((g: any) => ({
-      ...GoalsService.presentGoalRow(g, gate),
-      unit: GoalsService.SUPPORTED_METRICS[g.metric_key]?.unit ?? null,
-    }));
+    // The page's bench reads this route, and without a unit a money goal
+    // printed "60.0K" with no currency and a percent goal "0.6" (r36 reports
+    // gap 2). An unknown metric says null, never a guessed unit
+    // (`listedGoal`).
+    return data || [];
   }
 
   /**
@@ -605,15 +616,19 @@ export class GoalsService {
     // The house's zone is read once for every goal on the list (ADR 0296),
     // alongside the list itself. A failed read throws: every goal would fail
     // on it alike, and a list of six identical failures says less than one.
-    const [goals, house] = await Promise.all([
-      this.listGoals(restaurantId, status, gate),
+    const [rows, house] = await Promise.all([
+      this.readGoalRows(restaurantId, status),
       readHouseZone(this.dbService.getClient(), restaurantId),
     ]);
+    const goals = rows.map((g: any) => GoalsService.listedGoal(g, gate));
     const computed = goals.slice(0, GoalsService.MAX_PROGRESS_GOALS);
     const progress = await Promise.all(
-      computed.map(async (g: any) => {
+      computed.map(async (g: any, i: number) => {
         try {
-          return await this.getGoalProgress(restaurantId, g.id, house, gate);
+          // The stored row just read is the row to score: re-reading it by
+          // key per goal was a round trip per goal for the same row (r41
+          // reports gap 6).
+          return await this.getGoalProgress(restaurantId, g.id, house, gate, rows[i]);
         } catch (err: any) {
           // One goal whose metric query broke must not blank the other five.
           // `null` progress is rendered as "this goal could not be read",
@@ -690,21 +705,26 @@ export class GoalsService {
   /**
    * @param known the house's zone when the caller already read it
    *   (`listGoalsWithProgress`); read here otherwise.
+   * @param stored the goal's stored row when the caller has just read it, as
+   *   stored (not presented); read here otherwise.
    */
   async getGoalProgress(
     restaurantId: string,
     goalId: string,
     known?: HouseZone,
     gate: SalesGate = {},
+    stored?: Record<string, any>,
   ) {
     const [{ data: goal, error }, house] = await Promise.all([
-      this.dbService
-        .getClient()
-        .from("analytics_goals")
-        .select("*")
-        .eq("restaurant_id", restaurantId)
-        .eq("id", goalId)
-        .single(),
+      stored
+        ? Promise.resolve({ data: stored, error: null })
+        : this.dbService
+            .getClient()
+            .from("analytics_goals")
+            .select("*")
+            .eq("restaurant_id", restaurantId)
+            .eq("id", goalId)
+            .single(),
       known
         ? Promise.resolve(known)
         : readHouseZone(this.dbService.getClient(), restaurantId),
