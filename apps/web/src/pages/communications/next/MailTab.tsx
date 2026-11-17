@@ -52,6 +52,7 @@ import {
   storedKindsLine,
   threadCountWords,
   todayLine,
+  unsentChipText,
   type MailAnswer,
   type MailboxReader,
   type MailPersonRow,
@@ -130,6 +131,28 @@ function NewChip({ on }: { on: boolean | null | undefined }) {
   );
 }
 
+/** The newest letter to this person has not left; the row says so (r43 w3 finding 4). */
+function UnsentChip({ status }: { status: string | null | undefined }) {
+  const words = unsentChipText(status);
+  if (words === null) return null;
+  return (
+    <span
+      data-testid="mail-unsent"
+      style={{
+        fontFamily: MONO,
+        fontSize: 10,
+        padding: '1px 6px',
+        borderRadius: 4,
+        border: '1px dashed var(--ink-4, #665D50)',
+        color: 'var(--ink-2, #4F473C)',
+        alignSelf: 'center',
+      }}
+    >
+      {words}
+    </span>
+  );
+}
+
 function PersonRow({ p, on, onOpen }: { p: MailPersonRow; on: WaitingOn; onOpen: () => void }) {
   return (
     <li style={{ borderBottom: '1px solid var(--paper-2, #EAE4D8)' }}>
@@ -143,6 +166,7 @@ function PersonRow({ p, on, onOpen }: { p: MailPersonRow; on: WaitingOn; onOpen:
         <span className="flex flex-wrap items-baseline gap-2">
           {p.waiting && <WaitingDot on={on} />}
           <NewChip on={p.newToYou} />
+          <UnsentChip status={p.unsentStatus} />
           <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink-1, #211C16)', overflowWrap: 'anywhere' }}>
             {p.name ?? 'A vendor with no name on file'}
           </span>
