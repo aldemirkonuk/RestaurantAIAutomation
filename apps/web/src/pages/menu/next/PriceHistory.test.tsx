@@ -2,10 +2,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { PriceHistory, versionWords } from './PriceHistory';
-import { getHousePriceHistory, type HousePriceHistory, type HousePriceVersion } from '../../../services/api/priceHistory';
+import { PriceHistory, versionWords, dayOf } from './PriceHistory';
+import { getHousePriceHistory, getHouseZone, type HouseZoneRead, type HousePriceHistory, type HousePriceVersion } from '../../../services/api/priceHistory';
 
-vi.mock('../../../services/api/priceHistory', () => ({ getHousePriceHistory: vi.fn() }));
+vi.mock('../../../services/api/priceHistory', () => ({ getHousePriceHistory: vi.fn(), getHouseZone: vi.fn() }));
+const mockZone = vi.mocked(getHouseZone);
+const zoneRead = (over: Partial<HouseZoneRead> = {}): HouseZoneRead => ({ zone: null, readable: true, reason: null, ...over });
 const mockHistory = vi.mocked(getHousePriceHistory);
 const money = (n: number) => `₺${n}`;
 
@@ -40,6 +42,8 @@ function mount() {
 
 beforeEach(() => {
   mockHistory.mockReset();
+  mockZone.mockReset();
+  mockZone.mockResolvedValue(zoneRead({ zone: 'Europe/Istanbul' }));
 });
 
 describe('one change in words', () => {
@@ -127,5 +131,40 @@ describe('the history panel', () => {
     expect((await screen.findByTestId('menu-price-history-error')).textContent).toBe(
       'The price history of Chianti could not be read (only an owner or a manager reads it).',
     );
+  });
+});
+
+// r41 R8: a day is the house's day, not the UTC day.
+describe('days on the house clock', () => {
+  it('a change at 01:30 on 2 Nov in Antalya is the 2nd, not the 1st', () => {
+    expect(dayOf('2026-11-01T22:30:00Z', 'Europe/Istanbul')).toBe('2026-11-02');
+    expect(dayOf('2026-11-01T22:30:00Z', null)).toBe('2026-11-01');
+    expect(dayOf('2026-11-01T22:30:00Z', 'Not/AZone')).toBe('2026-11-01');
+    expect(versionWords(ver({ from: '2026-11-01T22:30:00Z' }), money, true, 'Europe/Istanbul')).toContain('since 2026-11-02,');
+  });
+
+  it('the panel says the house day and does not add a UTC note', async () => {
+    mockHistory.mockResolvedValue(hist({ versions: [ver({ from: '2026-11-01T22:30:00Z' })] }));
+    mount();
+    const li = await screen.findByTestId('menu-price-history-line');
+    expect(li.textContent).toContain('since 2026-11-02');
+    expect(screen.queryByTestId('menu-price-history-zone')).toBeNull();
+  });
+
+  it('a house with no zone gets UTC days and is told so', async () => {
+    mockZone.mockResolvedValue(zoneRead({ zone: null }));
+    mockHistory.mockResolvedValue(hist({ versions: [ver({ from: '2026-11-01T22:30:00Z' })] }));
+    mount();
+    const li = await screen.findByTestId('menu-price-history-line');
+    expect(li.textContent).toContain('since 2026-11-01');
+    expect(screen.getByTestId('menu-price-history-zone').textContent).toContain('has not said its time zone');
+  });
+
+  it('a zone that could not be read says so, never a quiet UTC day', async () => {
+    mockZone.mockRejectedValue(new Error('down'));
+    mockHistory.mockResolvedValue(hist({ versions: [ver({ from: '2026-11-01T22:30:00Z' })] }));
+    mount();
+    await screen.findByTestId('menu-price-history-line');
+    expect((await screen.findByTestId('menu-price-history-zone')).textContent).toContain('could not be read');
   });
 });

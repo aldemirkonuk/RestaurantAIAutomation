@@ -74,6 +74,7 @@ vi.mock('../../../services/api/pricing', async () => {
 // The price history panel (PriceHistory.tsx, its own test file) reads only when opened.
 vi.mock('../../../services/api/priceHistory', () => ({
   getHousePriceHistory: vi.fn().mockResolvedValue({ inventoryId: 'g1', goodName: 'Chianti', versions: [], more: false, namesReadable: true, namesReason: null }),
+  getHouseZone: vi.fn().mockResolvedValue({ zone: 'Europe/Istanbul', readable: true, reason: null }),
 }));
 
 vi.mock('../../../services/api/settings', async () => {
@@ -856,6 +857,21 @@ describe('MenuNext — a line shows its price history (r36 N6)', () => {
     expect(screen.getByTestId('menu-price-history-button')).toHaveTextContent('Hide history');
     fireEvent.click(screen.getByTestId('menu-price-history-button'));
     expect(screen.queryByText('Chianti has no recorded price change yet.')).not.toBeInTheDocument();
+  });
+
+  it('a price change on the same page re-reads the open history (r41 R8)', async () => {
+    vi.mocked(getHousePriceHistory).mockClear();
+    mockGetMenu.mockResolvedValue(menu({ items: [carried] }));
+    mockReview.mockResolvedValue({ menuItemId: 'w1', fieldName: 'bottle_price', newValue: '55', priceSync: 'changed', priceSyncError: null, priceHeld: [] });
+    mount();
+    fireEvent.click(await screen.findByTestId('menu-price-history-button'));
+    await screen.findByText('Chianti has no recorded price change yet.');
+    expect(vi.mocked(getHousePriceHistory)).toHaveBeenCalledTimes(1);
+    fireEvent.click(await screen.findByRole('button', { name: 'Change the price of Chianti' }));
+    fireEvent.change(screen.getByLabelText('Bottle price of Chianti'), { target: { value: '55' } });
+    fireEvent.click(screen.getByTestId('menu-price-save'));
+    await waitFor(() => expect(mockReview).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(vi.mocked(getHousePriceHistory)).toHaveBeenCalledTimes(2));
   });
 
   it('staff are offered no price history', async () => {
