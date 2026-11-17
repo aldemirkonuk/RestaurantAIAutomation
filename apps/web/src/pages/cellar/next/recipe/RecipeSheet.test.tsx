@@ -369,6 +369,38 @@ describe('RecipeSheet', () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: ['recipes', RID, CID] });
   });
 
+  it('6b. "Saved." goes when a line is changed again, and when a setting is', async () => {
+    serve(negroni());
+    h.put.mockResolvedValue({ data: { versionId: V5, version: 5, lines: [] } });
+    mount();
+    await screen.findAllByTestId('recipe-line');
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    expect(await screen.findByTestId('recipe-said')).toHaveTextContent('Saved.');
+    fireEvent.change(screen.getAllByLabelText('Amount')[0], { target: { value: '40' } });
+    expect(screen.queryByTestId('recipe-said')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    expect(await screen.findByTestId('recipe-said')).toHaveTextContent('Saved.');
+    fireEvent.change(screen.getByLabelText('Garnish'), { target: { value: 'Lemon' } });
+    expect(screen.queryByTestId('recipe-said')).toBeNull();
+  });
+
+  it('6c. a refusal goes when a line is changed, but "someone saved first" stays until the saved recipe is loaded', async () => {
+    serve(negroni());
+    h.put.mockRejectedValue(Object.assign(new Error('Request failed with status code 500'), { response: { status: 500 } }));
+    mount();
+    await screen.findAllByTestId('recipe-line');
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Not saved.');
+    fireEvent.change(screen.getAllByLabelText('Amount')[0], { target: { value: '41' } });
+    expect(screen.queryByTestId('recipe-said')).toBeNull();
+
+    h.put.mockRejectedValue(Object.assign(new Error('conflict'), { response: { status: 409 } }));
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(STALE_SENTENCE);
+    fireEvent.change(screen.getAllByLabelText('Amount')[0], { target: { value: '42' } });
+    expect(screen.getByTestId('recipe-said')).toHaveTextContent(STALE_SENTENCE);
+  });
+
   it('7. never shows a table name or the word confidence', async () => {
     serve({ ...EMPTY, legacyLines: [{ label: 'whites', quantity: 2, unit: 'egg' }] });
     const { container } = mount();
@@ -954,6 +986,9 @@ describe('RecipeSheet', () => {
 
     fireEvent.click(within(opened).getByRole('button', { name: 'Start from version 4' }));
     expect(screen.getAllByLabelText('Amount')).toHaveLength(3);
+    expect(screen.getByTestId('recipe-said')).toHaveTextContent('Version 4 is on the sheet. Nothing is saved yet');
+    // The note says nothing is saved yet: still true after the next change.
+    fireEvent.change(screen.getAllByLabelText('Amount')[0], { target: { value: '44' } });
     expect(screen.getByTestId('recipe-said')).toHaveTextContent('Version 4 is on the sheet. Nothing is saved yet');
     expect(screen.getByRole('region', { name: 'Recipe for Negroni' })).toHaveTextContent('Coupe');
 

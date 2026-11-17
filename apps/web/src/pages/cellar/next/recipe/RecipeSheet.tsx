@@ -347,7 +347,15 @@ function Versions({
   );
 }
 
-type Said = { tone: 'ok' | 'alarm'; text: string; offerLoad?: boolean };
+type Said = { tone: 'ok' | 'alarm'; text: string; offerLoad?: boolean; saved?: true };
+
+/**
+ * What a sheet keeps saying once its lines or settings are changed again: only
+ * what is still true of the sheet. "Saved." and a refused save were about the
+ * sheet as it was; "someone saved first", "could not be read" and the note on
+ * a version put on the sheet still hold, and stay until the person acts on them.
+ */
+const stillTrue = (s: Said | null): Said | null => (s && !s.saved && (s.tone === 'ok' || s.offerLoad) ? s : null);
 
 /** The gateway's own sentence on a refused save, when it sent one. */
 function refusal(e: unknown): string | null {
@@ -568,10 +576,12 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
 
   const edit = (next: (rs: DraftRow[]) => DraftRow[]) => {
     setDirty(true);
+    setSaid(stillTrue);
     setRows((rs) => next(rs ?? []));
   };
   const setField = (p: Partial<DraftMeta>) => {
     setDirty(true);
+    setSaid(stillTrue);
     setMeta((m) => ({ ...(m ?? metaOf(data.current)), ...p }));
   };
   const patch = (key: string, p: Partial<DraftRow>) =>
@@ -640,6 +650,7 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
       setSaid({
         tone: 'ok',
         text: `Saved. ${count(body.lines.length, 'ingredient', 'ingredients')}, version ${out.version}.`,
+        saved: true,
       });
     } catch (e) {
       const status = getErrorStatus(e);
