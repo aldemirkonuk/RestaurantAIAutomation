@@ -23,3 +23,17 @@ export function dishMatches(d: { name: string; section: string | null }, query: 
   const hay = foldDishText(`${d.name} ${d.section ?? ''}`);
   return words.every((w) => hay.includes(w));
 }
+
+/**
+ * The sections already on the list, each once (spelt as first written, so
+ * "Mains" and "mains " are one), in reading order. Offered to the Section box
+ * so a house does not type one section two ways.
+ */
+export function sectionsOf(dishes: ReadonlyArray<{ section: string | null }>): string[] {
+  const seen = new Map<string, string>();
+  for (const d of dishes) {
+    const s = (d.section ?? '').trim();
+    if (s && !seen.has(foldDishText(s))) seen.set(foldDishText(s), s);
+  }
+  return [...seen.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, s]) => s);
+}

@@ -46,7 +46,7 @@ import { useHousePercent, type SayPercent } from '../cellar/next/recipe/useHouse
 import { reason, useCanEditRecipe, useCreateDish, useDishFigures, useDishes, useHouseMoney, useMenuPrices, useRemoveDish, useUpdateDish } from '../cellar/next/recipe/useRecipe';
 import { MENU_PRICES_UNREAD, MenuPriceCell } from '../cellar/next/recipe/MenuPriceCell';
 import MenuDishesOffer from './MenuDishesOffer';
-import { dishMatches } from './fold';
+import { dishMatches, sectionsOf } from './fold';
 import { AllergenCell, AllergenCheck, keptFor } from '../cellar/next/recipe/ListAllergens';
 import { CostWaits, NoRecipeYet } from '../cellar/next/recipe/ListCostWaits';
 import type { DishFigureRow, DishListRow } from '../../services/api/recipes';
@@ -107,7 +107,17 @@ function cells(d: DishListRow, f: DishFigureRow | undefined, state: FiguresState
   };
 }
 
-function AddDish({ onAdded }: { onAdded: (id: string) => void }) {
+function SectionList({ id, sections }: { id: string; sections: string[] }) {
+  return (
+    <datalist id={id}>
+      {sections.map((s) => (
+        <option key={s} value={s} />
+      ))}
+    </datalist>
+  );
+}
+
+function AddDish({ onAdded, sections }: { onAdded: (id: string) => void; sections: string[] }) {
   const create = useCreateDish();
   const [name, setName] = useState('');
   const [section, setSection] = useState('');
@@ -156,7 +166,8 @@ function AddDish({ onAdded }: { onAdded: (id: string) => void }) {
       </label>
       <label htmlFor={`${id}-section`}>
         Section
-        <input id={`${id}-section`} className="cl-field cl-focus" value={section} maxLength={100} onChange={(e) => { setSection(e.target.value); setSaid(null); }} />
+        <input id={`${id}-section`} className="cl-field cl-focus" list={sections.length ? `${id}-sections` : undefined} value={section} maxLength={100} onChange={(e) => { setSection(e.target.value); setSaid(null); }} />
+        {sections.length ? <SectionList id={`${id}-sections`} sections={sections} /> : null}
       </label>
       <label htmlFor={`${id}-price`}>
         Price
@@ -194,7 +205,7 @@ function AddDish({ onAdded }: { onAdded: (id: string) => void }) {
  * The open dish's own name, section and price, and taking it off the list.
  * Mounted with `key={dish.id}`, so one dish's draft never saves into another.
  */
-function DishDetails({ dish, onRemoved }: { dish: DishListRow; onRemoved: () => void }) {
+function DishDetails({ dish, onRemoved, sections }: { dish: DishListRow; onRemoved: () => void; sections: string[] }) {
   const update = useUpdateDish(dish.id);
   const remove = useRemoveDish(dish.id);
   const [name, setName] = useState(dish.name);
@@ -252,7 +263,8 @@ function DishDetails({ dish, onRemoved }: { dish: DishListRow; onRemoved: () => 
       </label>
       <label htmlFor={`${id}-section`}>
         Section
-        <input id={`${id}-section`} className="cl-field cl-focus" value={section} maxLength={100} onChange={(e) => { setSection(e.target.value); setSaid(null); }} />
+        <input id={`${id}-section`} className="cl-field cl-focus" list={sections.length ? `${id}-sections` : undefined} value={section} maxLength={100} onChange={(e) => { setSection(e.target.value); setSaid(null); }} />
+        {sections.length ? <SectionList id={`${id}-sections`} sections={sections} /> : null}
       </label>
       <label htmlFor={`${id}-price`}>
         Price
@@ -315,6 +327,7 @@ export default function DishesPage() {
   const [allergen, setAllergen] = useState('');
   const [query, setQuery] = useState('');
   const all = dishes.data ?? [];
+  const sections = sectionsOf(all);
   const [onlyBare, setOnlyBare] = useState(false);
   const fig = (id: string) => figures.byId?.get(id);
   const figState: FiguresState = figures.loading ? 'reading' : !figures.byId || figures.costsUnread ? 'unread' : 'read';
@@ -357,7 +370,7 @@ export default function DishesPage() {
         </p>
 
         {canEdit ? <MenuDishesOffer /> : null}
-        {canEdit ? <AddDish onAdded={open} /> : null}
+        {canEdit ? <AddDish onAdded={open} sections={sections} /> : null}
 
         {say && menu.error ? (
           <p className="cl-said" role="status" style={{ marginTop: 12 }} data-testid="dishes-menu-unread">
@@ -471,7 +484,7 @@ export default function DishesPage() {
                     d.id === openId ? (
                       <tr key={`${d.id}-leaf`} data-testid={`dish-leaf-${d.id}`}>
                         <td colSpan={cols}>
-                          {canEdit ? <DishDetails key={d.id} dish={d} onRemoved={() => open(null)} /> : null}
+                          {canEdit ? <DishDetails key={d.id} dish={d} onRemoved={() => open(null)} sections={sections} /> : null}
                           <RecipeSheet dishId={d.id} />
                         </td>
                       </tr>
