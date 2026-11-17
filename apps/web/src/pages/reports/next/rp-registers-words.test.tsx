@@ -95,5 +95,6 @@ describe('F3: the lead time says where it comes from', () => {
 
   it('a gateway that does not say keeps the plain assumption, never "per vendor"', () => {
     expect(lead({})).toBe('7 days where no lead is known');
+    expect(lead({ leadTimeSource: 'vendor' })).toBe('7 days where no lead is known');
   });
 });
