@@ -26,6 +26,8 @@
  * case below names a string or a role the scaffold does not have.
  */
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
@@ -33,6 +35,7 @@ import { decodeSheet, defaultSheet, encodeSheet } from './useReportsNextData';
 import { CATALOGUE } from './rp-catalogue';
 import { DEFAULT_SLOTS, SHEET_MIN_H, SHEET_MIN_W } from './rp-sheet';
 import { heldBackFailure } from './rp-format';
+import { defaultIdsFor } from './rp-readable';
 
 /**
  * The two registers added in the fourth pass decode heavily on the way in
@@ -1988,6 +1991,8 @@ describe('ReportsNext — the sheet keeps its places', () => {
     expect(screen.getByRole('button', { name: 'Arrange the sheet' })).toBeDisabled();
     expect(screen.getByText('Reading how you arranged this sheet…')).toBeInTheDocument();
     expect(container.querySelectorAll('.rp-outline').length).toBeGreaterThan(0);
+    // Laid on the house sheet's own slots, not four boxes the sheet then outgrows (r41 gap 7).
+    expect(container.querySelectorAll('.rp-outline').length).toBe(defaultIdsFor(null).ids.length);
     // The house sheet is NOT drawn first and then swapped for the reader's.
     expect(container.querySelector('.rp-sheet')).toBeNull();
     expect(screen.queryByRole('region', { name: 'Through the till' })).toBeNull();
@@ -2551,5 +2556,20 @@ describe('the opening line leads somewhere on day 1 (r36 reports gap 5)', () => 
       expect(screen.queryByTestId('rp-opening-step')).toBeNull();
       page.unmount();
     }
+  });
+});
+
+describe('the opening captions keep one slot (r47 w3 F1)', () => {
+  it('[REVERT-FAILS] reading, silent and populated all draw the same caption slot, and the stylesheet gives it a height', () => {
+    for (const reading of [pending, ok([]), ok(READING)]) {
+      hook.current = { ...base(), reading } as never;
+      const page = paint();
+      const slot = screen.getByTestId('rp-caps');
+      expect(slot.className).toBe('rp-caps');
+      expect(slot.previousElementSibling?.className).toBe('rp-voice');
+      page.unmount();
+    }
+    const css = readFileSync(join(__dirname, 'reports-next.css'), 'utf8');
+    expect(css).toMatch(/\.rp-caps\s*\{[^}]*min-height:\s*66px/);
   });
 });

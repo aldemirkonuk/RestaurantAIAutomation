@@ -85,6 +85,7 @@ import type { ComboPick } from './rp-combo';
 import ExportsShelf from './ExportsShelf';
 import Sheet, { type SheetCutting } from './Sheet';
 import { defaultSheet, useReportsNextData } from './useReportsNextData';
+import { SheetOutlines } from './rp-outlines';
 import './reports-next.css';
 
 export interface ReportsNextProps {
@@ -543,26 +544,30 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
             {/* Fraunces speaks only what the ENGINE said — verbatim, or the truth
                 about why it said nothing. This page never writes a sentence. */}
             <p className="rp-voice">{opening}</p>
-            {openingSilent && (
-              <p className="rp-cap" data-testid="rp-opening-step">
-                <NextStep source="start" />
-              </p>
-            )}
-            {openingAge && (
-              <p className="rp-cap" data-testid="rp-opening-age">
-                Written by the engine {openingAge}. The registers below are read live.
-              </p>
-            )}
-            {moneyLine && (
-              <p className="rp-cap" data-testid="rp-money-line">
-                {moneyLine}{' '}
-                {data.currency?.state === 'unstated' && (
-                  <Link to="/settings?tab=currency" className="rp-link rp-ink rp-focus">
-                    Record it in Settings
-                  </Link>
-                )}
-              </p>
-            )}
+            {/* The caption lines live in one slot that keeps the height of the tallest
+                (the day-one next step), so their landing does not move the sheet (r47 w3 F1). */}
+            <div className="rp-caps" data-testid="rp-caps">
+              {openingSilent && (
+                <p className="rp-cap" data-testid="rp-opening-step">
+                  <NextStep source="start" />
+                </p>
+              )}
+              {openingAge && (
+                <p className="rp-cap" data-testid="rp-opening-age">
+                  Written by the engine {openingAge}. The registers below are read live.
+                </p>
+              )}
+              {moneyLine && (
+                <p className="rp-cap" data-testid="rp-money-line">
+                  {moneyLine}{' '}
+                  {data.currency?.state === 'unstated' && (
+                    <Link to="/settings?tab=currency" className="rp-link rp-ink rp-focus">
+                      Record it in Settings
+                    </Link>
+                  )}
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="rp-row" style={{ gap: 8 }}>
@@ -691,12 +696,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
              the house sheet: drawing the house sheet first and then swapping it
              for theirs is a layout jump, and arranging it would save it over
              theirs. The reads behind the sheet are already in flight. */
-          <div className="rp-outlines" role="status">
-            <span className="rp-sr-only">Reading how you arranged this sheet…</span>
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="rp-outline" aria-hidden />
-            ))}
-          </div>
+          <SheetOutlines />
         ) : view.cuttings.length === 0 ? (
           <p role="status" className="rp-note">
             Every cutting has been taken off this sheet. Nothing is being read — press “Arrange the

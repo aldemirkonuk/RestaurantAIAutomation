@@ -56,16 +56,31 @@
    Outlines in the cutting's own ground while the reader's arrangement is read,
    so the house sheet is never drawn first and then swapped out. Still, on
    purpose: nothing here is loading in a way the reader can act on. */
+.rp-outlines-frame {
+  container-type: inline-size;
+}
+/* The sheet's own ruling (rp-sheet.ts: 12 columns, 34 px rows, 14 px gaps), so
+   an outline spans exactly the box its cutting will fill. Below the sheet's
+   twelve-column breakpoint the cuttings stack, one to a row. */
 .rp-outlines {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-auto-rows: 34px;
   gap: 14px;
 }
 .rp-outline {
-  height: 322px;
   border: 1px solid var(--paper-2);
   border-radius: 10px;
   background: var(--paper-1);
+}
+@container (max-width: 995px) {
+  .rp-outlines {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .rp-outline {
+    grid-column: 1 !important;
+    grid-row: span var(--rp-rows) !important;
+  }
 }
 
 /* ── a cutting ─────────────────────────────────────────────────────────────
@@ -622,6 +637,15 @@
   line-height: 1.5;
   color: var(--ink-2);
   max-width: 62ch;
+  /* Two lines are kept for the opening sentence, so "Reading the registers…"
+     becoming a two-line insight does not push the sheet down (r41 gap 7). */
+  min-height: calc(2 * 1.5em);
+}
+/* The captions under the opening (day-one next step, age, money line) share one
+   slot as tall as the tallest, the next step (65 px at 1440 px), so none of them
+   landing moves the sheet (r47 w3 F1). */
+.rp-caps {
+  min-height: 66px;
 }
 .rp-stamp {
   display: inline-flex;
