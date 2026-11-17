@@ -293,3 +293,35 @@ describe('CanonicalDocumentPage — one goods read per house, not per paper', ()
     expect(inventoryMock).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('CanonicalDocumentPage — a line that names a good says its name, not its id', () => {
+  beforeEach(() => {
+    documentMock.mockReset()
+    inventoryMock.mockReset()
+  })
+
+  // A food or supply good has no wine name; the house's own name for it is the
+  // row's `display_name`. Before, the shelf row fell back to the raw id.
+  it('names a food good by its house name', async () => {
+    documentMock.mockResolvedValue(paper('doc-1', [naming('inv-food')]))
+    inventoryMock.mockResolvedValue([
+      { id: 'inv-food', wineName: null, display_name: 'SYNTHETIC Olive oil', wineVintage: null, bottleSizeMl: 750 },
+    ])
+    render(tree(newClient(), 'rest-A', 'doc-1'))
+    const row = await screen.findByTestId('shelf-linked')
+    await waitFor(() => expect(row.textContent).toContain('SYNTHETIC Olive oil'))
+    expect(row.textContent).not.toContain('inv-food')
+    // A bottle size is a wine fact; a food's default size is not printed.
+    expect(row.textContent).not.toContain('750 ml')
+  })
+
+  it('still names a wine with its vintage and size', async () => {
+    documentMock.mockResolvedValue(paper('doc-1', [naming('inv-1')]))
+    inventoryMock.mockResolvedValue([
+      { id: 'inv-1', wineName: 'SYNTHETIC Red', display_name: 'ignored', wineVintage: 2019, bottleSizeMl: 750 },
+    ])
+    render(tree(newClient(), 'rest-A', 'doc-1'))
+    const row = await screen.findByTestId('shelf-linked')
+    await waitFor(() => expect(row.textContent).toContain('SYNTHETIC Red 2019 · 750 ml'))
+  })
+})
