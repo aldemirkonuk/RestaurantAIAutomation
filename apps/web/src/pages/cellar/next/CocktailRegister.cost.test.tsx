@@ -144,6 +144,31 @@ describe('the cocktail list cost columns', () => {
     expect(text(`drink-share-${GT}`)).toBe('—');
   });
 
+  it('costs the gateway could not price are said once, with no cost in any cell; the rest of the row stays', async () => {
+    h.get.mockImplementation(async (url: string) => {
+      if (url === '/settings/currency') return { data: { restaurantId: RID, code: 'TRY', country: null, readable: true, reason: null, statedAt: null } };
+      if (url === FIGURES) {
+        return { data: { costsUnread: true, drinks: figures.map((f) => ({ ...f, cost: null, allergens: null })) } };
+      }
+      throw new Error(`unexpected GET ${url}`);
+    });
+    mount();
+    await waitFor(() => expect(screen.getByTestId('cocktails-costs-unread')).toBeInTheDocument());
+    // Not "Not known": that would say the lines were read and found unpriced.
+    expect(text(`drink-cost-${GT}`)).toBe('—');
+    expect(text(`drink-share-${GT}`)).toBe('—');
+    expect(text(`drink-cost-${SOUR}`)).toBe('—');
+    // The drinks were read: the list still says which have no recipe, and does not call the whole read failed.
+    expect(screen.getByTestId('no-recipe-yet')).toHaveTextContent('1 of 4 drinks');
+    expect(screen.queryByTestId('cocktails-allergens-unread')).toBeNull();
+  });
+
+  it('a read whose costs were read does not say they were not', async () => {
+    mount();
+    await waitFor(() => expect(text(`drink-cost-${GT}`)).toBe(fmtMoney(1.5, 'TRY')));
+    expect(screen.queryByTestId('cocktails-costs-unread')).toBeNull();
+  });
+
   it('a re-read that fails blanks the costs it read before, beside the sentence', async () => {
     const { qc } = mount();
     await waitFor(() => expect(text(`drink-cost-${GT}`)).not.toBe('—'));
