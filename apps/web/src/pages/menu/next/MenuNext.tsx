@@ -48,6 +48,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { addMenuItem, discardMenuItem, getMenu, reviewMenuItem, type MenuLine } from '../../../services/api/menus';
 import { flagNoteInHouseMoney, housePriceBesideWords, housePriceNote, priceChangeNote, type PriceChange } from './menu-price-note';
 import { MenuVersions } from './MenuVersions';
+import { MENU_READ_FRESH_MS } from './menu-read-fresh';
 import { LockedPrices } from './LockedPrices';
 import { settingsApi } from '../../../services/api/settings';
 import { formatMoney } from '@/lib/currency';
@@ -118,6 +119,9 @@ function useActiveMenu(restaurantId: string | null) {
     queryKey: key,
     enabled: Boolean(restaurantId),
     queryFn: () => getMenu(restaurantId as string),
+    // r46: coming back to the tab (from a menu's file) does not read the whole menu again
+    // inside a minute; every change made here invalidates it and does not wait.
+    staleTime: MENU_READ_FRESH_MS,
   });
 
   const discard = useMutation({

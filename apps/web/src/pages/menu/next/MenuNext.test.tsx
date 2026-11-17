@@ -15,7 +15,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import MenuNext from './MenuNext';
 import { housePriceNote } from './menu-price-note';
 import { formatMoney } from '../../../lib/currency';
@@ -817,5 +817,28 @@ describe("MenuNext — a kept price in the flag note is house money (r28 G19)", 
       ),
     );
     expect(note.textContent).not.toContain('1250.00');
+  });
+});
+
+// r46: coming back to the tab (from a menu's file) must not read the current menu again inside a minute.
+describe('the current menu, coming back to the tab', () => {
+  it('does not read again within a minute, and does after one', async () => {
+    mockGetMenu.mockResolvedValue(menu());
+    mount();
+    await screen.findByTestId('menu-standing');
+    expect(mockGetMenu).toHaveBeenCalledTimes(1);
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(mockGetMenu).toHaveBeenCalledTimes(1);
+    const later = Date.now() + 61_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => later);
+    try {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+      await waitFor(() => expect(mockGetMenu).toHaveBeenCalledTimes(2));
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 });

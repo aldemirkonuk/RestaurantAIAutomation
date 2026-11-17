@@ -31,6 +31,7 @@ import {
 import { useAuthStore } from '../../../stores';
 import { formatMoney } from '../../../lib/currency';
 import { useHouseCurrencyCode } from '../../../hooks/queries/useHouseCurrencyCode';
+import { MENU_READ_FRESH_MS } from './menu-read-fresh';
 
 const EM = '—';
 
@@ -243,7 +244,7 @@ function LockRow({ l, canManage, onSaid }: { l: PriceLock; canManage: boolean; o
 export function LockedPrices({ canManage }: { canManage: boolean }) {
   const [said, setSaid] = useState<string | null>(null);
   const house = useAuthStore((s) => s.activeRestaurantId) ?? null;
-  const q = useQuery({ queryKey: ['pricing', 'locks', house], queryFn: listPriceLocks });
+  const q = useQuery({ queryKey: ['pricing', 'locks', house], queryFn: listPriceLocks, staleTime: MENU_READ_FRESH_MS });
 
   let body: ReactNode;
   if (q.isLoading) {
