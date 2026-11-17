@@ -1726,12 +1726,37 @@ describe('a house of goods is not a cellar', () => {
     expect(document.body.textContent).toContain('No good matches this search and these filters; 2 goods are on the books.');
   });
 
+  it('heads the name column "Good" and says "Unnamed good" in a house of goods', () => {
+    mock.data = data({ rows: [flour(), { ...sugar(), name: null }], rawItems: goods });
+    renderPage();
+    const heads = screen.getAllByRole('columnheader').map((h) => h.textContent);
+    expect(heads).toContain('Good');
+    expect(heads).not.toContain('Title');
+    expect(document.body.textContent).toContain('Unnamed good');
+    expect(document.body.textContent).not.toMatch(/Unnamed title/);
+  });
+
+  it('copies a nameless good as "Unnamed good"', async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    const ok = vi.spyOn(toast, 'success').mockImplementation(() => '' as never);
+    mock.data = data({ rows: [flour(), { ...sugar(), name: null }], rawItems: goods });
+    renderPage();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select this good' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy names' }));
+    });
+    expect(writeText).toHaveBeenCalledWith('Unnamed good');
+    ok.mockRestore();
+  });
+
   it('keeps the cellar words for a house with even one drink', () => {
     mock.data = data({ rows: [row({ id: 'a', name: 'Ankara Red' }), flour()], rawItems: [goods[0]] });
     renderPage();
     expect(document.body.textContent).toContain('The cellar · Inventory');
     expect(screen.getByPlaceholderText('Search titles, producers, grapes')).toBeTruthy();
     expect(screen.getByTestId('inventory-read-sentence').textContent).toMatch(/^2 titles, .*bottle/);
+    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toContain('Title');
   });
 });
 
