@@ -294,6 +294,8 @@ export default function InventoryNext() {
     };
   }, [data.rawItems]);
   const words = useMemo(() => houseWordsFor((rows ?? []).map(goodOf)), [rows, goodOf]);
+  // The exported files head the name column the way the page does.
+  const nameHead = words.one === 'good' ? 'Good' : 'Title';
   const carriesGoods = kind !== '' || (rows ?? []).some((r) => goodOf(r) !== 'drink');
   const visible = useMemo(() => {
     if (!rows) return [];
@@ -564,7 +566,7 @@ export default function InventoryNext() {
             return noZoneWord(r.stock) ?? '';
           },
         },
-        { header: 'Title', value: (r) => r.name ?? '' },
+        { header: nameHead, value: (r) => r.name ?? '' },
         { header: 'Producer', value: (r) => r.producer ?? '' },
         { header: 'Vintage', value: (r) => blank(r.vintage) },
         { header: 'Type', value: (r) => (r.type === null ? '' : typeLabel(r.type)) },
@@ -588,7 +590,7 @@ export default function InventoryNext() {
       'Inventory count sheet',
     );
 
-  const valuation = valuationColumns(data.currency.code ?? null);
+  const valuation = valuationColumns(data.currency.code ?? null, nameHead);
 
   const exportValuation = () =>
     runExport(visible, valuation, `inventory-valuation-${today()}`, 'Inventory valuation');

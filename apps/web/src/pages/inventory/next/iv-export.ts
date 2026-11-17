@@ -48,9 +48,10 @@ export async function runExport<T>(rows: T[], columns: TableExportColumn<T>[], f
   }
 }
 
-export function valuationColumns(currencyCode: string | null): TableExportColumn<InvRow>[] {
+/** `nameHead` is the name column's head: "Title" for a drink, "Good" in a house of goods. */
+export function valuationColumns(currencyCode: string | null, nameHead = 'Title'): TableExportColumn<InvRow>[] {
   return [
-    { header: 'Title', value: (r) => r.name ?? '' },
+    { header: nameHead, value: (r) => r.name ?? '' },
     { header: 'Producer', value: (r) => r.producer ?? '' },
     { header: 'Type', value: (r) => (r.type === null ? '' : typeLabel(r.type)) },
     { header: 'Live', value: (r) => blank(r.stock) },
