@@ -54,6 +54,7 @@ import { useHouseCurrencyRead } from '../../../hooks/queries/useHouseCurrencyCod
 import { formatMoney } from '@/lib/currency';
 import { housePriceHint } from '@/lib/house-number';
 import { Wordmark } from '@/components/mudavym';
+import { HousePageSkeleton } from '@/components/mudavym/HousePageLoader';
 import { isKitchenLine } from '../../../lib/firstProof';
 import { lineStatusWords } from './menu-line-status';
 import { FIND_FROM_LINES, addressWithFind, findFromAddress, lineMatches } from './menu-find';
@@ -654,9 +655,14 @@ export default function MenuNext() {
         </h1>
 
         {authLoading || q.isLoading || currencyReading ? (
-          <p className="cl-said" role="status">
-            Reading the menu…
-          </p>
+          // r46 (r41 R9): the place the menu will fill is held while it is read, so the locked
+          // prices and the kept menus below do not jump down when a long menu arrives.
+          <div data-testid="menu-reading" style={{ minHeight: 360 }}>
+            <p className="cl-said" role="status">
+              Reading the menu…
+            </p>
+            <HousePageSkeleton />
+          </div>
         ) : q.isError ? (
           <p className="cl-said" role="alert" data-testid="menu-error">
             The menu could not be read
