@@ -149,6 +149,16 @@ describe('MenuNext — reading', () => {
     expect(await screen.findAllByTestId('menu-row')).toHaveLength(1);
   });
 
+  it('holds the menu\'s place while it is read, so what is below does not jump (r41 R9)', async () => {
+    mockGetMenu.mockResolvedValue(menu());
+    mount();
+    const held = screen.getByTestId('menu-reading');
+    expect(held).toHaveStyle({ minHeight: '360px' });
+    expect(held).toContainElement(screen.getByText('Reading the menu…'));
+    await screen.findAllByTestId('menu-row');
+    expect(screen.queryByTestId('menu-reading')).not.toBeInTheDocument();
+  });
+
   it('says a failed read plainly, never as an empty menu', async () => {
     mockGetMenu.mockRejectedValue(new Error('ECONNREFUSED'));
     mount();
