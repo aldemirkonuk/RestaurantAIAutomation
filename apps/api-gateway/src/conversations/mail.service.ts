@@ -761,6 +761,23 @@ export class MailService {
     const domain = (
       this.configService.get<string>("INBOUND_EMAIL_DOMAIN") || ""
     ).trim();
+    // The address does not depend on the zone, so its read goes out first and
+    // runs while the house row is read (r41 mail gap 13: one round trip less
+    // before the page can draw). A plain read of the address that exists. It
+    // must never provision one: InboundAddressService.addressFor inserts on
+    // read (QA M-12), so it is deliberately not used here. Promise.resolve
+    // starts the request now; a query builder only fires when awaited.
+    const addrRead = Promise.resolve(
+      domain
+        ? this.db
+            .from("restaurant_inbound_addresses")
+            .select("address")
+            .eq("restaurant_id", houseId)
+            .eq("is_active", true)
+            .order("created_at", { ascending: true })
+            .limit(1)
+        : { data: [] as any[], error: null },
+    );
     // The house's day is read by the one rule every house-day reader uses
     // (common/house-day.ts): its own zone, else its country's only zone, else
     // none — never UTC (D7). A failed read of the house row is a failed
@@ -778,18 +795,7 @@ export class MailService {
         p_withhold_house_letters: withholdsHouseLetters(callerRole),
         p_zone: zone.zone,
       }),
-      // A plain read of the address that exists. It must never provision one:
-      // InboundAddressService.addressFor inserts on read (QA M-12), so it is
-      // deliberately not used here.
-      domain
-        ? this.db
-            .from("restaurant_inbound_addresses")
-            .select("address")
-            .eq("restaurant_id", houseId)
-            .eq("is_active", true)
-            .order("created_at", { ascending: true })
-            .limit(1)
-        : Promise.resolve({ data: [] as any[], error: null }),
+      addrRead,
     ]);
     if (sumRes.error) this.failed("summary", sumRes.error);
     if (addrRes.error) this.failed("address", addrRes.error);
