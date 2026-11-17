@@ -5,7 +5,7 @@
  * newest first, for an owner or a manager. Nothing here writes.
  */
 import { useQuery } from '@tanstack/react-query';
-import { getHousePriceHistory, type HousePriceVersion } from '../../../services/api/priceHistory';
+import { getHousePriceHistory, getHouseZone, type HousePriceVersion } from '../../../services/api/priceHistory';
 
 const SOURCE: Record<string, string> = {
   manual: 'by hand',
@@ -40,10 +40,34 @@ export function reasonWords(reason: string | null): string | null {
   return r;
 }
 
+/** Whether a zone can say a date (a real IANA name). */
+function zoneUsable(zone: string | null | undefined): zone is string {
+  if (!zone) return false;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The calendar day of a moment on the house's clock (r41 R8). A change at
+ * 01:30 on 2 Nov in Antalya is 22:30 on 1 Nov in UTC, and the page used to say
+ * "2026-11-01". With no usable zone the UTC day is said, and the panel says so.
+ */
+export function dayOf(iso: string, zone: string | null | undefined): string {
+  if (zoneUsable(zone)) {
+    const d = new Date(iso);
+    if (!Number.isNaN(d.getTime())) return new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+  }
+  return iso.slice(0, 10);
+}
+
 /** One change in a sentence: the prices, since when, how, by whom, and why. */
-export function versionWords(v: HousePriceVersion, money: (n: number) => string, namesReadable = true): string {
+export function versionWords(v: HousePriceVersion, money: (n: number) => string, namesReadable = true, zone: string | null = null): string {
   const prices = [v.bottle !== null ? `bottle ${money(v.bottle)}` : null, v.glass !== null ? `glass ${money(v.glass)}` : null].filter(Boolean);
-  const when = v.to ? `${v.from.slice(0, 10)} to ${v.to.slice(0, 10)}` : `since ${v.from.slice(0, 10)}`;
+  const when = v.to ? `${dayOf(v.from, zone)} to ${dayOf(v.to, zone)}` : `since ${dayOf(v.from, zone)}`;
   const how = v.reason && HAND_ON_MENU.test(v.reason.trim()) ? 'by hand on the menu' : SOURCE[v.source] ?? v.source.replace(/_/g, ' ');
   const why = reasonWords(v.reason);
   const who = v.by.name
@@ -58,7 +82,8 @@ export function versionWords(v: HousePriceVersion, money: (n: number) => string,
 
 export function PriceHistory({ inventoryId, name, money }: { inventoryId: string; name: string; money: (n: number) => string }) {
   const q = useQuery({ queryKey: ['pricing', 'history', inventoryId], queryFn: () => getHousePriceHistory(inventoryId) });
-  if (q.isLoading) {
+  const z = useQuery({ queryKey: ['settings', 'time-zone'], queryFn: getHouseZone });
+  if (q.isLoading || (q.data && z.isLoading)) {
     return (
       <p className="cl-said" role="status" style={{ fontSize: 12, margin: 0 }}>
         Reading the price history of {name}…
@@ -76,6 +101,14 @@ export function PriceHistory({ inventoryId, name, money }: { inventoryId: string
     );
   }
   const h = q.data;
+  const zone = z.data && z.data.readable && zoneUsable(z.data.zone) ? z.data.zone : null;
+  // Said once, so a UTC day is never mistaken for the house's own day.
+  const zoneNote =
+    zone !== null
+      ? null
+      : z.isError || (z.data && !z.data.readable)
+        ? "Days are UTC days: the house's time zone could not be read just now."
+        : "Days are UTC days: this house has not said its time zone (Settings, Time zone).";
   return (
     <div data-testid="menu-price-history">
       <p className="cl-said" style={{ fontSize: 12, margin: 0 }}>
@@ -87,10 +120,15 @@ export function PriceHistory({ inventoryId, name, money }: { inventoryId: string
         <ul className="cl-said" style={{ fontSize: 12, paddingLeft: 18, margin: '4px 0 0' }}>
           {h.versions.map((v) => (
             <li key={v.from} data-testid="menu-price-history-line">
-              {versionWords(v, money, h.namesReadable)}
+              {versionWords(v, money, h.namesReadable, zone)}
             </li>
           ))}
         </ul>
+      ) : null}
+      {h.versions.length > 0 && zoneNote ? (
+        <p className="cl-note" data-testid="menu-price-history-zone">
+          {zoneNote}
+        </p>
       ) : null}
       {!h.namesReadable && h.namesReason ? <p className="cl-note">Not everyone could be named: {h.namesReason}.</p> : null}
     </div>

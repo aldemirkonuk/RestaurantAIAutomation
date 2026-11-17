@@ -575,6 +575,8 @@ export default function MenuNext() {
     setPricing(refused ? { id: line.id, saving: false } : null);
     if (changes.some((c) => !('refused' in c.result))) {
       await queryClient.invalidateQueries({ queryKey: ['menu', 'active', activeRestaurantId] });
+      // An open history shows the change just made, not the one before (r41 R8).
+      if (line.inventory_item_id) await queryClient.invalidateQueries({ queryKey: ['pricing', 'history', line.inventory_item_id] });
     }
   };
   const drinks = lines.filter((l) => !isKitchenMenuLine(l));

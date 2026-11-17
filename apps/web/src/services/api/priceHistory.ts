@@ -30,3 +30,17 @@ export async function getHousePriceHistory(inventoryId: string): Promise<HousePr
   const { data } = await apiClient.get<HousePriceHistory>(`/pricing/history/${inventoryId}`)
   return data
 }
+
+/** The clock the house keeps, as `GET /settings/time-zone` answers it (the part a date needs). */
+export interface HouseZoneRead {
+  /** An IANA zone, or null when none is recorded. */
+  zone: string | null
+  /** False when the row itself could not be read (a different state from "none recorded"). */
+  readable: boolean
+  reason: string | null
+}
+
+export async function getHouseZone(): Promise<HouseZoneRead> {
+  const { data } = await apiClient.get<HouseZoneRead>('/settings/time-zone')
+  return data
+}
