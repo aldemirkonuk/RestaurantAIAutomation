@@ -1065,6 +1065,10 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
     mutationFn: (challenge?: string | null) => documentsApi.verify(doc.id, challenge),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['receipts-next'] });
+      // The house's setup counts a checked invoice as a step (and the waiting
+      // one as the step before it). The rail keeps the setup it read until the
+      // window is next focused, so it went on saying the invoice was waiting.
+      void qc.invalidateQueries({ queryKey: ['onboarding-progress'] });
       onVerified();
     },
   });
