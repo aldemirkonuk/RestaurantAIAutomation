@@ -30,6 +30,7 @@ import { Select } from '@/components/mudavym';
 import { DeliveriesToName } from '@/components/mudavym/DeliveriesToName';
 import { ContextualInsights } from '@/components/insights/ContextualInsights';
 import { NamingUnread } from './NameThisWine';
+import { houseWordsFor } from './iv-house-words';
 import { KIND_CHIPS, readView, writeView, type GoodKind, type IvView } from './iv-url';
 import { StorageLocationManager } from '../../../components/inventory/StorageLocationManager';
 import { PosMappingPanel } from '../../../components/inventory/PosMappingPanel';
@@ -292,6 +293,7 @@ export default function InventoryNext() {
       return own === 'food' || own === 'supply' ? own : 'drink';
     };
   }, [data.rawItems]);
+  const words = useMemo(() => houseWordsFor((rows ?? []).map(goodOf)), [rows, goodOf]);
   const carriesGoods = kind !== '' || (rows ?? []).some((r) => goodOf(r) !== 'drink');
   const visible = useMemo(() => {
     if (!rows) return [];
@@ -606,7 +608,7 @@ export default function InventoryNext() {
     <div className="mudavym iv-page min-h-full" style={{ background: 'var(--paper-0)', color: 'var(--ink-1)', fontFamily: SANS }}>
       <div className="iv-wrap">
         <p className="iv-crumb">
-          The cellar · Inventory
+          The {words.place} · Inventory
           {data.state === 'ready' && rows !== null
             ? crumb
               ? ` · last count ${fmtWhen(crumb)}`
@@ -709,7 +711,7 @@ export default function InventoryNext() {
           /* ── the book ───────────────────────────────────────────────── */
           <>
             <p className="iv-read" data-testid="inventory-read-sentence">
-              {readSentence(rows, data.currency, !locs.unavailable)}
+              {readSentence(rows, data.currency, !locs.unavailable, words)}
             </p>
             {data.stale ? (
               <p className="iv-note" role="status">
@@ -776,12 +778,12 @@ export default function InventoryNext() {
 
             <div className="iv-toolbar" data-testid="inventory-toolbar">
               <label className="iv-search">
-                <span className="iv-sr">Search titles, producers, grapes</span>
+                <span className="iv-sr">{words.search}</span>
                 <input
                   ref={searchRef}
                   type="search"
                   className="iv-field iv-focus"
-                  placeholder="Search titles, producers, grapes"
+                  placeholder={words.search}
                   value={query}
                   onChange={(e) => setV({ q: e.target.value })}
                 />
@@ -824,7 +826,7 @@ export default function InventoryNext() {
                   Table
                 </button>
                 <button type="button" className="iv-btn iv-focus" aria-pressed={view === 'map'} data-on={view === 'map'} onClick={() => setV({ view: 'map' })}>
-                  Cellar map
+                  {words.map}
                 </button>
               </span>
               <button type="button" className="iv-btn iv-focus" onClick={showTools}>
@@ -896,8 +898,8 @@ export default function InventoryNext() {
             ) : visible.length === 0 ? (
               <div className="iv-none" data-testid="inventory-none-match">
                 <p className="iv-said">
-                  No title matches {filtered ? 'this search and these filters' : 'here'}; {fmtCount(rows.length)}{' '}
-                  {rows.length === 1 ? 'title is' : 'titles are'} on the books.
+                  No {words.one} matches {filtered ? 'this search and these filters' : 'here'}; {fmtCount(rows.length)}{' '}
+                  {rows.length === 1 ? `${words.one} is` : `${words.many} are`} on the books.
                 </p>
                 {filtered ? (
                   <button type="button" className="iv-btn iv-focus" onClick={clearFilters}>
@@ -908,7 +910,7 @@ export default function InventoryNext() {
             ) : (
               <>
               {selected.size > 0 ? (
-                <div className="iv-selbar" role="group" aria-label="What to do with the selected titles" data-testid="inventory-selbar">
+                <div className="iv-selbar" role="group" aria-label={`What to do with the selected ${words.many}`} data-testid="inventory-selbar">
                   <span className="iv-selbar-n">{fmtCount(selectedRows.length)} selected</span>
                   <button
                     type="button"
@@ -938,13 +940,14 @@ export default function InventoryNext() {
                   </button>
                   {data.canManage && selBlocked > 0 ? (
                     <p className="iv-note" id="iv-selbar-why" data-testid="selbar-remove-blocked">
-                      Remove waits: {fmtCount(selBlocked)} selected {selBlocked === 1 ? 'title' : 'titles'} cannot be
+                      Remove waits: {fmtCount(selBlocked)} selected {selBlocked === 1 ? words.one : words.many} cannot be
                       zeroed first. Open {selBlocked === 1 ? 'it' : 'each'} and look under More to see why.
                     </p>
                   ) : null}
                 </div>
               ) : null}
               <InventoryTable
+                thing={words.one}
                 selected={selected}
                 onSelect={toggleSelect}
                 onSelectAll={selectAllVisible}
@@ -974,7 +977,7 @@ export default function InventoryNext() {
             <NamingUnread />
             {zoneUnread > 0 ? (
               <p className="iv-note">
-                {zoneUnread} {zoneUnread === 1 ? 'title whose zones' : 'titles whose zones'} could not be read{' '}
+                {zoneUnread} {zoneUnread === 1 ? `${words.one} whose zones` : `${words.many} whose zones`} could not be read{' '}
                 {zoneUnread === 1 ? 'is' : 'are'} not shown under this zone.
               </p>
             ) : null}
@@ -1020,14 +1023,14 @@ export default function InventoryNext() {
                     house every time. A cross-house export is gateway work (F-10). */}
               </div>
               <p className="iv-note">
-                Exports are CSV of the titles listed above. A figure that could not be read is left blank in the file,
+                Exports are CSV of the {words.many} listed above. A figure that could not be read is left blank in the file,
                 never written as 0.
               </p>
             </section>
 
             <p className="iv-footer" data-testid="inventory-footer">
-              {visible.length === rows.length ? `All ${fmtCount(rows.length)}` : fmtCount(visible.length)} of {fmtCount(rows.length)} titles are
-              listed{filterWords ? ` (${filterWords})` : ''}, {sortWords(sort, visible)}.
+              {visible.length === rows.length ? `All ${fmtCount(rows.length)}` : fmtCount(visible.length)} of {fmtCount(rows.length)} {words.many} are
+              listed{filterWords ? ` (${filterWords})` : ''}, {sortWords(sort, visible, words)}.
               {filtered && visible.length > 0 ? (
                 <>
                   {' '}
@@ -1038,7 +1041,7 @@ export default function InventoryNext() {
                 </>
               ) : null}
               {data.currency.state === 'recorded' ? ` Money is shown in the house’s currency, ${data.currency.code}.` : ''}{' '}
-              Market reads — in every title's details because this page does not read a market price yet.
+              Market reads — in every {words.one}'s details because this page does not read a market price yet.
               {data.unread.length > 0 || data.stale
                 ? ' Not every read answered; each one that did not is named above the table.'
                 : data.pending.length > 0

@@ -1694,3 +1694,71 @@ describe('the legacy velocity sort and column-header sort (round 4)', () => {
     expect(screen.getByTestId('inventory-footer').textContent).toContain('sorted Needs you first');
   });
 });
+
+// r43 w2 F2 residual: a house whose book holds only food and supplies has no
+// cellar and no bottles. It hears "stock room" and "goods", and the opening
+// sentence does not sum kilograms and litres into "bottles".
+describe('a house of goods is not a cellar', () => {
+  const flour = () => row({ id: 'f', wineId: null, name: 'Bread Flour', type: null, kind: null, stock: 5, par: null, standing: 'above', runway: null, value: null, zones: [] });
+  const sugar = () => row({ id: 's', wineId: null, name: 'Caster Sugar', type: null, kind: null, stock: 3, par: null, standing: 'above', runway: null, value: null, zones: [] });
+  const goods = [
+    { id: 'f', kind: 'food', uom: 'g', display_name: 'Bread Flour' },
+    { id: 's', kind: 'supply', uom: 'each', display_name: 'Caster Sugar' },
+  ];
+
+  it('says stock room, goods and no bottles when no row is a drink', () => {
+    mock.data = data({ rows: [flour(), sugar()], rawItems: goods });
+    renderPage();
+    const text = document.body.textContent ?? '';
+    expect(text).toContain('The stock room · Inventory');
+    expect(screen.getByTestId('inventory-read-sentence').textContent).toMatch(/^2 goods\./);
+    expect(screen.getByTestId('inventory-read-sentence').textContent).not.toMatch(/bottle|title/);
+    expect(screen.getByPlaceholderText('Search goods')).toBeTruthy();
+    expect(screen.getByTestId('inventory-footer').textContent).toContain('All 2 of 2 goods are listed');
+    expect(text).not.toMatch(/cellar|titles|every title/i);
+    expect(screen.getByRole('table', { name: 'The book: every good on hand' })).toBeTruthy();
+  });
+
+  it('says the no-match line in goods', () => {
+    mock.data = data({ rows: [flour(), sugar()], rawItems: goods });
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText('Search goods'), { target: { value: 'zzzz' } });
+    expect(document.body.textContent).toContain('No good matches this search and these filters; 2 goods are on the books.');
+  });
+
+  it('keeps the cellar words for a house with even one drink', () => {
+    mock.data = data({ rows: [row({ id: 'a', name: 'Ankara Red' }), flour()], rawItems: [goods[0]] });
+    renderPage();
+    expect(document.body.textContent).toContain('The cellar · Inventory');
+    expect(screen.getByPlaceholderText('Search titles, producers, grapes')).toBeTruthy();
+    expect(screen.getByTestId('inventory-read-sentence').textContent).toMatch(/^2 titles, .*bottle/);
+  });
+});
+
+describe('readSentence in a house of goods', () => {
+  const cur = { state: 'recorded', code: 'EUR' } as const;
+  const food = (id: string, over: Partial<InvRow> = {}) => row({ id, wineId: null, type: null, kind: null, par: null, standing: 'above', runway: null, zones: [], ...over });
+
+  it('counts goods and names the unread ones, with no bottle sum', async () => {
+    const { GOODS_WORDS } = await import('./iv-house-words');
+    const s = readSentence([food('a', { stock: 5000, value: null }), food('b', { stock: null, value: null })], cur, true, GOODS_WORDS);
+    expect(s).toContain('2 goods, 1 with stock read (1 could not be read).');
+    expect(s).toContain('Of the goods read, nothing is out or below par.');
+    expect(s).toContain('No good has a cost on the books yet');
+    expect(s).not.toMatch(/bottle|title/);
+  });
+
+  it('says the money in goods, at the stock room', async () => {
+    const { GOODS_WORDS } = await import('./iv-house-words');
+    const s = readSentence([food('a', { stock: 5, value: 12 })], cur, true, GOODS_WORDS);
+    expect(s).toContain('At cost the stock room holds');
+    expect(s).toContain('1 of 1 goods priced');
+  });
+
+  it('sortWords says good for a house of goods and title otherwise', async () => {
+    const { GOODS_WORDS } = await import('./iv-house-words');
+    const rows = [food('a', { value: null })];
+    expect(sortWords('value', rows, GOODS_WORDS)).toContain('no good listed has a cost');
+    expect(sortWords('value', rows)).toContain('no title listed has a cost');
+  });
+});
