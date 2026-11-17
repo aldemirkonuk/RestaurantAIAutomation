@@ -187,6 +187,24 @@ describe('CarryMany: sending', () => {
     expect(screen.getByRole('button', { name: 'Nothing left to carry' })).toBeDisabled();
   });
 
+  it('says a line listed twice was carried once, after the page re-reads and the good joins the list', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const at = (listedNames: string[]) => (
+      <QueryClientProvider client={qc}>
+        <CarryMany restaurantId="r1" listedNames={listedNames} onClose={() => {}} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(at([]));
+    paste('Lemons\nlemons');
+    fireEvent.click(screen.getByRole('button', { name: 'Carry 1 good' }));
+    await waitFor(() => expect(screen.getByTestId('carry-many-summary')).toBeTruthy());
+    rerender(at(['Lemons']));
+    const rows = screen.getAllByTestId('carry-many-row').map((r) => r.textContent);
+    expect(rows[0]).toContain('Carried.');
+    expect(rows[1]).toContain('Listed twice; carried once.');
+    expect(rows[1]).not.toContain('Carried.');
+  });
+
   it('keeps at most four in flight', async () => {
     let inFlight = 0;
     let most = 0;

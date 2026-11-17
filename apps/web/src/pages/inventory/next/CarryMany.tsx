@@ -206,13 +206,17 @@ export default function CarryMany({ restaurantId, listedNames, onClose }: CarryM
       </div>
       {lines.length > 0 && !tooMany ? (
         <ol className="cm-list" data-testid="carry-many-list">
-          {lines.map((l) => {
+          {lines.map((l, at) => {
             const outcome = outcomes[l.name.toLowerCase()];
+            // The answer belongs to the first line with that name: a later one
+            // was never sent, and must not read "Carried." once the page re-reads
+            // and the first line stops counting as the only one.
+            const again = lines.findIndex((x) => x.name.toLowerCase() === l.name.toLowerCase()) < at;
             // What was sent says its own answer first: once the page re-reads,
             // a good just carried is on the list too, and must still read
             // "Carried.", never "left out".
             const said =
-              l.skip === 'twice'
+              l.skip === 'twice' || again
                 ? 'Listed twice; carried once.'
                 : outcome?.kind === 'carried'
                   ? 'Carried.'
