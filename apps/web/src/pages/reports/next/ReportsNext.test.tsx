@@ -2580,4 +2580,8 @@ describe('the opening keeps three lines on a narrower window (r48 w1 F4)', () =>
     expect(css).toMatch(/\.rp-voice\s*\{[^}]*min-height:\s*calc\(2 \* 1\.5em\)/);
     expect(css).toMatch(/@media \(max-width: 1100px\)\s*\{\s*\.rp-voice\s*\{[^}]*min-height:\s*calc\(3 \* 1\.5em\)/);
   });
+  it('[REVERT-FAILS] the opening column has its own width at 1100 px and below, so the buttons beside it do not wrap when the sentence lands', () => {
+    const css = readFileSync(join(__dirname, 'reports-next.css'), 'utf8');
+    expect(css).toMatch(/@media \(max-width: 1100px\)\s*\{[^@]*\.rp-head > div:first-child\s*\{[^}]*flex:\s*1 1 340px/);
+  });
 });

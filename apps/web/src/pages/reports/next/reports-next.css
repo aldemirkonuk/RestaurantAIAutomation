@@ -647,6 +647,13 @@
   .rp-voice {
     min-height: calc(3 * 1.5em);
   }
+  /* The opening's column has a width of its own here. Sized by its content it
+     grew from a short caption to the full sentence, and the buttons beside it
+     wrapped under it 48 px late (r50 w3, 1024 px). */
+  .rp-head > div:first-child {
+    flex: 1 1 340px;
+    min-width: 0;
+  }
 }
 /* The captions under the opening (day-one next step, age, money line) share one
    slot as tall as the tallest, the next step (65 px at 1440 px), so none of them
