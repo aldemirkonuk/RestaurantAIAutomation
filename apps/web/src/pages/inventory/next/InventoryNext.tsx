@@ -13,7 +13,7 @@
  * chrome is capped and the table sorts by severity (dossier E §1).
  *
  * FOUR STATES, NEVER BLURRED (ADRs 0020, 0067, 0149):
- *  - reading  — nothing for 400ms, then "Reading the cellar…", then after 12s
+ *  - reading  — nothing for 400ms, then "Reading the stock…" over the shape of the list, then after 12s
  *               "Still reading…" (the HousePageLoader ladder);
  *  - failed   — "The stock could not be read." and nothing else is claimed;
  *  - empty    — the read answered with no titles: the first-steps card;
@@ -608,7 +608,7 @@ export default function InventoryNext() {
     <div className="mudavym iv-page min-h-full" style={{ background: 'var(--paper-0)', color: 'var(--ink-1)', fontFamily: SANS }}>
       <div className="iv-wrap">
         <p className="iv-crumb">
-          The {words.place} · Inventory
+          {rows === null ? 'Inventory' : `The ${words.place} · Inventory`}
           {data.state === 'ready' && rows !== null
             ? crumb
               ? ` · last count ${fmtWhen(crumb)}`
@@ -620,9 +620,21 @@ export default function InventoryNext() {
         {data.state === 'reading' ? (
           <div role="status" aria-live="polite" data-testid="inventory-reading">
             {ladder === 'silent' ? null : (
-              <p className="iv-said" style={{ marginTop: 8 }}>
-                {ladder === 'slow' ? 'Still reading — this is taking longer than usual.' : 'Reading the cellar…'}
-              </p>
+              <>
+                <p className="iv-said" style={{ marginTop: 8 }}>
+                  {ladder === 'slow' ? 'Still reading — this is taking longer than usual.' : 'Reading the stock…'}
+                </p>
+                {/* The list's place is held with empty bars, so the page does not jump when it arrives. */}
+                <div className="iv-skel" aria-hidden="true" data-testid="inventory-reading-shape">
+                  {Array.from({ length: 8 }, (_, i) => (
+                    <div key={i} className="iv-skel-row">
+                      <span className="iv-skel-bar iv-skel-name" />
+                      <span className="iv-skel-bar iv-skel-mid" />
+                      <span className="iv-skel-bar iv-skel-short" />
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         ) : data.state === 'nohouse' ? (
@@ -634,7 +646,7 @@ export default function InventoryNext() {
           <div role="alert" data-testid="inventory-failed">
             <p className="iv-lead">The stock could not be read.</p>
             <p className="iv-said">
-              The stock list did not answer, so this page claims nothing: not zero titles, and not an empty cellar.
+              The stock list did not answer, so this page claims nothing: not a count of zero, and not an empty list.
             </p>
             <button type="button" className="iv-btn iv-focus" style={{ marginTop: 10 }} onClick={data.refetch}>
               Read again

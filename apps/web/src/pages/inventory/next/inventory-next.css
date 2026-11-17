@@ -758,10 +758,43 @@
   }
 }
 
+/* ── the list's place, held while the stock is read ───────────────────── */
+.iv-skel {
+  margin-top: 18px;
+  border-top: 1px solid var(--paper-2);
+}
+.iv-skel-row {
+  display: grid;
+  grid-template-columns: 3fr 2fr 1fr;
+  gap: 16px;
+  align-items: center;
+  min-height: 52px;
+  border-bottom: 1px solid var(--paper-2);
+}
+.iv-skel-bar {
+  display: block;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--paper-2);
+  animation: iv-skel-pulse 1.4s ease-in-out infinite;
+}
+.iv-skel-mid {
+  width: 70%;
+}
+.iv-skel-short {
+  width: 45%;
+}
+@keyframes iv-skel-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
 /* ── reduced motion: nothing here travels ──────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .iv-page *,
   .iv-page *::before {
+    animation: none !important;
     transition: none !important;
     scroll-behavior: auto !important;
   }

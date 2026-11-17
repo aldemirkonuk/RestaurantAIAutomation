@@ -276,18 +276,35 @@ describe('search ignores accents and folds the Turkish i', () => {
 });
 
 describe('unknown is never zero', () => {
-  it('shows nothing for 400ms, then "Reading the cellar…", and never a 0', () => {
+  it('shows nothing for 400ms, then "Reading the stock…" over the shape of the list, and never a 0', () => {
     vi.useFakeTimers();
     mock.data = data({ state: 'reading', rows: null });
     const { container } = renderPage();
     expect(screen.getByTestId('inventory-reading').textContent).toBe('');
+    expect(screen.queryByTestId('inventory-reading-shape')).toBeNull();
     act(() => {
       vi.advanceTimersByTime(400);
     });
-    expect(screen.getByText('Reading the cellar…')).toBeTruthy();
+    expect(screen.getByText('Reading the stock…')).toBeTruthy();
+    // Rows are drawn as empty bars, hidden from a screen reader, so the page
+    // does not jump when the real list arrives. They carry no words or figures.
+    const shape = screen.getByTestId('inventory-reading-shape');
+    expect(shape.getAttribute('aria-hidden')).toBe('true');
+    expect(shape.querySelectorAll('.iv-skel-row').length).toBeGreaterThanOrEqual(6);
+    expect(shape.textContent).toBe('');
     expect(container.textContent).not.toMatch(BARE_ZERO);
     expect(screen.queryByTestId('inventory-chips')).toBeNull();
     expect(screen.queryByTestId('inventory-table')).toBeNull();
+  });
+
+  it('does not say "cellar" before it knows the house holds drinks', () => {
+    vi.useFakeTimers();
+    mock.data = data({ state: 'reading', rows: null });
+    renderPage();
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(document.body.textContent).not.toMatch(/cellar/i);
   });
 
   it('says the stock could not be read when the read fails, and claims nothing else', () => {
