@@ -73,8 +73,8 @@ function orderLine(o: CounterOrderRow, read: HouseCounterRead | null): ActLine {
 function deliveryLine(d: CounterDeliveryRow): ActLine {
   return {
     id: d.orderId,
-    what: `Order ${d.orderNumber ?? EM} · ${d.countedQtyBottles} bottles counted by case`,
-    detail: `not counted by the bottle · ${doorAgeSaid(d.ageHours, d.severity)}`,
+    what: `Order ${d.orderNumber ?? EM} · ${d.countedQtyBottles} counted by case`,
+    detail: `not counted one by one · ${doorAgeSaid(d.ageHours, d.severity)}`,
     at: shortWhen(d.countedAt),
   };
 }
