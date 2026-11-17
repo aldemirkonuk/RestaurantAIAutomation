@@ -319,6 +319,10 @@ export function MenuPlan({
         predicate: (query) => !(query.queryKey[1] === 'plan' && query.queryKey[2] === menuId),
       });
       void queryClient.invalidateQueries({ queryKey: ['pricing', 'locks'] });
+      // The house's setup counts a current menu as its first step. The rail
+      // keeps the setup it read until the window is next focused, so it went
+      // on saying the menu was still to do after this choice.
+      void queryClient.invalidateQueries({ queryKey: ['onboarding-progress'] });
       onDone(r);
       // After onDone: a parent that closes the plan leaves it unread; one that
       // keeps it on screen gets it read once, for what it now shows.
