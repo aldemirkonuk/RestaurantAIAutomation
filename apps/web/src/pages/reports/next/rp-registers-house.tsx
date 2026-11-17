@@ -285,15 +285,23 @@ export function readHeldBack(raw: unknown): HeldBack | null {
 
 const goodWord = (g: { name: string | null }) => g.name ?? 'a good no longer on the list';
 
-/** The same list in one sentence, for the notes an export or the full screen prints. */
-export function heldBackNote(h: HeldBack): string {
+/** The names, in one sentence: the figures-and-notes view prints it where the list is not drawn. */
+export function heldBackNames(h: HeldBack): string {
   const named = h.goods.map(goodWord);
   const tail = h.more > 0 ? `, and ${countOf(h.more, 'more good', 'more goods')}` : '';
   const one = h.goods.length + h.more === 1;
-  return (
-    `What it cost waits on ${one ? 'this good' : 'these goods'}: ${named.join(', ')}${tail}. ` +
-    `Some of ${one ? 'it' : 'them'} sold with no cost yet; verify ${one ? 'its' : 'their'} delivery, or state what ${one ? 'it' : 'they'} cost on the Inventory page if ${one ? 'it' : 'they'} came in without one.`
-  );
+  return `What it cost waits on ${one ? 'this good' : 'these goods'}: ${named.join(', ')}${tail}.`;
+}
+
+/** What to do about them. Said once, whether or not the list is drawn. */
+export function heldBackAdvice(h: HeldBack): string {
+  const one = h.goods.length + h.more === 1;
+  return `Some of ${one ? 'it' : 'them'} sold with no cost yet; verify ${one ? 'its' : 'their'} delivery, or state what ${one ? 'it' : 'they'} cost on the Inventory page if ${one ? 'it' : 'they'} came in without one.`;
+}
+
+/** The same list in one sentence, for the notes an export or the full screen prints. */
+export function heldBackNote(h: HeldBack): string {
+  return `${heldBackNames(h)} ${heldBackAdvice(h)}`;
 }
 
 function HeldBackList({ h }: { h: HeldBack }) {
@@ -429,7 +437,12 @@ const ledger = analysis<LedgerRegister>({
     // Which goods to cost, by name (r36 invoices R2): the count alone left
     // the owner nowhere to start.
     const held = costGap && !f.salesWithheld ? (f.cogsHeldBack ?? null) : null;
-    if (held) notes.push(heldBackNote(held));
+    // The linked list already names them where it is drawn, so the names
+    // sentence is marked as covered by it: said once, never twice.
+    const heldNames = held ? heldBackNames(held) : null;
+    if (held && heldNames) {
+      notes.push(heldNames, heldBackAdvice(held));
+    }
     // The known part, by name and apart: exact for those items, not what it
     // cost, and divided into nothing (batch review 2026-11-11, finding 2).
     const kp = f.costOfCostedItems;
@@ -486,6 +499,7 @@ const ledger = analysis<LedgerRegister>({
       ),
       figures,
       notes,
+      notesTheNodeSays: heldNames ? [heldNames] : undefined,
       basis: [
         f.basis?.revenue,
         f.basis?.cogs,

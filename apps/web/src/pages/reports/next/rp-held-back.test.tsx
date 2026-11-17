@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { heldBackNote, ledger, readHeldBack } from './rp-registers-house';
+import { Body } from './Cutting';
 
 const ctx = { days: 30, currency: 'TRY' } as never;
 
@@ -100,5 +101,32 @@ describe('figures of record — what holds what it cost back', () => {
     const { cogsHeldBack: _unused, ...older } = WITHHELD;
     const v = view(older);
     expect(v.notes.some((n) => String(n).startsWith('What it cost waits on'))).toBe(false);
+  });
+});
+
+describe('figures of record — each held-back name is on screen once', () => {
+  const shown = (graph: 'table' | 'figure') => {
+    const v = view(WITHHELD);
+    const { container } = render(
+      <MemoryRouter>
+        <Body view={v} graph={graph} windowLine="30 days" />
+      </MemoryRouter>,
+    );
+    return container.textContent ?? '';
+  };
+  const count = (text: string, needle: string) => text.split(needle).length - 1;
+
+  it('on the table the linked list names them and the notes only say what to do', () => {
+    const text = shown('table');
+    expect(count(text, 'Flour')).toBe(1);
+    expect(count(text, 'What it cost waits on')).toBe(1);
+    expect(text).toContain('verify their delivery');
+  });
+
+  it('where the list is not drawn the notes still name them', () => {
+    const text = shown('figure');
+    expect(count(text, 'Flour')).toBe(1);
+    expect(text).toContain('What it cost waits on these goods: Flour');
+    expect(text).toContain('verify their delivery');
   });
 });
