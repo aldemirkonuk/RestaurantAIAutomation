@@ -131,8 +131,9 @@ export function MailArrival({ view, now }: { view: MailSetupView; now: number })
       ) : !address ? (
         <div className="grid gap-2">
           <p data-testid="setup-address" data-state="none" style={TEXT}>
-            This house has no Mudavym address yet. It is an address only this house receives at; vendors who write to
-            it reach this house.
+            This house&rsquo;s Mudavym address has not been made yet. It is made when the first letter leaves from
+            here; an owner or manager can make it now. It is an address only this house receives at; vendors who write
+            to it reach this house.
           </p>
           {view.canChange ? (
             <button type="button" style={ACT} disabled={make.isPending} onClick={() => make.mutate()}>

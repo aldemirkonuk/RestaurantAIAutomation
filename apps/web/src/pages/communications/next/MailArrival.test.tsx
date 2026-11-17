@@ -131,6 +131,18 @@ describe('how mail arrives', () => {
     await waitFor(() => expect(screen.getByTestId('setup-address').getAttribute('data-state')).toBe('ready'));
   });
 
+  it('no address yet: says it is made on the first send, not that the house has none (r39 walk, F8)', async () => {
+    answer(view({ arrival: { domainReady: true, address: null, failed: null } }));
+    mount();
+    const box = await screen.findByTestId('setup-address');
+    expect(box.textContent).toContain('has not been made yet');
+    expect(box.textContent).toContain('It is made when the first letter leaves from here');
+    expect(box.textContent).toContain('an owner or manager can make it now');
+    // The conversation sentence promises answers come back to this address; the
+    // page must not read as if the house will have none.
+    expect(box.textContent).not.toMatch(/has no Mudavym address yet/);
+  });
+
   it('an address that could not be made says why', async () => {
     answer(view({ arrival: { domainReady: true, address: null, failed: null } }));
     api.post.mockRejectedValue(fail(500, 'Internal server error'));
