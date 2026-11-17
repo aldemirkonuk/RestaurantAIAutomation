@@ -151,7 +151,7 @@ export interface PlanKind {
   housePrice: number | null;
   result: PlanResult;
   /** For a price this choice would replace: who set it, when, and from where. */
-  lastSet: { by: PlanPerson; at: string | null; source: string | null } | null;
+  lastSet: { by: PlanPerson; at: string | null; source: string | null; reason: string | null } | null;
   /**
    * A person set this wine's price (by hand, or by accepting advice) AFTER this
    * menu was read. The founder, 2026-09-21, confirming L11 verbatim: "The menu
@@ -1833,13 +1833,13 @@ export class MenusService {
     const lockedWines = new Set(lockRead.locks.map((l) => l.inventoryId));
 
     // Who set each price now in effect (the open version row).
-    const lastSet = new Map<string, { by: string | null; at: string | null; source: string | null }>();
+    const lastSet = new Map<string, { by: string | null; at: string | null; source: string | null; reason: string | null }>();
     {
       let after: string | null = null;
       for (;;) {
         let q = client
           .from("menu_price_versions")
-          .select("id, inventory_id, changed_by, effective_from, change_source")
+          .select("id, inventory_id, changed_by, effective_from, change_source, reason")
           .eq("restaurant_id", restaurantId)
           .is("effective_to", null);
         if (after) q = q.gt("id", after);
@@ -1851,6 +1851,7 @@ export class MenusService {
             by: r.changed_by ?? null,
             at: r.effective_from ?? null,
             source: r.change_source ?? null,
+            reason: r.reason ?? null,
           });
         }
         if (rows.length < PAGE_ROWS) break;
@@ -1916,7 +1917,7 @@ export class MenusService {
           menuPrice,
           housePrice,
           result,
-          lastSet: set ? { by: { userId: set.by, name: null }, at: set.at, source: set.source } : null,
+          lastSet: set ? { by: { userId: set.by, name: null }, at: set.at, source: set.source, reason: set.reason } : null,
           setAfterRead: result === "change" && !!set && setByAPersonAfter(set, readAt),
           lock: lock
             ? { lockId: lock.lockId, lockedPrice: lock.lockedPrice, lockedBy: { userId: lock.lockedBy, name: null }, lockedAt: lock.lockedAt }

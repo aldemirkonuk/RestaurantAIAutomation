@@ -1438,6 +1438,13 @@ describe("MenusService — every menu read is kept as its own version", () => {
         return { tables, service, read };
       }
 
+      it("r42: the plan carries the reason the open price version was written with", async () => {
+        const { tables, service, read } = await withAPriceSetAt("2026-11-13T15:00:00Z");
+        (tables.menu_price_versions as Array<Record<string, unknown>>)[0].reason = "menu line corrected (bottle_price)";
+        const plan = await service.planFor("rest-1", read.menuId);
+        expect(plan.lines[0].bottle.lastSet).toMatchObject({ source: "manual", reason: "menu line corrected (bottle_price)" });
+      });
+
       it("a price set after the menu was chosen stays: kept_newer, never a change", async () => {
         const { service, read } = await withAPriceSetAt("2026-11-13T15:00:00Z");
         const plan = await service.planFor("rest-1", read.menuId);

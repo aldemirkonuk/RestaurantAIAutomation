@@ -21,7 +21,7 @@ const SOURCE: Record<string, string> = {
  * said "set from a menu … (menu line corrected (bottle_price))" while the
  * line's status read "set by hand: its bottle price").
  */
-const HAND_ON_MENU = /^menu line corrected \((bottle|glass)_price\)$/;
+export const HAND_ON_MENU = /^menu line corrected \((bottle|glass)_price\)$/;
 
 /**
  * The reasons the gateway and the database write, in the house's words; one

@@ -450,7 +450,7 @@ export interface PlanKind {
   menuPrice: number | null
   housePrice: number | null
   result: PlanResult
-  lastSet: { by: PlanPerson; at: string | null; source: string | null } | null
+  lastSet: { by: PlanPerson; at: string | null; source: string | null; reason?: string | null } | null
   /**
    * A person set this wine's price (by hand, or by accepting advice) after
    * this menu was read. The founder, 2026-09-21: "The menu sets it, locks
