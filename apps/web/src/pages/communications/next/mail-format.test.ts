@@ -152,6 +152,16 @@ describe('staff are told who waits on the house, not on them (r36 mail gap 14)',
     expect(headerSentence(null, { failed: false, now: NOW, on })).toBe('— Reading who is waiting on the house…');
   });
 
+  it('an empty list whose mailbox or address is still being read says so, not "could not be read" (r41 gap 6)', () => {
+    const still = emptyListWords(null, null, { waitingOnly: false, on: 'you', reading: { reader: true, summary: true } });
+    expect(still).toContain('Whether your mailbox is connected is still being read');
+    expect(still).toContain('whether the house has a Mudavym address is still being read');
+    expect(still).not.toContain('could not be read');
+    const failed = emptyListWords(null, null, { waitingOnly: false, on: 'you', reading: { reader: false, summary: false } });
+    expect(failed).toContain('could not be read');
+    expect(emptyListWords(null, null, { waitingOnly: false, on: 'you' })).toContain('could not be read');
+  });
+
   it('the empty and search-empty lists say it too', () => {
     expect(emptyListWords(null, null, { waitingOnly: true, on: 'the house' })).toBe('No vendor is waiting on the house.');
     expect(searchEmptyWords('ali', { waitingOnly: true, on: 'the house' })).toMatch(/^No one waiting on the house matches “ali”\./);
