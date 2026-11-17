@@ -197,19 +197,29 @@ describe("DishesService.addMenuDrinks: the offer put on the list in one write", 
     const out = await svc.addMenuDrinks(HOUSE_A, ["Margarita", "Retired sour"]);
     expect(inserts).toEqual([
       [
-        { restaurant_id: HOUSE_A, name: "Margarita", menu_section: null, price: 12, source: "menu" },
-        { restaurant_id: HOUSE_A, name: "Retired sour", menu_section: "Signature Cocktails", price: 10, source: "menu" },
+        { id: expect.any(String), restaurant_id: HOUSE_A, name: "Margarita", menu_section: null, price: 12, source: "menu" },
+        { id: expect.any(String), restaurant_id: HOUSE_A, name: "Retired sour", menu_section: "Signature Cocktails", price: 10, source: "menu" },
       ],
     ]);
+    const [margarita, sour] = inserts[0].map((d) => d.id);
     expect(out).toEqual({
       added: [
-        { id: "c1000000-0000-4000-8000-000000000001", name: "Margarita" },
-        { id: "c1000000-0000-4000-8000-000000000002", name: "Retired sour" },
+        { id: margarita, name: "Margarita" },
+        { id: sour, name: "Retired sour" },
       ],
       already: [],
       notAdded: [],
       notOffered: [],
     });
+  });
+
+  it("names each new row's id itself, since cocktails.id has no database default", async () => {
+    const { svc, inserts } = service();
+    await svc.addMenuDrinks(HOUSE_A, ["Margarita", "Retired sour"]);
+    const ids = inserts.flat().map((d) => d.id);
+    expect(ids).toHaveLength(2);
+    for (const id of ids) expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(new Set(ids).size).toBe(2);
   });
 
   it("makes only the names asked for, matched folded, and then offers them no more", async () => {

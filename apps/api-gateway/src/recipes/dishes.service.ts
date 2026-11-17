@@ -7,6 +7,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
+import { randomUUID } from "crypto";
 import { DatabaseService } from "../database/database.service";
 import { seesHouseAmounts } from "../dashboard/amounts-for-role";
 import { BaseUnit, CostItem, recipeCost } from "./recipe-cost";
@@ -647,6 +648,11 @@ export class DishesService {
       .from("cocktails")
       .insert(
         take.map((d) => ({
+          // `cocktails.id` has no database default (20260817090000_cocktails.sql
+          // keeps the ids its reference rows came with), so each row names its
+          // own id, as BeveragesService's add does; without it every add was
+          // refused as a null id (r39 walk).
+          id: randomUUID(),
           // The house comes from the guarded path, never the body.
           restaurant_id: restaurantId,
           name: d.name,
