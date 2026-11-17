@@ -30,6 +30,13 @@ export interface MailPersonRow {
   channels: string[];
   newestOpenOrderId: string | null;
   newestOpenOrderNumber: string | null;
+  /**
+   * The newest letter came from the vendor after the newest one this person
+   * was shown, or they never opened it (r36 mail gap 6). Per person. Null
+   * when the gateway could not read the marks; absent from a gateway that
+   * predates it. Only `true` is ever drawn.
+   */
+  newToYou?: boolean | null;
 }
 
 export interface MailPeoplePage {
@@ -59,6 +66,13 @@ export interface MailThreadRow {
   waiting: boolean;
   orderId: string | null;
   orderNumber: string | null;
+  /**
+   * The newest letter came from the vendor after the newest one this person
+   * was shown, or they never opened it (r36 mail gap 6). Per person. Null
+   * when the gateway could not read the marks; absent from a gateway that
+   * predates it. Only `true` is ever drawn.
+   */
+  newToYou?: boolean | null;
 }
 
 export interface MailThreadsPage {
@@ -929,4 +943,31 @@ export function noReplyFailWords(err: unknown, marking: boolean): string {
   return marking
     ? 'It could not be marked just now, so nothing changed. Try again.'
     : 'The mark could not be taken back just now; it still holds. Try again.';
+}
+
+/** The word on a row that is new to the person reading it (r36 mail gap 6). */
+export const NEW_TO_YOU = 'New';
+
+/** What POST /mail/thread/seen is told when a thread is on screen. */
+export interface SeenMark {
+  key: string;
+  with: string;
+  through: string;
+}
+
+/**
+ * The mark a thread on screen earns (r36 mail gap 6): the newest letter the
+ * vendor sent that this page shows, by its time exactly as the gateway gave it
+ * (a Date would drop Postgres's microseconds and the thread would never read
+ * as seen). Only a vendor's letter can make a thread new, so only one is
+ * named; the gateway keeps the smaller of this and the thread's own newest
+ * letter. Null when the page names no person or shows no letter from them.
+ * `head` is the newest page (pages are held newest-first; within a page,
+ * letters run oldest to newest).
+ */
+export function seenMarkFor(head: Pick<MailThreadPage, 'key' | 'person' | 'messages'> | null): SeenMark | null {
+  if (!head?.person) return null;
+  const newestIn = head.messages.filter((m) => m.direction === 'inbound').slice(-1)[0];
+  if (!newestIn) return null;
+  return { key: head.key, with: head.person.key, through: letterAt(newestIn) };
 }
