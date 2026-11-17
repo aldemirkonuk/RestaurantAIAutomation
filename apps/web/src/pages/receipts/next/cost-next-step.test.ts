@@ -11,6 +11,7 @@ const d = (over: Partial<SpineState> = {}): SpineState => ({
   state: 'RECONCILING',
   agreedAt: null,
   verifiedAt: null,
+  goodsOnShelf: 2,
   ...over,
 });
 
@@ -98,5 +99,29 @@ describe('costNextStep', () => {
     expect(s.kind).toBe('several');
     expect(s.sentence).toMatch(/on 2 deliveries/);
     expect(s.link?.to).toBe('/documents/doc-1');
+  });
+
+  describe('what the door booked (r39 walk-w2 I2)', () => {
+    it('lots on the shelf: provisional cost, said with where it was set', () => {
+      const s = costNextStep('doc-1', [d({ goodsOnShelf: 3 })])!;
+      expect(s.sentence).toMatch(/^Its goods are on the shelf at a provisional cost, set at the door before any invoice priced them\./);
+    });
+
+    it('nothing booked: says there is no cost yet, not a provisional one, and points at the door', () => {
+      for (const settles of [true, false]) {
+        const s = costNextStep('doc-1', [d({ goodsOnShelf: 0 })], settles)!;
+        expect(s.sentence).toMatch(/^No goods from this delivery are on the shelf yet, so there is no cost, provisional or otherwise\./);
+        expect(s.sentence).not.toMatch(/at a provisional cost/);
+        expect(s.link).toEqual({ to: '/documents/doc-1?view=door', label: 'Count them at the door' });
+      }
+    });
+
+    it('an unread shelf is said unread, never "provisional" and never "none"', () => {
+      for (const goodsOnShelf of [null, undefined]) {
+        const s = costNextStep('doc-1', [d({ goodsOnShelf })])!;
+        expect(s.sentence).toMatch(/^Whether its goods are on the shelf could not be read/);
+        expect(s.sentence).not.toMatch(/provisional|No goods/);
+      }
+    });
   });
 });

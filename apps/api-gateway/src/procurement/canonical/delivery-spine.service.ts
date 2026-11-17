@@ -47,6 +47,13 @@ export interface DeliverySpine {
   verifiedAt: string | null;
   jurisdiction: string | null;
   providerId: string | null;
+  /**
+   * How many stock lots carry this delivery (`inventory_lots.delivery_id`):
+   * what the door booked and the shelf still holds. 0 is a real answer (the
+   * door booked nothing, or all of it has gone); null is a read that failed,
+   * never 0 (ADR 0020).
+   */
+  goodsOnShelf: number | null;
   /** The role the SELECTED document plays on this delivery. */
   selectedRole: string;
   /** Every document on this delivery, oldest first. */
@@ -202,6 +209,21 @@ export class DeliverySpineService {
         error: `procurement_documents read failed for the spine: ${docs.error.message}`,
       };
 
+    // What the door booked under each delivery. A failed read leaves null on
+    // every delivery, not 0: "nothing booked" is not said over an unread shelf.
+    const lots = await this.db
+      .getClient()
+      .from("inventory_lots")
+      .select("delivery_id")
+      .in("delivery_id", visibleIds)
+      .eq("restaurant_id", restaurantId);
+    const lotCount = lots.error
+      ? null
+      : ((lots.data ?? []) as unknown as { delivery_id: string }[]).reduce(
+          (m, l) => m.set(l.delivery_id, (m.get(l.delivery_id) ?? 0) + 1),
+          new Map<string, number>(),
+        );
+
     const byId = new Map(
       ((docs.data ?? []) as unknown as Record<string, unknown>[]).map((d) => [
         d.id as string,
@@ -243,6 +265,7 @@ export class DeliverySpineService {
           verifiedAt: d.verified_at,
           jurisdiction: d.jurisdiction,
           providerId: d.provider_id,
+          goodsOnShelf: lotCount === null ? null : (lotCount.get(d.id) ?? 0),
           selectedRole: roleByDelivery.get(d.id) ?? "other",
           documents,
         };

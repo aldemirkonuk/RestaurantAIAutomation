@@ -272,6 +272,8 @@ export interface DeliverySpine {
   verifiedAt: string | null;
   jurisdiction: string | null;
   providerId: string | null;
+  /** Lots the door booked under this delivery; null when that read failed. Absent from an older gateway. */
+  goodsOnShelf?: number | null;
   selectedRole: string;
   documents: SpineDocument[];
 }

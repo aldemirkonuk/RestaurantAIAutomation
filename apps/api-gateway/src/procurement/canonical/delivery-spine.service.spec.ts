@@ -215,4 +215,40 @@ describe("DeliverySpineService", () => {
     const failed = await service.byId("rest-syn", "dl-1");
     expect(failed.ok).toBe(false);
   });
+
+  describe("what the door booked under a delivery", () => {
+    const setup = () => {
+      answers.document_deliveries = {
+        data: [{ document_id: "doc-inv", delivery_id: "dl-1", role: "invoice" }],
+        error: null,
+      };
+      answers.deliveries = { data: [delivery("dl-1")], error: null };
+      answers.procurement_documents = { data: [doc("doc-inv")], error: null };
+    };
+
+    it("counts the lots that name the delivery", async () => {
+      setup();
+      answers.inventory_lots = {
+        data: [{ delivery_id: "dl-1" }, { delivery_id: "dl-1" }],
+        error: null,
+      };
+      const r = await service.forDocument("rest-syn", "doc-inv");
+      expect(r.ok && r.value[0].goodsOnShelf).toBe(2);
+    });
+
+    it("says 0 when the door booked nothing", async () => {
+      setup();
+      answers.inventory_lots = { data: [], error: null };
+      const r = await service.forDocument("rest-syn", "doc-inv");
+      expect(r.ok && r.value[0].goodsOnShelf).toBe(0);
+    });
+
+    it("says null, never 0, when the lots could not be read", async () => {
+      setup();
+      answers.inventory_lots = { data: null, error: { message: "boom" } };
+      const r = await service.forDocument("rest-syn", "doc-inv");
+      expect(r.ok).toBe(true);
+      expect(r.ok && r.value[0].goodsOnShelf).toBeNull();
+    });
+  });
 });
