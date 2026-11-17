@@ -86,14 +86,17 @@ describe('DishesPage: a said line is for the last thing done', () => {
     expect(within(panel).queryByRole('alert')).toBeNull();
   });
 
-  it('the add form drops its refusal when a field is edited', async () => {
+  it('the add form drops its refusal when any field is edited', async () => {
     h.post.mockRejectedValue({ response: { status: 409, data: { message: 'A dish named Lamb shank is already on your list.' } } });
     mount();
     await screen.findByTestId(`dish-row-${A}`);
     fireEvent.change(screen.getByLabelText('Dish name'), { target: { value: 'Lamb shank' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Add dish' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Nothing was written');
-    fireEvent.change(screen.getByLabelText('Dish name'), { target: { value: 'Lamb shank 2' } });
-    expect(screen.queryByRole('alert')).toBeNull();
+    for (const [label, value] of [['Dish name', 'Lamb shank 2'], ['Section', 'Mains'], ['Price', '12']] as const) {
+      fireEvent.click(screen.getByRole('button', { name: 'Add dish' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent('Nothing was written');
+      fireEvent.change(screen.getByLabelText(label), { target: { value } });
+      expect(screen.queryByRole('alert')).toBeNull();
+      fireEvent.change(screen.getByLabelText('Dish name'), { target: { value: 'Lamb shank' } });
+    }
   });
 });
