@@ -72,6 +72,17 @@ describe("CsvParserService.parse: Turkish and EU spreadsheets", () => {
     ]);
   });
 
+  it("does not make a discount row's minus price a line: the row keeps no price and says why", () => {
+    const report = parser().read("Name;Bottle\nİndirim;-10\nBoğazkere;45,-\n");
+    expect(report.items).toEqual([
+      { name: "İndirim", raw_text: "İndirim;-10" },
+      { name: "Boğazkere", bottle_price: 45, raw_text: "Boğazkere;45,-" },
+    ]);
+    expect(report.issues).toEqual([
+      { row: 2, reason: "negative", field: "bottle_price", raw: "-10" },
+    ]);
+  });
+
   it("reads `₺450` as 450 and keeps the symbol in the raw row", () => {
     const [item] = parser().parse("Name,Bottle\nRakı,₺450\n");
     expect(item.bottle_price).toBe(450);

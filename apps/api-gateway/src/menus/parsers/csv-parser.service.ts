@@ -374,6 +374,8 @@ export class CsvParserService {
       let amount: number | null = null;
       if (typeof value === "number") {
         if (Number.isFinite(value) && value >= 0) amount = value;
+        else if (Number.isFinite(value))
+          found.push({ row, reason: "negative", field, raw: String(value) });
       } else if (raw) {
         const price = readMenuPrice(raw);
         if (price.amount !== null) amount = price.amount;

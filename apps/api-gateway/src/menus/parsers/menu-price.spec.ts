@@ -55,3 +55,28 @@ describe("readMenuPrice: an amount only when the string has one reading (ADR 002
     });
   });
 });
+
+describe("readMenuPrice: a minus in front is not a price (a discount row is not a line)", () => {
+  it.each(["-45", "-10,50", "- 12", "\u221245", "-$45", "-\u20ba450"])(
+    "%s has no amount and says it is below zero",
+    (raw) => {
+      expect(readMenuPrice(raw)).toEqual({
+        amount: null,
+        raw,
+        reason: "negative",
+      });
+    },
+  );
+
+  it.each([
+    ["45,-", 45],
+    ["45-", 45],
+    ["12.50 -", 12.5],
+  ])("%s keeps its trailing mark and reads %s", (raw, amount) => {
+    expect(readMenuPrice(raw)).toEqual({ amount, raw, reason: null });
+  });
+
+  it("still reads a dash between two numbers as two readings", () => {
+    expect(readMenuPrice("12-15").reason).toBe("two_readings");
+  });
+});
