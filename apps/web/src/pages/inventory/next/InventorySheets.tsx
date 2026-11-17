@@ -64,8 +64,13 @@ export function freshKey(prefix: string, id: string): string {
   return `${prefix}:${id}:${uuid}`;
 }
 
-function titleOf(row: InvRow): string {
-  return row.name ?? 'this title';
+/** A drink is a title; a weighed, poured or counted good is a good (a null unit is a bottle). */
+function thingWord(unit: { base: string }): 'title' | 'good' {
+  return unit.base === 'bottle' ? 'title' : 'good';
+}
+
+function titleOf(row: InvRow, word: 'title' | 'good' = 'title'): string {
+  return row.name ?? `this ${word}`;
 }
 
 function useInvalidateStock() {
@@ -170,6 +175,7 @@ export function countGapSentence(
 export function CountSheet({ row, onClose, uom }: SheetProps) {
   const invalidate = useInvalidateStock();
   const unit = amountUnit(uom);
+  const word = thingWord(unit);
   // A bottle keeps the bare figure it always said; any other unit says itself.
   const words = unit.base === 'bottle' ? fmtCount : unit.words;
   const [clientCountId] = useState(newClientCountId);
@@ -187,14 +193,14 @@ export function CountSheet({ row, onClose, uom }: SheetProps) {
     mutationFn: (countedQty: number) =>
       submitSpotCount({
         itemId: row.id,
-        itemLabel: titleOf(row),
+        itemLabel: titleOf(row, word),
         body: { countedQty, clientCountId, reason: 'Spot count' },
       }),
     onSuccess: ({ synced }, countedQty) => {
       invalidate();
       setSaid({
         text: synced
-          ? countGapSentence(book, countedQty, titleOf(row), words)
+          ? countGapSentence(book, countedQty, titleOf(row, word), words)
           : `Held on this device — not yet confirmed. The count of ${words(countedQty)} goes out when the connection returns; until then the book still reads what it read.`,
       });
     },
@@ -243,9 +249,9 @@ export function CountSheet({ row, onClose, uom }: SheetProps) {
       open
       bodyClassName="iv-sheet-body"
       onClose={onClose}
-      label={`Record a count of ${titleOf(row)}: what is on the shelf, sealed before the book changes`}
+      label={`Record a count of ${titleOf(row, word)}: what is on the shelf, sealed before the book changes`}
       eyebrow="Record a count"
-      title={titleOf(row)}
+      title={titleOf(row, word)}
       footer={<span>A count sets the book to what was counted and stamps the last-counted date.</span>}
     >
       <p className="iv-said">
@@ -283,7 +289,7 @@ export function CountSheet({ row, onClose, uom }: SheetProps) {
           key={`count-${attempt}`}
           label={counted === null ? 'Type the count first' : `Hold to record ${words(counted)}`}
           approvedLabel="Count recorded"
-          boundSummary={counted === null ? undefined : `${titleOf(row)}: ${words(counted)} counted`}
+          boundSummary={counted === null ? undefined : `${titleOf(row, word)}: ${words(counted)} counted`}
           disabled={counted === null || count.isPending || count.isSuccess}
           onApprove={() => (counted === null ? undefined : count.mutateAsync(counted))}
         />
@@ -305,6 +311,7 @@ export const WRITE_OFF_REASONS = [
 export function WriteOffSheet({ row, onClose, uom }: SheetProps) {
   const invalidate = useInvalidateStock();
   const unit = amountUnit(uom);
+  const word = thingWord(unit);
   const bottles = unit.base === 'bottle';
   const [idempotencyKey] = useState(() => freshKey('writeoff', row.id));
   const [reason, setReason] = useState<string>('');
@@ -338,8 +345,8 @@ export function WriteOffSheet({ row, onClose, uom }: SheetProps) {
       invalidate();
       setSaid({
         text: bottles
-          ? `Written off: ${nText} × ${titleOf(row)}, as ${kind?.label.toLowerCase()}. The last-counted date is unchanged.`
-          : `Written off: ${nText} of ${titleOf(row)}, as ${kind?.label.toLowerCase()}. The last-counted date is unchanged.`,
+          ? `Written off: ${nText} × ${titleOf(row, word)}, as ${kind?.label.toLowerCase()}. The last-counted date is unchanged.`
+          : `Written off: ${nText} of ${titleOf(row, word)}, as ${kind?.label.toLowerCase()}. The last-counted date is unchanged.`,
       });
     },
     onError: (e) => {
@@ -374,9 +381,9 @@ export function WriteOffSheet({ row, onClose, uom }: SheetProps) {
       open
       bodyClassName="iv-sheet-body"
       onClose={onClose}
-      label={`Write off ${bottles ? 'bottles of ' : ''}${titleOf(row)}: breakage, a comp or a return, sealed before the ledger changes`}
+      label={`Write off ${bottles ? 'bottles of ' : ''}${titleOf(row, word)}: breakage, a comp or a return, sealed before the ledger changes`}
       eyebrow="Write off"
-      title={titleOf(row)}
+      title={titleOf(row, word)}
       footer={<span>Owners and managers only. A write-off is one ledger line; it never changes the last-counted date.</span>}
     >
       <div className="iv-sheet-fields">
@@ -395,7 +402,7 @@ export function WriteOffSheet({ row, onClose, uom }: SheetProps) {
           key={`wo-${attempt}`}
           label={blocked ? 'Not ready to write off' : `Hold to write off ${nText}`}
           approvedLabel="Written off"
-          boundSummary={blocked ? undefined : `${titleOf(row)}: −${nText}, ${kind?.label.toLowerCase()}`}
+          boundSummary={blocked ? undefined : `${titleOf(row, word)}: −${nText}, ${kind?.label.toLowerCase()}`}
           disabled={blocked !== null || writeOff.isPending || writeOff.isSuccess}
           onApprove={() => writeOff.mutateAsync()}
         />
@@ -420,6 +427,7 @@ export function TransferSheet({
   // A zone holds the good in the book's own unit, as the total does (ADR 0070):
   // 5,000 g of flour moves as kg, never as "bottles" that are really grams.
   const unit = amountUnit(uom);
+  const word = thingWord(unit);
   const bottles = unit.base === 'bottle';
   const words = bottles ? fmtCount : unit.words;
   const [from, setFrom] = useState('');
@@ -476,7 +484,7 @@ export function TransferSheet({
     : noZones
       ? `This house has no zones yet, so there is nowhere to move ${bottles ? 'bottles' : 'it'} to. Zones are added under Tools, in Storage locations.`
       : row.zones === null
-      ? 'Where this title sits could not be read, so there is nothing to move from.'
+      ? `Where this ${word} sits could not be read, so there is nothing to move from.`
       : fromOptions.length === 0
         ? bottles
           ? 'No zone holds a bottle of this title.'
@@ -500,9 +508,9 @@ export function TransferSheet({
       open
       bodyClassName="iv-sheet-body"
       onClose={onClose}
-      label={`Move ${bottles ? 'bottles of ' : ''}${titleOf(row)} between zones, sealed before the books change`}
+      label={`Move ${bottles ? 'bottles of ' : ''}${titleOf(row, word)} between zones, sealed before the books change`}
       eyebrow="Transfer"
-      title={titleOf(row)}
+      title={titleOf(row, word)}
       footer={<span>A transfer moves {bottles ? 'bottles' : 'stock'} between zones; the total on the book does not change.</span>}
     >
       {noZones ? null : (

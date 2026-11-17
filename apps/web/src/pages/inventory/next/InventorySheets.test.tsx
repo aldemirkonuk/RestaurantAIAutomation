@@ -796,3 +796,27 @@ describe('a 409 on a keyed write means an earlier attempt landed (security findi
     reread.mockRestore();
   });
 });
+
+describe('a nameless row says what it is (r51)', () => {
+  it('a counted drink with no name is "this title"; a weighed good is "this good"', () => {
+    mount(<CountSheet row={row({ name: null })} onClose={() => {}} />);
+    expect(screen.getByLabelText(/^Record a count of this title:/)).toBeTruthy();
+  });
+  it('a weighed good with no name says "this good" on the count sheet', () => {
+    mount(<CountSheet row={row({ name: null, kind: 'food' as never })} onClose={() => {}} uom="g" />);
+    expect(screen.getByLabelText(/^Record a count of this good:/)).toBeTruthy();
+  });
+  it('a good whose zones could not be read says "this good", a drink "this title"', () => {
+    const { unmount } = mount(
+      <TransferSheet row={row({ zones: null })} onClose={() => {}} uom="g" locations={[{ id: 'z1', name: 'Cave' }] as never} locationsUnavailable={false} />,
+    );
+    expect(screen.getByText('Where this good sits could not be read, so there is nothing to move from.')).toBeTruthy();
+    unmount();
+    mount(<TransferSheet row={row({ zones: null })} onClose={() => {}} locations={[{ id: 'z1', name: 'Cave' }] as never} locationsUnavailable={false} />);
+    expect(screen.getByText('Where this title sits could not be read, so there is nothing to move from.')).toBeTruthy();
+  });
+  it('the write-off sheet names a nameless weighed good "this good"', () => {
+    mount(<WriteOffSheet row={row({ name: null })} onClose={() => {}} uom="g" />);
+    expect(screen.getByLabelText(/^Write off this good:/)).toBeTruthy();
+  });
+});
