@@ -987,6 +987,9 @@ describe('RecipeSheet', () => {
     fireEvent.click(within(opened).getByRole('button', { name: 'Start from version 4' }));
     expect(screen.getAllByLabelText('Amount')).toHaveLength(3);
     expect(screen.getByTestId('recipe-said')).toHaveTextContent('Version 4 is on the sheet. Nothing is saved yet');
+    // The note says nothing is saved yet: still true after the next change.
+    fireEvent.change(screen.getAllByLabelText('Amount')[0], { target: { value: '44' } });
+    expect(screen.getByTestId('recipe-said')).toHaveTextContent('Version 4 is on the sheet. Nothing is saved yet');
     expect(screen.getByRole('region', { name: 'Recipe for Negroni' })).toHaveTextContent('Coupe');
 
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
