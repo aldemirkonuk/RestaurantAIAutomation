@@ -269,6 +269,35 @@ describe('the seal is minted when the gesture begins, not by the write', () => {
   });
 });
 
+describe('the house setup learns of a checked invoice at once', () => {
+  const setupAsked = (spy: { mock: { calls: unknown[][] } }) =>
+    spy.mock.calls.some(([f]) => JSON.stringify((f as { queryKey?: unknown })?.queryKey) === '["onboarding-progress"]');
+  const swipe = () =>
+    fireEvent.keyDown(screen.getByRole('button', { name: /Swipe up to confirm/ }), { key: ' ' });
+
+  it('an invoice that was checked asks the setup read again', async () => {
+    const reread = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    swipe();
+    await waitFor(() => expect(api.verify).toHaveBeenCalled(), { timeout: 3000 });
+    await waitFor(() => expect(setupAsked(reread)).toBe(true));
+    reread.mockRestore();
+  });
+
+  it('one the gateway refused does not', async () => {
+    const reread = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+    api.verify.mockRejectedValue(new Error('refused'));
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    swipe();
+    await waitFor(() => expect(api.verify).toHaveBeenCalled(), { timeout: 3000 });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(setupAsked(reread)).toBe(false);
+    reread.mockRestore();
+  });
+});
+
 /* ─── 2. The fallback that must not exist ──────────────────────────────── */
 
 describe('a failed mint sends nothing, and says so', () => {
