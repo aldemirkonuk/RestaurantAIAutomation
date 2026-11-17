@@ -124,6 +124,27 @@ describe('the panel', () => {
     expect(screen.getByTestId('menu-line-fix-form')).toBeTruthy();
   });
 
+  it('says "Nothing was changed." once when the gateway refusal already ends with it', async () => {
+    const said = '"12x" is not a price: a price is written in digits, with no minus, no letters and at most one decimal mark. Nothing was changed.';
+    mockReview.mockRejectedValueOnce({ response: { status: 400, data: { message: said } } });
+    mount();
+    await correct('Chiantti', { 'Bottle price': '12x' });
+    expect((await screen.findByTestId('menu-line-fix-refused')).textContent).toBe(
+      'The bottle price was not corrected: "12x" is not a price: a price is written in digits, with no minus, no letters and at most one decimal mark. Nothing was changed.',
+    );
+  });
+
+  it('never says "Nothing was changed." beside a field it did correct', async () => {
+    mockReview
+      .mockResolvedValueOnce({} as never)
+      .mockRejectedValueOnce({ response: { status: 400, data: { message: '"12x" is not a price: there is no number in it. Nothing was changed.' } } });
+    mount();
+    await correct('Chiantti', { Name: 'Chianti', 'Bottle price': '12x' });
+    expect((await screen.findByTestId('menu-line-fix-refused')).textContent).toBe(
+      'The bottle price was not corrected: "12x" is not a price: there is no number in it. The name was corrected.',
+    );
+  });
+
   it('sends nothing when nothing changed, or a field was emptied', async () => {
     mount();
     const form = await correct('Chiantti', {});

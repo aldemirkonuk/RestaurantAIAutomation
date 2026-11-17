@@ -90,7 +90,11 @@ function reasonOf(err: unknown): string {
   const e = err as { response?: { status?: number; data?: { message?: unknown } }; message?: string };
   if (e?.response?.status === 403) return 'only an owner or a manager can do that';
   const m = e?.response?.data?.message;
-  if (typeof m === 'string' && m) return m.replace(/\.$/, '');
+  // The gateway's refusal ends "Nothing was changed." of its own field; the
+  // sentence built here says what was and was not changed across the save,
+  // so that ending is dropped rather than said twice (r39 walk) or said
+  // beside "The name was corrected.".
+  if (typeof m === 'string' && m) return m.replace(/\s*Nothing was changed\.?$/, '').replace(/\.$/, '');
   if (Array.isArray(m) && m.length) return String(m[0]);
   return e?.message || 'no reason was given';
 }
