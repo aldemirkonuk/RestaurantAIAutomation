@@ -20,8 +20,8 @@
 import { useState, type CSSProperties } from 'react';
 import { HoldToApprove, Panel } from '@/components/mudavym';
 import type { ProspectDto, SenderReputationDto } from '../../../hooks/queries/usePromotionsQueries';
-import { EM, MONO, SANS } from './cm-format';
-import { fmtCount, fmtDay, promoteOutcome, readFailure, senderState, writeFailureSentence } from './senders-format';
+import { EM, MONO, SANS, fmtWhen } from './cm-format';
+import { fmtCount, promoteOutcome, readFailure, senderState, writeFailureSentence } from './senders-format';
 
 export const BTN: CSSProperties = {
   fontFamily: SANS,
@@ -78,12 +78,14 @@ function Kv({ rows }: { rows: [string, string][] }) {
 export interface TrustPanelProps {
   sender: SenderReputationDto | null;
   houseName: string | null;
+  /** The house's time zone, so "Last changed" is the house's day; none = the browser's. */
+  zone?: string | null;
   onClose: () => void;
   /** Writes the trust and READS IT BACK; rejects when the register does not show the domain trusted. */
   onTrust: (sender: SenderReputationDto) => Promise<void>;
 }
 
-export function TrustPanel({ sender, houseName, onClose, onTrust }: TrustPanelProps) {
+export function TrustPanel({ sender, houseName, zone, onClose, onTrust }: TrustPanelProps) {
   const [failure, setFailure] = useState<string | null>(null);
   const [landed, setLanded] = useState(false);
   if (!sender) return null;
@@ -141,7 +143,7 @@ export function TrustPanel({ sender, houseName, onClose, onTrust }: TrustPanelPr
           ['Completed orders', fmtCount(sender.completed_orders)],
           ['With hidden instructions', fmtCount(sender.injection_signals)],
           ['Looked like spam', fmtCount(sender.spam_signals)],
-          ['Last changed', fmtDay(sender.updated_at)],
+          ['Last changed', fmtWhen(sender.updated_at, { zone })],
         ]}
       />
       <p style={{ ...NOTE, fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
