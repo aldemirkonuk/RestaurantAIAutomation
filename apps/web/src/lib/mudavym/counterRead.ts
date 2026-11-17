@@ -175,7 +175,7 @@ export const REGISTER_WORD: Record<CounterRegisterKey, string> = {
   orders: 'Orders awaiting the seal',
   deliveries: 'Deliveries counted by case',
   credits: 'Credits promised',
-  threads: 'Replies waiting',
+  threads: 'Vendors waiting for a reply',
   identities: 'Identities',
   invitations: 'Invitations',
   proposals: 'Proposals',
