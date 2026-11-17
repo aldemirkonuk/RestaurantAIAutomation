@@ -430,22 +430,28 @@ const week = analysis<WeekRegister>({
     // Sunday as busiest AND quietest); an older gateway sends neither field,
     // so the equality check stays as the fallback.
     const ranked = w.tie === false || (w.tie === null && !!w.bestDay && w.bestDay !== w.worstDay);
+    // With fewer than two weekdays measured there is nothing to rank, and no
+    // weekday "shares" an extreme: say that, not a tie (R-F10 leaves a weekday
+    // with no line out of the profile, so one measured weekday is reachable).
+    const lone = w.weekdayProfile.length < 2;
     const figures = [
       {
         label: 'Busiest day',
         value: ranked && w.bestDay ? w.bestDay : EM,
-        note: 'More than one weekday shares the highest mean',
+        note: lone ? 'Fewer than two weekdays have a reading' : 'More than one weekday shares the highest mean',
       },
       {
         label: 'Quietest day',
         value: ranked && w.worstDay ? w.worstDay : EM,
-        note: 'More than one weekday shares the lowest mean',
+        note: lone ? 'Fewer than two weekdays have a reading' : 'More than one weekday shares the lowest mean',
       },
       { label: '28-day trend, per day', value: pct(w.trendPerDayPct) },
     ];
     const notes = ranked
       ? []
-      : [
+      : lone
+        ? ['Busiest and quietest are left blank because fewer than two weekdays have a reading in this window, so there is nothing to rank.']
+        : [
           'Busiest and quietest read — because more than one weekday shares the extreme, and naming one of them would be an arbitrary tie-break rather than a finding.',
         ];
     if (data.every((b) => (b.value ?? 0) === 0))
