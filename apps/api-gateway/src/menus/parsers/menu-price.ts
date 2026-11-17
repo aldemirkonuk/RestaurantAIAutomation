@@ -10,6 +10,8 @@ export type MenuPriceReason =
   | "empty"
   | "no_number"
   | "two_readings"
+  /** A minus in front (`-10`): a discount or a credit is not a price. */
+  | "negative"
   /** Separators that fit no reading (`1.25.0`). */
   | "unreadable";
 
@@ -37,6 +39,11 @@ const groupedBy = (s: string, sep: string): boolean => {
 export function readMenuPrice(input: string): MenuPriceRead {
   const raw = (input ?? "").trim();
   if (!raw) return none(raw, "empty");
+
+  // A minus in front (also after a money mark's slot: `-$45`) is a discount
+  // or a credit, never a price. A mark behind (`45-`, `45,-`) is only the
+  // way a menu writes a whole amount, and is still read.
+  if (/^[-\u2212]\s*\D{0,3}\d/.test(raw)) return none(raw, "negative");
 
   // Number tokens: digits joined by single `.` or `,` marks. A space ends a
   // token, so `1 250,50` and `12 / 45` are two numbers, read two ways.

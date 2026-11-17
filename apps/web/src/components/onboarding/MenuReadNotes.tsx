@@ -12,6 +12,8 @@ export function menuReadNoteText(n: MenuReadNote): string {
   switch (n.reason) {
     case 'two_readings':
       return `Line ${n.row}: the ${field} ${raw} reads two ways, so it was left blank. Write 1250, 1.250,00 or 1,250.00.`
+    case 'negative':
+      return `Line ${n.row}: the ${field} ${raw} is below zero, so it was left blank.`
     case 'no_number':
       return `Line ${n.row}: the ${field} ${raw} has no number, so it was left blank.`
     case 'unreadable':

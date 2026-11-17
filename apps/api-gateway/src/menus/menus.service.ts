@@ -838,7 +838,9 @@ export class MenusService {
       throw new BadRequestException(
         price.reason === "two_readings"
           ? `"${price.raw}" reads two ways. Write 1250, 1.250,00 or 1,250.00.`
-          : `Invalid numeric value for ${dto.fieldName}`,
+          : price.reason === "negative"
+            ? `"${price.raw}" is below zero. A price is an amount of 0 or more.`
+            : `Invalid numeric value for ${dto.fieldName}`,
       );
     }
     const newValueTyped: string | number = price ? price.amount! : dto.newValue;

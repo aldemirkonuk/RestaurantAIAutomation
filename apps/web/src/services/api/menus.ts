@@ -91,6 +91,7 @@ export interface MenuReadNote {
     | 'cell_error'
     | 'no_number'
     | 'two_readings'
+    | 'negative'
     | 'unreadable'
   field?: string
   raw?: string

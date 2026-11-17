@@ -685,6 +685,20 @@ describe("MenusService.reviewMenuItem — tenant isolation and the house price (
     expect(tables.menu_items[0].status).toBe("approved");
     expect(calls).toHaveLength(0);
   });
+
+  it("refuses a price with a minus in front in words, and touches neither the line nor the house price", async () => {
+    const calls: RpcCall[] = [];
+    const tables = { menu_items: [line()], restaurant_menus: [CURRENT()] };
+    const service = makeService(tables, { rpc: changed, rpcCalls: calls });
+    const write = service.reviewMenuItem("mi-1", "user-1", "rest-1", {
+      fieldName: "bottle_price",
+      newValue: "-45",
+    } as any);
+    await expect(write).rejects.toBeInstanceOf(BadRequestException);
+    await expect(write).rejects.toThrow(/below zero/);
+    expect(tables.menu_items[0].bottle_price).toBe(60);
+    expect(calls).toHaveLength(0);
+  });
 });
 
 /**

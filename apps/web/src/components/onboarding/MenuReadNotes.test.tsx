@@ -16,3 +16,11 @@ describe('menuReadNoteText: a bare price column', () => {
     )
   })
 })
+
+describe('menuReadNoteText: a price below zero', () => {
+  it('says the price was below zero and left blank, not "could not be read"', () => {
+    expect(menuReadNoteText({ row: 2, reason: 'negative', field: 'bottle_price', raw: '-10' })).toBe(
+      'Line 2: the bottle price "-10" is below zero, so it was left blank.',
+    )
+  })
+})
