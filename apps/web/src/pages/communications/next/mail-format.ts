@@ -170,6 +170,27 @@ export interface MailboxReader {
    * address. null or absent (an older gateway): not known, and no claim.
    */
   bookAddresses?: number | null;
+  /**
+   * With more than one reading mailbox the gateway reports the weakest one
+   * (a failing read first, then a never-read one, then the longest ago) and
+   * how many there are. `mailbox` is its address, or null when not known.
+   * Both absent (an older gateway) or `mailboxes` below 2: nothing is named.
+   */
+  mailbox?: string | null;
+  mailboxes?: number | null;
+}
+
+/**
+ * Which mailbox a trouble line is about, when the house has more than one
+ * (r36 mail gap 3, web half). One mailbox needs no naming; with two or more,
+ * the status speaks for the weakest and has to say so, or a failing mailbox
+ * reads as the house's only one.
+ */
+export function weakestMailboxNote(reader: MailboxReader): string {
+  const n = reader.mailboxes ?? 0;
+  if (!Number.isFinite(n) || n < 2) return '';
+  const who = typeof reader.mailbox === 'string' ? reader.mailbox.trim() : '';
+  return `the weakest of your ${n} mailboxes${who ? `: ${who}` : ''}`;
 }
 
 /** What a connected mailbox with an empty vendor book needs, in the house's words (r36 mail gap 5). */
@@ -359,8 +380,10 @@ export function houseMailboxStatus(
   if (!reader.enabled) {
     return { state: 'switched_off', words: 'Connected, but reading is switched off for this house.', tone: 'warn' };
   }
+  const weakest = weakestMailboxNote(reader);
+  const aboutWeakest = weakest ? ` That is ${weakest}.` : '';
   if (reader.lastError) {
-    return { state: 'failing', words: readErrorWords(reader.lastError), tone: 'alarm' };
+    return { state: 'failing', words: `${readErrorWords(reader.lastError)}${aboutWeakest}`, tone: 'alarm' };
   }
   // A failing read speaks first; then an empty book, which no read can fix
   // (r36 mail gap 5). Only an exact 0 counts: an older gateway sends none.
@@ -369,13 +392,13 @@ export function houseMailboxStatus(
   }
   const last = at(reader.lastReadAt);
   if (last === null) {
-    return { state: 'cannot_tell', words: 'Cannot tell yet: no read has been recorded.', tone: 'ink' };
+    return { state: 'cannot_tell', words: `Cannot tell yet: no read has been recorded.${aboutWeakest}`, tone: 'ink' };
   }
   const gap = opts.now - last;
   if (gap <= READING_WITHIN_MIN * MIN) {
     return { state: 'reading', words: `Reading. Last read ${shortSpan(gap)} ago.`, tone: 'seal' };
   }
-  return { state: 'behind', words: `Behind: last read ${shortSpan(gap)} ago.`, tone: 'warn' };
+  return { state: 'behind', words: `Behind: last read ${shortSpan(gap)} ago.${aboutWeakest}`, tone: 'warn' };
 }
 
 /**
@@ -537,7 +560,7 @@ export function mailStatusLine(
   const lastRead = at(reader?.lastReadAt);
   const mailboxNote =
     mailbox.state === 'behind' && lastRead !== null
-      ? `your mailbox was last read ${ago(lastRead)} ago`
+      ? `your mailbox was last read ${ago(lastRead)} ago${reader && weakestMailboxNote(reader) ? ` (${weakestMailboxNote(reader)})` : ''}`
       : mailbox.state === 'switched_off'
         ? 'reading your mailbox is switched off'
         : mailbox.state === 'nothing_to_read'
