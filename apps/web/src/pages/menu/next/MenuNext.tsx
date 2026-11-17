@@ -56,7 +56,7 @@ import { housePriceHint } from '@/lib/house-number';
 import { Wordmark } from '@/components/mudavym';
 import { isKitchenLine } from '../../../lib/firstProof';
 import { lineStatusWords } from './menu-line-status';
-import { FIND_FROM_LINES, lineMatches } from './menu-find';
+import { FIND_FROM_LINES, addressWithFind, findFromAddress, lineMatches } from './menu-find';
 import '../../cellar/next/cellar-next.css';
 
 const EM = '—';
@@ -518,7 +518,17 @@ export default function MenuNext() {
   const [priceNote, setPriceNote] = useState<{ lineId: string; tone: 'alert' | 'said'; text: string } | null>(null);
   const lines = q.data?.items ?? [];
   // r41 R4: find a line by a few letters; the whole menu is still read and counted.
-  const [find, setFind] = useState('');
+  // The words are kept in the address (replace, never a new Back stop) so a reload or a Back
+  // lands on the same narrowed menu. Written by hand: this page has no router around it in tests.
+  const [find, setFindWords] = useState(() => findFromAddress(typeof window === 'undefined' ? '' : window.location.search));
+  const setFind = (typed: string) => {
+    setFindWords(typed);
+    try {
+      window.history.replaceState(window.history.state, '', addressWithFind(window.location.href, typed));
+    } catch {
+      // the address could not be written; the box still works
+    }
+  };
   // One price changed at a time, field by field (the gateway corrects one field
   // per call), and the menu is read again after, so the row shows what was stored.
   const savePrices = async (line: MenuLine, draft: PriceDraft) => {
