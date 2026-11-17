@@ -1195,3 +1195,21 @@ describe('Last bought reads the settled price, not only the ledger (r35, gap 8 s
     expect(kv('Was → now')).not.toContain('%');
   });
 });
+
+// A kitchen good is a good, not a title: its drawer says so in every line it
+// says about "this" row. A wine keeps "title".
+describe('a food or supply says good, not title', () => {
+  it('names the acts and the unread pace as a good', () => {
+    renderDrop({ kind: 'food', uom: 'g', row: row({ kind: 'food', name: null, analyticsReadable: false }) });
+    expect(screen.getByRole('group', { name: 'What to do with this good' })).toBeTruthy();
+    expect(screen.getByTestId('row-dropdown').textContent).toContain('This is a read error, not a good with nothing sold.');
+    expect(screen.getByLabelText('This good, opened')).toBeTruthy();
+    expect(screen.getByTestId('row-dropdown').textContent).not.toMatch(/\btitle\b/);
+  });
+
+  it('keeps title for a wine', () => {
+    renderDrop({ row: row({ analyticsReadable: false }) });
+    expect(screen.getByRole('group', { name: 'What to do with this title' })).toBeTruthy();
+    expect(screen.getByTestId('row-dropdown').textContent).toContain('not a title with nothing sold.');
+  });
+});
