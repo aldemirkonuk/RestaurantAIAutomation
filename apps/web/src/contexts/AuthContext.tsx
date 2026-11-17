@@ -4,6 +4,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   useRef,
 } from "react";
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
@@ -1189,32 +1190,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const clearError = useCallback(() => setError(null), []);
 
-  const value: AuthContextType = {
-    user,
-    loading,
-    error,
-    clearError,
-    activeRestaurantId,
-    activeRole,
-    activeRoleState,
-    availableRestaurants,
-    setActiveRestaurantId,
-    login,
-    register,
-    registerAccount,
-    registerAccountWithGoogle,
-    createFirstHouse,
-    registerRestaurant,
-    joinViaInvite,
-    loginWithGoogle,
-    signInWithSession,
-    loginWithMicrosoft,
-    resolveSignInMethods,
-    logout,
-    refreshToken: refreshTokenFn,
-    refreshBranches,
-    isAuthenticated: !!user,
-  };
+  // One object per session state, not per render: the provider draws again
+  // whenever its parent does, and a new object each time made every
+  // `useAuth()` consumer (the shell, the rail, GetStarted) draw again with it.
+  const value: AuthContextType = useMemo(
+    () => ({
+      user,
+      loading,
+      error,
+      clearError,
+      activeRestaurantId,
+      activeRole,
+      activeRoleState,
+      availableRestaurants,
+      setActiveRestaurantId,
+      login,
+      register,
+      registerAccount,
+      registerAccountWithGoogle,
+      createFirstHouse,
+      registerRestaurant,
+      joinViaInvite,
+      loginWithGoogle,
+      signInWithSession,
+      loginWithMicrosoft,
+      resolveSignInMethods,
+      logout,
+      refreshToken: refreshTokenFn,
+      refreshBranches,
+      isAuthenticated: !!user,
+    }),
+    [
+      user,
+      loading,
+      error,
+      clearError,
+      activeRestaurantId,
+      activeRole,
+      activeRoleState,
+      availableRestaurants,
+      setActiveRestaurantId,
+      login,
+      register,
+      registerAccount,
+      registerAccountWithGoogle,
+      createFirstHouse,
+      registerRestaurant,
+      joinViaInvite,
+      loginWithGoogle,
+      signInWithSession,
+      loginWithMicrosoft,
+      resolveSignInMethods,
+      logout,
+      refreshTokenFn,
+      refreshBranches,
+    ],
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
