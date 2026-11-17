@@ -13,6 +13,7 @@ import type { ReactNode } from 'react';
 const m = vi.hoisted(() => ({
   winesError: false,
   winesPending: false,
+  winesAsked: [] as string[][],
   role: 'owner' as string,
   locationsLoading: false,
   items: [] as Array<Record<string, unknown>>,
@@ -33,7 +34,8 @@ vi.mock('../../../hooks/queries/useInventoryQueries', () => ({
   useInventory: () => ({ data: m.items, isError: false, refetch: m.listRefetch }),
 }));
 vi.mock('../../../hooks/queries/useWineQueries', () => ({
-  useWinesByIds: () => ({
+  useWinesByIds: (ids: string[]) => ({
+    asked: m.winesAsked.push(ids),
     data: m.winesError || m.winesPending ? undefined : [],
     isError: m.winesError,
     isPending: m.winesPending,
@@ -78,6 +80,7 @@ function mount() {
 
 beforeEach(() => {
   m.winesError = false;
+  m.winesAsked = [];
   m.locationsUnavailable = false;
   m.winesPending = false;
   m.locationsLoading = false;
@@ -223,5 +226,41 @@ describe('useInventoryNextData — side reads that did not answer (INV-W28)', ()
     await waitFor(() => expect(m.docs.mock.calls.length).toBe(before.docs + 1));
     // The delivered lines answered, so they are not read again.
     expect(m.deliveries.mock.calls.length).toBe(before.deliveries);
+  });
+});
+
+describe('useInventoryNextData: the library fields come on the row', () => {
+  const carried = {
+    libraryType: 'red', libraryGrape: 'Nebbiolo', libraryKind: 'wine',
+    libraryProducer: 'Cantina', libraryVintage: 2016, libraryDisplayName: null,
+  };
+
+  it('asks /wines for nothing when every row carries them, and reads type, grape and producer off the row', () => {
+    m.items = [{ id: 'a', wineId: 'w1', wineName: 'Barolo', ...carried }];
+    const { result } = mount();
+    expect(m.winesAsked.every((ids) => ids.length === 0)).toBe(true);
+    const row = result.current.rows?.[0];
+    expect(row?.type).toBe('red');
+    expect(row?.kind).toBe('wine');
+    expect(row?.grape).toBe('Nebbiolo');
+    expect(row?.producer).toBe('Cantina');
+    expect(row?.vintage).toBe(2016);
+  });
+
+  it('asks /wines only for the rows that do not carry them (an older gateway)', () => {
+    m.items = [
+      { id: 'a', wineId: 'w1', wineName: 'Barolo', ...carried },
+      { id: 'b', wineId: 'w2', wineName: 'Old row' },
+    ];
+    mount();
+    expect(m.winesAsked.at(-1)).toEqual(['w2']);
+  });
+
+  it('takes a null on the row as the answer: the library records none', () => {
+    m.items = [{ id: 'a', wineId: 'w1', wineName: 'X', ...carried, libraryType: null, libraryKind: null, libraryGrape: null }];
+    const { result } = mount();
+    expect(result.current.rows?.[0]?.type).toBeNull();
+    expect(result.current.rows?.[0]?.grape).toBeNull();
+    expect(m.winesAsked.every((ids) => ids.length === 0)).toBe(true);
   });
 });
