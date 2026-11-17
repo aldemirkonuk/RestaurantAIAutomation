@@ -36,7 +36,8 @@
  * page's hand-attached Bearer tokens are not reproduced.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { QueryClientContext } from '@tanstack/react-query';
 import { apiClient } from '@/services/api/client';
 import { useAuth, type RestaurantBranch } from '@/contexts/AuthContext';
 import {
@@ -586,6 +587,9 @@ async function fetchTeam(restaurantId: string, canSeeInvites: boolean): Promise<
  * lets a branch switch blank exactly the registers that moved tenant.
  */
 export function useSettingsNextData() {
+  // Read without throwing: a page drawn with no provider (a test, a preview)
+  // simply has no setup read to ask again.
+  const queryClient = useContext(QueryClientContext);
   const { user, activeRestaurantId, activeRole, availableRestaurants, refreshBranches } = useAuth();
   const rid = activeRestaurantId ?? null;
   const uid = user?.userId ?? null;
@@ -915,8 +919,12 @@ export function useSettingsNextData() {
         else houseCurrency.reload();
         // A code that moved is a row in the trail; the trail must not lag it.
         ledger.reload();
+        // The house's setup counts "the house states its money" as a step. The
+        // rail keeps the setup it read until the window is next focused, so it
+        // went on saying the money was still to set after this save.
+        void queryClient?.invalidateQueries({ queryKey: ['onboarding-progress'] });
       }),
-    [writer, houseCurrency, ledger],
+    [writer, houseCurrency, ledger, queryClient],
   );
 
   /**
