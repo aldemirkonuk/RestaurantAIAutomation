@@ -74,6 +74,39 @@ export function countOf(v: unknown, one: string, many: string): string {
   return `${formatNumber(n)} ${n === 1 ? one : many}`;
 }
 
+/**
+ * The gateway's `observed` block: how many days the house has been recording
+ * inside the window an analysis asked for, and the day it began when that is
+ * inside the window (r36 reports gap 1).
+ */
+export interface ObservedBlock {
+  young: boolean;
+  observedDays: number | null;
+  since: string | null;
+}
+
+export function readObserved(raw: unknown): ObservedBlock | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  return {
+    young: o.young === true,
+    observedDays: num(o.observedDays),
+    since: typeof o.since === 'string' ? o.since : null,
+  };
+}
+
+/**
+ * The days a younger-than-the-window house has, and the day it began, as the
+ * window line says them. Null when the house fills the window, when the
+ * gateway did not say, or when either figure is unreadable: the line then
+ * keeps the window's own length rather than guess.
+ */
+export function observedSince(o: ObservedBlock | null | undefined): { days: number; date: string } | null {
+  if (!o || o.since === null || o.observedDays === null) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(o.since)) return null;
+  return { days: o.observedDays, date: shortDay(o.since) };
+}
+
 /** Parse a YYYY-MM-DD as a LOCAL date (`new Date('YYYY-MM-DD')` is UTC). */
 export function parseDateStr(s: string): Date {
   const [y, m, d] = s.split('-').map(Number);

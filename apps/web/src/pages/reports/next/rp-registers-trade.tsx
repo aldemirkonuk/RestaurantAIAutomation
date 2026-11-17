@@ -22,8 +22,10 @@ import {
   figure,
   money,
   num,
+  observedSince,
   pct,
   ratioPct,
+  readObserved,
   shortDay,
   weekLabel,
   weekStart,
@@ -31,6 +33,7 @@ import {
 } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
 import type { Cat, Cell } from './rp-view';
+import type { ObservedBlock } from './rp-format';
 
 /* ───────────────────────────────────────────────────── 1. the reading ──── */
 
@@ -379,14 +382,19 @@ export interface WeekRegister {
   /** Since 2026-09-03: true when an extreme is shared and both are withheld. */
   tie: boolean | null;
   trendPerDayPct: number | null;
-  basis?: { weekday?: string; extremes?: string };
+  basis?: { weekday?: string; extremes?: string; trend?: string };
+  /** The days the house has recorded (r36 reports gap 1). */
+  observed?: ObservedBlock | null;
 }
 
 const week = analysis<WeekRegister>({
   title: 'The week’s shape',
   register: 'seasonality register',
   answers: 'Which nights carry the week',
-  window: () => 'the last 90 days of the consumption log',
+  window: (_ctx, w) => {
+    const s = observedSince(w?.observed);
+    return s ? `the consumption log, ${s.days} days since ${s.date}` : 'the last 90 days of the consumption log';
+  },
   path: (rid) => `/analytics/seasonality/${rid}`,
   graphs: ['bars', 'line', 'area', 'table'],
   graphNote:
@@ -405,6 +413,7 @@ const week = analysis<WeekRegister>({
       tie: typeof d.tie === 'boolean' ? d.tie : null,
       trendPerDayPct: num(d.trendPerDayPct),
       basis: d.basis as WeekRegister['basis'],
+      observed: readObserved(d.observed),
     };
   },
   view: (w) => {
@@ -412,10 +421,14 @@ const week = analysis<WeekRegister>({
       w.basis?.weekday ??
         'Mean units per weekday over the last 90 days of wine_consumption_log; a weekday with no observation is left blank rather than drawn at zero.',
       w.basis?.extremes,
+      w.basis?.trend,
     ];
+    // A younger house is read over the days it has, and the sentences say so.
+    const since = observedSince(w.observed);
+    const inWindow = since ? `the ${since.days} days since ${since.date}` : 'the last 90 days';
     if (w.weekdayProfile.length === 0)
       return {
-        say: 'No consumption is recorded in the last 90 days, so the week has no shape yet.',
+        say: `No consumption is recorded in ${inWindow}, so the week has no shape yet.`,
         figures: [],
         notes: [],
         basis,
@@ -441,7 +454,8 @@ const week = analysis<WeekRegister>({
         value: ranked && w.worstDay ? w.worstDay : EM,
         note: 'More than one weekday shares the lowest mean',
       },
-      { label: '28-day trend, per day', value: pct(w.trendPerDayPct) },
+      // The dash is the engine's own refusal; its sentence says why.
+      { label: '28-day trend, per day', value: pct(w.trendPerDayPct), note: w.trendPerDayPct === null ? w.basis?.trend : undefined },
     ];
     const notes = ranked
       ? []
@@ -450,7 +464,7 @@ const week = analysis<WeekRegister>({
         ];
     if (data.every((b) => (b.value ?? 0) === 0))
       return {
-        say: 'Every weekday reads zero over the last 90 days — the consumption log recorded no movement, so the week has no shape to draw yet.',
+        say: `Every weekday reads zero over ${inWindow} — the consumption log recorded no movement, so the week has no shape to draw yet.`,
         figures,
         notes,
         basis,
@@ -499,14 +513,17 @@ export interface AheadRegister {
    * under two of each weekday: nothing is projected, and the page says why
    * rather than "no model fitted".
    */
-  observed?: { young: boolean; observedDays: number | null } | null;
+  observed?: ObservedBlock | null;
 }
 
 const ahead = analysis<AheadRegister>({
   title: 'What’s coming',
   register: 'forecast register',
   answers: 'What the model expects the next fortnight to take out of the cellar',
-  window: () => '120 days of history, 14 days ahead',
+  window: (_ctx, a) => {
+    const s = observedSince(a?.observed);
+    return s ? `${s.days} days of history since ${s.date}, 14 days ahead` : '120 days of history, 14 days ahead';
+  },
   path: (rid) => `/analytics/forecast/${rid}?horizon=14`,
   graphs: ['line', 'area', 'bars', 'table', 'figure'],
   graphNote:
@@ -526,9 +543,7 @@ const ahead = analysis<AheadRegister>({
       totalForecastDemand: num(d.totalForecastDemand),
       accuracy: (d.accuracy ?? null) as AheadRegister['accuracy'],
       basis: d.basis as AheadRegister['basis'],
-      observed: d.observed
-        ? { young: obj(d.observed).young === true, observedDays: num(obj(d.observed).observedDays) }
-        : null,
+      observed: readObserved(d.observed),
     };
   },
   view: (a) => {

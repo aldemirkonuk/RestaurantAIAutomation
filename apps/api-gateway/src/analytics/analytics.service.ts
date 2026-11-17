@@ -860,6 +860,10 @@ export class AnalyticsService {
         serviceLevel,
         leadTimeDays: leadTime,
         demandWindowDays: sinceDays,
+        // Whose lead `leadTimeDays` is, so the page does not call a per-good
+        // lead "assumed": wines whose vendor has none recorded fall back to it.
+        leadTimeSource: opts.leadTimeDays != null ? "requested" : "vendor",
+        leadTimeAssumed: assumedLead,
       },
       observed,
       // This endpoint carried no `basis` at all, which made its cost-derived

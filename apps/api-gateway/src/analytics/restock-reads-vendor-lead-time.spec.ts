@@ -128,6 +128,29 @@ describe("restock takes each good's lead time from its vendor", () => {
   });
 });
 
+describe("the payload says whose lead it is (r39 walk, F3)", () => {
+  it("counts the goods that fell back to the assumption, so the page need not call every lead assumed", async () => {
+    const out: any = await analytics(register, [
+      item("fast", "p-fast"),
+      item("blank", "p-blank"),
+      item("none", null),
+    ]).getInventoryScience(RID);
+    expect(out.params).toMatchObject({ leadTimeDays: 7, leadTimeSource: "vendor", leadTimeAssumed: 2 });
+  });
+
+  it("every good on its vendor's own lead: none assumed", async () => {
+    const out: any = await analytics(register, [item("fast", "p-fast"), item("slow", "p-slow")])
+      .getInventoryScience(RID);
+    expect(out.params).toMatchObject({ leadTimeSource: "vendor", leadTimeAssumed: 0 });
+  });
+
+  it("a caller's lead is named as theirs", async () => {
+    const out: any = await analytics(register, [item("slow", "p-slow")])
+      .getInventoryScience(RID, { leadTimeDays: 5 });
+    expect(out.params).toMatchObject({ leadTimeDays: 5, leadTimeSource: "requested", leadTimeAssumed: 0 });
+  });
+});
+
 describe("the inventory read carries each good's vendor", () => {
   it("selects provider_id and maps it to providerId", async () => {
     const selects: string[] = [];
