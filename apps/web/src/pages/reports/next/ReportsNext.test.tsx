@@ -2573,3 +2573,11 @@ describe('the opening captions keep one slot (r47 w3 F1)', () => {
     expect(css).toMatch(/\.rp-caps\s*\{[^}]*min-height:\s*66px/);
   });
 });
+
+describe('the opening keeps three lines on a narrower window (r48 w1 F4)', () => {
+  it('[REVERT-FAILS] the stylesheet reserves three lines for the voice at 1100 px and below, two above', () => {
+    const css = readFileSync(join(__dirname, 'reports-next.css'), 'utf8');
+    expect(css).toMatch(/\.rp-voice\s*\{[^}]*min-height:\s*calc\(2 \* 1\.5em\)/);
+    expect(css).toMatch(/@media \(max-width: 1100px\)\s*\{\s*\.rp-voice\s*\{[^}]*min-height:\s*calc\(3 \* 1\.5em\)/);
+  });
+});
