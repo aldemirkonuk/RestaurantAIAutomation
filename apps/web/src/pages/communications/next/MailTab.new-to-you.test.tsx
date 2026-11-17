@@ -215,6 +215,44 @@ describe('a thread on screen is read by this person', () => {
     expect((seenPosts()[1][2] as { params: Record<string, string> }).params.through).toBe('2026-11-06 10:00:00+00');
   });
 
+  it('opening the same thread again in one session sends no second mark; a kept mark is not repeated, a failed one is', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const open = () =>
+      render(
+        <MemoryRouter initialEntries={['/communications?tab=mail&thread=gm%3Aabc']}>
+          <QueryClientProvider client={qc}>
+            <MailTab draftedOrderIds={new Set<string>()} onOpenReply={vi.fn()} />
+          </QueryClientProvider>
+        </MemoryRouter>,
+      );
+    const first = open();
+    await waitFor(() => expect(seenPosts()).toHaveLength(1));
+    await waitFor(() => expect(qc.isMutating()).toBe(0));
+    first.unmount();
+    const second = open();
+    await screen.findByText('Our answer.');
+    await waitFor(() => expect(qc.isMutating()).toBe(0));
+    expect(seenPosts()).toHaveLength(1);
+    second.unmount();
+    // A mark the gateway did not keep is asked for again on the next open.
+    const other = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    api.post.mockRejectedValueOnce(Object.assign(new Error('boom'), { response: { status: 503 } }));
+    const reopen = () =>
+      render(
+        <MemoryRouter initialEntries={['/communications?tab=mail&thread=gm%3Aabc']}>
+          <QueryClientProvider client={other}>
+            <MailTab draftedOrderIds={new Set<string>()} onOpenReply={vi.fn()} />
+          </QueryClientProvider>
+        </MemoryRouter>,
+      );
+    const a = reopen();
+    await waitFor(() => expect(seenPosts()).toHaveLength(2));
+    await waitFor(() => expect(other.isMutating()).toBe(0));
+    a.unmount();
+    reopen();
+    await waitFor(() => expect(seenPosts()).toHaveLength(3));
+  });
+
   it('a thread with no letter from the vendor, or with no person, sends nothing', async () => {
     thread = { ...THREAD, messages: [THREAD.messages[2]] };
     mount('/communications?tab=mail&thread=gm%3Aabc');
