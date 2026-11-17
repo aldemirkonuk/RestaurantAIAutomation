@@ -444,6 +444,8 @@ export default function InventoryNext() {
     const wines: WineInput[] = [];
     let left = 0;
     for (const r of rows ?? []) {
+      // A food or supply is never a title to place, so it is not "left out" of the plan.
+      if (goodOf(r) !== 'drink') continue;
       if (r.wineId === null || r.stock === null || r.shadow === null) {
         left += 1;
         continue;

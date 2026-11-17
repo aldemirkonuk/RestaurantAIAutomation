@@ -1349,6 +1349,26 @@ describe('the acts ported from the legacy page (founder 2026-10-31: port all 5, 
   });
 });
 
+describe('Auto-Locate does not count a food as a title left out (r51)', () => {
+  const cave = { id: 'z1', name: 'Cave', type: 'cellar', capacity: 100, currentCount: 0, temperature: '55°F', color: '#000' };
+  it('says nothing about a food or supply beside a counted wine', () => {
+    const note = vi.spyOn(toast, 'message').mockImplementation(() => '' as never);
+    const food = row({ id: 'f', wineId: null, name: 'Bread Flour', type: null, kind: null, stock: 5, par: null, zones: [] });
+    mock.data = data({
+      rows: [row({ id: 'a', wineId: 'w1', type: 'red', stock: 3, shadow: 0 }), food],
+      rawItems: [{ id: 'f', kind: 'food', uom: 'g', display_name: 'Bread Flour' }],
+      locations: { ...(data().locations as object), list: [cave] },
+    });
+    renderPage();
+    fireEvent.click(within(document.getElementById('iv-tools')!).getByRole('button', { name: 'Storage locations' }));
+    act(() => (ported.slm!.onAutoLocate as () => void)());
+    const plan = ported.preview!.result as { assignments: { wineId: string }[] };
+    expect(plan.assignments.map((x) => x.wineId)).toEqual(['w1']);
+    expect(note).not.toHaveBeenCalled();
+    note.mockRestore();
+  });
+});
+
 describe('row selection, ported from the legacy table (re-gate 2026-10-31)', () => {
   // openMl 0: the gateway always sends it; null would mean the open bottle was not read.
   const three = () => [
