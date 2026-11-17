@@ -2191,6 +2191,16 @@ export class MenusService {
         `Could not read this house's ${what} for its setup: ${message}`,
       );
 
+    // The house's own row, read once: the setup reads its threshold flag and
+    // the next steps read its money from the same answer. Wrapped in a real
+    // promise so the query is sent once however many readers wait on it.
+    const houseRead = Promise.resolve(
+      supabase
+        .from("restaurants")
+        .select("threshold_configured, currency")
+        .eq("id", restaurantId)
+        .maybeSingle(),
+    );
     const [own, menuRead, menuCurrent, supplier, invite, house, nextSteps, noTeam] =
       await Promise.all([
         supabase
@@ -2214,12 +2224,8 @@ export class MenusService {
           .or(`used_at.not.is.null,expires_at.gt.${new Date().toISOString()}`)
           .order("created_at", { ascending: true })
           .limit(1),
-        supabase
-          .from("restaurants")
-          .select("threshold_configured")
-          .eq("id", restaurantId)
-          .maybeSingle(),
-        this.readNextSteps(restaurantId),
+        houseRead,
+        this.readNextSteps(restaurantId, houseRead),
         this.readNoTeamYet(userId),
       ]);
     if (own.error) throw fail("setup row", own.error.message);
@@ -2318,7 +2324,10 @@ export class MenusService {
    *   until it is set (r36 onboarding gap 6). Null when the read fails or
    *   finds no house row.
    */
-  private async readNextSteps(restaurantId: string): Promise<{
+  private async readNextSteps(
+    restaurantId: string,
+    houseRead: PromiseLike<{ data: unknown; error: unknown }>,
+  ): Promise<{
     goods_listed: boolean | null;
     goods_counted: boolean | null;
     mailbox_connected: boolean | null;
@@ -2385,12 +2394,11 @@ export class MenusService {
           .in("status", ["received", "extracting", "needs_review"])
           .limit(1),
       ),
-      settle(() =>
-        supabase
-          .from("restaurants")
-          .select("currency")
-          .eq("id", restaurantId)
-          .limit(1),
+      // The house's row, read by the setup (getOnboardingProgress) and shared:
+      // a rejection here is a failed read of this fact only.
+      Promise.resolve(houseRead).then(
+        (read) => read,
+        (error: unknown) => ({ data: null, error: error ?? "rejected" }),
       ),
       // The house's reading switch, read as house-inbox-flag.ts reads it (the
       // settings row of an EAV table). Not that helper: it answers false on a
@@ -2438,7 +2446,7 @@ export class MenusService {
       invoice,
       money_set: (() => {
         if (money.error) return null;
-        const row = ((money.data ?? []) as Array<{ currency?: unknown }>)[0];
+        const row = money.data as { currency?: unknown } | null;
         if (!row) return null;
         return typeof row.currency === "string" && row.currency.trim() !== "";
       })(),
