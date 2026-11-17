@@ -47,6 +47,7 @@ import { formatMoney } from '../../../lib/currency';
 import { useHouseCurrencyCode } from '../../../hooks/queries/useHouseCurrencyCode';
 import { fitPhotoForReading } from '../../../lib/fitPhoto';
 import { fittedPhotoRefusal, pickedSizeRefusal } from './menu-read-size';
+import { MenuTypedLines, emptyRow, typedLines, type TypedRow } from './MenuTypedLines';
 
 const EM = '—';
 
@@ -243,6 +244,10 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
   const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
   const [fileRefusal, setFileRefusal] = useState<string | null>(null);
+  // r41 R1: a menu is read from a file or typed here, through the same box.
+  const [typing, setTyping] = useState(false);
+  const [rows, setRows] = useState<TypedRow[]>(() => [emptyRow()]);
+  const typed = typedLines(rows);
   const [cadence, setCadence] = useState<MenuCadence | ''>('');
   const [date, setDate] = useState('');
   const [result, setResult] = useState<MenuImportResult | null>(null);
@@ -254,8 +259,12 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
 
   const read = useMutation({
     mutationFn: async () => {
-      if (!file) throw new Error('Choose a photo, PDF or CSV of the menu first.');
       const labels = { ...(cadence ? { cadence } : {}), ...(dateRead.value ? { menuDate: dateRead.value } : {}) };
+      if (typing) {
+        if (typed.refusal) throw new Error(typed.refusal);
+        return importMenu('manual', { items: typed.lines }, labels);
+      }
+      if (!file) throw new Error('Choose a photo, PDF or CSV of the menu first.');
       const name = file.name.toLowerCase();
       if (name.endsWith('.csv') || file.type === 'text/csv') {
         return importMenu('csv', { csvContent: await file.text() }, labels);
@@ -266,6 +275,8 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
       return importMenu('scan', { imageBase64: await scanPayload(file) }, labels);
     },
     onSuccess: (r) => {
+      // The typed lines are kept now: the box starts clean for the next menu.
+      if (typing) setRows([emptyRow()]);
       setResult(r);
       setChosen(null);
       setPlanning(false);
@@ -283,26 +294,38 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
   return (
     <div style={{ border: '1px solid var(--paper-2)', borderRadius: 10, padding: 14, marginTop: 16 }} data-testid="menu-read-form">
       <form onSubmit={submit} style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
-        <label className="cl-said" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          Menu to read
-          <input
-            type="file"
-            accept={MENU_FILE_ACCEPT}
-            aria-label="Menu to read"
-            onChange={(e) => {
-              const picked = e.target.files?.[0] ?? null;
-              // A file this box cannot read is said at once and never sent.
-              const why = menuFileRefusal(picked) ?? pickedSizeRefusal(picked);
-              setFileRefusal(why);
-              setFile(why ? null : picked);
-            }}
-          />
-          {fileRefusal ? (
-            <span role="alert" className="cl-note" data-testid="menu-file-refused">
-              {fileRefusal}
-            </span>
-          ) : null}
-        </label>
+        <div style={{ display: 'flex', gap: 8, width: '100%' }} role="group" aria-label="How the menu comes in">
+          <button type="button" className={`cl-btn cl-focus${typing ? '' : ' cl-ink'}`} aria-pressed={!typing} onClick={() => setTyping(false)}>
+            A file
+          </button>
+          <button type="button" className={`cl-btn cl-focus${typing ? ' cl-ink' : ''}`} aria-pressed={typing} onClick={() => { setTyping(true); setFile(null); setFileRefusal(null); }}>
+            Type the menu
+          </button>
+        </div>
+        {typing ? (
+          <MenuTypedLines rows={rows} onChange={setRows} refusal={typed.refusal} />
+        ) : (
+          <label className="cl-said" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            Menu to read
+            <input
+              type="file"
+              accept={MENU_FILE_ACCEPT}
+              aria-label="Menu to read"
+              onChange={(e) => {
+                const picked = e.target.files?.[0] ?? null;
+                // A file this box cannot read is said at once and never sent.
+                const why = menuFileRefusal(picked) ?? pickedSizeRefusal(picked);
+                setFileRefusal(why);
+                setFile(why ? null : picked);
+              }}
+            />
+            {fileRefusal ? (
+              <span role="alert" className="cl-note" data-testid="menu-file-refused">
+                {fileRefusal}
+              </span>
+            ) : null}
+          </label>
+        )}
         <label className="cl-said" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           How often it changes (optional)
           <select aria-label="How often it changes" value={cadence} onChange={(e) => setCadence(e.target.value as MenuCadence | '')}>
@@ -318,7 +341,7 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
           Date (optional: a day or a month)
           <input aria-label="Menu date" placeholder="2026-10 or 2026-10-15" value={date} onChange={(e) => setDate(e.target.value)} />
         </label>
-        <button type="submit" className="cl-btn cl-focus" disabled={read.isPending || !file || !dateRead.ok}>
+        <button type="submit" className="cl-btn cl-focus" disabled={read.isPending || (typing ? typed.lines.length === 0 : !file) || !dateRead.ok}>
           {read.isPending ? 'Reading…' : 'Read this menu'}
         </button>
       </form>
