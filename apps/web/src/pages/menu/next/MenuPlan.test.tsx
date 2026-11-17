@@ -346,6 +346,28 @@ describe('r35 G21: a line that fits the house\'s own goods and is linked to none
   });
 });
 
+describe('MenuPlan -- how a price was last set (r42)', () => {
+  it('says a hand correction on the menu was by hand, not from a menu', async () => {
+    const base = line();
+    const corrected = line({
+      bottle: { ...base.bottle, lastSet: { by: person('Max'), at: '2026-09-10T08:00:00Z', source: 'import', reason: 'menu line corrected (bottle_price)' } },
+    });
+    mockPlan.mockResolvedValue(plan({ lines: [corrected] }));
+    mount(true);
+    const rows = await screen.findAllByTestId('menu-plan-row');
+    expect(rows[0]).toHaveTextContent(shown(`Becomes ${m(55)}; it was set by hand on the menu by Max on 2026-09-10`));
+    expect(rows[0]).not.toHaveTextContent('from a menu');
+  });
+
+  it('still says from a menu for a price a menu import set', async () => {
+    const base = line();
+    mockPlan.mockResolvedValue(plan({ lines: [line({ bottle: { ...base.bottle, lastSet: { by: person('Max'), at: '2026-09-10T08:00:00Z', source: 'import', reason: 'menu line' } } })] }));
+    mount(true);
+    const rows = await screen.findAllByTestId('menu-plan-row');
+    expect(rows[0]).toHaveTextContent(shown(`Becomes ${m(55)}; it was set from a menu by Max on 2026-09-10`));
+  });
+});
+
 describe('MenuPlan -- the section before the choice (L13)', () => {
   it('shows each price it would change with who set it, each held price with its lock, the returned wine, the vintage to check, and the dormant locks', async () => {
     mockPlan.mockResolvedValue(plan());
