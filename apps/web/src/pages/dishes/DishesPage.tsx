@@ -46,6 +46,7 @@ import { useHousePercent, type SayPercent } from '../cellar/next/recipe/useHouse
 import { reason, useCanEditRecipe, useCreateDish, useDishFigures, useDishes, useHouseMoney, useMenuPrices, useRemoveDish, useUpdateDish } from '../cellar/next/recipe/useRecipe';
 import { MENU_PRICES_UNREAD, MenuPriceCell } from '../cellar/next/recipe/MenuPriceCell';
 import MenuDishesOffer from './MenuDishesOffer';
+import { dishMatches } from './fold';
 import { AllergenCell, AllergenCheck, keptFor } from '../cellar/next/recipe/ListAllergens';
 import { CostWaits, NoRecipeYet } from '../cellar/next/recipe/ListCostWaits';
 import type { DishFigureRow, DishListRow } from '../../services/api/recipes';
@@ -312,11 +313,13 @@ export default function DishesPage() {
   const [params, setParams] = useSearchParams();
   const asked = params.get('open');
   const [allergen, setAllergen] = useState('');
+  const [query, setQuery] = useState('');
   const all = dishes.data ?? [];
   const [onlyBare, setOnlyBare] = useState(false);
   const fig = (id: string) => figures.byId?.get(id);
   const figState: FiguresState = figures.loading ? 'reading' : !figures.byId || figures.costsUnread ? 'unread' : 'read';
-  const byAllergen = all.filter((d) => keptFor(fig(d.id)?.allergens, allergen));
+  const searched = all.filter((d) => dishMatches(d, query));
+  const byAllergen = searched.filter((d) => keptFor(fig(d.id)?.allergens, allergen));
   // Which dishes have no recipe is known only once the figures are read.
   const bareIds = figures.byId ? all.filter((d) => !fig(d.id)?.hasRecipe).map((d) => d.id) : [];
   const rows = canEdit && onlyBare ? byAllergen.filter((d) => bareIds.includes(d.id)) : byAllergen;
@@ -379,7 +382,24 @@ export default function DishesPage() {
             </p>
           ) : null}
           {canEdit ? <NoRecipeYet bare={bareIds.length} of={all.length} noun="dishes" only={onlyBare} onOnly={setOnlyBare} /> : null}
-          <AllergenCheck value={allergen} onChange={setAllergen} hidden={all.length - byAllergen.length} noun="dishes" />
+          <div className="cl-row-controls" style={{ marginTop: 12 }}>
+            <label htmlFor="dishes-search" className="cl-sr">Search this house’s dishes</label>
+            <input
+              id="dishes-search"
+              className="cl-field cl-focus"
+              type="search"
+              placeholder="Search dish or section…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              style={{ minWidth: 220, flex: '1 1 220px' }}
+            />
+          </div>
+          {query.trim() && searched.length === 0 ? (
+            <p className="cl-said" role="status" style={{ marginTop: 12 }} data-testid="dishes-search-none">
+              No dish matches “{query.trim()}”. {all.length} {all.length === 1 ? 'dish is' : 'dishes are'} on your list.
+            </p>
+          ) : null}
+          <AllergenCheck value={allergen} onChange={setAllergen} hidden={searched.length - byAllergen.length} noun="dishes" />
           <div style={{ marginTop: 12, overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10 }}>
             <table className="cl-table">
               <thead>
