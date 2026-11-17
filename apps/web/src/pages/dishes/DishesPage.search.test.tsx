@@ -1,6 +1,6 @@
 /** /dishes: the search box finds a dish by name or section, through accents and the Turkish dotless i. */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 
@@ -9,7 +9,6 @@ const A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const C = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const D = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
-const NEW = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 
 const h = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), del: vi.fn(), auth: {} as Record<string, unknown> }));
 vi.mock('../../services/api/client', () => ({
@@ -19,7 +18,6 @@ vi.mock('../../services/api/client', () => ({
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => h.auth }));
 
 import DishesPage from './DishesPage';
-import { PRICE_UNREAD, readPrice } from '../cellar/next/recipe/price-text';
 
 const full = { perServe: 300, perServeExact: 300, priced: 2, of: 2, complete: true, partial: 0 };
 const row = (id: string, name: string, over: Record<string, unknown> = {}) => ({
