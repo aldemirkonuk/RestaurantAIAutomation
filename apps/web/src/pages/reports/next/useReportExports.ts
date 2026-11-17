@@ -108,7 +108,8 @@ export function saveFile(filename: string, mime: string, body: string): void {
 }
 
 export function useReportExports({ queryRoot }: { queryRoot: string }): ExportDesk {
-  const { activeRestaurantId, activeRole } = useAuth();
+  const { activeRestaurantId, activeRole, activeRoleState } = useAuth();
+  const roleLoading = activeRoleState === 'loading';
   const qc = useQueryClient();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -121,7 +122,7 @@ export function useReportExports({ queryRoot }: { queryRoot: string }): ExportDe
   // Not "every figure is still on the sheet": the table and server registers
   // are written for owners and managers too (ADR 0348). No "above": the
   // registers may lie anywhere on the sheet, or not on it at all.
-  const readOnlyReason = canExport
+  const readOnlyReason = canExport || roleLoading
     ? null
     : activeRole == null
       ? 'Your role at this restaurant is not known yet, so exports are not offered until it is.'
@@ -220,7 +221,7 @@ export function useReportExports({ queryRoot }: { queryRoot: string }): ExportDe
     canNextPage,
     prevPage,
     nextPage,
-    loading: list.isLoading && list.fetchStatus !== 'idle',
+    loading: roleLoading || (list.isLoading && list.fetchStatus !== 'idle'),
     // The gateway's own sentence, not the transport's "status code 500".
     // The shelf prints its own reason in parentheses, so the register-sheet
     // sentence (`said`) is left off here.

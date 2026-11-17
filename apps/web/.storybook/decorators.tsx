@@ -44,6 +44,7 @@ export const mockAuthValue: AuthContextType = {
   clearError: syncNoop,
   activeRestaurantId: MOCK_USER.restaurantId,
   activeRole: 'owner',
+  activeRoleState: 'known',
   availableRestaurants: [
     {
       id: MOCK_USER.restaurantId,
