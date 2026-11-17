@@ -220,6 +220,12 @@ export default function CocktailRegister({
   const leafRef = useRef<HTMLDivElement | null>(null);
   const [confirmRetire, setConfirmRetire] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
+  // A line about the last save or refusal is about the form as it was; opening,
+  // typing in or leaving the form again takes it away (as /dishes does).
+  const changeDraft = (next: Draft | null) => {
+    setSaid(null);
+    setDraft(next);
+  };
   const [query, setQuery] = useState('');
   const [allergen, setAllergen] = useState('');
   const [onlyBare, setOnlyBare] = useState(false);
@@ -305,7 +311,7 @@ export default function CocktailRegister({
           className="cl-btn cl-focus"
           data-on={draft !== null && editId === null}
           onClick={() => {
-            setDraft(draft && editId === null ? null : {});
+            changeDraft(draft && editId === null ? null : {});
             setEditId(null);
           }}
           style={{ marginLeft: 'auto' }}
@@ -330,15 +336,15 @@ export default function CocktailRegister({
               gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
             }}
           >
-            <Field id="ck-name" label="Name" value={draft.name ?? ''} onChange={(v) => setDraft({ ...draft, name: v })} placeholder="Negroni" />
-            <Field id="ck-section" label="Section" value={draft.menuSection ?? ''} onChange={(v) => setDraft({ ...draft, menuSection: v })} placeholder="Aperitivo" />
-            <Field id="ck-method" label="Method" value={draft.method ?? ''} onChange={(v) => setDraft({ ...draft, method: v })} placeholder="Stirred" />
-            <Field id="ck-glass" label="Glass" value={draft.glass ?? ''} onChange={(v) => setDraft({ ...draft, glass: v })} placeholder="Rocks" />
-            <Field id="ck-garnish" label="Garnish" value={draft.garnish ?? ''} onChange={(v) => setDraft({ ...draft, garnish: v })} placeholder="Orange peel" />
+            <Field id="ck-name" label="Name" value={draft.name ?? ''} onChange={(v) => changeDraft({ ...draft, name: v })} placeholder="Negroni" />
+            <Field id="ck-section" label="Section" value={draft.menuSection ?? ''} onChange={(v) => changeDraft({ ...draft, menuSection: v })} placeholder="Aperitivo" />
+            <Field id="ck-method" label="Method" value={draft.method ?? ''} onChange={(v) => changeDraft({ ...draft, method: v })} placeholder="Stirred" />
+            <Field id="ck-glass" label="Glass" value={draft.glass ?? ''} onChange={(v) => changeDraft({ ...draft, glass: v })} placeholder="Rocks" />
+            <Field id="ck-garnish" label="Garnish" value={draft.garnish ?? ''} onChange={(v) => changeDraft({ ...draft, garnish: v })} placeholder="Orange peel" />
             <Field
               id="ck-price" label="Price" inputMode="decimal"
               value={draft.priceText ?? ''}
-              onChange={(v) => setDraft({ ...draft, priceText: v })}
+              onChange={(v) => changeDraft({ ...draft, priceText: v })}
               placeholder="leave blank if unpriced"
               invalid={priceRead.bad}
               describedBy={priceRead.bad ? 'ck-price-said' : undefined}
@@ -366,7 +372,7 @@ export default function CocktailRegister({
             <button
               type="button"
               className="cl-btn cl-focus"
-              onClick={() => { setDraft(null); setEditId(null); }}
+              onClick={() => { changeDraft(null); setEditId(null); }}
             >
               <X size={13} aria-hidden />
               Leave it
@@ -526,7 +532,7 @@ export default function CocktailRegister({
                               className="cl-btn cl-focus"
                               onClick={() => {
                                 setEditId(c.id);
-                                setDraft({
+                                changeDraft({
                                   name: c.name,
                                   displayName: c.display_name ?? undefined,
                                   menuSection: c.menu_section ?? undefined,
