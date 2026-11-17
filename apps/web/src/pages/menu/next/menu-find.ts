@@ -26,3 +26,27 @@ export function lineMatches(line: MenuLine, typed: string): boolean {
   const hay = fold([line.name, line.producer, line.category, line.region, line.country, line.grape_variety, line.vintage].filter(Boolean).join(' '));
   return words.every((w) => hay.includes(w));
 }
+
+/** The address's own word for what was typed: /menu?find=raki. */
+export const FIND_PARAM = 'find';
+
+/** What the address already holds, so a reload or a Back lands on the same narrowed menu. */
+export function findFromAddress(search: string): string {
+  try {
+    return new URLSearchParams(search).get(FIND_PARAM)?.slice(0, 80) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * The address after typing: the box's words in, or the word dropped when the box is empty.
+ * Every other part of the address stays as it was.
+ */
+export function addressWithFind(href: string, typed: string): string {
+  const url = new URL(href);
+  const t = typed.trim();
+  if (t === '') url.searchParams.delete(FIND_PARAM);
+  else url.searchParams.set(FIND_PARAM, t.slice(0, 80));
+  return `${url.pathname}${url.search}${url.hash}`;
+}

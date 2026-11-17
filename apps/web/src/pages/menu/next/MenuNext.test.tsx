@@ -936,3 +936,24 @@ describe('MenuNext - find a line (r41 R4)', () => {
     expect(screen.queryAllByTestId('menu-row')).toHaveLength(0);
   });
 });
+
+// r46: the find words live in the address, so a reload or Back lands on the same narrowed menu.
+describe('MenuNext - the find words stay in the address (r46)', () => {
+  const many = (n: number) =>
+    Array.from({ length: n }, (_, i) => line({ id: `d${i}`, name: `Wine ${i}`, category: 'red', bottle_price: 30 + i, kitchen_line: false }));
+  afterEach(() => window.history.replaceState(null, '', '/'));
+
+  it('opens already narrowed by ?find=, writes what is typed, and drops it on clear', async () => {
+    window.history.replaceState(null, '', '/menu?find=raki');
+    mockGetMenu.mockResolvedValue(menu({ items: [...many(12), line({ id: 'r1', name: 'Yeni Rakı', category: 'spirit', bottle_price: 900, kitchen_line: false })] }));
+    mount();
+    const box = (await screen.findByLabelText('Find a line')) as HTMLInputElement;
+    expect(box.value).toBe('raki');
+    expect(screen.getAllByTestId('menu-row')).toHaveLength(1);
+    fireEvent.change(box, { target: { value: 'wine 3' } });
+    expect(window.location.search).toBe('?find=wine+3');
+    fireEvent.click(screen.getByTestId('menu-find-clear'));
+    expect(window.location.search).toBe('');
+    expect(window.location.pathname).toBe('/menu');
+  });
+});
