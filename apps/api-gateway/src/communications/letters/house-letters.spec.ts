@@ -429,6 +429,50 @@ describe("queueing a letter", () => {
     expect(out.says).not.toMatch(/\bSent\b/);
   });
 
+  describe("the queued line says the time in the house's own clock (r39 walk, F4)", () => {
+    const NOW_MS = Date.parse("2026-11-17T09:00:00Z");
+    let nowSpy: jest.SpyInstance;
+    beforeEach(() => {
+      nowSpy = jest.spyOn(Date, "now").mockReturnValue(NOW_MS);
+    });
+    afterEach(() => nowSpy.mockRestore());
+
+    const queued = (extra: Record<string, unknown>) => {
+      const { service: svc } = service({
+        ...BOOK_ROWS,
+        integration_oauth_connections: [GRANT_WITH_SEND],
+        analytics_insights: [],
+        ...extra,
+      });
+      return svc.queue({ restaurantId: HOUSE, userId: PERSON, dto: draft });
+    };
+
+    it("prints the leaving time in the house's zone and language, not as an ISO instant", async () => {
+      const out = await queued({ restaurants: [{ id: HOUSE, timezone: "Europe/Istanbul", country: "TR" }] });
+      const expected = new Intl.DateTimeFormat("tr-TR", {
+        timeZone: "Europe/Istanbul",
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(new Date(out.dispatchAt));
+      expect(out.says).toContain(`at ${expected}.`);
+      expect(out.says).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:/);
+      // The machine field keeps the instant.
+      expect(out.dispatchAt).toMatch(/^2026-11-17T09:0\d:\d{2}\.\d{3}Z$/);
+    });
+
+    it("a house with no readable zone gets UTC, and the line says UTC", async () => {
+      const out = await queued({ restaurants: [{ id: HOUSE, timezone: null, country: null }] });
+      expect(out.says).toMatch(/ at [A-Z][a-z]{2} \d{1,2}, 2026, \d{1,2}:\d{2}.{0,3}[AP]M UTC\. It has not been sent/);
+      expect(out.says).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:/);
+    });
+
+    it("a clock that could not be read still queues the letter, and says UTC", async () => {
+      const out = await queued({ restaurants: { error: { message: "connection reset" } } });
+      expect(out.status).toBe(LETTER_STATUS.QUEUED);
+      expect(out.says).toMatch(/ UTC\. It has not been sent/);
+    });
+  });
+
   it("pins the mailbox it was queued under on the letter (QA round 26, #973)", async () => {
     const { rec, service: svc } = service({
       ...BOOK_ROWS,
