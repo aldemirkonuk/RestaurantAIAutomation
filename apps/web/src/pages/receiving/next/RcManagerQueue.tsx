@@ -280,7 +280,7 @@ function UnverifiedStrip({ items, atFloor }: { items: UnverifiedDelivery[]; atFl
         <strong style={{ color: 'var(--ink-1, #211C16)' }}>
           {fmtIntFloor(items.length, atFloor)}
         </strong>{' '}
-        deliver{items.length === 1 ? 'y' : 'ies'} counted by case and not yet by bottle
+        deliver{items.length === 1 ? 'y' : 'ies'} counted by case and not yet one by one
         {items[0] ? ` — oldest ${doorAgeSaid(items[0].ageHours, items[0].severity)}` : ''}.
         {overdue > 0 && (
           <strong style={{ color: 'var(--ink-1, #211C16)' }}>
@@ -519,7 +519,7 @@ function QueueRow({
                   {item.backorderBottles !== null && item.backorderBottles > 0 && (
                     <>
                       <br />
-                      {item.backorderBottles} {item.backorderBottles === 1 ? 'bottle' : 'bottles'} still on backorder
+                      {item.backorderBottles} still on backorder
                     </>
                   )}
                   {item.backorderBottles === null && item.backorderWhy && (
