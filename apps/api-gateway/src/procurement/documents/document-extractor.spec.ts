@@ -762,6 +762,13 @@ describe("DocumentExtractorService.normalize: a dozen (r56 R4)", () => {
     expect(bad.warnings.join(" ")).toMatch(/a dozen and also a pack of 6/);
   });
 
+  it("a dozen priced per piece is still a dozen; priced per case it is refused", () => {
+    expect(one({ qty: 2, uom: "DOZ", unitPrice: 0.4, priceBaseQty: 1, priceBaseUom: "each" })).toMatchObject({ uom: "pack", priceBaseUom: "each", packSize: 12 });
+    const r = svc.normalize(json({ ...INVOICE, lines: [{ qty: 2, uom: "DOZ", unitPrice: 50, priceBaseUom: "case" }] }), "test");
+    expect(r.lines[0]).toMatchObject({ uom: "each", priceBaseUom: "case" });
+    expect(r.warnings.join(" ")).toMatch(/counted in dozens but priced per case/);
+  });
+
   it("refuses a price per dozen on a line counted in cases", () => {
     const r = svc.normalize(json({ ...INVOICE, lines: [{ qty: 2, uom: "case", packSize: 12, unitPrice: 50, priceBaseUom: "doz" }] }), "test");
     expect(r.lines[0].priceBaseUom).toBeNull();
