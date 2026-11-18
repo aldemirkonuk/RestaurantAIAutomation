@@ -523,7 +523,7 @@ export function addedPrice(
   label: "glass" | "bottle",
 ): number | undefined {
   const text = typeof typed === "string" ? typed.trim() : "";
-  if (text === "") return sent ?? undefined;
+  if (text === "") return fitsPriceColumn(sent ?? undefined, label);
   if (sent !== undefined && sent !== null) {
     throw new BadRequestException(`The ${label} price was sent twice, as a number and as typed text. Nothing was added.`);
   }
@@ -531,7 +531,26 @@ export function addedPrice(
   if ("refused" in read) {
     throw new BadRequestException(`The ${label} price ${read.refused.replace("Nothing was changed.", "Nothing was added.")}`);
   }
-  return read.value;
+  return fitsPriceColumn(read.value, label);
+}
+
+/** The largest price a house's price column holds (numeric(10,2)). */
+const PRICE_COLUMN_MAX = 99_999_999.99;
+
+/**
+ * A price the column cannot hold is refused in words, not left to the database
+ * (a 500) or rounded in silence: more than 99,999,999.99, or with a third
+ * decimal place. Both the number a caller sent and the text a person typed.
+ */
+function fitsPriceColumn(value: number | undefined, label: "glass" | "bottle"): number | undefined {
+  if (value === undefined) return undefined;
+  if (value > PRICE_COLUMN_MAX) {
+    throw new BadRequestException(`The ${label} price is too large: a price cannot be more than 99,999,999.99. Nothing was added.`);
+  }
+  if (Math.abs(Math.round(value * 100) / 100 - value) > 1e-9) {
+    throw new BadRequestException(`The ${label} price has more than two decimal places. Write it to the cent. Nothing was added.`);
+  }
+  return value;
 }
 
 /** The text fields a typed line may carry; anything else a client sends is dropped. */

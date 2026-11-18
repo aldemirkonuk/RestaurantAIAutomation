@@ -73,3 +73,32 @@ describe("MenusService.addMenuItem: a typed price that is not one refuses the li
     expect(from).not.toHaveBeenCalled();
   });
 });
+
+describe("addedPrice: a price the column cannot hold is refused in words (r56)", () => {
+  const said = (sent: number | undefined, typed: string | undefined) => {
+    try {
+      addedPrice(sent, typed, "bottle");
+    } catch (e) {
+      expect(e).toBeInstanceOf(BadRequestException);
+      return (e as Error).message;
+    }
+    return null;
+  };
+
+  it("refuses a number over 99,999,999.99, sent or typed", () => {
+    expect(said(100000000, undefined)).toMatch(/too large.*Nothing was added\.$/);
+    expect(said(undefined, "100000000")).toMatch(/too large/);
+    expect(said(undefined, "100.000.000,00")).toMatch(/too large/);
+  });
+
+  it("keeps the largest price the column holds", () => {
+    expect(addedPrice(99999999.99, undefined, "bottle")).toBe(99999999.99);
+    expect(addedPrice(undefined, "99999999", "bottle")).toBe(99999999);
+  });
+
+  it("refuses a third decimal place instead of rounding it", () => {
+    expect(said(45.555, undefined)).toMatch(/more than two decimal places.*Nothing was added\.$/);
+    expect(addedPrice(45.5, undefined, "bottle")).toBe(45.5);
+    expect(addedPrice(0.1 + 0.2 - 0.2, undefined, "bottle")).toBeCloseTo(0.1);
+  });
+});
