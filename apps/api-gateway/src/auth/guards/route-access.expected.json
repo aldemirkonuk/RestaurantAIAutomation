@@ -141,6 +141,14 @@
   "DELETE /auth/me (AuthController.deleteAccount)": "open",
   "GET /auth/me/role (AuthController.getMyRole)": "open",
   "POST /auth/invite/:code/accept (AuthController.acceptInviteAsAuthed)": "open",
+  "GET /recipes/:restaurantId/drinks/from-menu (DishesController.menuDrinks)": [
+    "owner",
+    "manager"
+  ],
+  "POST /recipes/:restaurantId/drinks/from-menu (DishesController.addMenuDrinks)": [
+    "owner",
+    "manager"
+  ],
   "GET /auth/verify (AuthController.verifyToken)": "open",
   "POST /auth/register/restaurant (AuthController.registerRestaurant)": "open",
   "GET /auth/invite/:code (AuthController.getInvitePreview)": "open",
