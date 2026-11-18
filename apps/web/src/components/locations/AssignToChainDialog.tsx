@@ -223,7 +223,7 @@ export function AssignToChainDialog({
                       type="button"
                       onClick={() => toggle(loc.id)}
                       className={cn(
-                        'w-full text-left px-3 py-2.5 rounded-xl border transition-all duration-150 flex items-center justify-between',
+                        'w-full text-left px-3 py-2.5 rounded-xl border transition duration-150 flex items-center justify-between',
                         selected
                           ? 'border-wine-400 bg-wine-50'
                           : 'border-gray-100 bg-gray-50 hover:border-gray-200 hover:bg-gray-100',

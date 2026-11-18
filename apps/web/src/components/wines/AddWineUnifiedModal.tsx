@@ -84,7 +84,7 @@ export function AddWineUnifiedModal({ isOpen, onClose, onSave: _onSave, existing
               <div className="flex gap-2 px-6 pb-4">
                 <button
                   onClick={() => setActiveTab('single')}
-                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all ${
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition ${
                     activeTab === 'single'
                       ? 'bg-wine-600 text-white shadow-lg shadow-wine-600/30'
                       : 'bg-white text-gray-600 hover:bg-gray-50'
@@ -98,7 +98,7 @@ export function AddWineUnifiedModal({ isOpen, onClose, onSave: _onSave, existing
                 </button>
                 <button
                   onClick={() => setActiveTab('menu')}
-                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all ${
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition ${
                     activeTab === 'menu'
                       ? 'bg-wine-600 text-white shadow-lg shadow-wine-600/30'
                       : 'bg-white text-gray-600 hover:bg-gray-50'

@@ -469,7 +469,7 @@ export function WineValidationModal({
                   </button>
                   <button
                     onClick={handleApprove}
-                    className="flex-1 py-3 bg-wine-600 text-white font-semibold rounded-xl hover:bg-wine-700 shadow-lg shadow-wine-600/30 transition-all flex items-center justify-center gap-2"
+                    className="flex-1 py-3 bg-wine-600 text-white font-semibold rounded-xl hover:bg-wine-700 shadow-lg shadow-wine-600/30 transition flex items-center justify-center gap-2"
                   >
                     <CheckCircle className="w-5 h-5" />
                     Approve All
@@ -478,7 +478,7 @@ export function WineValidationModal({
               ) : (
                 <button
                   onClick={handleApprove}
-                  className="flex-1 py-3 bg-wine-600 text-white font-semibold rounded-xl hover:bg-wine-700 shadow-lg shadow-wine-600/30 transition-all flex items-center justify-center gap-2"
+                  className="flex-1 py-3 bg-wine-600 text-white font-semibold rounded-xl hover:bg-wine-700 shadow-lg shadow-wine-600/30 transition flex items-center justify-center gap-2"
                 >
                   <Save className="w-5 h-5" />
                   Save & Approve

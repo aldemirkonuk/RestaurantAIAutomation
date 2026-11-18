@@ -23,7 +23,7 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
 
     const hovers = {
       none: '',
-      lift: 'hover:shadow-lg hover:-translate-y-1 transition-all duration-200',
+      lift: 'hover:shadow-lg hover:-translate-y-1 transition duration-200',
     }
 
     return (

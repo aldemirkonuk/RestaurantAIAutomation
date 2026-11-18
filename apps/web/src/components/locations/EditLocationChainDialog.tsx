@@ -502,7 +502,7 @@ export function EditLocationChainDialog({
                   <input
                     value={locationName}
                     onChange={(e) => setLocationName(e.target.value)}
-                    className="block w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-wine-500 focus:border-transparent outline-none transition-all"
+                    className="block w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-wine-500 focus:border-transparent outline-none transition"
                   />
                 </div>
                 <div className="col-span-2">
@@ -511,7 +511,7 @@ export function EditLocationChainDialog({
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
                     placeholder="Optional"
-                    className="block w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-wine-500 focus:border-transparent outline-none transition-all"
+                    className="block w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-wine-500 focus:border-transparent outline-none transition"
                   />
                 </div>
               </div>
@@ -528,7 +528,7 @@ export function EditLocationChainDialog({
                         type="button"
                         onClick={() => setSelectedChainId(opt.id)}
                         className={cn(
-                          'w-full text-left px-3 py-2.5 rounded-xl border transition-all duration-150 flex items-center justify-between',
+                          'w-full text-left px-3 py-2.5 rounded-xl border transition duration-150 flex items-center justify-between',
                           selected
                             ? 'border-wine-400 bg-wine-50 text-wine-900'
                             : 'border-gray-100 bg-gray-50 text-gray-700 hover:border-gray-200 hover:bg-gray-100',

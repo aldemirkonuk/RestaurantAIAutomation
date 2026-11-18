@@ -209,7 +209,7 @@ export function ScanResultsPanel({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, x: -100 }}
-                className={`rounded-xl border-2 transition-all ${
+                className={`rounded-xl border-2 transition ${
                   isSelected
                     ? 'border-indigo-500 bg-indigo-50/50 shadow-md'
                     : 'border-gray-200 hover:border-gray-300'
@@ -338,7 +338,7 @@ export function ScanResultsPanel({
                           <div className="flex items-center gap-2">
                             <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                               <div
-                                className={`h-full transition-all ${
+                                className={`h-full transition-[width,background-color] ${
                                   wine.confidence >= 0.9 ? 'bg-emerald-500' :
                                   wine.confidence >= 0.7 ? 'bg-warning-500' :
                                   'bg-rose-500'
@@ -457,7 +457,7 @@ export function ScanResultsPanel({
         <button
           onClick={handleConfirm}
           disabled={selectedWines.size === 0}
-          className="w-full px-6 py-3 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20"
+          className="w-full px-6 py-3 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20"
         >
           <Plus className="w-5 h-5" />
           Add {selectedWines.size} Wine{selectedWines.size !== 1 ? 's' : ''} to Inventory

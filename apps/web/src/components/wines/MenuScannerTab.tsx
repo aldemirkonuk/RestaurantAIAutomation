@@ -213,7 +213,7 @@ export function MenuScannerTab({ onWinesDetected }: MenuScannerTabProps) {
             </p>
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="px-6 py-3 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-600/30 transition-all flex items-center gap-2 mx-auto"
+              className="px-6 py-3 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-600/30 transition flex items-center gap-2 mx-auto"
             >
               <Upload className="w-5 h-5" />
               Upload Menu Image
@@ -346,7 +346,7 @@ export function MenuScannerTab({ onWinesDetected }: MenuScannerTabProps) {
                     key={wine.id}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className={`rounded-xl border-2 text-left transition-all ${
+                    className={`rounded-xl border-2 text-left transition ${
                       isSelected
                         ? 'border-indigo-500 bg-indigo-50/50 shadow-lg'
                         : 'border-gray-200 hover:border-indigo-300 hover:bg-gray-50'
@@ -430,7 +430,7 @@ export function MenuScannerTab({ onWinesDetected }: MenuScannerTabProps) {
                           <div className="flex items-center gap-2">
                             <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                               <div
-                                className={`h-full transition-all ${
+                                className={`h-full transition-[width,background-color] ${
                                   wine.confidence >= 0.9 ? 'bg-emerald-500' :
                                   wine.confidence >= 0.7 ? 'bg-warning-500' :
                                   'bg-rose-500'

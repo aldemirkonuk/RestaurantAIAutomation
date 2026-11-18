@@ -194,7 +194,7 @@ export function QRCodeGenerator({ wines, onWineFound }: QRCodeGeneratorProps) {
       <div className="flex bg-gray-100 rounded-lg p-1">
         <button
           onClick={() => setActiveTab('generate')}
-          className={`flex-1 px-3 py-2 text-sm font-medium rounded-md transition-all ${
+          className={`flex-1 px-3 py-2 text-sm font-medium rounded-md transition ${
             activeTab === 'generate'
               ? 'bg-white text-gray-900 shadow-sm'
               : 'text-gray-600 hover:text-gray-900'
@@ -204,7 +204,7 @@ export function QRCodeGenerator({ wines, onWineFound }: QRCodeGeneratorProps) {
         </button>
         <button
           onClick={() => setActiveTab('scan')}
-          className={`flex-1 px-3 py-2 text-sm font-medium rounded-md transition-all ${
+          className={`flex-1 px-3 py-2 text-sm font-medium rounded-md transition ${
             activeTab === 'scan'
               ? 'bg-white text-gray-900 shadow-sm'
               : 'text-gray-600 hover:text-gray-900'

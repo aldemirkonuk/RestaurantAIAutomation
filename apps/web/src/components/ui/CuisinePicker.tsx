@@ -62,7 +62,7 @@ export function CuisinePicker({ value, onChange }: CuisinePickerProps) {
         type="button"
         onClick={() => setOpen(!open)}
         className={[
-          'w-full flex items-center gap-3 px-3 py-3 border rounded-lg bg-white/80 text-left transition-all',
+          'w-full flex items-center gap-3 px-3 py-3 border rounded-lg bg-white/80 text-left transition',
           open
             ? 'border-wine-500 ring-2 ring-wine-500/10'
             : 'border-gray-300 hover:border-wine-400',
@@ -108,7 +108,7 @@ export function CuisinePicker({ value, onChange }: CuisinePickerProps) {
                         setOpen(false)
                       }}
                       className={[
-                        'px-3 py-1.5 rounded-full text-[0.8rem] font-medium border transition-all',
+                        'px-3 py-1.5 rounded-full text-[0.8rem] font-medium border transition',
                         value === option
                           ? 'bg-wine-600 text-white border-wine-600 shadow-sm shadow-wine-200'
                           : 'bg-white text-gray-600 border-gray-200 hover:border-wine-400 hover:text-wine-600 hover:bg-wine-50',
