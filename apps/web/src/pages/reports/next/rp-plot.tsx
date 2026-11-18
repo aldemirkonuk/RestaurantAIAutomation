@@ -16,7 +16,9 @@
  *     claim; `<Nothing>` says which register is empty instead.
  *  3. **Every plot names its axes and its unit.** A number with no unit is a
  *     number the reader has to guess at, and a guess about money is expensive.
- *     Both axes carry a label; the tooltip repeats the unit in words.
+ *     Both axes are named in ONE caption above the plot (never a rotated
+ *     title on the axis, which sat on the tick labels); the tooltip repeats
+ *     the unit in words.
  *  4. **A reference line is the SERVER's threshold or it does not exist.** The
  *     quadrant crosshair is `menuEngineering.medians`; the forecast seam is
  *     where measurement stops. Nothing on this page draws a rule we invented.
@@ -40,7 +42,6 @@ import {
   CartesianGrid,
   Cell,
   ComposedChart,
-  Label,
   Line,
   LineChart,
   ReferenceLine,
@@ -59,129 +60,119 @@ import type { CatSeries, Fig, MatrixSeries, PointSeries, TableSpec } from './rp-
 
 /* ─────────────────────────────────────────────────── shared chrome ─────── */
 
+/** The smallest type on a plot: a tick, a reference label (N-03, 11 px floor). */
+const TICK_PX = 11;
+
 const AXIS = {
-  stroke: 'var(--paper-2)',
-  tick: { fill: 'var(--ink-4)', fontSize: 9.5, fontFamily: MONO },
+  stroke: 'transparent',
+  tick: { fill: 'var(--ink-4)', fontSize: TICK_PX, fontFamily: MONO, fontVariantNumeric: 'tabular-nums' },
   tickLine: false,
+  axisLine: false,
 } as const;
 
-const AXIS_LABEL = {
-  fill: 'var(--ink-4)',
-  fontSize: 9,
-  fontFamily: MONO,
-  letterSpacing: '0.08em',
-} as const;
+/** A hairline at 6% ink: the grid is there to be read against, not looked at. */
+const GRID = { stroke: 'var(--ink-1)', strokeOpacity: 0.06 } as const;
 
 const RULE = { stroke: 'var(--ink-3)', strokeDasharray: '2 3' } as const;
 
-/**
- * One glyph of an axis title: the mono face is about 0.6em wide, plus the
- * 0.08em tracking (`AXIS_LABEL`). An estimate, kept generous, since jsdom and
- * a server render cannot measure text.
- */
-const TITLE_GLYPH_PX = AXIS_LABEL.fontSize * 0.68;
-/** How far a value axis's title stands in from the axis's outer edge. */
-const TITLE_INSET = 12;
+/** One mono glyph at tick size, kept a touch generous: jsdom and a server render cannot measure text. */
+const TICK_GLYPH_PX = TICK_PX * 0.62;
 
 /**
- * An axis title cut to the room it has, by the glyph estimate above: whole
- * when it fits, else shortened with an ellipsis, and nothing at all when not
- * even two glyphs fit (an ellipsis alone names nothing).
+ * A value axis's width, from its widest tick label (N-03), so a long figure
+ * never runs under the plot's edge and a short one does not waste the left
+ * gutter. `labels` are the tick strings the axis will print: the extremes of
+ * the data run through the same formatter the axis uses.
  */
-export function fitTitle(text: string, room: number): string {
-  const max = Math.floor(room / TITLE_GLYPH_PX);
-  if (text.length <= max) return text;
-  if (max < 2) return '';
-  return `${text.slice(0, max - 1).trimEnd()}…`;
+export function gutterFor(labels: ReadonlyArray<string>): number {
+  const longest = labels.reduce((n, l) => Math.max(n, l.length), 0);
+  return Math.max(32, Math.ceil(longest * TICK_GLYPH_PX) + 8);
 }
 
-/**
- * A value axis's title, standing on the middle of its axis (r33 walk R-F1).
- * recharts anchors a rotated `insideLeft` / `insideRight` title at one END
- * (`textAnchor` start or end, which a `textAnchor` prop cannot override), so
- * the title ran from the axis's middle up past the plot's top edge, where
- * `.rp-plot` clips it: on the till's bars and a line, "Average check" read
- * "ge check". Here it is centred on the axis, and a title longer than the
- * room is shortened, with the whole name in a `<title>` for a pointer; the
- * plot's own words (`Plot` label, the combo caption) carry it for a screen
- * reader.
- */
-export function SideTitle({
-  viewBox,
-  text,
-  side,
-}: {
-  /** The axis's box, which recharts' `Label` passes in. */
-  viewBox?: { x?: number; y?: number; width?: number; height?: number };
-  text: string;
-  side: 'left' | 'right';
-}) {
-  if (!viewBox) return null;
-  const { x = 0, y = 0, width = 0, height = 0 } = viewBox;
-  const cx = side === 'left' ? x + TITLE_INSET : x + width - TITLE_INSET;
-  const cy = y + height / 2;
-  // Centred, the title may use the plot's margins above and below its axis
-  // as well as the axis itself, but no more than the room above its middle
-  // allows on both sides: the drawing's top edge is y = 0.
-  const shown = fitTitle(text, 2 * cy - 4);
-  if (!shown) return null;
-  return (
-    <text
-      x={cx}
-      y={cy}
-      transform={`rotate(${side === 'left' ? -90 : 90}, ${cx}, ${cy})`}
-      textAnchor="middle"
-      dominantBaseline="central"
-      className="recharts-label rp-axis-title"
-      data-side={side}
-      style={AXIS_LABEL}
-    >
-      {shown !== text && <title>{text}</title>}
-      {shown}
-    </text>
-  );
+/** The ticks a value axis is likely to print: zero, the extremes, and one step past the top. */
+function tickLabels(values: ReadonlyArray<number | null | undefined>, format: (v: number) => string): string[] {
+  const real = values.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+  if (real.length === 0) return [format(0)];
+  const hi = Math.max(...real);
+  const lo = Math.min(...real);
+  return [format(0), format(lo), format(hi), format(Math.ceil(hi * 1.2))];
 }
 
-/**
- * `SideTitle` as a recharts `Label` content element: `Label` clones it with
- * the axis's `viewBox` (an element, not a function, so React keeps one
- * component type across renders).
- */
-const sideTitle = (text: string, side: 'left' | 'right') => (
-  <SideTitle text={text} side={side} />
-);
-
-/** Room for the two axis labels. Kept in one place so every plot agrees. */
-const MARGIN = { top: 8, right: 8, bottom: 14, left: 2 } as const;
-/** Every value axis on this page is this wide, left or right. */
-const Y_AXIS_W = 52;
+/** Room above and beside the drawing; the titles live in the caption now, so the bottom is tight. */
+const MARGIN = { top: 8, right: 8, bottom: 4, left: 2 } as const;
 
 /**
  * The hover detail never runs past the plot's edge, where `.rp-plot` clips it
- * (audit G16, r28 gap 18). recharts keeps a tooltip at or right of the
- * plotting area's left edge (the margin and the value axis) and flips it left
- * when it would pass the right edge; a tooltip wider than the room right of
- * that edge still ran out of the box and lost its end. Bounding its width to
- * that room, and letting a long name wrap (`.rp-tip`), keeps the whole of it
- * on the plot at any cutting width.
+ * (audit G16, r28 gap 18). recharts keeps a tooltip at or right of the plotting
+ * area's left edge (the margin and the value axis) and flips it left when it
+ * would pass the right edge; a tooltip wider than the room right of that edge
+ * still ran out of the box and lost its end. Bounding its width to that room,
+ * and letting a long name wrap (`.rp-tip`), keeps the whole of it on the plot
+ * at any cutting width. The room depends on the axis's own gutter.
  */
-export const TIP_WRAPPER: CSSProperties = {
-  maxWidth: `calc(100% - ${MARGIN.left + Y_AXIS_W}px)`,
-  zIndex: 2,
-};
+export function tipWrapper(gutter: number): CSSProperties {
+  return { maxWidth: `calc(100% - ${MARGIN.left + gutter}px)`, zIndex: 2 };
+}
+
+/** "taken" and "₺ a day" read as "Taken, ₺ a day"; a unit that only repeats the name is left out. */
+function titled(name: string, unit?: string): string {
+  const head = name.charAt(0).toUpperCase() + name.slice(1);
+  const u = (unit ?? '').trim();
+  if (!u || u.toLowerCase() === name.trim().toLowerCase()) return head;
+  return `${head}, ${u}`;
+}
+
+/**
+ * What a plot is drawing, said once above it (N-03). It replaces the rotated
+ * title on each value axis, which sat on the tick labels: one caption in the
+ * reader's reading order, 11 px, never in the way of a figure.
+ */
+function PlotCaption({ children }: { children: ReactNode }) {
+  return <p className="rp-plot-cap">{children}</p>;
+}
+
+/** The one-sentence reading a screen reader gets in place of the picture: the high and the low. */
+export function readingOf(
+  rows: ReadonlyArray<{ label: string; v: number | null | undefined }>,
+  format: (v: number) => string,
+  unit: string,
+): string {
+  const real = rows.filter((r): r is { label: string; v: number } => typeof r.v === 'number');
+  if (real.length < 2) return '';
+  let hi = real[0];
+  let lo = real[0];
+  for (const r of real) {
+    if (r.v > hi.v) hi = r;
+    if (r.v < lo.v) lo = r;
+  }
+  if (hi.v === lo.v) return `. Every point is ${format(hi.v)} ${unit}`.trimEnd();
+  return `. Highest ${hi.label}, ${format(hi.v)} ${unit}; lowest ${lo.label}, ${format(lo.v)} ${unit}`.trimEnd();
+}
 
 /**
  * The frame every recharts drawing sits in. It names itself for a screen
  * reader in words (`label`), because the SVG inside is a picture: the same
  * register's table drawing is the readable form, one "Draw as" away.
  */
-function Plot({ children, label }: { children: ReactNode; label: string }) {
+function Plot({
+  children,
+  label,
+  caption,
+}: {
+  children: ReactNode;
+  label: string;
+  /** What is drawn, said once above the plot (N-03). */
+  caption?: ReactNode;
+}) {
   return (
-    <div className="rp-plot" role="img" aria-label={label}>
-      <ResponsiveContainer width="100%" height="100%" debounce={1}>
-        {children as never}
-      </ResponsiveContainer>
-    </div>
+    <>
+      {caption != null && <PlotCaption>{caption}</PlotCaption>}
+      <div className="rp-plot" role="img" aria-label={label}>
+        <ResponsiveContainer width="100%" height="100%" debounce={1}>
+          {children as never}
+        </ResponsiveContainer>
+      </div>
+    </>
   );
 }
 
@@ -397,10 +388,21 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
   const hasProjection = data.some((d) => d.projected != null);
   const label = `${KIND_WORDS[kind]} of ${yLabel} by ${xLabel}${
     hasProjection ? `, the ${projectedLabel ?? 'projected'} part dashed` : ''
-  }`;
+  }${readingOf(
+    data.map((d) => ({ label: d.full ?? d.label, v: d.value ?? d.projected })),
+    format,
+    unit,
+  )}`;
+  const caption = `${titled(yLabel, unit)} · by ${xLabel}`;
+  const gutter = gutterFor(
+    tickLabels(
+      [...data.map((d) => d.value), ...data.map((d) => d.projected), ...(refs ?? []).map((r) => r.y)],
+      format,
+    ),
+  );
   const tip = (
     <Tooltip
-      wrapperStyle={TIP_WRAPPER}
+      wrapperStyle={tipWrapper(gutter)}
       cursor={kind === 'bars' ? { fill: 'var(--seal-tint)' } : { stroke: 'var(--seal-ring)' }}
       content={
         <Tip unit={unit} format={format} projectedLabel={projectedLabel} /> as unknown as never
@@ -409,13 +411,9 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
   );
   const axes = (
     <>
-      <CartesianGrid vertical={false} stroke="var(--paper-2)" />
-      <XAxis dataKey="label" {...AXIS} interval={tickInterval(data)} minTickGap={26}>
-        <Label value={xLabel} position="insideBottom" offset={-11} style={AXIS_LABEL} />
-      </XAxis>
-      <YAxis {...AXIS} width={Y_AXIS_W} tickFormatter={(v: number) => format(v)}>
-        <Label content={sideTitle(yLabel, 'left')} />
-      </YAxis>
+      <CartesianGrid vertical={false} {...GRID} />
+      <XAxis dataKey="label" {...AXIS} interval={tickInterval(data)} minTickGap={26} />
+      <YAxis {...AXIS} width={gutter} tickFormatter={(v: number) => format(v)} />
       {tip}
       {(refs ?? []).map((r) => (
         <ReferenceLine
@@ -427,7 +425,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
             value: r.label,
             position: 'insideTopRight',
             fill: 'var(--ink-4)',
-            fontSize: 8.5,
+            fontSize: TICK_PX,
             fontFamily: MONO,
           }}
         />
@@ -447,7 +445,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
       isProjected: d.value == null && d.projected != null,
     }));
     return (
-      <Plot label={label}>
+      <Plot label={label} caption={caption}>
         <BarChart data={rows} margin={MARGIN}>
           {axes}
           <Bar dataKey="shown" radius={[3, 3, 0, 0]} isAnimationActive={false}>
@@ -472,7 +470,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
 
   if (kind === 'area')
     return (
-      <Plot label={label}>
+      <Plot label={label} caption={caption}>
         <AreaChart data={data} margin={MARGIN}>
           {axes}
           <Area
@@ -503,7 +501,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
     );
 
   return (
-    <Plot label={label}>
+    <Plot label={label} caption={caption}>
       <LineChart data={data} margin={MARGIN}>
         {axes}
         <Line
@@ -573,6 +571,11 @@ export function ComboPlot({
   };
   const { bars, line, split, rows } = plan;
   const shared = split ? null : bars.unit;
+  const barGutter = gutterFor(tickLabels(rows.map((r) => r.bar), bars.format));
+  const lineGutter = split ? gutterFor(tickLabels(rows.map((r) => r.line), line.format)) : 0;
+  const caption = split
+    ? `${titled(bars.label, bars.unit)} (bars, left) · ${titled(line.label, line.unit)} (line, right) · by ${series.xLabel}`
+    : `${titled(bars.label, shared ?? undefined)} · by ${series.xLabel}`;
   const words = split
     ? `Bars: ${named(bars)}, on the left scale. Line: ${named(line)}, on the right scale.`
     : `Bars: ${bars.label}. Line: ${line.label}. Both are in ${bars.unit}, so they share one scale.`;
@@ -612,36 +615,37 @@ export function ComboPlot({
           </label>
         </div>
       )}
-      <Plot label={`Bars of ${bars.label} and a line of ${line.label} by ${series.xLabel}`}>
+      <Plot
+        label={`Bars of ${bars.label} and a line of ${line.label} by ${series.xLabel}${readingOf(
+          rows.map((r) => ({ label: r.full ?? r.label, v: r.bar })),
+          bars.format,
+          bars.unit,
+        )}`}
+        caption={caption}
+      >
         <ComposedChart
           data={rows}
           margin={split ? { ...MARGIN, right: 2 } : MARGIN}
         >
-          <CartesianGrid vertical={false} stroke="var(--paper-2)" />
-          <XAxis dataKey="label" {...AXIS} interval={tickInterval(rows)} minTickGap={26}>
-            <Label value={series.xLabel} position="insideBottom" offset={-11} style={AXIS_LABEL} />
-          </XAxis>
+          <CartesianGrid vertical={false} {...GRID} />
+          <XAxis dataKey="label" {...AXIS} interval={tickInterval(rows)} minTickGap={26} />
           <YAxis
             yAxisId="bars"
             {...AXIS}
-            width={Y_AXIS_W}
+            width={barGutter}
             tickFormatter={(v: number) => bars.format(v)}
-          >
-            <Label content={sideTitle(shared ?? bars.label, 'left')} />
-          </YAxis>
+          />
           {split && (
             <YAxis
               yAxisId="line"
               orientation="right"
               {...AXIS}
-              width={Y_AXIS_W}
+              width={lineGutter}
               tickFormatter={(v: number) => line.format(v)}
-            >
-              <Label content={sideTitle(line.label, 'right')} />
-            </YAxis>
+            />
           )}
           <Tooltip
-            wrapperStyle={TIP_WRAPPER}
+            wrapperStyle={tipWrapper(barGutter)}
             cursor={{ fill: 'var(--seal-tint)' }}
             content={<ComboTip plan={plan} /> as unknown as never}
           />
@@ -707,25 +711,25 @@ function ComboTip({
  */
 export function PointPlot({ series }: { series: PointSeries }) {
   const { data, xLabel, yLabel, formatX, formatY, refX, refY } = series;
+  const gutter = gutterFor(tickLabels(data.map((d) => d.y), formatY));
   return (
-    <Plot label={`${yLabel} against ${xLabel}, one point each`}>
+    <Plot
+      label={`${yLabel} against ${xLabel}, one point each`}
+      caption={`${titled(yLabel)} · against ${xLabel}`}
+    >
       <ScatterChart margin={MARGIN}>
-        <CartesianGrid stroke="var(--paper-2)" />
-        <XAxis type="number" dataKey="x" {...AXIS} tickFormatter={(v: number) => formatX(v)}>
-          <Label value={xLabel} position="insideBottom" offset={-11} style={AXIS_LABEL} />
-        </XAxis>
+        <CartesianGrid {...GRID} />
+        <XAxis type="number" dataKey="x" {...AXIS} tickFormatter={(v: number) => formatX(v)} />
         <YAxis
           type="number"
           dataKey="y"
           {...AXIS}
-          width={Y_AXIS_W}
+          width={gutter}
           tickFormatter={(v: number) => formatY(v)}
-        >
-          <Label content={sideTitle(yLabel, 'left')} />
-        </YAxis>
+        />
         <ZAxis range={[36, 36]} />
         <Tooltip
-          wrapperStyle={TIP_WRAPPER}
+          wrapperStyle={tipWrapper(gutter)}
           cursor={{ stroke: 'var(--seal-ring)' }}
           content={
             (({
