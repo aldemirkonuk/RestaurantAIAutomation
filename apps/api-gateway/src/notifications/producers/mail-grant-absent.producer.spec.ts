@@ -43,6 +43,8 @@ function status(over: Partial<Status> = {}): Status {
     startedAt: null,
     lastReadAt: null,
     lastError: null,
+    mailbox: null,
+    mailboxes: 0,
     ...over,
   };
 }
