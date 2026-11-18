@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, act } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, useNavigate } from 'react-router-dom';
-import { act } from 'react';
 import { ScrollToTop } from './ScrollToTop';
 
 let go: (to: string | number, opts?: { replace?: boolean }) => void = () => {};
