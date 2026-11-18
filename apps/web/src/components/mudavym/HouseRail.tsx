@@ -10,11 +10,15 @@
 
 import { Link, useLocation } from 'react-router-dom';
 import { openAskAi } from '../askai/events';
+import './house-rooms-more.css';
 import {
   isCurrentRoom,
+  staffRooms,
   visibleFoot,
   visibleGroups,
+  type Room,
   type RoomFlags,
+  type RoomGroup,
   type ShellRole,
 } from '../../lib/mudavym/rooms';
 
@@ -24,47 +28,64 @@ export interface RoomsListProps {
   onNavigate?: () => void;
 }
 
-/** The rooms as a list — the rail's body and the phone sheet's. */
+function RoomLink({ room, pathname, onNavigate }: { room: Room; pathname: string; onNavigate?: () => void }) {
+  return (
+    <li>
+      <Link
+        to={room.path}
+        className="mdv-rail__room"
+        aria-current={isCurrentRoom(pathname, room) ? 'page' : undefined}
+        onClick={onNavigate}
+      >
+        {room.name}
+      </Link>
+    </li>
+  );
+}
+
+function Group({ group, pathname, onNavigate }: { group: RoomGroup; pathname: string; onNavigate?: () => void }) {
+  return (
+    <div className="mdv-rail__group">
+      <span className="mdv-rail__sect">{group.name}</span>
+      <ul>
+        {group.rooms.map((r) => (
+          <RoomLink key={r.path} room={r} pathname={pathname} onNavigate={onNavigate} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** The rooms as a list — the rail's body and the phone sheet's. Staff get the
+ *  seven rooms a shift uses, the rest folded behind "More rooms". */
 export function RoomsList({ role, flags, onNavigate }: RoomsListProps) {
   const { pathname } = useLocation();
   const groups = visibleGroups(role, flags);
   const foot = visibleFoot(role, flags);
+  const split = role === 'staff' ? staffRooms(groups) : null;
   return (
     <>
-      {groups.map((g) => (
-        <div key={g.name} className="mdv-rail__group">
-          <span className="mdv-rail__sect">{g.name}</span>
-          <ul>
-            {g.rooms.map((r) => {
-              const here = isCurrentRoom(pathname, r);
-              return (
-                <li key={r.path}>
-                  <Link
-                    to={r.path}
-                    className="mdv-rail__room"
-                    aria-current={here ? 'page' : undefined}
-                    onClick={onNavigate}
-                  >
-                    {r.name}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
+      {split ? (
+        <>
+          <Group group={{ name: 'Your shift', rooms: split.daily }} pathname={pathname} onNavigate={onNavigate} />
+          {split.rest.length > 0 && (
+            <details
+              className="mdv-rail__more"
+              open={split.rest.some((g) => g.rooms.some((r) => isCurrentRoom(pathname, r)))}
+            >
+              <summary className="mdv-rail__sect mdv-rail__more-summary">More rooms</summary>
+              {split.rest.map((g) => (
+                <Group key={g.name} group={g} pathname={pathname} onNavigate={onNavigate} />
+              ))}
+            </details>
+          )}
+        </>
+      ) : (
+        groups.map((g) => <Group key={g.name} group={g} pathname={pathname} onNavigate={onNavigate} />)
+      )}
       <ul className="mdv-rail__foot">
         {foot.map((r) => (
-          <li key={r.path}>
-            <Link
-              to={r.path}
-              className="mdv-rail__room"
-              aria-current={isCurrentRoom(pathname, r) ? 'page' : undefined}
-              onClick={onNavigate}
-            >
-              {r.name}
-            </Link>
-          </li>
+          <RoomLink key={r.path} room={r} pathname={pathname} onNavigate={onNavigate} />
         ))}
       </ul>
     </>

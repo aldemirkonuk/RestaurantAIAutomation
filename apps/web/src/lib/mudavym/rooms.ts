@@ -153,6 +153,30 @@ export function visibleFoot(role: ShellRole, flags: RoomFlags): Room[] {
   return ROOM_FOOT.filter((r) => roomVisible(r, role, flags));
 }
 
+/**
+ * The rooms a shift uses. A staff member's rooms list opens to these and folds
+ * the rest behind one row; the fold hides no room (every one stays one tap
+ * away, and the palette lists them all), it only stops a counter-hand's
+ * thumb from reading seventeen doors to find the one they came for.
+ */
+export const STAFF_DAILY: readonly string[] = [
+  '/',
+  '/notifications',
+  '/calendar',
+  '/orders',
+  '/receiving',
+  '/inventory',
+  '/team',
+];
+
+export function staffRooms(groups: RoomGroup[]): { daily: Room[]; rest: RoomGroup[] } {
+  const daily = groups.flatMap((g) => g.rooms).filter((r) => STAFF_DAILY.includes(r.path));
+  const rest = groups
+    .map((g) => ({ name: g.name, rooms: g.rooms.filter((r) => !STAFF_DAILY.includes(r.path)) }))
+    .filter((g) => g.rooms.length > 0);
+  return { daily, rest };
+}
+
 function allRooms(): Room[] {
   return [...ROOM_GROUPS.flatMap((g) => g.rooms), ...ROOM_FOOT];
 }
