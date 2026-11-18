@@ -100,20 +100,23 @@ export function fmtDate(iso: string | null | undefined): string {
 }
 
 /**
- * Extraction / match confidence, as the model stated it.
+ * How sure the reader or the matcher was, as WORDS and only where it changes
+ * what a person should do (ADR 0104 D4: confidence is never a number on screen).
  *
- * ADR 0051 clause 1: a confidence the record does not hold renders as the em
- * dash. There is no default, no "assume high", and no rounding a null to 0% —
- * "the model was 0% sure" and "nobody recorded how sure the model was" are
- * different claims, and this screen asks a human to trust the reading.
+ *   'unrecorded'  the record holds no score. Not a low one and not a high one
+ *                 (ADR 0051 clause 1): no default, no "assume high".
+ *   'weak'        below 0.6: check it against the paper.
+ *   'ordinary'    anything else. Nothing is said.
+ *
+ * A value outside [0,1] is not a confidence and reads as unrecorded.
  */
-export function fmtConfidence(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(Number(n))) return EM;
+export function certaintyState(
+  n: number | null | undefined,
+): 'unrecorded' | 'weak' | 'ordinary' {
+  if (n == null || !Number.isFinite(Number(n))) return 'unrecorded';
   const v = Number(n);
-  // Stored as numeric(4,3) in [0,1]; anything outside that is not a confidence
-  // and must not be dressed as one.
-  if (v < 0 || v > 1) return EM;
-  return `${Math.round(v * 100)}%`;
+  if (v < 0 || v > 1) return 'unrecorded';
+  return v < 0.6 ? 'weak' : 'ordinary';
 }
 
 /**
