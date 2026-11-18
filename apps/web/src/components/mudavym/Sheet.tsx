@@ -355,7 +355,7 @@ const ENTER: Record<OverlayShape, Keyframe[]> = {
     { transform: 'none', opacity: 1 },
   ],
   popover: [
-    { transform: 'translateY(4px)', opacity: 0 },
+    { transform: 'translateY(4px) scale(0.96)', opacity: 0 },
     { transform: 'none', opacity: 1 },
   ],
 };
@@ -376,8 +376,8 @@ function useAnchoredPosition(
   open: boolean,
   anchorRef: RefObject<HTMLElement | null> | undefined,
   width: number,
-): { top: number; left: number } | null {
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+): { top: number; left: number; ax: number } | null {
+  const [pos, setPos] = useState<{ top: number; left: number; ax: number } | null>(null);
   useLayoutEffect(() => {
     if (!open || !anchorRef?.current) {
       setPos(null);
@@ -391,7 +391,10 @@ function useAnchoredPosition(
       if (left + width > window.innerWidth - 16) {
         left = Math.max(16, window.innerWidth - width - 16);
       }
-      setPos({ top: r.bottom + 10, left });
+      // `ax`: where the anchor's centre falls along the panel's top edge — the
+      // arrow sits there and the enter motion scales out of it.
+      const ax = Math.min(Math.max(r.left + r.width / 2 - left, 18), width - 18);
+      setPos({ top: r.bottom + 10, left, ax });
     };
     update();
     window.addEventListener('resize', update);
@@ -1006,6 +1009,7 @@ function OverlayRoot({
                 width,
                 top: pos?.top ?? 0,
                 left: pos?.left ?? 0,
+                transformOrigin: `${pos?.ax ?? width - 24}px 0`,
                 // `opacity`, NOT `visibility`: a `visibility: hidden` subtree
                 // cannot take focus, so the one frame before the anchor is
                 // measured silently swallowed the focus move.
@@ -1064,6 +1068,16 @@ function OverlayRoot({
           <div className="mdv-ovl__foot">{footer}</div>
         ) : null}
       </div>
+      {/* The arrow: an 8 px square turned 45 degrees, centred on the anchor.
+          A sibling of the panel, never inside it (the panel clips). */}
+      {shape === 'popover' && pos ? (
+        <span
+          className="mdv-ovl__arrow"
+          aria-hidden
+          data-motion={reduced ? 'none' : TOKEN_NAME[shape]}
+          style={{ top: pos.top - 4, left: pos.left + pos.ax - 4 }}
+        />
+      ) : null}
     </div>,
     document.body,
   );

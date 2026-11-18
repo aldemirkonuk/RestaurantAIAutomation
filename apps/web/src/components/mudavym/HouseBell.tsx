@@ -32,6 +32,9 @@ import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell } from 'lucide-react';
 import { Popover } from './Sheet';
+import { CaughtUpCheck } from './emptyArt';
+import './empty-state.css';
+import { useReducedMotion } from '../../lib/mudavym/motion';
 import { useBellBook, BELL_PAGE, type FoldFreshness } from '../../lib/mudavym/useBellBook';
 import {
   ApproveFromBellPanel,
@@ -77,6 +80,7 @@ function Stamps({ row, fold }: { row: Notification; fold?: FoldFreshness }) {
 
 export function HouseBell() {
   const [open, setOpen] = useState(false);
+  const reduced = useReducedMotion();
   /**
    * THE HAND-OFF (founder, 2026-09-04; built 2026-09-06, packet 2).
    *
@@ -191,7 +195,10 @@ export function HouseBell() {
               agree, so neither is shown as fact.
             </p>
           ) : (
-            <p className="mdv-quiet">Nothing unread. The bell is quiet.</p>
+            <p className="mdv-quiet mdv-hdr__caught">
+              <CaughtUpCheck still={reduced} />
+              <span>All caught up. Nothing unread.</span>
+            </p>
           )
         ) : (
           items.map((n) => {

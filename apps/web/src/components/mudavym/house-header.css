@@ -312,6 +312,13 @@
   font-size: 9px;
 }
 
+.mdv-hdr__caught {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0;
+}
+
 .mdv-hdr__bellfoot {
   display: flex;
   flex-direction: column;
