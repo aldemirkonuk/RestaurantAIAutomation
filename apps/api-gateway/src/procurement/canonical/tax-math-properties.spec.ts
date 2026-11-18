@@ -101,6 +101,7 @@ describe("paperTaxFacts never reads a basis or a rate the paper does not prove",
     let read = 0;
     let basisRead = 0;
     let lineRatesRead = 0;
+    let paperWideRate = 0;
     for (let i = 0; i < 1500; i++) {
       const t = paper();
       const withBreakdown = rnd() < 0.7;
@@ -114,6 +115,7 @@ describe("paperTaxFacts never reads a basis or a rate the paper does not prove",
       const distinct = new Set(t.rates);
       if (f.ratePercent != null) {
         read++;
+        if (f.lineRates == null) paperWideRate++;
         holds(distinct.size === 1 && f.ratePercent === t.rates[0], ctx);
       }
       if (f.lineRates != null) {
@@ -124,6 +126,8 @@ describe("paperTaxFacts never reads a basis or a rate the paper does not prove",
     // The property is not vacuous: a good share of papers are read.
     expect(basisRead).toBeGreaterThan(300);
     expect(read + lineRatesRead).toBeGreaterThan(300);
+    // The paper-wide single-rate reading (no rates beside lines) is exercised too.
+    expect(paperWideRate).toBeGreaterThan(50);
   });
 });
 
