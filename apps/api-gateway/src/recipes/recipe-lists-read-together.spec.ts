@@ -1,6 +1,6 @@
 import { DishesService, ID_CHUNK, WAVE, inWaves } from "./dishes.service";
 import { RecipesService } from "./recipes.service";
-import { FLOUR, HOUSE_A, fakeDb, line, twoHouses, type Row } from "./dishes.testing";
+import { FLOUR, HOUSE_A, fakeDb, line, twoHouses, type Row, figuredDishes } from "./dishes.testing";
 
 /**
  * r36 recipes audit, gap 10: /dishes and /cocktails read their figures in
@@ -90,7 +90,7 @@ function slowServices(rows: Record<string, Row[]>) {
 describe("figures: a long list read in waves", () => {
   it("reads 130 dishes' pointers, versions and lines four chunks at a time", async () => {
     const { dishes, most, count } = slowServices(manyDishes());
-    await dishes.listDishes(HOUSE_A, "staff");
+    await figuredDishes(dishes, HOUSE_A, "staff");
     const chunks = Math.ceil(132 / ID_CHUNK); // the 130 plus the two live dishes of twoHouses
     expect(count.recipe_current_dish).toBe(chunks);
     expect(count.recipe_lines).toBe(chunks);
@@ -101,7 +101,7 @@ describe("figures: a long list read in waves", () => {
 
   it("figures every dish of a long list as its own, whichever chunk it was read in", async () => {
     const { dishes } = slowServices(manyDishes());
-    const out = await dishes.listDishes(HOUSE_A, "owner");
+    const out = await figuredDishes(dishes, HOUSE_A, "owner");
     const plates = out.filter((d) => d.name.startsWith("Plate "));
     expect(plates).toHaveLength(130);
     plates.forEach((d) => {
@@ -122,7 +122,7 @@ describe("figures: a long list read in waves", () => {
       rows.restaurant_inventory.push({ id: good, restaurant_id: HOUSE_A, display_name: `Good ${k}`, kind: "food", uom: "kg", bottle_size_ml: null, last_purchase_price: Number(String(l.id).slice(-12)) + 1, is_active: true, deleted_at: null });
     });
     const { dishes } = slowServices(rows);
-    const out = (await dishes.listDishes(HOUSE_A, "owner")).filter((d) => d.name.startsWith("Plate "));
+    const out = (await figuredDishes(dishes, HOUSE_A, "owner")).filter((d) => d.name.startsWith("Plate "));
     expect(out).toHaveLength(130);
     out.forEach((d) => {
       const i = Number(d.name.slice(6));

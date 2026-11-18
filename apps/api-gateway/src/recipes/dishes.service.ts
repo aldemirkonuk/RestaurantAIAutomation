@@ -22,6 +22,7 @@ export const DISH_USE_UNREAD = "Which dishes use this item could not be read jus
 export const DRINK_USE_UNREAD = "Which drinks use this item could not be read just now.";
 export const MENU_PRICES_UNREAD = "Your menu's prices could not be read just now, so none is shown beside your list.";
 export const DRINK_FIGURES_UNREAD = "Your drinks' costs could not be read just now, so none is shown.";
+export const DISH_FIGURES_UNREAD = "Your dishes' costs and allergens could not be read just now, so none is shown.";
 
 /** Whose recipe: a dish (recipe_current_dish) or a house drink (recipe_current). */
 export type RecipeOwner = "dish" | "cocktail";
@@ -146,6 +147,14 @@ export class DishesService {
     }
   }
 
+  /**
+   * The house's dishes by name: one paged read of `dishes`, nothing priced.
+   * The figures (cost a plate, allergens) are `dishFigures`, read beside it,
+   * so the names show after one database round trip instead of after every
+   * line of every dish is priced, and a failed pricing read never takes the
+   * names away (r41 recipes audit, gaps 2 and 3; /cocktails already reads
+   * its names and its figures apart).
+   */
   async listDishes(restaurantId: string, role: string | null | undefined) {
     const money = seesHouseAmounts(role);
     const client = this.db.getClient();
@@ -158,17 +167,55 @@ export class DishesService {
         .order("id", { ascending: true })
         .range(from, to),
     );
-    const figures = await this.figures(restaurantId, dishes.map((d) => d.id), money, DISHES_UNREAD, "dish", { allergens: true });
     return dishes
       .map((d) => ({
-        id: d.id,
-        name: d.name,
-        section: d.menu_section ?? null,
+        id: d.id as string,
+        name: d.name as string,
+        section: (d.menu_section ?? null) as string | null,
+        price: money && d.price != null ? Number(d.price) : null,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /**
+   * Every dish on the house's list with its figures at today's prices and its
+   * allergens, for the cost, food cost and allergen columns of /dishes. The
+   * same `figures` as the drawer's dish cards and the drinks' figures.
+   *
+   * A failed pricing read does not fail the answer: every row's cost is null,
+   * `costsUnread` is true and the page says the costs could not be read,
+   * while each dish still says whether it has a recipe and what allergens it
+   * states (staff never read prices, so never meet this). Any other failed
+   * read is a 503 with a sentence; the names, read apart, still show.
+   */
+  async dishFigures(restaurantId: string, role: string | null | undefined) {
+    const money = seesHouseAmounts(role);
+    const client = this.db.getClient();
+    const dishes = await this.all<any>("dish figures list read", DISH_FIGURES_UNREAD, (from, to) =>
+      client
+        .from("dishes")
+        .select("id, price")
+        .eq("restaurant_id", restaurantId)
+        .is("deleted_at", null)
+        .order("id", { ascending: true })
+        .range(from, to),
+    );
+    let costsUnread = false;
+    const figures = await this.figures(restaurantId, dishes.map((d) => d.id), money, DISH_FIGURES_UNREAD, "dish", {
+      allergens: true,
+      pricingUnread: () => {
+        costsUnread = true;
+      },
+    });
+    return {
+      costsUnread,
+      dishes: dishes.map((d) => ({
+        dishId: d.id as string,
         price: money && d.price != null ? Number(d.price) : null,
         ...this.figureFields(figures.get(d.id)),
         allergens: figures.get(d.id)?.allergens ?? null,
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+      })),
+    };
   }
 
   private figureFields(f: DishFigures | undefined) {
@@ -192,7 +239,14 @@ export class DishesService {
     money: boolean,
     sentence: string,
     owner: RecipeOwner = "dish",
-    opts: { allergens?: boolean } = {},
+    opts: {
+      allergens?: boolean;
+      /**
+       * Given, a failed pricing read is not thrown: it is logged, this is
+       * called, and every figure's cost is null. Absent, the read is a 503.
+       */
+      pricingUnread?: () => void;
+    } = {},
   ): Promise<Map<string, DishFigures>> {
     const client = this.db.getClient();
     const out = new Map<string, DishFigures>();
@@ -271,13 +325,19 @@ export class DishesService {
     const itemIds = [...new Set([...lines.values()].flat().map((l) => l.inventory_id).filter(Boolean))] as string[];
     // The allergens are read beside the pricing, never after it.
     const allergenRead = opts.allergens ? this.allergensOf(restaurantId, itemIds, sentence) : Promise.resolve(null);
+    let priced = money;
     if (money) {
-      let reads: Array<{ items: Map<string, any>; lots: Map<string, any> }>;
+      let reads: Array<{ items: Map<string, any>; lots: Map<string, any> }> = [];
       try {
         reads = await inWaves(chunks(itemIds, 100), (ids) => this.recipes.readPricing(restaurantId, ids, true));
       } catch (e) {
-        await allergenRead;
-        this.failed(`${owner} pricing read`, e, sentence);
+        if (!opts.pricingUnread) {
+          await allergenRead;
+          this.failed(`${owner} pricing read`, e, sentence);
+        }
+        this.logger.error(`dishes: ${owner} pricing read failed, costs left unread: ${(e as { message?: string })?.message ?? String(e)}`);
+        opts.pricingUnread();
+        priced = false;
       }
       for (const read of reads) {
         read.items.forEach((v, k) => items.set(k, v));
@@ -293,8 +353,8 @@ export class DishesService {
       const rows = [...(lines.get(p.versionId) ?? [])].sort((a, b) => a.position - b.position);
       const yieldServes = v.yieldServes;
       let cost: DishFigures["cost"] = null;
-      if (money) {
-        const priced = recipeCost(
+      if (priced) {
+        const figured = recipeCost(
           rows.map((l) => ({
             role: l.role,
             inventoryId: l.inventory_id,
@@ -307,12 +367,12 @@ export class DishesService {
           yieldServes,
         );
         cost = {
-          perServe: priced.perServe,
-          perServeExact: priced.perServeExact,
-          priced: priced.priced,
-          of: priced.of,
-          complete: priced.complete,
-          partial: priced.partial,
+          perServe: figured.perServe,
+          perServeExact: figured.perServeExact,
+          priced: figured.priced,
+          of: figured.of,
+          complete: figured.complete,
+          partial: figured.partial,
         };
       }
       const figures: DishFigures = { versionId: p.versionId, yieldServes, lineCount: rows.length, cost };

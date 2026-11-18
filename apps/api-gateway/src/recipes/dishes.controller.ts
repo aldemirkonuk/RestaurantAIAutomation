@@ -24,9 +24,19 @@ export class DishesController {
   ) {}
 
   @Get(":restaurantId/dishes")
-  @ApiOperation({ summary: "The house's dishes, each with its cost a plate at today's prices" })
+  @ApiOperation({ summary: "The house's dishes by name, section and price (their figures are GET dishes/figures)" })
   listDishes(@Param("restaurantId", ParseUUIDPipe) restaurantId: string, @CurrentUser() user: { role?: string } | undefined) {
     return this.dishes.listDishes(restaurantId, user?.role);
+  }
+
+  // Declared before `dishes/:dishId`, which would otherwise take "figures" for a dish id.
+  @Get(":restaurantId/dishes/figures")
+  @ApiOperation({ summary: "Every dish on the house's list with its cost a plate and allergens (no cost for a role without money)" })
+  dishFigures(
+    @Param("restaurantId", ParseUUIDPipe) restaurantId: string,
+    @CurrentUser() user: { role?: string } | undefined,
+  ) {
+    return this.dishes.dishFigures(restaurantId, user?.role);
   }
 
   @Post(":restaurantId/dishes")
