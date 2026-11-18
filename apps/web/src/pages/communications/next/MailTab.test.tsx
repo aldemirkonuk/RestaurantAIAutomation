@@ -221,6 +221,30 @@ describe('the list', () => {
     expect(screen.queryByRole('button', { name: 'Show older people' })).toBeNull();
   });
 
+  it('while the list is read, it holds the shape of the rows that will replace it, and says so', async () => {
+    let land: (v: unknown) => void = () => {};
+    const inFlight = new Promise((res) => {
+      land = res;
+    });
+    const base = api.get.getMockImplementation()!;
+    api.get.mockImplementation((url: string, cfg?: { params?: Record<string, string> }) =>
+      url === '/mail/people' ? inFlight : base(url, cfg),
+    );
+    mount();
+    expect(await screen.findByText('Reading the mail…')).toBeTruthy();
+    const holds = screen.getAllByTestId('people-placeholder-row');
+    expect(holds).toHaveLength(4);
+    expect(holds.every((h) => h.getAttribute('aria-hidden') === 'true')).toBe(true);
+    expect(holds.every((h) => h.style.minHeight === '60px')).toBe(true);
+    expect(screen.queryByTestId('mail-person')).toBeNull();
+    await act(async () => {
+      land({ data: { people: [person(1), person(2)], next: null, storedKinds: ['vendor'] } });
+    });
+    expect((await screen.findAllByTestId('mail-person')).length).toBe(2);
+    expect(screen.queryByTestId('people-placeholder-row')).toBeNull();
+    expect(screen.queryByText('Reading the mail…')).toBeNull();
+  });
+
   it('an empty list names which doors are connected', async () => {
     routes['/mail/people'] = () => ({ people: [], next: null, storedKinds: ['vendor'] });
     mount();
