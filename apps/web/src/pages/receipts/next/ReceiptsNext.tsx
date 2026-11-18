@@ -1026,6 +1026,10 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
 
   const runMatch = useMutation({
     mutationFn: () => documentsApi.match(doc.id),
+    // A re-run starts from nothing: the last run's counts and suggestions
+    // describe a check that is no longer the one on screen, and must not sit
+    // under a new failure sentence as if they were its result.
+    onMutate: () => setMatchResult(null),
     onSuccess: (res) => {
       setMatchResult(res);
       // `applied` was WRITTEN by that call. The rows on screen are now stale.
@@ -1265,6 +1269,11 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
           {linkedOrderIds === undefined && (
             <span style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', alignSelf: 'center' }}>
               {detailQ.isError ? 'needs the order link, which could not be read' : 'waits for the order link'}
+            </span>
+          )}
+          {runMatch.isPending && (
+            <span role="status" style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)', flexBasis: '100%' }}>
+              Checking the lines against the order…
             </span>
           )}
           {runMatch.isError && (
