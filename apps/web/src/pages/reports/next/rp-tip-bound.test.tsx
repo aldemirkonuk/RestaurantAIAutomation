@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from '@testing-library/react';
-import { CatPlot, ComboPlot, PointPlot, TIP_WRAPPER } from './rp-plot';
+import { CatPlot, ComboPlot, PointPlot, gutterFor, tipWrapper } from './rp-plot';
 import type { CatSeries, PointSeries } from './rp-view';
 
 vi.mock('recharts', async () => {
@@ -50,8 +50,8 @@ const wrappers = (c: HTMLElement) =>
 
 describe('the hover detail is bounded to the plot (r28 gap 18)', () => {
   it('[REVERT-FAILS] is never wider than the room right of the value axis', () => {
-    // The left margin (2) and the value axis (52).
-    expect(TIP_WRAPPER.maxWidth).toBe('calc(100% - 54px)');
+    // The left margin (2) and the value axis, which is as wide as its widest tick needs.
+    expect(tipWrapper(52).maxWidth).toBe('calc(100% - 54px)');
   });
 
   it.each([
@@ -64,7 +64,8 @@ describe('the hover detail is bounded to the plot (r28 gap 18)', () => {
     const { container } = render(draw());
     const ws = wrappers(container);
     expect(ws.length).toBe(1);
-    expect(ws[0].style.maxWidth).toBe('calc(100% - 54px)');
+    // The tick strings in these series are one digit wide: the gutter's floor.
+    expect(ws[0].style.maxWidth).toBe(`calc(100% - ${2 + gutterFor(['0'])}px)`);
   });
 
   it('[REVERT-FAILS] a long name wraps inside the tooltip instead of running on', () => {
