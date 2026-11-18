@@ -114,6 +114,17 @@ describe("allowance, deposit, price base and a free line", () => {
     }
   });
 
+  it("a paper with no line total worked out from quantity and price takes its allowance off once", () => {
+    for (let i = 0; i < 100; i++) {
+      const q = 6 + Math.floor(rnd() * 90);
+      const p = cents(1, 40);
+      const allowance = cents(0.5, Math.min(20, q * p * 0.2));
+      const res = land({}, [mk({ qty_bottles: q, unit_price: p, line_total: null, allowance })], { a: q });
+      const want = q * p - allowance;
+      expect({ i, ok: Math.abs(valueOf(res, { a: q }) - want) <= q * 5e-7 + 0.005 }).toEqual({ i, ok: true });
+    }
+  });
+
   it("a free line (price 0) beside a paid line of the same item pools: cost per bottle = paid money / all bottles", () => {
     for (let i = 0; i < 100; i++) {
       const q = 6 + Math.floor(rnd() * 50);
