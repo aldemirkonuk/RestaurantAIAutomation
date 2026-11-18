@@ -49,7 +49,7 @@ describe('what animates', () => {
       m[1].split(',').map((t) => t.trim().split(/\s+/)[0]),
     );
     const allowed = new Set([
-      'none', 'transform', 'opacity', 'grid-template-rows', 'width', 'color', 'background-color', 'border-color', 'box-shadow',
+      'none', 'transform', 'scale', 'opacity', 'grid-template-rows', 'width', 'color', 'background-color', 'border-color', 'box-shadow',
     ]);
     for (const p of props) expect(allowed.has(p), p).toBe(true);
   });
@@ -68,5 +68,28 @@ describe('what animates', () => {
     expect(CSS).toMatch(/transition-duration:\s*var\(--dur-press\)/);
     expect(CSS).toMatch(/translateY\(-1px\)/);
     expect(CSS).toMatch(/translateX\(4px\)/);
+  });
+});
+
+describe('the press on every other control', () => {
+  it('scales to .98 in 90 ms on :active, except disabled controls and .mdv-press', () => {
+    const rule = CSS.match(/\.mudavym :is\(button[^{]*\):active:not\(([^)]*)\)\s*\{([^}]*)\}/);
+    expect(rule).not.toBeNull();
+    expect(rule![1]).toContain(':disabled');
+    expect(rule![1]).toContain('.mdv-press');
+    expect(squash(rule![2])).toContain('scale:0.98');
+    expect(squash(rule![2])).toContain('transition:scalevar(--dur-press)var(--ease-press)');
+  });
+
+  it('uses the scale property (never transform) and a zero-specificity base', () => {
+    const base = CSS.match(/:where\(\.mudavym\) :where\(button[^{]*\)\s*\{([^}]*)\}/);
+    expect(base).not.toBeNull();
+    expect(squash(base![1])).toContain('transition-property:scale');
+    expect(CSS).not.toMatch(/\.mudavym :is\(button[^{]*\):active[^{]*\{[^}]*transform/);
+  });
+
+  it('drops the scale under reduced motion', () => {
+    const reduce = CSS.slice(CSS.indexOf('@media (prefers-reduced-motion: reduce)'));
+    expect(squash(reduce)).toMatch(/:active:not\([^)]*\)\{scale:none;\}/);
   });
 });

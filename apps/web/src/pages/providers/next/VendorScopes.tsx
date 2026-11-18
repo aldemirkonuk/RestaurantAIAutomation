@@ -13,6 +13,7 @@
  */
 
 import { useState } from 'react';
+import { SlidingPill } from '../../../components/mudavym/SlidingPill';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '../../../lib/query-keys';
@@ -59,59 +60,20 @@ const linkBtn: React.CSSProperties = {
 
 export function VendorScopeBar<T>({ scopes }: { scopes: VendorScopes<T> }) {
   return (
-    <div
-      role="tablist"
-      aria-label="Which vendors to show"
-      className="vs-bar"
-      style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: 6,
-        margin: '0 0 12px',
-        fontFamily: SANS,
-      }}
-    >
-      <style>{`
-        .vs-tab:focus-visible { outline: 2px solid var(--seal, #1A5E6B); outline-offset: 2px }
-        @media (max-width: 480px) { .vs-bar { display: grid !important; grid-template-columns: 1fr } }
-      `}</style>
-      {SCOPES.map((s) => {
-        const on = scopes.scope === s;
-        const count = scopes.counts[s];
-        return (
-          <button
-            key={s}
-            type="button"
-            role="tab"
-            aria-selected={on}
-            data-testid={`scope-${s}`}
-            className="vs-tab"
-            onClick={() => scopes.choose(s)}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'baseline',
-              justifyContent: 'space-between',
-              gap: 8,
-              padding: '6px 12px',
-              borderRadius: 999,
-              border: `1px solid ${on ? 'var(--seal-ring, rgba(26,94,107,.32))' : 'var(--paper-2, #EAE4D8)'}`,
-              background: on ? 'var(--seal-tint, rgba(26,94,107,.10))' : 'transparent',
-              color: on ? 'var(--seal-deep, #14515C)' : 'var(--ink-2, #4F473C)',
-              fontWeight: on ? 600 : 400,
-              fontSize: 12.5,
-              cursor: 'pointer',
-            }}
-          >
-            <span>{SCOPE_LABEL[s]}</span>
-            <span
-              data-testid={`scope-${s}-count`}
-              style={{ fontFamily: MONO, fontSize: 11, fontVariantNumeric: 'tabular-nums' }}
-            >
-              {count === null ? EM : count}
-            </span>
-          </button>
-        );
-      })}
+    <div style={{ margin: '0 0 12px', fontFamily: SANS, fontSize: 12.5, maxWidth: '100%', overflowX: 'auto' }}>
+      <SlidingPill<VendorScope>
+        role="tablist"
+        ariaLabel="Which vendors to show"
+        value={scopes.scope}
+        onChange={scopes.choose}
+        options={SCOPES.map((s) => ({
+          value: s,
+          label: SCOPE_LABEL[s],
+          testId: `scope-${s}`,
+          countTestId: `scope-${s}-count`,
+          count: scopes.counts[s] === null ? EM : (scopes.counts[s] as number),
+        }))}
+      />
     </div>
   );
 }

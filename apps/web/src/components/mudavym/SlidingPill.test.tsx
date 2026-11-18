@@ -82,6 +82,37 @@ describe('SlidingPill', () => {
   });
 });
 
+describe('SlidingPill as a tablist', () => {
+  it('carries tab semantics, per-option test ids and a string count that never dims', () => {
+    stubLayout();
+    function Tabs() {
+      const [v, setV] = useState<'a' | 'b'>('a');
+      return (
+        <SlidingPill
+          role="tablist"
+          ariaLabel="Which"
+          value={v}
+          onChange={setV}
+          options={[
+            { value: 'a', label: 'Menu', testId: 'scope-a', countTestId: 'scope-a-count', count: 9 },
+            { value: 'b', label: 'All', testId: 'scope-b', countTestId: 'scope-b-count', count: '\u2014' },
+          ]}
+        />
+      );
+    }
+    render(<Tabs />);
+    expect(screen.getByRole('tablist', { name: 'Which' })).toBeTruthy();
+    expect(screen.getByTestId('scope-a')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('scope-a')).not.toHaveAttribute('aria-pressed');
+    expect(screen.getByTestId('scope-b-count').textContent).toBe('\u2014');
+    expect(screen.getByTestId('scope-b')).not.toHaveAttribute('data-empty');
+    fireEvent.click(screen.getByTestId('scope-b'));
+    expect(screen.getByTestId('scope-b')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('scope-a')).toHaveAttribute('aria-selected', 'false');
+    expect(screen.getByRole('tablist').style.getPropertyValue('--pill-x')).toBe('80px');
+  });
+});
+
 describe('Collapse', () => {
   it('open: carries data-open and is reachable', () => {
     render(<Collapse open><button>inside</button></Collapse>);
@@ -96,5 +127,52 @@ describe('Collapse', () => {
     expect(inner.parentElement).toHaveAttribute('data-open', 'false');
     expect(inner).toHaveAttribute('inert');
     expect(inner).toHaveAttribute('aria-hidden', 'true');
+  });
+});
+
+describe('Collapse unmountWhenClosed', () => {
+  it('has no content while closed, mounts it closed, opens on the next frame, and removes it after the close', async () => {
+    vi.useFakeTimers();
+    try {
+      const { rerender } = render(
+        <Collapse open={false} unmountWhenClosed>
+          <button>draft</button>
+        </Collapse>,
+      );
+      expect(screen.queryByRole('button', { name: 'draft' })).toBeNull();
+      expect(document.querySelector('.mdv-collapse')).toBeNull();
+
+      rerender(
+        <Collapse open unmountWhenClosed>
+          <button>draft</button>
+        </Collapse>,
+      );
+      expect(screen.getByRole('button', { name: 'draft' })).toBeTruthy();
+      expect(document.querySelector('.mdv-collapse')).toHaveAttribute('data-open', 'false');
+      expect(document.querySelector('.mdv-collapse__inner')).not.toHaveAttribute('inert');
+      await vi.advanceTimersByTimeAsync(40);
+      expect(document.querySelector('.mdv-collapse')).toHaveAttribute('data-open', 'true');
+
+      rerender(
+        <Collapse open={false} unmountWhenClosed>
+          <button>draft</button>
+        </Collapse>,
+      );
+      expect(document.querySelector('.mdv-collapse')).toHaveAttribute('data-open', 'false');
+      expect(document.querySelector('.mdv-collapse__inner')).toHaveAttribute('inert');
+      await vi.advanceTimersByTimeAsync(320);
+      expect(screen.queryByRole('button', { name: 'draft' })).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('starts open without waiting when it is rendered open', () => {
+    render(
+      <Collapse open unmountWhenClosed>
+        <button>now</button>
+      </Collapse>,
+    );
+    expect(document.querySelector('.mdv-collapse')).toHaveAttribute('data-open', 'true');
   });
 });
