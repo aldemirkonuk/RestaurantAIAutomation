@@ -1,0 +1,13 @@
+/* The shell's motion constants (r58 d-shell). Local on purpose: when the
+   design-token lane publishes shared motion tokens these four lines are the
+   only thing to swap. Durations and curves are the founder-approved targets
+   from the design critic's N-02 / N-13. Only transform, opacity, clip-path
+   and grid-template-rows are ever animated with them. */
+:root {
+  --shell-ease-house: cubic-bezier(0.16, 1, 0.3, 1);
+  --shell-ease-sweep: cubic-bezier(0.65, 0, 0.35, 1);
+  --shell-fade-ms: 160ms;
+  --shell-enter-ms: 220ms;
+  --shell-exit-ms: 90ms;
+  --shell-sheen-ms: 1600ms;
+}

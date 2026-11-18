@@ -5,10 +5,10 @@
 .mdv-pageloader {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 14px;
+  align-items: stretch;
+  gap: 0;
   min-height: 100vh;
-  padding: 80px 24px 40px;
+  padding: 0;
   font-family: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif;
   /* Paints the house ground over the whole window (it is App.tsx's one
      Suspense fallback, drawn before any page or shell exists). It used to be
@@ -18,6 +18,10 @@
 }
 
 .mdv-pageloader__mark {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
   margin: 0;
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;
@@ -74,6 +78,67 @@
 @media (prefers-reduced-motion: reduce) {
   .mdv-skel__line,
   .mdv-skel__block {
+    animation: none;
+  }
+}
+
+/* The shell's frame (r58 N-02): sidebar + title bar, in the first paint. It
+   fades in over --shell-fade-ms (opacity only) so a chunk that arrives a
+   frame later never reads as a flash. */
+.mdv-shellskel {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  flex: 1;
+  min-height: 100vh;
+  animation: mdv-shell-in var(--shell-fade-ms, 160ms) var(--shell-ease-house, ease-out) both;
+}
+
+.mdv-shellskel__side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 28px 20px;
+  border-right: 1px solid var(--paper-2);
+  background: var(--paper-1);
+}
+
+.mdv-shellskel__main {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 40px 32px;
+  max-width: 720px;
+}
+
+.mdv-shellskel__title {
+  height: 26px;
+  width: 38%;
+  margin-bottom: 14px;
+}
+
+@keyframes mdv-shell-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 767px) {
+  .mdv-shellskel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mdv-shellskel__side {
+    display: none;
+  }
+  .mdv-shellskel__main {
+    padding: 28px 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-shellskel {
     animation: none;
   }
 }

@@ -56,6 +56,21 @@
         document.documentElement.setAttribute('data-mudavym-ground', ground);
       })();
     </script>
+    <!-- r58 N-02: the shell's frame (sidebar + title bar) is in the very first
+         paint, before any script. React replaces #root's children on mount.
+         Colours are the paper/charcoal ground values from styles/mudavym.css
+         (kept by hand, like the ground script above). Opacity-only fade. -->
+    <style>
+      #boot-shell { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 100vh; background: #fffdf8; animation: boot-in 160ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+      #boot-shell .s { background: #f3efe6; border-right: 1px solid #eae4d8; }
+      #boot-shell .t { margin: 40px 32px 0; height: 26px; width: 38%; max-width: 320px; border-radius: 6px; background: #f3efe6; }
+      html[data-mudavym-ground="charcoal"] #boot-shell { background: #15130f; }
+      html[data-mudavym-ground="charcoal"] #boot-shell .s { background: #1d1813; border-right-color: #262019; }
+      html[data-mudavym-ground="charcoal"] #boot-shell .t { background: #1d1813; }
+      @keyframes boot-in { from { opacity: 0; } to { opacity: 1; } }
+      @media (max-width: 767px) { #boot-shell { grid-template-columns: minmax(0, 1fr); } #boot-shell .s { display: none; } #boot-shell .t { margin: 28px 16px 0; } }
+      @media (prefers-reduced-motion: reduce) { #boot-shell { animation: none; } }
+    </style>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <!-- The served identity of every signed-in route: closed by default. The build
@@ -85,7 +100,7 @@
          no font is fetched from any other origin. -->
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div id="boot-shell" aria-hidden="true"><div class="s"></div><div class="t"></div></div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -3,10 +3,9 @@
  * Mounted as the ONE Suspense fallback in App.tsx (a lazy route chunk still
  * loading), gated like every other shell chrome piece.
  *
- * A ladder, not an instant spinner: most chunks are already cached and load
- * in well under 400ms, so showing anything for those is a flash the eye
- * reads as a stutter, not a signal. Only past 400ms does a mark appear, and
- * only past 12s — long enough to mean something is actually slow, not that
+ * A ladder, not an instant spinner: the shell's frame (sidebar and title bar)
+ * paints at once and fades in over 160ms; the word "Reading…" appears only
+ * past 800ms, in an aria-live status; and only past 12s — long enough to mean something is actually slow, not that
  * the network had one bad round trip — does the copy say so in words.
  *
  * Legacy (shell off): unchanged — the original `PageLoader` (`ui/page-loader.tsx`),
@@ -16,9 +15,11 @@
 import { useEffect, useState } from 'react';
 import { PageLoader } from '../ui/page-loader';
 import { useMudavymDesign } from '../../lib/mudavym/useMudavymDesign';
+import { ShellSkeleton } from './ShellSkeleton';
 import './house-page-loader.css';
 
-const MARK_AFTER_MS = 400;
+/** The word "Reading…" only appears past this; before it the frame alone shows (r58 N-02). */
+const MARK_AFTER_MS = 800;
 const SLOW_AFTER_MS = 12_000;
 
 type Stage = 'silent' | 'reading' | 'slow';
@@ -51,14 +52,14 @@ export function HousePageSkeleton() {
 function HouseLadderLoader() {
   const stage = useLadderStage();
 
-  if (stage === 'silent') return null;
-
+  // The frame is there from the first paint; the spoken line is a live region
+  // that exists from the start and only gains words past 800 ms.
   return (
-    <div className="mdv-pageloader mudavym" role="status" aria-live="polite">
-      <p className="mdv-pageloader__mark">
-        {stage === 'slow' ? 'Still reading — this is taking longer than usual.' : 'Reading…'}
+    <div className="mdv-pageloader mudavym">
+      <ShellSkeleton />
+      <p className="mdv-pageloader__mark" role="status" aria-live="polite">
+        {stage === 'silent' ? '' : stage === 'slow' ? 'Still reading — this is taking longer than usual.' : 'Reading…'}
       </p>
-      <HousePageSkeleton />
     </div>
   );
 }
