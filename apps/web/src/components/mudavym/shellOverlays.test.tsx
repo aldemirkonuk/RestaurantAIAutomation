@@ -169,7 +169,8 @@ describe('with no Mudavym page on screen', () => {
     const root = container.firstElementChild as HTMLElement;
     expect(root.getAttribute('class')).toBe(PALETTE_POSITIONER);
     expect(root.children[0].getAttribute('class')).toBe(PALETTE_SCRIM);
-    expect(root.children[1].getAttribute('class')).toBe(PALETTE_CARD);
+    // the palette card carries one additive hook class so the charcoal ground can paint it (#1819)
+    expect(root.children[1].getAttribute('class')).toBe(`mdv-palette-card ${PALETTE_CARD}`);
     expect(document.querySelector('.mdv-ovl')).toBeNull();
   });
 

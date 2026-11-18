@@ -415,7 +415,7 @@ export function CommandPalette({
         className="absolute inset-0 bg-gray-900/40 motion-safe:animate-[fadeIn_120ms_ease-out]"
         aria-hidden
       />
-      <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden motion-safe:animate-[popIn_120ms_ease-out]">
+      <div className="mdv-palette-card relative w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden motion-safe:animate-[popIn_120ms_ease-out]">
         {/* Search input */}
         <div className="flex items-center gap-2.5 px-4 border-b border-gray-100">
           <Search className="w-4 h-4 text-gray-400 shrink-0" />

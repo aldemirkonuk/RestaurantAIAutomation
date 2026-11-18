@@ -16,10 +16,10 @@ export interface GuidanceStripProps {
 }
 
 const secondaryAction =
-  'text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wine-600/30 focus-visible:ring-offset-2 rounded-md'
+  'mdv-guidance-quiet text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wine-600/30 focus-visible:ring-offset-2 rounded-md'
 
 const primaryAction =
-  'text-xs font-semibold text-wine-700 hover:text-wine-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wine-600/30 focus-visible:ring-offset-2 rounded-md'
+  'mdv-guidance-primary text-xs font-semibold text-wine-700 hover:text-wine-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wine-600/30 focus-visible:ring-offset-2 rounded-md'
 
 export function GuidanceStrip({
   title,
@@ -44,7 +44,7 @@ export function GuidanceStrip({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
       className={cn(
-        'mx-3 sm:mx-4 mt-2 rounded-2xl border border-[#96404E]/12 bg-white/92 px-3.5 py-2.5 shadow-[0_1px_0_rgba(148,64,78,0.04)] backdrop-blur-sm',
+        'mdv-guidance-strip mx-3 sm:mx-4 mt-2 rounded-2xl border border-[#96404E]/12 bg-white/92 px-3.5 py-2.5 shadow-[0_1px_0_rgba(148,64,78,0.04)] backdrop-blur-sm',
         className,
       )}
     >
@@ -55,8 +55,8 @@ export function GuidanceStrip({
         />
         <div className="min-w-0 flex-1">
           <p className="text-[13px] leading-5 text-gray-700">
-            <span className="font-semibold text-gray-900">{title}</span>
-            <span className="text-gray-500"> {body}</span>
+            <span className="mdv-guidance-title font-semibold text-gray-900">{title}</span>
+            <span className="mdv-guidance-body text-gray-500"> {body}</span>
           </p>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
             <button
