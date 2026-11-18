@@ -1,0 +1,140 @@
+/* The house's motion physics, as tokens and three shared controls (design
+   critic N-12, 2026-11-18).
+
+   Everything here animates transform, opacity, clip-path or
+   grid-template-rows only (no layout thrash, no `transition: all`), and every
+   motion has a reduced-motion tier: under `prefers-reduced-motion: reduce`
+   nothing translates, scales or blurs, and what is left is a 120 ms opacity
+   change. The JS tokens in lib/mudavym/motion.ts are the same numbers. */
+
+:root {
+  --ease-house: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+  /* press: accelerate into the surface; exit: accelerate away from it */
+  --ease-press: cubic-bezier(0.4, 0, 1, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  /* spring 400/32, 12-point fit: the sliding pill (220 ms) */
+  --ease-spring-tuck: linear(0, 0.143, 0.382, 0.616, 0.791, 0.901, 0.967, 0.999, 1.011, 1.014, 1.012, 1);
+  /* spring 520/28, 12-point fit: shared-element moves (520 ms) */
+  --ease-glide: linear(0, 0.171, 0.487, 0.767, 0.958, 1.057, 1.084, 1.073, 1.047, 1.023, 1.005, 1);
+
+  --dur-hover: 160ms;
+  --dur-press: 90ms;
+  --dur-pill: 220ms;
+  --dur-collapse: 280ms;
+  --dur-glide: 520ms;
+  --dur-fade: 120ms;
+
+  --press-glow: 0 10px 24px -10px rgba(26, 94, 107, 0.55);
+}
+
+/* ── Buttons: hover lifts 1 px with an inner highlight and a glow, press
+   settles to .98 in 90 ms, the arrow nudges 4 px. `.mdv-press` is the one
+   spec (`--lift` adds the hover lift and glow, for filled buttons); `button.tsx` and `.mdv-btn--seal` wear it. ─────────────────────── */
+.mdv-press {
+  transition:
+    transform var(--dur-hover) var(--ease-house),
+    box-shadow var(--dur-hover) var(--ease-house),
+    background-color var(--dur-hover) var(--ease-house),
+    border-color var(--dur-hover) var(--ease-house),
+    color var(--dur-hover) var(--ease-house),
+    opacity var(--dur-hover) var(--ease-house);
+}
+.mdv-press--lift:hover:not(:disabled, [aria-disabled='true']) {
+  transform: translateY(-1px);
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.18), var(--press-glow);
+}
+.mdv-press:active:not(:disabled, [aria-disabled='true']) {
+  transform: scale(0.98);
+  transition-duration: var(--dur-press);
+  transition-timing-function: var(--ease-press);
+}
+.mdv-press .mdv-arrow {
+  display: inline-block;
+  transition: transform var(--dur-hover) var(--ease-glide);
+}
+.mdv-press:hover:not(:disabled, [aria-disabled='true']) .mdv-arrow {
+  transform: translateX(4px);
+}
+
+/* ── The sliding pill: one pill under the active option of a segmented
+   control. Position comes from two custom properties the component sets. ── */
+.mdv-pill {
+  position: relative;
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--paper-1, #f3efe6);
+  isolation: isolate;
+}
+.mdv-pill__thumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  width: var(--pill-w, 0);
+  border-radius: 999px;
+  background: var(--seal, #1a5e6b);
+  transform: translateX(var(--pill-x, 0));
+  transition: transform var(--dur-pill) var(--ease-spring-tuck), width var(--dur-pill) var(--ease-spring-tuck);
+  z-index: 0;
+  pointer-events: none;
+}
+.mdv-pill[data-ready='false'] .mdv-pill__thumb { transition: none; }
+.mdv-pill__opt {
+  position: relative;
+  z-index: 1;
+  min-height: 28px;
+  padding: 4px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-2, #4f473c);
+  font: inherit;
+  cursor: pointer;
+  transition: color var(--dur-hover) var(--ease-house), opacity var(--dur-hover) var(--ease-house);
+}
+.mdv-pill__opt[aria-pressed='true'] { color: #fff; }
+.mdv-pill__opt:focus-visible { outline: 2px solid var(--seal, #1a5e6b); outline-offset: -2px; }
+.mdv-pill__opt[data-empty='true'] { opacity: 0.4; }
+.mdv-pill__count { display: inline-block; margin-left: 6px; animation: mdv-tick var(--dur-hover) var(--ease-house); }
+@keyframes mdv-tick {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ── The collapse: an inline panel opening in place. grid-template-rows goes
+   0fr to 1fr, the content fades 120 ms later so it never shows half-clipped. */
+.mdv-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dur-collapse) var(--ease-sheet);
+}
+.mdv-collapse[data-open='true'] { grid-template-rows: 1fr; }
+.mdv-collapse__inner { min-height: 0; overflow: hidden; opacity: 0; transition: opacity var(--dur-fade) linear; }
+.mdv-collapse[data-open='true'] > .mdv-collapse__inner { opacity: 1; transition-delay: var(--dur-fade); }
+
+/* ── Overlay scrim: 140 ms in with a light blur; the exit (100 ms) is run from
+   Sheet.tsx. ───────────────────────────────────────────────────────────── */
+.mdv-ovl[data-scrim='on'] .mdv-ovl__scrim {
+  animation: mdv-scrim-in 140ms linear both;
+  -webkit-backdrop-filter: blur(6px) saturate(1.1);
+  backdrop-filter: blur(6px) saturate(1.1);
+}
+@keyframes mdv-scrim-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* ── Reduced motion: no translate, scale or blur; opacity at 120 ms. ────── */
+@media (prefers-reduced-motion: reduce) {
+  .mdv-press,
+  .mdv-press .mdv-arrow { transition: color var(--dur-fade) linear, background-color var(--dur-fade) linear, opacity var(--dur-fade) linear; }
+  .mdv-press--lift:hover:not(:disabled, [aria-disabled='true']),
+  .mdv-press:active:not(:disabled, [aria-disabled='true']),
+  .mdv-press:hover:not(:disabled, [aria-disabled='true']) .mdv-arrow { transform: none; }
+  .mdv-pill__thumb { transition: none; }
+  .mdv-pill__count { animation: none; }
+  .mdv-collapse { transition: none; }
+  .mdv-collapse__inner,
+  .mdv-collapse[data-open='true'] > .mdv-collapse__inner { transition: opacity var(--dur-fade) linear; transition-delay: 0s; }
+  .mdv-ovl[data-scrim='on'] .mdv-ovl__scrim { animation-duration: var(--dur-fade); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
