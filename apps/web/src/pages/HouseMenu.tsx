@@ -82,7 +82,7 @@ export default function HouseMenu() {
         <div className="mx-auto max-w-2xl">
           <BrandMark size={24} alt="Mudavym" />
           <h1 className="text-inkm-1 mt-8 font-serif text-4xl">No menu has been read yet.</h1>
-          <button onClick={() => navigate('/get-started')} className="mt-6 text-[#1a5e6b] underline">
+          <button onClick={() => navigate('/get-started')} className="mt-6 text-seal underline">
             Read a menu
           </button>
         </div>
@@ -97,7 +97,7 @@ export default function HouseMenu() {
           <BrandMark size={24} alt="Mudavym" />
           <h1 className="text-inkm-1 mt-8 font-serif text-4xl">We couldn&apos;t read this file.</h1>
           <p className="mt-4 text-inkm-4">Nothing was set. Try a clearer photo or a PDF of the drinks list.</p>
-          <button onClick={() => navigate('/get-started')} className="mt-6 text-[#1a5e6b] underline">
+          <button onClick={() => navigate('/get-started')} className="mt-6 text-seal underline">
             Try another menu
           </button>
         </div>
@@ -152,7 +152,7 @@ export default function HouseMenu() {
       </header>
       <main className={`mx-auto px-5 py-12 sm:py-16 ${showOriginal && sourceImage ? 'grid max-w-6xl gap-10 lg:grid-cols-2' : 'max-w-4xl'}`}>
         <div>
-        <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">House menu · first proof</p>
+        <p className="font-mono text-xs uppercase tracking-[0.16em] text-seal">House menu · first proof</p>
         <h1 className="text-inkm-1 mt-3 font-serif text-5xl">Your menu, set by Mudavym.</h1>
         <p className="mt-4 max-w-2xl text-inkm-4">
           It&apos;s a first proof — we&apos;ve pencilled the lines worth a second look.
@@ -161,7 +161,7 @@ export default function HouseMenu() {
           <button
             type="button"
             onClick={() => setShowOriginal((value) => !value)}
-            className="mt-4 text-sm text-[#1a5e6b] underline underline-offset-4"
+            className="mt-4 text-sm text-seal underline underline-offset-4"
           >
             {showOriginal ? 'Hide original' : 'Show my original'}
           </button>
@@ -194,7 +194,7 @@ export default function HouseMenu() {
                                 ? 'Needs a place'
                                 : 'Pencilled'
                           }
-                          className="font-serif text-xl text-[#1a5e6b]"
+                          className="font-serif text-xl text-seal"
                         >
                           {markFor(item) === 'ink' ? '·' : markFor(item) === 'ring' ? '○' : '⌁'}
                         </span>
@@ -280,7 +280,7 @@ export default function HouseMenu() {
               <button type="button" onClick={() => {
                 setAdding((value) => !value)
                 setAddSection(absent[0] ?? '')
-              }} className="text-[#1a5e6b] underline">
+              }} className="text-seal underline">
                 Add it.
               </button>
             </p>

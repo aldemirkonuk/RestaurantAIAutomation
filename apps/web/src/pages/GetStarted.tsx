@@ -209,7 +209,7 @@ export default function GetStarted() {
   if (step === 'you') {
     return (
       <ArrivalShell step={step}>
-        <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">Welcome</p>
+        <p className="font-mono text-xs uppercase tracking-[0.16em] text-seal">Welcome</p>
         <h1 className="text-inkm-1 mt-3 font-serif text-4xl sm:text-5xl leading-tight">
           Welcome, {name.trim().split(/\s+/)[0] || 'there'}. Let&apos;s set up your restaurant.
         </h1>
@@ -271,7 +271,7 @@ export default function GetStarted() {
   if (step === 'restaurant') {
     return (
       <ArrivalShell step={step}>
-        <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">The house</p>
+        <p className="font-mono text-xs uppercase tracking-[0.16em] text-seal">The house</p>
         <h1 className="text-inkm-1 mt-3 font-serif text-4xl sm:text-5xl">Your restaurant</h1>
         <p className="mt-3 max-w-xl text-inkm-4">
           Find the exact place. Its address sets the house&apos;s timezone and reporting currency.
@@ -297,7 +297,7 @@ export default function GetStarted() {
               className="mt-2 rounded-none border-x-0 border-t-0 bg-transparent"
             />
           </label>
-          <button type="button" onClick={useMyLocation} className="flex items-center gap-2 text-sm text-[#1a5e6b]">
+          <button type="button" onClick={useMyLocation} className="flex items-center gap-2 text-sm text-seal">
             <MapPin className="h-4 w-4" /> Use my location
           </button>
           {locationStatus && <p role="status" className="text-xs text-inkm-4">{locationStatus}</p>}
@@ -339,7 +339,7 @@ export default function GetStarted() {
   if (step === 'menu') {
     return (
       <ArrivalShell step={step}>
-        <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">The first inscription</p>
+        <p className="font-mono text-xs uppercase tracking-[0.16em] text-seal">The first inscription</p>
         <h1 className="text-inkm-1 mt-3 font-serif text-4xl sm:text-5xl">Your menu</h1>
         <p className="mt-3 text-inkm-4">Drop the menu here. Mudavym will set it as the house&apos;s own list.</p>
         {notice && <p role="status" className="mt-3 text-sm text-inkm-4">{notice}</p>}
@@ -368,10 +368,10 @@ export default function GetStarted() {
           </span>
         </button>
         <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm">
-          <button type="button" onClick={() => setMenuMethod(menuMethod === 'file' ? null : 'file')} className="text-[#1a5e6b] underline underline-offset-4">
+          <button type="button" onClick={() => setMenuMethod(menuMethod === 'file' ? null : 'file')} className="text-seal underline underline-offset-4">
             Send a file
           </button>
-          <button type="button" onClick={() => setMenuMethod(menuMethod === 'typed' ? null : 'typed')} className="flex items-center gap-1 text-[#1a5e6b] underline underline-offset-4">
+          <button type="button" onClick={() => setMenuMethod(menuMethod === 'typed' ? null : 'typed')} className="flex items-center gap-1 text-seal underline underline-offset-4">
             <PenLine className="h-3.5 w-3.5" /> Type a few lines
           </button>
         </div>
@@ -395,7 +395,7 @@ export default function GetStarted() {
 
   return (
     <ArrivalShell step="reading">
-      <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">Reading</p>
+      <p className="font-mono text-xs uppercase tracking-[0.16em] text-seal">Reading</p>
       <h1 className="text-inkm-1 mt-3 font-serif text-4xl sm:text-5xl">The facts are settling.</h1>
       <div className="mt-12 space-y-4 border-y border-[#211f1b]/20 py-7 font-serif text-2xl">
         <p>Lines named.</p>

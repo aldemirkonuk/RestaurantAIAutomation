@@ -127,7 +127,7 @@ describe('the first-run pages carry no light-only colours', () => {
     it(`${f}.tsx uses the ground tokens, not white or fixed greys, and its headings name an ink`, () => {
       const src = readFileSync(join(__dirname, '..', 'pages', `${f}.tsx`), 'utf8');
       expect(src).not.toMatch(/\bbg-white\b/);
-      expect(src).not.toMatch(/text-\[#6d685f\]|text-\[#b7b2a8\]/);
+      expect(src).not.toMatch(/text-\[#6d685f\]|text-\[#b7b2a8\]|text-\[#1a5e6b\]/);
       for (const m of src.matchAll(/<h[12] className="([^"]*)"/g)) {
         expect(m[1]).toContain('text-inkm-1');
       }

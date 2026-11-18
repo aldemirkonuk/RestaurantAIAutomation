@@ -45,7 +45,7 @@ export default function HouseContents() {
         <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-inkm-4">The house</span>
       </header>
       <main className="mx-auto max-w-2xl px-5 py-12 sm:py-16">
-        <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">Contents</p>
+        <p className="font-mono text-xs uppercase tracking-[0.16em] text-seal">Contents</p>
         <h1 className="text-inkm-1 mt-3 font-serif text-5xl">Your house.</h1>
         <p className="mt-4 text-inkm-4">One thing at a time. The rest can wait.</p>
 
@@ -75,7 +75,7 @@ export default function HouseContents() {
                 void saveSupplier()
               }}
             >
-              <p className="text-xs uppercase tracking-wider text-[#1a5e6b]">The one ask · optional</p>
+              <p className="text-xs uppercase tracking-wider text-seal">The one ask · optional</p>
               <label className="mt-2 block">
                 <span className="font-serif text-2xl">Who supplies you?</span>
                 <input
