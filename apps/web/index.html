@@ -57,10 +57,13 @@
       })();
     </script>
     <!-- r58 N-02: the shell's frame (sidebar + title bar) is in the very first
-         paint, before any script. React replaces #root's children on mount.
+         paint, before any script. It sits AFTER #root (which must stay exactly
+         empty: the SEO build fills it) and is hidden the moment React or a
+         prerendered page puts anything in #root.
          Colours are the paper/charcoal ground values from styles/mudavym.css
          (kept by hand, like the ground script above). Opacity-only fade. -->
     <style>
+      #root:not(:empty) + #boot-shell { display: none; }
       #boot-shell { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 100vh; background: #fffdf8; animation: boot-in 160ms cubic-bezier(0.16, 1, 0.3, 1) both; }
       #boot-shell .s { background: #f3efe6; border-right: 1px solid #eae4d8; }
       #boot-shell .t { margin: 40px 32px 0; height: 26px; width: 38%; max-width: 320px; border-radius: 6px; background: #f3efe6; }
@@ -100,7 +103,8 @@
          no font is fetched from any other origin. -->
   </head>
   <body>
-    <div id="root"><div id="boot-shell" aria-hidden="true"><div class="s"></div><div class="t"></div></div></div>
+    <div id="root"></div>
+    <div id="boot-shell" aria-hidden="true"><div class="s"></div><div class="t"></div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
