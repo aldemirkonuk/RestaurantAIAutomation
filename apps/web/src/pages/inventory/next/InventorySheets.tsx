@@ -476,7 +476,7 @@ export function TransferSheet({
     : noZones
       ? `This house has no zones yet, so there is nowhere to move ${bottles ? 'bottles' : 'it'} to. Zones are added under Tools, in Storage locations.`
       : row.zones === null
-      ? 'Where this title sits could not be read, so there is nothing to move from.'
+      ? `Where this ${bottles ? 'title' : 'good'} sits could not be read, so there is nothing to move from.`
       : fromOptions.length === 0
         ? bottles
           ? 'No zone holds a bottle of this title.'

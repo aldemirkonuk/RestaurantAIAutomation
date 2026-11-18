@@ -80,7 +80,7 @@ vi.mock('../../../hooks/queries/useProviderQueries', async (orig) => ({
   useRecommendedProviders: () => ({ data: undefined, isError: false }),
 }));
 
-import RowDropdown, { bottleCost, COST_IS_A_MANAGERS, MARGIN_TAX_NOTE, type RowDropdownProps } from './RowDropdown';
+import RowDropdown, { bottleCost, COST_IS_A_MANAGERS, MARGIN_TAX_NOTE, removeTarget, type RowDropdownProps } from './RowDropdown';
 
 function row(over: Partial<InvRow> = {}): InvRow {
   return {
@@ -655,6 +655,21 @@ describe('Ported acts in the More menu: Mark inactive and Remove from inventory'
       expect(inv.update).not.toHaveBeenCalled();
     });
   }
+
+  it('Mark inactive waits for a food that still holds stock, and says stock, not bottles', async () => {
+    const m = await menu({ uom: 'g', kind: 'food', row: row({ wineId: null, name: 'Flour 00', kind: 'food', stock: 2250, shadow: 0, openMl: 0 }) });
+    const item = within(m).getByRole('menuitem', { name: 'Mark inactive' }) as HTMLButtonElement;
+    expect(item.disabled).toBe(true);
+    const why = screen.getByTestId('inactive-blocked').textContent ?? '';
+    expect(why).toMatch(/stock is still held\. Count it to zero or remove it first/);
+    expect(why).not.toMatch(/bottle/);
+  });
+
+  it('the remove modal names a nameless food a good and a nameless wine a title', () => {
+    expect(removeTarget(row({ name: null, kind: 'food' }), true).name).toBe('This good');
+    expect(removeTarget(row({ name: null }), false).name).toBe('This title');
+    expect(removeTarget(row({ name: null })).name).toBe('This title');
+  });
 
   for (const field of ['stock', 'shadow', 'openMl'] as const) {
     it(`Mark inactive waits when ${field} was not read`, async () => {

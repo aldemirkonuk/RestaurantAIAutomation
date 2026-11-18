@@ -147,19 +147,20 @@ export function removeBlocked(row: InvRow): string | null {
  * beside it, so stock left on the inactive one falls out of the book unseen
  * (security review, 2026-10-31). Only an empty row may be marked inactive.
  */
-export function inactiveBlocked(row: InvRow): string | null {
+export function inactiveBlocked(row: InvRow, good = false): string | null {
   if (row.stock === null || row.shadow === null || row.openMl === null)
     return 'the book did not say how many are held. Count it to zero or remove it first';
-  if (row.stock > 0 || row.shadow > 0 || row.openMl > 0) return 'bottles are still held. Count it to zero or remove it first';
+  if (row.stock > 0 || row.shadow > 0 || row.openMl > 0)
+    return `${good ? 'stock is' : 'bottles are'} still held. Count it to zero or remove it first`;
   return null;
 }
 
 /** The row in the remove modal's shape: only the fields it reads, all read from the book. */
-export function removeTarget(row: InvRow): InventoryItem {
+export function removeTarget(row: InvRow, good = false): InventoryItem {
   return {
     id: row.wineId ?? '',
     inventoryId: row.id,
-    name: row.name ?? 'This title',
+    name: row.name ?? (good ? 'This good' : 'This title'),
     liveStock: row.stock,
     shadowStock: row.shadow ?? undefined,
     openMl: row.openMl ?? undefined,
@@ -243,7 +244,7 @@ export default function RowDropdown(props: RowDropdownProps) {
   const [toggling, setToggling] = useState(false);
   const blocked = removeBlocked(row);
   // Only marking INACTIVE is held back; marking a row active again never strands stock.
-  const toggleBlocked = row.active === true ? inactiveBlocked(row) : null;
+  const toggleBlocked = row.active === true ? inactiveBlocked(row, kitchenGood) : null;
   // What one row is called: a kitchen good is a good, a drink keeps "title".
   const thing = kitchenGood ? 'good' : 'title';
   const title = row.name ?? `This ${thing}`;
@@ -566,7 +567,7 @@ export default function RowDropdown(props: RowDropdownProps) {
       {canManage && removing && blocked === null ? (
         <RemoveFromInventoryModal
           isOpen
-          items={[removeTarget(row)]}
+          items={[removeTarget(row, kitchenGood)]}
           say={amountUnit(props.uom).words}
           onClose={() => setRemoving(false)}
           onRemoved={() => {

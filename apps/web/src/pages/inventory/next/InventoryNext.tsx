@@ -1122,7 +1122,7 @@ export default function InventoryNext() {
       {removeSel && data.canManage ? (
         <RemoveFromInventoryModal
           isOpen
-          items={removeSel.map(removeTarget)}
+          items={removeSel.map((r) => removeTarget(r, goodOf(r) !== 'drink'))}
           onClose={() => setRemoveSel(null)}
           onRemoved={() => {
             setRemoveSel(null);
