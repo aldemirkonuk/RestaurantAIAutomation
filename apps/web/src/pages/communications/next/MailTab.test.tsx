@@ -289,8 +289,10 @@ describe('the list', () => {
     expect(readLastRowCount('r1')).toBe(4);
     window.sessionStorage.setItem('mail-people-rows:r1', 'junk');
     expect(readLastRowCount('r1')).toBe(4);
-    rememberRowCount('r1', 500);
+    window.sessionStorage.setItem('mail-people-rows:r1', '500');
     expect(readLastRowCount('r1')).toBe(10);
+    rememberRowCount('r1', 500);
+    expect(window.sessionStorage.getItem('mail-people-rows:r1')).toBe('10');
     rememberRowCount('r1', 0);
     expect(readLastRowCount('r1')).toBe(4);
     const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
