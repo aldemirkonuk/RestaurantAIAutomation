@@ -881,6 +881,32 @@ describe('DashboardNext', () => {
         vi.useRealTimers();
       }
     });
+
+    it('says the gateway sentence for a month whose papers could not be read', async () => {
+      vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 8, 10, 12, 0, 0) });
+      try {
+        const ledger = monthLedger();
+        routeGets({
+          '/dashboard/calendar-revenue/': {
+            ...ledger,
+            monthly_procurement_spend: null,
+            monthly_uncosted_orders: 0,
+            monthly_not_in_house_currency: {},
+            monthly_scanned_deliveries: { counted: 0, uncosted: 0, notInHouseCurrency: {} },
+            monthly_procurement_spend_unread: 'The scanned papers could not be read.',
+            house_currency_unread: false,
+          },
+        });
+
+        mount();
+
+        expect(await screen.findByTestId('dn-month-uncosted')).toHaveTextContent(
+          '(The scanned papers could not be read.)',
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   // DASH-W33 (P8): ADR 0042 / OD-112 — ink-3 is decorative only, never a
