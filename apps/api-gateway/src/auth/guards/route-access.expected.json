@@ -503,6 +503,17 @@
     "manager"
   ],
   "GET /recipes/:restaurantId/cocktails/:cocktailId/versions/:versionId (RecipesController.readVersion)": "open",
+  "GET /recipes/:restaurantId/dishes/:dishId (DishesController.getDishRecipe)": "open",
+  "GET /recipes/:restaurantId/dishes/:dishId/versions (DishesController.listDishVersions)": "open",
+  "GET /recipes/:restaurantId/dishes/:dishId/versions/:versionId (DishesController.readDishVersion)": "open",
+  "PUT /recipes/:restaurantId/dishes/:dishId (DishesController.saveDishRecipe)": [
+    "owner",
+    "manager"
+  ],
+  "POST /recipes/:restaurantId/dishes/:dishId/cost-preview (DishesController.previewDishCost)": [
+    "owner",
+    "manager"
+  ],
   "GET /recipes/:restaurantId/shelf (RecipesController.shelf)": "open",
   "POST /reports/exports (ReportExportsController.request)": [
     "owner",
