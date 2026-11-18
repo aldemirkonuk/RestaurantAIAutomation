@@ -525,6 +525,7 @@ describe("ingest says what it did to stock (A-029)", () => {
       consumptionNotWritten: 0,
       backdatedOver72h: 0,
       priceNotSent: 0,
+      costNotKept: 1,
     });
     expect(res.errors).toEqual([]);
   });
@@ -553,6 +554,7 @@ describe("ingest says what it did to stock (A-029)", () => {
       alreadyBooked: 1,
       backdatedOver72h: 0,
       priceNotSent: 0,
+      costNotKept: 0,
     });
     expect(again.errors).toEqual([]);
   });
@@ -684,6 +686,7 @@ describe("a closed_at the import does not read is refused, not imported (ADR 028
     consumptionNotWritten: 0,
     backdatedOver72h: 0,
     priceNotSent: 0,
+    costNotKept: 0,
   };
 
   /** One check with a bottle and a glass line, so both RPCs would run. */
@@ -791,6 +794,7 @@ describe("a closed_at the import does not read is refused, not imported (ADR 028
       booked: 1,
       backdatedOver72h: 1,
       priceNotSent: 0,
+      costNotKept: 1,
     });
     expect(calls.rpc).toHaveLength(1);
     expect(calls.consumption).toHaveLength(1);

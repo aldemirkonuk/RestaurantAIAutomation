@@ -15,6 +15,10 @@
  *     and the fraction draws that share of the unit's volume.
  *  P8 (D5) An absent price reads null from every adapter, never 0; a rung
  *     zero stays zero; only an absent price falls back to the menu price.
+ *  P9 (D4) A sale's cost is a share of the bottle's cost (a bottle's worth of
+ *     pours costs the bottle), unknown stays null and is never 0, the source
+ *     is the oldest live costed lot, and a check's margin sums only the cost
+ *     each row kept: a row with none is counted, never costed afresh.
  *  P5 The advised price carries the target margin to the cent, and the advice
  *     says raise only when the advised price is above today's.
  */
@@ -26,6 +30,11 @@ import {
   cloverAdapter,
   toastAdapter,
 } from "./pos-adapters";
+import {
+  snapshotLineCost,
+  pickSaleCostSource,
+  checkMarginFromRows,
+} from "./sale-cost";
 import { consumptionUnitPrice } from "./pos-hub.service";
 import {
   glassCostFrom,
@@ -287,5 +296,120 @@ describe("absent price (P8, D5)", () => {
     expect(consumptionUnitPrice(0, "whole_bottle", 60)).toBe(0);
     expect(consumptionUnitPrice(12, "whole_bottle", 60, true)).toBe(0);
     expect(consumptionUnitPrice(null, "whole_bottle", 60, true)).toBe(0);
+  });
+});
+
+describe("cost at sale (P9, D4)", () => {
+  const src = (unitCost: number) => ({
+    unitCost,
+    basis: "invoice_lot_wac" as const,
+    lotId: "lot-1",
+    orderId: "ord-1",
+  });
+
+  it("a bottle's worth of pours costs the bottle, and a whole bottle costs one per unit", () => {
+    const r = rng(94);
+    for (let i = 0; i < 1000; i++) {
+      const bottle = BOTTLES[Math.floor(r() * BOTTLES.length)];
+      const cost = Math.round(r() * 20000) / 100;
+      const pours = 1 + Math.floor(r() * 10);
+      const pourMl = bottle / pours;
+      let sum = 0;
+      for (let k = 0; k < pours; k++) {
+        sum += snapshotLineCost(src(cost), "volume", pourMl, bottle, 1)
+          .cost_at_sale as number;
+      }
+      expect(Math.abs(sum - cost)).toBeLessThanOrEqual(pours * 0.00005 + 1e-9);
+      const q = 1 + Math.floor(r() * 5);
+      expect(
+        snapshotLineCost(src(cost), "whole_bottle", bottle * q, bottle, q)
+          .cost_at_sale,
+      ).toBeCloseTo(cost * q, 3);
+    }
+  });
+
+  it("an unknown cost or an unknown bottle size keeps no cost, never 0", () => {
+    expect(snapshotLineCost(null, "volume", 150, 750, 1)).toMatchObject({
+      cost_at_sale: null,
+      cost_basis: null,
+    });
+    expect(snapshotLineCost(src(30), "volume", 150, null, 1).cost_at_sale).toBeNull();
+    expect(snapshotLineCost(src(0), "volume", 150, 750, 1).cost_at_sale).toBe(0);
+    const k = snapshotLineCost(src(30), "volume", 150, 750, 1);
+    expect(k).toMatchObject({
+      cost_basis: "invoice_lot_wac",
+      cost_source_lot_id: "lot-1",
+      cost_source_order_id: "ord-1",
+    });
+  });
+
+  it("the cost source is the invoiced WAC, else the last price; the lot is the oldest costed live one", () => {
+    const lots = [
+      { id: "new", qty: 3, unit_cost: 40, cost_provenance: "invoice", source_order_id: "o2", received_at: "2026-09-02", stock_state: "live" },
+      { id: "sample", qty: 1, unit_cost: 0, cost_provenance: "sample", source_order_id: null, received_at: "2026-01-01", stock_state: "live" },
+      { id: "old", qty: 2, unit_cost: 30, cost_provenance: "invoice", source_order_id: "o1", received_at: "2026-08-01", stock_state: "live" },
+      { id: "spent", qty: 0, unit_cost: 10, cost_provenance: "invoice", source_order_id: "o0", received_at: "2026-02-01", stock_state: "live" },
+    ];
+    const rollup = { has_invoice_cost: true, wac: 36, wac_qty: 5, live_qty: 5 };
+    expect(pickSaleCostSource({ last_purchase_price: 99 }, rollup, lots)).toEqual({
+      unitCost: 36,
+      basis: "invoice_lot_wac",
+      lotId: "old",
+      orderId: "o1",
+    });
+    expect(pickSaleCostSource({ last_purchase_price: 99 }, null, lots)).toMatchObject({
+      unitCost: 99,
+      basis: "last_purchase_price",
+      lotId: null,
+    });
+    expect(pickSaleCostSource({ last_purchase_price: 0 }, null, lots)).toBeNull();
+    expect(pickSaleCostSource(null, null, null)).toBeNull();
+  });
+
+  it("a check's margin sums the kept costs; a row with none is counted and left out", () => {
+    const r = rng(95);
+    for (let i = 0; i < 300; i++) {
+      const rows: any[] = [];
+      let rev = 0;
+      let cost = 0;
+      let missing = 0;
+      const n = 1 + Math.floor(r() * 8);
+      for (let k = 0; k < n; k++) {
+        const revenue = Math.round(r() * 20000) / 100;
+        const kept = r() < 0.7;
+        const c = Math.round(r() * 8000) / 100;
+        rows.push({
+          wine_name: `w${k}`,
+          quantity: 1,
+          volume_ml: 150,
+          total_revenue: revenue,
+          cost_at_sale: kept ? c : null,
+          cost_basis: kept ? "invoice_lot_wac" : null,
+        });
+        if (kept) {
+          rev += revenue;
+          cost += c;
+        } else missing++;
+      }
+      const m = checkMarginFromRows(rows);
+      expect(m.linesWithoutCost).toBe(missing);
+      expect(m.cost).toBeCloseTo(cost, 3);
+      expect(m.revenue).toBeCloseTo(rev, 3);
+      if (missing < n) expect(m.margin).toBeCloseTo(rev - cost, 3);
+      else expect(m.margin).toBeNull();
+      if (missing > 0) expect(m.sentence).toMatch(/not kept/);
+      expect(m.lines.filter((l) => l.costNote === "cost not kept")).toHaveLength(missing);
+    }
+  });
+
+  it("a voided row is no line and no cost", () => {
+    const m = checkMarginFromRows([
+      { wine_name: "a", quantity: 0, volume_ml: 0, total_revenue: 0, cost_at_sale: 0, cost_basis: "invoice_lot_wac" },
+      { wine_name: "b", quantity: 1, volume_ml: 150, total_revenue: 12, cost_at_sale: 4, cost_basis: "invoice_lot_wac" },
+    ]);
+    expect(m.voidedLines).toBe(1);
+    expect(m.lines).toHaveLength(1);
+    expect(m.margin).toBe(8);
+    expect(m.marginPct).toBe(66.7);
   });
 });
