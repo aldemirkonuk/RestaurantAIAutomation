@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import * as bcrypt from "bcrypt";
@@ -304,5 +305,26 @@ describe("joinViaInvite (Path A) — the issuer's standing is checked again at a
       { user_id: ISSUER, restaurant_id: HOUSE, role: "owner", is_active: true },
     ]);
     expect(db.tables.users).toEqual([]);
+  });
+});
+
+describe("acceptInviteAsExistingUser — a person who already belongs to the house", () => {
+  it("answers 409 already_member and names the house, so the page can open it", async () => {
+    const { svc } = makeService({
+      access: [
+        { user_id: ISSUER, restaurant_id: HOUSE, role: "owner", is_active: true },
+        { user_id: JOINER, restaurant_id: HOUSE, role: "staff", is_active: true },
+      ],
+      invites: [invite({ role: "manager" })],
+    });
+
+    const err: any = await svc
+      .acceptInviteAsExistingUser(JOINER, "abcd1234")
+      .catch((e) => e);
+
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(err.getResponse()).toEqual(
+      expect.objectContaining({ message: "already_member", restaurantId: HOUSE }),
+    );
   });
 });

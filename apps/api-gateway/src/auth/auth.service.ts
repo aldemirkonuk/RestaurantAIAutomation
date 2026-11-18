@@ -2725,7 +2725,13 @@ export class AuthService {
         .from("organization_invites")
         .update({ used_at: null, used_by_email: null })
         .eq("id", invite.id);
-      throw new ConflictException("already_member");
+      // Names the house so the person lands in it: they are a member there
+      // already, and the page used to leave them in whichever house they
+      // had open.
+      throw new ConflictException({
+        message: "already_member",
+        restaurantId: invite.restaurant_id,
+      });
     }
 
     const { error: uraErr } = await this.databaseService.supabase
