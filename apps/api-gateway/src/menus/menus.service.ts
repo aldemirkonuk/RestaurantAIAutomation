@@ -843,7 +843,15 @@ export class MenusService {
             : `Invalid numeric value for ${dto.fieldName}`,
       );
     }
-    const newValueTyped: string | number = price ? price.amount! : dto.newValue;
+    // A word is kept as the person wrote it, minus the spaces round it. Spaces
+    // alone are no word: a line's name or producer was left blank by "   ".
+    const typedWord = typeof dto.newValue === "string" ? dto.newValue.trim() : "";
+    if (!isPrice && typedWord === "") {
+      throw new BadRequestException(
+        `The ${dto.fieldName.replace(/_/g, " ")} cannot be blank. Write it, or leave the line as it is.`,
+      );
+    }
+    const newValueTyped: string | number = price ? price.amount! : typedWord;
 
     const { error: updateErr } = await this.dbService.supabase
       .from("menu_items")
@@ -866,7 +874,7 @@ export class MenusService {
     if (dto.fieldName === "name" && menuItem.inventory_item_id) {
       await this.dbService.supabase
         .from("restaurant_inventory")
-        .update({ wine_name: dto.newValue })
+        .update({ wine_name: typedWord })
         .eq("id", menuItem.inventory_item_id)
         .eq("restaurant_id", callerRestaurantId);
     }
