@@ -146,9 +146,13 @@ vi.mock('./Compose/useComposeData', async (importOriginal) => ({
 // ADR 0160 §113 Open item 3: senders and strangers live on this page now. The
 // section is proved in `WhoIsWriting.test.tsx`; here it is a stub so this file
 // stays a test of the PAGE and needs no auth context.
-vi.mock('./WhoIsWriting', () => ({
-  default: () => <section aria-label="Who is writing" data-testid="who-is-writing" />,
-}));
+// r57: its module is loaded when the Mail tab is shown, not with the page, so a
+// count of factory runs is a count of loads.
+const whoLoads = vi.hoisted(() => ({ n: 0 }));
+vi.mock('./WhoIsWriting', () => {
+  whoLoads.n += 1;
+  return { default: () => <section aria-label="Who is writing" data-testid="who-is-writing" /> };
+});
 
 // The Mail tab (founder /goal 2026-11-07) is proved in MailTab.test.tsx; here it
 // is a stub that shows the props the page hands it, and the summary that names
@@ -251,6 +255,15 @@ const loadedWithThePage = { ...sheetLoads };
 describe('the sheets load when they are wanted (r41 mail gap 10)', () => {
   it('the page itself brings none of the three sheets with it', () => {
     expect(loadedWithThePage).toEqual({ compose: 0, template: 0, reply: 0 });
+  });
+
+  it('Letters does not read the Who is writing file; Mail reads it once, when shown', async () => {
+    expect(whoLoads.n).toBe(0);
+    render(<CommunicationsNext />);
+    expect(whoLoads.n).toBe(0);
+    render(<CommunicationsNext />, '/communications?tab=mail');
+    expect(await screen.findByTestId('who-is-writing')).toBeInTheDocument();
+    expect(whoLoads.n).toBe(1);
   });
 
   it('a moment after the page settles the sheets are fetched, so the first click does not wait', async () => {
@@ -377,11 +390,11 @@ describe('CommunicationsNext', () => {
   // ── ADR 0160 §113, Open item 3: senders and strangers moved here ──────────
   // r21 (2026-11-13): "Who is writing" moved into the Mail tab, so the tab
   // reaches strangers and held letters too. MailTab mounts it (MailTab.test).
-  it('Letters no longer carries "Who is writing"; Mail does', () => {
+  it('Letters no longer carries "Who is writing"; Mail does', async () => {
     render(<CommunicationsNext />);
     expect(screen.queryByTestId('who-is-writing')).toBeNull();
     render(<CommunicationsNext />, '/communications?tab=mail');
-    expect(within(screen.getByTestId('mail-tab-stub')).getByTestId('who-is-writing')).toBeInTheDocument();
+    expect(await within(screen.getByTestId('mail-tab-stub')).findByTestId('who-is-writing')).toBeInTheDocument();
   });
 
   /**
