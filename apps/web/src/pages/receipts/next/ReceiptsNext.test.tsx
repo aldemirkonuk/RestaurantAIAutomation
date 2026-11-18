@@ -518,8 +518,20 @@ describe('ReceiptsNext', () => {
     api.detail = { document: doc({ extraction_confidence: 0.82 }), lines: [line], links: [] };
     const view = render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
-    expect(await screen.findByText('The reader was 82% sure of what it read.')).toBeInTheDocument();
+    // ADR 0104 D4: an ordinary reading says nothing, and never a percentage.
+    expect(await screen.findByText('The reading')).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/\d\s*%\s*sure/);
+    expect(document.body.textContent).not.toContain('The reader');
     view.unmount();
+
+    api.detail = { document: doc({ extraction_confidence: 0.42 }), lines: [line], links: [] };
+    const weak = render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(
+      await screen.findByText('The reader read this with difficulty. Check the figures against the paper.'),
+    ).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/42\s*%/);
+    weak.unmount();
 
     api.detail = { document: doc({ extraction_confidence: null }), lines: [line], links: [] };
     render(<ReceiptsNext />, { wrapper });
@@ -540,7 +552,7 @@ describe('ReceiptsNext', () => {
     await waitFor(() => expect(container.textContent).toContain('Albariño'));
     // W37 (2026-10-01): no database id, no wine word, certainty as a sentence.
     const cell = container.querySelector('td[data-cell="order"]')!;
-    expect(cell.textContent).toContain("Albariño · 12 ordered · matched by the supplier's code · 97% sure of the match");
+    expect(cell.textContent).toContain("Albariño · 12 ordered · matched by the supplier's code");
     expect(cell.textContent).not.toContain('ol-abcde');
     expect(cell.textContent).not.toContain('confidence');
     // W6 (2026-10-01): the method in words, the column named for what it holds.
@@ -567,10 +579,23 @@ describe('ReceiptsNext', () => {
     const cell = () => container.querySelector('td[data-cell="order"]')!;
     await waitFor(() =>
       expect(cell().textContent).toContain(
-        'paired with the order, which could not be read to name the item · matched by the description · 94% sure of the match',
+        'paired with the order, which could not be read to name the item · matched by the description',
       ),
     );
     expect(cell().textContent).not.toMatch(/wine|ol-abcde/);
+  });
+
+  it('a weakly paired line says to check it, with no percentage (ADR 0104 D4)', async () => {
+    api.detail = {
+      document: doc({}),
+      lines: [{ ...line, order_line_id: 'ol-abcdef12-9', match_method: 'description', match_confidence: 0.41 }],
+      links: [],
+    };
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    const cell = () => container.querySelector('td[data-cell="order"]')!;
+    await waitFor(() => expect(cell().textContent).toContain('matched by the description · a weak match, check it'));
+    expect(cell().textContent).not.toMatch(/\d\s*%/);
   });
 
   it('a paired line with no recorded method, certainty or item name says each in words (W37)', async () => {

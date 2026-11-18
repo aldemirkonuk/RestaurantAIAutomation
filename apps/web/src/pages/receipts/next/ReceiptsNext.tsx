@@ -59,7 +59,7 @@ import {
   MONO,
   SANS,
   SERIF,
-  fmtConfidence,
+  certaintyState,
   fmtDate,
   fmtMoney,
   isSignedUrlExpired,
@@ -808,11 +808,17 @@ function PairedCell({
    * sentence, as the reader's does since W23. `wineName` is the gateway's
    * field name, not a word on screen.
    */
-  const conf = fmtConfidence(line.match_confidence);
+  const certainty = certaintyState(line.match_confidence);
   const how = line.match_method
     ? MATCH_METHOD_WORDS[line.match_method] ?? line.match_method
     : 'how it was matched is not recorded';
-  const sure = conf === EM ? 'certainty not recorded' : `${conf} sure of the match`;
+  // Words, and only where they change what a person does (ADR 0104 D4).
+  const sure =
+    certainty === 'unrecorded'
+      ? ' · certainty not recorded'
+      : certainty === 'weak'
+        ? ' · a weak match, check it'
+        : '';
   return (
     <span style={{ color: 'var(--seal-deep, #14515C)' }}>
       {orderUnread
@@ -820,7 +826,7 @@ function PairedCell({
         : `${order?.wineName ?? 'the order does not name the item'} · ${
             order?.quantity == null ? EM : order.quantity
           } ordered`}
-      {` · ${how} · ${sure}`}
+      {` · ${how}${sure}`}
     </span>
   );
 }
@@ -939,6 +945,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
   const detailDoc = detailQ.data?.document;
   const lines = detailQ.data?.lines;
   const shownDoc: ProcurementDocument = detailDoc ? { ...doc, ...detailDoc } : doc;
+  const readCertainty = certaintyState(shownDoc.extraction_confidence);
 
   const editable = doc.status === 'needs_review' || doc.status === 'received';
   // The canonical page's own gate, read here so the affordance and the route
@@ -1165,16 +1172,18 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
           <TieOutLine doc={shownTieOut} />
         </p>
         {/*
-          HOW GOOD THE READING IS, stated. This screen asks for trust in a
-          transcription; hiding the model's own confidence in it made that
-          an unqualified ask. `—` when the record holds no score: an
-          unrecorded confidence is not a low one, and not a high one either.
+          HOW GOOD THE READING IS, in words and only where it changes what a
+          person does (ADR 0104 D4: never a number). An unrecorded confidence
+          is not a low one, and not a high one either; an ordinary one says
+          nothing.
         */}
-        <p style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)', margin: '3px 0 0' }}>
-          {fmtConfidence(shownDoc.extraction_confidence) === EM
-            ? 'The reader recorded no confidence for this document.'
-            : `The reader was ${fmtConfidence(shownDoc.extraction_confidence)} sure of what it read.`}
-        </p>
+        {readCertainty !== 'ordinary' && (
+          <p style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)', margin: '3px 0 0' }}>
+            {readCertainty === 'unrecorded'
+              ? 'The reader recorded no confidence for this document.'
+              : 'The reader read this with difficulty. Check the figures against the paper.'}
+          </p>
+        )}
       </CardPart>
 
       <CardPart label="The order">
@@ -1291,9 +1300,6 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                   <span style={{ color: 'var(--ink-2, #4F473C)' }}>
                     {s.reason}
                     {s.substitution ? ' — a substitution; accept it knowingly' : ''}
-                  </span>
-                  <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>
-                    confidence {fmtConfidence(s.confidence)}
                   </span>
                   <button
                     type="button"
