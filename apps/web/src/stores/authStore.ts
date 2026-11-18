@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import axios from 'axios'
+import { readMe } from '../lib/readMe'
 import { doRefresh } from '../lib/sessionRefresh'
 import { AUTH_STORAGE_KEY, leaveDeadSession } from '../lib/deadSession'
 
@@ -262,7 +263,7 @@ export const useAuthStore = create<AuthState>()(
         }
 
         try {
-          const response = await api.get('/api/v1/auth/me')
+          const response = await readMe(api)
           applyUserData(response.data.user, response.data.availableRestaurants)
         } catch (err: any) {
           const status = err?.response?.status
@@ -277,7 +278,7 @@ export const useAuthStore = create<AuthState>()(
             if (newAccess) {
               get().setTokens(newAccess, localStorage.getItem('refreshToken') || '')
               try {
-                const retryRes = await api.get('/api/v1/auth/me')
+                const retryRes = await readMe(api)
                 applyUserData(retryRes.data.user, retryRes.data.availableRestaurants)
                 return
               } catch (retryErr) {

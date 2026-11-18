@@ -76,7 +76,7 @@ import { ChooseHouse } from './pages/ChooseHouse'
 import { InventoryCommandPage } from './pages/inventory/command/InventoryCommandPage'
 import { InventoryRoute } from './pages/inventory/next/InventoryRoute'
 import { PageGate } from './components/mudavym'
-import { ShellCatchAll } from './components/mudavym/ShellCatchAll'
+import { UnknownAddress } from './components/UnknownAddress'
 
 // Onboarding pages (lazy loaded)
 // Mudavym redesign variants (ADR 0044) — reachable only behind their per-page flag
@@ -586,8 +586,14 @@ function App() {
                     host's own crawlable-prefix allow-list never reaches this —
                     the host answers its own real 404 first (ADR 0158).
                   */}
-                  <Route path="*" element={<ShellCatchAll />} />
                 </Route>
+
+                {/* Any other address. A visitor who is not signed in meets the
+                    book's own 404, not the sign-in screen (the redirect told a
+                    person who mistyped a link that they had been logged out);
+                    a signed-in one gets the in-app 404 inside the same shell as
+                    before. */}
+                <Route path="*" element={<UnknownAddress />} />
               </Routes>
             </Suspense>
                   </Router>
