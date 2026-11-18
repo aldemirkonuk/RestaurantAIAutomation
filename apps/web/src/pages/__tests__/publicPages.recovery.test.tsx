@@ -288,17 +288,19 @@ it('shows a resend failure inline only, with no duplicate toast (D5c)', async ()
   expect(toast.error).not.toHaveBeenCalled()
 })
 
-it('retains the legacy route while the public flag is off', () => {
+it('has no legacy route left: the old QA off override still renders the house page', () => {
   localStorage.setItem('mudavym.design.public', 'false')
   const { container } = mount(<ForgotPassword />, '/forgot-password')
-  expect(container.querySelector('.mdv-pub')).toBeNull()
+  expect(container.querySelector('.mdv-pub')).not.toBeNull()
   expect(
-    screen.getByRole('button', { name: 'Send Reset Link' }),
+    screen.queryByRole('button', { name: 'Send Reset Link' }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.getByRole('button', { name: 'Send reset link' }),
   ).toBeInTheDocument()
 })
 
-it('keeps provider scope and disconnect facts accurate with the design flag off', () => {
-  localStorage.setItem('mudavym.design.public', 'false')
+it('keeps provider scope and disconnect facts accurate on the one privacy page', () => {
   mount(<Privacy />, '/privacy')
   expect(
     screen.getByText(
