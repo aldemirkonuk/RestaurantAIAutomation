@@ -122,6 +122,10 @@ export function InviteLanding() {
         toast.success(
           `You're already a member of ${(preview as any)?.restaurant || 'this restaurant'}`,
         )
+        // The body names the house the invitation was for; open it, as a
+        // fresh accept does, rather than the house that was open before.
+        const joined = e.response?.data?.restaurantId
+        if (typeof joined === 'string' && joined) await setActiveRestaurantId(joined)
         await refreshBranches()
         navigate('/', { replace: true })
         return
