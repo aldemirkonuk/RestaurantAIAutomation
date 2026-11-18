@@ -57,7 +57,7 @@ import { animate, settle } from '@/lib/mudavym';
 import AskTheBook from './AskTheBook';
 import Cutting, { DAYS_PARAM, DEFAULT_TILL_DAYS, tillDaysOf } from './Cutting';
 import { ArrangeAnnouncer, ArrangeHelp } from './Placing';
-import { useArrange } from './rp-arrange';
+import { clearOverlaps, useArrange } from './rp-arrange';
 import { CATALOGUE, defaultGraph } from './rp-catalogue';
 import { failureLine } from './rp-format';
 import {
@@ -392,8 +392,13 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         from === to || d.cuttings.some((c) => c.id === to)
           ? d
           : {
-              cuttings: d.cuttings.map((c) =>
-                c.id === from ? { id: to, slot: swapSlot(c.slot, to), graph: defaultGraph(to) } : c,
+              cuttings: clearOverlaps(
+                d.cuttings.map((c) =>
+                  c.id === from
+                    ? { id: to, slot: swapSlot(c.slot, to), graph: defaultGraph(to) }
+                    : c,
+                ),
+                to,
               ),
             },
       ),

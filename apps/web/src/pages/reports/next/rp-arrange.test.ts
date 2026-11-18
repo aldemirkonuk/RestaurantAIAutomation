@@ -17,6 +17,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   cancelledWords,
+  clearOverlaps,
   colsForWidth,
   liftCuttings,
   moveCutting,
@@ -33,6 +34,7 @@ import {
   slotRect,
 } from './rp-arrange';
 import { cloneLayout, correctBounds, getCompactor } from 'react-grid-layout/core';
+import type { AnalysisId } from './rp-sheet';
 import {
   DEFAULT_ON,
   DEFAULT_SLOTS,
@@ -413,5 +415,28 @@ describe('a narrow ruling', () => {
         expect(order).toEqual(wide);
       }
     }
+  });
+});
+
+describe('clearOverlaps — a grown square never lies over its neighbours', () => {
+  const at = (id: string, x: number, y: number, w: number, h: number) => ({
+    id: id as AnalysisId,
+    slot: { x, y, w, h },
+  });
+  it('moves what the grown cutting covers to just below it, and nothing else', () => {
+    const out = clearOverlaps(
+      [at('pacing', 0, 20, 4, 7), at('week', 4, 20, 4, 7), at('restock', 0, 20, 12, 8), at('writing', 0, 40, 12, 3)],
+      'restock' as AnalysisId,
+    );
+    const slot = (id: string) => out.find((c) => c.id === id)?.slot;
+    expect(slot('restock')).toEqual({ x: 0, y: 20, w: 12, h: 8 });
+    expect(slot('pacing')).toEqual({ x: 0, y: 28, w: 4, h: 7 });
+    expect(slot('week')).toEqual({ x: 4, y: 28, w: 4, h: 7 });
+    // The writing desk sat in a gap below and nothing covered it: it stays put.
+    expect(slot('writing')).toEqual({ x: 0, y: 40, w: 12, h: 3 });
+  });
+  it('is the same array when nothing is covered', () => {
+    const cs = [at('till', 0, 0, 5, 9), at('goals', 5, 0, 7, 9)];
+    expect(clearOverlaps(cs, 'till' as AnalysisId)).toBe(cs);
   });
 });

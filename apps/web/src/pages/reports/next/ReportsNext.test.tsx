@@ -676,6 +676,29 @@ describe('ReportsNext — the subject is the reader’s too', () => {
     expect(saved.cuttings.some((c) => c.id === 'quadrants')).toBe(false);
   });
 
+  it('saves a swap that grew its square with nothing laid over its neighbours', async () => {
+    paint();
+    arrange();
+    // "What's coming" is a 4 x 7 square on the default sheet; the restock list is 12 wide.
+    const ahead = screen.getByRole('region', { name: 'What’s coming' });
+    fireEvent.change(within(ahead).getByLabelText('Show instead of What’s coming'), {
+      target: { value: 'restock' },
+    });
+    await ruleItOff();
+    const saved = saveSheet.mock.calls[0][0] as {
+      cuttings: Array<{ id: string; slot: { x: number; y: number; w: number; h: number } }>;
+    };
+    const over = (a: (typeof saved.cuttings)[number]['slot'], b: typeof a) =>
+      a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    const laid: string[] = [];
+    for (let i = 0; i < saved.cuttings.length; i++)
+      for (let j = i + 1; j < saved.cuttings.length; j++)
+        if (over(saved.cuttings[i].slot, saved.cuttings[j].slot))
+          laid.push(`${saved.cuttings[i].id}/${saved.cuttings[j].id}`);
+    expect(laid).toEqual([]);
+    expect(saved.cuttings.find((c) => c.id === 'restock')?.slot.w).toBe(12);
+  });
+
   it('offers the whole catalogue, and refuses to show the same register twice', () => {
     paint();
     arrange();
