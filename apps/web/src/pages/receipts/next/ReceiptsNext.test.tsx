@@ -144,6 +144,7 @@ vi.mock('../../../services/api/orders', () => ({
 }));
 
 import ReceiptsNext, { PaperPane } from './ReceiptsNext';
+import { documentsApi } from '../../../services/api/documents';
 import { isSignedUrlExpired } from './rc2-format';
 
 function doc(over: Partial<ProcurementDocument>): ProcurementDocument {
@@ -935,6 +936,38 @@ describe('ReceiptsNext — the linked order comes from the links, not the row', 
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Check line pairing' })).toBeDisabled();
     expect(screen.getByText('needs a linked order first')).toBeInTheDocument();
+  });
+
+  it('a failed re-run shows only the failure, not the last run\'s result', async () => {
+    api.queue = [unpaired()];
+    api.detail = {
+      document: unpaired(),
+      lines: [line],
+      links: [{ id: 'k1', document_id: 'd1', order_id: 'o1' }] as never[],
+    };
+    const match = vi.mocked(documentsApi.match);
+    match.mockResolvedValueOnce({
+      applied: [],
+      suggested: [],
+      unmatchedDocumentLineIds: ['l1', 'l2'],
+      unmatchedOrderLineIds: [],
+    });
+    let reject: (e: Error) => void = () => {};
+    match.mockImplementationOnce(() => new Promise((_, rej) => { reject = rej; }));
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    const btn = await screen.findByRole('button', { name: 'Check line pairing' });
+    await waitFor(() => expect(btn).toBeEnabled());
+    fireEvent.click(btn);
+    expect(await screen.findByText(/2 on the paper with no order line/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Check line pairing' }));
+    // waiting: the old result is gone and a waiting line stands in its place
+    expect(await screen.findByText('Checking the lines against the order…')).toBeInTheDocument();
+    expect(screen.queryByText(/on the paper with no order line/)).toBeNull();
+    await act(async () => reject(new Error('pairing backend is down')));
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(screen.queryByText(/on the paper with no order line/)).toBeNull();
+    expect(screen.queryByText('Checking the lines against the order…')).toBeNull();
   });
 
   it('says why the pairing check is off while the link could not be read (W18)', async () => {
