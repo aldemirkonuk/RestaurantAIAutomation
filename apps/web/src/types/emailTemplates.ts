@@ -1,6 +1,7 @@
 /**
  * Email Template Types
- * Defines the structure for email templates used in GmailTemplateBuilder
+ * Defines the structure for email templates used by the quick-send letter modal
+ * and the default templates in data/emailTemplateCategories
  */
 
 export type TemplateCategory = 'Inventory' | 'Financial' | 'Order' | 'Custom'
@@ -113,6 +114,48 @@ export interface TemplatePanel {
     | ImageConfig
   locked?: boolean
   visible?: boolean
+}
+
+/** One block of a template as the quick-send letter modal reads it. */
+export interface SavedTemplatePanel {
+  id: string
+  type:
+    | 'text'
+    | 'image'
+    | 'chart-bar'
+    | 'chart-pie'
+    | 'chart-line'
+    | 'table'
+    | 'financial'
+    | 'metric'
+    | 'header'
+    | 'divider'
+    | 'spacer'
+    | 'button'
+  title: string
+  content: any
+  config: {
+    backgroundColor?: string
+    textColor?: string
+    fontSize?: 'small' | 'medium' | 'large'
+    padding?: 'small' | 'medium' | 'large'
+    alignment?: 'left' | 'center' | 'right'
+    borderRadius?: 'none' | 'small' | 'medium' | 'large'
+  }
+}
+
+/** A template as the quick-send letter modal lists and prefills it. */
+export interface SavedTemplate {
+  id: string
+  name: string
+  description: string
+  subject: string
+  panels: SavedTemplatePanel[]
+  thumbnail: string
+  category: 'inventory' | 'financial' | 'order' | 'custom'
+  created_at: Date
+  last_modified: Date
+  used_count: number
 }
 
 export interface EmailTemplate {
