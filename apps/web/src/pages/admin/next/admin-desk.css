@@ -15,6 +15,7 @@
 
 .admin-desk {
   min-height: 100vh;
+  min-height: 100svh;
   padding: clamp(20px, 4vw, 56px);
   background: var(--paper-0);
   color: var(--ink-1);

@@ -12,6 +12,7 @@
 
 .rc-page {
   min-height: 100vh;
+  min-height: 100svh;
   background: var(--paper-0, #faf7f1);
   color: var(--ink-1, #211c16);
   font-family: 'Plus Jakarta Sans', 'DM Sans', system-ui, sans-serif;

@@ -18,6 +18,11 @@ export default {
       },
     },
     extend: {
+      // The `screen` heights carry a vh fallback and then svh: a page that must
+      // fit the phone is measured with the browser's toolbars showing (N-11).
+      height: { screen: ['100vh', '100svh'] },
+      minHeight: { screen: ['100vh', '100svh'] },
+      maxHeight: { screen: ['100vh', '100svh'] },
       colors: {
         // ── Mudavym (ADR 0042) — ADDITIVE. Var-backed so the same utility
         // follows light/charcoal ground inside a `.mudavym` scope; the

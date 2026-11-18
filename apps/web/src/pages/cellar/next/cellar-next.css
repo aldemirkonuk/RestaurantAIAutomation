@@ -122,6 +122,7 @@
   }
   .cl-split-index {
     max-height: calc(100vh - 220px);
+    max-height: calc(100svh - 220px);
   }
 }
 /* Roomier still: a wider index column, and its second line — style/vintage
