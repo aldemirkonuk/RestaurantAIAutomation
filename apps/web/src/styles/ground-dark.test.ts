@@ -108,3 +108,18 @@ describe('the focus ring rule', () => {
     }
   });
 });
+
+describe('the first-run pages carry no light-only colours', () => {
+  // r60 walk: on charcoal, /get-started showed a white header, white role chips
+  // holding cream text, and a near-black headline on the dark ground.
+  for (const f of ['GetStarted', 'HouseMenu', 'HouseContents']) {
+    it(`${f}.tsx uses the ground tokens, not white or fixed greys, and its headings name an ink`, () => {
+      const src = readFileSync(join(__dirname, '..', 'pages', `${f}.tsx`), 'utf8');
+      expect(src).not.toMatch(/\bbg-white\b/);
+      expect(src).not.toMatch(/text-\[#6d685f\]|text-\[#b7b2a8\]/);
+      for (const m of src.matchAll(/<h[12] className="([^"]*)"/g)) {
+        expect(m[1]).toContain('text-inkm-1');
+      }
+    });
+  }
+});

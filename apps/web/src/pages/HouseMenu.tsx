@@ -81,7 +81,7 @@ export default function HouseMenu() {
       <div className="min-h-screen bg-paper-0 px-6 py-16 text-inkm-1">
         <div className="mx-auto max-w-2xl">
           <BrandMark size={24} alt="Mudavym" />
-          <h1 className="mt-8 font-serif text-4xl">No menu has been read yet.</h1>
+          <h1 className="text-inkm-1 mt-8 font-serif text-4xl">No menu has been read yet.</h1>
           <button onClick={() => navigate('/get-started')} className="mt-6 text-[#1a5e6b] underline">
             Read a menu
           </button>
@@ -95,8 +95,8 @@ export default function HouseMenu() {
       <div className="min-h-screen bg-paper-0 px-6 py-16 text-inkm-1">
         <div className="mx-auto max-w-2xl">
           <BrandMark size={24} alt="Mudavym" />
-          <h1 className="mt-8 font-serif text-4xl">We couldn&apos;t read this file.</h1>
-          <p className="mt-4 text-[#6d685f]">Nothing was set. Try a clearer photo or a PDF of the drinks list.</p>
+          <h1 className="text-inkm-1 mt-8 font-serif text-4xl">We couldn&apos;t read this file.</h1>
+          <p className="mt-4 text-inkm-4">Nothing was set. Try a clearer photo or a PDF of the drinks list.</p>
           <button onClick={() => navigate('/get-started')} className="mt-6 text-[#1a5e6b] underline">
             Try another menu
           </button>
@@ -146,15 +146,15 @@ export default function HouseMenu() {
 
   return (
     <div className="min-h-screen bg-paper-0 text-inkm-1">
-      <header className="h-14 border-b border-[#211f1b]/15 bg-white px-5 flex items-center justify-between">
+      <header className="h-14 border-b border-[#211f1b]/15 bg-paper-0 px-5 flex items-center justify-between">
         <BrandMark size={24} alt="Mudavym" />
         <span className="font-mono text-[11px] uppercase tracking-[0.18em]">The first proof</span>
       </header>
       <main className={`mx-auto px-5 py-12 sm:py-16 ${showOriginal && sourceImage ? 'grid max-w-6xl gap-10 lg:grid-cols-2' : 'max-w-4xl'}`}>
         <div>
         <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">House menu · first proof</p>
-        <h1 className="mt-3 font-serif text-5xl">Your menu, set by Mudavym.</h1>
-        <p className="mt-4 max-w-2xl text-[#6d685f]">
+        <h1 className="text-inkm-1 mt-3 font-serif text-5xl">Your menu, set by Mudavym.</h1>
+        <p className="mt-4 max-w-2xl text-inkm-4">
           It&apos;s a first proof — we&apos;ve pencilled the lines worth a second look.
         </p>
         {sourceImage ? (
@@ -175,7 +175,7 @@ export default function HouseMenu() {
         <div className="mt-12 space-y-12">
           {grouped.map(([category, rows]) => (
             <section key={category}>
-              <h2 className="border-b border-[#211f1b]/30 pb-2 font-serif text-3xl">{sectionName(category)}</h2>
+              <h2 className="text-inkm-1 border-b border-[#211f1b]/30 pb-2 font-serif text-3xl">{sectionName(category)}</h2>
               <div>
                 {rows.map((item) => {
                   const expanded = open === item.menuItemId
@@ -203,18 +203,18 @@ export default function HouseMenu() {
                             {[item.producer, item.name, item.vintage].filter(Boolean).join(' · ')}
                           </strong>
                           {markFor(item) === 'pencil' && (
-                            <span className="mt-1 block text-xs italic text-[#6d685f]">Worth a second look</span>
+                            <span className="mt-1 block text-xs italic text-inkm-4">Worth a second look</span>
                           )}
                           {markFor(item) === 'ring' && (
-                            <span className="mt-1 block text-xs italic text-[#6d685f]">Needs a place</span>
+                            <span className="mt-1 block text-xs italic text-inkm-4">Needs a place</span>
                           )}
                         </span>
                         <span className="font-mono text-sm">{price(item)}</span>
                       </button>
                       {expanded && (
-                        <div className="mb-5 ml-9 grid gap-5 border-l border-dashed border-[#1a5e6b] bg-white p-5 sm:grid-cols-2">
+                        <div className="mb-5 ml-9 grid gap-5 border-l border-dashed border-[#1a5e6b] bg-paper-1 p-5 sm:grid-cols-2">
                           <div>
-                            <p className="text-xs uppercase tracking-wider text-[#6d685f]">From the original</p>
+                            <p className="text-xs uppercase tracking-wider text-inkm-4">From the original</p>
                             {(() => {
                               const crop = lineSourceCrop(item, sourceImage)
                               if (crop) {
@@ -227,7 +227,7 @@ export default function HouseMenu() {
                                 )
                               }
                               return (
-                                <p className="mt-2 text-sm text-[#6d685f]">
+                                <p className="mt-2 text-sm text-inkm-4">
                                   {sourceImage
                                     ? 'No crop of this line — the reading did not return a box.'
                                     : 'No crop of this line — the original page was not kept.'}
@@ -237,14 +237,14 @@ export default function HouseMenu() {
                             <blockquote className="mt-2 font-serif text-lg">
                               {item.rawText || item.name}
                             </blockquote>
-                            <p className="mt-3 text-sm text-[#6d685f]">
+                            <p className="mt-3 text-sm text-inkm-4">
                               {item.category
                                 ? `Read into ${sectionName(item.category)} from this line.`
                                 : 'We could not tell which section this belongs in.'}
                             </p>
                           </div>
                           <div>
-                            <p className="text-xs uppercase tracking-wider text-[#6d685f]">Place this line</p>
+                            <p className="text-xs uppercase tracking-wider text-inkm-4">Place this line</p>
                             <div className="mt-3 flex flex-wrap gap-2">
                               {sectionOrder.map((choice) => (
                                 <button
@@ -269,12 +269,12 @@ export default function HouseMenu() {
           ))}
         </div>
         {kitchen.length > 0 && (
-          <p className="mt-10 text-sm text-[#6d685f]">
+          <p className="mt-10 text-sm text-inkm-4">
             {kitchen.length} kitchen {kitchen.length === 1 ? 'line' : 'lines'} set aside — not Mudavym&apos;s job yet.
           </p>
         )}
         {absent.length > 0 && (
-          <div className="mt-12 border-t border-[#211f1b]/20 pt-6 text-sm text-[#6d685f]">
+          <div className="mt-12 border-t border-[#211f1b]/20 pt-6 text-sm text-inkm-4">
             <p>
               Not on this menu: {absent.slice(0, 4).map(sectionName).join(', ')}. Pour any of these?{' '}
               <button type="button" onClick={() => {
@@ -327,7 +327,7 @@ export default function HouseMenu() {
         </div>
         {showOriginal && sourceImage && (
           <aside className="border-l border-[#211f1b]/15 pl-6">
-            <p className="text-xs uppercase tracking-wider text-[#6d685f]">Your original</p>
+            <p className="text-xs uppercase tracking-wider text-inkm-4">Your original</p>
             <img src={sourceImage} alt="Your original menu" className="mt-4 w-full" />
           </aside>
         )}

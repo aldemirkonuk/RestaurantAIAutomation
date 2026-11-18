@@ -37,9 +37,9 @@ function ArrivalShell({
   }[step]
   return (
     <div className="min-h-screen bg-paper-0 text-inkm-1">
-      <header className="h-14 border-b border-[#211f1b]/15 px-5 flex items-center justify-between bg-white">
+      <header className="h-14 border-b border-[#211f1b]/15 px-5 flex items-center justify-between bg-paper-0">
         <BrandMark size={24} alt="Mudavym" />
-        <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#6d685f]">
+        <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-inkm-4">
           {label}
         </span>
       </header>
@@ -210,7 +210,7 @@ export default function GetStarted() {
     return (
       <ArrivalShell step={step}>
         <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">Welcome</p>
-        <h1 className="mt-3 font-serif text-4xl sm:text-5xl leading-tight">
+        <h1 className="text-inkm-1 mt-3 font-serif text-4xl sm:text-5xl leading-tight">
           Welcome, {name.trim().split(/\s+/)[0] || 'there'}. Let&apos;s set up your restaurant.
         </h1>
         <div className="mt-10 space-y-7">
@@ -234,7 +234,7 @@ export default function GetStarted() {
             />
           </label>
           {mobile.trim() && (
-            <p className="text-sm text-[#6d685f]">
+            <p className="text-sm text-inkm-4">
               If you give a number, we may text urgent stock alerts only. Never marketing.
               Reply <strong>STOP</strong> anytime. Optional — the account does not depend on it.
             </p>
@@ -247,7 +247,7 @@ export default function GetStarted() {
                   key={item}
                   type="button"
                   onClick={() => setRole(item)}
-                  className={`border px-3 py-2 text-sm ${role === item ? 'border-[#1a5e6b] bg-[#1a5e6b] text-white' : 'border-[#211f1b]/20 bg-white'}`}
+                  className={`border px-3 py-2 text-sm ${role === item ? 'border-[#1a5e6b] bg-[#1a5e6b] text-white' : 'border-[#211f1b]/20 bg-paper-0'}`}
                 >
                   {item}
                 </button>
@@ -272,12 +272,12 @@ export default function GetStarted() {
     return (
       <ArrivalShell step={step}>
         <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">The house</p>
-        <h1 className="mt-3 font-serif text-4xl sm:text-5xl">Your restaurant</h1>
-        <p className="mt-3 max-w-xl text-[#6d685f]">
+        <h1 className="text-inkm-1 mt-3 font-serif text-4xl sm:text-5xl">Your restaurant</h1>
+        <p className="mt-3 max-w-xl text-inkm-4">
           Find the exact place. Its address sets the house&apos;s timezone and reporting currency.
         </p>
         {!isMapsConfigured() && (
-          <p role="status" className="mt-4 text-sm text-[#6d685f]">
+          <p role="status" className="mt-4 text-sm text-inkm-4">
             Places search needs <code>VITE_GOOGLE_MAPS_API_KEY</code>. Type the address by hand until it is set.
           </p>
         )}
@@ -300,7 +300,7 @@ export default function GetStarted() {
           <button type="button" onClick={useMyLocation} className="flex items-center gap-2 text-sm text-[#1a5e6b]">
             <MapPin className="h-4 w-4" /> Use my location
           </button>
-          {locationStatus && <p role="status" className="text-xs text-[#6d685f]">{locationStatus}</p>}
+          {locationStatus && <p role="status" className="text-xs text-inkm-4">{locationStatus}</p>}
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="border-b border-[#211f1b]/25 pb-2">
               <span className="text-xs uppercase tracking-wider">Restaurant name · required</span>
@@ -340,9 +340,9 @@ export default function GetStarted() {
     return (
       <ArrivalShell step={step}>
         <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">The first inscription</p>
-        <h1 className="mt-3 font-serif text-4xl sm:text-5xl">Your menu</h1>
-        <p className="mt-3 text-[#6d685f]">Drop the menu here. Mudavym will set it as the house&apos;s own list.</p>
-        {notice && <p role="status" className="mt-3 text-sm text-[#6d685f]">{notice}</p>}
+        <h1 className="text-inkm-1 mt-3 font-serif text-4xl sm:text-5xl">Your menu</h1>
+        <p className="mt-3 text-inkm-4">Drop the menu here. Mudavym will set it as the house&apos;s own list.</p>
+        {notice && <p role="status" className="mt-3 text-sm text-inkm-4">{notice}</p>}
         <button
           type="button"
           onClick={() => setMenuMethod(menuMethod === 'photo' ? null : 'photo')}
@@ -363,7 +363,7 @@ export default function GetStarted() {
           }`}
         >
           <span className="font-serif text-3xl">Drop the menu here</span>
-          <span className="mt-3 text-sm text-[#6d685f]">
+          <span className="mt-3 text-sm text-inkm-4">
             {saving ? 'Reading…' : 'A photo, or click to photograph.'}
           </span>
         </button>
@@ -380,12 +380,12 @@ export default function GetStarted() {
           {menuMethod === 'file' && <MenuCsvUpload onSuccess={menuRead} />}
           {menuMethod === 'typed' && <MenuManualEntry onSuccess={menuRead} />}
         </div>
-        <div className="mt-8 border border-dashed border-[#211f1b]/20 px-4 py-3 text-sm text-[#b7b2a8]">
+        <div className="mt-8 border border-dashed border-[#211f1b]/20 px-4 py-3 text-sm text-inkm-4 opacity-70">
           <p className="text-[11px] uppercase tracking-[0.12em]">Later</p>
           <p>Your last invoice — read the same way, set beside the menu. Not a step now.</p>
         </div>
         <div className="mt-6 border-t border-[#211f1b]/15 pt-5">
-          <button type="button" onClick={() => navigate('/house', { replace: true })} className="text-sm text-[#6d685f] underline underline-offset-4">
+          <button type="button" onClick={() => navigate('/house', { replace: true })} className="text-sm text-inkm-4 underline underline-offset-4">
             Skip for now — open the house
           </button>
         </div>
@@ -396,13 +396,13 @@ export default function GetStarted() {
   return (
     <ArrivalShell step="reading">
       <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">Reading</p>
-      <h1 className="mt-3 font-serif text-4xl sm:text-5xl">The facts are settling.</h1>
+      <h1 className="text-inkm-1 mt-3 font-serif text-4xl sm:text-5xl">The facts are settling.</h1>
       <div className="mt-12 space-y-4 border-y border-[#211f1b]/20 py-7 font-serif text-2xl">
         <p>Lines named.</p>
         <p>Prices placed.</p>
         <p>Sections taking shape.</p>
       </div>
-      <p role="status" className="mt-6 text-sm text-[#6d685f]">Opening the first proof…</p>
+      <p role="status" className="mt-6 text-sm text-inkm-4">Opening the first proof…</p>
     </ArrivalShell>
   )
 }

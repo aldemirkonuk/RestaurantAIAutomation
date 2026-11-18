@@ -40,18 +40,18 @@ export default function HouseContents() {
 
   return (
     <div className="min-h-screen bg-paper-0 text-inkm-1">
-      <header className="h-14 border-b border-[#211f1b]/15 bg-white px-5 flex items-center justify-between">
+      <header className="h-14 border-b border-[#211f1b]/15 bg-paper-0 px-5 flex items-center justify-between">
         <BrandMark size={24} alt="Mudavym" />
-        <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#6d685f]">The house</span>
+        <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-inkm-4">The house</span>
       </header>
       <main className="mx-auto max-w-2xl px-5 py-12 sm:py-16">
         <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">Contents</p>
-        <h1 className="mt-3 font-serif text-5xl">Your house.</h1>
-        <p className="mt-4 text-[#6d685f]">One thing at a time. The rest can wait.</p>
+        <h1 className="text-inkm-1 mt-3 font-serif text-5xl">Your house.</h1>
+        <p className="mt-4 text-inkm-4">One thing at a time. The rest can wait.</p>
 
         <div className="mt-12 divide-y divide-[#211f1b]/15 border-y border-[#211f1b]/15">
           <div className="py-6">
-            <p className="text-xs uppercase tracking-wider text-[#6d685f]">Menu</p>
+            <p className="text-xs uppercase tracking-wider text-inkm-4">Menu</p>
             {proof ? (
               <button
                 type="button"
@@ -61,7 +61,7 @@ export default function HouseContents() {
                 {pencilled === 0 ? 'The first proof is set.' : `${pencilled} pencilled`}
               </button>
             ) : (
-              <p className="mt-2 font-serif text-2xl text-[#6d685f]">No menu read yet.</p>
+              <p className="mt-2 font-serif text-2xl text-inkm-4">No menu read yet.</p>
             )}
           </div>
 
@@ -98,8 +98,8 @@ export default function HouseContents() {
           )}
 
           <label
-            className={`block py-6 font-serif text-2xl text-[#b7b2a8] ${
-              invoiceDropping ? 'bg-white' : ''
+            className={`block py-6 font-serif text-2xl text-inkm-4 opacity-70 ${
+              invoiceDropping ? 'bg-paper-0' : ''
             }`}
           >
             <span className="text-xs uppercase tracking-[0.12em]">Later · not required</span>
@@ -137,7 +137,7 @@ export default function HouseContents() {
             </span>
           </label>
 
-          <p className="py-6 font-serif text-2xl text-[#b7b2a8]">
+          <p className="py-6 font-serif text-2xl text-inkm-4 opacity-70">
             <span className="block text-xs uppercase tracking-[0.12em]">Later · not a first-run step</span>
             <span className="mt-2 block">Cellar registers · later</span>
             <button
