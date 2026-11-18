@@ -252,6 +252,7 @@ describe("AuthService#resetPassword", () => {
     updateError: any = null,
     readError: any = null,
     consumeError: any = null,
+    userReadError: any = null,
   ) {
     const resetsSelectChain: any = {
       select: () => resetsSelectChain,
@@ -271,7 +272,10 @@ describe("AuthService#resetPassword", () => {
     const usersChain: any = {
       select: () => ({
         eq: () => ({
-          maybeSingle: async () => ({ data: userRow, error: null }),
+          maybeSingle: async () =>
+            userReadError
+              ? { data: null, error: userReadError }
+              : { data: userRow, error: null },
         }),
       }),
       update: () => ({
@@ -413,5 +417,23 @@ describe("AuthService#resetPassword", () => {
       .catch((e) => e);
     expect(err).toBeInstanceOf(ServiceUnavailableException);
     expect(String(err.message)).not.toContain("db down");
+  });
+
+  it("says a failed read of the account row is a fault to retry", async () => {
+    const svc = makeResetPasswordService(
+      {
+        id: "r1",
+        user_id: "u1",
+        expires_at: new Date(Date.now() + 60_000).toISOString(),
+        used_at: null,
+      },
+      null,
+      null,
+      null,
+      { message: "db down" },
+    );
+    await expect(
+      svc.resetPassword("good-token", "newpassword1"),
+    ).rejects.toThrow(ServiceUnavailableException);
   });
 });
