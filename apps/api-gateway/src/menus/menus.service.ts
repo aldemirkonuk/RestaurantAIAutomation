@@ -476,6 +476,13 @@ export class MenusService {
         ? await this.keepSource(restaurantId, sourceBytes, sourceMime)
         : null;
 
+    // 2b. The same file as a menu already kept is said, not refused: a second
+    // read of it is a choice the house may mean (a fresh photo read, a re-run).
+    if (kept?.path) {
+      const again = await this.earlierReadOfFile(restaurantId, kept.sha256);
+      if (again) notes = [...notes, again];
+    }
+
     // 3. A new version, in draft: kept whether or not it is ever made current.
     const menu = await this.createVersion(restaurantId, userId, dto, items, kept, menuDate);
 
@@ -592,6 +599,22 @@ export class MenusService {
         failure: `the source file was not kept: ${err?.message ?? "unknown error"}`,
       };
     }
+  }
+
+  /** A note when a menu the house keeps was read from these same bytes; one too when that could not be looked up. */
+  private async earlierReadOfFile(restaurantId: string, sha256: string): Promise<CsvRowIssue | null> {
+    const { data, error } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .select("id, status")
+      .eq("restaurant_id", restaurantId)
+      .eq("source_sha256", sha256)
+      .limit(20);
+    if (error) return { row: 0, reason: "same_file_unchecked", raw: error.message };
+    const rows = (data ?? []) as Array<{ id: string; status: string }>;
+    if (rows.length === 0) return null;
+    // The current menu is the one worth naming when it is among them.
+    const status = rows.some((r) => r.status === "active") ? "active" : rows[0].status;
+    return { row: 0, reason: "same_file", raw: status };
   }
 
   private async createVersion(
