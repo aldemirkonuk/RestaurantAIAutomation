@@ -58,15 +58,25 @@ export function ResetPassword() {
       setSuccess(true)
       setTimeout(() => navigate('/login', { replace: true }), 2500)
     } catch (err: any) {
-      // The backend distinguishes invalid/expired/already-used; surfacing its
-      // message is safe here — unlike the request step, a reset token in the
-      // URL already proves the caller received the email, so there is no
-      // enumeration risk in saying why it didn't work.
-      setError(
-        err?.response?.data?.message ||
-          'This reset link is invalid or has expired. Request a new one below.',
-      )
-      setTokenError(true)
+      // Only a 400 is the server saying the link cannot be used (invalid,
+      // expired, already used), and its message says which. Anything else
+      // (no connection, the throttle, a server fault) says nothing about the
+      // link, so it must not be called dead and must not send the person to
+      // spend it and ask for another. The change may even have landed with
+      // the answer lost, so the words say how to tell.
+      if (err?.response?.status === 400) {
+        setError(
+          err?.response?.data?.message ||
+            'This reset link is invalid or has expired. Request a new one below.',
+        )
+        setTokenError(true)
+      } else if (err?.response?.status === 429) {
+        setError('Too many tries. Wait a few minutes, then try again.')
+      } else {
+        setError(
+          'We could not confirm the change. Try again; if it says the link was already used, sign in with the new password.',
+        )
+      }
     } finally {
       setLoading(false)
     }

@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { type ReactElement } from 'react'
 const h = vi.hoisted(() => ({
@@ -421,7 +421,7 @@ it('only offers a new reset link for a server-confirmed token failure, not a cli
   ).not.toBeInTheDocument()
 
   h.axiosPost.mockRejectedValueOnce({
-    response: { data: { message: 'This reset link has expired.' } },
+    response: { status: 400, data: { message: 'This reset link has expired.' } },
   })
   fireEvent.change(screen.getByLabelText('Confirm new password'), {
     target: { value: 'password-one' },
@@ -433,4 +433,34 @@ it('only offers a new reset link for a server-confirmed token failure, not a cli
   expect(
     screen.getByRole('link', { name: 'Request a new link' }),
   ).toHaveAttribute('href', '/forgot-password')
+})
+
+it('a reset that failed for want of a connection does not call the link dead', async () => {
+  mount(<ResetPassword />, '/reset-password?token=example-token')
+  fireEvent.change(screen.getByLabelText('New password'), {
+    target: { value: 'password-one' },
+  })
+  fireEvent.change(screen.getByLabelText('Confirm new password'), {
+    target: { value: 'password-one' },
+  })
+  const failures: unknown[] = [
+    new Error('Network Error'),
+    { response: { status: 503, data: { message: 'Service Unavailable' } } },
+    { response: { status: 429, data: { message: 'ThrottlerException' } } },
+  ]
+  for (const failure of failures) {
+    h.axiosPost.mockRejectedValueOnce(failure)
+    fireEvent.click(screen.getByRole('button', { name: 'Reset password' }))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/try again/i)
+    expect(alert).not.toHaveTextContent(/invalid|expired|Request a new/i)
+    expect(alert).not.toHaveTextContent(/Service Unavailable|Throttler/)
+    expect(
+      screen.queryByRole('link', { name: 'Request a new link' }),
+    ).not.toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Reset password' })).toBeEnabled(),
+    )
+  }
+  expect(h.axiosPost).toHaveBeenCalledTimes(3)
 })
