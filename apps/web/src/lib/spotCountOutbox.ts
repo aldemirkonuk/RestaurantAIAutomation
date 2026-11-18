@@ -25,6 +25,14 @@ import {
 
 const MUTATION_TYPE = 'inventory.spotCount'
 
+/**
+ * Said on `window` when a flush leaves the house with a count it did not have
+ * before. A held count is sent from places no page owns (sign-in, the sync
+ * manager, a tab coming back), so whoever shows what the house has counted
+ * listens for this instead of waiting for its own timer.
+ */
+export const SPOT_COUNT_SENT_EVENT = 'mudavym:spot-count-sent'
+
 // No attempt ceiling (ADR 0241, OD-203 (a)). This queue used to delete a
 // count after 8 failed attempts, and on any permanent refusal, with nothing
 // said to anyone. A count now leaves the queue only when the server takes it,
@@ -156,6 +164,7 @@ export async function flushSpotCountOutbox(): Promise<{
     }
   }
 
+  if (sent > 0) window.dispatchEvent(new CustomEvent(SPOT_COUNT_SENT_EVENT, { detail: { sent } }))
   return { sent, failed, parked }
 }
 
