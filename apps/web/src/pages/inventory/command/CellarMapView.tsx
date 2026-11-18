@@ -10,6 +10,7 @@ import type { StorageLocation } from '../../../hooks/useStorageLocations'
 import type { InventoryItem } from '../useInventoryPage'
 import { StockGauge } from './bits'
 import { rolledUpTotals, rollupLabel } from '../../../components/inventory/zoneNesting'
+import { EmptyState } from '../../../components/mudavym/EmptyState'
 
 /** A tile's tint. Named by colour so each page can attach its own words. */
 export type MapTone = 'violet' | 'rose' | 'amber' | 'green' | 'neutral'
@@ -130,13 +131,11 @@ export function CellarMapView({
 
   if (locations.length === 0) {
     return (
-      <div className="bg-white border border-gray-100 rounded-2xl p-12 text-center">
-        <h3 className="text-base font-bold text-gray-900 mb-1">No storage locations yet</h3>
-        <p className="text-sm text-gray-500 mb-4">Create zones like Main Cellar, VIP Reserve, or Bar Stock to see the map.</p>
-        <button onClick={onManageLocations} className="h-9 px-4 bg-wine-600 hover:bg-wine-700 text-white text-xs font-bold rounded-lg">
-          Manage locations
-        </button>
-      </div>
+      <EmptyState
+        art="cellar"
+        sentence="No storage locations yet. Create zones like Main Cellar, VIP Reserve, or Bar Stock to see the map."
+        action={{ label: 'Manage locations', onClick: onManageLocations }}
+      />
     )
   }
 
