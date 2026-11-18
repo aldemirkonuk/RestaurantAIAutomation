@@ -62,7 +62,7 @@ import {
   useMudavymShell,
   type MudavymGround,
 } from '../../lib/mudavym/shellGround';
-import { ink, settle, tuck, useReducedMotion, animate, type MotionToken } from '../../lib/mudavym/motion';
+import { ink, settle, tuck, exit, scrimOut, useReducedMotion, animate, type MotionToken } from '../../lib/mudavym/motion';
 import { useSheetStack } from './sheetStackContext';
 import { Denied, type DeniedProps } from './Denied';
 import {
@@ -717,6 +717,56 @@ function OverlayRoot({
     [onClose, onTear, reduced, bottom],
   );
 
+  /* ── the clean leave (design critic N-12) ───────────────────────────────
+     A clean Close, Esc or outside click used to cut. It now leaves in 140 ms:
+     the panel slides 12 px and fades on `exit` (ease-in, so it accelerates
+     away), the scrim fades on its own 100 ms. Reduced motion keeps the leave
+     but drops the travel: opacity only, 120 ms. A popover stays instant (a
+     menu belongs to a control that has not moved). Where the browser has no
+     Web Animations (jsdom) the close is synchronous, as before. `onClose`
+     follows the motion; the animations are cancelled a frame later in case the
+     caller kept the sheet open, so it cannot be left invisible. */
+  const exiting = useRef(false);
+  const exitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (exitTimer.current) clearTimeout(exitTimer.current);
+    },
+    [],
+  );
+  const exitClose = useCallback(() => {
+    if (exiting.current) return;
+    const panel = panelRef.current;
+    if (shape === 'popover' || !panel || typeof panel.animate !== 'function') {
+      onClose();
+      return;
+    }
+    exiting.current = true;
+    const scrim = panel.parentElement?.querySelector('.mdv-ovl__scrim') ?? null;
+    const travel = reduced ? 'none' : bottom ? 'translateY(12px)' : 'translateX(12px)';
+    const fx: Animation[] = [];
+    const leaving = animate(
+      panel,
+      [
+        { transform: 'none', opacity: 1 },
+        { transform: travel, opacity: 0 },
+      ],
+      exit,
+    );
+    if (leaving) fx.push(leaving);
+    const dim = scrim ? animate(scrim, [{ opacity: 1 }, { opacity: 0 }], scrimOut) : null;
+    if (dim) fx.push(dim);
+    const ms = reduced ? (exit.reducedMs ?? exit.ms) : exit.ms;
+    exitTimer.current = setTimeout(() => {
+      exitTimer.current = null;
+      exiting.current = false;
+      onClose();
+      const settle = () => fx.forEach((a) => a.cancel());
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(settle);
+      else settle();
+    }, ms);
+  }, [onClose, reduced, bottom, shape]);
+
   /* The Close control. A tear already in flight has told the caller (`onTear`)
      and scheduled its own `onClose`; clicking Close during the tuck finishes
      that leave NOW rather than starting a second one — before 2026-09-17 it
@@ -726,9 +776,11 @@ function OverlayRoot({
       if (tearTimer.current) clearTimeout(tearTimer.current);
       tearTimer.current = null;
       tearing.current = false;
+      onClose();
+      return;
     }
-    onClose();
-  }, [onClose]);
+    exitClose();
+  }, [onClose, exitClose]);
 
   /* ── the lean (1d) ──────────────────────────────────────────────────────
      `settle`, 6px, one lean each way and back. The note lives in a polite live
@@ -792,9 +844,9 @@ function OverlayRoot({
         onClose();
         return;
       }
-      onClose();
+      exitClose();
     },
-    [dirty, shape, tear, lean, onTear, onClose],
+    [dirty, shape, tear, lean, onTear, onClose, exitClose],
   );
   leaveRef.current = leave;
 

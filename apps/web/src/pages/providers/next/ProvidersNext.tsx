@@ -31,6 +31,7 @@ import {
   type ProviderCardVM,
 } from "./useProvidersNextData";
 import { useVendorScopes } from "./useVendorScopes";
+import { SlidingPill } from "../../../components/mudavym/SlidingPill";
 import {
   BookSearchBar,
   FindNewVendors,
@@ -283,7 +284,6 @@ export default function ProvidersNext() {
       <style>{`
         .pv-card:hover { border-color: var(--seal-ring, rgba(26,94,107,.32)); background: var(--paper-0, #FAF7F1) }
         .pv-card:focus-visible { outline: 2px solid var(--seal, #1A5E6B); outline-offset: 2px }
-        .pv-seg:focus-visible { outline: 2px solid var(--seal, #1A5E6B); outline-offset: -2px }
         @media (prefers-reduced-motion: reduce) { .pv-card { transition: none !important } }
       `}</style>
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
@@ -304,39 +304,16 @@ export default function ProvidersNext() {
             </h1>
           </div>
           <div className="flex flex-col items-end gap-2">
-            <span
-              role="group"
-              aria-label={SC.page.viewGroup}
-              data-testid="pv-view-toggle"
-              style={{
-                display: 'inline-flex',
-                border: '1px solid var(--paper-2, #EAE4D8)',
-                borderRadius: 8,
-                overflow: 'hidden',
-                fontFamily: SANS,
-              }}
-            >
-              {(['book', 'scorecard'] as const).map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  aria-pressed={view === v}
-                  onClick={() => chooseView(v)}
-                  className="pv-seg"
-                  style={{
-                    padding: '5px 14px',
-                    fontSize: 12.5,
-                    border: 0,
-                    cursor: 'pointer',
-                    color: view === v ? 'var(--ink-1, #211C16)' : 'var(--ink-4, #665D50)',
-                    background: view === v ? 'var(--paper-1, #F3EFE6)' : 'transparent',
-                    transition: `color ${ink.ms}ms ${ink.easing}, background ${ink.ms}ms ${ink.easing}`,
-                  }}
-                >
-                  {v === 'book' ? SC.page.book : SC.page.scorecard}
-                </button>
-              ))}
-            </span>
+            <SlidingPill
+              testId="pv-view-toggle"
+              ariaLabel={SC.page.viewGroup}
+              value={view}
+              onChange={chooseView}
+              options={[
+                { value: 'book', label: SC.page.book },
+                { value: 'scorecard', label: SC.page.scorecard },
+              ]}
+            />
             <span style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)' }}>
               {data.hasData
                 ? `${data.cards.length} vendors — the learned detail lives inside each card`

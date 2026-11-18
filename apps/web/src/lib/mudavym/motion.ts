@@ -26,6 +26,12 @@ export interface MotionToken {
   easing: string;
   /** Duration in milliseconds. */
   ms: number;
+  /**
+   * Under `prefers-reduced-motion` the animation normally collapses to its end
+   * state (duration 0). A token that names `reducedMs` keeps a plain fade of
+   * that length instead; the caller still drops any travel from its keyframes.
+   */
+  reducedMs?: number;
 }
 
 export interface SpringSample extends MotionToken {
@@ -138,6 +144,15 @@ export const tally: MotionToken = { easing: tallySpring.easing, ms: 840 };
 export const leaf: MotionToken = { easing: 'cubic-bezier(0.4, 0, 0.2, 1)', ms: 600 };
 
 /** All tokens by 083 name, for data-driven use. */
+/**
+ * The clean overlay leave (design critic N-12): ease-in so it accelerates away,
+ * 140 ms. Reduced motion keeps it as a 120 ms opacity fade.
+ */
+export const exit: MotionToken = { easing: 'cubic-bezier(0.4, 0, 1, 1)', ms: 140, reducedMs: 120 };
+
+/** The scrim's leave, shorter than the panel's so the page is back first. */
+export const scrimOut: MotionToken = { easing: 'linear', ms: 100, reducedMs: 120 };
+
 export const motionTokens = { settle, ink, tuck, turn, pour, stamp, tally } as const;
 export type MotionTokenName = keyof typeof motionTokens;
 
@@ -195,7 +210,7 @@ export function animate(
   const base: KeyframeAnimationOptions = {
     fill: 'both',
     ...options,
-    duration: reduced ? 0 : token.ms,
+    duration: reduced ? (token.reducedMs ?? 0) : token.ms,
     easing: reduced ? 'linear' : token.easing,
   };
   try {
