@@ -486,7 +486,7 @@
 
 /* Tucked: ~52 px, each verb with its mark. */
 .mdv-counter--strip {
-  width: 52px;
+  width: 56px;
   align-items: center;
   padding-top: 10px;
 }
@@ -540,6 +540,109 @@
   font-family: var(--mdv-mono);
   font-size: 12px;
   color: var(--ink-1);
+}
+
+/* ── the dot, the quiet column and the sync line (r58, N-09) ────────────
+   Six-pixel dot per verb. Quiet is a hairline-ringed dot, "something waits"
+   fills with the seal teal, and the one that waits on THIS person breathes a
+   halo (1.6 s). The halo is a pseudo-element moved by transform + opacity
+   only; under reduced motion it is a still ring. */
+.mdv-counter__dot {
+  position: relative;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  box-sizing: border-box;
+  border: 1px solid var(--ink-4);
+  background: transparent;
+}
+
+.mdv-counter__dot[data-kind='waits'],
+.mdv-counter__dot[data-kind='owner'] {
+  border-color: var(--seal);
+  background: var(--seal);
+}
+
+.mdv-counter__dot[data-kind='owner']::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 999px;
+  border: 1px solid var(--seal);
+  opacity: 0.5;
+  animation: mdv-halo 1.6s ease-out infinite;
+}
+
+@keyframes mdv-halo {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  70%,
+  100% {
+    transform: scale(2.8);
+    opacity: 0;
+  }
+}
+
+/* Everything is zero: a 56 px column of dots instead of 320 px of "none
+   waiting". It fades in; the width itself does not animate (layout). */
+.mdv-counter--idle {
+  width: 56px;
+  align-items: center;
+  padding-top: 14px;
+}
+
+.mdv-counter--idle .mdv-counter__strip {
+  margin: 0;
+  gap: 2px;
+  animation: mdv-idle-in 280ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+.mdv-counter--idle .mdv-counter__stripverb {
+  padding: 12px 2px;
+  width: 44px;
+  height: 36px;
+  justify-content: center;
+}
+
+@keyframes mdv-idle-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* "synced 12 s ago" with a tiny arc that turns once per second-ish while the
+   page is open; still under reduced motion. */
+.mdv-counter__synced {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mdv-counter__arc {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  border: 1.5px solid var(--paper-2);
+  border-top-color: var(--ink-3);
+}
+
+.mdv-counter__arc[data-spin='true'] {
+  animation: mdv-arc 900ms linear infinite;
+}
+
+@keyframes mdv-arc {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* The counter inside the phone's sheet: the same body, no column chrome. */
@@ -729,6 +832,17 @@
   .mdv-counter__act,
   .mdv-hdr .mdv-hdr__counter {
     transition: none;
+  }
+
+  .mdv-counter__dot[data-kind='owner']::after,
+  .mdv-counter__arc,
+  .mdv-counter--idle .mdv-counter__strip {
+    animation: none;
+  }
+
+  .mdv-counter__dot[data-kind='owner']::after {
+    transform: scale(2);
+    opacity: 0.35;
   }
 }
 
