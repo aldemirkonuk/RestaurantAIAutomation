@@ -53,7 +53,6 @@ import { useLetterSenderStanding } from './Compose/useComposeData';
 import { HouseDrafts, useHouseDrafts, type HouseDraft } from './Compose/HouseDrafts';
 import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
 import { MailTab } from './MailTab';
-import WhoIsWriting from './WhoIsWriting';
 import { mailTabLabel, type MailAnswer } from './mail-format';
 import { useMailSummary } from './useMailData';
 
@@ -69,6 +68,9 @@ const loadDraftedReplyPanel = () => import('./DraftedReplyPanel');
 const ComposeSheet = lazy(() => loadComposeSheet().then((m) => ({ default: m.ComposeSheet })));
 const TemplateSheet = lazy(() => loadTemplateSheet().then((m) => ({ default: m.TemplateSheet })));
 const DraftedReplyPanel = lazy(() => loadDraftedReplyPanel().then((m) => ({ default: m.DraftedReplyPanel })));
+/* Who is writing is drawn under the people list in the Mail tab only (r21), and is
+ * about 21 KB of source Letters never needs. It loads when the Mail tab shows it. */
+const WhoIsWriting = lazy(() => import('./WhoIsWriting'));
 
 /** Wait this long after the page mounts before fetching the sheets nobody has opened yet. */
 const WARM_SHEETS_AFTER_MS = 2500;
@@ -452,7 +454,11 @@ export default function CommunicationsNext() {
             // ADR 0160 §113, Open item 3 (founder, 2026-09-18): senders and
             // strangers are mail, not money. Drawn in the Mail tab since r21
             // (2026-11-13), so Mail reaches every person who writes.
-            whoIsWriting={<WhoIsWriting />}
+            whoIsWriting={
+              <Suspense fallback={null}>
+                <WhoIsWriting />
+              </Suspense>
+            }
           />
         ) : (
         <>
