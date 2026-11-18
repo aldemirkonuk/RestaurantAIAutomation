@@ -1809,6 +1809,7 @@ describe('the live path on the wine register', () => {
     expect(screen.getByTestId('wine-live-note')).toHaveTextContent(
       /no time has been measured/,
     );
+    expect(screen.getByTestId('wine-live-note').textContent).not.toMatch(/socket|stock:updated|restaurant:|MOTIONS/);
   });
 
   it('states the measured figure once a move has actually landed', () => {
@@ -1822,6 +1823,7 @@ describe('the live path on the wine register', () => {
     expect(screen.getByTestId('wine-live-note')).toHaveTextContent(
       /on screen 3 ms later, measured in this tab/,
     );
+    expect(screen.getByTestId('wine-live-note').textContent).not.toMatch(/socket|stock:updated|restaurant:|MOTIONS/);
   });
 
   it('marks the row a live move touched, so the ink flash has something to fire on', () => {
