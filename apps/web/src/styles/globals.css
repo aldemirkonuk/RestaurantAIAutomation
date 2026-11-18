@@ -364,7 +364,7 @@
   .skip-to-content {
     @apply absolute -top-10 left-4 z-[9999];
     @apply px-4 py-2 bg-wine-600 text-white font-medium rounded-lg;
-    @apply focus:top-4 transition-all;
+    @apply focus:top-4 transition-[top];
   }
 }
 
@@ -414,7 +414,7 @@
   .btn {
     @apply inline-flex items-center justify-center gap-2;
     @apply px-4 py-2.5 rounded-lg font-medium text-sm;
-    @apply transition-all duration-150 ease-smooth;
+    @apply transition duration-150 ease-smooth;
     @apply focus-visible:ring-2 focus-visible:ring-offset-2;
   }
 
@@ -652,7 +652,7 @@
   .pill-nav-item {
     @apply px-3 py-1.5 rounded-md text-sm font-medium;
     @apply text-slate-600 hover:text-slate-900;
-    @apply transition-all duration-150;
+    @apply transition duration-150;
   }
 
   .pill-nav-item-active {
@@ -661,7 +661,7 @@
 
   /* Smooth transitions */
   .transition-base {
-    @apply transition-all duration-200 ease-smooth;
+    @apply transition duration-200 ease-smooth;
   }
 
   /* Interactive card */

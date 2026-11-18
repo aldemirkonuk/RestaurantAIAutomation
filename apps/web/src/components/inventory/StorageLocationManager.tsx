@@ -446,7 +446,7 @@ export function StorageLocationManager({
                       setDraggedId(null)
                       setDragOverId(null)
                     }}
-                    className={`p-4 rounded-xl border-2 transition-all cursor-pointer group ${
+                    className={`p-4 rounded-xl border-2 transition cursor-pointer group ${
                       draggedId === location.id
                         ? 'opacity-40 border-gray-300 bg-gray-50 scale-[0.98]'
                         : dragOverId === location.id
@@ -576,7 +576,7 @@ export function StorageLocationManager({
                         ) : (
                           <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
                             <div
-                              className="h-full rounded-full transition-all"
+                              className="h-full rounded-full transition-[width,background-color]"
                               style={{
                                 width: `${Math.min((location.currentCount / location.capacity) * 100, 100)}%`,
                                 backgroundColor: location.color,
@@ -924,7 +924,7 @@ export function StorageLocationManager({
                         ) : (
                           <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
                             <div
-                              className="h-full rounded-full transition-all"
+                              className="h-full rounded-full transition-[width,background-color]"
                               style={{
                                 width: `${Math.min((editingLocationWines.reduce((s, w) => s + w.quantity, 0) / editingLocation.capacity) * 100, 100)}%`,
                                 backgroundColor: editingLocation.color,

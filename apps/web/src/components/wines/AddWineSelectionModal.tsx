@@ -74,7 +74,7 @@ export function AddWineSelectionModal({
                   onSelectSingle()
                   onClose()
                 }}
-                className="group relative p-6 rounded-2xl border-2 border-wine-200 hover:border-wine-500 bg-gradient-to-br from-wine-50 to-white hover:shadow-xl transition-all text-left"
+                className="group relative p-6 rounded-2xl border-2 border-wine-200 hover:border-wine-500 bg-gradient-to-br from-wine-50 to-white hover:shadow-xl transition text-left"
               >
                 <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
                   <div className="p-1.5 bg-wine-600 rounded-full">
@@ -105,7 +105,7 @@ export function AddWineSelectionModal({
                   onSelectMenu()
                   onClose()
                 }}
-                className="group relative p-6 rounded-2xl border-2 border-indigo-200 hover:border-indigo-500 bg-gradient-to-br from-indigo-50 to-white hover:shadow-xl transition-all text-left"
+                className="group relative p-6 rounded-2xl border-2 border-indigo-200 hover:border-indigo-500 bg-gradient-to-br from-indigo-50 to-white hover:shadow-xl transition text-left"
               >
                 <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
                   <div className="p-1.5 bg-indigo-600 rounded-full">
@@ -137,7 +137,7 @@ export function AddWineSelectionModal({
                     onSelectAuction()
                     onClose()
                   }}
-                  className="group relative p-6 rounded-2xl border-2 border-amber-200 hover:border-amber-500 bg-gradient-to-br from-amber-50 to-white hover:shadow-xl transition-all text-left"
+                  className="group relative p-6 rounded-2xl border-2 border-amber-200 hover:border-amber-500 bg-gradient-to-br from-amber-50 to-white hover:shadow-xl transition text-left"
                 >
                   <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
                     <div className="p-1.5 bg-amber-600 rounded-full">
@@ -169,7 +169,7 @@ export function AddWineSelectionModal({
                     onSelectReceipt()
                     onClose()
                   }}
-                  className="group relative p-6 rounded-2xl border-2 border-emerald-200 hover:border-emerald-500 bg-gradient-to-br from-emerald-50 to-white hover:shadow-xl transition-all text-left"
+                  className="group relative p-6 rounded-2xl border-2 border-emerald-200 hover:border-emerald-500 bg-gradient-to-br from-emerald-50 to-white hover:shadow-xl transition text-left"
                 >
                   <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
                     <div className="p-1.5 bg-emerald-600 rounded-full">

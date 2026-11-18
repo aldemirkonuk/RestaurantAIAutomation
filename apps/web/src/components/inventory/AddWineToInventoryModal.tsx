@@ -272,7 +272,7 @@ export function AddWineToInventoryModal({
             <div className="flex border-b border-gray-200 bg-gray-50">
               <button
                 onClick={() => setActiveTab("search")}
-                className={`flex-1 flex items-center justify-center gap-2 px-6 py-4 font-medium transition-all ${
+                className={`flex-1 flex items-center justify-center gap-2 px-6 py-4 font-medium transition ${
                   activeTab === "search"
                     ? "bg-white text-wine-600 border-b-2 border-wine-600"
                     : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
@@ -286,7 +286,7 @@ export function AddWineToInventoryModal({
               </button>
               <button
                 onClick={() => setActiveTab("photo")}
-                className={`flex-1 flex items-center justify-center gap-2 px-6 py-4 font-medium transition-all ${
+                className={`flex-1 flex items-center justify-center gap-2 px-6 py-4 font-medium transition ${
                   activeTab === "photo"
                     ? "bg-white text-wine-600 border-b-2 border-wine-600"
                     : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
@@ -339,7 +339,7 @@ export function AddWineToInventoryModal({
                             <button
                               key={wine.id}
                               onClick={() => handleSelectWine(wine)}
-                              className={`p-4 rounded-xl border-2 text-left transition-all ${
+                              className={`p-4 rounded-xl border-2 text-left transition ${
                                 isSelected
                                   ? "border-wine-500 bg-wine-50 shadow-lg"
                                   : "border-gray-200 hover:border-wine-300 hover:bg-gray-50"
@@ -419,7 +419,7 @@ export function AddWineToInventoryModal({
                     <div className="flex flex-col gap-3">
                       <button
                         onClick={() => setShowScannerFlow(true)}
-                        className="px-6 py-3 bg-wine-600 text-white font-medium rounded-xl hover:bg-wine-700 shadow-lg shadow-wine-600/30 transition-all flex items-center gap-2 mx-auto"
+                        className="px-6 py-3 bg-wine-600 text-white font-medium rounded-xl hover:bg-wine-700 shadow-lg shadow-wine-600/30 transition flex items-center gap-2 mx-auto"
                       >
                         <Camera className="w-5 h-5" />
                         Open Camera / Upload Image
@@ -914,7 +914,7 @@ export function AddWineToInventoryModal({
                   <div className="p-4 border-t border-gray-200 bg-white">
                     <button
                       onClick={handleAddToInventory}
-                      className="w-full px-4 py-3 bg-wine-600 text-white font-medium rounded-xl hover:bg-wine-700 shadow-lg shadow-wine-600/30 transition-all flex items-center justify-center gap-2"
+                      className="w-full px-4 py-3 bg-wine-600 text-white font-medium rounded-xl hover:bg-wine-700 shadow-lg shadow-wine-600/30 transition flex items-center justify-center gap-2"
                     >
                       <Save className="w-5 h-5" />
                       Add to Inventory
