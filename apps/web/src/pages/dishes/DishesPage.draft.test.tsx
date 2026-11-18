@@ -122,4 +122,24 @@ describe('DishesPage: an open dish keeps what was typed when another dish is ope
     mount(`/dishes?open=${A}`);
     expect(within(await screen.findByTestId(`dish-details-${A}`)).getByLabelText('Price')).toHaveValue('900');
   });
+
+  it('a typed name is kept too, and a save drops it even before the list is read again', async () => {
+    h.patch.mockResolvedValue({ data: { id: A, name: 'Lamb', section: 'Mains', price: 900, description: null } });
+    mount(`/dishes?open=${A}`);
+    let panel = await screen.findByTestId(`dish-details-${A}`);
+    fireEvent.change(within(panel).getByLabelText('Dish name'), { target: { value: 'Lamb' } });
+    open(B);
+    await screen.findByTestId(`dish-details-${B}`);
+    open(A);
+    panel = await screen.findByTestId(`dish-details-${A}`);
+    expect(within(panel).getByLabelText('Dish name')).toHaveValue('Lamb');
+    fireEvent.click(within(panel).getByRole('button', { name: 'Save changes' }));
+    expect(await within(panel).findByRole('status')).toHaveTextContent('Saved.');
+    // The list still answers with the old name: only the save itself can have cleared the draft.
+    open(B);
+    await screen.findByTestId(`dish-details-${B}`);
+    open(A);
+    panel = await screen.findByTestId(`dish-details-${A}`);
+    expect(within(panel).getByLabelText('Dish name')).toHaveValue('Lamb shank');
+  });
 });
