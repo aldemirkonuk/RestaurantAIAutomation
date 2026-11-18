@@ -224,6 +224,8 @@ function DishDetails({ dish, onRemoved, sections }: { dish: DishListRow; onRemov
   if (!read.bad && read.price !== dish.price) change.price = read.price;
   const changed = Object.keys(change).length > 0;
   const blocked = nameT === '' || read.bad || !changed || update.isPending;
+  // What is said under the price box, read with it by a screen reader.
+  const priceNote = read.bad ? PRICE_UNREAD : price.trim() === '' && dish.price != null ? 'A blank price saves the dish with no price.' : null;
 
   const save = async () => {
     if (blocked) return;
@@ -276,16 +278,15 @@ function DishDetails({ dish, onRemoved, sections }: { dish: DishListRow; onRemov
           autoComplete="off"
           value={price}
           aria-invalid={read.bad}
+          aria-describedby={priceNote ? `${id}-price-note` : undefined}
           onChange={(e) => { setPrice(e.target.value); setSaid(null); }}
         />
       </label>
       <button type="submit" className="cl-btn cl-focus" disabled={blocked} style={{ alignSelf: 'end' }}>
         Save changes
       </button>
-      {read.bad ? (
-        <p className="cl-note" style={{ gridColumn: '1 / -1' }}>{PRICE_UNREAD}</p>
-      ) : price.trim() === '' && dish.price != null ? (
-        <p className="cl-note" style={{ gridColumn: '1 / -1' }}>A blank price saves the dish with no price.</p>
+      {priceNote ? (
+        <p id={`${id}-price-note`} className="cl-note" style={{ gridColumn: '1 / -1' }}>{priceNote}</p>
       ) : null}
       <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         {asking ? (
