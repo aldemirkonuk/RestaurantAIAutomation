@@ -374,6 +374,22 @@ describe('the empty house', () => {
     expect(t).toContain('Nothing enters the book without a person’s seal');
   });
 
+  it('gives an owner or manager a way in for a food or supply, and the menu card does not say titles', () => {
+    mock.data = data({ rows: [], canManage: true });
+    renderPage();
+    const empty = screen.getByTestId('inventory-empty');
+    fireEvent.click(within(empty).getByRole('button', { name: 'Carry a food or supply' }));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(empty.textContent).toContain('Each item on it comes in with no count');
+    expect(empty.textContent).not.toContain('Each title');
+  });
+
+  it('offers staff no way to carry a food', () => {
+    mock.data = data({ rows: [], canManage: false });
+    renderPage();
+    expect(screen.queryByRole('button', { name: 'Carry a food or supply' })).toBeNull();
+  });
+
   it('shows the first steps and hides the chips, the filters and the table', () => {
     mock.data = data({ rows: [] });
     renderPage();

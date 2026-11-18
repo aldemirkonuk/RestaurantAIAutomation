@@ -705,13 +705,25 @@ export default function InventoryNext() {
               <section className="iv-card">
                 <h3 className="iv-h3">Scan your menu</h3>
                 <p className="iv-said">
-                  Read your menu into the book. Each title comes in with no count until someone counts it. It is never
-                  set to zero.
+                  Read your menu into the book. Each item on it comes in with no count until someone counts it. It is
+                  never set to zero.
                 </p>
                 <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('scanner')}>
                   Scan your menu
                 </button>
               </section>
+              {data.canManage ? (
+                <section className="iv-card">
+                  <h3 className="iv-h3">Carry a food or supply</h3>
+                  <p className="iv-said">
+                    Name one good the kitchen keeps, such as flour, oil or napkins, and how it is counted. It comes in
+                    with no count until a delivery or a person counts it. It is never set to zero.
+                  </p>
+                  <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('carry')}>
+                    Carry a food or supply
+                  </button>
+                </section>
+              ) : null}
             </div>
             <p className="iv-said">
               Want the rooms first?{' '}
