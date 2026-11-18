@@ -42,8 +42,10 @@ import {
   CartesianGrid,
   Cell,
   ComposedChart,
+  LabelList,
   Line,
   LineChart,
+  ReferenceDot,
   ReferenceLine,
   ResponsiveContainer,
   Scatter,
@@ -54,6 +56,7 @@ import {
   ZAxis,
 } from 'recharts';
 import { turn } from '@/lib/mudavym';
+import { tipMotion, useDrawIn } from './rp-draw';
 import { EM, MONO, failureLine, type Failure } from './rp-format';
 import { choose, planCombo, type ComboPick, type ComboPlan } from './rp-combo';
 import type { CatSeries, Fig, MatrixSeries, PointSeries, TableSpec } from './rp-view';
@@ -72,6 +75,12 @@ const AXIS = {
 
 /** A hairline at 6% ink: the grid is there to be read against, not looked at. */
 const GRID = { stroke: 'var(--ink-1)', strokeOpacity: 0.06 } as const;
+
+/** The hover crosshair: one 1 px hairline in ink, not a second colour. */
+const CROSSHAIR = { stroke: 'var(--ink-3)', strokeWidth: 1 } as const;
+
+/** Where measurement stops: a solid 1 px divider (the dashed rule is for thresholds the server sent). */
+const SEAM = { stroke: 'var(--ink-3)', strokeWidth: 1 } as const;
 
 const RULE = { stroke: 'var(--ink-3)', strokeDasharray: '2 3' } as const;
 
@@ -164,10 +173,11 @@ function Plot({
   /** What is drawn, said once above the plot (N-03). */
   caption?: ReactNode;
 }) {
+  const { ref, state } = useDrawIn();
   return (
     <>
       {caption != null && <PlotCaption>{caption}</PlotCaption>}
-      <div className="rp-plot" role="img" aria-label={label}>
+      <div className="rp-plot" role="img" aria-label={label} ref={ref} data-draw={state}>
         <ResponsiveContainer width="100%" height="100%" debounce={1}>
           {children as never}
         </ResponsiveContainer>
@@ -381,6 +391,25 @@ export function tickInterval(rows: ReadonlyArray<{ label: string }>): 0 | 'prese
   return rows.length <= 7 && rows.every((r) => r.label.length <= 5) ? 0 : 'preserveStartEnd';
 }
 
+/** One bar's place in the rise: `--rp-i` times 40 ms is its delay (reports-next.css, `rp-grow`). */
+const stagger = (i: number): CSSProperties => ({ ['--rp-i' as string]: i }) as CSSProperties;
+
+/** Value labels over bars hold when the bars are few enough that they cannot touch. */
+export const LABEL_BARS_MAX = 8;
+
+/** A bar's figure in tabular mono over it (N-15); the formatter is the axis's own. */
+function valueLabels(dataKey: string, format: (v: number) => string) {
+  return (
+    <LabelList
+      dataKey={dataKey}
+      position="top"
+      className="rp-bar-value"
+      formatter={(v: unknown) => (typeof v === 'number' ? format(v) : '')}
+      style={{ fontFamily: MONO, fontSize: TICK_PX, fontVariantNumeric: 'tabular-nums', fill: 'var(--ink-2)' }}
+    />
+  );
+}
+
 const KIND_WORDS = { line: 'A line', area: 'An area', bars: 'Bars' } as const;
 
 export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'area' | 'bars' }) {
@@ -403,7 +432,8 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
   const tip = (
     <Tooltip
       wrapperStyle={tipWrapper(gutter)}
-      cursor={kind === 'bars' ? { fill: 'var(--seal-tint)' } : { stroke: 'var(--seal-ring)' }}
+      {...tipMotion()}
+      cursor={kind === 'bars' ? { fill: 'var(--seal-tint)' } : CROSSHAIR}
       content={
         <Tip unit={unit} format={format} projectedLabel={projectedLabel} /> as unknown as never
       }
@@ -420,7 +450,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
           key={r.label}
           y={r.y}
           x={r.x}
-          {...RULE}
+          {...(r.x != null ? SEAM : RULE)}
           label={{
             value: r.label,
             position: 'insideTopRight',
@@ -430,6 +460,14 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
           }}
         />
       ))}
+      {(refs ?? []).flatMap((r) => {
+        // The seam where measurement stops: a 4 px dot on the line where it crosses.
+        const at = r.x != null ? data.find((d) => d.label === r.x) : undefined;
+        const y = at ? (at.value ?? at.projected) : null;
+        return typeof y === 'number'
+          ? [<ReferenceDot key={`${r.label}:dot`} x={r.x} y={y} r={4} fill="var(--seal)" stroke="var(--paper-0)" strokeWidth={1.5} className="rp-seam-dot" />]
+          : [];
+      })}
     </>
   );
 
@@ -444,11 +482,13 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
       shown: d.value ?? d.projected ?? null,
       isProjected: d.value == null && d.projected != null,
     }));
+    const labelled = rows.length <= LABEL_BARS_MAX;
     return (
       <Plot label={label} caption={caption}>
-        <BarChart data={rows} margin={MARGIN}>
+        <BarChart data={rows} margin={labelled ? { ...MARGIN, top: 20 } : MARGIN}>
           {axes}
           <Bar dataKey="shown" radius={[3, 3, 0, 0]} isAnimationActive={false}>
+            {labelled && valueLabels('shown', format)}
             {rows.map((r, i) =>
               r.isProjected ? (
                 <Cell
@@ -457,9 +497,10 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
                   stroke="var(--seal-deep)"
                   strokeDasharray="3 2"
                   data-projected="true"
+                  style={stagger(i)}
                 />
               ) : (
-                <Cell key={`${i}:${r.label}`} fill="var(--seal)" data-projected="false" />
+                <Cell key={`${i}:${r.label}`} fill="var(--seal)" data-projected="false" style={stagger(i)} />
               ),
             )}
           </Bar>
@@ -625,7 +666,7 @@ export function ComboPlot({
       >
         <ComposedChart
           data={rows}
-          margin={split ? { ...MARGIN, right: 2 } : MARGIN}
+          margin={{ ...MARGIN, ...(split ? { right: 2 } : {}), ...(rows.length <= LABEL_BARS_MAX ? { top: 20 } : {}) }}
         >
           <CartesianGrid vertical={false} {...GRID} />
           <XAxis dataKey="label" {...AXIS} interval={tickInterval(rows)} minTickGap={26} />
@@ -646,6 +687,7 @@ export function ComboPlot({
           )}
           <Tooltip
             wrapperStyle={tipWrapper(barGutter)}
+            {...tipMotion()}
             cursor={{ fill: 'var(--seal-tint)' }}
             content={<ComboTip plan={plan} /> as unknown as never}
           />
@@ -656,7 +698,12 @@ export function ComboPlot({
             fill="var(--seal)"
             radius={[3, 3, 0, 0]}
             isAnimationActive={false}
-          />
+          >
+            {rows.length <= LABEL_BARS_MAX && valueLabels('bar', bars.format)}
+            {rows.map((r, i) => (
+              <Cell key={`${i}:${r.label}`} fill="var(--seal)" style={stagger(i)} />
+            ))}
+          </Bar>
           <Line
             yAxisId={split ? 'line' : 'bars'}
             dataKey="line"
@@ -730,7 +777,8 @@ export function PointPlot({ series }: { series: PointSeries }) {
         <ZAxis range={[36, 36]} />
         <Tooltip
           wrapperStyle={tipWrapper(gutter)}
-          cursor={{ stroke: 'var(--seal-ring)' }}
+      {...tipMotion()}
+          cursor={CROSSHAIR}
           content={
             (({
               active,
