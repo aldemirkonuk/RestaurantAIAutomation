@@ -411,18 +411,22 @@ describe('the opened order focuses its letter on the rail', () => {
   });
 });
 
-describe('the stage strip at phone width (ORD-W18)', () => {
-  it('sits 3 + 2 under sm and one row from sm up, ruling the second row', async () => {
+describe('the stage strip at phone width (ORD-W18, N-11)', () => {
+  it('is one snap strip under sm and one row from sm up, five tiles with no row rule', async () => {
     state.current = ordersData({ rows: [row({ id: 'o-1' })] });
     harness('/orders');
     const strip = await screen.findByRole('tablist', { name: 'Order stages' });
-    expect(strip.className).toMatch(/\bgrid-cols-3\b/);
-    expect(strip.className).toMatch(/\bsm:flex\b/);
+    expect(strip.className).toMatch(/\bord-spine\b/);
+    expect(strip.className).not.toMatch(/grid-cols-3/);
     const tabs = screen.getAllByRole('tab');
     expect(tabs).toHaveLength(5);
-    expect(tabs[3].className).toMatch(/max-sm:border-l-0/);
-    expect(tabs[3].className).toMatch(/max-sm:border-t/);
-    expect(tabs[4].className).toMatch(/max-sm:border-t/);
+    for (const t of tabs) expect(t.className).toMatch(/\bord-spine__tile\b/);
+    for (const t of tabs) expect(t.className).not.toMatch(/max-sm:border/);
     expect(tabs[0].className).not.toMatch(/\bborder-l\b/);
+    // the primary act is the 52 px full-width button the phone css names; the
+    // second is its text-link variant
+    expect(screen.getByTestId('write-order').className).toMatch(/\bord-write\b/);
+    expect(screen.getByTestId('write-order').className).not.toMatch(/ord-write--alt/);
+    expect(screen.getByTestId('write-agreement').className).toMatch(/\bord-write--alt\b/);
   });
 });
