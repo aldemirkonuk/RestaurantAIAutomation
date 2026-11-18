@@ -189,11 +189,18 @@ export function useRemoveDish(dishId: string) {
   });
 }
 
-/** The gateway's own sentence when it sent one, else the error's message. */
+/**
+ * The gateway's own sentence when it sent one, else the error's message. The
+ * validator sends several sentences as an array; they read as one line.
+ */
 export function reason(e: unknown): string | null {
   if (!e) return null;
   const said = (e as { response?: { data?: { message?: unknown } } }).response?.data?.message;
   if (typeof said === 'string' && said.trim()) return said.trim();
+  if (Array.isArray(said)) {
+    const joined = said.filter((m): m is string => typeof m === 'string' && m.trim() !== '').map((m) => m.trim()).join('; ');
+    if (joined) return joined;
+  }
   return e instanceof Error ? e.message : 'no reason given';
 }
 
