@@ -23,7 +23,10 @@ export default function HouseContents() {
     setError(null)
     try {
       await addCustomProvider({ name: supplier.trim() })
-      await updateOnboardingProgress({ vendor_added: true })
+      // The gateway notes the added vendor on the setup when it creates one;
+      // this second note is a belt. Its failure is not the supplier's: the
+      // supplier is on the book, and saying otherwise invites a duplicate.
+      await updateOnboardingProgress({ vendor_added: true }).catch(() => undefined)
       setSaved(true)
     } catch (cause: any) {
       setError(cause?.response?.data?.message || cause?.message || 'We could not add that supplier yet.')
