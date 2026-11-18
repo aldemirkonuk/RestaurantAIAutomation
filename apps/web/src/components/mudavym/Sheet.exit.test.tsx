@@ -24,7 +24,7 @@ function setReduced(reduce: boolean) {
   }));
 }
 
-const animateSpy = vi.fn(() => ({ cancel: vi.fn() }));
+const animateSpy = vi.fn((..._args: unknown[]) => ({ cancel: vi.fn() }));
 const onClose = vi.fn();
 
 function Harness() {
