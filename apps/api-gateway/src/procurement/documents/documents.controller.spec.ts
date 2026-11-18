@@ -776,3 +776,63 @@ describe("DocumentsController.list — who sent it (walk-through W8, 2026-10-01)
     ]);
   });
 });
+
+describe("DocumentsController.detail — a read that failed is not a document with nothing on it (ADR 0020)", () => {
+  const user = { userId: "u1", restaurantId: "rest-1" };
+
+  function controllerOver(opts: {
+    lines: { data: any; error: any };
+    links: { data: any; error: any };
+  }) {
+    const builder = (table: string) => {
+      const result: any =
+        table === "procurement_document_lines"
+          ? opts.lines
+          : table === "procurement_document_links"
+            ? opts.links
+            : { data: { id: "doc-1", storage_path: null }, error: null };
+      const chain: any = {
+        select: () => chain,
+        eq: () => chain,
+        order: () => chain,
+        maybeSingle: () => Promise.resolve(result),
+        then: (res: any, rej: any) => Promise.resolve(result).then(res, rej),
+      };
+      return chain;
+    };
+    const db = { getClient: () => ({ from: builder }) };
+    return new DocumentsController(
+      {} as any,
+      db as any,
+      ...(Array(9).fill({}) as [any, any, any, any, any, any, any, any, any]),
+    );
+  }
+
+  const ok = { data: [], error: null };
+
+  it("shows the lines and links it read", async () => {
+    const c = controllerOver({
+      lines: { data: [{ id: "l1" }], error: null },
+      links: { data: [{ order_id: "o1" }], error: null },
+    });
+    const r = await c.detail("doc-1", user);
+    expect(r.lines).toHaveLength(1);
+    expect(r.links).toHaveLength(1);
+  });
+
+  it("refuses to answer when the lines could not be read", async () => {
+    const c = controllerOver({
+      lines: { data: null, error: { message: "lines down" } },
+      links: ok,
+    });
+    await expect(c.detail("doc-1", user)).rejects.toThrow(/lines down/);
+  });
+
+  it("refuses to answer when the order links could not be read", async () => {
+    const c = controllerOver({
+      lines: ok,
+      links: { data: null, error: { message: "links down" } },
+    });
+    await expect(c.detail("doc-1", user)).rejects.toThrow(/links down/);
+  });
+});
