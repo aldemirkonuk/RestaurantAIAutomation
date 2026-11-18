@@ -1,0 +1,49 @@
+/* /orders on a phone (design need N-11): the five stages are one snap strip of
+   112 x 72 tiles and the page's primary act is a full-width 52 px button that keeps
+   to one line and the second act a 44 px text link under it. Above 640 px nothing here applies. */
+.ord-write {
+  font-size: 12.5px;
+  padding: 7px 13px;
+}
+
+@media (max-width: 639px) {
+  .ord-masthead__acts {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .ord-write {
+    width: 100%;
+    min-height: 52px;
+    font-size: 15px;
+    white-space: nowrap;
+  }
+
+  /* The second act is a text link under the first, still a 44 px target. */
+  .ord-write--alt {
+    min-height: 44px;
+    border-color: transparent !important;
+    background: transparent !important;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .ord-spine {
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+
+  .ord-spine::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ord-spine__tile {
+    flex: 0 0 112px;
+    min-height: 72px;
+    scroll-snap-align: start;
+  }
+}

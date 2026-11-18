@@ -41,6 +41,7 @@ import { EM, MONO, SANS, SERIF, fmtMoneyWhole, fmtReadTime } from './format';
 import { emptyStationSentence } from './recurrence';
 import { STAGES, useOrdersNextData, type OrderRowVM } from './useOrdersNextData';
 import { useDeepLinkOrder } from './useDeepLinkOrder';
+import './orders-phone.css';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
 
@@ -235,16 +236,15 @@ export default function OrdersNext() {
               Orders
             </h1>
           </div>
-          <div className="flex items-end gap-4">
+          <div className="ord-masthead__acts flex items-end gap-4">
             <button
               type="button"
+              className="ord-write"
               onClick={openTheComposer}
               data-testid="write-order"
               style={{
                 fontFamily: SANS,
-                fontSize: 12.5,
                 fontWeight: 600,
-                padding: '7px 13px',
                 borderRadius: 9,
                 border: '1px solid var(--seal, #1A5E6B)',
                 background: 'var(--seal, #1A5E6B)',
@@ -256,13 +256,12 @@ export default function OrdersNext() {
             </button>
             <button
               type="button"
+              className="ord-write ord-write--alt"
               onClick={() => setWriting(true)}
               data-testid="write-agreement"
               style={{
                 fontFamily: SANS,
-                fontSize: 12.5,
                 fontWeight: 600,
-                padding: '7px 13px',
                 borderRadius: 9,
                 border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
                 background: 'transparent',

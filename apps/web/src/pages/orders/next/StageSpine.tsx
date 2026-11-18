@@ -8,7 +8,8 @@
  * never on first paint. An unknown count is an em dash, never zero.
  */
 
-import { CSSProperties } from 'react';
+import { CSSProperties, useEffect, useRef } from 'react';
+import './orders-phone.css';
 import { ink } from '@/lib/mudavym/motion';
 import { MONO, SANS } from './format';
 import { Tally } from './Tally';
@@ -26,14 +27,21 @@ export interface StageSpineProps {
 const STATIONS: SpineStation[] = [...STAGES, 'recurring'];
 
 export function StageSpine({ counts, recurringCount, active, onSelect }: StageSpineProps) {
+  const activeRef = useRef<HTMLButtonElement | null>(null);
+  // On a phone the strip scrolls; a station pressed is kept in view. Nothing
+  // moves when none is pressed, and a browser without scrollIntoView is left be.
+  useEffect(() => {
+    if (active) activeRef.current?.scrollIntoView?.({ inline: 'nearest', block: 'nearest' });
+  }, [active]);
   return (
     <div
       role="tablist"
       aria-label="Order stages"
-      // Under 640px the five stations sit 3 + 2: five equal cells cannot hold
-      // "DELIVERED" and "RECURRING" in a 390px phone, and the strip pushed the
-      // page sideways (ORD-W18). From sm up, one row as before.
-      className="relative grid grid-cols-3 items-stretch sm:flex"
+      // Under 640px the five stations are one snap strip of 112 x 72 tiles that
+      // scrolls inside itself (orders-phone.css): five equal cells cannot hold
+      // "DELIVERED" and "RECURRING" in a 390px phone, and a strip that grew the
+      // page pushed it sideways (ORD-W18). From sm up, one row as before.
+      className="ord-spine relative flex items-stretch"
       style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)', borderBottom: '1px solid var(--paper-2, #EAE4D8)' }}
     >
       {STATIONS.map((station, i) => {
@@ -54,11 +62,10 @@ export function StageSpine({ counts, recurringCount, active, onSelect }: StageSp
             aria-selected={isActive}
             data-tour={`orders-stage-${station}`}
             onClick={() => onSelect(isActive ? null : station)}
-            // Dividers by class, not inline, so the 3 + 2 grid can drop the
-            // left rule that opens its second row and rule that row's top.
-            className={`group relative min-w-0 flex-1 px-3 py-3 text-left ${
+            ref={isActive ? activeRef : undefined}
+            className={`ord-spine__tile group relative min-w-0 flex-1 px-3 py-3 text-left ${
               i === 0 ? '' : 'border-l'
-            } ${i === 3 ? 'max-sm:border-l-0' : ''} ${i >= 3 ? 'max-sm:border-t' : ''}`}
+            }`}
             style={style}
           >
             <Tally
