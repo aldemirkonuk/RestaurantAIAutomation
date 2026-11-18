@@ -863,7 +863,11 @@ export class MenusService {
           ? `"${price.raw}" reads two ways. Write 1250, 1.250,00 or 1,250.00.`
           : price.reason === "negative"
             ? `"${price.raw}" is below zero. A price is an amount of 0 or more.`
-            : `Invalid numeric value for ${dto.fieldName}`,
+            : price.reason === "too_large"
+              ? `"${price.raw}" is too large for a price. The most a price can be is 99,999,999.99.`
+              : price.reason === "too_precise"
+                ? `"${price.raw}" has more than two decimal places. A price has at most two.`
+                : `Invalid numeric value for ${dto.fieldName}`,
       );
     }
     const newValueTyped: string | number = price ? price.amount! : dto.newValue;

@@ -80,3 +80,27 @@ describe("readMenuPrice: a minus in front is not a price (a discount row is not 
     expect(readMenuPrice("12-15").reason).toBe("two_readings");
   });
 });
+
+describe("readMenuPrice: a price the price column cannot hold gets no amount (r55)", () => {
+  it.each(["100000000", "99999999999", "1.000.000.000,00"])(
+    "%s is more than the column holds, so it says too large",
+    (raw) => {
+      expect(readMenuPrice(raw)).toEqual({ amount: null, raw, reason: "too_large" });
+    },
+  );
+
+  it.each(["45.5555", "12,3456", "0,0049"])(
+    "%s has more than two decimal places, so it says too precise rather than rounding",
+    (raw) => {
+      expect(readMenuPrice(raw)).toEqual({ amount: null, raw, reason: "too_precise" });
+    },
+  );
+
+  it.each([
+    ["99999999.99", 99999999.99],
+    ["45.5000", 45.5],
+    ["0,25", 0.25],
+  ])("%s still reads as %s", (raw, amount) => {
+    expect(readMenuPrice(raw)).toEqual({ amount, raw, reason: null });
+  });
+});
