@@ -1,0 +1,171 @@
+/* The house's empty state, its ghost document and the bell's check
+   (r58, N-09). Tokens only (paper / ink / seal): they turn with the ground.
+   Motion: transform, opacity, grid-template-rows and stroke-dashoffset only,
+   and none of it under prefers-reduced-motion. */
+
+.mdv-empty {
+  --mdv-sans: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 40px 16px;
+  text-align: center;
+  font-family: var(--mdv-sans);
+  color: var(--ink-2);
+  /* Its own ground, so a legacy white page around it never puts paper-coloured
+     ink on white: the card turns with the house ground as a whole. */
+  background: var(--paper-0);
+  border-radius: 14px;
+}
+
+.mdv-empty[data-compact='true'] {
+  padding: 20px 12px;
+  gap: 8px;
+}
+
+.mdv-empty__figure {
+  color: var(--ink-1);
+  animation: mdv-empty-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.mdv-empty__art {
+  display: block;
+}
+
+.mdv-empty__sentence {
+  margin: 0;
+  max-width: 44ch;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  animation: mdv-empty-in 360ms cubic-bezier(0.16, 1, 0.3, 1) 60ms both;
+}
+
+.mdv-empty__action {
+  margin-top: 4px;
+  text-decoration: none;
+  display: inline-block;
+  animation: mdv-empty-in 360ms cubic-bezier(0.16, 1, 0.3, 1) 120ms both;
+}
+
+.mdv-empty__whywrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 52ch;
+}
+
+.mdv-empty__whybtn {
+  font-size: 12px;
+}
+
+/* The long truth opens by grid-template-rows 0fr -> 1fr (280 ms). */
+.mdv-empty__why {
+  display: grid;
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition:
+    grid-template-rows 280ms cubic-bezier(0.16, 1, 0.3, 1),
+    visibility 0s linear 280ms;
+}
+
+.mdv-empty__why[data-open='true'] {
+  grid-template-rows: 1fr;
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+.mdv-empty__whyinner {
+  min-height: 0;
+  overflow: hidden;
+  padding-top: 8px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-3);
+}
+
+@keyframes mdv-empty-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ── the ghost document: skeleton lines at 6% ink ───────────────────── */
+
+.mdv-ghost {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(420px, 100%);
+  padding: 28px 24px;
+  border: 1px solid color-mix(in oklch, var(--ink-1) 8%, transparent);
+  border-radius: 10px;
+}
+
+.mdv-ghost__line {
+  display: block;
+  height: 8px;
+  width: 100%;
+  border-radius: 4px;
+  background: color-mix(in oklch, var(--ink-1) 6%, transparent);
+}
+
+.mdv-ghost__line--head {
+  width: 38%;
+  height: 12px;
+  margin-bottom: 8px;
+}
+
+/* ── the bell's check: a ring and a tick that draw themselves ────────── */
+
+.mdv-caught {
+  color: var(--seal);
+}
+
+.mdv-caught__ring {
+  stroke-dasharray: 70;
+  stroke-dashoffset: 70;
+  animation: mdv-draw 360ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.mdv-caught__tick {
+  stroke-dasharray: 20;
+  stroke-dashoffset: 20;
+  animation: mdv-draw 360ms cubic-bezier(0.16, 1, 0.3, 1) 120ms forwards;
+}
+
+.mdv-caught[data-still='true'] .mdv-caught__ring,
+.mdv-caught[data-still='true'] .mdv-caught__tick {
+  animation: none;
+  stroke-dashoffset: 0;
+}
+
+@keyframes mdv-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-empty__figure,
+  .mdv-empty__sentence,
+  .mdv-empty__action {
+    animation: none;
+  }
+
+  .mdv-empty__why {
+    transition: none;
+  }
+
+  .mdv-caught__ring,
+  .mdv-caught__tick {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+}
