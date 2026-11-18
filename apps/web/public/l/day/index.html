@@ -58,9 +58,10 @@ button{font:inherit;color:inherit}
 .btn-seal{display:inline-flex;align-items:center;gap:8px;background:var(--seal);color:var(--p0);font-weight:600;font-size:14px;text-decoration:none;padding:10px 18px;border-radius:999px;white-space:nowrap;transition:background .2s,transform .2s}
 .btn-seal:hover{background:var(--seal-700)}
 .btn-seal:active{transform:scale(.97)}
-.dark .nav{color:var(--d1)}
-.dark .back{color:var(--d3)} .dark .wm{color:var(--d1)} .dark .wm i{color:var(--seal-l)} .dark .signin{color:var(--d2)}
-.dark .btn-seal{background:var(--seal-l);color:var(--seal-950)}
+.dark .nav,.nav.on-dark{color:var(--d1)}
+.dark .back,.nav.on-dark .back{color:var(--d3)} .dark .wm,.nav.on-dark .wm{color:var(--d1)} .dark .wm i,.nav.on-dark .wm i{color:var(--seal-l)} .dark .signin,.nav.on-dark .signin{color:var(--d2)}
+.dark .btn-seal,.nav.on-dark .btn-seal{background:var(--seal-l);color:var(--seal-950)}
+.nav.on-dark::before{background:linear-gradient(var(--c0) 35%,transparent)}
 
 /* ---------- stage ---------- */
 .track{position:relative}
@@ -69,7 +70,7 @@ button{font:inherit;color:inherit}
 /* hero copy */
 .hero{position:absolute;left:clamp(24px,6.5vw,104px);top:50%;transform:translateY(-50%);width:min(470px,36vw);z-index:6}
 .hero .k{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--i3);margin:0}
-.hero h1{font-family:var(--serif);font-weight:300;font-size:clamp(44px,4.7vw,70px);line-height:1.02;letter-spacing:-.028em;margin:16px 0 20px;font-variation-settings:"opsz" 144}
+.hero h1{font-family:var(--serif);font-weight:300;font-size:clamp(44px,4.7vw,70px);line-height:1.02;letter-spacing:-.02em;word-spacing:.08em;margin:16px 0 20px;font-variation-settings:"opsz" 144}
 .hero h1 i{font-style:normal;color:var(--seal)}
 .hero p.l{font-size:17px;line-height:1.55;color:var(--i2);margin:0;max-width:36ch}
 .hero .cue{margin:34px 0 0;font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--i3);display:flex;align-items:center;gap:12px}
@@ -461,7 +462,7 @@ button{font:inherit;color:inherit}
 
 /* ---------- narrow (phone) ---------- */
 .nar{--navh:54px}
-.nar .wm{display:none}
+.nar .wm{font-size:18px}
 .nar .nav-l,.nar .nav-r{gap:14px}
 .nar .nav .btn-seal{padding:8px 14px;font-size:13px}
 .nar .signin{font-size:13px}
@@ -2119,6 +2120,26 @@ if (RM) {
 let rz = 0;
 addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (RM) return; layout(); trackTop = track.getBoundingClientRect().top + scrollY; vbKey = ''; bkKey = ''; LEAVES.forEach(L => L.th = -1); tTarget = tNow = readT(); render(tNow); }, 140); });
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (RM) return; layout(); trackTop = track.getBoundingClientRect().top + scrollY; render(tNow); });
+})();
+</script>
+<script id="nav-on-dark">
+/* The fixed nav takes the on-dark inks while a dark band (the last section, the
+   foot) is under it, whatever the day's own palette is doing. */
+(function () {
+  const nav = document.getElementById('nav');
+  const bands = Array.prototype.slice.call(document.querySelectorAll('.cta,.foot'));
+  if (!nav || !bands.length) return;
+  let queued = false;
+  function check() {
+    queued = false;
+    const y = nav.offsetHeight / 2;
+    const under = bands.some(function (b) { const r = b.getBoundingClientRect(); return r.top <= y && r.bottom > y; });
+    nav.classList.toggle('on-dark', under);
+  }
+  function queue() { if (!queued) { queued = true; requestAnimationFrame(check); } }
+  addEventListener('scroll', queue, { passive: true });
+  addEventListener('resize', queue);
+  check();
 })();
 </script>
 <script id="start-for">

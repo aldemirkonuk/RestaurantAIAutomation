@@ -1202,6 +1202,7 @@ export function Landing() {
   };
 
   const headline = ['Your', 'back', 'of', 'house,'];
+  const SEE_IT_WORK = '/l/day/';
 
   return (
     <div className="mdv-landing mudavym" ref={rootRef}>
@@ -1242,33 +1243,35 @@ export function Landing() {
         <section className="ld-hero">
           <div className="ld-wrap">
             <div className="ld-hero-copy">
-              <p className="ld-eyebrow ld-enter" style={{ '--d': 0 } as CSSProperties}>
+              <p className="ld-eyebrow ld-hrise" style={{ '--d': 0 } as CSSProperties}>
                 AI-native restaurant operations
               </p>
               <h1>
                 {headline.map((w, i) => (
                   <Fragment key={i}>
-                    <span className="ld-word ld-enter" style={{ '--d': i + 1 } as CSSProperties}>
+                    <span className="ld-word ld-h1w" style={{ '--d': i } as CSSProperties}>
                       {w}
                     </span>{' '}
                   </Fragment>
                 ))}
-                <span className="ld-word ld-seal-word ld-enter" style={{ '--d': 5 } as CSSProperties}>
+                <span className="ld-word ld-seal-word ld-h1w" style={{ '--d': 4 } as CSSProperties}>
                   running itself.
                 </span>
               </h1>
-              <p className="ld-sub ld-enter" style={{ '--d': 7 } as CSSProperties}>
+              <p className="ld-sub ld-hrise" style={{ '--d': 1 } as CSSProperties}>
                 One system reads every invoice, counts every bottle, drafts the orders and vendor replies, and asks
                 before anything leaves.
               </p>
-              <div className="ld-cta ld-enter" style={{ '--d': 8 } as CSSProperties}>
+              <div className="ld-cta ld-hrise" style={{ '--d': 2 } as CSSProperties}>
                 <Go to={START} innerRef={heroCtaRef} />
-                <a className="ld-btn-ghost" href="#how" onClick={(e) => jump(e, 'how')}>
+                {/* A full page load, not a router link: /l/day/ is a static page
+                    under public/ (the trailing slash is what the host serves). */}
+                <a className="ld-btn-ghost" href={SEE_IT_WORK}>
                   See it work
                 </a>
               </div>
             </div>
-            <div className="ld-hero-feed ld-enter" style={{ '--d': 6 } as CSSProperties}>
+            <div className="ld-hero-feed ld-enter" style={{ '--d': 2 } as CSSProperties}>
               <Feed reduced={reduced} />
             </div>
           </div>

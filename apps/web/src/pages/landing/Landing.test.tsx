@@ -4,6 +4,8 @@
  * says it is a sample, that what is coming prints no figure, and that the two
  * motions that carry meaning (the evening feed, the approval) say the right words.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -256,5 +258,49 @@ describe('Landing', () => {
     expect(container.querySelector('.ld-approve')?.classList.contains('is-in')).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     expect(screen.getByRole('button', { name: 'Approve and send' })).toBeTruthy();
+  });
+});
+
+describe('Landing hero motion', () => {
+  const css = readFileSync(resolve(__dirname, 'landing.css'), 'utf8');
+  beforeEach(() => matchMediaWith(false));
+
+  it('shows the headline at first paint: no word starts hidden, each steps 40ms behind the last', () => {
+    const { container } = mount();
+    const words = Array.from(container.querySelectorAll('h1 .ld-word'));
+    expect(words).toHaveLength(5);
+    words.forEach((w, i) => {
+      expect(w.classList.contains('ld-h1w')).toBe(true);
+      expect(w.classList.contains('ld-enter')).toBe(false);
+      expect((w as HTMLElement).style.getPropertyValue('--d')).toBe(String(i));
+    });
+    const keyframes = css.match(/@keyframes ld-word-in \{([^}]*\{[^}]*\}[^}]*\{[^}]*\})\s*\}/);
+    expect(keyframes).not.toBeNull();
+    expect(keyframes![1]).not.toContain('opacity');
+    expect(keyframes![1]).toContain('blur(6px)');
+    expect(css).toMatch(/\.ld-h1w \{[^}]*animation-delay: calc\(var\(--d, 0\) \* 40ms\)/);
+  });
+
+  it('keeps the sentence and the buttons visible from the first frame', () => {
+    const { container } = mount();
+    for (const sel of ['.ld-sub', '.ld-cta', '.ld-eyebrow']) {
+      const el = container.querySelector(sel)!;
+      expect(el.classList.contains('ld-hrise')).toBe(true);
+      expect(el.classList.contains('ld-enter')).toBe(false);
+    }
+  });
+
+  it('plays the word motion only where the reader has not asked for less', () => {
+    const at = css.indexOf('.ld-h1w {');
+    const open = css.lastIndexOf('@media', at);
+    expect(css.slice(open, open + 60)).toContain('prefers-reduced-motion: no-preference');
+    // outside that block the word has no animation at all, so reduced motion is the finished page
+    expect(css.slice(0, open)).not.toContain('.ld-h1w');
+  });
+
+  it('sends "See it work" to the day page, as a plain link', () => {
+    mount();
+    const link = screen.getByRole('link', { name: 'See it work' });
+    expect(link.getAttribute('href')).toBe('/l/day/');
   });
 });
