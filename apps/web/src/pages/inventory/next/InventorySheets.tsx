@@ -754,10 +754,14 @@ export function OrderSheet({
       eyebrow="Order more"
       title={titleOf(row)}
       footer={
-        <span>
-          One order is one title. Placing it has the AI draft the email to the vendor, shown here to read before it goes,
-          unless this house has set that vendor to take order emails without review.
-        </span>
+        orderUnit === null ? (
+          <span>Nothing is placed from this sheet for this good. Orders places it, in the vendor’s own unit.</span>
+        ) : (
+          <span>
+            One order is one title. Placing it has the AI draft the email to the vendor, shown here to read before it
+            goes, unless this house has set that vendor to take order emails without review.
+          </span>
+        )
       }
     >
       {orderUnit === null ? (

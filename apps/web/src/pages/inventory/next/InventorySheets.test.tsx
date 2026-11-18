@@ -423,6 +423,13 @@ describe('a good kept in grams, millilitres or items (all goods, foods included)
     expect(screen.getByRole('link', { name: 'Go to Orders' }).getAttribute('href')).toBe('/orders');
   });
 
+  it('a good this sheet cannot order does not promise an email draft or call itself one title', () => {
+    mount(<OrderSheet row={flour()} uom="g" onClose={() => {}} providers={ROSSI} providersError={null} restaurantId="r1" />);
+    expect(document.body.textContent).not.toContain('One order is one title');
+    expect(document.body.textContent).not.toContain('Placing it has the AI draft');
+    expect(document.body.textContent).toContain('Nothing is placed from this sheet for this good.');
+  });
+
   it('a good kept as items is ordered as items', async () => {
     api.post.mockResolvedValue({ data: { id: 'o1', status: 'pending', quantity: 4, requestedAt: new Date().toISOString() } });
     mount(<OrderSheet row={row({ wineId: null, name: 'Napkins', par: null })} uom="each" onClose={() => {}} providers={ROSSI} providersError={null} restaurantId="r1" />);
