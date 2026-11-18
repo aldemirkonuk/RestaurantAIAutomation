@@ -141,6 +141,23 @@ export function mailDoorOf(row: {
   return "mudavym_mail";
 }
 
+/**
+ * The channels a person's letters came by, as the list shows them. The column
+ * is nullable (a letter from before it existed was mail), and the SQL's
+ * array_agg keeps a NULL as an element, which the page cannot say a word for.
+ * A missing or blank channel is mail, and each channel appears once.
+ */
+export function mailChannelsOf(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const c of raw) {
+    const name =
+      typeof c === "string" && c.trim() !== "" ? c.trim().toLowerCase() : "email";
+    if (!out.includes(name)) out.push(name);
+  }
+  return out;
+}
+
 export function mailDirectionOf(v: unknown): "inbound" | "outbound" | null {
   const d = typeof v === "string" ? v.toLowerCase() : "";
   return d === "inbound" || d === "outbound" ? d : null;

@@ -109,6 +109,15 @@ function person(i: number) {
 }
 
 describe("listPeople", () => {
+  it("says a letter with no channel came by mail, once, and never hands the page a null", async () => {
+    resolve = () => ({
+      data: [{ ...person(6), channels: [null, "email", "WhatsApp", ""] }],
+      error: null,
+    });
+    const page = await service().listPeople(HOUSE, "owner", {});
+    expect(page.people[0].channels).toEqual(["email", "whatsapp"]);
+  });
+
   it("keeps a vendor whose only letter has not left, and names its state (HARM 1)", async () => {
     resolve = () => ({
       data: [
