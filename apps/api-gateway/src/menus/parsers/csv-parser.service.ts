@@ -56,6 +56,13 @@ export interface CsvRowIssue {
     | "price_column_read_as_bottle"
     /** A spreadsheet error value (`#N/A`, `#REF!`) where a value was expected. */
     | "cell_error"
+    /**
+     * Not a row: the file's bytes are the same as a menu the house already
+     * keeps (`raw` is that menu's status, `row` is 0). Said by the import.
+     */
+    | "same_file"
+    /** Not a row: whether the file was read before could not be looked up (`row` is 0). */
+    | "same_file_unchecked"
     | Exclude<MenuPriceReason, "empty">;
   field?: keyof WineExtractItem;
   raw?: string;

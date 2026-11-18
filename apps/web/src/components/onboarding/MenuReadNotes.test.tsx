@@ -44,3 +44,23 @@ describe('menuReadNoteText: a workbook of several sheets', () => {
     )
   })
 })
+
+describe('menuReadNoteText: the same file again', () => {
+  it('says a copy of the current menu was kept, and the current menu stays', () => {
+    expect(menuReadNoteText({ row: 0, reason: 'same_file', raw: 'active' })).toBe(
+      'This file is the same one the current menu was read from. A second copy of that menu was kept; the house keeps its current menu until you choose another.',
+    )
+  })
+
+  it('says a copy of a kept menu was kept', () => {
+    expect(menuReadNoteText({ row: 0, reason: 'same_file', raw: 'draft' })).toBe(
+      'This file is the same as a menu already kept. A second copy of that menu was kept.',
+    )
+  })
+
+  it('says when whether it was read before could not be checked', () => {
+    expect(menuReadNoteText({ row: 0, reason: 'same_file_unchecked', raw: 'timeout' })).toBe(
+      'Whether this file was read before could not be checked, so it was read as new.',
+    )
+  })
+})

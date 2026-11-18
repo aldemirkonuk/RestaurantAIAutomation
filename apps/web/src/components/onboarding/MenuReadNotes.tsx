@@ -26,6 +26,12 @@ function lineNoteText(n: MenuReadNote): string {
       return `Line ${n.row}: the ${field} ${raw} could not be read as a price, so it was left blank.`
     case 'cell_error':
       return `Line ${n.row}: the ${field} is a spreadsheet error (${n.raw ?? 'error'}), so it was left blank.`
+    case 'same_file':
+      return n.raw === 'active'
+        ? 'This file is the same one the current menu was read from. A second copy of that menu was kept; the house keeps its current menu until you choose another.'
+        : 'This file is the same as a menu already kept. A second copy of that menu was kept.'
+    case 'same_file_unchecked':
+      return 'Whether this file was read before could not be checked, so it was read as new.'
     case 'no_name':
       return `Line ${n.row} has no name, so it was not read.`
     case 'no_name_column':
