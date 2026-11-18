@@ -82,7 +82,7 @@ export function doorCheckedMark(withInvoices = false): ReactNode {
       className="cl-dim"
       data-testid="door-checked-mark"
       title={withInvoices ? DOOR_CHECKED_INVOICED_NOTE : DOOR_CHECKED_NOTE}
-      style={{ fontSize: 10, whiteSpace: 'nowrap' }}
+      style={{ fontSize: 11, whiteSpace: 'nowrap' }}
     >
       {' '}
       {withInvoices ? DOOR_CHECKED_INVOICED_LABEL : DOOR_CHECKED_LABEL}
@@ -116,7 +116,7 @@ export function cellFor(r: RegisterRowVM, id: string): ReactNode {
       return (
         <>
           {money(price)}
-          {m.bottlePrice === null ? <span className="cl-dim" style={{ fontSize: 10 }}> /gl</span> : null}
+          {m.bottlePrice === null ? <span className="cl-dim" style={{ fontSize: 11 }}> /gl</span> : null}
         </>
       );
     }

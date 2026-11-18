@@ -278,7 +278,7 @@ export function IsThisTheBottlePanel({
             <div key={key} data-testid={`bottle-field-${key}`}>
               <dt
                 style={{
-                  fontSize: 9,
+                  fontSize: 11,
                   fontWeight: 600,
                   letterSpacing: '0.11em',
                   textTransform: 'uppercase',

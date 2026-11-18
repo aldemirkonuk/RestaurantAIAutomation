@@ -69,7 +69,7 @@ function Book({
     <section className="cl-book" data-testid={testId}>
       <h4 className="cl-sec" style={{ margin: '0 0 6px' }}>{heading ?? BOOK_LABEL[id]}</h4>
       <div style={{ display: 'grid', gap: 4 }}>{children}</div>
-      <p className="cl-note" style={{ marginTop: 7, fontSize: 10.5 }}>
+      <p className="cl-note" style={{ marginTop: 7, fontSize: 11 }}>
         Read from{' '}
         {read.map((src, i) => (
           <span key={src}>
