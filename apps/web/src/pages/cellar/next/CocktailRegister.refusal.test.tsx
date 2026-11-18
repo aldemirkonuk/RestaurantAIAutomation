@@ -84,6 +84,7 @@ describe('reason()', () => {
   });
   it('keeps a string message, and falls back to the error text only when the body has none', () => {
     expect(reason(refused('A cocktail needs a name.'))).toBe('A cocktail needs a name.');
+    expect(reason(refused(['', '  ', 'price must be a number']))).toBe('price must be a number');
     expect(reason(refused([]))).toBe('Request failed with status code 400');
     expect(reason(new Error('Network Error'))).toBe('Network Error');
   });
