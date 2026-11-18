@@ -701,6 +701,54 @@ describe("MenusService.reviewMenuItem — tenant isolation and the house price (
   });
 });
 
+describe("MenusService.reviewMenuItem — a word is never corrected to blank", () => {
+  const tables = () => ({
+    menu_items: [
+      {
+        id: "mi-1",
+        menu_id: "menu-1",
+        restaurant_id: "rest-1",
+        name: "Opus One",
+        producer: "Mondavi",
+        bottle_price: 60,
+        by_glass_price: null,
+        inventory_item_id: "inv-1",
+        submission_id: null,
+        status: "approved",
+      },
+    ],
+    restaurant_menus: [{ id: "menu-1", restaurant_id: "rest-1", status: "draft" }],
+    restaurant_inventory: [{ id: "inv-1", restaurant_id: "rest-1", wine_name: "Opus One" }],
+  });
+
+  it("refuses a name of spaces in words, and neither the line nor the house's name changes", async () => {
+    const t = tables();
+    const service = makeService(t as any, {});
+    const write = service.reviewMenuItem("mi-1", "user-1", "rest-1", { fieldName: "name", newValue: "   " } as any);
+    await expect(write).rejects.toBeInstanceOf(BadRequestException);
+    await expect(write).rejects.toThrow(/name cannot be blank/);
+    expect(t.menu_items[0].name).toBe("Opus One");
+    expect(t.restaurant_inventory[0].wine_name).toBe("Opus One");
+  });
+
+  it("refuses a producer of spaces too", async () => {
+    const t = tables();
+    const service = makeService(t as any, {});
+    await expect(
+      service.reviewMenuItem("mi-1", "user-1", "rest-1", { fieldName: "producer", newValue: " \t " } as any),
+    ).rejects.toThrow(/producer cannot be blank/);
+    expect(t.menu_items[0].producer).toBe("Mondavi");
+  });
+
+  it("keeps a corrected name without the spaces round it, on the line and on the house's name", async () => {
+    const t = tables();
+    const service = makeService(t as any, {});
+    await service.reviewMenuItem("mi-1", "user-1", "rest-1", { fieldName: "name", newValue: "  Opus One 2019 " } as any);
+    expect(t.menu_items[0].name).toBe("Opus One 2019");
+    expect(t.restaurant_inventory[0].wine_name).toBe("Opus One 2019");
+  });
+});
+
 /**
  * ADR 0193 -- "it could be changed every time a menu is updated". Adding a
  * line (the same pipeline a scan or CSV import runs) used to insert the
