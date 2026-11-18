@@ -3,7 +3,8 @@ import { ArrayMaxSize, IsArray, IsString, MaxLength } from "class-validator";
 
 /**
  * The menu dishes to put on the list, by the names the person was shown
- * (r28 onboarding audit, gap 1, slice 3). 500 is past any menu's dishes.
+ * (r28 onboarding audit, gap 1, slice 3), and the menu cocktails to put on
+ * the cocktail list (r36 recipes audit, gap 3). 500 is past any menu's lines.
  */
 export class AddMenuDishesDto {
   @ApiProperty({ type: [String] })

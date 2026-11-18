@@ -19,15 +19,16 @@ import { B_DISH, GONE, HOUSE_A, HOUSE_B, SOUP, TART, V_TART_1, V_TART_2, fakeDb,
 
 /** Every route the controller declares, and which of them write. */
 const DECLARED = [
-  "addMenuDishes", "createDish", "dishesUsingItem", "drinkFigures", "drinksUsingItem", "getDishRecipe", "listDishes", "listDishVersions",
-  "matchShelf", "menuDishes", "menuPrices", "previewDishCost", "readDishVersion", "saveDishRecipe", "updateDish",
+  "addMenuDishes", "addMenuDrinks", "createDish", "dishesUsingItem", "drinkFigures", "drinksUsingItem", "getDishRecipe", "listDishes", "listDishVersions",
+  "matchShelf", "menuDishes", "menuDrinks", "menuPrices", "previewDishCost", "readDishVersion", "saveDishRecipe", "updateDish",
 ];
-const WRITES = ["addMenuDishes", "createDish", "matchShelf", "previewDishCost", "saveDishRecipe", "updateDish"];
+const WRITES = ["addMenuDishes", "addMenuDrinks", "createDish", "matchShelf", "previewDishCost", "saveDishRecipe", "updateDish"];
 /**
  * Reads gated like a write: the menu-dish offer exists only to be taken by
- * the one who may write it, and it carries the menu's prices (gap 1 slice 3).
+ * the one who may write it, and it carries the menu's prices (gap 1 slice 3;
+ * the cocktails' twin, r36 recipes gap 3).
  */
-const GATED_READS = ["menuDishes"];
+const GATED_READS = ["menuDishes", "menuDrinks"];
 
 type Route = { handler: string; method: number; path: string };
 const proto = DishesController.prototype as unknown as Record<string, object>;
