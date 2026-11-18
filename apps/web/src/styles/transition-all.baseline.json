@@ -35,6 +35,7 @@
   "components/wines/MenuScannerTab.tsx": 3,
   "components/wines/WineResearchQueue.tsx": 1,
   "components/wines/WineValidationModal.tsx": 2,
+  "pages/ForgotPassword.tsx": 1,
   "pages/Login.tsx": 2,
   "pages/RecurringOrders.tsx": 2,
   "pages/Register.tsx": 8,
