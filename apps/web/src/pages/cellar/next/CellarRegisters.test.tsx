@@ -300,7 +300,7 @@ describe('the register notices — the backtest amendments', () => {
     render(<CellarRegistersControl readout={r} loading={false} error={null} onChange={vi.fn()} />);
     const notice = screen.getByTestId('needs-items-beer');
     expect(notice).toHaveTextContent(/Put your beers on the menu/);
-    expect(notice).toHaveTextContent(/cannot hold a keg yet/);
+    expect(notice).toHaveTextContent(/counts wines only today/);
     expect(notice).not.toHaveTextContent(/Add your beers to \/inventory/);
   });
 
@@ -313,7 +313,7 @@ describe('the register notices — the backtest amendments', () => {
     });
     render(<CellarRegistersControl readout={r} loading={false} error={null} onChange={vi.fn()} />);
     expect(screen.getByTestId('needs-items-cocktails')).toHaveTextContent(
-      /cocktail_ingredients was created empty/,
+      /Cocktail recipes cannot be recorded yet/,
     );
   });
 

@@ -395,7 +395,7 @@ describe('CellarNext — the parent surface', () => {
     // Register-aware, and honest about what is actionable: /inventory cannot
     // hold a bottle of rye, so it does not ask for one.
     expect(notice).toHaveTextContent(/Put your whiskies on the menu/);
-    expect(notice).toHaveTextContent(/keyed on the wine library/);
+    expect(notice).toHaveTextContent(/counts wines only today/);
     expect(notice).toHaveAttribute('data-needs-items', 'inline');
     // dismissible, and dismissing it does not remove the register
     fireEvent.click(within(notice).getByRole('button', { name: /Dismiss/ }));
@@ -1820,7 +1820,7 @@ describe('the live path on the wine register', () => {
     };
     draw({ category: 'wines' });
     expect(screen.getByTestId('wine-live-note')).toHaveTextContent(
-      /on screen 3 ms later — measured in this tab/,
+      /on screen 3 ms later, measured in this tab/,
     );
   });
 
@@ -1880,7 +1880,7 @@ describe('the expanded row — the /inventory dropdown, in the cellar', () => {
       /keyed on master_wine_id/,
     );
     expect(screen.getByTestId('withheld-par-and-reorder')).toHaveTextContent(
-      /restaurant_inventory\.threshold_min/,
+      /the minimum a house keeps on the shelf/,
     );
   });
 

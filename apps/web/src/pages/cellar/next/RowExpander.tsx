@@ -204,7 +204,7 @@ function FactStrip({ row, register }: { row: RegisterRowVM; register: RegisterId
         <span
           className="cl-fact-v"
           data-withheld="true"
-          title="restaurant_inventory.last_counted_at — this kind has no inventory row (OD-113)"
+          title="This kind has no stock count yet, so it has no count date"
         >
           never counted
         </span>
@@ -286,7 +286,7 @@ export default function RowExpander({
       />
       <Withheld
         title="Par and reorder"
-        reason="A par is a column on the inventory row (restaurant_inventory.threshold_min), and this kind has no inventory row. Suggested order, reorder point and runway are all arithmetic over that par, so all four are withheld together rather than one of them being guessed."
+        reason="A par is the minimum a house keeps on the shelf, and this kind has no stock count yet. Suggested order, reorder point and runway all come from that par, so all four are held back together rather than one of them being guessed."
       />
 
       {/* ── market price: real where the books answer ────────────────────── */}
