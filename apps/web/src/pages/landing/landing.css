@@ -212,6 +212,13 @@ html[data-mudavym-ground="charcoal"] .mdv-landing .mudavym:not([data-ground]),
 
 /* ---- the platform ---- */
 .ld-bento { margin-top: 48px; display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+/* On a phone the seven cells are one row of 86% cards that snap, the next one
+   showing at the edge, instead of seven screens of scroll (N-11). */
+@media (max-width: 679px) {
+  .ld-bento { grid-auto-flow: column; grid-auto-columns: 86%; grid-template-columns: none; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; margin-inline: -20px; padding-inline: 20px; scroll-padding-inline: 20px; }
+  .ld-bento::-webkit-scrollbar { display: none; }
+  .ld-bento > .ld-cell { scroll-snap-align: start; }
+}
 @media (min-width: 680px) {
   .ld-bento { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "rec rec" "inv ord" "mail mail" "pos ask" "ins ins"; }
 }
@@ -628,6 +635,8 @@ html[data-mudavym-ground="charcoal"] .ld-soon + .ld-block { border-top: 1px soli
 .ld-dock.is-on { transform: none; }
 .ld-dock .ld-btn { max-width: 420px; }
 @media (min-width: 960px) { .ld-dock { display: none; } }
+/* While the dock offers the one button, the bar does not offer a second (N-11). */
+@media (max-width: 959px) { .ld-bar .ld-bar-cta--docked { display: none; } }
 
 /* ================================================================== */
 /* Motion. Only where the reader has not asked for less of it.        */

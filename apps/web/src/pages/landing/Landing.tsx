@@ -1229,7 +1229,7 @@ export function Landing() {
               The story
             </Link>
             <Link to="/login">Sign in</Link>
-            <Go to={START} className="ld-btn ld-btn-sm" />
+            <Go to={START} className={'ld-btn ld-btn-sm' + (dock ? ' ld-bar-cta--docked' : '')} />
           </nav>
         </div>
         {/* Job: fills as the page is read, so the reader knows how much is left.
