@@ -53,6 +53,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { ToastProvider } from './contexts/ToastContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { HousePageLoader } from './components/mudavym/HousePageLoader'
+import { ScrollToTop } from './components/mudavym/ScrollToTop'
 import { RouteHead } from './lib/seo/RouteHead'
 import { RootDoor } from './pages/landing/RootDoor'
 import { RegisterDoor } from './pages/landing/RegisterDoor'
@@ -193,6 +194,7 @@ function App() {
                 <RealtimeProvider>
                   <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <RouteHead />
+            <ScrollToTop />
             <Suspense fallback={<HousePageLoader />}>
               <Routes>
                 {/* The root: a stranger's landing page, a signed-in person's dashboard

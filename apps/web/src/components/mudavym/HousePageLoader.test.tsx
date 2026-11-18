@@ -1,7 +1,6 @@
 /**
- * The loader ladder: silent for the first 400ms (most chunks are cached and
- * load faster than that — showing anything reads as a stutter), a quiet mark
- * + skeleton from 400ms, and past 12s the copy says it is taking a while.
+ * The loader ladder: the shell frame at once, a quiet "Reading…" status from
+ * 800ms, and past 12s the copy says it is taking a while.
  * Legacy (shell off) is unchanged: the original instant spinner, no ladder.
  */
 
@@ -32,17 +31,20 @@ describe("shell off (the QA override '0' -- since 2026-09-25 the only way to leg
 
 describe('shell on (the default: live in code since 2026-09-25, no override, no flag row)', () => {
 
-  it('renders nothing for the first 400ms', () => {
+  it('paints the shell frame at once and says nothing for the first 800ms', () => {
     const { container } = render(<HousePageLoader />);
-    act(() => vi.advanceTimersByTime(399));
+    expect(screen.getByTestId('shell-skeleton')).toBeTruthy();
+    act(() => vi.advanceTimersByTime(799));
     expect(container.textContent).toBe('');
   });
 
-  it('shows a quiet mark and a skeleton from 400ms', () => {
+  it('keeps one aria-live status region from the start and gives it words from 800ms', () => {
     render(<HousePageLoader />);
-    act(() => vi.advanceTimersByTime(400));
-    expect(screen.getByText('Reading…')).toBeTruthy();
-    expect(document.querySelector('.mdv-skel')).toBeTruthy();
+    const region = screen.getByRole('status');
+    expect(region.getAttribute('aria-live')).toBe('polite');
+    expect(region.textContent).toBe('');
+    act(() => vi.advanceTimersByTime(800));
+    expect(screen.getByRole('status').textContent).toBe('Reading…');
   });
 
   it('says it is taking a while only past 12s, not before', () => {

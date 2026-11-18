@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { ShieldAlert, ArrowLeft } from 'lucide-react'
+import { HousePageLoader } from './mudavym/HousePageLoader'
 
 type HouseRole = 'owner' | 'manager' | 'staff'
 
@@ -25,19 +26,11 @@ export function ProtectedRoute({
   const { user, loading, isAuthenticated } = useAuth()
   const location = useLocation()
 
-  // Loading State
+  // Loading State: the shell's frame, not a grey spinner on a light slate, so
+  // a cold reload (a token, the session read still out) keeps one calm frame
+  // from the first paint to the page and never flashes light on charcoal.
   if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 mx-auto mb-4 relative">
-            <div className="w-12 h-12 border-3 border-slate-200 rounded-full" />
-            <div className="absolute inset-0 w-12 h-12 border-3 border-brand-500 rounded-full border-t-transparent animate-spin" />
-          </div>
-          <p className="text-slate-500 font-medium">Loading...</p>
-        </div>
-      </div>
-    )
+    return <HousePageLoader />
   }
 
   // Not Authenticated — must redirect before any role checks to avoid infinite spinner
