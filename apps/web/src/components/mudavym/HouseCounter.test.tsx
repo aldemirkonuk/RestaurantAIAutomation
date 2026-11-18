@@ -161,9 +161,13 @@ describe('the foot never claims a read that has not landed', () => {
     expect(screen.queryByText(/again in 60 s/)).toBeNull();
   });
 
-  it('after a read: the cadence and Read now', () => {
+  it('after a read: how long ago it synced, the cadence on hover, and Read now', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-21T14:02:23Z'));
     mount(state());
-    expect(screen.getByText(/again in 60 s · on focus/)).toBeTruthy();
+    const line = screen.getByText(/synced 12 s ago/);
+    expect(line.getAttribute('title')).toMatch(/again in 60 s · on focus/);
+    vi.useRealTimers();
     expect(screen.getByRole('button', { name: 'Read now' })).toBeTruthy();
   });
 

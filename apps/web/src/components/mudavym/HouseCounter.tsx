@@ -22,7 +22,7 @@
  * only once its register exists.
  */
 
-import { useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {
   COUNTER_VERBS,
@@ -50,6 +50,75 @@ const SAID_WORD: Record<SaidEntry['kind'], string> = {
   not_read: 'Not read',
   kept: 'Kept',
 };
+
+/**
+ * Is the whole counter quiet? Every register that could be read answered, and
+ * every one that answered holds nothing. A register that failed, a read that
+ * failed, an offline page and a read that has not landed are NEVER quiet: the
+ * column does not fold on a read it has not got.
+ */
+export function isCounterIdle(state: HouseCounterState): boolean {
+  const { last, failure, offline } = state;
+  if (!last || failure || offline) return false;
+  let answered = 0;
+  for (const r of last.registers) {
+    if (r.state === 'unreadable') return false;
+    if (r.state === 'answered') {
+      if (r.count > 0) return false;
+      answered += 1;
+    }
+  }
+  return answered > 0;
+}
+
+type DotKind = 'quiet' | 'waits' | 'owner';
+
+/** One verb's dot: hollow-quiet, teal when something waits, haloed when it waits on the person. */
+function dotKind(registers: readonly CounterRegister[], verb: CounterVerb): DotKind {
+  const mine = registers.filter((r): r is CounterRegisterAnswered => r.verb === verb && r.state === 'answered');
+  if (mine.some((r) => r.act === 'yours' && r.count > 0)) return 'owner';
+  if (mine.some((r) => r.count > 0)) return 'waits';
+  return 'quiet';
+}
+
+function Dot({ kind }: { kind: DotKind }) {
+  return <span className="mdv-counter__dot" data-kind={kind} aria-hidden />;
+}
+
+/** "12 s", "3 min" — how long ago, in the reader's own clock, ticking each second. */
+export function agoWord(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `${s} s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} min`;
+  return `${Math.floor(m / 60)} h`;
+}
+
+function useAgo(iso: string | null | undefined): string | null {
+  const at = iso ? Date.parse(iso) : NaN;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (Number.isNaN(at)) return undefined;
+    setNow(Date.now());
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [at]);
+  return Number.isNaN(at) ? null : agoWord(now - at);
+}
+
+/** The foot's line after a landed read: a tiny arc and "synced 12 s ago". */
+function SyncedLine({ readAt }: { readAt: string }) {
+  const ago = useAgo(readAt);
+  return (
+    <span
+      className="mdv-counter__synced"
+      title={`read ${clockOf(readAt)} · again in ${COUNTER_POLL_MS / 1000} s · on focus`}
+    >
+      <span className="mdv-counter__arc" aria-hidden />
+      synced {ago ?? '—'} ago
+    </span>
+  );
+}
 
 function Ring({ label }: { label?: string }) {
   return <span className="mdv-counter__ring" aria-hidden={label ? undefined : true} aria-label={label} />;
@@ -191,13 +260,16 @@ export function CounterBody({ state, onOpen }: CounterBodyProps) {
   if (offline) {
     foot = <span>{last ? `read ${clockOf(last.readAt)} · ` : ''}offline · will read on return</span>;
   } else if (reading) {
-    foot = <span>reading the registers…</span>;
+    foot = (
+      <span className="mdv-counter__synced">
+        <span className="mdv-counter__arc" data-spin="true" aria-hidden />
+        reading the registers…
+      </span>
+    );
   } else if (last && !failure) {
     foot = (
       <>
-        <span>
-          read {clockOf(last.readAt)} · again in {COUNTER_POLL_MS / 1000} s · on focus
-        </span>
+        <SyncedLine readAt={last.readAt} />
         <button type="button" className="mdv-link" onClick={readNow}>
           Read now
         </button>
@@ -292,6 +364,12 @@ export interface HouseCounterProps extends CounterBodyProps {
  */
 export function HouseCounter({ state, onOpen, width, onToggle }: HouseCounterProps) {
   const regs = state.last?.registers ?? [];
+  const idle = isCounterIdle(state);
+  // Opened by hand while quiet; folds back the moment something waits again.
+  const [peek, setPeek] = useState(false);
+  useEffect(() => {
+    if (!idle) setPeek(false);
+  }, [idle]);
   if (width === 'tucked') {
     return (
       <aside className="mdv-counter mudavym mdv-counter--strip" aria-label="The counter, tucked">
@@ -333,6 +411,7 @@ export function HouseCounter({ state, onOpen, width, onToggle }: HouseCounterPro
               <li key={verb}>
                 <button type="button" className="mdv-counter__stripverb" onClick={onToggle} aria-label={label} title={label}>
                   <span className="mdv-counter__stripword">{VERB_SHORT[verb]}</span>
+                  {m && m.kind === 'count' ? <Dot kind={dotKind(regs, verb)} /> : null}
                   {mark}
                 </button>
               </li>
@@ -342,10 +421,31 @@ export function HouseCounter({ state, onOpen, width, onToggle }: HouseCounterPro
       </aside>
     );
   }
+  if (idle && !peek) {
+    return (
+      <aside className="mdv-counter mudavym mdv-counter--idle" aria-label="The counter, nothing waiting">
+        <ul className="mdv-counter__strip">
+          {COUNTER_VERBS.map((verb) => (
+            <li key={verb}>
+              <button
+                type="button"
+                className="mdv-counter__stripverb"
+                onClick={() => setPeek(true)}
+                aria-label={`${VERB_WORD[verb]}: none waiting. Open the counter`}
+                title={`${VERB_WORD[verb]}: none waiting`}
+              >
+                <Dot kind={dotKind(regs, verb)} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      </aside>
+    );
+  }
   return (
     <aside className="mdv-counter mudavym" aria-label="The counter">
       <CounterBody state={state} onOpen={onOpen} />
-      <button type="button" className="mdv-counter__tuck" onClick={onToggle}>
+      <button type="button" className="mdv-counter__tuck" onClick={idle ? () => setPeek(false) : onToggle}>
         Tuck the counter
       </button>
     </aside>
