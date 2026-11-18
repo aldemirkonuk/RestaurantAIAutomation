@@ -1,0 +1,37 @@
+/* The fold under a staff member's rooms list ("More rooms"). It reuses the
+   rail's section label; the row is a full 44 px target on a coarse pointer. */
+.mdv-rail__more {
+  margin-top: 4px;
+}
+
+.mdv-rail__more-summary {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.mdv-rail__more-summary::-webkit-details-marker {
+  display: none;
+}
+
+.mdv-rail__more-summary::after {
+  content: '  +';
+}
+
+.mdv-rail__more[open] > .mdv-rail__more-summary::after {
+  content: '  \2212';
+}
+
+.mdv-rail__more-summary:focus-visible {
+  outline: 2px solid var(--seal, #1a5e6b);
+  outline-offset: 2px;
+  border-radius: 7px;
+}
+
+@media (pointer: coarse) {
+  .mdv-rail__more-summary {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}
