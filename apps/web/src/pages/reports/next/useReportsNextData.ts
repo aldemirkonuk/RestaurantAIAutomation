@@ -194,6 +194,8 @@ export function encodeSheet(state: SheetState): StoredSheet {
 
 export interface ReportsNextData {
   restaurantId: string | null;
+  /** The session's houses are still being read: null above means unread, not absent. */
+  housePending: boolean;
   /**
    * The goals desk's writes. It lives behind this hook rather than beside it so
    * the page has exactly ONE data seam: everything the page does to the
@@ -236,7 +238,7 @@ export function useReportsNextData(
   /** Puts a cutting the goals desk proposed onto the page's draft sheet. */
   placeCutting: (cut: { id: AnalysisId; graph: GraphType; days: number | null }) => void = () => {},
 ): ReportsNextData {
-  const { activeRestaurantId, activeRole } = useAuth();
+  const { activeRestaurantId, activeRole, houseResolved } = useAuth();
   const rid = activeRestaurantId;
   const qc = useQueryClient();
   const { preferences, updatePreferences, isLoading: prefsLoading } = useUserPreferences();
@@ -337,6 +339,7 @@ export function useReportsNextData(
 
   return {
     restaurantId: rid,
+    housePending: houseResolved === false,
     goalsDesk,
     exportDesk,
     registers,

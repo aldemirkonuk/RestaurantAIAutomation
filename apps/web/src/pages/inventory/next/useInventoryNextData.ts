@@ -589,7 +589,8 @@ export interface Waiting {
 const RECEIPT_QUEUE_LIMIT = 100;
 
 export function useInventoryNextData() {
-  const { activeRestaurantId, activeRole, user, availableRestaurants, loading: authLoading } = useAuth();
+  const { activeRestaurantId, activeRole, user, availableRestaurants, loading, houseResolved } = useAuth();
+  const authLoading = loading || houseResolved === false;
   const queryClient = useQueryClient();
   const rid = activeRestaurantId ?? null;
   const role = (activeRole ?? (user as { role?: string } | null)?.role ?? null) as string | null;

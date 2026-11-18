@@ -1305,7 +1305,8 @@ export function useCocktailRegister(enabled: boolean) {
 }
 
 export function useCellarNextData() {
-  const { activeRestaurantId, loading: authLoading } = useAuth();
+  const { activeRestaurantId, loading, houseResolved } = useAuth();
+  const authLoading = loading || houseResolved === false;
   const queryClient = useQueryClient();
   const registers = useCellarRegisters();
   const live = useCellarLive();
