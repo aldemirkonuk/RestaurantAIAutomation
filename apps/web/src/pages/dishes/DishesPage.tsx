@@ -31,12 +31,15 @@
  * that state it free are hidden, every other row stays (ListAllergens; r36
  * recipes audit, gap 8).
  *
+ * An opened dish whose sheet would land off the screen (a link, or a dish just
+ * added, far down the list) is scrolled into view, as on /cocktails.
+ *
  * The names and the figures are two reads (r41 recipes audit, gaps 2 and 3),
  * as on /cocktails: the list shows as soon as the names are read, its cost
  * cells say "…" while the figures are read, and a failed figures read blanks
  * only the figures and says so once above the list, never the names.
  */
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AlertTriangle, Plus } from 'lucide-react';
 import RecipeSheet from '../cellar/next/recipe/RecipeSheet';
@@ -45,6 +48,7 @@ import { PRICE_UNREAD, priceText, readPrice } from '../cellar/next/recipe/price-
 import { useHousePercent, type SayPercent } from '../cellar/next/recipe/useHousePercent';
 import { reason, useCanEditRecipe, useCreateDish, useDishFigures, useDishes, useHouseMoney, useMenuPrices, useRemoveDish, useUpdateDish } from '../cellar/next/recipe/useRecipe';
 import { MENU_PRICES_UNREAD, MenuPriceCell } from '../cellar/next/recipe/MenuPriceCell';
+import { bringIntoView } from '../cellar/next/recipe/bringIntoView';
 import MenuDishesOffer from './MenuDishesOffer';
 import { dishMatches, sectionsOf } from './fold';
 import { AllergenCell, AllergenCheck, keptFor } from '../cellar/next/recipe/ListAllergens';
@@ -359,6 +363,13 @@ export default function DishesPage() {
       { replace: true },
     );
   const toggle = (id: string) => open(id === openId ? null : id);
+  // An opened dish (by a click, a link, or just added) can sit far down the
+  // list; its sheet is brought into view when its heading would land off the
+  // screen, once per dish opened, as /cocktails does (r41 recipes audit, gap 7).
+  const leafRef = useRef<HTMLTableRowElement | null>(null);
+  useEffect(() => {
+    if (openId) bringIntoView(leafRef.current);
+  }, [openId]);
   const cols = (say ? 6 : 3) + (showMenu ? 1 : 0);
 
   return (
@@ -482,7 +493,7 @@ export default function DishesPage() {
                       <AllergenCell id={d.id} a={f?.allergens} />
                     </tr>,
                     d.id === openId ? (
-                      <tr key={`${d.id}-leaf`} data-testid={`dish-leaf-${d.id}`}>
+                      <tr key={`${d.id}-leaf`} data-testid={`dish-leaf-${d.id}`} ref={leafRef}>
                         <td colSpan={cols}>
                           {canEdit ? <DishDetails key={d.id} dish={d} onRemoved={() => open(null)} sections={sections} /> : null}
                           <RecipeSheet dishId={d.id} />
