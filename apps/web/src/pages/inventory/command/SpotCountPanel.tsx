@@ -17,6 +17,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { X, Mic, Camera, Loader2, Check } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useNotificationStore } from '../../../stores'
 import { estimateCountFromPhoto } from '../../../services/api/inventory'
 import { submitSpotCount, newClientCountId } from '../../../lib/spotCountOutbox'
@@ -100,6 +101,7 @@ function toBase64(file: File): Promise<string> {
 
 export function SpotCountPanel({ item, onClose, onCommitted }: SpotCountPanelProps) {
   const toast = useNotificationStore()
+  const queryClient = useQueryClient()
   const inventoryId = item.inventoryId || ''
   const fileRef = useRef<HTMLInputElement>(null)
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
@@ -193,6 +195,9 @@ export function SpotCountPanel({ item, onClose, onCommitted }: SpotCountPanelPro
           reason: 'Spot count',
         },
       })
+      // The setup counts a first count as a step; one the gateway took is the
+      // house's now, one held on the device is not.
+      if (synced) void queryClient.invalidateQueries({ queryKey: ['onboarding-progress'] })
       toast.success(
         synced ? 'Count recorded' : 'Count saved — will sync',
         synced ? `${item.name}: ${countedQty} bottles` : 'No signal right now; it will sync automatically.',

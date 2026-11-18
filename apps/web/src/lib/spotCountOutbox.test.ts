@@ -19,7 +19,7 @@ const store = vi.hoisted(() => ({
 }))
 vi.mock('./offline-storage', () => ({ offlineStorage: store }))
 
-import { flushSpotCountOutbox } from './spotCountOutbox'
+import { flushSpotCountOutbox, SPOT_COUNT_SENT_EVENT } from './spotCountOutbox'
 
 const U1 = '11111111-1111-4111-8111-111111111111'
 const H1 = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
@@ -173,5 +173,31 @@ describe('flushSpotCountOutbox — a failed mark never ends the flush', () => {
     expect(recordSpotCount).toHaveBeenCalledTimes(2)
     expect(store.removePendingMutation).toHaveBeenCalledWith('good')
     expect(res).toEqual({ sent: 1, failed: 1, parked: 0 })
+  })
+})
+
+describe('flushSpotCountOutbox — says when the house gained a count', () => {
+  it('tells the window once when a held count is sent', async () => {
+    const heard = vi.fn()
+    window.addEventListener(SPOT_COUNT_SENT_EVENT, heard)
+    store.getPendingMutationsByType.mockResolvedValue([count('a'), count('b')])
+    recordSpotCount.mockResolvedValue({})
+
+    await flushSpotCountOutbox()
+    window.removeEventListener(SPOT_COUNT_SENT_EVENT, heard)
+
+    expect(heard).toHaveBeenCalledTimes(1)
+  })
+
+  it('says nothing when nothing was sent (failed, or parked)', async () => {
+    const heard = vi.fn()
+    window.addEventListener(SPOT_COUNT_SENT_EVENT, heard)
+    store.getPendingMutationsByType.mockResolvedValue([count('a'), count('b')])
+    recordSpotCount.mockRejectedValueOnce(httpError(503)).mockRejectedValueOnce(httpError(400))
+
+    await flushSpotCountOutbox()
+    window.removeEventListener(SPOT_COUNT_SENT_EVENT, heard)
+
+    expect(heard).not.toHaveBeenCalled()
   })
 })
