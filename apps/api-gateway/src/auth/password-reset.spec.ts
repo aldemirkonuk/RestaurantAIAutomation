@@ -1,5 +1,8 @@
 import { AuthService } from "./auth.service";
-import { BadRequestException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 
 /**
  * v3.0 task 20 — password reset (request + reset-password).
@@ -244,11 +247,17 @@ describe("AuthService#requestPasswordReset — enumeration safety", () => {
 });
 
 describe("AuthService#resetPassword", () => {
-  function makeResetPasswordService(row: any, updateError: any = null) {
+  function makeResetPasswordService(
+    row: any,
+    updateError: any = null,
+    readError: any = null,
+  ) {
     const resetsSelectChain: any = {
       select: () => resetsSelectChain,
       eq: () => resetsSelectChain,
-      maybeSingle: jest.fn().mockResolvedValue({ data: row, error: null }),
+      maybeSingle: jest
+        .fn()
+        .mockResolvedValue({ data: readError ? null : row, error: readError }),
     };
     const resetsUpdateChain: any = {
       update: () => resetsUpdateChain,
@@ -321,6 +330,15 @@ describe("AuthService#resetPassword", () => {
     await expect(
       svc.resetPassword("bad-token", "newpassword1"),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  it("says a failed read of the link is a fault to retry, not an invalid link", async () => {
+    // supabase-js resolves `{ data: null, error }`; reading that as "no such
+    // token" told a person with a good link that it was invalid or expired.
+    const svc = makeResetPasswordService(null, null, { message: "db down" });
+    const out = svc.resetPassword("good-token", "newpassword1");
+    await expect(out).rejects.toThrow(ServiceUnavailableException);
+    await expect(out).rejects.not.toThrow(BadRequestException);
   });
 
   it("rejects a token that has already been used", async () => {

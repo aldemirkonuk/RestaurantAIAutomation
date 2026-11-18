@@ -4071,7 +4071,16 @@ export class AuthService {
       .eq("token", token)
       .maybeSingle();
 
-    if (error || !reset) {
+    if (error) {
+      // supabase-js RESOLVES `{ data, error }`; it does not throw. Reading a
+      // failed read as "no such token" told a person holding a good link that
+      // it was invalid or expired. The database's own words stay in the log.
+      this.logger.error(`Reset link read failed: ${error.message}`);
+      throw new ServiceUnavailableException(
+        "Could not read this reset link right now. Please try again.",
+      );
+    }
+    if (!reset) {
       throw new BadRequestException("Invalid or expired reset link");
     }
 
