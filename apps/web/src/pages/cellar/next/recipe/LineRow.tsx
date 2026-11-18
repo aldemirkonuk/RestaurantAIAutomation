@@ -87,12 +87,13 @@ function costWords(saved: NonNullable<DraftRow['saved']>, say: (n: number) => st
 export function rowNote(
   row: DraftRow,
   say: ((n: number) => string) | null,
+  dish = false,
 ): { tone: 'warn' | 'ink'; text: string } | null {
   if (row.role !== 'stocked') return null;
   if (!row.inventoryId) {
     return {
       tone: 'warn',
-      text: `This drink won't take stock until '${rowName(row)}' is linked to something on your shelf.`,
+      text: `This ${dish ? 'dish' : 'drink'} won't take stock until '${rowName(row)}' is linked to something on your shelf.`,
     };
   }
   if (row.itemGone) {
@@ -106,12 +107,12 @@ export function rowNote(
   if (row.saved.costPerServe != null) {
     const cost = costWords(row.saved, say);
     return basis === 'invoice_lot_wac_partial'
-      ? { tone: 'ink', text: `${cost} a serve, from the bottles that have an invoice; some on hand have none yet.` }
-      : { tone: 'ink', text: `${cost} a serve` };
+      ? { tone: 'ink', text: `${cost} a ${dish ? 'plate' : 'serve'}, from the ${dish ? 'goods' : 'bottles'} that have an invoice; some on hand have none yet.` }
+      : { tone: 'ink', text: `${cost} a ${dish ? 'plate' : 'serve'}` };
   }
   const item = row.itemName ?? rowName(row);
   if (basis === 'size_not_known') {
-    return { tone: 'warn', text: `No price yet: your shelf doesn't say how much one ${row.itemUom ?? 'bottle'} of ${item} holds.` };
+    return { tone: 'warn', text: `No price yet: your shelf doesn't say how much one ${row.itemUom ?? (dish ? 'pack' : 'bottle')} of ${item} holds.` };
   }
   if (basis === 'pack_size_not_known') {
     // The gateway names this for a volume line and for a weighed one. A
@@ -120,7 +121,9 @@ export function rowNote(
     const fix =
       row.unit === 'g' || row.unit === 'kg'
         ? 'Link the line to something your shelf counts by weight, in g or kg.'
-        : 'Link the line to the single bottle you pour from.';
+        : dish
+          ? 'Link the line to the single pack you buy it in.'
+          : 'Link the line to the single bottle you pour from.';
     return {
       tone: 'warn',
       text: `No price: ${item} is counted ${countedHow(row.itemUom)}, and your shelf doesn't say what one holds. ${fix}`,
@@ -129,7 +132,7 @@ export function rowNote(
   if (basis === 'unit_mismatch') {
     return {
       tone: 'warn',
-      text: `No price: this line is ${measuredHow(row.unit)}, but ${item} is counted ${countedHow(row.itemUom)}. Change the unit, or link the item it pours from.`,
+      text: `No price: this line is ${measuredHow(row.unit)}, but ${item} is counted ${countedHow(row.itemUom)}. Change the unit, or link the item it ${dish ? 'is bought as' : 'pours from'}.`,
     };
   }
   return { tone: 'warn', text: 'No price yet: it will cost once a delivery of it is checked in.' };
@@ -173,9 +176,12 @@ export default function LineRow({
   say,
   onChange,
   onRemove,
+  dish = false,
 }: {
   row: DraftRow;
   say: ((n: number) => string) | null;
+  /** The line is on a dish: its notes say plate and goods, not serve and bottle. */
+  dish?: boolean;
   onChange: (patch: Partial<DraftRow>) => void;
   onRemove: () => void;
 }) {
@@ -291,7 +297,7 @@ export default function LineRow({
       {picking ? (
         <ShelfPicker initial={row.inventoryId ? '' : row.label} onPick={pick} onClose={() => setPicking(false)} />
       ) : null}
-      <Note note={rowNote(row, say)} />
+      <Note note={rowNote(row, say, dish)} />
     </li>
   );
 }

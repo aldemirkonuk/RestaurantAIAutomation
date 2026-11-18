@@ -68,6 +68,7 @@ import { AlertTriangle, ClipboardPaste, History, Plus, RotateCcw, Save } from 'l
 import { useAuth } from '../../../../contexts/AuthContext';
 import { getErrorStatus } from '../../../../services/api/client';
 import {
+  ownerOf,
   recipesApi,
   type CocktailRecipe,
   type PreviewCostBody,
@@ -279,7 +280,7 @@ function PastVersion({
         ))}
       </ol>
       {say && cost?.complete && cost.perServe != null ? (
-        <p className="cl-note">Would cost {say(cost.perServe)} a serve at today's prices.</p>
+        <p className="cl-note">Would cost {say(cost.perServe)} a {ownerOf(cocktailId).kind === 'dish' ? 'plate' : 'serve'} at today's prices.</p>
       ) : null}
       {onStartFrom ? (
         <button type="button" className="cl-btn cl-focus" style={{ marginTop: 6 }} onClick={() => onStartFrom(version)}>
@@ -394,10 +395,10 @@ export function costPreviewBody(rows: DraftRow[], serves: number): { body: Previ
 }
 
 /** Why Save is off, naming the first line that stops it. */
-export function whyBlocked(rows: DraftRow[], serves: number = 1): string | null {
+export function whyBlocked(rows: DraftRow[], serves: number = 1, dish = false): string | null {
   if (rows.length === 0) return 'Add at least one ingredient.';
   if (!Number.isInteger(serves) || serves < 1 || serves > MAX_SERVES) {
-    return `Say how many serves it makes: a whole number from 1 to ${MAX_SERVES.toLocaleString('en-US')}.`;
+    return `Say how many ${dish ? 'plates' : 'serves'} it makes: a whole number from 1 to ${MAX_SERVES.toLocaleString('en-US')}.`;
   }
   if (rows.length > MAX_LINES) return tooMany(rows.length);
   const named = (i: number) => {
@@ -536,7 +537,7 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
   }, [data, versionId, dirty, seed]);
 
   const shownMeta = meta ?? metaOf(data?.current);
-  const blocked = useMemo(() => whyBlocked(rows ?? [], shownMeta.yieldServes), [rows, shownMeta.yieldServes]);
+  const blocked = useMemo(() => whyBlocked(rows ?? [], shownMeta.yieldServes, isDish), [rows, shownMeta.yieldServes, isDish]);
 
   // Money only where the server sent it, and never to a role that cannot edit.
   const money = Boolean(canEdit && data && (data.cost !== null || data.cocktail.price !== null));
@@ -715,6 +716,7 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
                 key={r.key}
                 row={r}
                 say={say}
+                dish={isDish}
                 onChange={(p) => patch(r.key, p)}
                 onRemove={() => edit((rs) => rs.filter((x) => x.key !== r.key))}
               />
@@ -727,7 +729,7 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
 
       {canEdit && repeated.length > 0 ? (
         <p className="cl-note" data-testid="recipe-repeated">
-          {repeated.map(([name, n]) => `${name} is on ${n} lines; a serve takes all of them.`).join(' ')}
+          {repeated.map(([name, n]) => `${name} is on ${n} lines; a ${isDish ? 'plate' : 'serve'} takes all of them.`).join(' ')}
         </p>
       ) : null}
 

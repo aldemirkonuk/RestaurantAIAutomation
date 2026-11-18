@@ -95,4 +95,14 @@ describe('RecipeSheet on a dish', () => {
     await waitFor(() => expect(screen.getAllByLabelText('Amount')).toHaveLength(1));
     expect((screen.getByLabelText('Amount') as HTMLInputElement).value).toBe('77');
   });
+  it('says dish, not drink, under a line that is not linked to the shelf, and plates when save is blocked', async () => {
+    const row = { key: 'u', role: 'stocked' as const, inventoryId: null, itemName: null, itemKind: null, label: 'Flour', qtyText: '30', unit: 'g' as const, saved: null };
+    keepDraft(draftKey('u1', RID, `dish:${ID}`), { rows: [row], openedFrom: V1, dirty: true, setAside: null });
+    serve();
+    render(<RecipeSheet dishId={ID} />, { wrapper: wrapper() });
+    expect(await screen.findByText("This dish won't take stock until 'Flour' is linked to something on your shelf.")).toBeInTheDocument();
+    expect(screen.queryByText(/This drink/)).toBeNull();
+    fireEvent.change(screen.getByLabelText('Makes (plates)'), { target: { value: '0' } });
+    expect(await screen.findByText(/Say how many plates it makes/)).toBeInTheDocument();
+  });
 });
