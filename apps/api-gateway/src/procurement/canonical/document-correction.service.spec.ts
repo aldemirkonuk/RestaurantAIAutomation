@@ -377,6 +377,105 @@ describe("DocumentCorrectionService", () => {
   });
 
   // -------------------------------------------------------------------------
+  describe("a person corrects a unit to a dozen (r57)", () => {
+    const dozenEnvelope = (value: string) => ({
+      value,
+      source: "human_corrected",
+      confidence: null,
+      revision: 2,
+      as_printed: "bottle",
+      verified_by: null,
+      verified_at: null,
+    });
+    const replay = async (path: string, value: string) => {
+      answers.document_corrections = {
+        data: [
+          {
+            revision: 2,
+            kind: "correction",
+            field_path: path,
+            after: dozenEnvelope(value),
+          },
+        ],
+        error: null,
+      };
+      answers.document_revisions = { data: [{ revision: 2 }], error: null };
+      const res = await canonical.buildFromDocumentId("rest-1", "doc-1");
+      if (!res.ok) throw new Error(res.error);
+      return res.value;
+    };
+    const withRow = (extra: Record<string, unknown>) => {
+      answers.procurement_document_lines = {
+        data: [{ ...LINE_ROWS[0], ...extra }],
+        error: null,
+      };
+    };
+
+    it("takes 'dozen' at the door, and the sheet counts twelve pieces a dozen", async () => {
+      const res = await service.correct("rest-1", "doc-1", "u1", {
+        path: "lines[0].unit",
+        value: "dozen",
+        reason: "the paper says 12 DZ",
+      });
+      expect(res.ok).toBe(true);
+      expect(inserts.some((i) => i.table === "document_corrections")).toBe(true);
+
+      const doc = await replay("lines[0].unit", "dozen");
+      expect(doc.layer2.lines[0].canonicalUom).toBe("pack");
+      expect(doc.layer2.lines[0].packSize).toBe(12);
+      expect(doc.layer2.lines[0].qtyBottles).toBe(144);
+      expect(doc.layer1.lines[0].unit.value).toBe("dozen");
+    });
+
+    it("takes a price per dozen on a line counted in pieces", async () => {
+      const res = await service.correct("rest-1", "doc-1", "u1", {
+        path: "lines[0].priceBaseUnit",
+        value: "DZN",
+      });
+      expect(res.ok).toBe(true);
+      const doc = await replay("lines[0].priceBaseUnit", "DZN");
+      expect(doc.layer2.lines[0].packSize).toBe(12);
+    });
+
+    it("refuses a dozen on a line whose paper states a pack of 6, and writes nothing", async () => {
+      withRow({ uom: "case", pack_size: 6 });
+      const res = await service.correct("rest-1", "doc-1", "u1", {
+        path: "lines[0].unit",
+        value: "dozen",
+      });
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.status).toBe(400);
+        expect(res.error).toContain("pack of 6");
+        expect(res.error).toContain("Nothing was written");
+      }
+      expect(inserts).toEqual([]);
+    });
+
+    it("refuses a dozen on a line priced per case, and writes nothing", async () => {
+      withRow({ uom: "case", price_base_qty: "1", price_base_uom: "case" });
+      const res = await service.correct("rest-1", "doc-1", "u1", {
+        path: "lines[0].unit",
+        value: "dozen",
+      });
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error).toContain("priced per case");
+      expect(inserts).toEqual([]);
+    });
+
+    it("refuses a price per dozen on a line counted in kilos, and writes nothing", async () => {
+      withRow({ uom: "kg" });
+      const res = await service.correct("rest-1", "doc-1", "u1", {
+        path: "lines[0].priceBaseUnit",
+        value: "dozen",
+      });
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error).toContain("counted in kg");
+      expect(inserts).toEqual([]);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   describe("a failed read is never an uncorrected document", () => {
     it("fails the build when the correction log cannot be read", async () => {
       answers.document_corrections = {

@@ -4,7 +4,12 @@ import {
   ParsedLine,
   applyTieOut,
 } from "../documents/parsed-document";
-import { normalizeUom, toBottles, Uom } from "../documents/document-types";
+import {
+  DozenRead,
+  readDozenUnits,
+  toBottles,
+  Uom,
+} from "../documents/document-types";
 
 /**
  * correctable-paths — the CLOSED LIST of layer-1 fields a human may correct,
@@ -160,6 +165,33 @@ const lineSet =
  */
 function recomputeBottles(l: ParsedLine): void {
   l.qtyBottles = toBottles(l.qty, l.uom, l.packSize);
+}
+
+/**
+ * A person's unit that is a dozen (r57). A dozen is twelve pieces, so a line
+ * corrected to one is a pack of 12 and the price base follows the same rule the
+ * photo/PDF reader holds (`readDozenUnits`): refused when the paper's own pack
+ * is not 12, or the line is priced per a unit a dozen cannot sit beside. The
+ * price base is only looked at when the paper states a basis quantity, because
+ * the sheet shows the counted unit there when it states none. Door and replay
+ * both call this, so the log can never say what the sheet did not do.
+ */
+export function readCorrectedUnit(
+  line: {
+    uom?: string | null;
+    packSize?: number | null;
+    priceBaseUom?: string | null;
+    priceBaseQty?: number | null;
+  },
+  field: "unit" | "priceBaseUnit",
+  value: string,
+): DozenRead {
+  const base = line.priceBaseQty != null ? (line.priceBaseUom ?? null) : null;
+  return readDozenUnits({
+    rawUom: field === "unit" ? value : (line.uom ?? null),
+    rawBaseUom: field === "priceBaseUnit" ? value : base,
+    packSize: Math.max(1, line.packSize ?? 1),
+  });
 }
 
 const parsedLine =
@@ -419,8 +451,12 @@ export const CORRECTABLE_PATHS: Record<string, CorrectablePath> = {
       // land would make the screen and the log disagree. `normalizeUom` returns
       // null for an unreadable unit and the caller has already refused the
       // request in that case (see DocumentCorrectionService).
-      const u = normalizeUom(asString(v));
-      if (u) l.uom = u as Uom;
+      const text = asString(v);
+      if (!text) return;
+      const read = readCorrectedUnit(l, "unit", text);
+      if (read.refused) return;
+      if (read.uom) l.uom = read.uom;
+      l.packSize = read.packSize;
       recomputeBottles(l);
     }),
   },
@@ -454,7 +490,16 @@ export const CORRECTABLE_PATHS: Record<string, CorrectablePath> = {
     read: lineEnv("priceBaseUnit"),
     write: lineSet("priceBaseUnit"),
     toParsed: parsedLine((l, v) => {
-      l.priceBaseUom = normalizeUom(asString(v));
+      const text = asString(v);
+      if (text == null) {
+        l.priceBaseUom = null;
+        return;
+      }
+      const read = readCorrectedUnit(l, "priceBaseUnit", text);
+      if (read.refused) return;
+      l.priceBaseUom = read.priceBaseUom;
+      l.packSize = read.packSize;
+      recomputeBottles(l);
     }),
   },
   "lines[].netAmount": {

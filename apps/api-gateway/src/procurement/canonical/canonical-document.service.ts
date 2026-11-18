@@ -356,6 +356,8 @@ export class CanonicalDocumentService {
       const line = parsed.lines[rl.lineIndex];
       if (!line) continue;
       rl.canonicalUom = normalizeUom(line.uom);
+      // A unit corrected to a dozen is a pack of twelve (r57).
+      if ((line.packSize ?? 1) !== (rl.packSize ?? 1)) rl.packSize = line.packSize;
       rl.qtyBottles = line.qtyBottles;
       rl.vintage = line.vintage ?? null;
     }
