@@ -408,3 +408,27 @@ describe("CsvParserService: the money a file prices a line in (r40, r36 N1)", ()
     });
   });
 });
+
+describe("CsvParserService.read: a kitchen or drinks sheet's own column words", () => {
+  // r56: a food menu's sheet heads its name column Dish / Menu item / Yemek,
+  // not Name / Wine. It was refused with "no name column".
+  it("reads Dish, Menu item, Product and Yemek as the name column", () => {
+    for (const head of ["Dish", "Menu item", "Item name", "Product", "Yemek", "Yemek Adı", "Cocktail", "İçecek"]) {
+      const { items, issues } = parser().read(`${head},Price\nBurger,14\n`);
+      expect(issues.filter((i) => i.reason === "no_name_column")).toEqual([]);
+      expect(items.map((i) => i.name)).toEqual(["Burger"]);
+    }
+  });
+
+  it("reads Section, Course, Group and Bölüm as the category column", () => {
+    for (const head of ["Section", "Course", "Group", "Menu section", "Bölüm", "Grup"]) {
+      const { items } = parser().read(`Dish,${head},Price\nBurger,Mains,14\n`);
+      expect(items[0]).toMatchObject({ name: "Burger", category: "Mains", bottle_price: 14 });
+    }
+  });
+
+  it("still takes the first name column when a sheet names two", () => {
+    const { items } = parser().read("Name,Dish,Price\nA,B,3\n");
+    expect(items[0].name).toBe("A");
+  });
+});

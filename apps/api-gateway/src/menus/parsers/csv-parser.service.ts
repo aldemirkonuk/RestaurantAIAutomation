@@ -7,13 +7,15 @@ import { cellMoneyMark, differentMoney, excelFormatMark, headerMoneyMark, oneMon
 const ALIASES: Array<[keyof WineExtractItem, string]> = [
   [
     "name",
-    "name wine wine_name item ad adi isim urun urun_adi sarap sarap_adi",
+    "name wine wine_name item ad adi isim urun urun_adi sarap sarap_adi " +
+      // A kitchen or drinks sheet heads its name column in its own words.
+      "dish dish_name menu_item item_name product product_name cocktail drink yemek yemek_adi icecek icecek_adi",
   ],
   ["producer", "producer winery vineyard chateau brand uretici"],
   ["vintage", "vintage year yil rekolte"],
   ["region", "region appellation bolge"],
   ["grape_variety", "grape variety grape_variety uzum uzum_cesidi"],
-  ["category", "category type kategori tur"],
+  ["category", "category type kategori tur section course group menu_section bolum grup"],
   [
     "by_glass_price",
     "by_glass glass glass_price by_glass_price kadeh kadeh_fiyati",
