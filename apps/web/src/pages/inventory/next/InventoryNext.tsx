@@ -657,9 +657,9 @@ export default function InventoryNext() {
         ) : rows !== null && rows.length === 0 ? (
           /* ── the empty house (sketch frame 2) ───────────────────────── */
           <div data-testid="inventory-empty">
-            <p className="iv-lead">No bottles on the books yet.</p>
+            <p className="iv-lead">No goods on the books yet.</p>
             <p className="iv-said">
-              The cellar starts with its first evidence: a delivery at the door, or the invoice that came with it.
+              The book starts with its first evidence: a delivery at the door, or the invoice that came with it.
               Figures appear once there is something to count. Until then the page shows nothing it would have to state
               as zero.
             </p>
@@ -668,8 +668,8 @@ export default function InventoryNext() {
             <section className="iv-card iv-card-lead">
               <h2 className="iv-h2">Receive a delivery or upload an invoice</h2>
               <p className="iv-said">
-                Count the cases at the door, or photograph or forward the invoice. The bottles on it arrive as shadow
-                stock, and they become live when someone counts them onto the shelf. Nothing enters the cellar without a
+                Count the cases at the door, or photograph or forward the invoice. The goods on it arrive as shadow
+                stock, and they become live when someone counts them onto the shelf. Nothing enters the book without a
                 person’s seal.
               </p>
               <div className="iv-row-controls">

@@ -361,10 +361,23 @@ describe('unknown is never zero', () => {
 });
 
 describe('the empty house', () => {
+  it('says goods, not bottles or cellar, before the house has shown what it stocks', () => {
+    mock.data = data({ rows: [] });
+    renderPage();
+    const t = screen.getByTestId('inventory-empty').textContent ?? '';
+    expect(t).not.toContain('No bottles');
+    expect(t).not.toContain('The cellar starts');
+    expect(t).not.toContain('The bottles on it');
+    expect(t).not.toContain('Nothing enters the cellar');
+    expect(t).toContain('The book starts with its first evidence');
+    expect(t).toContain('The goods on it arrive as shadow stock');
+    expect(t).toContain('Nothing enters the book without a person’s seal');
+  });
+
   it('shows the first steps and hides the chips, the filters and the table', () => {
     mock.data = data({ rows: [] });
     renderPage();
-    expect(screen.getByText('No bottles on the books yet.')).toBeTruthy();
+    expect(screen.getByText('No goods on the books yet.')).toBeTruthy();
     expect(screen.getByTestId('inventory-headline').textContent).toBe('Inventory.');
     expect(screen.getByRole('link', { name: 'Receive a delivery' }).getAttribute('href')).toBe('/receiving');
     expect(screen.getByRole('link', { name: 'Upload an invoice' })).toBeTruthy();
