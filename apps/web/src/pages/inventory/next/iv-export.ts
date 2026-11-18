@@ -48,9 +48,14 @@ export async function runExport<T>(rows: T[], columns: TableExportColumn<T>[], f
   }
 }
 
-/** `nameHead` is the name column's head: "Title" for a drink, "Good" in a house of goods. */
+/**
+ * `nameHead` is the name column's head: "Title" for a drink, "Good" in a house of goods.
+ * A house of goods has no producer, bottle price or glass price to write, so those
+ * columns are left out of its file rather than sent empty.
+ */
 export function valuationColumns(currencyCode: string | null, nameHead = 'Title'): TableExportColumn<InvRow>[] {
-  return [
+  const goods = nameHead === 'Good';
+  const cols: TableExportColumn<InvRow>[] = [
     { header: nameHead, value: (r) => r.name ?? '' },
     { header: 'Producer', value: (r) => r.producer ?? '' },
     { header: 'Type', value: (r) => (r.type === null ? '' : typeLabel(r.type)) },
@@ -65,7 +70,22 @@ export function valuationColumns(currencyCode: string | null, nameHead = 'Title'
     { header: 'Value at cost', value: (r) => (r.value === null ? '' : r.value.toFixed(2)) },
     { header: 'Currency', value: () => currencyCode ?? '' },
   ];
+  return forHouse(goods, cols);
 }
+
+/** A house of goods' file without the drink-only columns; a house with a drink keeps them all. */
+export function forHouse<T>(goods: boolean, columns: TableExportColumn<T>[]): TableExportColumn<T>[] {
+  return goods ? columns.filter((c) => !DRINK_ONLY_HEADERS.has(c.header)) : columns;
+}
+
+/** Columns that only a drink fills: left out of a house of goods' files. */
+export const DRINK_ONLY_HEADERS: ReadonlySet<string> = new Set([
+  'Producer',
+  'Vintage',
+  'Bottle size (ml)',
+  'Your bottle price',
+  'Your glass price',
+]);
 
 /** Legacy's file name for one row: the title, slugged (InventoryCommandPage.tsx "Export this row"). */
 export function rowFilename(row: InvRow): string {
