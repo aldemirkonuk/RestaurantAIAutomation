@@ -672,6 +672,16 @@ export interface DashboardStats {
   };
   /** An order names a currency and the house's own could not be read. */
   houseCurrencyUnread?: boolean;
+  /**
+   * Verified scanned deliveries with no order, per spend window: those with no
+   * invoice total and those in other money are also why a figure is null.
+   */
+  scannedDeliveries?: Record<
+    'today' | 'week' | 'month',
+    { counted?: number; uncosted?: number; notInHouseCurrency?: Record<string, number> }
+  >;
+  /** Why each spend window is null, in the gateway's words (a papers read that failed is said here). */
+  unread?: { todayProcurementSpend?: string | null; monthProcurementSpend?: string | null };
 }
 
 /** Vendor spend summary returned by `GET /dashboard/summary/:id`. */

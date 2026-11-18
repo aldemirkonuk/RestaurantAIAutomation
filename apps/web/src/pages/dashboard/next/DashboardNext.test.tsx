@@ -792,6 +792,38 @@ describe('DashboardNext', () => {
       ).toBeInTheDocument();
     });
 
+    it('names a scanned delivery on the spend tiles, and a papers read that failed', async () => {
+      routeGets({
+        '/dashboard/stats/': {
+          totalWines: 4,
+          totalBottles: 40,
+          lowStockItems: 0,
+          pendingOrders: 0,
+          totalVolumeMl: 0,
+          totalVolumeOz: 0,
+          todayProcurementSpend: null,
+          weekProcurementSpend: null,
+          monthProcurementSpend: null,
+          uncostedOrders: { today: 0, week: 0, month: 0 },
+          scannedDeliveries: {
+            today: { counted: 0, uncosted: 0, notInHouseCurrency: {} },
+            week: { counted: 1, uncosted: 1, notInHouseCurrency: {} },
+            month: { counted: 1, uncosted: 1, notInHouseCurrency: {} },
+          },
+          unread: { todayProcurementSpend: 'The scanned papers could not be read.', monthProcurementSpend: null },
+          todayDeliveries: 1,
+          monthBottlesIn: 18,
+          amounts: 'shown',
+          timezone: 'UTC',
+        },
+      });
+
+      mount();
+
+      expect(await screen.findByText('1 scanned delivery has no invoice total yet')).toBeInTheDocument();
+      expect(screen.getByText('The scanned papers could not be read.')).toBeInTheDocument();
+    });
+
     it('names the day, the day panel and the month in words', async () => {
       vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 8, 10, 12, 0, 0) });
       try {
