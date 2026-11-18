@@ -30,6 +30,9 @@ export interface RecipeOwner {
 }
 export const WHAT_IS_IN_UNREAD =
   "What is in a serve could not be read just now, so nothing about it is shown as known. The recipe and its cost are unaffected.";
+/** The same sentence for a dish: a plate, not a serve. */
+export const WHAT_IS_IN_UNREAD_DISH =
+  "What is in a plate could not be read just now, so nothing about it is shown as known. The recipe and its cost are unaffected.";
 
 /** item_nutrition column -> figure key. */
 const FIGURE_COLUMN: Record<(typeof FIGURE_KEYS)[number], string> = {
@@ -135,7 +138,7 @@ export class RecipesService {
     let whatIsIn: WhatIsIn | null = null;
     const versionId = (pointer.data as { version_id?: string } | null)?.version_id;
     if (versionId) {
-      const body = await this.versionBody(restaurantId, versionId, money, true);
+      const body = await this.versionBody(restaurantId, versionId, money, true, undefined, "dish");
       current = body.version;
       cost = body.cost;
       whatIsIn = body.whatIsIn;
@@ -194,7 +197,7 @@ export class RecipesService {
     let whatIsIn: WhatIsIn | null = null;
     const versionId = (pointer.data as { version_id?: string } | null)?.version_id;
     if (versionId) {
-      const body = await this.versionBody(restaurantId, versionId, money, true);
+      const body = await this.versionBody(restaurantId, versionId, money, true, undefined, "cocktail");
       current = body.version;
       cost = body.cost;
       whatIsIn = body.whatIsIn;
@@ -270,6 +273,7 @@ export class RecipesService {
     money: boolean,
     withWhatIsIn: boolean,
     owner?: RecipeOwner,
+    kind: OwnerKind = owner?.kind ?? "cocktail",
   ): Promise<{ version: Record<string, unknown>; cost: Record<string, unknown> | null; whatIsIn: WhatIsIn | null }> {
     const client = this.db.getClient();
     let versionQuery = client
@@ -300,7 +304,7 @@ export class RecipesService {
     const { items, lots } = await this.readPricing(restaurantId, ids, money);
 
     const v = version.data as Record<string, any>;
-    const whatIsIn = withWhatIsIn ? await this.whatIsIn(restaurantId, ids, rows, Number(v.yield_serves)) : null;
+    const whatIsIn = withWhatIsIn ? await this.whatIsIn(restaurantId, ids, rows, Number(v.yield_serves), kind) : null;
     const priced = recipeCost(
       rows.map((l) => ({
         role: l.role,
@@ -451,7 +455,7 @@ export class RecipesService {
    * What is in one serve. Its own reads: a failure is said and the recipe still
    * shows. <= 40 lines a version, so one page each, under the 1,000-row cap.
    */
-  private async whatIsIn(restaurantId: string, ids: string[], rows: any[], yieldServes: number): Promise<WhatIsIn> {
+  private async whatIsIn(restaurantId: string, ids: string[], rows: any[], yieldServes: number, kind: OwnerKind): Promise<WhatIsIn> {
     const figuresById = new Map<string, ItemFigures>();
     const allergensById = new Map<string, Array<{ allergen: string; status: string }>>();
     if (ids.length) {
@@ -471,7 +475,7 @@ export class RecipesService {
       const error = nutrition.error ?? allergens.error;
       if (error) {
         this.logger.error(`recipes: what-is-in read failed: ${error.message}`);
-        return { readable: false, sentence: WHAT_IS_IN_UNREAD };
+        return { readable: false, sentence: kind === "dish" ? WHAT_IS_IN_UNREAD_DISH : WHAT_IS_IN_UNREAD };
       }
       for (const r of (nutrition.data ?? []) as any[]) {
         const f = { basis: r.basis, energyFromAbv: Boolean(r.energy_from_abv) } as ItemFigures;
