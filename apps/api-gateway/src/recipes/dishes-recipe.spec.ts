@@ -5,7 +5,7 @@ import { Reflector } from "@nestjs/core";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { ROLES_KEY } from "../auth/decorators/roles.decorator";
 import { DishesController } from "./dishes.controller";
-import { DISH_NOT_THIS_HOUSE, RecipesService } from "./recipes.service";
+import { DISH_NOT_THIS_HOUSE, RecipesService, WHAT_IS_IN_UNREAD } from "./recipes.service";
 import { B_DISH, GONE, HOUSE_A, HOUSE_B, SOUP, TART, V_TART_1, V_TART_2, fakeDb, twoHouses } from "./dishes.testing";
 
 /**
@@ -121,5 +121,25 @@ describe("dishes: the recipe of a dish", () => {
 
     const stale = recipes(twoHouses(), { rpc: () => ({ error: { code: "RCP09", message: "stale" } }) });
     await expect(stale.recipes.saveDishRecipe(HOUSE_A, TART, "u-a", dto)).rejects.toBeInstanceOf(ConflictException);
+  });
+});
+
+describe("dishes: a failed read of what is in a plate says plate", () => {
+  /** The fake db, with the nutrition read failing. */
+  function nutritionDown() {
+    const { db } = fakeDb(twoHouses());
+    const client = db.getClient() as any;
+    const failing = { select: () => ({ eq: () => ({ in: async () => ({ data: null, error: { message: "down" } }) }) }) };
+    return { getClient: () => ({ ...client, from: (t: string) => (t === "item_nutrition" ? failing : client.from(t)) }) } as never;
+  }
+
+  it("a dish's unread sentence says plate, never serve", async () => {
+    const out = await new RecipesService(nutritionDown()).getDishRecipe(HOUSE_A, TART, "owner");
+    expect(out.whatIsIn).toEqual({ readable: false, sentence: expect.stringContaining("What is in a plate could not be read") });
+    expect((out.whatIsIn as any).sentence).not.toMatch(/serve/i);
+  });
+
+  it("a cocktail's unread sentence still says serve", () => {
+    expect(WHAT_IS_IN_UNREAD).toContain("What is in a serve");
   });
 });
