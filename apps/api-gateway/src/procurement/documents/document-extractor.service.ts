@@ -5,7 +5,7 @@ import {
   NfEventRef,
 } from "../../common/model-client/model-client.service";
 import { NfVerdictService } from "../../common/model-client/nf-verdict.service";
-import { DOC_TYPES, normalizeUom, toBottles, Uom } from "./document-types";
+import { DOC_TYPES, readDozenUnits, toBottles, Uom } from "./document-types";
 import {
   applyTieOut,
   CurrencySeen,
@@ -109,7 +109,7 @@ RULES
 - Transcribe, never compute. If a line total is not printed, leave it null; do not multiply.
 - "currency": the ISO 4217 alpha-3 the document DENOMINATES its money in, when the document itself says so. Null when it does not say — null is a correct answer and "USD" is not a fallback. A house that has stated its own currency supplies it downstream; a guess here would overwrite that.
 - Never invent a value to make the arithmetic work. A document that does not add up must come back not adding up — that is a signal, and smoothing it over hides the error we exist to catch.
-- uom is one of: bottle, case, keg, pack, split_case, each, liter, kg, g, lb, oz, gal, floz. Use what the document says. A line sold by weight ("3 KG", "KGM", "750 GR") is kg or g, never each. A US line in pounds ("10 LB", "10 LBS", "10#") is lb, in ounces ("16 OZ") is oz, in gallons ("4 GAL") is gal, in fluid ounces ("64 FL OZ") is floz: write the unit printed, never convert it and never write kg or liter for it.
+- uom is one of: bottle, case, keg, pack, split_case, each, liter, kg, g, lb, oz, gal, floz. Use what the document says. A line sold by weight ("3 KG", "KGM", "750 GR") is kg or g, never each. A US line in pounds ("10 LB", "10 LBS", "10#") is lb, in ounces ("16 OZ") is oz, in gallons ("4 GAL") is gal, in fluid ounces ("64 FL OZ") is floz: write the unit printed, never convert it and never write kg or liter for it. A line sold by the dozen ("2 DOZ", "DZ", "DZN") is written as the unit printed ("doz"), never as 12 pieces, and its packSize stays null.
 - packSize is bottles per case when stated (a "12/750ml" case is packSize 12). Null if not stated — do not assume 12.
 - priceBaseQty / priceBaseUom are the quantity the UNIT PRICE is stated for, and its unit — ONLY when the document prints it. "142,00 / KS(12)" is priceBaseQty 12, priceBaseUom "bottle"; "22.00 / BT" is priceBaseQty 1, priceBaseUom "bottle". Null if not stated — do not assume 12, exactly as for packSize. Getting this wrong is a factor-of-twelve error on the line.
 - deliveredDate: transcribe only if printed AS A DELIVERY DATE — "DELIVERED Aug 12, 2026", "TESLİM TARİHİ", "Teslim tarihi", or the date printed against a referenced irsaliye when that date is presented as the delivery date. It is NOT docDate: a Turkish invoice is commonly issued days after the despatch it bills. Null when the page prints no delivery date; never copy docDate into it.
@@ -341,14 +341,20 @@ export class DocumentExtractorService {
     const lines: ParsedLine[] = Array.isArray(parsed.lines)
       ? parsed.lines.map((l: any, i: number) => {
           const rawUom = l?.uom ? String(l.uom) : null;
-          const uom = normalizeUom(rawUom);
+          const rawBaseUom = l?.priceBaseUom ? String(l.priceBaseUom) : null;
+          const statedPack = Math.max(1, Math.round(num(l?.packSize) ?? 1));
+          // A dozen is read as a pack of twelve (r56 R4); anything else as before.
+          const read = readDozenUnits({ rawUom, rawBaseUom, packSize: statedPack });
+          const uom = read.uom;
+          if (read.refused)
+            warnings.push(`Line ${i + 1}: ${read.refused} — the unit was not applied.`);
           if (rawUom && !uom)
             warnings.push(
               `Line ${i + 1}: unrecognised unit "${rawUom}" — quantity left unconverted.`,
             );
           const resolved: Uom = uom ?? "each";
           const qty = num(l?.qty) ?? 0;
-          const packSize = Math.max(1, Math.round(num(l?.packSize) ?? 1));
+          const packSize = read.packSize;
 
           // BT-149/BT-150. Only what the page printed: `priceBaseQty` stays
           // NULL when the model did not read one, exactly as `packSize` does,
@@ -356,8 +362,7 @@ export class DocumentExtractorService {
           // line. An unreadable base UNIT is refused rather than defaulted to
           // `bottle` for the same reason `normalizeUom` refuses elsewhere.
           const priceBaseQty = num(l?.priceBaseQty);
-          const rawBaseUom = l?.priceBaseUom ? String(l.priceBaseUom) : null;
-          const priceBaseUom = normalizeUom(rawBaseUom);
+          const priceBaseUom = read.priceBaseUom;
           if (rawBaseUom && !priceBaseUom)
             warnings.push(
               `Line ${i + 1}: unrecognised price base unit "${rawBaseUom}" — the printed price basis was not applied.`,

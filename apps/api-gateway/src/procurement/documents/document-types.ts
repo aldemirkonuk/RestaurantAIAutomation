@@ -260,6 +260,25 @@ export const RECEIPT_STAGES = [
 ] as const;
 export type ReceiptStage = (typeof RECEIPT_STAGES)[number];
 
+/** A printed unit word folded to its bare letters: case, accents, dots, spaces. */
+function foldUnitWord(raw: string): string {
+  return (
+    raw
+      .trim()
+      .toLowerCase()
+      // Decompose, then drop combining marks: see the Turkish note above.
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      // `ı` (U+0131, dotless i) has no decomposition, so the pass above cannot
+      // reach it. Folded explicitly rather than left to fall through as null.
+      .replace(/ı/g, "i")
+      // `btl.`, `St.`, `bottle(s)`: an abbreviation's dot and a plural's `(s)`
+      // say nothing about the unit (QA 10a (3)).
+      .replace(/\((?:s|es|e)\)$/, "")
+      .replace(/[\s_.-]+/g, "")
+  );
+}
+
 /**
  * Coerce a free-text unit into the canonical vocabulary.
  *
@@ -301,19 +320,7 @@ export type ReceiptStage = (typeof RECEIPT_STAGES)[number];
  */
 export function normalizeUom(raw?: string | null): Uom | null {
   if (!raw) return null;
-  const s = raw
-    .trim()
-    .toLowerCase()
-    // Decompose, then drop combining marks: see the Turkish note above.
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    // `ı` (U+0131, dotless i) has no decomposition, so the pass above cannot
-    // reach it. Folded explicitly rather than left to fall through as null.
-    .replace(/ı/g, "i")
-    // `btl.`, `St.`, `bottle(s)`: an abbreviation's dot and a plural's `(s)`
-    // say nothing about the unit (QA 10a (3)).
-    .replace(/\((?:s|es|e)\)$/, "")
-    .replace(/[\s_.-]+/g, "");
+  const s = foldUnitWord(raw);
   switch (s) {
     case "bottle":
     case "bottles":
@@ -466,4 +473,81 @@ export function comparableUnits(a: Uom, b: Uom): boolean {
   const opaque = (u: Uom) => u === "keg" || isVolumeLineUnit(u) || isMass(u);
   if (opaque(a) || opaque(b)) return a === b;
   return true;
+}
+
+/**
+ * The dozen (r56 R4). A dozen is twelve of the same piece and nothing else, so
+ * a line printed `2 DOZ @ 4.80` is 24 pieces at 0.40, which is what a pack of
+ * 12 already is. It needs no new unit and no new column: it is read as a
+ * `pack` of 12 where the line is read, so every later step (door count, cost,
+ * match) sees a unit it already converts. `Duzine` is the Turkish word and
+ * `DZN` is UN/ECE Rec 20's code.
+ */
+export const DOZEN = 12;
+const DOZEN_WORDS: ReadonlySet<string> = new Set([
+  "doz",
+  "dz",
+  "dzn",
+  "dozen",
+  "dozens",
+  "duzine",
+  "duzin",
+]);
+export function isDozen(raw?: string | null): boolean {
+  return !!raw && DOZEN_WORDS.has(foldUnitWord(raw));
+}
+
+export interface DozenRead {
+  uom: Uom | null;
+  priceBaseUom: Uom | null;
+  packSize: number;
+  /** Why a dozen was NOT read; the unit is left unmapped, as before. */
+  refused: string | null;
+}
+
+/**
+ * Read a line's unit and price-base unit, a dozen included. A dozen is read
+ * only where it cannot disagree with the line: the counted unit may be a
+ * dozen beside a price per dozen, per piece, or no base; a price per dozen may
+ * sit on a line counted in pieces. A dozen beside a pack the paper states as
+ * anything but 12, or a price per dozen on a line counted in cases, kilos or
+ * litres, is refused and left unmapped: which of the two figures is right is
+ * not knowledge, and the cost step refuses an unmapped unit by name.
+ */
+export function readDozenUnits(input: {
+  rawUom?: string | null;
+  rawBaseUom?: string | null;
+  packSize: number;
+}): DozenRead {
+  const plain = (): DozenRead => ({
+    uom: normalizeUom(input.rawUom),
+    priceBaseUom: normalizeUom(input.rawBaseUom),
+    packSize: input.packSize,
+    refused: null,
+  });
+  const dzUom = isDozen(input.rawUom);
+  const dzBase = isDozen(input.rawBaseUom);
+  if (!dzUom && !dzBase) return plain();
+
+  const refuse = (why: string): DozenRead => ({
+    uom: dzUom ? null : normalizeUom(input.rawUom),
+    priceBaseUom: dzBase ? null : normalizeUom(input.rawBaseUom),
+    packSize: input.packSize,
+    refused: why,
+  });
+  if (input.packSize > 1 && input.packSize !== DOZEN)
+    return refuse(
+      `the line prints a dozen and also a pack of ${input.packSize}, and a dozen is twelve`,
+    );
+  const counted = dzUom ? "pack" : normalizeUom(input.rawUom);
+  if (dzBase && counted !== "pack" && counted !== "each" && counted !== "bottle")
+    return refuse(
+      `the line is priced per dozen but counted in ${counted ?? "a unit this house does not count in"}, and a dozen is twelve pieces`,
+    );
+  const base = dzBase ? "pack" : normalizeUom(input.rawBaseUom);
+  if (dzUom && base !== "pack" && base !== "each" && base !== "bottle" && base !== null)
+    return refuse(
+      `the line is counted in dozens but priced per ${input.rawBaseUom}, and a dozen is twelve pieces`,
+    );
+  return { uom: counted, priceBaseUom: base, packSize: DOZEN, refused: null };
 }
