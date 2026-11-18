@@ -17,6 +17,13 @@ import { CanonicalCheck, CheckChannel } from "./pos-types";
 import { ADAPTERS } from "./pos-adapters";
 import { saleLineKeys, splitQty, fractionMl } from "./sale-line";
 import {
+  CostSnapshot,
+  SaleCostSource,
+  checkMarginFromRows,
+  pickSaleCostSource,
+  snapshotLineCost,
+} from "./sale-cost";
+import {
   PROVIDER_BY_KEY,
   POS_PROVIDERS,
   registrySummary,
@@ -321,6 +328,12 @@ export interface StockTally {
    * and said so rather than booked as a comp.
    */
   priceNotSent: number;
+  /**
+   * Consumption rows booked with no cost (r57 D4): the house has recorded no
+   * cost for the item, or the cost lookup failed. They read as "cost not kept"
+   * on the check, never as a cost of 0.
+   */
+  costNotKept: number;
 }
 
 type StockFailureKind = "stock" | "queue" | "consumption";
@@ -365,6 +378,7 @@ export class StockReport {
     consumptionNotWritten: 0,
     backdatedOver72h: 0,
     priceNotSent: 0,
+    costNotKept: 0,
   };
 
   private readonly groups = new Map<
@@ -1393,6 +1407,15 @@ export class PosHubService {
       ),
     ]);
     const inventories = inventoryRead.volumes;
+    // r57 D4: what each wine costs now, read once per check, so each line's
+    // consumption row can keep the cost it sold at.
+    const costRead = await this.loadSaleCosts(restaurantId, [
+      ...new Set(
+        items
+          .filter((it) => it.is_wine && it.inventory_id)
+          .map((it) => it.inventory_id as string),
+      ),
+    ]);
     // queueUnresolvedLine counts its own outcome into this check's report, so
     // the three queue call sites below stay exactly as they were.
     STOCK_REPORTS.set(check, report);
@@ -1606,6 +1629,8 @@ export class PosHubService {
               partQty,
               key,
               when.at,
+              costRead.costs.get(it.inventory_id as string) ?? null,
+              () => tally.costNotKept++,
             );
             if (consumption === "already") {
               // The consumption row under this key exists, so an earlier
@@ -1769,7 +1794,12 @@ export class PosHubService {
       const { error } = await this.dbService
         .getClient()
         .from("wine_consumption_log")
-        .update({ quantity: 0, volume_ml: 0, total_revenue: 0 })
+        .update({
+          quantity: 0,
+          volume_ml: 0,
+          total_revenue: 0,
+          cost_at_sale: 0,
+        })
         .eq("restaurant_id", restaurantId)
         .eq("source", "pos")
         .eq("notes", idempotencyKey);
@@ -1822,6 +1852,8 @@ export class PosHubService {
     qty: number,
     idempotencyKey: string,
     occurredAt: string,
+    costSource: SaleCostSource | null = null,
+    onCostNotKept: () => void = () => undefined,
   ): Promise<"logged" | "already" | "failed"> {
     if (!item.inventory_id) return "failed";
     try {
@@ -1877,6 +1909,13 @@ export class PosHubService {
       // logged and nothing else noticed. The honest shape is a plain INSERT
       // with the partial unique index as the backstop: a replay raises 23505,
       // which is the idempotent no-op the upsert was meant to be.
+      const snapshot: CostSnapshot = snapshotLineCost(
+        costSource,
+        resolved.mode,
+        volumeMl,
+        inv?.bottleMl ?? null,
+        qty,
+      );
       const { error } = await db.from("wine_consumption_log").insert({
         restaurant_id: restaurantId,
         inventory_id: item.inventory_id,
@@ -1888,6 +1927,9 @@ export class PosHubService {
         volume_ml: volumeMl,
         unit_price: unitPrice,
         total_revenue: unitPrice != null ? unitPrice * qty : null,
+        // r57 D4: what the line cost when it sold, kept on the row so a later
+        // invoice never moves a closed check's margin. Null = not kept.
+        ...snapshot,
         source: "pos",
         notes: idempotencyKey,
         // ADR 0281: the sale's instant, not the import's. Both columns, because
@@ -1921,6 +1963,7 @@ export class PosHubService {
         );
         return "failed";
       }
+      if (snapshot.cost_at_sale === null) onCostNotKept();
       return "logged";
     } catch (err: any) {
       this.logger.warn(
@@ -1928,6 +1971,96 @@ export class PosHubService {
       );
       return "failed";
     }
+  }
+
+  /**
+   * What each wine costs now, for the consumption rows of one check (r57 D4):
+   * the recorded unit cost by the rule every margin reader uses, and the lot
+   * it came from. An item with no recorded cost is simply absent from the
+   * map; a failed read leaves the map empty AND says so, so a whole check
+   * booked without costs is never mistaken for a check of free wine.
+   */
+  private async loadSaleCosts(
+    restaurantId: string,
+    inventoryIds: string[],
+  ): Promise<{ costs: Map<string, SaleCostSource>; error: string | null }> {
+    const costs = new Map<string, SaleCostSource>();
+    if (!inventoryIds.length) return { costs, error: null };
+    try {
+      const db = this.dbService.getClient();
+      const [inv, rollup, lots] = await Promise.all([
+        db
+          .from("restaurant_inventory")
+          .select("id, last_purchase_price")
+          .eq("restaurant_id", restaurantId)
+          .in("id", inventoryIds),
+        db
+          .from("inventory_lot_rollup")
+          .select("inventory_id, live_qty, wac, has_invoice_cost, wac_qty")
+          .eq("restaurant_id", restaurantId)
+          .in("inventory_id", inventoryIds),
+        db
+          .from("inventory_lots")
+          .select(
+            "id, inventory_id, qty, unit_cost, cost_provenance, source_order_id, received_at, stock_state",
+          )
+          .eq("restaurant_id", restaurantId)
+          // pickSaleCostSource keeps live lots only
+          .in("inventory_id", inventoryIds),
+      ]);
+      const failed = inv.error || rollup.error || lots.error;
+      if (failed) {
+        this.logger.error(
+          `sale cost lookup failed for ${inventoryIds.length} item(s) (r=${restaurantId}): ` +
+            `${failed.message} — this check's consumption rows are booked with no cost ` +
+            `("cost not kept") rather than a cost of 0.`,
+        );
+        return { costs, error: failed.message ?? "cost lookup failed" };
+      }
+      for (const id of inventoryIds) {
+        const source = pickSaleCostSource(
+          (inv.data || []).find((r: any) => r.id === id) ?? null,
+          (rollup.data || []).find((r: any) => r.inventory_id === id) ?? null,
+          (lots.data || []).filter((r: any) => r.inventory_id === id),
+        );
+        if (source) costs.set(id, source);
+      }
+      return { costs, error: null };
+    } catch (err: any) {
+      this.logger.error(
+        `sale cost lookup threw (r=${restaurantId}): ${err?.message}`,
+      );
+      return { costs, error: err?.message ?? "cost lookup failed" };
+    }
+  }
+
+  /**
+   * A check's cost of goods and margin, from the cost each line kept when it
+   * sold (r57 D4). Never reads a lot: a later invoice cannot move it. A read
+   * that fails throws, so the screen says the read failed rather than showing
+   * a check with no cost (ADR 0020).
+   */
+  async getCheckMargin(restaurantId: string, externalCheckId: string) {
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("wine_consumption_log")
+      .select(
+        "wine_name, quantity, volume_ml, total_revenue, cost_at_sale, cost_basis, notes",
+      )
+      .eq("restaurant_id", restaurantId)
+      .eq("source", "pos")
+      .like("notes", `pos:%:${externalCheckId.replace(/[\\%_]/g, "\\$&")}:%`);
+    if (error)
+      throw new Error(
+        `The check's wine lines could not be read (${error.message}); no margin is shown.`,
+      );
+    // The like narrows; the prefix decides. `pos:<source>:<check id>:`.
+    const rows = (data || []).filter((r: any) => {
+      const n = String(r.notes ?? "");
+      const at = n.indexOf(":", 4);
+      return at > 0 && n.startsWith(`${externalCheckId}:`, at + 1);
+    });
+    return { externalCheckId, ...checkMarginFromRows(rows) };
   }
 
   async upsertItemMapping(restaurantId: string, mapping: any) {
