@@ -24,3 +24,23 @@ describe('menuReadNoteText: a price below zero', () => {
     )
   })
 })
+
+describe('menuReadNoteText: a workbook of several sheets', () => {
+  it('names the sheet a line is on', () => {
+    expect(
+      menuReadNoteText({ row: 3, reason: 'two_readings', field: 'bottle_price', raw: '1.250', sheet: 'Cocktails' }),
+    ).toBe('Sheet "Cocktails", line 3: the bottle price "1.250" reads two ways, so it was left blank. Write 1250, 1.250,00 or 1,250.00.')
+  })
+
+  it('names the sheet a column note is about, and a sheet with no name column', () => {
+    expect(menuReadNoteText({ row: 1, reason: 'no_name_column', sheet: 'Read me' })).toBe(
+      'Sheet "Read me": No column was read as the name (Name, Wine, Ad, Şarap), so no line was read.',
+    )
+  })
+
+  it('says nothing of a sheet when the note has none', () => {
+    expect(menuReadNoteText({ row: 2, reason: 'negative', field: 'bottle_price', raw: '-10' })).toBe(
+      'Line 2: the bottle price "-10" is below zero, so it was left blank.',
+    )
+  })
+})

@@ -95,6 +95,8 @@ export interface MenuReadNote {
     | 'unreadable'
   field?: string
   raw?: string
+  /** The worksheet the row is on; said only when the workbook has more than one visible sheet. */
+  sheet?: string
 }
 
 export const MENU_CADENCES = ['weekly', 'monthly', 'quarterly', 'yearly', 'none'] as const

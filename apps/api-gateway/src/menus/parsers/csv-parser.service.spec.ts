@@ -330,4 +330,65 @@ describe("CsvParserService: the money a file prices a line in (r40, r36 N1)", ()
       ["Narince", 1250, undefined, "TL"],
     ]);
   });
+
+  describe("a workbook of several sheets", () => {
+    const book = async (
+      sheets: Array<{ name: string; rows: unknown[][]; state?: "visible" | "hidden" }>,
+    ): Promise<string> => {
+      const ExcelJS = await import("exceljs");
+      const wb = new ExcelJS.Workbook();
+      for (const sh of sheets) {
+        const ws = wb.addWorksheet(sh.name);
+        sh.rows.forEach((r) => ws.addRow(r));
+        if (sh.state) ws.state = sh.state;
+      }
+      return Buffer.from(await wb.xlsx.writeBuffer()).toString("base64");
+    };
+
+    it("reads every visible sheet, in order, and names the sheet of a note", async () => {
+      const { items, issues } = await parser().readExcel(
+        await book([
+          { name: "Wines", rows: [["Name", "Bottle price"], ["Chianti", 48]] },
+          { name: "Cocktails", rows: [["Name", "Bottle price"], ["Negroni", "1.250"], ["Spritz", 12]] },
+        ]),
+      );
+      expect(items.map((i) => [i.name, i.bottle_price])).toEqual([
+        ["Chianti", 48],
+        ["Negroni", undefined],
+        ["Spritz", 12],
+      ]);
+      expect(issues).toEqual([
+        { row: 2, reason: "two_readings", field: "bottle_price", raw: "1.250", sheet: "Cocktails" },
+      ]);
+    });
+
+    it("says a sheet with no name column, by its sheet, and still reads the others", async () => {
+      const { items, issues } = await parser().readExcel(
+        await book([
+          { name: "Read me", rows: [["Notes", "More"], ["call us", "soon"]] },
+          { name: "Wines", rows: [["Name", "Bottle price"], ["Chianti", 48]] },
+        ]),
+      );
+      expect(items.map((i) => i.name)).toEqual(["Chianti"]);
+      expect(issues).toEqual([{ row: 1, reason: "no_name_column", sheet: "Read me" }]);
+    });
+
+    it("leaves a hidden sheet out, and names no sheet when only one is read", async () => {
+      const { items, issues } = await parser().readExcel(
+        await book([
+          { name: "Wines", rows: [["Name", "Price"], ["Chianti", 48]] },
+          { name: "Old", rows: [["Name", "Price"], ["Gone", 1]], state: "hidden" },
+        ]),
+      );
+      expect(items.map((i) => i.name)).toEqual(["Chianti"]);
+      expect(issues).toEqual([{ row: 1, reason: "price_column_read_as_bottle", raw: "Price" }]);
+    });
+
+    it("reads a workbook whose only sheet is hidden", async () => {
+      const { items } = await parser().readExcel(
+        await book([{ name: "Wines", rows: [["Name", "Bottle price"], ["Chianti", 48]], state: "hidden" }]),
+      );
+      expect(items.map((i) => i.name)).toEqual(["Chianti"]);
+    });
+  });
 });

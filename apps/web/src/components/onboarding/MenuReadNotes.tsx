@@ -5,8 +5,14 @@ const FIELD_WORDS: Record<string, string> = {
   by_glass_price: 'glass price',
 }
 
-/** One note in the house's words: which line, what was left out, and why. */
+/** One note in the house's words: which line, what was left out, and why. A workbook's note names its sheet. */
 export function menuReadNoteText(n: MenuReadNote): string {
+  const text = lineNoteText(n)
+  if (!n.sheet) return text
+  return text.startsWith('Line ') ? `Sheet "${n.sheet}", line ${text.slice(5)}` : `Sheet "${n.sheet}": ${text}`
+}
+
+function lineNoteText(n: MenuReadNote): string {
   const field = FIELD_WORDS[n.field ?? ''] ?? (n.field ?? 'value').replace(/_/g, ' ')
   const raw = n.raw ? `"${n.raw}"` : ''
   switch (n.reason) {
