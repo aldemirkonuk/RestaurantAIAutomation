@@ -367,6 +367,13 @@ describe('the words', () => {
     expect(kindWords('SOMETHING_NEW')).toBe('something new');
   });
 
+  it('says the house is replying when the draft has no type, and the panel still opens', () => {
+    expect(kindWords(null)).toBe('replying');
+    expect(kindWords('')).toBe('replying');
+    draw({ reply: { ...REPLY, emailType: null } });
+    expect(screen.getByText(/the house is replying\./)).toBeInTheDocument();
+  });
+
   it('shows the real subject the gateway will send, not a re-derived guess', () => {
     draw();
     expect(screen.getByTestId('draft-subject')).toHaveTextContent(REPLY.subject);
