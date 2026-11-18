@@ -161,7 +161,8 @@ describe('Collapse unmountWhenClosed', () => {
       expect(document.querySelector('.mdv-collapse')).toHaveAttribute('data-open', 'false');
       expect(document.querySelector('.mdv-collapse__inner')).toHaveAttribute('inert');
       await vi.advanceTimersByTimeAsync(320);
-      expect(screen.queryByRole('button', { name: 'draft' })).toBeNull();
+      expect(document.querySelector('.mdv-collapse')).toBeNull();
+      expect(document.body.textContent).not.toContain('draft');
     } finally {
       vi.useRealTimers();
     }
