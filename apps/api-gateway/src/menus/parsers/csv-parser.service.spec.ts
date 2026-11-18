@@ -378,6 +378,29 @@ describe("CsvParserService: the money a file prices a line in (r40, r36 N1)", ()
       ]);
     });
 
+    it("takes a sheet's name as the section of a line whose row names none", async () => {
+      const { items } = await parser().readExcel(
+        await book([
+          { name: "Starters", rows: [["Name", "Price"], ["Soup", 8]] },
+          { name: "Cocktails", rows: [["Name", "Category", "Price"], ["Negroni", "Stirred", 12], ["Spritz", "", 11]] },
+          { name: "Sheet3", rows: [["Name", "Price"], ["Water", 2]] },
+        ]),
+      );
+      expect(items.map((i) => [i.name, i.category])).toEqual([
+        ["Soup", "Starters"],
+        ["Negroni", "Stirred"],
+        ["Spritz", "Cocktails"],
+        ["Water", undefined],
+      ]);
+    });
+
+    it("does not take a plain Menu or Sayfa1 sheet name as a section", async () => {
+      const { items } = await parser().readExcel(
+        await book([{ name: "Menu", rows: [["Name", "Price"], ["Soup", 8]] }, { name: "Sayfa1", rows: [["Name", "Price"], ["Tea", 3]] }]),
+      );
+      expect(items.map((i) => i.category)).toEqual([undefined, undefined]);
+    });
+
     it("says a sheet with no name column, by its sheet, and still reads the others", async () => {
       const { items, issues } = await parser().readExcel(
         await book([
