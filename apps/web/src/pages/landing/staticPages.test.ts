@@ -143,4 +143,23 @@ describe.each(PAGES)('static landing page /l/%s (ADR 0354)', name => {
       }
     }
   });
+
+  it('keeps the words of the headline apart at display size', () => {
+    const rule = read(name).match(/\.hero h1\{([^}]*)\}/);
+    expect(rule).not.toBeNull();
+    expect(rule![1]).toMatch(/word-spacing:\s*\.?0?\.0?[5-9]\d*em/);
+  });
+
+  it('keeps the wordmark on a phone', () => {
+    expect(read(name)).not.toMatch(/\.nar \.wm\{[^}]*display:\s*none/);
+  });
+
+  it('turns the fixed nav to the on-dark inks over a dark band', () => {
+    const html = read(name);
+    expect(html).toMatch(/\.nav\.on-dark\s+\.wm\b/);
+    const script = html.match(/<script id="nav-on-dark">([\s\S]*?)<\/script>/);
+    expect(script).not.toBeNull();
+    expect(script![1]).toContain("classList.toggle('on-dark'");
+    expect(script![1]).toContain('.cta');
+  });
 });

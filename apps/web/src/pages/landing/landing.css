@@ -641,6 +641,12 @@ html[data-mudavym-ground="charcoal"] .ld-soon + .ld-block { border-top: 1px soli
 @media (prefers-reduced-motion: no-preference) {
   /* Hero: the headline a word at a time, then the rest. */
   .ld-enter { opacity: 0; transform: translateY(16px); animation: ld-arrive 760ms var(--ld-house) forwards; animation-delay: calc(80ms + var(--d, 0) * 95ms); }
+  /* The headline is readable at first paint (it is the LCP): it never starts at
+     opacity 0. Each word rises 10px out of a 6px blur, 500ms, 40ms apart, so the
+     whole line has landed 700ms after the first word. Filter is compositor-only. */
+  .ld-h1w { animation: ld-word-in 500ms var(--ld-house) both; animation-delay: calc(var(--d, 0) * 40ms); }
+  /* The eyebrow, the sentence and the buttons rise without ever being hidden. */
+  .ld-hrise { animation: ld-rise-in 500ms var(--ld-house) both; animation-delay: calc(120ms + var(--d, 0) * 60ms); }
   .ld-live i { animation: ld-breathe 2.4s ease-in-out infinite; }
 
   /* A new event drops in at the top; the rest step down. */
@@ -791,6 +797,8 @@ html[data-mudavym-ground="charcoal"] .ld-soon + .ld-block { border-top: 1px soli
 }
 
 @keyframes ld-arrive { to { opacity: 1; transform: none; } }
+@keyframes ld-word-in { from { transform: translateY(10px); filter: blur(6px); } to { transform: none; filter: blur(0); } }
+@keyframes ld-rise-in { from { transform: translateY(8px); } to { transform: none; } }
 @keyframes ld-breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 @keyframes ld-ev-in { from { opacity: 0; transform: translateY(-18px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes ld-pop { 0% { transform: scale(0.88); } 60% { transform: scale(1.05); } 100% { transform: scale(1); } }
