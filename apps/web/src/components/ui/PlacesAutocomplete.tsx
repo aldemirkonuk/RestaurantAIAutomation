@@ -62,6 +62,8 @@ interface PlacesAutocompleteProps {
 // the three live Turkish and British rows. One table now, keyed by the code
 // rather than by a name that changes: `lib/countries.ts`.
 
+/** Setup problems are not the owner's to fix; the address can still be typed. */
+const ADDRESS_SEARCH_NEEDS_SETUP = 'Address search is not available right now. Type the address by hand.';
 const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
 
 // ── singleton: load the new Places library once ───────────────────────────────
@@ -211,13 +213,13 @@ export function PlacesAutocomplete({
         console.error('[PlacesAutocomplete]', msg);
         // Surface actionable errors — billing / API-not-enabled are the most common
         if (msg.includes('BillingNotEnabled') || msg.includes('billing')) {
-          setApiError('Google Maps billing not enabled — enable it in Google Cloud Console');
+          setApiError(ADDRESS_SEARCH_NEEDS_SETUP);
         } else if (msg.includes('ApiNotActivated') || msg.includes('not activated') || msg.includes('places')) {
-          setApiError('Places API (New) not enabled in Google Cloud Console');
+          setApiError(ADDRESS_SEARCH_NEEDS_SETUP);
         } else if (msg.includes('RefererNotAllowed') || msg.includes('referer')) {
-          setApiError('API key not allowed for this domain — check Google Cloud key restrictions');
+          setApiError(ADDRESS_SEARCH_NEEDS_SETUP);
         } else if (msg.includes('VITE_GOOGLE_MAPS_API_KEY')) {
-          setApiError('VITE_GOOGLE_MAPS_API_KEY is not set in this environment');
+          setApiError('Address search is not set up yet. Type the address by hand.');
         } else {
           setApiError(`Maps error: ${msg.slice(0, 80)}`);
         }

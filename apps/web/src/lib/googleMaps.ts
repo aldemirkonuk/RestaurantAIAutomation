@@ -83,12 +83,15 @@ export async function ensureGeocoder(): Promise<google.maps.Geocoder> {
  * Same classification approach as PlacesAutocomplete, which found that the raw
  * messages are opaque about the three problems that actually occur.
  */
+/** The setup problems (billing, key, allowlist) are not the owner's to fix. */
+const MAP_NEEDS_SETUP = 'The map is not available right now. Whoever set this app up needs to check its Google settings.'
+
 export function describeMapsError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err ?? '')
-  if (/not set/i.test(msg)) return 'Map unavailable — VITE_GOOGLE_MAPS_API_KEY is not configured.'
-  if (/BillingNotEnabled/i.test(msg)) return 'Map unavailable — billing is not enabled for this Google Cloud project.'
-  if (/ApiNotActivated/i.test(msg)) return 'Map unavailable — the Maps JavaScript API is not enabled for this key.'
-  if (/RefererNotAllowed/i.test(msg)) return 'Map unavailable — this domain is not in the API key referrer allowlist.'
-  if (/InvalidKey|ApiTargetBlocked/i.test(msg)) return 'Map unavailable — the API key is invalid or restricted.'
-  return 'Map unavailable — could not load Google Maps.'
+  if (/not set/i.test(msg)) return 'The map is not set up for this house yet.'
+  if (/BillingNotEnabled/i.test(msg)) return MAP_NEEDS_SETUP
+  if (/ApiNotActivated/i.test(msg)) return MAP_NEEDS_SETUP
+  if (/RefererNotAllowed/i.test(msg)) return MAP_NEEDS_SETUP
+  if (/InvalidKey|ApiTargetBlocked/i.test(msg)) return MAP_NEEDS_SETUP
+  return 'The map could not load. Try again in a moment.'
 }
