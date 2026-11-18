@@ -42,6 +42,7 @@ import RecipeSheet from './recipe/RecipeSheet';
 import MenuDrinksOffer from './MenuDrinksOffer';
 import { PRICE_UNREAD, priceText, readPrice } from './recipe/price-text';
 import { pourCostShare } from './recipe/DrinkCards';
+import { sectionsInUse } from './recipe/sections';
 import { reason, useCanEditRecipe, useDrinkFigures, useHouseMoney, useMenuPrices } from './recipe/useRecipe';
 import { AllergenCell, AllergenCheck, keptFor } from './recipe/ListAllergens';
 import { CostWaits, NoRecipeYet } from './recipe/ListCostWaits';
@@ -65,7 +66,7 @@ interface Draft extends Omit<CocktailInput, 'price'> {
 }
 
 function Field({
-  id, label, value, onChange, placeholder, type = 'text', inputMode, invalid, describedBy,
+  id, label, value, onChange, placeholder, type = 'text', inputMode, invalid, describedBy, options,
 }: {
   id: string;
   label: string;
@@ -76,6 +77,8 @@ function Field({
   inputMode?: 'decimal';
   invalid?: boolean;
   describedBy?: string;
+  /** Values the box suggests; it still takes anything typed. */
+  options?: string[];
 }) {
   return (
     <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -90,10 +93,18 @@ function Field({
         autoComplete={inputMode ? 'off' : undefined}
         aria-invalid={invalid || undefined}
         aria-describedby={describedBy}
+        list={options?.length ? `${id}-options` : undefined}
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
       />
+      {options?.length ? (
+        <datalist id={`${id}-options`}>
+          {options.map((o) => (
+            <option key={o} value={o} />
+          ))}
+        </datalist>
+      ) : null}
     </span>
   );
 }
@@ -337,7 +348,7 @@ export default function CocktailRegister({
             }}
           >
             <Field id="ck-name" label="Name" value={draft.name ?? ''} onChange={(v) => changeDraft({ ...draft, name: v })} placeholder="Negroni" />
-            <Field id="ck-section" label="Section" value={draft.menuSection ?? ''} onChange={(v) => changeDraft({ ...draft, menuSection: v })} placeholder="Aperitivo" />
+            <Field id="ck-section" label="Section" value={draft.menuSection ?? ''} onChange={(v) => changeDraft({ ...draft, menuSection: v })} placeholder="Aperitivo" options={sectionsInUse(data?.rows ?? [])} />
             <Field id="ck-method" label="Method" value={draft.method ?? ''} onChange={(v) => changeDraft({ ...draft, method: v })} placeholder="Stirred" />
             <Field id="ck-glass" label="Glass" value={draft.glass ?? ''} onChange={(v) => changeDraft({ ...draft, glass: v })} placeholder="Rocks" />
             <Field id="ck-garnish" label="Garnish" value={draft.garnish ?? ''} onChange={(v) => changeDraft({ ...draft, garnish: v })} placeholder="Orange peel" />
