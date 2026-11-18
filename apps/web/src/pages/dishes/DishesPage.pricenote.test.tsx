@@ -10,6 +10,7 @@ import { MemoryRouter } from 'react-router-dom';
 
 const RID = '11111111-1111-4111-8111-111111111111';
 const A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
 const h = vi.hoisted(() => ({ get: vi.fn(), auth: {} as Record<string, unknown> }));
 vi.mock('../../services/api/client', () => ({
@@ -22,7 +23,10 @@ vi.mock('../cellar/next/recipe/RecipeSheet', () => ({ default: () => <div data-t
 import DishesPage from './DishesPage';
 import { PRICE_UNREAD } from '../cellar/next/recipe/price-text';
 
-const list = [{ id: A, name: 'Lamb shank', section: 'Mains', price: 900, hasRecipe: true, yieldServes: 1, lineCount: 1, cost: null }];
+const list = [
+  { id: A, name: 'Lamb shank', section: 'Mains', price: 900, hasRecipe: true, yieldServes: 1, lineCount: 1, cost: null },
+  { id: B, name: 'Mezze', section: 'Starters', price: null, hasRecipe: true, yieldServes: 1, lineCount: 1, cost: null },
+];
 
 beforeEach(() => {
   h.auth = { activeRestaurantId: RID, activeRole: 'manager', user: { userId: 'u1', role: 'manager' } };
@@ -34,16 +38,16 @@ beforeEach(() => {
   });
 });
 
-async function openDish() {
+async function openDish(id = A) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={[`/dishes?open=${A}`]}>
+      <MemoryRouter initialEntries={[`/dishes?open=${id}`]}>
         <DishesPage />
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  const form = await screen.findByTestId(`dish-details-${A}`);
+  const form = await screen.findByTestId(`dish-details-${id}`);
   return { form, price: within(form).getByLabelText('Price') as HTMLInputElement };
 }
 
@@ -66,6 +70,12 @@ describe('an open dish’s price box', () => {
     const { price } = await openDish();
     fireEvent.change(price, { target: { value: '' } });
     expect(describedBy(price)).toBe('A blank price saves the dish with no price.');
+  });
+
+  it('is described by nothing when a dish with no price is left blank', async () => {
+    const { price } = await openDish(B);
+    fireEvent.change(price, { target: { value: '' } });
+    expect(price).not.toHaveAttribute('aria-describedby');
   });
 
   it('is described by nothing once the price reads again', async () => {
