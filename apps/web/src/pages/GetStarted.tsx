@@ -36,7 +36,7 @@ function ArrivalShell({
     reading: '04 · Reading',
   }[step]
   return (
-    <div className="min-h-screen bg-[#fbfaf7] text-[#211f1b]">
+    <div className="min-h-screen bg-paper-0 text-inkm-1">
       <header className="h-14 border-b border-[#211f1b]/15 px-5 flex items-center justify-between bg-white">
         <BrandMark size={24} alt="Mudavym" />
         <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#6d685f]">
@@ -359,7 +359,7 @@ export default function GetStarted() {
             if (file) void ingestDroppedImage(file)
           }}
           className={`mt-10 flex min-h-[220px] w-full flex-col items-center justify-center border border-dashed px-6 text-center ${
-            dropping ? 'border-[#1a5e6b] bg-white' : 'border-[#211f1b]/25 bg-[#fbfaf7]'
+            dropping ? 'border-[#1a5e6b] bg-paper-1' : 'border-[#211f1b]/25 bg-paper-0'
           }`}
         >
           <span className="font-serif text-3xl">Drop the menu here</span>

@@ -95,8 +95,8 @@ export function BrandMark({
   const toneClass = onPaper
     ? undefined
     : tone === 'seal'
-      ? 'text-wine-600 dark:text-wine-400'
-      : 'text-[#211C16] dark:text-[#EFE7D9]'
+      ? 'text-[color:var(--seal,#1A5E6B)] dark:text-wine-400'
+      : 'text-inkm-1 dark:text-[#EFE7D9]'
   // The paper ground's own pair (styles/mudavym.css `[data-ground="paper"]`),
   // with the light values as fallbacks off that ground.
   const paperInk = 'var(--ink-1, #211C16)'

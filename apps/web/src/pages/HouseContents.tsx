@@ -39,7 +39,7 @@ export default function HouseContents() {
   }
 
   return (
-    <div className="min-h-screen bg-[#fbfaf7] text-[#211f1b]">
+    <div className="min-h-screen bg-paper-0 text-inkm-1">
       <header className="h-14 border-b border-[#211f1b]/15 bg-white px-5 flex items-center justify-between">
         <BrandMark size={24} alt="Mudavym" />
         <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#6d685f]">The house</span>

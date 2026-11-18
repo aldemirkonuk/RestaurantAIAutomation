@@ -78,7 +78,7 @@ export default function HouseMenu() {
 
   if (!proof) {
     return (
-      <div className="min-h-screen bg-[#fbfaf7] px-6 py-16 text-[#211f1b]">
+      <div className="min-h-screen bg-paper-0 px-6 py-16 text-inkm-1">
         <div className="mx-auto max-w-2xl">
           <BrandMark size={24} alt="Mudavym" />
           <h1 className="mt-8 font-serif text-4xl">No menu has been read yet.</h1>
@@ -92,7 +92,7 @@ export default function HouseMenu() {
 
   if (proof.itemsExtracted === 0 && items.length === 0) {
     return (
-      <div className="min-h-screen bg-[#fbfaf7] px-6 py-16 text-[#211f1b]">
+      <div className="min-h-screen bg-paper-0 px-6 py-16 text-inkm-1">
         <div className="mx-auto max-w-2xl">
           <BrandMark size={24} alt="Mudavym" />
           <h1 className="mt-8 font-serif text-4xl">We couldn&apos;t read this file.</h1>
@@ -145,7 +145,7 @@ export default function HouseMenu() {
   }
 
   return (
-    <div className="min-h-screen bg-[#fbfaf7] text-[#211f1b]">
+    <div className="min-h-screen bg-paper-0 text-inkm-1">
       <header className="h-14 border-b border-[#211f1b]/15 bg-white px-5 flex items-center justify-between">
         <BrandMark size={24} alt="Mudavym" />
         <span className="font-mono text-[11px] uppercase tracking-[0.18em]">The first proof</span>
