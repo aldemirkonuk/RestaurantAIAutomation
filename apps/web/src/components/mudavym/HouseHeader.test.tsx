@@ -326,7 +326,7 @@ describe('the bell', () => {
     answer({ count: 0, rows: [] });
     mount(<HouseHeader page="providers" />);
     fireEvent.click(await screen.findByRole('button', { name: 'Notifications (nothing unread)' }));
-    expect(await screen.findByText('Nothing unread. The bell is quiet.')).toBeTruthy();
+    expect(await screen.findByText('All caught up. Nothing unread.')).toBeTruthy();
   });
 });
 
