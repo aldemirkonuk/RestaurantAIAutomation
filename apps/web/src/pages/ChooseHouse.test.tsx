@@ -385,6 +385,21 @@ describe("ChooseHouse", () => {
       expect(setActiveRestaurantId).not.toHaveBeenCalled();
     });
 
+    it("an accepted house that would not open says the person is in it and to try again", async () => {
+      housesAnswer([], { held: [HELD], accessEnded: false });
+      vi.mocked(apiClient.post).mockResolvedValue({ data: { success: true } } as any);
+      setActiveRestaurantId.mockResolvedValue(false);
+      renderAt();
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Join Evil <b>House</b>" }),
+      );
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "You joined Evil <b>House</b>, but we couldn't open it. Try again.",
+      );
+      expect(screen.queryByTestId("where")).toBeNull();
+    });
+
     it("with nothing waiting and no house, it still leaves for /get-started", async () => {
       housesAnswer([], { held: [], accessEnded: false });
       renderAt();

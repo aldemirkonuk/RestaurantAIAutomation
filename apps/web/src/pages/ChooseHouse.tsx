@@ -196,6 +196,11 @@ export function ChooseHouse() {
       navigate(destination, { replace: true });
       return;
     }
+    // The join was made; only the opening failed. Saying nothing left the
+    // person on a list with no word of why they were not let in.
+    setRefused(
+      `You joined ${house.name}, but we couldn't open it. Try again.`,
+    );
     void fetchHouses();
   };
 
