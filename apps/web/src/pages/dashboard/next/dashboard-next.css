@@ -182,3 +182,25 @@
     animation: none;
   }
 }
+
+/* The KPI row on a phone is one snap strip of tiles at least 112 x 72, not a
+   2-column grid with an orphan tile (design need N-11). Above 640 px the
+   grid classes on the row apply as before. */
+@media (max-width: 639px) {
+  .dn-kpis {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+    scroll-padding-inline: 0;
+  }
+  .dn-kpis > * {
+    flex: 0 0 auto;
+    min-width: 112px;
+    max-width: 168px;
+    min-height: 72px;
+    scroll-snap-align: start;
+  }
+  .dn-kpis::-webkit-scrollbar { display: none; }
+}
