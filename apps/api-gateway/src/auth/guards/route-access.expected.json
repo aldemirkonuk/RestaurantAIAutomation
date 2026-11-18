@@ -14,6 +14,15 @@
   "GET /analytics/insight-prefs/:restaurantId (AnalyticsController.getInsightPrefs)": "open",
   "PUT /analytics/insight-prefs/:restaurantId/:category (AnalyticsController.setInsightPref)": "open",
   "GET /analytics/tables/:restaurantId (AnalyticsController.listTables)": "open",
+  "GET /recipes/:restaurantId/dishes (DishesController.listDishes)": "open",
+  "POST /recipes/:restaurantId/dishes (DishesController.createDish)": [
+    "owner",
+    "manager"
+  ],
+  "PATCH /recipes/:restaurantId/dishes/:dishId (DishesController.updateDish)": [
+    "owner",
+    "manager"
+  ],
   "POST /analytics/tables/:restaurantId (AnalyticsController.upsertTable)": [
     "owner",
     "manager"
