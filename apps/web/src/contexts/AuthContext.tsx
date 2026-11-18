@@ -15,6 +15,7 @@ import {
 import { errorTracking } from "../lib/error-tracking";
 import { getBrowserTimezone } from "../lib/browserTimezone";
 import { useAuthStore } from "../stores";
+import { readMe } from "../lib/readMe";
 import {
   fallbackSignInMethods,
   type SignInMethodsResult,
@@ -210,6 +211,12 @@ export interface HouseOpened {
 export interface AuthContextType {
   user: User | null;
   loading: boolean;
+  /** A rate-limited first read is waiting to ask again; the session is kept. */
+  settling: boolean;
+  /** The token is kept but the first read did not come back (not a 401). */
+  sessionHeld: boolean;
+  /** Ask for the session again after a held first read. */
+  retrySession: () => void;
   error: string | null;
   clearError: () => void;
   activeRestaurantId: string | null;
@@ -360,6 +367,9 @@ function userFrom(
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [settling, setSettling] = useState(false);
+  const [sessionHeld, setSessionHeld] = useState(false);
+  const [sessionTry, setSessionTry] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [activeRestaurantId, setActiveRestaurantIdState] = useState<
     string | null
@@ -407,6 +417,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Load user from token on mount
   useEffect(() => {
     const loadUser = async () => {
+      setSessionHeld(false);
       const token = localStorage.getItem("accessToken");
       if (!token) {
         setLoading(false);
@@ -421,7 +432,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        const response = await api.get("/api/v1/auth/me");
+        const response = await readMe(api, { onSettling: setSettling });
         // Studio roles come from the JWT itself (app_metadata.roles), and the
         // session's house from the token when /auth/me names none.
         setUser(
@@ -469,6 +480,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             );
           }
         } else {
+          setSessionHeld(true);
           console.warn(
             `Keeping the session: /auth/me failed with ${status ?? "no status (network)"}, ` +
               "which is not an authentication failure.",
@@ -479,8 +491,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
+    setLoading(true);
     loadUser();
-  }, []);
+  }, [sessionTry]);
+
+  const retrySession = useCallback(() => setSessionTry((n) => n + 1), []);
 
   // Centralized branch fetch — reused by initial load and refreshBranches()
   // IMPORTANT: preserves activeRestaurantId via the validSaved check below.
@@ -701,7 +716,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         // The role is the role in THIS house now; `/auth/me` reads it from the
         // new session.
-        const me = await api.get("/api/v1/auth/me");
+        const me = await readMe(api);
         setUser(userFrom(me.data.user, accessToken));
         return true;
       } catch (err) {
@@ -752,7 +767,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       storeSession(accessToken, refresh);
       api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
 
-      const userResponse = await api.get("/api/v1/auth/me");
+      const userResponse = await readMe(api);
       setUser(userFrom(userResponse.data.user, accessToken));
     } catch (err: any) {
       // A network-level failure says what the person can do about it, and
@@ -797,7 +812,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // else happened to call `storeSession`.
       storeSession(pair.accessToken, pair.refreshToken);
       api.defaults.headers.common["Authorization"] = `Bearer ${pair.accessToken}`;
-      const userResponse = await api.get("/api/v1/auth/me");
+      const userResponse = await readMe(api);
       setUser(userFrom(userResponse.data.user, pair.accessToken));
     },
     [],
@@ -815,7 +830,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem("refreshToken", refresh);
       api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
 
-      const userResponse = await api.get("/api/v1/auth/me");
+      const userResponse = await readMe(api);
       setUser(userResponse.data.user);
     } catch (err: any) {
       const message = err.response?.data?.message || "Registration failed";
@@ -842,7 +857,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { accessToken, refreshToken: refresh } = response.data;
         storeSession(accessToken, refresh);
         api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
-        const userResponse = await api.get("/api/v1/auth/me");
+        const userResponse = await readMe(api);
         setUser(userFrom(userResponse.data.user, accessToken));
       } finally {
         // No catch: the error reaches Register.tsx whole, status and all, and
@@ -862,7 +877,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // on this device left in `activeRestaurantId`.
     storeSession(accessToken, refresh);
     api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
-    const userResponse = await api.get("/api/v1/auth/me");
+    const userResponse = await readMe(api);
     setUser(userFrom(userResponse.data.user, accessToken));
   }, []);
 
@@ -938,7 +953,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // The house is open by here. A failed `/auth/me` is said as that, not
       // as a house that failed to open (F-006, scope item 5).
       try {
-        const userResponse = await api.get("/api/v1/auth/me");
+        const userResponse = await readMe(api);
         setUser(userFrom(userResponse.data.user, accessToken));
         return { restaurantId: house, detailsLoaded: true };
       } catch (err) {
@@ -963,7 +978,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { accessToken, refreshToken: refresh } = response.data;
       storeSession(accessToken, refresh);
       api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
-      const userResponse = await api.get("/api/v1/auth/me");
+      const userResponse = await readMe(api);
       setUser(userFrom(userResponse.data.user, accessToken));
     } catch (err: any) {
       const message =
@@ -1022,7 +1037,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       storeSession(accessToken, refresh);
       api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
 
-      const userResponse = await api.get("/api/v1/auth/me");
+      const userResponse = await readMe(api);
       setUser(userFrom(userResponse.data.user, accessToken));
     } catch (err: any) {
       const message = err.response?.data?.message || "Google login failed";
@@ -1051,7 +1066,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       storeSession(accessToken, refresh);
       api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
 
-      const userResponse = await api.get("/api/v1/auth/me");
+      const userResponse = await readMe(api);
       setUser(userFrom(userResponse.data.user, accessToken));
     } catch (err: any) {
       const message = err.response?.data?.message || "Microsoft login failed";
@@ -1168,6 +1183,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value: AuthContextType = {
     user,
     loading,
+    settling,
+    sessionHeld,
+    retrySession,
     error,
     clearError,
     activeRestaurantId,

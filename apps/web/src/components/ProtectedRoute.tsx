@@ -1,6 +1,9 @@
+import { Suspense, lazy } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { ShieldAlert, ArrowLeft } from 'lucide-react'
+
+const SettlingHouse = lazy(() => import('./brand/SettlingHouse'))
 
 type HouseRole = 'owner' | 'manager' | 'staff'
 
@@ -22,8 +25,26 @@ export function ProtectedRoute({
   requiredStudioRole,
   redirectTo = '/login',
 }: ProtectedRouteProps) {
-  const { user, loading, isAuthenticated } = useAuth()
+  const { user, loading, isAuthenticated, settling, sessionHeld, retrySession } = useAuth()
   const location = useLocation()
+
+  // A rate-limited first read waits and asks again; it never sends anyone to
+  // the front door. If it still did not come back the session is kept and the
+  // person is offered another try.
+  if (loading && settling) {
+    return (
+      <Suspense fallback={null}>
+        <SettlingHouse />
+      </Suspense>
+    )
+  }
+  if (!loading && !isAuthenticated && sessionHeld) {
+    return (
+      <Suspense fallback={null}>
+        <SettlingHouse held onRetry={retrySession} />
+      </Suspense>
+    )
+  }
 
   // Loading State
   if (loading) {

@@ -88,3 +88,44 @@ describe("ProtectedRoute", () => {
     expect(screen.queryByText("the page")).not.toBeInTheDocument();
   });
 });
+
+describe("ProtectedRoute: a first read that did not come back", () => {
+  function renderSession(auth: Record<string, unknown>) {
+    vi.mocked(useAuth).mockReturnValue({ user: null, isAuthenticated: false, ...auth } as any);
+    return render(
+      <MemoryRouter initialEntries={["/inventory"]}>
+        <Routes>
+          <Route
+            path="/inventory"
+            element={
+              <ProtectedRoute>
+                <div>the page</div>
+              </ProtectedRoute>
+            }
+          />
+          <Route path="*" element={<Where />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  it("waiting out a rate limit says so and does not go to /login", async () => {
+    renderSession({ loading: true, settling: true });
+    expect(await screen.findByText(/One moment, setting up your house/)).toBeTruthy();
+    expect(screen.queryByTestId("where")).toBeNull();
+  });
+
+  it("a held session offers another try instead of the front door", async () => {
+    const retrySession = vi.fn();
+    renderSession({ loading: false, sessionHeld: true, retrySession });
+    const btn = await screen.findByRole("button", { name: /try again/i });
+    btn.click();
+    expect(retrySession).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("where")).toBeNull();
+  });
+
+  it("a session that is simply signed out still goes to /login", () => {
+    renderSession({ loading: false, sessionHeld: false });
+    expect(screen.getByTestId("where").textContent).toContain("/login");
+  });
+});
