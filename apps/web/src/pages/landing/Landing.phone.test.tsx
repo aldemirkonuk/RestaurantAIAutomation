@@ -54,7 +54,7 @@ function bars(container: HTMLElement) {
   return { bar: bar as HTMLElement, dock };
 }
 
-function scrollPastHero(container: HTMLElement) {
+function scrollPastHero() {
   const hero = observers.find((o) => o.threshold === 0 && o.seen.some((el) => el.tagName === 'A' && !!el.textContent?.startsWith(CTA) && !el.closest('.ld-bar, .ld-dock')));
   expect(hero).toBeTruthy();
   act(() => {
@@ -72,7 +72,7 @@ describe('one Start free at a time on a phone', () => {
     const before = bars(container);
     expect(before.dock.classList.contains('is-on')).toBe(false);
     expect(before.bar.classList.contains('ld-bar-cta--docked')).toBe(false);
-    scrollPastHero(container);
+    scrollPastHero();
     const after = bars(container);
     expect(after.dock.classList.contains('is-on')).toBe(true);
     expect(after.bar.classList.contains('ld-bar-cta--docked')).toBe(true);
