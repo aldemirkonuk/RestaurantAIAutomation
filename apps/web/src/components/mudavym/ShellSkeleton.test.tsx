@@ -28,8 +28,11 @@ describe('ShellSkeleton', () => {
 });
 
 describe('index.html boot frame', () => {
-  it('paints a frame inside #root before any script, with a reduced-motion off switch', () => {
-    expect(html).toMatch(/<div id="root"><div id="boot-shell"/);
+  it('paints a frame beside #root, hidden once #root has content, before any script, with a reduced-motion off switch', () => {
+    // #root stays exactly empty (the SEO build fills it); the frame follows it
+    // and shows only while it is empty.
+    expect(html).toContain('<div id="root"></div>');
+    expect(html).toMatch(/#root:not\(:empty\) \+ #boot-shell \{ display: none/);
     expect(html).toMatch(/prefers-reduced-motion: reduce\) \{ #boot-shell \{ animation: none/);
   });
   it('has a charcoal variant so a dark house never flashes paper', () => {
