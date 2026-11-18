@@ -384,6 +384,30 @@ describe('a good kept in grams, millilitres or items (all goods, foods included)
     expect((screen.getByRole('textbox', { name: 'Weight, in kg' }) as HTMLInputElement).value).toBe('');
   });
 
+  it('a food whose zones were not read says where this good sits, a wine says this title', () => {
+    const { unmount } = mount(
+      <TransferSheet
+        row={{ ...flour(), zones: null }}
+        uom="g"
+        onClose={() => {}}
+        locations={[{ id: 'z1', name: 'Dry store' }] as never}
+        locationsUnavailable={false}
+      />,
+    );
+    expect(document.body.textContent).toContain('Where this good sits could not be read');
+    expect(document.body.textContent).not.toContain('this title');
+    unmount();
+    mount(
+      <TransferSheet
+        row={{ ...row(), zones: null }}
+        onClose={() => {}}
+        locations={[{ id: 'z1', name: 'Cave' }] as never}
+        locationsUnavailable={false}
+      />,
+    );
+    expect(document.body.textContent).toContain('Where this title sits could not be read');
+  });
+
   it('a transfer of flour reads its zones in kg and sends grams', async () => {
     api.transfer.mockResolvedValue({});
     mount(
