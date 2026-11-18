@@ -1,0 +1,33 @@
+/* ============================================================
+   /inventory on a touch screen (N-11): every target 44 px, every field 16 px
+   (iOS zooms the page into any field set smaller). Scoped to the page root
+   `.inv-touch` and to coarse pointers, so a mouse keeps the dense desktop
+   page. No colours and no motion live here.
+   ============================================================ */
+@media (pointer: coarse) {
+  .inv-touch button,
+  .inv-touch [role='button'],
+  .inv-touch a[href],
+  .inv-touch select,
+  .inv-touch input:not([type='checkbox']):not([type='radio']),
+  .inv-touch textarea {
+    min-height: 44px;
+  }
+
+  .inv-touch button,
+  .inv-touch [role='button'] {
+    min-width: 44px;
+  }
+
+  .inv-touch select,
+  .inv-touch textarea,
+  .inv-touch input:not([type='checkbox']):not([type='radio']) {
+    font-size: 16px;
+  }
+
+  /* The checkbox keeps its square; its hit area grows around it. */
+  .inv-touch input[type='checkbox'] {
+    width: 22px;
+    height: 22px;
+  }
+}

@@ -78,6 +78,10 @@ import {
   type RowFlag,
 } from "./bits";
 import { RowExpansion } from "./RowExpansion";
+import { BottleCard } from "./BottleCard";
+import { Sheet } from "../../../components/mudavym/Sheet";
+import { useIsPhone } from "../../../hooks/useIsPhone";
+import "./inventory-touch.css";
 import { HouseItemResearchUnread, NameThisWineHint } from "./NameThisWine";
 // Moved to components/mudavym (founder, 2026-09-22, round 6z, verbatim pick 8:
 // "Queue it; Mudavym + hold (Recommended)") — the card is now built on the
@@ -130,6 +134,8 @@ const UNKNOWN = "—";
 
 export function InventoryCommandPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  // Phones get cards and a bottom sheet in place of the 1,330 px table (N-11).
+  const phone = useIsPhone();
   const page = useInventoryPage({});
   const {
     searchQuery,
@@ -897,7 +903,7 @@ export function InventoryCommandPage() {
   };
 
   return (
-    <div className="p-6 max-w-[1500px] mx-auto">
+    <div className="inv-touch p-4 md:p-6 max-w-[1500px] mx-auto">
       {/* header */}
       <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
         <div data-tour="inventory-filters">
@@ -1092,7 +1098,7 @@ export function InventoryCommandPage() {
 
       {/* attention rail */}
       <div
-        className="flex items-center gap-2 flex-wrap mb-3"
+        className="flex items-center gap-2 flex-wrap mb-3 max-md:flex-nowrap max-md:overflow-x-auto max-md:snap-x max-md:snap-mandatory max-md:-mx-4 max-md:px-4 max-md:[scrollbar-width:none] [&>*]:max-md:shrink-0 [&>*]:max-md:snap-start [&>button]:max-md:min-h-[44px]"
         data-tour="inventory-attention"
       >
         <span className="text-[10.5px] font-bold uppercase tracking-wider text-gray-400 mr-1">
@@ -1167,9 +1173,10 @@ export function InventoryCommandPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search wines, producers, grapes    ( / )"
-            className="w-full h-9 pl-9 pr-3 bg-white border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-wine-100 focus:border-wine-500"
+            className="w-full h-9 max-md:h-11 max-md:text-base pl-9 pr-3 bg-white border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-wine-100 focus:border-wine-500"
           />
         </div>
+        <div className="contents max-md:flex max-md:basis-full max-md:items-center max-md:gap-2.5 max-md:overflow-x-auto max-md:snap-x max-md:snap-mandatory max-md:[scrollbar-width:none] [&>*]:max-md:shrink-0 [&>*]:max-md:snap-start [&>button]:max-md:!h-11">
         <button
           onClick={() => setSelectedLocationFilter(null)}
           className={cn(
@@ -1249,6 +1256,7 @@ export function InventoryCommandPage() {
             {t}
           </button>
         ))}
+        </div>
         <div className="flex-1" />
         <ThemedSelect
           value={sort}
@@ -1302,9 +1310,9 @@ export function InventoryCommandPage() {
           )}
           <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
-              <div className="min-w-[1330px]">
+              <div className="md:min-w-[1330px]">
                 <div
-                  className="grid items-center gap-x-3 px-5 h-10 bg-gray-50 border-b border-gray-100"
+                  className="grid items-center gap-x-3 px-5 h-10 bg-gray-50 border-b border-gray-100 max-md:hidden"
                   style={{ gridTemplateColumns: GRID }}
                 >
                   <div className="flex items-center">
@@ -1380,6 +1388,17 @@ export function InventoryCommandPage() {
                     ((item.liveStock ?? 0) + (item.shadowStock ?? 0));
                   const loc = locName(item);
                   const status = classifyStock(item.liveStock, item.threshold);
+                  if (phone) {
+                    return (
+                      <div key={item.inventoryId} data-inv-row={idx}>
+                        <BottleCard
+                          item={item}
+                          open={isOpen}
+                          onOpen={() => setExpandedId(item.inventoryId!)}
+                        />
+                      </div>
+                    );
+                  }
                   return (
                     <div key={item.inventoryId} data-inv-row={idx}>
                       <div
@@ -1594,6 +1613,21 @@ export function InventoryCommandPage() {
                   </div>
                 ))}
           </div>
+          {phone &&
+            (() => {
+              const openRow = rows.find((r) => r.inventoryId === expandedId);
+              return openRow ? (
+                <Sheet
+                  open
+                  onClose={() => setExpandedId(null)}
+                  label={`${openRow.name}, the bottle`}
+                  eyebrow="The bottle"
+                  title={openRow.name}
+                >
+                  <RowExpansion item={openRow} locations={locations} />
+                </Sheet>
+              ) : null;
+            })()}
           <HouseItemResearchUnread />
           <div className="flex items-center justify-between mt-2.5 text-xs text-gray-400">
             <span>
