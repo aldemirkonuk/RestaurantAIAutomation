@@ -51,7 +51,7 @@ import ItemDrawer from './ItemDrawer';
 import CarryThis from './CarryThis';
 import { removeBlocked, removeTarget } from './RowDropdown';
 import { RemoveFromInventoryModal } from '../../../components/inventory/RemoveFromInventoryModal';
-import { blank, costColumnsFor, daysSinceCountedCell, oneLine, runExport, today, valuationColumns } from './iv-export';
+import { blank, forHouse, costColumnsFor, daysSinceCountedCell, oneLine, runExport, today, valuationColumns } from './iv-export';
 import { COUNT_DUE_DAYS } from '../command/bits';
 import {
   CHIPS,
@@ -555,7 +555,7 @@ export default function InventoryNext() {
   const exportCountSheet = () =>
     runExport<InvRow>(
       visible,
-      [
+      forHouse(words.one === 'good', [
         {
           header: 'Location',
           value: (r) => {
@@ -585,7 +585,7 @@ export default function InventoryNext() {
         { header: 'WAC', value: (r) => blank(r.wac) },
         { header: 'Value', value: (r) => (r.value === null ? '' : r.value.toFixed(2)) },
         { header: 'Observation', value: (r) => countObservation(r) },
-      ],
+      ]),
       `inventory-count-${today()}`,
       'Inventory count sheet',
     );

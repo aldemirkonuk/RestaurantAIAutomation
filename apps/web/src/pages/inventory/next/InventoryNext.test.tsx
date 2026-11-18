@@ -1771,6 +1771,31 @@ describe('a house of goods is not a cellar', () => {
     }
   });
 
+  it('leaves the drink-only columns out of a house of goods\' files, keeps them with one drink', async () => {
+    exportSpy.mockClear();
+    mock.data = data({ rows: [flour(), sugar()], rawItems: goods });
+    const view = renderPage();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export count sheet' }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export valuation' }));
+    });
+    for (const [opts] of exportSpy.mock.calls) {
+      const cols = (opts as { columns: { header: string }[] }).columns.map((c) => c.header);
+      for (const h of ['Producer', 'Vintage', 'Bottle size (ml)', 'Your bottle price', 'Your glass price']) expect(cols).not.toContain(h);
+    }
+    view.unmount();
+    exportSpy.mockClear();
+    mock.data = data({ rows: [row({ id: 'a', name: 'Ankara Red' }), flour()], rawItems: [goods[0]] });
+    renderPage();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export count sheet' }));
+    });
+    const cols = (exportSpy.mock.calls[0][0] as { columns: { header: string }[] }).columns.map((c) => c.header);
+    expect(cols).toEqual(expect.arrayContaining(['Producer', 'Vintage', 'Bottle size (ml)']));
+  });
+
   it('copies a nameless good as "Unnamed good"', async () => {
     const writeText = vi.fn(async () => undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });

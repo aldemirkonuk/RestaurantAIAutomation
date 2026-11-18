@@ -688,6 +688,9 @@ describe('Ported acts in the More menu: Mark inactive and Remove from inventory'
     const food = await menu({ uom: 'g', kind: 'food', row: row({ wineId: null, name: 'Flour 00', kind: 'food', stock: 2250, shadow: 0, openMl: 0 }) });
     fireEvent.click(within(food).getByRole('menuitem', { name: 'Export this row' }));
     expect(tableExport.exportTable.mock.calls[0][0].columns[0].header).toBe('Good');
+    const rowCols = tableExport.exportTable.mock.calls[0][0].columns.map((c: { header: string }) => c.header);
+    expect(rowCols).not.toContain('Producer');
+    expect(rowCols).not.toContain('Your bottle price');
   });
 
   it('Export this row still heads the name column Title for a drink', async () => {
