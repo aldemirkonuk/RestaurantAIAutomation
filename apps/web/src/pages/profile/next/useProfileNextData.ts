@@ -377,6 +377,7 @@ export function useProfileNextData() {
     setActiveRestaurantId,
     refreshBranches,
     logout,
+    houseResolved,
   } = useAuth();
 
   /**
@@ -992,7 +993,8 @@ export function useProfileNextData() {
     refetchLocation: () => void locationQ.refetch(),
 
     /* read 5 — model context */
-    mcpState: readState(mcpQ, !!uid && !!rid),
+    // Idle means "no house"; before the houses are read it is only unread.
+    mcpState: !rid && houseResolved === false ? 'loading' : readState(mcpQ, !!uid && !!rid),
     mcpError: mcpQ.isError ? apiMessage(mcpQ.error) : null,
     mcpServers: mcpQ.data ?? [],
     /**

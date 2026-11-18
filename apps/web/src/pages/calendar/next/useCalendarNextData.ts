@@ -447,7 +447,7 @@ export interface CalendarFilter {
 }
 
 export function useCalendarNextData(view: CalView, cursor: Date, filter: CalendarFilter = {}) {
-  const { activeRestaurantId } = useAuth();
+  const { activeRestaurantId, houseResolved } = useAuth();
   const restaurantId = activeRestaurantId ?? '';
   const qc = useQueryClient();
   const { start, end } = useMemo(() => rangeFor(view, cursor), [view, cursor]);
@@ -739,7 +739,8 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
     isError: eventsQ.isError,
     forbidden,
     errorMessage: messageOf(eventsError),
-    noRestaurant: !restaurantId,
+    // Not a conclusion until the houses have been read (houseResolved).
+    noRestaurant: !restaurantId && houseResolved !== false,
     refetch: () => {
       void eventsQ.refetch();
       void typesQ.refetch();

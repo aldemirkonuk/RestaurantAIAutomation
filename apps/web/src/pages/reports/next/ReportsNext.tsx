@@ -427,7 +427,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
           </div>
         )}
 
-        {data.restaurantId === null ? (
+        {data.restaurantId === null && data.housePending ? null : data.restaurantId === null ? (
           <p role="status" className="rp-note">
             No restaurant is active yet, so none of these registers is addressed to anyone. Pick a
             restaurant and the sheet fills in.

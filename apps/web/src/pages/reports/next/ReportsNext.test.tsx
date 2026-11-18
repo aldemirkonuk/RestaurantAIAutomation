@@ -351,6 +351,7 @@ const BENCH = {
 function base() {
   return {
     restaurantId: 'r1',
+    housePending: false,
     goalsDesk: deskStub,
     exportDesk: exportStub,
     reading: ok(READING),
@@ -1005,6 +1006,12 @@ describe('ReportsNext — honesty', () => {
     paint();
     expect(screen.getByText(/No restaurant is active yet/)).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'The reading' })).not.toBeInTheDocument();
+  });
+
+  it('says nothing about a missing restaurant while the houses are still being read', () => {
+    hook.current = { ...base(), restaurantId: null, housePending: true };
+    paint();
+    expect(screen.queryByText(/No restaurant is active yet/)).not.toBeInTheDocument();
   });
 
   it('prints the SERVER’s own basis sentence when the working is shown', () => {

@@ -210,6 +210,16 @@ export interface HouseOpened {
 export interface AuthContextType {
   user: User | null;
   loading: boolean;
+  /**
+   * False from boot until the session's houses have been read (or it is
+   * known there is no session). While it is false, `activeRestaurantId` being
+   * null means "not read yet", never "this account has no house" - a page must
+   * not say "no restaurant is active" or "the read failed" before this is
+   * true (ADR 0020: a failed read says it failed; an unread one says nothing).
+   * Test doubles that omit the field are treated as resolved: gate on
+   * `houseResolved === false`, not on `!houseResolved`.
+   */
+  houseResolved: boolean;
   error: string | null;
   clearError: () => void;
   activeRestaurantId: string | null;
@@ -360,6 +370,10 @@ function userFrom(
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  // True once the branch read for the loaded user has answered, however it
+  // answered. Reset whenever the user changes, so a switch of account never
+  // inherits the last account's "resolved".
+  const [branchesRead, setBranchesRead] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeRestaurantId, setActiveRestaurantIdState] = useState<
     string | null
@@ -643,10 +657,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAvailableRestaurants([]);
       setActiveRestaurantIdState(null);
       setActiveRole(null);
+      setBranchesRead(false);
       return;
     }
 
-    fetchAndSetBranches(user.restaurantId);
+    let current = true;
+    setBranchesRead(false);
+    void fetchAndSetBranches(user.restaurantId).finally(() => {
+      if (current) setBranchesRead(true);
+    });
+    return () => {
+      current = false;
+    };
   }, [user, fetchAndSetBranches]);
 
   // Two quick switches race: only the LAST one may land, or an earlier
@@ -1168,6 +1190,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value: AuthContextType = {
     user,
     loading,
+    houseResolved: !loading && (user === null || branchesRead),
     error,
     clearError,
     activeRestaurantId,
