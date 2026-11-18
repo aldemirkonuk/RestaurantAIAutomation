@@ -42,7 +42,7 @@ import RecipeSheet from './recipe/RecipeSheet';
 import MenuDrinksOffer from './MenuDrinksOffer';
 import { PRICE_UNREAD, priceText, readPrice } from './recipe/price-text';
 import { pourCostShare } from './recipe/DrinkCards';
-import { useCanEditRecipe, useDrinkFigures, useHouseMoney, useMenuPrices } from './recipe/useRecipe';
+import { reason, useCanEditRecipe, useDrinkFigures, useHouseMoney, useMenuPrices } from './recipe/useRecipe';
 import { AllergenCell, AllergenCheck, keptFor } from './recipe/ListAllergens';
 import { CostWaits, NoRecipeYet } from './recipe/ListCostWaits';
 import { MENU_PRICES_UNREAD, MenuPriceCell } from './recipe/MenuPriceCell';
@@ -275,7 +275,7 @@ export default function CocktailRegister({
       setEditId(null);
     } catch (e) {
       setSaid(
-        `Nothing was written${e instanceof Error ? ` — ${e.message}` : ''}. The list is unchanged.`,
+        `Nothing was written${reason(e) ? ` — ${reason(e)}` : ''}. The list is unchanged.`,
       );
     }
   };
@@ -287,7 +287,7 @@ export default function CocktailRegister({
         `“${name}” is off the list. The row was dated, not deleted — a cocktail that came off in September is a fact about the season.`,
       );
     } catch (e) {
-      setSaid(`“${name}” was NOT retired${e instanceof Error ? ` — ${e.message}` : ''}.`);
+      setSaid(`“${name}” was NOT retired${reason(e) ? ` — ${reason(e)}` : ''}.`);
     } finally {
       setConfirmRetire(null);
     }
