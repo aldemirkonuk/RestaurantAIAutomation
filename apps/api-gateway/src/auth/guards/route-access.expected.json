@@ -127,6 +127,10 @@
   "POST /auth/register/house (AuthController.createFirstHouse)": "open",
   "POST /auth/oauth/google (AuthController.loginWithGoogle)": "open",
   "POST /auth/oauth/microsoft (AuthController.loginWithMicrosoft)": "open",
+  "PUT /recipes/:restaurantId/items/:itemId/weights (RecipesController.stateWeights)": [
+    "owner",
+    "manager"
+  ],
   "POST /auth/refresh (AuthController.refresh)": "open",
   "POST /auth/logout (AuthController.logout)": "open",
   "GET /auth/me (AuthController.getProfile)": "open",
