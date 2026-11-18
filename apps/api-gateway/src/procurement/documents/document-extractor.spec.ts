@@ -5,6 +5,7 @@ import {
   stripJsonFence,
 } from "./document-extractor.service";
 import { isDocumentLike } from "./document-intake.service";
+import { perBottleLotCost } from "../canonical/lot-unit-cost";
 import { NfEventRef } from "../../common/model-client/model-client.service";
 
 const svc = new DocumentExtractorService(
@@ -733,5 +734,49 @@ describe("the contract carries what the paper prints (findings 3, 4, 6, 7)", () 
     expect(doc.computedLinesTotal).toBe(1704);
     expect(doc.tieOutDelta).toBe(0);
     expect(doc.tiesOut).toBe(true);
+  });
+});
+
+describe("DocumentExtractorService.normalize: a dozen (r56 R4)", () => {
+  const one = (line: Record<string, unknown>) =>
+    svc.normalize(json({ ...INVOICE, lines: [{ description: "Eggs", ...line }] }), "test").lines[0];
+
+  it("reads 2 DOZ as two packs of twelve: 24 pieces, no unit left unconverted", () => {
+    const l = one({ qty: 2, uom: "DOZ", unitPrice: 4.8, lineTotal: 9.6 });
+    expect(l).toMatchObject({ uom: "pack", packSize: 12, qtyBottles: 24 });
+  });
+
+  it.each(["dz", "DZN", "Dozen", "dozens", "Düzine", "doz."])("reads the glyph %s", (uom) => {
+    expect(one({ qty: 3, uom, unitPrice: 4.8 })).toMatchObject({ uom: "pack", packSize: 12, qtyBottles: 36 });
+  });
+
+  it("reads a price per dozen on a line counted in pieces", () => {
+    const l = one({ qty: 24, uom: "each", unitPrice: 4.8, priceBaseQty: 1, priceBaseUom: "DZ" });
+    expect(l).toMatchObject({ uom: "each", priceBaseUom: "pack", packSize: 12, qtyBottles: 24 });
+  });
+
+  it("accepts a stated pack of 12 and refuses a different one, leaving the unit unmapped", () => {
+    expect(one({ qty: 1, uom: "DOZ", packSize: 12 })).toMatchObject({ uom: "pack", packSize: 12 });
+    const bad = svc.normalize(json({ ...INVOICE, lines: [{ qty: 2, uom: "DOZ", packSize: 6 }] }), "test");
+    expect(bad.lines[0]).toMatchObject({ uom: "each", packSize: 6, qtyBottles: 2 });
+    expect(bad.warnings.join(" ")).toMatch(/a dozen and also a pack of 6/);
+  });
+
+  it("refuses a price per dozen on a line counted in cases", () => {
+    const r = svc.normalize(json({ ...INVOICE, lines: [{ qty: 2, uom: "case", packSize: 12, unitPrice: 50, priceBaseUom: "doz" }] }), "test");
+    expect(r.lines[0].priceBaseUom).toBeNull();
+    expect(r.warnings.join(" ")).toMatch(/priced per dozen but counted in case/);
+  });
+});
+
+describe("a dozen read at the paper costs by the piece (r56 R4)", () => {
+  it("2 DOZ @ 4.80 and 24 each @ 4.80 per DZ both cost 0.40 a piece, and add back to 9.60", () => {
+    for (const l of [
+      { uom: "pack", pack_size: 12, qty_bottles: 24 },
+      { uom: "each", pack_size: 12, qty_bottles: 24, price_base_qty: 1, price_base_uom: "pack" },
+    ]) {
+      const r = perBottleLotCost({ unit_price: 4.8, line_total: 9.6, ...l } as never);
+      expect(r).toMatchObject({ ok: true, unitCost: 0.4 });
+    }
   });
 });
