@@ -78,6 +78,11 @@ export interface DayLedger {
   uncosted_orders: number;
   /** Delivered orders that day not in the house's money, by code: also why. */
   not_in_house_currency: Record<string, number>;
+  /** Scanned deliveries (no order) that day with no invoice total, and those in other money, by code. */
+  scanned_uncosted?: number;
+  scanned_not_in_house_currency?: Record<string, number>;
+  /** Why the spend is withheld, in the gateway's words: the last thing to say when no count says it. */
+  spend_unread?: string | null;
   /** The house's currency could not be read while an order named one. */
   house_currency_unread: boolean;
   bottles_sold: number | null; // bottles DELIVERED by vendors (frozen misnomer)
@@ -109,6 +114,9 @@ export interface MonthLedger {
   monthlyUncosted: number;
   /** Delivered orders in the month not in the house's money, by code. */
   monthlyNotInHouseCurrency: Record<string, number>;
+  monthlyScannedUncosted?: number;
+  monthlyScannedNotInHouseCurrency?: Record<string, number>;
+  monthlySpendUnread?: string | null;
   /** The house's currency could not be read while an order named one. */
   houseCurrencyUnread: boolean;
   monthlyBottles: number | null;
@@ -359,6 +367,11 @@ export function useMonthLedger(
                 : num(raw.revenue),
             uncosted_orders: typeof raw.uncosted_orders === "number" ? raw.uncosted_orders : 0,
             not_in_house_currency: codeCounts(raw.not_in_house_currency),
+            scanned_uncosted:
+              typeof raw.scanned_deliveries?.uncosted === "number" ? raw.scanned_deliveries.uncosted : 0,
+            scanned_not_in_house_currency: codeCounts(raw.scanned_deliveries?.notInHouseCurrency),
+            spend_unread:
+              typeof raw.procurement_spend_unread === "string" ? raw.procurement_spend_unread : null,
             house_currency_unread: res.house_currency_unread === true,
             bottles_sold: num(raw.bottles_sold),
             events: raw.events ?? [],
@@ -385,6 +398,15 @@ export function useMonthLedger(
           monthlyUncosted:
             typeof res.monthly_uncosted_orders === "number" ? res.monthly_uncosted_orders : 0,
           monthlyNotInHouseCurrency: codeCounts(res.monthly_not_in_house_currency),
+          monthlyScannedUncosted:
+            typeof res.monthly_scanned_deliveries?.uncosted === "number"
+              ? res.monthly_scanned_deliveries.uncosted
+              : 0,
+          monthlyScannedNotInHouseCurrency: codeCounts(res.monthly_scanned_deliveries?.notInHouseCurrency),
+          monthlySpendUnread:
+            typeof res.monthly_procurement_spend_unread === "string"
+              ? res.monthly_procurement_spend_unread
+              : null,
           houseCurrencyUnread: res.house_currency_unread === true,
           monthlyBottles: num(res.monthly_bottles),
           monthlyNetSales: num(res.monthly_net_sales),

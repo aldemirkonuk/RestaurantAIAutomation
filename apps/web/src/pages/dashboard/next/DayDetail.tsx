@@ -26,7 +26,7 @@ import {
   type DayOrdersState,
   type MonthSales,
 } from './useDashboardNextData';
-import { DASH, dateIn, eventKindWords, eventTime, figure, heldBackSaid, longDay, timeAgo, useHouseMoney, type Money } from './format';
+import { DASH, dateIn, eventKindWords, eventTime, figure, longDay, spendHeldBackSaid, timeAgo, useHouseMoney, type Money } from './format';
 import { SERIF } from './fonts';
 
 /** A delivered order's money figure is a recorded cost only when it is above 0 (as the gateway reads it). */
@@ -328,7 +328,11 @@ export function DayDetail({
             value={money(day.procurement_spend)}
             note={
               day.procurement_spend == null
-                ? heldBackSaid(day.uncosted_orders, day.not_in_house_currency, day.house_currency_unread)
+                ? spendHeldBackSaid(
+                    { uncosted: day.uncosted_orders, other: day.not_in_house_currency, houseUnread: day.house_currency_unread },
+                    { uncosted: day.scanned_uncosted, other: day.scanned_not_in_house_currency },
+                    day.spend_unread,
+                  )
                 : null
             }
           />

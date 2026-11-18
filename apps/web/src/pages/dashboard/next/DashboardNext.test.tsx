@@ -832,6 +832,55 @@ describe('DashboardNext', () => {
         vi.useRealTimers();
       }
     });
+
+    it('names a scanned delivery that holds a day back, and a papers read that failed', async () => {
+      vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 8, 10, 12, 0, 0) });
+      try {
+        const ledger = monthLedger();
+        const daily: Array<Record<string, unknown>> = ledger.daily;
+        daily[0] = {
+          ...daily[0],
+          procurement_spend: null,
+          uncosted_orders: 0,
+          not_in_house_currency: {},
+          scanned_deliveries: { counted: 2, uncosted: 2, notInHouseCurrency: {} },
+          order_count: 0,
+          bottles_sold: 0,
+        };
+        daily[1] = {
+          ...daily[1],
+          procurement_spend: null,
+          uncosted_orders: 0,
+          not_in_house_currency: {},
+          scanned_deliveries: { counted: 0, uncosted: 0, notInHouseCurrency: {} },
+          procurement_spend_unread: 'The scanned papers could not be read.',
+        };
+        routeGets({
+          '/dashboard/calendar-revenue/': {
+            ...ledger,
+            monthly_procurement_spend: null,
+            monthly_uncosted_orders: 0,
+            monthly_not_in_house_currency: {},
+            monthly_scanned_deliveries: { counted: 2, uncosted: 2, notInHouseCurrency: { EUR: 1 } },
+            house_currency_unread: false,
+          },
+        });
+
+        mount();
+
+        await screen.findByRole('button', {
+          name: /^Tuesday, September 1: paid to vendors unknown, 2 scanned deliveries have no invoice total yet/,
+        });
+        await screen.findByRole('button', {
+          name: /^Wednesday, September 2: paid to vendors unknown, The scanned papers could not be read\./,
+        });
+        expect(await screen.findByTestId('dn-month-uncosted')).toHaveTextContent(
+          '(1 scanned delivery is in EUR, not the house’s money; 2 scanned deliveries have no invoice total yet)',
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   // DASH-W33 (P8): ADR 0042 / OD-112 — ink-3 is decorative only, never a
