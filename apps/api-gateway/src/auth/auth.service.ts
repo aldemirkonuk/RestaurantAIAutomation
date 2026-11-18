@@ -309,6 +309,10 @@ function oauthSignInRefused(provider: IdentityProviderId): string {
 const LINK_CHECK_UNAVAILABLE =
   "We could not check your sign-in methods just now. Please try again.";
 
+/** What a person is told when the password could not be saved or the link closed; the database's own words stay in the log. */
+const PASSWORD_FAULT =
+  "Could not save the new password right now. Please try again.";
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -1156,6 +1160,9 @@ export class AuthService {
           `${caller} could not read ${userId} before the password write: ` +
             `${readErr?.message ?? "no row"}`,
         );
+        // A read that failed is a fault to retry; only a missing row is the
+        // caller's own mistake.
+        if (readErr) throw new ServiceUnavailableException(PASSWORD_FAULT);
         throw new BadRequestException("Failed to update password");
       }
 
@@ -1206,7 +1213,7 @@ export class AuthService {
       );
       if (writeErr) {
         this.logger.error(`${caller} failed: ${writeErr.message}`);
-        throw new BadRequestException("Failed to update password");
+        throw new ServiceUnavailableException(PASSWORD_FAULT);
       }
       if (Array.isArray(written) && written.length === 1) {
         const row = written[0];
@@ -4112,11 +4119,20 @@ export class AuthService {
     // Consume this token and any other still-pending reset for the same user
     // in one statement, so a second unused link from an earlier request
     // cannot be replayed after this one succeeds.
-    await this.databaseService.supabase
+    const { error: spendErr } = await this.databaseService.supabase
       .from("password_resets")
       .update({ used_at: usedAt })
       .eq("user_id", reset.user_id)
       .is("used_at", null);
+    if (spendErr) {
+      // supabase-js resolves `{ error }`; ignoring it left the link live
+      // after the password changed, and told the person it was all done. The
+      // same link still works, so asking them to try again is safe.
+      this.logger.error(
+        `resetPassword could not spend the reset links of ${reset.user_id}: ${spendErr.message}`,
+      );
+      throw new ServiceUnavailableException(PASSWORD_FAULT);
+    }
 
     // ADR 0229 (founder 2026-09-26, round 7, item 44, superseding item 37's
     // "reset RETIRES every passkey"): a reset keeps every passkey -- what

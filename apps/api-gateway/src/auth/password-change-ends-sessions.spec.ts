@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import {
-  BadRequestException,
+  ServiceUnavailableException,
   ConflictException,
   UnauthorizedException,
 } from "@nestjs/common";
@@ -221,7 +221,7 @@ describe("a password reset signs out every session", () => {
 
     await expect(
       service(db).resetPassword("reset-token", NEW),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
 
     const row = db.tables.users.find((r: Row) => r.user_id === U) as Row;
     expect(row.session_version).toBe(0);

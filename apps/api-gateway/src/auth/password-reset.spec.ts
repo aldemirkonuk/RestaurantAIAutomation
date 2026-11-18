@@ -251,6 +251,8 @@ describe("AuthService#resetPassword", () => {
     row: any,
     updateError: any = null,
     readError: any = null,
+    consumeError: any = null,
+    userReadError: any = null,
   ) {
     const resetsSelectChain: any = {
       select: () => resetsSelectChain,
@@ -262,7 +264,7 @@ describe("AuthService#resetPassword", () => {
     const resetsUpdateChain: any = {
       update: () => resetsUpdateChain,
       eq: () => resetsUpdateChain,
-      is: () => Promise.resolve({ error: null }),
+      is: () => Promise.resolve({ error: consumeError }),
     };
     // ADR 0225: the password write reads the users row, then writes the
     // new hash and session_version + 1 in one compare-and-set update.
@@ -270,7 +272,10 @@ describe("AuthService#resetPassword", () => {
     const usersChain: any = {
       select: () => ({
         eq: () => ({
-          maybeSingle: async () => ({ data: userRow, error: null }),
+          maybeSingle: async () =>
+            userReadError
+              ? { data: null, error: userReadError }
+              : { data: userRow, error: null },
         }),
       }),
       update: () => ({
@@ -377,7 +382,7 @@ describe("AuthService#resetPassword", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("surfaces a DB failure on the password update as a BadRequestException", async () => {
+  it("says a failed password write is a fault to retry, not a bad request", async () => {
     const svc = makeResetPasswordService(
       {
         id: "r1",
@@ -387,8 +392,48 @@ describe("AuthService#resetPassword", () => {
       },
       { message: "db down" },
     );
+    const err = await svc
+      .resetPassword("good-token", "newpassword1")
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(ServiceUnavailableException);
+    expect(err).not.toBeInstanceOf(BadRequestException);
+    expect(String(err.message)).not.toContain("db down");
+  });
+
+  it("does not report a reset done when the link could not be spent", async () => {
+    const svc = makeResetPasswordService(
+      {
+        id: "r1",
+        user_id: "u1",
+        expires_at: new Date(Date.now() + 60_000).toISOString(),
+        used_at: null,
+      },
+      null,
+      null,
+      { message: "db down" },
+    );
+    const err = await svc
+      .resetPassword("good-token", "newpassword1")
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(ServiceUnavailableException);
+    expect(String(err.message)).not.toContain("db down");
+  });
+
+  it("says a failed read of the account row is a fault to retry", async () => {
+    const svc = makeResetPasswordService(
+      {
+        id: "r1",
+        user_id: "u1",
+        expires_at: new Date(Date.now() + 60_000).toISOString(),
+        used_at: null,
+      },
+      null,
+      null,
+      null,
+      { message: "db down" },
+    );
     await expect(
       svc.resetPassword("good-token", "newpassword1"),
-    ).rejects.toThrow(BadRequestException);
+    ).rejects.toThrow(ServiceUnavailableException);
   });
 });
