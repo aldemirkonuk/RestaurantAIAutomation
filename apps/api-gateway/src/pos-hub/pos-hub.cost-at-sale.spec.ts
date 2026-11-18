@@ -57,7 +57,9 @@ function makeDb(opts: { lots?: Row[]; lastPrice?: number | null; lotsError?: boo
               return Promise.resolve({ data: null, error: { message: "boom" } }).then(res, rej);
             // % matches anything; the escapes are not exercised here
             const re = new RegExp("^" + like.replace(/\\(.)/g, "$1").replace(/%/g, ".*") + "$");
-            const data = [...consumption.values()].filter((r) => re.test(r.notes));
+            const data = [...consumption.values()].filter(
+              (r) => re.test(r.notes) && r.restaurant_id === filters.restaurant_id,
+            );
             return Promise.resolve({ data, error: null }).then(res, rej);
           }
           if (table === "inventory_lots")
@@ -196,5 +198,20 @@ describe("cost at sale (C1-C5)", () => {
     await svc.ingest("r1", "generic_webhook", [check({ externalCheckId: "chk-10" })]);
     expect((await svc.getCheckMargin("r1", "chk-1")).lines).toHaveLength(0);
     expect((await svc.getCheckMargin("r1", "chk-10")).lines).toHaveLength(1);
+  });
+
+  it("C5 another house's rows and a longer check id that merely contains this one are not this check's", async () => {
+    const { db, consumption } = makeDb({ lots: [lot()] });
+    const svc = new PosHubService(db);
+    await svc.ingest("r1", "generic_webhook", [check()]);
+    await svc.ingest("r2", "generic_webhook", [check()]);
+    // check id "x:chk-1" has a key the loose pattern for "chk-1" also matches
+    consumption.set("pos:generic_webhook:x:chk-1:item-1||12.0000:#0", {
+      restaurant_id: "r1", notes: "pos:generic_webhook:x:chk-1:item-1||12.0000:#0",
+      quantity: 1, volume_ml: 150, total_revenue: 12, cost_at_sale: 99, cost_basis: "invoice_lot_wac",
+    });
+    const m = await svc.getCheckMargin("r1", "chk-1");
+    expect(m.lines).toHaveLength(1);
+    expect(m.cost).toBe(12);
   });
 });

@@ -1628,9 +1628,9 @@ export class PosHubService {
               inv,
               partQty,
               key,
-              when.at,
               costRead.costs.get(it.inventory_id as string) ?? null,
               () => tally.costNotKept++,
+              when.at,
             );
             if (consumption === "already") {
               // The consumption row under this key exists, so an earlier
@@ -1851,9 +1851,9 @@ export class PosHubService {
     inv: InventoryVolumes | null,
     qty: number,
     idempotencyKey: string,
+    costSource: SaleCostSource | null,
+    onCostNotKept: () => void,
     occurredAt: string,
-    costSource: SaleCostSource | null = null,
-    onCostNotKept: () => void = () => undefined,
   ): Promise<"logged" | "already" | "failed"> {
     if (!item.inventory_id) return "failed";
     try {
