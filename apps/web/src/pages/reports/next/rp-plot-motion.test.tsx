@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render } from '@testing-library/react';
-import { CatPlot, ComboPlot, LABEL_BARS_MAX } from './rp-plot';
+import { CatPlot, ComboPlot } from './rp-plot';
 import { DRAW_AT, tipMotion } from './rp-draw';
 import type { CatSeries } from './rp-view';
 
@@ -120,9 +120,9 @@ describe('bars rise once, when 40% of the plot is in view', () => {
 
   it('[REVERT-FAILS] the reduced-motion guard stops the rise, the labels and the card', () => {
     const block = /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\n\}\n/.exec(css)?.[0] ?? '';
-    expect(block).toContain('.rp-plot .recharts-bar-rectangle > path');
-    expect(block).toContain('.rp-plot .rp-bar-value');
-    expect(block).toContain('.rp-tip');
+    expect(block).toMatch(/\.rp-plot \.recharts-bar-rectangle > path,/);
+    expect(block).toMatch(/\.rp-plot \.rp-bar-value \{/);
+    expect(block).toMatch(/\.rp-tip,/);
     expect(block).toMatch(/animation:\s*none !important/);
   });
 });
@@ -141,10 +141,10 @@ describe('a bar carries its figure when the bars are few', () => {
   });
 
   it('[REVERT-FAILS] leaves the figures to the tooltip once the bars would touch', () => {
-    const { container } = render(<CatPlot series={week(LABEL_BARS_MAX + 1)} kind="bars" />);
+    const { container } = render(<CatPlot series={week(9)} kind="bars" />);
     expect(labels(container)).toEqual([]);
-    const ok = render(<CatPlot series={week(LABEL_BARS_MAX)} kind="bars" />);
-    expect(labels(ok.container)).toHaveLength(LABEL_BARS_MAX);
+    const ok = render(<CatPlot series={week(8)} kind="bars" />);
+    expect(labels(ok.container)).toHaveLength(8);
   });
 });
 
