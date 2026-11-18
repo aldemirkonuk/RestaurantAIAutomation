@@ -1489,8 +1489,29 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install Playwright browsers
-        run: pnpm --filter @wineops/web exec playwright install --with-deps
+      # Only Chromium is installed (the suite runs one project), and the browser
+      # download is cached on the Playwright version. With --with-deps the apt
+      # step took ~29 min on the pinned runner; on a cache hit only the system
+      # libraries for Chromium are installed. Guarded by
+      # scripts/test_ci_e2e_runner_pinned.py.
+      - name: Resolve Playwright version
+        id: playwright-version
+        run: echo "version=$(pnpm --filter @wineops/web exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}-chromium
+
+      - name: Install Playwright Chromium and system libraries
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm --filter @wineops/web exec playwright install --with-deps chromium
+
+      - name: Install Playwright system libraries (browser cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm --filter @wineops/web exec playwright install-deps chromium
 
       - name: Run Playwright tests
         run: pnpm --filter @wineops/web test:e2e

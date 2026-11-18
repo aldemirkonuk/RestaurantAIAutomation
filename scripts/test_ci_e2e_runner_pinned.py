@@ -39,3 +39,22 @@ def test_this_test_runs_in_the_scripts_job():
     m = re.search(r"run:\s*python3 -P -m pytest[^\n]*", text)
     assert m and "scripts/test_ci_e2e_runner_pinned.py" in m.group(0), (
         "the scripts unit-test step does not list this file, so the pin guards nothing")
+
+
+def test_playwright_install_is_chromium_only_and_cached():
+    block = _job_block(CI.read_text(), "test-e2e")
+    installs = re.findall(r"playwright (install(?:-deps)?)\b([^\n]*)", block)
+    assert installs, "test-e2e does not install Playwright browsers"
+    for cmd, rest in installs:
+        assert rest.split()[-1] == "chromium", (
+            f"'playwright {cmd}{rest}' is not limited to chromium; installing every browser "
+            "pulled the whole apt set and took ~29 minutes")
+    assert any(c == "install" and "--with-deps" in r for c, r in installs), (
+        "the cache-miss path must install the browser with its system libraries")
+    assert any(c == "install-deps" for c, _ in installs), (
+        "the cache-hit path must install only system libraries")
+    assert "path: ~/.cache/ms-playwright" in block, "the browser download is not cached"
+    assert "steps.playwright-version.outputs.version" in block, (
+        "the cache key must include the Playwright version")
+    assert "cache-hit != 'true'" in block and "cache-hit == 'true'" in block, (
+        "install steps must branch on the cache result")
