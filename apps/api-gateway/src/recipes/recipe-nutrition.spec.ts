@@ -69,13 +69,15 @@ describe("serveNutrition", () => {
     expect(out.counted).toBe(0);
   });
 
-  it("never turns grams into millilitres: a weighed line against per 100 ml figures is not counted", () => {
+  it("never turns grams into millilitres unstated: a weighed line against per 100 ml figures is not counted", () => {
     const out = serveNutrition(
       [line("Sugar", { baseUnit: "mg", qtyBase: 10000, figures: per100ml({ energyKcal: 400 }) })],
       1,
     );
     expect(out.figures.energyKcal.value).toBeNull();
-    expect(out.notCounted).toEqual([{ label: "Sugar", why: "it is weighed, but its figures are per 100 ml" }]);
+    expect(out.notCounted).toEqual([
+      { label: "Sugar", why: "it is weighed, but its figures are per 100 ml and what one ml weighs is not stated" },
+    ]);
     const grams = serveNutrition(
       [line("Sugar", { baseUnit: "mg", qtyBase: 10000, figures: { ...per100ml({ energyKcal: 400 }), basis: "100g" } })],
       1,

@@ -5,7 +5,7 @@ import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RecipesService } from "./recipes.service";
-import { PreviewCostDto, SaveRecipeDto, ShelfQueryDto } from "./dto/recipes.dto";
+import { PreviewCostDto, SaveRecipeDto, ShelfQueryDto, StateWeightsDto } from "./dto/recipes.dto";
 
 /**
  * A cocktail's recipe (ADR 0360). Every route names the house, so
@@ -78,5 +78,17 @@ export class RecipesController {
   @ApiOperation({ summary: "The house's live shelf items of any kind, for linking a recipe line" })
   shelf(@Param("restaurantId", ParseUUIDPipe) restaurantId: string, @Query() q: ShelfQueryDto) {
     return this.recipes.shelf(restaurantId, q.search, q.limit);
+  }
+
+  @Put(":restaurantId/items/:itemId/weights")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({ summary: "State what one piece and one ml of a good weigh, so a line measured another way is priced (owner/manager)" })
+  stateWeights(
+    @Param("restaurantId", ParseUUIDPipe) restaurantId: string,
+    @Param("itemId", ParseUUIDPipe) itemId: string,
+    @Body() dto: StateWeightsDto,
+  ) {
+    return this.recipes.stateWeights(restaurantId, itemId, dto);
   }
 }
