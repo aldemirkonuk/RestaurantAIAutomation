@@ -124,7 +124,7 @@ interface RawLowStockFields {
   vintage?: number | null;
 }
 
-function lowStockView(it: InventoryItem) {
+export function lowStockView(it: InventoryItem) {
   const raw = it as InventoryItem & RawLowStockFields;
   return {
     id: it.id,

@@ -1,0 +1,185 @@
+/* ============================================================
+   StaffHome (N-11). Every class is prefixed `sh-`. Colours come only from
+   the .mudavym tokens, so paper and charcoal both resolve; nothing here is
+   a literal colour. Motion: transform/opacity only, house curve, no
+   transition-all.
+   ============================================================ */
+
+.sh-wrap {
+  margin: 0 auto;
+  max-width: 560px;
+  padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+}
+
+.sh-date {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.sh-title {
+  margin: 4px 0 0;
+  font-size: 32px;
+  font-weight: 420;
+  line-height: 1.15;
+  color: var(--ink-1);
+}
+
+/* ── the three actions: 56 px, one thumb deep ────────────────────────── */
+.sh-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.sh-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 56px;
+  padding: 8px 4px;
+  border: 1px solid var(--paper-2);
+  border-radius: 12px;
+  background: var(--paper-1, var(--paper-0));
+  color: var(--ink-1);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    transform 90ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sh-action:active {
+  transform: scale(0.98);
+}
+
+.sh-action:focus-visible,
+.sh-row__front:focus-visible,
+.sh-more:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+}
+
+/* ── running low ─────────────────────────────────────────────────────── */
+.sh-low {
+  margin-top: 28px;
+}
+
+.sh-low__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-1);
+}
+
+.sh-hint,
+.sh-note {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--ink-3);
+}
+
+.sh-note {
+  font-style: italic;
+}
+
+.sh-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sh-skel {
+  height: 56px;
+  margin-top: 8px;
+}
+
+.sh-row {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid var(--paper-2);
+}
+
+.sh-row__back {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding-left: 16px;
+  background: var(--seal-tint);
+  color: var(--seal);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.sh-row__front {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 56px;
+  padding: 0 4px;
+  background: var(--paper-0);
+  color: var(--ink-1);
+  text-decoration: none;
+  touch-action: pan-y;
+  will-change: transform;
+}
+
+.sh-row__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+}
+
+.sh-row__vintage {
+  color: var(--ink-3);
+}
+
+.sh-row__count {
+  flex-shrink: 0;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-1);
+}
+
+.sh-row__count[data-empty='true'] {
+  color: var(--seal);
+  font-weight: 600;
+}
+
+.sh-row__min {
+  color: var(--ink-3);
+}
+
+.sh-more {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 14px;
+  color: var(--ink-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sh-action {
+    transition: none;
+  }
+  .sh-action:active {
+    transform: none;
+  }
+}

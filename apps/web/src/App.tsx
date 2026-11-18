@@ -80,7 +80,7 @@ import { ShellCatchAll } from './components/mudavym/ShellCatchAll'
 
 // Onboarding pages (lazy loaded)
 // Mudavym redesign variants (ADR 0044) — reachable only behind their per-page flag
-const DashboardNext = lazyWithRefresh(() => import('./pages/dashboard/next/DashboardNext'))
+const DashboardHome = lazyWithRefresh(() => import('./pages/dashboard/next/DashboardHome'))
 // The landing page a stranger sees at `/` (ADR 0320); RootDoor picks it or the dashboard.
 const Landing = lazyWithRefresh(() => import('./pages/landing/Landing'))
 // The platform told as one sample night, chapter by chapter on scroll (founder, 2026-10-28).
@@ -199,7 +199,7 @@ function App() {
                     (ADR 0320). The dashboard is this route's index child so that it
                     renders through the same DashboardLayout outlet as before. */}
                 <Route path="/" element={<RootDoor landing={<Landing />} />}>
-                  <Route index element={<PageGate page="dashboard" next={<DashboardNext />} />} />
+                  <Route index element={<PageGate page="dashboard" next={<DashboardHome />} />} />
                 </Route>
                 {/* Public Routes */}
                 <Route path="/login" element={<Login />} />
