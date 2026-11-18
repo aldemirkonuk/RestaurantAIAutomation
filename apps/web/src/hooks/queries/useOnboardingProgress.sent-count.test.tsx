@@ -43,13 +43,14 @@ describe('useOnboardingProgress — a held count that is sent later', () => {
   })
 
   it('stops listening when the rail goes away', async () => {
-    const { result, unmount } = setup()
+    const { result, unmount, qc } = setup()
     await vi.waitFor(() => expect(result.current.isLoading).toBe(false))
     unmount()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
 
     window.dispatchEvent(new CustomEvent(SPOT_COUNT_SENT_EVENT, { detail: { sent: 1 } }))
     await new Promise((r) => setTimeout(r, 20))
 
-    expect(getOnboardingProgress).toHaveBeenCalledTimes(1)
+    expect(spy).not.toHaveBeenCalled()
   })
 })
