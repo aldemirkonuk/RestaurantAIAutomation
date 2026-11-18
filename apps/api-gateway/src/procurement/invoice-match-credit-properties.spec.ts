@@ -78,6 +78,19 @@ describe("a credit is never more than the bill, and a claimed bottle is never al
     }
   });
 
+  it("a free bottle never stands in for a billed one: the credit is the billed bottles that did not arrive usable", () => {
+    // 10 billed, 10 kept of which 2 are the vendor's gift: only 8 billed bottles arrived.
+    const worked = computeMatch({ orderedQty: 10, poUnitPrice: 5, invoiceQty: 10, invoiceUnitPrice: 5, acceptedQty: 10, freeGoodsQty: 2 });
+    expect(worked.creditAmount).toBe(10);
+    for (let i = 0; i < 1500; i++) {
+      const d = delivery();
+      const r = computeMatch(input(d));
+      const missing = Math.max(0, d.billed - Math.max(0, d.accepted - d.free));
+      const want = missing > 0 ? Math.round(missing * d.price * 100) / 100 : null;
+      holds(r.creditAmount === want, { i, d, got: r.creditAmount, want });
+    }
+  });
+
   it("a clean delivery claims nothing and costs the billed price plus its freight share", () => {
     for (let i = 0; i < 500; i++) {
       const billed = int(1, 60);
