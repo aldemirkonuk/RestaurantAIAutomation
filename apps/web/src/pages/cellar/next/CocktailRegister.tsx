@@ -47,6 +47,7 @@ import { AllergenCell, AllergenCheck, keptFor } from './recipe/ListAllergens';
 import { CostWaits, NoRecipeYet } from './recipe/ListCostWaits';
 import { MENU_PRICES_UNREAD, MenuPriceCell } from './recipe/MenuPriceCell';
 import { useHousePercent, type SayPercent } from './recipe/useHousePercent';
+import { bringIntoView } from './recipe/bringIntoView';
 import type { DrinkFigureRow } from '../../../services/api/recipes';
 import {
   useCocktailRegister,
@@ -147,22 +148,7 @@ function drinkCells(
   };
 }
 
-/** Room below an opened recipe's top edge for its heading and first line, in px. */
-export const LEAF_HEAD_ROOM = 160;
-
-/**
- * Scrolls an opened recipe to the top of the screen when its heading would
- * not be seen: above the screen, or below `innerHeight - LEAF_HEAD_ROOM`. A
- * recipe already in view does not move the page. Measured on its top edge,
- * not its height: it is still opening (0 tall) when this runs.
- */
-export function bringIntoView(el: HTMLElement | null) {
-  if (!el) return;
-  const top = el.getBoundingClientRect().top;
-  if (top >= 0 && top <= window.innerHeight - LEAF_HEAD_ROOM) return;
-  const still = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  el.scrollIntoView?.({ block: 'start', behavior: still ? 'auto' : 'smooth' });
-}
+export { LEAF_HEAD_ROOM, bringIntoView } from './recipe/bringIntoView';
 
 /* ── the register ───────────────────────────────────────────────────────── */
 
