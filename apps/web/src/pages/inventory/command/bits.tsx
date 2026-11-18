@@ -189,7 +189,7 @@ export function TypeChip({ type }: { type?: string }) {
   const t = (type || '').toLowerCase()
   const styles: Record<string, string> = {
     red: 'bg-rose-50 text-rose-800',
-    white: 'bg-yellow-50 text-yellow-800',
+    white: 'bg-warning-50 text-warning-800',
     sparkling: 'bg-blue-50 text-blue-800',
     rose: 'bg-pink-50 text-pink-700',
     'rosé': 'bg-pink-50 text-pink-700',

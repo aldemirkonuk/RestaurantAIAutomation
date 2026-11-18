@@ -75,7 +75,7 @@ export function WineValidationModal({
   const getConfidenceColor = (confidence?: number) => {
     if (!confidence) return 'bg-gray-100 text-gray-600'
     if (confidence >= 0.9) return 'bg-emerald-100 text-emerald-700'
-    if (confidence >= 0.7) return 'bg-yellow-100 text-yellow-700'
+    if (confidence >= 0.7) return 'bg-warning-100 text-warning-700'
     return 'bg-rose-100 text-rose-700'
   }
 

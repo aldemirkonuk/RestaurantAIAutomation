@@ -340,7 +340,7 @@ export function ScanResultsPanel({
                               <div
                                 className={`h-full transition-all ${
                                   wine.confidence >= 0.9 ? 'bg-emerald-500' :
-                                  wine.confidence >= 0.7 ? 'bg-yellow-500' :
+                                  wine.confidence >= 0.7 ? 'bg-warning-500' :
                                   'bg-rose-500'
                                 }`}
                                 style={{ width: `${wine.confidence * 100}%` }}

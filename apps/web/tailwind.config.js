@@ -30,6 +30,17 @@ export default {
           deep: 'var(--seal-deep, #14515C)',
           tint: 'var(--seal-tint, rgba(26, 94, 107, 0.10))',
           ring: 'var(--seal-ring, rgba(26, 94, 107, 0.32))',
+          50: 'oklch(0.96 0.012 210 / <alpha-value>)',
+          100: 'oklch(0.92 0.025 210 / <alpha-value>)',
+          200: 'oklch(0.86 0.045 210 / <alpha-value>)',
+          300: 'oklch(0.78 0.06 210 / <alpha-value>)',
+          400: 'oklch(0.7 0.07 210 / <alpha-value>)',
+          500: 'oklch(0.58 0.075 210 / <alpha-value>)',
+          600: 'oklch(0.47 0.07 210 / <alpha-value>)',
+          700: 'oklch(0.4 0.062 210 / <alpha-value>)',
+          800: 'oklch(0.33 0.052 210 / <alpha-value>)',
+          900: 'oklch(0.26 0.042 210 / <alpha-value>)',
+          950: 'oklch(0.2 0.032 210 / <alpha-value>)',
         },
         paper: {
           0: 'var(--paper-0, #FAF7F1)',
@@ -46,31 +57,21 @@ export default {
         },
         // ── Triad: İznik seal (brand) · Blue (info) · Yellow (signal) — ADR 0042
         // İznik seal — brand / CTAs (600 = #1A5E6B, the seal; 400 = dark-mode primary)
+        // One OKLCH ramp (design critic N-10): L .96 to .20, chroma <= .09, hue 210.
+        // `<alpha-value>` keeps `bg-wine-600/10` working. Same stops as `--seal-50..950`
+        // in styles/house-tokens.css; styles/house-tokens.test.ts holds them equal.
         wine: {
-          50: '#F1F7F8',
-          100: '#E0EFF1',
-          200: '#BEDDE2',
-          300: '#8FC4CD',
-          400: '#5FB0BC',
-          500: '#3D8794',
-          600: '#1A5E6B',
-          700: '#14515C',
-          800: '#10424C',
-          900: '#0C343C',
-          950: '#08262C',
-        },
-        brand: {
-          50: '#F1F7F8',
-          100: '#E0EFF1',
-          200: '#BEDDE2',
-          300: '#8FC4CD',
-          400: '#5FB0BC',
-          500: '#3D8794',
-          600: '#1A5E6B',
-          700: '#14515C',
-          800: '#10424C',
-          900: '#0C343C',
-          950: '#08262C',
+          50: 'oklch(0.96 0.012 210 / <alpha-value>)',
+          100: 'oklch(0.92 0.025 210 / <alpha-value>)',
+          200: 'oklch(0.86 0.045 210 / <alpha-value>)',
+          300: 'oklch(0.78 0.06 210 / <alpha-value>)',
+          400: 'oklch(0.7 0.07 210 / <alpha-value>)',
+          500: 'oklch(0.58 0.075 210 / <alpha-value>)',
+          600: 'oklch(0.47 0.07 210 / <alpha-value>)',
+          700: 'oklch(0.4 0.062 210 / <alpha-value>)',
+          800: 'oklch(0.33 0.052 210 / <alpha-value>)',
+          900: 'oklch(0.26 0.042 210 / <alpha-value>)',
+          950: 'oklch(0.2 0.032 210 / <alpha-value>)',
         },
         // Blue — info, links, charts, secondary accents
         info: {
@@ -123,18 +124,6 @@ export default {
           800: '#243C9B',
           900: '#23367B',
         },
-        yellow: {
-          50: '#FFFBEB',
-          100: '#FEF3C7',
-          200: '#FDE68A',
-          300: '#FCD34D',
-          400: '#FBBF24',
-          500: '#EAB308',
-          600: '#CA8A04',
-          700: '#A16207',
-          800: '#854D0E',
-          900: '#713F12',
-        },
         // Surfaces — pure white kept
         surface: {
           primary: '#FFFFFF',
@@ -184,19 +173,6 @@ export default {
           800: '#166534',
           900: '#14532D',
         },
-        // Danger aligned with red triad (slightly hotter for errors)
-        danger: {
-          50: '#FDF7F6',
-          100: '#FAEDEC',
-          200: '#F3D4D2',
-          300: '#E5A9A8',
-          400: '#D07072',
-          500: '#B85055',
-          600: '#9E4249',
-          700: '#82363C',
-          800: '#682C31',
-          900: '#522327',
-        },
         // shadcn/ui system colors
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
@@ -244,6 +220,11 @@ export default {
         '3xl': '1.5rem',     // 24px
         '4xl': '2rem',       // 32px
         'full': '9999px',
+        // Corner doctrine (N-10): cards 20, controls 12, chips full, sheets 28.
+        // Inner radius = outer radius - gap.
+        'card': '1.25rem',
+        'control': '0.75rem',
+        'sheet': '1.75rem',
       },
       // Font families (Söhne/Stripe alternatives)
       fontFamily: {
@@ -266,20 +247,20 @@ export default {
         '5xl': ['3rem', { lineHeight: '1.15', letterSpacing: '-0.02em' }],
         '6xl': ['3.75rem', { lineHeight: '1.1', letterSpacing: '-0.025em' }],
       },
-      // Refined box shadows (Stripe-inspired)
+      // Shadows are tinted with the paper's warm hue, never pure black (N-10).
       boxShadow: {
-        'xs': '0 1px 2px 0 rgb(0 0 0 / 0.05)',
-        'sm': '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)',
-        'DEFAULT': '0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.07)',
-        'md': '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-        'lg': '0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.08)',
-        'xl': '0 20px 25px -5px rgb(0 0 0 / 0.08), 0 8px 10px -6px rgb(0 0 0 / 0.08)',
-        '2xl': '0 25px 50px -12px rgb(0 0 0 / 0.15)',
-        'card': '0 1px 3px rgb(0 0 0 / 0.04), 0 4px 12px rgb(0 0 0 / 0.06)',
-        'card-hover': '0 4px 12px rgb(0 0 0 / 0.08), 0 8px 24px rgb(0 0 0 / 0.1)',
-        'elevated': '0 12px 40px rgb(0 0 0 / 0.12)',
-        'inner': 'inset 0 2px 4px 0 rgb(0 0 0 / 0.05)',
-        'ring': '0 0 0 3px rgb(59 130 246 / 0.15)',
+        'xs': '0 1px 2px 0 oklch(0.25 0.03 80 / 0.05)',
+        'sm': '0 1px 3px 0 oklch(0.25 0.03 80 / 0.1), 0 1px 2px -1px oklch(0.25 0.03 80 / 0.1)',
+        'DEFAULT': '0 4px 6px -1px oklch(0.25 0.03 80 / 0.07), 0 2px 4px -2px oklch(0.25 0.03 80 / 0.07)',
+        'md': '0 4px 6px -1px oklch(0.25 0.03 80 / 0.1), 0 2px 4px -2px oklch(0.25 0.03 80 / 0.1)',
+        'lg': '0 10px 15px -3px oklch(0.25 0.03 80 / 0.08), 0 4px 6px -4px oklch(0.25 0.03 80 / 0.08)',
+        'xl': '0 20px 25px -5px oklch(0.25 0.03 80 / 0.08), 0 8px 10px -6px oklch(0.25 0.03 80 / 0.08)',
+        '2xl': '0 25px 50px -12px oklch(0.25 0.03 80 / 0.15)',
+        'card': '0 1px 3px oklch(0.25 0.03 80 / 0.04), 0 4px 12px oklch(0.25 0.03 80 / 0.06)',
+        'card-hover': '0 4px 12px oklch(0.25 0.03 80 / 0.08), 0 8px 24px oklch(0.25 0.03 80 / 0.1)',
+        'elevated': '0 12px 40px oklch(0.25 0.03 80 / 0.12)',
+        'inner': 'inset 0 2px 4px 0 oklch(0.25 0.03 80 / 0.05)',
+        'ring': '0 0 0 3px oklch(0.47 0.07 210 / 0.32)',
         'none': 'none',
       },
       // Smooth animations
@@ -337,7 +318,7 @@ export default {
       // Transition timing
       transitionTimingFunction: {
         'smooth': 'cubic-bezier(0.4, 0, 0.2, 1)',
-        'bounce-in': 'cubic-bezier(0.68, -0.55, 0.265, 1.55)',
+        'house': 'cubic-bezier(0.16, 1, 0.3, 1)',
       },
     },
   },

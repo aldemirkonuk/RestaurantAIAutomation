@@ -25,7 +25,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   people: 'bg-purple-50 text-purple-700 border-purple-200',
   wine_portfolio: 'bg-red-50 text-red-700 border-red-200',
   promotion: 'bg-green-50 text-green-700 border-green-200',
-  pricing: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+  pricing: 'bg-warning-50 text-warning-700 border-warning-200',
   logistics: 'bg-orange-50 text-orange-700 border-orange-200',
   financial: 'bg-indigo-50 text-indigo-700 border-indigo-200',
   relationship: 'bg-pink-50 text-pink-700 border-pink-200',
