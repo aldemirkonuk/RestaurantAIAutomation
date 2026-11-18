@@ -1464,7 +1464,10 @@ export class DocumentsController {
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
     if (!doc) throw new HttpException("Not found", HttpStatus.NOT_FOUND);
 
-    const [{ data: lines }, { data: links }] = await Promise.all([
+    const [
+      { data: lines, error: linesErr },
+      { data: links, error: linksErr },
+    ] = await Promise.all([
       this.db
         .getClient()
         .from("procurement_document_lines")
@@ -1477,6 +1480,20 @@ export class DocumentsController {
         .select("*")
         .eq("document_id", id),
     ]);
+
+    // ADR 0020: a read that failed is not a paper with no lines. Answering
+    // `lines: []` made the card read "no lines on this paper" for a database
+    // that was only unreachable, and the sheet below it offered a verify.
+    if (linesErr)
+      throw new HttpException(
+        `The lines on this paper could not be read: ${linesErr.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    if (linksErr)
+      throw new HttpException(
+        `The orders this paper is linked to could not be read: ${linksErr.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
 
     // Decision E48 — the receipts page renders the stored photo/PDF beside
     // the extracted lines. storage_path is a private-bucket object path, not
