@@ -371,6 +371,13 @@ export default function DishesPage() {
       },
       { replace: true },
     );
+  // A dish just added is shown: a search typed earlier (that its name need not match)
+  // would otherwise hide it, and the link note would blame a link. The allergen and
+  // no-recipe checks cannot hide it: a new dish has no recipe and no allergen known free.
+  const added = (id: string) => {
+    setQuery('');
+    open(id);
+  };
   const toggle = (id: string) => open(id === openId ? null : id);
   const cols = (say ? 6 : 3) + (showMenu ? 1 : 0);
 
@@ -383,7 +390,7 @@ export default function DishesPage() {
         </p>
 
         {canEdit ? <MenuDishesOffer /> : null}
-        {canEdit ? <AddDish onAdded={open} sections={sections} /> : null}
+        {canEdit ? <AddDish onAdded={added} sections={sections} /> : null}
 
         {say && menu.error ? (
           <p className="cl-said" role="status" style={{ marginTop: 12 }} data-testid="dishes-menu-unread">
