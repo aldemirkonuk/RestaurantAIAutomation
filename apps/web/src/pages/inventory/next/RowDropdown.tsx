@@ -486,7 +486,7 @@ export default function RowDropdown(props: RowDropdownProps) {
               onClick={() => {
                 setMoreOpen(false);
                 // Legacy's right-click "Export this row": the valuation columns, as CSV, named after the title.
-                void runExport([row], costColumnsFor(valuationColumns(currency.code ?? null), canManage), rowFilename(row), title);
+                void runExport([row], costColumnsFor(valuationColumns(currency.code ?? null, thing === 'good' ? 'Good' : 'Title'), canManage), rowFilename(row), title);
               }}
             >
               Export this row
