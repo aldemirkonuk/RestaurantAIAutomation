@@ -42,6 +42,14 @@ html[data-mudavym-ground="charcoal"] body {
   color: var(--ink-1);
 }
 
+/* The shell's page column carries the legacy layout's own `bg-gray-50`. On
+   charcoal it showed as a cream band under the last row and behind the tour
+   strip at phone width (r60 walk). It takes the ground. A legacy page paints
+   its own cards over it, exactly as before. */
+html[data-mudavym-ground="charcoal"] .mdv-shell__page {
+  background-color: var(--ground);
+}
+
 /* Fields. Text-like inputs, textareas and selects take the dark fill and the
    cream ink. The date and time inputs are handled in mudavym.css; checkboxes,
    radios and buttons are not fields and are left to their own rules. */

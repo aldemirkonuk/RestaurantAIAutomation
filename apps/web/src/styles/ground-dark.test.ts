@@ -67,6 +67,17 @@ describe('charcoal ground, outside the shell', () => {
   });
 });
 
+describe('charcoal shell page column', () => {
+  it('takes the ground over the legacy bg-gray-50, paper leaves it alone', () => {
+    charcoal(true);
+    mount('<div class="mdv-shell__page bg-gray-50"></div>');
+    const el = document.querySelector('.mdv-shell__page') as HTMLElement;
+    expect(getComputedStyle(el).backgroundColor).toBe('var(--ground)');
+    document.documentElement.removeAttribute('data-mudavym-ground');
+    expect(getComputedStyle(el).backgroundColor).not.toBe('var(--ground)');
+  });
+});
+
 describe('charcoal fields', () => {
   it('a text input, textarea and select take the dark fill and cream ink', () => {
     charcoal(true);
