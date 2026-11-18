@@ -26,13 +26,11 @@
  * `?senders=open` opens that register, which is where those notices link.
  */
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Mail, MessageCircle } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { EM, MONO, SANS, failedReadWords, fmtWhen, managesHouse } from './cm-format';
-import { IntakeHealthSheet } from './IntakeHealthSheet';
-import { MailSetup } from './MailSetup';
 import { MailThread, type LetterFacts } from './MailThread';
 import {
   NEW_TO_YOU,
@@ -68,6 +66,11 @@ import {
   useMailThreads,
 } from './useMailData';
 import { useMailSetup } from './useMailSetup';
+
+// The setup page and the intake sheet are looked at rarely, so they load when
+// first asked for, not with the Mail list (r56 mail).
+const MailSetup = lazy(() => import('./MailSetup').then((m) => ({ default: m.MailSetup })));
+const IntakeHealthSheet = lazy(() => import('./IntakeHealthSheet').then((m) => ({ default: m.IntakeHealthSheet })));
 
 const QUIET = { fontSize: 11.5, color: 'var(--ink-4, #665D50)' } as const;
 const LINK_BUTTON = {
@@ -495,6 +498,9 @@ export function MailTab({
     setSearch('');
   };
   const [sheet, setSheet] = useState(false);
+  // Mounted from the first time it is asked for, and kept, so closing still plays.
+  const [sheetLoaded, setSheetLoaded] = useState(false);
+  if (sheet && !sheetLoaded) setSheetLoaded(true);
   const location = useLocation();
   const navigate = useNavigate();
   const summaryQ = useMailSummary(true);
@@ -637,6 +643,7 @@ export function MailTab({
       </header>
 
       {setup ? (
+        <Suspense fallback={<p role="status" style={{ margin: 0, ...QUIET }}>Opening the setup…</p>}>
         <MailSetup
           status={status}
           sender={senderQ.data ?? null}
@@ -646,6 +653,7 @@ export function MailTab({
           readerGranted={readerFailed || !reader ? 'unknown' : reader.granted}
           onBack={() => back({ setup: null })}
         />
+        </Suspense>
       ) : threadKey ? (
         <MailThread
           threadKey={threadKey}
@@ -721,19 +729,23 @@ export function MailTab({
         </>
       )}
 
-      <IntakeHealthSheet
-        open={sheet}
-        onClose={() => setSheet(false)}
-        summary={summary}
-        summaryFailed={summaryQ.isError}
-        reader={reader}
-        readerFailed={readerFailed}
-        sender={senderQ.data ?? null}
-        senderFailed={senderQ.isError}
-        conversationWords={senderQ.data?.conversation?.words ?? null}
-        intake={intake}
-        now={now}
-      />
+      {sheetLoaded && (
+        <Suspense fallback={null}>
+          <IntakeHealthSheet
+            open={sheet}
+            onClose={() => setSheet(false)}
+            summary={summary}
+            summaryFailed={summaryQ.isError}
+            reader={reader}
+            readerFailed={readerFailed}
+            sender={senderQ.data ?? null}
+            senderFailed={senderQ.isError}
+            conversationWords={senderQ.data?.conversation?.words ?? null}
+            intake={intake}
+            now={now}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
