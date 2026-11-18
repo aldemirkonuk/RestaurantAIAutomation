@@ -7,11 +7,15 @@ import {
 } from "@nestjs/common";
 import * as crypto from "crypto";
 import { DatabaseService } from "../database/database.service";
-import { assertCocktailBelongsToRestaurant, cocktailIdOf } from "./cocktail-link";
+import {
+  assertCocktailBelongsToRestaurant,
+  cocktailIdOf,
+} from "./cocktail-link";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
 import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
 import { CanonicalCheck, CheckChannel } from "./pos-types";
 import { ADAPTERS } from "./pos-adapters";
+import { saleLineKeys, splitQty, fractionMl } from "./sale-line";
 import {
   PROVIDER_BY_KEY,
   POS_PROVIDERS,
@@ -311,6 +315,12 @@ export interface StockTally {
   consumptionNotWritten: number;
   /** Lines this import booked whose check closed more than 72 hours ago. */
   backdatedOver72h: number;
+  /**
+   * Lines that moved stock but came with no price from the till (r57 D5):
+   * booked at the menu price for a bottle and with no revenue for a pour,
+   * and said so rather than booked as a comp.
+   */
+  priceNotSent: number;
 }
 
 type StockFailureKind = "stock" | "queue" | "consumption";
@@ -354,6 +364,7 @@ export class StockReport {
     failed: 0,
     consumptionNotWritten: 0,
     backdatedOver72h: 0,
+    priceNotSent: 0,
   };
 
   private readonly groups = new Map<
@@ -461,13 +472,18 @@ export type ResolvedSaleVolume = Exclude<SaleVolume, { mode: "unresolved" }>;
  * `Number(price) || menuPrice`, which turned every comp into a sale at the
  * item's full BOTTLE price, and a comped glass into a bottle's worth of revenue.
  * Only a price that is not a number falls back, and only for a whole bottle:
- * the bottle's menu price is not what a pour sells for.
+ * the bottle's menu price is not what a pour sells for. An absent price is
+ * null from every adapter (r57 D5), so a till that sent none books the menu
+ * price and the import says so; it is never read as a comp.
  */
 export function consumptionUnitPrice(
   price: unknown,
   mode: "whole_bottle" | "volume",
   menuPrice: number | null,
+  comped = false,
 ): number | null {
+  // r57 D5: only a till that says outright the line was comped makes it one.
+  if (comped) return 0;
   if (price !== null && price !== undefined && price !== "") {
     const n = Number(price);
     if (Number.isFinite(n)) return n;
@@ -717,9 +733,10 @@ export function tallyChannels(
  * keyword heuristic) → table/server resolution → UPSERT pos_checks → stock
  * depletion via apply_stock_movement/record_glass_pour for closed checks only
  * (decision B18). Idempotent on (restaurant_id, source, external_check_id)
- * for the check row, and on `pos:{source}:{externalCheckId}:{externalItemId}
- * :{lineNo}` (decision B15) for every stock write, so webhook replays and
- * re-imports are safe.
+ * for the check row, and for every stock write on the provider's line id, or
+ * `pos:{source}:{externalCheckId}:{item}|{modifiers}|{price}:#{occurrence}`
+ * (decision B15, line identity r57 D2: never the line's position), so webhook
+ * replays and re-imports are safe.
  */
 @Injectable()
 export class PosHubService {
@@ -1075,7 +1092,10 @@ export class PosHubService {
             external_item_id: it.externalItemId ?? null,
             category: it.category ?? mapped.category ?? null,
             qty: it.qty,
-            price: it.price,
+            price: it.price ?? null,
+            line_id: it.lineId ?? null,
+            modifiers: it.modifiers ?? null,
+            comped: it.comped === true,
             is_wine,
             master_wine_id: it.master_wine_id ?? mapped.masterWineId ?? null,
             inventory_id: mapped.inventoryId,
@@ -1326,7 +1346,10 @@ export class PosHubService {
       name: string;
       external_item_id: string | null;
       qty: number;
-      price: number;
+      price: number | null;
+      line_id?: string | null;
+      modifiers?: string | null;
+      comped?: boolean;
       is_wine: boolean;
       inventory_id: string | null;
       sale_unit: string | null;
@@ -1375,6 +1398,9 @@ export class PosHubService {
     STOCK_REPORTS.set(check, report);
     tally.lines += items.length;
     const decidedBefore = decidedLines(tally);
+    // r57 D2: every line's key, worked out over the whole check, so a line's
+    // key is the same however many lines sit before it.
+    const lineKeys = saleLineKeys(source, check.externalCheckId, items);
 
     for (let lineNo = 0; lineNo < items.length; lineNo++) {
       const it = items[lineNo];
@@ -1387,8 +1413,10 @@ export class PosHubService {
       // is skipped here. See .planning/BEVERAGE_CATALOGUE_PLAN.md register A11.
       if (!it.is_wine) continue;
 
-      const qty = Math.max(0, Math.round(Number(it.qty) || 0));
-      if (qty <= 0) continue;
+      // r57 D3: a fractional quantity (Clover by measure, 0.5) keeps its
+      // fraction. `qty` is the whole units; `frac` the share of one more.
+      const { whole: qty, frac } = splitQty(it.qty);
+      if (qty <= 0 && frac <= 0) continue;
 
       try {
         if (!it.inventory_id) {
@@ -1444,102 +1472,139 @@ export class PosHubService {
           continue;
         }
 
-        // B15: depletion idempotency key.
-        const idem = `pos:${source}:${check.externalCheckId}:${it.external_item_id ?? it.name}:${lineNo}`;
+        // B15 / r57 D2: depletion idempotency key. The provider's line id, or
+        // the item + modifiers + price + occurrence; never the line position.
+        const idem = lineKeys[lineNo];
         // Reporting label only — never arithmetic (ADR 0011).
         const label = it.sale_unit ?? resolved.mode;
+        // What one whole unit holds, for the fractional part (r57 D3).
+        const unitMl =
+          resolved.mode === "volume"
+            ? resolved.ml
+            : (inv?.bottleMl ?? RPC_DEFAULT_BOTTLE_ML);
+        // Said once per line: the till sent no price (r57 D5).
+        let priceNoted = false;
 
-        // supabase-js resolves RPC failures as { error } rather than
-        // throwing, so — as in the receiving-door bug this plan's spine
-        // repair fixed — the error field must be checked explicitly or a
-        // failed depletion reports success silently.
-        let rpcError: { message?: string } | null = null;
-        if (resolved.mode === "volume" && !isVoid) {
-          // record_glass_pour has taken an arbitrary p_pour_ml since the
-          // baseline (baseline_from_production.sql:1132); the app layer was
-          // the only binary part. It is passed explicitly rather than as null
-          // so the ml that moves stock and the ml written to the consumption
-          // log are the same number, decided here.
-          ({ error: rpcError } = await db.rpc("record_glass_pour", {
-            p_inventory_id: it.inventory_id,
-            p_pours: qty,
-            p_pour_ml: Math.round(resolved.ml),
-            p_location_id: null,
-            p_source: "pos",
-            p_reason: `POS sale (${label}): ${it.name}`,
-            p_idempotency_key: idem,
-            // ADR 0281: dated by the check, not by its arrival.
-            p_occurred_at: when.at,
-          }));
-        } else {
-          // Whole-bottle sales, and every void.
-          //
-          // B19 (unchanged, and wrong — see ADR 0011 Consequences): a partial-
-          // volume void returns `qty` WHOLE BOTTLES because record_glass_pour
-          // has no reversal mode. Voiding 5 glasses returns 5 bottles. Left as
-          // it is because B19 is a recorded decision; superseding it is the
-          // founder's call, not this change's.
-          //
-          // ADR 0093 D5 — THE VOID'S KEY IS NOT THE SALE'S KEY.
-          //
-          // `apply_stock_movement` (production definition, read 2026-09-02)
-          // opens with `SELECT id ... WHERE idempotency_key = p_idempotency_key
-          // ... IF FOUND RETURN`. Passing `idem` here — the key the SALE
-          // already wrote — therefore returned the sale's transaction id and
-          // MOVED NOTHING: a voided check stayed depleted forever, and the
-          // caller could not tell, because an idempotent hit and a real
-          // movement are the same `{ error: null }`.
-          //
-          // `${idem}:void` is derived from the sale's key rather than random,
-          // so a REPLAYED void is still idempotent — the property the sale
-          // already had, extended to the reversal.
-          //
-          // pos-hub.void-idempotency.spec.ts pins this against a mock that
-          // actually implements the early return; the older B19 tests could
-          // not see it because their mock ignores the key.
-          ({ error: rpcError } = await db.rpc("apply_stock_movement", {
-            p_inventory_id: it.inventory_id,
-            p_stock_state: "live",
-            p_delta: isVoid ? qty : -qty,
-            p_transaction_type: isVoid ? "return" : "sale",
-            p_source: "pos",
-            p_reason: `POS ${isVoid ? "void" : "sale"} (${label}): ${it.name}`,
-            p_idempotency_key: isVoid ? `${idem}:void` : idem,
-            // ADR 0141 — the house this check belongs to. `it.inventory_id`
-            // comes from a `pos_item_mappings` row read for this restaurant;
-            // the row belonging here does not make the item it names belong
-            // here, and a mis-seeded mapping used to move another house's
-            // shelf on every sale.
-            p_restaurant_id: restaurantId,
-            // ADR 0281: a sale and its void are both dated by the closed_at
-            // their check carries. A void lands on the sale's day only when
-            // the till re-sends the sale's closed_at on it; a till that
-            // stamps the void with its own time dates the return then.
-            p_occurred_at: when.at,
-          }));
-        }
+        // One stock write and its consumption row. The whole units and the
+        // fractional share of one more each have their own key, so a replay of
+        // either is a no-op.
+        const book = async (
+          part: "whole" | "fraction",
+          units: number,
+          key: string,
+        ) => {
+          // supabase-js resolves RPC failures as { error } rather than
+          // throwing, so — as in the receiving-door bug this plan's spine
+          // repair fixed — the error field must be checked explicitly or a
+          // failed depletion reports success silently.
+          let rpcError: { message?: string } | null = null;
+          if (part === "fraction" && isVoid) {
+            // r57 D1 owns the reverse pour (ml back to the open bottle). Until
+            // it lands, returning a WHOLE bottle for a fraction would be the
+            // B19 over-return, so the fraction stays out and the line says so.
+            rpcError = {
+              message: `a fractional quantity (${frac}) on a voided line cannot be returned to the shelf yet; its ${fractionMl(unitMl, frac)}ml stay depleted`,
+            };
+          } else if (
+            part === "fraction" ||
+            (resolved.mode === "volume" && !isVoid)
+          ) {
+            // record_glass_pour has taken an arbitrary p_pour_ml since the
+            // baseline (baseline_from_production.sql:1132); the app layer was
+            // the only binary part. It is passed explicitly rather than as null
+            // so the ml that moves stock and the ml written to the consumption
+            // log are the same number, decided here. A fraction is one pour of
+            // that share of the unit, in a bottle sale as in a glass sale.
+            ({ error: rpcError } = await db.rpc("record_glass_pour", {
+              p_inventory_id: it.inventory_id,
+              p_pours: part === "fraction" ? 1 : units,
+              p_pour_ml:
+                part === "fraction"
+                  ? fractionMl(unitMl, frac)
+                  : Math.round((resolved as { ml: number }).ml),
+              p_location_id: null,
+              p_source: "pos",
+              p_reason: `POS sale (${label}): ${it.name}`,
+              p_idempotency_key: key,
+              // ADR 0281: dated by the check, not by its arrival.
+              p_occurred_at: when.at,
+            }));
+          } else {
+            // Whole-bottle sales, and every void.
+            //
+            // B19 (unchanged, and wrong — see ADR 0011 Consequences): a partial-
+            // volume void returns `qty` WHOLE BOTTLES because record_glass_pour
+            // has no reversal mode. Voiding 5 glasses returns 5 bottles. Left as
+            // it is because B19 is a recorded decision; superseding it is the
+            // founder's call, not this change's.
+            //
+            // ADR 0093 D5 — THE VOID'S KEY IS NOT THE SALE'S KEY.
+            //
+            // `apply_stock_movement` (production definition, read 2026-09-02)
+            // opens with `SELECT id ... WHERE idempotency_key = p_idempotency_key
+            // ... IF FOUND RETURN`. Passing `idem` here — the key the SALE
+            // already wrote — therefore returned the sale's transaction id and
+            // MOVED NOTHING: a voided check stayed depleted forever, and the
+            // caller could not tell, because an idempotent hit and a real
+            // movement are the same `{ error: null }`.
+            //
+            // `${idem}:void` is derived from the sale's key rather than random,
+            // so a REPLAYED void is still idempotent — the property the sale
+            // already had, extended to the reversal.
+            //
+            // pos-hub.void-idempotency.spec.ts pins this against a mock that
+            // actually implements the early return; the older B19 tests could
+            // not see it because their mock ignores the key.
+            ({ error: rpcError } = await db.rpc("apply_stock_movement", {
+              p_inventory_id: it.inventory_id,
+              p_stock_state: "live",
+              p_delta: isVoid ? units : -units,
+              p_transaction_type: isVoid ? "return" : "sale",
+              p_source: "pos",
+              p_reason: `POS ${isVoid ? "void" : "sale"} (${label}): ${it.name}`,
+              p_idempotency_key: isVoid ? `${key}:void` : key,
+              // ADR 0141 — the house this check belongs to. `it.inventory_id`
+              // comes from a `pos_item_mappings` row read for this restaurant;
+              // the row belonging here does not make the item it names belong
+              // here, and a mis-seeded mapping used to move another house's
+              // shelf on every sale.
+              p_restaurant_id: restaurantId,
+              p_occurred_at: when.at,
+            }));
+          }
 
-        if (rpcError) {
-          this.logger.warn(
-            `Stock effect failed for ${it.name} (${label}) on check ${check.externalCheckId}: ${rpcError.message}`,
-          );
-          tally.failed++;
-          report.noteFailure(
-            "stock",
-            it.name,
-            rpcError.message,
-            check.externalCheckId,
-          );
-        } else {
-          affected.add(it.inventory_id);
+          if (rpcError) {
+            this.logger.warn(
+              `Stock effect failed for ${it.name} (${label}) on check ${check.externalCheckId}: ${rpcError.message}`,
+            );
+            tally.failed++;
+            report.noteFailure(
+              "stock",
+              it.name,
+              rpcError.message,
+              check.externalCheckId,
+            );
+            // A void still clears the sale's consumption row below: the sale
+            // did not happen whether or not the shelf could take it back.
+            if (!(isVoid && part === "fraction")) return;
+          } else {
+            affected.add(it.inventory_id as string);
+          }
           if (!isVoid) {
+            const partQty = part === "fraction" ? frac : units;
+            if (it.price === null || it.price === undefined) {
+              if (!it.comped && !priceNoted) {
+                priceNoted = true;
+                tally.priceNotSent++;
+              }
+            }
             const consumption = await this.recordConsumption(
               restaurantId,
               it,
               resolved,
               inv,
-              qty,
-              idem,
+              partQty,
+              key,
               when.at,
             );
             if (consumption === "already") {
@@ -1559,11 +1624,11 @@ export class PosHubService {
               }
             }
           } else {
-            booked();
+            if (!rpcError) booked();
             // A voided line never happened (r56): the sale's consumption row
             // goes to nothing along with its stock, or velocity, revenue and
             // top sellers keep counting a glass nobody drank.
-            if (!(await this.voidConsumption(restaurantId, idem))) {
+            if (!(await this.voidConsumption(restaurantId, key))) {
               tally.consumptionNotWritten++;
               report.noteFailure(
                 "consumption",
@@ -1573,7 +1638,11 @@ export class PosHubService {
               );
             }
           }
-        }
+        };
+
+        if (qty > 0) await book("whole", qty, idem);
+        if (frac > 0)
+          await book("fraction", 1, qty > 0 ? `${idem}:frac` : idem);
       } catch (err: any) {
         this.logger.warn(
           `Stock effect threw for ${it.name} on check ${check.externalCheckId}: ${err?.message}`,
@@ -1638,7 +1707,8 @@ export class PosHubService {
       name: string;
       external_item_id: string | null;
       qty: number;
-      price: number;
+      price: number | null;
+      comped?: boolean;
     },
     opts: {
       reason: "unmapped" | "no_sale_volume";
@@ -1743,7 +1813,8 @@ export class PosHubService {
     item: {
       name: string;
       qty: number;
-      price: number;
+      price: number | null;
+      comped?: boolean;
       inventory_id: string | null;
     },
     resolved: ResolvedSaleVolume,
@@ -1773,6 +1844,7 @@ export class PosHubService {
         item.price,
         resolved.mode,
         inv?.menuPrice ?? null,
+        item.comped === true,
       );
 
       // Idempotent from 2026-08-24, matching the stock write it follows.
@@ -1810,7 +1882,9 @@ export class PosHubService {
         inventory_id: item.inventory_id,
         wine_name: item.name,
         consumption_type: unit,
-        quantity: qty,
+        // the column is an integer count of units rung; the volume and the
+        // revenue beside it carry the exact fraction (r57 D3)
+        quantity: Math.max(1, Math.ceil(qty)),
         volume_ml: volumeMl,
         unit_price: unitPrice,
         total_revenue: unitPrice != null ? unitPrice * qty : null,
