@@ -140,3 +140,16 @@ describe('the defaultOpen sync is upward only', () => {
     expect(screen.queryByTestId('whole-cellar-open')).toBeNull();
   });
 });
+
+describe('the counting note is plain and folded (r58 N-04)', () => {
+  it('says how the cellar is counted behind a closed disclosure, with no table or event names', async () => {
+    render(<WholeCellar carried={[...CARRIED]} defaultOpen />, { wrapper: wrapper() });
+    await waitFor(() => expect(screen.queryByTestId('whole-cellar-open')).toBeNull());
+    const d = document.querySelector('details.cl-more') as HTMLDetailsElement;
+    expect(d).not.toBeNull();
+    expect(d.open).toBe(false);
+    expect(d.querySelector('summary')?.textContent).toBe('How is this counted');
+    expect(d.textContent).toMatch(/Wines are not in this list/);
+    expect(d.textContent).not.toMatch(/restaurant_inventory|OD-113|\/wines/);
+  });
+});

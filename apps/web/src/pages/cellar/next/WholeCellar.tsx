@@ -251,14 +251,14 @@ export default function WholeCellar({
             </div>
           )}
 
-          <p className="cl-note">
-            Wines are not in this list. `/wines` is served by a different read
-            with the cellar laid over it, so a wine row carries a stock figure
-            and a beer row cannot — putting them in one table would mean one of
-            the two columns lying. Nothing here can be counted into the cellar
-            either: `restaurant_inventory` is keyed on the wine library, which is
-            OD-113.
-          </p>
+          <details className="cl-more">
+            <summary>How is this counted</summary>
+            <p className="cl-note">
+              Wines are not in this list. They have their own page, with the
+              stock count laid over them, and a beer row cannot carry a stock
+              count. Nothing in this list can be counted into the cellar yet.
+            </p>
+          </details>
 
           {series !== null ? (
             <div style={{ marginTop: 16 }}>

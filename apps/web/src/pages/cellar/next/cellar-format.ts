@@ -527,15 +527,15 @@ export function addRowsPrompt(id: RegisterId): string {
     case 'wines':
       return 'Add your wines to /inventory, or put them on the menu, so the cellar can count them.';
     case 'beer':
-      return 'Put your beers on the menu. /inventory cannot hold a keg yet — it is keyed on the wine library — so the menu is what the house can see today.';
+      return 'Put your beers on the menu. The stock room counts wines only today, so the menu is what the house can see.';
     case 'whiskey':
-      return 'Put your whiskies on the menu. /inventory cannot hold a bottle of rye yet — it is keyed on the wine library.';
+      return 'Put your whiskies on the menu. The stock room counts wines only today.';
     case 'spirits':
-      return 'Put your spirits on the menu. /inventory cannot hold them yet — it is keyed on the wine library.';
+      return 'Put your spirits on the menu. The stock room counts wines only today.';
     case 'cocktails':
-      return 'Add the cocktail list to the menu. Recipes cannot be recorded at all yet: cocktail_ingredients was created empty and the extraction pass has not run.';
+      return 'Add the cocktail list to the menu. Cocktail recipes cannot be recorded yet.';
     case 'non_alcoholic':
-      return 'Put what you pour to a non-drinker on the menu. /inventory cannot hold it yet — it is keyed on the wine library.';
+      return 'Put what you pour to a non-drinker on the menu. The stock room counts wines only today.';
     default:
       return 'Put your soft drinks on the menu. No catalogue column separates a cola from a kombucha, so the menu is the only place the house can see them.';
   }

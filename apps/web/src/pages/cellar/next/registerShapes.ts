@@ -59,7 +59,7 @@ const HOUSE_FIRST =
   'This house’s own record comes first — first bought, what was paid, what was poured, who quoted it — read from its menu, invoices, orders, quotes and till. The shared catalogue is laid over it, and rows nobody here has touched are labelled as belonging to nobody.';
 
 const NOT_STOCK =
-  'Nothing of this kind can be counted into the cellar yet: restaurant_inventory is keyed on the wine library, so stocking waits on the identity axis (OD-113).';
+  'Nothing of this kind can be counted into the cellar yet. Only wines are counted today; the other kinds can be browsed and priced here.';
 
 export const REGISTER_SOURCE: Record<RegisterId, RegisterSource> = {
   wines: {
@@ -111,7 +111,7 @@ export const REGISTER_SOURCE: Record<RegisterId, RegisterSource> = {
     stockable: false,
     writable: true,
     missing:
-      'A cocktail cannot yet deplete its base spirit: that needs a stock row for the spirit, which is the same OD-113 gate. Recipes themselves are no longer missing — cocktail_ingredients has a writer as of this pass.',
+      'A cocktail cannot yet use up its base spirit, because spirits are not counted as stock yet. Recipes themselves can be written.',
   },
   non_alcoholic: {
     wired: true,

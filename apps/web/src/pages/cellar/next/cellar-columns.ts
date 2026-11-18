@@ -544,7 +544,7 @@ const ON_HAND: CellarColumn = {
   side: 'cellar',
   source: 'restaurant_inventory.stock_live',
   meaning:
-    'Bottles in the building. Wines only — restaurant_inventory is keyed on master_wine_id, so a keg has no stock row (OD-113).',
+    'Bottles in the building. Wines only: a keg has no stock count yet.',
   fill: null,
   on: true,
   why: '',

@@ -723,8 +723,8 @@ export default function WineRegister({ data }: { data: CellarData }) {
           shown, whichever of the two views above is open. */}
       <p className="cl-note" data-testid="wine-live-note">
         {data.live.lastApplyMs === null
-          ? 'Stock moves arrive on the socket (stock:updated → restaurant:<id>) and are written straight into the row that changed; the read behind them reconciles afterwards. Nothing has moved since this page opened, so no time has been measured.'
-          : `A stock move landed and was on screen ${data.live.lastApplyMs} ms later — measured in this tab, from the event to the painted frame. The transport leg is separate and is stated in MOTIONS.md.`}
+          ? 'Stock moves show here as they happen, in the row that changed. Nothing has moved since this page opened, so no time has been measured.'
+          : `A stock move landed and was on screen ${data.live.lastApplyMs} ms later, measured in this tab.`}
       </p>
     </div>
   );
