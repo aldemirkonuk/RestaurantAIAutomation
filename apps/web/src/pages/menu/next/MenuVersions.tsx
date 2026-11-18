@@ -40,6 +40,7 @@ import {
 import { oneNounFor, type KindNoun } from './menu-line-kind';
 import { useAuthStore } from '../../../stores';
 import { MenuPlan } from './MenuPlan';
+import { MenuReviewScreen } from '../../../components/onboarding/MenuReviewScreen';
 import { DropZone } from '../../../components/mudavym/DropZone';
 import { deviceClockNote, houseDay, houseMoment } from './menu-clock';
 import { versionsPollMs } from './menu-read-poll';
@@ -309,6 +310,9 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
   const [chosen, setChosen] = useState<string | null>(null);
   const [replaced, setReplaced] = useState(false);
   const [planning, setPlanning] = useState(false);
+  // The lines a read found are looked over, and corrected, before the choice
+  // of the current menu (r57 w1 F1): until the review is confirmed or skipped.
+  const [reviewed, setReviewed] = useState(false);
   const [details, setDetails] = useState(false);
   const [readingId, setReadingId] = useState<string | null>(null);
   const dateRead = readMenuDate(date);
@@ -342,6 +346,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
       setReplaced(false);
       setChosen(null);
       setPlanning(false);
+      setReviewed(false);
       setReadingId(null);
       onRead();
       onReadDone?.(r);
@@ -370,6 +375,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
   }, [currentMenuId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isCurrent = result?.current === true;
+  const reviewing = result !== null && !reviewed && !isCurrent && !result.reopened && result.items.length > 0 && chosen === null;
 
   return (
     <div style={{ border: '1px solid var(--paper-2)', borderRadius: 10, padding: 14, marginTop: 16 }} data-testid="menu-read-form">
@@ -474,7 +480,27 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
               Read it again
             </button>
           ) : null}
-          {isCurrent ? null : canManage ? (
+          {reviewing && result ? (
+            <MenuReviewScreen
+              embedded
+              result={result}
+              canChoose={canManage}
+              onSkip={() => setReviewed(true)}
+              onConfirm={(madeCurrent) => {
+                setReviewed(true);
+                if (!canManage) return;
+                if (madeCurrent) {
+                  setChosen('This is now the current menu.');
+                  setResult((cur) => (cur && cur.menuId === result.menuId ? { ...cur, current: true } : cur));
+                  void queryClient.invalidateQueries({ queryKey: ['menu'] });
+                  onRead();
+                  onChosen?.();
+                } else {
+                  setChosen('Kept, not current. It stays in the list below.');
+                }
+              }}
+            />
+          ) : isCurrent ? null : canManage ? (
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
               <button
                 type="button"
