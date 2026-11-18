@@ -1,5 +1,5 @@
 import { NotFoundException, ServiceUnavailableException } from "@nestjs/common";
-import { DishesService, DRINK_USE_UNREAD } from "./dishes.service";
+import { DishesService, DRINK_FIGURES_UNREAD, DRINK_USE_UNREAD } from "./dishes.service";
 import { RecipesService } from "./recipes.service";
 import { HOUSE_A, HOUSE_B, V_TART_2, fakeDb, line, twoHouses, type Row } from "./dishes.testing";
 
@@ -147,5 +147,71 @@ describe("drinks: which of the house's drinks use an item", () => {
     const err = await svc.drinksUsingItem(HOUSE_A, GIN, "owner").catch((e) => e);
     expect(err).toBeInstanceOf(ServiceUnavailableException);
     expect(err.message).toBe(DRINK_USE_UNREAD);
+  });
+});
+
+/**
+ * Every drink on the list with its figures, for the cost and pour cost columns
+ * of /cocktails (r28 recipes audit, gap 9). The same figures as the drawer's
+ * drink cards.
+ */
+describe("drinks: the list's figures", () => {
+  it("gives each live drink of the house its price and cost a serve, never another house's or the catalogue's", async () => {
+    const out = await service().drinkFigures(HOUSE_A, "owner");
+    expect(out.drinks.map((d) => d.cocktailId).sort()).toEqual([GT, SOUR].sort());
+    const gt = out.drinks.find((d) => d.cocktailId === GT)!;
+    expect(gt).toMatchObject({ price: 12, hasRecipe: true, yieldServes: 1, lineCount: 2 });
+    expect(gt.cost).toMatchObject({ perServe: 1.5, complete: true, priced: 1, of: 1 });
+    expect(JSON.stringify(out)).not.toMatch(new RegExp([GONE_DRINK, CATALOGUE, B_DRINK].join("|")));
+  });
+
+  it("a drink with an unpriced line has no cost a serve, never a smaller one", async () => {
+    const sour = (await service().drinkFigures(HOUSE_A, "owner")).drinks.find((d) => d.cocktailId === SOUR)!;
+    expect(sour).toMatchObject({ price: null, yieldServes: 2 });
+    expect(sour.cost).toMatchObject({ complete: false, perServe: null, priced: 1, of: 2 });
+  });
+
+  it("a drink with no recipe is listed with no figures", async () => {
+    const rows = withDrinks();
+    rows.recipe_current = rows.recipe_current.filter((p) => p.cocktail_id !== SOUR);
+    const sour = (await service(rows).drinkFigures(HOUSE_A, "owner")).drinks.find((d) => d.cocktailId === SOUR)!;
+    expect(sour).toEqual({ cocktailId: SOUR, price: null, hasRecipe: false, yieldServes: null, lineCount: 0, cost: null });
+  });
+
+  it("staff get no price and no cost", async () => {
+    const out = await service().drinkFigures(HOUSE_A, "staff");
+    expect(out.drinks.map((d) => [d.price, d.cost])).toEqual([
+      [null, null],
+      [null, null],
+    ]);
+  });
+
+  it("reads every drink past the 1,000-row cap", async () => {
+    const rows = withDrinks();
+    rows.cocktails.push(
+      ...Array.from({ length: 1000 }, (_, i) => ({
+        id: `c1000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+        restaurant_id: HOUSE_A, name: `Filler ${i}`, display_name: null, menu_section: null, price: null, deleted_at: null,
+      })),
+    );
+    const out = await service(rows).drinkFigures(HOUSE_A, "owner");
+    expect(out.drinks).toHaveLength(1002);
+    expect(out.drinks.find((d) => d.cocktailId === SOUR)?.hasRecipe).toBe(true);
+  });
+
+  it("a failed read is a 503 with its sentence, never a list with no costs", async () => {
+    for (const table of ["cocktails", "recipe_lines"]) {
+      const fake = fakeDb(withDrinks());
+      const client = fake.db.getClient() as unknown as { from: (t: string) => unknown };
+      const real = client.from;
+      client.from = (t: string) => {
+        const q = real(t) as Record<string, unknown>;
+        if (t === table) q.then = (ok: (v: unknown) => unknown) => ok({ data: null, error: { message: "boom" } });
+        return q;
+      };
+      const err = await new DishesService(fake.db, new RecipesService(fake.db)).drinkFigures(HOUSE_A, "owner").catch((e) => e);
+      expect(err).toBeInstanceOf(ServiceUnavailableException);
+      expect(err.message).toBe(DRINK_FIGURES_UNREAD);
+    }
   });
 });

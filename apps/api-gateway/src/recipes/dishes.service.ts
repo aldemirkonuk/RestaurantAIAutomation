@@ -16,6 +16,7 @@ import { DISH_NOT_THIS_HOUSE, RecipesService } from "./recipes.service";
 export const DISHES_UNREAD = "Your dishes could not be read just now. Nothing is shown rather than a wrong list.";
 export const DISH_USE_UNREAD = "Which dishes use this item could not be read just now.";
 export const DRINK_USE_UNREAD = "Which drinks use this item could not be read just now.";
+export const DRINK_FIGURES_UNREAD = "Your drinks' costs could not be read just now, so none is shown.";
 
 /** Whose recipe: a dish (recipe_current_dish) or a house drink (recipe_current). */
 export type RecipeOwner = "dish" | "cocktail";
@@ -407,6 +408,35 @@ export class DishesService {
         })
         .filter((d) => d.uses.length > 0)
         .sort((a, b) => a.name.localeCompare(b.name)),
+    };
+  }
+
+  /**
+   * Every drink on the house's list with its figures at today's prices, for
+   * the cost and pour cost columns of /cocktails (r28 recipes audit, gap 9).
+   * The same `figures` as the drawer's drink cards, so a drink is never priced
+   * two ways. One read of the list (paged), then one per table, never one per
+   * drink. A role that does not see money gets no price and no cost.
+   */
+  async drinkFigures(restaurantId: string, role: string | null | undefined) {
+    const money = seesHouseAmounts(role);
+    const client = this.db.getClient();
+    const drinks = await this.all<any>("drink list read", DRINK_FIGURES_UNREAD, (from, to) =>
+      client
+        .from("cocktails")
+        .select("id, price")
+        .eq("restaurant_id", restaurantId)
+        .is("deleted_at", null)
+        .order("id", { ascending: true })
+        .range(from, to),
+    );
+    const figures = await this.figures(restaurantId, drinks.map((d) => d.id), money, DRINK_FIGURES_UNREAD, "cocktail");
+    return {
+      drinks: drinks.map((d) => ({
+        cocktailId: d.id,
+        price: money && d.price != null ? Number(d.price) : null,
+        ...this.figureFields(figures.get(d.id)),
+      })),
     };
   }
 

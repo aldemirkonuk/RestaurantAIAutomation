@@ -62,6 +62,7 @@
   "POST /analytics/recommendations/:restaurantId/bulk-action (AnalyticsController.bulkRecommendationAction)": "open",
   "GET /analytics/recommendations/:restaurantId/actions (AnalyticsController.listRecommendationActions)": "open",
   "GET /analytics/recommendations/:restaurantId/snoozed-for-me (AnalyticsController.listSnoozedForMe)": "open",
+  "GET /recipes/:restaurantId/drinks/figures (DishesController.drinkFigures)": "open",
   "POST /analytics/recommendations/:restaurantId/snoozed-for-me/wake (AnalyticsController.wakeForMe)": "open",
   "GET /analytics/recommendations/:restaurantId/history (AnalyticsController.recommendationHistory)": "open",
   "GET /analytics/exclusions/:restaurantId (AnalyticsController.listDayExclusions)": "open",

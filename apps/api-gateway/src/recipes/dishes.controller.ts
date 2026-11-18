@@ -124,6 +124,15 @@ export class DishesController {
     return this.dishes.drinksUsingItem(restaurantId, itemId, user?.role);
   }
 
+  @Get(":restaurantId/drinks/figures")
+  @ApiOperation({ summary: "Every drink on the house's list with its cost a serve at today's prices (no cost for a role without money)" })
+  drinkFigures(
+    @Param("restaurantId", ParseUUIDPipe) restaurantId: string,
+    @CurrentUser() user: { role?: string } | undefined,
+  ) {
+    return this.dishes.drinkFigures(restaurantId, user?.role);
+  }
+
   @Post(":restaurantId/shelf/match")
   @UseGuards(RolesGuard)
   @Roles("owner", "manager")
