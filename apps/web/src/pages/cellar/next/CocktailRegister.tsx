@@ -280,6 +280,8 @@ export default function CocktailRegister({
       } else {
         // A new drink with no price sends none: unpriced, never 0.
         await create.mutateAsync(priceRead.price == null ? fields : { ...fields, price: priceRead.price });
+        // A search typed earlier that the new name does not match would leave the list without it.
+        setQuery('');
         setSaid(`“${draft.name.trim()}” is on this house’s list.`);
       }
       setDraft(null);
