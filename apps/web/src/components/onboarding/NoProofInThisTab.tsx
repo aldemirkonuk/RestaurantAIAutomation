@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { BrandMark } from '../brand/BrandMark'
 import { getOnboardingProgress } from '../../services/api/menus'
+import { menuKept, type MenuKept } from '../../lib/menuKept'
 
 /**
  * What /house/menu says when this tab holds no first proof (r21, 2026-11-13).
@@ -13,18 +14,20 @@ import { getOnboardingProgress } from '../../services/api/menus'
  * question instead: a house whose menu is read (`menu_uploaded`, the
  * gateway's, per house since #1089) is sent to /menu, where the kept menu is
  * seen and chosen as current. Nothing is said until that answer is in; a
- * failed read keeps the old ask, since the page cannot tell.
+ * failed read keeps the old ask, since the page cannot tell. A menu kept as
+ * a draft is said as not current yet, and a current one as current (r36
+ * gap 3): "read and kept" read as done over a draft.
  */
 export function NoProofInThisTab() {
-  const [kept, setKept] = useState<boolean | null>(null)
+  const [kept, setKept] = useState<MenuKept | null>(null)
   useEffect(() => {
     let live = true
     getOnboardingProgress()
       .then((progress) => {
-        if (live) setKept(Boolean(progress?.menu_uploaded))
+        if (live) setKept(menuKept(progress))
       })
       .catch(() => {
-        if (live) setKept(false)
+        if (live) setKept('none')
       })
     return () => {
       live = false
@@ -37,7 +40,29 @@ export function NoProofInThisTab() {
         <Link to="/" aria-label="Mudavym, the desk">
           <BrandMark size={24} alt="" />
         </Link>
-        {kept === null ? null : kept ? (
+        {kept === null ? null : kept === 'current' ? (
+          <>
+            <h1 className="mt-8 font-serif text-4xl">Your menu is the current one.</h1>
+            <p className="mt-4 text-[#6d685f]">
+              The first proof shows only in the tab that read it. Stock and prices now come from the
+              current menu: see it on Menu.
+            </p>
+            <Link to="/menu" className="mt-6 inline-block bg-[#1a5e6b] px-5 py-2.5 text-white">
+              Open the menu
+            </Link>
+          </>
+        ) : kept === 'draft' ? (
+          <>
+            <h1 className="mt-8 font-serif text-4xl">Your menu is read, but it is not the current menu yet.</h1>
+            <p className="mt-4 text-[#6d685f]">
+              The first proof shows only in the tab that read it. Stock and prices come only from the
+              current menu: choose it as current on Menu.
+            </p>
+            <Link to="/menu" className="mt-6 inline-block bg-[#1a5e6b] px-5 py-2.5 text-white">
+              Choose it on Menu
+            </Link>
+          </>
+        ) : kept === 'read' ? (
           <>
             <h1 className="mt-8 font-serif text-4xl">Your menu is read and kept.</h1>
             <p className="mt-4 text-[#6d685f]">

@@ -97,3 +97,50 @@ describe('/house menu row with no first proof in this tab', () => {
     expect(document.body.textContent).not.toMatch(/on the book|one ask|Cellar registers|Open later|Contents/)
   })
 })
+
+// r36 onboarding gap 3: a menu kept as a draft read as done ("read and
+// kept"), and the way to make it current showed only in the tab that read
+// it. The house's own record now says which: current, or not current yet.
+describe('a draft menu is never said as done', () => {
+  it('/house: a draft says it is not current yet, and leads to choosing it', async () => {
+    getOnboardingProgress.mockResolvedValue({ menu_uploaded: true, menu_current: false, vendor_added: false })
+    at(<HouseContents />)
+    expect(await screen.findByText(/Your menu is read, but it is not the current menu yet\./)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Choose it on Menu' })).toHaveAttribute('href', '/menu')
+    expect(screen.getByText('Stock and prices come only from the current menu.')).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/read and kept|is the current one/)
+  })
+
+  it('/house: a current menu is said as current', async () => {
+    getOnboardingProgress.mockResolvedValue({ menu_uploaded: true, menu_current: true, vendor_added: false })
+    at(<HouseContents />)
+    expect(await screen.findByText(/Your menu is the current one\./)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'See it on Menu' })).toHaveAttribute('href', '/menu')
+    expect(document.body.textContent).not.toMatch(/read and kept|not the current menu yet/)
+  })
+
+  it('/house: no menu read and none current still offers reading one', async () => {
+    getOnboardingProgress.mockResolvedValue({ menu_uploaded: false, menu_current: false, vendor_added: false })
+    at(<HouseContents />)
+    expect(await screen.findByText(/No menu read yet\./)).toBeInTheDocument()
+  })
+
+  it('/house/menu: a draft says it is not current yet, and leads to choosing it', async () => {
+    getOnboardingProgress.mockResolvedValue({ menu_uploaded: true, menu_current: false })
+    at(<HouseMenu />)
+    expect(
+      await screen.findByRole('heading', { name: 'Your menu is read, but it is not the current menu yet.' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Choose it on Menu' })).toHaveAttribute('href', '/menu')
+    expect(screen.queryByRole('link', { name: /Read/ })).toBeNull()
+    expect(document.body.textContent).not.toMatch(/read and kept/)
+  })
+
+  it('/house/menu: a current menu is said as current', async () => {
+    getOnboardingProgress.mockResolvedValue({ menu_uploaded: true, menu_current: true })
+    at(<HouseMenu />)
+    expect(await screen.findByRole('heading', { name: 'Your menu is the current one.' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open the menu' })).toHaveAttribute('href', '/menu')
+    expect(document.body.textContent).not.toMatch(/read and kept|not the current menu yet/)
+  })
+})
