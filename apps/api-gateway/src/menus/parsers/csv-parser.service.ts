@@ -33,6 +33,9 @@ const PRICE_FIELDS = new Set<keyof WineExtractItem>([
   "bottle_price",
 ]);
 
+/** A sheet name that says nothing about the lines on it. */
+const GENERIC_SHEET_NAME = /^(sheet|page|sayfa|tablo|table|data|menu|menus|list|liste|wines?|sarap)\s*\d*$/i;
+
 const DELIMITERS = [",", ";", "\t"] as const;
 
 /** A row the read could not take whole. */
@@ -229,7 +232,15 @@ export class CsvParserService {
     const issues: CsvRowIssue[] = [];
     for (const worksheet of sheets) {
       const read = this.readSheet(worksheet);
-      items.push(...read.items);
+      // A sheet named for a section (Starters, Cocktails) is that section for
+      // every line whose own row names none. A plain Menu / Sheet1 / Sayfa1 is
+      // no section.
+      const section = worksheet.name.trim();
+      const named = section !== "" && !GENERIC_SHEET_NAME.test(section);
+      for (const item of read.items) {
+        if (named && !item.category) item.category = section;
+        items.push(item);
+      }
       // Line numbers restart on each sheet, so a note names its sheet when
       // the workbook has more than one.
       issues.push(
