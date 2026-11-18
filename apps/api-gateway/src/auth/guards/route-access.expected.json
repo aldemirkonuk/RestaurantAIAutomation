@@ -135,6 +135,14 @@
   "POST /auth/me/password (AuthController.changePassword)": "open",
   "POST /auth/request-password-reset (AuthController.requestPasswordReset)": "open",
   "POST /auth/reset-password (AuthController.resetPassword)": "open",
+  "GET /recipes/:restaurantId/dishes/from-menu (DishesController.menuDishes)": [
+    "owner",
+    "manager"
+  ],
+  "POST /recipes/:restaurantId/dishes/from-menu (DishesController.addMenuDishes)": [
+    "owner",
+    "manager"
+  ],
   "GET /auth/me/linked-providers (AuthController.getLinkedProviders)": "open",
   "POST /auth/me/link/:provider (AuthController.linkProvider)": "open",
   "DELETE /auth/me/link/:provider (AuthController.unlinkProvider)": "open",
