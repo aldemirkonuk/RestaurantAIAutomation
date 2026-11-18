@@ -5,8 +5,13 @@ import {
   ReadResult,
 } from "./canonical-document.service";
 import { CanonicalDocument, FieldEnvelope } from "./canonical-types";
-import { CORRECTABLE_PATHS, labelFor, splitPath } from "./correctable-paths";
-import { normalizeUom, UOMS } from "../documents/document-types";
+import {
+  CORRECTABLE_PATHS,
+  labelFor,
+  readCorrectedUnit,
+  splitPath,
+} from "./correctable-paths";
+import { isDozen, normalizeUom, UOMS } from "../documents/document-types";
 
 /**
  * DocumentCorrectionService — the correction door of ADR 0104 D5 (slice 3).
@@ -197,12 +202,13 @@ export class DocumentCorrectionService {
       (parsedPath.template === "lines[].unit" ||
         parsedPath.template === "lines[].priceBaseUnit") &&
       input.value != null &&
-      !normalizeUom(String(input.value))
+      !normalizeUom(String(input.value)) &&
+      !isDozen(String(input.value))
     )
       return {
         ok: false,
         status: 400,
-        error: `\`${String(input.value)}\` is not a unit this system can convert. Readable units: ${UOMS.join(", ")}.`,
+        error: `\`${String(input.value)}\` is not a unit this system can convert. Readable units: ${UOMS.join(", ")}, dozen.`,
       };
 
     return this.append(restaurantId, documentId, userId, {
@@ -211,6 +217,34 @@ export class DocumentCorrectionService {
       line: parsedPath.line,
       kind: "correction",
       reason: input.reason ?? null,
+      // A dozen beside a pack that is not 12, or a price per a unit a dozen
+      // cannot sit beside, is refused here and not stored: the replay would
+      // ignore it and the log would say what the sheet did not do.
+      guard: (doc) => {
+        if (
+          input.value == null ||
+          typeof input.value !== "string" ||
+          parsedPath.line == null ||
+          (parsedPath.template !== "lines[].unit" &&
+            parsedPath.template !== "lines[].priceBaseUnit")
+        )
+          return null;
+        const l1 = doc.layer1.lines[parsedPath.line];
+        if (!l1) return null;
+        const read = readCorrectedUnit(
+          {
+            uom: l1.unit.value,
+            packSize: doc.layer2.lines[parsedPath.line]?.packSize ?? null,
+            priceBaseUom: l1.priceBaseUnit.value,
+            priceBaseQty: l1.priceBaseQuantity.value,
+          },
+          parsedPath.template === "lines[].unit" ? "unit" : "priceBaseUnit",
+          input.value,
+        );
+        return read.refused
+          ? `\`${input.value}\` cannot be applied to line ${parsedPath.line + 1}: ${read.refused}. Nothing was written.`
+          : null;
+      },
       mutate: (prior, nextRevision) => {
         const changed = !Object.is(prior.value ?? null, input.value ?? null);
         return {
@@ -315,6 +349,7 @@ export class DocumentCorrectionService {
       line: number | null;
       kind: "correction" | "verification";
       reason: string | null;
+      guard?: (doc: CanonicalDocument) => string | null;
       mutate: (
         prior: FieldEnvelope<unknown>,
         nextRevision: number,
@@ -333,6 +368,9 @@ export class DocumentCorrectionService {
         status: built.error.includes("not found") ? 404 : 500,
         error: built.error,
       };
+
+    const refusal = op.guard?.(built.value) ?? null;
+    if (refusal) return { ok: false, status: 400, error: refusal };
 
     const spec = CORRECTABLE_PATHS[op.template];
     const prior = spec.read(built.value.layer1, op.line);
