@@ -37,8 +37,8 @@
 
 .mudavym .cx-eyebrow {
   font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 10px;
-  letter-spacing: 0.14em;
+  font-size: 11px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-4);
 }
@@ -156,8 +156,8 @@
 .mudavym .cx-tally-n.is-seal { color: var(--seal-deep); }
 .mudavym .cx-tally-k {
   font-family: var(--mono, ui-monospace, monospace);
-  font-size: 8.5px;
-  letter-spacing: 0.09em;
+  font-size: 11px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-4);
   display: block;
@@ -170,8 +170,8 @@
 .mudavym .cx-sec-h { display: flex; align-items: baseline; gap: 12px; }
 .mudavym .cx-sec-n {
   font-family: var(--mono, ui-monospace, monospace);
-  font-size: 10px;
-  letter-spacing: 0.14em;
+  font-size: 11px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--seal-deep);
   white-space: nowrap;
@@ -193,8 +193,8 @@
 }
 .mudavym .cx-sec-k {
   font-family: var(--mono, ui-monospace, monospace);
-  font-size: 9.5px;
-  letter-spacing: 0.11em;
+  font-size: 11px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-4);
   margin: 5px 0 12px;
@@ -225,32 +225,32 @@
 }
 .mudavym .cx-row-sub {
   font-family: var(--mono, ui-monospace, monospace);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--ink-4);
   margin-top: 3px;
   word-break: break-all;
 }
 .mudavym .cx-row-why {
-  font-size: 11.5px;
-  line-height: 1.62;
+  font-size: 14px;
+  line-height: 22px;
   color: var(--ink-2);
   margin-top: 7px;
-  max-width: 520px;
+  max-width: 62ch;
 }
 .mudavym .cx-row-why em { font-style: normal; color: var(--ink-1); font-weight: 500; }
 
 .mudavym .cx-col-h {
   font-family: var(--mono, ui-monospace, monospace);
-  font-size: 8.5px;
-  letter-spacing: 0.12em;
+  font-size: 11px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-4);
   display: block;
   margin-bottom: 4px;
 }
 .mudavym .cx-scope, .mudavym .cx-last {
-  font-size: 11.5px;
-  line-height: 1.55;
+  font-size: 13px;
+  line-height: 20px;
   color: var(--ink-2);
 }
 .mudavym .cx-scope ul { margin: 0; padding-left: 13px; }
@@ -264,7 +264,7 @@
 }
 .mudavym .cx-last-d {
   display: block;
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--ink-4);
   margin-top: 2px;
 }
@@ -273,9 +273,9 @@
 /* Chips carry INK, never the semantic colour — measured for contrast. */
 .mudavym .cx-chip {
   font-family: var(--mono, ui-monospace, monospace);
-  font-size: 8.5px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.11em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   padding: 3px 7px;
   border-radius: 3px;
@@ -300,8 +300,8 @@
 }
 .mudavym .cx-owner {
   font-family: var(--mono, ui-monospace, monospace);
-  font-size: 8.5px;
-  letter-spacing: 0.1em;
+  font-size: 11px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-4);
 }
@@ -353,10 +353,10 @@
   outline-offset: 2px;
 }
 .mudavym .cx-ctl-note {
-  font-size: 10.5px;
-  line-height: 1.5;
+  font-size: 12px;
+  line-height: 18px;
   color: var(--ink-4);
-  max-width: 180px;
+  max-width: 200px;
 }
 /* What just happened to this row, in the server's own words. Ink, never a
    colour: the house has no red, and a refusal is not the seal (ADR 0042). The
@@ -427,8 +427,8 @@
   margin: 44px 0 0;
   padding-top: 14px;
   border-top: 1px solid var(--ink-1);
-  font-size: 11.5px;
-  line-height: 1.7;
+  font-size: 14px;
+  line-height: 22px;
   color: var(--ink-4);
   max-width: 900px;
 }
@@ -642,4 +642,32 @@
 .mudavym .cx-pc-ceremony input:focus-visible {
   outline: 2px solid var(--seal);
   outline-offset: 2px;
+}
+
+/* Long explanations sit behind a disclosure (r58 N-04): the verdict stays in
+   view, the reasoning is one tap away. Opacity only, and none under reduced
+   motion. */
+.mudavym details.cx-row-why > summary,
+.mudavym details.cx-foot > summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
+  list-style: none;
+}
+.mudavym details.cx-row-why > summary::-webkit-details-marker,
+.mudavym details.cx-foot > summary::-webkit-details-marker { display: none; }
+.mudavym details.cx-row-why > summary::after,
+.mudavym details.cx-foot > summary::after { content: ' +'; color: var(--ink-4); }
+.mudavym details[open].cx-row-why > summary::after,
+.mudavym details[open].cx-foot > summary::after { content: ' \2212'; }
+.mudavym details.cx-row-why > summary:focus-visible,
+.mudavym details.cx-foot > summary:focus-visible { outline: 2px solid var(--seal); outline-offset: 3px; }
+.mudavym details.cx-row-why[open] > :not(summary),
+.mudavym details.cx-foot[open] > :not(summary) { animation: cx-open 220ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+@keyframes cx-open { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .mudavym details.cx-row-why[open] > :not(summary),
+  .mudavym details.cx-foot[open] > :not(summary) { animation: none; }
 }

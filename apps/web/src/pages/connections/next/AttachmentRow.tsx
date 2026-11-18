@@ -122,6 +122,9 @@ function chipClass(tone: ChipTone): string {
   return 'cx-chip';
 }
 
+/** A sentence longer than this folds behind "Why it is here" (r58 N-04). */
+export const WHY_COLLAPSE_AT = 140;
+
 export function AttachmentRow({
   icon,
   title,
@@ -164,7 +167,14 @@ export function AttachmentRow({
             {subtitle}
           </div>
         ) : null}
-        <div className="cx-row-why">{why}</div>
+        {typeof why === 'string' && why.length > WHY_COLLAPSE_AT ? (
+          <details className="cx-row-why">
+            <summary>Why it is here</summary>
+            <p style={{ margin: '6px 0 0' }}>{why}</p>
+          </details>
+        ) : (
+          <div className="cx-row-why">{why}</div>
+        )}
       </div>
 
       <div className="cx-scope">
