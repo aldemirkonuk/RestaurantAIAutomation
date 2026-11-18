@@ -108,7 +108,9 @@ const check = (over: Row = {}, item: Row = {}) => ({
   ],
   ...over,
 });
-const KEY = "pos:generic_webhook:chk-1:item-1:0";
+// r57 D2: the key names the line by item, modifiers, price and occurrence.
+const KEY = "pos:generic_webhook:chk-1:item-1||12.0000:#0";
+const KEY_COMPED = "pos:generic_webhook:chk-1:item-1||0.0000:#0";
 
 describe("consumptionUnitPrice (R1, R2)", () => {
   it("a rung price is the price, and a rung zero is a zero", () => {
@@ -147,7 +149,7 @@ describe("the consumption row a till line books", () => {
     await new PosHubService(db).ingest("r1", "generic_webhook", [
       check({}, { price: 0 }),
     ]);
-    const row = consumption.get(KEY)!;
+    const row = consumption.get(KEY_COMPED)!;
     expect(row.unit_price).toBe(0);
     expect(row.total_revenue).toBe(0);
   });
