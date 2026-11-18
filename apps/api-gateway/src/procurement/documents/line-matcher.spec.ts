@@ -242,3 +242,17 @@ describe("matchLines", () => {
     ).toEqual(["d1"]);
   });
 });
+
+describe("the reason a pairing is shown carries no percentage (ADR 0104 D4)", () => {
+  it("a description pairing says how close in words, never as a percent", () => {
+    const r = matchLines(
+      [{ id: "d1", description: "Bricco Boschis Barolo", qtyBottles: 6 }],
+      [{ id: "o1", description: "Bricco Boschis Barolo Riserva", qtyBottles: 12 }],
+    );
+    const all = [...r.applied, ...r.suggested];
+    expect(all).toHaveLength(1);
+    expect(all[0].method).toBe("description");
+    expect(all[0].reason).not.toMatch(/\d\s*%/);
+    expect(all[0].reason).toMatch(/description/i);
+  });
+});
