@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Put, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Put, UseGuards } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
@@ -47,6 +47,14 @@ export class DishesController {
     @Body() dto: UpdateDishDto,
   ) {
     return this.dishes.updateDish(restaurantId, dishId, dto);
+  }
+
+  @Delete(":restaurantId/dishes/:dishId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({ summary: "Take a dish off the house's list (owner/manager); its recipe versions are kept" })
+  removeDish(@Param("restaurantId", ParseUUIDPipe) restaurantId: string, @Param("dishId", ParseUUIDPipe) dishId: string) {
+    return this.dishes.removeDish(restaurantId, dishId);
   }
 
   @Get(":restaurantId/dishes/:dishId")

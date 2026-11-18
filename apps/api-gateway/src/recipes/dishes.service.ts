@@ -19,6 +19,7 @@ export const SHELF_MATCH_UNREAD = "The shelf could not be read just now, so no l
 export const ITEM_NOT_THIS_HOUSE = "This item is not on this house's shelf.";
 export const DISH_NAME_NEEDED = "A dish needs a name.";
 export const DISH_NOT_SAVED = "The dish could not be saved. Nothing was changed.";
+export const DISH_NOT_REMOVED = "The dish could not be taken off your list. Nothing was changed.";
 export const dishNameTaken = (name: string) => `A dish named "${name}" is already on your list.`;
 
 /** PostgREST answers at most this many rows a request; every read here pages past it. */
@@ -410,5 +411,30 @@ export class DishesService {
     if (error) this.writeFailed(error, name);
     if (!data) throw new NotFoundException(DISH_NOT_THIS_HOUSE);
     return this.dishOut(data);
+  }
+
+  /**
+   * Take a dish off the house's list. A soft delete, like a cocktail's: its
+   * recipe versions stay (they are append-only, ADR 0360) and the drawer and
+   * the list stop reading it, since both filter `deleted_at`. The name is free
+   * again, because the unique index covers live dishes only.
+   */
+  async removeDish(restaurantId: string, dishId: string) {
+    const now = new Date().toISOString();
+    const { data, error } = await this.db
+      .getClient()
+      .from("dishes")
+      .update({ deleted_at: now, updated_at: now })
+      .eq("id", dishId)
+      .eq("restaurant_id", restaurantId)
+      .is("deleted_at", null)
+      .select("id, name")
+      .maybeSingle();
+    if (error) {
+      this.logger.error(`dishes: remove failed: ${error.message}`);
+      throw new InternalServerErrorException(DISH_NOT_REMOVED);
+    }
+    if (!data) throw new NotFoundException(DISH_NOT_THIS_HOUSE);
+    return { id: data.id, name: data.name, removed: true };
   }
 }

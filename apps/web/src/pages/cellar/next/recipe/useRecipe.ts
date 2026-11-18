@@ -16,7 +16,7 @@ import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { draftId, draftKey, dropDraft } from './drafts';
-import { dishesApi, ownerOf, recipesApi, type DishBody, type PreviewCostBody, type RecipeOwner, type SaveRecipeBody } from '../../../../services/api/recipes';
+import { dishesApi, ownerOf, recipesApi, type DishBody, type DishChange, type PreviewCostBody, type RecipeOwner, type SaveRecipeBody } from '../../../../services/api/recipes';
 import { getErrorStatus } from '../../../../services/api/client';
 import { managesHouse } from '../../../communications/next/cm-format';
 
@@ -49,6 +49,29 @@ export function useCreateDish() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: DishBody) => dishesApi.create(activeRestaurantId as string, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: dishesKey(activeRestaurantId) }),
+  });
+}
+
+/**
+ * Change a dish's name, section or price. The list and the dish's own sheet
+ * both read the price, so every recipe read of the house is refreshed.
+ */
+export function useUpdateDish(dishId: string) {
+  const { activeRestaurantId } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: DishChange) => dishesApi.update(activeRestaurantId as string, dishId, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['recipes', activeRestaurantId ?? null] }),
+  });
+}
+
+/** Take a dish off the list; the list is read again. */
+export function useRemoveDish(dishId: string) {
+  const { activeRestaurantId } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => dishesApi.remove(activeRestaurantId as string, dishId),
     onSuccess: () => qc.invalidateQueries({ queryKey: dishesKey(activeRestaurantId) }),
   });
 }

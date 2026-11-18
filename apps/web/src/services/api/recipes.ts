@@ -295,6 +295,13 @@ export interface DishBody {
   description?: string;
 }
 
+/** A change to a dish: only the fields sent change; a null section or price clears it. */
+export interface DishChange {
+  name?: string;
+  section?: string | null;
+  price?: number | null;
+}
+
 export interface Dish {
   id: string;
   name: string;
@@ -316,8 +323,14 @@ export const dishesApi = {
     return r.data;
   },
 
-  async update(restaurantId: string, dishId: string, body: Partial<DishBody>): Promise<Dish> {
+  async update(restaurantId: string, dishId: string, body: DishChange): Promise<Dish> {
     const r = await apiClient.patch<Dish>(`${base(restaurantId)}/dishes/${encodeURIComponent(dishId)}`, body);
+    return r.data;
+  },
+
+  /** Takes the dish off the list (a soft delete); its recipe versions are kept. */
+  async remove(restaurantId: string, dishId: string): Promise<{ id: string; name: string; removed: true }> {
+    const r = await apiClient.delete<{ id: string; name: string; removed: true }>(`${base(restaurantId)}/dishes/${encodeURIComponent(dishId)}`);
     return r.data;
   },
 };
