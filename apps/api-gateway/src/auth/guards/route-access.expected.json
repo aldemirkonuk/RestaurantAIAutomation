@@ -53,6 +53,7 @@
   "GET /analytics/goals/:restaurantId/:goalId/progress (AnalyticsController.getGoalProgress)": "open",
   "PUT /analytics/goals/:restaurantId/:goalId/status (AnalyticsController.updateGoalStatus)": "open",
   "GET /analytics/consultants/:restaurantId (AnalyticsController.getConsultants)": "open",
+  "GET /recipes/:restaurantId/items/:itemId/drinks (DishesController.drinksUsingItem)": "open",
   "PUT /analytics/consultants/:restaurantId/toggle (AnalyticsController.toggleConsultants)": "open",
   "POST /analytics/consult/:restaurantId (AnalyticsController.consult)": "open",
   "GET /analytics/menu-engineering/:restaurantId (AnalyticsController.getMenuEngineering)": "open",
