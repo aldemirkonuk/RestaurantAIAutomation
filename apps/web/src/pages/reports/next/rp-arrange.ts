@@ -307,6 +307,38 @@ export function liftCuttings<T extends Placed>(
 }
 
 /**
+ * The twelve-column sheet with nothing laid over the cutting that just grew.
+ * A swap ("Show instead") widens or lengthens its square to the new subject's
+ * size (`swapSlot`), and the grid only settles what it is handed on a drag or
+ * a resize, so the draft kept the overlap and "Rule it off" saved it. The
+ * grown cutting stays where it is; whatever it now covers moves down to just
+ * below it (and whatever that in turn covers, below that). A cutting nothing
+ * covers is left exactly where the reader put it: this closes no gaps.
+ */
+export function clearOverlaps<T extends Placed>(cuttings: T[], keep: AnalysisId): T[] {
+  const anchor = cuttings.find((c) => c.id === keep);
+  if (!anchor) return cuttings;
+  const laid: Slot[] = [anchor.slot];
+  const slots = new Map<AnalysisId, Slot>();
+  const others = cuttings
+    .filter((c) => c.id !== keep)
+    .sort((p, q) => p.slot.y - q.slot.y || p.slot.x - q.slot.x);
+  for (const c of others) {
+    let s = c.slot;
+    for (let hit = laid.find((o) => covers(o, s)); hit; hit = laid.find((o) => covers(o, s)))
+      s = { ...s, y: hit.y + hit.h };
+    laid.push(s);
+    if (s !== c.slot) slots.set(c.id, s);
+  }
+  if (slots.size === 0) return cuttings;
+  return cuttings.map((c) => (slots.has(c.id) ? { ...c, slot: slots.get(c.id) as Slot } : c));
+}
+
+function covers(a: Slot, b: Slot): boolean {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+
+/**
  * Up or Down on a narrow ruling: one place earlier or later in the list, which
  * is the narrow reading order. The wide sheet is untouched. The same array
  * when there is nowhere to go.
