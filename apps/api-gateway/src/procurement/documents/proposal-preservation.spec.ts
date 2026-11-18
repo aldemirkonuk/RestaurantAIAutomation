@@ -773,3 +773,99 @@ describe("ADR 0059 L5/L6 — the document records which model read it", () => {
     expect(row.extraction_model).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// ADR 0020 — the matcher says what it did, and what it could not read or save
+// ---------------------------------------------------------------------------
+
+describe("ADR 0020 — a pairing check that could not read or save says so", () => {
+  const docLine = {
+    id: "dl-1",
+    vendor_sku: "SKU-A",
+    description: "Sancerre Les Monts Damnes",
+    vintage: 2022,
+    format_ml: 750,
+    qty_bottles: 12,
+    unit_price: 28,
+    order_line_id: null,
+  };
+  const orderLine = {
+    id: "ol-1",
+    vendor_sku: "SKU-A",
+    wine_name: "Sancerre Les Monts Damnes",
+    vintage: 2022,
+    total_bottles: 12,
+    final_unit_price: 28,
+  };
+
+  function fixture(opts: {
+    lines?: { data: any; error: any };
+    links?: { data: any; error: any };
+    orderItems?: { data: any; error: any };
+    linkUpdateError?: { message: string } | null;
+  }) {
+    return makeDb((call) => {
+      if (call.table === LINES_TABLE && call.verb === "select")
+        return opts.lines ?? { data: [docLine], error: null };
+      if (call.table === LINES_TABLE && call.verb === "update")
+        return { data: null, error: opts.linkUpdateError ?? null };
+      if (call.table === "procurement_document_links")
+        return opts.links ?? { data: [{ order_id: "ord-1" }], error: null };
+      if (call.table === "procurement_order_items")
+        return opts.orderItems ?? { data: [orderLine], error: null };
+      return { data: null, error: null };
+    });
+  }
+
+  const noExtractor = { available: () => false, extract: jest.fn() };
+
+  it("a failed read of the paper's lines is an error, not an empty result", async () => {
+    const service = await buildService(
+      fixture({ lines: { data: null, error: { message: "lines down" } } }),
+      noExtractor,
+    );
+    await expect(
+      service.matchDocumentLines("doc-1", "rest-1"),
+    ).rejects.toThrow(/lines down/);
+  });
+
+  it("a failed read of the order link is an error, not an empty result", async () => {
+    const service = await buildService(
+      fixture({ links: { data: null, error: { message: "links down" } } }),
+      noExtractor,
+    );
+    await expect(
+      service.matchDocumentLines("doc-1", "rest-1"),
+    ).rejects.toThrow(/links down/);
+  });
+
+  it("a failed read of the order's lines is an error, not an empty result", async () => {
+    const service = await buildService(
+      fixture({
+        orderItems: { data: null, error: { message: "items down" } },
+      }),
+      noExtractor,
+    );
+    await expect(
+      service.matchDocumentLines("doc-1", "rest-1"),
+    ).rejects.toThrow(/items down/);
+  });
+
+  it("a pairing that was saved is reported as saved", async () => {
+    const service = await buildService(fixture({}), noExtractor);
+    const result = await service.matchDocumentLines("doc-1", "rest-1");
+    expect(result.applied.map((m) => m.documentLineId)).toEqual(["dl-1"]);
+  });
+
+  it("a pairing whose save failed is not reported as saved; it waits for a confirmation", async () => {
+    const service = await buildService(
+      fixture({ linkUpdateError: { message: "write refused" } }),
+      noExtractor,
+    );
+    const result = await service.matchDocumentLines("doc-1", "rest-1");
+    expect(result.applied).toEqual([]);
+    expect(result.suggested).toHaveLength(1);
+    expect(result.suggested[0].documentLineId).toBe("dl-1");
+    expect(result.suggested[0].reason).toMatch(/could not be saved/i);
+  });
+});

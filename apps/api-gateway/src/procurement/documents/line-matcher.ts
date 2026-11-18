@@ -209,6 +209,12 @@ function scorePair(doc: MatchableLine, order: MatchableLine): Candidate | null {
     // be twenty pounds a bottle apart, so text alone never auto-applies.
     const base = Math.min(0.88, textScore);
     const confidence = substitution ? base * 0.85 : base;
+    // In words, never a percentage: this sentence reaches the person who
+    // confirms the pairing (ADR 0104 D4, confidence is never a number on screen).
+    const closeness =
+      textScore >= 0.75
+        ? "very close to the ordered line's"
+        : "only partly like the ordered line's";
     return {
       documentLineId: doc.id,
       orderLineId: order.id,
@@ -217,8 +223,8 @@ function scorePair(doc: MatchableLine, order: MatchableLine): Candidate | null {
       method: "description",
       substitution,
       reason: substitution
-        ? `Description is a ${(textScore * 100).toFixed(0)}% match, but ${substitutionNote}.`
-        : `Description is a ${(textScore * 100).toFixed(0)}% match.`,
+        ? `Description is ${closeness}, but ${substitutionNote}.`
+        : `Description is ${closeness}.`,
     };
   }
 
