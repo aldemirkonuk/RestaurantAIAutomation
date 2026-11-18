@@ -75,6 +75,38 @@ export function heldBackSaid(
   return `${money}; ${uncosted} ${uncosted === 1 ? 'has' : 'have'} no recorded cost`;
 }
 
+/**
+ * Why a spend figure is withheld once the scanned papers are counted too: the
+ * orders' reason (`heldBackSaid`), then the verified deliveries with no order
+ * that have no invoice total or are in other money. When no count says why
+ * (a papers read that failed counts nothing) the gateway's own sentence is
+ * said rather than a bare dash. Null when nothing is held back.
+ */
+export function spendHeldBackSaid(
+  orders: { uncosted?: number | null; other?: Record<string, number> | null; houseUnread?: boolean },
+  papers: { uncosted?: number | null; other?: Record<string, number> | null },
+  gatewaySaid?: string | null,
+): string | null {
+  const parts: string[] = [];
+  const o = heldBackSaid(orders.uncosted, orders.other, orders.houseUnread);
+  if (o) parts.push(o);
+  const codes = Object.entries(papers.other ?? {})
+    .filter(([, n]) => typeof n === 'number' && n > 0)
+    .sort(([a, x], [b, y]) => y - x || (a < b ? -1 : 1));
+  const n = codes.reduce((sum, [, k]) => sum + k, 0);
+  if (n > 0) {
+    const where =
+      codes.length === 1 ? `in ${codes[0][0]}` : `in other currencies (${codes.map(([c, k]) => `${k} ${c}`).join(', ')})`;
+    parts.push(`${n} scanned ${n === 1 ? 'delivery is' : 'deliveries are'} ${where}, not the house’s money`);
+  }
+  const u = papers.uncosted ?? 0;
+  if (u > 0) {
+    parts.push(`${u} scanned ${u === 1 ? 'delivery has' : 'deliveries have'} no invoice total yet`);
+  }
+  if (parts.length > 0) return parts.join('; ');
+  return gatewaySaid && gatewaySaid.trim() ? gatewaySaid : null;
+}
+
 /** Plain figure or the dash. */
 export function figure(v: number | null | undefined, mode: 'compact' | 'full' = 'full'): string {
   return v == null || Number.isNaN(v) ? DASH : formatNumber(v, mode);

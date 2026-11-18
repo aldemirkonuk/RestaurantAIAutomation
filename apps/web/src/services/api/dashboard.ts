@@ -245,6 +245,10 @@ export interface CalendarMonthDay {
   uncosted_orders?: number;
   /** Delivered orders that day not in the house's money, by code; any makes the spend null. */
   not_in_house_currency?: Record<string, number>;
+  /** Verified scanned deliveries with no order that day: those with no invoice total, and those in other money. */
+  scanned_deliveries?: { counted?: number; uncosted?: number; notInHouseCurrency?: Record<string, number> };
+  /** Why the day's spend is withheld, in the gateway's words (a papers read that failed says so here). */
+  procurement_spend_unread?: string | null;
   /** Bottles DELIVERED by vendors (frozen misnomer). Null: not known. */
   bottles_sold: number | null;
   order_count: number | null;
@@ -309,6 +313,10 @@ export async function getCalendarRevenue(
   monthly_uncosted_orders?: number;
   /** Delivered orders in the month not in the house's money, by code. */
   monthly_not_in_house_currency?: Record<string, number>;
+  /** The month's verified scanned deliveries with no order, as `CalendarMonthDay.scanned_deliveries`. */
+  monthly_scanned_deliveries?: { counted?: number; uncosted?: number; notInHouseCurrency?: Record<string, number> };
+  /** Why the month's spend is withheld, in the gateway's words. */
+  monthly_procurement_spend_unread?: string | null;
   /** An order names a currency and the house's own could not be read. */
   house_currency_unread?: boolean;
   monthly_bottles: number | null;

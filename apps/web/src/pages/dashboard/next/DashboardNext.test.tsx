@@ -792,6 +792,38 @@ describe('DashboardNext', () => {
       ).toBeInTheDocument();
     });
 
+    it('names a scanned delivery on the spend tiles, and a papers read that failed', async () => {
+      routeGets({
+        '/dashboard/stats/': {
+          totalWines: 4,
+          totalBottles: 40,
+          lowStockItems: 0,
+          pendingOrders: 0,
+          totalVolumeMl: 0,
+          totalVolumeOz: 0,
+          todayProcurementSpend: null,
+          weekProcurementSpend: null,
+          monthProcurementSpend: null,
+          uncostedOrders: { today: 0, week: 0, month: 0 },
+          scannedDeliveries: {
+            today: { counted: 0, uncosted: 0, notInHouseCurrency: {} },
+            week: { counted: 1, uncosted: 1, notInHouseCurrency: {} },
+            month: { counted: 1, uncosted: 1, notInHouseCurrency: {} },
+          },
+          unread: { todayProcurementSpend: 'The scanned papers could not be read.', monthProcurementSpend: null },
+          todayDeliveries: 1,
+          monthBottlesIn: 18,
+          amounts: 'shown',
+          timezone: 'UTC',
+        },
+      });
+
+      mount();
+
+      expect(await screen.findByText('1 scanned delivery has no invoice total yet')).toBeInTheDocument();
+      expect(screen.getByText('The scanned papers could not be read.')).toBeInTheDocument();
+    });
+
     it('names the day, the day panel and the month in words', async () => {
       vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 8, 10, 12, 0, 0) });
       try {
@@ -828,6 +860,81 @@ describe('DashboardNext', () => {
         expect(
           within(panel).getByText('1 delivered order is in EUR, not the house’s money'),
         ).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('names a scanned delivery that holds a day back, and a papers read that failed', async () => {
+      vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 8, 10, 12, 0, 0) });
+      try {
+        const ledger = monthLedger();
+        const daily: Array<Record<string, unknown>> = ledger.daily;
+        daily[0] = {
+          ...daily[0],
+          procurement_spend: null,
+          uncosted_orders: 0,
+          not_in_house_currency: {},
+          scanned_deliveries: { counted: 2, uncosted: 2, notInHouseCurrency: {} },
+          order_count: 0,
+          bottles_sold: 0,
+        };
+        daily[1] = {
+          ...daily[1],
+          procurement_spend: null,
+          uncosted_orders: 0,
+          not_in_house_currency: {},
+          scanned_deliveries: { counted: 0, uncosted: 0, notInHouseCurrency: {} },
+          procurement_spend_unread: 'The scanned papers could not be read.',
+        };
+        routeGets({
+          '/dashboard/calendar-revenue/': {
+            ...ledger,
+            monthly_procurement_spend: null,
+            monthly_uncosted_orders: 0,
+            monthly_not_in_house_currency: {},
+            monthly_scanned_deliveries: { counted: 2, uncosted: 2, notInHouseCurrency: { EUR: 1 } },
+            house_currency_unread: false,
+          },
+        });
+
+        mount();
+
+        await screen.findByRole('button', {
+          name: /^Tuesday, September 1: paid to vendors unknown, 2 scanned deliveries have no invoice total yet/,
+        });
+        await screen.findByRole('button', {
+          name: /^Wednesday, September 2: paid to vendors unknown, The scanned papers could not be read\./,
+        });
+        expect(await screen.findByTestId('dn-month-uncosted')).toHaveTextContent(
+          '(1 scanned delivery is in EUR, not the house’s money; 2 scanned deliveries have no invoice total yet)',
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('says the gateway sentence for a month whose papers could not be read', async () => {
+      vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 8, 10, 12, 0, 0) });
+      try {
+        const ledger = monthLedger();
+        routeGets({
+          '/dashboard/calendar-revenue/': {
+            ...ledger,
+            monthly_procurement_spend: null,
+            monthly_uncosted_orders: 0,
+            monthly_not_in_house_currency: {},
+            monthly_scanned_deliveries: { counted: 0, uncosted: 0, notInHouseCurrency: {} },
+            monthly_procurement_spend_unread: 'The scanned papers could not be read.',
+            house_currency_unread: false,
+          },
+        });
+
+        mount();
+
+        expect(await screen.findByTestId('dn-month-uncosted')).toHaveTextContent(
+          '(The scanned papers could not be read.)',
+        );
       } finally {
         vi.useRealTimers();
       }

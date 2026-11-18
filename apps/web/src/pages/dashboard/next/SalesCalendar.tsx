@@ -44,7 +44,7 @@ import {
   type DayLedger,
   type MonthLedger,
 } from './useDashboardNextData';
-import { DASH, dateIn, figure, heldBackSaid, longDay, monthName, useHouseMoney, type Money } from './format';
+import { DASH, dateIn, figure, longDay, monthName, spendHeldBackSaid, useHouseMoney, type Money } from './format';
 import { SERIF } from './fonts';
 import DayDetail from './DayDetail';
 import { TryAgain } from './TryAgain';
@@ -210,7 +210,11 @@ function monthSalesSaid(ledger: MonthLedger | null, money: Money): { figure: str
 
 /** Why a day's spend is withheld, in words; null when nothing is. */
 function dayHeldBack(day: DayLedger): string | null {
-  return heldBackSaid(day.uncosted_orders, day.not_in_house_currency, day.house_currency_unread);
+  return spendHeldBackSaid(
+    { uncosted: day.uncosted_orders, other: day.not_in_house_currency, houseUnread: day.house_currency_unread },
+    { uncosted: day.scanned_uncosted, other: day.scanned_not_in_house_currency },
+    day.spend_unread,
+  );
 }
 
 /**
@@ -287,7 +291,11 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
   const { month, refetch: refetchMonth } = useMonthLedger(restaurantId, cursor.year, cursor.month);
   const ledger = month.state === 'ready' ? month.ledger : null;
   const monthHeldBack = ledger
-    ? heldBackSaid(ledger.monthlyUncosted, ledger.monthlyNotInHouseCurrency, ledger.houseCurrencyUnread)
+    ? spendHeldBackSaid(
+        { uncosted: ledger.monthlyUncosted, other: ledger.monthlyNotInHouseCurrency, houseUnread: ledger.houseCurrencyUnread },
+        { uncosted: ledger.monthlyScannedUncosted, other: ledger.monthlyScannedNotInHouseCurrency },
+        ledger.monthlySpendUnread,
+      )
     : null;
   useEffect(() => {
     if (ledger && ledger.today !== undefined) setSaidToday(ledger.today);

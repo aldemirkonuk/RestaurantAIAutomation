@@ -13,7 +13,7 @@ import { Link } from 'react-router-dom';
 import type { DashboardStats } from '@/services/api/types';
 import { formatNumber } from '@/lib/utils';
 import CountUp from './CountUp';
-import { heldBackSaid, useHouseMoney } from './format';
+import { spendHeldBackSaid, useHouseMoney } from './format';
 
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
 
@@ -105,10 +105,23 @@ export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true 
   const uncosted = s?.uncostedOrders;
   const other = s?.notInHouseCurrency;
   const houseUnread = s?.houseCurrencyUnread === true;
+  const papers = s?.scannedDeliveries;
   const monthWhy =
-    monthSpend === null ? heldBackSaid(uncosted?.month, other?.month, houseUnread) : null;
+    monthSpend === null
+      ? spendHeldBackSaid(
+          { uncosted: uncosted?.month, other: other?.month, houseUnread },
+          { uncosted: papers?.month?.uncosted, other: papers?.month?.notInHouseCurrency },
+          s?.unread?.monthProcurementSpend,
+        )
+      : null;
   const todayWhy =
-    todaySpend === null ? heldBackSaid(uncosted?.today, other?.today, houseUnread) : null;
+    todaySpend === null
+      ? spendHeldBackSaid(
+          { uncosted: uncosted?.today, other: other?.today, houseUnread },
+          { uncosted: papers?.today?.uncosted, other: papers?.today?.notInHouseCurrency },
+          s?.unread?.todayProcurementSpend,
+        )
+      : null;
   const todayDeliveries = typeof counts.todayDeliveries === 'number' ? counts.todayDeliveries : null;
   const monthBottlesIn = typeof counts.monthBottlesIn === 'number' ? counts.monthBottlesIn : null;
 
