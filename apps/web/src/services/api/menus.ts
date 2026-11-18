@@ -96,6 +96,8 @@ export interface MenuReadNote {
     | 'no_number'
     | 'two_readings'
     | 'negative'
+    | 'too_large'
+    | 'too_precise'
     | 'unreadable'
   field?: string
   raw?: string
