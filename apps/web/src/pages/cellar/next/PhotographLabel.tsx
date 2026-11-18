@@ -127,9 +127,9 @@ function FieldRow({
 
   return (
     <div className="f" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline', padding: '5px 0', borderBottom: '1px solid var(--paper-2)' }}>
-      <span style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-4)' }}>
+      <span style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-4)' }}>
         {label}{' '}
-        <small style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: 0, textTransform: 'none' }}>
+        <small style={{ fontFamily: MONO, fontSize: 11, letterSpacing: 0, textTransform: 'none' }}>
           {sureness(confidence)}
         </small>
       </span>

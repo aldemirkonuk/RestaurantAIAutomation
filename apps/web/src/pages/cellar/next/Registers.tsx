@@ -415,7 +415,7 @@ export default function Registers({ data }: { data: CellarData }) {
                 <p className="cl-tile-fig">
                   <Tally value={v} />
                 </p>
-                <p className="cl-note" style={{ margin: '2px 0 0', fontSize: 10 }}>
+                <p className="cl-note" style={{ margin: '2px 0 0', fontSize: 11 }}>
                   {MEASURE_SOURCE[k]}
                 </p>
               </div>

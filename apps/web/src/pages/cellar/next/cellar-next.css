@@ -105,7 +105,7 @@
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  font-size: 10.5px;
+  font-size: 11px;
 }
 .cl-split-leaf {
   min-width: 0;
@@ -189,7 +189,7 @@
   border-bottom: 1px solid var(--paper-2);
   white-space: nowrap;
   font-weight: 600;
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--ink-4);
@@ -253,7 +253,7 @@
   border: 1px solid var(--paper-2);
   background: var(--paper-0);
   color: var(--ink-2);
-  font-size: 10.5px;
+  font-size: 11px;
   white-space: nowrap;
 }
 .cl-chip[data-seal='true'] {
@@ -366,7 +366,7 @@
 /* a section rule-off label */
 .cl-sec {
   margin: 0 0 10px;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -378,7 +378,7 @@
    floor for this size text. --ink-4 is the higher-contrast token in both
    themes (see mudavym.css's :root and dark-mode blocks), so this can only
    raise contrast, never lower it, wherever `.cl-note` already appears. */
-.cl-note { margin: 10px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-4); }
+.cl-note { margin: 10px 0 0; font-size: 14px; line-height: 22px; max-width: 62ch; color: var(--ink-4); }
 .cl-said { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); }
 
 /* facts of record: a label above the figure, never a label beside it */
@@ -389,7 +389,7 @@
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
 }
 .cl-facts dt {
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--ink-4);
@@ -423,7 +423,7 @@
 }
 .cl-tile-label {
   margin: 0;
-  font-size: 10.5px;
+  font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-4);
@@ -486,7 +486,7 @@
 }
 .cl-book code {
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--ink-4);
 }
 
@@ -643,7 +643,7 @@ textarea.cl-field {
   justify-content: space-between;
   gap: 8px;
   margin: 0 0 9px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.11em;
   text-transform: uppercase;
@@ -697,7 +697,7 @@ textarea.cl-field {
   justify-content: space-between;
   margin-top: 4px;
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 9.5px;
+  font-size: 11px;
   color: var(--ink-4);
 }
 .cl-heat {
@@ -708,7 +708,7 @@ textarea.cl-field {
 .cl-heat-h,
 .cl-heat-d {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 9px;
+  font-size: 11px;
   color: var(--ink-4);
   text-align: center;
 }
@@ -734,7 +734,7 @@ textarea.cl-field {
   border-top: 0;
 }
 .cl-tag {
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ink-4);
@@ -764,7 +764,7 @@ textarea.cl-field {
   gap: 2px;
 }
 .cl-fact-k {
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--ink-4);
@@ -1054,3 +1054,14 @@ textarea.cl-field {
   .cl-rcp-edit { grid-template-columns: 1fr 88px 108px; }
   .cl-rcp-remove { min-width: 44px; justify-content: center; }
 }
+
+/* "How is this counted" and other long explanations sit behind a disclosure
+   (r58 N-04). Opacity only; none under reduced motion. */
+.cl-more > summary { cursor: pointer; font-size: 12px; font-weight: 500; letter-spacing: 0.04em; color: var(--ink-2); list-style: none; margin-top: 10px; }
+.cl-more > summary::-webkit-details-marker { display: none; }
+.cl-more > summary::after { content: ' +'; color: var(--ink-4); }
+.cl-more[open] > summary::after { content: ' \2212'; }
+.cl-more > summary:focus-visible { outline: 2px solid var(--seal); outline-offset: 3px; }
+.cl-more[open] > :not(summary) { animation: cl-more-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+@keyframes cl-more-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .cl-more[open] > :not(summary) { animation: none; } }

@@ -44,7 +44,7 @@ function Zone({ z }: { z: ZoneVM }) {
       <span className="cl-zone-n">
         {z.itemsAssigned === null ? EM : count(z.itemsAssigned)}
       </span>
-      <span className="cl-dim" style={{ fontSize: 10.5 }}>
+      <span className="cl-dim" style={{ fontSize: 11 }}>
         {z.itemsAssigned === null
           ? 'contents could not be counted'
           : `${z.itemsAssigned === 1 ? 'title' : 'titles'} assigned${
@@ -52,7 +52,7 @@ function Zone({ z }: { z: ZoneVM }) {
             }`}
       </span>
       {z.provenance === 'renamed' ? (
-        <span className="cl-dim" style={{ fontSize: 10 }}>renamed by the house</span>
+        <span className="cl-dim" style={{ fontSize: 11 }}>renamed by the house</span>
       ) : null}
     </div>
   );

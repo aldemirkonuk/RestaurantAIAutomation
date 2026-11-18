@@ -293,7 +293,7 @@ export default function RowExpander({
       <Card
         title="What it costs and what it makes"
         right={
-          <span className="cl-dim" style={{ fontSize: 10, textTransform: 'none', letterSpacing: 0 }}>
+          <span className="cl-dim" style={{ fontSize: 11, textTransform: 'none', letterSpacing: 0 }}>
             {invoice?.readable === false ? 'invoices unread' : `${invoice?.rows ?? 0} invoice lines`}
           </span>
         }
