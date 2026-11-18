@@ -120,6 +120,7 @@
     "null"
   ],
   "POST /auth/login (AuthController.login)": "open",
+  "GET /recipes/:restaurantId/menu-prices (DishesController.menuPrices)": "open",
   "POST /auth/dev-bypass-login (AuthController.devBypassLogin)": "open",
   "POST /auth/register (AuthController.register)": "open",
   "POST /auth/register/account (AuthController.registerAccount)": "open",

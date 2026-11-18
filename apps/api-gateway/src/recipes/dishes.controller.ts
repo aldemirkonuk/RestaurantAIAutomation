@@ -133,6 +133,15 @@ export class DishesController {
     return this.dishes.drinkFigures(restaurantId, user?.role);
   }
 
+  @Get(":restaurantId/menu-prices")
+  @ApiOperation({ summary: "The current menu's price for each dish and drink of the same name (nothing for a role without money)" })
+  menuPrices(
+    @Param("restaurantId", ParseUUIDPipe) restaurantId: string,
+    @CurrentUser() user: { role?: string } | undefined,
+  ) {
+    return this.dishes.menuPrices(restaurantId, user?.role);
+  }
+
   @Post(":restaurantId/shelf/match")
   @UseGuards(RolesGuard)
   @Roles("owner", "manager")

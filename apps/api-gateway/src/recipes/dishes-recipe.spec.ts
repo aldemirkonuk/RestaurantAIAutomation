@@ -20,7 +20,7 @@ import { B_DISH, GONE, HOUSE_A, HOUSE_B, SOUP, TART, V_TART_1, V_TART_2, fakeDb,
 /** Every route the controller declares, and which of them write. */
 const DECLARED = [
   "createDish", "dishesUsingItem", "drinkFigures", "drinksUsingItem", "getDishRecipe", "listDishes", "listDishVersions",
-  "matchShelf", "previewDishCost", "readDishVersion", "saveDishRecipe", "updateDish",
+  "matchShelf", "menuPrices", "previewDishCost", "readDishVersion", "saveDishRecipe", "updateDish",
 ];
 const WRITES = ["createDish", "matchShelf", "previewDishCost", "saveDishRecipe", "updateDish"];
 
