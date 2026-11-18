@@ -215,3 +215,52 @@ describe('RowDropdown asks only for what it draws', () => {
     expect(last()).toEqual({ purchases: true, paper: true, lots: true });
   });
 });
+
+describe('the paperwork says what it knows of each delivery and its paper', () => {
+  const line = (over: Record<string, unknown> = {}) => ({ id: 'l1', at: '2026-11-10T10:00:00Z', qty: 6, unitCost: 4, orderId: 'o1', ...over });
+  const doc = (over: Record<string, unknown> = {}) => ({ id: 'd1', doc_type: 'invoice', status: 'verified', doc_number: 'INV-7', provider_id: 'p1', ties_out: true, ...over });
+  const paperText = () => (document.querySelector('.iv-paperwork')?.textContent ?? '');
+
+  it('a ledger with no delivery says so in the row\'s own word', () => {
+    reads.detail = { purchases: [], purchasesTotal: 0 };
+    renderDrop({ sections: ['paper'], kind: 'food', uom: 'g', row: row({ kind: 'food' }) });
+    expect(paperText()).toContain('No delivery of this good is on the ledger.');
+  });
+
+  it('a delivery tied to no order says there is no paper to find', () => {
+    reads.detail = { purchases: [line({ orderId: null })], purchasesTotal: 1 };
+    renderDrop({ sections: ['paper'] });
+    expect(paperText()).toContain('Not tied to an order, so there is no paper to find.');
+  });
+
+  it('paper still being read, then failed, then none filed, each says its own thing', () => {
+    reads.detail = { purchases: [line()], purchasesTotal: 1, paper: new Map([['o1', { docs: null, failed: null }]]) };
+    const a = renderDrop({ sections: ['paper'] });
+    expect(paperText()).toContain('Reading the paper…');
+    a.unmount();
+    reads.detail = { purchases: [line()], purchasesTotal: 1, paper: new Map([['o1', { docs: null, failed: 'down' }]]) };
+    const b = renderDrop({ sections: ['paper'] });
+    expect(paperText()).toContain('The paper could not be read.');
+    expect(paperText()).not.toContain('No invoice filed');
+    b.unmount();
+    reads.detail = { purchases: [line()], purchasesTotal: 1, paper: new Map([['o1', { docs: [], failed: null }]]) };
+    renderDrop({ sections: ['paper'] });
+    expect(paperText()).toContain('No invoice filed for this delivery.');
+  });
+
+  it('a filed invoice names its number and its vendor and opens at the invoice', () => {
+    reads.detail = { purchases: [line()], purchasesTotal: 1, paper: new Map([['o1', { docs: [doc()], failed: null }]]) };
+    renderDrop({ sections: ['paper'] });
+    expect(paperText()).toContain('INV-7');
+    expect(paperText()).toContain('Vinoteca');
+    expect(screen.getByRole('link', { name: 'Open the invoice line' }).getAttribute('href')).toBe('/receipts?doc=d1');
+    expect(screen.queryByRole('link', { name: 'Claim a credit' })).toBeNull();
+  });
+
+  it('an invoice that needs review says Match this line, and one that does not tie out offers a credit', () => {
+    reads.detail = { purchases: [line()], purchasesTotal: 1, paper: new Map([['o1', { docs: [doc({ status: 'needs_review', ties_out: false })], failed: null }]]) };
+    renderDrop({ sections: ['paper'] });
+    expect(screen.getByRole('link', { name: 'Match this line' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Claim a credit' }).getAttribute('href')).toBe('/receipts?tab=credits');
+  });
+});
