@@ -59,6 +59,8 @@ export interface CsvRowIssue {
     | Exclude<MenuPriceReason, "empty">;
   field?: keyof WineExtractItem;
   raw?: string;
+  /** The worksheet the row is on, said only when the workbook has more than one visible sheet. */
+  sheet?: string;
 }
 
 type Cell = string | number;
@@ -211,8 +213,33 @@ export class CsvParserService {
       );
     }
 
-    const worksheet = workbook.worksheets[0];
-    if (!worksheet || worksheet.rowCount < 2) return { items: [], issues: [] };
+    // Every sheet the owner can see is read: a workbook with a Wines sheet and
+    // a Cocktails sheet is one menu. A workbook of hidden sheets only is still
+    // read (the file is what was sent).
+    const visible = workbook.worksheets.filter((w) => w.state === "visible");
+    const sheets = visible.length > 0 ? visible : workbook.worksheets;
+    const items: WineExtractItem[] = [];
+    const issues: CsvRowIssue[] = [];
+    for (const worksheet of sheets) {
+      const read = this.readSheet(worksheet);
+      items.push(...read.items);
+      // Line numbers restart on each sheet, so a note names its sheet when
+      // the workbook has more than one.
+      issues.push(
+        ...(sheets.length > 1
+          ? read.issues.map((i) => ({ ...i, sheet: worksheet.name }))
+          : read.issues),
+      );
+    }
+    return { items, issues };
+  }
+
+  /** One worksheet as lines: row 1 is the header. */
+  private readSheet(worksheet: import("exceljs").Worksheet): {
+    items: WineExtractItem[];
+    issues: CsvRowIssue[];
+  } {
+    if (worksheet.rowCount < 2) return { items: [], issues: [] };
 
     const headerRow = worksheet.getRow(1);
     const headers: string[] = [];
