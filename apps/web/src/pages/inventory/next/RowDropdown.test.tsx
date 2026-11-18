@@ -682,6 +682,20 @@ describe('Ported acts in the More menu: Mark inactive and Remove from inventory'
     expect(arg.rows[0].id).toBe('i1');
     expect(arg.columns.map((c: { header: string }) => c.header)).toContain('Value at cost');
   });
+
+  it('Export this row heads the name column Good for a food or supply, Title for a drink', async () => {
+    tableExport.exportTable.mockClear();
+    const food = await menu({ uom: 'g', kind: 'food', row: row({ wineId: null, name: 'Flour 00', kind: 'food', stock: 2250, shadow: 0, openMl: 0 }) });
+    fireEvent.click(within(food).getByRole('menuitem', { name: 'Export this row' }));
+    expect(tableExport.exportTable.mock.calls[0][0].columns[0].header).toBe('Good');
+  });
+
+  it('Export this row still heads the name column Title for a drink', async () => {
+    tableExport.exportTable.mockClear();
+    const m = await menu();
+    fireEvent.click(within(m).getByRole('menuitem', { name: 'Export this row' }));
+    expect(tableExport.exportTable.mock.calls[0][0].columns[0].header).toBe('Title');
+  });
 });
 
 describe('the cost column says per what, and to whom (inventory r28 gaps 9, 10)', () => {
