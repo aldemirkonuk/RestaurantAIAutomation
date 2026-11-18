@@ -63,6 +63,7 @@ import {
   useMailListsFollowSummary,
   useMailPeople,
   useMailSender,
+  useHouse,
   useMailSummary,
   useMailThreads,
 } from './useMailData';
@@ -162,12 +163,56 @@ function UnsentChip({ status }: { status: string | null | undefined }) {
 /** A person's row measured at 60 px at 375, 768 and 1280 wide (r54 walk); a long snippet wraps to 83 at 375. */
 const PERSON_ROW_MIN = 60;
 
-function PeoplePlaceholder() {
+/** How many placeholder bars to draw when this house has not been read yet in this tab. */
+const PLACEHOLDER_DEFAULT = 4;
+/** A long list is not drawn as a long block of bars: the page below the fold does not need holding. */
+const PLACEHOLDER_MAX = 10;
+
+function rowCountKey(house: string): string {
+  return `mail-people-rows:${house}`;
+}
+
+/** The row count last seen for this house in this tab, or the default. Storage may be absent or throw. */
+export function readLastRowCount(house: string): number {
+  try {
+    const raw = house ? window.sessionStorage.getItem(rowCountKey(house)) : null;
+    const n = raw === null ? NaN : Number(raw);
+    if (!Number.isInteger(n) || n < 1) return PLACEHOLDER_DEFAULT;
+    return Math.min(n, PLACEHOLDER_MAX);
+  } catch {
+    return PLACEHOLDER_DEFAULT;
+  }
+}
+
+export function rememberRowCount(house: string, count: number): void {
+  if (!house || !Number.isInteger(count) || count < 0) return;
+  try {
+    // An empty house draws the default again, not a stale count.
+    if (count === 0) window.sessionStorage.removeItem(rowCountKey(house));
+    else window.sessionStorage.setItem(rowCountKey(house), String(Math.min(count, PLACEHOLDER_MAX)));
+  } catch {
+    /* storage blocked: the next load draws the default count */
+  }
+}
+
+/**
+ * The status line is placed over the bars, not above them, so it adds no height:
+ * the list is exactly as tall as the rows that will replace it. role="status" is
+ * a polite live region, so the words are still read aloud.
+ */
+function PeoplePlaceholder({ rows }: { rows: number }) {
   return (
-    <div>
-      <p style={{ margin: '0 0 4px', ...QUIET }}>Reading the mail…</p>
+    <div data-testid="people-placeholder" style={{ position: 'relative' }}>
+      <p
+        role="status"
+        aria-live="polite"
+        data-testid="people-placeholder-status"
+        style={{ position: 'absolute', top: 8, right: 4, margin: 0, padding: '0 4px', background: 'var(--paper-0, #FAF7F1)', ...QUIET }}
+      >
+        Reading the mail…
+      </p>
       <ul aria-hidden="true" style={{ listStyle: 'none', margin: 0, padding: 0, borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
-        {[0, 1, 2, 3].map((i) => (
+        {Array.from({ length: rows }, (_, i) => i).map((i) => (
           <li
             key={i}
             data-testid="people-placeholder-row"
@@ -356,6 +401,13 @@ function People({
   const pages = q.data?.pages ?? [];
   const people = pages.flatMap((p) => p.people);
   const storedKinds = pages[0]?.storedKinds ?? null;
+  const house = useHouse();
+  // Remember the unfiltered first-page count so the next cold load draws that many bars.
+  const settled = Boolean(q.data) && !waitingOnly && !search;
+  const firstPageCount = pages[0]?.people.length ?? 0;
+  useEffect(() => {
+    if (settled) rememberRowCount(house, firstPageCount);
+  }, [settled, house, firstPageCount]);
   return (
     <section aria-label="People" className="grid gap-2" style={{ fontFamily: SANS }}>
       <p data-testid="stored-kinds" style={{ ...QUIET, margin: 0 }}>
@@ -367,7 +419,7 @@ function People({
           are none.
         </p>
       ) : !q.data ? (
-        <PeoplePlaceholder />
+        <PeoplePlaceholder rows={readLastRowCount(house)} />
       ) : people.length === 0 && search ? (
         <p data-testid="search-empty" role="status" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', maxWidth: '68ch', overflowWrap: 'anywhere' }}>
           {searchEmptyWords(search, { waitingOnly, on })}{' '}

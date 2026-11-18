@@ -26,7 +26,7 @@ vi.mock('./QueuedPullBack', () => ({
   QueuedPullBack: ({ id }: { id: string }) => <span data-testid="pull-back" data-id={id} />,
 }));
 
-import { MailTab } from './MailTab';
+import { MailTab, readLastRowCount, rememberRowCount } from './MailTab';
 import { communicationsTour } from '../../../guidance/content/communications';
 import type { MailMessage, MailSummary } from './mail-format';
 
@@ -142,6 +142,7 @@ function mount(at: string | string[] = '/communications?tab=mail', props: Partia
 }
 
 beforeEach(() => {
+  window.sessionStorage.clear();
   auth.current = { user: { role: 'manager', restaurantId: 'r1' }, activeRestaurantId: 'r1', activeRole: 'manager' };
   routes = {
     '/mail/summary': () => SUMMARY,
@@ -243,6 +244,67 @@ describe('the list', () => {
     expect((await screen.findAllByTestId('mail-person')).length).toBe(2);
     expect(screen.queryByTestId('people-placeholder-row')).toBeNull();
     expect(screen.queryByText('Reading the mail…')).toBeNull();
+  });
+
+  it('the status line is out of flow, so the list is exactly as tall as its rows, and it is a polite live region', async () => {
+    const base = api.get.getMockImplementation()!;
+    api.get.mockImplementation((url: string, cfg?: { params?: Record<string, string> }) =>
+      url === '/mail/people' ? new Promise(() => {}) : base(url, cfg),
+    );
+    mount();
+    const status = await screen.findByTestId('people-placeholder-status');
+    expect(status.style.position).toBe('absolute');
+    expect(status.getAttribute('aria-live')).toBe('polite');
+    expect(status.getAttribute('role')).toBe('status');
+    expect(status).toHaveTextContent('Reading the mail…');
+    // The only things in flow are the bars: the status adds no height.
+    const flow = Array.from(screen.getByTestId('people-placeholder').children).filter(
+      (c) => (c as HTMLElement).style.position !== 'absolute',
+    );
+    expect(flow).toHaveLength(1);
+    expect(flow[0].tagName).toBe('UL');
+  });
+
+  it('a house read before draws as many bars as it had rows, and a first visit draws four', async () => {
+    window.sessionStorage.setItem('mail-people-rows:r1', '2');
+    const base = api.get.getMockImplementation()!;
+    api.get.mockImplementation((url: string, cfg?: { params?: Record<string, string> }) =>
+      url === '/mail/people' ? new Promise(() => {}) : base(url, cfg),
+    );
+    mount();
+    expect(await screen.findAllByTestId('people-placeholder-row')).toHaveLength(2);
+  });
+
+  it('the count of the unfiltered list is remembered per house once it has landed', async () => {
+    window.sessionStorage.clear();
+    routes['/mail/people'] = () => ({ people: [person(1), person(2), person(3)], next: null, storedKinds: ['vendor'] });
+    mount();
+    expect((await screen.findAllByTestId('mail-person')).length).toBe(3);
+    await waitFor(() => expect(window.sessionStorage.getItem('mail-people-rows:r1')).toBe('3'));
+    expect(window.sessionStorage.getItem('mail-people-rows:r2')).toBeNull();
+  });
+
+  it('row-count memory survives blocked storage and bad values', () => {
+    window.sessionStorage.clear();
+    expect(readLastRowCount('r1')).toBe(4);
+    window.sessionStorage.setItem('mail-people-rows:r1', 'junk');
+    expect(readLastRowCount('r1')).toBe(4);
+    window.sessionStorage.setItem('mail-people-rows:r1', '500');
+    expect(readLastRowCount('r1')).toBe(10);
+    rememberRowCount('r1', 500);
+    expect(window.sessionStorage.getItem('mail-people-rows:r1')).toBe('10');
+    rememberRowCount('r1', 0);
+    expect(readLastRowCount('r1')).toBe(4);
+    const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    expect(readLastRowCount('r1')).toBe(4);
+    expect(() => rememberRowCount('r1', 3)).not.toThrow();
+    get.mockRestore();
+    set.mockRestore();
   });
 
   it('an empty list names which doors are connected', async () => {
