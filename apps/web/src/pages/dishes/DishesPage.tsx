@@ -36,7 +36,7 @@
  * cells say "…" while the figures are read, and a failed figures read blanks
  * only the figures and says so once above the list, never the names.
  */
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AlertTriangle, Plus } from 'lucide-react';
 import RecipeSheet from '../cellar/next/recipe/RecipeSheet';
@@ -45,7 +45,9 @@ import { PRICE_UNREAD, priceText, readPrice } from '../cellar/next/recipe/price-
 import { useHousePercent, type SayPercent } from '../cellar/next/recipe/useHousePercent';
 import { reason, useCanEditRecipe, useCreateDish, useDishFigures, useDishes, useHouseMoney, useMenuPrices, useRemoveDish, useUpdateDish } from '../cellar/next/recipe/useRecipe';
 import { MENU_PRICES_UNREAD, MenuPriceCell } from '../cellar/next/recipe/MenuPriceCell';
+import { useAuth } from '../../contexts/AuthContext';
 import MenuDishesOffer from './MenuDishesOffer';
+import { dishDraftKey, dropDishDraft, keepDishDraft, takeDishDraft } from './dishDrafts';
 import { dishMatches, sectionsOf } from './fold';
 import { AllergenCell, AllergenCheck, keptFor } from '../cellar/next/recipe/ListAllergens';
 import { CostWaits, NoRecipeYet } from '../cellar/next/recipe/ListCostWaits';
@@ -208,12 +210,21 @@ function AddDish({ onAdded, sections }: { onAdded: (id: string) => void; section
 function DishDetails({ dish, onRemoved, sections }: { dish: DishListRow; onRemoved: () => void; sections: string[] }) {
   const update = useUpdateDish(dish.id);
   const remove = useRemoveDish(dish.id);
-  const [name, setName] = useState(dish.name);
-  const [section, setSection] = useState(dish.section ?? '');
-  const [price, setPrice] = useState(priceText(dish.price));
+  const { user, activeRestaurantId } = useAuth();
+  const storeKey = dishDraftKey(user?.userId, activeRestaurantId, dish.id);
+  // What this person typed here and left unsaved earlier in the session.
+  const [kept] = useState(() => takeDishDraft(storeKey));
+  const [name, setName] = useState(kept?.name ?? dish.name);
+  const [section, setSection] = useState(kept?.section ?? dish.section ?? '');
+  const [price, setPrice] = useState(kept?.price ?? priceText(dish.price));
   const [said, setSaid] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
   const id = useId();
+  // Kept while it differs from the dish as the list has it, dropped once it does not.
+  useEffect(() => {
+    if (name !== dish.name || section !== (dish.section ?? '') || price !== priceText(dish.price)) keepDishDraft(storeKey, { name, section, price });
+    else dropDishDraft(storeKey);
+  }, [storeKey, name, section, price, dish.name, dish.section, dish.price]);
 
   const read = readPrice(price);
   const change: { name?: string; section?: string | null; price?: number | null } = {};
@@ -230,6 +241,7 @@ function DishDetails({ dish, onRemoved, sections }: { dish: DishListRow; onRemov
     setSaid(null);
     try {
       await update.mutateAsync(change);
+      dropDishDraft(storeKey);
       setSaid('Saved.');
     } catch (e) {
       setSaid(`Nothing was changed: ${reason(e)}`);
@@ -239,6 +251,7 @@ function DishDetails({ dish, onRemoved, sections }: { dish: DishListRow; onRemov
     setSaid(null);
     try {
       await remove.mutateAsync();
+      dropDishDraft(storeKey);
       onRemoved();
     } catch (e) {
       setAsking(false);
