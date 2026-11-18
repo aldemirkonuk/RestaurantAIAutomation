@@ -398,7 +398,9 @@ export default function RowDropdown(props: RowDropdownProps) {
         </div>
       ) : null}
 
-      {paperShown ? <Paperwork detail={detail} currency={currency} providers={props.providers} thing={thing} /> : null}
+      {paperShown ? (
+        <Paperwork detail={detail} currency={currency} providers={props.providers} thing={thing} uom={props.uom ?? null} kind={props.kind ?? null} />
+      ) : null}
 
       {acts ? (
       <div className="iv-actions" role="group" aria-label={`What to do with this ${thing}`}>
@@ -997,12 +999,31 @@ function Paperwork({
   currency,
   providers,
   thing,
+  uom,
+  kind,
 }: {
   detail: ReturnType<typeof useRowDetail>;
   currency: HouseCurrency;
   providers: Provider[] | null;
   thing: string;
+  uom: string | null;
+  kind: string | null;
 }) {
+  // The ledger books a weighed or poured good in its own unit (a gram, a
+  // millilitre), so a bare "25,000" and a cost of "0.00" said nothing. A good
+  // reads its door quantity in its unit and its cost a kg or a litre, as the
+  // cost panel does; a drink kept in bottles is drawn as before.
+  const byMeasure = uom !== null && (kind === 'food' || kind === 'supply' || uom !== 'bottle');
+  const qtyCell = (n: number | null): string => (n === null ? EM : byMeasure ? fmtQty(n, uom) : fmtCount(n));
+  const unitCell = (n: number | null): ReactNode => {
+    if (!byMeasure || n === null) return cellMoney(n, currency);
+    const u = perUnit(n, uom);
+    return (
+      <>
+        {cellMoney(u.amount, currency)} <span className="iv-dim">{u.per}</span>
+      </>
+    );
+  };
   const vendorOf = (paper: PaperRead | undefined) => {
     const id = paper?.docs ? invoiceOf(paper.docs)?.provider_id : null;
     if (!id) return EM;
@@ -1056,10 +1077,10 @@ function Paperwork({
                       )}
                     </td>
                     <td data-label="At the door" className="iv-num">
-                      {line.qty === null ? EM : fmtCount(line.qty)}
+                      {qtyCell(line.qty)}
                     </td>
                     <td data-label="Unit" className="iv-num">
-                      {cellMoney(line.unitCost, currency)}
+                      {unitCell(line.unitCost)}
                     </td>
                     <td data-label="Invoice">{doc ? (doc.doc_number ?? 'filed, no number') : EM}</td>
                     <td>

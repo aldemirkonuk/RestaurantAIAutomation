@@ -390,6 +390,33 @@ describe('RowDropdown counts read with grouped digits, as money does (INV-W33)',
   });
 });
 
+describe('RowDropdown paperwork reads a weighed good in its own unit', () => {
+  const line = { id: 'l1', at: '2026-09-20T10:00:00Z', qty: 25000, unitCost: 0.0016, orderId: null };
+  it('a food bought by the gram reads kg at the door and a cost a kg', () => {
+    reads.detail = { purchases: [line], purchasesTotal: 1 };
+    try {
+      renderDrop({ row: row({ wineId: null, name: 'Flour 00', kind: 'food' }), uom: 'g', kind: 'food' });
+      const drop = screen.getByTestId('row-dropdown');
+      expect(drop.querySelector('td[data-label="At the door"]')!.textContent).toBe('25 kg');
+      expect(drop.querySelector('td[data-label="Unit"]')!.textContent).toMatch(/1\.60.*a kg/);
+    } finally {
+      reads.detail = {};
+    }
+  });
+
+  it('a wine kept in bottles still reads a bare count and cost', () => {
+    reads.detail = { purchases: [{ ...line, qty: 12, unitCost: 9 }], purchasesTotal: 1 };
+    try {
+      renderDrop();
+      const drop = screen.getByTestId('row-dropdown');
+      expect(drop.querySelector('td[data-label="At the door"]')!.textContent).toBe('12');
+      expect(drop.querySelector('td[data-label="Unit"]')!.textContent).not.toMatch(/a kg|a litre/);
+    } finally {
+      reads.detail = {};
+    }
+  });
+});
+
 describe('RowDropdown says what a title no zone holds reads (INV-W34)', () => {
   const where = () => {
     const dt = within(screen.getByTestId('row-dropdown')).getByText('Where');
