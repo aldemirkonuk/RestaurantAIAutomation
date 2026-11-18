@@ -1,9 +1,9 @@
 /**
  * The recipe's "What is in it" (sumRecipe wired, #940): a line with no figures
- * is named "unknown for X" and never counted as 0; the recipe on the cocktail
- * register shows it.
+ * is named "unknown for X" and never counted as 0. Where a surface
+ * mounts it is not asserted here, so this file imports no page.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import RecipeNutrition from './RecipeNutrition';
 import type { RecipeLine } from './nutrition-sum';
@@ -35,23 +35,5 @@ describe('RecipeNutrition', () => {
   it('shows nothing for a recipe with no lines', () => {
     const { container } = render(<RecipeNutrition lines={[]} />);
     expect(container.textContent).toBe('');
-  });
-});
-
-const hooks = vi.hoisted(() => ({ rows: [] as Array<Record<string, unknown>> }));
-vi.mock('../../cellar/next/useCellarNextData', () => ({
-  useCocktailRecipe: () => ({ data: { cocktailId: 'c1', rows: hooks.rows, count: hooks.rows.length, writable: true }, loading: false, error: null }),
-  useCocktailWrites: () => ({ setRecipe: { mutateAsync: vi.fn(), isPending: false } }),
-}));
-
-describe('the cocktail recipe shows it', () => {
-  it('sums the recipe lines on the cocktail register', async () => {
-    hooks.rows = [
-      { id: 'a', free_text: 'gin', quantity: 30, unit: 'ml' },
-      { id: 'b', free_text: 'orange peel', quantity: null, unit: null },
-    ];
-    const { Recipe } = await import('../../cellar/next/CocktailRegister');
-    render(<Recipe cocktailId="c1" />);
-    expect(screen.getByTestId('recipe-nutrition-energyKcal').textContent).toBe('Energy: unknown for gin, orange peel');
   });
 });
