@@ -8,7 +8,9 @@
  * sheet reads the same one, so the two can never list different rooms.
  */
 
-import { Link, useLocation } from 'react-router-dom';
+import type { MouseEvent } from 'react';
+import { Link, useLocation, type To } from 'react-router-dom';
+import { isPlainLeftClick, useViewTransitionNavigate } from '../../lib/mudavym/viewTransition';
 import { openAskAi } from '../askai/events';
 import {
   isCurrentRoom,
@@ -27,6 +29,15 @@ export interface RoomsListProps {
 /** The rooms as a list — the rail's body and the phone sheet's. */
 export function RoomsList({ role, flags, onNavigate }: RoomsListProps) {
   const { pathname } = useLocation();
+  const go = useViewTransitionNavigate();
+  // A plain click develops (fade, rise, shared title and bar); a modified one
+  // keeps the browser's own new-tab behaviour.
+  const open = (to: To) => (e: MouseEvent<HTMLAnchorElement>) => {
+    onNavigate?.();
+    if (!isPlainLeftClick(e)) return;
+    e.preventDefault();
+    go(to);
+  };
   const groups = visibleGroups(role, flags);
   const foot = visibleFoot(role, flags);
   return (
@@ -43,8 +54,9 @@ export function RoomsList({ role, flags, onNavigate }: RoomsListProps) {
                     to={r.path}
                     className="mdv-rail__room"
                     aria-current={here ? 'page' : undefined}
-                    onClick={onNavigate}
+                    onClick={open(r.path)}
                   >
+                    {here && <span className="mdv-rail__bar" aria-hidden="true" />}
                     {r.name}
                   </Link>
                 </li>
@@ -60,8 +72,9 @@ export function RoomsList({ role, flags, onNavigate }: RoomsListProps) {
               to={r.path}
               className="mdv-rail__room"
               aria-current={isCurrentRoom(pathname, r) ? 'page' : undefined}
-              onClick={onNavigate}
+              onClick={open(r.path)}
             >
+              {isCurrentRoom(pathname, r) && <span className="mdv-rail__bar" aria-hidden="true" />}
               {r.name}
             </Link>
           </li>

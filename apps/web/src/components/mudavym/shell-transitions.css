@@ -1,0 +1,148 @@
+/* Route, ground and skeleton motion (r58 N-13). Compositor-only: transform,
+   opacity and clip-path. Constants come from shell-motion.css. Everything here
+   sits behind prefers-reduced-motion: no-preference, so a reduced-motion
+   person gets the plain cut the API fallback gives them. */
+
+/* The ground's colour-scheme follows the choice, so native controls and
+   scrollbars never stay light on a charcoal page. */
+html[data-mudavym-ground='charcoal'] {
+  color-scheme: dark;
+}
+html[data-mudavym-ground='paper'] {
+  color-scheme: light;
+}
+
+/* The names (mdv-page, mdv-title, mdv-rail-bar) are applied by
+   viewTransition.ts through a data-vt attribute, only while a transition runs;
+   a permanent view-transition-name would make the element a containing block
+   for fixed descendants. */
+[data-vt='mdv-page'] {
+  view-transition-name: mdv-page;
+}
+[data-vt='mdv-title'] {
+  view-transition-name: mdv-title;
+}
+[data-vt='mdv-rail-bar'] {
+  view-transition-name: mdv-rail-bar;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* The root layer holds still on a route change (sidebar, title bar). */
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+    mix-blend-mode: normal;
+  }
+  ::view-transition-old(mdv-page) {
+    animation: mdv-vt-out var(--shell-exit-ms, 90ms) linear both;
+  }
+  ::view-transition-new(mdv-page) {
+    animation: mdv-vt-in var(--shell-enter-ms, 220ms) var(--shell-ease-house, ease-out) both;
+  }
+  ::view-transition-group(mdv-title) {
+    animation-duration: 260ms;
+    animation-timing-function: var(--shell-ease-house, ease-out);
+  }
+  ::view-transition-group(mdv-rail-bar) {
+    animation-duration: 220ms;
+    animation-timing-function: var(--shell-ease-house, ease-out);
+  }
+
+  /* The ground change: the new ground opens as a circle from the pressed chip. */
+  html[data-mdv-reveal='circle']::view-transition-old(root),
+  html[data-mdv-reveal='circle']::view-transition-new(root) {
+    animation: none;
+    mix-blend-mode: normal;
+  }
+  html[data-mdv-reveal='circle']::view-transition-new(root) {
+    animation: mdv-vt-reveal 500ms var(--shell-ease-sweep, ease-in-out) both;
+  }
+}
+
+@keyframes mdv-vt-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes mdv-vt-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes mdv-vt-reveal {
+  from {
+    clip-path: circle(0 at var(--mdv-reveal-x, 50%) var(--mdv-reveal-y, 50%));
+  }
+  to {
+    clip-path: circle(var(--mdv-reveal-r, 150%) at var(--mdv-reveal-x, 50%) var(--mdv-reveal-y, 50%));
+  }
+}
+
+/* Cards arrive 36 ms apart from the top-left, at most eight of them; opacity
+   and a 6 px rise only. Put `mdv-stagger` on the grid. */
+@media (prefers-reduced-motion: no-preference) {
+  .mdv-stagger > * {
+    animation: mdv-stagger-in var(--shell-enter-ms, 220ms) var(--shell-ease-house, ease-out) both;
+  }
+  .mdv-stagger > :nth-child(2) { animation-delay: 36ms; }
+  .mdv-stagger > :nth-child(3) { animation-delay: 72ms; }
+  .mdv-stagger > :nth-child(4) { animation-delay: 108ms; }
+  .mdv-stagger > :nth-child(5) { animation-delay: 144ms; }
+  .mdv-stagger > :nth-child(6) { animation-delay: 180ms; }
+  .mdv-stagger > :nth-child(7) { animation-delay: 216ms; }
+  .mdv-stagger > :nth-child(n + 8) { animation-delay: 252ms; }
+}
+@keyframes mdv-stagger-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* The paper skeleton: one sheen crossing a --paper-2 block. The sheen is a
+   transformed child, so it runs on the compositor (the old one animated
+   the gradient's own offset, which repaints). */
+.mdv-sheen {
+  position: relative;
+  overflow: hidden;
+  background: var(--paper-2, #eae4d8);
+}
+.mdv-sheen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent 0%, oklch(1 0 0 / 0.5) 50%, transparent 100%);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mdv-sheen::after {
+    animation: mdv-sheen var(--shell-sheen-ms, 1600ms) linear infinite;
+  }
+}
+/* A still block keeps the paper and drops the sheen. */
+.mdv-sheen--still::after {
+  display: none;
+}
+
+/* Content that replaces a skeleton: opacity only, 240 ms, 40 ms apart. */
+@media (prefers-reduced-motion: no-preference) {
+  .mdv-reveal {
+    animation: mdv-reveal-in 240ms var(--shell-ease-house, ease-out) calc(var(--mdv-i, 0) * 40ms) both;
+  }
+}
+@keyframes mdv-reveal-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Dark: a white sheen on charcoal would glare; pull it down. */
+html[data-mudavym-ground='charcoal'] .mdv-sheen::after {
+  background: linear-gradient(90deg, transparent 0%, oklch(1 0 0 / 0.08) 50%, transparent 100%);
+}
+@keyframes mdv-sheen {
+  to {
+    transform: translateX(100%);
+  }
+}
