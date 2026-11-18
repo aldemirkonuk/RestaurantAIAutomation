@@ -80,6 +80,17 @@ describe('the clean leave', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('the scrim click and Escape leave the same way, not with a cut', () => {
+    render(<Harness />);
+    animateSpy.mockClear();
+    const scrim = document.querySelector('.mdv-ovl__scrim') as HTMLElement;
+    fireEvent.click(scrim);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(animateSpy).toHaveBeenCalled();
+    act(() => void vi.advanceTimersByTime(141));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it('a second Close during the leave does not close twice', () => {
     render(<Harness />);
     const close = screen.getByRole('button', { name: 'Close' });
