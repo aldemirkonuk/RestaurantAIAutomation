@@ -668,3 +668,25 @@ describe('MenuVersions -- the list eases off while a read goes on', () => {
     expect(every({ state: { data: { versions: [version({ readState: 'done' })] } } })).toBe(false);
   });
 });
+
+describe('the read box: a drop zone, with the optional fields behind "Add details"', () => {
+  it('draws the drop zone, and keeps cadence and date closed until asked', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mount(true);
+    const toggle = await screen.findByRole('button', { name: 'Add details' });
+    expect(screen.getByText('Drop a menu, a photo, or a PDF')).toBeTruthy();
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(document.getElementById('menu-read-details')?.getAttribute('data-open')).toBe('false');
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(document.getElementById('menu-read-details')?.getAttribute('data-open')).toBe('true');
+  });
+
+  it('opens the details by itself when the date typed there needs a word', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mount(true);
+    await screen.findByRole('button', { name: 'Add details' });
+    fireEvent.change(screen.getByLabelText('Menu date'), { target: { value: 'soon' } });
+    expect(document.getElementById('menu-read-details')?.getAttribute('data-open')).toBe('true');
+  });
+});
