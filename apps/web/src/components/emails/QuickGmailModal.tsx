@@ -9,7 +9,7 @@ import {
   FileText,
   Sparkles,
 } from 'lucide-react'
-import { SavedTemplate } from '../documents/GmailTemplateBuilder'
+import type { SavedTemplate } from '../../types/emailTemplates'
 import { defaultTemplates } from '../../data/emailTemplateCategories'
 
 interface QuickGmailModalProps {
