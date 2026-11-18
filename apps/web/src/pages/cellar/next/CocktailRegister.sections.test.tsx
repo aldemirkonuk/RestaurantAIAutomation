@@ -30,7 +30,7 @@ vi.mock('./useCellarNextData', () => ({
     data: {
       rows: [
         { id: CA, name: 'Negroni', display_name: null, menu_section: 'Aperitivo', method: null, glass: null, garnish: null, price: 450 },
-        { id: CB, name: 'Spritz', display_name: null, menu_section: 'aperitivo ', method: null, glass: null, garnish: null, price: 400 },
+        { id: CB, name: 'Spritz', display_name: null, menu_section: 'APERİTİVO ', method: null, glass: null, garnish: null, price: 400 },
         { id: CC, name: 'Daiquiri', display_name: null, menu_section: 'Sours', method: null, glass: null, garnish: null, price: 420 },
         { id: CD, name: 'Water', display_name: null, menu_section: null, method: null, glass: null, garnish: null, price: null },
       ],
