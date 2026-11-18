@@ -159,6 +159,9 @@ function UnsentChip({ status }: { status: string | null | undefined }) {
  * collapse to one line and jump when the people arrive. The bars are for the
  * eye only; the words are what is read aloud.
  */
+/** A person's row measured at 60 px at 375, 768 and 1280 wide (r54 walk); a long snippet wraps to 83 at 375. */
+const PERSON_ROW_MIN = 60;
+
 function PeoplePlaceholder() {
   return (
     <div>
@@ -169,7 +172,7 @@ function PeoplePlaceholder() {
             key={i}
             data-testid="people-placeholder-row"
             aria-hidden="true"
-            style={{ borderBottom: '1px solid var(--paper-2, #EAE4D8)', padding: '10px 4px', display: 'grid', gap: 6 }}
+            style={{ borderBottom: '1px solid var(--paper-2, #EAE4D8)', padding: '10px 4px', display: 'grid', gap: 6, minHeight: PERSON_ROW_MIN }}
           >
             <span style={{ height: 13, width: `${42 + ((i * 17) % 30)}%`, borderRadius: 4, background: 'var(--paper-2, #EAE4D8)' }} />
             <span style={{ height: 11, width: '70%', borderRadius: 4, background: 'var(--paper-2, #EAE4D8)', opacity: 0.6 }} />

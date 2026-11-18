@@ -235,6 +235,7 @@ describe('the list', () => {
     const holds = screen.getAllByTestId('people-placeholder-row');
     expect(holds).toHaveLength(4);
     expect(holds.every((h) => h.getAttribute('aria-hidden') === 'true')).toBe(true);
+    expect(holds.every((h) => h.style.minHeight === '60px')).toBe(true);
     expect(screen.queryByTestId('mail-person')).toBeNull();
     await act(async () => {
       land({ data: { people: [person(1), person(2)], next: null, storedKinds: ['vendor'] } });
