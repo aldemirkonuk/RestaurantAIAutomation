@@ -404,6 +404,19 @@ describe('RowDropdown paperwork reads a weighed good in its own unit', () => {
     }
   });
 
+  it('a food reads live, par and the zones in its unit', () => {
+    renderDrop({
+      row: row({ wineId: null, name: 'Flour 00', kind: 'food', stock: 25000, shadow: 0, par: 40000, reorderPoint: 10000, zones: [{ locationId: 'z1', qty: 25000 }] }),
+      uom: 'g',
+      kind: 'food',
+    });
+    const t = screen.getByTestId('row-dropdown').textContent ?? '';
+    expect(screen.getByTestId('drop-live').textContent).toContain('25 kg');
+    expect(t).toContain('40 kg · 10 kg');
+    expect(t).toContain('Cave 25 kg');
+    expect(t).toContain('Suggested to par15 kg');
+  });
+
   it('a wine kept in bottles still reads a bare count and cost', () => {
     reads.detail = { purchases: [{ ...line, qty: 12, unitCost: 9 }], purchasesTotal: 1 };
     try {

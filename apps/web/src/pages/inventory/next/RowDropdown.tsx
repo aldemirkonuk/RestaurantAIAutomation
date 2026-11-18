@@ -180,6 +180,15 @@ function figure(v: number | null): string {
   return v === null ? EM : fmtCount(v);
 }
 
+/**
+ * A good kept by weight or measure is booked in its own unit (a gram, a
+ * millilitre), so a bare 25,000 hid that it is a 25 kg sack. A drink kept in
+ * bottles, or a row with no unit on it, stays a bare count.
+ */
+function keptByMeasure(uom: string | null, kind: string | null): boolean {
+  return uom !== null && (kind === 'food' || kind === 'supply' || uom !== 'bottle');
+}
+
 /** The invoice among an order's paper, else whatever was filed first. */
 /** INV-W36: `role="menu"` promises the menu keys, so the More menu keeps that
  *  promise. ArrowDown and ArrowUp step through the items and wrap; Home and End
@@ -382,7 +391,7 @@ export default function RowDropdown(props: RowDropdownProps) {
 
       {has('where') || has('pace') || has('cost') ? (
         <div className="iv-drop-cols">
-          {has('where') ? <WhereTheCountComesFrom row={row} zoneName={zoneName} onCount={() => setSheet('count')} /> : null}
+          {has('where') ? <WhereTheCountComesFrom row={row} zoneName={zoneName} uom={props.uom ?? null} kind={props.kind ?? null} onCount={() => setSheet('count')} /> : null}
           {has('pace') ? <HowFastItPours row={row} uom={props.uom ?? null} kind={props.kind ?? null} /> : null}
           {has('cost') ? (
           <WhatItHasCost
@@ -587,12 +596,18 @@ export default function RowDropdown(props: RowDropdownProps) {
 function WhereTheCountComesFrom({
   row,
   zoneName,
+  uom,
+  kind,
   onCount,
 }: {
   row: InvRow;
   zoneName: (id: string | null) => string;
+  uom: string | null;
+  kind: string | null;
   onCount: () => void;
 }) {
+  const measured = keptByMeasure(uom, kind);
+  const fig = (v: number | null): string => (v !== null && measured ? fmtQty(v, uom) : figure(v));
   const toPar = suggestedToPar(row);
   const zones = row.zones?.filter((z) => z.qty > 0) ?? null;
   return (
@@ -600,14 +615,14 @@ function WhereTheCountComesFrom({
       <h4 className="iv-sec">Where the count comes from</h4>
       <dl>
         <KV k="Live, till-verified" testId="drop-live">
-          <span className="iv-num">{figure(row.stock)}</span>
+          <span className="iv-num">{fig(row.stock)}</span>
         </KV>
         <KV k="Shadow, awaiting reconcile">
-          <span className="iv-num">{figure(row.shadow)}</span>
+          <span className="iv-num">{fig(row.shadow)}</span>
         </KV>
         <KV k="Par · reorder point">
           <span className="iv-num">
-            {row.par === null ? EM : row.par === 0 ? 'none set' : fmtCount(row.par)} · {figure(row.reorderPoint)}
+            {row.par === null ? EM : row.par === 0 ? 'none set' : fig(row.par)} · {fig(row.reorderPoint)}
           </span>
         </KV>
         <KV k="Suggested to par">
@@ -615,7 +630,7 @@ function WhereTheCountComesFrom({
               promise). A title at or above par, or with no par, is read and
               says so. */}
           {toPar !== null ? (
-            <span className="iv-num">{fmtCount(toPar)}</span>
+            <span className="iv-num">{fig(toPar)}</span>
           ) : row.stock === null ? (
             <span className="iv-num">{EM}</span>
           ) : row.par === null || row.par <= 0 ? (
@@ -629,7 +644,7 @@ function WhereTheCountComesFrom({
             ? 'could not be read'
             : zones.length === 0
               ? (noZoneWord(row.stock) ?? EM)
-              : zones.map((z) => `${zoneName(z.locationId)} ${fmtCount(z.qty)}`).join(' · ')}
+              : zones.map((z) => `${zoneName(z.locationId)} ${fig(z.qty)}`).join(' · ')}
         </KV>
         <KV k="Last counted">{row.lastCountedAt ? fmtWhen(row.lastCountedAt) : 'never counted'}</KV>
       </dl>
@@ -1013,7 +1028,7 @@ function Paperwork({
   // millilitre), so a bare "25,000" and a cost of "0.00" said nothing. A good
   // reads its door quantity in its unit and its cost a kg or a litre, as the
   // cost panel does; a drink kept in bottles is drawn as before.
-  const byMeasure = uom !== null && (kind === 'food' || kind === 'supply' || uom !== 'bottle');
+  const byMeasure = keptByMeasure(uom, kind);
   const qtyCell = (n: number | null): string => (n === null ? EM : byMeasure ? fmtQty(n, uom) : fmtCount(n));
   const unitCell = (n: number | null): ReactNode => {
     if (!byMeasure || n === null) return cellMoney(n, currency);
