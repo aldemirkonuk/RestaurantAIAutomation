@@ -12,6 +12,7 @@ import tailwind from '../../tailwind.config.js';
 const HERE = __dirname;
 const SRC = join(HERE, '..');
 const TOKENS = readFileSync(join(HERE, 'house-tokens.css'), 'utf8');
+const MUDAVYM = readFileSync(join(HERE, 'mudavym.css'), 'utf8');
 const colors = (tailwind as any).theme.extend.colors as Record<string, Record<string, string>>;
 
 const STOPS = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
@@ -45,7 +46,31 @@ describe('one seal ramp', () => {
   });
 });
 
-describe('no alias palettes', () => {
+describe('three papers, no alias palettes', () => {
+  it('Tailwind paper fallbacks equal the light-ground tokens in mudavym.css', () => {
+    for (const k of ['0', '1', '2']) {
+      const css = MUDAVYM.match(new RegExp(`--paper-${k}:\\s*(#[0-9a-f]{6});`, 'i'))![1].toLowerCase();
+      const fallback = colors.paper[k].match(/#[0-9a-f]{6}/i)![0].toLowerCase();
+      expect(fallback).toBe(css);
+    }
+  });
+
+  it('the warm surface and neutral steps reuse the three papers instead of minting more whites', () => {
+    const papers = new Set(
+      ['0', '1', '2'].map((k) => colors.paper[k].match(/#[0-9a-f]{6}/i)![0].toLowerCase()),
+    );
+    const warm = [
+      colors.surface.secondary,
+      colors.surface.tertiary,
+      colors.slate['25'],
+      colors.slate['50'],
+      colors.slate['100'],
+      colors.gray['50'],
+      colors.gray['100'],
+    ].map((v) => v.toLowerCase());
+    for (const v of warm) expect(papers.has(v)).toBe(true);
+  });
+
   it('brand, yellow and danger are gone from the theme and from every class list', () => {
     for (const name of ['brand', 'yellow', 'danger']) expect(colors[name]).toBeUndefined();
     const offenders: string[] = [];

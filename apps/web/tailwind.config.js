@@ -43,9 +43,9 @@ export default {
           950: 'oklch(0.2 0.032 210 / <alpha-value>)',
         },
         paper: {
-          0: 'var(--paper-0, #FAF7F1)',
-          1: 'var(--paper-1, #F3EFE6)',
-          2: 'var(--paper-2, #EAE4D8)',
+          0: 'var(--paper-0, #FDFAF4)',
+          1: 'var(--paper-1, #F5F2EC)',
+          2: 'var(--paper-2, #EAE7E2)',
         },
         // `inkm` (mudavym ink) — named to avoid colliding with any future
         // generic `ink` scale.
@@ -127,15 +127,15 @@ export default {
         // Surfaces — pure white kept
         surface: {
           primary: '#FFFFFF',
-          secondary: '#FAF7F5',
-          tertiary: '#F3EEEB',
+          secondary: '#FDFAF4',
+          tertiary: '#F5F2EC',
           elevated: '#FFFFFF',
         },
         // Warm neutrals
         slate: {
-          25: '#FDFCFB',
-          50: '#FAF7F5',
-          100: '#F3EEEB',
+          25: '#FDFAF4',
+          50: '#FDFAF4',
+          100: '#F5F2EC',
           150: '#EBE4E0',
           200: '#E4DBD6',
           300: '#CFC3BC',
@@ -148,8 +148,8 @@ export default {
           950: '#121110',
         },
         gray: {
-          50: '#FAF7F5',
-          100: '#F3EEEB',
+          50: '#FDFAF4',
+          100: '#F5F2EC',
           200: '#E4DBD6',
           300: '#CFC3BC',
           400: '#A3968E',

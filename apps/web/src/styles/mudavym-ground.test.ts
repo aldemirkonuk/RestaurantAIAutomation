@@ -62,9 +62,9 @@ const CHARCOAL = {
  * want the whole set, the same way the pre-0169 CHARCOAL block did).
  */
 const PAPER_FULL = {
-  '--paper-0': '#fffdf8',
-  '--paper-1': '#f3efe6',
-  '--paper-2': '#eae4d8',
+  '--paper-0': '#fdfaf4',
+  '--paper-1': '#f5f2ec',
+  '--paper-2': '#eae7e2',
   '--ink-1': '#211c16',
   '--ink-2': '#4f473c',
   '--ink-3': '#7c7365',
@@ -74,7 +74,7 @@ const PAPER_FULL = {
 
 /** The one escape: ADR 0104 D9, the sheet of paper. */
 const PAPER = {
-  '--paper-0': '#fffdf8',
+  '--paper-0': '#fdfaf4',
   '--ink-1': '#211c16',
   '--seal': '#1a5e6b',
 } as const;

@@ -166,9 +166,9 @@
   --alarm-ring: rgba(163, 58, 43, 0.3);
 
   /* grounds — the paper column (ADR 0042's light column; ADR 0169 default) */
-  --paper-0: #fffdf8;
-  --paper-1: #f3efe6;
-  --paper-2: #eae4d8;
+  --paper-0: #fdfaf4;
+  --paper-1: #f5f2ec;
+  --paper-2: #eae7e2;
 
   /* ink — the companions of the paper ground; they move as one set */
   --ink-1: #211c16;
@@ -180,7 +180,7 @@
      "above" and the "agreed / undated / suspended" state have no word in the
      base palette. No sketch draws this ground for 113, so these are new:
      darker rotations of the charcoal pair, the same relationship --seal-deep
-     bears to --seal. Contrast against --paper-0 (#fffdf8): warn 5.18:1,
+     bears to --seal. Contrast against --paper-0 (measured on #fffdf8, re-checked by mudavym-ground.test.ts): warn 5.18:1,
      loss 6.01:1 (both pass WCAG AA for text). */
   --warn: #96601A;
   --warn-tint: rgba(150, 96, 26, 0.14);
