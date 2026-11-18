@@ -157,10 +157,10 @@ describe('EndpaperShell', () => {
           <p>x</p>
         </Fresh>,
       )
-      // name (turn), full stop (stamp), two rules (settle), kicker + voice (ink)
+      // name (one fade), full stop (stamp), two rules (settle), kicker + voice (ink)
       expect(calls).toHaveLength(6)
-      expect(calls.map((c) => c.options.duration)).toEqual([420, 360, 320, 320, 160, 160])
-      expect(calls.map((c) => c.options.delay)).toEqual([0, 300, 340, 400, 560, 560])
+      expect(calls.map((c) => c.options.duration)).toEqual([280, 360, 320, 320, 160, 160])
+      expect(calls.map((c) => c.options.delay)).toEqual([0, 200, 240, 300, 560, 560])
       first.unmount()
       calls = []
       render(
