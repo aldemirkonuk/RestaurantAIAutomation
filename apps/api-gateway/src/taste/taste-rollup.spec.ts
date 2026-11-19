@@ -71,6 +71,7 @@ describe('rollup: a cocktail (R3 section 4, whiskey sour)', () => {
       { name: 'Lemon juice', qty: 22.5, unit: 'ml', chem: { ce: 6.0, se: 2.5 }, chemProv: 'measured' },
       { name: '1:1 simple syrup', qty: 15, unit: 'ml', chem: { se: 61.5 }, chemProv: 'measured' },
     ] }] });
+    expect(measured.axes.sour.conf).toBeGreaterThan(0.9); // lemon alone drives sour, and it was measured
     expect(measured.axes.sour.conf).toBeGreaterThan(r.axes.sour.conf);
     expect(measured.axes.sour.hi - measured.axes.sour.lo).toBeLessThan(r.axes.sour.hi - r.axes.sour.lo);
     expect(measured.basis.measured).toBe(2);
@@ -92,6 +93,11 @@ describe('rollup: a dish (R3 section 5, seared kofta, garlic yogurt, charred tom
   it('is rich and savoury, not sweet', () => {
     expect(r.axes.fat.v).toBeGreaterThan(r.axes.sweet.v + 4);
     expect(r.axes.sweet.v).toBeLessThan(2);
+  });
+  it('takes up fat when fried, and tastes bitter from char but not from plain cooking', () => {
+    const one = (name: string, prep?: string): RollupInput => ({ kind: 'dish', components: [{ name: 'x', lines: [{ name, qty: 100, unit: 'g', prep }] }] });
+    expect(rollup(one('Chicken', 'fried')).axes.fat.v).toBeGreaterThan(rollup(one('Chicken')).axes.fat.v + 1);
+    expect(rollup(one('Tomato', 'charred')).axes.bitter.v).toBeGreaterThan(rollup(one('Tomato', 'roasted')).axes.bitter.v + 0.8);
   });
   it('has no dilution, and no certainty above what a class prior can give', () => {
     expect(r.basis.dilution).toBeNull();
