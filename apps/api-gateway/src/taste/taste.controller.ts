@@ -5,7 +5,7 @@ import {
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { AppendHouseTasteDto } from './dto/taste.dto';
+import { AppendHouseTasteDto, RollupPreviewDto } from './dto/taste.dto';
 import { isSubjectKind, SubjectKind, TasteService } from './taste.service';
 
 type Caller = { userId: string; restaurantId: string; name?: string; email?: string };
@@ -44,6 +44,33 @@ export class TasteController {
     @CurrentUser() user: Caller,
   ) {
     return this.taste.read(restaurantId, this.subject(kind, restaurantId, user), subjectId);
+  }
+
+  // Declared first: a 3-segment POST that is not a subject.
+  @Post(':restaurantId/rollup/preview')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'What a typed, unsaved recipe would taste like. Reads and writes nothing.' })
+  @ApiResponse({ status: 200 })
+  preview(
+    @Param('restaurantId', ParseUUIDPipe) restaurantId: string,
+    @Body() body: RollupPreviewDto,
+    @CurrentUser() user: Caller,
+  ) {
+    this.subject('dish', restaurantId, user);
+    return this.taste.preview(body);
+  }
+
+  @Post(':restaurantId/:subjectKind/:subjectId/rollup')
+  @HttpCode(201)
+  @ApiOperation({ summary: 'Work out how a cocktail or dish tastes from its current recipe, and keep it as a layer' })
+  @ApiResponse({ status: 201 })
+  async rollup(
+    @Param('restaurantId', ParseUUIDPipe) restaurantId: string,
+    @Param('subjectKind') kind: string,
+    @Param('subjectId', ParseUUIDPipe) subjectId: string,
+    @CurrentUser() user: Caller,
+  ) {
+    return this.taste.rollupSubject(restaurantId, this.subject(kind, restaurantId, user), subjectId);
   }
 
   @Post(':restaurantId/:subjectKind/:subjectId/house')
