@@ -80,6 +80,12 @@ describe('PageTipStrip on the staff home', () => {
     expect(strip()).not.toBeNull();
   });
 
+  it('[REVERT-FAILS] holds it while the signed-in role is not read yet, so it never flashes for staff', () => {
+    applyAccountGroundAsk(undefined);
+    mount(null);
+    expect(strip()).toBeNull();
+  });
+
   it('renders where there is no auth provider at all', () => {
     applyAccountGroundAsk(undefined);
     render(<PageTipStrip />);
