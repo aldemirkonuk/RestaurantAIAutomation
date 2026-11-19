@@ -7,23 +7,53 @@
  * a register that is loading or refused is neither "empty" nor a line.
  */
 
-import { CATALOGUE } from "./rp-catalogue";
+import { CATALOGUE, graphOrDefault } from "./rp-catalogue";
 import { readsRegister, type ViewCtx } from "./rp-spec";
-import type { AnalysisId } from "./rp-sheet";
+import type { AnalysisId, GraphType } from "./rp-sheet";
+import type { AnalysisView } from "./rp-view";
 import type { Register } from "./useReportsNextData";
 
 /** Rows a collapsed (empty) cutting keeps: 2 x 34 + 14 = 82 px of ruling, drawn 72 px tall. */
 export const STRIP_ROWS = 2;
 
 /**
+ * True when the answer has no drawing of the chosen shape in it: the register
+ * could not honestly be drawn that way at all. The cutting says so in a
+ * sentence (`Undrawable`) rather than an empty frame.
+ */
+export function cannotDraw(view: AnalysisView, graph: GraphType): boolean {
+  if (view.say) return false;
+  switch (graph) {
+    case "line":
+    case "area":
+    case "bars":
+      return !view.cats;
+    case "combo":
+      return !view.cats?.measures?.length;
+    case "scatter":
+      return !view.points;
+    case "heatmap":
+      return !view.matrix;
+    case "figure":
+      return view.figures.length === 0;
+    case "table":
+    default:
+      return !view.node && !view.table;
+  }
+}
+
+/**
  * True when the register has been read, was not refused, and its honest
- * answer is a sentence (`view.say`) with no drawing behind it. A loading or
- * failed register keeps its full card: it has a retry to show.
+ * answer is a sentence (`view.say`, or a shape it cannot be drawn as) with no
+ * drawing behind it. A loading or failed register keeps its full card: it has
+ * a retry to show. The week that reads zero is a strip too (r73 c3 need 11):
+ * its own "No pours read this week" line is the strip's sentence.
  */
 export function isStrip(
   id: AnalysisId,
   register: Register<unknown> | undefined,
   ctx: ViewCtx,
+  graph?: GraphType,
 ): boolean {
   const spec = CATALOGUE[id];
   if (!readsRegister(spec)) return false;
@@ -39,8 +69,8 @@ export function isStrip(
     return false;
   try {
     const view = spec.view(register.data, ctx);
-    // A view that names its own empty line keeps its slot (the week, r64).
-    return view.say != null && view.empty == null;
+    if (view.say != null) return true;
+    return graph != null && cannotDraw(view, graphOrDefault(id, graph));
   } catch {
     return false;
   }

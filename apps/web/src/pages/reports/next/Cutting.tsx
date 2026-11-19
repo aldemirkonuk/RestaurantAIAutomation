@@ -58,8 +58,10 @@ import {
 } from './rp-plot';
 import { CATALOGUE, graphOrDefault, type ViewCtx } from './rp-catalogue';
 import { readsRegister } from './rp-spec';
+import { cannotDraw } from './rp-strip';
 import { naturalPx } from './rp-fit';
 import { Grip, PlacingBar } from './Placing';
+import RuledOff from './RuledOff';
 import CuttingFlat, { FLAT_PARAM } from './CuttingFlat';
 import type { ArrangeApi } from './rp-arrange';
 import type { ComboPick } from './rp-combo';
@@ -140,32 +142,6 @@ export function TillWindowPicker({
       ))}
     </div>
   );
-}
-
-/**
- * True when the reader's drawing needs a shape this view does not carry, so
- * `Drawing` says why instead of plotting. One test, read by `Drawing` (what to
- * show) and `Body` (whether the view's own reason was already said above).
- */
-function cannotDraw(view: AnalysisView, graph: GraphType): boolean {
-  if (view.say) return false;
-  switch (graph) {
-    case 'line':
-    case 'area':
-    case 'bars':
-      return !view.cats;
-    case 'combo':
-      return !view.cats?.measures?.length;
-    case 'scatter':
-      return !view.points;
-    case 'heatmap':
-      return !view.matrix;
-    case 'figure':
-      return view.figures.length === 0;
-    case 'table':
-    default:
-      return !view.node && !view.table;
-  }
 }
 
 /** The chosen drawing, or — when the register cannot honestly be drawn that
@@ -427,6 +403,7 @@ export default function Cutting({
       data-held={held || undefined}
       data-strip={strip || undefined}
     >
+      {strip && <RuledOff />}
       {/* Not a <header>: the section's heading is the h2 below it, and a nested
           banner landmark per cutting would drown the page's own. */}
       <div className="rp-cut__head">
