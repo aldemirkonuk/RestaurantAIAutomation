@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest'
 // @ts-expect-error plain ESM tool, shared with the codemod CLI
 import { readAllowlist, scan, SRC } from '../../tools/typeFloor.mjs'
 
-const FOLDERS = ['pages/reports/', 'pages/connections/']
+const FOLDERS = ['pages/reports/', 'pages/connections/', 'pages/settings/']
 
 describe('type floor on the big pages', () => {
   it.each(FOLDERS)('%s has no site under 11px and no allowlist ceiling', (folder) => {

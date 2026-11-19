@@ -106,7 +106,7 @@ function AskTrainingBody({
         }
       >
         {reg.statedBy?.name && (
-          <p style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-4)', margin: '6px 0 0' }}>
+          <p style={{ fontFamily: MONO, fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-4)', margin: '6px 0 0' }}>
             set by · {reg.statedBy.name}
           </p>
         )}

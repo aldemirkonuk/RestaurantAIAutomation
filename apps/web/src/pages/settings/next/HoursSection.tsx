@@ -314,7 +314,7 @@ export function HoursSection({ data }: { data: SettingsNextData }) {
                 <a
                   href="#st-section-time-zone"
                   className="st-ink st-focus"
-                  style={{ fontFamily: MONO, fontSize: 10, color: 'var(--seal-deep)' }}
+                  style={{ fontFamily: MONO, fontSize: 11, color: 'var(--seal-deep)' }}
                 >
                   set in Time zone
                 </a>
