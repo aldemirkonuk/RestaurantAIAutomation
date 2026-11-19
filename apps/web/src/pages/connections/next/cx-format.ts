@@ -11,6 +11,8 @@
  * meaning of two letters is how a stylesheet starts leaking across pages.
  */
 
+import { isUnreachable, UNREACHABLE_WORDS } from '@/lib/unreachable';
+
 export const DASH = '—';
 
 /** A count. `0` is a measurement and prints as `0`; absence prints as a dash. */
@@ -155,6 +157,7 @@ export function readError(e: unknown): string {
   const raw = err?.response?.data?.message;
   if (Array.isArray(raw) && raw.length) return String(raw[0]);
   if (typeof raw === 'string' && raw.trim()) return raw;
+  if (isUnreachable(e)) return UNREACHABLE_WORDS;
   if (err?.message) return err.message;
   return 'This register could not be read, and the reason did not come back with the failure.';
 }

@@ -32,6 +32,7 @@
  */
 
 import { useMemo, useState } from 'react';
+import { failureWords } from '@/lib/unreachable';
 import { HoldToApprove } from '../../../components/mudavym';
 import { Sheet } from '../../../components/mudavym/Sheet';
 // The browser scheduler is DEMOTED, not imported wholesale: only the canceller
@@ -566,7 +567,7 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
 
         {failure && (
           <p role="status" className="cn-notice" style={{ marginTop: 10 }}>
-            The gateway refused this write ({failure instanceof Error ? failure.message : 'unknown error'}).
+            The gateway refused this write ({failureWords(failure, 'unknown error')}).
             Nothing was saved.
           </p>
         )}

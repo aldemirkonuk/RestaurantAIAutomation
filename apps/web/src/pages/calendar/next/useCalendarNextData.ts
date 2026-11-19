@@ -22,6 +22,7 @@
  */
 
 import { useCallback, useMemo } from 'react';
+import { isUnreachable, UNREACHABLE_WORDS } from '@/lib/unreachable';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useCalendarEventsSubscription } from '../../../contexts/RealtimeContext';
@@ -378,6 +379,7 @@ function statusOf(err: unknown): number | null {
 }
 
 function messageOf(err: unknown): string {
+  if (isUnreachable(err)) return UNREACHABLE_WORDS;
   if (err instanceof Error && err.message) return err.message;
   return 'unknown error';
 }

@@ -29,6 +29,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { isUnreachable, UNREACHABLE_WORDS } from '@/lib/unreachable';
 import { Building2, FileUp, Gavel } from 'lucide-react';
 import { AttachmentRow } from './AttachmentRow';
 import { readError } from './cx-format';
@@ -199,7 +200,7 @@ export function DistributorFeedPanel({
       const e = err as { response?: { data?: { message?: string } }; message?: string };
       setUploadError(
         e.response?.data?.message ??
-          e.message ??
+          (isUnreachable(err) ? UNREACHABLE_WORDS : e.message) ??
           'The upload failed and the gateway sent no sentence with it. Nothing was stored.',
       );
     }
