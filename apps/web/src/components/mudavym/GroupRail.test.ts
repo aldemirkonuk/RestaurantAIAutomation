@@ -34,4 +34,22 @@ describe('group-rail.css motion contract (r73 c3)', () => {
   it('keeps every font size at or above 11 px', () => {
     for (const m of css.matchAll(/font:\s*(?:\d+\s+)?(\d+(?:\.\d+)?)px/g)) expect(+m[1]).toBeGreaterThanOrEqual(11);
   });
+
+  // r74 walk: the shell header is sticky and 53 px tall, so a head, a rail or a
+  // scroll target at top 0 sat underneath it and the group's name was hidden.
+  it('keeps the sticky head, the sticky rail and the scroll target below the shell header', () => {
+    expect(css).toMatch(/\.gr-layout \{[^}]*--gr-top:\s*53px/);
+    expect(css).toMatch(/\.gr-head \{[^}]*top:\s*var\(--gr-top/);
+    expect(css).toMatch(/\.gr-rail \{[^}]*top:\s*calc\(var\(--gr-top\)/);
+    expect(css).toMatch(/\.gr-pane \{[^}]*scroll-margin-top:\s*calc\(var\(--gr-top\)/);
+  });
+
+  it('sets the phone select at 16 px so iOS does not zoom the page on focus', () => {
+    expect(css).toMatch(/\.gr-select select \{[^}]*font:\s*600 16px/);
+  });
+
+  it('scrolls without easing under reduced motion (html scroll-behavior: smooth would ease "auto")', () => {
+    const src = readFileSync(join(__dirname, 'GroupRail.tsx'), 'utf8');
+    expect(src).toMatch(/behavior:\s*reduced \? 'instant' : 'smooth'/);
+  });
 });
