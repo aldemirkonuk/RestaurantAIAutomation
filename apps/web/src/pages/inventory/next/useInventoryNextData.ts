@@ -763,25 +763,9 @@ export function useInventoryNextData() {
     return m;
   }, [wines.data]);
 
-  const providersQ = useProviders(rid ?? '');
-  // The gateway's stock rows carry `provider_id` and never the vendor's name, so
-  // the name is read off the house's vendor book (the Vendor column of every export).
-  const vendorNames = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const p of (providersQ.data ?? []) as Provider[]) if (p.id && p.name) m.set(p.id, p.name);
-    return m;
-  }, [providersQ.data]);
-
   const rows = useMemo<InvRow[] | null>(
-    () =>
-      items === null
-        ? null
-        : items.map((i) => {
-            const row = toRow(i, i.wineId ? winesById.get(i.wineId) : null);
-            if (row.providerName === null && row.providerId !== null) row.providerName = vendorNames.get(row.providerId) ?? null;
-            return row;
-          }),
-    [items, winesById, vendorNames],
+    () => (items === null ? null : items.map((i) => toRow(i, i.wineId ? winesById.get(i.wineId) : null))),
+    [items, winesById],
   );
 
   const currencyQ = useQuery({
@@ -798,6 +782,7 @@ export function useInventoryNextData() {
         : { state: 'not_recorded', code: null };
 
   const storage = useStorageLocations();
+  const providersQ = useProviders(rid ?? '');
 
   // Per-wine advice toward the house's target margin (ADR 0193), the shape
   // `HousePriceCell` reads — the same read and the same failure words as
