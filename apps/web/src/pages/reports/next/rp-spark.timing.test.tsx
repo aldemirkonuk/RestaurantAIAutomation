@@ -23,9 +23,33 @@ describe('sparkline timing (c3 need 15)', () => {
   });
   it('the line draws in 600 ms on the house ease, 40 ms apart; the dot follows it', () => {
     const line = rule('.rp-spark__line');
-    expect(line).toMatch(/rp-spark-draw 600ms cubic-bezier\(0\.16, 1, 0\.3, 1\)/);
-    expect(line).toContain('calc(var(--rp-spark-i, 0) * 40ms)');
-    expect(rule('.rp-spark__dot')).toContain('calc(520ms + var(--rp-spark-i, 0) * 40ms)');
+    expect(line).toMatch(/animation-name:\s*rp-spark-draw/);
+    expect(line).toMatch(/animation-duration:\s*600ms/);
+    expect(line).toMatch(/animation-timing-function:\s*cubic-bezier\(0\.16, 1, 0\.3, 1\)/);
+    expect(line).toContain('animation-delay: calc(var(--rp-spark-i, 0) * 40ms)');
+    const dot = rule('.rp-spark__dot');
+    expect(dot).toMatch(/animation-timing-function:\s*cubic-bezier\(0\.16, 1, 0\.3, 1\)/);
+    expect(dot).toContain('animation-delay: calc(520ms + var(--rp-spark-i, 0) * 40ms)');
+  });
+  it('no var() rides inside an `animation:` shorthand, where the timing was read back as ease', () => {
+    for (const sel of ['.rp-spark__line', '.rp-spark__dot']) {
+      expect(rule(sel)).not.toMatch(/\banimation:[^;]*var\(/);
+    }
+  });
+  it('two figures stagger by their place: the second is 40 ms behind the first', () => {
+    render(
+      <>
+        <Spark series={{ ...series, id: 'a' } as never} index={0} />
+        <Spark series={{ ...series, id: 'b' } as never} index={1} />
+      </>,
+    );
+    expect(screen.getByTestId('rp-spark-a').style.getPropertyValue('--rp-spark-i')).toBe('0');
+    expect(screen.getByTestId('rp-spark-b').style.getPropertyValue('--rp-spark-i')).toBe('1');
+  });
+  it('only transform, opacity and clip-path move, and reduced motion draws nothing', () => {
+    expect(css).not.toMatch(/\.rp-spark[^{]*{[^}]*transition:\s*all/);
+    const reduced = css.slice(css.lastIndexOf('prefers-reduced-motion: reduce', css.indexOf('.rp-spark__line,\n  .rp-spark__dot')));
+    expect(reduced).toMatch(/\.rp-spark__line,\s*\.rp-spark__dot\s*{\s*animation:\s*none/);
   });
   it('the skeleton sheen is 1.4 s ease-in-out and nothing is linear', () => {
     const a = rule('.rp-skel::after');
