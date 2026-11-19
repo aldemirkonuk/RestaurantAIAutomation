@@ -38,7 +38,7 @@ describe('AuthSpread', () => {
 })
 
 describe('the doors wear the one shell', () => {
-  it.each(['ForgotPassword', 'NoAccess'])(
+  it.each(['ForgotPassword', 'NoAccess', 'ResetPassword', 'VerifyEmail'])(
     '%s is built on AuthSpread, not on a card or the old public shell',
     (page) => {
       const src = read(`src/pages/${page}.tsx`)

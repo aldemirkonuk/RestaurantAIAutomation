@@ -1,11 +1,7 @@
-import { PublicShell } from '../components/mudavym/PublicShell'
-import { usePublicDesign } from '../lib/mudavym/publicDesign'
+import { AuthSpread } from '../components/brand/AuthSpread'
 import { useState } from 'react'
 import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { Mail, CheckCircle, Loader2, AlertCircle } from 'lucide-react'
-import { AuthShell, AuthCard } from '../components/brand/AuthShell'
-import { Button } from '../components/ui'
 import { toast } from 'sonner'
 import { getOnboardingProgress } from '../services/api/menus'
 import { apiClient, getErrorMessage } from '../services/api/client'
@@ -27,7 +23,6 @@ function linkRefusal(err: unknown): 'sign-in' | 'other-account' | null {
 }
 
 export function VerifyEmail() {
-  const publicDesign = usePublicDesign()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { user, loading, logout } = useAuth()
@@ -99,7 +94,7 @@ export function VerifyEmail() {
 
   /** What the page says for a link it cannot honour yet (fork 12). */
   const linkGate = mustSignIn ? (
-    <div className="mdv-pub__stack" data-testid="verify-needs-sign-in">
+    <div className="mdv-spread-stack" data-testid="verify-needs-sign-in">
       <p>
         This link works only while you are signed in to the account it was
         sent for.
@@ -114,7 +109,7 @@ export function VerifyEmail() {
       </p>
     </div>
   ) : refusal === 'other-account' ? (
-    <div className="mdv-pub__stack">
+    <div className="mdv-spread-stack">
       <p className="mdv-alert" role="alert">
         This link is for a different account than the one signed in here.
       </p>
@@ -123,7 +118,7 @@ export function VerifyEmail() {
       </button>
     </div>
   ) : alreadyVerified ? (
-    <div className="mdv-pub__stack">
+    <div className="mdv-spread-stack">
       <p role="status">This address is already verified.</p>
       <Link className="mdv-btn mdv-btn--seal" to="/">
         Continue
@@ -152,222 +147,89 @@ export function VerifyEmail() {
     }
   }
 
-  if (publicDesign) {
-    return (
-      <PublicShell
-        title={
-          verified
-            ? 'Email verified'
-            : token
-              ? 'Verify your email'
-              : 'Check your email'
-        }
-        eyebrow="Account access"
-        voice={
-          verified
-            ? 'Opening your workspace…'
-            : token
-              ? 'Confirm this address to continue.'
-              : 'Look for the verification email from Mudavym.'
-        }
-        homeHref="/login"
-        footer={
-          <Link className="mdv-link" to="/login">
-            Back to sign in
-          </Link>
-        }
-      >
-        <div className="mdv-pub__plate mdv-pub__stack">
-          {verified ? (
-            <p role="status">Your address is verified. Redirecting you now…</p>
-          ) : (
-            <>
-              {error && (
-                <p className="mdv-alert" role="alert">
-                  {error}
-                </p>
-              )}
-              {token ? (
-                linkGate ?? (
-                  <button
-                    className="mdv-btn mdv-btn--seal"
-                    onClick={handleVerify}
-                    disabled={verifying}
-                  >
-                    {verifying ? 'Verifying…' : 'Verify my email'}
-                  </button>
-                )
-              ) : (
-                <>
-                  {user?.email && (
-                    <p>
-                      Account: <strong>{user.email}</strong>
-                    </p>
-                  )}
-                  <p>
-                    Open the verification link in your inbox. If it is missing,
-                    check your spam folder.
-                  </p>
-                  {user ? (
-                    <button
-                      className="mdv-btn mdv-btn--seal"
-                      onClick={handleResend}
-                      disabled={resending}
-                    >
-                      {resending ? 'Requesting…' : 'Resend verification email'}
-                    </button>
-                  ) : (
-                    <Link
-                      className="mdv-btn mdv-btn--seal"
-                      to="/login?redirect=%2Fverify-email"
-                    >
-                      Sign in to resend
-                    </Link>
-                  )}
-                  {lastResent && (
-                    <p role="status" className="mdv-note">
-                      Another verification email was requested at{' '}
-                      {lastResent.toLocaleTimeString()}. Wait one minute before
-                      requesting again.
-                    </p>
-                  )}
-                </>
-              )}
-            </>
-          )}
-        </div>
-      </PublicShell>
-    )
-  }
-
-  if (verified) {
-    return (
-      <AuthShell title="Email Verified!" subtitle="Redirecting you now…">
-        <AuthCard className="text-center py-10">
-          <CheckCircle
-            className="w-14 h-14 text-emerald-500 mx-auto"
-            strokeWidth={1.5}
-          />
-        </AuthCard>
-      </AuthShell>
-    )
-  }
-
   return (
-    <AuthShell
-      title="Check Your Email"
-      subtitle={
-        user?.email
-          ? `We sent a verification link to ${user.email}`
-          : 'We sent a verification link to your inbox'
+    <AuthSpread
+      title={
+        verified
+          ? 'Email verified'
+          : token
+            ? 'Verify your email'
+            : 'Check your email'
+      }
+      eyebrow="Account access"
+      voice={
+        verified
+          ? 'Opening your workspace…'
+          : token
+            ? 'Confirm this address to continue.'
+            : 'Look for the verification email from Mudavym.'
+      }
+      footer={
+        <Link className="mdv-link" to="/login">
+          Back to sign in
+        </Link>
       }
     >
-      <AuthCard>
-        <div className="flex justify-center mb-6">
-          <div className="w-14 h-14 bg-wine-50 rounded-full flex items-center justify-center ring-1 ring-wine-100">
-            <Mail className="w-6 h-6 text-wine-600" strokeWidth={1.75} />
-          </div>
-        </div>
-
-        {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-100 rounded-xl flex items-center gap-2">
-            <AlertCircle
-              className="w-4 h-4 text-red-500 flex-shrink-0"
-              strokeWidth={1.75}
-            />
-            <p className="text-sm text-red-700">{error}</p>
-          </div>
-        )}
-
-        <div className="space-y-3 my-6">
-          {[
-            'Open the email from Mudavym',
-            'Click "Verify My Email"',
-            `You'll be guided through setting up your wine list`,
-          ].map((text, i) => (
-            <div
-              key={i}
-              className="flex items-start gap-3 bg-wine-50/50 rounded-xl p-3"
-            >
-              <div className="w-5 h-5 rounded-full bg-wine-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
-                {i + 1}
-              </div>
-              <p className="text-sm text-gray-600 leading-relaxed">{text}</p>
-            </div>
-          ))}
-        </div>
-
-        {token && linkGate ? (
-          <div className="space-y-3 text-sm text-gray-600 text-center">
-            {linkGate}
-          </div>
-        ) : token ? (
-          <div className="space-y-3">
-            <p className="text-sm text-gray-600 text-center">
-              Click below to verify your email address.
-            </p>
-            <Button
-              className="w-full"
-              size="lg"
-              onClick={handleVerify}
-              disabled={verifying}
-            >
-              {verifying ? (
-                <>
-                  <Loader2
-                    className="w-4 h-4 animate-spin mr-2"
-                    strokeWidth={1.75}
-                  />
-                  Verifying...
-                </>
-              ) : (
-                'Verify My Email'
-              )}
-            </Button>
-          </div>
+      <div className="mdv-spread-stack">
+        {verified ? (
+          <p role="status">Your address is verified. Redirecting you now…</p>
         ) : (
-          <div className="space-y-4">
-            <p className="text-sm text-gray-600 text-center">
-              Didn&apos;t receive the email? Check your spam folder or resend
-              below.
-            </p>
-            <Button
-              variant="outline"
-              className="w-full"
-              size="lg"
-              onClick={handleResend}
-              disabled={resending}
-            >
-              {resending ? (
-                <>
-                  <Loader2
-                    className="w-4 h-4 animate-spin mr-2"
-                    strokeWidth={1.75}
-                  />
-                  Resending...
-                </>
-              ) : (
-                'Resend Verification Email'
-              )}
-            </Button>
-            {lastResent && (
-              <p className="text-xs text-center text-gray-400">
-                Resent at {lastResent.toLocaleTimeString()}. Wait 1 minute
-                before resending again.
+          <>
+            {error && (
+              <p className="mdv-alert" role="alert">
+                {error}
               </p>
             )}
-          </div>
+            {token ? (
+              linkGate ?? (
+                <button
+                  className="mdv-btn mdv-btn--seal"
+                  onClick={handleVerify}
+                  disabled={verifying}
+                >
+                  {verifying ? 'Verifying…' : 'Verify my email'}
+                </button>
+              )
+            ) : (
+              <>
+                {user?.email && (
+                  <p>
+                    Account: <strong>{user.email}</strong>
+                  </p>
+                )}
+                <p>
+                  Open the verification link in your inbox. If it is missing,
+                  check your spam folder.
+                </p>
+                {user ? (
+                  <button
+                    className="mdv-btn mdv-btn--seal"
+                    onClick={handleResend}
+                    disabled={resending}
+                  >
+                    {resending ? 'Requesting…' : 'Resend verification email'}
+                  </button>
+                ) : (
+                  <Link
+                    className="mdv-btn mdv-btn--seal"
+                    to="/login?redirect=%2Fverify-email"
+                  >
+                    Sign in to resend
+                  </Link>
+                )}
+                {lastResent && (
+                  <p role="status" className="mdv-note">
+                    Another verification email was requested at{' '}
+                    {lastResent.toLocaleTimeString()}. Wait one minute before
+                    requesting again.
+                  </p>
+                )}
+              </>
+            )}
+          </>
         )}
-
-        <div className="mt-6 pt-4 border-t border-gray-100 text-center">
-          <Link
-            to="/login"
-            className="text-sm text-wine-600 hover:text-wine-700 font-semibold"
-          >
-            Back to Sign In
-          </Link>
-        </div>
-      </AuthCard>
-    </AuthShell>
+      </div>
+    </AuthSpread>
   )
+
 }
