@@ -35,6 +35,7 @@
  * as on /cocktails: the list shows as soon as the names are read, its cost
  * cells say "…" while the figures are read, and a failed figures read blanks
  * only the figures and says so once above the list, never the names.
+ * The opened dish offers to take the menu's price, after a confirm.
  */
 import { useId, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -49,7 +50,8 @@ import MenuDishesOffer from './MenuDishesOffer';
 import { dishMatches, sectionsOf } from './fold';
 import { AllergenCell, AllergenCheck, keptFor } from '../cellar/next/recipe/ListAllergens';
 import { CostWaits, NoRecipeYet } from '../cellar/next/recipe/ListCostWaits';
-import type { DishFigureRow, DishListRow } from '../../services/api/recipes';
+import UseMenuPrice from '../cellar/next/recipe/UseMenuPrice';
+import type { DishFigureRow, DishListRow, MenuPrice } from '../../services/api/recipes';
 import { EM, SANS } from '../cellar/next/cellar-format';
 import '../cellar/next/cellar-next.css';
 
@@ -205,7 +207,20 @@ function AddDish({ onAdded, sections }: { onAdded: (id: string) => void; section
  * The open dish's own name, section and price, and taking it off the list.
  * Mounted with `key={dish.id}`, so one dish's draft never saves into another.
  */
-function DishDetails({ dish, onRemoved, sections }: { dish: DishListRow; onRemoved: () => void; sections: string[] }) {
+function DishDetails({
+  dish,
+  onRemoved,
+  sections,
+  menu,
+  say,
+}: {
+  dish: DishListRow;
+  onRemoved: () => void;
+  sections: string[];
+  /** What the current menu says for this dish, while a menu is current and read. */
+  menu?: MenuPrice;
+  say?: ((n: number | null | undefined) => string) | null;
+}) {
   const update = useUpdateDish(dish.id);
   const remove = useRemoveDish(dish.id);
   const [name, setName] = useState(dish.name);
@@ -286,6 +301,22 @@ function DishDetails({ dish, onRemoved, sections }: { dish: DishListRow; onRemov
         <p className="cl-note" style={{ gridColumn: '1 / -1' }}>{PRICE_UNREAD}</p>
       ) : price.trim() === '' && dish.price != null ? (
         <p className="cl-note" style={{ gridColumn: '1 / -1' }}>A blank price saves the dish with no price.</p>
+      ) : null}
+      {menu && say ? (
+        <div style={{ gridColumn: '1 / -1' }}>
+          <UseMenuPrice
+            name={dish.name}
+            own={dish.price}
+            menu={menu}
+            say={say}
+            share="food cost"
+            onUse={async (p) => {
+              await update.mutateAsync({ price: p });
+              // The box shows the price now kept, so Save has nothing left to send.
+              setPrice(priceText(p));
+            }}
+          />
+        </div>
       ) : null}
       <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         {asking ? (
@@ -484,7 +515,16 @@ export default function DishesPage() {
                     d.id === openId ? (
                       <tr key={`${d.id}-leaf`} data-testid={`dish-leaf-${d.id}`}>
                         <td colSpan={cols}>
-                          {canEdit ? <DishDetails key={d.id} dish={d} onRemoved={() => open(null)} sections={sections} /> : null}
+                          {canEdit ? (
+                            <DishDetails
+                              key={d.id}
+                              dish={d}
+                              onRemoved={() => open(null)}
+                              sections={sections}
+                              menu={showMenu ? menu.byId?.get(d.id) : undefined}
+                              say={say}
+                            />
+                          ) : null}
                           <RecipeSheet dishId={d.id} />
                         </td>
                       </tr>

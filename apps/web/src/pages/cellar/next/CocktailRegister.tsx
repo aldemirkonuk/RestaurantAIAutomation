@@ -46,6 +46,7 @@ import { useCanEditRecipe, useDrinkFigures, useHouseMoney, useMenuPrices } from 
 import { AllergenCell, AllergenCheck, keptFor } from './recipe/ListAllergens';
 import { CostWaits, NoRecipeYet } from './recipe/ListCostWaits';
 import { MENU_PRICES_UNREAD, MenuPriceCell } from './recipe/MenuPriceCell';
+import UseMenuPrice from './recipe/UseMenuPrice';
 import { useHousePercent, type SayPercent } from './recipe/useHousePercent';
 import type { DrinkFigureRow } from '../../../services/api/recipes';
 import {
@@ -564,6 +565,24 @@ export default function CocktailRegister({
                             </button>
                           </span>
                         </div>
+                        {/* The menu's price, offered while the drink differs from it (gap 2,
+                            slice 2). Not while the drink's own form is open: a price taken
+                            here would leave the form's box saying the old one. */}
+                        {showMenu && editId !== c.id ? (
+                          <div style={{ marginTop: 10 }}>
+                            <UseMenuPrice
+                              key={c.id}
+                              name={c.display_name ?? c.name}
+                              own={c.price ?? null}
+                              menu={menu.byId?.get(c.id)}
+                              say={money}
+                              share="pour cost"
+                              onUse={async (p) => {
+                                await amend.mutateAsync({ id: c.id, input: { price: p } });
+                              }}
+                            />
+                          </div>
+                        ) : null}
                         {/* The sheet keys its own draft by drink (RecipeSheet's default export), so typed lines never cross drinks. */}
                         <RecipeSheet cocktailId={c.id} />
                       </>
