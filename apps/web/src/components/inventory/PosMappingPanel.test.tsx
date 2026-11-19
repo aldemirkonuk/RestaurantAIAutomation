@@ -20,6 +20,9 @@ vi.mock("../../services/api/posHub", () => ({
   runCatalogMatch,
   setSaleUnits,
 }));
+// The two sections added for the till-recipe lane have their own specs.
+vi.mock("./TillRecipeMap", () => ({ TillRecipeMap: () => null }));
+vi.mock("./CheckMarginSection", () => ({ CheckMarginSection: () => null }));
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
 }));
