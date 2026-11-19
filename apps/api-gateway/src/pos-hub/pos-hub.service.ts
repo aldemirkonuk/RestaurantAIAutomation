@@ -16,6 +16,7 @@ import { LowStockAlertsService } from "../notifications/low-stock-alerts.service
 import { CanonicalCheck, CheckChannel } from "./pos-types";
 import { ADAPTERS } from "./pos-adapters";
 import { saleLineKeys, splitQty, fractionMl } from "./sale-line";
+import { sellRecipeLine, supabaseRecipeIo, voidRecipeLine } from "./recipe-sale";
 import {
   CostSnapshot,
   SaleCostSource,
@@ -1113,6 +1114,7 @@ export class PosHubService {
             is_wine,
             master_wine_id: it.master_wine_id ?? mapped.masterWineId ?? null,
             inventory_id: mapped.inventoryId,
+            cocktail_id: mapped.cocktailId,
             sale_unit: mapped.saleUnit,
             sale_volume_ml: mapped.saleVolumeMl,
           };
@@ -1235,7 +1237,7 @@ export class PosHubService {
       .getClient()
       .from("pos_item_mappings")
       .select(
-        "external_item_id, item_name, category, is_wine, master_wine_id, inventory_id, sale_unit, sale_volume_ml",
+        "external_item_id, item_name, category, is_wine, master_wine_id, inventory_id, cocktail_id, sale_unit, sale_volume_ml",
       )
       .eq("restaurant_id", restaurantId)
       .in("source", [source, "*"]);
@@ -1312,6 +1314,7 @@ export class PosHubService {
     masterWineId: string | null;
     category: string | null;
     inventoryId: string | null;
+    cocktailId: string | null;
     saleUnit: string | null;
     saleVolumeMl: number | null;
   } {
@@ -1332,6 +1335,7 @@ export class PosHubService {
         masterWineId: byName.master_wine_id ?? null,
         category: byName.category ?? null,
         inventoryId: byName.inventory_id ?? null,
+        cocktailId: byName.cocktail_id ?? null,
         saleUnit: (byName.sale_unit as string | null) ?? null,
         saleVolumeMl:
           byName.sale_volume_ml == null ? null : Number(byName.sale_volume_ml),
@@ -1343,6 +1347,7 @@ export class PosHubService {
       masterWineId: null,
       category: null,
       inventoryId: null,
+      cocktailId: null,
       saleUnit: null,
       saleVolumeMl: null,
     };
@@ -1366,6 +1371,7 @@ export class PosHubService {
       comped?: boolean;
       is_wine: boolean;
       inventory_id: string | null;
+      cocktail_id?: string | null;
       sale_unit: string | null;
       sale_volume_ml: number | null;
     }>,
@@ -1434,6 +1440,24 @@ export class PosHubService {
       // with no is_wine filter. Do not read this line as "food is discarded" —
       // it isn't; only stock depletion (which food has no inventory row for)
       // is skipped here. See .planning/BEVERAGE_CATALOGUE_PLAN.md register A11.
+      //
+      // A button that names a drink recipe (pos_item_mappings.cocktail_id)
+      // draws that recipe's goods, wine or not. A dish has no recipe link yet.
+      if (it.cocktail_id) {
+        await this.applyRecipeLine(
+          restaurantId,
+          source,
+          check,
+          it as typeof it & { cocktail_id: string },
+          lineKeys[lineNo],
+          isVoid,
+          when.at,
+          report,
+          affected,
+          booked,
+        );
+        continue;
+      }
       if (!it.is_wine) continue;
 
       // r57 D3: a fractional quantity (Clover by measure, 0.5) keeps its
@@ -1712,6 +1736,84 @@ export class PosHubService {
       }
     }
     return tally;
+  }
+
+  /** One recipe line: book its draw, or give it back on a void (recipe-sale.ts decides). */
+  private async applyRecipeLine(
+    restaurantId: string,
+    source: string,
+    check: CanonicalCheck,
+    it: {
+      name: string;
+      external_item_id: string | null;
+      qty: number;
+      price: number | null;
+      comped?: boolean;
+      cocktail_id: string;
+    },
+    saleKey: string,
+    isVoid: boolean,
+    occurredAt: string,
+    report: StockReport,
+    affected: Set<string>,
+    booked: () => void,
+  ): Promise<void> {
+    const io = supabaseRecipeIo(this.dbService.getClient());
+    try {
+      if (isVoid) {
+        const out = await voidRecipeLine(io, { restaurantId, saleKey, occurredAt });
+        if (out.kind === "returned") {
+          booked();
+          out.inventoryIds.forEach((i) => affected.add(i));
+        } else if (out.kind === "queue") {
+          await this.queueUnresolvedLine(restaurantId, source, check, it, {
+            reason: out.reason,
+            mappedInventoryId: null,
+            detail: out.detail,
+          });
+        } else if (out.kind === "failed") {
+          this.noteRecipeFailure(report, check, it.name, out.message);
+        }
+        return;
+      }
+      if (!(it.qty > 0)) return;
+      const out = await sellRecipeLine(io, {
+        restaurantId,
+        cocktailId: it.cocktail_id,
+        saleKey,
+        serves: it.qty,
+        occurredAt,
+      });
+      if (out.kind === "booked") {
+        booked();
+        out.inventoryIds.forEach((i) => affected.add(i));
+      } else if (out.kind === "replay") {
+        report.tally.alreadyBooked++;
+      } else if (out.kind === "queue") {
+        await this.queueUnresolvedLine(restaurantId, source, check, it, {
+          reason: out.reason,
+          mappedInventoryId: null,
+          detail: out.detail,
+        });
+      } else {
+        this.noteRecipeFailure(report, check, it.name, out.message);
+      }
+    } catch (err: any) {
+      this.noteRecipeFailure(report, check, it.name, err?.message ?? String(err));
+    }
+  }
+
+  private noteRecipeFailure(
+    report: StockReport,
+    check: CanonicalCheck,
+    name: string,
+    message: string,
+  ): void {
+    this.logger.warn(
+      `Recipe draw failed for ${name} on check ${check.externalCheckId}: ${message}`,
+    );
+    report.tally.failed++;
+    report.noteFailure("stock", name, message, check.externalCheckId);
   }
 
   /**
