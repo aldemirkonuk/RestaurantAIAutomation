@@ -217,8 +217,29 @@
 @media (max-width: 640px) {
   .tc-line--head {
     display: flex;
+    flex-wrap: nowrap;
     margin: 0 0 8px;
     min-height: 44px;
+    max-height: 44px;
+  }
+  /* One line only: a long sentence is cut with an ellipsis (the full words are in the card the
+     tap opens) so the answered line is exactly the 44 px that was held and the cards never move. */
+  .tc-line--head .tc-line-k {
+    flex: none;
+  }
+  .tc-line--head .tc-line-btn {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-height: 44px;
+  }
+  .tc-line--head .tc-line-btn > span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tc-line--head .tc-marks {
+    flex: none;
   }
   .tc-line--foot {
     display: none;

@@ -105,4 +105,9 @@ describe('the phone placement', () => {
     expect(phone).toMatch(/\.tc-line--head\s*\{[^}]*display:\s*flex;[^}]*min-height:\s*44px;/);
     expect(phone).toMatch(/\.tc-line--foot\s*\{[^}]*display:\s*none;/);
   });
+  it('holds the phone line to one 44 px row: a long sentence is cut, never wrapped, so the cards do not move', () => {
+    const phone = css.slice(css.indexOf('@media (max-width: 640px)', css.indexOf('.tc-line--head')));
+    expect(phone).toMatch(/\.tc-line--head\s*\{[^}]*flex-wrap:\s*nowrap;[^}]*max-height:\s*44px;/);
+    expect(phone).toMatch(/\.tc-line--head \.tc-line-btn > span:first-child\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/);
+  });
 });
