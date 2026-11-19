@@ -42,6 +42,8 @@ export const TASTE_FAILED = 'Taste could not be read just now.';
 /** What the slot hands the card: the item as the drawer knows it (same shape as the nutrition slot). */
 export interface TasteCardProps {
   row: { id: string };
+  /** The good's kind: it decides which flavour words the form offers. */
+  kind?: string | null;
   restaurantId: string | null;
   /** Everyone who works here may describe a taste; kept so the slot matches the nutrition card. */
   canManage?: boolean;
@@ -160,7 +162,7 @@ function Footer({ d }: { d: TasteData }) {
   );
 }
 
-export default function TasteCard({ row, restaurantId }: TasteCardProps) {
+export default function TasteCard({ row, kind, restaurantId }: TasteCardProps) {
   const id = row.id;
   const qc = useQueryClient();
   const [describing, setDescribing] = useState(false);
@@ -248,6 +250,7 @@ export default function TasteCard({ row, restaurantId }: TasteCardProps) {
         <TasteForm
           restaurantId={restaurantId}
           itemId={id}
+          kind={kind}
           onSaved={done}
           onCancel={() => setDescribing(false)}
           onUnconfirmed={() => void qc.invalidateQueries({ queryKey: key })}
