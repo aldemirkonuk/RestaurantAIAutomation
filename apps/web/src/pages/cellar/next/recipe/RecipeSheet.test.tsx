@@ -235,6 +235,39 @@ describe('RecipeSheet', () => {
     expect(screen.getByTestId('recipe-taste-act')).toHaveTextContent('Read again');
   });
 
+  it('how it tastes on a dish sheet: reads and works out THIS dish, not a cocktail with the same id', async () => {
+    h.taste.mockResolvedValue({ state: 'ready', data: { effective: null, layers: [] } });
+    const after = {
+      effective: { axes: { salty: { v: 5, lo: 4, hi: 6, conf: 0.5, prov: [{ kind: 'recipe', share: 1 }], bandOnly: false } }, descriptors: [], texture: [], conflicts: [] },
+      layers: [{ source: 'recipe', version: 1, method: 'computed', statedByName: null, statedAt: '2026-11-19T10:00:00Z', hasNote: false, noteText: null }],
+    };
+    h.roll.mockImplementation(async () => {
+      h.taste.mockResolvedValue({ state: 'ready', data: after });
+      return { state: 'ready', data: after };
+    });
+    const n = negroni();
+    const { cocktail, ...rest } = n;
+    const dish = { ...rest, dish: { id: CID, name: 'Kofta', section: null, price: 450, description: null } };
+    h.get.mockImplementation(async (url: string) => {
+      if (url === '/settings/currency') return { data: { restaurantId: RID, code: 'TRY', country: 'Turkey', readable: true, reason: null, statedAt: null } };
+      if (url === `/recipes/${RID}/dishes/${CID}`) return { data: dish };
+      if (url === `/recipes/${RID}/shelf`) return { data: [] };
+      if (url === `/recipes/${RID}/dishes/${CID}/versions`) return { data: [] };
+      throw new Error(`unexpected GET ${url}`);
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<RecipeSheet dishId={CID} />, { wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider> });
+    expect(await screen.findByTestId('recipe-taste')).toBeInTheDocument();
+    expect(h.taste).toHaveBeenCalledWith('dish', CID, RID);
+    expect(h.taste).not.toHaveBeenCalledWith('cocktail', CID, RID);
+    fireEvent.click(await screen.findByRole('button', { name: 'Work it out' }));
+    await waitFor(() => expect(h.roll).toHaveBeenCalledWith('dish', CID, RID));
+    expect(h.roll).not.toHaveBeenCalledWith('cocktail', CID, RID);
+    expect(await screen.findByTestId('taste-row-salty')).toBeInTheDocument();
+    expect(screen.getByTestId('recipe-taste-act')).toHaveTextContent('Read again');
+    expect(screen.getByTestId('recipe-taste-line')).toBeInTheDocument();
+  });
+
   it('2. 2 of 3 lines priced says so and shows no total', async () => {
     serve(
       negroni({
