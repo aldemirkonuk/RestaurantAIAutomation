@@ -96,6 +96,8 @@ const DRAG_CANCEL =
 export interface SheetCutting {
   id: AnalysisId;
   slot: Slot;
+  /** Folded to a strip: it runs the sheet's full width while reading (`flowStrips`). */
+  strip?: boolean;
   /** The whole cutting, already rendered — the sheet only lays paper out. */
   body: ReactNode;
 }

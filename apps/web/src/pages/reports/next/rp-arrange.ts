@@ -172,6 +172,8 @@ export function slotRect(
 interface Placed {
   id: AnalysisId;
   slot: Slot;
+  /** Folded to a strip (`rp-strip.ts`): a sentence, not a card. Reading only. */
+  strip?: boolean;
 }
 
 function toLayout(cuttings: Placed[]): LayoutItem[] {
@@ -230,6 +232,64 @@ export function projectCuttings<T extends Placed>(cuttings: T[], cols: number): 
 }
 
 /**
+ * The twelve-column sheet as it is READ when some cuttings have folded to a
+ * 72 px strip. A strip keeps its slot's columns but gives its rows back, and
+ * the cuttings are static while reading, so nothing rises into what it
+ * vacated: a strip beside a tall card left a blank block under it, the width of
+ * the strip, as tall as the card.
+ *
+ * So strips leave the shelf they were on and run the full width of the sheet,
+ * and the cards are re-set in reading order: each shelf takes cards until the
+ * next will not fit, its last card takes the columns left over, and every card
+ * on it stands as tall as the tallest (the same ruling the house sheet is
+ * drawn on, so a sheet already tiled to twelve comes back unchanged). A strip
+ * waits for the shelf in progress to close, so it never sits ahead of a card
+ * that read before it. No strip, no change. Pure; the reader's own arrangement
+ * is untouched, and arranging (`strip` unset) always gets the real slots.
+ */
+export function flowStrips<T extends Placed>(cuttings: T[]): T[] {
+  if (!cuttings.some((c) => c.strip)) return cuttings;
+  const placed = new Map<AnalysisId, Slot>();
+  let y = 0;
+  let shelf: T[] = [];
+  let used = 0;
+  let waiting: T[] = [];
+  const laidFull = (c: T) => {
+    placed.set(c.id, { x: 0, y, w: SHEET_COLS, h: c.slot.h });
+    y += c.slot.h;
+  };
+  const closeShelf = () => {
+    if (shelf.length > 0) {
+      const h = Math.max(...shelf.map((c) => c.slot.h));
+      let x = 0;
+      shelf.forEach((c, i) => {
+        const w = i === shelf.length - 1 ? SHEET_COLS - x : Math.min(c.slot.w, SHEET_COLS);
+        placed.set(c.id, { x, y, w, h });
+        x += w;
+      });
+      y += h;
+    }
+    shelf = [];
+    used = 0;
+    waiting.forEach(laidFull);
+    waiting = [];
+  };
+  for (const c of byRowThenColumn(cuttings)) {
+    if (c.strip) {
+      if (shelf.length === 0) laidFull(c);
+      else waiting.push(c);
+      continue;
+    }
+    const w = Math.min(c.slot.w, SHEET_COLS);
+    if (used + w > SHEET_COLS) closeShelf();
+    shelf.push(c);
+    used += w;
+  }
+  closeShelf();
+  return cuttings.map((c) => ({ ...c, slot: placed.get(c.id) ?? c.slot }));
+}
+
+/**
  * What `Sheet.tsx` hands the grid: each ruling its own projection. Handing the
  * twelve-column sheet to every ruling broke the phone sheet once the cuttings
  * went static (arrange off): `correctBounds` pushes a clamped static cutting
@@ -241,15 +301,15 @@ export function sheetLayouts(
   cuttings: Placed[],
   arranging: boolean,
 ): Record<keyof typeof SHEET_BREAKPOINT_COLS, LayoutItem[]> {
-  const at = (cols: number): LayoutItem[] =>
-    projectCuttings(cuttings, cols).map((c) => ({
-      i: c.id,
-      ...c.slot,
-      minW: Math.min(SHEET_MIN_W, cols),
-      minH: SHEET_MIN_H,
-      static: !arranging,
-    }));
-  const lg = at(SHEET_COLS);
+  const item = (cols: number) => (c: Placed): LayoutItem => ({
+    i: c.id,
+    ...c.slot,
+    minW: Math.min(SHEET_MIN_W, cols),
+    minH: SHEET_MIN_H,
+    static: !arranging,
+  });
+  const at = (cols: number): LayoutItem[] => projectCuttings(cuttings, cols).map(item(cols));
+  const lg = (arranging ? cuttings : flowStrips(cuttings)).map(item(SHEET_COLS));
   return {
     lg,
     md: lg,
