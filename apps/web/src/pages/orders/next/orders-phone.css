@@ -82,6 +82,8 @@
   .ord-spine .ord-spine__tile {
     flex: 0 0 148px;
     min-height: 64px;
+    /* Two lines of 24 + 17 px plus the rail, in 64 px: the tile's own 12 px padding made it 73. */
+    padding-block: 7px;
     scroll-snap-align: start;
     overflow: hidden;
     border: 1px solid var(--paper-2, #EAE4D8);

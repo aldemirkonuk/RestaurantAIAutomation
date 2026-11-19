@@ -22,6 +22,7 @@ describe('the stage strip on a phone', () => {
     expect(phoneBlock).toMatch(/\.ord-spine \{[^}]*max-width: 100%/);
     expect(phoneBlock).toMatch(/\.ord-spine__tile \{[^}]*flex: 0 0 148px/);
     expect(phoneBlock).toMatch(/\.ord-spine__tile \{[^}]*min-height: 64px/);
+    expect(phoneBlock).toMatch(/\.ord-spine \.ord-spine__tile \{[^}]*padding-block: 7px/);
     expect(phoneBlock).toMatch(/\.ord-spine__tile \{[^}]*scroll-snap-align: start/);
   });
 
