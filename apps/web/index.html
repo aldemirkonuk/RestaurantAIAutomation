@@ -73,7 +73,19 @@
       @keyframes boot-in { from { opacity: 0; } to { opacity: 1; } }
       @media (max-width: 767px) { #boot-shell { grid-template-columns: minmax(0, 1fr); } #boot-shell .s { display: none; } #boot-shell .t { margin: 28px 16px 0; } }
       @media (prefers-reduced-motion: reduce) { #boot-shell { animation: none; } }
+      /* The sign-in family has no sidebar: one open page, the title bar centred. */
+      html[data-boot-frame="auth"] #boot-shell { grid-template-columns: minmax(0, 1fr); }
+      html[data-boot-frame="auth"] #boot-shell .s { display: none; }
+      html[data-boot-frame="auth"] #boot-shell .t { margin: 18vh auto 0; width: 240px; max-width: calc(100% - 32px); }
     </style>
+    <!-- The frame must match the route: sign-in, register, get-started, verify,
+         password and invite pages have no house sidebar, so they must not paint
+         one. Keep this list in step with the public auth routes in App.tsx. -->
+    <script id="boot-frame">
+      if (/^\/(login|register|get-started|verify-email|forgot-password|reset-password|invite|no-access)(\/|$)/.test(location.pathname)) {
+        document.documentElement.setAttribute('data-boot-frame', 'auth');
+      }
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <!-- The served identity of every signed-in route: closed by default. The build
