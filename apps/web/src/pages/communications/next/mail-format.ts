@@ -16,9 +16,75 @@ import { EM, sendState } from './cm-format';
 /** The shapes GET /mail/* answers with (apps/api-gateway/src/conversations/mail.types.ts). */
 export type MailDoor = 'house_mailbox' | 'whatsapp' | 'mudavym_mail' | 'from_house';
 
+/**
+ * Who a conversation is with. Only `vendor` was stored before the house said
+ * yes to reading every conversation; a gateway that predates `kind` sends
+ * none, and an absent or unknown one is read as `vendor` ({@link mailKindOf}).
+ */
+export type MailKind = 'vendor' | 'team' | 'guest';
+
+export function mailKindOf(x: { kind?: string | null } | null | undefined): MailKind {
+  return x?.kind === 'team' || x?.kind === 'guest' ? x.kind : 'vendor';
+}
+
+/** The Mail tab's kind filter: every kind, or one. */
+export type MailKindFilter = 'all' | MailKind;
+
+export const MAIL_KIND_FILTERS: ReadonlyArray<{ id: MailKindFilter; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'vendor', label: 'Vendors' },
+  { id: 'team', label: 'Team' },
+  { id: 'guest', label: 'Guests' },
+];
+
+/** What the list says when the chosen kind has nobody in it. */
+export function kindEmptyWords(kind: MailKindFilter, readsAll: boolean): string {
+  const who = kind === 'team' ? 'team members' : kind === 'guest' ? 'guests' : 'vendors';
+  if (kind === 'all') return 'No one has written to this house yet.';
+  if (!readsAll && kind !== 'vendor') {
+    return `Mail with ${who} is not read yet: the house reads vendor mail only, until an owner or manager says otherwise below.`;
+  }
+  return `No conversation with ${who} yet.`;
+}
+
+/**
+ * The text the house reads before it lets Mudavym read every conversation in
+ * its mailbox, shown in full and never shortened. The gateway may send its own
+ * wording (`reader.readAll.text`); this is what the tab shows until it does.
+ */
+export const READ_ALL_CONSENT_TEXT =
+  "Mudavym will read every conversation in this house's connected Gmail mailbox, not only the ones with vendors: " +
+  'letters with your team and with guests too. It stores what it reads in this house, shows it to the house\'s ' +
+  'owners and managers in Mail, and never sends anything on its own because of it. You can stop at any time; ' +
+  'what was already read stays in the house until it is removed.';
+
+export const READ_ALL_OFFER = 'Read every conversation, not only vendors';
+
+/** What the tab says about its own reach, so a quiet Team or Guests list is never mistaken for an empty one. */
+export const VENDOR_ONLY_LINE = 'This tab shows vendor mail only.';
+export const READS_ALL_LINE = 'This tab shows every conversation in the mailbox: vendors, team and guests.';
+
+/** The reader's consent to read all, as the gateway reports it. Absent: not given. */
+export function readsAll(reader: MailboxReader | null | undefined): boolean {
+  return reader?.readAll?.accepted === true;
+}
+
+/**
+ * Where one letter came from and went to, in one line. Null when the gateway
+ * sent neither (an older one): the letter then shows nothing rather than a
+ * guess.
+ */
+export function addressLine(m: Pick<MailMessage, 'fromAddress' | 'toAddresses'>): string | null {
+  const from = (m.fromAddress ?? '').trim();
+  const to = (m.toAddresses ?? []).map((a) => a.trim()).filter(Boolean);
+  if (!from && to.length === 0) return null;
+  if (from && to.length > 0) return `From ${from} to ${to.join(', ')}`;
+  return from ? `From ${from}` : `To ${to.join(', ')}`;
+}
+
 export interface MailPersonRow {
   key: string;
-  kind: 'vendor';
+  kind: MailKind;
   providerId: string;
   name: string | null;
   lastAt: string;
@@ -53,7 +119,7 @@ export interface MailPeoplePage {
 
 export interface MailPersonRef {
   key: string;
-  kind: 'vendor';
+  kind: MailKind;
   providerId: string;
   name: string | null;
 }
@@ -106,6 +172,12 @@ export interface MailMessage {
    * 4). Absent from a gateway that predates the mark: read as not marked.
    */
   noReplyMarkedAt?: string | null;
+  /** Who the conversation is with. Absent from a gateway that predates it: read as a vendor. */
+  kind?: MailKind;
+  /** The address the letter came from. Absent from a gateway that predates it. */
+  fromAddress?: string | null;
+  /** The addresses the letter went to. Absent from a gateway that predates it. */
+  toAddresses?: string[] | null;
   /**
    * The files the letter carried (r28 mail gap 13). Absent from a gateway
    * that predates them: read as none known, never as "carried none".
@@ -170,6 +242,12 @@ export interface MailboxReader {
    * address. null or absent (an older gateway): not known, and no claim.
    */
   bookAddresses?: number | null;
+  /**
+   * The house's answer to reading every conversation, not only vendors. Absent
+   * (an older gateway) is read as not given: the tab says it shows vendor mail
+   * only.
+   */
+  readAll?: { accepted: boolean; acceptedAt?: string | null; text?: string | null } | null;
 }
 
 /** What a connected mailbox with an empty vendor book needs, in the house's words (r36 mail gap 5). */

@@ -26,15 +26,28 @@
  * `?senders=open` opens that register, which is where those notices link.
  */
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useEffect, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Mail, MessageCircle } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { EM, MONO, SANS, failedReadWords, fmtWhen, managesHouse } from './cm-format';
 import { IntakeHealthSheet } from './IntakeHealthSheet';
 import { MailSetup } from './MailSetup';
-import { MailThread, type LetterFacts } from './MailThread';
+import type { LetterFacts } from './MailThread';
+
+// The letters are read only once a thread is opened, so their code is fetched then;
+// the tab says it is opening them while it arrives.
+const MailThread = lazy(() => import('./MailThread').then((m) => ({ default: m.MailThread })));
 import {
+  MAIL_KIND_FILTERS,
+  READS_ALL_LINE,
+  READ_ALL_CONSENT_TEXT,
+  READ_ALL_OFFER,
+  VENDOR_ONLY_LINE,
+  kindEmptyWords,
+  mailKindOf,
+  readsAll,
+  type MailKindFilter,
   NEW_TO_YOU,
   channelWords,
   emptyListWords,
@@ -62,6 +75,7 @@ import {
   useMailIntake,
   useMailListsFollowSummary,
   useMailPeople,
+  useReadAllConsent,
   useMailSender,
   useHouse,
   useMailSummary,
@@ -228,6 +242,13 @@ function PeoplePlaceholder({ rows }: { rows: number }) {
   );
 }
 
+const KIND_WORD = { vendor: 'vendor', team: 'team', guest: 'guest' } as const;
+const NO_NAME = {
+  vendor: 'A vendor with no name on file',
+  team: 'A team member with no name on file',
+  guest: 'A guest with no name on file',
+} as const;
+
 function PersonRow({ p, on, onOpen }: { p: MailPersonRow; on: WaitingOn; onOpen: () => void }) {
   return (
     <li style={{ borderBottom: '1px solid var(--paper-2, #EAE4D8)' }}>
@@ -243,9 +264,11 @@ function PersonRow({ p, on, onOpen }: { p: MailPersonRow; on: WaitingOn; onOpen:
           <NewChip on={p.newToYou} />
           <UnsentChip status={p.unsentStatus} />
           <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink-1, #211C16)', overflowWrap: 'anywhere' }}>
-            {p.name ?? 'A vendor with no name on file'}
+            {p.name ?? NO_NAME[mailKindOf(p)]}
           </span>
-          <span style={QUIET}>vendor</span>
+          <span data-testid="person-kind" style={QUIET}>
+            {KIND_WORD[mailKindOf(p)]}
+          </span>
           <Glyphs channels={p.channels} />
           {p.newestOpenOrderNumber && (
             <span
@@ -373,6 +396,8 @@ function PersonThreads({
 function People({
   on,
   waitingOnly,
+  kind,
+  readsEverything,
   search,
   onClearSearch,
   reader,
@@ -385,6 +410,10 @@ function People({
   /** Who a waiting vendor waits on, in this reader's words (r36 mail gap 14). */
   on: WaitingOn;
   waitingOnly: boolean;
+  /** Which kind of conversation the list is narrowed to. */
+  kind: MailKindFilter;
+  /** The house said yes to reading every conversation. */
+  readsEverything: boolean;
   /** The trimmed search term, '' for none (r28 mail gap 16). */
   search: string;
   onClearSearch: () => void;
@@ -397,13 +426,14 @@ function People({
   /** setupLinkWords(canReply): staff are not told to set up what they cannot change. */
   setupWords: string;
 }) {
-  const q = useMailPeople(waitingOnly, search);
+  const q = useMailPeople(waitingOnly, search, kind);
   const pages = q.data?.pages ?? [];
-  const people = pages.flatMap((p) => p.people);
+  // The gateway is asked for one kind, and the list holds to it even if it answers with more.
+  const people = pages.flatMap((p) => p.people).filter((p) => kind === 'all' || mailKindOf(p) === kind);
   const storedKinds = pages[0]?.storedKinds ?? null;
   const house = useHouse();
   // Remember the unfiltered first-page count so the next cold load draws that many bars.
-  const settled = Boolean(q.data) && !waitingOnly && !search;
+  const settled = Boolean(q.data) && !waitingOnly && !search && kind === 'all';
   const firstPageCount = pages[0]?.people.length ?? 0;
   useEffect(() => {
     if (settled) rememberRowCount(house, firstPageCount);
@@ -426,6 +456,10 @@ function People({
           <button type="button" data-testid="search-clear-empty" onClick={onClearSearch} style={LINK_BUTTON}>
             Clear the search
           </button>
+        </p>
+      ) : people.length === 0 && kind !== 'all' ? (
+        <p data-testid="people-empty-kind" role="status" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', maxWidth: '68ch' }}>
+          {kindEmptyWords(kind, readsEverything)}
         </p>
       ) : people.length === 0 ? (
         <p data-testid="people-empty" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', maxWidth: '68ch' }}>
@@ -496,6 +530,103 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
   );
 }
 
+/**
+ * What this tab reads, said plainly, and the one offer to widen it. Until the
+ * house says yes it shows vendor mail only and says so. Only an owner or a
+ * manager can say yes or stop; the consent text is shown in full before the
+ * act, and the act is done when the tab has read the answer back.
+ */
+function ReadScope({
+  reader,
+  pending,
+  failed,
+  canAnswer,
+}: {
+  reader: MailboxReader | null;
+  pending: boolean;
+  failed: boolean;
+  canAnswer: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const consent = useReadAllConsent();
+  if (pending) return null;
+  if (failed) {
+    return (
+      <p data-testid="read-scope" style={{ ...QUIET, margin: 0 }}>
+        What this tab reads could not be read just now. That does not mean it reads only vendors.
+      </p>
+    );
+  }
+  const all = readsAll(reader);
+  const text = reader?.readAll?.text?.trim() || READ_ALL_CONSENT_TEXT;
+  const act = (accept: boolean) =>
+    consent.mutate({ accept }, { onSuccess: () => setOpen(false) });
+  return (
+    <div className="grid gap-1.5" data-testid="read-scope" data-state={all ? 'all' : 'vendors'}>
+      <p style={{ ...QUIET, margin: 0 }}>
+        {all ? READS_ALL_LINE : VENDOR_ONLY_LINE}{' '}
+        {canAnswer && all && (
+          <button
+            type="button"
+            data-testid="read-all-stop"
+            disabled={consent.isPending}
+            onClick={() => act(false)}
+            style={LINK_BUTTON}
+          >
+            {consent.isPending ? 'Stopping…' : 'Stop reading every conversation'}
+          </button>
+        )}
+        {canAnswer && !all && !open && (
+          <button type="button" data-testid="read-all-offer" onClick={() => setOpen(true)} style={LINK_BUTTON}>
+            {READ_ALL_OFFER}
+          </button>
+        )}
+      </p>
+      {canAnswer && !all && open && (
+        <div
+          role="group"
+          aria-label={READ_ALL_OFFER}
+          data-testid="read-all-consent"
+          className="grid gap-2 rounded-lg px-3 py-2.5"
+          style={{ background: 'var(--paper-1, #F3EFE6)', border: '1px solid var(--paper-2, #EAE4D8)', maxWidth: '68ch' }}
+        >
+          <p data-testid="read-all-text" style={{ margin: 0, fontSize: 12.5, lineHeight: 1.5, color: 'var(--ink-2, #4F473C)' }}>
+            {text}
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              data-testid="read-all-accept"
+              disabled={consent.isPending}
+              onClick={() => act(true)}
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                padding: '5px 12px',
+                borderRadius: 999,
+                border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+                background: 'var(--seal-tint, rgba(26,94,107,.1))',
+                color: 'var(--seal-deep, #14515C)',
+                cursor: consent.isPending ? 'default' : 'pointer',
+              }}
+            >
+              {consent.isPending ? 'Saving…' : 'I agree, read every conversation'}
+            </button>
+            <button type="button" data-testid="read-all-decline" disabled={consent.isPending} onClick={() => setOpen(false)} style={LINK_BUTTON}>
+              Not now
+            </button>
+          </div>
+        </div>
+      )}
+      {consent.isError && (
+        <p role="alert" data-testid="read-all-failed" style={{ margin: 0, fontSize: 12, color: 'var(--alarm-deep, #8C3322)' }}>
+          That was not saved ({failedReadWords(consent.error)}). {all ? 'The tab still reads every conversation.' : 'The tab still shows vendor mail only.'}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function MailTab({
   draftedOrderIds,
   onOpenReply,
@@ -527,6 +658,7 @@ export function MailTab({
   const on = waitingOn(canReply);
   const [params, setParams] = useSearchParams();
   const [waitingOnly, setWaitingOnly] = useState(false);
+  const [kind, setKind] = useState<MailKindFilter>('all');
   // r28 mail gap 16: what is typed, and the term sent 300 ms after typing stops.
   const [typed, setTyped] = useState('');
   const [search, setSearch] = useState('');
@@ -693,6 +825,13 @@ export function MailTab({
           onBack={() => back({ setup: null })}
         />
       ) : threadKey ? (
+        <Suspense
+          fallback={
+            <p role="status" data-testid="letters-opening" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
+              Opening the letters…
+            </p>
+          }
+        >
         <MailThread
           threadKey={threadKey}
           backLabel={withKey ? 'Back to their threads' : 'Back to everyone'}
@@ -704,6 +843,7 @@ export function MailTab({
           onAnswer={onAnswer}
           bookFacts={bookFacts}
         />
+        </Suspense>
       ) : withKey ? (
         <PersonThreads
           on={on}
@@ -751,9 +891,24 @@ export function MailTab({
               {waitingChipWords(on)}
             </Chip>
           </div>
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Who the mail is with" data-testid="kind-filter">
+            {MAIL_KIND_FILTERS.map((f) => (
+              <Chip key={f.id} on={kind === f.id} onClick={() => setKind(f.id)}>
+                {f.label}
+              </Chip>
+            ))}
+          </div>
+          <ReadScope
+            reader={reader}
+            pending={senderQ.isPending}
+            failed={readerFailed}
+            canAnswer={canReply}
+          />
           <People
             on={on}
             waitingOnly={waitingOnly}
+            kind={kind}
+            readsEverything={readsAll(reader)}
             search={search}
             onClearSearch={clearSearch}
             reader={reader}

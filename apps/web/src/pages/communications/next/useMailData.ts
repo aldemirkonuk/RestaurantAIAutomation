@@ -27,6 +27,7 @@ import type {
   IntakeRead,
   MailIntakeResponse,
   MailboxReader,
+  MailKindFilter,
   MailPeoplePage,
   MailSummary,
   MailThreadPage,
@@ -51,7 +52,8 @@ export function useHouse(): string {
 
 export const mailKeys = {
   summary: (house: string) => ['mail-summary', house] as const,
-  people: (house: string, waitingOnly: boolean, search = '') => ['mail-people', house, waitingOnly, search] as const,
+  people: (house: string, waitingOnly: boolean, search = '', kind: MailKindFilter = 'all') =>
+    (kind === 'all' ? ['mail-people', house, waitingOnly, search] : ['mail-people', house, waitingOnly, search, kind]) as readonly unknown[],
   threads: (house: string, withKey: string) => ['mail-threads', house, withKey] as const,
   thread: (house: string, key: string) => ['mail-thread', house, key] as const,
 };
@@ -115,16 +117,17 @@ export function useMailListsFollowSummary(summary: MailSummary | null | undefine
  * searches, so a person past the first page is found too. While a new term
  * is read, the last list stays on screen instead of "Reading the mail…".
  */
-export function useMailPeople(waitingOnly: boolean, search = '') {
+export function useMailPeople(waitingOnly: boolean, search = '', kind: MailKindFilter = 'all') {
   const house = useHouse();
   return useInfiniteQuery<MailPeoplePage>({
-    queryKey: mailKeys.people(house, waitingOnly, search),
+    queryKey: mailKeys.people(house, waitingOnly, search, kind),
     initialPageParam: null as string | null,
     placeholderData: (previous) => previous,
     queryFn: async ({ pageParam }) => {
       const params: Record<string, string> = {};
       if (waitingOnly) params.waiting = '1';
       if (search) params.q = search;
+      if (kind !== 'all') params.kind = kind;
       if (pageParam) params.after = String(pageParam);
       return (await apiClient.get<MailPeoplePage>('/mail/people', { params })).data;
     },
@@ -195,6 +198,27 @@ export function useMailSender(poll = false) {
     enabled: Boolean(house),
     staleTime: 60_000,
     refetchInterval: poll ? MAIL_POLL_MS : false,
+  });
+}
+
+/**
+ * The house says yes (POST) or no (DELETE) to reading every conversation, not
+ * only vendors: scope `gmail_read_all`. Done when the sender read, which
+ * carries the answer, has been read again, so the tab never shows the old one
+ * after the act.
+ */
+export function useReadAllConsent() {
+  const house = useHouse();
+  const qc = useQueryClient();
+  return useMutation<unknown, unknown, { accept: boolean }>({
+    mutationFn: async ({ accept }) =>
+      accept
+        ? (await apiClient.post('/mail/consent', { scope: 'gmail_read_all' })).data
+        : (await apiClient.delete('/mail/consent', { params: { scope: 'gmail_read_all' } })).data,
+    onSuccess: () => {
+      for (const root of ['mail-people', 'mail-summary']) void qc.invalidateQueries({ queryKey: [root, house] });
+      return qc.invalidateQueries({ queryKey: ['house-letter-sender', house] });
+    },
   });
 }
 
