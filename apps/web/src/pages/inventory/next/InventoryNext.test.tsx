@@ -7,7 +7,7 @@
  * their own tests, and none of them is under test here.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { InvRow } from './useInventoryNextData';
@@ -1858,5 +1858,102 @@ describe('readSentence in a house of goods', () => {
     const rows = [food('a', { value: null })];
     expect(sortWords('value', rows, GOODS_WORDS)).toContain('no good listed has a cost');
     expect(sortWords('value', rows)).toContain('no title listed has a cost');
+  });
+});
+
+/* ── the phone: one Filter button, and a count mode for staff (critic c3 round 3) ── */
+describe('/inventory on a phone', () => {
+  const original = window.matchMedia;
+  const phone = (on: boolean) => {
+    window.matchMedia = ((q: string) => ({
+      matches: on && q.includes('767'),
+      media: q,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    })) as unknown as typeof window.matchMedia;
+  };
+  afterEach(() => {
+    window.matchMedia = original;
+  });
+  const rowsOf = () => [
+    row({ id: 'a', name: 'Counted last week', lastCountedAt: '2026-11-12T10:00:00Z' }),
+    row({ id: 'b', name: 'Never counted', lastCountedAt: null, standing: 'below', stock: 1 }),
+  ];
+
+  it('an owner gets the search and one 48 px Filter button; the filters wait in the sheet', () => {
+    phone(true);
+    mock.data = data({ rows: rowsOf() });
+    renderPage();
+    expect(screen.getByTestId('inventory-filter-button')).toBeTruthy();
+    expect(screen.queryByTestId('inventory-chips')).toBeNull();
+    expect(screen.queryByTestId('inventory-kinds')).toBeNull();
+    expect(screen.queryByRole('group', { name: 'View' })).toBeNull();
+    expect(screen.getByRole('searchbox')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('inventory-filter-button'));
+    const sheet = screen.getByTestId('inventory-filter-sheet');
+    expect(within(sheet).getByTestId('inventory-chips')).toBeTruthy();
+    expect(within(sheet).getByRole('group', { name: 'View' })).toBeTruthy();
+    expect(within(sheet).getByRole('button', { name: 'Tools' })).toBeTruthy();
+  });
+
+  it('the Filter button says how many controls are set, and Clear puts them back', () => {
+    phone(true);
+    mock.data = data({ rows: rowsOf() });
+    const { container } = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter initialEntries={['/inventory?chip=below&sort=name']}>
+          <InventoryNext />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const btn = screen.getByTestId('inventory-filter-button');
+    expect(within(btn).getByLabelText('2 set')).toBeTruthy();
+    fireEvent.click(btn);
+    fireEvent.click(within(screen.getByTestId('inventory-filter-sheet')).getByRole('button', { name: 'Clear' }));
+    expect(within(screen.getByTestId('inventory-filter-button')).queryByLabelText(/set$/)).toBeNull();
+    expect(container).toBeTruthy();
+  });
+
+  it('a desktop window keeps the chips and the toolbar on the page, with no Filter button', () => {
+    phone(false);
+    mock.data = data({ rows: rowsOf() });
+    renderPage();
+    expect(screen.queryByTestId('inventory-filter-button')).toBeNull();
+    expect(screen.getByTestId('inventory-chips')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Tools' })).toBeTruthy();
+  });
+
+  it('staff get a count mode: search, the rows and a Count bar, and nothing else', () => {
+    phone(true);
+    insights.props.length = 0;
+    mock.data = data({ canManage: false, rows: rowsOf() });
+    renderPage();
+    expect(screen.getByRole('searchbox')).toBeTruthy();
+    expect(screen.getByTestId('inv-row-a')).toBeTruthy();
+    expect(screen.queryByTestId('inventory-filter-button')).toBeNull();
+    expect(screen.queryByTestId('inventory-chips')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Tools' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Add a bottle' })).toBeNull();
+    expect(screen.queryByTestId('contextual-insights')).toBeNull();
+    expect(screen.queryByTestId('inventory-read-sentence')).toBeNull();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(insights.props).toHaveLength(0);
+    const bar = screen.getByTestId('inventory-count-bar');
+    expect(bar.textContent).toContain('Count');
+    // The next good is the one nobody has counted.
+    expect(bar.textContent).toContain('Never counted');
+  });
+
+  it('the Count bar opens that good, and an owner on a phone has no Count bar', () => {
+    phone(true);
+    mock.data = data({ canManage: false, rows: rowsOf() });
+    renderPage();
+    fireEvent.click(within(screen.getByTestId('inventory-count-bar')).getByRole('button'));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    cleanup();
+    mock.data = data({ rows: rowsOf() });
+    renderPage();
+    expect(screen.queryByTestId('inventory-count-bar')).toBeNull();
+    expect(screen.getByTestId('contextual-insights')).toBeTruthy();
   });
 });

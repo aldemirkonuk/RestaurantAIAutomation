@@ -93,6 +93,8 @@ export interface ItemDrawerProps {
   onClose: () => void;
   /** NutritionCard slot: what mounts in the detail card a KPI card opens. */
   NutritionCard?: ComponentType<NutritionCardProps>;
+  /** A sheet to open with the drawer: the staff "Count" bar opens it on the count. */
+  startWith?: SheetId;
 }
 
 export default function ItemDrawer(props: ItemDrawerProps) {
@@ -100,7 +102,7 @@ export default function ItemDrawer(props: ItemDrawerProps) {
   const NutritionCard = props.NutritionCard ?? WhatIsInIt;
   const [evidence, setEvidence] = useState<CardId | 'all' | null>(null);
   // One sheet for the drawer: the evidence's "Record a count" opens the sheet the acts own.
-  const [sheet, setSheet] = useState<SheetId | null>(null);
+  const [sheet, setSheet] = useState<SheetId | null>(props.startWith ?? null);
   const detailRef = useRef<HTMLElement | null>(null);
   // On a phone the detail card opens below the fold: bring it into view.
   useEffect(() => {

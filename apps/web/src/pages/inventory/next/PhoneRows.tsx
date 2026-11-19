@@ -42,6 +42,11 @@ export default function PhoneRows(props: PhoneRowsProps) {
 
   return (
     <div className="ivc-list" data-testid="inventory-cards" role="group" aria-label={`The book: every ${thing} on hand`}>
+      {canManage && advice.status === 'ready' && !advice.targetSet ? (
+        <p className="ivc-target" data-testid="inventory-no-target">
+          <a href="/settings?tab=target-margin">No target margin is set</a>, so no price advice is given.
+        </p>
+      ) : null}
       {selecting && props.onSelectAll ? (
         <label className="ivc-selectall">
           <input type="checkbox" className="iv-focus" checked={allSelected} onChange={props.onSelectAll} />
@@ -90,16 +95,14 @@ export default function PhoneRows(props: PhoneRowsProps) {
                 aria-expanded={open}
                 onClick={() => onToggle(row.id)}
               >
-                <span className="ivc-line">
-                  <span className="ivc-name">{name}</span>
-                  <span className="ivc-status" data-standing={row.standing}>
-                    <span aria-hidden className="ivc-dot" />
-                    <span className={attention ? 'ivc-word' : 'iv-sr'}>{word}</span>
-                  </span>
-                </span>
+                <span className="ivc-name">{name}</span>
                 <span className="ivc-line ivc-sub">
                   <span className="iv-num">
                     {row.stock === null ? EM : fmtCount(row.stock)} live · par {row.par === null ? EM : fmtCount(row.par)}
+                  </span>
+                  <span className="ivc-status" data-standing={row.standing}>
+                    <span aria-hidden className="ivc-dot" />
+                    <span className={attention ? 'ivc-word' : 'iv-sr'}>{word}</span>
                   </span>
                 </span>
               </button>
@@ -112,6 +115,7 @@ export default function PhoneRows(props: PhoneRowsProps) {
                     glass={row.glass}
                     advice={advice}
                     canEdit
+                    hideNoTarget
                     onChanged={onPriceChanged}
                     money={(n) => cellMoney(n, currency)}
                   />
