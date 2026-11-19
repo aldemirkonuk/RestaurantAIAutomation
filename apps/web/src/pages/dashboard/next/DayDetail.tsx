@@ -123,7 +123,7 @@ function DayTape({ daily, selected, value, onScrub }: TapeProps) {
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="min-w-0">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-inkm-4">{title}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-inkm-4">{title}</p>
       <div className="mt-2 space-y-1.5">{children}</div>
     </div>
   );
@@ -148,7 +148,7 @@ function MiniFig({ label, value, note }: { label: string; value: string; note?: 
       >
         {value}
       </p>
-      <p className="text-[10px] uppercase tracking-[0.1em] text-inkm-4">{label}</p>
+      <p className="text-[11px] uppercase tracking-[0.1em] text-inkm-4">{label}</p>
       {note && <p className="text-[11px] text-inkm-4">{note}</p>}
     </div>
   );

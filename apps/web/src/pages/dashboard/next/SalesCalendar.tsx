@@ -460,7 +460,7 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
       {/* weekday header */}
       <div className="dn-cal-grid px-4 pt-3 sm:px-5" aria-hidden>
         {WEEKDAYS.map((w) => (
-          <p key={w} className="pb-1 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-inkm-4">
+          <p key={w} className="pb-1 text-center text-[11px] font-semibold uppercase tracking-[0.12em] text-inkm-4">
             {w}
           </p>
         ))}
