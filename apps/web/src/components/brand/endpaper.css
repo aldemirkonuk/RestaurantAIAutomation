@@ -37,13 +37,15 @@
   position: relative;
   min-height: 100vh;
   min-height: 100dvh;
-  display: flex;
-  justify-content: center;
-  /* Centred, so the book sits in the middle of the viewport rather than in the
-     top half of it (design critic, 2026-11-18). A short message cannot move
-     it: the book holds a minimum height (below) that the common states fit in. */
-  align-items: center;
-  padding: clamp(20px, 5vh, 56px) 16px 40px;
+  /* One column, the book centred in both directions. Equal top and bottom
+     padding, so a short leaf sits on the viewport's middle and not above it
+     (critic r73 need 12: the book stood 134 px high). A message arriving on
+     the leaf cannot move it: the book holds a minimum height below. */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  place-content: center;
+  justify-items: center;
+  padding: clamp(20px, 5vh, 56px) 16px;
   background-color: var(--paper-1);
 }
 .mdv-ep-stage {
@@ -552,7 +554,7 @@ html .mudavym.mdv-endpaper .mdv-ep-leaf input.mdv-ep-code[class*='border-red'] {
 @media (max-width: 700px) {
   .mudavym.mdv-auth.mdv-endpaper {
     padding: 12px 12px 28px;
-    align-items: flex-start;
+    place-content: start center;
   }
   .mdv-ep-book,
   .mdv-ep-book--wide {

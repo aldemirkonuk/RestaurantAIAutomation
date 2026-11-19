@@ -631,7 +631,7 @@ export function Login() {
             <Link
               to={START}
               className={
-                'font-semibold text-seal hover:text-seal-deep transition-colors'
+                'inline-flex min-h-[48px] items-center font-semibold text-seal hover:text-seal-deep transition-colors'
               }
             >
               Create one now
