@@ -406,6 +406,13 @@ export interface Dish {
 
 
 
+/** What taking the menu's prices onto many dishes did, dish by dish (POST dishes/take-menu-prices). */
+export interface TakeMenuPricesAnswer {
+  changed: Array<{ id: string; name: string; from: number | null; to: number }>;
+  /** Every dish left as it was, with the gateway's reason in words. */
+  skipped: Array<{ id: string; name: string; why: string }>;
+}
+
 export const dishesApi = {
   async list(restaurantId: string): Promise<DishListRow[]> {
     const r = await apiClient.get<DishListRow[]>(`${base(restaurantId)}/dishes`);
@@ -468,6 +475,14 @@ export const dishesApi = {
 
   async update(restaurantId: string, dishId: string, body: DishChange): Promise<Dish> {
     const r = await apiClient.patch<Dish>(`${base(restaurantId)}/dishes/${encodeURIComponent(dishId)}`, body);
+    return r.data;
+  },
+
+  /** Sets each named dish to the one price the current menu gives it; owner and manager only. */
+  async takeMenuPrices(restaurantId: string, ids: string[]): Promise<TakeMenuPricesAnswer> {
+    const r = await apiClient.post<TakeMenuPricesAnswer>(`${base(restaurantId)}/dishes/take-menu-prices`, { ids });
+    // An answer without its lists is not a result: the page must not say "done" for it.
+    if (!Array.isArray(r.data?.changed) || !Array.isArray(r.data?.skipped)) throw new Error('The answer came back without saying which dishes changed.');
     return r.data;
   },
 
