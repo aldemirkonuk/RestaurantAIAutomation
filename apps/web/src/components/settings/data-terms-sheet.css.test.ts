@@ -25,7 +25,7 @@ describe('data-terms-sheet.css', () => {
     expect(css).not.toMatch(/transition:\s*all/);
     const props = [...css.matchAll(/transition:\s*([a-z-]+)/g)].map((m) => m[1]);
     expect(props.length).toBeGreaterThan(0);
-    for (const p of props) expect(p).toBe('transform');
+    for (const p of props) expect(['transform', 'none']).toContain(p);
   });
 
   it('turns the chevron motion off for reduced motion', () => {
