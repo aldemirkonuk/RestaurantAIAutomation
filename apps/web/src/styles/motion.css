@@ -90,7 +90,7 @@
 }
 .mdv-pill::-webkit-scrollbar { display: none; }
 @media (max-width: 480px) {
-  .mdv-pill__opt { padding-left: 8px; padding-right: 8px; }
+  .mdv-pill .mdv-pill__opt { padding-left: 8px; padding-right: 8px; }
 }
 .mdv-pill__thumb {
   position: absolute;

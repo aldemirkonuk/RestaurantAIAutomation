@@ -74,7 +74,7 @@ describe('what animates', () => {
 describe('the pill on a phone and on the charcoal ground', () => {
   it('never wider than its column, and tighter below 480 px', () => {
     expect(CSS).toMatch(/\.mdv-pill \{[^}]*max-width:\s*100%/s);
-    expect(CSS).toMatch(/@media \(max-width: 480px\)\s*\{\s*\.mdv-pill__opt \{ padding-left: 8px; padding-right: 8px; \}/);
+    expect(CSS).toMatch(/@media \(max-width: 480px\)\s*\{\s*\.mdv-pill \.mdv-pill__opt \{ padding-left: 8px; padding-right: 8px; \}/);
   });
 
   it('lets the team headline shrink to the phone column so the lens pill cannot widen the page', () => {
