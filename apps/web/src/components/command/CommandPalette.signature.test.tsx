@@ -271,4 +271,20 @@ describe('the stylesheet', () => {
     expect(CSS).toMatch(/\.mdv-palette \.mdv-field input \{[^}]*background-color: transparent/);
     expect(CSS).toMatch(/\.mdv-palette \.mdv-field \{[^}]*border-bottom: 1px solid/);
   });
+
+  // r72 walk: with the overlay motion sheet loaded (".mdv-ovl[data-scrim="on"] .mdv-ovl__scrim",
+  // blur 6 px) and the charcoal ground sheet (an !important field fill and a boxed focus
+  // outline) the palette's own rules lost the cascade on a real page. Each rule below carries
+  // a prefix that outranks them.
+  it('outranks the generic overlay scrim, so the blur is 14 px on a real page', () => {
+    expect(CSS).toMatch(/\.mdv-ovl\[data-scrim\]:has\(> \.mdv-palette\) > \.mdv-ovl__scrim \{[^}]*blur\(14px\) saturate\(1\.2\)/);
+    expect(CSS).toMatch(/\.mdv-ovl\[data-scrim\]:has\(> \.mdv-palette\) > \.mdv-ovl__scrim \{[^}]*mdv-palette-scrim/);
+  });
+
+  it('keeps the field fill-less and unboxed on the charcoal ground', () => {
+    expect(CSS).toMatch(
+      /html\[data-mudavym-ground\] \.mdv-palette \.mdv-field input \{[^}]*background-color: transparent !important;[^}]*outline: none !important/,
+    );
+    expect(CSS).toMatch(/\.mdv-palette \.mdv-field:focus-within \{[^}]*border-bottom-color/);
+  });
 });

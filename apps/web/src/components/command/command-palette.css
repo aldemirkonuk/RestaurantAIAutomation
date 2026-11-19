@@ -9,13 +9,13 @@
 
 /* The page behind goes soft: a blur and a 55% scrim, drawn on the scrim that
    the Panel already has (so a click on it still closes). */
-.mdv-ovl:has(> .mdv-palette) > .mdv-ovl__scrim {
+.mdv-ovl[data-scrim]:has(> .mdv-palette) > .mdv-ovl__scrim {
   background: rgba(23, 19, 15, 0.55);
   -webkit-backdrop-filter: blur(14px) saturate(1.2);
   backdrop-filter: blur(14px) saturate(1.2);
 }
-.dark .mdv-ovl:has(> .mdv-palette) > .mdv-ovl__scrim,
-.mdv-ovl[data-ground='charcoal']:has(> .mdv-palette) > .mdv-ovl__scrim {
+.dark .mdv-ovl[data-scrim]:has(> .mdv-palette) > .mdv-ovl__scrim,
+.mdv-ovl[data-scrim][data-ground='charcoal']:has(> .mdv-palette) > .mdv-ovl__scrim {
   background: rgba(0, 0, 0, 0.55);
 }
 
@@ -42,6 +42,16 @@
   box-shadow: none;
   -webkit-appearance: none;
   appearance: none;
+}
+/* The charcoal ground sheet paints every field with an !important fill and a
+   boxed focus outline; the palette's field is chrome, so it says so with a
+   prefix that outranks that sheet. Focus is shown on the hairline instead. */
+html[data-mudavym-ground] .mdv-palette .mdv-field input {
+  background-color: transparent !important;
+  outline: none !important;
+}
+.mdv-palette .mdv-field:focus-within {
+  border-bottom-color: var(--focus-ring, var(--seal));
 }
 
 .mdv-palette .mdv-sect {
@@ -224,7 +234,7 @@
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .mdv-ovl:has(> .mdv-palette) > .mdv-ovl__scrim {
+  .mdv-ovl[data-scrim]:has(> .mdv-palette) > .mdv-ovl__scrim {
     animation: mdv-palette-scrim 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
   /* 14 ms a row, the first ten only: a long list must not make you wait. */
