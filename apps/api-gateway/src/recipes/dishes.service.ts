@@ -29,6 +29,7 @@ export type RecipeOwner = "dish" | "cocktail";
 export const SHELF_MATCH_UNREAD = "The shelf could not be read just now, so no line is linked for you.";
 export const ITEM_NOT_THIS_HOUSE = "This item is not on this house's shelf.";
 export const TAKE_PRICES_UNREAD = "The menu or the dishes could not be read just now. No price was changed.";
+export const TAKE_OFF_UNREAD = "The menu or the dishes could not be read just now. No dish was taken off.";
 export const DISH_NAME_NEEDED = "A dish needs a name.";
 export const DISH_NOT_SAVED = "The dish could not be saved. Nothing was changed.";
 export const DISH_NOT_REMOVED = "The dish could not be taken off your list. Nothing was changed.";
@@ -721,6 +722,70 @@ export class DishesService {
     });
     const order = (x: { id: string }) => wanted.indexOf(x.id);
     return { changed: changed.sort((a, b) => order(a) - order(b)), skipped: skipped.sort((a, b) => order(a) - order(b)) };
+  }
+
+  /**
+   * Take the named dishes off the list when the house's current menu prints
+   * no line of their name (g2 menu gap: a re-uploaded menu left every dish it
+   * dropped live on /dishes, with nothing saying so).
+   *
+   * The menu is read again here, by the same match the Menu column uses, so a
+   * stale page can never take off a dish the menu now prints; a dish with any
+   * line of its name (even lines that disagree on the price) stays, and every
+   * dish left says why. A house with no current menu takes nothing off. The
+   * take-off is the one-dish take-off's own: soft, recipe versions kept. Every
+   * id must be a live dish of this house, or nothing is touched at all (404).
+   */
+  async takeOffMenu(restaurantId: string, ids: string[]) {
+    const wanted = [...new Set(ids)];
+    const client = this.db.getClient();
+    const found = (
+      await inWaves(chunks(wanted, ID_CHUNK), async (part) => {
+        const { data, error } = await client
+          .from("dishes")
+          .select("id, name, price")
+          .eq("restaurant_id", restaurantId)
+          .is("deleted_at", null)
+          .in("id", part);
+        if (error) this.failed("dish read", error, TAKE_OFF_UNREAD);
+        return (data ?? []) as any[];
+      })
+    ).flat();
+    const byId = new Map(found.map((d) => [d.id as string, d]));
+    if (wanted.some((id) => !byId.has(id))) throw new NotFoundException(DISH_NOT_THIS_HOUSE);
+    const menu = await readCurrentMenuLines(client, restaurantId).catch((e: unknown) => this.failed("current menu read", e, TAKE_OFF_UNREAD));
+    const index = menuIndex(menu.rows as unknown as MenuLine[]);
+    const removed: Array<{ id: string; name: string }> = [];
+    const skipped: Array<{ id: string; name: string; why: string }> = [];
+    const toRemove: Array<{ id: string; name: string }> = [];
+    for (const id of wanted) {
+      const d = byId.get(id)!;
+      const own = d.price == null ? null : Number(d.price);
+      if (menu.currentMenus === 0) skipped.push({ id, name: d.name, why: "The house has no current menu." });
+      else if (menuPriceFor([d.name], "dish", own, index).found !== "none") skipped.push({ id, name: d.name, why: "A line of that name is on the current menu." });
+      else toRemove.push({ id, name: d.name });
+    }
+    const now = new Date().toISOString();
+    await inWaves(toRemove, async (w) => {
+      const { data, error } = await client
+        .from("dishes")
+        .update({ deleted_at: now, updated_at: now })
+        .eq("id", w.id)
+        .eq("restaurant_id", restaurantId)
+        .is("deleted_at", null)
+        .select("id")
+        .maybeSingle();
+      if (error) {
+        this.logger.error(`dishes: take off menu failed: ${error.message}`);
+        skipped.push({ ...w, why: "It could not be taken off just now. It is still on your list." });
+      } else if (!data) {
+        skipped.push({ ...w, why: "It was already off your list." });
+      } else {
+        removed.push(w);
+      }
+    });
+    const order = (x: { id: string }) => wanted.indexOf(x.id);
+    return { removed: removed.sort((a, b) => order(a) - order(b)), skipped: skipped.sort((a, b) => order(a) - order(b)) };
   }
 
   /**

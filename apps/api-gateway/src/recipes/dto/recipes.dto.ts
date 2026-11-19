@@ -200,6 +200,16 @@ export class TakeMenuPricesDto {
   ids!: string[];
 }
 
+/** The dishes to take off the list because the current menu prints no line of their name (the ids the manager confirmed). */
+export class TakeOffMenuDto {
+  @ApiProperty({ type: [String] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(1000)
+  @IsUUID("all", { each: true })
+  ids!: string[];
+}
+
 /** The pasted labels to look up on the shelf by exact folded name (ADR 0366 item 7). */
 export class ShelfMatchDto {
   @ApiProperty({ type: [String] })

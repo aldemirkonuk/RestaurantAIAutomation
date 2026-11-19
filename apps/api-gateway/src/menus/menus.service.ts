@@ -749,7 +749,9 @@ export class MenusService {
       .maybeSingle();
 
     if (readErr) {
-      throw new Error(`Could not read the menu item: ${readErr.message}`);
+      throw new InternalServerErrorException(
+        `The menu line could not be looked up just now, so it was not discarded. Nothing was changed. Try again (${readErr.message}).`,
+      );
     }
     if (!row || row.restaurant_id !== restaurantId) {
       throw new NotFoundException("No menu item of this restaurant");
@@ -764,7 +766,9 @@ export class MenusService {
       .eq("restaurant_id", restaurantId);
 
     if (writeErr) {
-      throw new Error(`The item was not discarded: ${writeErr.message}`);
+      throw new InternalServerErrorException(
+        `The menu line could not be discarded just now. It is still on the menu and nothing was changed. Try again (${writeErr.message}).`,
+      );
     }
 
     return { menuItemId, status: "discarded" };
@@ -813,7 +817,9 @@ export class MenusService {
       .maybeSingle();
 
     if (error) {
-      throw new Error(`Could not read the menu item: ${error.message}`);
+      throw new InternalServerErrorException(
+        `The menu line could not be looked up just now, so the correction was not saved. Nothing was changed. Try again (${error.message}).`,
+      );
     }
     if (!menuItem || menuItem.restaurant_id !== callerRestaurantId) {
       throw new NotFoundException("No menu item of this restaurant");
@@ -845,7 +851,9 @@ export class MenusService {
       .eq("restaurant_id", callerRestaurantId);
 
     if (updateErr) {
-      throw new Error(`Failed to update menu_item: ${updateErr.message}`);
+      throw new InternalServerErrorException(
+        `The correction could not be saved just now. Nothing was changed. Try again (${updateErr.message}).`,
+      );
     }
 
     // Keep the restaurant's own inventory display name in sync.
@@ -969,7 +977,11 @@ export class MenusService {
       .eq("status", "active")
       .maybeSingle();
 
-    if (menuErr) throw new Error(`Failed to load menu: ${menuErr.message}`);
+    if (menuErr) {
+      throw new InternalServerErrorException(
+        `The current menu could not be read just now. Try again (${menuErr.message}).`,
+      );
+    }
     const withheld = view.rawLine ? {} : { rawLineWithheld: true as const };
     if (!menu) return { menuId: null, name: null, status: null, items: [], ...withheld };
 
@@ -1010,7 +1022,11 @@ export class MenusService {
       .select("id, name, made_current_at, extracted_at, menu_date")
       .eq("restaurant_id", restaurantId)
       .eq("status", "active");
-    if (error) throw new Error(`The current menu (restaurant_menus) could not be read: ${error.message}`);
+    if (error) {
+      throw new InternalServerErrorException(
+        `The current menu could not be read just now. Try again (${error.message}).`,
+      );
+    }
     const actives = (data ?? []) as Array<{
       id: string;
       name: string | null;
@@ -1056,7 +1072,11 @@ export class MenusService {
         .neq("status", "discarded");
       if (after) q = q.gt("id", after);
       const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
-      if (error) throw new Error(`Failed to load menu items: ${error.message}`);
+      if (error) {
+        throw new InternalServerErrorException(
+          `The current menu's lines could not be read just now. Try again (${error.message}).`,
+        );
+      }
       const rows = (data ?? []) as Array<Record<string, unknown>>;
       out.push(...rows);
       if (rows.length < PAGE_ROWS) break;
