@@ -38,4 +38,20 @@ describe('type floor overflow', () => {
     expect(rule(cal, '.cn-record-tag')).toMatch(/min-width:\s*0/)
     expect(rule(cal, '.cn-record')).toMatch(/max-width:\s*100%/)
   })
+
+  it('at 480 px and under a month cell hides the record tag as text and shows the legend line', () => {
+    // r65 F1: a month cell is ~46 px wide, so "covers recorded" broke mid-word in five pieces.
+    const m = cal.match(/@media \(max-width:\s*480px\)\s*\{([\s\S]*?)\n\}/)
+    if (!m) throw new Error('no 480px block')
+    const block = m[1]
+    const tag = block.match(/\.cn-cell \.cn-record-tag\s*\{([^}]*)\}/)
+    if (!tag) throw new Error('no month-cell tag rule')
+    // visually hidden, never display:none (a reader still gets the text)
+    expect(tag[1]).toMatch(/position:\s*absolute/)
+    expect(tag[1]).toMatch(/clip-path:\s*inset\(50%\)/)
+    expect(tag[1]).not.toMatch(/display:\s*none/)
+    expect(block).toMatch(/\.cn-record-legend\s*\{[^}]*display:\s*block/)
+    // the legend is hidden above 480 px, and the day panel's tag is untouched
+    expect(rule(cal, '.cn-record-legend')).toMatch(/display:\s*none/)
+  })
 })

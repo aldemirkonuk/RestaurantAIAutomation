@@ -715,6 +715,29 @@
   font-weight: 600;
   color: var(--ink-4);
 }
+/* The tag does not fit a month cell at phone width (~46 px: no 11 px uppercase
+   word of it fits). Keep it as visually hidden text, so a reader still gets it,
+   and let the one legend line under the grid say what the number is. */
+.cn-record-legend {
+  display: none;
+  margin: 8px 0 0;
+}
+@media (max-width: 480px) {
+  .cn-cell .cn-record-tag {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .cn-record-legend {
+    display: block;
+  }
+}
 .cn-record-said {
   flex-basis: 100%;
   font-family: 'JetBrains Mono', ui-monospace, monospace;
