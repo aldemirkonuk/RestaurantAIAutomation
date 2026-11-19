@@ -8,7 +8,7 @@ import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import InventoryTable, { type InventoryTableProps } from './InventoryTable';
-import type { InvRow } from './useInventoryNextData';
+import { toRow, type InvRow } from './useInventoryNextData';
 
 vi.mock('../command/HousePriceCell', () => ({
   HousePriceCell: ({ bottle }: { bottle: number | null }) => <span data-testid="price-cell">{bottle}</span>,
@@ -110,6 +110,17 @@ describe('/inventory on a phone', () => {
     for (let n = 8; n < 12; n += 1) expect(screen.getByTestId(`inv-row-r${n}`).getAttribute('data-still')).toBe('true');
     const css = readFileSync(resolve(process.cwd(), 'src/pages/inventory/next/inventory-next.css'), 'utf8');
     expect(css).toMatch(/\.ivc-card\[data-still='true'\]\s*\{\s*animation:\s*none;/);
+  });
+
+  it('a food-only house shows each food by its own name, not "Unnamed"', () => {
+    const foods = [
+      toRow({ id: 'f1', wineId: null, display_name: 'Arborio rice', stockLive: 4, thresholdMin: 2 } as never, null),
+      toRow({ id: 'f2', wineId: null, displayName: 'Olive oil', stockLive: 1, thresholdMin: 2 } as never, null),
+    ];
+    draw(foods);
+    expect(within(screen.getByTestId('inv-row-f1')).getByText('Arborio rice')).toBeTruthy();
+    expect(within(screen.getByTestId('inv-row-f2')).getByText('Olive oil')).toBeTruthy();
+    expect(screen.queryByText(/Unnamed/)).toBeNull();
   });
 
   it('says the status in a word a reader can hear, and shows it when it needs you', () => {

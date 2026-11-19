@@ -598,6 +598,17 @@ describe('every drink, not only wine (INV-W30)', () => {
     expect([bare.type, bare.kind]).toEqual([null, null]);
   });
 
+  it('names a food or supply by the house\'s own name, not the empty library', () => {
+    const snake = toRow({ id: 'f1', wineId: null, display_name: 'Arborio rice', stockLive: 3 } as never, null);
+    expect(snake.name).toBe('Arborio rice');
+    const camel = toRow({ id: 'f2', wineId: null, displayName: 'Olive oil', stockLive: 3 } as never, null);
+    expect(camel.name).toBe('Olive oil');
+    // The house's alias still wins, and a library good is still named by the library.
+    expect(toRow({ id: 'f3', wineName: 'Alias', display_name: 'Own' } as never, null).name).toBe('Alias');
+    expect(toRow({ id: 'w', wineId: 'w1' } as never, { id: 'w1', name: 'Lagavulin 16' } as never).name).toBe('Lagavulin 16');
+    expect(toRow({ id: 'x', wineId: null } as never, null).name).toBeNull();
+  });
+
   it('carries where the pace comes from, and drops it when the pace was not read', () => {
     const api = {
       id: 'f1',

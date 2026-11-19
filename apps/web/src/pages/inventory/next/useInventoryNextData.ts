@@ -255,7 +255,14 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
   const wac = num(r.wac);
   // `wineName` is the house's alias when it set one; `libraryName` is the
   // library's own name, carried beside it (inventory.service.ts:95-103).
-  const name = text(r.wineName) ?? text(fromRow(r.libraryDisplayName, w?.displayName)) ?? text(w?.name);
+  // A food or supply has no library wine, so its name is the house's own
+  // (`display_name` on the inventory row), read before the library's names.
+  const name =
+    text(r.wineName) ??
+    text(r.displayName) ??
+    text(r.display_name) ??
+    text(fromRow(r.libraryDisplayName, w?.displayName)) ??
+    text(w?.name);
   const library = text(r.libraryName) ?? text(w?.name);
   const zones = Array.isArray(r.locations)
     ? (r.locations as Raw[])
