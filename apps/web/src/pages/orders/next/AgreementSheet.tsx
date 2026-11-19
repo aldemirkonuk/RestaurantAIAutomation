@@ -88,7 +88,7 @@ const fieldStyle: React.CSSProperties = {
 const labelStyle: React.CSSProperties = {
   display: 'block',
   fontFamily: MONO,
-  fontSize: 9,
+  fontSize: 11,
   fontWeight: 600,
   letterSpacing: '0.13em',
   textTransform: 'uppercase',

@@ -207,7 +207,7 @@ function ThreadLine({ row }: { row: OrderConversationDto }) {
       <span
         style={{
           fontFamily: MONO,
-          fontSize: 9,
+          fontSize: 11,
           letterSpacing: "0.08em",
           color: "var(--ink-4, #665D50)",
           flex: "none",
@@ -221,7 +221,7 @@ function ThreadLine({ row }: { row: OrderConversationDto }) {
       <span
         style={{
           fontFamily: MONO,
-          fontSize: 10,
+          fontSize: 11,
           color: "var(--ink-4, #665D50)",
           flex: "none",
         }}
@@ -389,7 +389,7 @@ function DraftDetail({
           <span
             style={{
               fontFamily: MONO,
-              fontSize: 8.5,
+              fontSize: 11,
               fontWeight: 600,
               letterSpacing: "0.14em",
               textTransform: "uppercase",
@@ -404,7 +404,7 @@ function DraftDetail({
           <span
             style={{
               fontFamily: MONO,
-              fontSize: 10,
+              fontSize: 11,
               color: "var(--ink-4, #665D50)",
             }}
           >
@@ -507,7 +507,7 @@ function DraftDetail({
             <span
               style={{
                 fontFamily: MONO,
-                fontSize: 10,
+                fontSize: 11,
                 color: "var(--ink-4, #665D50)",
                 paddingLeft: 8,
               }}
