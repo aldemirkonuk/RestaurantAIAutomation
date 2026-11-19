@@ -262,7 +262,7 @@
   border-radius: 999px;
   background: var(--seal);
   color: var(--paper-0);
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 700;
   line-height: 15px;
   text-align: center;
@@ -294,7 +294,7 @@
   flex: 0 0 auto;
   text-align: right;
   font-family: var(--mdv-mono);
-  font-size: 10px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
   color: var(--ink-4);
   line-height: 1.35;
@@ -309,7 +309,7 @@
 
 .mdv-hdr__stamp-own {
   display: block;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .mdv-hdr__caught {
