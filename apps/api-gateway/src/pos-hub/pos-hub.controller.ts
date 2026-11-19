@@ -183,6 +183,61 @@ export class PosHubController {
     }
   }
 
+  @Post("mappings/:restaurantId/till-recipe")
+  @ApiOperation({
+    summary: "Point a till button at one of the house's drink recipes, or take it off",
+    description:
+      "Body: { source, external_item_id?, item_name?, cocktail_id: uuid | null, replace_shelf_link? }. A recipe replaces nothing silently: a button that already draws a shelf item answers 409 until replace_shelf_link is true. null takes the recipe off.",
+  })
+  async setTillRecipe(
+    @Param("restaurantId") restaurantId: string,
+    @Body() body: any,
+  ) {
+    try {
+      return await this.posHub.setTillRecipe(restaurantId, body || {});
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        error.message || "Recipe link failed",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Get("checks/:restaurantId")
+  @ApiOperation({ summary: "The house's recent closed till checks, newest first" })
+  async recentChecks(
+    @Param("restaurantId") restaurantId: string,
+    @Query("limit") limit?: string,
+  ) {
+    try {
+      return await this.posHub.listRecentChecks(restaurantId, limit);
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Recent checks read failed",
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
+  }
+
+  @Get("checks/:restaurantId/:checkId")
+  @ApiOperation({
+    summary: "One check: margin from the cost kept at sale, and lines sent without a price",
+  })
+  async checkView(
+    @Param("restaurantId") restaurantId: string,
+    @Param("checkId") checkId: string,
+  ) {
+    try {
+      return await this.posHub.getCheckView(restaurantId, checkId);
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Check read failed",
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
+  }
+
   // ==========================================================================
   // Sale-unit review — read the evidence, a human writes the answer.
   //
