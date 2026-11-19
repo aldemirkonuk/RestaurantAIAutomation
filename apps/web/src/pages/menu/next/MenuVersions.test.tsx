@@ -411,7 +411,7 @@ describe('MenuVersions', () => {
   it('Retry is a 48 px button and the fold motion stops under reduced motion', () => {
     expect(css).toMatch(/\.cl-btn\.mdv-retry\s*\{[^}]*min-height: 48px/);
     expect(css).not.toMatch(/transition:\s*all/);
-    expect(css.slice(css.lastIndexOf('@media (prefers-reduced-motion: reduce)'))).toMatch(/\.mdv-retry/);
+    expect(css.slice(css.lastIndexOf('@media (prefers-reduced-motion: reduce)'))).toMatch(/\.cl-btn\.mdv-retry,[^{]*\{\s*transition: none/);
   });
 
   it('a manager makes a kept menu current, and is told what it did', async () => {

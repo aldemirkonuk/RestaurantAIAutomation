@@ -50,7 +50,7 @@ function makeFakeSupabase(
     const missingColumn = (): { code: string; message: string } | null => {
       const col = ((tables as any).__noColumn?.[0] ?? {})[table];
       return col && selected.includes(col)
-        ? { code: "42703", message: `column ${table}.${col} does not exist` }
+        ? { code: (tables as any).__noColumnCode?.[0] ?? "42703", message: `column ${table}.${col} does not exist` }
         : null;
     };
     // `tables.__readFails = [{ <table>: "<message>" }]` makes every READ of
@@ -1929,6 +1929,21 @@ describe("MenusService — a failed read of the kept menus is said in plain word
     expect(body.message).toBe("The menus could not be read just now. Try again.");
     expect(body.message).not.toMatch(/column|restaurant_menus/);
     expect(body.detail).toMatch(/restaurant_menus\.foo does not exist/);
+  });
+
+  it("a read_warnings failure that is not a missing column is not papered over", async () => {
+    const tables = rows();
+    (tables as any).__readFails = [{ restaurant_menus: "permission denied for column read_warnings" }];
+    const err: any = await makeService(tables).listVersions("rest-1").catch((e) => e);
+    expect(err.getResponse().message).toBe("The menus could not be read just now. Try again.");
+  });
+
+  it("the same words under another error code are not taken for a missing column", async () => {
+    const tables = rows();
+    (tables as any).__noColumn = [{ restaurant_menus: "read_warnings" }];
+    (tables as any).__noColumnCode = ["42501"];
+    const err: any = await makeService(tables).listVersions("rest-1").catch((e) => e);
+    expect(err.getResponse().message).toBe("The menus could not be read just now. Try again.");
   });
 
   it("a missing column other than read_warnings is not papered over", async () => {
