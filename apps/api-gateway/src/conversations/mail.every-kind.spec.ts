@@ -93,6 +93,8 @@ describe("one team or guest person", () => {
     resolve = (q) => ({ data: q.kind === "rpc" ? [{ thread_key: "gm:t1", subject: "Rota", message_count: 2, letter_count: 2, last_at: "2027-01-05 11:30:00+00" }] : [{ id: "x" }], error: null });
     const page = await svc().listThreads(HOUSE, "owner", { with: WITH });
     expect(queries.find((q) => q.kind === "rpc")).toMatchObject({ name: "list_mail_threads_other", payload: { p_kind: "team", p_address: "deniz@h.example", p_withhold_house_letters: false } });
+    const read = queries.find((q) => q.kind === "from")!;
+    expect(read.calls).toEqual(expect.arrayContaining([["eq", "kind", "team"], ["eq", "from_address", "deniz@h.example"]]));
     expect(page.person).toEqual({ key: "team:deniz@h.example", kind: "team", providerId: null, name: "deniz@h.example" });
     expect(page.threads.map((t) => [t.key, t.subject, t.letterCount])).toEqual([["gm:t1", "Rota", 2]]);
   });
