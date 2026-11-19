@@ -70,19 +70,25 @@ export const READ_ALL_OFFER = 'Read every conversation, not only vendors';
 /**
  * The status block above the Mail list keeps its height from the first frame
  * (r81 walk w1 finding 3): at 375 it grew 97 -> 152 px as the summary and the
- * reader arrived, and the list below it moved. 152 px is the loaded height the
- * walk measured at 375 (header sentence, today line, status line and the setup
- * pill); the md value is an estimate until a browser measures it.
+ * reader arrived, and the list below it moved. The loaded heights were measured
+ * in a browser (r83 walk w1, production build, vendor-only and wide-grant
+ * houses, owner, manager and staff): 155 px at 375 and 111 px at 1440 (header
+ * sentence, today line, status line and the setup pill); each is reserved one
+ * pixel over so rounding never leaves a shift. The first estimates, 152 and 100,
+ * were 3 and 11 px short and moved the list at 1440 by 0.046-0.054.
  */
-export const MAIL_HEADER_RESERVE = 'min-h-[152px] md:min-h-[100px]';
+export const MAIL_HEADER_RESERVE = 'min-h-[156px] md:min-h-[112px]';
 /**
  * The read-scope placeholder, sized for the state it becomes: one block (the
  * line), or two (the line and the switch note) when the house's inbox switch
- * is already known to be off.
+ * is already known to be off. Measured (r83 walk w1): the one-line block is
+ * 38.4 px at 375 and 19.7 at 1440; the two-block state is 126 and 45. A first
+ * visit cannot know the switch is off when it first paints, so a wide-grant
+ * house with its switch off still grows from the one-block hold on that visit.
  */
 export const READ_SCOPE_HOLD = {
-  one: 'min-h-[38px] md:min-h-[20px]',
-  two: 'min-h-[124px] md:min-h-[44px]',
+  one: 'min-h-[39px] md:min-h-[20px]',
+  two: 'min-h-[127px] md:min-h-[46px]',
 } as const;
 export const VENDOR_ONLY_LINE = 'This tab shows vendor mail only.';
 export const READS_ALL_LINE = 'This tab shows every conversation in the mailbox: vendors, team and guests.';

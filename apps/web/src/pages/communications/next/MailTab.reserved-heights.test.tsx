@@ -4,8 +4,8 @@
  * and pushed the list down (CLS 0.056-0.089), and the read-scope placeholder
  * was sized for one block while a house that agreed to the wide reading with
  * its inbox switch off draws two. The heights are reserved from the first
- * frame and pinned here; the pixel values are the walk's 152 px for the
- * narrow header and estimates elsewhere until a browser measures them.
+ * frame and pinned here; the pixel values were measured in a browser (r83 walk w1):
+ * the header loads at 155 px (375) and 111 px (1440), the read-scope blocks at 38.4/19.7 (one) and 126/45 (two).
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -63,10 +63,10 @@ beforeEach(() => {
 
 describe('the reserved heights are pinned', () => {
   it('names the header block and the two read-scope holds', () => {
-    expect(MAIL_HEADER_RESERVE).toBe('min-h-[152px] md:min-h-[100px]');
+    expect(MAIL_HEADER_RESERVE).toBe('min-h-[156px] md:min-h-[112px]');
     expect(READ_SCOPE_HOLD).toEqual({
-      one: 'min-h-[38px] md:min-h-[20px]',
-      two: 'min-h-[124px] md:min-h-[44px]',
+      one: 'min-h-[39px] md:min-h-[20px]',
+      two: 'min-h-[127px] md:min-h-[46px]',
     });
   });
 });
