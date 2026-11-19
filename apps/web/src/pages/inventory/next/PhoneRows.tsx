@@ -30,7 +30,7 @@ export interface PhoneRowsProps {
   onSelectAll?: () => void;
 }
 
-/** The first few cards rise in one after another; later ones are just there. */
+/** The first few cards rise in one after another (28 ms apart); card 9 on is just there. */
 const STAGGER_CARDS = 8;
 
 export default function PhoneRows(props: PhoneRowsProps) {
@@ -68,6 +68,7 @@ export default function PhoneRows(props: PhoneRowsProps) {
               data-testid={`inv-row-${row.id}`}
               data-standing={row.standing}
               data-open={open}
+              data-still={i >= STAGGER_CARDS ? 'true' : undefined}
               style={{ '--i': Math.min(i, STAGGER_CARDS) } as CSSProperties}
             >
               {selecting ? (

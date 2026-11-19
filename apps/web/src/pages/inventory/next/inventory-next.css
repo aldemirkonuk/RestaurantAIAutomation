@@ -1084,6 +1084,9 @@ html .mdv-ovl .iv-sheet-body .mdv-select__control {
   animation-delay: calc(var(--i, 0) * 28ms);
   transition: transform 90ms ease-out;
 }
+.ivc-card[data-still='true'] {
+  animation: none;
+}
 .ivc-card[data-open='true'] {
   background: var(--seal-tint);
 }
