@@ -63,8 +63,9 @@ describe('endpaper.css — the spread', () => {
   it('centres the book vertically on a wide viewport, and hangs it from the top on a phone', () => {
     const r = rules()
     const page = r.match(/\.mudavym\.mdv-auth\.mdv-endpaper \{([^}]*)\}/)
-    expect(page?.[1]).toMatch(/align-items: center/)
-    expect(r).toMatch(/@media \(max-width: 700px\) \{\s*\.mudavym\.mdv-auth\.mdv-endpaper \{[^}]*align-items: flex-start/)
+    expect(page?.[1]).toMatch(/place-content: center/)
+    expect(page?.[1]).toMatch(/min-height: 100dvh/)
+    expect(r).toMatch(/@media \(max-width: 700px\) \{\s*\.mudavym\.mdv-auth\.mdv-endpaper \{[^}]*place-content: start center/)
   })
 
   it('pins the wordmark to full ink', () => {

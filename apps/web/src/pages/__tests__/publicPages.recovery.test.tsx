@@ -121,6 +121,15 @@ it('a signed-out click on a verification link is sent to sign in (or the emailed
   ).not.toBeInTheDocument()
   expect(h.post).not.toHaveBeenCalled()
 })
+it('signed out, /verify-email is the open book with a Fraunces H1 and one sign-in plate, not a card (critic r73 need 12)', () => {
+  const { container } = mount(
+    <VerifyEmail />,
+    '/verify-email?token=3f2b8c1e-9a4d-4c7b-8e2f-1a2b3c4d5e6f',
+  )
+  expect(container.querySelector('.mdv-endpaper')).not.toBeNull()
+  expect(container.querySelector('main.mdv-spread h1.mdv-spread-title')).not.toBeNull()
+  expect(container.querySelectorAll('h1')).toHaveLength(1)
+})
 it('a signed-in click whose session the server refuses turns into the sign-in path, and another account is told to switch', async () => {
   h.auth.user = { email: 'someone@house.test' }
   h.auth.isAuthenticated = true

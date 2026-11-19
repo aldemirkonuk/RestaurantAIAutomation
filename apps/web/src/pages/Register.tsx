@@ -1357,7 +1357,7 @@ export function Register() {
         pageKey={stepKey}
         wide={isRestaurantForm}
       >
-        <h2 className="mdv-ep-leaf-title">{ep.title}</h2>
+        <h1 className="mdv-ep-leaf-title">{ep.title}</h1>
         <p className="mdv-ep-leaf-lede">{ep.lede}</p>
         {content}
       </EndpaperShell>

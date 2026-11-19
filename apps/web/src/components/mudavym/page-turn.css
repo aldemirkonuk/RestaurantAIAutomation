@@ -1,0 +1,35 @@
+/* The page turn (viewTransition.ts). Opacity and transform only. The old page
+   lifts away in 90 ms, the new one settles in over 220 ms starting as the old
+   one leaves, and the H1 (named `page-title` for the length of a turn) glides
+   from one page's place to the next. Reduced motion never starts a transition
+   (canTurnPage), and the block at the foot cancels one already running. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  mix-blend-mode: normal;
+  animation-fill-mode: both;
+}
+::view-transition-old(root) {
+  animation: mdv-turn-out 90ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+::view-transition-new(root) {
+  animation: mdv-turn-in 220ms cubic-bezier(0.16, 1, 0.3, 1) 90ms both;
+}
+::view-transition-group(page-title) {
+  animation-duration: 220ms;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes mdv-turn-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes mdv-turn-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}

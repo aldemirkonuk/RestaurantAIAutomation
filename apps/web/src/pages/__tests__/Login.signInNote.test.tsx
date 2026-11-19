@@ -124,4 +124,11 @@ describe('the sign-up link', () => {
     render(createElement(MemoryRouter, { initialEntries: ['/login'] }, createElement(Login)))
     expect(screen.getByRole('link', { name: 'Create one now' }).getAttribute('href')).toBe('/register?type=new')
   })
+
+  it('is 48 px high to touch (critic r73 need 7)', () => {
+    render(createElement(MemoryRouter, { initialEntries: ['/login'] }, createElement(Login)))
+    const link = screen.getByRole('link', { name: 'Create one now' })
+    expect(link.className).toContain('min-h-[48px]')
+    expect(link.className).toContain('items-center')
+  })
 })

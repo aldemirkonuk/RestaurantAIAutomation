@@ -42,7 +42,8 @@ function lazyWithRefresh<T extends ComponentType<any>>(
       })
   )
 }
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
+import { PageTurnRouter as Router } from './components/mudavym/PageTurnRouter'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppToaster } from './components/mudavym/AppToaster'
 import { AuthProvider } from './contexts/AuthContext'
