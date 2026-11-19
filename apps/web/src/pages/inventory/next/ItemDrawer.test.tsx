@@ -567,6 +567,20 @@ describe('the first-screen taste line', () => {
     expect(api.taste).toHaveBeenCalledTimes(1);
   });
 
+  it('brings the taste card into view when the line opens it', async () => {
+    api.taste.mockResolvedValue(profile);
+    const spy = vi.fn();
+    const was = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = spy;
+    try {
+      open(row());
+      fireEvent.click(await screen.findByTestId('taste-line-open'));
+      await waitFor(() => expect(spy.mock.contexts).toContain(screen.getByTestId('ivd-taste-slot')));
+    } finally {
+      Element.prototype.scrollIntoView = was;
+    }
+  });
+
   it('is above the evidence button, never inside the evidence', async () => {
     api.taste.mockResolvedValue(profile);
     open(row());
