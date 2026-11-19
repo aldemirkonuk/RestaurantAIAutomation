@@ -182,6 +182,14 @@ describe('MenuPlan -- the section before the choice (L13)', () => {
     expect(screen.queryByRole('button', { name: 'Make it current' })).not.toBeInTheDocument();
   });
 
+  it('an unreachable gateway on the plan is said in words, not as "Network Error"', async () => {
+    mockPlan.mockRejectedValue(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
+    mount(true);
+    const said = await screen.findByTestId('menu-plan-error');
+    expect(said).toHaveTextContent('could not be worked out (Mudavym could not be reached just now.)');
+    expect(said.textContent).not.toContain('Network Error');
+  });
+
   it('staff read the plan with no Keep and no choice', async () => {
     mockPlan.mockResolvedValue(plan());
     mount(false);

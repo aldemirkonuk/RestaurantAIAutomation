@@ -9,7 +9,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router-dom';
+import { Link, MemoryRouter, useLocation } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import type { CocktailRecipe, RecipeLine } from '../../../services/api/recipes';
 
@@ -111,6 +111,57 @@ describe('CocktailRegister with the real recipe sheet', () => {
     expect(screen.queryByRole('region', { name: 'Recipe for Negroni' })).toBeNull();
   });
 
+  it('a drink opened from a link, then closed, opens again when the same link is followed again', async () => {
+    h.recipes = { [CB]: recipe(CB, 'Margarita', VB, [line('tequila', 50, 't1')]) };
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    function Where() {
+      const l = useLocation();
+      return <output data-testid="where">{`${l.pathname}${l.search}`}</output>;
+    }
+    render(
+      <MemoryRouter initialEntries={[`/cocktails?open=${CB}`]}>
+        <QueryClientProvider client={qc}>
+          <CocktailRegister register={null} registerLoading={false} />
+          <Link to={`/cocktails?open=${CB}`}>used in Margarita</Link>
+          <Where />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole('region', { name: 'Recipe for Margarita' })).toBeInTheDocument();
+    // Closing the linked drink takes its name out of the address, so the address says what is open.
+    open('Margarita');
+    await waitFor(() => expect(screen.queryByTestId('cocktail-leaf')).toBeNull());
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/cocktails$/);
+    // The same link again opens it again; before, the search was unchanged and nothing opened.
+    fireEvent.click(screen.getByRole('link', { name: 'used in Margarita' }));
+    expect(await screen.findByRole('region', { name: 'Recipe for Margarita' })).toBeInTheDocument();
+  });
+
+  it('opening another drink while a linked one is open drops the link from the address', async () => {
+    h.recipes = {
+      [CA]: recipe(CA, 'Negroni', VA, [line('gin', 30, 'g1')]),
+      [CB]: recipe(CB, 'Margarita', VB, [line('tequila', 50, 't1')]),
+    };
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    function Where() {
+      const l = useLocation();
+      return <output data-testid="where">{`${l.pathname}${l.search}`}</output>;
+    }
+    render(
+      <MemoryRouter initialEntries={[`/cocktails?open=${CB}&q=keep`]}>
+        <QueryClientProvider client={qc}>
+          <CocktailRegister register={null} registerLoading={false} />
+          <Where />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    await screen.findByRole('region', { name: 'Recipe for Margarita' });
+    open('Negroni');
+    expect(await screen.findByRole('region', { name: 'Recipe for Negroni' })).toBeInTheDocument();
+    // Only the drink's name leaves the address; anything else in it stays.
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/cocktails\?q=keep$/);
+  });
+
   it('a link to a drink this house does not list says so, and opens nothing', async () => {
     mount('/cocktails?open=ffffffff-ffff-4fff-8fff-ffffffffffff');
     expect(await screen.findByTestId('cocktails-link-missing')).toHaveTextContent('not on this house’s list');
@@ -176,5 +227,39 @@ describe('CocktailRegister with the real recipe sheet', () => {
     await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
     expect(h.put.mock.calls[0][0]).toBe(`/recipes/${RID}/cocktails/${CA}`);
     expect(h.put.mock.calls[0][1].expectedVersionId).toBe(VA);
+  });
+});
+
+describe("the cocktail list prints the house's money", () => {
+  // r7 browser check (2026-11-12): on a lira house the list read "$14.00"
+  // while the same drink's cards read "₺14.00". The list and the ledger now
+  // print through the same `useHouseMoney` the cards use.
+  it('a lira house reads lira on the list and on the ledger, never $', async () => {
+    const register = {
+      house: { readable: true, reason: null },
+      stocking: { reason: '' },
+      counts: { houseRows: 1 },
+      rows: [
+        {
+          key: 'h1',
+          name: 'Aperol Spritz',
+          house: { books: [], onMenu: { bottlePrice: null, glassPrice: 14 }, poured: { qty: 3, revenue: 42 } },
+        },
+      ],
+    } as unknown as Parameters<typeof CocktailRegister>[0]['register'];
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter initialEntries={['/cocktails']}>
+        <QueryClientProvider client={qc}>
+          <CocktailRegister register={register} registerLoading={false} />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    const [list] = screen.getAllByRole('table');
+    expect(await within(list).findAllByText('₺450.00')).toHaveLength(2);
+    const ledger = screen.getByTestId('cocktail-ledger');
+    expect(within(ledger).getByText('₺14.00')).toBeInTheDocument();
+    expect(within(ledger).getByText('₺42.00')).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/\$\d/);
   });
 });

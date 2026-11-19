@@ -19,7 +19,7 @@ vi.mock('../../../../services/api/client', () => ({ apiClient: { get: h.get } })
 vi.mock('../../../../contexts/AuthContext', () => ({ useAuth: () => ({ activeRestaurantId: h.rid }) }));
 
 import LineRow, { LineRowRead, rowQty, type DraftRow } from './LineRow';
-import { qtyText, readQty } from './units';
+import { amountWithUnit, qtyText, readQty, unitWord } from './units';
 import { useShelf } from './useRecipe';
 
 const blank: DraftRow = {
@@ -163,6 +163,24 @@ describe('LineRow', () => {
     fireEvent.click(screen.getByRole('button', { name: /link it to your shelf/i }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Your shelf could not be read just now (Network Error).');
     expect(screen.queryByText(/Nothing on your shelf matches/)).toBeNull();
+  });
+
+  it('R3: a count says "2 dashes" and "1 dash", in the read and in the unit picker; symbols never take a plural', () => {
+    expect(unitWord('dash', 2)).toBe('dashes');
+    expect(unitWord('dash', 1)).toBe('dash');
+    expect(unitWord('barspoon', 0.5)).toBe('barspoons');
+    expect(unitWord('dash', null)).toBe('dash');
+    expect(unitWord('ml', 30)).toBe('ml');
+    expect(unitWord('oz', 2)).toBe('US oz');
+    expect(unitWord('each', 2)).toBe('each');
+    expect(amountWithUnit(2, 'dash')).toBe('2 dashes');
+    expect(amountWithUnit(1, 'barspoon')).toBe('1 barspoon');
+    expect(amountWithUnit(30, null)).toBe('30');
+    const { unmount } = render(<ul><LineRowRead row={{ ...blank, label: 'Angostura', qtyText: '2', unit: 'dash' }} /></ul>);
+    expect(screen.getByText('2 dashes')).toBeInTheDocument();
+    unmount();
+    mount(<Harness start={{ ...blank, qtyText: '2', unit: 'dash' }} />);
+    expect((screen.getByLabelText('Unit') as HTMLSelectElement).selectedOptions[0].textContent).toBe('dashes');
   });
 
   it('QA round 21: the ambiguity rule is exactly one to three digits, a separator, three digits', () => {

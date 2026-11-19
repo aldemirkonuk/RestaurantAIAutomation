@@ -8,9 +8,10 @@
  * that does not see it, and the sheet shows money and controls only to a
  * role that edits.
  *
- * What it says is what the server said. The cost line is the gateway's sum at
- * today's prices (F7) and appears only when every counted line is priced;
- * otherwise it says how many are, never a partial total dressed as the cost.
+ * What it says is what the server said. The cost a serve is the gateway's sum
+ * at today's prices (F7), said once, on the drink's cost card (DrinkCards.tsx):
+ * a figure only when every counted line is priced, otherwise how many are,
+ * never a partial total dressed as the cost.
  * There is no pour-cost percentage yet: it waits for the house's tax basis
  * (F8), and a percentage of a price that includes KDV would mislead.
  *
@@ -28,7 +29,10 @@
  * parser as proposed rows, which become lines only when they are used.
  *
  * A pasted spec is only ever proposed (F17): nothing becomes a line until
- * "Use these lines", and nothing is saved until Save.
+ * "Use these lines", and nothing is saved until Save. A pasted line whose name
+ * is exactly one shelf item's (case and spaces folded) proposes that item as
+ * its link, shown on the line before it is used (ADR 0366 item 7); two items
+ * of one name propose neither and say so.
  *
  * A failed save says it failed, and that sentence is true: the gateway saves a
  * version in one transaction, so a refused save left the recipe as it was.
@@ -63,16 +67,27 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ClipboardPaste, History, Plus, RotateCcw, Save } from 'lucide-react';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { getErrorStatus } from '../../../../services/api/client';
-import type { CocktailRecipe, RecipeLine, RecipeVersion, SaveRecipeBody } from '../../../../services/api/recipes';
+import {
+  ownerOf,
+  recipesApi,
+  type CocktailRecipe,
+  type PreviewCostBody,
+  type RecipeLine,
+  type RecipeOwner,
+  type RecipeVersion,
+  type SaveRecipeBody,
+  type ShelfItem,
+} from '../../../../services/api/recipes';
 import LineRow, { LineRowRead, rowName, rowQty, type DraftRow } from './LineRow';
-import { draftKey, dropDraft, dropDraftsForDrink, keepDraft, takeDraft, type DraftMeta } from './drafts';
+import { draftId, draftKey, dropDraft, dropDraftsForDrink, keepDraft, takeDraft, type DraftMeta } from './drafts';
 import { parseLine, parseSpec, type ProposedLine } from './parseSpec';
-import { qtyText, readsAsThousandAmbiguous } from './units';
-import DrinkCards from './DrinkCards';
+import { amountWithUnit, qtyText, readsAsThousandAmbiguous } from './units';
+import DrinkCards, { type DraftCost } from './DrinkCards';
 import WhatIsInAServe from './WhatIsInAServe';
 import RecipeTaste, { RecipeTasteLine } from './RecipeTaste';
 import {
   useCanEditRecipe,
+  useCostPreview,
   useHouseMoney,
   useRecipe,
   useRecipeVersion,
@@ -88,6 +103,8 @@ export const UNKNOWN_SENTENCE =
 export const NEWER_SENTENCE =
   'Someone saved a newer version while you were editing. Your lines stay here; saving them will be refused until you load the saved recipe.';
 export const LEGACY_NOTE = 'Lines from the old recipe box, not saved here yet.';
+export const PASTE_NOTE =
+  "Check these before you use them. A line links to a shelf item only where the name is exactly that item's. Nothing is saved yet.";
 const LOAD_FAILED = 'The saved recipe could not be read just now. Your lines stay here.';
 export const SET_ASIDE_SENTENCE =
   'Your lines are set aside. Put them back to work on them again; saving them then replaces the version shown.';
@@ -120,13 +137,32 @@ function fromServer(l: RecipeLine): DraftRow {
   };
 }
 
-function fromProposal(p: ProposedLine): DraftRow {
+/**
+ * The shelf item a pasted line would link to. Only `linked` carries an item;
+ * it becomes the line's link on "Use these lines" and is saved only by Save.
+ */
+export type ProposedLink =
+  | { status: 'looking' }
+  | { status: 'linked'; item: ShelfItem }
+  | { status: 'same-name'; n: number }
+  | { status: 'none' }
+  | { status: 'unread' };
+type ProposedRow = ProposedLine & { link?: ProposedLink };
+
+/** Labels sent in one shelf match; matches the gateway (ShelfMatchDto ArrayMaxSize(60), MaxLength(200)). */
+const MATCH_MAX = 60;
+const MATCH_LABEL_MAX = 200;
+const askShelf = (l: ProposedLine) => l.role === 'stocked' && l.label.trim().length > 0 && l.label.trim().length <= MATCH_LABEL_MAX;
+
+export function fromProposal(p: ProposedRow): DraftRow {
+  const item = p.link?.status === 'linked' ? p.link.item : null;
   return {
     key: nextKey(),
     role: p.role,
-    inventoryId: null,
-    itemName: null,
-    itemKind: null,
+    inventoryId: item?.id ?? null,
+    itemName: item?.name ?? null,
+    itemKind: item?.kind ?? null,
+    itemUom: item?.uom ?? null,
     label: p.label,
     qtyText: qtyText(p.qty),
     unit: p.unit ?? '',
@@ -144,7 +180,36 @@ function metaOf(v: Pick<RecipeVersion, 'yieldServes' | 'glass' | 'garnish' | 'me
   };
 }
 
-type Proposed = { from: 'legacy' | 'paste'; lines: ProposedLine[]; note: string };
+type Proposed = { from: 'legacy' | 'paste'; lines: ProposedRow[]; note: string; token?: number };
+
+/** What a proposed line says about its shelf link. */
+function LinkSaid({ link, label, onUnlink }: { link: ProposedLink; label: string; onUnlink: () => void }) {
+  if (link.status === 'looking') return <span className="cl-dim" data-testid="recipe-proposed-looking"> · looking on your shelf…</span>;
+  if (link.status === 'unread')
+    return <span className="cl-dim" data-testid="recipe-proposed-unread"> · your shelf could not be read, so it is not linked</span>;
+  if (link.status === 'same-name')
+    return (
+      <span className="cl-rcp-flag" data-testid="recipe-proposed-same-name">
+        {' '}
+        · {link.n} shelf items have this name, so none is linked; link one after you use it
+      </span>
+    );
+  if (link.status !== 'linked') return null;
+  return (
+    <span data-testid="recipe-proposed-link">
+      {' '}
+      · links to <b>{link.item.name}</b>{' '}
+      <button
+        type="button"
+        className="cl-linkish cl-focus"
+        aria-label={`Do not link ${label || 'this line'} to ${link.item.name}`}
+        onClick={onUnlink}
+      >
+        Do not link
+      </button>
+    </span>
+  );
+}
 
 /** The old recipe box's rows, read through the same parser as a paste. */
 function legacyProposal(d: CocktailRecipe): Proposed | null {
@@ -193,7 +258,7 @@ function PastVersion({
   onStartFrom,
   say,
 }: {
-  cocktailId: string;
+  cocktailId: string | RecipeOwner;
   versionId: string;
   onStartFrom: ((v: RecipeVersion) => void) | null;
   say: ((n: number) => string) | null;
@@ -216,7 +281,7 @@ function PastVersion({
         ))}
       </ol>
       {say && cost?.complete && cost.perServe != null ? (
-        <p className="cl-note">Would cost {say(cost.perServe)} a serve at today's prices.</p>
+        <p className="cl-note">Would cost {say(cost.perServe)} a {ownerOf(cocktailId).kind === 'dish' ? 'plate' : 'serve'} at today's prices.</p>
       ) : null}
       {onStartFrom ? (
         <button type="button" className="cl-btn cl-focus" style={{ marginTop: 6 }} onClick={() => onStartFrom(version)}>
@@ -239,7 +304,7 @@ function Versions({
   onStartFrom,
   say,
 }: {
-  cocktailId: string;
+  cocktailId: string | RecipeOwner;
   currentId: string | null;
   onStartFrom: ((v: RecipeVersion) => void) | null;
   say: ((n: number) => string) | null;
@@ -284,7 +349,15 @@ function Versions({
   );
 }
 
-type Said = { tone: 'ok' | 'alarm'; text: string; offerLoad?: boolean };
+type Said = { tone: 'ok' | 'alarm'; text: string; offerLoad?: boolean; saved?: true };
+
+/**
+ * What a sheet keeps saying once its lines or settings are changed again: only
+ * what is still true of the sheet. "Saved." and a refused save were about the
+ * sheet as it was; "someone saved first", "could not be read" and the note on
+ * a version put on the sheet still hold, and stay until the person acts on them.
+ */
+const stillTrue = (s: Said | null): Said | null => (s && !s.saved && (s.tone === 'ok' || s.offerLoad) ? s : null);
 
 /** The gateway's own sentence on a refused save, when it sent one. */
 function refusal(e: unknown): string | null {
@@ -295,11 +368,38 @@ function refusal(e: unknown): string | null {
 /** The most serves one recipe makes. Matches the gateway (recipes.service.ts MAX_YIELD_SERVES). */
 export const MAX_SERVES = 1000;
 
+/**
+ * The unsaved lines as the gateway prices them, with each line's label, or
+ * null when the draft is not whole enough to price: a stocked line with no
+ * amount, no unit or no linked item is never priced by guessing, so nothing
+ * is asked and the saved figures stay. Untracked lines cost nothing and are
+ * sent only when complete.
+ */
+export function costPreviewBody(rows: DraftRow[], serves: number): { body: PreviewCostBody; labels: string[] } | null {
+  if (!Number.isInteger(serves) || serves < 1 || serves > MAX_SERVES) return null;
+  if (rows.length > MAX_LINES) return null;
+  const lines: PreviewCostBody['lines'] = [];
+  const labels: string[] = [];
+  for (const r of rows) {
+    const q = rowQty(r);
+    const whole = q !== null && q <= MAX_LINE_QTY && r.unit !== '';
+    if (r.role === 'stocked') {
+      if (!whole || !r.inventoryId) return null;
+      lines.push({ role: 'stocked', inventoryId: r.inventoryId, qtyEntered: q, unitCode: r.unit });
+      labels.push(rowName(r));
+    } else if (whole) {
+      lines.push({ role: 'untracked', inventoryId: null, qtyEntered: q, unitCode: r.unit });
+      labels.push(rowName(r));
+    }
+  }
+  return { body: { yieldServes: serves, lines }, labels };
+}
+
 /** Why Save is off, naming the first line that stops it. */
-export function whyBlocked(rows: DraftRow[], serves: number = 1): string | null {
+export function whyBlocked(rows: DraftRow[], serves: number = 1, dish = false): string | null {
   if (rows.length === 0) return 'Add at least one ingredient.';
   if (!Number.isInteger(serves) || serves < 1 || serves > MAX_SERVES) {
-    return `Say how many serves it makes: a whole number from 1 to ${MAX_SERVES.toLocaleString('en-US')}.`;
+    return `Say how many ${dish ? 'plates' : 'serves'} it makes: a whole number from 1 to ${MAX_SERVES.toLocaleString('en-US')}.`;
   }
   if (rows.length > MAX_LINES) return tooMany(rows.length);
   const named = (i: number) => {
@@ -330,17 +430,21 @@ export function whyBlocked(rows: DraftRow[], serves: number = 1): string | null 
  * One sheet per drink. The key is what keeps a draft typed for one drink out
  * of another: React drops the inner sheet's state when the drink changes.
  */
-export default function RecipeSheet({ cocktailId }: { cocktailId: string }) {
-  return <Sheet key={cocktailId} cocktailId={cocktailId} />;
+export default function RecipeSheet(props: { cocktailId: string } | { dishId: string }) {
+  const owner: RecipeOwner = 'dishId' in props ? { kind: 'dish', id: props.dishId } : { kind: 'cocktail', id: props.cocktailId };
+  return <Sheet key={owner.id} owner={owner} />;
 }
 
-function Sheet({ cocktailId }: { cocktailId: string }) {
-  const recipe = useRecipe(cocktailId);
+function Sheet({ owner }: { owner: RecipeOwner }) {
+  const cocktailId = owner.id;
+  const dId = draftId(owner);
+  const isDish = owner.kind === 'dish';
+  const recipe = useRecipe(owner);
   const canEdit = useCanEditRecipe();
   const sayMoney = useHouseMoney();
-  const save = useSaveRecipe(cocktailId);
+  const save = useSaveRecipe(owner);
   const { user, activeRestaurantId } = useAuth();
-  const storeKey = draftKey(user?.userId, activeRestaurantId, cocktailId);
+  const storeKey = draftKey(user?.userId, activeRestaurantId, dId);
   // An unsaved draft this person left on this drink earlier in the session.
   const [kept] = useState(() => (canEdit ? takeDraft(storeKey) : null));
 
@@ -354,6 +458,8 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
   const [said, setSaid] = useState<Said | null>(null);
   const [showVersions, setShowVersions] = useState(false);
   const [proposed, setProposed] = useState<Proposed | null>(null);
+  // Each "Read it" gets a token, so a shelf answer for an older paste is dropped.
+  const pasteToken = useRef(0);
   const [pasteOpen, setPasteOpen] = useState(Boolean(kept?.paste));
   const [pasteText, setPasteText] = useState(kept?.paste ?? '');
   // The typed lines a "Load the saved recipe" replaced, kept until put back, thrown away or saved over.
@@ -375,8 +481,35 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
   // The drink is gone from this house: no draft of it, for anyone, can ever be
   // saved, so none may keep the leave-page warning alive.
   useEffect(() => {
-    if (recipe.status === 404) dropDraftsForDrink(cocktailId);
-  }, [recipe.status, cocktailId]);
+    if (recipe.status === 404) dropDraftsForDrink(dId);
+  }, [recipe.status, dId]);
+
+  // Read a paste into proposed lines, then ask the shelf once which of them
+  // have an exact-name item. Nothing is linked or saved until it is used and saved.
+  const readPaste = () => {
+    const token = ++pasteToken.current;
+    const parsed = parseSpec(pasteText);
+    const ask = [...new Set(parsed.filter(askShelf).map((l) => l.label.trim()))].slice(0, MATCH_MAX);
+    const lines: ProposedRow[] = parsed.map((l) => (ask.includes(l.label.trim()) && askShelf(l) ? { ...l, link: { status: 'looking' } } : l));
+    setProposed({ from: 'paste', lines, note: PASTE_NOTE, token });
+    if (!ask.length || !activeRestaurantId) return;
+    const settle = (answer: (l: ProposedRow) => ProposedLink) =>
+      setProposed((p) =>
+        p && p.token === token ? { ...p, lines: p.lines.map((l) => (l.link?.status === 'looking' ? { ...l, link: answer(l) } : l)) } : p,
+      );
+    recipesApi.matchShelf(activeRestaurantId, ask).then(
+      (matches) => {
+        const byLabel = new Map(matches.map((m) => [m.label, m]));
+        settle((l) => {
+          const m = byLabel.get(l.label.trim());
+          if (m?.item) return { status: 'linked', item: m.item };
+          if (m && m.sameName > 1) return { status: 'same-name', n: m.sameName };
+          return { status: 'none' };
+        });
+      },
+      () => settle(() => ({ status: 'unread' })),
+    );
+  };
 
   const data = recipe.data;
   const versionId = data?.current?.versionId ?? null;
@@ -405,7 +538,23 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
   }, [data, versionId, dirty, seed]);
 
   const shownMeta = meta ?? metaOf(data?.current);
-  const blocked = useMemo(() => whyBlocked(rows ?? [], shownMeta.yieldServes), [rows, shownMeta.yieldServes]);
+  const blocked = useMemo(() => whyBlocked(rows ?? [], shownMeta.yieldServes, isDish), [rows, shownMeta.yieldServes, isDish]);
+
+  // Money only where the server sent it, and never to a role that cannot edit.
+  const money = Boolean(canEdit && data && (data.cost !== null || data.cocktail.price !== null));
+  // An unsaved draft is priced by the gateway at today's prices, live, once it
+  // is whole. A drink never saved is priced too: the preview needs only the
+  // drink, not a saved version (#1165, `previewCost`). Its server figures
+  // cannot say whether this role sees money (no version, so no cost), so there
+  // the gate is the one the route itself keeps: owners and managers, who are
+  // the ones who edit. A refusal answers null and no draft card is shown.
+  const draftMoney = canEdit && (money || Boolean(data && !data.current));
+  const draftBody = useMemo(
+    () => (draftMoney && dirty && data && rows ? costPreviewBody(rows, shownMeta.yieldServes) : null),
+    [draftMoney, dirty, data, rows, shownMeta.yieldServes],
+  );
+  const preview = useCostPreview(owner, draftBody?.body ?? null);
+  const draftCost: DraftCost | null = preview && draftBody ? { cost: preview, labels: draftBody.labels } : null;
 
   if (recipe.loading) return <p className="cl-note" role="status">Reading the recipe…</p>;
   if (!data) {
@@ -425,16 +574,16 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
   const hasLegacy = !data.current && data.legacyLines.length > 0;
   const behind = canEdit && dirty && versionId !== openedFrom;
 
-  // Money only where the server sent it, and never to a role that cannot edit.
-  const money = Boolean(canEdit && (data.cost !== null || c.price !== null));
-  const say = money ? (n: number) => sayMoney(n) : null;
+  const say = money || draftCost ? (n: number) => sayMoney(n) : null;
 
   const edit = (next: (rs: DraftRow[]) => DraftRow[]) => {
     setDirty(true);
+    setSaid(stillTrue);
     setRows((rs) => next(rs ?? []));
   };
   const setField = (p: Partial<DraftMeta>) => {
     setDirty(true);
+    setSaid(stillTrue);
     setMeta((m) => ({ ...(m ?? metaOf(data.current)), ...p }));
   };
   const patch = (key: string, p: Partial<DraftRow>) =>
@@ -488,7 +637,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
       })),
     };
     if (m.method.trim()) body.method = m.method.trim();
-    if (m.glass.trim()) body.glass = m.glass.trim();
+    if (!isDish && m.glass.trim()) body.glass = m.glass.trim();
     if (m.garnish.trim()) body.garnish = m.garnish.trim();
     setSaid(null);
     try {
@@ -503,6 +652,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
       setSaid({
         tone: 'ok',
         text: `Saved. ${count(body.lines.length, 'ingredient', 'ingredients')}, version ${out.version}.`,
+        saved: true,
       });
     } catch (e) {
       const status = getErrorStatus(e);
@@ -515,23 +665,13 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
     }
   };
 
-  const footer = (() => {
-    if (!data.current && lines.length === 0) {
-      if (hasLegacy) return null;
-      return canEdit ? 'No recipe yet. Add what goes in it, or paste a spec.' : 'No recipe yet.';
-    }
-    if (!money || !data.cost || !data.current) return null;
-    // While the draft differs, the cost is the saved recipe's, and says so.
-    const asSaved = canEdit && dirty ? 'As saved: ' : '';
-    if (data.cost.complete && data.cost.perServe != null) {
-      const part = data.cost.partial ?? 0;
-      return `${asSaved}Costs ${sayMoney(data.cost.perServe)} a serve at today's prices${
-        part > 0 ? ` · ${count(part, 'ingredient is', 'ingredients are')} priced from the bottles with an invoice only` : ''
-      }`;
-    }
-    if (data.cost.of === 0) return `${asSaved}Nothing in it is counted from the shelf.`;
-    return `${asSaved}${data.cost.priced} of ${count(data.cost.of, 'ingredient', 'ingredients')} priced`;
-  })();
+  // Only the empty recipe has a footer. The cost a serve is the cost card's
+  // (DrinkCards.tsx) alone: a second sentence built apart from it could say
+  // something else (it once read "₺0.00" where the card said "Under ₺0.01").
+  const footer =
+    !data.current && lines.length === 0 && !hasLegacy
+      ? canEdit ? 'No recipe yet. Add what goes in it, or paste a spec.' : 'No recipe yet.'
+      : null;
 
   // The same good on more than one counted line: said, not merged; a split pour is real.
   const repeated = (() => {
@@ -559,7 +699,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
       {/* The drink opens on its cards, then what is in a serve, then its lines
           (founder ask: a drink shows its KPI cards, then a nutrition card). */}
       <RecipeTasteLine kind="cocktail" subjectId={cocktailId} restaurantId={activeRestaurantId ?? null} />
-      <DrinkCards data={data} sayMoney={say} unsaved={canEdit && dirty} />
+      <DrinkCards data={data} sayMoney={say} unsaved={canEdit && dirty} draftCost={draftCost} />
       <WhatIsInAServe data={data} unsaved={canEdit && dirty} />
       <RecipeTaste
         kind="cocktail"
@@ -572,7 +712,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
       <header className="cl-rcp-head">
         <h4 className="cl-sec" style={{ margin: 0 }}>Recipe</h4>
         <dl className="cl-rcp-facts">
-          {glass ? <div><dt>Glass</dt><dd>{glass}</dd></div> : null}
+          {!isDish && glass ? <div><dt>Glass</dt><dd>{glass}</dd></div> : null}
           {garnish ? <div><dt>Garnish</dt><dd>{garnish}</dd></div> : null}
         </dl>
       </header>
@@ -585,6 +725,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
                 key={r.key}
                 row={r}
                 say={say}
+                dish={isDish}
                 onChange={(p) => patch(r.key, p)}
                 onRemove={() => edit((rs) => rs.filter((x) => x.key !== r.key))}
               />
@@ -597,14 +738,14 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
 
       {canEdit && repeated.length > 0 ? (
         <p className="cl-note" data-testid="recipe-repeated">
-          {repeated.map(([name, n]) => `${name} is on ${n} lines; a serve takes all of them.`).join(' ')}
+          {repeated.map(([name, n]) => `${name} is on ${n} lines; a ${isDish ? 'plate' : 'serve'} takes all of them.`).join(' ')}
         </p>
       ) : null}
 
       {canEdit && (lines.length > 0 || data.current) ? (
         <div className="cl-rcp-meta" data-testid="recipe-meta">
           <label>
-            Makes (serves)
+            {isDish ? 'Makes (plates)' : 'Makes (serves)'}
             <input
               className="cl-field cl-focus cl-num"
               type="number"
@@ -617,10 +758,12 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
               onChange={(e) => setField({ yieldServes: e.target.value.trim() === '' ? NaN : Number(e.target.value) })}
             />
           </label>
-          <label>
-            Glass
-            <input className="cl-field cl-focus" value={shownMeta.glass} maxLength={200} placeholder={c.glass ?? 'Rocks'} onChange={(e) => setField({ glass: e.target.value })} />
-          </label>
+          {isDish ? null : (
+            <label>
+              Glass
+              <input className="cl-field cl-focus" value={shownMeta.glass} maxLength={200} placeholder={c.glass ?? 'Rocks'} onChange={(e) => setField({ glass: e.target.value })} />
+            </label>
+          )}
           <label>
             Garnish
             <input className="cl-field cl-focus" value={shownMeta.garnish} maxLength={200} placeholder={c.garnish ?? 'Orange peel'} onChange={(e) => setField({ garnish: e.target.value })} />
@@ -637,7 +780,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
       {hasLegacy && !(canEdit && proposed?.from === 'legacy') ? <LegacyLines data={data} /> : null}
 
       {footer ? (
-        <p className="cl-rcp-foot" data-testid="recipe-footer" data-complete={data.cost?.complete ? 'true' : 'false'}>
+        <p className="cl-rcp-foot" data-testid="recipe-footer">
           {footer}
         </p>
       ) : null}
@@ -654,11 +797,22 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
             {proposed.lines.map((p, i) => (
               <li key={i} className="cl-rcp-line" data-role={p.role} data-testid="recipe-proposed-line">
                 <div className="cl-rcp-read">
-                  <span className="cl-num cl-rcp-amt">{p.qty != null ? `${qtyText(p.qty)} ${p.unit ?? ''}`.trim() : ''}</span>
+                  <span className="cl-num cl-rcp-amt">{p.qty != null ? amountWithUnit(p.qty, p.unit) : ''}</span>
                   <span>
                     {p.label}
                     {p.role === 'untracked' ? <span className="cl-dim"> · not counted</span> : null}
                     {p.flag ? <span className="cl-rcp-flag" data-testid="recipe-proposed-flag"> · {p.flag}</span> : null}
+                    {p.link ? (
+                      <LinkSaid
+                        link={p.link}
+                        label={p.label}
+                        onUnlink={() =>
+                          setProposed((pr) =>
+                            pr ? { ...pr, lines: pr.lines.map((l, j) => (j === i ? { ...l, link: { status: 'none' } } : l)) } : pr,
+                          )
+                        }
+                      />
+                    ) : null}
                   </span>
                   <button
                     type="button"
@@ -733,9 +887,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
               type="button"
               className="cl-btn cl-focus"
               disabled={parseSpec(pasteText).length === 0}
-              onClick={() =>
-                setProposed({ from: 'paste', lines: parseSpec(pasteText), note: 'Check these before you use them. Nothing is saved yet.' })
-              }
+              onClick={readPaste}
             >
               Read it
             </button>
@@ -837,7 +989,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
             Earlier versions ({earlier})
           </button>
           {showVersions ? (
-            <Versions cocktailId={cocktailId} currentId={versionId} onStartFrom={canEdit ? startFrom : null} say={say} />
+            <Versions cocktailId={owner} currentId={versionId} onStartFrom={canEdit ? startFrom : null} say={say} />
           ) : null}
         </div>
       ) : null}
