@@ -8,6 +8,8 @@
  *   3. a read that failed is said as a failure, never as "no receipt".
  */
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -158,6 +160,26 @@ describe('an order line opens its receipt in a right sheet', () => {
     expect(panel.style.width).toBe('360px');
     await waitFor(() => expect(screen.queryByTestId('receipt-sheet')).toBeNull());
     expect(screen.queryByTestId('canonical-document')).toBeNull();
+  });
+
+  it('keeps the popover 360 px wide in the markup and lets the stylesheet cap it to the phone, 343 px at 375', async () => {
+    // The width used to be worked out from window.innerWidth at render time, which
+    // read 361 in the phone walk and gave 329 px. The cap now lives in CSS (the
+    // layout viewport), so the markup never narrows it.
+    const before = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { value: 375, configurable: true, writable: true });
+    try {
+      state.current = ordersData([row()]);
+      receiptForOrder.mockResolvedValue({ state: 'none' });
+      openReceipt();
+      const pop = await screen.findByTestId('receipt-popover');
+      expect((pop.closest('.mdv-ovl__panel') as HTMLElement).style.width).toBe('360px');
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { value: before, configurable: true, writable: true });
+    }
+    const css = readFileSync(join(__dirname, '../../../components/mudavym/sheet.css'), 'utf8');
+    const rule = css.match(/\.mdv-ovl--popover \.mdv-ovl__panel \{([^}]*)\}/)![1];
+    expect(rule).toMatch(/max-width:\s*calc\(100vw - 32px\)/);
   });
 
   it('while the read is out, shows a paper that is not there yet, not a line of words', async () => {

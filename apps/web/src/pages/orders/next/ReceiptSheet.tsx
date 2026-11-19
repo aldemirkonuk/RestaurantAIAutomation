@@ -35,7 +35,7 @@ export const RECEIPT_UNREAD_SENTENCE =
 /** How long the read may take before the wide sheet opens with its ghost paper. */
 export const RECEIPT_SHEET_DELAY_MS = 120;
 
-/** The popover's width: 360, or the phone's width less its two 16 px gutters. */
+/** The popover's width: 360. sheet.css caps it at the phone's width less its two 16 px gutters. */
 export const RECEIPT_POPOVER_WIDTH = 360;
 
 export interface ReceiptSheetProps {
@@ -71,10 +71,6 @@ export function ReceiptSheet({ open, onClose, row, anchorRef }: ReceiptSheetProp
   const found = !q.isLoading && !q.isError && q.data?.state === 'found';
   const small = !q.isLoading && !found; // no receipt, or a read that failed
   const canPoint = !!anchorRef?.current;
-  const width =
-    typeof window === 'undefined'
-      ? RECEIPT_POPOVER_WIDTH
-      : Math.min(RECEIPT_POPOVER_WIDTH, window.innerWidth - 32);
 
   const answer = q.isError ? (
     <div role="alert" data-testid="receipt-unread">
@@ -119,7 +115,7 @@ export function ReceiptSheet({ open, onClose, row, anchorRef }: ReceiptSheetProp
           open={open && small}
           onClose={onClose}
           anchorRef={anchorRef}
-          width={width}
+          width={RECEIPT_POPOVER_WIDTH}
           label={label}
           eyebrow="Receipt"
           title={row.wineName ?? 'This order'}

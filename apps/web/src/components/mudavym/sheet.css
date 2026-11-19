@@ -168,6 +168,8 @@
 .mdv-ovl--popover .mdv-ovl__panel {
   position: fixed;
   max-height: 72vh;
+  /* On a phone every popover keeps 16 px each side: 343 px at 375, not a width fixed at render. */
+  max-width: calc(100vw - 32px);
   border: 1px solid var(--paper-2);
   border-radius: 14px;
   box-shadow: 0 18px 44px -22px rgba(0, 0, 0, 0.42);
