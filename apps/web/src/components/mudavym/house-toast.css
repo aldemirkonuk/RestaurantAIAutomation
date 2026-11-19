@@ -77,6 +77,16 @@
   color: var(--ink-1) !important;
 }
 
+/* The rise: 220 ms on transform and opacity only (sonner's own rule also
+   transitions height and box-shadow, 400 ms). A toast says it is saved, then
+   gets out of the way; its life is set at the call site (the cocktail save
+   lives 4 s). */
+.mdv-toast {
+  transition:
+    transform 220ms var(--ease-house, cubic-bezier(0.16, 1, 0.3, 1)),
+    opacity 220ms var(--ease-house, cubic-bezier(0.16, 1, 0.3, 1)) !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .mdv-toaster [data-sonner-toast] {
     transition: none !important;

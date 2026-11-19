@@ -75,6 +75,14 @@ const mock = vi.hoisted(() => ({
   } as Record<string, unknown>,
 }));
 
+// The save confirmation is a toast (design critic N-20): its life and its words are asserted here.
+const toasts = vi.hoisted(() => ({ success: vi.fn() }));
+vi.mock('sonner', () => ({
+  toast: Object.assign(vi.fn(), {
+    success: toasts.success, error: vi.fn(), info: vi.fn(), warning: vi.fn(), message: vi.fn(), dismiss: vi.fn(), promise: vi.fn(),
+  }),
+}));
+
 vi.mock('./useCellarNextData', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   useCellarNextData: () => mock.current,
@@ -1323,6 +1331,41 @@ describe('CellarNext — the registers that are not wines', () => {
       /empty because the extraction pass over the scanned menus never ran/,
     );
     expect(screen.getByRole('button', { name: /Write the recipe/ })).toBeEnabled();
+  });
+
+  it('adding a cocktail opens the form in a collapse and confirms the save with a 4 s toast, not an inline line', async () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: registerVM({ register: 'cocktails', rows: [], counts: { total: 0, houseRows: 0, matched: 0, matchedLoosely: 0, catalogueOnly: 0 } }), loading: false, error: null, refetch: () => {} };
+    const create = vi.fn().mockResolvedValue({ id: 'c9' });
+    mock.writes = {
+      create: { mutateAsync: create, isPending: false },
+      amend: { mutateAsync: vi.fn(), isPending: false },
+      retire: { mutateAsync: vi.fn(), isPending: false },
+      setRecipe: { mutateAsync: vi.fn(), isPending: false },
+    };
+    mock.cocktails = {
+      loading: false, error: null,
+      data: { rows: [], count: 0, truncated: false, referenceRows: null, recipesAvailable: false, scopeNote: 'Only cocktails this restaurant owns.' },
+    };
+    toasts.success.mockClear();
+    draw({ category: 'cocktails' });
+
+    expect(screen.queryByTestId('cocktail-draft')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Add a cocktail/ }));
+    const form = screen.getByTestId('cocktail-draft');
+    expect(form.closest('.mdv-collapse')).toHaveAttribute('data-open', 'false');
+    await act(async () => { await new Promise((r) => requestAnimationFrame(() => r(null))); });
+    expect(form.closest('.mdv-collapse')).toHaveAttribute('data-open', 'true');
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Paloma' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Put it on the list/ }));
+    });
+    expect(create).toHaveBeenCalled();
+    expect(toasts.success).toHaveBeenCalledWith('“Paloma” is on this house’s list.', { duration: 4000 });
+    expect(screen.queryByTestId('cocktail-said')).toBeNull();
+    // The form eases shut rather than vanishing.
+    expect(screen.getByTestId('cocktail-draft').closest('.mdv-collapse')).toHaveAttribute('data-open', 'false');
   });
 
   it('retiring a cocktail takes two presses and never carries the seal', async () => {

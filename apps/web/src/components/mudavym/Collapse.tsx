@@ -20,20 +20,31 @@ export function Collapse({
   children,
   className,
   unmountWhenClosed = false,
+  appear = false,
 }: {
   open: boolean;
   children: ReactNode;
   className?: string;
   unmountWhenClosed?: boolean;
+  /**
+   * With `unmountWhenClosed`: a panel that mounts already open still eases
+   * open (one frame at 0fr first), as a row dropdown does when its row opens.
+   * Without it a panel that mounts open appears at full height.
+   */
+  appear?: boolean;
 }) {
   const [mounted, setMounted] = useState(open);
-  const [shown, setShown] = useState(open);
+  const [shown, setShown] = useState(open && !(unmountWhenClosed && appear));
   const first = useRef(true);
 
   useEffect(() => {
     if (!unmountWhenClosed) return;
     if (first.current) {
       first.current = false;
+      if (appear && open) {
+        const id = requestAnimationFrame(() => setShown(true));
+        return () => cancelAnimationFrame(id);
+      }
       return;
     }
     if (open) {
@@ -45,7 +56,7 @@ export function Collapse({
     setShown(false);
     const t = setTimeout(() => setMounted(false), CLOSE_MS);
     return () => clearTimeout(t);
-  }, [open, unmountWhenClosed]);
+  }, [open, unmountWhenClosed, appear]);
 
   const isOpen = unmountWhenClosed ? shown : open;
   if (unmountWhenClosed && !mounted && !open) return null;

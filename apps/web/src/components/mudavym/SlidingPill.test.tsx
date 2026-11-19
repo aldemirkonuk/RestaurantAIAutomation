@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { SlidingPill } from './SlidingPill';
 import { Collapse } from './Collapse';
 
@@ -185,5 +185,32 @@ describe('SlidingPill option hint', () => {
     );
     expect(screen.getByRole('button', { name: 'Month' })).toHaveAttribute('title', 'Month (m)');
     expect(screen.getByRole('button', { name: 'Week' })).not.toHaveAttribute('title');
+  });
+});
+
+describe('Collapse appear', () => {
+  it('a panel that mounts open eases open from 0fr, and stays reachable the whole way', () => {
+    vi.useFakeTimers();
+    try {
+      render(
+        <Collapse open unmountWhenClosed appear>
+          <button>row</button>
+        </Collapse>,
+      );
+      const root = document.querySelector('.mdv-collapse')!;
+      const inner = document.querySelector('.mdv-collapse__inner')!;
+      expect(root).toHaveAttribute('data-open', 'false');
+      expect(inner).not.toHaveAttribute('inert');
+      expect(screen.getByRole('button', { name: 'row' })).toBeTruthy();
+      act(() => { vi.advanceTimersByTime(40); });
+      expect(root).toHaveAttribute('data-open', 'true');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('without appear, a panel that mounts open is open at once', () => {
+    render(<Collapse open unmountWhenClosed><button>row</button></Collapse>);
+    expect(document.querySelector('.mdv-collapse')).toHaveAttribute('data-open', 'true');
   });
 });

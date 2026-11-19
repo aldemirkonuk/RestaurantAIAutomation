@@ -27,7 +27,9 @@
  * a two-step confirm, no wax (MOTIONS.md, "Deliberate non-motions").
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { toast } from 'sonner';
+import { Collapse } from '../../../components/mudavym/Collapse';
 import { AlertTriangle, Check, Pencil, Plus, Trash2, X } from 'lucide-react';
 import {
   BOOK_LABEL,
@@ -212,6 +214,9 @@ function Recipe({ cocktailId }: { cocktailId: string }) {
 
 /* ── the register ───────────────────────────────────────────────────────── */
 
+/** How long the "saved" toast lives (the rise is 220 ms, in house-toast.css). */
+export const SAVED_TOAST_MS = 4000;
+
 export default function CocktailRegister({
   register,
   registerLoading,
@@ -228,6 +233,10 @@ export default function CocktailRegister({
   const [confirmRetire, setConfirmRetire] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  // The last open draft: the panel eases shut over it, so it must outlive `draft`.
+  const held = useRef<Draft | null>(null);
+  if (draft) held.current = draft;
+  const d = held.current;
 
   const rows = (data?.rows ?? []).filter((c) => {
     const q = query.trim().toLowerCase();
@@ -241,11 +250,14 @@ export default function CocktailRegister({
     try {
       if (editId) {
         await amend.mutateAsync({ id: editId, input: draft });
-        setSaid(`“${draft.name.trim()}” was amended on this house’s list.`);
+        toast.success(`“${draft.name.trim()}” was amended on this house’s list.`, { duration: SAVED_TOAST_MS });
       } else {
         await create.mutateAsync(draft);
-        setSaid(`“${draft.name.trim()}” is on this house’s list.`);
+        toast.success(`“${draft.name.trim()}” is on this house’s list.`, { duration: SAVED_TOAST_MS });
       }
+      // A saved drink is confirmed by the toast; an older refusal or retire
+      // line would now read as if it still applied.
+      setSaid(null);
       setDraft(null);
       setEditId(null);
     } catch (e) {
@@ -298,7 +310,8 @@ export default function CocktailRegister({
 
       {said ? <p className="cl-note" role="status" data-testid="cocktail-said">{said}</p> : null}
 
-      {draft ? (
+      <Collapse open={draft !== null} unmountWhenClosed>
+        {d ? (
         <div className="cl-panel" style={{ marginTop: 12 }} data-testid="cocktail-draft">
           <h3 className="cl-h2" style={{ fontSize: 19 }}>
             {editId ? 'Amend this cocktail' : 'A cocktail on this house’s list'}
@@ -309,15 +322,15 @@ export default function CocktailRegister({
               gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
             }}
           >
-            <Field id="ck-name" label="Name" value={draft.name ?? ''} onChange={(v) => setDraft({ ...draft, name: v })} placeholder="Negroni" />
-            <Field id="ck-section" label="Section" value={draft.menuSection ?? ''} onChange={(v) => setDraft({ ...draft, menuSection: v })} placeholder="Aperitivo" />
-            <Field id="ck-method" label="Method" value={draft.method ?? ''} onChange={(v) => setDraft({ ...draft, method: v })} placeholder="Stirred" />
-            <Field id="ck-glass" label="Glass" value={draft.glass ?? ''} onChange={(v) => setDraft({ ...draft, glass: v })} placeholder="Rocks" />
-            <Field id="ck-garnish" label="Garnish" value={draft.garnish ?? ''} onChange={(v) => setDraft({ ...draft, garnish: v })} placeholder="Orange peel" />
+            <Field id="ck-name" label="Name" value={d.name ?? ''} onChange={(v) => setDraft({ ...d, name: v })} placeholder="Negroni" />
+            <Field id="ck-section" label="Section" value={d.menuSection ?? ''} onChange={(v) => setDraft({ ...d, menuSection: v })} placeholder="Aperitivo" />
+            <Field id="ck-method" label="Method" value={d.method ?? ''} onChange={(v) => setDraft({ ...d, method: v })} placeholder="Stirred" />
+            <Field id="ck-glass" label="Glass" value={d.glass ?? ''} onChange={(v) => setDraft({ ...d, glass: v })} placeholder="Rocks" />
+            <Field id="ck-garnish" label="Garnish" value={d.garnish ?? ''} onChange={(v) => setDraft({ ...d, garnish: v })} placeholder="Orange peel" />
             <Field
               id="ck-price" label="Price" type="number"
-              value={draft.price === undefined ? '' : String(draft.price)}
-              onChange={(v) => setDraft({ ...draft, price: v === '' ? undefined : Number(v) })}
+              value={d.price === undefined ? '' : String(d.price)}
+              onChange={(v) => setDraft({ ...d, price: v === '' ? undefined : Number(v) })}
               placeholder="leave blank if unpriced"
             />
           </div>
@@ -330,7 +343,7 @@ export default function CocktailRegister({
               type="button"
               className="cl-btn cl-focus"
               onClick={submit}
-              disabled={!draft.name?.trim() || create.isPending || amend.isPending}
+              disabled={!d.name?.trim() || create.isPending || amend.isPending}
             >
               <Check size={13} aria-hidden />
               {create.isPending || amend.isPending
@@ -347,7 +360,8 @@ export default function CocktailRegister({
             </button>
           </span>
         </div>
-      ) : null}
+        ) : null}
+      </Collapse>
 
       {loading ? (
         <p className="cl-said" role="status" style={{ marginTop: 12 }}>
