@@ -41,6 +41,7 @@ const MailThread = lazy(() => import('./MailThread').then((m) => ({ default: m.M
 import {
   MAIL_KIND_FILTERS,
   READS_ALL_LINE,
+  READS_ALL_SWITCH_OFF_WORDS,
   READ_ALL_OFFER,
   READ_ALL_OFFER_WORDS,
   VENDOR_ONLY_LINE,
@@ -516,6 +517,7 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
       type="button"
       aria-pressed={on}
       onClick={onClick}
+      className="max-md:inline-flex max-md:min-h-[44px] max-md:items-center"
       style={{
         fontSize: 12,
         fontWeight: 600,
@@ -539,13 +541,14 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
  * house reading; agreeing is done on the consent screen, the gateway's own
  * words in full, and this tab learns of it by reading the house's grants back.
  */
-function ReadScope({ canAnswer }: { canAnswer: boolean }) {
+function ReadScope({ canAnswer, inboxSwitchedOff }: { canAnswer: boolean; inboxSwitchedOff: boolean }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const grants = useReadAllGrants(canAnswer);
   const offered = useReadAllOffered(canAnswer);
   const stop = useStopReadingAll();
-  if (grants.isPending) return null;
+  // Hold the line's place while the grants are read, so it does not pop in and shift the list (r77 w3 finding 2).
+  if (grants.isPending) return <div aria-hidden="true" data-testid="read-scope-pending" className="min-h-[38px] md:min-h-[20px]" />;
   if (grants.isError) {
     return (
       <p data-testid="read-scope" style={{ ...QUIET, margin: 0 }}>
@@ -575,6 +578,22 @@ function ReadScope({ canAnswer }: { canAnswer: boolean }) {
           </button>
         )}
       </p>
+      {all && inboxSwitchedOff && (
+        <p data-testid="read-scope-switch-off" style={{ ...QUIET, margin: 0 }}>
+          {READS_ALL_SWITCH_OFF_WORDS}{' '}
+          {canAnswer && (
+            <button
+              type="button"
+              data-testid="read-scope-open-switch"
+              onClick={() => navigate('/settings?tab=features')}
+              className="max-md:min-h-[44px]"
+              style={LINK_BUTTON}
+            >
+              Open the switch in Settings
+            </button>
+          )}
+        </p>
+      )}
       {canAnswer && !all && offered && open && (
         <div
           role="group"
@@ -591,6 +610,7 @@ function ReadScope({ canAnswer }: { canAnswer: boolean }) {
               type="button"
               data-testid="read-all-accept"
               onClick={() => navigate(readAllConsentPath())}
+              className="max-md:min-h-[44px]"
               style={{
                 fontSize: 12,
                 fontWeight: 600,
@@ -891,7 +911,7 @@ export function MailTab({
               </Chip>
             ))}
           </div>
-          <ReadScope canAnswer={canReply} />
+          <ReadScope canAnswer={canReply} inboxSwitchedOff={mailboxDoor.state === 'switched_off'} />
           <People
             on={on}
             waitingOnly={waitingOnly}
