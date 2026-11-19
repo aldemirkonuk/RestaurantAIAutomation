@@ -772,6 +772,7 @@ export default function InventoryNext() {
               />
               <SlidingPill<'table' | 'map'>
                 ariaLabel="View"
+                className="iv-view-pill"
                 value={view === 'map' ? 'map' : 'table'}
                 onChange={(next) => setV({ view: next })}
                 options={[

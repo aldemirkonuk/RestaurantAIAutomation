@@ -187,6 +187,32 @@
   display: inline-flex;
   gap: 4px;
 }
+/* c3 need 16: a 44 px hit area round a 32 px thumb. The track is drawn 32 px
+   high by ::before, the options are 44 px, and the negative margin keeps the
+   pill's footprint in the toolbar at 32 px. */
+.iv-view-pill {
+  padding: 0;
+  background: transparent;
+  margin-block: -6px;
+}
+.iv-view-pill::before {
+  content: '';
+  position: absolute;
+  inset: 6px 0;
+  border-radius: 999px;
+  background: var(--paper-1);
+  z-index: -1;
+}
+.iv-view-pill .mdv-pill__thumb {
+  top: 6px;
+  bottom: 6px;
+}
+.iv-view-pill .mdv-pill__opt {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding-block: 0;
+}
 .iv-field {
   height: 32px;
   padding: 0 9px;
