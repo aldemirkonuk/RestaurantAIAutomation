@@ -7,7 +7,9 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 const checkFlag = vi.hoisted(() => vi.fn());
@@ -70,7 +72,8 @@ describe('shell on (the default: live in code, no override, the house has no fla
   it('renders the in-app 404 instead of redirecting, without asking for a flag', () => {
     mountCatchAll('/this/does/not/exist');
     expect(screen.queryByTestId('dashboard')).toBeNull();
-    expect(screen.getByText('There is no page at /this/does/not/exist.')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: "That page isn't in the book." })).toBeTruthy();
+    expect(screen.getByText('/this/does/not/exist')).toBeTruthy();
     expect(checkFlag).not.toHaveBeenCalled();
   });
 });
@@ -110,27 +113,38 @@ describe('HouseNotFound content', () => {
     expect(links.every((t) => !t?.startsWith('Go to'))).toBe(true);
   });
 
-  it('reads the same rooms table the rail does — no internal tool ever offered', () => {
-    mountNotFound('/nowhere');
-    for (const internal of ['/studio', '/simpos', '/dev/truth', '/dev-sandbox']) {
-      expect(screen.queryByRole('link', { name: new RegExp(internal, 'i') })).toBeNull();
-    }
-    // A room from each visible group is actually there.
-    expect(screen.getByRole('link', { name: 'Dashboard' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Orders' })).toBeTruthy();
+  it('is not a link index: one primary, the palette field, no rooms list', () => {
+    mountNotFound('/orders/some/unknown/tail');
+    expect(screen.queryByRole('navigation', { name: 'Rooms of the house' })).toBeNull();
+    expect(screen.getAllByRole('link')).toHaveLength(1);
+    expect(screen.getByRole('link', { name: 'Go to Orders' })).toBeTruthy();
   });
 
-  it('hides a room a staff role does not clear, same as the rail', () => {
-    render(
-      <MemoryRouter initialEntries={['/nowhere']}>
-        <Routes>
-          <Route
-            path="*"
-            element={<HouseNotFound role="staff" flags={{ connections: false }} />}
-          />
-        </Routes>
-      </MemoryRouter>,
-    );
-    expect(screen.queryByRole('link', { name: 'Vendor prices' })).toBeNull();
+  it('the primary is Back to Dashboard when no room is near', () => {
+    mountNotFound('/nowhere');
+    const links = screen.getAllByRole('link');
+    expect(links).toHaveLength(1);
+    expect(links[0].textContent).toBe('Back to Dashboard');
+  });
+
+  it('the palette field opens the command palette, which reads the rooms table the rail does', () => {
+    mountNotFound('/nowhere');
+    const seen = vi.fn();
+    window.addEventListener('wineops:command-open', seen);
+    fireEvent.click(screen.getByRole('button', { name: /Find a room or an action/ }));
+    window.removeEventListener('wineops:command-open', seen);
+    expect(seen).toHaveBeenCalledTimes(1);
+  });
+
+  it('is 404 type at the floor: headline 34 px, eyebrow 11 px, field and primary 48 px', () => {
+    const css = readFileSync(resolve(__dirname, 'house-shell.css'), 'utf8');
+    const from = css.indexOf('the in-app 404');
+    const block = css.slice(from, css.indexOf('The header\'s Ask', from));
+    expect(block).toMatch(/\.mdv-404__headline\s*{[^}]*font-size:\s*34px/);
+    expect(block).toMatch(/\.mdv-404__eyebrow\s*{[^}]*font-size:\s*11px/);
+    expect(block).toMatch(/\.mdv-404__primary\s*{[^}]*min-height:\s*48px/);
+    expect(block).toMatch(/\.mdv-404__find\s*{[^}]*min-height:\s*48px/);
+    expect(block).not.toMatch(/transition:\s*all/);
+    expect(block).toMatch(/prefers-reduced-motion: reduce\)\s*{[\s\S]*\.mdv-404[\s\S]*animation:\s*none/);
   });
 });
