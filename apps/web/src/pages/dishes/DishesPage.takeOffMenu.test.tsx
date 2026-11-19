@@ -104,6 +104,17 @@ describe("/dishes: take the dishes the menu does not print off the list", () => 
     await waitFor(() => expect(screen.queryByTestId(`dish-row-${A}`)).toBeNull());
   });
 
+  it('a gateway that cannot be reached is said in words, not as the transport\'s "Network Error"', async () => {
+    h.post.mockRejectedValue(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
+    mount();
+    await screen.findByTestId('take-off-menu');
+    fireEvent.click(within(screen.getByTestId('take-off-menu')).getByRole('button', { name: 'Show them' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Take them off the list' }));
+    const said = await screen.findByTestId('take-off-menu-said');
+    expect(said.textContent).toContain('Nothing was taken off: Mudavym could not be reached just now.');
+    expect(said.textContent).not.toContain('Network Error');
+  });
+
   it('a failed take-off says nothing was taken off, with the gateway\'s sentence, and keeps the list to try again', async () => {
     h.post.mockRejectedValue({ response: { data: { message: 'The menu or the dishes could not be read just now. No dish was taken off.' } } });
     mount();

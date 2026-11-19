@@ -214,6 +214,10 @@ export function reason(e: unknown): string | null {
   if (!e) return null;
   const said = (e as { response?: { data?: { message?: unknown } } }).response?.data?.message;
   if (typeof said === 'string' && said.trim()) return said.trim();
+  // The transport's own words ("Network Error") say nothing to a person: the
+  // request never got an answer, so say that.
+  const sent = e as { code?: unknown; response?: unknown };
+  if (sent.code === 'ERR_NETWORK' && !sent.response) return 'Mudavym could not be reached just now.';
   return e instanceof Error ? e.message : 'no reason given';
 }
 
