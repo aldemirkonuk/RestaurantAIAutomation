@@ -47,6 +47,7 @@ import {
 import { getErrorMessage } from '../../../services/api/client';
 import { fmtDay } from './pf-format';
 import { Btn, ConnectionRow, Field, Note, RetryLink, StatusLine } from './pf-ui';
+import { Collapse } from '../../../components/mudavym/Collapse';
 
 type Msg = { tone: 'error' | 'done'; text: string } | null;
 
@@ -210,7 +211,7 @@ export function PasskeyRows() {
         Lost the device? Sign in with your email or password and remove it here.
       </Note>
 
-      {adding && (
+      <Collapse open={adding} unmountWhenClosed>
         <div
           style={{
             border: '1px solid var(--paper-2)',
@@ -267,7 +268,7 @@ export function PasskeyRows() {
             </div>
           </form>
         </div>
-      )}
+      </Collapse>
 
       {readout.passkeys.map((p) => (
         <ConnectionRow

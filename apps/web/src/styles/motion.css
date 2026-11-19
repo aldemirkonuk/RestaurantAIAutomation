@@ -57,6 +57,20 @@
   transform: translateX(4px);
 }
 
+/* ── Every other control inside a house page settles to .98 in 90 ms when
+   pressed. Uses the `scale` property, so a control placed with `transform`
+   is not disturbed; the base rule has zero specificity so any component's own
+   `transition` wins; `.mdv-press` has its own, stronger spec above. ──────── */
+:where(.mudavym) :where(button, [role='button'], [role='tab'], summary) {
+  transition-property: scale;
+  transition-duration: var(--dur-hover);
+  transition-timing-function: var(--ease-house);
+}
+.mudavym :is(button, [role='button'], [role='tab'], summary):active:not(:disabled, [aria-disabled='true'], .mdv-press) {
+  scale: 0.98;
+  transition: scale var(--dur-press) var(--ease-press);
+}
+
 /* ── The sliding pill: one pill under the active option of a segmented
    control. Position comes from two custom properties the component sets. ── */
 .mdv-pill {
@@ -95,7 +109,12 @@
   cursor: pointer;
   transition: color var(--dur-hover) var(--ease-house), opacity var(--dur-hover) var(--ease-house);
 }
-.mdv-pill__opt[aria-pressed='true'] { color: #fff; }
+.mdv-pill__opt[aria-pressed='true'],
+.mdv-pill__opt[aria-selected='true'] { color: #fff; }
+/* Charcoal: the thumb is the light teal, so the chosen label takes the ground's
+   ink (about 7:1) instead of white (2.5:1). */
+html[data-mudavym-ground='charcoal'] .mdv-pill__opt[aria-pressed='true'],
+html[data-mudavym-ground='charcoal'] .mdv-pill__opt[aria-selected='true'] { color: var(--paper-0, #15130f); }
 .mdv-pill__opt:focus-visible { outline: 2px solid var(--seal, #1a5e6b); outline-offset: -2px; }
 .mdv-pill__opt[data-empty='true'] { opacity: 0.4; }
 .mdv-pill__count { display: inline-block; margin-left: 6px; animation: mdv-tick var(--dur-hover) var(--ease-house); }
@@ -131,6 +150,7 @@
   .mdv-press--lift:hover:not(:disabled, [aria-disabled='true']),
   .mdv-press:active:not(:disabled, [aria-disabled='true']),
   .mdv-press:hover:not(:disabled, [aria-disabled='true']) .mdv-arrow { transform: none; }
+  .mudavym :is(button, [role='button'], [role='tab'], summary):active:not(:disabled, [aria-disabled='true'], .mdv-press) { scale: none; }
   .mdv-pill__thumb { transition: none; }
   .mdv-pill__count { animation: none; }
   .mdv-collapse { transition: none; }

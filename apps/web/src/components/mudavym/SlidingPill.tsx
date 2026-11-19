@@ -3,8 +3,12 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProp
 export interface SlidingPillOption<T extends string> {
   value: T;
   label: string;
-  /** A count shown after the label; it ticks when it changes, and 0 dims the option. */
-  count?: number;
+  /** A count shown after the label; it ticks when it changes, and 0 dims the option. A string (an em dash for "not read") shows as it is and never dims. */
+  count?: number | string;
+  /** Carried onto this option's button, for a test or a tour anchor. */
+  testId?: string;
+  /** Carried onto the count's span. */
+  countTestId?: string;
 }
 
 interface Props<T extends string> {
@@ -16,6 +20,11 @@ interface Props<T extends string> {
   className?: string;
   /** Carried onto the group, for a guided tour's anchor or a test. */
   testId?: string;
+  /**
+   * `tablist` for a control that switches what is shown beneath it: options
+   * then carry `role="tab"` and `aria-selected` instead of `aria-pressed`.
+   */
+  role?: 'group' | 'tablist';
 }
 
 /**
@@ -25,13 +34,14 @@ interface Props<T extends string> {
  * on transform only; `styles/motion.css` carries the spring, and the reduced
  * motion tier that drops it. It keeps the app's toggle pattern: a group of buttons with `aria-pressed`.
  */
-export function SlidingPill<T extends string>({ options, value, onChange, ariaLabel, className, testId }: Props<T>) {
+export function SlidingPill<T extends string>({ options, value, onChange, ariaLabel, className, testId, role = 'group' }: Props<T>) {
+  const tabs = role === 'tablist';
   const root = useRef<HTMLDivElement | null>(null);
   const [box, setBox] = useState<{ x: number; w: number } | null>(null);
   const [ready, setReady] = useState(false);
 
   const measure = useCallback(() => {
-    const el = root.current?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    const el = root.current?.querySelector<HTMLElement>('[aria-pressed="true"], [aria-selected="true"]');
     if (el) setBox({ x: el.offsetLeft, w: el.offsetWidth });
   }, []);
 
@@ -52,7 +62,7 @@ export function SlidingPill<T extends string>({ options, value, onChange, ariaLa
   return (
     <div
       ref={root}
-      role="group"
+      role={role}
       aria-label={ariaLabel}
       className={`mdv-pill${className ? ` ${className}` : ''}`}
       data-ready={ready ? 'true' : 'false'}
@@ -65,14 +75,17 @@ export function SlidingPill<T extends string>({ options, value, onChange, ariaLa
           key={o.value}
           type="button"
           data-value={o.value}
-          aria-pressed={o.value === value}
+          {...(tabs
+            ? { role: 'tab', 'aria-selected': o.value === value }
+            : { 'aria-pressed': o.value === value })}
+          data-testid={o.testId}
           data-empty={o.count === 0 ? 'true' : undefined}
           className="mdv-pill__opt"
           onClick={() => onChange(o.value)}
         >
           {o.label}
           {o.count !== undefined ? (
-            <span key={o.count} className="mdv-pill__count">
+            <span key={o.count} className="mdv-pill__count" data-testid={o.countTestId}>
               {o.count}
             </span>
           ) : null}
