@@ -271,7 +271,10 @@ export function ChooseHouse() {
         )}
 
         {!sessionNotRead && load.state === "loading" && (
-          <p className={`text-sm ${ink3}`} aria-live="polite">
+          <p
+            className={`text-[13px] ${on ? "!text-inkm-1" : "text-gray-900"}`}
+            aria-live="polite"
+          >
             Opening your houses…
           </p>
         )}
