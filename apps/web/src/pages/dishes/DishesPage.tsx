@@ -38,7 +38,9 @@
  * The opened dish offers to take the menu's price, after a confirm.
  *
  * Above the list, the dishes whose price the menu states differently are
- * counted, shown, and taken all at once after one confirm (TakeMenuPrices).
+ * counted, shown, and taken all at once after one confirm (TakeMenuPrices);
+ * so are the dishes the current menu prints no line of, which can be taken
+ * off the list together (TakeOffMenu).
  */
 import { useId, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -47,7 +49,7 @@ import RecipeSheet from '../cellar/next/recipe/RecipeSheet';
 import { pourCostShare } from '../cellar/next/recipe/DrinkCards';
 import { PRICE_UNREAD, priceText, readPrice } from '../cellar/next/recipe/price-text';
 import { useHousePercent, type SayPercent } from '../cellar/next/recipe/useHousePercent';
-import { reason, useCanEditRecipe, useCreateDish, useDishFigures, useDishes, useHouseMoney, useMenuPrices, useRemoveDish, useTakeMenuPrices, useUpdateDish } from '../cellar/next/recipe/useRecipe';
+import { reason, useCanEditRecipe, useCreateDish, useDishFigures, useDishes, useHouseMoney, useMenuPrices, useRemoveDish, useTakeMenuPrices, useTakeOffMenu, useUpdateDish } from '../cellar/next/recipe/useRecipe';
 import { MENU_PRICES_UNREAD, MenuPriceCell } from '../cellar/next/recipe/MenuPriceCell';
 import MenuDishesOffer from './MenuDishesOffer';
 import { dishMatches, sectionsOf } from './fold';
@@ -55,6 +57,7 @@ import { AllergenCell, AllergenCheck, keptFor } from '../cellar/next/recipe/List
 import { CostWaits, NoRecipeYet } from '../cellar/next/recipe/ListCostWaits';
 import UseMenuPrice, { menuPriceOffer } from '../cellar/next/recipe/UseMenuPrice';
 import TakeMenuPrices, { type Takeable } from './TakeMenuPrices';
+import TakeOffMenu, { type OffMenu } from './TakeOffMenu';
 import type { DishFigureRow, DishListRow, MenuPrice } from '../../services/api/recipes';
 import { EM, SANS } from '../cellar/next/cellar-format';
 import '../cellar/next/cellar-next.css';
@@ -366,6 +369,8 @@ export default function DishesPage() {
   const [onlyBare, setOnlyBare] = useState(false);
   const [onlyDiffering, setOnlyDiffering] = useState(false);
   const take = useTakeMenuPrices();
+  const takeOff = useTakeOffMenu();
+  const [onlyOff, setOnlyOff] = useState(false);
   const fig = (id: string) => figures.byId?.get(id);
   const figState: FiguresState = figures.loading ? 'reading' : !figures.byId || figures.costsUnread ? 'unread' : 'read';
   const searched = all.filter((d) => dishMatches(d, query));
@@ -386,9 +391,13 @@ export default function DishesPage() {
       takeable.push({ id: d.id, name: d.name, from: d.price, to: offer[0], shareNow: shareText(d.price), shareMenu: shareText(offer[0]) });
     }
   }
+  // The dishes the current menu prints no line of (g2 menu gap): only when the menu was read and one is current.
+  const offMenu: OffMenu[] = showMenu ? all.filter((d) => menu.byId?.get(d.id)?.found === 'none').map((d) => ({ id: d.id, name: d.name, section: d.section })) : [];
+  const offIds = new Set(offMenu.map((o) => o.id));
   const takeIds = new Set(takeable.map((t) => t.id));
   const filtered = canEdit && onlyBare ? byAllergen.filter((d) => bareIds.includes(d.id)) : byAllergen;
-  const rows = onlyDiffering && takeable.length > 0 ? filtered.filter((d) => takeIds.has(d.id)) : filtered;
+  const byDiffering = onlyDiffering && takeable.length > 0 ? filtered.filter((d) => takeIds.has(d.id)) : filtered;
+  const rows = onlyOff && offMenu.length > 0 ? byDiffering.filter((d) => offIds.has(d.id)) : byDiffering;
   const openId = rows.some((d) => d.id === asked) ? asked : null;
   // A link (the inventory drawer's "used in" lines) to a dish that opens nothing
   // says why, as /cocktails does: it is not on the list, or the search or a check hides it.
@@ -438,6 +447,15 @@ export default function DishesPage() {
             showing={onlyDiffering && takeable.length > 0}
             onShowing={setOnlyDiffering}
             onUse={(ids) => take.mutateAsync(ids)}
+          />
+        ) : null}
+
+        {say && showMenu ? (
+          <TakeOffMenu
+            items={offMenu}
+            showing={onlyOff && offMenu.length > 0}
+            onShowing={setOnlyOff}
+            onTakeOff={(ids) => takeOff.mutateAsync(ids)}
           />
         ) : null}
 

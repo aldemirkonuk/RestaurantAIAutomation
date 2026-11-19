@@ -6,7 +6,7 @@ import { Roles } from "../auth/decorators/roles.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RecipesService } from "./recipes.service";
 import { DishesService } from "./dishes.service";
-import { CreateDishDto, PreviewCostDto, SaveRecipeDto, ShelfMatchDto, TakeMenuPricesDto, UpdateDishDto } from "./dto/recipes.dto";
+import { CreateDishDto, PreviewCostDto, SaveRecipeDto, ShelfMatchDto, TakeMenuPricesDto, TakeOffMenuDto, UpdateDishDto } from "./dto/recipes.dto";
 
 /**
  * A dish and its recipe (ADR 0366), on the drinks' recipe routes. Every route
@@ -56,6 +56,17 @@ export class DishesController {
   })
   takeMenuPrices(@Param("restaurantId", ParseUUIDPipe) restaurantId: string, @Body() dto: TakeMenuPricesDto) {
     return this.dishes.takeMenuPrices(restaurantId, dto.ids);
+  }
+
+  @Post(":restaurantId/dishes/take-off-menu")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({
+    summary:
+      "Take the named dishes off the list when the current menu prints no line of their name (owner/manager); says which came off and why each other was left",
+  })
+  takeOffMenu(@Param("restaurantId", ParseUUIDPipe) restaurantId: string, @Body() dto: TakeOffMenuDto) {
+    return this.dishes.takeOffMenu(restaurantId, dto.ids);
   }
 
   @Patch(":restaurantId/dishes/:dishId")

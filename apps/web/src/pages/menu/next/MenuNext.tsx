@@ -82,6 +82,17 @@ function useHouseCurrency(restaurantId: string | null): string | null {
   return data?.readable ? (data.code ?? null) : null;
 }
 
+/**
+ * The gateway's own sentence for a failed call (it throws typed errors that
+ * carry words), or null when it sent none: a dropped connection or a bare 500
+ * has no sentence of the gateway's, and the caller then says it its own way.
+ */
+function gatewaySaid(e: unknown): string | null {
+  const said = (e as { response?: { data?: { message?: unknown } } } | null)?.response?.data?.message;
+  if (typeof said !== 'string' || !said.trim() || said.trim() === 'Internal server error') return null;
+  return said.trim();
+}
+
 function useActiveMenu(restaurantId: string | null) {
   const queryClient = useQueryClient();
   const key = ['menu', 'active', restaurantId] as const;
@@ -288,11 +299,16 @@ export default function MenuNext() {
             Reading the menu…
           </p>
         ) : q.isError ? (
-          <p className="cl-said" role="alert" data-testid="menu-error">
-            The menu could not be read
-            {q.error instanceof Error ? ` (${q.error.message})` : ''}. Nothing below is a real
-            count of what this house lists.
-          </p>
+          <div role="alert" data-testid="menu-error" style={{ display: 'grid', gap: 8, justifyItems: 'start' }}>
+            <p className="cl-said">
+              {gatewaySaid(q.error) ??
+                `The menu could not be read${q.error instanceof Error ? ` (${q.error.message})` : ''}.`}{' '}
+              Nothing below is a real count of what this house lists.
+            </p>
+            <button type="button" className="cl-btn cl-focus" disabled={q.isFetching} onClick={() => void q.refetch()}>
+              {q.isFetching ? 'Reading…' : 'Retry'}
+            </button>
+          </div>
         ) : !q.data?.menuId ? (
           <p className="cl-said" data-testid="menu-no-active">
             No current menu yet. Read one below and make it current — Add to menu has nothing to
@@ -364,10 +380,25 @@ export default function MenuNext() {
               </table>
             </div>
             {discard.isError ? (
-              <p role="alert" className="cl-said" style={{ marginTop: 8 }}>
-                That line was not discarded (
-                {discard.error instanceof Error ? discard.error.message : 'no reason given'}).
-              </p>
+              <div role="alert" data-testid="menu-discard-error" style={{ marginTop: 8, display: 'grid', gap: 8, justifyItems: 'start' }}>
+                <p className="cl-said">
+                  {gatewaySaid(discard.error) ??
+                    `That line was not discarded (${discard.error instanceof Error ? discard.error.message : 'no reason given'}).`}
+                </p>
+                <button
+                  type="button"
+                  className="cl-btn cl-focus"
+                  disabled={discard.isPending}
+                  onClick={() => {
+                    const id = discard.variables;
+                    if (!id) return;
+                    setDiscardingId(id);
+                    discard.mutate(id, { onSettled: () => setDiscardingId(null) });
+                  }}
+                >
+                  Retry
+                </button>
+              </div>
             ) : null}
           </>
         )}

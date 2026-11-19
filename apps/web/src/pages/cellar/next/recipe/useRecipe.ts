@@ -189,6 +189,16 @@ export function useTakeMenuPrices() {
   });
 }
 
+/** Take the dishes the current menu does not print off the list; every list and figure is read again. */
+export function useTakeOffMenu() {
+  const { activeRestaurantId } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) => dishesApi.takeOffMenu(activeRestaurantId as string, ids),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['recipes', activeRestaurantId ?? null] }),
+  });
+}
+
 /** Take a dish off the list; the list is read again. */
 export function useRemoveDish(dishId: string) {
   const { activeRestaurantId } = useAuth();

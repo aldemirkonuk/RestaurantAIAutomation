@@ -413,6 +413,13 @@ export interface TakeMenuPricesAnswer {
   skipped: Array<{ id: string; name: string; why: string }>;
 }
 
+/** What taking the dishes the menu does not print off the list did (POST dishes/take-off-menu). */
+export interface TakeOffMenuAnswer {
+  removed: Array<{ id: string; name: string }>;
+  /** Every dish left on the list, with the gateway's reason in words. */
+  skipped: Array<{ id: string; name: string; why: string }>;
+}
+
 export const dishesApi = {
   async list(restaurantId: string): Promise<DishListRow[]> {
     const r = await apiClient.get<DishListRow[]>(`${base(restaurantId)}/dishes`);
@@ -483,6 +490,14 @@ export const dishesApi = {
     const r = await apiClient.post<TakeMenuPricesAnswer>(`${base(restaurantId)}/dishes/take-menu-prices`, { ids });
     // An answer without its lists is not a result: the page must not say "done" for it.
     if (!Array.isArray(r.data?.changed) || !Array.isArray(r.data?.skipped)) throw new Error('The answer came back without saying which dishes changed.');
+    return r.data;
+  },
+
+  /** Takes off the named dishes the current menu prints no line of; owner and manager only. */
+  async takeOffMenu(restaurantId: string, ids: string[]): Promise<TakeOffMenuAnswer> {
+    const r = await apiClient.post<TakeOffMenuAnswer>(`${base(restaurantId)}/dishes/take-off-menu`, { ids });
+    // An answer without its lists is not a result: the page must not say "done" for it.
+    if (!Array.isArray(r.data?.removed) || !Array.isArray(r.data?.skipped)) throw new Error('The answer came back without saying which dishes came off.');
     return r.data;
   },
 

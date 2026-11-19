@@ -149,6 +149,19 @@ describe('MenuNext — reading', () => {
     expect(screen.queryByTestId('menu-row')).not.toBeInTheDocument();
   });
 
+  it("says the gateway's own sentence for a failed read, with Retry, and Retry reads again", async () => {
+    const said = "The current menu could not be read just now. Try again (statement timeout).";
+    mockGetMenu.mockRejectedValueOnce({ response: { status: 500, data: { statusCode: 500, message: said } } });
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ name: 'Raki' })] }));
+    mount();
+    const err = await screen.findByTestId('menu-error');
+    expect(err).toHaveTextContent(said);
+    expect(err).not.toHaveTextContent('Internal server error');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findAllByTestId('menu-row')).toHaveLength(1);
+    expect(screen.queryByTestId('menu-error')).not.toBeInTheDocument();
+  });
+
   it('says plainly when the house has no active menu, rather than an empty add form', async () => {
     mockGetMenu.mockResolvedValue(menu({ menuId: null, name: null, status: null, items: [] }));
     mount();
@@ -243,5 +256,21 @@ describe('MenuNext — discard', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
     await waitFor(() => expect(mockDiscard).toHaveBeenCalledWith('r1', 'l9'));
     expect(await screen.findByRole('alert')).toHaveTextContent('not discarded');
+  });
+
+  it("says the gateway's sentence for a failed discard and offers Retry, which discards the same line again", async () => {
+    const said = 'The menu line could not be discarded just now. It is still on the menu and nothing was changed. Try again (connection reset).';
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'l9', name: 'Raki' })] }));
+    mockDiscard.mockRejectedValueOnce({ response: { status: 500, data: { statusCode: 500, message: said } } });
+    mockDiscard.mockResolvedValue({ menuItemId: 'l9', status: 'discarded' });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
+    const err = await screen.findByTestId('menu-discard-error');
+    expect(err).toHaveTextContent(said);
+    expect(err).not.toHaveTextContent('Internal server error');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(mockDiscard).toHaveBeenCalledTimes(2));
+    expect(mockDiscard).toHaveBeenLastCalledWith('r1', 'l9');
+    await waitFor(() => expect(screen.queryByTestId('menu-discard-error')).not.toBeInTheDocument());
   });
 });
