@@ -20,6 +20,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import type { Provider } from '../../../services/api/providers';
 import { canonicalStatus } from '../../../lib/mudavym/status';
 import { num } from './pv-format';
+import { failureWords } from '@/lib/unreachable';
 
 export interface ProviderCardVM {
   provider: Provider;
@@ -84,7 +85,7 @@ export function useProvidersNextData() {
     hasData: providersQ.data !== undefined,
     isError: providersQ.isError,
     errorMessage:
-      providersQ.error instanceof Error ? providersQ.error.message : 'unknown error',
+      failureWords(providersQ.error, 'unknown error'),
     ordersKnown: openByProvider !== null,
     refetch: () => {
       void providersQ.refetch();

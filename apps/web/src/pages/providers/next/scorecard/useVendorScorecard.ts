@@ -21,6 +21,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../../../../services/api/client';
 import { useAuth } from '../../../../contexts/AuthContext';
+import { failureWords } from '@/lib/unreachable';
 import type {
   Docket,
   MailToneSection,
@@ -33,7 +34,7 @@ import type {
 export function serverMessage(e: unknown, fallback: string): string {
   const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
   if (typeof msg === 'string' && msg.trim()) return msg;
-  if (e instanceof Error && e.message) return `${fallback} (${e.message})`;
+  if (e instanceof Error && e.message) return `${fallback} (${failureWords(e, '')})`;
   return fallback;
 }
 

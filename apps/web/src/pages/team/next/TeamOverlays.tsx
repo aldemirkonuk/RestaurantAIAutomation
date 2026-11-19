@@ -57,6 +57,7 @@ import { useActiveRestaurantId, type TimeOffRow } from './useTeamNextData';
 import { AwayMarker } from '@/components/mudavym/AwayMarker';
 import { dayWords } from '@/components/mudavym/awayWords';
 import type { AwayView } from '../../../services/api/areas';
+import { failureWords } from '@/lib/unreachable';
 
 /** The gateway's own words when it has them — a 409 says exactly what is missing. */
 function serverMessage(e: unknown): string | null {
@@ -933,7 +934,7 @@ export function ExportPopover({
       });
       onClose();
     } catch (e) {
-      setFailed(e instanceof Error ? e.message : 'the export did not complete');
+      setFailed(failureWords(e, 'the export did not complete'));
     }
   };
 

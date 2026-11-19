@@ -53,6 +53,7 @@ import {
 } from '../../../services/api/team';
 import { apiClient } from '../../../services/api/client';
 import { mondayOf, parsePeriod, resolveName } from './tm-format';
+import { failureWords } from '@/lib/unreachable';
 
 /**
  * /team's server-side windows.
@@ -698,7 +699,7 @@ export function useTeamNextData(anchor: Date | string = new Date()): TeamNextDat
     coverageRules: rulesQ.data === undefined ? null : rulesQ.data,
     hasData: weekQ.data !== undefined,
     isError: weekQ.isError,
-    errorMessage: weekQ.error instanceof Error ? weekQ.error.message : 'unknown error',
+    errorMessage: failureWords(weekQ.error, 'unknown error'),
     noRestaurant: !enabled,
     refetch: () => {
       void weekQ.refetch();

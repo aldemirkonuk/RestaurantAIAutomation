@@ -37,6 +37,7 @@ import {
 import '@/pages/cellar/next/cellar-next.css';
 import { Choice, Note, Rule, SaveFailure, Toggle } from './SectionKit';
 import { MONO, SANS } from './st-format';
+import { failureWords } from '@/lib/unreachable';
 
 // FIXED 2026-09-19 (cellar re-verification, blocking): `auto` used to read
 // "Click sends it" — the exact no-hold design ADR 0160 sec110 item 6's
@@ -149,7 +150,7 @@ function CellarSettingsControls() {
         </p>
       ) : null}
       <SaveFailure
-        failed={settings.save.isError ? { message: settings.save.error instanceof Error ? settings.save.error.message : 'no reason given' } : null}
+        failed={settings.save.isError ? { message: failureWords(settings.save.error, 'no reason given') } : null}
         what="The ceremony on the cellar page did not change."
       />
 
@@ -208,7 +209,7 @@ export function CellarSection() {
         loading={registers.loading}
         error={registers.error}
         saving={registers.save.isPending}
-        saveError={registers.save.error instanceof Error ? registers.save.error.message : null}
+        saveError={registers.save.error instanceof Error ? failureWords(registers.save.error, '') : null}
         onChange={(rows, source) => registers.save.mutateAsync({ registers: rows, source })}
       />
 
