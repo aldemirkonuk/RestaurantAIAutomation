@@ -513,6 +513,37 @@ describe("fork 9 (item 77): the invite is mailed with a secret, and only a join 
     ]);
   });
 
+  it("a join that mailed a verification link says whether it left, and a mailer that fails does not fail the join", async () => {
+    const w = world();
+    const code = await w.invite("alice@example.com");
+    w.authMail.sendEmail.mockImplementationOnce(async () => ({
+      success: false,
+      error: "mailbox unavailable",
+    }));
+    const failed = await w.join(code, "alice@example.com", "alice's password");
+    expect(failed.verificationMail).toBe("not_sent");
+    expect(failed.membershipHeld).toBe(true);
+    expect(w.row("alice@example.com")).toBeDefined();
+
+    const code2 = await w.invite("bob@example.com");
+    const left = await w.join(code2, "bob@example.com", "bob's password");
+    expect(left.verificationMail).toBe("sent");
+  });
+
+  it("a join the invite mail verified mails nothing and answers no verificationMail", async () => {
+    const w = world();
+    await w.mint("alice@example.com");
+    const [mail] = w.inviteMails();
+    const s = await w.join(
+      mail.code,
+      "alice@example.com",
+      "alice's password",
+      mail.secret,
+    );
+    expect(s.verificationMail).toBeUndefined();
+    expect(w.verificationMails()).toHaveLength(0);
+  });
+
   it("the mailed secret with another address, a wrong secret, or another invite's secret, all join unverified", async () => {
     const w = world();
     const a = await w.invite("alice@example.com");
