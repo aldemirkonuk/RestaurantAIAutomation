@@ -18,6 +18,10 @@ interface MenuReviewScreenProps {
   /** `true` when the menu was made the current one here; otherwise it stays a kept draft. */
   onConfirm: (madeCurrent?: boolean) => void
   onSkip: () => void
+  /** Drawn inside a page that already has its own frame (the menu page), not as a page of its own. */
+  embedded?: boolean
+  /** The host's own word on who may choose the current menu; without it, the signed-in role decides. */
+  canChoose?: boolean
 }
 
 interface EditableCellProps {
@@ -80,14 +84,14 @@ function EditableCell({ value, placeholder, onSave }: EditableCellProps) {
   )
 }
 
-export function MenuReviewScreen({ result, onConfirm, onSkip }: MenuReviewScreenProps) {
+export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, canChoose: hostCanChoose }: MenuReviewScreenProps) {
   // ADR 0193 (menu versions, founder 2026-09-21): a read menu is KEPT as a
   // draft; after the extraction the person chooses whether it becomes the
   // current menu. That choice is an owner's or a manager's; the gateway
   // refuses anyone else regardless of what this screen offers.
   const auth = useAuth()
   const role = (auth?.activeRole ?? auth?.user?.role ?? null) as string | null
-  const canChoose = role === 'owner' || role === 'manager'
+  const canChoose = hostCanChoose ?? (role === 'owner' || role === 'manager')
   // What the switch did, when there is something to say: a line whose price
   // failed, or a blank price that kept the last known one. Said here and the
   // review waits for Continue, rather than moving on as if every price landed
@@ -164,7 +168,7 @@ export function MenuReviewScreen({ result, onConfirm, onSkip }: MenuReviewScreen
   const row = (item: MenuImportReviewItem) => (
     <div
       key={item.menuItemId}
-      className="grid grid-cols-[1fr_1fr_90px_1fr] gap-2 items-center px-3 py-2 rounded-xl border border-gray-100 bg-white"
+      className="grid grid-cols-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_90px_minmax(0,1fr)] gap-2 items-center px-3 py-2 rounded-xl border border-gray-100 bg-white"
     >
       <EditableCell
         value={item.name}
@@ -190,7 +194,10 @@ export function MenuReviewScreen({ result, onConfirm, onSkip }: MenuReviewScreen
   )
 
   return (
-    <div className="min-h-screen bg-white flex flex-col items-center px-4 pt-10 pb-16">
+    <div
+      className={embedded ? 'bg-white text-gray-900 rounded-2xl border border-gray-200 flex flex-col items-center px-4 py-6' : 'min-h-screen bg-white flex flex-col items-center px-4 pt-10 pb-16'}
+      data-testid="menu-read-review"
+    >
       <div className="w-full max-w-2xl">
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Review &amp; confirm</h1>
@@ -273,7 +280,7 @@ export function MenuReviewScreen({ result, onConfirm, onSkip }: MenuReviewScreen
           </button>
         )}
 
-        <div className="flex items-center justify-between gap-3 pt-2 border-t border-gray-100">
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-gray-100">
           <button onClick={onSkip} className="text-sm text-gray-400 hover:text-gray-600">
             Skip review
           </button>
@@ -282,8 +289,8 @@ export function MenuReviewScreen({ result, onConfirm, onSkip }: MenuReviewScreen
               Continue
             </Button>
           ) : canChoose ? (
-            <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={() => onConfirm(false)}>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" onClick={() => onConfirm(false)} className="border-gray-300 bg-white text-gray-900 hover:bg-gray-50">
                 Keep it, not current
               </Button>
               <Button onClick={() => setPlanning(true)} disabled={planning} className="bg-[#1A5E6B] hover:bg-[#14515C] text-white">
