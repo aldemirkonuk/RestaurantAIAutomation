@@ -342,7 +342,7 @@ function PersonThreads({
       ) : (
         <>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--ink-1, #211C16)', overflowWrap: 'anywhere' }}>
-            {person.name ?? 'A vendor with no name on file'} <span style={QUIET}>vendor</span>
+            {person.name ?? 'A vendor with no name on file'} <span style={QUIET}>{KIND_WORD[mailKindOf(person)]}</span>
           </h2>
           <ul style={{ listStyle: 'none', margin: 0, padding: 0, borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
             {threads.map((t) => (
@@ -847,6 +847,7 @@ export function MailTab({
         >
         <MailThread
           threadKey={threadKey}
+          withKey={withKey}
           backLabel={withKey ? 'Back to their threads' : 'Back to everyone'}
           onBack={() => back({ thread: null })}
           onOpenPerson={(key) => go({ with: key, thread: null })}
