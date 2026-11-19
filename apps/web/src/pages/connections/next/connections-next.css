@@ -37,8 +37,8 @@
 
 .mudavym .cx-eyebrow {
   font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 10px;
-  letter-spacing: 0.14em;
+  font-size: 11px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-4);
 }
@@ -156,8 +156,8 @@
 .mudavym .cx-tally-n.is-seal { color: var(--seal-deep); }
 .mudavym .cx-tally-k {
   font-family: var(--mono, ui-monospace, monospace);
-  font-size: 8.5px;
-  letter-spacing: 0.09em;
+  font-size: 11px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-4);
   display: block;
@@ -170,8 +170,8 @@
 .mudavym .cx-sec-h { display: flex; align-items: baseline; gap: 12px; }
 .mudavym .cx-sec-n {
   font-family: var(--mono, ui-monospace, monospace);
-  font-size: 10px;
-  letter-spacing: 0.14em;
+  font-size: 11px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--seal-deep);
   white-space: nowrap;
@@ -193,8 +193,8 @@
 }
 .mudavym .cx-sec-k {
   font-family: var(--mono, ui-monospace, monospace);
-  font-size: 9.5px;
-  letter-spacing: 0.11em;
+  font-size: 11px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-4);
   margin: 5px 0 12px;
@@ -241,8 +241,8 @@
 
 .mudavym .cx-col-h {
   font-family: var(--mono, ui-monospace, monospace);
-  font-size: 8.5px;
-  letter-spacing: 0.12em;
+  font-size: 11px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-4);
   display: block;
@@ -264,7 +264,7 @@
 }
 .mudavym .cx-last-d {
   display: block;
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--ink-4);
   margin-top: 2px;
 }
@@ -273,9 +273,9 @@
 /* Chips carry INK, never the semantic colour — measured for contrast. */
 .mudavym .cx-chip {
   font-family: var(--mono, ui-monospace, monospace);
-  font-size: 8.5px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.11em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   padding: 3px 7px;
   border-radius: 3px;
@@ -300,8 +300,8 @@
 }
 .mudavym .cx-owner {
   font-family: var(--mono, ui-monospace, monospace);
-  font-size: 8.5px;
-  letter-spacing: 0.1em;
+  font-size: 11px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-4);
 }
@@ -353,7 +353,7 @@
   outline-offset: 2px;
 }
 .mudavym .cx-ctl-note {
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.5;
   color: var(--ink-4);
   max-width: 180px;

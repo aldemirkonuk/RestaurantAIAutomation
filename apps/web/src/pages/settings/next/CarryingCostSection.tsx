@@ -193,7 +193,7 @@ function CarryingCostBody({
               className="st-ink st-focus"
               style={{ ...fieldStyle, opacity: canManage ? 1 : 0.45, width: 110, textAlign: 'right' }}
             />
-            <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-4)' }}>
+            <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-4)' }}>
               % a month
             </span>
             <Action disabled={!canManage || busy || !read.canRecord} onClick={() => void save(read.value as number, basis.trim() === '' ? null : basis.trim())}>
@@ -206,7 +206,7 @@ function CarryingCostBody({
           {read.sentence}
         </p>
         <span style={{ display: 'block', marginTop: 8 }}>
-          <label htmlFor="st-carrying-basis" style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-4)' }}>
+          <label htmlFor="st-carrying-basis" style={{ fontFamily: MONO, fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-4)' }}>
             what you counted — optional
           </label>
           <input
@@ -222,7 +222,7 @@ function CarryingCostBody({
           />
         </span>
         {reg.statedBy?.name && (
-          <p style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-4)', margin: '6px 0 0' }}>
+          <p style={{ fontFamily: MONO, fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-4)', margin: '6px 0 0' }}>
             typed by · {reg.statedBy.name}
           </p>
         )}

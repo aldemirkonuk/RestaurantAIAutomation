@@ -90,7 +90,7 @@ function Cell<T>({ cell, render }: { cell: TermCell<T>; render: (v: T) => React.
         style={{
           display: 'block',
           fontFamily: MONO,
-          fontSize: 8.5,
+          fontSize: 11,
           fontWeight: 600,
           letterSpacing: '0.1em',
           textTransform: 'uppercase',
@@ -115,7 +115,7 @@ function Cell<T>({ cell, render }: { cell: TermCell<T>; render: (v: T) => React.
             alignItems: 'center',
             gap: 4,
             fontFamily: SANS,
-            fontSize: 10.5,
+            fontSize: 11,
             lineHeight: 1.4,
             color: 'var(--ink-2)',
             marginTop: 3,
@@ -141,7 +141,7 @@ function DayStrip({ days }: { days: number[] }) {
             aria-hidden
             style={{
               fontFamily: MONO,
-              fontSize: 9.5,
+              fontSize: 11,
               width: 18,
               height: 18,
               lineHeight: '18px',
@@ -225,7 +225,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
         style={{
           display: 'block',
           fontFamily: MONO,
-          fontSize: 9,
+          fontSize: 11,
           fontWeight: 600,
           letterSpacing: '0.11em',
           textTransform: 'uppercase',
@@ -302,7 +302,7 @@ function Editor({
                   }
                   style={{
                     fontFamily: MONO,
-                    fontSize: 10,
+                    fontSize: 11,
                     width: 24,
                     height: 24,
                     borderRadius: 6,
@@ -495,7 +495,7 @@ export function VendorTermsSection({ data }: { data: SettingsNextData }) {
                         key={h.key}
                         scope="col"
                         style={{
-                          textAlign: 'left', fontFamily: MONO, fontSize: 9.5, fontWeight: 600,
+                          textAlign: 'left', fontFamily: MONO, fontSize: 11, fontWeight: 600,
                           letterSpacing: '0.11em', textTransform: 'uppercase', color: 'var(--ink-4)',
                           padding: '0 10px 8px 0', borderBottom: '1px solid var(--ink-1)', verticalAlign: 'bottom',
                         }}

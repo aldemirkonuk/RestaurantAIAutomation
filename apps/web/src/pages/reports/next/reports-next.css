@@ -119,7 +119,7 @@
 .rp-cut__window {
   margin: 2px 0 0;
   font-family: var(--rp-mono);
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.06em;
   color: var(--ink-4);
 }
@@ -217,8 +217,8 @@
 }
 .rp-tip__head {
   font-family: var(--rp-mono);
-  font-size: 9px;
-  letter-spacing: 0.1em;
+  font-size: 11px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-4);
 }
@@ -265,7 +265,7 @@
   border-collapse: separate;
   border-spacing: 2px;
   font-family: var(--rp-mono);
-  font-size: 9px;
+  font-size: 11px;
   color: var(--ink-4);
 }
 .rp-heat__col,
@@ -318,9 +318,9 @@
   z-index: 1;
   text-align: left;
   font-family: var(--rp-mono);
-  font-size: 8.5px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-4);
   background: var(--paper-1);
@@ -436,7 +436,7 @@
 }
 .rp-cap {
   margin: 0;
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.45;
   color: var(--ink-4);
 }
@@ -452,17 +452,17 @@
    a primitive every other page shares. */
 .rp-eyebrow {
   font-family: var(--rp-mono, 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-4);
 }
 .rp-tag {
   font-family: var(--rp-mono);
-  font-size: 8.5px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-2);
   border: 1px solid var(--paper-2);
@@ -540,8 +540,8 @@
 }
 .rp-mini {
   font-family: var(--rp-mono);
-  font-size: 9px;
-  letter-spacing: 0.1em;
+  font-size: 11px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   padding: 2px 7px;
   border-radius: 5px;
@@ -552,8 +552,8 @@
 }
 .rp-chip {
   font-family: var(--rp-mono);
-  font-size: 9px;
-  letter-spacing: 0.1em;
+  font-size: 11px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   padding: 2px 7px;
   border-radius: 5px;
@@ -626,7 +626,7 @@
 }
 .rp-foot p {
   margin: 0;
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--ink-4);
   max-width: 620px;
   text-align: right;
@@ -676,8 +676,8 @@
   align-items: center;
   gap: 4px;
   font-family: var(--rp-mono);
-  font-size: 9px;
-  letter-spacing: 0.1em;
+  font-size: 11px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   padding: 2px 7px;
   border-radius: 5px;
@@ -724,7 +724,7 @@
   align-items: center;
   gap: 3px;
   font-family: var(--rp-mono);
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   padding: 3px 7px;
