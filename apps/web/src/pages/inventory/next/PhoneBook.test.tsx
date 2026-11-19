@@ -113,9 +113,19 @@ describe('what the Filter button counts and what the Count bar reaches for', () 
 
 describe('the stylesheet: sizes, motion and the dark ground', () => {
   it('the Filter button is 48 px and the Count bar is 56 px', () => {
-    expect(block('.iv-filterbtn')).toContain('min-height: 48px');
+    expect(block('.iv-page .iv-filterbtn')).toContain('min-height: 48px');
     expect(block('.iv-countbar__btn')).toContain('min-height: 56px');
     expect(block('.iv-countbar')).toContain('position: sticky');
+  });
+
+  it('the Filter sheet selects read 16 px: the rule outranks the overlay sheet rule (html .mdv-ovl .iv-sheet-body)', () => {
+    expect(block('html .mdv-ovl .iv-filtersheet__body .mdv-select__control')).toContain('font-size: 16px');
+  });
+
+  it('the check box and the search field outrank the legacy white !important input rule, so charcoal stays charcoal and a checked box keeps its seal', () => {
+    expect(css).toMatch(/html \.iv-page input\[type='checkbox'\],\s*html \.iv-filtersheet input\[type='checkbox'\] \{\s*background-color: var\(--paper-0\) !important/);
+    expect(css).toMatch(/html \.iv-page input\[type='checkbox'\]:checked,[\s\S]*?background-color: var\(--seal\) !important/);
+    expect(block('html .iv-page .iv-field')).toMatch(/background-color: var\(--paper-1\) !important/);
   });
 
   it('a check box takes the accent, is 24 px on a phone, and draws its tick by clip-path in 120 ms', () => {

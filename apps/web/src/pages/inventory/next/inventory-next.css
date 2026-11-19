@@ -1275,7 +1275,7 @@ html .mdv-ovl .iv-sheet-body .mdv-select__control {
 }
 
 /* ── phone: one Filter button, and the staff count mode (critic c3 round 3) ─ */
-.iv-filterbtn {
+.iv-page .iv-filterbtn {
   position: relative;
   gap: 8px;
   min-height: 48px;
@@ -1324,7 +1324,7 @@ html .mdv-ovl .iv-sheet-body .mdv-select__control {
 .iv-filtersheet__body .iv-chip {
   padding-inline: 16px;
 }
-.iv-filtersheet__body .mdv-select__control {
+html .mdv-ovl .iv-filtersheet__body .mdv-select__control {
   min-height: 48px;
   font-size: 16px;
 }
@@ -1425,6 +1425,25 @@ html .mdv-ovl .iv-sheet-body .mdv-select__control {
 .iv-filtersheet input[type='checkbox']:checked::after {
   clip-path: inset(0 0 0 0);
 }
+/* The legacy global rule (globals.css, `input { background-color: white
+   !important }`) paints every input white on both grounds: an unchecked box
+   was a white square on charcoal and a checked one lost its seal fill, so the
+   white tick vanished. Same weight, higher specificity, page tokens. */
+html .iv-page input[type='checkbox'],
+html .iv-filtersheet input[type='checkbox'] {
+  background-color: var(--paper-0) !important;
+}
+html .iv-page input[type='checkbox']:checked,
+html .iv-page input[type='checkbox']:indeterminate,
+html .iv-filtersheet input[type='checkbox']:checked {
+  background-color: var(--seal) !important;
+}
+html .iv-page .iv-field {
+  background-color: var(--paper-1) !important;
+  color: var(--ink-1) !important;
+  -webkit-text-fill-color: var(--ink-1) !important;
+}
+
 .iv-page input[type='checkbox']:indeterminate::after {
   clip-path: inset(0 0 0 0);
   -webkit-mask: linear-gradient(#000, #000) center / 55% 3px no-repeat;
