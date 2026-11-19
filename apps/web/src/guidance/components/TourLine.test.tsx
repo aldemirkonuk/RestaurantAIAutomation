@@ -51,6 +51,14 @@ describe('TourLine', () => {
     expect(line()).toBeNull()
   })
 
+  it('[REVERT-FAILS] stands open at its full row on mount, so it never pushes the page down', () => {
+    mount()
+    const el = line() as HTMLElement
+    expect(el.dataset.open).toBe('true')
+    expect(el.style.gridTemplateRows).toBe('1fr')
+    expect(el.style.opacity).toBe('1')
+  })
+
   it('counts each page on its own', () => {
     for (let i = 0; i < TOUR_LINE_VIEWS; i++) mount('inventory').unmount()
     mount('reports')

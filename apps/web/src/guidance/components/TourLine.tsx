@@ -58,23 +58,12 @@ export function TourLine({
   // while that is one of the first three.
   const [seen] = useState(() => readViews(pageId))
   const [leaving, setLeaving] = useState(false)
-  const [entered, setEntered] = useState(reduced)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const show = seen < TOUR_LINE_VIEWS
 
   useEffect(() => {
     if (show) writeViews(pageId, seen + 1)
   }, [pageId, seen, show])
-
-  useEffect(() => {
-    if (!show) return
-    if (reduced) {
-      setEntered(true)
-      return
-    }
-    const id = requestAnimationFrame(() => setEntered(true))
-    return () => cancelAnimationFrame(id)
-  }, [show, reduced])
 
   useEffect(
     () => () => {
@@ -95,7 +84,10 @@ export function TourLine({
     timer.current = setTimeout(onLater, 200)
   }
 
-  const open = entered && !leaving
+  // Open from the first paint: it stands at its 44 px when it mounts. An unfold
+  // on mount pushed the whole page down by 44 px on each of its first three
+  // views (walked: reload CLS 0.75). Only "Later" animates, folding it away.
+  const open = !leaving
 
   return (
     <div
