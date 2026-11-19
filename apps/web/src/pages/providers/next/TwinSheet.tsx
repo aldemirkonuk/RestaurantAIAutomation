@@ -34,6 +34,7 @@ import { TermsSection } from './TermsSection';
 import { UsualCurrencySection } from './UsualCurrencySection';
 import { ContactsSection } from './ContactsSection';
 import { BranchesSection } from './BranchesSection';
+import { VendorMonogram } from './VendorFace';
 import { VendorRecordEdit, businessTypeLabel } from './VendorRecordEdit';
 import { LedgerCard } from './scorecard/LedgerCard';
 import { MailTone } from './scorecard/MailTone';
@@ -103,6 +104,9 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency, onProviderSav
       title={provider.name}
     >
       <div className="px-4 py-4" style={{ fontFamily: SANS }}>
+        <div className="flex items-center gap-3 pb-3">
+          <VendorMonogram name={provider.name} size={56} settle />
+        </div>
         {/* the vendor's own record — the type first, editable here */}
         <VendorRecordEdit provider={provider} onSaved={(p) => onProviderSaved?.(p)} />
         {/* plain facts, EM for absences */}

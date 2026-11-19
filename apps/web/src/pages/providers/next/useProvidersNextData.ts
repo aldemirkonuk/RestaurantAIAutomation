@@ -15,6 +15,7 @@
 
 import { useMemo } from 'react';
 import { useProviders } from '../../../hooks/queries/useProviderQueries';
+import { weeklyOrderCounts } from './vendor-face';
 import { useOrders } from '../../../hooks/queries/useOrderQueries';
 import { useAuth } from '../../../contexts/AuthContext';
 import type { Provider } from '../../../services/api/providers';
@@ -27,6 +28,8 @@ export interface ProviderCardVM {
   openOrders: number | null;
   leadTimeDays: number | null;
   lastContact: string | null;
+  /** Orders per week, the last twelve, oldest first; null while the orders book is unknown. */
+  weekly?: number[] | null;
 }
 
 /**
@@ -60,6 +63,20 @@ export function useProvidersNextData() {
     return m;
   }, [ordersQ.data]);
 
+  // Each vendor's order dates, for the card's twelve-week sparkline. An order
+  // with no date of its own is left out, never placed in a week by a guess.
+  const datesByProvider = useMemo(() => {
+    if (!ordersQ.data) return null;
+    const m = new Map<string, Array<string | undefined>>();
+    for (const o of ordersQ.data) {
+      if (!o.providerId) continue;
+      const list = m.get(o.providerId) ?? [];
+      list.push(o.requestedAt ?? o.approvedAt);
+      m.set(o.providerId, list);
+    }
+    return m;
+  }, [ordersQ.data]);
+
   const cards: ProviderCardVM[] = useMemo(() => {
     const providers = providersQ.data ?? [];
     return providers
@@ -68,6 +85,7 @@ export function useProvidersNextData() {
         openOrders: openByProvider === null ? null : (openByProvider.get(p.id) ?? 0),
         leadTimeDays: num(p.leadTimeDays),
         lastContact: p.lastContactDate ?? null,
+        weekly: datesByProvider === null ? null : weeklyOrderCounts(datesByProvider.get(p.id) ?? [], new Date()),
       }))
       .sort((a, b) => {
         // Vendors with open business first, then by name — a scanning order,
@@ -77,7 +95,7 @@ export function useProvidersNextData() {
         if (ao !== bo) return bo - ao;
         return a.provider.name.localeCompare(b.provider.name);
       });
-  }, [providersQ.data, openByProvider]);
+  }, [providersQ.data, openByProvider, datesByProvider]);
 
   return {
     cards,

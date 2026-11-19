@@ -27,6 +27,7 @@ import { Fragment, useMemo, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { ink } from '../../../../lib/mudavym/motion';
 import { MONO, SANS, SERIF } from '../pv-format';
+import { ShareBar } from '../VendorFace';
 import { DocketSheet } from './DocketSheet';
 import { WindowChips } from './LedgerCard';
 import { SC } from './sc-copy';
@@ -122,6 +123,7 @@ function Cell({
             </span>
           )}
         </span>
+        <ShareBar m={m} />
         <span
           style={{
             display: 'block',
@@ -185,16 +187,23 @@ export function RollCall() {
             : SC.roll.vendorRows(rowsLabel(measureOf(v, 'onTime')), v.window.days)}
         </span>
       </div>
-      {COLUMNS.map((c) => (
-        <Cell
-          key={c.key}
-          v={v}
-          m={measureOf(v, c.key)}
-          label={c.label}
-          f={f}
-          onOpen={() => setOpen({ id: v.providerId, name: v.providerName, measure: c.key })}
-        />
-      ))}
+      {v.measures.length > 0 && v.measures.every((m) => m.outcome === 'not_collected') ? (
+        // Five identical "not collected" cells say it once (N-19).
+        <div role="cell" className="sc-collapsed" data-testid={`rc-uncollected-${v.providerId}`}>
+          {SC.figure.uncollectedYet}
+        </div>
+      ) : (
+        COLUMNS.map((c) => (
+          <Cell
+            key={c.key}
+            v={v}
+            m={measureOf(v, c.key)}
+            label={c.label}
+            f={f}
+            onOpen={() => setOpen({ id: v.providerId, name: v.providerName, measure: c.key })}
+          />
+        ))
+      )}
     </div>
   );
 

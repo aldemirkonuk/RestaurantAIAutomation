@@ -32,6 +32,7 @@ import { useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { ink } from '../../../../lib/mudavym/motion';
 import { MONO, SANS, SERIF } from '../pv-format';
+import { ShareBar } from '../VendorFace';
 import { DocketSheet } from './DocketSheet';
 import { SC } from './sc-copy';
 import { dayLabel, figureOf, formatsOf, rowsLabel, windowLabel } from './sc-format';
@@ -163,6 +164,7 @@ function Line({ m, f, onRows }: { m: MeasureResult; f: Formats; onRows: (k: Meas
           )}
         </span>
       </div>
+      <ShareBar m={m} />
       <p
         style={{
           margin: '3px 0 0',
@@ -235,11 +237,28 @@ function Body({ card, onRows }: { card: VendorScorecard; onRows: (k: MeasureKey)
       </p>
     );
   }
+  // Lines the house has not started collecting read as one row, not five
+  // identical "not collected" cells (N-19). A line that was collected, scored
+  // or failed to read keeps its own place.
+  const uncollected = card.measures.filter((m) => m.outcome === 'not_collected');
+  const collapse = uncollected.length > 1;
   return (
     <>
-      {card.measures.map((m) => (
-        <Line key={m.key} m={m} f={f} onRows={onRows} />
-      ))}
+      {card.measures
+        .filter((m) => !collapse || m.outcome !== 'not_collected')
+        .map((m) => (
+          <Line key={m.key} m={m} f={f} onRows={onRows} />
+        ))}
+      {collapse ? (
+        <div data-testid="ledger-uncollected" style={{ padding: '10px 0', borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
+            {SC.figure.uncollectedYet}
+          </span>
+          <p style={{ margin: '3px 0 0', fontSize: 11.5, lineHeight: 1.45, color: 'var(--ink-4, #665D50)' }}>
+            {uncollected.map((m) => m.label).join(' · ')}
+          </p>
+        </div>
+      ) : null}
     </>
   );
 }
