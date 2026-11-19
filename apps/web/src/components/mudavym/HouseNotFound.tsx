@@ -8,57 +8,49 @@
  * Mounted at the `*` route NESTED under `DashboardLayout` (ShellCatchAll),
  * so it renders inside the shell's chrome — the header still names the room
  * closest to where the person is, the rail and the counter stand. It reads
- * the same rooms table the rail does (sketch 119 §"the shared pieces":
- * "the palette drawn open, reading one rooms table with the rail / the
- * rooms popover / the 404"); internal tools are never offered here either.
+ * the same rooms table the rail does through the palette (sketch 119 §"the
+ * shared pieces"), which this page opens from one field instead of listing
+ * every room (c3 need 18): one primary, one field.
  */
 
 import { Link, useLocation } from 'react-router-dom';
-import { visibleGroups, roomFor, type ShellRole, type RoomFlags } from '../../lib/mudavym/rooms';
+import { roomFor, type ShellRole, type RoomFlags } from '../../lib/mudavym/rooms';
+
+/** The window event the command palette listens for (CommandProvider). */
+const PALETTE_OPEN_EVENT = 'wineops:command-open';
+
+const isMac = () => typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform ?? '');
 
 export interface HouseNotFoundProps {
+  /** Kept for the caller; the palette, not this page, lists the rooms now. */
   role: ShellRole;
   flags: RoomFlags;
 }
 
-export function HouseNotFound({ role, flags }: HouseNotFoundProps) {
+export function HouseNotFound(_props: HouseNotFoundProps) {
   const { pathname } = useLocation();
   const nearest = roomFor(pathname);
-  const groups = visibleGroups(role, flags);
+  const primary = nearest && nearest.path !== '/' ? { to: nearest.path, label: `Go to ${nearest.name}` } : { to: '/', label: 'Back to Dashboard' };
 
   return (
     <div className="mdv-404 mudavym">
       <p className="mdv-404__eyebrow">404 &middot; not found</p>
-      <h1 className="mdv-404__headline">There is no page at {pathname}.</h1>
+      <h1 className="mdv-404__headline">That page isn&apos;t in the book.</h1>
       <p className="mdv-404__body">
         {nearest
           ? `${nearest.name} is the nearest room this path stands in, but nothing here answers for it.`
-          : 'Nothing in the house answers for this path.'}
+          : 'Nothing in the house answers for this path.'}{' '}
+        <code className="mdv-404__path">{pathname}</code>
       </p>
-      <div className="mdv-404__links">
-        <Link to="/" className="mdv-link mdv-404__home">
-          Back to Dashboard
-        </Link>
-        {nearest && nearest.path !== '/' && (
-          <Link to={nearest.path} className="mdv-link">
-            Go to {nearest.name}
-          </Link>
-        )}
-      </div>
-      <nav aria-label="Rooms of the house" className="mdv-404__rooms">
-        {groups.map((g) => (
-          <div key={g.name} className="mdv-404__group">
-            <span className="mdv-404__groupname">{g.name}</span>
-            <ul>
-              {g.rooms.map((r) => (
-                <li key={r.path}>
-                  <Link to={r.path}>{r.name}</Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </nav>
+      <Link to={primary.to} className="mdv-404__primary">
+        {primary.label}
+      </Link>
+      <button type="button" className="mdv-404__find" onClick={() => window.dispatchEvent(new Event(PALETTE_OPEN_EVENT))}>
+        <span>Find a room or an action</span>
+        <kbd className="mdv-404__kbd" aria-hidden="true">
+          {isMac() ? '\u2318 K' : 'Ctrl K'}
+        </kbd>
+      </button>
     </div>
   );
 }

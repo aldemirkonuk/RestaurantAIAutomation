@@ -41,7 +41,7 @@ test.describe('Retired routes (ADR 0019 §B)', () => {
   // "falls through" by landing on `/`; they now prove it by that 404's own
   // headline. The retirement they guard is unchanged.]
   const notFound = (page: import('@playwright/test').Page, path: string) =>
-    page.getByRole('heading', { name: `There is no page at ${path}.` })
+    page.getByRole('heading', { name: "That page isn't in the book." })
 
   test('the retired paths do not fall through to the catch-all', async ({ page }) => {
     // An unmatched path lands on the catch-all. If either retired path ever
@@ -56,7 +56,7 @@ test.describe('Retired routes (ADR 0019 §B)', () => {
       timeout: 15000,
     })
     expect(new URL(page.url()).pathname).toBe('/inventory')
-    await expect(page.getByRole('heading', { name: /^There is no page at/ })).toHaveCount(0)
+    await expect(page.getByRole('heading', { name: "That page isn't in the book." })).toHaveCount(0)
   })
 
   test('/wine-agent and /wineagent no longer render a page of their own', async ({ page }) => {
