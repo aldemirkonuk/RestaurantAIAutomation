@@ -50,7 +50,7 @@ export function useScrollAfterPick(
     if (!scrollTo) return;
     const go = () => {
       const el = elementFor(scrollTo.id);
-      if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+      if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ behavior: reduced ? 'instant' : 'smooth', block: 'start' });
     };
     go();
     if (reduced) return;
