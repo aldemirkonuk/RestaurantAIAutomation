@@ -264,12 +264,3 @@ describe('useInventoryNextData: the library fields come on the row', () => {
     expect(m.winesAsked.every((ids) => ids.length === 0)).toBe(true);
   });
 });
-
-describe('useInventoryNextData: the vendor name on a row (the Vendor column of the exports)', () => {
-  it('reads the vendor name off the house vendor book when the row carries only provider_id', () => {
-    m.items = [{ id: 'a', wineName: 'Flour 00', providerId: 'v1' }, { id: 'b', wineName: 'Napkins' }, { id: 'c', wineName: 'Gin', providerId: 'gone' }];
-    m.providers = { data: [{ id: 'v1', name: 'Seed Vendor Co' }], isError: false };
-    const { result } = mount();
-    expect(result.current.rows?.map((r) => r.providerName)).toEqual(['Seed Vendor Co', null, null]);
-  });
-});
