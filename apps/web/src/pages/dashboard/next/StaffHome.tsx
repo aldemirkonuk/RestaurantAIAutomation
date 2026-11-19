@@ -3,7 +3,9 @@
  * 2026-11-18). The owner's desk (a month calendar, approvals, a week ahead)
  * is not the daily user's page: staff open the app to count, to receive, and
  * to ask. So the page is three 56 px actions and the bottles that are running
- * low, each row a 56 px target that recounts on a right swipe.
+ * low, each row a 56 px target that recounts on a right swipe. One line under
+ * the actions says when the person is on (`StaffShift.tsx`), and the first-visit
+ * tour banner waits until the first task is done (`PageTipStrip.tsx`).
  *
  * Reading rules kept from the desk: a failed read says so in words (never a
  * quiet empty list), and an unknown count is an em dash, never a zero.
@@ -25,6 +27,7 @@ import { useDashboardSpine } from './useDashboardNextData';
 import { lowStockView } from './RailPanels';
 import { SERIF } from './fonts';
 import { DASH } from './format';
+import { StaffShiftStrip } from './StaffShift';
 import { swipeCommits, swipeState, swipeTravel } from './staffSwipe';
 import './staff-home.css';
 
@@ -189,6 +192,8 @@ export default function StaffHome() {
             <span>Ask</span>
           </button>
         </nav>
+
+        <StaffShiftStrip />
 
         <StaffLowStock items={spine.lowStock} />
       </div>

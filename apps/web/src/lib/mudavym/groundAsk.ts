@@ -169,6 +169,13 @@ export function watchFirstTask(client: QueryClient, target: Window | null = type
   };
 }
 
+/** True once the account says this person has finished a task. Until the
+ *  account has answered, it is false: a held thing waits, it does not guess. */
+export function useFirstTaskDone(): boolean {
+  const g = useGroundAskGate();
+  return g.known && g.firstTaskAt !== null;
+}
+
 export function resetGroundAskForTests(): void {
   gate = EMPTY;
   writer = null;

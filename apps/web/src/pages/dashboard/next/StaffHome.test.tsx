@@ -7,7 +7,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -15,6 +16,8 @@ import { resolve } from 'node:path';
 const auth = vi.hoisted(() => ({ role: 'staff' as string }));
 const spine = vi.hoisted(() => ({ lowStock: undefined as unknown }));
 const askOpen = vi.hoisted(() => vi.fn());
+const myWeek = vi.hoisted(() => vi.fn());
+vi.mock('@/services/api/team', () => ({ getMyWeek: myWeek }));
 
 vi.mock('@/contexts/AuthContext', async () => {
   const React = await import('react');
@@ -43,6 +46,7 @@ vi.mock('@/components/askai/events', () => ({ openAskAi: askOpen }));
 
 import DashboardHome from './DashboardHome';
 import StaffHome from './StaffHome';
+import { pickShift } from './StaffShift';
 import { SWIPE_COMMIT_PX, swipeCommits, swipeState, swipeTravel } from './staffSwipe';
 
 function Where() {
@@ -51,13 +55,16 @@ function Where() {
 }
 
 function mount(ui = <StaffHome />) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <MemoryRouter initialEntries={['/']}>
-      <Routes>
-        <Route path="/" element={ui} />
-        <Route path="*" element={<Where />} />
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={ui} />
+          <Route path="*" element={<Where />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -85,6 +92,8 @@ beforeEach(() => {
   auth.role = 'staff';
   spine.lowStock = [item('1', 'Barolo Cannubi', 1, 4), item('2', 'Etna Rosso', 0, 3)];
   askOpen.mockClear();
+  myWeek.mockReset();
+  myWeek.mockResolvedValue({ member: { id: 'm1', display_name: 'Ada' }, schedule: null, mine: [], open: [] });
   reduced(false);
 });
 afterEach(() => vi.restoreAllMocks());
@@ -210,5 +219,92 @@ describe('staff-home.css', () => {
     expect(css).toMatch(/\.sh-row__front\s*{[^}]*min-height: 56px/);
     expect(css).not.toMatch(/transition:\s*all|transition-property:\s*all/);
     expect(css).toMatch(/prefers-reduced-motion: reduce/);
+  });
+});
+
+
+function shift(over: Record<string, unknown>) {
+  return {
+    id: 's1',
+    restaurant_id: 'rest-A',
+    schedule_id: null,
+    member_id: 'm1',
+    shift_date: '2026-11-18',
+    start_time: '17:00:00',
+    end_time: '23:00:00',
+    role: 'Floor',
+    shift_type: 'dinner',
+    state: 'scheduled',
+    note: null,
+    ...over,
+  };
+}
+
+describe('pickShift', () => {
+  const at = (h: number, m = 0) => new Date(2026, 10, 18, h, m); // Wed 18 Nov 2026, local
+  it('picks the one in progress', () => {
+    const l = pickShift([shift({})] as never, at(19));
+    expect(l?.when).toBe('now');
+  });
+  it('picks a later one today before tomorrow\'s', () => {
+    const l = pickShift([shift({ id: 'b', shift_date: '2026-11-19' }), shift({ id: 'a' })] as never, at(9));
+    expect(l).toMatchObject({ when: 'today', shift: { id: 'a' } });
+  });
+  it('moves past a shift that has ended to the next day', () => {
+    const l = pickShift([shift({ id: 'a' }), shift({ id: 'b', shift_date: '2026-11-20' })] as never, at(23, 30));
+    expect(l).toMatchObject({ when: 'later', shift: { id: 'b' } });
+  });
+  it('treats an end before its start as an overnight, still on at 01:00 of the start day only after start', () => {
+    const night = shift({ start_time: '22:00:00', end_time: '02:00:00' });
+    expect(pickShift([night] as never, at(23))?.when).toBe('now');
+    expect(pickShift([night] as never, at(20))?.when).toBe('today');
+  });
+  it('skips a shift called out of', () => {
+    expect(pickShift([shift({ state: 'callout' })] as never, at(9))).toBeNull();
+  });
+  it('is null when nothing is left', () => {
+    expect(pickShift([shift({ shift_date: '2026-11-17' })] as never, at(9))).toBeNull();
+  });
+});
+
+describe('the your-shift strip', () => {
+  it('[REVERT-FAILS] says when the person is on, from their own week', async () => {
+    const d = new Date();
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    myWeek.mockResolvedValue({
+      member: { id: 'm1', display_name: 'Ada' },
+      schedule: null,
+      mine: [shift({ shift_date: iso, start_time: '00:00:00', end_time: '23:59:00', role: 'Sommelier' })],
+      open: [],
+    });
+    mount();
+    const strip = screen.getByRole('region', { name: 'Your shift' });
+    await waitFor(() => expect(strip.textContent).toMatch(/On now/));
+    expect(strip.textContent).toMatch(/12a to 11:59p/);
+    expect(strip.textContent).toMatch(/Sommelier/);
+    expect(screen.getByRole('link', { name: 'All shifts' }).getAttribute('href')).toBe('/team');
+  });
+
+  it('[REVERT-FAILS] says a failed read in words, never as a free week', async () => {
+    myWeek.mockRejectedValue(new Error('503'));
+    mount();
+    await waitFor(() => expect(screen.getByText(/Your shifts couldn’t be reached/)).toBeTruthy());
+    expect(screen.queryByText(/No shift left/)).toBeNull();
+  });
+
+  it('says when nothing is left this week, and when the roster has no row', async () => {
+    mount();
+    await waitFor(() => expect(screen.getByText('No shift left this week.')).toBeTruthy());
+    myWeek.mockResolvedValue({ member: null, schedule: null, mine: [], open: [] });
+    mount();
+    await waitFor(() => expect(screen.getByText(/aren’t on this house’s roster/)).toBeTruthy());
+  });
+
+  it('moves by opacity and transform only, and holds still under reduced motion', () => {
+    const css = readFileSync(resolve(__dirname, 'staff-home.css'), 'utf8');
+    const block = css.slice(css.indexOf('.sh-shift {'), css.indexOf('/* ── running low'));
+    expect(block).not.toMatch(/transition:\s*all|transition-all/);
+    expect(block).toMatch(/@keyframes sh-shift-in[\s\S]*opacity[\s\S]*transform/);
+    expect(css).toMatch(/prefers-reduced-motion: reduce\) \{\s*\.sh-shift \{\s*animation: none/);
   });
 });
