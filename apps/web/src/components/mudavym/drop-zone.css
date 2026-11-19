@@ -1,0 +1,254 @@
+/* The house's file drop zone (r58, N-14). Tokens only. Motion is transform
+   and opacity (the breathing box, the settle, the three-dot pulse); every one
+   of them stops under prefers-reduced-motion. */
+
+.mdv-dropwrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: min(100%, 360px);
+  flex: 1 1 360px;
+}
+
+.mdv-drop__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  border: 0;
+  white-space: nowrap;
+}
+
+.mdv-drop__camera {
+  width: 100%;
+  min-height: 56px;
+  font-size: 15px;
+}
+
+.mdv-drop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  border: 1.5px dashed var(--ink-4);
+  border-radius: 14px;
+  background: var(--paper-0);
+  color: var(--ink-2);
+  font-family: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif;
+  transition:
+    border-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mdv-drop[data-state='dragging'] {
+  border-color: var(--seal);
+  background: var(--seal-tint, var(--paper-1));
+  animation: mdv-drop-breathe 1.6s ease-in-out infinite;
+}
+
+.mdv-drop[data-state='held'],
+.mdv-drop[data-state='reading'] {
+  border-style: solid;
+  border-width: 1px;
+  border-color: var(--paper-2);
+  min-height: 96px;
+}
+
+.mdv-drop__idle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 20px 16px;
+  text-align: center;
+  color: var(--ink-1);
+  cursor: pointer;
+  border-radius: 12px;
+}
+
+.mdv-drop__idle:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+}
+
+.mdv-drop[data-disabled='true'] .mdv-drop__idle {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.mdv-drop__prompt {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.mdv-drop__hint {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+.mdv-drop__held {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 16px;
+}
+
+.mdv-drop__thumb {
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid var(--paper-2);
+  animation: mdv-drop-settle 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.mdv-drop__thumb--doc {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--paper-1);
+  color: var(--ink-3);
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.mdv-drop__what {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.mdv-drop__name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mdv-drop__size,
+.mdv-drop__reading {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+.mdv-drop__reading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mdv-drop__dots {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.mdv-drop__dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--ink-3);
+  animation: mdv-drop-pulse 1.2s ease-in-out infinite;
+}
+
+.mdv-drop__dots i:nth-child(2) {
+  animation-delay: 160ms;
+}
+
+.mdv-drop__dots i:nth-child(3) {
+  animation-delay: 320ms;
+}
+
+.mdv-drop__acts {
+  display: flex;
+  gap: 12px;
+  flex: none;
+}
+
+@keyframes mdv-drop-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.01);
+  }
+}
+
+@keyframes mdv-drop-settle {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes mdv-drop-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-drop {
+    transition: none;
+  }
+
+  .mdv-drop[data-state='dragging'],
+  .mdv-drop__thumb {
+    animation: none;
+  }
+
+  .mdv-drop__dots i {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
+/* "Add details": the optional fields open by grid rows 0fr -> 1fr (280 ms). */
+.mdv-drop__details {
+  display: grid;
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition:
+    grid-template-rows 280ms cubic-bezier(0.16, 1, 0.3, 1),
+    visibility 0s linear 280ms;
+}
+
+.mdv-drop__details[data-open='true'] {
+  grid-template-rows: 1fr;
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+.mdv-drop__detailsinner {
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-drop__details {
+    transition: none;
+  }
+}

@@ -40,6 +40,7 @@ import {
 import { oneNounFor, type KindNoun } from './menu-line-kind';
 import { useAuthStore } from '../../../stores';
 import { MenuPlan } from './MenuPlan';
+import { DropZone } from '../../../components/mudavym/DropZone';
 import { deviceClockNote, houseDay, houseMoment } from './menu-clock';
 import { versionsPollMs } from './menu-read-poll';
 import { isPhoto, pagesProblem, photoToJpegBase64, photosToPages } from '../../../lib/menuPhotos';
@@ -308,9 +309,13 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
   const [chosen, setChosen] = useState<string | null>(null);
   const [replaced, setReplaced] = useState(false);
   const [planning, setPlanning] = useState(false);
+  const [details, setDetails] = useState(false);
   const [readingId, setReadingId] = useState<string | null>(null);
   const dateRead = readMenuDate(date);
   const shape = uploadShapeOf(files);
+  // The optional fields stay behind "Add details", and open by themselves when
+  // the date typed there needs a word.
+  const detailsOpen = details || !dateRead.ok;
 
   const read = useMutation({
     mutationFn: async ({ again }: { again: boolean }) => {
@@ -368,33 +373,48 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
 
   return (
     <div style={{ border: '1px solid var(--paper-2)', borderRadius: 10, padding: 14, marginTop: 16 }} data-testid="menu-read-form">
-      <form onSubmit={submit} style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
-        <label className="cl-said" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          Menu to read (several photos = one menu)
-          <input
-            type="file"
-            multiple
-            accept="image/*,application/pdf,.csv,.xlsx,.xls"
-            aria-label="Menu to read"
-            onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
-          />
-        </label>
-        <label className="cl-said" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          How often it changes (optional)
-          <select aria-label="How often it changes" value={cadence} onChange={(e) => setCadence(e.target.value as MenuCadence | '')}>
-            <option value="">Not tagged</option>
-            {MENU_CADENCES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="cl-said" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          Date (optional: a day or a month)
-          <input aria-label="Menu date" placeholder="2026-10 or 2026-10-15" value={date} onChange={(e) => setDate(e.target.value)} />
-        </label>
-        <button type="submit" className="cl-btn cl-focus" disabled={read.isPending || files.length === 0 || !dateRead.ok || shape.problem !== null}>
+      <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'stretch' }}>
+        <DropZone
+          files={files}
+          onFiles={(picked, mode) => setFiles((prev) => (mode === 'add' ? [...prev, ...picked] : picked))}
+          onClear={() => setFiles([])}
+          reading={read.isPending}
+          accept="image/*,application/pdf,.csv,.xlsx,.xls"
+          multiple
+          inputLabel="Menu to read"
+          hint="Several photos make one menu. A spreadsheet or CSV works too."
+        />
+        <div>
+          <button
+            type="button"
+            className="mdv-link"
+            aria-expanded={detailsOpen}
+            aria-controls="menu-read-details"
+            onClick={() => setDetails((o) => !o)}
+          >
+            Add details
+          </button>
+          <div id="menu-read-details" className="mdv-drop__details" data-open={detailsOpen ? 'true' : 'false'}>
+            <div className="mdv-drop__detailsinner">
+              <label className="cl-said" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                How often it changes (optional)
+                <select aria-label="How often it changes" value={cadence} onChange={(e) => setCadence(e.target.value as MenuCadence | '')}>
+                  <option value="">Not tagged</option>
+                  {MENU_CADENCES.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="cl-said" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                Date (optional: a day or a month)
+                <input aria-label="Menu date" placeholder="2026-10 or 2026-10-15" value={date} onChange={(e) => setDate(e.target.value)} />
+              </label>
+            </div>
+          </div>
+        </div>
+        <button type="submit" className={`cl-btn cl-focus${files.length > 0 ? ' cl-ink' : ''}`} style={{ alignSelf: 'flex-start' }} disabled={read.isPending || files.length === 0 || !dateRead.ok || shape.problem !== null}>
           {read.isPending ? 'Reading…' : files.length > 1 ? `Read these ${files.length} pages as one menu` : 'Read this menu'}
         </button>
       </form>
