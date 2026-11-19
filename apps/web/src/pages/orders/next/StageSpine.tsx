@@ -86,7 +86,7 @@ export function StageSpine({ counts, recurringCount, active, onSelect }: StageSp
                 display: 'block',
                 marginTop: 4,
                 fontFamily: MONO,
-                fontSize: 9.5,
+                fontSize: 11,
                 fontWeight: 500,
                 letterSpacing: '0.12em',
                 textTransform: 'uppercase',

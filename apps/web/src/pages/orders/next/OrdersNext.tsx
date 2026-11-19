@@ -276,7 +276,7 @@ export default function OrdersNext() {
               style={{
                 display: 'block',
                 fontFamily: MONO,
-                fontSize: 9.5,
+                fontSize: 11,
                 fontWeight: 500,
                 letterSpacing: '0.12em',
                 textTransform: 'uppercase',
