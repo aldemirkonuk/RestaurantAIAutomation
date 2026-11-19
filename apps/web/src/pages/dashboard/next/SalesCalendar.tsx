@@ -27,13 +27,14 @@
  *    figures are skeletons/em dashes — never fabricated zeros.
  *
  * Motion: cells arrive staggered on each month's first paint (ent-01
- * lineage: clip wipe + 6px rise on the settle curve, decaying interval).
- * All of it collapses under prefers-reduced-motion via lib/mudavym.animate.
+ * lineage: clip wipe + 6px rise on the settle curve, 36 ms apart). Under
+ * prefers-reduced-motion nothing is staggered and no cell is held back.
  */
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { animate, settle } from '@/lib/mudavym';
+import { animate, prefersReducedMotion, settle } from '@/lib/mudavym';
+import { LEGEND_STEPS, drawDelay, heatGround, heatPercent } from './calendarHeat';
 import type { ActivityItem, AlertItem } from './useDashboardNextData';
 import {
   NOT_RECORDED,
@@ -311,6 +312,29 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
       ),
     [daily, salesShown, seesAmounts],
   );
+  // What the shading measures, and its top end — said once under the grid.
+  const legend = useMemo(() => {
+    if (month.state !== 'ready' || zoneUnset) return null;
+    let top: DayLedger | undefined;
+    let topHead = 0;
+    for (const d of daily) {
+      const h = headline(d);
+      if (h != null && h > topHead) {
+        top = d;
+        topHead = h;
+      }
+    }
+    if (!top) return null;
+    return {
+      measure: salesShown ? 'net sales' : seesAmounts ? 'what was paid to vendors' : 'orders',
+      top: salesShown
+        ? money(topHead, 'compact')
+        : seesAmounts
+          ? money(topHead, 'compact')
+          : `${topHead} ${topHead === 1 ? 'order' : 'orders'}`,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [month.state, zoneUnset, daily, salesShown, seesAmounts]);
   // The month's longest headline sets the one figure size every cell uses.
   const figSize = useMemo(
     () =>
@@ -336,9 +360,9 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
   useEffect(() => {
     if (month.state !== 'ready' || !gridRef.current) return;
     const cells = gridRef.current.querySelectorAll<HTMLElement>('.dn-cell:not([data-blank="true"])');
-    let delay = 0;
-    let gap = 16;
-    cells.forEach((cell) => {
+    // Reduced motion draws nothing in: the cells are simply there.
+    if (prefersReducedMotion()) return;
+    cells.forEach((cell, i) => {
       animate(
         cell,
         [
@@ -346,10 +370,8 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
           { opacity: 1, transform: 'none', clipPath: 'inset(0 0 0 0)' },
         ],
         { easing: settle.easing, ms: 420 },
-        { delay },
+        { delay: drawDelay(i, false) },
       );
-      delay += gap;
-      gap *= 0.94; // decaying interval — deliberate head, tail keeps up
     });
   }, [month.state, monthKey]);
 
@@ -456,7 +478,7 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
           // No today mark when the house has no zone (ADR 0290).
           const isToday = houseToday !== null && dateStr === todayStr;
           const head = zoneUnset ? null : headline(day);
-          const heat = head != null && head > 0 ? 0.06 + 0.3 * (head / maxHead) : 0;
+          const ground = heatGround(heatPercent(head, maxHead));
           const fig = cellFigure(day, salesShown, zoneUnset, seesAmounts);
           // Count and say: a figure short of its day's checks says so here.
           const from = salesShown && !zoneUnset && day ? fromChecks(day.net_checks, day.checks) : null;
@@ -477,14 +499,9 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
               aria-pressed={selected === dateStr}
               aria-current={isToday ? 'date' : undefined}
               aria-label={cellLabel(dateStr, day, { salesShown, zoneUnset, seesAmounts, isToday })}
-              // color-mix keeps the heat on the seal TOKEN, so both grounds
-              // (İznik on paper, lifted teal on charcoal) resolve correctly;
-              // browsers without color-mix quietly keep the paper-1 ground.
-              style={
-                heat > 0
-                  ? { ...CELL_BOX, backgroundColor: `color-mix(in srgb, var(--seal) ${Math.round(heat * 100)}%, transparent)` }
-                  : CELL_BOX
-              }
+              // The shade sits on the seal TOKEN (calendarHeat), so both grounds
+              // resolve; browsers without color-mix keep the paper-1 ground.
+              style={ground ? { ...CELL_BOX, backgroundColor: ground } : CELL_BOX}
             >
               <span className="dn-cell-num">{dayNum}</span>
               <span className="dn-cell-marks" style={{ flexWrap: 'wrap' }}>
@@ -516,6 +533,35 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
           );
         })}
       </div>
+
+      {legend && (
+        <div
+          className="dn-cal-legend px-4 pb-3 sm:px-5"
+          data-testid="dn-cal-legend"
+          data-still={prefersReducedMotion() ? 'true' : 'false'}
+          role="group"
+          aria-label={`How the shading reads: ${legend.measure}, less to more`}
+        >
+          <span className="dn-cal-legend__what">Shaded by {legend.measure}</span>
+          <span className="dn-cal-legend__scale">
+            <span>Less</span>
+            {LEGEND_STEPS.map((step, i) => {
+              const g = heatGround(heatPercent(step, 1));
+              return (
+                <span
+                  key={step}
+                  className="dn-cal-legend__step"
+                  data-step={i}
+                  aria-hidden
+                  style={g ? { backgroundColor: g } : undefined}
+                />
+              );
+            })}
+            <span>More</span>
+          </span>
+          <span className="dn-cal-legend__top">busiest day {legend.top}</span>
+        </div>
+      )}
 
       {month.state === 'unknown' && (
         <p className="px-4 pb-4 text-[12px] italic text-inkm-4 sm:px-5">
