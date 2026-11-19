@@ -18,7 +18,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MenuNext from './MenuNext';
 import { housePriceNote } from './menu-price-note';
-import { getMenu, discardMenuItem, addMenuItem, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
+import { getMenu, discardMenuItem, addMenuItem, listMenuVersions, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
 import { settingsApi, type HouseCurrency } from '../../../services/api/settings';
 
 vi.mock('../../../contexts/AuthContext', () => ({
@@ -73,6 +73,7 @@ vi.mock('../../../services/api/settings', async () => {
 });
 
 const mockGetMenu = vi.mocked(getMenu);
+const mockVersions = vi.mocked(listMenuVersions);
 const mockDiscard = vi.mocked(discardMenuItem);
 const mockAdd = vi.mocked(addMenuItem);
 const mockCurrency = vi.mocked(settingsApi.houseCurrency);
@@ -160,6 +161,20 @@ describe('MenuNext — reading', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(await screen.findAllByTestId('menu-row')).toHaveLength(1);
     expect(screen.queryByTestId('menu-error')).not.toBeInTheDocument();
+  });
+
+  it('Retry reads the kept menus again too, so their could-not-be-read sentence clears with the menu', async () => {
+    mockGetMenu.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+    mockGetMenu.mockResolvedValue(menu());
+    mockVersions.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+    mockVersions.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mount();
+    await screen.findByTestId('menu-error');
+    expect(await screen.findByTestId('menu-versions-error')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findAllByTestId('menu-row')).toHaveLength(1);
+    await waitFor(() => expect(screen.queryByTestId('menu-versions-error')).not.toBeInTheDocument());
+    expect(await screen.findByTestId('menu-versions-standing')).toBeInTheDocument();
   });
 
   it('says plainly when the house has no active menu, rather than an empty add form', async () => {

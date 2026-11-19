@@ -274,6 +274,7 @@ export default function MenuNext() {
   const role = (activeRole ?? user?.role ?? null) as string | null;
   const canManage = role === 'owner' || role === 'manager';
   const { q, discard, add } = useActiveMenu(activeRestaurantId);
+  const queryClient = useQueryClient();
   const currency = useHouseCurrency(activeRestaurantId);
   const [discardingId, setDiscardingId] = useState<string | null>(null);
 
@@ -305,7 +306,12 @@ export default function MenuNext() {
                 `The menu could not be read${q.error instanceof Error ? ` (${q.error.message})` : ''}.`}{' '}
               Nothing below is a real count of what this house lists.
             </p>
-            <button type="button" className="cl-btn cl-focus" disabled={q.isFetching} onClick={() => void q.refetch()}>
+            <button type="button" className="cl-btn cl-focus" disabled={q.isFetching} onClick={() => {
+                void q.refetch();
+                // The kept-menus panel below reads from the same gateway: when
+                // it too could not be read, its sentence clears with this one.
+                void queryClient.invalidateQueries({ queryKey: ['menu', 'versions'] });
+              }}>
               {q.isFetching ? 'Reading…' : 'Retry'}
             </button>
           </div>
