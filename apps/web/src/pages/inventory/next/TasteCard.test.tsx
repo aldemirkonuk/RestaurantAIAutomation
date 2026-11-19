@@ -3,6 +3,8 @@
  * anywhere on a row, a mark on every row, a withheld value for a conflict, and
  * a form that sends only what a person set. Fixtures are synthetic.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -286,5 +288,15 @@ describe('describing the taste', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(screen.queryByTestId('taste-form')).toBeNull();
     expect(api.add).not.toHaveBeenCalled();
+  });
+});
+
+describe('the touch rules', () => {
+  const css = readFileSync(resolve(process.cwd(), 'src/pages/inventory/next/taste-card.css'), 'utf8');
+
+  it('gives More, the level selects and the Aroma fold 44 px on a phone or a coarse pointer', () => {
+    expect(css).toMatch(
+      /@media \(max-width: 767px\), \(pointer: coarse\) \{[^@]*?\.tc-more,\s*\.tf-level select,\s*\.tf-set summary \{\s*min-height: 44px;/,
+    );
   });
 });
