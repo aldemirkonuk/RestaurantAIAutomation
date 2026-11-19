@@ -28,8 +28,8 @@
 .mdv-pub {
   /* `sheet.css` declares these on `.mdv-ovl`, so they do not reach a page that
      is not an overlay. Same values, one place to change them. */
-  --mdv-sans: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif;
-  --mdv-serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --mdv-sans: 'Plus Jakarta Sans', 'Plus Jakarta Fallback', system-ui, sans-serif;
+  --mdv-serif: 'Fraunces', 'Fraunces Fallback', Georgia, 'Times New Roman', serif;
   --mdv-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
   /* The measure of the column, overridden per shape below. */

@@ -2,8 +2,8 @@
    House tokens only. It paints its own paper ground (see .mdv-askp). */
 
 .mdv-askp {
-  --mdv-sans: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif;
-  --mdv-serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --mdv-sans: 'Plus Jakarta Sans', 'Plus Jakarta Fallback', system-ui, sans-serif;
+  --mdv-serif: 'Fraunces', 'Fraunces Fallback', Georgia, 'Times New Roman', serif;
   font-family: var(--mdv-sans);
   color: var(--ink-2);
   /* The panel paints its own ground (mudavym-ground.test.ts: a .mudavym

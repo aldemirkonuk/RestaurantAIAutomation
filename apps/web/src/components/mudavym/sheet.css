@@ -23,8 +23,8 @@
   inset: 0;
   z-index: 100;
   --mdv-scrim: rgba(23, 19, 15, 0.28);
-  --mdv-sans: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif;
-  --mdv-serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --mdv-sans: 'Plus Jakarta Sans', 'Plus Jakarta Fallback', system-ui, sans-serif;
+  --mdv-serif: 'Fraunces', 'Fraunces Fallback', Georgia, 'Times New Roman', serif;
   --mdv-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
