@@ -62,6 +62,13 @@ describe("CheckMarginSection", () => {
     expect(screen.queryByText("No closed checks have arrived.")).toBeNull();
   });
 
+  it("says an unreachable gateway in words, never the transport's \"Network Error\"", async () => {
+    getRecentChecks.mockRejectedValue(Object.assign(new Error("Network Error"), { code: "ERR_NETWORK" }));
+    render(<CheckMarginSection restaurantId="r1" />);
+    expect(await screen.findByText(/could not be read \(Mudavym could not be reached just now\.\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/Network Error/)).toBeNull();
+  });
+
   it("says a failed check read failed and shows no margin", async () => {
     const user = userEvent.setup();
     getCheckView.mockRejectedValue(new Error("gone"));

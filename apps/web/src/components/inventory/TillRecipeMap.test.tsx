@@ -138,6 +138,15 @@ describe("TillRecipeMap", () => {
     expect(screen.queryByText("The house has no drink recipes yet.")).toBeNull();
   });
 
+  it("says an unreachable gateway in words, never the transport's \"Network Error\"", async () => {
+    const user = userEvent.setup();
+    getHouseCocktails.mockRejectedValue(Object.assign(new Error("Network Error"), { code: "ERR_NETWORK" }));
+    view();
+    await user.click(await screen.findByRole("button", { name: "Pick a recipe" }));
+    expect((await screen.findAllByText(/could not be read \(Mudavym could not be reached just now\.\)/)).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Network Error/)).toBeNull();
+  });
+
   it("says a failed recipe search failed, not that nothing matched", async () => {
     const user = userEvent.setup();
     getHouseCocktails.mockReset();

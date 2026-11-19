@@ -58,6 +58,12 @@ function errText(e: unknown): string {
     response?: { data?: { message?: string } };
     message?: string;
   };
+  // The transport's own words ("Network Error") say nothing to a person: the
+  // request never got an answer, so say that (as /dishes does).
+  const sent = e as { code?: unknown; response?: unknown };
+  if (!anyE?.response?.data?.message && sent?.code === "ERR_NETWORK" && !sent.response) {
+    return "Mudavym could not be reached just now.";
+  }
   return anyE?.response?.data?.message || anyE?.message || "Request failed";
 }
 

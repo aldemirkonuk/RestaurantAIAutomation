@@ -137,6 +137,13 @@ describe("PosMappingPanel", () => {
     ).toBeInTheDocument();
   });
 
+  it("says an unreachable gateway in words, never the transport's \"Network Error\"", async () => {
+    getUnresolvedLines.mockRejectedValue(Object.assign(new Error("Network Error"), { code: "ERR_NETWORK" }));
+    render(<PosMappingPanel isOpen onClose={() => {}} inventory={inventory} />);
+    expect(await screen.findByText(/Mudavym could not be reached just now\./)).toBeInTheDocument();
+    expect(screen.queryByText(/Network Error/)).toBeNull();
+  });
+
   it("says the queue could not be read rather than showing it as empty (ADR 0067)", async () => {
     getUnresolvedLines.mockRejectedValue(new Error("connection reset"));
     render(<PosMappingPanel isOpen onClose={() => {}} inventory={inventory} />);
