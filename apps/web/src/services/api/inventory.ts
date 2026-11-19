@@ -78,9 +78,13 @@ export function normalizeInventoryItem(
     wineProducer: item.wineProducer ?? item.wine_producer ?? item.producer ?? undefined,
     wineVintage: item.wineVintage ?? item.wine_vintage ?? item.vintage ?? undefined,
     providerName: item.providerName ?? item.provider_name ?? undefined,
-    stockLive: item.stockLive ?? item.stock_live ?? 0,
+    // An unread stock stays null (never 0 = "none on hand"): the screens
+    // that show it say a dash, and a sum that claims completeness skips it.
+    stockLive: item.stockLive ?? item.stock_live ?? null,
     physicalStock: item.physicalStock ?? item.physical_stock ?? undefined,
-    shadowStock: item.shadowStock ?? item.shadow_stock ?? 0,
+    // Likewise the shadow stock: absent is unread (the low-stock view row has
+    // none), not "none"; every reader that adds it says `?? 0` itself.
+    shadowStock: item.shadowStock ?? item.shadow_stock ?? undefined,
     thresholdMin: item.thresholdMin ?? item.threshold_min ?? 0,
     thresholdMax: item.thresholdMax ?? item.threshold_max ?? 0,
     toastItemGuid: item.toastItemGuid ?? item.toast_item_guid ?? undefined,
