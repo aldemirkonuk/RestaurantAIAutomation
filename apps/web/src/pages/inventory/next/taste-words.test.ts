@@ -6,6 +6,8 @@ import {
   axisName,
   BAND_EDGES,
   bandOf,
+  descriptorFamily,
+  descriptorGroupsFor,
   descriptorWord,
   DESCRIPTOR_GROUPS,
   footerFacts,
@@ -111,5 +113,37 @@ describe('footer facts', () => {
     const l = (name: string | null, at: string | null) => ({ source: 'house', version: 1, method: null, statedByName: name, statedAt: at, hasNote: false, noteText: null });
     expect(footerFacts({ effective: null, layers: [l('A', '2026-11-01T00:00:00Z'), l('B', '2026-11-05T00:00:00Z'), l('A', null)] }))
       .toEqual({ names: ['A', 'B'], latest: '2026-11-05T00:00:00Z', sources: 3 });
+  });
+});
+
+/** Mirrors apps/api-gateway/src/taste/taste-descriptors.ts: the gateway refuses a word outside the item's own list. */
+const OFFERED = {
+  food: ['savoury', 'rich', 'fresh', 'bright', 'balanced', 'sharp', 'mellow', 'sweet-and-sour', 'spicy', 'smoky', 'herby', 'tangy'],
+  wine: ['citrus-fruit', 'green-fruit', 'stone-fruit', 'tropical-fruit', 'red-fruit', 'black-fruit', 'dried-fruit', 'floral', 'herbal', 'spice', 'oak', 'earthy', 'mineral', 'short-finish', 'medium-finish', 'long-finish'],
+  spirit: ['citrus-fruit', 'orchard-fruit', 'stone-fruit', 'tropical-fruit', 'dried-fruit', 'floral', 'herbal', 'juniper', 'spice', 'vanilla', 'caramel', 'oak', 'smoky', 'earthy', 'nutty', 'short-finish', 'medium-finish', 'long-finish'],
+  beer: ['bready', 'biscuity', 'caramel', 'toasty', 'roasty', 'chocolate', 'citrus-fruit', 'piney', 'floral', 'herbal', 'fruity-yeast', 'spicy-yeast', 'clean', 'tart', 'funky', 'dry-finish'],
+  coffee: ['berry', 'citrus-fruit', 'stone-fruit', 'floral', 'honey', 'caramel', 'nutty', 'cocoa', 'spice', 'roasted', 'smoky', 'vegetal', 'winey', 'clean'],
+  cocktail: ['spirit-forward', 'boozy', 'balanced', 'sour-led', 'sweet-led', 'bitter-led', 'refreshing', 'strong', 'long-and-light', 'citrus-fruit', 'herbal', 'spice', 'smoky'],
+} as const;
+const KIND_OF: Record<keyof typeof OFFERED, string> = { food: 'food', wine: 'wine', spirit: 'whiskey', beer: 'beer', coffee: 'non_alcoholic', cocktail: 'cocktail' };
+const flavourIds = (kind: string) => descriptorGroupsFor(kind).filter((g) => g.title !== 'Texture').flatMap((g) => g.items.map((i) => i.id));
+
+describe('flavour words by kind', () => {
+  it.each(Object.keys(OFFERED) as Array<keyof typeof OFFERED>)('%s offers exactly the gateway list', (f) => {
+    expect([...flavourIds(KIND_OF[f])].sort()).toEqual([...OFFERED[f]].sort());
+  });
+  it.each([['wine', 'wine'], ['sake', 'wine'], ['cider', 'wine'], ['spirit', 'spirit'], ['liqueur', 'spirit'], ['beer', 'beer'], ['soft_drink', 'coffee'], ['cocktail', 'cocktail'], ['food', 'food'], ['other', 'food'], ['mead', 'food'], [null, 'food'], [undefined, 'food']])('kind %s uses the %s words', (k, f) => {
+    expect(descriptorFamily(k as string | null | undefined)).toBe(f);
+  });
+  it('every offered word has a label for the card, with spaces and no stored id', () => {
+    for (const f of Object.values(OFFERED)) for (const id of f) expect(descriptorWord(id)).toBe(id === 'sweet-and-sour' ? id : id.replace(/-/g, ' '));
+  });
+  it('a drink never offers the food-only flavour words; texture for a drink is the short list', () => {
+    for (const k of ['wine', 'beer', 'whiskey', 'non_alcoholic', 'cocktail']) {
+      for (const w of ['savoury', 'rich', 'sweet-and-sour', 'tangy', 'chewy']) {
+        expect(descriptorGroupsFor(k).flatMap((g) => g.items.map((i) => i.id))).not.toContain(w);
+      }
+      expect(descriptorGroupsFor(k).find((g) => g.title === 'Texture')!.items.map((i) => i.id)).toEqual(['crisp', 'creamy', 'silky']);
+    }
   });
 });
