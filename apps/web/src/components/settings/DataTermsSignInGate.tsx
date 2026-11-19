@@ -40,9 +40,38 @@
  *     own single-topmost-overlay contract (ADR 0112) covers the rest.
  */
 
+import { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDataTerms } from '../../hooks/queries/useDataTerms';
 import { DataTermsAcceptSheet } from './DataTermsAcceptSheet';
+
+/** The page has painted and had a breath to settle before a question lands on it. */
+const AFTER_PAINT_MS = 350;
+
+/**
+ * True once the page behind has been painted: two animation frames, then a
+ * short settle. The sheet used to open in the same commit as the dashboard, so
+ * the first thing an owner met was the wall, over an empty page.
+ */
+function useAfterPaint(enabled: boolean): boolean {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    if (!enabled) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        timer = setTimeout(() => setReady(true), AFTER_PAINT_MS);
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      if (timer) clearTimeout(timer);
+    };
+  }, [enabled]);
+  return ready;
+}
 
 export function DataTermsSignInGate() {
   // No session context (a signed-out render, or a test that mounts the
@@ -51,6 +80,7 @@ export function DataTermsSignInGate() {
   const activeRole = auth?.activeRole ?? null;
   const isOwner = activeRole === 'owner';
   const q = useDataTerms(isOwner);
+  const painted = useAfterPaint(isOwner);
 
   if (!isOwner) return null;
   // Loading, or a failed fetch that has not yet resolved to data: render
@@ -65,6 +95,8 @@ export function DataTermsSignInGate() {
   // the per-owner field only knows the house, and is read as that.
   const acceptedByYou = q.data.yours ? q.data.yours.current : q.data.current;
   if (acceptedByYou) return null;
+  // The dashboard behind it paints first (design critic round 3, need 6).
+  if (!painted) return null;
 
   return <DataTermsAcceptSheet readout={q.data} dismissable={false} />;
 }
