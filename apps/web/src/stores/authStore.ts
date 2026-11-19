@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import axios from 'axios'
 import { doRefresh } from '../lib/sessionRefresh'
+import { shareMeRead } from '../lib/authMe'
 import { AUTH_STORAGE_KEY, leaveDeadSession } from '../lib/deadSession'
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
@@ -261,12 +262,15 @@ export const useAuthStore = create<AuthState>()(
           })
         }
 
-        try {
-          const response = await api.get('/api/v1/auth/me')
-          applyUserData(response.data.user, response.data.availableRestaurants)
-        } catch (err: any) {
-          const status = err?.response?.status
-          if (status === 401) {
+        // One `/auth/me` per page load, shared with AuthContext's own load
+        // (lib/authMe.ts). This client has no 401 interceptor, so the read
+        // mends a 401 itself — one refresh, one retry — and that mended
+        // answer is what a sharing AuthContext gets too.
+        const readMe = async () => {
+          try {
+            return await api.get('/api/v1/auth/me')
+          } catch (firstErr: any) {
+            if (firstErr?.response?.status !== 401) throw firstErr
             // ADR 0164, item 2/3: the one shared, single-flight refresh
             // (`doRefresh`, also used by AuthContext.tsx and its axios
             // interceptor) instead of a fourth independent implementation —
@@ -274,16 +278,18 @@ export const useAuthStore = create<AuthState>()(
             // shared, not raced, and houseAccessEnded/503 are handled the
             // one place both clients rely on.
             const newAccess = await doRefresh()
-            if (newAccess) {
-              get().setTokens(newAccess, localStorage.getItem('refreshToken') || '')
-              try {
-                const retryRes = await api.get('/api/v1/auth/me')
-                applyUserData(retryRes.data.user, retryRes.data.availableRestaurants)
-                return
-              } catch (retryErr) {
-                console.error('Failed to load user after refresh:', retryErr)
-              }
-            }
+            if (!newAccess) throw firstErr
+            get().setTokens(newAccess, localStorage.getItem('refreshToken') || '')
+            return await api.get('/api/v1/auth/me')
+          }
+        }
+
+        try {
+          const response = await shareMeRead(readMe, 'store')
+          applyUserData(response.data.user, response.data.availableRestaurants)
+        } catch (err: any) {
+          const status = err?.response?.status
+          if (status === 401) {
             // `doRefresh` removes the stored refresh token itself only when
             // it was genuinely rejected. A houseAccessEnded response leaves a
             // fresh (no-house) pair in place and has already sent the person

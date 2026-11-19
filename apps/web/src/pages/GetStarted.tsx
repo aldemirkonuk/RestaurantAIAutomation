@@ -8,6 +8,7 @@ import { MenuCsvUpload } from '../components/onboarding/MenuCsvUpload'
 import { MenuScanUpload } from '../components/onboarding/MenuScanUpload'
 import { MenuManualEntry } from '../components/onboarding/MenuManualEntry'
 import { useAuth, type User } from '../contexts/AuthContext'
+import { HouseBusyNotice } from '../components/HouseBusyNotice'
 import { prefetchWhenIdle } from '../lib/stepPrefetch'
 import { apiClient, getErrorStatus, isUnconfirmedWrite } from '../services/api/client'
 import { importMenu, type MenuImportResult } from '../services/api/menus'
@@ -160,7 +161,7 @@ function ArrivalShell({
 
 export default function GetStarted() {
   const navigate = useNavigate()
-  const { user, loading, createFirstHouse, signInWithSession, logout } = useAuth()
+  const { user, loading, meBusy, createFirstHouse, signInWithSession, logout } = useAuth()
   // No step shows until the entry rule decides, so Welcome never flashes.
   const [step, setStep] = useState<Step>('restaurant')
   const [entered, setEntered] = useState(false)
@@ -529,7 +530,13 @@ export default function GetStarted() {
       if (out) navigate('/login', { replace: true })
     })
 
-  if (!entered) return <ArrivalShell step={null} />
+  if (!entered) {
+    return (
+      <ArrivalShell step={null}>
+        {loading && meBusy ? <HouseBusyNotice busy={meBusy} /> : null}
+      </ArrivalShell>
+    )
+  }
 
   if (step === 'restaurant') {
     return (
