@@ -190,4 +190,9 @@ describe('the hover detail', () => {
     expect(rule).toMatch(/box-shadow:\s*0 14px 28px -18px rgba\(33, 28, 22, 0\.35\)/);
     expect(rule).toMatch(/animation:\s*rp-tip-in 120ms/);
   });
+
+  it('[REVERT-FAILS] keeps a visible shadow on charcoal, where the warm one falls on a lighter colour', () => {
+    const rule = /html\[data-mudavym-ground='charcoal'\] \.rp-tip \{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(rule).toMatch(/box-shadow:\s*0 14px 28px -18px rgba\(0, 0, 0, 0\.6\)/);
+  });
 });

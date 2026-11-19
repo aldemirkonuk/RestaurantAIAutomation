@@ -249,6 +249,11 @@
   background: var(--paper-0);
   box-shadow: 0 14px 28px -18px rgba(33, 28, 22, 0.35);
 }
+/* On charcoal the warm ink shadow is lighter than the card it falls on and
+   cannot be seen; a black one at the same offset can. */
+html[data-mudavym-ground='charcoal'] .rp-tip {
+  box-shadow: 0 14px 28px -18px rgba(0, 0, 0, 0.6);
+}
 @keyframes rp-tip-in {
   from {
     opacity: 0;
