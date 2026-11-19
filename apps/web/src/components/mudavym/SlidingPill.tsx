@@ -5,6 +5,8 @@ export interface SlidingPillOption<T extends string> {
   label: string;
   /** A count shown after the label; it ticks when it changes, and 0 dims the option. A string (an em dash for "not read") shows as it is and never dims. */
   count?: number | string;
+  /** A hover hint carried onto this option's button (a shortcut, say). */
+  title?: string;
   /** Carried onto this option's button, for a test or a tour anchor. */
   testId?: string;
   /** Carried onto the count's span. */
@@ -78,6 +80,7 @@ export function SlidingPill<T extends string>({ options, value, onChange, ariaLa
           {...(tabs
             ? { role: 'tab', 'aria-selected': o.value === value }
             : { 'aria-pressed': o.value === value })}
+          title={o.title}
           data-testid={o.testId}
           data-empty={o.count === 0 ? 'true' : undefined}
           className="mdv-pill__opt"

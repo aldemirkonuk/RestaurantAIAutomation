@@ -59,6 +59,7 @@ import { useDayNotesInRange } from '@/hooks/queries';
 import { getErrorMessage } from '@/services/api/client';
 import CalendarLinkSheet from './CalendarLinkSheet';
 import { useMyCalendarLink } from '@/components/calendar-link/useMyCalendarLink';
+import { SlidingPill } from '../../../components/mudavym/SlidingPill';
 import './calendar-next.css';
 
 const VIEWS: Array<{ key: CalView; label: string; hint: string }> = [
@@ -418,29 +419,21 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
             <p className="cn-standing">{standing}</p>
           </div>
           <div className="cn-stack">
-            <div className="cn-tabs" role="group" aria-label="Magnification">
-              {VIEWS.map((v) => (
-                <button
-                  key={v.key}
-                  type="button"
-                  className="cn-tab cn-ink"
-                  aria-pressed={view === v.key}
-                  onClick={() => {
-                    // A day picked on the month is the day you meant; carry it
-                    // into the finer magnifications rather than dropping the
-                    // operator back on the first of the month.
-                    if (selected && (v.key === 'day' || v.key === 'week')) {
-                      setCursor(parseDayKey(selected));
-                    }
-                    if (v.key !== 'month') setSelected(null);
-                    setView(v.key);
-                  }}
-                  title={`${v.label} (${v.hint})`}
-                >
-                  {v.label}
-                </button>
-              ))}
-            </div>
+            <SlidingPill<CalView>
+              ariaLabel="Magnification"
+              value={view}
+              onChange={(key) => {
+                // A day picked on the month is the day you meant; carry it
+                // into the finer magnifications rather than dropping the
+                // operator back on the first of the month.
+                if (selected && (key === 'day' || key === 'week')) {
+                  setCursor(parseDayKey(selected));
+                }
+                if (key !== 'month') setSelected(null);
+                setView(key);
+              }}
+              options={VIEWS.map((v) => ({ value: v.key, label: v.label, title: `${v.label} (${v.hint})` }))}
+            />
             <div className="cn-row">
               <button type="button" className="cn-btn cn-ink" onClick={() => step(-1)} aria-label="Previous period">
                 ‹

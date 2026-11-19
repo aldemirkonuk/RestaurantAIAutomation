@@ -52,9 +52,7 @@
 .admin-desk__state[data-state='attention'] { color: var(--ink-1); font-weight: 600; }
 .admin-desk__state[data-state='unknown'] { color: var(--ink-4); }
 .admin-desk__actions { display: flex; gap: 8px; }
-.admin-desk__filters { display: flex; gap: 8px; margin-top: 18px; }
-.admin-desk__filter { padding: 6px 12px; font-size: 11px; }
-.admin-desk__filter[data-active='true'] { background: var(--paper-2); border-color: var(--ink-1); font-weight: 600; }
+.admin-desk__filters { margin-top: 18px; }
 .admin-desk__notice { padding: 18px; border-left: 2px solid var(--seal); background: var(--paper-1); margin-top: 20px !important; }
 .admin-desk__stale { color: var(--ink-4); font-style: italic; }
 .admin-desk__footer { margin-top: 64px; padding-top: 20px; border-top: 3px double var(--ink-4); font-size: 11px; color: var(--ink-2); }

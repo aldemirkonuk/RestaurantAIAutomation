@@ -87,7 +87,7 @@ vi.mock('../../../services/api/inventory', async (orig) => ({
 }));
 vi.mock('./RowDropdown', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
-  default: () => <tr data-testid="row-dropdown" />,
+  default: () => <div data-testid="row-dropdown" />,
 }));
 // The shared remove modal owns its own tests; here only what the page hands it.
 const removeModal = vi.hoisted(() => ({ props: null as Record<string, unknown> | null }));
@@ -956,6 +956,19 @@ describe('a title no zone holds reads "none on hand" or "Unassigned" (INV-W34)',
     const loc = file.columns.find((c) => c.header === 'Location')!;
     const byId = Object.fromEntries(file.rows.map((r) => [r.id, loc.value(r)]));
     expect(byId).toEqual({ cave: 'Cave', loose: 'Unassigned', split: 'Cave', nolots: 'Unassigned', empty: 'none on hand', unread: '', unreadloose: 'Unassigned' });
+  });
+});
+
+describe('N-12 — the view pill and the row that eases open', () => {
+  it('draws Table / Cellar map as one sliding pill', () => {
+    mock.data = data({ rows: [row({ id: 'a', name: 'Barolo' })] });
+    renderPage();
+    const view = screen.getByRole('group', { name: 'View' });
+    expect(view).toHaveClass('mdv-pill');
+    expect(view.querySelectorAll('.mdv-pill__thumb')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Table' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Cellar map' }));
+    expect(screen.getByRole('button', { name: 'Cellar map' })).toHaveAttribute('aria-pressed', 'true');
   });
 });
 

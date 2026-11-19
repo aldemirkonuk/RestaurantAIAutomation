@@ -71,6 +71,7 @@ import {
 } from './tm-format';
 import { MutationError } from './tm-bits';
 import { LENSES, WeekGrid, type Lens } from './WeekGrid';
+import { SlidingPill } from '../../../components/mudavym/SlidingPill';
 import { RosterSheet, MemberSheet } from './RosterSheet';
 import { CertificationsSheet } from './CertificationsSheet';
 import { CoverageRuleForm, CoverageRulesSheet } from './CoverageRulesSheet';
@@ -714,22 +715,12 @@ function TeamNextManager({
             <span className="tm-panel__title" style={{ margin: 0 }}>
               Lens
             </span>
-            {LENSES.map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                className="tm-ctl tm-ctl--sm"
-                aria-pressed={lens === value}
-                style={
-                  lens === value
-                    ? { background: 'var(--seal-tint)', borderColor: 'var(--seal)' }
-                    : { borderColor: 'var(--paper-2)', color: 'var(--ink-2)' }
-                }
-                onClick={() => setLens(value)}
-              >
-                {label}
-              </button>
-            ))}
+            <SlidingPill<Lens>
+              ariaLabel="Lens"
+              value={lens}
+              onChange={setLens}
+              options={LENSES.map(([value, label]) => ({ value, label }))}
+            />
           </div>
         </div>
         <p className="tm-quiet" style={{ marginBottom: 8 }}>

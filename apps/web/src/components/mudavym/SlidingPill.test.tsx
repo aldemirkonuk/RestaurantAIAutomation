@@ -177,3 +177,13 @@ describe('Collapse unmountWhenClosed', () => {
     expect(document.querySelector('.mdv-collapse')).toHaveAttribute('data-open', 'true');
   });
 });
+
+describe('SlidingPill option hint', () => {
+  it('carries an option title onto its button', () => {
+    render(
+      <SlidingPill ariaLabel="V" value="a" onChange={() => {}} options={[{ value: 'a', label: 'Month', title: 'Month (m)' }, { value: 'b', label: 'Week' }]} />,
+    );
+    expect(screen.getByRole('button', { name: 'Month' })).toHaveAttribute('title', 'Month (m)');
+    expect(screen.getByRole('button', { name: 'Week' })).not.toHaveAttribute('title');
+  });
+});

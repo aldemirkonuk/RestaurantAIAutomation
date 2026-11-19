@@ -201,7 +201,11 @@ describe('SalesSheet — several at once', () => {
       skippedRows: [{ memberId: 'm-bo', serviceDate: '2026-09-20' }],
     });
     draw();
+    const modes = screen.getByRole('group', { name: 'How many services' });
+    expect(modes).toHaveClass('mdv-pill');
+    expect(modes.querySelectorAll('.mdv-pill__thumb')).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'Several at once' }));
+    expect(screen.getByRole('button', { name: 'Several at once' })).toHaveAttribute('aria-pressed', 'true');
     // One labelled line per ACTIVE person; Cy is inactive.
     expect(screen.getByLabelText('Covers for Ana')).toBeTruthy();
     expect(screen.queryByLabelText('Covers for Cy')).toBeNull();

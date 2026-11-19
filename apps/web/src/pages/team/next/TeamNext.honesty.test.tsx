@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen , configure } from '@testing-library/react';
+import { render, screen , configure, fireEvent, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
@@ -222,6 +222,20 @@ describe('the coverage engine says whether it has ever been asked', () => {
     api.templates = [{ id: 't1', role: 'line', day_of_week: null, shift_period: 'pm', min_staff: 1 }];
     render(<TeamNext />, { wrapper });
     expect(await screen.findByText(/Every required slot this week is staffed/)).toBeInTheDocument();
+  });
+});
+
+/** N-12 — the lens is one pill that slides, not four buttons that fill. */
+describe('the lens control slides one pill', () => {
+  it('is a sliding pill whose active option follows the click', async () => {
+    render(<TeamNext />, { wrapper });
+    const lens = await screen.findByRole('group', { name: 'Lens' });
+    expect(lens).toHaveClass('mdv-pill');
+    expect(lens.querySelectorAll('.mdv-pill__thumb')).toHaveLength(1);
+    expect(within(lens).getByRole('button', { name: 'coverage' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(within(lens).getByRole('button', { name: 'labour' }));
+    expect(within(lens).getByRole('button', { name: 'labour' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(lens).getByRole('button', { name: 'coverage' })).toHaveAttribute('aria-pressed', 'false');
   });
 });
 

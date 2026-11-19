@@ -73,6 +73,7 @@ import {
   type SortId,
   type Waiting,
 } from './useInventoryNextData';
+import { SlidingPill } from '../../../components/mudavym/SlidingPill';
 import './inventory-next.css';
 
 const SANS = "'DM Sans', system-ui, sans-serif";
@@ -769,14 +770,15 @@ export default function InventoryNext() {
                   { value: 'pace', label: 'Fastest moving' },
                 ]}
               />
-              <span className="iv-toggle" role="group" aria-label="View">
-                <button type="button" className="iv-btn iv-focus" aria-pressed={view === 'table'} data-on={view === 'table'} onClick={() => setV({ view: 'table' })}>
-                  Table
-                </button>
-                <button type="button" className="iv-btn iv-focus" aria-pressed={view === 'map'} data-on={view === 'map'} onClick={() => setV({ view: 'map' })}>
-                  Cellar map
-                </button>
-              </span>
+              <SlidingPill<'table' | 'map'>
+                ariaLabel="View"
+                value={view === 'map' ? 'map' : 'table'}
+                onChange={(next) => setV({ view: next })}
+                options={[
+                  { value: 'table', label: 'Table' },
+                  { value: 'map', label: 'Cellar map' },
+                ]}
+              />
               <button type="button" className="iv-btn iv-focus" onClick={showTools}>
                 Tools
               </button>
