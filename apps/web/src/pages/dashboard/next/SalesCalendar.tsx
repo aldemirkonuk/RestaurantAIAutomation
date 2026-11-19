@@ -136,6 +136,23 @@ function cellSized(size: string): CSSProperties {
   return { ['--dn-cell-size' as string]: size, fontSize: 'var(--dn-cell-size)' };
 }
 
+/** The figure's floor (c3 need 19): never drawn smaller than 11 px. */
+export const FIGURE_FLOOR_PX = 11;
+/** Under this cell width the figure is not drawn; the tooltip carries it. */
+export const FIGURE_MIN_CELL_PX = 44;
+
+/**
+ * Whether a cell `cellWidth` px wide has room for the month's longest figure
+ * (`longest` characters) at the 11 px floor. Unmeasured (0, as in a render
+ * with no layout) says yes, so nothing is hidden on a guess.
+ */
+export function figureFits(cellWidth: number, longest: number): boolean {
+  if (!(cellWidth > 0)) return true;
+  if (cellWidth < FIGURE_MIN_CELL_PX) return false;
+  const side = Math.min(7, Math.max(3, cellWidth / 4 - 6));
+  return cellWidth - 2 * side >= MONO_ADVANCE_EM * FIGURE_FLOOR_PX * longest;
+}
+
 const CELL_WORDS: CSSProperties = {
   ...cellSized(CELL_WORDS_SIZE),
   lineHeight: 1.15,
@@ -336,19 +353,30 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month.state, zoneUnset, daily, salesShown, seesAmounts]);
   // The month's longest headline sets the one figure size every cell uses.
-  const figSize = useMemo(
+  const longestFig = useMemo(
     () =>
-      cellFigureSize(
-        Math.max(
-          0,
-          ...daily.map((d) => {
-            const f = cellFigure(d, salesShown, zoneUnset, seesAmounts);
-            return f === NOT_RECORDED ? 0 : f.length;
-          }),
-        ),
+      Math.max(
+        0,
+        ...daily.map((d) => {
+          const f = cellFigure(d, salesShown, zoneUnset, seesAmounts);
+          return f === NOT_RECORDED ? 0 : f.length;
+        }),
       ),
     [daily, salesShown, zoneUnset, seesAmounts],
   );
+  const figSize = cellFigureSize(longestFig);
+  // A cell too narrow for the figure at 11 px keeps it in the tooltip instead.
+  const [cellPx, setCellPx] = useState(0);
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (!grid || typeof ResizeObserver === 'undefined') return;
+    const read = () => setCellPx(grid.querySelector<HTMLElement>('.dn-cell')?.getBoundingClientRect().width ?? 0);
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(grid);
+    return () => ro.disconnect();
+  }, [month.state]);
+  const figShown = figureFits(cellPx, longestFig);
 
   // Monday-first leading blanks.
   const firstWeekday = (new Date(cursor.year, cursor.month - 1, 1).getDay() + 6) % 7;
@@ -466,7 +494,7 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
       </div>
 
       {/* the grid */}
-      <div ref={gridRef} className="dn-cal-grid px-4 pb-4 sm:px-5">
+      <div ref={gridRef} className="dn-cal-grid px-4 pb-4 sm:px-5" data-fig={figShown ? 'shown' : 'tooltip'}>
         {Array.from({ length: firstWeekday }, (_, i) => (
           <div key={`b${i}`} className="dn-cell" data-blank="true" aria-hidden />
         ))}
@@ -499,6 +527,8 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
               aria-pressed={selected === dateStr}
               aria-current={isToday ? 'date' : undefined}
               aria-label={cellLabel(dateStr, day, { salesShown, zoneUnset, seesAmounts, isToday })}
+              // The figure a narrow square does not draw is read here.
+              title={cellLabel(dateStr, day, { salesShown, zoneUnset, seesAmounts, isToday })}
               // The shade sits on the seal TOKEN (calendarHeat), so both grounds
               // resolve; browsers without color-mix keep the paper-1 ground.
               style={ground ? { ...CELL_BOX, backgroundColor: ground } : CELL_BOX}
