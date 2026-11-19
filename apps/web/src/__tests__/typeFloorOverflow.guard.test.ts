@@ -30,7 +30,11 @@ describe('type floor overflow', () => {
   })
 
   it('the calendar record tag wraps instead of overflowing its card', () => {
-    expect(rule(cal, '.cn-record-tag')).toMatch(/overflow-wrap:\s*anywhere/)
+    // break-word + hyphens: a long tag wraps at word boundaries; only a single over-long word may split.
+    // `anywhere` shrank min-content and let the tag break mid-word at 375 px (r63 walk).
+    expect(rule(cal, '.cn-record-tag')).toMatch(/overflow-wrap:\s*break-word/)
+    expect(rule(cal, '.cn-record-tag')).not.toMatch(/overflow-wrap:\s*anywhere/)
+    expect(rule(cal, '.cn-record-tag')).toMatch(/hyphens:\s*auto/)
     expect(rule(cal, '.cn-record-tag')).toMatch(/min-width:\s*0/)
     expect(rule(cal, '.cn-record')).toMatch(/max-width:\s*100%/)
   })

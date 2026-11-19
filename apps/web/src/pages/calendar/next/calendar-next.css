@@ -707,7 +707,8 @@
 }
 .cn-record-tag {
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  hyphens: auto;
   font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
