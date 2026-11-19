@@ -453,9 +453,11 @@
 }
 .mudavym .cx-refused p { font-size: 13px; line-height: 1.7; color: var(--ink-2); margin: 0 0 10px; }
 
-/* Narrow: the four columns stack, and the labels earn their keep. The rail takes
-   262 px from the left at 900 px and up, so the stack starts at 1080 px. */
-@media (max-width: 1080px) {
+/* Narrow: the four columns stack, and the labels earn their keep. The app
+   sidebar (232 px), the rail (262 px) and the five-column row (about 624 px)
+   need 1142 px between them: measured on a production build, 1081 to 1141 px
+   scrolled sideways, so the stack starts at 1150 px. */
+@media (max-width: 1150px) {
   .mudavym .cx-row { grid-template-columns: 24px minmax(0, 1fr); gap: 10px 16px; }
   .mudavym .cx-row > *:nth-child(n + 3) { grid-column: 2; }
   .mudavym .cx-ctl-note { max-width: none; }
