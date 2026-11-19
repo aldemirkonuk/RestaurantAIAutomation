@@ -106,6 +106,14 @@ export interface HoldToApproveProps {
   copy?: Partial<HoldCopy>;
   disabled?: boolean;
   className?: string;
+  /**
+   * The large form (design critic round 3, need 6): 56 px tall, and a ring
+   * drawn round the edge that fills clockwise-from-left as the hold runs, on
+   * top of the quiet wash. The ring animates `clip-path` only, so the hold
+   * stays on the compositor. Off by default; every existing caller is
+   * unchanged.
+   */
+  ring?: boolean;
 }
 
 export interface HoldCopy {
@@ -128,6 +136,9 @@ const APPROVAL_COPY: HoldCopy = {
 
 type Phase = 'idle' | 'holding' | 'armed' | 'pending' | 'sealed';
 
+/** The ring is revealed left to right: the right edge of the clip retreats. */
+const ringClip = (p: number) => `inset(0 ${(1 - p) * 100}% 0 0)`;
+
 const ARM_WINDOW_MS = 3000;
 const RELEASE_NOTE_MS = 1800;
 
@@ -143,6 +154,7 @@ export function HoldToApprove({
   copy: copyProp,
   disabled = false,
   className,
+  ring = false,
 }: HoldToApproveProps) {
   const copy: HoldCopy = { ...APPROVAL_COPY, ...copyProp };
   /* Read inside `commit` through a ref, like `boundSummary`: a caller's inline
@@ -155,6 +167,7 @@ export function HoldToApprove({
   const [sealedSummary, setSealedSummary] = useState<ReactNode>();
 
   const fillRef = useRef<HTMLDivElement | null>(null);
+  const ringRef = useRef<HTMLDivElement | null>(null);
   const sealRef = useRef<HTMLDivElement | null>(null);
   const boundRef = useRef<HTMLDivElement | null>(null);
   /* `boundSummary` is usually a freshly-created element on every render; read
@@ -177,6 +190,7 @@ export function HoldToApprove({
 
   const setFill = (p: number) => {
     if (fillRef.current) fillRef.current.style.transform = `scaleX(${p})`;
+    if (ringRef.current) ringRef.current.style.clipPath = ringClip(p);
     progressRef.current = p;
   };
 
@@ -347,6 +361,9 @@ export function HoldToApprove({
     // Retreat on tuck (the rubber-band home).
     if (fillRef.current && !reduced) {
       animate(fillRef.current, [{ transform: `scaleX(${p})` }, { transform: 'scaleX(0)' }], tuck);
+      if (ringRef.current) {
+        animate(ringRef.current, [{ clipPath: ringClip(p) }, { clipPath: ringClip(0) }], tuck);
+      }
     }
     setFill(0);
   };
@@ -392,7 +409,7 @@ export function HoldToApprove({
     justifyContent: 'center',
     gap: 8,
     width: '100%',
-    minHeight: 48,
+    minHeight: ring ? 56 : 48,
     padding: '0 16px',
     borderRadius: 12,
     border: `1px solid ${sealed ? 'var(--seal, #1A5E6B)' : 'var(--seal-ring, rgba(26,94,107,.32))'}`,
@@ -435,6 +452,21 @@ export function HoldToApprove({
             pointerEvents: 'none',
           }}
         />
+        {ring ? (
+          <div
+            ref={ringRef}
+            aria-hidden
+            data-hold-ring=""
+            style={{
+              position: 'absolute',
+              inset: 0,
+              borderRadius: 'inherit',
+              border: '2px solid var(--seal, #1A5E6B)',
+              clipPath: ringClip(0),
+              pointerEvents: 'none',
+            }}
+          />
+        ) : null}
         {sealed ? (
           <span ref={sealRef} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Seal size={24} pressed />

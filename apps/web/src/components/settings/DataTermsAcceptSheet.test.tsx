@@ -109,7 +109,7 @@ describe('what it shows', () => {
       screen.getByText(/Jev \(TypeSafe\) reads the latest part of a vendor message/),
     ).toBeInTheDocument();
     expect(screen.getByText(/The house remains responsible for its own records\./)).toBeInTheDocument();
-    expect(screen.getByText(/TypeSafe \(Jev\)/)).toBeInTheDocument();
+    expect(screen.getByText('TypeSafe (Jev)', { selector: 'strong' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /privacy page/i })).toHaveAttribute('href', '/privacy');
   });
 
@@ -172,5 +172,71 @@ describe('dismissability', () => {
     const { onClose } = mount({}, { dismissable: true });
     fireEvent.click(screen.getByRole('button', { name: /put it down/i }));
     expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe('a short question first, every word still reachable (design critic round 3, need 6)', () => {
+  it('leads with three plain lines: what is read, what never is, and who sees it', () => {
+    mount({
+      subprocessors: [
+        { name: 'TypeSafe (Jev)', host: 'api.typesafe.ai', what: 'masked vendor mail', when: 'switch on', masked: true },
+      ],
+    });
+    expect(screen.getByText('Read')).toBeInTheDocument();
+    expect(screen.getByText('Never read')).toBeInTheDocument();
+    expect(screen.getByText('Who sees it')).toBeInTheDocument();
+    expect(screen.getByText(/TypeSafe \(Jev\), and the services named under/)).toBeInTheDocument();
+  });
+
+  it('keeps the long text under "Read it all": closed it is out of reach, open it is reachable and nothing was cut', () => {
+    mount();
+    const fold = screen.getByRole('button', { name: /read it all/i });
+    expect(fold).toHaveAttribute('aria-expanded', 'false');
+    const fact = screen.getByText(/Jev \(TypeSafe\) reads the latest part of a vendor message/);
+    // Closed: the region is inert and hidden from assistive technology.
+    expect(fact.closest('[aria-hidden="true"]')).not.toBeNull();
+    expect(fact.closest('[inert]')).not.toBeNull();
+
+    fireEvent.click(fold);
+    expect(fold).toHaveAttribute('aria-expanded', 'true');
+    expect(fact.closest('[aria-hidden="true"]')).toBeNull();
+    expect(fact.closest('[inert]')).toBeNull();
+    expect(screen.getByText('The house remains responsible for its own records.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /privacy page/i })).toBeInTheDocument();
+  });
+
+  it('the Panel wears the class that gives it the blur and the 16 px voice', () => {
+    mount();
+    expect(screen.getByRole('dialog').className).toContain('dt-sheet');
+  });
+
+  it('draws the hold as the 56 px ring form', () => {
+    mount();
+    const hold = screen.getByRole('button', { name: /hold to accept/i });
+    expect(hold.style.minHeight).toBe('56px');
+    expect(hold.querySelector('[data-hold-ring]')).not.toBeNull();
+  });
+
+  it('a 1.2 s hold: not accepted at 0.7 s, accepted by 1.3 s, and the seal is minted at the start', async () => {
+    vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame', 'performance', 'setTimeout', 'clearTimeout'] });
+    try {
+      const { onAccepted } = mount();
+      const btn = screen.getByRole('button', { name: /hold to accept/i });
+      btn.setPointerCapture = vi.fn();
+      fireEvent.pointerDown(btn, { pointerId: 1 });
+      await vi.advanceTimersByTimeAsync(700);
+      expect(acceptMock).not.toHaveBeenCalled();
+      // ring is partway: clip-path has retreated from fully hidden, not fully shown
+      const ring = btn.querySelector<HTMLElement>('[data-hold-ring]')!;
+      expect(ring.style.clipPath).not.toBe('inset(0 100% 0 0)');
+      expect(ring.style.clipPath).not.toBe('inset(0 0% 0 0)');
+      await vi.advanceTimersByTimeAsync(700);
+      expect(sealMock).toHaveBeenCalledTimes(1);
+      expect(acceptMock).toHaveBeenCalledTimes(1);
+      expect(acceptMock).toHaveBeenCalledWith(1, 'a'.repeat(64), 'terms-seal-token');
+      expect(onAccepted).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

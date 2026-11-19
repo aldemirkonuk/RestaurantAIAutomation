@@ -96,7 +96,7 @@ describe('when the sheet shows, and when it never does', () => {
     expect(screen.queryByRole('button', { name: /hold to accept/i })).toBeNull();
   });
 
-  it('[REVERT-FAILS] meets an owner whose CO-OWNER accepted, but who has not — every owner accepts for themselves (question 19)', () => {
+  it('[REVERT-FAILS] meets an owner whose CO-OWNER accepted, but who has not — every owner accepts for themselves (question 19)', async () => {
     dataTermsMock.data = readout({
       current: true,
       yours: { current: false },
@@ -104,7 +104,7 @@ describe('when the sheet shows, and when it never does', () => {
       jev: { enabled: true, effective: true, pausedBecause: null },
     });
     mount();
-    expect(screen.getByRole('button', { name: /hold to accept/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /hold to accept/i })).toBeInTheDocument();
     // It does not promise to turn on what is already on.
     expect(screen.getByText(/accepting records your own agreement/i)).toBeInTheDocument();
   });
@@ -119,7 +119,7 @@ describe('when the sheet shows, and when it never does', () => {
     expect(screen.queryByRole('button', { name: /hold to accept/i })).toBeNull();
   });
 
-  it('never promises to turn Jev on over an owner who switched it off', () => {
+  it('never promises to turn Jev on over an owner who switched it off', async () => {
     dataTermsMock.data = readout({
       current: true,
       yours: { current: false },
@@ -127,25 +127,44 @@ describe('when the sheet shows, and when it never does', () => {
       jev: { enabled: false, effective: false, pausedBecause: null },
     });
     mount();
+    await screen.findByRole('button', { name: /hold to accept/i });
     expect(screen.getAllByText(/accepting does not turn it on/i).length).toBeGreaterThan(0);
     expect(screen.queryByText(/accepting turns Jev on/i)).toBeNull();
   });
 
-  it('meets the owner with a non-dismissable sheet when the current version is not accepted', () => {
+  it('meets the owner with a non-dismissable sheet when the current version is not accepted', async () => {
     dataTermsMock.data = readout();
     mount();
-    expect(screen.getByRole('button', { name: /hold to accept/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /hold to accept/i })).toBeInTheDocument();
     // "Must accept to continue" — no way to put this one down.
     expect(screen.queryByRole('button', { name: /put it down/i })).toBeNull();
   });
 
-  it('meets the owner again after a version bump, even though a PRIOR version was accepted', () => {
+  it('meets the owner again after a version bump, even though a PRIOR version was accepted', async () => {
     dataTermsMock.data = readout({
       version: 2,
       current: false,
       acceptance: { version: 1, acceptedAt: '2026-09-01T00:00:00Z', acceptedBy: { userId: 'u', name: 'Aldemir' } },
     });
     mount();
-    expect(screen.getByRole('button', { name: /hold to accept/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /hold to accept/i })).toBeInTheDocument();
+  });
+});
+
+describe('the sheet waits for the page behind it (design critic round 3, need 6)', () => {
+  it('is not in the first commit with the dashboard; it arrives after the page has painted', async () => {
+    dataTermsMock.data = readout();
+    mount();
+    // The same commit that paints the page does not carry the question.
+    expect(screen.queryByRole('button', { name: /hold to accept/i })).toBeNull();
+    expect(await screen.findByRole('button', { name: /hold to accept/i })).toBeInTheDocument();
+  });
+
+  it('never arrives for someone who is not asked, however long it waits', async () => {
+    roleMock.current = 'manager';
+    dataTermsMock.data = readout();
+    mount();
+    await new Promise((r) => setTimeout(r, 600));
+    expect(screen.queryByRole('button', { name: /hold to accept/i })).toBeNull();
   });
 });

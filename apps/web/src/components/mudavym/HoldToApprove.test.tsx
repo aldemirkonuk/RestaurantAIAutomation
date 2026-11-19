@@ -135,3 +135,22 @@ describe('HoldToApprove with a challenge', () => {
     await waitFor(() => expect(onApprove).toHaveBeenCalledWith('tok-2'));
   });
 });
+
+describe('HoldToApprove ring form', () => {
+  it('is off by default: 48 px and no ring', () => {
+    render(<HoldToApprove onApprove={vi.fn()} label="Approve" />);
+    expect(screen.getByRole('button').style.minHeight).toBe('48px');
+    expect(screen.getByRole('button').querySelector('[data-hold-ring]')).toBeNull();
+  });
+
+  it('with `ring` it is 56 px, the ring starts hidden and closes fully when approved', async () => {
+    render(<HoldToApprove onApprove={vi.fn()} label="Approve" ring />);
+    const btn = screen.getByRole('button');
+    expect(btn.style.minHeight).toBe('56px');
+    const ring = btn.querySelector<HTMLElement>('[data-hold-ring]')!;
+    expect(ring.style.clipPath).toBe('inset(0 100% 0 0)');
+    press();
+    press();
+    await waitFor(() => expect(ring.style.clipPath).toBe('inset(0 0% 0 0)'));
+  });
+});

@@ -54,7 +54,10 @@
 
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Eye, EyeOff, Users, ChevronDown } from 'lucide-react';
 import { Panel, HoldToApprove } from '../mudavym';
+import { Collapse } from '../mudavym/Collapse';
+import './data-terms-sheet.css';
 import {
   acceptDataTerms,
   issueDataTermsSealChallenge,
@@ -63,9 +66,10 @@ import {
 } from '../../services/api/dataTerms';
 import { useInvalidateDataTerms } from '../../hooks/queries/useDataTerms';
 
+/** The hold is 1.2 s: long enough to be a decision, short enough to finish. */
+const HOLD_MS = 1200;
+
 const SANS = "'DM Sans', system-ui, sans-serif";
-const SERIF = "'Fraunces', Georgia, serif";
-const MONO = "'JetBrains Mono', monospace";
 
 function spokenMessage(error: unknown): string {
   const m = (error as { message?: string })?.message;
@@ -123,12 +127,14 @@ export function DataTermsAcceptSheet({
   const invalidate = useInvalidateDataTerms();
   const [refusal, setRefusal] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [folded, setFolded] = useState(false);
 
   const facts = readout.statements.filter((s) => s.kind === 'fact');
   const terms = readout.statements.filter((s) => s.kind === 'term');
   const changed = readout.changedSince[String(readout.version)] ?? [];
   const reaccepting = readout.acceptance !== null && !readout.current;
   const jev = jevConsequence(readout);
+  const receivers = readout.subprocessors.map((sp) => sp.name);
 
   const onChallenge = async (): Promise<string | null> => {
     setRefusal(null);
@@ -172,6 +178,7 @@ export function DataTermsAcceptSheet({
       // scrim says so instead of offering "Put it down" and doing nothing.
       closeLabel={dismissable ? 'Put it down' : 'These terms stay open until you accept them'}
       scrim
+      className="dt-sheet"
       label={
         reaccepting
           ? `This house's data and privacy terms changed. Reading them asks nothing of you yet; ${jev.short}`
@@ -192,24 +199,27 @@ export function DataTermsAcceptSheet({
               key={`data-terms-accept-${attempt}`}
               label="Hold to accept"
               approvedLabel="Accepted"
+              ring
+              holdMs={HOLD_MS}
+              className="dt-hold"
               onApprove={onApprove}
               onChallenge={onChallenge}
             />
-            <span style={{ fontFamily: SANS, fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
+            <span style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)' }}>
               version {readout.version}
             </span>
           </div>
           {refusal && (
-            <p role="alert" style={{ margin: 0, fontFamily: SANS, fontSize: 11.5, color: 'var(--alarm, #A33A2B)' }}>
+            <p role="alert" style={{ margin: 0, fontFamily: SANS, fontSize: 13, color: 'var(--alarm, #A33A2B)' }}>
               {refusal}
             </p>
           )}
         </div>
       }
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, fontFamily: SANS, fontSize: 12.5, lineHeight: 1.55 }}>
+      <div className="dt-body">
         {readout.acceptance && (
-          <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, letterSpacing: '0.06em', color: 'var(--ink-4, #665D50)' }}>
+          <p className="dt-meta">
             {reaccepting
               ? `Last accepted version ${readout.acceptance.version} by ${readout.acceptance.acceptedBy.name ?? 'a former owner'} on ${readout.acceptance.acceptedAt.slice(0, 10)}.`
               : `Accepted (version ${readout.acceptance.version}) by ${readout.acceptance.acceptedBy.name ?? 'a former owner'} on ${readout.acceptance.acceptedAt.slice(0, 10)}.`}
@@ -218,63 +228,95 @@ export function DataTermsAcceptSheet({
 
         {changed.length > 0 && (
           <div>
-            <p style={{ margin: '0 0 4px', fontFamily: SERIF, fontSize: 13.5, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
-              What changed since version {readout.acceptance?.version ?? '—'}
-            </p>
-            <ul style={{ margin: 0, paddingLeft: 18 }}>
+            <p className="dt-head">What changed since version {readout.acceptance?.version ?? '—'}</p>
+            <ul className="dt-list">
               {changed.map((line) => (
-                <li key={line} style={{ color: 'var(--ink-2, #4F473C)' }}>{line}</li>
+                <li key={line}>{line}</li>
               ))}
             </ul>
           </div>
         )}
 
-        <div>
-          <p style={{ margin: '0 0 6px', fontFamily: SERIF, fontSize: 13.5, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
-            Where this house’s data goes
-          </p>
-          <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {facts.map((s) => (
-              <li key={s.key} style={{ color: 'var(--ink-2, #4F473C)' }}>{s.text}</li>
-            ))}
-          </ul>
-        </div>
+        {/* Three lines, in the house's plain words. Scaffolding only: every
+            sentence of the terms themselves is under "Read it all". */}
+        <ul className="dt-points">
+          <li>
+            <Eye aria-hidden className="dt-points__icon" />
+            <span>
+              <strong>Read</strong>
+              {facts.length} ways this house’s data moves, each one written out under “Read it all”.
+            </span>
+          </li>
+          <li>
+            <EyeOff aria-hidden className="dt-points__icon" />
+            <span>
+              <strong>Never read</strong>
+              Names and sensitive topics are removed before Jev reads vendor mail.
+            </span>
+          </li>
+          <li>
+            <Users aria-hidden className="dt-points__icon" />
+            <span>
+              <strong>Who sees it</strong>
+              {receivers.length > 0
+                ? `${receivers.join(', ')}, and the services named under “Read it all”.`
+                : 'The services named under “Read it all”.'}
+            </span>
+          </li>
+        </ul>
 
-        {readout.subprocessors.length > 0 && (
-          <div>
-            <p style={{ margin: '0 0 6px', fontFamily: SERIF, fontSize: 13.5, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
-              Who receives it
-            </p>
-            <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {readout.subprocessors.map((sp) => (
-                <li key={sp.host} style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
-                  <strong style={{ color: 'var(--ink-1, #211C16)' }}>{sp.name}</strong> — {sp.what}
-                  {sp.masked ? ' (masked first)' : ''} · {sp.when}
-                </li>
-              ))}
-            </ul>
+        <button
+          type="button"
+          className="dt-fold"
+          aria-expanded={folded}
+          aria-controls="dt-fold-body"
+          onClick={() => setFolded((v) => !v)}
+        >
+          <span>{folded ? 'Hide the full terms' : 'Read it all'}</span>
+          <ChevronDown aria-hidden className="dt-fold__chev" />
+        </button>
+
+        <Collapse open={folded} className="dt-collapse">
+          <div id="dt-fold-body" className="dt-full">
+            <div>
+              <p className="dt-head">Where this house’s data goes</p>
+              <ul className="dt-list dt-list--plain">
+                {facts.map((s) => (
+                  <li key={s.key}>{s.text}</li>
+                ))}
+              </ul>
+            </div>
+
+            {readout.subprocessors.length > 0 && (
+              <div>
+                <p className="dt-head">Who receives it</p>
+                <ul className="dt-list dt-list--plain dt-list--tight">
+                  {readout.subprocessors.map((sp) => (
+                    <li key={sp.host}>
+                      <strong>{sp.name}</strong> — {sp.what}
+                      {sp.masked ? ' (masked first)' : ''} · {sp.when}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {terms.length > 0 && (
+              <div>
+                <p className="dt-head">What Mudavym does and does not promise</p>
+                <ul className="dt-list dt-list--plain">
+                  {terms.map((s) => (
+                    <li key={s.key}>{s.text}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
-        )}
+        </Collapse>
 
-        {terms.length > 0 && (
-          <div>
-            <p style={{ margin: '0 0 6px', fontFamily: SERIF, fontSize: 13.5, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
-              What Mudavym does and does not promise
-            </p>
-            <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {terms.map((s) => (
-                <li key={s.key} style={{ color: 'var(--ink-2, #4F473C)' }}>{s.text}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        <p style={{ margin: 0, fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
+        <p className="dt-meta">
           The full picture of what Mudavym collects is on the{' '}
-          <Link to="/privacy" style={{ color: 'var(--seal-deep, #14515C)' }}>
-            privacy page
-          </Link>
-          .
+          <Link to="/privacy">privacy page</Link>.
         </p>
       </div>
     </Panel>
