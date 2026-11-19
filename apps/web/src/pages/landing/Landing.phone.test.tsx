@@ -100,4 +100,16 @@ describe('the platform as a snap carousel on a phone', () => {
     expect(m![1]).toContain('scroll-snap-type: x mandatory');
     expect(m![2]).toContain('scroll-snap-align: start');
   });
+
+  it('reveals a card once a tenth of it shows, so the peeking next card is already drawn', () => {
+    render(
+      <MemoryRouter>
+        <Landing />
+      </MemoryRouter>,
+    );
+    const reveal = observers.find((o) => o.seen.some((el) => el.classList.contains('ld-cell')));
+    expect(reveal).toBeTruthy();
+    // the next card shows ~18 % of itself at 375 px, 0.2 left it invisible
+    expect(reveal!.threshold).toBeLessThanOrEqual(0.15);
+  });
 });
