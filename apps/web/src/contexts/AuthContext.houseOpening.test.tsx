@@ -199,10 +199,20 @@ describe("the role read after a house opens (r70)", () => {
       h.instance.get.mock.calls.filter(([url]) => url === "/api/v1/auth/me/role");
     expect(roleCalls()).toHaveLength(0);
 
-    await act(async () => {
-      await auth().createFirstHouse(HOUSE);
+    // A real gateway answers after the active house has already changed, so
+    // the two state changes land in separate renders.
+    const answer = h.instance.get.getMockImplementation()!;
+    h.instance.get.mockImplementation(async (url: string, cfg?: unknown) => {
+      if (url === "/api/v1/auth/me") await new Promise((r) => setTimeout(r, 40));
+      return answer(url, cfg);
     });
-    await new Promise((r) => setTimeout(r, 30));
+
+    // Not inside `act`: act holds every update until it exits, which would
+    // fold the two renders into one and hide the duplicate.
+    const opening = auth().createFirstHouse(HOUSE);
+    await waitFor(() => expect(roleCalls()).toHaveLength(1));
+    await opening;
+    await new Promise((r) => setTimeout(r, 80));
 
     expect(roleCalls()).toHaveLength(1);
     expect(roleCalls()[0][1]).toEqual({ params: { restaurantId: A } });
