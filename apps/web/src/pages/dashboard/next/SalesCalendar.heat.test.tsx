@@ -18,9 +18,9 @@ vi.mock('./useDashboardNextData', async (orig) => ({
 
 import { SalesCalendar } from './SalesCalendar';
 import { HEAT_STEP_MS, drawDelay, heatPercent } from './calendarHeat';
-import type { MonthLedger } from './useDashboardNextData';
+import type { DayLedger, MonthLedger } from './useDashboardNextData';
 
-function day(date: string, net: number | null, checks = 10) {
+function day(date: string, net: number | null, checks = 10): DayLedger {
   return {
     date,
     procurement_spend: null,
@@ -33,7 +33,7 @@ function day(date: string, net: number | null, checks = 10) {
   };
 }
 
-function ready(days: ReturnType<typeof day>[], over: Partial<MonthLedger> = {}) {
+function ready(days: DayLedger[], over: Partial<MonthLedger> = {}) {
   return {
     state: 'ready',
     ledger: {

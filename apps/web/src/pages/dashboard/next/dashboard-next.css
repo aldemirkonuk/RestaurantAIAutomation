@@ -195,7 +195,7 @@
   animation: dn-legend-in 240ms cubic-bezier(0.22, 1, 0.36, 1) 320ms both;
 }
 .dn-cal-legend__what {
-  color: var(--ink-3, var(--ink-4));
+  color: var(--ink-1);
   font-weight: 600;
   letter-spacing: 0.04em;
 }
