@@ -111,7 +111,7 @@ const label = (text: string) => (
   <span
     style={{
       fontFamily: MONO,
-      fontSize: 9,
+      fontSize: 11,
       fontWeight: 500,
       letterSpacing: '0.12em',
       textTransform: 'uppercase' as const,
@@ -579,7 +579,7 @@ export function ResponsesSheet({
                 data-testid="responses-step"
                 style={{
                   fontFamily: MONO,
-                  fontSize: 10,
+                  fontSize: 11,
                   fontWeight: 600,
                   letterSpacing: '0.11em',
                   textTransform: 'uppercase',

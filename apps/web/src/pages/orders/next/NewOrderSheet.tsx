@@ -161,7 +161,7 @@ const fieldStyle: React.CSSProperties = {
 const labelStyle: React.CSSProperties = {
   display: 'block',
   fontFamily: MONO,
-  fontSize: 9,
+  fontSize: 11,
   fontWeight: 600,
   letterSpacing: '0.11em',
   textTransform: 'uppercase',
@@ -484,7 +484,7 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced }: NewOrder
           className="mt-4"
           style={{
             fontFamily: MONO,
-            fontSize: 9,
+            fontSize: 11,
             fontWeight: 600,
             letterSpacing: '0.12em',
             textTransform: 'uppercase',

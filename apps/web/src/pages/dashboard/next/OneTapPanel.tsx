@@ -426,7 +426,7 @@ function CalmChip({ children, icon: Icon }: { children: string; icon: typeof Han
       className="inline-flex items-center gap-1.5"
       style={{
         fontFamily: MONO,
-        fontSize: 8.5,
+        fontSize: 11,
         fontWeight: 600,
         letterSpacing: '0.14em',
         textTransform: 'uppercase',
@@ -578,7 +578,7 @@ export function ActionCard({
         <CalmChip icon={byHouse ? Hand : UserRound}>
           {byHouse ? 'Raised by the house · not done' : 'Raised by a person here'}
         </CalmChip>
-        <span style={{ fontFamily: MONO, fontSize: 10.5 }} className="text-inkm-4">
+        <span style={{ fontFamily: MONO, fontSize: 11 }} className="text-inkm-4">
           {timeAgo(action.createdAt)}
         </span>
       </div>
