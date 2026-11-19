@@ -320,6 +320,23 @@ export function severity(row: InvRow): 0 | 1 | 2 {
   return 2;
 }
 
+/** The status word, never a colour alone. */
+export function statusWord(row: InvRow): string {
+  const dry = row.runway !== null && row.runway < 1.5;
+  switch (row.standing) {
+    case 'out':
+      return 'Out';
+    case 'below':
+      return dry ? 'Below par · dry tomorrow' : 'Below par';
+    case 'unknown':
+      return 'Stock not read';
+    case 'nopar':
+      return dry ? 'Dry tomorrow' : 'No par set';
+    default:
+      return dry ? 'Dry tomorrow' : row.standing === 'at' ? 'At par' : 'Above par';
+  }
+}
+
 export const SEVERITY_GROUP = ['Out', 'Below par', 'Everything else, by runway'] as const;
 
 /**

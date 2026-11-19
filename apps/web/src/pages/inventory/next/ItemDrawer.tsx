@@ -209,7 +209,6 @@ export default function ItemDrawer(props: ItemDrawerProps) {
       title={name}
       spine={name}
       wide
-      detents={['full']}
       className="iv-drawer"
       // The body's side gutter: without it the head, the evidence and "Used in"
       // sat flush on the sheet's edge (browser walk 2026-11-11).
