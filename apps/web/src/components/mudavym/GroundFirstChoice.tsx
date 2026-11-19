@@ -11,22 +11,29 @@
  * the account never answers "never chosen" again and this never shows again,
  * on any device.
  *
- * WHEN IT ASKS — ONLY ON A CONFIRMED "NEVER CHOSE". The store's `source` must
- * be `default` with someone signed in. `unknown` (the account has not answered
- * yet), `unreadable` (it could not be read), `device-cache` (this device's copy
- * of an answer) and `account` (an answer) never ask: a read that has not come
- * back, or failed, is not the person saying they never chose (CLAUDE.md §9).
+ * WHEN IT ASKS — ONLY ON A CONFIRMED "NEVER CHOSE", AND ONLY AFTER A FIRST
+ * TASK. The store's `source` must be `default` with someone signed in.
+ * `unknown`, `unreadable`, `device-cache` and `account` never ask: a read that
+ * has not come back, or failed, is not the person saying they never chose
+ * (CLAUDE.md §9). On top of that (design review round 2, N-08 / P0-1,
+ * 2026-11-18) `lib/mudavym/groundAsk.ts` holds it back until the person has
+ * finished one task of their own, so the first screen anyone sees is their
+ * work, not a question.
  *
  * NEVER ON TOP OF THE DATA TERMS. While an owner's "Hold to accept" terms
  * sheet is up — or its read is still in flight and it may be about to be —
  * this waits (`useDataTermsSignInBusy`, which mirrors `DataTermsSignInGate`'s
  * own conditions), and asks once that sheet has closed.
  *
- * CLOSING SAVES NOTHING. "Not now", Escape, or a click outside closes it for
- * this page load and writes nothing, so the account still says "never chosen"
- * and the next load asks again. The founder ruled this on 2026-10-01 ("Ask
- * again next load"); the rejected alternative — closing saves Paper, so it
- * never asks again — is recorded in ADR 0169's batch-4 amendment.
+ * CLOSING SAVES NO THEME, BUT IS REMEMBERED. "Not now", Escape, or a click
+ * outside writes no ground, so the account still says "never chosen"; it
+ * writes a 30-day snooze to the account instead (`snoozeGroundAsk`), so a
+ * reload, another device or a cleared browser does not ask again for a month.
+ * This supersedes the 2026-10-01 "ask again next load" ruling (ADR 0169
+ * batch 4), which the walk showed returning like an advert on every load.
+ *
+ * ON A DARK DEVICE System leads the list and is pre-selected; elsewhere Paper
+ * is, as before.
  *
  * SHAPE: `Panel` (ADR 0112) — centered, because this is an ask the reader
  * answers, not a record or a menu; content in `sheet.css`'s vocabulary
@@ -45,14 +52,16 @@ import { useRef, useState } from 'react';
 import { Panel } from './Sheet';
 import { useDataTermsSignInBusy } from '../../hooks/queries/useDataTerms';
 import {
-  GROUND_OPTIONS,
   getGroundOwnerId,
   groundPaintFor,
   saveGroundSetting,
   useGroundState,
   type GroundSetting,
   type GroundState,
+  deviceIsDark,
+  firstChoiceOptions,
 } from '../../lib/mudavym/groundChoice';
+import { groundAskDue, snoozeGroundAsk, useGroundAskGate } from '../../lib/mudavym/groundAsk';
 
 /** `ask` waits on the account saying "never chosen"; `saving` and `failed`
  *  stay up whatever the account says meanwhile (an optimistic save moves the
@@ -70,13 +79,16 @@ export function GroundFirstChoice() {
 
 function FirstChoiceAsk({ ground }: { ground: GroundState }) {
   const termsBusy = useDataTermsSignInBusy();
+  const gate = useGroundAskGate();
   const [phase, setPhase] = useState<Phase>('ask');
-  const [picked, setPicked] = useState<GroundSetting>('paper');
+  // Read once: the list must not reshuffle under a finger if the device flips.
+  const [options] = useState(() => firstChoiceOptions(deviceIsDark()));
+  const [picked, setPicked] = useState<GroundSetting>(() => options[0].value);
   const firstRef = useRef<HTMLInputElement>(null);
 
   const open =
     !termsBusy &&
-    (phase === 'saving' || phase === 'failed' || (phase === 'ask' && ground.source === 'default'));
+    (phase === 'saving' || phase === 'failed' || (phase === 'ask' && ground.source === 'default' && groundAskDue(gate)));
 
   const save = async () => {
     setPhase('saving');
@@ -84,8 +96,11 @@ function FirstChoiceAsk({ ground }: { ground: GroundState }) {
     setPhase((p) => (p === 'closed' || saved ? 'closed' : 'failed'));
   };
 
-  // Closing is not an answer: nothing is written, and the next load asks again.
-  const close = () => setPhase('closed');
+  // Closing is not an answer: no theme is written, and it stays quiet 30 days.
+  const close = () => {
+    if (phase === 'ask') snoozeGroundAsk();
+    setPhase('closed');
+  };
 
   return (
     <Panel
@@ -95,7 +110,7 @@ function FirstChoiceAsk({ ground }: { ground: GroundState }) {
       scrim
       ground={groundPaintFor(picked)}
       initialFocusRef={firstRef}
-      label="Choose how Mudavym looks for you: Paper, Charcoal or System. Saving keeps it on your account; Not now saves nothing and asks again next time."
+      label="Choose how Mudavym looks for you: Paper, Charcoal or System. Saving keeps it on your account; Not now saves nothing and asks again in 30 days."
       eyebrow="Your theme"
       title="How should Mudavym look for you?"
       contract={
@@ -127,7 +142,7 @@ function FirstChoiceAsk({ ground }: { ground: GroundState }) {
     >
       <fieldset data-ground-first-choice style={{ border: 0, margin: 0, padding: '4px 0 8px' }}>
         <legend className="mdv-sect">Theme</legend>
-        {GROUND_OPTIONS.map(({ value, label, hint }, i) => (
+        {options.map(({ value, label, hint }, i) => (
           <label key={value} className="mdv-item" data-active={picked === value ? 'true' : undefined}>
             <input
               ref={i === 0 ? firstRef : undefined}
