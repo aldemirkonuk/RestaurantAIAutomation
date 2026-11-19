@@ -22,6 +22,9 @@ describe('inventory view pill (c3 need 16)', () => {
     const thumb = rule('.iv-view-pill .mdv-pill__thumb');
     expect(thumb).toMatch(/top:\s*6px/);
     expect(thumb).toMatch(/bottom:\s*6px/);
-    expect(rule('.iv-view-pill')).toMatch(/margin-block:\s*-6px/);
+    const pill = rule('.mdv-pill.iv-view-pill');
+    expect(pill).toMatch(/margin-block:\s*-6px/);
+    // Names .mdv-pill too: the shared rule loads later and ties on one class.
+    expect(pill).toMatch(/padding:\s*0;/);
   });
 });

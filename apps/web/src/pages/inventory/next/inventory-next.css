@@ -190,7 +190,10 @@
 /* c3 need 16: a 44 px hit area round a 32 px thumb. The track is drawn 32 px
    high by ::before, the options are 44 px, and the negative margin keeps the
    pill's footprint in the toolbar at 32 px. */
-.iv-view-pill {
+/* `.mdv-pill` (motion.css) is one class too and loads after this file, so its
+   2 px padding won and the pill measured 48 px with a 36 px thumb: the pill
+   names both classes to win on specificity, not on order. */
+.mdv-pill.iv-view-pill {
   padding: 0;
   background: transparent;
   margin-block: -6px;
