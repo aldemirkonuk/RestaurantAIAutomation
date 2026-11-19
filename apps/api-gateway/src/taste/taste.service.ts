@@ -3,9 +3,10 @@ import {
 } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import {
-  CONFIDENCE_BY_PROV, DESCRIPTOR_KEYS, HOUSE_METHODS, HouseMethod, MAX_DESCRIPTORS,
+  CONFIDENCE_BY_PROV, HOUSE_METHODS, HouseMethod, MAX_DESCRIPTORS,
   MAX_NOTE_CHARS, TEXTURE_KEYS, TasteSource, validateAxes,
 } from './taste-axes';
+import { DESCRIPTORS_BY_FAMILY, descriptorFamily, DescriptorFamily } from './taste-descriptors';
 import { EffectiveTaste, FusionLayer, fuse } from './taste-fusion';
 
 export type SubjectKind = 'good' | 'cocktail' | 'dish';
@@ -37,7 +38,7 @@ export interface ParsedHouseBody {
 const refuse = (m: string) => new BadRequestException(m);
 
 /** Check a house layer's body; every refusal is one sentence. Pure. */
-export function parseHouseBody(body: unknown): ParsedHouseBody {
+export function parseHouseBody(body: unknown, family: DescriptorFamily = 'food'): ParsedHouseBody {
   const b = (body ?? {}) as Record<string, unknown>;
   if (typeof b.method !== 'string' || !(HOUSE_METHODS as readonly string[]).includes(b.method)) {
     throw refuse('Say how this was described: a line, a tick-list or a level.');
@@ -60,7 +61,7 @@ export function parseHouseBody(body: unknown): ParsedHouseBody {
     }
     return out as string[];
   };
-  const descriptors = list(b.descriptors, DESCRIPTOR_KEYS, 'flavour words');
+  const descriptors = list(b.descriptors, DESCRIPTORS_BY_FAMILY[family], 'flavour words');
   const texture = list(b.texture, TEXTURE_KEYS, 'texture words');
   let note: string | null = null;
   if (b.note !== undefined && b.note !== null) {
@@ -80,7 +81,7 @@ export class TasteService {
   constructor(private readonly db: DatabaseService) {}
 
   /** The subject must be this house's own. A foreign or missing id is one 404 with a code. */
-  private async assertSubject(restaurantId: string, kind: SubjectKind, id: string): Promise<void> {
+  private async assertSubject(restaurantId: string, kind: SubjectKind, id: string): Promise<DescriptorFamily> {
     const gone = () => new NotFoundException({
       code: 'subject_not_in_house', message: 'That item is not in this house.',
     });
@@ -99,6 +100,7 @@ export class TasteService {
     if (kind === 'good' && (data as { kind?: string }).kind === 'supply') {
       throw refuse('A supply is not tasted.');
     }
+    return descriptorFamily(kind, (data as { kind?: string }).kind);
   }
 
   async read(restaurantId: string, kind: SubjectKind, id: string): Promise<TasteRead> {
@@ -132,8 +134,8 @@ export class TasteService {
   async appendHouse(
     restaurantId: string, kind: SubjectKind, id: string, body: unknown, actor: TasteActor,
   ): Promise<TasteRead> {
-    await this.assertSubject(restaurantId, kind, id);
-    const p = parseHouseBody(body);
+    const family = await this.assertSubject(restaurantId, kind, id);
+    const p = parseHouseBody(body, family);
     const name = (actor.name ?? actor.email ?? '').trim() || null;
     const client = this.db.getClient();
     for (let attempt = 0; attempt < 2; attempt++) {
