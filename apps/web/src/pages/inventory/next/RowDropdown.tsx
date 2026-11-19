@@ -41,7 +41,7 @@ import { CountSheet, OrderSheet, PourSheet, TransferSheet, WriteOffSheet } from 
 import { amountUnit, isPoured } from './iv-amount';
 import { fmtQty, NOT_DRAWN_BY_SALES, perUnit, usageWords as usageWordsOf } from './ItemCards';
 import { writeFailure } from './iv-failure';
-import { costColumnsFor, oneLine, rowFilename, runExport, valuationColumns } from './iv-export';
+import { costColumnsFor, dropEmptyDetail, oneLine, rowFilename, runExport, valuationColumns } from './iv-export';
 import {
   cellMoney,
   EM,
@@ -486,7 +486,7 @@ export default function RowDropdown(props: RowDropdownProps) {
               onClick={() => {
                 setMoreOpen(false);
                 // Legacy's right-click "Export this row": the valuation columns, as CSV, named after the title.
-                void runExport([row], costColumnsFor(valuationColumns(currency.code ?? null, thing === 'good' ? 'Good' : 'Title'), canManage), rowFilename(row), title);
+                void runExport([row], costColumnsFor(dropEmptyDetail([row], valuationColumns(currency.code ?? null, thing === 'good' ? 'Good' : 'Title')), canManage), rowFilename(row), title);
               }}
             >
               Export this row
