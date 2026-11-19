@@ -46,6 +46,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
 
 const monthName = new Intl.DateTimeFormat('en-GB', { month: 'long' });
+/** Rows the ledger draws before "Show 20 more". */
+export const LEDGER_PAGE = 20;
+
 const VALID_STATIONS = new Set<string>([...STAGES, 'recurring']);
 
 export default function OrdersNext() {
@@ -127,6 +130,21 @@ export default function OrdersNext() {
     const oneTime = data.rows.filter((r) => !r.recurring && r.stage !== 'cancelled');
     return (station === null ? oneTime : oneTime.filter((r) => r.stage === station)).sort(byDate);
   }, [data.rows, station]);
+
+  /**
+   * The ledger draws 20 rows and a "Show 20 more" under them (r72 need 1): a
+   * house with months of orders no longer paints a 14,000 px page on a phone.
+   * The count starts again when the station changes, and an open row (a deep
+   * link, a row the person expanded) is never cut off below the line.
+   */
+  const [shown, setShown] = useState(LEDGER_PAGE);
+  useEffect(() => {
+    setShown(LEDGER_PAGE);
+  }, [station]);
+  const openIndex = expandedId ? visibleRows.findIndex((r) => r.id === expandedId) : -1;
+  const drawnCount = Math.max(shown, openIndex + 1);
+  const drawnRows = visibleRows.slice(0, drawnCount);
+  const hiddenCount = visibleRows.length - drawnRows.length;
 
   const responsesRow = useMemo(
     () => (responsesFor === null ? null : (data.rows.find((r) => r.id === responsesFor) ?? null)),
@@ -495,7 +513,7 @@ export default function OrdersNext() {
           onSelect={selectStation}
         />
 
-        <div className="mt-5 grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="mt-5 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
           {/* ── the ledger ─────────────────────────────────────────────── */}
           <section aria-label="Order ledger">
             <BulkApproveBar
@@ -541,7 +559,7 @@ export default function OrdersNext() {
               </p>
             ) : (
               <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
-                {visibleRows.map((row) => (
+                {drawnRows.map((row) => (
                   // The id a deep link scrolls to (see the targetOrderId
                   // effect above) — on this wrapper, not LedgerRow itself, so
                   // the row component stays free of a concern that is this
@@ -562,6 +580,17 @@ export default function OrdersNext() {
                     />
                   </div>
                 ))}
+                {hiddenCount > 0 && (
+                  <button
+                    type="button"
+                    className="ord-more"
+                    data-testid="ledger-show-more"
+                    onClick={() => setShown(drawnCount + LEDGER_PAGE)}
+                  >
+                    Show {Math.min(LEDGER_PAGE, hiddenCount)} more
+                    <span className="ord-more__left">{hiddenCount} not shown</span>
+                  </button>
+                )}
               </div>
             )}
 
