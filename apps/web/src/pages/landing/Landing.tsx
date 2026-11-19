@@ -1095,8 +1095,10 @@ export function Landing() {
           }
         }
       },
-      // A fifth in view is enough: a block on a phone can be taller than the screen.
-      { threshold: 0.2 },
+      // A tenth in view is enough: a block on a phone can be taller than the screen,
+      // and the next platform card peeks about a fifth of itself (18 %) at the edge
+      // of the carousel, which must already be on the page for the peek to show.
+      { threshold: 0.1 },
     );
     targets.forEach((t) => io.observe(t));
     return () => io.disconnect();
@@ -1229,7 +1231,7 @@ export function Landing() {
               The story
             </Link>
             <Link to="/login">Sign in</Link>
-            <Go to={START} className="ld-btn ld-btn-sm" />
+            <Go to={START} className={'ld-btn ld-btn-sm' + (dock ? ' ld-bar-cta--docked' : '')} />
           </nav>
         </div>
         {/* Job: fills as the page is read, so the reader knows how much is left.
