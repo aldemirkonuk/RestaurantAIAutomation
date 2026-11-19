@@ -19,7 +19,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation, useNavigationType } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -60,7 +60,7 @@ vi.mock('@/contexts/AuthContext', async () => {
 });
 
 import DashboardNext from './DashboardNext';
-import { CELL_SIDE, CELL_WORDS_SIZE, cellFigureSize } from './SalesCalendar';
+import { CELL_SIDE, CELL_WORDS_SIZE, cellFigureSize, figureFits } from './SalesCalendar';
 import { SECTION_COLUMNS, figureColumns } from './DayDetail';
 
 /** A real month's worth of days — the shape `getCalendarRevenue` promises on success. */
@@ -1207,6 +1207,48 @@ describe('DashboardNext — the calendar fits the shell (ADR 0290 §9)', () => {
     expect(cellFigureSize(1)).toBe('12px'); // a month of dashes and quiet dots
     expect(cellFigureSize(5)).toBe('min(12px, 33.89cqi)'); // "$4.2K"
     expect(cellFigureSize(7)).toBe('min(12px, 24.21cqi)'); // "$128.9K"
+  });
+
+  it('hands a figure to the tooltip when the cell is under 44 px, or too narrow for it at 11 px', () => {
+    expect(figureFits(0, 6)).toBe(true); // unmeasured: nothing hidden on a guess
+    expect(figureFits(43.9, 5)).toBe(false);
+    expect(figureFits(44, 5)).toBe(true); // "$4.2K" at 11 px is 32.5 px; inner width 34
+    expect(figureFits(44, 6)).toBe(false); // "$29.0K" needs 38.9 px
+    expect(figureFits(54, 6)).toBe(true);
+    expect(figureFits(54, 7)).toBe(false);
+  });
+
+  it('draws no figure in a narrow square, and names the day with it in the tooltip', async () => {
+    browserAt('2026-10-03T19:00:00Z');
+    routeMonth(() => houseMonth({ days: TRADING_DAY, monthly_net_sales: 800 }));
+    let px = 40;
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+      () => ({ width: px, height: 70, x: 0, y: 0, top: 0, left: 0, right: px, bottom: 70, toJSON: () => ({}) }) as DOMRect,
+    );
+    class RO {
+      constructor(public cb: () => void) {
+        ros.push(this);
+      }
+      observe() {}
+      disconnect() {}
+    }
+    const ros: RO[] = [];
+    vi.stubGlobal('ResizeObserver', RO);
+    try {
+      mount();
+      await waitFor(() => expect(document.querySelector('.dn-cell-fig')).not.toBeNull());
+      const grid = () => document.querySelector('.dn-cal-grid[data-fig]') as HTMLElement;
+      await waitFor(() => expect(grid().getAttribute('data-fig')).toBe('tooltip'));
+      const cell = dayCell('2026-10-02');
+      expect(cell.getAttribute('title')).toBe(cell.getAttribute('aria-label'));
+      expect(cell.getAttribute('title')).toMatch(/\$/);
+      px = 60;
+      act(() => ros.forEach((r) => r.cb()));
+      await waitFor(() => expect(grid().getAttribute('data-fig')).toBe('shown'));
+    } finally {
+      rect.mockRestore();
+      vi.unstubAllGlobals();
+    }
   });
 
   it('lays the day’s figures and lists out by the panel’s width, not the viewport’s', async () => {

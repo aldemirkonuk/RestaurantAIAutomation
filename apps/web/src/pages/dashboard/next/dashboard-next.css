@@ -113,6 +113,10 @@
   color: var(--ink-1);
   font-variant-numeric: tabular-nums;
 }
+/* c3 need 19: a square too narrow for the figure at 11 px says it in its tooltip. */
+.dn-cal-grid[data-fig='tooltip'] :is(.dn-cell-fig, .dn-cell-from) {
+  display: none;
+}
 .dn-cell-marks {
   display: flex;
   gap: 4px;
@@ -132,7 +136,7 @@
     padding: 4px 5px;
   }
   .dn-cell-fig {
-    font-size: 10px;
+    font-size: 11px;
   }
 }
 
