@@ -130,6 +130,8 @@ export interface Fig {
 export interface AnalysisView {
   /** When set, this sentence IS the rendering. No chart is drawn. */
   say?: ReactNode;
+  /** With `say`: a short plain line shown above it, and the cutting keeps its slot instead of folding to a strip. */
+  empty?: string;
   cats?: CatSeries;
   points?: PointSeries;
   matrix?: MatrixSeries;

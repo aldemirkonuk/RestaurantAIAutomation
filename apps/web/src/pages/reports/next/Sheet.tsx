@@ -40,7 +40,6 @@
 import { useCallback, useLayoutEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   Responsive,
-  WidthProvider,
   type LayoutItem,
   type ResponsiveLayouts,
 } from 'react-grid-layout/legacy';
@@ -57,7 +56,36 @@ import {
   type Slot,
 } from './rp-sheet';
 
-const Grid = WidthProvider(Responsive);
+const Grid = Responsive;
+
+/**
+ * The width the sheet is laid out at, known BEFORE the first paint (r61, c2).
+ *
+ * `WidthProvider` starts at 1280 and only learns the real width when its
+ * ResizeObserver first fires, a frame or more later: on a 375 px phone the
+ * first paint was the desktop ruling (items 741 px wide, the page 1,296 px
+ * across) and then snapped to one column. The width is read synchronously from
+ * the sheet's own box in a layout effect, so the grid is first drawn at the
+ * ruling it will keep, and the observer only follows later resizes. Until the
+ * box exists nothing is drawn (`data-measured='false'`).
+ */
+function useSheetWidth(el: HTMLElement | null): number {
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    if (!el) return;
+    // A box that is not laid out reads 0 (hidden pane, jsdom): the window's
+    // own width is the nearest honest answer and the observer corrects it.
+    setWidth(el.clientWidth || window.innerWidth);
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect?.width;
+      if (w) setWidth(w);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [el]);
+  return width;
+}
 
 /** Pointer targets that must never begin a drag — the two new selects included. */
 const DRAG_CANCEL =
@@ -85,6 +113,7 @@ export interface SheetProps {
 export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: SheetProps) {
   const [el, setEl] = useState<HTMLDivElement | null>(null);
   const [ghostBox, setGhostBox] = useState<CSSProperties | null>(null);
+  const width = useSheetWidth(el);
 
   const layouts = useMemo(
     (): ResponsiveLayouts => sheetLayouts(cuttings, arranging),
@@ -144,11 +173,15 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
       ref={attach}
       className="rp-sheet"
       data-arranging={arranging}
+      data-measured={width > 0}
       style={{ ['--rp-tuck' as keyof CSSProperties]: `${tuck.ms}ms ${tuck.easing}` } as CSSProperties}
     >
       {ghostBox && <div className="rp-ghost" style={ghostBox} aria-hidden />}
+      {/* Not drawn until the sheet's own width is known (`useSheetWidth`). */}
+      {width > 0 && (
       <Grid
         className="layout"
+        width={width}
         layouts={layouts}
         breakpoints={SHEET_BREAKPOINTS}
         cols={SHEET_BREAKPOINT_COLS}
@@ -173,6 +206,7 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
             </div>
           ))}
       </Grid>
+      )}
     </div>
   );
 }

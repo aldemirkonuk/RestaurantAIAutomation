@@ -73,6 +73,14 @@ const AXIS = {
   axisLine: false,
 } as const;
 
+/**
+ * Room for the first x label on a line or an area. Its centre sits on the
+ * plot's left edge, so half of "Oct 20" used to print over the "$0" of the
+ * value axis. Twenty pixels clears half of a six-glyph label at tick size.
+ * Bars keep their band padding and need none.
+ */
+export const X_ORIGIN_PAD = { left: 20, right: 0 } as const;
+
 /** A hairline at 6% ink: the grid is there to be read against, not looked at. */
 const GRID = { stroke: 'var(--ink-1)', strokeOpacity: 0.06 } as const;
 
@@ -442,7 +450,13 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
   const axes = (
     <>
       <CartesianGrid vertical={false} {...GRID} />
-      <XAxis dataKey="label" {...AXIS} interval={tickInterval(data)} minTickGap={26} />
+      <XAxis
+        dataKey="label"
+        {...AXIS}
+        interval={tickInterval(data)}
+        minTickGap={26}
+        padding={kind === 'bars' ? undefined : X_ORIGIN_PAD}
+      />
       <YAxis {...AXIS} width={gutter} tickFormatter={(v: number) => format(v)} />
       {tip}
       {(refs ?? []).map((r) => (

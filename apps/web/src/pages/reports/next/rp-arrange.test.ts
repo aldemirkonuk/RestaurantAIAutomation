@@ -300,16 +300,16 @@ describe('a narrow ruling', () => {
   });
 
   it('moves up past a cutting the wide sheet holds lower, at four columns', () => {
-    // The house sheet on a tablet: Spend pacing sits under Against ourselves.
-    // On twelve columns pacing (x0) cannot rise beside bench (x7) — goals is
+    // The house sheet on a tablet: What is ahead sits under Against ourselves.
+    // On twelve columns ahead (x0) cannot rise beside bench (x7) — goals is
     // in the way — so no wide rearrangement short of moving goals could say
-    // "pacing first". The list can.
+    // "ahead first". The list can.
     const cs = DEFAULT_ON.map((id) => ({ id, slot: { ...DEFAULT_SLOTS[id] } }));
     const view = (xs: typeof cs) =>
       [...projectCuttings(xs, 4)].sort((p, q) => p.slot.y - q.slot.y).map((c) => c.id);
-    expect(view(cs).indexOf('pacing')).toBe(view(cs).indexOf('bench') + 1);
-    const next = reorderCutting(cs, 'pacing', -1);
-    expect(view(next).indexOf('pacing')).toBe(view(next).indexOf('bench') - 1);
+    expect(view(cs).indexOf('ahead')).toBe(view(cs).indexOf('bench') + 1);
+    const next = reorderCutting(cs, 'ahead', -1);
+    expect(view(next).indexOf('ahead')).toBe(view(next).indexOf('bench') - 1);
     for (const c of cs) expect(slotOf(next, c.id)).toEqual(c.slot);
     expect(reorderCutting(cs, 'reading', -1)).toBe(cs);
     expect(reorderCutting(cs, 'writing', 1)).toBe(cs);

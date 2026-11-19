@@ -522,6 +522,7 @@ const week = analysis<WeekRegister>({
     if (w.weekdayProfile.length === 0)
       return {
         say: 'No consumption is recorded in the last 90 days, so the week has no shape yet.',
+        empty: 'No pours read this week',
         figures: [],
         notes: [],
         basis,
@@ -571,6 +572,7 @@ const week = analysis<WeekRegister>({
     if (data.every((b) => (b.value ?? 0) === 0))
       return {
         say: 'Every weekday reads zero over the last 90 days — the consumption log recorded no movement, so the week has no shape to draw yet.',
+        empty: 'No pours read this week',
         figures,
         notes,
         basis,
