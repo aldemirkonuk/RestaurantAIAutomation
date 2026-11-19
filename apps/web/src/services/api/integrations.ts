@@ -7,7 +7,7 @@ import { apiClient } from './client'
  * catalogue is how `gmail_send` shipped on 2026-09-04 with a Connect button
  * that led to "unknown integration".
  */
-export type IntegrationId = 'google_drive' | 'excel' | 'gmail_send' | 'gmail_read'
+export type IntegrationId = 'google_drive' | 'excel' | 'gmail_send' | 'gmail_read' | 'gmail_read_all'
 export type IntegrationProvider = 'google' | 'microsoft'
 
 export interface ScopeDisclosure {
