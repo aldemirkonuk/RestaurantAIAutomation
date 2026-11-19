@@ -9,7 +9,7 @@
  *     line boxes and nearly its line breaks when the woff2 arrives. The tests
  *     below pin the scale of each stand-in to a measured band: Jakarta by the
  *     file arithmetic (a swap moves a line under 0.5%), Fraunces by what a
- *     browser draws (a swap moves a line about 3% or less at 12 to 48 px; the
+ *     browser draws (a swap moves a line about 3% or less at 12 to 48 px for weights 400 to 600; the
  *     file-default 116.9% put the stand-in 11 to 24% wide).
  *  2. One sans. No DM Sans file ships; the family name is an alias of Plus
  *     Jakarta Sans, and the count of the retired name only goes down.

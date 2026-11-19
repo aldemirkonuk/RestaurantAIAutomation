@@ -146,7 +146,8 @@
    so width was measured in Chromium (r72 walk, 12 to 48 px, a pangram, real
    Fraunces against the stand-in): 104% for the regular faces, 93% for the bold
    (Georgia Bold is wide), 96.6% for italic; each lands within about 3% of
-   Fraunces at any size from 12 to 48 px. Ascent and descent are Fraunces'
+   Fraunces at any size from 12 to 48 px for weights 400 to 600 (weight 300 is up
+   to 6% wide at 48 px). Ascent and descent are Fraunces'
    (0.978 em and 0.255 em, line gap 0) divided by the scale, so the line box
    is Fraunces' at every size. Gelasio has Georgia's metrics, so Linux and
    Android take the same numbers. Latin-ext stays `swap` (rare glyphs). The
