@@ -107,6 +107,18 @@ export function notificationAudience(
   );
 }
 
+/** Bare, lower-cased, de-duplicated recipient addresses from an event payload. */
+function toAddressList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(
+      value
+        .map((v) => String(v ?? "").trim().toLowerCase())
+        .filter((v) => v.includes("@")),
+    ),
+  );
+}
+
 @Injectable()
 export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RabbitMqBridgeService.name);
@@ -617,6 +629,83 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
   // INBOUND EMAIL HANDLER (NestJS fallback — stores to DB without Python agent)
   // ===========================================================================
 
+  /**
+   * File a team or guest message the wider reader mirrored. Refuses (and says
+   * so in the log) anything that does not name a house AND the grant that
+   * mirrored it: such a row could not be found by a revocation.
+   */
+  private async fileNonVendorMail(p: {
+    kind: "team" | "guest";
+    restaurantId: string | null;
+    mirroredByGrantId: string | null;
+    senderEmail: string;
+    from: string;
+    subject: string;
+    body: string;
+    gmailThreadId: string;
+    gmailMessageId: string;
+    messageIdHeader: string;
+    inReplyTo: string;
+    references: string;
+    receivedAt: string;
+    toAddresses: unknown;
+  }): Promise<void> {
+    if (!p.restaurantId || !p.mirroredByGrantId) {
+      this.logger.warn(
+        `handleInboundEmail: a ${p.kind} message arrived with no house or no grant, so it was not filed`,
+      );
+      return;
+    }
+    try {
+      if (p.gmailMessageId) {
+        const { data: existing } = await this.databaseService.supabase
+          .from("procurement_conversations")
+          .select("id")
+          .eq("restaurant_id", p.restaurantId)
+          .eq("gmail_message_id", p.gmailMessageId)
+          .limit(1);
+        if (existing?.length) return;
+      }
+      const { error } = await this.databaseService.supabase
+        .from("procurement_conversations")
+        .insert({
+          order_id: null,
+          restaurant_id: p.restaurantId,
+          provider_id: null,
+          direction: "inbound",
+          channel: "email",
+          message_text: `Subject: ${p.subject}\n\n${p.body}`,
+          ai_generated: false,
+          received_at: p.receivedAt,
+          delivery_status: "delivered",
+          gmail_thread_id: p.gmailThreadId || null,
+          gmail_message_id: p.gmailMessageId || null,
+          message_id: p.messageIdHeader || null,
+          email_headers: {
+            from: p.from,
+            subject: p.subject,
+            message_id: p.messageIdHeader,
+            in_reply_to: p.inReplyTo,
+            references: p.references,
+            gmail_thread_id: p.gmailThreadId,
+          },
+          mirrored_by_grant_id: p.mirroredByGrantId,
+          kind: p.kind,
+          from_address: p.senderEmail,
+          to_addresses: toAddressList(p.toAddresses),
+        });
+      if (error) {
+        this.logger.error(
+          `handleInboundEmail: ${p.kind} insert failed — ${error.message}`,
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        `handleInboundEmail: ${p.kind} insert threw — ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
   private async handleInboundEmail(msg: any): Promise<void> {
     const payload = msg?.payload || msg;
     // The Python email agents put correlation_id on the message envelope
@@ -682,6 +771,37 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     // `HouseInboxService.readOneGrant`.
     const mirroredByGrantId: string | null =
       payload.mirrored_by_grant_id || null;
+
+    // THE WIDER READING'S NON-VENDOR MAIL (`gmail_read_all`, founder delegation
+    // 2026-11-19). The reader decided `team` or `guest` from the grant's own
+    // house; a message it called a vendor goes the ordinary way below. A team or
+    // guest message is a plain conversation row: no provider, no order, no
+    // prospect, no promotion scan, no responder, no notification. It is only
+    // ever filed under a grant in a named house, so revoking that grant can find
+    // it and delete it.
+    const houseMailKind: string | null =
+      typeof payload.house_mail_kind === "string"
+        ? payload.house_mail_kind
+        : null;
+    if (houseMailKind === "team" || houseMailKind === "guest") {
+      await this.fileNonVendorMail({
+        kind: houseMailKind,
+        restaurantId: restaurantIdFromEvent,
+        mirroredByGrantId,
+        senderEmail,
+        from,
+        subject,
+        body,
+        gmailThreadId,
+        gmailMessageId,
+        messageIdHeader,
+        inReplyTo,
+        references,
+        receivedAt,
+        toAddresses: payload.to_addresses,
+      });
+      return;
+    }
 
     try {
       // 1. Find provider by email (scoped to the attributed restaurant when we know it).
@@ -951,6 +1071,9 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
           },
           confidence_score: orderId ? 1.0 : null,
           mirrored_by_grant_id: mirroredByGrantId,
+          kind: "vendor",
+          from_address: senderEmail,
+          to_addresses: toAddressList(payload.to_addresses),
         })
         .select("id")
         .single();
