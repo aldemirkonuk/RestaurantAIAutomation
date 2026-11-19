@@ -170,7 +170,7 @@ describe("fault 1: DELETE /integrations/oauth/:integrationId is scoped to the ho
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(updates).toHaveLength(1);
     expect(sweeps).toEqual([
-      { connectionId: GRANT, restaurantId: HOUSE_A, ownerUserId: PERSON },
+      { connectionId: GRANT, restaurantId: HOUSE_A, ownerUserId: PERSON, integrationId: "gmail_read" },
     ]);
   });
 
