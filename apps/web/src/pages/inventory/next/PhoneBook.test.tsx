@@ -116,6 +116,8 @@ describe('the stylesheet: sizes, motion and the dark ground', () => {
     expect(block('.iv-page .iv-filterbtn')).toContain('min-height: 48px');
     expect(block('.iv-countbar__btn')).toContain('min-height: 56px');
     expect(block('.iv-countbar')).toContain('position: sticky');
+    // Rests above the fixed doors (57 px), not under them.
+    expect(block('.iv-countbar')).toMatch(/bottom: calc\(57px \+ env\(safe-area-inset-bottom, 0px\)\)/);
   });
 
   it('the Filter sheet selects read 16 px: the rule outranks the overlay sheet rule (html .mdv-ovl .iv-sheet-body)', () => {

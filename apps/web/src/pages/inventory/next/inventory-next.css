@@ -1339,10 +1339,12 @@ html .mdv-ovl .iv-filtersheet__body .mdv-select__control {
 }
 .iv-countbar {
   position: sticky;
-  bottom: 0;
+  /* The phone's four doors are fixed at the bottom (z-index 40, 57 px plus the
+     safe area): the bar rests above them, as the shell's own sheets do. */
+  bottom: calc(57px + env(safe-area-inset-bottom, 0px));
   z-index: 5;
   margin-inline: -16px;
-  padding: 0 16px env(safe-area-inset-bottom, 0px);
+  padding: 0 16px;
   background: var(--paper-0);
   border-top: 1px solid var(--paper-2);
 }
