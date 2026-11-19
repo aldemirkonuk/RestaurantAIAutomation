@@ -71,6 +71,18 @@ export function unitWord(row: InvRow): string {
   return isDrinkKind(goodKind(row)) ? 'bottle' : '';
 }
 
+/**
+ * The bottle size to write. The gateway gives an unsized good 750 ml, so a
+ * food would read 750: only a drink keeps `bottleSizeMl`; a good of unknown
+ * kind keeps only a size someone recorded; a food or supply has none.
+ */
+export function bottleSizeCell(row: InvRow): number | string {
+  const kind = goodKind(row);
+  if (isDrinkKind(kind)) return blank(row.bottleSizeMl);
+  if (kind === null || kind === 'unknown') return blank(row.bottleSizeRecordedMl ?? null);
+  return '';
+}
+
 export const KIND_HEADER = 'Kind';
 export const UNIT_HEADER = 'Unit';
 export const VENDOR_HEADER = 'Vendor';
@@ -81,13 +93,11 @@ export const vendorColumn: TableExportColumn<InvRow> = { header: VENDOR_HEADER, 
 
 /**
  * `nameHead` is the name column's head: "Title" for a drink, "Good" in a house of goods.
- * A house of goods has no producer, bottle price or glass price to write, so those
- * columns are left out of its file rather than sent empty. Every row carries its
- * Kind, Unit and Vendor.
+ * Every row carries its Kind, Unit and Vendor; run the columns through
+ * `dropEmptyDetail` over the rows being written so a column nobody fills is left out.
  */
 export function valuationColumns(currencyCode: string | null, nameHead = 'Title'): TableExportColumn<InvRow>[] {
-  const goods = nameHead === 'Good';
-  const cols: TableExportColumn<InvRow>[] = [
+  return [
     { header: nameHead, value: (r) => r.name ?? '' },
     kindColumn,
     { header: 'Producer', value: (r) => r.producer ?? '' },
@@ -105,15 +115,9 @@ export function valuationColumns(currencyCode: string | null, nameHead = 'Title'
     vendorColumn,
     { header: 'Currency', value: () => currencyCode ?? '' },
   ];
-  return forHouse(goods, cols);
 }
 
-/** A house of goods' file without the drink-only columns; a house with a drink keeps them all. */
-export function forHouse<T>(goods: boolean, columns: TableExportColumn<T>[]): TableExportColumn<T>[] {
-  return goods ? columns.filter((c) => !DRINK_ONLY_HEADERS.has(c.header)) : columns;
-}
-
-/** Columns that only a drink fills: left out of a house of goods' files. */
+/** Columns that only some goods fill: kept in a file only when a written row has a value for them. */
 export const DRINK_ONLY_HEADERS: ReadonlySet<string> = new Set([
   'Producer',
   'Vintage',
@@ -121,6 +125,25 @@ export const DRINK_ONLY_HEADERS: ReadonlySet<string> = new Set([
   'Your bottle price',
   'Your glass price',
 ]);
+
+const DETAIL_HEADERS: ReadonlySet<string> = new Set([...DRINK_ONLY_HEADERS, VENDOR_HEADER]);
+
+/**
+ * Leaves out a detail column (Producer, Vintage, Bottle size, the bottle and
+ * glass prices, Vendor) when no row being written has a value for it, so a
+ * file of foods has no wine headings and a mixed file keeps them with blank
+ * cells on the food rows. With no rows nothing is judged and every column stays.
+ */
+export function dropEmptyDetail<T>(rows: T[], columns: TableExportColumn<T>[]): TableExportColumn<T>[] {
+  if (rows.length === 0) return columns;
+  return columns.filter((c) => {
+    if (!DETAIL_HEADERS.has(c.header)) return true;
+    return rows.some((r) => {
+      const v = c.value(r);
+      return v !== null && v !== undefined && v !== '';
+    });
+  });
+}
 
 /**
  * The count sheet's order: where it sits (the Location cell, stock outside any
@@ -149,7 +172,7 @@ export function countSheetColumns(nameHead: string, zoneName: (id: string | null
     { header: 'Producer', value: (r) => r.producer ?? '' },
     { header: 'Vintage', value: (r) => blank(r.vintage) },
     { header: 'Type', value: (r) => (r.type === null ? '' : typeLabel(r.type)) },
-    { header: 'Bottle size (ml)', value: (r) => blank(r.bottleSizeMl) },
+    { header: 'Bottle size (ml)', value: (r) => bottleSizeCell(r) },
     unitColumn,
     { header: 'System qty (live)', value: (r) => blank(r.stock) },
     { header: 'System qty (shadow)', value: (r) => blank(r.shadow) },

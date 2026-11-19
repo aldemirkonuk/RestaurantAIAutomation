@@ -1,16 +1,17 @@
 /**
  * The inventory exports are kind-aware: every file says what each good is
- * (Kind), in what unit its quantity is (Unit) and who sells it (Vendor), the
- * count sheet is ordered by where it sits, and staff files carry no cost column.
+ * (Kind), in what unit its quantity is (Unit) and who sells it (Vendor), and a
+ * detail column only a drink fills is left out of a file no drink is in.
  *
  * Fixtures are synthetic and shaped like the gateway's list row (the house
  * row spread, snake/camel as sent), read through the page's own `toRow`.
  */
 import { describe, expect, it } from 'vitest';
 import {
+  bottleSizeCell,
   costColumnsFor,
   countSheetColumns,
-  forHouse,
+  dropEmptyDetail,
   locationCell,
   sortCountSheet,
   unitWord,
@@ -50,8 +51,9 @@ const nameHead = 'Title';
 const obs = () => '';
 const headers = (cols: { header: string }[]) => cols.map((c) => c.header);
 const cell = (cols: { header: string; value: (r: InvRow) => unknown }[], h: string, r: InvRow) => cols.find((c) => c.header === h)!.value(r);
-const sheet = () => countSheetColumns(nameHead, zoneName, obs);
-const valuation = () => valuationColumns('USD', nameHead);
+const DRINK_HEADS = ['Producer', 'Vintage', 'Bottle size (ml)', 'Your bottle price', 'Your glass price'];
+const sheet = (rows: InvRow[]) => dropEmptyDetail(rows, countSheetColumns(nameHead, zoneName, obs));
+const valuation = (rows: InvRow[]) => dropEmptyDetail(rows, valuationColumns('USD', nameHead));
 
 describe('kind words', () => {
   it('reads the house kind raw, before the library kind', () => {
@@ -71,32 +73,71 @@ describe('kind words', () => {
   });
 });
 
-describe('unit', () => {
+describe('unit and bottle size', () => {
   it('says the good\'s own unit; a drink with none says bottle; neither says nothing', () => {
     expect(unitWord(flour())).toBe('g');
     expect(unitWord(raw({ kind: 'wine' }))).toBe('bottle');
     expect(unitWord(raw({ kind: 'food' }))).toBe('');
     expect(unitWord(raw({}))).toBe('');
   });
+  it('leaves the bottle size blank for a food even when the gateway sent 750', () => {
+    expect(flour().bottleSizeMl).toBe(750);
+    expect(bottleSizeCell(flour())).toBe('');
+    expect(bottleSizeCell(wine())).toBe(750);
+    expect(bottleSizeCell(spirit())).toBe(700);
+  });
+  it('for a good of unknown kind keeps only a size someone recorded', () => {
+    expect(bottleSizeCell(raw({ bottle_size_ml: null }))).toBe('');
+    expect(bottleSizeCell(raw({ bottle_size_ml: 500, bottleSizeMl: 500 }))).toBe(500);
+  });
 });
 
-describe('Kind, Unit and Vendor in every file', () => {
-  it('both files carry them, with the cell for each good', () => {
-    const rows = [wine(), spirit(), flour(), bags()];
-    for (const cols of [sheet(), valuation()]) {
-      expect(headers(cols)).toEqual(expect.arrayContaining(['Kind', 'Unit', 'Vendor']));
-      expect(rows.map((r) => cell(cols, 'Kind', r))).toEqual(['Wine', 'Spirit', 'Food', 'Supply']);
-      expect(rows.map((r) => cell(cols, 'Unit', r))).toEqual(['bottle', 'bottle', 'g', 'pack']);
-      expect(rows.map((r) => cell(cols, 'Vendor', r))).toEqual(['Vino Supply', 'Spirits Co', 'Mill Co', 'Pack Co']);
-    }
-  });
-
-  it('a house of goods still has no drink heading, and keeps Kind, Unit and Vendor', () => {
-    for (const cols of [forHouse(true, sheet()), forHouse(true, valuation())]) {
+describe('detail columns follow the rows', () => {
+  it('a file of foods has Good-style detail but no drink heading, even with a gateway 750', () => {
+    const rows = [flour(), bags()];
+    for (const cols of [sheet(rows), valuation(rows)]) {
       const h = headers(cols);
       expect(h).toEqual(expect.arrayContaining(['Kind', 'Unit', 'Vendor']));
-      for (const d of ['Producer', 'Vintage', 'Bottle size (ml)', 'Your bottle price', 'Your glass price']) expect(h).not.toContain(d);
+      for (const d of DRINK_HEADS) expect(h).not.toContain(d);
     }
+    const c = sheet(rows);
+    expect(rows.map((r) => cell(c, 'Kind', r))).toEqual(['Food', 'Supply']);
+    expect(rows.map((r) => cell(c, 'Unit', r))).toEqual(['g', 'pack']);
+    expect(rows.map((r) => cell(c, 'Vendor', r))).toEqual(['Mill Co', 'Pack Co']);
+  });
+
+  it('a mixed file keeps every heading, with blank drink cells on the food rows', () => {
+    const rows = [wine(), spirit(), flour(), bags()];
+    const c = sheet(rows);
+    expect(headers(c)).toEqual(expect.arrayContaining(DRINK_HEADS.filter((d) => d !== 'Your bottle price' && d !== 'Your glass price')));
+    const v = valuation(rows);
+    expect(headers(v)).toEqual(expect.arrayContaining(['Producer', 'Your bottle price', 'Your glass price']));
+    for (const f of [flour(), bags()]) {
+      expect(cell(c, 'Producer', f)).toBe('');
+      expect(cell(c, 'Vintage', f)).toBe('');
+      expect(cell(c, 'Bottle size (ml)', f)).toBe('');
+    }
+    expect(cell(c, 'Kind', flour())).toBe('Food');
+    expect(cell(c, 'Kind', wine())).toBe('Wine');
+    expect(cell(c, 'Kind', spirit())).toBe('Spirit');
+    expect(cell(c, 'Bottle size (ml)', wine())).toBe(750);
+    expect(cell(c, 'Producer', wine())).toBe('Cantina Uno');
+  });
+
+  it('a wine-only file keeps Producer, Vintage and Bottle size', () => {
+    const c = sheet([wine()]);
+    expect(headers(c)).toEqual(expect.arrayContaining(['Producer', 'Vintage', 'Bottle size (ml)', 'Kind', 'Unit']));
+    expect(cell(c, 'Kind', wine())).toBe('Wine');
+    expect(cell(c, 'Unit', wine())).toBe('bottle');
+  });
+
+  it('keeps every column when there is nothing to judge from', () => {
+    expect(headers(sheet([]))).toEqual(expect.arrayContaining(DRINK_HEADS.slice(0, 3)));
+  });
+
+  it('one food row alone has no drink heading', () => {
+    const h = headers(valuation([flour()]));
+    for (const d of ['Producer', 'Your bottle price', 'Your glass price']) expect(h).not.toContain(d);
   });
 });
 
@@ -150,7 +191,8 @@ describe('count sheet order', () => {
 
 describe('what staff see, and that no figure moves', () => {
   it('staff files have no WAC or Value columns but keep Kind and Unit', () => {
-    for (const cols of [sheet(), valuation()]) {
+    const rows = [wine(), flour()];
+    for (const cols of [sheet(rows), valuation(rows)]) {
       const h = headers(costColumnsFor(cols, false));
       for (const x of ['WAC', 'Value', 'Value at cost']) expect(h).not.toContain(x);
       expect(h).toEqual(expect.arrayContaining(['Kind', 'Unit']));
