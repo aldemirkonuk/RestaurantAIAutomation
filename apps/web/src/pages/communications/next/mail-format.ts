@@ -67,6 +67,23 @@ export const READ_ALL_OFFER_WORDS =
 export const READ_ALL_OFFER = 'Read every conversation, not only vendors';
 
 /** What the tab says about its own reach, so a quiet Team or Guests list is never mistaken for an empty one. */
+/**
+ * The status block above the Mail list keeps its height from the first frame
+ * (r81 walk w1 finding 3): at 375 it grew 97 -> 152 px as the summary and the
+ * reader arrived, and the list below it moved. 152 px is the loaded height the
+ * walk measured at 375 (header sentence, today line, status line and the setup
+ * pill); the md value is an estimate until a browser measures it.
+ */
+export const MAIL_HEADER_RESERVE = 'min-h-[152px] md:min-h-[100px]';
+/**
+ * The read-scope placeholder, sized for the state it becomes: one block (the
+ * line), or two (the line and the switch note) when the house's inbox switch
+ * is already known to be off.
+ */
+export const READ_SCOPE_HOLD = {
+  one: 'min-h-[38px] md:min-h-[20px]',
+  two: 'min-h-[124px] md:min-h-[44px]',
+} as const;
 export const VENDOR_ONLY_LINE = 'This tab shows vendor mail only.';
 export const READS_ALL_LINE = 'This tab shows every conversation in the mailbox: vendors, team and guests.';
 /**
