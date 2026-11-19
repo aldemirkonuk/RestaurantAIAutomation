@@ -17,8 +17,9 @@
 import { Fragment, useState } from 'react';
 import { HousePriceCell, type AdviceLoad } from '../command/HousePriceCell';
 import type { RowDropdownProps } from './RowDropdown';
-import { cellMoney, EM, statusWord, fmtCount, fmtPace, noZoneWord, SEVERITY_GROUP, severity, typeLabel, type InvRow, type SortId } from './useInventoryNextData';
+import { cellMoney, EM, statusWord, fmtCount, noZoneWord, SEVERITY_GROUP, severity, typeLabel, type InvRow, type SortId } from './useInventoryNextData';
 import { NameHint } from './NameThisWine';
+import { listFigure, listPace, listUnitTail } from './ItemCards';
 import PhoneRows from './PhoneRows';
 import { emptyColumns } from './iv-columns';
 import { useIsPhone } from '../../../hooks/useIsPhone';
@@ -202,6 +203,8 @@ export default function InventoryTable(props: InventoryTableProps) {
             const sev = severity(row);
             const startsGroup = grouped && (i === 0 || severity(rows[i - 1]) !== sev);
             const open = openId === row.id;
+            // A counted good's unit is said once, after its last figure; nothing read, nothing to say.
+            const tail = row.par === null && row.stock === null ? null : listUnitTail(row.uom, row.par ?? row.stock);
             return (
               <Fragment key={row.id}>
                 {startsGroup ? (
@@ -269,16 +272,17 @@ export default function InventoryTable(props: InventoryTableProps) {
  ) : null}
                   <td data-label="Live / shadow · par" className="iv-r iv-num">
                     <span>
-                      <span className="iv-live">{row.stock === null ? EM : fmtCount(row.stock)}</span>
-                      <span className="iv-dim"> / {row.shadow === null ? EM : fmtCount(row.shadow)}</span>
+                      <span className="iv-live">{listFigure(row.stock, row.uom)}</span>
+                      <span className="iv-dim"> / {listFigure(row.shadow, row.uom)}</span>
                       {' · '}
-                      {row.par === null ? EM : fmtCount(row.par)}
+                      {listFigure(row.par, row.uom)}
+                      {tail === null ? null : ` ${tail}`}
                     </span>
                     <ParBar row={row} />
                   </td>
 {!hidden.has('Vel/day') ? (
                   <td data-label="Vel/day" className="iv-r iv-num">
-                    {row.velocity === null ? EM : fmtPace(row.velocity)}
+                    {row.velocity === null ? EM : listPace(row.velocity, row.uom)}
                   </td>
  ) : null}
 {!hidden.has('Runway') ? (
