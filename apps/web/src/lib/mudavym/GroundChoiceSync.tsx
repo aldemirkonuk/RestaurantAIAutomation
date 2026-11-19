@@ -62,6 +62,11 @@ import {
   setGroundOwner,
   type GroundSetting,
 } from './groundChoice';
+import {
+  applyAccountGroundAsk,
+  registerGroundAskWriter,
+  resetGroundAsk,
+} from './groundAsk';
 
 export function GroundChoiceSync(): null {
   const userId = useAuthStore((s) => s.user?.userId) ?? null;
@@ -73,7 +78,19 @@ export function GroundChoiceSync(): null {
   // for even one render.
   useEffect(() => {
     setGroundOwner(userId);
+    resetGroundAsk();
   }, [userId]);
+
+  // When the theme question may appear: after the first task, and quiet for 30
+  // days after "Not now". Same blob, same write path (`groundAsk` key).
+  useEffect(() => {
+    if (!userId) {
+      registerGroundAskWriter(null);
+      return;
+    }
+    registerGroundAskWriter((record) => updatePreferencesAsync({ groundAsk: record }));
+    return () => registerGroundAskWriter(null);
+  }, [userId, updatePreferencesAsync]);
 
   // How a choice reaches the account. Cleared on sign-out so that choosing a
   // ground with no session reports itself unsaved rather than silently
@@ -94,6 +111,7 @@ export function GroundChoiceSync(): null {
   useEffect(() => {
     if (!userId) return;
     if (error) {
+      // The gate stays closed: a failed read is not "never asked".
       reportGroundReadFailure(
         error instanceof Error && error.message
           ? error.message
@@ -103,7 +121,8 @@ export function GroundChoiceSync(): null {
     }
     if (isPlaceholderData) return; // still unknown — not "paper".
     applyAccountGround(preferences.ground);
-  }, [userId, error, isPlaceholderData, preferences.ground]);
+    applyAccountGroundAsk(preferences.groundAsk);
+  }, [userId, error, isPlaceholderData, preferences.ground, preferences.groundAsk]);
 
   return null;
 }

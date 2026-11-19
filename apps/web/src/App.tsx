@@ -47,6 +47,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppToaster } from './components/mudavym/AppToaster'
 import { AuthProvider } from './contexts/AuthContext'
 import { GroundChoiceSync } from './lib/mudavym/GroundChoiceSync'
+import { GroundAskWatch } from './lib/mudavym/GroundAskWatch'
 import { RealtimeProvider } from './contexts/RealtimeContext'
 import { WebSocketProvider } from './lib/websocket'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -182,6 +183,7 @@ function App() {
                 public ones included (where it resolves to a signed-out
                 paper). */}
             <GroundChoiceSync />
+            <GroundAskWatch />
             {/* Nested INSIDE AuthProvider (not outside it, as sonner's
                 Toaster/OfflineBanner below still are) so its gate
                 (`useMudavymDesign('shell')`, ToastContext.tsx) reads the

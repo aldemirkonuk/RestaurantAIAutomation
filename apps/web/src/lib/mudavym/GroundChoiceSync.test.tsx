@@ -16,7 +16,7 @@ import { render, cleanup, act } from '@testing-library/react';
 
 const authState = { userId: null as string | null };
 const prefsState = {
-  preferences: {} as { ground?: unknown },
+  preferences: {} as { ground?: unknown; groundAsk?: unknown },
   isPlaceholderData: true,
   error: null as Error | null,
   updatePreferencesAsync: vi.fn(async (_partial: Record<string, unknown>) => ({})),
@@ -32,6 +32,12 @@ vi.mock('../../hooks/useUserPreferences', () => ({
 }));
 
 import { GroundChoiceSync } from './GroundChoiceSync';
+import {
+  getGroundAskGate,
+  noteGroundTaskDone,
+  resetGroundAskForTests,
+  snoozeGroundAsk,
+} from './groundAsk';
 import {
   GROUND_CHOICE_ATTR,
   getGroundOwnerId,
@@ -59,6 +65,7 @@ beforeEach(() => {
   window.localStorage.clear();
   document.documentElement.removeAttribute(GROUND_CHOICE_ATTR);
   resetGroundChoiceForTests();
+  resetGroundAskForTests();
   authState.userId = null;
   prefsState.preferences = {};
   prefsState.isPlaceholderData = true;
@@ -71,6 +78,7 @@ afterEach(() => {
   window.localStorage.clear();
   document.documentElement.removeAttribute(GROUND_CHOICE_ATTR);
   resetGroundChoiceForTests();
+  resetGroundAskForTests();
 });
 
 describe('GroundChoiceSync — who the ground belongs to', () => {
@@ -215,5 +223,60 @@ describe('GroundChoiceSync — how a choice reaches the account', () => {
     });
     expect(prefsState.updatePreferencesAsync).not.toHaveBeenCalled();
     expect(getGroundState().writeError).not.toBeNull();
+  });
+});
+
+describe('GroundChoiceSync — when the theme question may appear (N-08)', () => {
+  it('[REVERT-FAILS] feeds the gate what the account holds, once it has answered', () => {
+    authState.userId = ALICE;
+    prefsState.isPlaceholderData = false;
+    prefsState.preferences = {
+      groundAsk: { firstTaskAt: '2026-11-01T00:00:00.000Z', snoozedUntil: '2026-12-01T00:00:00.000Z' },
+    };
+    mount();
+    expect(getGroundAskGate()).toEqual({
+      known: true,
+      firstTaskAt: '2026-11-01T00:00:00.000Z',
+      snoozedUntil: '2026-12-01T00:00:00.000Z',
+    });
+  });
+
+  it('[REVERT-FAILS] keeps the gate shut while the read is pending and when it failed', () => {
+    authState.userId = ALICE;
+    mount();
+    expect(getGroundAskGate().known).toBe(false);
+    cleanup();
+    prefsState.error = new Error('Network Error');
+    prefsState.isPlaceholderData = false;
+    mount();
+    expect(getGroundAskGate().known).toBe(false);
+  });
+
+  it('writes the whole record to `groundAsk` for a first task and for a snooze', async () => {
+    authState.userId = ALICE;
+    prefsState.isPlaceholderData = false;
+    mount();
+    act(() => noteGroundTaskDone(Date.parse('2026-11-18T12:00:00.000Z')));
+    await settle();
+    expect(prefsState.updatePreferencesAsync).toHaveBeenLastCalledWith({
+      groundAsk: { firstTaskAt: '2026-11-18T12:00:00.000Z' },
+    });
+    act(() => snoozeGroundAsk(Date.parse('2026-11-18T12:00:00.000Z')));
+    await settle();
+    expect(prefsState.updatePreferencesAsync).toHaveBeenLastCalledWith({
+      groundAsk: { firstTaskAt: '2026-11-18T12:00:00.000Z', snoozedUntil: '2026-12-18T12:00:00.000Z' },
+    });
+  });
+
+  it('forgets the previous person when another signs in', () => {
+    authState.userId = ALICE;
+    prefsState.isPlaceholderData = false;
+    prefsState.preferences = { groundAsk: { firstTaskAt: '2026-11-01T00:00:00.000Z' } };
+    const first = mount();
+    first.unmount();
+    authState.userId = BOB;
+    prefsState.isPlaceholderData = true;
+    mount();
+    expect(getGroundAskGate()).toEqual({ known: false, firstTaskAt: null, snoozedUntil: null });
   });
 });
