@@ -9,6 +9,7 @@ import { render, screen } from '@testing-library/react';
 import InventoryTable, { type InventoryTableProps } from './InventoryTable';
 import { listFigure, listUnitTail } from './ItemCards';
 import { toRow, type InvRow } from './useInventoryNextData';
+import { normalizeInventoryItem } from '../../../services/api/inventory';
 
 vi.mock('../command/HousePriceCell', () => ({
   HousePriceCell: ({ bottle }: { bottle: number | null }) => <span data-testid="price-cell">{bottle}</span>,
@@ -72,6 +73,23 @@ describe('the desktop table', () => {
   it('an unread count stays a dash with no unit after it', () => {
     draw([toRow({ id: 'x', displayName: 'X', uom: 'bottle', stockLive: null, shadowStock: null, thresholdMin: null } as never, null)]);
     expect(cell('x', 'Live / shadow · par')).toBe('— / — · —');
+  });
+  it('a stock the gateway did not send stays a dash through the normaliser, never "0 g" or Out', () => {
+    const raw = { id: 'u', displayName: 'Unread flour', uom: 'g', stockLive: null, thresholdMin: 5000 };
+    expect(normalizeInventoryItem(raw as never).stockLive).toBeNull();
+    expect(normalizeInventoryItem({ ...raw, stockLive: undefined, stock_live: undefined } as never).stockLive).toBeNull();
+    const row = toRow(normalizeInventoryItem(raw as never) as never, null);
+    expect(row.stock).toBeNull();
+    expect(row.standing).toBe('unknown');
+    draw([row]);
+    expect(cell('u', 'Live / shadow · par')).toContain('—');
+    expect(cell('u', 'Live / shadow · par')).not.toMatch(/0 g/);
+  });
+  it('a counted zero is still a zero: 0 stays 0 and reads Out', () => {
+    const row = toRow(normalizeInventoryItem({ id: 'z', displayName: 'Z', uom: 'g', stockLive: 0, thresholdMin: 5000 } as never) as never, null);
+    expect(row.stock).toBe(0);
+    expect(row.standing).toBe('out');
+    expect(normalizeInventoryItem({ id: 'z', stock_live: 0 } as never).stockLive).toBe(0);
   });
   it('a pace for a weighed good says its unit a day', () => {
     draw([good('flour', 'g', 12400, 5000, 12500, 1250), good('wine', null, 12, 4, 12, 1.5)]);
