@@ -18,8 +18,8 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createElement, type ReactElement } from 'react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 const h = vi.hoisted(() => {
@@ -347,11 +347,15 @@ describe('the house, from tokens', () => {
  * whether it is shown differs, so the control lists above stay equal.
  */
 describe('Google on the first page', () => {
-  const googleHost = () => screen.getByText(/Google sign-in isn.t configured/).closest('[aria-hidden]')
-
-  it('shows it under the address, before any method is resolved', async () => {
+  // No client id is configured in this file (see the stubbed env above), so
+  // Google sign-in is not offered on this deployment. A guest is not told so:
+  // the row, the sentence about the deployment and the "or" rule above it are
+  // all absent (design critic 2026-11-18, round 2, need 12).
+  it('draws no Google row, no deployment sentence and no "or" rule when Google is not set up', async () => {
     await STATES.find((st) => st.name === 'login-email')!.reach()
-    expect(googleHost()).toHaveAttribute('aria-hidden', 'false')
+    expect(screen.queryByText(/Google sign-in isn.t configured/)).toBeNull()
+    expect(screen.queryByText(/Sign in with Google/)).toBeNull()
+    expect(screen.queryByText('or')).toBeNull()
   })
 
 })

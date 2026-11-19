@@ -1,4 +1,4 @@
-import { PublicShell } from '../components/mudavym/PublicShell'
+import { AuthSpread } from '../components/brand/AuthSpread'
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import axios from 'axios'
@@ -47,7 +47,7 @@ export function ForgotPassword() {
   }
 
   return (
-    <PublicShell
+    <AuthSpread
       title={submitted ? 'Check your email' : 'Reset your password'}
       eyebrow="Account access"
       voice={
@@ -55,14 +55,13 @@ export function ForgotPassword() {
           ? 'A way back, if this address has an account.'
           : 'Enter the address you use to sign in.'
       }
-      homeHref="/login"
       footer={
         <Link className="mdv-link" to="/login">
           Back to sign in
         </Link>
       }
     >
-      <div className="mdv-pub__plate mdv-pub__stack">
+      <div className="mdv-spread-stack">
         {submitted ? (
           <p role="status">
             If an account exists for <strong>{email}</strong>, a password
@@ -72,14 +71,9 @@ export function ForgotPassword() {
         ) : (
           <form
             onSubmit={handleSubmit}
-            className="mdv-pub__stack"
+            className="mdv-spread-stack"
             aria-busy={loading}
           >
-            {error && (
-              <p className="mdv-alert" role="alert">
-                {error}
-              </p>
-            )}
             <div>
               <label className="mdv-label" htmlFor="email">
                 Email address
@@ -102,9 +96,14 @@ export function ForgotPassword() {
             >
               {loading ? 'Requesting link…' : 'Send reset link'}
             </button>
+            {error && (
+              <p className="mdv-alert" role="alert">
+                {error}
+              </p>
+            )}
           </form>
         )}
       </div>
-    </PublicShell>
+    </AuthSpread>
   )
 }

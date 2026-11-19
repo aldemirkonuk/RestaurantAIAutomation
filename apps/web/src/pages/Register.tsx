@@ -75,6 +75,8 @@ export function Register() {
     return 'create'
   })
   const [pathAStep, setPathAStep] = useState<PathAStep>(1)
+  // Google sign-in is not set up here: no "or" rule, no row.
+  const [googleGone, setGoogleGone] = useState(false)
   const [pathBStep, setPathBStep] = useState<PathBStep>(1)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -798,13 +800,16 @@ export function Register() {
           <>Create account <ArrowRight className="w-4 h-4 ml-1" /></>
         )}
       </Button>
-      <div className="my-4 flex items-center gap-3 text-xs text-gray-400">
-        <span className="h-px flex-1 bg-gray-200" />
-        or
-        <span className="h-px flex-1 bg-gray-200" />
-      </div>
+      {!googleGone && (
+        <div className="my-4 flex items-center gap-3 text-xs text-gray-400">
+          <span className="h-px flex-1 bg-gray-200" />
+          or
+          <span className="h-px flex-1 bg-gray-200" />
+        </div>
+      )}
       <GoogleSignInButton
         mode="register"
+        onUnavailable={() => setGoogleGone(true)}
         onSuccess={() => navigate('/get-started', { replace: true })}
         onError={setError}
       />

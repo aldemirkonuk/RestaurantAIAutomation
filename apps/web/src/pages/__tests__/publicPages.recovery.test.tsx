@@ -61,7 +61,14 @@ it('keeps reset requests enumeration safe and failures recoverable', async () =>
     'unknown@house.test',
   )
   fireEvent.click(screen.getByRole('button', { name: 'Send reset link' }))
-  await screen.findByRole('alert')
+  const failed = await screen.findByRole('alert')
+  // The failure sits under the plate: the field and the plate the person is
+  // working with do not move when it arrives.
+  expect(
+    screen
+      .getByRole('button', { name: 'Send reset link' })
+      .compareDocumentPosition(failed) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy()
   expect(
     screen.queryByRole('heading', { name: 'Check your email' }),
   ).not.toBeInTheDocument()
@@ -291,7 +298,7 @@ it('shows a resend failure inline only, with no duplicate toast (D5c)', async ()
 it('has no legacy route left: the old QA off override still renders the house page', () => {
   localStorage.setItem('mudavym.design.public', 'false')
   const { container } = mount(<ForgotPassword />, '/forgot-password')
-  expect(container.querySelector('.mdv-pub')).not.toBeNull()
+  expect(container.querySelector('.mdv-spread')).not.toBeNull()
   expect(
     screen.queryByRole('button', { name: 'Send Reset Link' }),
   ).not.toBeInTheDocument()
@@ -315,7 +322,7 @@ it('keeps provider scope and disconnect facts accurate on the one privacy page',
 it('the public design switch defaults on with no override at all', () => {
   localStorage.removeItem('mudavym.design.public')
   const { container } = mount(<ForgotPassword />, '/forgot-password')
-  expect(container.querySelector('.mdv-pub')).not.toBeNull()
+  expect(container.querySelector('.mdv-spread')).not.toBeNull()
 })
 
 it('a vendor 404 shows no retry and a neutral eyebrow, with no footer claim', async () => {

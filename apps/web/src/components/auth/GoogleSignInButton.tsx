@@ -14,6 +14,12 @@ interface GoogleSignInButtonProps {
   /** Show Google One Tap (saved accounts) on mount — only on login/register. */
   enableOneTap?: boolean
   mode?: 'sign-in' | 'register'
+  /**
+   * Called once when Google sign-in cannot be offered on this deployment (no
+   * client id, or the Google script would not load). The button then renders
+   * nothing, so the caller drops whatever surrounds it (an "or" rule).
+   */
+  onUnavailable?: () => void
 }
 
 export interface GoogleSignInHandle {
@@ -62,6 +68,7 @@ export const GoogleSignInButton = forwardRef<GoogleSignInHandle, GoogleSignInBut
   disabled,
   enableOneTap = false,
   mode = 'sign-in',
+  onUnavailable,
 }, ref) {
   const { loginWithGoogle, registerAccountWithGoogle } = useAuth()
   const gsiHostRef = useRef<HTMLDivElement>(null)
@@ -71,6 +78,14 @@ export const GoogleSignInButton = forwardRef<GoogleSignInHandle, GoogleSignInBut
   const [signingIn, setSigningIn] = useState(false)
 
   const clientId = getGoogleClientId()
+
+  const onUnavailableRef = useRef(onUnavailable)
+  useEffect(() => {
+    onUnavailableRef.current = onUnavailable
+  }, [onUnavailable])
+  useEffect(() => {
+    if (unavailable) onUnavailableRef.current?.()
+  }, [unavailable])
 
   const handlersRef = useRef({ onSuccess, onError, loginWithGoogle, registerAccountWithGoogle, mode })
   useEffect(() => {
@@ -160,11 +175,9 @@ export const GoogleSignInButton = forwardRef<GoogleSignInHandle, GoogleSignInBut
   }), [ready, openGoogleChooser])
 
   if (unavailable) {
-    return (
-      <p className="text-center text-xs text-gray-400">
-        Google sign-in isn&apos;t configured on this deployment yet.
-      </p>
-    )
+    // A sign-in that is not set up here is not offered at all: no sentence
+    // about the deployment on a page a guest reads.
+    return null
   }
 
   return (
