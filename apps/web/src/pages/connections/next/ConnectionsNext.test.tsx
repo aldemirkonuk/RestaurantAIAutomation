@@ -2190,7 +2190,7 @@ describe("the house's own copy of its vendor mail", () => {
 
 describe('one group open at a time (r73 c3 need 8)', () => {
   const head = (title: string) =>
-    screen.getAllByRole('button', { name: title }).find((b) => b.classList.contains('gr-head-btn')) as HTMLElement;
+    screen.getAllByRole('button', { name: new RegExp(`^${title}`) }).find((b) => b.classList.contains('gr-head-btn')) as HTMLElement;
   const bodyOf = (id: string) => document.getElementById(`${id}-body`) as HTMLElement;
 
   beforeEach(() => {
