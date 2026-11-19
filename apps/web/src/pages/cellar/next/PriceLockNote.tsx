@@ -18,6 +18,7 @@ import { useQuery } from '@tanstack/react-query';
 import { listPriceLocks, type PriceLock } from '../../../services/api/pricing';
 import { useAuthStore } from '../../../stores';
 import { money } from './cellar-format';
+import { failureWords } from '../../../lib/unreachable';
 
 function day(iso: string): string {
   return String(iso).slice(0, 10);
@@ -36,7 +37,7 @@ export default function PriceLockNote({ inventoryId }: { inventoryId: string }) 
   const q = useQuery({ queryKey: ['pricing', 'locks', house], queryFn: listPriceLocks });
   if (q.isLoading) return null;
   if (q.isError || !q.data || q.data.readable === false) {
-    const why = q.data?.reason ?? (q.error instanceof Error ? q.error.message : null);
+    const why = q.data?.reason ?? (q.error instanceof Error ? failureWords(q.error, '') : null);
     return (
       <p className="cl-note" role="alert" data-testid="bottle-leaf-lock-unread" style={{ marginTop: 4 }}>
         Whether this price is locked could not be read{why ? ` (${why})` : ''}. This is not the same as not locked.

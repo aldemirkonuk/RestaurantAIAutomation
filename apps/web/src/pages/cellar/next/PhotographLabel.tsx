@@ -51,6 +51,7 @@ import { submitWine } from '../../../services/api/wines';
 import { scanWineLabel } from '../../../services/wineDetection';
 import type { DetectedWine } from '../../../services/wineDetection';
 import { EM, SANS, year } from './cellar-format';
+import { failureWords } from '../../../lib/unreachable';
 
 /** The page's one mono stack — not exported from `cellar-format.ts`, which
  * carries only `SANS` (see that file's own header on why the serif/mono
@@ -279,7 +280,7 @@ export default function PhotographLabel({
       setWine(detected);
       setStep('confirm');
     } catch (err) {
-      setReadError(err instanceof Error ? err.message : 'The label reader could not be reached');
+      setReadError(failureWords(err, 'The label reader could not be reached'));
       setStep('read-error');
     }
   };
@@ -464,7 +465,7 @@ export default function PhotographLabel({
         <div>
           <p className="cl-said" role="alert" data-testid="label-submit-error">
             The reading was not submitted (
-            {submit.error instanceof Error ? submit.error.message : 'no reason given'}). Nothing
+            {failureWords(submit.error, 'no reason given')}). Nothing
             was written.
           </p>
           <button

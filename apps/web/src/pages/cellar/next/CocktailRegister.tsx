@@ -45,6 +45,7 @@ import {
   type CocktailInput,
   type RegisterVM,
 } from './useCellarNextData';
+import { failureWords } from '../../../lib/unreachable';
 
 interface Draft extends CocktailInput {
   name?: string;
@@ -128,7 +129,7 @@ function Recipe({ cocktailId }: { cocktailId: string }) {
       );
     } catch (e) {
       setSaid(
-        `The recipe was NOT recorded${e instanceof Error ? ` — ${e.message}` : ''}. Nothing was changed.`,
+        `The recipe was NOT recorded${e instanceof Error ? ` — ${failureWords(e, '')}` : ''}. Nothing was changed.`,
       );
     }
   };
@@ -250,7 +251,7 @@ export default function CocktailRegister({
       setEditId(null);
     } catch (e) {
       setSaid(
-        `Nothing was written${e instanceof Error ? ` — ${e.message}` : ''}. The list is unchanged.`,
+        `Nothing was written${e instanceof Error ? ` — ${failureWords(e, '')}` : ''}. The list is unchanged.`,
       );
     }
   };
@@ -262,7 +263,7 @@ export default function CocktailRegister({
         `“${name}” is off the list. The row was dated, not deleted — a cocktail that came off in September is a fact about the season.`,
       );
     } catch (e) {
-      setSaid(`“${name}” was NOT retired${e instanceof Error ? ` — ${e.message}` : ''}.`);
+      setSaid(`“${name}” was NOT retired${e instanceof Error ? ` — ${failureWords(e, '')}` : ''}.`);
     } finally {
       setConfirmRetire(null);
     }

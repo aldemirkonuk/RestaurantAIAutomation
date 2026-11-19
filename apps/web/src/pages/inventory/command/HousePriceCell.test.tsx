@@ -109,6 +109,17 @@ describe('HousePriceCell', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Only an owner or a manager can change a price.')
   })
 
+  it('an unreachable gateway is said in words, not as "Network Error"', async () => {
+    updateInventoryItem.mockRejectedValue(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }))
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: /change your price/i }))
+    fireEvent.change(screen.getByLabelText(/bottle price for barolo/i), { target: { value: '70' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Mudavym could not be reached just now.')
+    expect(alert.textContent).not.toContain('Network Error')
+  })
+
   it('one tap applies the advice exactly as shown', async () => {
     acceptPriceAdvice.mockResolvedValue({ outcome: 'changed' })
     const { onChanged } = mount()

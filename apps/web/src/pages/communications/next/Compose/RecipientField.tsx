@@ -22,6 +22,7 @@ import { BookUser, Plus } from 'lucide-react';
 import { apiClient } from '../../../../services/api/client';
 import type { BookEntry } from './useComposeData';
 import { EM, MONO, SANS, looksLikeAddress } from './compose-format';
+import { failureWords } from '../../../../lib/unreachable';
 
 const ICON = { size: 13, strokeWidth: 1.75 } as const;
 
@@ -98,7 +99,7 @@ export function RecipientField({
     } catch (e) {
       setAddState({
         kind: 'failed',
-        message: e instanceof Error ? e.message : 'unknown error',
+        message: failureWords(e, 'unknown error'),
       });
     }
   }

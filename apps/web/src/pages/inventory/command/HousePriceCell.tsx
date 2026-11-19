@@ -34,6 +34,7 @@ import {
   type PriceAdvice,
   type WineAdvice,
 } from '../../../services/api/pricing'
+import { isUnreachable, UNREACHABLE_WORDS } from '../../../lib/unreachable'
 
 export type AdviceLoad =
   | { status: 'loading' }
@@ -96,7 +97,7 @@ function reasonOf(err: unknown): string {
   const m = e?.response?.data?.message
   if (typeof m === 'string' && m) return m
   if (Array.isArray(m) && m.length) return String(m[0])
-  return e?.message || 'The price was not saved.'
+  return (isUnreachable(err) ? UNREACHABLE_WORDS : e?.message) || 'The price was not saved.'
 }
 
 /** '' clears the price; anything else must be a number of at least 0. */

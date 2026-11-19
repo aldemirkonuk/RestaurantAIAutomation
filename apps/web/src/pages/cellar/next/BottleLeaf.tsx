@@ -48,6 +48,7 @@ import {
 import OrderCeremony from './OrderCeremony';
 import PriceLockNote from './PriceLockNote';
 import { useCellarSettings, type BottleVM, type WineStructureVM } from './useCellarNextData';
+import { failureWords } from '../../../lib/unreachable';
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -220,7 +221,7 @@ export default function BottleLeaf({
     },
     onError: (e: unknown) =>
       setSaid(
-        `Nothing was sent — the gateway refused it (${e instanceof Error ? e.message : 'no reason given'}).`,
+        `Nothing was sent — the gateway refused it (${failureWords(e, 'no reason given')}).`,
       ),
   });
 
@@ -366,7 +367,7 @@ export default function BottleLeaf({
                         onSuccess: () => setSaid(`Booked into the cellar — ${qty} on hand.`),
                         onError: (e: unknown) =>
                           setSaid(
-                            `Nothing was booked (${e instanceof Error ? e.message : 'no reason given'}).`,
+                            `Nothing was booked (${failureWords(e, 'no reason given')}).`,
                           ),
                       },
                     )
@@ -553,7 +554,7 @@ export default function BottleLeaf({
                 approvedLabel="Order sent"
                 pending={order.isPending}
                 sent={order.isSuccess}
-                errorMessage={order.isError ? (order.error instanceof Error ? order.error.message : 'the gateway refused it') : null}
+                errorMessage={order.isError ? (failureWords(order.error, 'the gateway refused it')) : null}
                 // `mutateAsync`, not `mutate`: both of `OrderCeremony`'s
                 // ceremonies eventually hand this to `HoldToApprove` (`auto`
                 // straight away, `hold` only once "Yes, order" is pressed),

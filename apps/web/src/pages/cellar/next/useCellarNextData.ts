@@ -54,6 +54,7 @@ import {
   type Knowledge,
   type RegisterId,
 } from './cellar-format';
+import { failureWords } from '../../../lib/unreachable';
 
 /** The read limit the catalogue query asks for; shown to the reader when hit. */
 export const BOOK_READ_LIMIT = 500;
@@ -578,9 +579,7 @@ export function useRegister(register: RegisterId | null) {
     data: q.data ?? null,
     loading: q.isLoading,
     error: q.isError
-      ? q.error instanceof Error
-        ? q.error.message
-        : 'no reason given'
+      ? failureWords(q.error, 'no reason given')
       : null,
     refetch: () => void q.refetch(),
   };
@@ -802,9 +801,7 @@ export function useZones() {
     data: q.data ?? null,
     loading: q.isLoading,
     error: q.isError
-      ? q.error instanceof Error
-        ? q.error.message
-        : 'no reason given'
+      ? failureWords(q.error, 'no reason given')
       : null,
   };
 }
@@ -834,9 +831,7 @@ export function useConfirmZone() {
     confirm: m.mutateAsync,
     saving: m.isPending,
     error: m.isError
-      ? m.error instanceof Error
-        ? m.error.message
-        : 'no reason given'
+      ? failureWords(m.error, 'no reason given')
       : null,
   };
 }
@@ -899,9 +894,7 @@ export function useWholeCellar(
     results.forEach((q, i) => {
       const register = registers[i];
       const error = q.isError
-        ? q.error instanceof Error
-          ? q.error.message
-          : 'no reason given'
+        ? failureWords(q.error, 'no reason given')
         : null;
       if (q.isLoading) loading = true;
       if (error !== null) partial = true;
@@ -984,9 +977,7 @@ export function useRowRecord(label: string | null) {
     data: q.data ?? null,
     loading: q.isLoading || q.isFetching,
     error: q.isError
-      ? q.error instanceof Error
-        ? q.error.message
-        : 'no reason given'
+      ? failureWords(q.error, 'no reason given')
       : null,
   };
 }
@@ -1092,9 +1083,7 @@ export function useCocktailRecipe(cocktailId: string | null) {
     data: q.data ?? null,
     loading: q.isLoading,
     error: q.isError
-      ? q.error instanceof Error
-        ? q.error.message
-        : 'no reason given'
+      ? failureWords(q.error, 'no reason given')
       : null,
   };
 }
@@ -1137,9 +1126,7 @@ export function useCellarRegisters() {
     data: q.data ?? null,
     loading: q.isLoading,
     error: q.isError
-      ? q.error instanceof Error
-        ? q.error.message
-        : 'no reason given'
+      ? failureWords(q.error, 'no reason given')
       : null,
     save,
     refetch: () => void q.refetch(),
@@ -1171,9 +1158,7 @@ export function useUnplacedMenuLines() {
     data: q.data ?? null,
     loading: q.isLoading,
     error: q.isError
-      ? q.error instanceof Error
-        ? q.error.message
-        : 'no reason given'
+      ? failureWords(q.error, 'no reason given')
       : null,
   };
 }
@@ -1234,7 +1219,7 @@ export function useCellarSettings() {
     setBy: null,
     setAt: null,
     readable: false,
-    readError: q.isError ? (q.error instanceof Error ? q.error.message : 'no reason given') : null,
+    readError: q.isError ? (failureWords(q.error, 'no reason given')) : null,
   };
 
   const save = useMutation({
@@ -1274,9 +1259,7 @@ export function useBeverageRegister(register: RegisterId | null) {
     data: q.data ?? null,
     loading: q.isLoading,
     error: q.isError
-      ? q.error instanceof Error
-        ? q.error.message
-        : 'no reason given'
+      ? failureWords(q.error, 'no reason given')
       : null,
   };
 }
@@ -1297,9 +1280,7 @@ export function useCocktailRegister(enabled: boolean) {
     data: q.data ?? null,
     loading: q.isLoading,
     error: q.isError
-      ? q.error instanceof Error
-        ? q.error.message
-        : 'no reason given'
+      ? failureWords(q.error, 'no reason given')
       : null,
   };
 }
@@ -1436,7 +1417,7 @@ export function useCellarNextData() {
     return m;
   }, [bottles]);
 
-  const errorOf = (e: unknown) => (e instanceof Error ? e.message : 'no reason given');
+  const errorOf = (e: unknown) => (failureWords(e, 'no reason given'));
 
   return {
     activeRestaurantId,

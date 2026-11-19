@@ -87,6 +87,7 @@ import { HousePriceCell, addedPriceNote, type AdviceLoad } from "./HousePriceCel
 import { getPriceAdvice } from "../../../services/api/pricing";
 import { ReceivingWorkspace } from "./ReceivingWorkspace";
 import { CellarMapView } from "./CellarMapView";
+import { isUnreachable, UNREACHABLE_WORDS } from "../../../lib/unreachable";
 
 // "Your price" (ADR 0193) sits between Runway and Market: the house's own
 // bottle / glass price, editable, beside the market figure it is not.
@@ -356,7 +357,7 @@ export function InventoryCommandPage() {
       } catch (e: any) {
         toast.error(
           e?.response?.data?.message ||
-            e?.message ||
+            (isUnreachable(e) ? UNREACHABLE_WORDS : e?.message) ||
             "Could not change active status",
         );
       }
