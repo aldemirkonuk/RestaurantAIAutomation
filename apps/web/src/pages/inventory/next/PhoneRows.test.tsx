@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import InventoryTable from './InventoryTable';
+import InventoryTable, { type InventoryTableProps } from './InventoryTable';
 import type { InvRow } from './useInventoryNextData';
 
 vi.mock('../command/HousePriceCell', () => ({
@@ -66,29 +66,30 @@ function setPhone(on: boolean) {
   })) as unknown as typeof window.matchMedia;
 }
 
-const base = {
+const toggle = vi.fn();
+const base: Omit<InventoryTableProps, 'rows'> = {
   openId: null,
-  onToggle: vi.fn(),
+  onToggle: toggle,
   canManage: false,
-  currency: { state: 'recorded', code: 'EUR' } as const,
+  currency: { state: 'recorded', code: 'EUR' },
   zoneName: () => 'Cellar',
   locations: [],
   locationsUnavailable: false,
   providers: [],
   providersError: null,
   restaurantId: 'r1',
-  advice: { status: 'loading' } as const,
+  advice: { status: 'loading' },
   onPriceChanged: vi.fn(),
   grouped: false,
 };
 
-const draw = (rows: InvRow[], over: Record<string, unknown> = {}) =>
-  render(<InventoryTable {...(base as never)} rows={rows} {...over} />);
+const draw = (rows: InvRow[], over: Partial<InventoryTableProps> = {}) =>
+  render(<InventoryTable {...base} rows={rows} {...over} />);
 
 const original = window.matchMedia;
 afterEach(() => {
   window.matchMedia = original;
-  base.onToggle.mockClear();
+  toggle.mockClear();
 });
 
 describe('/inventory on a phone', () => {
@@ -117,8 +118,8 @@ describe('/inventory on a phone', () => {
   it('opens the drawer from the tap and says it is open', () => {
     const { rerender } = draw([row()]);
     fireEvent.click(screen.getByRole('button', { name: /Gravner Ribolla/ }));
-    expect(base.onToggle).toHaveBeenCalledWith('i1');
-    rerender(<InventoryTable {...(base as never)} rows={[row()]} openId="i1" />);
+    expect(toggle).toHaveBeenCalledWith('i1');
+    rerender(<InventoryTable {...base} rows={[row()]} openId="i1" />);
     expect(screen.getByRole('button', { name: /Gravner Ribolla/ }).getAttribute('aria-expanded')).toBe('true');
   });
 
