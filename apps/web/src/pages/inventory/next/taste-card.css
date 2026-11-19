@@ -166,6 +166,18 @@
   font: inherit;
   box-sizing: border-box;
 }
+@media (max-width: 767px), (pointer: coarse) {
+  /* touch: a finger needs 44 px (the chips are already 44) */
+  .tc-more,
+  .tf-level select,
+  .tf-set summary {
+    min-height: 44px;
+  }
+  .tf-set summary {
+    display: flex;
+    align-items: center;
+  }
+}
 @media (max-width: 767px) {
   .tf-grid {
     grid-template-columns: minmax(0, 1fr);
