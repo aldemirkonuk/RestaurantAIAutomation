@@ -69,13 +69,13 @@ beforeEach(() => {
 });
 
 describe('the read-scope line holds its place (finding 2)', () => {
-  it('an owner sees a reserved-height placeholder, 38 px narrow and 20 px wide, until the grants answer', async () => {
+  it('an owner sees a reserved-height placeholder, 39 px narrow and 20 px wide, until the grants answer', async () => {
     let answer: (v: unknown) => void = () => {};
     grantsAnswer = () => new Promise((r) => (answer = r));
     mount();
     const hold = await screen.findByTestId('read-scope-pending');
     expect(hold).toHaveAttribute('aria-hidden', 'true');
-    expect(hold.className).toContain('min-h-[38px]');
+    expect(hold.className).toContain('min-h-[39px]');
     expect(hold.className).toContain('md:min-h-[20px]');
     expect(screen.queryByTestId('read-scope')).toBeNull();
     answer({ data: { success: true, grants: [], unattributed: 0 } });
