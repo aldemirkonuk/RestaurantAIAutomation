@@ -71,7 +71,9 @@ describe('createPageTurn', () => {
     expect(document.getElementById('a')!.style.viewTransitionName).toBe(PAGE_TURN.titleName)
     const settled = t.runUpdate() as Promise<void>
     turn.committed()
-    await settled
+    // Settled by the commit itself, not by the holdMs fallback.
+    const early = await Promise.race([settled.then(() => 'commit'), new Promise((r) => setTimeout(() => r('timer'), 60))])
+    expect(early).toBe('commit')
     expect(document.getElementById('b')!.style.viewTransitionName).toBe(PAGE_TURN.titleName)
     t.release()
     await Promise.resolve()
