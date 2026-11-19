@@ -1994,6 +1994,37 @@ describe('ReportsNext — the sheet keeps its places', () => {
     expect(screen.queryByRole('region', { name: 'Through the till' })).toBeNull();
   });
 
+  it('[REVERT-FAILS] draws the outlines on the house ruling, so the paper below keeps its place (r75)', () => {
+    hook.current = { ...base(), sheetKnown: false, sheetUnread: null };
+    const { container } = paint();
+    const boxes = [...container.querySelectorAll<HTMLElement>('.rp-outline')];
+    expect(boxes).toHaveLength(10);
+    const reading = boxes[0];
+    expect(reading.style.getPropertyValue('--rp-col')).toBe('1 / span 4');
+    expect(reading.style.getPropertyValue('--rp-row')).toBe('1 / span 8');
+    // 8 rows of 34 px and 7 gaps of 14 px: what a stacked cutting stands at.
+    expect(reading.style.getPropertyValue('--rp-h')).toBe('370px');
+  });
+
+  it('[REVERT-FAILS] holds the headline and sparkline room while the reads are in flight (r75)', () => {
+    const b = base();
+    hook.current = {
+      ...b,
+      reading: pending,
+      registers: { ...b.registers, till: pending, week: pending },
+    };
+    const { container } = paint();
+    expect(container.querySelector('.rp-voice')?.hasAttribute('data-pending')).toBe(true);
+    expect(container.querySelector('.rp-sparks')?.hasAttribute('data-pending')).toBe(true);
+  });
+
+  it('lets the room go once the reads have answered (r75)', () => {
+    hook.current = base();
+    const { container } = paint();
+    expect(container.querySelector('.rp-voice')?.hasAttribute('data-pending')).toBe(false);
+    expect(container.querySelector('.rp-sparks[data-pending]')).toBeNull();
+  });
+
   it('says so when the reader’s sheet could not be read, shows the house sheet, and keeps Arrange shut', () => {
     const unread =
       'Your own arrangement of this sheet could not be read (boom), so the house sheet is shown. Arranging is off until it can be read.';

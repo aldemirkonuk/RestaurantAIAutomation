@@ -57,15 +57,35 @@
    so the house sheet is never drawn first and then swapped out. Still, on
    purpose: nothing here is loading in a way the reader can act on. */
 .rp-outlines {
+  container-type: inline-size;
+}
+.rp-outlines__ruling {
+  /* The house sheet's own ruling, so the paper below keeps its place when the
+     sheet arrives (r75): twelve columns of 34 px rows, 14 px apart. */
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-auto-rows: 34px;
   gap: 14px;
 }
 .rp-outline {
-  height: 322px;
+  grid-column: var(--rp-col);
+  grid-row: var(--rp-row);
   border: 1px solid var(--paper-2);
   border-radius: 10px;
   background: var(--paper-1);
+}
+/* Where the sheet is a one-column stack (its box under 768 px, the same
+   criterion `Sheet` uses) each outline stands at its slot's height. */
+@container (max-width: 767px) {
+  .rp-outline {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    height: var(--rp-h);
+  }
+  .rp-outlines__ruling {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: auto;
+  }
 }
 
 /* ── a cutting ─────────────────────────────────────────────────────────────
@@ -1321,4 +1341,14 @@ html[data-mudavym-ground='charcoal'] .rp-tip {
   font-size: 12.5px;
   font-weight: 600;
   color: var(--ink-2);
+}
+
+/* ── r75: the head keeps its room while its reads are in flight ───────────
+   Three lines of the 40 px headline and one 66 px sparkline row are held until
+   the registers answer, so the sheet beneath does not drop when they land. */
+.rp-head__lead .rp-voice[data-pending] {
+  min-height: calc(3 * 1.14em);
+}
+.rp-sparks[data-pending] {
+  min-height: 66px;
 }

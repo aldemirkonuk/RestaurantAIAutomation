@@ -50,7 +50,7 @@
  * header for why the ground lives on the page and not on the gate.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Seal, Wordmark } from '@/components/mudavym';
 import { animate, settle } from '@/lib/mudavym';
@@ -67,7 +67,9 @@ import {
   HOUSE_LAYOUT_IDS,
   HOUSE_LAYOUT_NOTE,
   HOUSE_LAYOUT_TITLE,
+  outlineSlots,
   packSlots,
+  slotHeightPx,
   swapSlot,
   type AnalysisId,
   type Cutting as SheetSlotCutting,
@@ -119,6 +121,9 @@ function Action({
     </button>
   );
 }
+
+/** The house sheet's footprint, drawn as paper while the reader's own is on its way. */
+const OUTLINES = outlineSlots();
 
 export default function ReportsNext({ ground }: ReportsNextProps) {
   // The till window lives in the page link (`?days=90`), so a reload, Back,
@@ -479,6 +484,12 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     (s): s is SparkSeries => s !== null,
   );
 
+  /* While the reads behind the headline are in flight its room is held (r75):
+     the sentence runs to three lines at 40 px and each sparkline is 66 px tall,
+     and a head that grew when they arrived pushed the whole sheet down. */
+  const readingPending = data.reading.loading;
+  const sparksPending = SPARK_IDS.some((id) => data.registers[id]?.loading);
+
   const cuttings: SheetCutting[] = view.cuttings.map((c) => {
     const fit = !editing && FIT_IDS.includes(c.id);
     // A cutting whose honest answer is a sentence folds to a strip while the
@@ -535,9 +546,11 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
             </h1>
             {/* Fraunces speaks only what the ENGINE said — verbatim, or the truth
                 about why it said nothing. This page never writes a sentence. */}
-            <p className="rp-voice">{opening}</p>
-            {sparks.length > 0 && (
-              <div className="rp-sparks">
+            <p className="rp-voice" data-pending={readingPending || undefined}>
+              {opening}
+            </p>
+            {(sparks.length > 0 || sparksPending) && (
+              <div className="rp-sparks" data-pending={sparksPending || undefined}>
                 {sparks.map((s) => (
                   <Spark key={s.id} series={s} />
                 ))}
@@ -650,15 +663,29 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
             restaurant and the sheet fills in.
           </p>
         ) : !data.sheetKnown && !data.sheetUnread ? (
-          /* The reader's own arrangement is still on its way. Plain paper, not
-             the house sheet: drawing the house sheet first and then swapping it
+          /* The reader's own arrangement is still on its way. Plain paper on the
+             house sheet's footprint (r75: its height is held so the paper below
+             does not drop when the sheet lands), not the house sheet: drawing the house sheet first and then swapping it
              for theirs is a layout jump, and arranging it would save it over
              theirs. The reads behind the sheet are already in flight. */
           <div className="rp-outlines" role="status">
             <span className="rp-sr-only">Reading how you arranged this sheet…</span>
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="rp-outline" aria-hidden />
+            <div className="rp-outlines__ruling">
+            {OUTLINES.map(({ id, slot }) => (
+              <div
+                key={id}
+                className="rp-outline"
+                aria-hidden
+                style={
+                  {
+                    '--rp-col': `${slot.x + 1} / span ${slot.w}`,
+                    '--rp-row': `${slot.y + 1} / span ${slot.h}`,
+                    '--rp-h': `${slotHeightPx(slot.h)}px`,
+                  } as CSSProperties
+                }
+              />
             ))}
+            </div>
           </div>
         ) : view.cuttings.length === 0 ? (
           <p role="status" className="rp-note">
