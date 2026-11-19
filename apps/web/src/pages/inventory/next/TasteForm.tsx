@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { addHouseTaste, AXIS_KEYS, type AxisKey, type HouseTasteBody, type TasteData } from '../../../services/api/taste';
-import { AXIS_LABEL, descriptorGroupsFor, ORDINAL_STEPS, TEXTURE_IDS, type Band } from './taste-words';
+import { AXIS_LABEL, DESCRIPTOR_GROUPS, ORDINAL_STEPS, TEXTURE_IDS, type Band } from './taste-words';
 
 /** The axes grouped for the form; aroma sits behind a disclosure so the first view stays short. */
 const GROUPS: Array<{ title: string; keys: AxisKey[]; folded?: boolean }> = [
@@ -22,8 +22,6 @@ const UNCONFIRMED = 'The answer did not come back, so it may or may not have bee
 export interface TasteFormProps {
   restaurantId: string | null;
   itemId: string;
-  /** The good's kind (wine, beer, food ...): it decides which flavour words are offered. */
-  kind?: string | null;
   onSaved: (fresh: TasteData) => void;
   onCancel: () => void;
   /** A save whose outcome is unknown: the card re-reads. */
@@ -50,7 +48,7 @@ export function buildBody(levels: Partial<Record<AxisKey, Band>>, chosen: string
   };
 }
 
-export default function TasteForm({ restaurantId, itemId, kind, onSaved, onCancel, onUnconfirmed }: TasteFormProps) {
+export default function TasteForm({ restaurantId, itemId, onSaved, onCancel, onUnconfirmed }: TasteFormProps) {
   const [levels, setLevels] = useState<Partial<Record<AxisKey, Band>>>({});
   const [chosen, setChosen] = useState<string[]>([]);
   const [note, setNote] = useState('');
@@ -88,7 +86,7 @@ export default function TasteForm({ restaurantId, itemId, kind, onSaved, onCance
       }}
     >
       <h4 className="ivd-used-h">Describe the taste</h4>
-      {descriptorGroupsFor(kind).map((g) => (
+      {DESCRIPTOR_GROUPS.map((g) => (
         <fieldset key={g.title} className="tf-set">
           <legend>{g.title}</legend>
           <div className="tf-chips">
