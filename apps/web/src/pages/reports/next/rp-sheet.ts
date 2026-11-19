@@ -162,6 +162,35 @@ export const SHEET_COLS = 12;
 export const SHEET_ROW_HEIGHT = 34;
 export const SHEET_MARGIN: [number, number] = [14, 14];
 
+/** A cutting's height in px: the rows its slot spans, as the grid would size it. */
+export function slotHeightPx(h: number): number {
+  return h * SHEET_ROW_HEIGHT + Math.max(0, h - 1) * SHEET_MARGIN[1];
+}
+
+/**
+ * Where the house sheet's cuttings lie once vertically compacted, for the
+ * outlines drawn while the reader's own sheet is still on its way. The real
+ * grid compacts the gaps the three held-off cuttings leave, so the outlines
+ * must too, or the paper below them (the exports shelf, the footer) lands
+ * somewhere else when the sheet arrives. Pure: no cutting here asserts a figure.
+ */
+export function outlineSlots(): { id: AnalysisId; slot: Slot }[] {
+  const placed: { id: AnalysisId; slot: Slot }[] = [];
+  const order = [...DEFAULT_ON].sort(
+    (a, b) => DEFAULT_SLOTS[a].y - DEFAULT_SLOTS[b].y || DEFAULT_SLOTS[a].x - DEFAULT_SLOTS[b].x,
+  );
+  for (const id of order) {
+    const s = DEFAULT_SLOTS[id];
+    let y = 0;
+    for (const p of placed) {
+      const overlaps = p.slot.x < s.x + s.w && s.x < p.slot.x + p.slot.w;
+      if (overlaps) y = Math.max(y, p.slot.y + p.slot.h);
+    }
+    placed.push({ id, slot: { ...s, y } });
+  }
+  return DEFAULT_ON.map((id) => placed.find((p) => p.id === id)!);
+}
+
 /**
  * A cutting's floor. Named here rather than inline in `Sheet.tsx` because the
  * keyboard path (`rp-arrange.ts`) has to enforce the same one — the pointer

@@ -1165,6 +1165,13 @@ describe('ReportsNext — honesty', () => {
     expect(within(desk).getByText('Open the document archive')).toBeInTheDocument();
   });
 
+  it('holds the sheet footprint, not the no-restaurant note, while sign-in is settling', () => {
+    hook.current = { ...base(), restaurantId: null, housePending: true };
+    paint();
+    expect(screen.queryByText(/No restaurant is active yet/)).not.toBeInTheDocument();
+    expect(document.querySelector('.rp-outlines')).not.toBeNull();
+  });
+
   it('admits when no restaurant is active instead of shimmering forever', () => {
     hook.current = { ...base(), restaurantId: null };
     paint();
@@ -1992,6 +1999,47 @@ describe('ReportsNext — the sheet keeps its places', () => {
     // The house sheet is NOT drawn first and then swapped for the reader's.
     expect(container.querySelector('.rp-sheet')).toBeNull();
     expect(screen.queryByRole('region', { name: 'Through the till' })).toBeNull();
+  });
+
+  it('[REVERT-FAILS] draws the outlines on the house ruling, so the paper below keeps its place (r75)', () => {
+    hook.current = { ...base(), sheetKnown: false, sheetUnread: null };
+    const { container } = paint();
+    const boxes = [...container.querySelectorAll<HTMLElement>('.rp-outline')];
+    expect(boxes).toHaveLength(10);
+    const reading = boxes[0];
+    expect(reading.style.getPropertyValue('--rp-col')).toBe('1 / span 4');
+    expect(reading.style.getPropertyValue('--rp-row')).toBe('1 / span 8');
+    // 8 rows of 34 px and 7 gaps of 14 px: what a stacked cutting stands at.
+    expect(reading.style.getPropertyValue('--rp-h')).toBe('370px');
+  });
+
+  it('[REVERT-FAILS] holds the headline and sparkline room while the reads are in flight (r75)', () => {
+    const b = base();
+    hook.current = {
+      ...b,
+      reading: pending,
+      registers: { ...b.registers, till: pending, week: pending },
+    };
+    const { container } = paint();
+    expect(container.querySelector('.rp-voice')?.hasAttribute('data-pending')).toBe(true);
+    expect(container.querySelector('.rp-sparks')?.hasAttribute('data-pending')).toBe(true);
+  });
+
+  const reportsCss = readFileSync(resolve(__dirname, 'reports-next.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  it('[REVERT-FAILS] holds the phone-sized headline and the two stacked sparklines, not the desktop room (r76)', () => {
+    const phone = /@media \(max-width: 480px\) \{([\s\S]*?)\n\}\n/.exec(
+      reportsCss.slice(reportsCss.indexOf('.rp-sparks[data-pending]')),
+    )?.[1];
+    expect(phone).toBeDefined();
+    expect(phone).toMatch(/\.rp-head__lead \.rp-voice\[data-pending\]\s*\{\s*min-height: calc\(7 \* 1\.14em\)/);
+    expect(phone).toMatch(/\.rp-sparks\[data-pending\]\s*\{\s*min-height: 145px/);
+  });
+
+  it('lets the room go once the reads have answered (r75)', () => {
+    hook.current = base();
+    const { container } = paint();
+    expect(container.querySelector('.rp-voice')?.hasAttribute('data-pending')).toBe(false);
+    expect(container.querySelector('.rp-sparks[data-pending]')).toBeNull();
   });
 
   it('says so when the reader’s sheet could not be read, shows the house sheet, and keeps Arrange shut', () => {
