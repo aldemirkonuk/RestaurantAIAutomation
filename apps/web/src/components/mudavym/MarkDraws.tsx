@@ -1,5 +1,9 @@
 import { useEffect, useRef } from 'react'
-import { animate, settle, stamp, turn } from '../../lib/mudavym/motion'
+import { animate, settle, stamp, type MotionToken } from '../../lib/mudavym/motion'
+
+/** The name arrives whole, in one 280 ms fade (a clip wipe showed half a glyph
+ *  mid-way, and at 375 px read as a glitch). */
+export const nameArrives: MotionToken = { easing: 'cubic-bezier(0.16, 1, 0.3, 1)', ms: 280 }
 
 /**
  * "The mark draws" — the logo's signature motion, from the founder's own
@@ -10,9 +14,10 @@ import { animate, settle, stamp, turn } from '../../lib/mudavym/motion'
  * The wordmark is a name, a full stop and a double rule. In bookkeeping a
  * double rule under a figure means the account is ruled off (sketch 087
  * notes, "The find that unifies the brand"), so the mark arrives in the order
- * a clerk would write it: the name is written left to right (`turn`), the
- * full stop is struck (`stamp`, from 300ms), and the two rules are drawn under
- * it (`settle`, from 340ms and 400ms). The timings are the curation's own.
+ * a clerk would write it: the name arrives whole in one 280 ms fade (r58: it used to be a
+ * left-to-right clip wipe, which showed half a glyph mid-way), the full stop is
+ * struck (`stamp`, from 200ms), and the two rules are drawn under it (`settle`,
+ * from 240ms and 300ms).
  *
  * `play` false renders the end state with no motion; reduced motion collapses
  * every step to its end state through `animate()` itself. The component never
@@ -39,10 +44,10 @@ export function MarkDraws({ size = 26, play = true, delay = 0, className }: Mark
     const stop = stopRef.current
     const [r1, r2] = ruleRefs.current
     if (!name || !stop || !r1 || !r2) return
-    animate(name, [{ clipPath: 'inset(0 100% 0 0)' }, { clipPath: 'inset(0 0 0 0)' }], turn, { delay })
-    animate(stop, [{ opacity: 0, transform: 'scale(.4)' }, { opacity: 1, transform: 'none' }], stamp, { delay: delay + 300 })
-    animate(r1, [{ transform: 'scaleX(0)' }, { transform: 'none' }], settle, { delay: delay + 340 })
-    animate(r2, [{ transform: 'scaleX(0)' }, { transform: 'none' }], settle, { delay: delay + 400 })
+    animate(name, [{ opacity: 0, transform: 'translateY(3px)' }, { opacity: 1, transform: 'none' }], nameArrives, { delay })
+    animate(stop, [{ opacity: 0, transform: 'scale(.4)' }, { opacity: 1, transform: 'none' }], stamp, { delay: delay + 200 })
+    animate(r1, [{ transform: 'scaleX(0)' }, { transform: 'none' }], settle, { delay: delay + 240 })
+    animate(r2, [{ transform: 'scaleX(0)' }, { transform: 'none' }], settle, { delay: delay + 300 })
     // Mount-only by design: the mark draws once, when it first appears.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

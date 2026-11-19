@@ -4,12 +4,9 @@ import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { START } from './landing/doors'
 import { useAuth, LoginError } from '../contexts/AuthContext'
 import { Button } from '../components/ui'
-import { Mail, Lock, AlertCircle, ArrowRight, KeyRound, Fingerprint } from 'lucide-react'
-import { motion } from 'framer-motion'
-import { AuthShell, AuthCard } from '../components/brand/AuthShell'
+import { Mail, Lock, ArrowRight, KeyRound, Fingerprint } from 'lucide-react'
 import { EndpaperShell } from '../components/brand/EndpaperShell'
 import '../components/brand/auth-house.css'
-import { usePublicDesign } from '../lib/mudavym/publicDesign'
 import { GoogleSignInButton, type GoogleSignInHandle } from '../components/auth/GoogleSignInButton'
 import {
   passkeysSupported,
@@ -24,31 +21,13 @@ import {
   type SignInMethodsResult,
 } from '../lib/identityProviders'
 
-const fieldClass =
-  'block w-full pl-11 pr-3 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 shadow-sm transition-all focus:outline-none focus:border-wine-600 focus:ring-4 focus:ring-wine-600/10 disabled:opacity-60'
-
 /*
- * THE HOUSE PATH (ADR 0133 §Decision 1). `usePublicDesign()` is the public
- * door's one switch; off, every className below is today's string, untouched.
- * On, the SAME elements take token colours and nothing else — the founder
- * chose "improve today's pages in place, no redraw" (ADR 0143 §1), and
- * `pages/__tests__/authPages.publicDesign.test.tsx` fails if anything but a
- * colour, shadow, ring or opacity class differs between the two.
- *
- * The rules each swap follows, so a reader can check one without the table:
- *   - grays by value: gray-900/800 -> ink-1, 700 -> ink-2, 600 -> ink-4,
- *     500/400 -> ink-3; gray-50/100/200 fills and hairlines -> paper-0/1/2.
- *   - the wine scale is the seal: 600 -> seal, 700/800 -> seal-deep,
- *     100 -> seal-tint; text on a seal fill is paper-0 (sheet.css .mdv-btn--seal).
- *   - the card is a plate (paper-1) on the ground (paper-0); a field or an
- *     inset box inside it is paper-0 again.
- *   - hand-drawn focus rings (`focus:ring-*`, `focus:border-*`) are dropped:
- *     the seal outline comes from auth-house.css for every control at once.
- *   - status hues (red, amber, green) have NO token in mudavym.css, so they
- *     keep today's classes. Inside a light status plate, the ink stays too.
- *   - `!` on a <p>/<h*> colour: globals.css colours bare `p` and `h1`-`h4`
- *     under `.dark` at (0,1,1), which outranks a lone utility; without it
- *     every paragraph on the charcoal ground reads slate, not ink.
+ * The one look (r58: the legacy class fork is gone). Every colour here is a
+ * token from mudavym.css, so both grounds resolve with the rest of the book:
+ * grays are ink/paper, the wine scale is the seal, status hues (red, amber)
+ * keep their classes because the house stylesheet has no status token, and
+ * hand-drawn focus rings are dropped for the seal outline in auth-house.css.
+ * `!` on a <p>/<h*> colour outranks globals.css's `.dark p` at (0,1,1).
  */
 const houseFieldClass =
   'block w-full pl-11 pr-3 py-3 rounded-xl border border-paper-2 bg-paper-0 text-inkm-1 placeholder:text-inkm-3 transition-all focus:outline-none disabled:opacity-60'
@@ -117,7 +96,6 @@ export function Login() {
   const location = useLocation()
   const { login, error: authError, clearError, resolveSignInMethods, signInWithSession } = useAuth()
   const googleRef = useRef<GoogleSignInHandle>(null)
-  const on = usePublicDesign()
 
   const searchParams = new URLSearchParams(location.search)
   const redirectQuery = searchParams.get('redirect')
@@ -297,7 +275,7 @@ export function Login() {
   // shell and today's card, and only the chrome around it branches below.
   const content = (
     <>
-      {(error || authError) && on && (() => {
+      {(error || authError) && (() => {
         const note = signInNote(refusal, (error || authError) as string)
         return (
           <div role="alert" className={note.pause ? 'mdv-ep-note border-amber-600' : 'mdv-ep-note border-red-700'}>
@@ -306,30 +284,18 @@ export function Login() {
           </div>
         )
       })()}
-      {(error || authError) && !on && (
-        <motion.div
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3"
-        >
-          <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" strokeWidth={1.75} />
-          <div>
-            <p className={on ? 'text-sm font-medium !text-red-900' : 'text-sm font-medium text-red-900'}>Login Failed</p>
-            <p className={on ? 'text-sm !text-red-700' : 'text-sm text-red-700'}>{error || authError}</p>
-          </div>
-        </motion.div>
-      )}
+      
 
       {/* ── Step 1: who are you? ─────────────────────────────────── */}
       {!atMethodStep && (
           <form onSubmit={handleContinue} className="space-y-5">
             <div>
-              <label htmlFor="email" className={on ? 'block text-sm font-medium text-inkm-2 mb-2' : 'block text-sm font-medium text-gray-700 mb-2'}>
+              <label htmlFor="email" className={'block text-sm font-medium text-inkm-2 mb-2'}>
                 Email Address
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                  <Mail className={on ? 'h-[18px] w-[18px] text-seal' : 'h-[18px] w-[18px] text-wine-400'} strokeWidth={1.75} />
+                  <Mail className={'h-[18px] w-[18px] text-seal'} strokeWidth={1.75} />
                 </div>
                 <input
                   id="email"
@@ -339,17 +305,17 @@ export function Login() {
                   autoComplete="username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className={on ? houseFieldClass : fieldClass}
+                  className={houseFieldClass}
                   placeholder="you@restaurant.com"
                   disabled={resolving}
                 />
               </div>
             </div>
 
-            <Button type="submit" variant="default" size="lg" className={on ? `w-full ${HOUSE_BUTTON}` : 'w-full'} disabled={resolving}>
+            <Button type="submit" variant="default" size="lg" className={`w-full ${HOUSE_BUTTON}`} disabled={resolving}>
               {resolving ? (
                 <span className="flex items-center justify-center gap-2">
-                  <span className={on ? 'w-4 h-4 border-2 border-paper-0 opacity-80 border-t-transparent rounded-full animate-spin' : 'w-4 h-4 border-2 border-white/80 border-t-transparent rounded-full animate-spin'} />
+                  <span className={'w-4 h-4 border-2 border-paper-0 opacity-80 border-t-transparent rounded-full animate-spin'} />
                   Checking...
                 </span>
               ) : (
@@ -371,12 +337,10 @@ export function Login() {
             onClick={() => void handlePasskey()}
             disabled={passkeyBusy || resolving}
             className={
-              on
-                ? 'mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-paper-2 bg-paper-0 px-4 py-2 text-sm font-medium text-inkm-1 hover:bg-paper-1 disabled:opacity-60'
-                : 'mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-60'
+              'mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-paper-2 bg-paper-0 px-4 py-2 text-sm font-medium text-inkm-1 hover:bg-paper-1 disabled:opacity-60'
             }
           >
-            <Fingerprint className={on ? 'h-[18px] w-[18px] text-seal' : 'h-[18px] w-[18px] text-wine-600'} strokeWidth={1.75} />
+            <Fingerprint className={'h-[18px] w-[18px] text-seal'} strokeWidth={1.75} />
             {passkeyBusy ? 'Waiting for your device…' : 'Sign in with a passkey'}
           </button>
         )}
@@ -384,8 +348,8 @@ export function Login() {
         {/* ── Step 2: the methods this identity actually has ───────── */}
         {atMethodStep && (
           <div className="space-y-5">
-            <div className={on ? 'flex items-center justify-between gap-3 rounded-[3px] bg-paper-1 px-4 py-3' : 'flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3'}>
-              <span className={on ? 'truncate text-sm font-medium text-inkm-1' : 'truncate text-sm font-medium text-gray-800'}>{identity?.email}</span>
+            <div className={'flex items-center justify-between gap-3 rounded-[3px] bg-paper-1 px-4 py-3'}>
+              <span className={'truncate text-sm font-medium text-inkm-1'}>{identity?.email}</span>
               <button
                 type="button"
                 onClick={() => {
@@ -397,7 +361,7 @@ export function Login() {
                   setRefusal(null)
                   clearError()
                 }}
-                className={on ? 'shrink-0 text-sm font-medium text-seal hover:text-seal-deep' : 'shrink-0 text-sm font-medium text-wine-600 hover:text-wine-700'}
+                className={'shrink-0 text-sm font-medium text-seal hover:text-seal-deep'}
               >
                 Change
               </button>
@@ -411,10 +375,10 @@ export function Login() {
                 <div className="flex items-start gap-3">
                   <KeyRound className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" strokeWidth={1.75} />
                   <div className="space-y-2">
-                    <p className={on ? 'text-sm font-medium !text-amber-900' : 'text-sm font-medium text-amber-900'}>
+                    <p className={'text-sm font-medium !text-amber-900'}>
                       This account has no sign-in method set up
                     </p>
-                    <p className={on ? 'text-sm !text-amber-800' : 'text-sm text-amber-800'}>
+                    <p className={'text-sm !text-amber-800'}>
                       There is no password on it and no connected sign-in provider. Email yourself a
                       sign-in code below, or set a password.
                     </p>
@@ -425,9 +389,7 @@ export function Login() {
                     <Link
                       to={setPasswordHref}
                       className={
-                        on
-                          ? 'inline-block text-sm font-semibold text-wine-800 underline hover:text-wine-900'
-                          : 'inline-block text-sm font-semibold text-wine-700 underline hover:text-wine-800'
+                        'inline-block text-sm font-semibold text-wine-800 underline hover:text-wine-900'
                       }
                     >
                       Set a password
@@ -439,14 +401,14 @@ export function Login() {
 
             {codeSentTo && (
               <form onSubmit={handleCode} className="space-y-5">
-                <p className={on ? 'text-sm !text-inkm-4' : 'text-sm text-gray-600'}>{codeSentTo.notice}</p>
+                <p className={'text-sm !text-inkm-4'}>{codeSentTo.notice}</p>
                 <div>
-                  <label htmlFor="sign-in-code" className={on ? 'block text-sm font-medium text-inkm-2 mb-2' : 'block text-sm font-medium text-gray-700 mb-2'}>
+                  <label htmlFor="sign-in-code" className={'block text-sm font-medium text-inkm-2 mb-2'}>
                     Sign-in code
                   </label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                      <KeyRound className={on ? 'h-[18px] w-[18px] text-seal' : 'h-[18px] w-[18px] text-wine-400'} strokeWidth={1.75} />
+                      <KeyRound className={'h-[18px] w-[18px] text-seal'} strokeWidth={1.75} />
                     </div>
                     <input
                       id="sign-in-code"
@@ -458,7 +420,7 @@ export function Login() {
                       maxLength={7}
                       value={code}
                       onChange={(e) => setCode(e.target.value)}
-                      className={on ? houseFieldClass : fieldClass}
+                      className={houseFieldClass}
                       placeholder="123456"
                       disabled={codeBusy}
                     />
@@ -468,7 +430,7 @@ export function Login() {
                   type="submit"
                   variant="default"
                   size="lg"
-                  className={on ? `w-full ${HOUSE_BUTTON}` : 'w-full'}
+                  className={`w-full ${HOUSE_BUTTON}`}
                   disabled={codeBusy || code.replace(/\s+/g, '').length !== 6}
                 >
                   {codeBusy ? 'Checking…' : 'Sign In'}
@@ -478,7 +440,7 @@ export function Login() {
                     type="button"
                     onClick={() => void sendCode(codeSentTo.email)}
                     disabled={codeBusy}
-                    className={on ? 'text-sm font-medium text-seal hover:text-seal-deep' : 'text-sm font-medium text-wine-600 hover:text-wine-700'}
+                    className={'text-sm font-medium text-seal hover:text-seal-deep'}
                   >
                     Send a new code
                   </button>
@@ -489,7 +451,7 @@ export function Login() {
                       setCode('')
                       resetNotes()
                     }}
-                    className={on ? 'text-sm font-medium text-seal hover:text-seal-deep' : 'text-sm font-medium text-wine-600 hover:text-wine-700'}
+                    className={'text-sm font-medium text-seal hover:text-seal-deep'}
                   >
                     Sign in another way
                   </button>
@@ -500,12 +462,12 @@ export function Login() {
             {!codeSentTo && showPassword && (
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
-                  <label htmlFor="password" className={on ? 'block text-sm font-medium text-inkm-2 mb-2' : 'block text-sm font-medium text-gray-700 mb-2'}>
+                  <label htmlFor="password" className={'block text-sm font-medium text-inkm-2 mb-2'}>
                     Password
                   </label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                      <Lock className={on ? 'h-[18px] w-[18px] text-seal' : 'h-[18px] w-[18px] text-wine-400'} strokeWidth={1.75} />
+                      <Lock className={'h-[18px] w-[18px] text-seal'} strokeWidth={1.75} />
                     </div>
                     <input
                       id="password"
@@ -515,7 +477,7 @@ export function Login() {
                       autoComplete="current-password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className={on ? (refusal === 'mismatch' ? houseFieldClass.replace('border-paper-2', 'border-red-700') : houseFieldClass) : fieldClass}
+                      className={(refusal === 'mismatch' ? houseFieldClass.replace('border-paper-2', 'border-red-700') : houseFieldClass)}
                       placeholder="••••••••"
                       disabled={loading}
                     />
@@ -537,15 +499,15 @@ export function Login() {
                   enumeration-safe even though this page reveals methods (ADR 0024).
                 */}
                 <div className="flex justify-end -mt-2">
-                  <Link to={setPasswordHref} className={on ? 'text-sm font-medium text-seal hover:text-seal-deep' : 'text-sm font-medium text-wine-600 hover:text-wine-700'}>
+                  <Link to={setPasswordHref} className={'text-sm font-medium text-seal hover:text-seal-deep'}>
                     Forgot password?
                   </Link>
                 </div>
 
-                <Button type="submit" variant="default" size="lg" className={on ? `w-full ${HOUSE_BUTTON}` : 'w-full'} disabled={loading}>
+                <Button type="submit" variant="default" size="lg" className={`w-full ${HOUSE_BUTTON}`} disabled={loading}>
                   {loading ? (
                     <span className="flex items-center justify-center gap-2">
-                      <span className={on ? 'w-4 h-4 border-2 border-paper-0 opacity-80 border-t-transparent rounded-full animate-spin' : 'w-4 h-4 border-2 border-white/80 border-t-transparent rounded-full animate-spin'} />
+                      <span className={'w-4 h-4 border-2 border-paper-0 opacity-80 border-t-transparent rounded-full animate-spin'} />
                       Signing in...
                     </span>
                   ) : (
@@ -557,9 +519,9 @@ export function Login() {
 
             {!codeSentTo && showPassword && showGoogle && (
               <div className="flex items-center gap-3" aria-hidden>
-                <span className={on ? 'h-px flex-1 bg-seal-tint' : 'h-px flex-1 bg-wine-100'} />
-                <span className={on ? 'text-xs font-medium uppercase tracking-wide text-inkm-3' : 'text-xs font-medium uppercase tracking-wide text-gray-400'}>or</span>
-                <span className={on ? 'h-px flex-1 bg-seal-tint' : 'h-px flex-1 bg-wine-100'} />
+                <span className={'h-px flex-1 bg-seal-tint'} />
+                <span className={'text-xs font-medium uppercase tracking-wide text-inkm-3'}>or</span>
+                <span className={'h-px flex-1 bg-seal-tint'} />
               </div>
             )}
 
@@ -572,9 +534,7 @@ export function Login() {
                   <div
                     key={p.id}
                     className={
-                      on
-                        ? 'flex min-h-11 w-full items-center justify-center rounded-lg border border-dashed border-paper-2 px-4 py-2 text-center text-[13px] text-inkm-3'
-                        : 'flex min-h-11 w-full items-center justify-center rounded-lg border border-dashed border-gray-200 px-4 py-2 text-center text-[13px] text-gray-400'
+                      'flex min-h-11 w-full items-center justify-center rounded-lg border border-dashed border-paper-2 px-4 py-2 text-center text-[13px] text-inkm-3'
                     }
                     title={p.disabledReason ?? undefined}
                   >
@@ -585,17 +545,17 @@ export function Login() {
             )}
 
             {unrenderable.length > 0 && (
-              <p className={on ? 'text-center text-xs !text-inkm-3' : 'text-center text-xs text-gray-400'}>
+              <p className={'text-center text-xs !text-inkm-3'}>
                 {unrenderable.map((p) => p.label).join(', ')} sign-in is linked to this account but has
                 no button on this page yet.
               </p>
             )}
 
             {nothingWorks && (
-              <div className={on ? 'rounded-xl border border-paper-2 bg-paper-0 p-4 text-sm text-inkm-4' : 'rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600'}>
+              <div className={'rounded-xl border border-paper-2 bg-paper-0 p-4 text-sm text-inkm-4'}>
                 No password or sign-in provider on this account works from this page yet. Email yourself a
                 sign-in code below, or{' '}
-                <Link to={setPasswordHref} className={on ? 'font-semibold text-seal-deep underline' : 'font-semibold text-wine-700 underline'}>
+                <Link to={setPasswordHref} className={'font-semibold text-seal-deep underline'}>
                   set a password
                 </Link>
                 .
@@ -611,12 +571,10 @@ export function Login() {
                 onClick={() => void sendCode(identity?.email ?? email)}
                 disabled={codeBusy || loading}
                 className={
-                  on
-                    ? 'flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-paper-2 bg-paper-0 px-4 py-2 text-sm font-medium text-inkm-1 hover:bg-paper-1 disabled:opacity-60'
-                    : 'flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-60'
+                  'flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-paper-2 bg-paper-0 px-4 py-2 text-sm font-medium text-inkm-1 hover:bg-paper-1 disabled:opacity-60'
                 }
               >
-                <Mail className={on ? 'h-[18px] w-[18px] text-seal' : 'h-[18px] w-[18px] text-wine-600'} strokeWidth={1.75} />
+                <Mail className={'h-[18px] w-[18px] text-seal'} strokeWidth={1.75} />
                 {codeBusy ? 'Sending…' : 'Email me a sign-in code'}
               </button>
             )}
@@ -634,7 +592,7 @@ export function Login() {
         {/* House path: "Continue with Google" also sits on the first page,
             under the address (founder, 2026-09-19). A Google account with no
             Mudavym account is refused by the gateway exactly as before. */}
-        {on && !atMethodStep && (
+        {!atMethodStep && (
           <div className="mt-5 flex items-center gap-3" aria-hidden>
             <span className="h-px flex-1 bg-paper-2" />
             <span className="text-xs font-medium uppercase tracking-wide text-inkm-3">or</span>
@@ -643,11 +601,11 @@ export function Login() {
         )}
         <div
           className={
-            (atMethodStep ? showGoogle : on)
+            (atMethodStep ? showGoogle : true)
               ? 'mt-5'
               : 'pointer-events-none absolute h-0 w-0 overflow-hidden opacity-0'
           }
-          aria-hidden={!(atMethodStep ? showGoogle : on)}
+          aria-hidden={!(atMethodStep ? showGoogle : true)}
         >
           <GoogleSignInButton
             ref={googleRef}
@@ -664,14 +622,12 @@ export function Login() {
         </div>
 
         <div className="mt-6 text-center">
-          <p className={on ? 'text-sm !text-inkm-4' : 'text-sm text-gray-600'}>
+          <p className={'text-sm !text-inkm-4'}>
             Don&apos;t have an account?{' '}
             <Link
               to={START}
               className={
-                on
-                  ? 'font-semibold text-seal hover:text-seal-deep transition-colors'
-                  : 'font-semibold text-wine-600 hover:text-wine-700 transition-colors'
+                'font-semibold text-seal hover:text-seal-deep transition-colors'
               }
             >
               Create one now
@@ -683,7 +639,7 @@ export function Login() {
 
   // sketch 118 · Direction B (the endpaper), the founder's 2026-09-19 pick —
   // ADR 0149 row 35.
-  return on ? (
+  return (
     <EndpaperShell
       kicker="The house"
       houseLine="Kept, page by page."
@@ -696,9 +652,5 @@ export function Login() {
       <p className="mdv-ep-leaf-lede">Your house keeps its book here.</p>
       {content}
     </EndpaperShell>
-  ) : (
-    <AuthShell title="Mudavym" subtitle="Sign in to manage your wine inventory">
-      <AuthCard>{content}</AuthCard>
-    </AuthShell>
   )
 }

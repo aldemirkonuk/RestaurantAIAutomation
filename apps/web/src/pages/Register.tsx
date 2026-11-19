@@ -17,28 +17,16 @@ import { PlacesAutocomplete, type PlaceResult } from '../components/ui/PlacesAut
 import { CountryCombobox } from '../components/ui/CountryCombobox'
 import { CuisinePicker } from '../components/ui/CuisinePicker'
 import { apiClient } from '../services/api/client'
-import { usePublicDesign } from '../lib/mudavym/publicDesign'
 import { GoogleSignInButton } from '../components/auth/GoogleSignInButton'
 import '../components/brand/auth-house.css'
 
 /*
- * THE HOUSE PATH (ADR 0133 §Decision 1). `usePublicDesign()` is the public
- * door's one switch; off, every className in this file is today's string,
- * untouched. On, the SAME elements take token colours and nothing else — the
- * founder chose "improve today's pages in place, no redraw" (ADR 0143 §1), and
- * `pages/__tests__/authPages.publicDesign.test.tsx` fails if anything but a
- * colour, shadow, ring or opacity class differs between the two.
- *
- * The swaps follow the rules written out in Login.tsx (grays by value to ink
- * and paper, the wine scale to the seal, card = paper-1 plate on the paper-0
- * ground with paper-0 fields inside, no hand-drawn focus rings, status hues
- * unchanged because the house stylesheet has no status token, `!` on <p>/<h*> colours
- * to outrank globals.css's `.dark p`). Two more that only this page needs:
- *   - white-alpha on the seal fill (`bg-white/20`, `text-white/75`) becomes
- *     the same alpha of `--paper-0`, the ink that sits on the seal, through
- *     `color-mix` — var-backed colours cannot take a Tailwind `/20` modifier.
- *   - literal İznik shadows keep their geometry and take `--seal-ring` (0.32,
- *     today 0.30/0.35) or `--seal-tint` (0.10, today 0.18/0.08) as colour.
+ * The one look (r58: the legacy class fork is gone); the rules each swap
+ * follows are written out in Login.tsx. Two more that only this page needs:
+ *   - white-alpha on the seal fill is the same
+ *     alpha of `--paper-0`, the ink that sits on the seal, through `color-mix`.
+ *   - literal İznik shadows keep their geometry and take `--seal-ring` or
+ *     `--seal-tint` as colour.
  */
 /** The shared Button merges `className` last (tailwind-merge), so this replaces
  *  its wine fill and its literal-rgba shadow rather than stacking on them. */
@@ -75,7 +63,6 @@ export function Register() {
   // account is unverified.
   const inviteMailSecret = readInviteMailSecret(useLocation().hash)
   const { registerAccount, registerRestaurant, joinViaInvite, error: authError } = useAuth()
-  const on = usePublicDesign()
 
   // Read the address before the first paint. The two-card chooser is retired
   // (ADR 0344): RegisterDoor sends a bare /register to the landing page, so
@@ -270,49 +257,23 @@ export function Register() {
       <button
         type="button"
         onClick={() => navigate('/register')}
-        className={on ? 'flex items-center gap-1 text-sm text-inkm-3 hover:text-inkm-4 mb-6' : 'flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-6'}
+        className={'flex items-center gap-1 text-sm text-inkm-3 hover:text-inkm-4 mb-6'}
       >
         <ArrowLeft className="w-4 h-4" /> Back
       </button>
 
       {/* Step indicator: two dots connected by a line. The endpaper's folio
           carries the step on the house path ("Join · 1 of 2"). */}
-      {!on && (
-      <div className="flex items-start mb-7">
-        {/* Step 1 — active */}
-        <div className="flex flex-col items-center gap-1">
-          <div className={on ? 'w-7 h-7 rounded-full bg-seal text-paper-0 text-[0.7rem] font-bold flex items-center justify-center shadow-[0_2px_8px_var(--seal-ring)]' : 'w-7 h-7 rounded-full bg-wine-600 text-white text-[0.7rem] font-bold flex items-center justify-center shadow-[0_2px_8px_rgba(26,94,107,0.3)]'}>
-            1
-          </div>
-          <span className={on ? 'text-[0.68rem] font-semibold text-seal' : 'text-[0.68rem] font-semibold text-wine-600'}>Code</span>
-        </div>
-        {/* Connector line */}
-        <div className={on ? 'flex-1 h-[2px] bg-paper-2 mt-[13px] mx-1' : 'flex-1 h-[2px] bg-gray-200 mt-[13px] mx-1'} />
-        {/* Step 2 — pending */}
-        <div className="flex flex-col items-center gap-1">
-          <div className={on ? 'w-7 h-7 rounded-full bg-paper-1 border-2 border-paper-2 text-inkm-3 text-[0.7rem] font-bold flex items-center justify-center' : 'w-7 h-7 rounded-full bg-gray-100 border-2 border-gray-200 text-gray-400 text-[0.7rem] font-bold flex items-center justify-center'}>
-            2
-          </div>
-          <span className={on ? 'text-[0.68rem] font-semibold text-inkm-3' : 'text-[0.68rem] font-semibold text-gray-400'}>Account</span>
-        </div>
-      </div>
-      )}
+      
 
       {/* Heading — on the house path the leaf's own title says this. */}
-      {!on && (
-      <div className="mb-[22px]">
-        <h2 className="font-display text-[1.4rem] font-extrabold text-gray-900 tracking-tight mb-[5px]">
-          Enter your invite code
-        </h2>
-        <p className="text-[0.875rem] text-gray-500">8-character code — check your email or Slack</p>
-      </div>
-      )}
+      
 
       {/* Code input */}
       <div className="mb-[14px]">
-        <div className={on ? 'mdv-ep-caps flex justify-between items-center mb-[7px]' : 'flex justify-between items-center text-[0.8rem] font-semibold text-gray-900 mb-[7px]'}>
+        <div className={'mdv-ep-caps flex justify-between items-center mb-[7px]'}>
           Invite Code
-          <span className={on ? 'font-normal text-inkm-3 text-[0.74rem]' : 'font-normal text-gray-400 text-[0.74rem]'}>Auto-validates when complete</span>
+          <span className={'font-normal text-inkm-3 text-[0.74rem]'}>Auto-validates when complete</span>
         </div>
         <div className="relative">
           <input
@@ -328,18 +289,12 @@ export function Register() {
               // House path: the status border stays (no status token), and
               // the three hand-drawn focus halos go — the seal outline comes
               // from auth-house.css.
-              ...(on ? ['mdv-ep-code'] : []),
+              ...(['mdv-ep-code']),
               invitePreview?.valid === true
-                ? on
-                  ? 'border-seal'
-                  : 'border-green-500 focus:border-green-500 shadow-[0_0_0_3px_rgba(5,150,105,0.08)]'
+                ? 'border-seal'
                 : invitePreview?.valid === false
-                  ? on
-                    ? 'border-red-400'
-                    : 'border-red-400 focus:border-red-400 shadow-[0_0_0_3px_rgba(220,38,38,0.08)]'
-                  : on
-                    ? 'border-paper-2'
-                    : 'border-gray-200 focus:border-wine-600 focus:shadow-[0_0_0_3px_rgba(26,94,107,0.08)]',
+                  ? 'border-red-400'
+                  : 'border-paper-2',
             ].join(' ')}
             placeholder="········"
             maxLength={8}
@@ -350,11 +305,11 @@ export function Register() {
           {/* Status icon */}
           {validating && (
             <div className="absolute right-4 top-1/2 -translate-y-1/2">
-              <Loader2 className={on ? 'w-5 h-5 text-inkm-3 animate-spin' : 'w-5 h-5 text-gray-400 animate-spin'} />
+              <Loader2 className={'w-5 h-5 text-inkm-3 animate-spin'} />
             </div>
           )}
           {!validating && invitePreview?.valid === true && (
-            <div className={on ? 'absolute right-4 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-seal flex items-center justify-center' : 'absolute right-4 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-green-500 flex items-center justify-center'}>
+            <div className={'absolute right-4 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-seal flex items-center justify-center'}>
               <Check className="w-[10px] h-[10px] text-white stroke-[3]" />
             </div>
           )}
@@ -375,38 +330,38 @@ export function Register() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-            className={on ? 'mb-4 border border-paper-2 rounded-[3px] overflow-hidden' : 'mb-4 border border-green-200 rounded-xl overflow-hidden'}
+            className={'mb-4 border border-paper-2 rounded-[3px] overflow-hidden'}
           >
             {/* Green top — on the house path, a paper plate: the seal marks it good */}
-            <div className={on ? 'bg-paper-1 px-4 py-[14px] flex items-center gap-[10px]' : 'bg-green-50 px-4 py-[14px] flex items-center gap-[10px]'}>
-              <div className={on ? 'w-[38px] h-[38px] rounded-[3px] bg-paper-0 border border-paper-2 flex items-center justify-center flex-shrink-0' : 'w-[38px] h-[38px] rounded-[10px] bg-white border border-green-200 flex items-center justify-center flex-shrink-0'}>
-                <Wine className={on ? 'w-[18px] h-[18px] text-seal' : 'w-[18px] h-[18px] text-green-600'} />
+            <div className={'bg-paper-1 px-4 py-[14px] flex items-center gap-[10px]'}>
+              <div className={'w-[38px] h-[38px] rounded-[3px] bg-paper-0 border border-paper-2 flex items-center justify-center flex-shrink-0'}>
+                <Wine className={'w-[18px] h-[18px] text-seal'} />
               </div>
               <div>
-                <p className={on ? 'font-display font-bold !text-inkm-1 text-[0.9375rem]' : 'font-display font-bold text-green-900 text-[0.9375rem]'}>
+                <p className={'font-display font-bold !text-inkm-1 text-[0.9375rem]'}>
                   {invitePreview.restaurant}
                   {invitePreview.city && ` — ${invitePreview.city}`}
                 </p>
               </div>
-              <div className={on ? 'ml-auto w-[22px] h-[22px] rounded-full bg-seal flex items-center justify-center' : 'ml-auto w-[22px] h-[22px] rounded-full bg-green-500 flex items-center justify-center'}>
-                <Check className={on ? 'w-[11px] h-[11px] text-paper-0 stroke-[3]' : 'w-[11px] h-[11px] text-white stroke-[3]'} />
+              <div className={'ml-auto w-[22px] h-[22px] rounded-full bg-seal flex items-center justify-center'}>
+                <Check className={'w-[11px] h-[11px] text-paper-0 stroke-[3]'} />
               </div>
             </div>
             {/* White bottom */}
-            <div className={on ? 'bg-paper-0 px-4 py-[10px] flex justify-between' : 'bg-white px-4 py-[10px] flex justify-between'}>
+            <div className={'bg-paper-0 px-4 py-[10px] flex justify-between'}>
               <div className="flex flex-col gap-[2px]">
-                <span className={on ? 'text-[0.67rem] uppercase tracking-[0.07em] text-inkm-3 font-semibold' : 'text-[0.67rem] uppercase tracking-[0.07em] text-gray-400 font-semibold'}>Invited by</span>
-                <span className={on ? 'text-[0.8rem] font-bold text-inkm-1' : 'text-[0.8rem] font-bold text-gray-900'}>{invitePreview.inviter}</span>
+                <span className={'text-[0.67rem] uppercase tracking-[0.07em] text-inkm-3 font-semibold'}>Invited by</span>
+                <span className={'text-[0.8rem] font-bold text-inkm-1'}>{invitePreview.inviter}</span>
               </div>
-              <div className={on ? 'w-px bg-paper-2' : 'w-px bg-gray-100'} />
+              <div className={'w-px bg-paper-2'} />
               <div className="flex flex-col gap-[2px]">
-                <span className={on ? 'text-[0.67rem] uppercase tracking-[0.07em] text-inkm-3 font-semibold' : 'text-[0.67rem] uppercase tracking-[0.07em] text-gray-400 font-semibold'}>Your Role</span>
-                <span className={on ? 'text-[0.8rem] font-bold text-seal' : 'text-[0.8rem] font-bold text-wine-600'}>{invitePreview.role}</span>
+                <span className={'text-[0.67rem] uppercase tracking-[0.07em] text-inkm-3 font-semibold'}>Your Role</span>
+                <span className={'text-[0.8rem] font-bold text-seal'}>{invitePreview.role}</span>
               </div>
-              <div className={on ? 'w-px bg-paper-2' : 'w-px bg-gray-100'} />
+              <div className={'w-px bg-paper-2'} />
               <div className="flex flex-col gap-[2px]">
-                <span className={on ? 'text-[0.67rem] uppercase tracking-[0.07em] text-inkm-3 font-semibold' : 'text-[0.67rem] uppercase tracking-[0.07em] text-gray-400 font-semibold'}>Expires</span>
-                <span className={on ? 'text-[0.8rem] font-bold text-inkm-1' : 'text-[0.8rem] font-bold text-gray-900'}>7 days</span>
+                <span className={'text-[0.67rem] uppercase tracking-[0.07em] text-inkm-3 font-semibold'}>Expires</span>
+                <span className={'text-[0.8rem] font-bold text-inkm-1'}>7 days</span>
               </div>
             </div>
           </motion.div>
@@ -421,10 +376,10 @@ export function Register() {
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
-            className={on ? 'mdv-ep-note border-red-700' : 'mb-4 flex items-center gap-[9px] bg-red-50 border border-red-200 rounded-lg px-[14px] py-[11px]'}
+            className={'mdv-ep-note border-red-700'}
           >
-            {!on && <X className="w-[15px] h-[15px] text-red-600 flex-shrink-0" />}
-            <span className={on ? 'mdv-ep-note-title !text-red-800' : 'text-[0.8125rem] text-red-600 font-medium'}>
+            
+            <span className={'mdv-ep-note-title !text-red-800'}>
               {invitePreview.reason === 'expired'
                 ? 'This invite code has expired. Contact the restaurant owner for a new one.'
                 : invitePreview.reason === 'used'
@@ -436,7 +391,7 @@ export function Register() {
       </AnimatePresence>
 
       <Button
-        className={on ? `w-full h-12 ${HOUSE_BUTTON}` : 'w-full h-12'}
+        className={`w-full h-12 ${HOUSE_BUTTON}`}
         disabled={!invitePreview?.valid || loading}
         type="button"
         onClick={() => setPathAStep(2)}
@@ -485,47 +440,37 @@ export function Register() {
       <button
         type="button"
         onClick={() => setPathAStep(1)}
-        className={on ? 'flex items-center gap-1 text-sm text-inkm-3 hover:text-inkm-4 mb-4' : 'flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-4'}
+        className={'flex items-center gap-1 text-sm text-inkm-3 hover:text-inkm-4 mb-4'}
       >
         <ArrowLeft className="w-4 h-4" /> Back
       </button>
       {/* On the house path the endpaper carries the house's name and who is
           expecting you, and the leaf's title says what this page is — so the
           banner and the "Your Account" heading are today's page only. */}
-      {!on && invitePreview?.valid && (
-        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl">
-          <p className="text-sm text-green-700 font-medium">
-            Joining <strong>{invitePreview.restaurant}</strong>
-            {invitePreview.city && ` · ${invitePreview.city}`}
-          </p>
-          <p className="text-xs text-green-600 mt-0.5">
-            Invited by {invitePreview.inviter} · Role: {invitePreview.role}
-          </p>
-        </div>
-      )}
-      {!on && <h2 className="text-xl font-bold text-gray-900 mb-5">Your Account</h2>}
+      
+      
       <div className="space-y-4">
         {/* Full Name */}
         <div>
-          <label htmlFor="join-name" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Full Name *</label>
+          <label htmlFor="join-name" className={'block text-sm font-medium text-inkm-2 mb-1'}>Full Name *</label>
           <div className="relative">
-            <User className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
+            <User className={'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3'} />
             <input
               id="join-name"
               type="text"
               value={joinName}
               onChange={(e) => setJoinName(e.target.value)}
               placeholder="Jane Smith"
-              className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
+              className={'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none'}
             />
           </div>
         </div>
 
         {/* Email with availability check */}
         <div>
-          <label htmlFor="join-email" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Email *</label>
+          <label htmlFor="join-email" className={'block text-sm font-medium text-inkm-2 mb-1'}>Email *</label>
           <div className="relative">
-            <Mail className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
+            <Mail className={'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3'} />
             <input
               id="join-email"
               type="email"
@@ -536,25 +481,23 @@ export function Register() {
               }}
               placeholder="jane@restaurant.com"
               className={[
-                on
-                  ? 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-paper-0 focus:outline-none transition-all'
-                  : 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-white/80 focus:ring-2 focus:outline-none transition-all',
+                'block w-full pl-10 pr-10 py-3 border rounded-lg bg-paper-0 focus:outline-none transition-all',
                 joinEmailCheck.available === false
-                  ? (on ? 'border-red-400' : 'border-red-400 focus:border-red-500 focus:ring-red-500/20')
+                  ? ('border-red-400')
                   : joinEmailCheck.available === true
-                    ? (on ? 'border-seal' : 'border-green-400 focus:border-green-500 focus:ring-green-500/20')
-                    : (on ? 'border-paper-2' : 'border-gray-300 focus:border-wine-500 focus:ring-wine-500/20')
+                    ? ('border-seal')
+                    : ('border-paper-2')
               ].join(' ')}
             />
             {/* Status icon */}
             {joinEmailCheck.checking && (
               <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                <Loader2 className={on ? 'w-4 h-4 text-inkm-3 animate-spin' : 'w-4 h-4 text-gray-400 animate-spin'} />
+                <Loader2 className={'w-4 h-4 text-inkm-3 animate-spin'} />
               </div>
             )}
             {!joinEmailCheck.checking && joinEmailCheck.available === true && (
-              <div className={on ? 'absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-seal flex items-center justify-center' : 'absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-green-500 flex items-center justify-center'}>
-                <Check className={on ? 'w-3 h-3 text-paper-0 stroke-[3]' : 'w-3 h-3 text-white stroke-[3]'} />
+              <div className={'absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-seal flex items-center justify-center'}>
+                <Check className={'w-3 h-3 text-paper-0 stroke-[3]'} />
               </div>
             )}
             {!joinEmailCheck.checking && joinEmailCheck.available === false && (
@@ -574,7 +517,7 @@ export function Register() {
               >
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
                 <span>{joinEmailCheck.error}</span>
-                <Link to="/login" className={on ? 'text-seal hover:text-seal-deep font-medium underline' : 'text-wine-600 hover:text-wine-700 font-medium underline'}>
+                <Link to="/login" className={'text-seal hover:text-seal-deep font-medium underline'}>
                   Sign in
                 </Link>
               </motion.div>
@@ -584,7 +527,7 @@ export function Register() {
                 initial={{ opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
-                className={on ? 'mt-1 text-xs !text-seal' : 'mt-1 text-xs text-green-600'}
+                className={'mt-1 text-xs !text-seal'}
               >
                 Email is available
               </motion.p>
@@ -594,45 +537,45 @@ export function Register() {
 
         {/* Password */}
         <div>
-          <label htmlFor="join-password" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Password *</label>
+          <label htmlFor="join-password" className={'block text-sm font-medium text-inkm-2 mb-1'}>Password *</label>
           <div className="relative">
-            <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
+            <Lock className={'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3'} />
             <input
               id="join-password"
               type="password"
               value={joinPassword}
               onChange={(e) => setJoinPassword(e.target.value)}
               placeholder="••••••••"
-              className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
+              className={'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none'}
             />
           </div>
-          <p className={on ? 'text-xs !text-inkm-3 mt-1' : 'text-xs text-gray-400 mt-1'}>Min. 8 characters</p>
+          <p className={'text-xs !text-inkm-3 mt-1'}>Min. 8 characters</p>
         </div>
 
         {/* Confirm Password */}
         <div>
-          <label htmlFor="join-confirm-password" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Confirm Password *</label>
+          <label htmlFor="join-confirm-password" className={'block text-sm font-medium text-inkm-2 mb-1'}>Confirm Password *</label>
           <div className="relative">
-            <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
+            <Lock className={'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3'} />
             <input
               id="join-confirm-password"
               type="password"
               value={joinConfirm}
               onChange={(e) => setJoinConfirm(e.target.value)}
               placeholder="••••••••"
-              className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
+              className={'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none'}
             />
           </div>
         </div>
       </div>
       {(error || authError) && (
-        <div role={on ? 'alert' : undefined} className={on ? 'mdv-ep-note mt-4 border-red-700' : 'mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2'}>
-          {!on && <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />}
-          <p className={on ? 'mdv-ep-note-title !text-red-800' : 'text-sm text-red-700'}>{error || authError}</p>
+        <div role={'alert'} className={'mdv-ep-note mt-4 border-red-700'}>
+          
+          <p className={'mdv-ep-note-title !text-red-800'}>{error || authError}</p>
         </div>
       )}
       <Button
-        className={on ? `w-full h-12 mt-5 ${HOUSE_BUTTON}` : 'w-full h-12 mt-5'}
+        className={`w-full h-12 mt-5 ${HOUSE_BUTTON}`}
         disabled={loading || joinEmailCheck.checking || !joinName || !joinEmail || !joinPassword || !joinConfirm || joinEmailCheck.available === false}
         onClick={async () => {
           // If debounced check hasn't settled, run immediately before submitting
@@ -676,43 +619,35 @@ export function Register() {
       <button
         type="button"
         onClick={() => navigate('/register')}
-        className={on ? 'flex items-center gap-1 text-sm text-inkm-3 hover:text-inkm-4 mb-4' : 'flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-4'}
+        className={'flex items-center gap-1 text-sm text-inkm-3 hover:text-inkm-4 mb-4'}
       >
         <ArrowLeft className="w-4 h-4" /> Back
       </button>
       {/* Step indicator (simple bar for Path B step 1). On the house path the
           leaf's folio carries the step and its title names the page. */}
-      {!on && (
-        <>
-          <div className="flex items-center gap-2 mb-6">
-            <div className="h-1.5 flex-1 rounded-full bg-wine-600" />
-            <span className="text-xs text-gray-400 ml-1">Account</span>
-          </div>
-          <h2 className="text-xl font-bold text-gray-900 mb-5">Your Account</h2>
-        </>
-      )}
+      
       <div className="space-y-4">
         {/* Full Name */}
         <div>
-          <label htmlFor="create-name" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Full Name *</label>
+          <label htmlFor="create-name" className={'block text-sm font-medium text-inkm-2 mb-1'}>Full Name *</label>
           <div className="relative">
-            <User className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
+            <User className={'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3'} />
             <input
               id="create-name"
               type="text"
               value={createName}
               onChange={(e) => setCreateName(e.target.value)}
               placeholder="John Smith"
-              className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
+              className={'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none'}
             />
           </div>
         </div>
 
         {/* Email with availability check */}
         <div>
-          <label htmlFor="create-email" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Email *</label>
+          <label htmlFor="create-email" className={'block text-sm font-medium text-inkm-2 mb-1'}>Email *</label>
           <div className="relative">
-            <Mail className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
+            <Mail className={'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3'} />
             <input
               id="create-email"
               type="email"
@@ -723,25 +658,23 @@ export function Register() {
               }}
               placeholder="john@myrestaurant.com"
               className={[
-                on
-                  ? 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-paper-0 focus:outline-none transition-all'
-                  : 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-white/80 focus:ring-2 focus:outline-none transition-all',
+                'block w-full pl-10 pr-10 py-3 border rounded-lg bg-paper-0 focus:outline-none transition-all',
                 createEmailCheck.available === false
-                  ? (on ? 'border-red-400' : 'border-red-400 focus:border-red-500 focus:ring-red-500/20')
+                  ? ('border-red-400')
                   : createEmailCheck.available === true
-                    ? (on ? 'border-seal' : 'border-green-400 focus:border-green-500 focus:ring-green-500/20')
-                    : (on ? 'border-paper-2' : 'border-gray-300 focus:border-wine-500 focus:ring-wine-500/20')
+                    ? ('border-seal')
+                    : ('border-paper-2')
               ].join(' ')}
             />
             {/* Status icon */}
             {createEmailCheck.checking && (
               <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                <Loader2 className={on ? 'w-4 h-4 text-inkm-3 animate-spin' : 'w-4 h-4 text-gray-400 animate-spin'} />
+                <Loader2 className={'w-4 h-4 text-inkm-3 animate-spin'} />
               </div>
             )}
             {!createEmailCheck.checking && createEmailCheck.available === true && (
-              <div className={on ? 'absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-seal flex items-center justify-center' : 'absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-green-500 flex items-center justify-center'}>
-                <Check className={on ? 'w-3 h-3 text-paper-0 stroke-[3]' : 'w-3 h-3 text-white stroke-[3]'} />
+              <div className={'absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-seal flex items-center justify-center'}>
+                <Check className={'w-3 h-3 text-paper-0 stroke-[3]'} />
               </div>
             )}
             {!createEmailCheck.checking && createEmailCheck.available === false && (
@@ -761,7 +694,7 @@ export function Register() {
               >
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
                 <span>{createEmailCheck.error}</span>
-                <Link to="/login" className={on ? 'text-seal hover:text-seal-deep font-medium underline' : 'text-wine-600 hover:text-wine-700 font-medium underline'}>
+                <Link to="/login" className={'text-seal hover:text-seal-deep font-medium underline'}>
                   Sign in
                 </Link>
               </motion.div>
@@ -771,7 +704,7 @@ export function Register() {
                 initial={{ opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
-                className={on ? 'mt-1 text-xs !text-seal' : 'mt-1 text-xs text-green-600'}
+                className={'mt-1 text-xs !text-seal'}
               >
                 Email is available
               </motion.p>
@@ -781,40 +714,40 @@ export function Register() {
 
         {/* Password */}
         <div>
-          <label htmlFor="create-password" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Password *</label>
+          <label htmlFor="create-password" className={'block text-sm font-medium text-inkm-2 mb-1'}>Password *</label>
           <div className="relative">
-            <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
+            <Lock className={'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3'} />
             <input
               id="create-password"
               type="password"
               value={createPassword}
               onChange={(e) => setCreatePassword(e.target.value)}
               placeholder="••••••••"
-              className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
+              className={'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none'}
             />
           </div>
-          <p className={on ? 'text-xs !text-inkm-3 mt-1' : 'text-xs text-gray-400 mt-1'}>Min. 8 characters</p>
+          <p className={'text-xs !text-inkm-3 mt-1'}>Min. 8 characters</p>
         </div>
 
         {/* Confirm Password */}
         <div>
-          <label htmlFor="create-confirm-password" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Confirm Password *</label>
+          <label htmlFor="create-confirm-password" className={'block text-sm font-medium text-inkm-2 mb-1'}>Confirm Password *</label>
           <div className="relative">
-            <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
+            <Lock className={'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3'} />
             <input
               id="create-confirm-password"
               type="password"
               value={createConfirm}
               onChange={(e) => setCreateConfirm(e.target.value)}
               placeholder="••••••••"
-              className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
+              className={'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none'}
             />
           </div>
         </div>
       </div>
       <Button
         type="button"
-        className={on ? `w-full h-12 mt-5 ${HOUSE_BUTTON}` : 'w-full h-12 mt-5'}
+        className={`w-full h-12 mt-5 ${HOUSE_BUTTON}`}
         disabled={
           !createName ||
           !createEmail ||
@@ -1003,9 +936,9 @@ export function Register() {
       <div className="sm:grid sm:grid-cols-[200px_1fr] sm:gap-6">
 
         {/* Left Rail — hidden on mobile */}
-        <div className={on ? 'hidden sm:block border-r border-paper-2 pr-5 h-fit sticky top-6' : 'hidden sm:block bg-white/50 backdrop-blur border border-white/40 rounded-2xl p-5 h-fit sticky top-6'}>
+        <div className={'hidden sm:block border-r border-paper-2 pr-5 h-fit sticky top-6'}>
           {/* The folio carries the step on the house path. */}
-          {!on && <p className="text-xs uppercase tracking-wider text-gray-400 font-bold mb-4">Step 2 of 2</p>}
+          
           <div className="space-y-0">
             {railSections.map(({ num, label, sub }) => {
               const isDone = num < restaurantSection
@@ -1014,22 +947,18 @@ export function Register() {
                 <div key={num} className="relative">
                   {/* Connector line between items */}
                   {num > 1 && (
-                    <div className={on ? 'absolute left-[9px] top-0 w-[2px] h-[7px] bg-paper-2' : 'absolute left-[9px] top-0 w-[2px] h-[7px] bg-gray-200'} />
+                    <div className={'absolute left-[9px] top-0 w-[2px] h-[7px] bg-paper-2'} />
                   )}
                   <div className="flex items-start gap-[9px] py-[7px]">
                     <div
                       className={[
                         'w-5 h-5 rounded-full flex items-center justify-center text-[0.62rem] font-bold flex-shrink-0 transition-all',
-                        isDone ? (on ? 'bg-seal text-paper-0' : 'bg-green-500 text-white') : '',
+                        isDone ? ('bg-seal text-paper-0') : '',
                         isActive
-                          ? on
-                            ? 'bg-seal text-paper-0 shadow-[0_2px_6px_var(--seal-ring)]'
-                            : 'bg-wine-600 text-white shadow-[0_2px_6px_rgba(26,94,107,0.35)]'
+                          ? 'bg-seal text-paper-0 shadow-[0_2px_6px_var(--seal-ring)]'
                           : '',
                         !isDone && !isActive
-                          ? on
-                            ? 'bg-paper-0 text-inkm-3 border border-paper-2'
-                            : 'bg-gray-100 text-gray-400 border border-gray-200'
+                          ? 'bg-paper-0 text-inkm-3 border border-paper-2'
                           : '',
                       ].join(' ')}
                     >
@@ -1039,14 +968,14 @@ export function Register() {
                       <p
                         className={[
                           'text-[0.8rem] font-semibold',
-                          isDone ? (on ? '!text-inkm-3' : 'text-gray-500') : '',
-                          isActive ? (on ? '!text-seal' : 'text-wine-600') : '',
-                          !isDone && !isActive ? (on ? '!text-inkm-3' : 'text-gray-400') : '',
+                          isDone ? ('!text-inkm-3') : '',
+                          isActive ? ('!text-seal') : '',
+                          !isDone && !isActive ? ('!text-inkm-3') : '',
                         ].join(' ')}
                       >
                         {label}
                       </p>
-                      <p className={on ? 'text-[0.68rem] !text-inkm-3' : 'text-[0.68rem] text-gray-400'}>{sub}</p>
+                      <p className={'text-[0.68rem] !text-inkm-3'}>{sub}</p>
                     </div>
                   </div>
                 </div>
@@ -1055,48 +984,38 @@ export function Register() {
           </div>
           {/* Progress bar — on the house path each panel's own "Section n of 3"
               already says this, once. */}
-          {!on && (
-          <div className={on ? 'mt-[18px] pt-[14px] border-t border-paper-2' : 'mt-[18px] pt-[14px] border-t border-gray-200'}>
-            <div className={on ? 'h-[5px] bg-paper-2 rounded-full overflow-hidden' : 'h-[5px] bg-gray-100 rounded-full overflow-hidden'}>
-              <div
-                className={on ? 'h-full bg-seal rounded-full transition-all duration-300' : 'h-full bg-wine-600 rounded-full transition-all duration-300'}
-                style={{ width: `${(restaurantSection / 3) * 100}%` }}
-              />
-            </div>
-            <p className={on ? 'text-[0.75rem] !text-inkm-3 mt-1' : 'text-[0.75rem] text-gray-500 mt-1'}>Section {restaurantSection} of 3</p>
-          </div>
-          )}
+          
         </div>
 
         {/* Main panel */}
         <div>
           {/* Panel 1: Identity */}
           {restaurantSection === 1 && (
-            <div className={on ? 'pt-1' : 'bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-xl p-7'}>
-              <span className={on ? 'inline-flex items-center bg-seal-tint text-seal text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]' : 'inline-flex items-center bg-wine-100 text-wine-600 text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]'}>
+            <div className={'pt-1'}>
+              <span className={'inline-flex items-center bg-seal-tint text-seal text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]'}>
                 Section 1 of 3
               </span>
-              <h2 className={on ? 'font-display text-[1.2rem] font-extrabold !text-inkm-1 tracking-tight mb-[3px]' : 'font-display text-[1.2rem] font-extrabold text-gray-900 tracking-tight mb-[3px]'}>
+              <h2 className={'font-display text-[1.2rem] font-extrabold !text-inkm-1 tracking-tight mb-[3px]'}>
                 Restaurant Identity
               </h2>
-              <p className={on ? 'text-[0.84rem] !text-inkm-3 mb-[22px]' : 'text-[0.84rem] text-gray-500 mb-[22px]'}>
+              <p className={'text-[0.84rem] !text-inkm-3 mb-[22px]'}>
                 What's the name and type of your restaurant?
               </p>
 
               {/* Restaurant Name */}
               <div className="mb-[18px]">
-                <label htmlFor="restaurant-name" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>
-                  Restaurant Name <span className={on ? 'text-seal' : 'text-wine-600'}>*</span>
+                <label htmlFor="restaurant-name" className={'block text-sm font-medium text-inkm-2 mb-1'}>
+                  Restaurant Name <span className={'text-seal'}>*</span>
                 </label>
                 <div className="relative">
-                  <Building2 className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
+                  <Building2 className={'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3'} />
                   <input
                     id="restaurant-name"
                     type="text"
                     value={restaurantName}
                     onChange={(e) => setRestaurantName(e.target.value)}
                     placeholder="The Oak Room"
-                    className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
+                    className={'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none'}
                     autoFocus
                   />
                 </div>
@@ -1108,8 +1027,8 @@ export function Register() {
                     group label for the CuisinePicker composite: associated via the
                     wrapper's role="group" + aria-labelledby, which the rule cannot see.
                     An htmlFor at the trigger would overwrite its accessible name. */}
-                <label id="restaurant-cuisine-label" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>
-                  Cuisine Type <span className={on ? 'text-inkm-3 font-normal text-xs' : 'text-gray-400 font-normal text-xs'}>(optional)</span>
+                <label id="restaurant-cuisine-label" className={'block text-sm font-medium text-inkm-2 mb-1'}>
+                  Cuisine Type <span className={'text-inkm-3 font-normal text-xs'}>(optional)</span>
                 </label>
                 <CuisinePicker value={cuisineType} onChange={setCuisineType} />
               </div>
@@ -1119,14 +1038,14 @@ export function Register() {
                 <button
                   type="button"
                   onClick={() => { setPathBStep(1); setError(null) }}
-                  className={on ? 'flex-1 py-3 border border-paper-2 rounded-[10px] bg-paper-0 text-inkm-2 text-[0.9rem] font-bold hover:border-seal-ring transition-colors' : 'flex-1 py-3 border border-gray-200 rounded-[10px] bg-white text-gray-700 text-[0.9rem] font-bold hover:border-gray-300 transition-colors'}
+                  className={'flex-1 py-3 border border-paper-2 rounded-[10px] bg-paper-0 text-inkm-2 text-[0.9rem] font-bold hover:border-seal-ring transition-colors'}
                 >
                   ← Back
                 </button>
                 <button
                   type="button"
                   onClick={() => setRestaurantSection(2)}
-                  className={on ? 'flex-[2] py-3 border-none rounded-[10px] bg-seal text-paper-0 text-[0.9rem] font-bold hover:bg-seal-deep transition-colors flex items-center justify-center gap-[7px]' : 'flex-[2] py-3 border-none rounded-[10px] bg-wine-600 text-white text-[0.9rem] font-bold hover:bg-wine-700 transition-colors flex items-center justify-center gap-[7px]'}
+                  className={'flex-[2] py-3 border-none rounded-[10px] bg-seal text-paper-0 text-[0.9rem] font-bold hover:bg-seal-deep transition-colors flex items-center justify-center gap-[7px]'}
                 >
                   Next: Location
                   <ArrowRight className="w-[13px] h-[13px]" />
@@ -1137,30 +1056,30 @@ export function Register() {
 
           {/* Panel 2: Location */}
           {restaurantSection === 2 && (
-            <div className={on ? 'pt-1' : 'bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-xl p-7'}>
-              <span className={on ? 'inline-flex items-center bg-seal-tint text-seal text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]' : 'inline-flex items-center bg-wine-100 text-wine-600 text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]'}>
+            <div className={'pt-1'}>
+              <span className={'inline-flex items-center bg-seal-tint text-seal text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]'}>
                 Section 2 of 3
               </span>
-              <h2 className={on ? 'font-display text-[1.2rem] font-extrabold !text-inkm-1 tracking-tight mb-[3px]' : 'font-display text-[1.2rem] font-extrabold text-gray-900 tracking-tight mb-[3px]'}>
+              <h2 className={'font-display text-[1.2rem] font-extrabold !text-inkm-1 tracking-tight mb-[3px]'}>
                 Location
               </h2>
-              <p className={on ? 'text-[0.84rem] !text-inkm-3 mb-[22px]' : 'text-[0.84rem] text-gray-500 mb-[22px]'}>
+              <p className={'text-[0.84rem] !text-inkm-3 mb-[22px]'}>
                 Where is your restaurant located?
               </p>
 
               {/* Country */}
               <div className="mb-[18px]">
-                <label htmlFor="restaurant-country" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Country <span className={on ? 'text-seal' : 'text-wine-600'}>*</span></label>
+                <label htmlFor="restaurant-country" className={'block text-sm font-medium text-inkm-2 mb-1'}>Country <span className={'text-seal'}>*</span></label>
                 <CountryCombobox id="restaurant-country" value={country} onChange={setCountry} />
                 {!countryReady && (
-                  <p className={on ? 'text-xs !text-inkm-3 mt-1' : 'text-xs text-gray-400 mt-1'}>Enter your country to continue filling in the address</p>
+                  <p className={'text-xs !text-inkm-3 mt-1'}>Enter your country to continue filling in the address</p>
                 )}
               </div>
 
               {/* Street Address — Google Places Autocomplete */}
               <div className="mb-[18px]">
-                <label htmlFor="restaurant-address" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>
-                  Street Address <span className={on ? 'text-seal' : 'text-wine-600'}>*</span>
+                <label htmlFor="restaurant-address" className={'block text-sm font-medium text-inkm-2 mb-1'}>
+                  Street Address <span className={'text-seal'}>*</span>
                 </label>
                 <PlacesAutocomplete
                   id="restaurant-address"
@@ -1192,32 +1111,32 @@ export function Register() {
                     )
                   }}
                   placeholder="Start typing your street address…"
-                  className={on ? 'py-3 border-paper-2 bg-paper-0' : 'py-3 border-gray-300 bg-white/80 focus:ring-2 focus:ring-wine-500'}
+                  className={'py-3 border-paper-2 bg-paper-0'}
                 />
               </div>
 
               {/* City + State */}
               <div className="grid grid-cols-2 gap-3 mb-3">
                 <div>
-                  <label htmlFor="restaurant-city" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>City <span className={on ? 'text-seal' : 'text-wine-600'}>*</span></label>
+                  <label htmlFor="restaurant-city" className={'block text-sm font-medium text-inkm-2 mb-1'}>City <span className={'text-seal'}>*</span></label>
                   <input
                     id="restaurant-city"
                     type="text"
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
                     placeholder="Chicago"
-                    className={on ? 'block w-full px-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
+                    className={'block w-full px-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none'}
                   />
                 </div>
                 <div>
-                  <label htmlFor="restaurant-state" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>{countryLocale.stateLabel}</label>
+                  <label htmlFor="restaurant-state" className={'block text-sm font-medium text-inkm-2 mb-1'}>{countryLocale.stateLabel}</label>
                   <input
                     id="restaurant-state"
                     type="text"
                     value={stateProvince}
                     onChange={(e) => setStateProvince(e.target.value)}
                     placeholder={countryLocale.statePlaceholder}
-                    className={on ? 'block w-full px-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
+                    className={'block w-full px-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none'}
                   />
                 </div>
               </div>
@@ -1225,20 +1144,20 @@ export function Register() {
               {/* ZIP + Neighborhood */}
               <div className="grid grid-cols-2 gap-3 mb-0">
                 <div>
-                  <label htmlFor="restaurant-postal-code" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>{countryLocale.postalLabel}</label>
+                  <label htmlFor="restaurant-postal-code" className={'block text-sm font-medium text-inkm-2 mb-1'}>{countryLocale.postalLabel}</label>
                   <input
                     id="restaurant-postal-code"
                     type="text"
                     value={postalCode}
                     onChange={(e) => setPostalCode(e.target.value)}
                     placeholder={countryLocale.postalPlaceholder}
-                    className={on ? 'block w-full px-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
+                    className={'block w-full px-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none'}
                   />
                 </div>
                 <div>
-                  <label htmlFor="restaurant-neighborhood" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>
+                  <label htmlFor="restaurant-neighborhood" className={'block text-sm font-medium text-inkm-2 mb-1'}>
                     {countryLocale.areaLabel}
-                    <span className={on ? 'text-inkm-3 font-normal ml-1 text-xs' : 'text-gray-400 font-normal ml-1 text-xs'}>(optional)</span>
+                    <span className={'text-inkm-3 font-normal ml-1 text-xs'}>(optional)</span>
                   </label>
                   <input
                     id="restaurant-neighborhood"
@@ -1246,7 +1165,7 @@ export function Register() {
                     value={neighborhood}
                     onChange={(e) => setNeighborhood(e.target.value)}
                     placeholder={countryLocale.areaPlaceholder}
-                    className={on ? 'block w-full px-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
+                    className={'block w-full px-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none'}
                   />
                 </div>
               </div>
@@ -1268,14 +1187,14 @@ export function Register() {
                 <button
                   type="button"
                   onClick={() => setRestaurantSection(1)}
-                  className={on ? 'flex-1 py-3 border border-paper-2 rounded-[10px] bg-paper-0 text-inkm-2 text-[0.9rem] font-bold hover:border-seal-ring transition-colors' : 'flex-1 py-3 border border-gray-200 rounded-[10px] bg-white text-gray-700 text-[0.9rem] font-bold hover:border-gray-300 transition-colors'}
+                  className={'flex-1 py-3 border border-paper-2 rounded-[10px] bg-paper-0 text-inkm-2 text-[0.9rem] font-bold hover:border-seal-ring transition-colors'}
                 >
                   ← Identity
                 </button>
                 <button
                   type="button"
                   onClick={() => setRestaurantSection(3)}
-                  className={on ? 'flex-[2] py-3 border-none rounded-[10px] bg-seal text-paper-0 text-[0.9rem] font-bold hover:bg-seal-deep transition-colors flex items-center justify-center gap-[7px]' : 'flex-[2] py-3 border-none rounded-[10px] bg-wine-600 text-white text-[0.9rem] font-bold hover:bg-wine-700 transition-colors flex items-center justify-center gap-[7px]'}
+                  className={'flex-[2] py-3 border-none rounded-[10px] bg-seal text-paper-0 text-[0.9rem] font-bold hover:bg-seal-deep transition-colors flex items-center justify-center gap-[7px]'}
                 >
                   Next: Contact
                   <ArrowRight className="w-[13px] h-[13px]" />
@@ -1286,34 +1205,34 @@ export function Register() {
 
           {/* Panel 3: Contact */}
           {restaurantSection === 3 && (
-            <div className={on ? 'pt-1' : 'bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-xl p-7'}>
-              <span className={on ? 'inline-flex items-center bg-seal-tint text-seal text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]' : 'inline-flex items-center bg-wine-100 text-wine-600 text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]'}>
+            <div className={'pt-1'}>
+              <span className={'inline-flex items-center bg-seal-tint text-seal text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]'}>
                 Section 3 of 3
               </span>
-              <h2 className={on ? 'font-display text-[1.2rem] font-extrabold !text-inkm-1 tracking-tight mb-[3px]' : 'font-display text-[1.2rem] font-extrabold text-gray-900 tracking-tight mb-[3px]'}>
+              <h2 className={'font-display text-[1.2rem] font-extrabold !text-inkm-1 tracking-tight mb-[3px]'}>
                 Contact Details
               </h2>
-              <p className={on ? 'text-[0.84rem] !text-inkm-3 mb-[22px]' : 'text-[0.84rem] text-gray-500 mb-[22px]'}>
+              <p className={'text-[0.84rem] !text-inkm-3 mb-[22px]'}>
                 Optional. Helps with reservations.
               </p>
 
               {/* Phone */}
               <div className="mb-0">
-                <label htmlFor="restaurant-phone" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>
-                  Phone Number <span className={on ? 'text-inkm-3 font-normal text-xs' : 'text-gray-400 font-normal text-xs'}>(optional)</span>
+                <label htmlFor="restaurant-phone" className={'block text-sm font-medium text-inkm-2 mb-1'}>
+                  Phone Number <span className={'text-inkm-3 font-normal text-xs'}>(optional)</span>
                 </label>
                 <PhoneNumberInput
                   id="restaurant-phone"
                   value={phone}
                   onChange={setPhone}
                   countryHint={country}
-                  className={on ? 'bg-paper-0 py-3' : 'bg-white/80 py-3'}
+                  className={'bg-paper-0 py-3'}
                   invalid={Boolean(phone.trim() && !isValidPhone(phone))}
                 />
                 {phone.trim() && !isValidPhone(phone) && (
-                  <p className={on ? 'text-xs !text-rose-600 mt-1' : 'text-xs text-rose-600 mt-1'}>Enter a valid phone number for the selected country.</p>
+                  <p className={'text-xs !text-rose-600 mt-1'}>Enter a valid phone number for the selected country.</p>
                 )}
-                <p className={on ? 'text-xs !text-inkm-3 mt-1' : 'text-xs text-gray-400 mt-1'}>You can add this any time from Settings.</p>
+                <p className={'text-xs !text-inkm-3 mt-1'}>You can add this any time from Settings.</p>
               </div>
 
               {/* Error banner */}
@@ -1323,11 +1242,11 @@ export function Register() {
                     initial={{ opacity: 0, y: -4 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -4 }}
-                    role={on ? 'alert' : undefined}
-                    className={on ? 'mdv-ep-note mt-4 flex items-start gap-2 border-red-700' : 'mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2'}
+                    role={'alert'}
+                    className={'mdv-ep-note mt-4 flex items-start gap-2 border-red-700'}
                   >
-                    {!on && <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />}
-                    <p className={on ? 'mdv-ep-note-title flex-1 !text-red-800' : 'text-sm text-red-700 flex-1'}>{error || authError}</p>
+                    
+                    <p className={'mdv-ep-note-title flex-1 !text-red-800'}>{error || authError}</p>
                     <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-600 ml-1">
                       <X className="w-4 h-4" />
                     </button>
@@ -1340,7 +1259,7 @@ export function Register() {
                 <button
                   type="button"
                   onClick={() => setRestaurantSection(2)}
-                  className={on ? 'flex-1 py-3 border border-paper-2 rounded-[10px] bg-paper-0 text-inkm-2 text-[0.9rem] font-bold hover:border-seal-ring transition-colors' : 'flex-1 py-3 border border-gray-200 rounded-[10px] bg-white text-gray-700 text-[0.9rem] font-bold hover:border-gray-300 transition-colors'}
+                  className={'flex-1 py-3 border border-paper-2 rounded-[10px] bg-paper-0 text-inkm-2 text-[0.9rem] font-bold hover:border-seal-ring transition-colors'}
                 >
                   ← Location
                 </button>
@@ -1348,7 +1267,7 @@ export function Register() {
                   type="button"
                   onClick={handleCreateSubmit}
                   disabled={loading || !restaurantName || !address || !city || !country}
-                  className={on ? 'flex-[2] py-3 border-none rounded-[10px] bg-seal text-paper-0 text-[0.9rem] font-bold hover:bg-seal-deep transition-colors flex items-center justify-center gap-[7px] disabled:opacity-45 disabled:cursor-not-allowed disabled:transform-none' : 'flex-[2] py-3 border-none rounded-[10px] bg-wine-600 text-white text-[0.9rem] font-bold hover:bg-wine-700 transition-colors flex items-center justify-center gap-[7px] disabled:opacity-45 disabled:cursor-not-allowed disabled:transform-none'}
+                  className={'flex-[2] py-3 border-none rounded-[10px] bg-seal text-paper-0 text-[0.9rem] font-bold hover:bg-seal-deep transition-colors flex items-center justify-center gap-[7px] disabled:opacity-45 disabled:cursor-not-allowed disabled:transform-none'}
                 >
                   {loading ? (
                     <>
@@ -1422,7 +1341,7 @@ export function Register() {
     }
   }
 
-  if (on) {
+  if (true) {
     const ep = endpaperFor()
     return (
       <EndpaperShell

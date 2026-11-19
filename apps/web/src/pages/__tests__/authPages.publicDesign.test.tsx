@@ -1,47 +1,21 @@
 /**
- * `/login` and `/register` under the public door's one switch (ADR 0133
- * §Decision 1, `lib/mudavym/publicDesign.ts`).
+ * `/login` and `/register` wear one look: the house (r58 deleted the legacy
+ * class fork; `usePublicDesign()` no longer decides anything on these two).
+ * What this file holds them to:
  *
- * The founder refused a redraw of these two pages twice and chose "Improve
- * today's pages in place, no redraw" (ADR 0143 §1 keeps them out of
- * `PublicShell`). So the switch may change COLOUR and nothing else, and this
- * file proves the three claims that makes:
+ *   1. Exactly one `.mudavym` node and it is the page root, so `.dark .mudavym`
+ *      turns the whole page; no literal colour (hex, rgb, rgba, hsl) in any
+ *      rendered class or style.
+ *   2. Every class string in the source carries tokens, not the old neutral
+ *      palette (gray, slate, white, black, wine).
+ *   3. The stylesheet is tokens only with the focus ring inherited.
  *
- *   1. OFF is today's page. No `.mudavym` scope anywhere, today's ground on
- *      the root. (The byte-for-byte proof against the pre-change tree was a
- *      one-time capture — see the `capture` block at the bottom.)
- *   2. ON wears the house. Exactly one `.mudavym` node and it is the page
- *      root, so `.dark .mudavym` turns the whole page charcoal; and no literal
- *      colour (hex, rgb, rgba, hsl) is left in any rendered class or style.
- *   3. Nothing moves. In every state, the ON tree has the same elements in the
- *      same order, the same text, the same attributes and the same layout
- *      classes as the OFF tree. The ONLY classes allowed to differ are colour,
- *      shadow, ring/outline and opacity utilities — see `isColourClass`.
- *
- * Every state is driven through the real page, not a fixture of it: the email
- * step, the resolved-methods step, the invite code (valid and not), the email
- * availability check (taken and free), and the three sections of the house
- * form. Two claims are read from source instead of a render: every house-side
- * class string in the three files, including states no test drives (claim 4),
- * and the stylesheet, which jsdom does not resolve (claim 5).
- *
- * UPDATED for sketch 118, Direction B (the endpaper — `EndpaperShell.tsx`).
- * ADR 0143's own row 35 bracket (2026-09-17) names exactly these two pages
- * and "reopens its own colour-only reading" for them specifically, so claim 3
- * ("nothing moves") no longer holds by construction once the endpaper ships:
- * the ON tree is now a two-column book, not a re-inked copy of the OFF card.
- * What claim 3 is FOR — proving the switch never touches a FIELD, only how
- * the page is dressed — still matters and is re-asserted below by comparing
- * the labelled controls each tree exposes, not by comparing the whole tree.
- * Claims 1, 2, 4 and 5 are untouched: OFF is still byte-identical to today
- * (claim 1 passes unmodified), and the fields inside the leaf still take
- * their colour only from tokens (claim 2, minus the now-intentional
- * `data-ground="paper"` on the root — every other rebuilt page states its
- * own ground the same way, `lib/mudavym/shellGround.ts`).
+ * Every state is driven through the real page: the email step, the
+ * resolved-methods step, the invite code (valid and not), the email
+ * availability check (taken and free), and the three sections of the house form.
  */
 
-import { createHash } from 'node:crypto'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createElement, type ReactElement } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -149,23 +123,11 @@ vi.mock('../../components/ui/PlacesAutocomplete', async () => {
 
 import { Login } from '../Login'
 import { Register } from '../Register'
-import { PUBLIC_OVERRIDE_KEY } from '../../lib/mudavym/publicDesign'
-
-/* ── the switch ─────────────────────────────────────────────────────────── */
-
-function setSwitch(on: boolean) {
-  window.localStorage.setItem(PUBLIC_OVERRIDE_KEY, on ? 'on' : 'off')
-}
 
 beforeEach(() => {
-  window.localStorage.removeItem(PUBLIC_OVERRIDE_KEY)
   h.auth.error = null
   h.auth.resolveSignInMethods.mockReset()
   h.get.mockReset()
-})
-
-afterEach(() => {
-  window.localStorage.removeItem(PUBLIC_OVERRIDE_KEY)
 })
 
 /* ── the states ─────────────────────────────────────────────────────────── */
@@ -333,122 +295,12 @@ const STATES: { name: string; page: 'login' | 'register'; reach: () => Promise<H
   },
 ]
 
-/* ── what counts as "colour" ────────────────────────────────────────────── */
-
 const LITERAL = /#[0-9a-fA-F]{3,8}\b|\b(rgba?|hsla?)\(/
-
-/**
- * True when a utility class changes only paint — colour, shadow, focus ring,
- * outline, opacity — and never position, size, spacing or type. These are the
- * only classes the switch may add or remove. Anything else differing between
- * ON and OFF is something that moved.
- */
-export function isColourClass(token: string): boolean {
-  // Strip variants (`hover:`, `sm:`, `focus-visible:`, `dark:`) — but not the
-  // colons inside an arbitrary value like `text-[color:var(--x)]`.
-  // A variant name never contains `[`, so the colon inside an arbitrary value
-  // is never mistaken for one.
-  let base = token
-  for (let m = /^([a-z0-9-]+):(.+)$/.exec(base); m; m = /^([a-z0-9-]+):(.+)$/.exec(base)) base = m[2]
-  base = base.replace(/^!/, '')
-  if (/^(shadow|ring|outline|opacity)(-|$)/.test(base)) return true
-  if (/^(fill|stroke|placeholder|divide|from|via|to|decoration|caret|accent)-/.test(base)) {
-    // `stroke-[3]` and `stroke-2` are widths.
-    return !/^stroke-(\d|\[\d)/.test(base)
-  }
-  if (base.startsWith('bg-')) {
-    return !/^bg-(fixed|local|scroll|clip-|origin-|repeat|no-repeat|cover|contain|auto|center|top|bottom|left|right|blend-)/.test(base)
-  }
-  if (base.startsWith('text-')) {
-    const v = base.slice(5)
-    if (/^(xs|sm|base|lg|\d?xl|left|center|right|justify|start|end|wrap|nowrap|balance|pretty|ellipsis|clip)$/.test(v)) return false
-    if (/^\[(\d|\.|calc)/.test(v)) return false // text-[0.8rem], text-[15px]
-    return true
-  }
-  if (/^border(-[xytrbl])?$/.test(base)) return false // `border`, `border-t`: widths
-  if (/^border(-[xytrbl])?-/.test(base)) {
-    const v = base.replace(/^border(-[xytrbl])?-/, '')
-    if (/^(\d+|\[\d[^\]]*\]|solid|dashed|dotted|double|hidden|none|collapse|separate)$/.test(v)) return false
-    return true
-  }
-  return false
-}
-
-/**
- * A field-level signature: which controls exist, in what order, with what
- * identity — tag, id, type, name/label, required, disabled, and (for
- * anything that is not a password) its current value. This is "same fields
- * and flow" (ADR 0143 row 35's own words, and the sketch 118 README's)
- * turned into something a test can check: not that no pixel differs
- * (claim 3, pre-endpaper), but that no field was renamed, reordered, added
- * or dropped when the chrome around it changed to the book. Deliberately
- * blind to class/style — that is claim 2's job, above.
- */
-function fieldSignature(root: Element): string[] {
-  // The endpaper's own controls (the front-matter turn, /login only) are the
-  // book's chrome, not the form's: they exist only on the house path by design.
-  return Array.from(root.querySelectorAll('input, select, textarea, button, label, a[href]'))
-    .filter((el) => !el.closest('[data-endpaper-chrome]'))
-    .map((el) => {
-    const tag = el.tagName.toLowerCase()
-    // A field's label and a link's destination are part of "same fields and
-    // flow" too (PR #397's audit plan): the label's words, and where a link goes.
-    if (tag === 'label') return `<label for=${el.getAttribute('for') ?? ''}> "${(el.textContent ?? '').replace(/\s+/g, ' ').trim()}"`
-    if (tag === 'a') return `<a href=${el.getAttribute('href')}>`
-    const id = el.getAttribute('id') ?? ''
-    const type = el.getAttribute('type') ?? ''
-    const label = el.getAttribute('aria-label') ?? el.getAttribute('name') ?? ''
-    const required = el.hasAttribute('required')
-    const disabled = el.hasAttribute('disabled')
-    const value = type === 'password' ? '' : (el as HTMLInputElement | HTMLSelectElement).value ?? ''
-    const text = tag === 'button' ? (el.textContent ?? '').replace(/\s+/g, ' ').trim() : ''
-    return `<${tag}#${id} type=${type} name=${label} required=${required} disabled=${disabled}> "${text}" =${value}`
-  })
-}
-
-/* ── 1. OFF is today's page ─────────────────────────────────────────────── */
-
-describe('public switch OFF — today’s page', () => {
-  it.each(STATES)('$name carries no .mudavym scope and today’s paper ground', async ({ reach }) => {
-    setSwitch(false)
-    const container = await reach()
-    expect(container.querySelector('.mudavym')).toBeNull()
-    expect(container.querySelector('.mdv-auth')).toBeNull()
-    // Today's ground literal, on the page root, exactly as it ships.
-    expect(container.firstElementChild).toHaveClass('bg-[#FAF7F5]')
-  })
-
-  /*
-   * The byte-level proof. Claim 3 compares controls, which says nothing about
-   * a class string or a node that moved on today's page; this does. Each
-   * fingerprint is the sha256 of the OFF render as origin/main 22695d129
-   * ships it (see the fixture's `_what` for how to re-take one on purpose).
-   * Added after PR #397's audit plan found the old whole-tree fingerprint
-   * gone and a stray space in one OFF class string that nothing caught.
-   */
-  const OFF_FINGERPRINTS = (
-    JSON.parse(readFileSync(resolve(process.cwd(), 'src/pages/__tests__/authPages.off-fingerprints.json'), 'utf8')) as {
-      states: Record<string, string>
-    }
-  ).states
-  it.each(STATES)('$name renders today’s page byte for byte', async ({ name, reach }) => {
-    setSwitch(false)
-    const container = await reach()
-    expect([name, createHash('sha256').update(container.innerHTML).digest('hex')]).toEqual([name, OFF_FINGERPRINTS[name]])
-  })
-
-  // No "absence is off" test here: decision 0149 row 37 turned the house on
-  // unconditionally, so absence is ON — asserted in section 2 below. The
-  // origin/main copy of that test came back through a merge conflict on
-  // 2026-09-21 and was removed again, because it asserts the opposite of
-  // publicDesign.ts.
-})
 
 /* ── 2. ON wears the house ──────────────────────────────────────────────── */
 
-describe('public switch ON — the house, from tokens', () => {
+describe('the house, from tokens', () => {
   it.each(STATES)('$name has one .mudavym node, on the page root', async ({ reach }) => {
-    setSwitch(true)
     const container = await reach()
     const scopes = container.querySelectorAll('.mudavym')
     expect(scopes).toHaveLength(1)
@@ -477,50 +329,11 @@ describe('public switch ON — the house, from tokens', () => {
   })
 
   it.each(STATES)('$name leaves no literal colour in any class or inline style', async ({ reach }) => {
-    setSwitch(true)
     const container = await reach()
     const offenders = Array.from(container.querySelectorAll('*'))
       .filter((el) => LITERAL.test(el.getAttribute('class') ?? '') || LITERAL.test(el.getAttribute('style') ?? ''))
       .map((el) => `<${el.tagName.toLowerCase()} class="${el.getAttribute('class')}" style="${el.getAttribute('style') ?? ''}">`)
     expect(offenders).toEqual([])
-  })
-})
-
-/* ── 3. Nothing moves ───────────────────────────────────────────────────── */
-
-describe('the switch changes the chrome, never the fields', () => {
-  it.each(STATES)('$name: the same controls, in the same order, both switch positions', async ({ reach }) => {
-    setSwitch(false)
-    const off = fieldSignature(await reach())
-    cleanup()
-    setSwitch(true)
-    const on = fieldSignature(await reach())
-    expect(on).toEqual(off)
-  })
-
-  /*
-   * The two-card chooser is retired (ADR 0344): RegisterDoor shows a bare
-   * /register the landing page, so Register is only reached with a query, and
-   * a query it does not know opens the new-house form, never a chooser, in
-   * both switch positions.
-   */
-  it('register: no query opens the new-house form, both switch positions', async () => {
-    for (const on of [false, true]) {
-      setSwitch(on)
-      renderAt(createElement(Register), '/register')
-      await screen.findByText(CREATE_ACCOUNT, undefined, WAIT)
-      expect(screen.queryByLabelText('Invite Code')).toBeNull()
-      cleanup()
-    }
-  })
-
-  it('the classifier keeps layout classes out of the paint set', () => {
-    for (const layout of ['text-sm', 'text-[0.8rem]', 'border', 'border-2', 'border-t', 'stroke-[3]', 'rounded-xl', 'p-8', 'sm:grid', 'h-[2px]', 'backdrop-blur-md', 'bg-cover']) {
-      expect([layout, isColourClass(layout)]).toEqual([layout, false])
-    }
-    for (const paint of ['text-inkm-1', 'bg-paper-0', 'border-paper-2', 'hover:bg-seal-deep', 'focus:ring-4', 'shadow-none', 'outline-none', 'opacity-80', 'bg-[radial-gradient(ellipse_at_20%_0%,var(--seal-tint),transparent_50%)]', '!text-inkm-3', 'text-[color:var(--ink-1)]']) {
-      expect([paint, isColourClass(paint)]).toEqual([paint, true])
-    }
   })
 })
 
@@ -533,20 +346,14 @@ describe('the switch changes the chrome, never the fields', () => {
  * the same mounted element either way (One Tap needs it mounted); only
  * whether it is shown differs, so the control lists above stay equal.
  */
-describe('Google on the first page — the house path only', () => {
+describe('Google on the first page', () => {
   const googleHost = () => screen.getByText(/Google sign-in isn.t configured/).closest('[aria-hidden]')
 
-  it('ON shows it under the address, before any method is resolved', async () => {
-    setSwitch(true)
+  it('shows it under the address, before any method is resolved', async () => {
     await STATES.find((st) => st.name === 'login-email')!.reach()
     expect(googleHost()).toHaveAttribute('aria-hidden', 'false')
   })
 
-  it('OFF keeps it hidden until the address resolves to Google', async () => {
-    setSwitch(false)
-    await STATES.find((st) => st.name === 'login-email')!.reach()
-    expect(googleHost()).toHaveAttribute('aria-hidden', 'true')
-  })
 })
 
 /* ── 3c. The front matter — /login's endpaper only ───────────────────────── */
@@ -556,27 +363,20 @@ describe('Google on the first page — the house path only', () => {
  * the front matter. It belongs to /login's house path alone — not /register,
  * and not today's page.
  */
-describe('the front matter — /login on the house path only', () => {
+describe('the front matter — /login only', () => {
   const TURN = 'Turn back to the front of the book'
   const reachOf = (name: string) => STATES.find((st) => st.name === name)!.reach
 
-  it('ON /login offers the turn', async () => {
-    setSwitch(true)
+  it('/login offers the turn', async () => {
     await reachOf('login-email')()
     expect(screen.getByRole('button', { name: TURN })).toBeInTheDocument()
   })
 
-  it('ON /register does not', async () => {
-    setSwitch(true)
+  it('/register does not', async () => {
     await reachOf('register-create-account-taken')()
     expect(screen.queryByRole('button', { name: TURN })).toBeNull()
   })
 
-  it('OFF /login does not', async () => {
-    setSwitch(false)
-    await reachOf('login-email')()
-    expect(screen.queryByRole('button', { name: TURN })).toBeNull()
-  })
 })
 
 /* ── 4. The house-side strings, read from source ────────────────────────── */
@@ -593,11 +393,11 @@ describe('the front matter — /login on the house path only', () => {
  * the link on the amber plate — see the comment above it in Login.tsx.
  */
 describe('house-side class strings carry tokens, not today’s palette', () => {
-  const HOUSE_SIDE = /\b(?:on|house)\s*\?\s*(?:'([^']*)'|`([^`]*)`)/g
+  const HOUSE_SIDE = /(?:'([^'\n]*)'|`([^`\n]*)`)/g
   const NEUTRAL_LEGACY = /(^|[:!])-?(bg|text|border|ring|divide|placeholder|from|to|shadow)-(gray|slate|white|black|wine|brand)(\b|\/|-)/
   const AMBER_PLATE_LINK = new Set(['text-wine-800', 'hover:text-wine-900'])
 
-  it.each(['src/pages/Login.tsx', 'src/pages/Register.tsx', 'src/components/brand/AuthShell.tsx'])('%s', (file) => {
+  it.each(['src/pages/Login.tsx', 'src/pages/Register.tsx'])('%s', (file) => {
     const src = readFileSync(resolve(process.cwd(), file), 'utf8')
     const house = [...src.matchAll(HOUSE_SIDE)].map((m) => m[1] ?? m[2])
     expect(house.length).toBeGreaterThan(0)
@@ -629,7 +429,7 @@ describe('auth-house.css — tokens only, focus inherited', () => {
     expect(rules()).not.toContain('[data-theme')
   })
 
-  it('is scoped to the house path, so OFF is untouched by it', () => {
+  it('is scoped to the house path', () => {
     const selectors = rules().match(/[^{}]+(?=\{)/g) ?? []
     expect(selectors.length).toBeGreaterThan(0)
     for (const s of selectors) {
@@ -641,27 +441,6 @@ describe('auth-house.css — tokens only, focus inherited', () => {
     expect(rules()).toContain(':focus-visible')
     expect(rules()).toContain('outline: 2px solid var(--seal)')
     expect(rules()).toContain('box-shadow: none')
-  })
-})
-
-/* ── capture (one-time proof, off by default) ───────────────────────────── */
-
-/**
- * `AUTHPAGES_CAPTURE_DIR=/abs/dir vitest run <this file> -t capture` writes
- * every state's rendered HTML, switch OFF and ON, to `<dir>/{off,on}/`. It was
- * run once on the untouched tree and once after the change; `diff -r` of the
- * two `off/` directories is the byte-for-byte proof that OFF is today's page.
- */
-describe.runIf(Boolean(process.env.AUTHPAGES_CAPTURE_DIR))('capture', () => {
-  const dir = process.env.AUTHPAGES_CAPTURE_DIR as string
-  it.each(STATES)('capture $name', async ({ name, reach }) => {
-    for (const on of [false, true]) {
-      cleanup()
-      setSwitch(on)
-      const container = await reach()
-      mkdirSync(resolve(dir, on ? 'on' : 'off'), { recursive: true })
-      writeFileSync(resolve(dir, on ? 'on' : 'off', `${name}.html`), `${container.innerHTML}\n`)
-    }
   })
 })
 
