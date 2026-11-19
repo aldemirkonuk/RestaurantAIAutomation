@@ -27,8 +27,6 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
@@ -2027,7 +2025,7 @@ describe('ReportsNext — the sheet keeps its places', () => {
     expect(container.querySelector('.rp-sparks')?.hasAttribute('data-pending')).toBe(true);
   });
 
-  const reportsCss = readFileSync(join(__dirname, 'reports-next.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const reportsCss = readFileSync(resolve(__dirname, 'reports-next.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
   it('[REVERT-FAILS] holds the phone-sized headline and the two stacked sparklines, not the desktop room (r76)', () => {
     const phone = /@media \(max-width: 480px\) \{([\s\S]*?)\n\}\n/.exec(
       reportsCss.slice(reportsCss.indexOf('.rp-sparks[data-pending]')),
