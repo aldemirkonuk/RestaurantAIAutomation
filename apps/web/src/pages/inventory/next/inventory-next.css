@@ -1086,6 +1086,28 @@ html .mdv-ovl .iv-sheet-body .mdv-select__control {
   }
 }
 
+/* ── phone: the drawer's small controls and the row checkbox take 44 px ────
+   r81 walk at 375: the drawer's Close (26), "All the evidence" (26), "Read again" (17)
+   and the list row checkbox (24) all failed the 44 px tap rule. The drawer is a portal
+   outside .iv-page, so it is named here. The checkbox keeps its look: its label is the
+   44 x 44 hit area (a tap anywhere on the label toggles it). */
+@media (max-width: 640px) {
+  .iv-drawer .mdv-ovl__close,
+  .iv-drawer .iv-linkish {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+  }
+  .iv-drawer .mdv-ovl__close {
+    min-width: 44px;
+  }
+  .ivc-pick {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
 /* ── phone: the filter chips are one swipeable line, not a wrapped wall ──── */
 @media (max-width: 767px) {
   .iv-page .iv-chips {
