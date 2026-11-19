@@ -247,7 +247,7 @@ export function projectCuttings<T extends Placed>(cuttings: T[], cols: number): 
  * that read before it. No strip, no change. Pure; the reader's own arrangement
  * is untouched, and arranging (`strip` unset) always gets the real slots.
  */
-export function flowStrips<T extends Placed>(cuttings: T[]): T[] {
+export function flowStrips<T extends Placed>(cuttings: T[], cols: number = SHEET_COLS): T[] {
   if (!cuttings.some((c) => c.strip)) return cuttings;
   const placed = new Map<AnalysisId, Slot>();
   let y = 0;
@@ -255,7 +255,7 @@ export function flowStrips<T extends Placed>(cuttings: T[]): T[] {
   let used = 0;
   let waiting: T[] = [];
   const laidFull = (c: T) => {
-    placed.set(c.id, { x: 0, y, w: SHEET_COLS, h: c.slot.h });
+    placed.set(c.id, { x: 0, y, w: cols, h: c.slot.h });
     y += c.slot.h;
   };
   const closeShelf = () => {
@@ -263,7 +263,7 @@ export function flowStrips<T extends Placed>(cuttings: T[]): T[] {
       const h = Math.max(...shelf.map((c) => c.slot.h));
       let x = 0;
       shelf.forEach((c, i) => {
-        const w = i === shelf.length - 1 ? SHEET_COLS - x : Math.min(c.slot.w, SHEET_COLS);
+        const w = i === shelf.length - 1 ? cols - x : Math.min(c.slot.w, cols);
         placed.set(c.id, { x, y, w, h });
         x += w;
       });
@@ -280,8 +280,8 @@ export function flowStrips<T extends Placed>(cuttings: T[]): T[] {
       else waiting.push(c);
       continue;
     }
-    const w = Math.min(c.slot.w, SHEET_COLS);
-    if (used + w > SHEET_COLS) closeShelf();
+    const w = Math.min(c.slot.w, cols);
+    if (used + w > cols) closeShelf();
     shelf.push(c);
     used += w;
   }
@@ -309,11 +309,17 @@ export function sheetLayouts(
     static: !arranging,
   });
   const at = (cols: number): LayoutItem[] => projectCuttings(cuttings, cols).map(item(cols));
+  // The six-column ruling is the one a 1280 px window draws (the sheet box is
+  // 964 px beside the rail); a strip there left the same blank block.
+  const sm: LayoutItem[] = (arranging
+    ? projectCuttings(cuttings, SHEET_BREAKPOINT_COLS.sm)
+    : flowStrips(projectCuttings(cuttings, SHEET_BREAKPOINT_COLS.sm), SHEET_BREAKPOINT_COLS.sm)
+  ).map(item(SHEET_BREAKPOINT_COLS.sm));
   const lg = (arranging ? cuttings : flowStrips(cuttings)).map(item(SHEET_COLS));
   return {
     lg,
     md: lg,
-    sm: at(SHEET_BREAKPOINT_COLS.sm),
+    sm,
     xs: at(SHEET_BREAKPOINT_COLS.xs),
     xxs: at(SHEET_BREAKPOINT_COLS.xxs),
   };

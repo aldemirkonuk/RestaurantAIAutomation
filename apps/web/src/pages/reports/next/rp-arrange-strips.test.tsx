@@ -101,11 +101,28 @@ describe('the sheet while reading, with strips', () => {
     expect(lg.find((l) => l.i === 'till')).toMatchObject({ x: 4, w: 8 });
   });
 
-  it('the narrower rulings do not read the strip flag', () => {
+  it('the phone rulings do not read the strip flag', () => {
     const a = sheetLayouts(house(['till']), false);
     const b = sheetLayouts(house([]).map((c) => (c.id === 'till' ? { ...c, slot: { ...c.slot, h: STRIP_ROWS } } : c)), false);
-    expect(a.sm).toEqual(b.sm);
     expect(a.xs).toEqual(b.xs);
+    expect(a.xxs).toEqual(b.xxs);
+  });
+
+  it('[REVERT-FAILS] the six-column ruling (a 1280 px window beside the rail) leaves no blank cell either', () => {
+    const holes6 = (slots: Slot[]): number => {
+      const rows = Math.max(...slots.map((s) => s.y + s.h));
+      let empty = 0;
+      for (let r = 0; r < rows; r++)
+        for (let c = 0; c < 6; c++)
+          if (!slots.some((s) => c >= s.x && c < s.x + s.w && r >= s.y && r < s.y + s.h)) empty++;
+      return empty;
+    };
+    for (const strips of [['till'], ['till', 'writing'], ['pacing', 'shape']] as AnalysisId[][]) {
+      const known = strips.filter((id) => DEFAULT_ON.includes(id));
+      const sm = sheetLayouts(house(known), false).sm.map(({ x, y, w, h }) => ({ x, y, w, h }));
+      expect(holes6(sm)).toBe(0);
+      expect(overlaps(sm)).toBe(false);
+    }
   });
 
   it('the grid is handed the flowed layout', () => {
