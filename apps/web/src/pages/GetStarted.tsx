@@ -683,6 +683,9 @@ export default function GetStarted() {
             </label>
           </div>
         </div>
+        <button type="button" onClick={createHouse} disabled={saving} className="mdv-btn mdv-btn--seal">
+          {saving ? 'Opening the house…' : 'This is us'}
+        </button>
         {error && <p role="alert" className="mdv-alert">{error}</p>}
         {needsVerify && (
           <Link to="/verify-email" replace className="mdv-spread-textlink">
@@ -694,9 +697,6 @@ export default function GetStarted() {
             Choose your house
           </Link>
         )}
-        <button type="button" onClick={createHouse} disabled={saving} className="mdv-btn mdv-btn--seal">
-          {saving ? 'Opening the house…' : 'This is us'}
-        </button>
       </ArrivalShell>
     )
   }

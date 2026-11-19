@@ -1,7 +1,7 @@
 /** /get-started wears the one open book (AuthSpread): one Fraunces H1, the step on the folio, no literal colour. */
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -49,5 +49,13 @@ describe('GetStarted on the open book', () => {
     const src = readFileSync(resolve(process.cwd(), 'src/pages/GetStarted.tsx'), 'utf8')
     expect(src).toMatch(/from '..\/components\/brand\/AuthSpread'/)
     expect(src).not.toMatch(/#[0-9a-fA-F]{6}\b|font-serif|BrandMark|<h1/)
+  })
+
+  it('puts a refusal under the plate, so the fields and the plate do not move when it arrives', async () => {
+    render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    const plate = await screen.findByRole('button', { name: 'This is us' })
+    fireEvent.click(plate)
+    const alert = await screen.findByRole('alert')
+    expect(plate.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 })
