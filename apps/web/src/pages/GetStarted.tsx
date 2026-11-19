@@ -195,6 +195,13 @@ export default function GetStarted() {
   const [locationStatus, setLocationStatus] = useState<string | null>(null)
   const [menuMethod, setMenuMethod] = useState<MenuMethod>(null)
   const [error, setError] = useState<string | null>(null)
+  // The refusal sits under the plate (it must not move the plate), which on a
+  // short screen or a phone is below the fold: bring it into view when it comes,
+  // or the press seems to do nothing (r63 walk).
+  const refusalRef = useRef<HTMLParagraphElement | null>(null)
+  useEffect(() => {
+    if (error) refusalRef.current?.scrollIntoView?.({ block: 'nearest' })
+  }, [error])
   // A 403 from opening the house means the address is not verified yet.
   const [needsVerify, setNeedsVerify] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
@@ -686,7 +693,7 @@ export default function GetStarted() {
         <button type="button" onClick={createHouse} disabled={saving} className="mdv-btn mdv-btn--seal">
           {saving ? 'Opening the house…' : 'This is us'}
         </button>
-        {error && <p role="alert" className="mdv-alert">{error}</p>}
+        {error && <p ref={refusalRef} role="alert" className="mdv-alert">{error}</p>}
         {needsVerify && (
           <Link to="/verify-email" replace className="mdv-spread-textlink">
             Verify your email
@@ -757,7 +764,7 @@ export default function GetStarted() {
             {saving ? 'Reading…' : 'A photo, a PDF or a spreadsheet. Or click to photograph.'}
           </span>
         </button>
-        {error && <p role="alert" className="mdv-alert">{error}</p>}
+        {error && <p ref={refusalRef} role="alert" className="mdv-alert">{error}</p>}
         <div className="mdv-spread-links">
           <button
             type="button"

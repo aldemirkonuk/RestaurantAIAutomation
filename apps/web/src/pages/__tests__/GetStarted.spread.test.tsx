@@ -51,6 +51,22 @@ describe('GetStarted on the open book', () => {
     expect(src).not.toMatch(/#[0-9a-fA-F]{6}\b|font-serif|BrandMark|<h1/)
   })
 
+  it('brings a refusal into view, since under the plate it can be below the fold', async () => {
+    const seen: string[] = []
+    const original = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = function (this: Element) {
+      seen.push(this.getAttribute('role') ?? '')
+    }
+    try {
+      render(<MemoryRouter><GetStarted /></MemoryRouter>)
+      fireEvent.click(await screen.findByRole('button', { name: 'This is us' }))
+      await screen.findByRole('alert')
+      expect(seen).toContain('alert')
+    } finally {
+      Element.prototype.scrollIntoView = original
+    }
+  })
+
   it('puts a refusal under the plate, so the fields and the plate do not move when it arrives', async () => {
     render(<MemoryRouter><GetStarted /></MemoryRouter>)
     const plate = await screen.findByRole('button', { name: 'This is us' })
