@@ -15,7 +15,7 @@ const C = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'; // several lines
 const D = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'; // no price, menu 40
 const TAKE = `/recipes/${RID}/dishes/take-menu-prices`;
 
-const h = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), role: 'manager', priceA: 500 as number, taken: false }));
+const h = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), role: 'manager', priceA: 500 as number, taken: false, noRecipe: false }));
 vi.mock('../../services/api/client', () => ({
   apiClient: { get: h.get, post: h.post, put: vi.fn(), patch: vi.fn(), delete: vi.fn() },
   getErrorStatus: () => null,
@@ -35,6 +35,7 @@ beforeEach(() => {
   h.role = 'manager';
   h.priceA = 500;
   h.taken = false;
+  h.noRecipe = false;
   h.post.mockReset();
   h.get.mockReset().mockImplementation(async (url: string) => {
     if (url === '/settings/currency') return { data: { restaurantId: RID, code: 'TRY', country: 'Turkey', readable: true, reason: null, statedAt: null } };
@@ -42,7 +43,7 @@ beforeEach(() => {
       return { data: [list(A, 'Mezze', h.priceA), list(B, 'Lamb shank', 900), list(C, 'Apple pie', 80), list(D, 'Bread', null)] };
     }
     if (url === `/recipes/${RID}/dishes/figures`) {
-      return { data: { costsUnread: false, dishes: [fig(A, 100), fig(B, 300), fig(C, 20), fig(D, 10)] } };
+      return { data: { costsUnread: false, dishes: h.noRecipe ? [] : [fig(A, 100), fig(B, 300), fig(C, 20), fig(D, 10)] } };
     }
     if (url === `/recipes/${RID}/menu-prices`) {
       return {
@@ -76,6 +77,16 @@ function mount() {
 const lira = (n: number) => fmtMoney(n, 'TRY');
 
 describe('/dishes: take the menu\'s prices together', () => {
+  it('says a food cost share that is not known once, not "not known to not known"', async () => {
+    h.noRecipe = true;
+    mount();
+    await screen.findByTestId('take-menu-prices');
+    fireEvent.click(screen.getByRole('button', { name: 'Show them' }));
+    const sheet = within(await screen.findByTestId('take-menu-prices-sheet'));
+    const a = within(sheet.getByTestId(`take-menu-prices-row-${A}`)).getAllByRole('cell').map((c) => c.textContent);
+    expect(a[3]).toBe('not known');
+  });
+
   it('counts the dishes that differ, shows only them, and lists old price, new price and food cost share', async () => {
     mount();
     expect((await screen.findByTestId('take-menu-prices')).textContent).toContain('2 dishes are priced differently on the current menu.');

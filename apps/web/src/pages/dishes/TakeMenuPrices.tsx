@@ -102,7 +102,7 @@ export default function TakeMenuPrices({
                     <td>{i.name}</td>
                     <td className="cl-num" style={{ textAlign: 'right' }}>{i.from == null ? 'No price' : say(i.from)}</td>
                     <td className="cl-num" style={{ textAlign: 'right' }}>{say(i.to)}</td>
-                    <td className="cl-num" style={{ textAlign: 'right' }}>{i.shareNow} to {i.shareMenu}</td>
+                    <td className="cl-num" style={{ textAlign: 'right' }}>{i.shareNow === i.shareMenu ? i.shareNow : `${i.shareNow} to ${i.shareMenu}`}</td>
                   </tr>
                 ))}
               </tbody>
