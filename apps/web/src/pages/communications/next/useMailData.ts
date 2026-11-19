@@ -22,18 +22,19 @@ import { useEffect, useRef } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import { apiClient } from '../../../services/api/client';
+import { integrationsApi } from '../../../services/api/integrations';
 import type { SenderIdentity } from './Compose/useComposeData';
 import type {
   IntakeRead,
   MailIntakeResponse,
   MailboxReader,
-  MailKindFilter,
   MailPeoplePage,
   MailSummary,
   MailThreadPage,
   MailThreadsPage,
   SeenMark,
 } from './mail-format';
+import { READ_ALL_ID } from './mail-format';
 
 export const MAIL_POLL_MS = 30_000;
 
@@ -52,8 +53,7 @@ export function useHouse(): string {
 
 export const mailKeys = {
   summary: (house: string) => ['mail-summary', house] as const,
-  people: (house: string, waitingOnly: boolean, search = '', kind: MailKindFilter = 'all') =>
-    (kind === 'all' ? ['mail-people', house, waitingOnly, search] : ['mail-people', house, waitingOnly, search, kind]) as readonly unknown[],
+  people: (house: string, waitingOnly: boolean, search = '') => ['mail-people', house, waitingOnly, search] as const,
   threads: (house: string, withKey: string) => ['mail-threads', house, withKey] as const,
   thread: (house: string, key: string) => ['mail-thread', house, key] as const,
 };
@@ -117,17 +117,16 @@ export function useMailListsFollowSummary(summary: MailSummary | null | undefine
  * searches, so a person past the first page is found too. While a new term
  * is read, the last list stays on screen instead of "Reading the mail…".
  */
-export function useMailPeople(waitingOnly: boolean, search = '', kind: MailKindFilter = 'all') {
+export function useMailPeople(waitingOnly: boolean, search = '') {
   const house = useHouse();
   return useInfiniteQuery<MailPeoplePage>({
-    queryKey: mailKeys.people(house, waitingOnly, search, kind),
+    queryKey: mailKeys.people(house, waitingOnly, search),
     initialPageParam: null as string | null,
     placeholderData: (previous) => previous,
     queryFn: async ({ pageParam }) => {
       const params: Record<string, string> = {};
       if (waitingOnly) params.waiting = '1';
       if (search) params.q = search;
-      if (kind !== 'all') params.kind = kind;
       if (pageParam) params.after = String(pageParam);
       return (await apiClient.get<MailPeoplePage>('/mail/people', { params })).data;
     },
@@ -201,23 +200,70 @@ export function useMailSender(poll = false) {
   });
 }
 
+/** What the house-grants read says about `gmail_read_all`, the grant that reads every conversation. */
+interface HouseGrantRow {
+  connectionId: string;
+  integrationId: string;
+  houseAccess?: { revoked?: boolean } | null;
+}
+
+const readAllKey = (house: string) => ['mail-read-all', house] as const;
+
 /**
- * The house says yes (POST) or no (DELETE) to reading every conversation, not
- * only vendors: scope `gmail_read_all`. Done when the sender read, which
- * carries the answer, has been read again, so the tab never shows the old one
- * after the act.
+ * Whether this house reads every conversation, from GET
+ * /integrations/oauth/house-grants (owner or manager only, so `enabled` is
+ * false for staff). It does when some member holds a `gmail_read_all` grant
+ * that the house has not stopped using. A failed read is `isError`, never "no".
  */
-export function useReadAllConsent() {
+export function useReadAllGrants(enabled: boolean) {
+  const house = useHouse();
+  const q = useQuery<{ grants: HouseGrantRow[] }>({
+    queryKey: readAllKey(house),
+    queryFn: async () => {
+      const { data } = await apiClient.get<{ grants?: HouseGrantRow[] }>('/integrations/oauth/house-grants');
+      return { grants: data.grants ?? [] };
+    },
+    enabled: Boolean(house) && enabled,
+    staleTime: 30_000,
+  });
+  const live = (q.data?.grants ?? []).filter((g) => g.integrationId === READ_ALL_ID && g.houseAccess?.revoked !== true);
+  return { isPending: q.isPending && enabled, isError: q.isError, reads: live.length > 0, liveIds: live.map((g) => g.connectionId) };
+}
+
+/**
+ * Whether this deployment offers the grant at all, from GET
+ * /integrations/oauth/catalog (the same read, and cache entry, the setup page
+ * uses). An unread or unknown catalogue offers nothing.
+ */
+export function useReadAllOffered(enabled: boolean): boolean {
+  const q = useQuery({
+    queryKey: ['integration-catalog'],
+    queryFn: () => integrationsApi.getCatalog(),
+    enabled,
+    staleTime: 300_000,
+  });
+  const rows = Array.isArray(q.data) ? q.data : [];
+  return enabled && rows.some((r) => r.id === READ_ALL_ID && r.available === true);
+}
+
+/**
+ * The house stops using every live `gmail_read_all` grant: PUT
+ * /integrations/oauth/house-grants/:connectionId/access `{ houseUses: false }`.
+ * The member keeps the grant; the reader stops on its next run. Done when the
+ * grants have been read again, so the tab never shows the old answer.
+ */
+export function useStopReadingAll() {
   const house = useHouse();
   const qc = useQueryClient();
-  return useMutation<unknown, unknown, { accept: boolean }>({
-    mutationFn: async ({ accept }) =>
-      accept
-        ? (await apiClient.post('/mail/consent', { scope: 'gmail_read_all' })).data
-        : (await apiClient.delete('/mail/consent', { params: { scope: 'gmail_read_all' } })).data,
-    onSuccess: () => {
+  return useMutation<void, unknown, { connectionIds: string[] }>({
+    mutationFn: async ({ connectionIds }) => {
+      for (const id of connectionIds) {
+        await apiClient.put(`/integrations/oauth/house-grants/${id}/access`, { houseUses: false });
+      }
+    },
+    onSettled: () => {
       for (const root of ['mail-people', 'mail-summary']) void qc.invalidateQueries({ queryKey: [root, house] });
-      return qc.invalidateQueries({ queryKey: ['house-letter-sender', house] });
+      return qc.invalidateQueries({ queryKey: readAllKey(house) });
     },
   });
 }

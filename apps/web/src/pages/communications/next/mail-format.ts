@@ -47,27 +47,28 @@ export function kindEmptyWords(kind: MailKindFilter, readsAll: boolean): string 
   return `No conversation with ${who} yet.`;
 }
 
+/** The integration id of the grant that reads every conversation (gateway: integrations-oauth.constants.ts). */
+export const READ_ALL_ID = 'gmail_read_all' as const;
+
 /**
- * The text the house reads before it lets Mudavym read every conversation in
- * its mailbox, shown in full and never shortened. The gateway may send its own
- * wording (`reader.readAll.text`); this is what the tab shows until it does.
+ * Where the person agrees to it. The wider reading is a Gmail connection of
+ * its own, so the consent screen (the gateway's words, shown in full, with the
+ * retention figure) is the one place it is agreed; nothing is read until then.
  */
-export const READ_ALL_CONSENT_TEXT =
-  "Mudavym will read every conversation in this house's connected Gmail mailbox, not only the ones with vendors: " +
-  'letters with your team and with guests too. It stores what it reads in this house, shows it to the house\'s ' +
-  'owners and managers in Mail, and never sends anything on its own because of it. You can stop at any time; ' +
-  'what was already read stays in the house until it is removed.';
+export function readAllConsentPath(): string {
+  return `/authorize/${READ_ALL_ID}?returnPath=${encodeURIComponent('/communications?tab=mail')}`;
+}
+
+/** What the tab says before sending a person to the consent screen. */
+export const READ_ALL_OFFER_WORDS =
+  'Reading every conversation is its own Gmail connection with its own consent screen. That screen says, in full, ' +
+  'what is read, who can see it and how long it is kept, and nothing is read until you agree there.';
 
 export const READ_ALL_OFFER = 'Read every conversation, not only vendors';
 
 /** What the tab says about its own reach, so a quiet Team or Guests list is never mistaken for an empty one. */
 export const VENDOR_ONLY_LINE = 'This tab shows vendor mail only.';
 export const READS_ALL_LINE = 'This tab shows every conversation in the mailbox: vendors, team and guests.';
-
-/** The reader's consent to read all, as the gateway reports it. Absent: not given. */
-export function readsAll(reader: MailboxReader | null | undefined): boolean {
-  return reader?.readAll?.accepted === true;
-}
 
 /**
  * Where one letter came from and went to, in one line. Null when the gateway
@@ -242,12 +243,6 @@ export interface MailboxReader {
    * address. null or absent (an older gateway): not known, and no claim.
    */
   bookAddresses?: number | null;
-  /**
-   * The house's answer to reading every conversation, not only vendors. Absent
-   * (an older gateway) is read as not given: the tab says it shows vendor mail
-   * only.
-   */
-  readAll?: { accepted: boolean; acceptedAt?: string | null; text?: string | null } | null;
 }
 
 /** What a connected mailbox with an empty vendor book needs, in the house's words (r36 mail gap 5). */

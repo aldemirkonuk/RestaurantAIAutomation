@@ -41,12 +41,12 @@ const MailThread = lazy(() => import('./MailThread').then((m) => ({ default: m.M
 import {
   MAIL_KIND_FILTERS,
   READS_ALL_LINE,
-  READ_ALL_CONSENT_TEXT,
   READ_ALL_OFFER,
+  READ_ALL_OFFER_WORDS,
   VENDOR_ONLY_LINE,
   kindEmptyWords,
   mailKindOf,
-  readsAll,
+  readAllConsentPath,
   type MailKindFilter,
   NEW_TO_YOU,
   channelWords,
@@ -75,7 +75,9 @@ import {
   useMailIntake,
   useMailListsFollowSummary,
   useMailPeople,
-  useReadAllConsent,
+  useReadAllGrants,
+  useReadAllOffered,
+  useStopReadingAll,
   useMailSender,
   useHouse,
   useMailSummary,
@@ -426,14 +428,14 @@ function People({
   /** setupLinkWords(canReply): staff are not told to set up what they cannot change. */
   setupWords: string;
 }) {
-  const q = useMailPeople(waitingOnly, search, kind);
+  const q = useMailPeople(waitingOnly, search);
   const pages = q.data?.pages ?? [];
-  // The gateway is asked for one kind, and the list holds to it even if it answers with more.
+  // The gateway has no kind filter on this route, so the list narrows to the chosen kind here.
   const people = pages.flatMap((p) => p.people).filter((p) => kind === 'all' || mailKindOf(p) === kind);
   const storedKinds = pages[0]?.storedKinds ?? null;
   const house = useHouse();
   // Remember the unfiltered first-page count so the next cold load draws that many bars.
-  const settled = Boolean(q.data) && !waitingOnly && !search && kind === 'all';
+  const settled = Boolean(q.data) && !waitingOnly && !search;
   const firstPageCount = pages[0]?.people.length ?? 0;
   useEffect(() => {
     if (settled) rememberRowCount(house, firstPageCount);
@@ -531,36 +533,27 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
 }
 
 /**
- * What this tab reads, said plainly, and the one offer to widen it. Until the
- * house says yes it shows vendor mail only and says so. Only an owner or a
- * manager can say yes or stop; the consent text is shown in full before the
- * act, and the act is done when the tab has read the answer back.
+ * What this tab reads, said plainly, and the one offer to widen it. Until a
+ * member's wider Gmail connection is in use by the house it shows vendor mail
+ * only and says so. Only an owner or a manager sees the offer or can stop the
+ * house reading; agreeing is done on the consent screen, the gateway's own
+ * words in full, and this tab learns of it by reading the house's grants back.
  */
-function ReadScope({
-  reader,
-  pending,
-  failed,
-  canAnswer,
-}: {
-  reader: MailboxReader | null;
-  pending: boolean;
-  failed: boolean;
-  canAnswer: boolean;
-}) {
+function ReadScope({ canAnswer }: { canAnswer: boolean }) {
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const consent = useReadAllConsent();
-  if (pending) return null;
-  if (failed) {
+  const grants = useReadAllGrants(canAnswer);
+  const offered = useReadAllOffered(canAnswer);
+  const stop = useStopReadingAll();
+  if (grants.isPending) return null;
+  if (grants.isError) {
     return (
       <p data-testid="read-scope" style={{ ...QUIET, margin: 0 }}>
         What this tab reads could not be read just now. That does not mean it reads only vendors.
       </p>
     );
   }
-  const all = readsAll(reader);
-  const text = reader?.readAll?.text?.trim() || READ_ALL_CONSENT_TEXT;
-  const act = (accept: boolean) =>
-    consent.mutate({ accept }, { onSuccess: () => setOpen(false) });
+  const all = grants.reads;
   return (
     <div className="grid gap-1.5" data-testid="read-scope" data-state={all ? 'all' : 'vendors'}>
       <p style={{ ...QUIET, margin: 0 }}>
@@ -569,20 +562,20 @@ function ReadScope({
           <button
             type="button"
             data-testid="read-all-stop"
-            disabled={consent.isPending}
-            onClick={() => act(false)}
+            disabled={stop.isPending}
+            onClick={() => stop.mutate({ connectionIds: grants.liveIds })}
             style={LINK_BUTTON}
           >
-            {consent.isPending ? 'Stopping…' : 'Stop reading every conversation'}
+            {stop.isPending ? 'Stopping…' : 'Stop reading every conversation'}
           </button>
         )}
-        {canAnswer && !all && !open && (
+        {canAnswer && !all && offered && !open && (
           <button type="button" data-testid="read-all-offer" onClick={() => setOpen(true)} style={LINK_BUTTON}>
             {READ_ALL_OFFER}
           </button>
         )}
       </p>
-      {canAnswer && !all && open && (
+      {canAnswer && !all && offered && open && (
         <div
           role="group"
           aria-label={READ_ALL_OFFER}
@@ -591,14 +584,13 @@ function ReadScope({
           style={{ background: 'var(--paper-1, #F3EFE6)', border: '1px solid var(--paper-2, #EAE4D8)', maxWidth: '68ch' }}
         >
           <p data-testid="read-all-text" style={{ margin: 0, fontSize: 12.5, lineHeight: 1.5, color: 'var(--ink-2, #4F473C)' }}>
-            {text}
+            {READ_ALL_OFFER_WORDS}
           </p>
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
               data-testid="read-all-accept"
-              disabled={consent.isPending}
-              onClick={() => act(true)}
+              onClick={() => navigate(readAllConsentPath())}
               style={{
                 fontSize: 12,
                 fontWeight: 600,
@@ -607,20 +599,20 @@ function ReadScope({
                 border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
                 background: 'var(--seal-tint, rgba(26,94,107,.1))',
                 color: 'var(--seal-deep, #14515C)',
-                cursor: consent.isPending ? 'default' : 'pointer',
+                cursor: 'pointer',
               }}
             >
-              {consent.isPending ? 'Saving…' : 'I agree, read every conversation'}
+              Review and agree
             </button>
-            <button type="button" data-testid="read-all-decline" disabled={consent.isPending} onClick={() => setOpen(false)} style={LINK_BUTTON}>
+            <button type="button" data-testid="read-all-decline" onClick={() => setOpen(false)} style={LINK_BUTTON}>
               Not now
             </button>
           </div>
         </div>
       )}
-      {consent.isError && (
+      {stop.isError && (
         <p role="alert" data-testid="read-all-failed" style={{ margin: 0, fontSize: 12, color: 'var(--alarm-deep, #8C3322)' }}>
-          That was not saved ({failedReadWords(consent.error)}). {all ? 'The tab still reads every conversation.' : 'The tab still shows vendor mail only.'}
+          That was not saved ({failedReadWords(stop.error)}). The tab still reads every conversation.
         </p>
       )}
     </div>
@@ -659,6 +651,7 @@ export function MailTab({
   const [params, setParams] = useSearchParams();
   const [waitingOnly, setWaitingOnly] = useState(false);
   const [kind, setKind] = useState<MailKindFilter>('all');
+  const readAll = useReadAllGrants(canReply);
   // r28 mail gap 16: what is typed, and the term sent 300 ms after typing stops.
   const [typed, setTyped] = useState('');
   const [search, setSearch] = useState('');
@@ -898,17 +891,12 @@ export function MailTab({
               </Chip>
             ))}
           </div>
-          <ReadScope
-            reader={reader}
-            pending={senderQ.isPending}
-            failed={readerFailed}
-            canAnswer={canReply}
-          />
+          <ReadScope canAnswer={canReply} />
           <People
             on={on}
             waitingOnly={waitingOnly}
             kind={kind}
-            readsEverything={readsAll(reader)}
+            readsEverything={readAll.reads}
             search={search}
             onClearSearch={clearSearch}
             reader={reader}
