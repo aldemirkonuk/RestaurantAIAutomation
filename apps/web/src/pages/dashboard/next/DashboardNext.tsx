@@ -24,11 +24,12 @@
  * the app still does.
  */
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Wordmark } from '@/components/mudavym';
 import { DayLine } from '@/components/mudavym/DayLine';
 import { animate, settle } from '@/lib/mudavym';
+import { firstLoadThisSession } from '@/lib/mudavym/firstLoad';
 import { houseZoneOf, useDashboardSpine } from './useDashboardNextData';
 import { hourIn } from './format';
 import { SERIF } from './fonts';
@@ -82,6 +83,12 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
   const roleSeesAmounts = activeRole === 'owner' || activeRole === 'manager';
   const seesAmounts = statsAmounts !== 'withheld' && roleSeesAmounts;
   const headRef = useRef<HTMLElement | null>(null);
+
+  // The greeting inks in on the first load of a session only (N-20).
+  const [inkIn, setInkIn] = useState(false);
+  useLayoutEffect(() => {
+    if (firstLoadThisSession('dashboard-greeting')) setInkIn(true);
+  }, []);
 
   // One quiet entrance for the opening line — settle, 6px, once.
   useEffect(() => {
@@ -167,12 +174,12 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
     >
       <div className="mx-auto max-w-[1200px] px-4 py-6 sm:px-6 lg:py-8">
         {/* ── the opening — Fraunces speaks ─────────────────────────────── */}
-        <header ref={headRef} className="mb-6">
+        <header ref={headRef} className="mdv-grain mb-6">
           <p className="text-[11px] uppercase tracking-[0.14em] text-inkm-4">
             {dateLine}
           </p>
           <h1
-            className="mt-1 text-[32px] font-normal leading-tight text-inkm-1 sm:text-[38px]"
+            className={`${inkIn ? 'mdv-ink-in ' : ''}mt-1 text-[32px] font-normal leading-tight text-inkm-1 sm:text-[38px]`}
             style={{ fontFamily: SERIF, fontWeight: 420 }}
           >
             {greeting}
