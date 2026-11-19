@@ -18,6 +18,7 @@ import type { StorageLocation } from '../../../hooks/useStorageLocations';
 import ItemCards, { CARD_TITLE, type CardId, type FiguresLoad, type InsideLoad } from './ItemCards';
 import ItemUsedIn, { type DishesLoad, type DrinksLoad, type UsedInLoad } from './ItemUsedIn';
 import WhatIsInIt from './NutritionCard';
+import HowItTastes from './TasteCard';
 import RowDropdown, { type EvidenceSection, type SheetId } from './RowDropdown';
 import { failureReason } from './iv-failure';
 import { noZoneWord, typeLabel, type HouseCurrency, type InvRow } from './useInventoryNextData';
@@ -93,6 +94,8 @@ export interface ItemDrawerProps {
   onClose: () => void;
   /** NutritionCard slot: what mounts in the detail card a KPI card opens. */
   NutritionCard?: ComponentType<NutritionCardProps>;
+  /** TasteCard slot: how it tastes, mounted directly after the nutrition card. */
+  TasteCard?: ComponentType<NutritionCardProps>;
   /** A sheet to open with the drawer: the staff "Count" bar opens it on the count. */
   startWith?: SheetId;
 }
@@ -100,6 +103,7 @@ export interface ItemDrawerProps {
 export default function ItemDrawer(props: ItemDrawerProps) {
   const { row, house, canManage, currency, zoneName, restaurantId, onClose } = props;
   const NutritionCard = props.NutritionCard ?? WhatIsInIt;
+  const TasteCard = props.TasteCard ?? HowItTastes;
   const [evidence, setEvidence] = useState<CardId | 'all' | null>(null);
   // One sheet for the drawer: the evidence's "Record a count" opens the sheet the acts own.
   const [sheet, setSheet] = useState<SheetId | null>(props.startWith ?? null);
@@ -292,6 +296,12 @@ export default function ItemDrawer(props: ItemDrawerProps) {
             <div className="ivd-nutrition" data-slot="NutritionCard" data-testid="ivd-nutrition-slot">
               {evidence !== 'inside' ? <h4 className="ivd-used-h">{CARD_TITLE.inside}</h4> : null}
               <NutritionCard row={row} house={house} restaurantId={restaurantId} canManage={canManage} />
+            </div>
+          ) : null}
+          {hasContents ? (
+            <div className="ivd-taste" data-slot="TasteCard" data-testid="ivd-taste-slot">
+              <h4 className="ivd-used-h">How it tastes</h4>
+              <TasteCard row={row} house={house} restaurantId={restaurantId} canManage={canManage} />
             </div>
           ) : null}
         </section>
