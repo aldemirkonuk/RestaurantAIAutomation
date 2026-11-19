@@ -74,11 +74,6 @@ export function ForgotPassword() {
             className="mdv-spread-stack"
             aria-busy={loading}
           >
-            {error && (
-              <p className="mdv-alert" role="alert">
-                {error}
-              </p>
-            )}
             <div>
               <label className="mdv-label" htmlFor="email">
                 Email address
@@ -101,6 +96,11 @@ export function ForgotPassword() {
             >
               {loading ? 'Requesting link…' : 'Send reset link'}
             </button>
+            {error && (
+              <p className="mdv-alert" role="alert">
+                {error}
+              </p>
+            )}
           </form>
         )}
       </div>
