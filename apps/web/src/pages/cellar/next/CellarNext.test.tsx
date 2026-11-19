@@ -1350,7 +1350,7 @@ describe('CellarNext — the registers that are not wines', () => {
     };
     draw({ category: 'cocktails' }, '/cocktails?open=c1');
     // Opened without a click: the recipe half is already drawn.
-    expect(screen.getByTestId('recipe-empty')).toBeInTheDocument();
+    expect(screen.getByTestId('recipe-sheet-mounted')).toHaveTextContent('c1');
   });
 
   it('a second ?open= link followed while on /cocktails opens that drink too', () => {
