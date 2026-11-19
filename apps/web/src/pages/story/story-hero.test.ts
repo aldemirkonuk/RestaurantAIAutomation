@@ -14,10 +14,14 @@ const rule = (sel: string) => {
 
 describe('story hero spacing (c3 need 17)', () => {
   it('the caption sits 16 px under the lede', () => {
-    expect(rule('.st-hero-note')).toMatch(/margin-top:\s*16px/);
+    expect(rule('.st-hero .st-hero-note')).toMatch(/margin-top:\s*16px/);
+  });
+  it('the lede and caption margins out-weigh the landing reset (.mdv-landing :where(p), one class)', () => {
+    expect(rule('.st-hero .st-hero-sub')).toMatch(/margin-top:\s*24px/);
+    expect(css).not.toMatch(/^\.st-hero-(note|sub) \{/m);
   });
   it('the caption is 12 px', () => {
-    expect(rule('.st-hero-note')).toMatch(/font:\s*500 12px\//);
+    expect(rule('.st-hero .st-hero-note')).toMatch(/font:\s*500 12px\//);
   });
   it('no phone rule pulls the caption back up under the lede', () => {
     const phone = css.slice(css.indexOf('@media (max-width: 860px)'), css.indexOf('@media (prefers-reduced-motion: no-preference)'));
