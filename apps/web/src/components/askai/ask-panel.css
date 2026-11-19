@@ -16,6 +16,7 @@
   position: sticky;
   top: var(--mdv-shell-top, 53px);
   height: calc(100vh - var(--mdv-shell-top, 53px));
+  height: calc(100svh - var(--mdv-shell-top, 53px));
   width: 360px;
   flex: none;
   display: flex;

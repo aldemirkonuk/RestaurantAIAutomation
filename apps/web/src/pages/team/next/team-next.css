@@ -12,6 +12,7 @@
 
 .tm-page {
   min-height: 100vh;
+  min-height: 100svh;
   background: var(--paper-0);
   color: var(--ink-1);
   --tm-sans: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif;

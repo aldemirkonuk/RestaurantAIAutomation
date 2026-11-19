@@ -18,6 +18,7 @@
    18.5px of a 563px viewport, with the light app shell showing underneath. */
 .cd-page {
   min-height: 100vh;
+  min-height: 100svh;
 }
 .cd-page[data-embedded] {
   min-height: 0;
