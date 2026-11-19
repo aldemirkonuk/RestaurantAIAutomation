@@ -6,7 +6,7 @@
  * the only thing that says what is (not) there.
  */
 
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 
 export type EmptyArtName =
   | 'book'
@@ -133,9 +133,13 @@ export function EmptyArt({ name, size = 96 }: EmptyArtProps) {
 export function GhostDocument() {
   return (
     <div className="mdv-ghost" data-testid="ghost-document" aria-hidden>
-      <span className="mdv-ghost__line mdv-ghost__line--head" />
+      <span className="mdv-ghost__line mdv-ghost__line--head" style={{ '--i': 0 } as CSSProperties} />
       {[92, 100, 84, 96, 60, 88, 72].map((w, i) => (
-        <span key={i} className="mdv-ghost__line" style={{ width: `${w}%` }} />
+        <span
+          key={i}
+          className="mdv-ghost__line"
+          style={{ width: `${w}%`, '--i': i + 1 } as CSSProperties}
+        />
       ))}
     </div>
   );

@@ -86,8 +86,29 @@ describe('the stylesheet', () => {
   it('animates no layout property and never uses transition: all', () => {
     expect(css).not.toMatch(/transition:\s*all/);
     const frames = css.match(/@keyframes [\w-]+\s*\{[\s\S]*?\n\}/g) ?? [];
-    expect(frames.length).toBe(2);
+    expect(frames.length).toBe(3); // in, draw, ghost-in
     for (const f of frames) expect(f).not.toMatch(/\b(width|height|top|left|margin|padding)\s*:/);
+  });
+
+  it('the ghost paper writes itself in on transform and opacity only, and stands still when asked (r61)', () => {
+    const { container } = render(<GhostDocument />);
+    const lines = container.querySelectorAll<HTMLElement>('.mdv-ghost__line');
+    expect(lines[0].style.getPropertyValue('--i')).toBe('0');
+    expect(lines[3].style.getPropertyValue('--i')).toBe('3');
+    const frames = css.slice(css.indexOf('@keyframes mdv-ghost-in'), css.indexOf('.mdv-ghost__line--head'));
+    expect(frames).toMatch(/opacity/);
+    expect(frames).toMatch(/transform/);
+    expect(frames).not.toMatch(/\b(width|height|top|left|margin|padding)\s*:/);
+    expect(css).not.toMatch(/transition:\s*all|transition-property:\s*all/);
+    const reduced = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'));
+    expect(reduced).toMatch(/\.mdv-ghost__line\s*\{\s*animation: none/);
+  });
+
+  it('the ghost paper is sized from a stretched figure, so it neither collapses nor overflows a phone', () => {
+    const rule = css.slice(css.indexOf('.mdv-ghost {'), css.indexOf('.mdv-ghost__line {'));
+    expect(rule).toMatch(/width: 100%;\s*max-width: 420px;/);
+    expect(rule).not.toMatch(/width: min\(/);
+    expect(css).toMatch(/\.mdv-empty__figure:has\(> \.mdv-ghost\) \{\s*align-self: stretch;/);
   });
 
   it('the ghost lines are 6% ink in OKLCH, from the ground token', () => {

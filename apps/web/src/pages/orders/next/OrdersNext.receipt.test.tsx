@@ -8,8 +8,10 @@
  *   3. a read that failed is said as a failure, never as "no receipt".
  */
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -143,23 +145,78 @@ describe('an order line opens its receipt in a right sheet', () => {
     expect(receiptForOrder).toHaveBeenCalledWith('o-1');
   });
 
-  it('says in one sentence that an order has no receipt', async () => {
+  it('says in one sentence that an order has no receipt, in a 360 px popover, not a wall', async () => {
     state.current = ordersData([row()]);
     receiptForOrder.mockResolvedValue({ state: 'none' });
     openReceipt();
 
-    const sheet = await screen.findByTestId('receipt-sheet');
-    expect(await within(sheet).findByText(NO_RECEIPT_SENTENCE)).toBeInTheDocument();
-    expect(within(sheet).queryByTestId('canonical-document')).toBeNull();
+    const pop = await screen.findByTestId('receipt-popover');
+    expect(within(pop).getByText(NO_RECEIPT_SENTENCE)).toBeInTheDocument();
+    expect(within(pop).getByTestId('receipt-none').getAttribute('role')).toBe('status');
+    // The house's empty state: line art, hidden from assistive technology.
+    expect(pop.querySelector('svg[data-art="receipt"]')?.getAttribute('aria-hidden')).toBe('true');
+    // 360 px (the jsdom window is wider than 392), and no wide sheet is left open.
+    const panel = pop.closest('.mdv-ovl__panel') as HTMLElement;
+    expect(panel.style.width).toBe('360px');
+    await waitFor(() => expect(screen.queryByTestId('receipt-sheet')).toBeNull());
+    expect(screen.queryByTestId('canonical-document')).toBeNull();
   });
 
-  it('says a failed read failed, never that there is no receipt', async () => {
+  it('keeps the popover 360 px wide in the markup and lets the stylesheet cap it to the phone, 343 px at 375', async () => {
+    // The width used to be worked out from window.innerWidth at render time, which
+    // read 361 in the phone walk and gave 329 px. The cap now lives in CSS (the
+    // layout viewport), so the markup never narrows it.
+    const before = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { value: 375, configurable: true, writable: true });
+    try {
+      state.current = ordersData([row()]);
+      receiptForOrder.mockResolvedValue({ state: 'none' });
+      openReceipt();
+      const pop = await screen.findByTestId('receipt-popover');
+      expect((pop.closest('.mdv-ovl__panel') as HTMLElement).style.width).toBe('360px');
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { value: before, configurable: true, writable: true });
+    }
+    const css = readFileSync(join(__dirname, '../../../components/mudavym/sheet.css'), 'utf8');
+    const rule = css.match(/\.mdv-ovl--popover \.mdv-ovl__panel \{([^}]*)\}/)![1];
+    expect(rule).toMatch(/max-width:\s*calc\(100vw - 32px\)/);
+  });
+
+  it('while the read is out, shows a paper that is not there yet, not a line of words', async () => {
     state.current = ordersData([row()]);
-    receiptForOrder.mockRejectedValue(new Error('503'));
+    receiptForOrder.mockReturnValue(new Promise(() => {}));
     openReceipt();
 
     const sheet = await screen.findByTestId('receipt-sheet');
-    expect(await within(sheet).findByText(/could not be read/)).toBeInTheDocument();
-    expect(within(sheet).queryByText(NO_RECEIPT_SENTENCE)).toBeNull();
+    expect(within(sheet).getByTestId('ghost-document')).toBeInTheDocument();
+    expect(within(sheet).queryByText(/Reading the receipt/)).toBeNull();
+    expect(within(sheet).getByRole('status').getAttribute('aria-label')).toBe('Reading the receipt');
+  });
+
+  it('says a failed read failed, never that there is no receipt, and offers one retry', async () => {
+    state.current = ordersData([row()]);
+    receiptForOrder.mockRejectedValueOnce(new Error('503'));
+    openReceipt();
+
+    const pop = await screen.findByTestId('receipt-popover');
+    const alert = await within(pop).findByTestId('receipt-unread');
+    expect(alert.getAttribute('role')).toBe('alert');
+    expect(within(pop).getByText(/could not be read/)).toBeInTheDocument();
+    expect(within(pop).queryByText(NO_RECEIPT_SENTENCE)).toBeNull();
+
+    receiptForOrder.mockResolvedValue({ state: 'none' });
+    fireEvent.click(within(pop).getByRole('button', { name: 'Try again' }));
+    expect(await within(pop).findByText(NO_RECEIPT_SENTENCE)).toBeInTheDocument();
+  });
+
+  it('a receipt that exists stays in the wide sheet, with no popover', async () => {
+    state.current = ordersData([row()]);
+    receiptForOrder.mockResolvedValue({
+      state: 'found',
+      document: { documentId: 'doc-77', role: 'invoice', docNumber: 'INV-9', docDate: '2026-09-05' },
+    });
+    openReceipt();
+    await screen.findByTestId('canonical-document');
+    expect(screen.queryByTestId('receipt-popover')).toBeNull();
   });
 });

@@ -13,7 +13,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -167,8 +167,29 @@ describe('a delivered row opens its receipt', () => {
 
     btn.focus();
     await user.keyboard('{Enter}');
-    expect(await screen.findByTestId('receipt-sheet')).toBeInTheDocument();
+    // This order has no receipt: the answer is a small popover, not a sheet.
+    expect(await screen.findByTestId('receipt-popover')).toBeInTheDocument();
     expect(receiptForOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens no wide sheet while the read is quick, and a "none" goes straight to the popover', async () => {
+    let answer: (v: unknown) => void = () => {};
+    receiptForOrder.mockReturnValue(new Promise((r) => { answer = r; }));
+    const btn = mount(row());
+    fireEvent.click(btn);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(screen.queryByTestId('receipt-sheet')).toBeNull();
+    await act(async () => { answer({ state: 'none' }); });
+    expect(await screen.findByTestId('receipt-popover')).toBeInTheDocument();
+    expect(screen.queryByTestId('receipt-sheet')).toBeNull();
+  });
+
+  it('opens the wide sheet with its ghost only if the answer takes over 120 ms', async () => {
+    receiptForOrder.mockReturnValue(new Promise(() => {}));
+    const btn = mount(row());
+    fireEvent.click(btn);
+    expect(screen.queryByTestId('receipt-sheet')).toBeNull();
+    expect(await screen.findByTestId('receipt-sheet', {}, { timeout: 1000 })).toBeInTheDocument();
   });
 
   it('on Space, the same as the click', async () => {
@@ -178,7 +199,7 @@ describe('a delivered row opens its receipt', () => {
 
     btn.focus();
     await user.keyboard(' ');
-    expect(await screen.findByTestId('receipt-sheet')).toBeInTheDocument();
+    expect(await screen.findByTestId('receipt-popover')).toBeInTheDocument();
   });
 
   it('tells a screen reader it opens a dialog, and claims no expanded state', () => {
