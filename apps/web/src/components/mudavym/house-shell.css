@@ -29,8 +29,8 @@
 .mdv-counter,
 .mdv-doors,
 .mdv-actsheet__facts {
-  --mdv-sans: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif;
-  --mdv-serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --mdv-sans: 'Plus Jakarta Sans', 'Plus Jakarta Fallback', system-ui, sans-serif;
+  --mdv-serif: 'Fraunces', 'Fraunces Fallback', Georgia, 'Times New Roman', serif;
   --mdv-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 

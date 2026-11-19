@@ -83,15 +83,14 @@
    declaration per subset covers it — verified byte-identical across the
    three fetched weight responses.
 
-   Plus Jakarta Sans, DM Sans and the two legacy-app faces stay exactly where
-   they are (`index.html`); this file only ever spoke for the two Mudavym
-   faces. */
+   Plus Jakarta Sans lives in fonts-sans.css (DM Sans is an alias of it there);
+   this file speaks for the two Mudavym faces. */
 
 @font-face {
   font-family: 'Fraunces';
   font-style: normal;
   font-weight: 300 680;
-  font-display: swap;
+  font-display: optional;
   src: url('/fonts/fraunces-latin-normal.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
@@ -107,7 +106,7 @@
   font-family: 'Fraunces';
   font-style: italic;
   font-weight: 300 680;
-  font-display: swap;
+  font-display: optional;
   src: url('/fonts/fraunces-latin-italic.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
@@ -134,6 +133,56 @@
   font-display: swap;
   src: url('/fonts/jetbrains-mono-latin-ext.woff2') format('woff2');
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* r71 N-21 — Fraunces without the swap jump.
+   The two latin Fraunces faces are `font-display: optional` and preloaded in
+   index.html: if the file is in hand inside the browser's ~100 ms window the
+   page paints in Fraunces, and if not the page keeps the stand-in for that
+   view and takes Fraunces on the next one, so a line of headline never
+   re-wraps under a reader. The stand-in is Georgia scaled to Fraunces:
+   weighted average advance 0.5207 em vs Georgia 0.4455 em = 116.9% size-adjust;
+   Fraunces ascender 0.978 em, descender 0.255 em, line gap 0 => 83.7% / 21.8% /
+   0% after dividing by 1.169. Gelasio has Georgia's metrics, so Linux and
+   Android take the same numbers. Latin-ext stays `swap` (rare glyphs). The
+   numbers are pinned by fontFaces.test.ts. */
+@font-face {
+  font-family: 'Fraunces Fallback';
+  font-style: normal;
+  font-weight: 300 500;
+  src: local('Georgia'), local('Gelasio');
+  size-adjust: 116.9%;
+  ascent-override: 83.7%;
+  descent-override: 21.8%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'Fraunces Fallback';
+  font-style: normal;
+  font-weight: 501 680;
+  src: local('Georgia Bold'), local('Georgia-Bold'), local('Gelasio Bold');
+  size-adjust: 116.9%;
+  ascent-override: 83.7%;
+  descent-override: 21.8%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'Fraunces Fallback';
+  font-style: italic;
+  font-weight: 300 680;
+  src: local('Georgia Italic'), local('Georgia-Italic'), local('Gelasio Italic');
+  size-adjust: 116.9%;
+  ascent-override: 83.7%;
+  descent-override: 21.8%;
+  line-gap-override: 0%;
+}
+
+/* Numbers that line up (r71 N-21). Plus Jakarta Sans carries `tnum`; a figure
+   in a table cell, a <time> or an <output> takes equal-width digits so a column
+   of money or counts does not ripple as it updates. Opt in elsewhere with
+   `data-num`. JetBrains Mono is already fixed-width. */
+.mudavym :is(td, th, time, output, [data-num]) {
+  font-variant-numeric: tabular-nums;
 }
 
 .mudavym,

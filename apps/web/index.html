@@ -79,10 +79,14 @@
          above-the-fold latin subsets so the Mudavym pages' first paint does
          not wait on the stylesheet that declares them. -->
     <link rel="preload" as="font" type="font/woff2" href="/fonts/fraunces-latin-normal.woff2" crossorigin>
+    <link rel="preload" as="font" type="font/woff2" href="/fonts/fraunces-latin-italic.woff2" crossorigin>
+    <link rel="preload" as="font" type="font/woff2" href="/fonts/plus-jakarta-sans-latin-normal.woff2" crossorigin>
     <link rel="preload" as="font" type="font/woff2" href="/fonts/jetbrains-mono-latin.woff2" crossorigin>
 
-    <!-- Plus Jakarta Sans and DM Sans are self-hosted too (styles/fonts-sans.css);
-         no font is fetched from any other origin. -->
+    <!-- Plus Jakarta Sans is the one sans, self-hosted too (styles/fonts-sans.css;
+         the retired DM Sans name aliases it); no font is fetched from any other
+         origin. Fraunces and Jakarta each have a metric-matched local stand-in
+         so the swap does not move a line. -->
   </head>
   <body>
     <div id="root"></div>

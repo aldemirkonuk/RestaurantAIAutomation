@@ -1,44 +1,25 @@
-/* Plus Jakarta Sans and DM Sans, self-hosted (ADR 0158; the founder, 2026-09-21:
-   "Yes, download them"). Variable woff2 files fetched from fonts.gstatic.com on
-   2026-09-21, latin + latin-ext, upright + italic; SIL Open Font License 1.1 - see
-   /fonts/OFL-plus-jakarta-sans.txt and /fonts/OFL-dm-sans.txt. No request leaves
-   mudavym.com for a font. */
+/* Plus Jakarta Sans, self-hosted (ADR 0158; the founder, 2026-09-21: "Yes,
+   download them"). Variable woff2 files fetched from fonts.gstatic.com on
+   2026-09-21, latin + latin-ext, upright + italic; SIL Open Font License 1.1 -
+   see /fonts/OFL-plus-jakarta-sans.txt. No request leaves mudavym.com for a font.
 
-@font-face {
-  font-family: 'DM Sans';
-  font-style: italic;
-  font-weight: 100 1000;
-  font-display: swap;
-  src: url('/fonts/dm-sans-latin-ext-italic.woff2') format('woff2');
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
-}
+   ONE SANS (r71 N-21). DM Sans is retired as a download: the four DM Sans
+   woff2 files are gone and the family name `DM Sans` below is an ALIAS of the
+   Plus Jakarta Sans files, so the ~40 stacks that still name it render the one
+   sans without a second face being fetched. The name stays only so no stack
+   falls through to system-ui; new code names `Plus Jakarta Sans` and
+   fontFaces.test.ts ratchets the count of `DM Sans` mentions down, never up.
 
-@font-face {
-  font-family: 'DM Sans';
-  font-style: italic;
-  font-weight: 100 1000;
-  font-display: swap;
-  src: url('/fonts/dm-sans-latin-italic.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-
-@font-face {
-  font-family: 'DM Sans';
-  font-style: normal;
-  font-weight: 100 1000;
-  font-display: swap;
-  src: url('/fonts/dm-sans-latin-ext-normal.woff2') format('woff2');
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
-}
-
-@font-face {
-  font-family: 'DM Sans';
-  font-style: normal;
-  font-weight: 100 1000;
-  font-display: swap;
-  src: url('/fonts/dm-sans-latin-normal.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
+   NO SWAP SHIFT (r71 N-21). `Plus Jakarta Fallback` is Arial scaled to
+   Jakarta's average letter width (size-adjust) with Jakarta's own vertical
+   metrics (ascent/descent/line-gap overrides, written as a share of the
+   adjusted size), so the line boxes are the same height before and after the
+   file arrives and the words move by well under a letter. Derivation: the
+   weighted average advance over English letter frequencies (spaces included),
+   Jakarta 0.4728 em vs Arial 0.4459 em = 106.0%; Jakarta ascender 1.038 em,
+   descender 0.222 em, line gap 0 => 97.9% / 20.9% / 0% after dividing by 1.06.
+   Liberation Sans and Arimo have Arial's metrics, so Linux and Android take
+   the same numbers. fontFaces.test.ts pins the numbers. */
 
 @font-face {
   font-family: 'Plus Jakarta Sans';
@@ -74,4 +55,75 @@
   font-display: swap;
   src: url('/fonts/plus-jakarta-sans-latin-normal.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* DM Sans: retired family name, same bytes as Plus Jakarta Sans (see top). */
+@font-face {
+  font-family: 'DM Sans';
+  font-style: italic;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url('/fonts/plus-jakarta-sans-latin-ext-italic.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'DM Sans';
+  font-style: italic;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url('/fonts/plus-jakarta-sans-latin-italic.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url('/fonts/plus-jakarta-sans-latin-ext-normal.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url('/fonts/plus-jakarta-sans-latin-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Metric-matched stand-ins, used only while the real file is on its way. */
+@font-face {
+  font-family: 'Plus Jakarta Fallback';
+  font-style: normal;
+  font-weight: 200 599;
+  src: local('Arial'), local('ArialMT'), local('Liberation Sans'), local('Arimo');
+  size-adjust: 106%;
+  ascent-override: 97.9%;
+  descent-override: 20.9%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'Plus Jakarta Fallback';
+  font-style: normal;
+  font-weight: 600 800;
+  src: local('Arial Bold'), local('Arial-BoldMT'), local('Liberation Sans Bold'), local('Arimo Bold');
+  size-adjust: 106%;
+  ascent-override: 97.9%;
+  descent-override: 20.9%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'Plus Jakarta Fallback';
+  font-style: italic;
+  font-weight: 200 800;
+  src: local('Arial Italic'), local('Arial-ItalicMT'), local('Liberation Sans Italic'), local('Arimo Italic');
+  size-adjust: 106%;
+  ascent-override: 97.9%;
+  descent-override: 20.9%;
+  line-gap-override: 0%;
 }
