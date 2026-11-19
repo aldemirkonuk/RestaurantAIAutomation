@@ -39,3 +39,36 @@ describe('index.html boot frame', () => {
     expect(html).toMatch(/data-mudavym-ground="charcoal"\] #boot-shell \{ background: #15130f/);
   });
 });
+
+describe('index.html boot frame matches the route', () => {
+  // The frame script is an inline <script id="boot-frame"> in the head. Run it
+  // against a fake document/location, the way the browser would before paint.
+  const script = /<script id="boot-frame">([\s\S]*?)<\/script>/.exec(html)?.[1] ?? '';
+  const frameFor = (pathname: string): string | null => {
+    const attrs: Record<string, string> = {};
+    const doc = { documentElement: { setAttribute: (k: string, v: string) => { attrs[k] = v; } } };
+    new Function('document', 'location', script)(doc, { pathname });
+    return attrs['data-boot-frame'] ?? null;
+  };
+
+  it('has the frame script', () => {
+    expect(script.length).toBeGreaterThan(0);
+  });
+  it.each(['/login', '/register', '/get-started', '/verify-email', '/forgot-password', '/reset-password', '/invite/abc123', '/no-access', '/register/', '/login?next=%2Fhouse'.split('?')[0]])(
+    '%s gets the auth frame (no sidebar)',
+    (p) => {
+      expect(frameFor(p)).toBe('auth');
+    },
+  );
+  it.each(['/', '/house', '/house/menu', '/reports', '/inventory', '/logins-report', '/registered', '/get-started-guide'])(
+    '%s keeps the signed-in sidebar frame',
+    (p) => {
+      expect(frameFor(p)).toBeNull();
+    },
+  );
+  it('the auth frame hides the sidebar column and centres the title bar', () => {
+    expect(html).toMatch(/html\[data-boot-frame="auth"\] #boot-shell \{[^}]*grid-template-columns: minmax\(0, 1fr\)/);
+    expect(html).toMatch(/html\[data-boot-frame="auth"\] #boot-shell \.s \{ display: none/);
+    expect(html).toMatch(/html\[data-boot-frame="auth"\] #boot-shell \.t \{[^}]*margin: [^;}]*auto/);
+  });
+});
