@@ -53,7 +53,7 @@
 .st-hero::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(42% 60% at 80% 40%, color-mix(in srgb, var(--seal) 13%, transparent), transparent 72%), radial-gradient(circle at 1px 1px, var(--ld-hair-2) 1px, transparent 1.6px) 0 0 / 24px 24px; -webkit-mask-image: linear-gradient(to bottom, #000 30%, transparent 96%); mask-image: linear-gradient(to bottom, #000 30%, transparent 96%); }
 .st-hero h1 { font-size: clamp(2.6rem, 6.8vw, 5.2rem); line-height: 1.03; letter-spacing: -0.028em; max-width: 13ch; }
 .st-hero-sub { margin-top: 24px; max-width: 46ch; font-size: clamp(1.05rem, 1.6vw, 1.28rem); line-height: 1.55; color: var(--ink-2); }
-.st-hero-note { margin-top: 18px; font: 500 13px/1.45 var(--ld-sans); color: var(--ink-4); max-width: 52ch; }
+.st-hero-note { margin-top: 16px; font: 500 12px/1.45 var(--ld-sans); color: var(--ink-4); max-width: 52ch; }
 .st-cue { margin-top: 48px; display: inline-flex; align-items: center; gap: 12px; font: 500 12.5px/1 var(--ld-sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-4); }
 .st-cue i { display: block; width: 1.5px; height: 40px; background: linear-gradient(var(--ink-3), transparent); transform-origin: top; }
 
