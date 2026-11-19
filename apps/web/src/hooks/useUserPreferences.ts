@@ -11,6 +11,7 @@ import { queryKeys } from '../lib/query-keys'
 import { apiClient } from '../services/api/client'
 import { useAuthStore } from '../stores'
 import type { AskMode } from '../components/askai/ask-mode'
+import { USER_PREFERENCES_MUTATION_KEY } from '../lib/mudavym/groundAsk'
 
 export interface UserPreferences {
   providerFavorites?: string[]
@@ -85,6 +86,12 @@ export interface UserPreferences {
    */
   ground?: 'paper' | 'charcoal' | 'system'
   /**
+   * When the theme question may appear (`lib/mudavym/groundAsk.ts`): the first
+   * time this person finished a task, and the day until which "Not now" keeps
+   * it quiet (30 days). ISO timestamps; written as a whole record.
+   */
+  groundAsk?: { firstTaskAt?: string; snoozedUntil?: string }
+  /**
    * The Ask panel's LAST USED mode — founder, 2026-09-26 round 7 (ADR 0145,
    * `AskUserQuestion` "/ask panel: which mode does it open in?", his pick
    * verbatim "Last used, first time Ask (Recommended)"; "Always Ask"
@@ -140,6 +147,7 @@ export function useUserPreferences() {
     Partial<UserPreferences>,
     { previous: UserPreferences | undefined }
   >({
+    mutationKey: USER_PREFERENCES_MUTATION_KEY,
     mutationFn: (partial) => patchPreferences(userId!, partial),
     onMutate: async (partial) => {
       if (!userId) return { previous: undefined }
