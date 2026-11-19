@@ -120,9 +120,11 @@ function margarita(): CocktailRecipe {
 let versions: unknown[] = [];
 let past: Record<string, unknown> = {};
 let other: CocktailRecipe | null = null;
+let taxBasis: unknown = null;
 function serve(recipe: CocktailRecipe, shelf: unknown[] = []) {
   h.get.mockImplementation(async (url: string) => {
     if (url === '/settings/currency') return { data: { restaurantId: RID, code: 'TRY', country: 'Turkey', readable: true, reason: null, statedAt: null } };
+    if (taxBasis && url === '/settings/tax-basis') return { data: taxBasis };
     if (url === `/recipes/${RID}/cocktails/${CID}`) return { data: recipe };
     if (other && url === `/recipes/${RID}/cocktails/${CID2}`) return { data: other };
     if (url === `/recipes/${RID}/shelf`) return { data: shelf };
@@ -223,6 +225,33 @@ describe('RecipeSheet', () => {
     // 3 over 20 is 15 %; the currency is read once and the share follows it.
     await waitFor(() => expect(card).toHaveTextContent('%15,0'));
     expect(card.textContent).not.toMatch(/15\.0%/);
+  });
+
+  it('a house whose prices include tax gets no pour cost on the listed price, and says why', async () => {
+    taxBasis = { restaurantId: RID, basis: 'prices_include_tax', readable: true };
+    try {
+      serve(negroni({ cocktail: { ...negroni().cocktail, price: 20 }, cost: { perServe: 3, perServeExact: 3, priced: 3, of: 3, complete: true } }));
+      mount();
+      const card = await screen.findByTestId('drink-card-pour-cost');
+      await waitFor(() => expect(card).toHaveAttribute('data-known', 'false'));
+      expect(card).toHaveTextContent('Your list prices include tax and no tax rate for them is recorded');
+      expect(card.textContent).not.toMatch(/15/);
+    } finally {
+      taxBasis = null;
+    }
+  });
+
+  it('a house whose prices exclude tax keeps the pour cost on the listed price, and says it holds no tax', async () => {
+    taxBasis = { restaurantId: RID, basis: 'prices_exclude_tax', readable: true };
+    try {
+      serve(negroni({ cocktail: { ...negroni().cocktail, price: 20 }, cost: { perServe: 3, perServeExact: 3, priced: 3, of: 3, complete: true } }));
+      mount();
+      const card = await screen.findByTestId('drink-card-pour-cost');
+      await waitFor(() => expect(card).toHaveTextContent('which holds no tax'));
+      expect(card).toHaveTextContent('%15,0');
+    } finally {
+      taxBasis = null;
+    }
   });
 
   it('the cards say a complete cost, the price, and what a serve holds; a line under a cent is not free', async () => {

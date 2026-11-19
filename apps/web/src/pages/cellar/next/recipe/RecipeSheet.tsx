@@ -83,6 +83,7 @@ import { parseLine, parseSpec, type ProposedLine } from './parseSpec';
 import { amountWithUnit, qtyText, readsAsThousandAmbiguous } from './units';
 import DrinkCards, { type DraftCost } from './DrinkCards';
 import { useHousePercent } from './useHousePercent';
+import { useListTax } from './useListTax';
 import { useSayGrams } from './WeighBox';
 import WhatIsInAServe from './WhatIsInAServe';
 import { recipeWords, type RecipeWords } from './recipeWords';
@@ -445,6 +446,7 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
   const canEdit = useCanEditRecipe();
   const sayMoney = useHouseMoney();
   const sayPct = useHousePercent();
+  const listTax = useListTax();
   const sayGrams = useSayGrams();
   const save = useSaveRecipe(owner);
   const { user, activeRestaurantId } = useAuth();
@@ -719,6 +721,7 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
         data={data}
         sayMoney={say}
         sayPct={sayPct}
+        tax={listTax}
         unsaved={canEdit && dirty}
         draftCost={draftCost}
         nutritionId={`rcp-whatisin-${cocktailId}`}

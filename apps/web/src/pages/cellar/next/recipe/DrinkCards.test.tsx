@@ -2,6 +2,8 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import type { CocktailRecipe, CostPreview, RecipeLine, WhatIsIn } from '../../../../services/api/recipes';
+import { listTaxFromReadout } from './useListTax';
+import type { ListTax } from './listTax';
 import DrinkCards, { POUR_COST_BASIS, marginPerServe, pourCostShare, type DraftCost } from './DrinkCards';
 import WhatIsInAServe from './WhatIsInAServe';
 import { formatHousePercent } from '../../../../lib/house-number';
@@ -430,5 +432,87 @@ describe('the energy and alcohol cards open what is in a serve (r36 recipes audi
     unmount();
     render(<DrinkCards data={data} sayMoney={say} unsaved={false} />);
     expect(screen.queryByRole('button')).toBeNull();
+  });
+});
+
+describe('the house tax basis in the pour cost and the margin', () => {
+  const complete = { perServe: 2.47, perServeExact: 2.471429, priced: 2, of: 2, complete: true, partial: 0 };
+  const include = (ratePct: number | null): ListTax => ({ basis: 'prices_include_tax', ratePct });
+
+  it('a house whose list prices include 20 % tax reads its cost over the price without tax', () => {
+    // 12 on the list is 10 without 20 % tax: 2.471429 / 10, not 2.471429 / 12.
+    expect(pourCostShare(complete, 12, include(20))).toEqual({ pct: 24.7 });
+    expect(pourCostShare(complete, 12)).toEqual({ pct: 20.6 });
+    expect(marginPerServe(complete, 12, include(20))).toEqual({ margin: 7.53 });
+    expect(marginPerServe(complete, 12)).toEqual({ margin: 9.53 });
+  });
+
+  it('a 10 % rate takes out less than a 20 % one', () => {
+    expect(pourCostShare(complete, 12, include(10))).toEqual({ pct: 22.7 });
+    expect(marginPerServe(complete, 12, include(10))).toEqual({ margin: 8.44 });
+  });
+
+  it('a house whose prices exclude tax, or charges no VAT, keeps the price as listed', () => {
+    for (const basis of ['prices_exclude_tax', 'not_vat_charging', 'unset'] as const) {
+      expect(pourCostShare(complete, 12, { basis })).toEqual({ pct: 20.6 });
+      expect(marginPerServe(complete, 12, { basis })).toEqual({ margin: 9.53 });
+    }
+  });
+
+  it('a tax-inclusive house with no rate recorded gets no figure, and says why', () => {
+    expect(pourCostShare(complete, 12, include(null))).toEqual({
+      missing: ['your list prices include tax and no tax rate for them is recorded'],
+    });
+    expect(marginPerServe(complete, 12, include(null))).toHaveProperty('missing');
+    render(<DrinkCards data={gAndT()} sayMoney={say} unsaved={false} tax={include(null)} />);
+    const card = screen.getByTestId('drink-card-pour-cost');
+    expect(card).toHaveAttribute('data-known', 'false');
+    expect(card.textContent).toBe('Pour costNot knownYour list prices include tax and no tax rate for them is recorded.');
+    expect(screen.getByTestId('drink-card-margin')).toHaveAttribute('data-known', 'false');
+  });
+
+  it('the cards say which price they are of, for each basis', () => {
+    const cases: [ListTax, string, string, string][] = [
+      [include(20), '24.7%', '$7.53', 'Of the price without tax: 20% taken out of your list price.'],
+      [{ basis: 'prices_exclude_tax' }, '20.6%', '$9.53', 'Of the price as your list has it, which holds no tax.'],
+      [{ basis: 'not_vat_charging' }, '20.6%', '$9.53', 'Of the price as your list has it; your house charges no VAT.'],
+      [{ basis: 'unread', failed: true }, '20.6%', '$9.53', 'Of the price as your list has it; whether that price includes tax could not be read.'],
+      [{ basis: 'unread', failed: false }, '20.6%', '$9.53', 'Of the price as your list has it; whether that price includes tax is being read.'],
+    ];
+    for (const [tax, pct, margin, said] of cases) {
+      const { unmount } = render(<DrinkCards data={gAndT()} sayMoney={say} unsaved={false} tax={tax} />);
+      expect(screen.getByTestId('drink-card-pour-cost').textContent).toBe(`Pour cost${pct}${said}`);
+      expect(screen.getByTestId('drink-card-margin').textContent).toBe(`Margin a serve${margin}Your price less the cost a serve. ${said}`);
+      unmount();
+    }
+  });
+
+  it('a dish reads its food cost over the price without tax too', () => {
+    render(<DrinkCards data={gAndT({ kind: 'dish' })} sayMoney={say} unsaved={false} tax={include(20)} />);
+    expect(screen.getByTestId('drink-card-pour-cost').textContent).toBe(
+      'Food cost24.7%Of the price without tax: 20% taken out of your list price.',
+    );
+  });
+
+  it('a margin below zero on the price without tax says so, though the list price would have covered it', () => {
+    const dear = { ...complete, perServe: 10.5, perServeExact: 10.5 };
+    expect(marginPerServe(dear, 12)).toEqual({ margin: 1.5 });
+    expect(marginPerServe(dear, 12, include(20))).toEqual({ margin: -0.5 });
+    render(<DrinkCards data={gAndT({ cost: dear })} sayMoney={say} unsaved={false} tax={include(20)} />);
+    expect(screen.getByTestId('drink-card-margin').textContent).toBe(
+      'Margin a serve−$0.50It costs more to make than your price without tax brings in. Of the price without tax: 20% taken out of your list price.',
+    );
+  });
+});
+
+describe('listTaxFromReadout', () => {
+  it('reads the house answer; a failed or unreadable read is said, never "unset"', () => {
+    expect(listTaxFromReadout({ basis: 'unset', readable: true }, false)).toEqual({ basis: 'unset' });
+    expect(listTaxFromReadout({ basis: 'prices_exclude_tax', readable: true }, false)).toEqual({ basis: 'prices_exclude_tax' });
+    expect(listTaxFromReadout({ basis: 'not_vat_charging', readable: true }, false)).toEqual({ basis: 'not_vat_charging' });
+    expect(listTaxFromReadout({ basis: 'prices_include_tax', readable: true }, false)).toEqual({ basis: 'prices_include_tax', ratePct: null });
+    expect(listTaxFromReadout(undefined, false)).toEqual({ basis: 'unread', failed: false });
+    expect(listTaxFromReadout(undefined, true)).toEqual({ basis: 'unread', failed: true });
+    expect(listTaxFromReadout({ basis: 'unset', readable: false }, false)).toEqual({ basis: 'unread', failed: true });
   });
 });

@@ -29,6 +29,7 @@
  * nutrition card").
  */
 import type { SayPercent } from './useHousePercent';
+import { UNSET_TAX, priceForShare, taxSaid, type ListTax } from './listTax';
 import type { CocktailRecipe, CostPreview, RecipeCost, RecipeLine } from '../../../../services/api/recipes';
 import { alcoholGrams, figureAmount, figureUnknown, names } from './WhatIsInAServe';
 import { recipeWords, type RecipeWords } from './recipeWords';
@@ -106,36 +107,50 @@ function priceCard(data: CocktailRecipe, sayMoney: (n: number) => string, words:
 }
 
 /** Said under every pour-cost %, until the house's tax basis is set (ADR 0359). */
-export const POUR_COST_BASIS = 'Of the price as your list has it; whether that price includes tax is not recorded.';
+export const POUR_COST_BASIS = taxSaid(UNSET_TAX);
 
 /**
  * Cost per serve over the price, as a % to one decimal; or what is missing.
  * Only a complete cost and a price above 0 make a %: a partial cost would
  * read as a cheaper pour than the real one (ADR 0051).
  */
-export function pourCostShare(cost: RecipeCost | null, price: number | null): { pct: number } | { missing: string[] } {
+export function pourCostShare(
+  cost: RecipeCost | null,
+  price: number | null,
+  tax: ListTax = UNSET_TAX,
+): { pct: number } | { missing: string[] } {
   const exact = cost?.complete ? (cost.perServeExact ?? cost.perServe) : null;
   const missing: string[] = [];
   if (exact == null) missing.push('the cost is not complete');
   if (price == null) missing.push('your list has no price for it');
   else if (!(price > 0)) missing.push('the price on your list is 0');
+  else {
+    const net = priceForShare(price, tax);
+    if ('missing' in net) missing.push(net.missing);
+  }
   if (missing.length || exact == null || price == null) return { missing };
-  return { pct: Math.round((exact / price) * 1000) / 10 };
+  const against = (priceForShare(price, tax) as { price: number }).price;
+  return { pct: Math.round((exact / against) * 1000) / 10 };
 }
 
 /**
  * The price less the cost a serve, to the cent; or what is missing. The same
  * rule as `pourCostShare`: only a complete cost and a price above 0.
  */
-export function marginPerServe(cost: RecipeCost | null, price: number | null): { margin: number } | { missing: string[] } {
-  const share = pourCostShare(cost, price);
+export function marginPerServe(
+  cost: RecipeCost | null,
+  price: number | null,
+  tax: ListTax = UNSET_TAX,
+): { margin: number } | { missing: string[] } {
+  const share = pourCostShare(cost, price, tax);
   if (!('pct' in share)) return share;
   const exact = (cost?.perServeExact ?? cost?.perServe) as number;
-  return { margin: Math.round(((price as number) - exact) * 100) / 100 };
+  const against = (priceForShare(price as number, tax) as { price: number }).price;
+  return { margin: Math.round((against - exact) * 100) / 100 };
 }
 
-function marginCard(cost: RecipeCost | null, price: number | null, sayMoney: (n: number) => string, words: RecipeWords): Card {
-  const m = marginPerServe(cost, price);
+function marginCard(cost: RecipeCost | null, price: number | null, sayMoney: (n: number) => string, words: RecipeWords, tax: ListTax): Card {
+  const m = marginPerServe(cost, price, tax);
   const base = { id: 'margin', label: `Margin a ${words.unit}` };
   if (!('margin' in m)) return { ...base, figure: 'Not known', known: false, said: `${capital(m.missing.join(' and '))}.` };
   if (m.margin < 0) {
@@ -144,20 +159,20 @@ function marginCard(cost: RecipeCost | null, price: number | null, sayMoney: (n:
       figure: `\u2212${sayMoney(-m.margin)}`,
       known: true,
       warn: true,
-      said: `It costs more to make than your list charges for it. ${POUR_COST_BASIS}`,
+      said: `It costs more to make than ${tax.basis === 'prices_include_tax' ? 'your price without tax brings in' : 'your list charges for it'}. ${taxSaid(tax)}`,
     };
   }
-  return { ...base, figure: sayMoney(m.margin), known: true, said: `Your price less the cost a ${words.unit}. ${POUR_COST_BASIS}` };
+  return { ...base, figure: sayMoney(m.margin), known: true, said: `Your price less the cost a ${words.unit}. ${taxSaid(tax)}` };
 }
 
 /** A share in the reader's own form, for a caller that does not know the house's. */
 const readerPercent: SayPercent = (points) => `${points.toFixed(1)}%`;
 
-function pourCostCard(cost: RecipeCost | null, price: number | null, sayPct: SayPercent): Card {
-  const share = pourCostShare(cost, price);
+function pourCostCard(cost: RecipeCost | null, price: number | null, sayPct: SayPercent, tax: ListTax): Card {
+  const share = pourCostShare(cost, price, tax);
   const base = { id: 'pour-cost', label: 'Pour cost' };
   return 'pct' in share
-    ? { ...base, figure: sayPct(share.pct), known: true, said: POUR_COST_BASIS }
+    ? { ...base, figure: sayPct(share.pct), known: true, said: taxSaid(tax) }
     : { ...base, figure: 'Not known', known: false, said: `${capital(share.missing.join(' and '))}.` };
 }
 
@@ -270,6 +285,7 @@ export default function DrinkCards({
   unsaved,
   draftCost,
   sayPct = readerPercent,
+  tax = UNSET_TAX,
   nutritionId,
 }: {
   data: CocktailRecipe;
@@ -288,6 +304,12 @@ export default function DrinkCards({
    * gap 15). The reader's own form when not given.
    */
   sayPct?: SayPercent;
+  /**
+   * What the house says about tax in its list prices. The pour/food cost share
+   * and the margin are taken against the price without tax when the house says
+   * its prices include it. Unset when not given (the figures as they were).
+   */
+  tax?: ListTax;
   /**
    * The id of the sheet's card of what is in a serve. When given, the energy
    * and pure-alcohol cards open it (r36 recipes audit, gap 9).
@@ -318,8 +340,8 @@ export default function DrinkCards({
   const cards = [
     cost,
     sayMoney ? priceCard(data, sayMoney, words) : null,
-    sayMoney ? pourCostCard(shownCost, data.cocktail.price, sayPct) : null,
-    sayMoney ? marginCard(shownCost, data.cocktail.price, sayMoney, words) : null,
+    sayMoney ? pourCostCard(shownCost, data.cocktail.price, sayPct, tax) : null,
+    sayMoney ? marginCard(shownCost, data.cocktail.price, sayMoney, words, tax) : null,
     ingredientsCard(data),
     ...nutritionCards(data, words),
   ]
