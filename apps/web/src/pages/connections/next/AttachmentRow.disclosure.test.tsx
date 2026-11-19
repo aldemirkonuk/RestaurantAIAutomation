@@ -27,8 +27,25 @@ describe('AttachmentRow why-line (r58 N-04)', () => {
     expect(d.textContent).toContain(long);
   });
 
-  it('never folds a non-text why, which may carry a control', () => {
-    const { container } = render(<AttachmentRow {...base} why={<b>{'y'.repeat(300)}</b>} />);
+  it('never folds a why that carries a control', () => {
+    const { container } = render(
+      <AttachmentRow {...base} why={<>{'y'.repeat(300)} <button type="button">Fix</button></>} />,
+    );
+    expect(container.querySelector('details.cx-row-why')).toBeNull();
+  });
+
+  it('folds a long why written as a fragment with emphasis, which is how every real row writes it', () => {
+    const { container } = render(
+      <AttachmentRow {...base} why={<>{'y'.repeat(100)} <em>{'z'.repeat(100)}</em> end.</>} />,
+    );
+    const d = container.querySelector('details.cx-row-why') as HTMLDetailsElement;
+    expect(d).not.toBeNull();
+    expect(d.open).toBe(false);
+    expect(d.querySelector('summary')?.textContent).toBe('Why it is here');
+  });
+
+  it('keeps a short fragment in view', () => {
+    const { container } = render(<AttachmentRow {...base} why={<>Short <em>one</em>.</>} />);
     expect(container.querySelector('details.cx-row-why')).toBeNull();
   });
 });

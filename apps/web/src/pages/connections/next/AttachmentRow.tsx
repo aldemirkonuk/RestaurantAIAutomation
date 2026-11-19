@@ -21,7 +21,7 @@
  * checks" is not an answer to "could this place an order".
  */
 
-import type { ReactNode } from 'react';
+import { isValidElement, type ReactNode } from 'react';
 import { HoldToApprove } from '../../../components/mudavym/HoldToApprove';
 import { DASH } from './cx-format';
 
@@ -125,6 +125,36 @@ function chipClass(tone: ChipTone): string {
 /** A sentence longer than this folds behind "Why it is here" (r58 N-04). */
 export const WHY_COLLAPSE_AT = 140;
 
+const INLINE_TEXT_TAGS = new Set(['em', 'strong', 'b', 'i', 'code', 'span']);
+
+/**
+ * The plain text of a why-line that is only words (strings, fragments, inline
+ * emphasis), or null when it carries anything else (a button, a link, a
+ * component), which must stay in view. The real callers pass fragments, not
+ * strings, so a string-only test never folded anything.
+ */
+export function plainWhyText(node: ReactNode): string | null {
+  if (node == null || typeof node === 'boolean') return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) {
+    let out = '';
+    for (const n of node) {
+      const t = plainWhyText(n);
+      if (t == null) return null;
+      out += t;
+    }
+    return out;
+  }
+  if (isValidElement(node)) {
+    const el = node as { type: unknown; props: { children?: ReactNode } };
+    const isFragment = typeof el.type === 'symbol';
+    const isInline = typeof el.type === 'string' && INLINE_TEXT_TAGS.has(el.type);
+    if (!isFragment && !isInline) return null;
+    return plainWhyText(el.props.children);
+  }
+  return null;
+}
+
 export function AttachmentRow({
   icon,
   title,
@@ -167,7 +197,7 @@ export function AttachmentRow({
             {subtitle}
           </div>
         ) : null}
-        {typeof why === 'string' && why.length > WHY_COLLAPSE_AT ? (
+        {(plainWhyText(why)?.trim().length ?? 0) > WHY_COLLAPSE_AT ? (
           <details className="cx-row-why">
             <summary>Why it is here</summary>
             <p style={{ margin: '6px 0 0' }}>{why}</p>
