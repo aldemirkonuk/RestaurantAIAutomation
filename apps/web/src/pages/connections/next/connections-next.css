@@ -167,7 +167,7 @@
 /* ── register headings ───────────────────────────────────────────────── */
 
 .mudavym .cx-sec { margin: 36px 0 0; }
-.mudavym .cx-sec-h { display: flex; align-items: baseline; gap: 12px; }
+.mudavym .cx-sec-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
 .mudavym .cx-sec-n {
   font-family: var(--mono, ui-monospace, monospace);
   font-size: 11px;

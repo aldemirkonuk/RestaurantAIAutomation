@@ -27,4 +27,10 @@ describe('Connections css holds the 375 phone width', () => {
     expect(css).toMatch(/\.cx-pc-form input\[type='text'\] \{[^}]*max-width: 100%/);
     expect(css).toMatch(/\.cx-pc-ceremony input\[type='text'\] \{[^}]*max-width: 100%/);
   });
+
+  // r74 walk: "Licensed distributors" (157 px, nowrap) beside the 25 px heading (186 px at its
+  // longest word) needs 355 px, so the Distributor feeds group scrolled the page 4 px sideways.
+  it('a section head wraps its label above the heading instead of forcing the row wider', () => {
+    expect(css).toMatch(/\.mudavym \.cx-sec-h \{[^}]*flex-wrap: wrap/);
+  });
 });
