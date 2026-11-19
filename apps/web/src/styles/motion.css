@@ -81,6 +81,16 @@
   border-radius: 999px;
   background: var(--paper-1, #f3efe6);
   isolation: isolate;
+  /* A row of options never pushes the page wider than its column: it
+     tightens its padding on a phone and, failing that, scrolls itself. */
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.mdv-pill::-webkit-scrollbar { display: none; }
+@media (max-width: 480px) {
+  .mdv-pill__opt { padding-left: 8px; padding-right: 8px; }
 }
 .mdv-pill__thumb {
   position: absolute;
@@ -111,6 +121,10 @@
 }
 .mdv-pill__opt[aria-pressed='true'],
 .mdv-pill__opt[aria-selected='true'] { color: #fff; }
+/* On the charcoal ground the seal is the light teal: white on it is 2.5:1,
+   so the chosen label takes the ground's own ink (about 7:1). */
+[data-ground='charcoal'] .mdv-pill__opt[aria-pressed='true'],
+[data-ground='charcoal'] .mdv-pill__opt[aria-selected='true'] { color: var(--paper-0, #15130f); }
 .mdv-pill__opt:focus-visible { outline: 2px solid var(--seal, #1a5e6b); outline-offset: -2px; }
 .mdv-pill__opt[data-empty='true'] { opacity: 0.4; }
 .mdv-pill__count { display: inline-block; margin-left: 6px; animation: mdv-tick var(--dur-hover) var(--ease-house); }

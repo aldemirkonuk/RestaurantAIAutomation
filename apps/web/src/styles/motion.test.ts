@@ -71,6 +71,17 @@ describe('what animates', () => {
   });
 });
 
+describe('the pill on a phone and on the charcoal ground', () => {
+  it('never wider than its column, and tighter below 480 px', () => {
+    expect(CSS).toMatch(/\.mdv-pill \{[^}]*max-width:\s*100%/s);
+    expect(CSS).toMatch(/@media \(max-width: 480px\)\s*\{\s*\.mdv-pill__opt \{ padding-left: 8px; padding-right: 8px; \}/);
+  });
+
+  it('writes the chosen label in the ground ink on charcoal (white on the light seal is 2.5:1)', () => {
+    expect(CSS).toMatch(/\[data-ground='charcoal'\] \.mdv-pill__opt\[aria-pressed='true'\][^{]*\{ color: var\(--paper-0/s);
+  });
+});
+
 describe('the press on every other control', () => {
   it('scales to .98 in 90 ms on :active, except disabled controls and .mdv-press', () => {
     const rule = CSS.match(/\.mudavym :is\(button[^{]*\):active:not\(([^)]*)\)\s*\{([^}]*)\}/);
