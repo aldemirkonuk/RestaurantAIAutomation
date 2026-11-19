@@ -291,8 +291,8 @@ export function HoldToApprove({
       animate(
         sealRef.current,
         [
-          { transform: 'scale(0.8)', opacity: 0.3 },
-          { transform: 'scale(1)', opacity: 1 },
+          { transform: 'scale(1.15) rotate(-4deg)', opacity: 0.3 },
+          { transform: 'scale(1) rotate(0deg)', opacity: 1 },
         ],
         stamp,
       );

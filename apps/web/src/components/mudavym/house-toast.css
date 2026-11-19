@@ -28,6 +28,30 @@
   color: var(--ink-1) !important;
 }
 
+/* The toast's one shadow. A toast that wears the shared glass surface
+   (`mdv-glass`, styles/mudavym.css) takes that surface's own lift; only a toast
+   without it stands on the elevation ramp. Written as `:not(.mdv-glass)` so the
+   two never stack and never fight over one declaration. */
+.mdv-toast:not(.mdv-glass) {
+  box-shadow: var(--elev-2) !important;
+}
+
+/* A 3 px left edge in the status's own token; the words still carry the
+   meaning (a colour never says it alone). Default and success wear the seal. */
+.mdv-toast {
+  --toast-accent: var(--seal);
+  border-left: 3px solid var(--toast-accent) !important;
+}
+.mdv-toast[data-type='error'] {
+  --toast-accent: var(--alarm);
+}
+.mdv-toast[data-type='warning'] {
+  --toast-accent: var(--warn, var(--alarm));
+}
+.mdv-toast[data-type='info'] {
+  --toast-accent: var(--ink-4);
+}
+
 .mdv-toast [data-icon] {
   opacity: 0.72;
 }

@@ -4,6 +4,7 @@
 @import './mudavym.css';
 /* Motion tokens and the shared press, pill, collapse and scrim motion (N-12). */
 @import './motion.css';
+@import './depth.css';
 /* The product's two sans faces, served from /fonts (ADR 0158). */
 @import './fonts-sans.css';
 

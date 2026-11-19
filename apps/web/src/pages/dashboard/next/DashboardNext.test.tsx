@@ -20,6 +20,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { resetFirstLoad } from '@/lib/mudavym/firstLoad';
 import { MemoryRouter, useLocation, useNavigationType } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -146,6 +147,23 @@ beforeEach(() => {
 afterEach(() => {
   process.off('unhandledRejection', onUnhandled);
   vi.useRealTimers();
+});
+
+describe('DashboardNext depth (N-20)', () => {
+  it('inks the greeting in on the first load of a session only, and the opening wears the paper tooth', async () => {
+    routeGets();
+    resetFirstLoad();
+    window.sessionStorage.clear();
+    const first = mount();
+    const h1 = await screen.findByRole('heading', { level: 1 });
+    await waitFor(() => expect(h1.className).toContain('mdv-ink-in'));
+    expect(h1.closest('header')?.className).toContain('mdv-grain');
+    first.unmount();
+
+    mount();
+    const again = await screen.findByRole('heading', { level: 1 });
+    expect(again.className).not.toContain('mdv-ink-in');
+  });
 });
 
 describe('DashboardNext', () => {

@@ -1,0 +1,77 @@
+/* Depth, grain and micro-delight (design critic N-20, r71, 2026-11-19).
+
+   Subtle on purpose: one elevation ramp, one paper tooth, one ink-in. Nothing
+   here animates anything but transform and opacity, no rule uses
+   `transition: all`, and every motion has a reduced-motion tier (under
+   `prefers-reduced-motion: reduce` it is simply at its end state). */
+
+:root {
+  /* Elevation: three rungs of a warm-tinted shadow (ink at low alpha, never
+     black), each a long soft drop plus a 1 px contact line. The toast wears
+     --elev-2; a sheet or a popover may take --elev-3. */
+  --elev-1: 0 1px 0 rgba(33, 28, 22, 0.04), 0 6px 14px -10px rgba(33, 28, 22, 0.28);
+  --elev-2: 0 1px 0 rgba(33, 28, 22, 0.05), 0 18px 36px -22px rgba(33, 28, 22, 0.4);
+  --elev-3: 0 1px 0 rgba(33, 28, 22, 0.06), 0 28px 56px -28px rgba(33, 28, 22, 0.5);
+  /* Paper tooth: a 128 px fractal-noise tile, drawn once and reused. */
+  --grain-tile: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .13 0 0 0 0 .11 0 0 0 0 .09 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='128' height='128' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+:root[data-mudavym-ground='charcoal'],
+.dark,
+[data-ground='charcoal'] {
+  --elev-1: 0 1px 0 rgba(0, 0, 0, 0.3), 0 6px 14px -10px rgba(0, 0, 0, 0.7);
+  --elev-2: 0 1px 0 rgba(0, 0, 0, 0.35), 0 18px 36px -22px rgba(0, 0, 0, 0.8);
+  --elev-3: 0 1px 0 rgba(0, 0, 0, 0.4), 0 28px 56px -28px rgba(0, 0, 0, 0.85);
+}
+
+/* ── Paper tooth. `.mdv-grain` goes on a hero ground only (the dashboard's
+   opening, the public shell's hero), never on a table or a form: the noise is
+   a 2 % multiply layer behind the content, ignored by the pointer. ───────── */
+.mdv-grain {
+  position: relative;
+  isolation: isolate;
+}
+.mdv-grain::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: var(--grain-tile);
+  background-size: 128px 128px;
+  opacity: 0.02;
+  mix-blend-mode: multiply;
+}
+:root[data-mudavym-ground='charcoal'] .mdv-grain::before,
+.dark .mdv-grain::before,
+[data-ground='charcoal'].mdv-grain::before,
+[data-ground='charcoal'] .mdv-grain::before {
+  /* Multiply vanishes on charcoal; lift the tooth instead, just as faint. */
+  mix-blend-mode: screen;
+  opacity: 0.03;
+}
+
+/* ── The greeting inks in once, on the first load of a session: opacity .6 to
+   1 and a 1.2 % settle over 400 ms (transform and opacity only), optical size
+   at its largest. ──────────────────────────────────────────────────────────── */
+.mdv-ink-in {
+  font-variation-settings: 'opsz' 144;
+  transform-origin: left center;
+  animation: mdv-ink-in 400ms var(--ease-house, cubic-bezier(0.16, 1, 0.3, 1)) both;
+}
+@keyframes mdv-ink-in {
+  from {
+    opacity: 0.6;
+    transform: scale(1.012);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-ink-in {
+    animation: none;
+  }
+}
