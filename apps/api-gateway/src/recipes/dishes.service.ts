@@ -28,6 +28,7 @@ export const DISH_FIGURES_UNREAD = "Your dishes' costs and allergens could not b
 export type RecipeOwner = "dish" | "cocktail";
 export const SHELF_MATCH_UNREAD = "The shelf could not be read just now, so no line is linked for you.";
 export const ITEM_NOT_THIS_HOUSE = "This item is not on this house's shelf.";
+export const TAKE_PRICES_UNREAD = "The menu or the dishes could not be read just now. No price was changed.";
 export const DISH_NAME_NEEDED = "A dish needs a name.";
 export const DISH_NOT_SAVED = "The dish could not be saved. Nothing was changed.";
 export const DISH_NOT_REMOVED = "The dish could not be taken off your list. Nothing was changed.";
@@ -651,6 +652,75 @@ export class DishesService {
       dishes: dishes.map((d) => ({ dishId: d.id, menu: menuPriceFor([d.name], "dish", d.price, index) })),
       drinks: drinks.map((d) => ({ cocktailId: d.id, menu: menuPriceFor([d.display_name, d.name], "drink", d.price, index) })),
     };
+  }
+
+  /**
+   * Set each named dish's price to the one price the house's current menu
+   * gives its name, after the manager confirmed the list (g1 menu gap: a
+   * re-uploaded menu never moved a price, and each dish needed its own confirm).
+   *
+   * The menu is read again here, by the same match the Menu column uses, so a
+   * stale page can never write a price the menu no longer states. Only a dish
+   * with ONE line and ONE price that differs from its own is written; every
+   * other dish is left, with the reason in words. Every id must be a live dish
+   * of this house, or nothing is written at all (404). Drinks are not touched.
+   */
+  async takeMenuPrices(restaurantId: string, ids: string[]) {
+    const wanted = [...new Set(ids)];
+    const client = this.db.getClient();
+    const found = (
+      await inWaves(chunks(wanted, ID_CHUNK), async (part) => {
+        const { data, error } = await client
+          .from("dishes")
+          .select("id, name, price")
+          .eq("restaurant_id", restaurantId)
+          .is("deleted_at", null)
+          .in("id", part);
+        if (error) this.failed("dish read", error, TAKE_PRICES_UNREAD);
+        return (data ?? []) as any[];
+      })
+    ).flat();
+    const byId = new Map(found.map((d) => [d.id as string, d]));
+    if (wanted.some((id) => !byId.has(id))) throw new NotFoundException(DISH_NOT_THIS_HOUSE);
+    const menu = await readCurrentMenuLines(client, restaurantId).catch((e: unknown) => this.failed("current menu read", e, TAKE_PRICES_UNREAD));
+    const index = menuIndex(menu.rows as unknown as MenuLine[]);
+    const changed: Array<{ id: string; name: string; from: number | null; to: number }> = [];
+    const skipped: Array<{ id: string; name: string; why: string }> = [];
+    const toWrite: Array<{ id: string; name: string; from: number | null; to: number }> = [];
+    for (const id of wanted) {
+      const d = byId.get(id)!;
+      const own = d.price == null ? null : Number(d.price);
+      const m = menu.currentMenus === 0 ? null : menuPriceFor([d.name], "dish", own, index);
+      const left = (why: string) => skipped.push({ id, name: d.name, why });
+      if (!m) left("The house has no current menu.");
+      else if (m.found === "none") left("No line of that name is on the current menu.");
+      else if (m.found === "several") left("Lines of that name on the current menu state different prices.");
+      else if (m.prices.length === 0) left("The menu line of that name states no price.");
+      else if (m.prices.length > 1) left("The menu line of that name states more than one price; open the dish to choose one.");
+      else if (own !== null && Math.abs(own - m.prices[0]) < 0.005) left("Its price is already the menu's.");
+      else toWrite.push({ id, name: d.name, from: own, to: m.prices[0] });
+    }
+    const now = new Date().toISOString();
+    await inWaves(toWrite, async (w) => {
+      const { data, error } = await client
+        .from("dishes")
+        .update({ price: w.to, updated_at: now })
+        .eq("id", w.id)
+        .eq("restaurant_id", restaurantId)
+        .is("deleted_at", null)
+        .select("id")
+        .maybeSingle();
+      if (error) {
+        this.logger.error(`dishes: take menu price failed: ${error.message}`);
+        skipped.push({ id: w.id, name: w.name, why: "It could not be saved just now. Nothing was changed on it." });
+      } else if (!data) {
+        skipped.push({ id: w.id, name: w.name, why: "It was taken off your list while this ran." });
+      } else {
+        changed.push(w);
+      }
+    });
+    const order = (x: { id: string }) => wanted.indexOf(x.id);
+    return { changed: changed.sort((a, b) => order(a) - order(b)), skipped: skipped.sort((a, b) => order(a) - order(b)) };
   }
 
   /**
