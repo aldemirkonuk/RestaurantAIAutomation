@@ -1352,3 +1352,14 @@ html[data-mudavym-ground='charcoal'] .rp-tip {
 .rp-sparks[data-pending] {
   min-height: 66px;
 }
+/* On a phone the 26 px headline wraps to ~7 lines and the two sparklines
+   stack (walked at 375: 89 -> 207 px and 66 -> 145 px, which dropped the sheet
+   by ~197 px, CLS 0.10). Hold what they settle to. */
+@media (max-width: 480px) {
+  .rp-head__lead .rp-voice[data-pending] {
+    min-height: calc(7 * 1.14em);
+  }
+  .rp-sparks[data-pending] {
+    min-height: 145px;
+  }
+}
