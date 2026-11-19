@@ -138,6 +138,17 @@ describe("TillRecipeMap", () => {
     expect(screen.queryByText("The house has no drink recipes yet.")).toBeNull();
   });
 
+  it("says a failed recipe search failed, not that nothing matched", async () => {
+    const user = userEvent.setup();
+    getHouseCocktails.mockReset();
+    getHouseCocktails.mockResolvedValueOnce({ rows: [NEGRONI], truncated: false });
+    getHouseCocktails.mockRejectedValue(new Error("search down"));
+    view();
+    await user.click(await screen.findByRole("button", { name: "Pick a recipe" }));
+    expect(await screen.findByText(/The recipes could not be read \(search down\)/)).toBeInTheDocument();
+    expect(screen.queryByText("The house has no drink recipes yet.")).toBeNull();
+  });
+
   it("says plainly that a dish cannot be linked", async () => {
     view();
     expect(await screen.findByText(/Dishes cannot be linked to a button yet/)).toBeInTheDocument();
