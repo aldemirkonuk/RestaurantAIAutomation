@@ -60,6 +60,7 @@ describe('TasteService.rollupSubject', () => {
     const row = f.inserts[0];
     expect(row).toMatchObject({ source: 'recipe', method: 'computed', stated_by: null, version: 1, cocktail_id: COCKTAIL });
     expect(row.axes.sour.v).toBeGreaterThan(5);
+    expect(row.axes.citrus.v).toBeGreaterThan(3); // 22.5 ml, not 225: the ml10 tenths are read as ml
     expect(row.ext.rollup).toMatchObject({ lines: 3, classPrior: 3, unknown: 0 });
     expect(out.rollup.dilution).toBeCloseTo(0.27, 2);
     expect(out.layers[0]).toMatchObject({ source: 'recipe', basis: expect.objectContaining({ lines: 3 }) });
@@ -72,6 +73,7 @@ describe('TasteService.rollupSubject', () => {
     const out = await new TasteService(f.db).rollupSubject(RID, 'dish', COCKTAIL);
     expect(out.rollup).toMatchObject({ kind: 'dish', lines: 3, unquantified: 1, dilution: null });
     expect(f.inserts[0].dish_id).toBe(COCKTAIL);
+    expect(f.inserts[0].axes.salty.v).toBeGreaterThan(2); // 150000 mg is 150 g, 1200 mg is 1.2 g of salt
   });
   it('adds nothing when the same recipe is worked out again', async () => {
     const f = fakeDb(recipe(sour));
@@ -103,6 +105,12 @@ describe('TasteService.rollupSubject', () => {
     const none = recipe(sour); none.recipe_current = [];
     await expect(new TasteService(fakeDb(none).db).rollupSubject(RID, 'cocktail', COCKTAIL)).rejects.toMatchObject({ response: { code: 'recipe_not_written' } });
     await expect(new TasteService(fakeDb(recipe(sour), ['recipe_current']).db).rollupSubject(RID, 'cocktail', COCKTAIL)).rejects.toThrow(ServiceUnavailableException);
+  });
+  it('reads only this house\'s lines of the current version', async () => {
+    const f = fakeDb(recipe(sour));
+    f.t.recipe_lines.push({ version_id: VER, restaurant_id: 'other', position: 9, label: 'Salt', qty_base: 90000, base_unit: 'mg' });
+    const out = await new TasteService(f.db).rollupSubject(RID, 'cocktail', COCKTAIL);
+    expect(out.rollup.lines).toBe(3);
   });
   it('does not turn a failed lines read into an empty profile', async () => {
     const f = fakeDb(recipe(sour), ['recipe_lines']);
