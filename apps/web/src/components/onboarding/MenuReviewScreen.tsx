@@ -168,7 +168,7 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
   const row = (item: MenuImportReviewItem) => (
     <div
       key={item.menuItemId}
-      className="grid grid-cols-[1fr_1fr_90px_1fr] gap-2 items-center px-3 py-2 rounded-xl border border-gray-100 bg-white"
+      className="grid grid-cols-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_90px_minmax(0,1fr)] gap-2 items-center px-3 py-2 rounded-xl border border-gray-100 bg-white"
     >
       <EditableCell
         value={item.name}

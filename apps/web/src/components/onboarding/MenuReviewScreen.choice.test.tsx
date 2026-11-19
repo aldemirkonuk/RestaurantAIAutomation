@@ -151,4 +151,12 @@ describe('MenuReviewScreen -- embedded in the page, on a phone and on a dark gro
     expect(card.className).toContain('rounded-2xl')
     expect(screen.getByRole('button', { name: /Keep it, not current/ }).className).toContain('text-gray-900')
   })
+  it('a line is two columns on a phone and four from sm up, and its columns may shrink', () => {
+    role = 'owner'
+    const item = { menuItemId: 'i1', submissionId: null, name: 'Chianti', producer: null, category: 'Red', vintage: null, region: null, grapeVariety: null, byGlassPrice: null, bottlePrice: 48, rawText: null, matched: false, needsReview: true }
+    render(<MenuReviewScreen result={{ ...RESULT, items: [item] }} onConfirm={vi.fn()} onSkip={vi.fn()} embedded />)
+    const line = screen.getByText('Chianti').closest('div[class*="grid"]') as HTMLElement
+    expect(line.className).toContain('grid-cols-2')
+    expect(line.className).toContain('sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_90px_minmax(0,1fr)]')
+  })
 })
