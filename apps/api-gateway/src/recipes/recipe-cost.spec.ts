@@ -129,4 +129,27 @@ describe("recipeCost (ADR 0360, F7)", () => {
     const c = recipeCost([{ role: "untracked", inventoryId: null, qtyBase: 10, baseUnit: "ml10", item: null, lot: null }], 1);
     expect([c.perServe, c.of, c.complete]).toEqual([null, 0, false]);
   });
+
+  describe("a cost agreed at delivery is a known cost (QA round 15)", () => {
+    const agreed = (wac: number) => ({ has_invoice_cost: false, wac: null, has_agreed_cost: true, agreed_wac: wac });
+
+    it("reads a final 'manual' lot at 20 as agreed_lot_wac, not unknown", () => {
+      const c = recipeCost([line(1000, null, { lot: agreed(20), qtyBase: 10000 })], 1);
+      expect(c.lines[0]).toEqual({ status: "linked", costPerServe: 20, costPerServeExact: 20, costBasis: "agreed_lot_wac" });
+      expect([c.perServe, c.complete]).toEqual([20, true]);
+    });
+
+    it("keeps a six-place agreed cost until the per-serve math (10.0049, not 10.00)", () => {
+      // 10 bottles of 1000 ml: 10 x 10.0049 = 100.049 -> 100.05; a cent-rounded 10.00 would give 100.00.
+      const c = recipeCost([line(1000, null, { lot: agreed(10.0049), qtyBase: 100000 })], 1);
+      expect(c.lines[0].costPerServe).toBe(100.05);
+    });
+
+    it("leaves an item with no invoice and no agreed cost unknown", () => {
+      const none = { has_invoice_cost: false, wac: null, has_agreed_cost: false, agreed_wac: null };
+      const c = recipeCost([line(1000, null, { lot: none })], 1);
+      expect(c.lines[0]).toEqual({ status: "linked", costPerServe: null, costPerServeExact: null, costBasis: "unknown" });
+      expect(c.perServe).toBeNull();
+    });
+  });
 });

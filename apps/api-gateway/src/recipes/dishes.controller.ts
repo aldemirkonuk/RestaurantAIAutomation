@@ -24,9 +24,19 @@ export class DishesController {
   ) {}
 
   @Get(":restaurantId/dishes")
-  @ApiOperation({ summary: "The house's dishes, each with its cost a plate at today's prices" })
+  @ApiOperation({ summary: "The house's dishes by name, section and price (their figures are GET dishes/figures)" })
   listDishes(@Param("restaurantId", ParseUUIDPipe) restaurantId: string, @CurrentUser() user: { role?: string } | undefined) {
     return this.dishes.listDishes(restaurantId, user?.role);
+  }
+
+  // Declared before `dishes/:dishId`, which would otherwise take "figures" for a dish id.
+  @Get(":restaurantId/dishes/figures")
+  @ApiOperation({ summary: "Every dish on the house's list with its cost a plate and allergens (no cost for a role without money)" })
+  dishFigures(
+    @Param("restaurantId", ParseUUIDPipe) restaurantId: string,
+    @CurrentUser() user: { role?: string } | undefined,
+  ) {
+    return this.dishes.dishFigures(restaurantId, user?.role);
   }
 
   @Post(":restaurantId/dishes")
@@ -120,6 +130,34 @@ export class DishesController {
     @CurrentUser() user: { role?: string } | undefined,
   ) {
     return this.dishes.dishesUsingItem(restaurantId, itemId, user?.role);
+  }
+
+  @Get(":restaurantId/items/:itemId/drinks")
+  @ApiOperation({ summary: "The house's drinks whose current recipe uses a shelf item, each with its figures" })
+  drinksUsingItem(
+    @Param("restaurantId", ParseUUIDPipe) restaurantId: string,
+    @Param("itemId", ParseUUIDPipe) itemId: string,
+    @CurrentUser() user: { role?: string } | undefined,
+  ) {
+    return this.dishes.drinksUsingItem(restaurantId, itemId, user?.role);
+  }
+
+  @Get(":restaurantId/drinks/figures")
+  @ApiOperation({ summary: "Every drink on the house's list with its cost a serve at today's prices (no cost for a role without money)" })
+  drinkFigures(
+    @Param("restaurantId", ParseUUIDPipe) restaurantId: string,
+    @CurrentUser() user: { role?: string } | undefined,
+  ) {
+    return this.dishes.drinkFigures(restaurantId, user?.role);
+  }
+
+  @Get(":restaurantId/menu-prices")
+  @ApiOperation({ summary: "The current menu's price for each dish and drink of the same name (nothing for a role without money)" })
+  menuPrices(
+    @Param("restaurantId", ParseUUIDPipe) restaurantId: string,
+    @CurrentUser() user: { role?: string } | undefined,
+  ) {
+    return this.dishes.menuPrices(restaurantId, user?.role);
   }
 
   @Post(":restaurantId/shelf/match")

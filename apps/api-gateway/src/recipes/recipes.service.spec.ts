@@ -82,6 +82,7 @@ describe("RecipesService.getRecipe: money only for roles that see it", () => {
         },
         restaurant_inventory: { data: [{ id: "g", display_name: "Gin", kind: "spirit", uom: "bottle", bottle_size_ml: 700 }] },
         inventory_lot_rollup: { data: [{ inventory_id: "g", has_invoice_cost: true, wac: 700, wac_qty: 1, live_qty: 1 }] },
+        inventory_lot_invoice_cost: { data: [{ inventory_id: "g", invoice_wac: 700, invoice_qty: 1, settled_qty: 1, stock_qty: 1 }] },
       },
       {
         cocktails: { data: { id: DRINK, name: "Negroni", price: 450 } },
@@ -120,6 +121,7 @@ describe("RecipesService.getRecipe: money only for roles that see it", () => {
         },
         restaurant_inventory: { data: [{ id: "g", display_name: "Gin", kind: "spirit", uom: "bottle", bottle_size_ml: 700 }] },
         inventory_lot_rollup: { data: [{ inventory_id: "g", has_invoice_cost: true, wac: 700, wac_qty: 1, live_qty: 1 }] },
+        inventory_lot_invoice_cost: { data: [{ inventory_id: "g", invoice_wac: 700, invoice_qty: 1, settled_qty: 1, stock_qty: 1 }] },
         item_nutrition: { data: [{ inventory_id: "g", basis: "100ml", energy_kcal: "222.0", fat_g: null, saturates_g: null, carbohydrate_g: "0.00", sugars_g: null, protein_g: null, salt_g: null, abv_pct: "40.0", energy_from_abv: false }] },
         item_allergens: { data: [{ inventory_id: "g", allergen: "milk", status: "free" }] },
         ...more,

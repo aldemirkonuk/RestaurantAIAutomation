@@ -1,4 +1,5 @@
 import { DatabaseService } from "../database/database.service";
+import type { DishesService } from "./dishes.service";
 
 /**
  * Test-only: two houses' dish rows and a fake supabase client that APPLIES
@@ -65,6 +66,8 @@ export function fakeDb(rows: Record<string, Row[]>, opts: { rpc?: (name: string,
       eq: (c: string, v: unknown) => (filters.push((r) => r[c] === v), q),
       is: (c: string, v: unknown) => (filters.push((r) => (r[c] ?? null) === v), q),
       in: (c: string, vs: unknown[]) => (filters.push((r) => vs.includes(r[c])), q),
+      neq: (c: string, v: unknown) => (filters.push((r) => r[c] !== v), q),
+      gt: (c: string, v: unknown) => (filters.push((r) => String(r[c]) > String(v)), q),
       order: (c: string, o?: { ascending?: boolean }) => ((sortBy = c), (desc = o?.ascending === false), q),
       range: (a: number, b: number) => ((window = [a, b]), q),
       limit: () => q,
@@ -131,4 +134,17 @@ export function twoHouses(): Record<string, Row[]> {
     inventory_lot_rollup: [],
     users: [],
   };
+}
+
+/**
+ * /dishes as the page shows it (r41 recipes audit, gap 2): the names read
+ * (`listDishes`) joined to the figures read (`dishFigures`) by dish id.
+ */
+export async function figuredDishes(dishes: DishesService, house: string, role: string) {
+  const [names, figures] = await Promise.all([dishes.listDishes(house, role), dishes.dishFigures(house, role)]);
+  const byId = new Map(figures.dishes.map((f) => [f.dishId, f]));
+  return names.map((d) => {
+    const { dishId: _id, price: _price, ...f } = byId.get(d.id)!;
+    return { ...d, ...f };
+  });
 }
