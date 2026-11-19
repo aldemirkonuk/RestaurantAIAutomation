@@ -130,3 +130,25 @@ describe('MenuReviewScreen -- a price a lock held is said too (ADR 0193 round 3,
     expect(onConfirm).not.toHaveBeenCalled()
   })
 })
+
+describe('MenuReviewScreen -- embedded in the page, on a phone and on a dark ground', () => {
+  // jsdom has no layout, so the two walked failures (r61: 508 px wide at 375, and the
+  // outline button's light ink on a white card on Charcoal) are pinned by their classes.
+  it('the action row wraps, so three actions never push the page wider than a phone', () => {
+    role = 'owner'
+    render(<MenuReviewScreen result={RESULT} onConfirm={vi.fn()} onSkip={vi.fn()} embedded />)
+    const row = screen.getByRole('button', { name: 'Skip review' }).parentElement as HTMLElement
+    expect(row.className).toContain('flex-wrap')
+    const choices = screen.getByRole('button', { name: /Keep it, not current/ }).parentElement as HTMLElement
+    expect(choices.className).toContain('flex-wrap')
+  })
+
+  it('the white card sets its own dark ink, and its outline button does not take the ground ink', () => {
+    role = 'owner'
+    render(<MenuReviewScreen result={RESULT} onConfirm={vi.fn()} onSkip={vi.fn()} embedded />)
+    const card = screen.getByTestId('menu-read-review')
+    expect(card.className).toContain('text-gray-900')
+    expect(card.className).toContain('rounded-2xl')
+    expect(screen.getByRole('button', { name: /Keep it, not current/ }).className).toContain('text-gray-900')
+  })
+})
