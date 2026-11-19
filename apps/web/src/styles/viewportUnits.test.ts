@@ -54,4 +54,14 @@ describe('100svh, not 100vh, for what must fit', () => {
       expect(rule.replace(/\s+/g, ' ').trim()).toBe(`${prop}: 100vh; ${prop}: 100svh`);
     }
   });
+
+  it('on a phone the page inside the shell asks for what is left of the screen, not a whole one', () => {
+    const css = readFileSync(resolve(SRC, 'components/mudavym/house-shell.css'), 'utf8').replace(/\s+/g, ' ');
+    expect(css).toContain(
+      ".mdv-shell[data-phone='true'] .mdv-shell__main > * { min-height: calc(100svh - var(--mdv-shell-top, 53px) - 64px - env(safe-area-inset-bottom, 0px)) !important; }",
+    );
+    expect(css).toContain(
+      ".mdv-shell[data-phone='true'] .mdv-shell__page { min-height: calc(100svh - var(--mdv-shell-top, 53px)); }",
+    );
+  });
 });

@@ -694,6 +694,19 @@
   padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
 }
 
+/* A short page is the screen, not the screen and a bit more: the header above
+   and the dock's room below are already in the shell's height, so a page that
+   asked for a full screen of its own (min-h-screen, or an inline min-height)
+   made the shell 117 px taller than the phone and every empty page scrolled.
+   The page's own floor is what is left. */
+.mdv-shell[data-phone='true'] .mdv-shell__page {
+  min-height: calc(100svh - var(--mdv-shell-top, 53px));
+}
+
+.mdv-shell[data-phone='true'] .mdv-shell__main > * {
+  min-height: calc(100svh - var(--mdv-shell-top, 53px) - 64px - env(safe-area-inset-bottom, 0px)) !important;
+}
+
 /* ── one act, in its sheet ───────────────────────────────────────────── */
 
 .mdv-actsheet__facts {
