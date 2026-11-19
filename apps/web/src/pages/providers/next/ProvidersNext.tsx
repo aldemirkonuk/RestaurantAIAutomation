@@ -24,6 +24,7 @@ import { ink } from "../../../lib/mudavym/motion";
 import { EM, MONO, SANS, SERIF, fmtDays, fmtLastContact } from "./pv-format";
 import { TwinSheet } from "./TwinSheet";
 import { NewVendorSheet } from "./NewVendorSheet";
+import { OrderSpark, VendorMonogram, VendorStatus } from "./VendorFace";
 import { businessTypeLabel } from "./VendorRecordEdit";
 import { UsualCurrencyCoveragePanel } from "./UsualCurrencyCoveragePanel";
 import {
@@ -124,41 +125,50 @@ function BucketCard({
         fontFamily: SANS,
       }}
     >
-      <div>
-        <span
-          style={{
-            fontFamily: MONO,
-            fontSize: 8.5,
-            fontWeight: 600,
-            letterSpacing: "0.14em",
-            textTransform: "uppercase",
-            color: "var(--seal-deep, #14515C)",
-          }}
-        >
-          {/* "Not stated" when nobody stated one (founder answer 12, 2026-09-21) — never blank, never a guessed type. */}
-          {businessTypeLabel(p.primaryBusinessType)}
-        </span>
-        <span
-          style={{
-            display: "block",
-            fontFamily: SERIF,
-            fontSize: 16,
-            fontWeight: 600,
-            letterSpacing: "-0.01em",
-            lineHeight: 1.2,
-            color: "var(--ink-1, #211C16)",
-          }}
-        >
-          {p.name}
-        </span>
-        {tag && (
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <VendorMonogram name={p.name} size={40} />
+        <div style={{ minWidth: 0, flex: 1 }}>
+        <div>
           <span
-            data-testid="supply-tag"
-            style={{ display: 'block', marginTop: 2, fontSize: 11, color: 'var(--ink-4, #665D50)' }}
+            style={{
+              fontFamily: MONO,
+              fontSize: 8.5,
+              fontWeight: 600,
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+              color: "var(--seal-deep, #14515C)",
+            }}
           >
-            {tag}
+            {/* "Not stated" when nobody stated one (founder answer 12, 2026-09-21) — never blank, never a guessed type. */}
+            {businessTypeLabel(p.primaryBusinessType)}
           </span>
-        )}
+          <span
+            style={{
+              display: "block",
+              fontFamily: SERIF,
+              fontSize: 16,
+              fontWeight: 600,
+              letterSpacing: "-0.01em",
+              lineHeight: 1.2,
+              color: "var(--ink-1, #211C16)",
+            }}
+          >
+            {p.name}
+          </span>
+          {tag && (
+            <span
+              data-testid="supply-tag"
+              style={{ display: 'block', marginTop: 2, fontSize: 11, color: 'var(--ink-4, #665D50)' }}
+            >
+              {tag}
+            </span>
+          )}
+        </div>
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 8 }}>
+        <VendorStatus open={ordersKnown ? vm.openOrders : null} />
+        <OrderSpark weekly={ordersKnown ? vm.weekly : null} />
       </div>
       <dl
         style={{

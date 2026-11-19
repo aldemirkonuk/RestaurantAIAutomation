@@ -238,6 +238,43 @@ describe('ProvidersNext', () => {
     expect(screen.queryByTestId('twin-panel')).not.toBeInTheDocument();
   });
 
+  it('a card has a monogram, a status dot and a twelve-week sparkline (N-19)', () => {
+    const weekly = [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 2, 1];
+    mockData.current = {
+      ...base,
+      cards: [{ provider: provider({}), openOrders: 3, leadTimeDays: 2, lastContact: null, weekly }],
+    };
+    render(<ProvidersNext />);
+    expect(screen.getByTestId('vendor-monogram')).toHaveTextContent('BÁ');
+    expect(screen.getByTestId('vendor-status')).toHaveTextContent('3 open');
+    expect(screen.getByTestId('vendor-spark')).toHaveAttribute('aria-label', '4 orders in the last 12 weeks');
+  });
+
+  it('while the orders book is unread a card draws no status and no sparkline, only the dash', () => {
+    mockData.current = {
+      ...base,
+      ordersKnown: false,
+      cards: [{ provider: provider({}), openOrders: null, leadTimeDays: null, lastContact: null, weekly: null }],
+    };
+    render(<ProvidersNext />);
+    expect(screen.queryByTestId('vendor-status')).toBeNull();
+    expect(screen.queryByTestId('vendor-spark')).toBeNull();
+    expect(screen.getByTestId('vendor-monogram')).toBeInTheDocument();
+  });
+
+  it('the sheet carries the same monogram, larger', async () => {
+    mockData.current = {
+      ...base,
+      cards: [{ provider: provider({}), openOrders: 0, leadTimeDays: null, lastContact: null }],
+    };
+    render(<ProvidersNext />);
+    fireEvent.click(screen.getByText('Bodega Álvaro'));
+    await screen.findByTestId('twin-panel');
+    const discs = screen.getAllByTestId('vendor-monogram');
+    expect(discs).toHaveLength(2);
+    expect(discs[1].style.width).toBe('56px');
+  });
+
   it('opens the TwinSheet on card click and closes on Escape', async () => {
     mockData.current = {
       ...base,

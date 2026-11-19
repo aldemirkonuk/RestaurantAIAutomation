@@ -27,6 +27,8 @@ export const SC = {
   figure: {
     didNotAnswer: 'did not answer',
     notCollected: 'not collected',
+    /** Several lines the house has not started collecting, said once. */
+    uncollectedYet: 'Not collected yet',
     nothingToScore: 'nothing to score',
     tooFew: 'too few',
     ofMinimum: (sample: number, minimum: number) => `${sample} of ${minimum}`,
