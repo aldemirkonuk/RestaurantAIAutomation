@@ -56,7 +56,7 @@ The live activation surface: **Activate** tab (import your wine list via Scan Ph
 - **Use the app** tab: seven guide cards into the main surfaces + a Wine Agent explainer
 - Staff see a separate read-only welcome (no upload/threshold/invite steps)
 - Deep links open a specific tab or import method (`?tab=`, `?method=`)
-- **Flag-gated** (`mudavym_design_cellar`, OFF by default): "What does this house pour?" — the cellar registers, inferred from this house's own cellar and menu and **confirmed here**, mounted immediately after the menu review (`GetStarted.tsx:259-273`) and as the last Activate step when a menu already exists (`GetStarted.tsx:433-441`). Always skippable ("Confirm later — you can change this under Settings → Cellar"), never a gate on the flow, and silently skipped when there is nothing to ask (already confirmed) or when the readout could not be read (`components/onboarding/CellarRegistersOnboarding.tsx:47-52`). With the flag off the page renders exactly as before and the chunk is never fetched.
+- **Removed (r84, 2026-11-19):** the flag-gated "What does this house pour?" cellar-registers step. Its wrapper `CellarRegistersOnboarding.tsx` had no importer (ADR 0213 moved the question out of onboarding; `GetStarted.cellarRegisters.test.tsx` proves it) and was deleted. A cellar-registers question at `/get-started` is deferred to a separate future slice.
 
 ## 2. Entry
 - `/verify-email` success → here unless a menu already exists (`VerifyEmail.tsx:50`)
@@ -70,7 +70,7 @@ The live activation surface: **Activate** tab (import your wine list via Scan Ph
 - `apps/web/src/pages/GetStarted.tsx` (482 lines)
 - Co-located tree: `components/onboarding/` — `MenuImportCard`, `MenuScanUpload`, `MenuCsvUpload`, `MenuManualEntry`, `MenuReviewScreen`, `ThresholdStep`, `OptionalTail`, `StaffWelcome`
 - API module: `services/api/menus.ts`
-- Flag-gated step (lazy, `GetStarted.tsx:37-39`): `components/onboarding/CellarRegistersOnboarding.tsx` wrapping `pages/cellar/next/CellarRegistersStep.tsx` over `useCellarRegisters()` (`pages/cellar/next/useCellarNextData.ts:280`; `GET`/`PUT /cellar/:rid/registers`)
+- Cellar-registers step: removed (r84); the step component `pages/cellar/next/CellarRegistersStep.tsx` and `useCellarRegisters()` (`GET`/`PUT /cellar/:rid/registers`) remain for the cellar page
 - Test: `pages/__tests__/GetStarted.cellarRegisters.test.tsx`
 
 ## 4. Endpoints
