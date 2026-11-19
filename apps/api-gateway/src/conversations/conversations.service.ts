@@ -110,6 +110,16 @@ const WITHHOLD_HOUSE_DRAFT = "status.is.null,status.neq.HOUSE_DRAFT";
 const WITHHOLD_HOUSE_CANCELLED = "status.is.null,status.neq.HOUSE_CANCELLED";
 
 /**
+ * Team and guest mail (`gmail_read_all`) is read by a person's mailbox and not
+ * by the house's own act, so it is shown to the owner and managers only. Every
+ * row written before the wider reading is `kind = 'vendor'` (the column's
+ * default, and `is.null` is the same idiom as the status filters above), so
+ * this withholds nothing from anyone who has no wider grant.
+ * The thread list does the same inside the RPC (migration 20271202100000).
+ */
+const WITHHOLD_NON_VENDOR = "kind.is.null,kind.eq.vendor";
+
+/**
  * The four `LETTER_STATUS` words only a house letter carries
  * (`communications/letters/house-letters.service.ts`). Its fifth, `SENT`, is
  * shared with AI-path rows and so is not here — `approveConversation` catches
@@ -450,7 +460,8 @@ export class ConversationsService {
       // omit (ADR 0167/0230; see `isOwnerOrManager` above).
       query = query.eq("restaurant_id", restaurantId);
       if (!isOwnerOrManager(options.callerRole)) {
-        query = query.or(WITHHOLD_HOUSE_DRAFT).or(WITHHOLD_HOUSE_CANCELLED);
+        query = query.or(WITHHOLD_HOUSE_DRAFT).or(WITHHOLD_HOUSE_CANCELLED)
+          .or(WITHHOLD_NON_VENDOR);
       }
       if (options.providerId) {
         query = query.eq("provider_id", options.providerId);
@@ -651,7 +662,8 @@ export class ConversationsService {
     if (!isOwnerOrManager(options.callerRole)) {
       messagesQuery = messagesQuery
         .or(WITHHOLD_HOUSE_DRAFT)
-        .or(WITHHOLD_HOUSE_CANCELLED);
+        .or(WITHHOLD_HOUSE_CANCELLED)
+          .or(WITHHOLD_NON_VENDOR);
     }
     const { data, error } = await messagesQuery.order("created_at", {
       ascending: false,
@@ -710,7 +722,10 @@ export class ConversationsService {
           .select(select)
           .eq("restaurant_id", restaurantId);
         return withhold
-          ? q.or(WITHHOLD_HOUSE_DRAFT).or(WITHHOLD_HOUSE_CANCELLED)
+          ? q
+              .or(WITHHOLD_HOUSE_DRAFT)
+              .or(WITHHOLD_HOUSE_CANCELLED)
+              .or(WITHHOLD_NON_VENDOR)
           : q;
       };
 
@@ -786,7 +801,8 @@ export class ConversationsService {
       if (!isOwnerOrManager(callerRole)) {
         convQuery = convQuery
           .or(WITHHOLD_HOUSE_DRAFT)
-          .or(WITHHOLD_HOUSE_CANCELLED);
+          .or(WITHHOLD_HOUSE_CANCELLED)
+          .or(WITHHOLD_NON_VENDOR);
       }
       const { data: conv, error } = await convQuery.maybeSingle();
 
@@ -834,7 +850,10 @@ export class ConversationsService {
         .select(
           "id, channel, direction, provider_id, detected_sentiment, created_at",
         )
-        .eq("restaurant_id", restaurantId);
+        .eq("restaurant_id", restaurantId)
+        // These are the vendor negotiation's numbers; a team or guest message
+        // (`gmail_read_all`) is not part of them and is not counted.
+        .or(WITHHOLD_NON_VENDOR);
 
       if (error) {
         throw new Error(error.message);
@@ -927,7 +946,8 @@ export class ConversationsService {
         .eq("id", conversationId)
         .eq("restaurant_id", restaurantId);
       if (!isOwnerOrManager(callerRole)) {
-        query = query.or(WITHHOLD_HOUSE_DRAFT).or(WITHHOLD_HOUSE_CANCELLED);
+        query = query.or(WITHHOLD_HOUSE_DRAFT).or(WITHHOLD_HOUSE_CANCELLED)
+          .or(WITHHOLD_NON_VENDOR);
       }
       const { data, error } = await query.maybeSingle();
 

@@ -111,7 +111,7 @@ const LIVE_GRANT = {
 
 describe("disconnecting a grant that mirrors mail", () => {
   it("names exactly which grants mirror, and gmail_send is not one", () => {
-    expect(MIRRORING_INTEGRATION_IDS).toEqual(["gmail_read"]);
+    expect(MIRRORING_INTEGRATION_IDS).toEqual(["gmail_read", "gmail_read_all"]);
   });
 
   it("sweeps the raw mail, scoped to that connection, after the local revoke", async () => {
@@ -134,6 +134,24 @@ describe("disconnecting a grant that mirrors mail", () => {
     );
     // Revoke first, delete second: deleting first and then failing to revoke
     // would leave a live reader refilling what was just deleted.
+    expect(order).toEqual(["local_revoke", "sweep"]);
+  });
+
+  it("sweeps a gmail_read_all grant the same way, scoped to that connection", async () => {
+    const { db, config, crypto, order } = build(LIVE_GRANT);
+    const retention = retentionStub(order);
+    const service = new IntegrationsOauthService(
+      db,
+      config,
+      crypto,
+      retention.service,
+    );
+
+    await service.disconnect(PERSON, "gmail_read_all", HOUSE);
+
+    expect(retention.calls).toEqual([
+      { connectionId: GRANT, restaurantId: HOUSE, ownerUserId: PERSON },
+    ]);
     expect(order).toEqual(["local_revoke", "sweep"]);
   });
 
