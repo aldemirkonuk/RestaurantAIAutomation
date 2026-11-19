@@ -106,17 +106,68 @@ export interface DescriptorGroup {
   /** What is stored is `id`; what is shown is `label`. */
   items: ReadonlyArray<{ id: string; label: string }>;
 }
+/** A stored id shows as words: "citrus-fruit" reads "citrus fruit"; the older food ids keep their hyphens. */
 const chips = (...ids: string[]) => ids.map((id) => ({ id, label: id }));
+const spaced = (...ids: string[]) => ids.map((id) => ({ id, label: id.replace(/-/g, ' ') }));
 
-/** The controlled chips. Lane B's closed list must hold these; a refusal is shown in the gateway's own sentence. */
-export const DESCRIPTOR_GROUPS: ReadonlyArray<DescriptorGroup> = [
-  { title: 'Flavour', items: chips('savoury', 'rich', 'fresh', 'bright', 'balanced', 'sharp', 'mellow', 'sweet-and-sour', 'spicy', 'smoky', 'herby', 'tangy') },
-  { title: 'Texture', items: chips('crisp', 'creamy', 'chewy', 'flaky', 'juicy', 'silky', 'crunchy', 'tender', 'grainy', 'sticky') },
-];
-const DESCRIPTOR_LABEL: ReadonlyMap<string, string> = new Map(DESCRIPTOR_GROUPS.flatMap((g) => g.items.map((i) => [i.id, i.label] as const)));
-/** The words a server-sent descriptor may show as: only ones the form offers, never a raw code. */
+const FOOD_FLAVOUR = chips('savoury', 'rich', 'fresh', 'bright', 'balanced', 'sharp', 'mellow', 'sweet-and-sour', 'spicy', 'smoky', 'herby', 'tangy');
+const FOOD_TEXTURE = chips('crisp', 'creamy', 'chewy', 'flaky', 'juicy', 'silky', 'crunchy', 'tender', 'grainy', 'sticky');
+
+/** Which word list a good is tasted with. The gateway holds the same lists (taste-descriptors.ts) and refuses a word outside the item's own. */
+export type DescriptorFamily = 'food' | 'wine' | 'spirit' | 'beer' | 'coffee' | 'cocktail';
+const FAMILY_BY_KIND: Record<string, DescriptorFamily> = {
+  wine: 'wine', sake: 'wine', cider: 'wine',
+  spirit: 'spirit', whiskey: 'spirit', liqueur: 'spirit',
+  beer: 'beer', non_alcoholic: 'coffee', soft_drink: 'coffee', cocktail: 'cocktail',
+};
+/** Anything unlisted (food, other, no kind) is tasted with the food words, never with none. */
+export const descriptorFamily = (kind: string | null | undefined): DescriptorFamily => FAMILY_BY_KIND[kind ?? ''] ?? 'food';
+
+const FINISH = spaced('short-finish', 'medium-finish', 'long-finish');
+const DRINK_TEXTURE = chips('crisp', 'creamy', 'silky');
+
+const GROUPS_BY_FAMILY: Record<DescriptorFamily, ReadonlyArray<DescriptorGroup>> = {
+  food: [{ title: 'Flavour', items: FOOD_FLAVOUR }, { title: 'Texture', items: FOOD_TEXTURE }],
+  wine: [
+    { title: 'Fruit', items: spaced('citrus-fruit', 'green-fruit', 'stone-fruit', 'tropical-fruit', 'red-fruit', 'black-fruit', 'dried-fruit') },
+    { title: 'Other aromas', items: spaced('floral', 'herbal', 'spice', 'oak', 'earthy', 'mineral') },
+    { title: 'Finish', items: FINISH },
+    { title: 'Texture', items: DRINK_TEXTURE },
+  ],
+  spirit: [
+    { title: 'Fruit', items: spaced('citrus-fruit', 'orchard-fruit', 'stone-fruit', 'tropical-fruit', 'dried-fruit') },
+    { title: 'Other aromas', items: spaced('floral', 'herbal', 'juniper', 'spice', 'vanilla', 'caramel', 'oak', 'smoky', 'earthy', 'nutty') },
+    { title: 'Finish', items: FINISH },
+    { title: 'Texture', items: DRINK_TEXTURE },
+  ],
+  beer: [
+    { title: 'Malt', items: spaced('bready', 'biscuity', 'caramel', 'toasty', 'roasty', 'chocolate') },
+    { title: 'Hops', items: spaced('citrus-fruit', 'piney', 'floral', 'herbal') },
+    { title: 'Yeast and finish', items: spaced('fruity-yeast', 'spicy-yeast', 'clean', 'tart', 'funky', 'dry-finish') },
+    { title: 'Texture', items: DRINK_TEXTURE },
+  ],
+  coffee: [
+    { title: 'Flavour', items: spaced('berry', 'citrus-fruit', 'stone-fruit', 'floral', 'honey', 'caramel', 'nutty', 'cocoa', 'spice', 'roasted', 'smoky', 'vegetal', 'winey', 'clean') },
+    { title: 'Texture', items: DRINK_TEXTURE },
+  ],
+  cocktail: [
+    { title: 'Balance', items: spaced('spirit-forward', 'boozy', 'balanced', 'sour-led', 'sweet-led', 'bitter-led', 'refreshing', 'strong', 'long-and-light') },
+    { title: 'Aromas', items: spaced('citrus-fruit', 'herbal', 'spice', 'smoky') },
+    { title: 'Texture', items: DRINK_TEXTURE },
+  ],
+};
+
+/** The chips offered for a good of this kind. */
+export const descriptorGroupsFor = (kind: string | null | undefined): ReadonlyArray<DescriptorGroup> => GROUPS_BY_FAMILY[descriptorFamily(kind)];
+
+/** The food chips (the original list). */
+export const DESCRIPTOR_GROUPS: ReadonlyArray<DescriptorGroup> = GROUPS_BY_FAMILY.food;
+const DESCRIPTOR_LABEL: ReadonlyMap<string, string> = new Map(
+  Object.values(GROUPS_BY_FAMILY).flatMap((gs) => gs.flatMap((g) => g.items.map((i) => [i.id, i.label] as const))),
+);
+/** The words a server-sent descriptor may show as: only ones some form offers, never a raw code. */
 export const descriptorWord = (id: string): string | null => DESCRIPTOR_LABEL.get(id) ?? null;
-export const TEXTURE_IDS: ReadonlySet<string> = new Set(DESCRIPTOR_GROUPS[1].items.map((i) => i.id));
+export const TEXTURE_IDS: ReadonlySet<string> = new Set(FOOD_TEXTURE.map((i) => i.id));
 
 /** Axes the card shows, strongest first. A conflicted axis is withheld: it has no value to show. */
 export function knownAxes(e: TasteEffective): Array<[AxisKey, TasteAxis]> {
