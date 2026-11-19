@@ -140,10 +140,15 @@
    index.html: if the file is in hand inside the browser's ~100 ms window the
    page paints in Fraunces, and if not the page keeps the stand-in for that
    view and takes Fraunces on the next one, so a line of headline never
-   re-wraps under a reader. The stand-in is Georgia scaled to Fraunces:
-   weighted average advance 0.5207 em vs Georgia 0.4455 em = 116.9% size-adjust;
-   Fraunces ascender 0.978 em, descender 0.255 em, line gap 0 => 83.7% / 21.8% /
-   0% after dividing by 1.169. Gelasio has Georgia's metrics, so Linux and
+   re-wraps under a reader. The stand-in is Georgia scaled to Fraunces. The
+   scale is the one a browser draws, not the font file's default instance: the
+   shipped Fraunces has an optical-size axis and text takes it from its size,
+   so width was measured in Chromium (r72 walk, 12 to 48 px, a pangram, real
+   Fraunces against the stand-in): 104% for the regular faces, 93% for the bold
+   (Georgia Bold is wide), 96.6% for italic; each lands within about 3% of
+   Fraunces at any size from 12 to 48 px. Ascent and descent are Fraunces'
+   (0.978 em and 0.255 em, line gap 0) divided by the scale, so the line box
+   is Fraunces' at every size. Gelasio has Georgia's metrics, so Linux and
    Android take the same numbers. Latin-ext stays `swap` (rare glyphs). The
    numbers are pinned by fontFaces.test.ts. */
 @font-face {
@@ -151,9 +156,9 @@
   font-style: normal;
   font-weight: 300 500;
   src: local('Georgia'), local('Gelasio');
-  size-adjust: 116.9%;
-  ascent-override: 83.7%;
-  descent-override: 21.8%;
+  size-adjust: 104%;
+  ascent-override: 94.0%;
+  descent-override: 24.5%;
   line-gap-override: 0%;
 }
 @font-face {
@@ -161,9 +166,9 @@
   font-style: normal;
   font-weight: 501 680;
   src: local('Georgia Bold'), local('Georgia-Bold'), local('Gelasio Bold');
-  size-adjust: 116.9%;
-  ascent-override: 83.7%;
-  descent-override: 21.8%;
+  size-adjust: 93%;
+  ascent-override: 105.2%;
+  descent-override: 27.4%;
   line-gap-override: 0%;
 }
 @font-face {
@@ -171,9 +176,9 @@
   font-style: italic;
   font-weight: 300 680;
   src: local('Georgia Italic'), local('Georgia-Italic'), local('Gelasio Italic');
-  size-adjust: 116.9%;
-  ascent-override: 83.7%;
-  descent-override: 21.8%;
+  size-adjust: 96.6%;
+  ascent-override: 101.2%;
+  descent-override: 26.4%;
   line-gap-override: 0%;
 }
 

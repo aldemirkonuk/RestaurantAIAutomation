@@ -6,9 +6,11 @@
  *
  *  1. No swap jump. `Plus Jakarta Fallback` and `Fraunces Fallback` are local
  *     faces scaled to the real faces' measured metrics, so the page keeps its
- *     line boxes and nearly its line breaks when the woff2 arrives. The CLS
- *     proxy below does the arithmetic from the measured widths: before, a swap
- *     moved a line of Fraunces text by 16.9% of its width; after, by under 0.5%.
+ *     line boxes and nearly its line breaks when the woff2 arrives. The tests
+ *     below pin the scale of each stand-in to a measured band: Jakarta by the
+ *     file arithmetic (a swap moves a line under 0.5%), Fraunces by what a
+ *     browser draws (a swap moves a line about 3% or less at 12 to 48 px; the
+ *     file-default 116.9% put the stand-in 11 to 24% wide).
  *  2. One sans. No DM Sans file ships; the family name is an alias of Plus
  *     Jakarta Sans, and the count of the retired name only goes down.
  *  3. The right faces are preloaded, and `optional` on Fraunces latin.
@@ -17,8 +19,11 @@
  * Honest limit: jsdom paints nothing and lays out nothing, so a real layout-shift
  * score is a browser measurement (the PR lists it as a check owed). The metric
  * numbers below were measured with fontTools from the files in public/fonts:
- * weighted English letter advance, Jakarta 0.4728 em, Arial 0.4459 em, Fraunces
- * 0.5207 em, Georgia 0.4455 em; hhea ascender/descender/line gap per em.
+ * weighted English letter advance, Jakarta 0.4728 em, Arial 0.4459 em; hhea
+ * ascender/descender/line gap per em. Fraunces width is NOT taken from the
+ * file's default instance (r72 walk: that put the stand-in 11 to 24% wide in a
+ * real browser, because text takes Fraunces' optical-size axis from its size);
+ * its scale is the one Chromium draws, see FRAUNCES_BROWSER below.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -51,14 +56,22 @@ const pct = (v: string) => parseFloat(v) / 100
 const MEASURED = {
   jakarta: { avg: 0.4728, asc: 1.038, desc: 0.222, gap: 0 },
   arial: { avg: 0.4459 },
-  fraunces: { avg: 0.5207, asc: 0.978, desc: 0.255, gap: 0 },
-  georgia: { avg: 0.4455 },
+  fraunces: { asc: 0.978, desc: 0.255, gap: 0 },
+}
+
+// Chromium, macOS, r72 walk: pangram width of real Fraunces against Georgia, 12 to
+// 48 px; the size-adjust that makes the stand-in match, as a band per face (a
+// scale that holds within about 3% of Fraunces at any size in that range).
+const FRAUNCES_BROWSER = {
+  regular: { lo: 1.02, hi: 1.06 },
+  bold: { lo: 0.91, hi: 0.95 },
+  italic: { lo: 0.95, hi: 0.98 },
 }
 
 describe('metric-matched fallbacks', () => {
   const cases = [
-    { family: 'Plus Jakarta Fallback', css: sans, real: MEASURED.jakarta, fb: MEASURED.arial, before: 'arial' },
-    { family: 'Fraunces Fallback', css: mudavym, real: MEASURED.fraunces, fb: MEASURED.georgia, before: 'georgia' },
+    { family: 'Plus Jakarta Fallback', css: sans, real: MEASURED.jakarta },
+    { family: 'Fraunces Fallback', css: mudavym, real: MEASURED.fraunces },
   ]
   for (const c of cases) {
     it(`${c.family}: every face carries size-adjust and the three overrides`, () => {
@@ -73,20 +86,35 @@ describe('metric-matched fallbacks', () => {
       }
     })
 
-    it(`${c.family}: CLS proxy - a swap moves a line under 0.5%, it moved over 5% before`, () => {
-      const f = named(c.css, c.family)[0]
-      const sa = pct(f['size-adjust'])
-      const widthAfter = Math.abs((c.fb.avg * sa) / c.real.avg - 1)
-      const widthBefore = Math.abs(c.fb.avg / c.real.avg - 1)
-      expect(widthBefore).toBeGreaterThan(0.05)
-      expect(widthAfter).toBeLessThan(0.005)
-      // Line box: the fallback's (ascent + descent + gap) at the adjusted size
-      // must equal the real face's, in em of the same font-size.
-      const box = (pct(f['ascent-override']) + pct(f['descent-override']) + pct(f['line-gap-override'])) * sa
-      const real = c.real.asc + c.real.desc + c.real.gap
-      expect(Math.abs(box / real - 1)).toBeLessThan(0.005)
+    it(`${c.family}: the line box is the real face's at the adjusted size`, () => {
+      for (const f of named(c.css, c.family)) {
+        const sa = pct(f['size-adjust'])
+        const box = (pct(f['ascent-override']) + pct(f['descent-override']) + pct(f['line-gap-override'])) * sa
+        const real = c.real.asc + c.real.desc + c.real.gap
+        expect(Math.abs(box / real - 1)).toBeLessThan(0.005)
+      }
     })
   }
+
+  it('Plus Jakarta Fallback: CLS proxy - a swap moves a line under 0.5%, it moved over 5% before', () => {
+    const f = named(sans, 'Plus Jakarta Fallback')[0]
+    const sa = pct(f['size-adjust'])
+    expect(Math.abs(MEASURED.arial.avg / MEASURED.jakarta.avg - 1)).toBeGreaterThan(0.05)
+    expect(Math.abs((MEASURED.arial.avg * sa) / MEASURED.jakarta.avg - 1)).toBeLessThan(0.005)
+  })
+
+  it('Fraunces Fallback: each face sits in the band a browser measured against real Fraunces', () => {
+    const fs = named(mudavym, 'Fraunces Fallback')
+    const band = (f: Record<string, string>) =>
+      f['font-style'] === 'italic' ? FRAUNCES_BROWSER.italic : /^501/.test(f['font-weight']) ? FRAUNCES_BROWSER.bold : FRAUNCES_BROWSER.regular
+    expect(fs.length).toBe(3)
+    for (const f of fs) {
+      const sa = pct(f['size-adjust'])
+      const b = band(f)
+      expect(sa, `${f['font-style']} ${f['font-weight']}`).toBeGreaterThanOrEqual(b.lo)
+      expect(sa, `${f['font-style']} ${f['font-weight']}`).toBeLessThanOrEqual(b.hi)
+    }
+  })
 })
 
 describe('one sans', () => {
