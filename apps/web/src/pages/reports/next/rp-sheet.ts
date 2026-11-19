@@ -111,22 +111,22 @@ export interface SheetState {
  * any of them on.
  */
 export const DEFAULT_SLOTS: Record<AnalysisId, Slot> = {
-  // A bento: the reading is one tall column (1 x 2), the till one wide strip
-  // (2 x 1) over two small squares, and the lower rows break the old rhythm
-  // of eight same-sized boxes.
-  reading: { x: 0, y: 0, w: 4, h: 12 },
-  till: { x: 4, y: 0, w: 8, h: 6 },
-  pacing: { x: 4, y: 6, w: 4, h: 6 },
-  week: { x: 8, y: 6, w: 4, h: 6 },
-  goals: { x: 0, y: 12, w: 7, h: 11 },
-  bench: { x: 7, y: 12, w: 5, h: 11 },
-  ahead: { x: 0, y: 23, w: 4, h: 8 },
-  quadrants: { x: 4, y: 23, w: 8, h: 8 },
-  ledger: { x: 0, y: 31, w: 4, h: 8 },
-  seats: { x: 4, y: 31, w: 4, h: 8 },
-  service: { x: 8, y: 31, w: 4, h: 8 },
-  restock: { x: 0, y: 39, w: 12, h: 8 },
-  writing: { x: 0, y: 47, w: 12, h: 3 },
+  // A bento: the reading is one column (1 x 1) beside the till (2 x 1), both
+  // 8 rows tall so the till's Taken / Checks rows show whole and the reading
+  // carries no empty tail; pacing and the week then share one row beneath.
+  reading: { x: 0, y: 0, w: 4, h: 8 },
+  till: { x: 4, y: 0, w: 8, h: 8 },
+  pacing: { x: 0, y: 8, w: 6, h: 6 },
+  week: { x: 6, y: 8, w: 6, h: 6 },
+  goals: { x: 0, y: 14, w: 7, h: 11 },
+  bench: { x: 7, y: 14, w: 5, h: 11 },
+  ahead: { x: 0, y: 25, w: 4, h: 8 },
+  quadrants: { x: 4, y: 25, w: 8, h: 8 },
+  ledger: { x: 0, y: 33, w: 4, h: 8 },
+  seats: { x: 4, y: 33, w: 4, h: 8 },
+  service: { x: 8, y: 33, w: 4, h: 8 },
+  restock: { x: 0, y: 41, w: 12, h: 8 },
+  writing: { x: 0, y: 49, w: 12, h: 3 },
 };
 
 /** Which analyses lie on a sheet nobody has arranged yet. */

@@ -33,7 +33,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { decodeSheet, defaultSheet, encodeSheet } from './useReportsNextData';
 import { CATALOGUE } from './rp-catalogue';
-import { DEFAULT_SLOTS, SHEET_MIN_H, SHEET_MIN_W } from './rp-sheet';
+import { DEFAULT_ON, DEFAULT_SLOTS, SHEET_MIN_H, SHEET_MIN_W } from './rp-sheet';
 import { heldBackFailure } from './rp-format';
 
 /**
@@ -2492,10 +2492,30 @@ describe('r61 c2 — the opening, the strips and the till window', () => {
     expect(block).toMatch(/\.rp-cut\[data-strip\]\s*{[^}]*height:\s*72px/);
   });
 
-  it('[REVERT-FAILS] the house sheet is a bento: one tall reading, one wide till', () => {
-    expect(DEFAULT_SLOTS.reading).toMatchObject({ w: 4, h: 12 });
-    expect(DEFAULT_SLOTS.till).toMatchObject({ w: 8, h: 6 });
+  it('[REVERT-FAILS] the house sheet is a bento: reading and till share 8 rows, pacing and week fill the row below', () => {
+    expect(DEFAULT_SLOTS.reading).toMatchObject({ x: 0, y: 0, w: 4, h: 8 });
+    expect(DEFAULT_SLOTS.till).toMatchObject({ x: 4, y: 0, w: 8, h: 8 });
+    expect(DEFAULT_SLOTS.pacing).toMatchObject({ x: 0, y: 8, w: 6, h: 6 });
+    expect(DEFAULT_SLOTS.week).toMatchObject({ x: 6, y: 8, w: 6, h: 6 });
+    // nothing beneath the head rows starts above the row they end on
+    expect(DEFAULT_SLOTS.goals.y).toBe(14);
+    expect(DEFAULT_SLOTS.bench.y).toBe(14);
     const wide = ['reading', 'till', 'pacing', 'week', 'ahead', 'quadrants'] as const;
     expect(new Set(wide.map((k) => DEFAULT_SLOTS[k].w)).size).toBeGreaterThan(1);
+  });
+
+  it('[REVERT-FAILS] the first 33 rows of the default sheet tile with no hole and no overlap', () => {
+    const on = DEFAULT_ON.map((k) => DEFAULT_SLOTS[k]);
+    const cells = new Set<string>();
+    for (const s of on) {
+      for (let y = s.y; y < s.y + s.h; y++) for (let x = s.x; x < s.x + s.w; x++) {
+        expect(cells.has(`${x},${y}`)).toBe(false);
+        cells.add(`${x},${y}`);
+      }
+    }
+    // seats / service / restock are held off by default, so only the rows above
+    // the ledger are a full ruling
+    const full = [...cells].filter((c) => Number(c.split(',')[1]) < 33).length;
+    expect(full).toBe(33 * 12);
   });
 });
