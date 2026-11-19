@@ -61,19 +61,22 @@ describe('TasteService.rollupSubject', () => {
     expect(row).toMatchObject({ source: 'recipe', method: 'computed', stated_by: null, version: 1, cocktail_id: COCKTAIL });
     expect(row.axes.sour.v).toBeGreaterThan(5);
     expect(row.axes.citrus.v).toBeGreaterThan(3); // 22.5 ml, not 225: the ml10 tenths are read as ml
+    expect(row.axes.citrus.v).toBeLessThan(5.5);
     expect(row.ext.rollup).toMatchObject({ lines: 3, classPrior: 3, unknown: 0 });
     expect(out.rollup.dilution).toBeCloseTo(0.27, 2);
     expect(out.layers[0]).toMatchObject({ source: 'recipe', basis: expect.objectContaining({ lines: 3 }) });
     expect(out.effective?.axes.sour).toBeDefined();
   });
   it('reads grams and milligram lines, and a count has no weight', async () => {
-    const f = fakeDb(recipe([['Lamb mince', 150000, 'mg'], ['Salt', 1200, 'mg'], ['Sumac', 1000, 'each_milli']], 'Pan sear'));
+    const f = fakeDb(recipe([['Lamb mince', 150000, 'mg'], ['Salt', 1200, 'mg'], ['Parsley', 20000, 'mg'], ['Sumac', 1000, 'each_milli']], 'Pan sear'));
     f.t.cocktails = []; f.t.dishes = [{ id: COCKTAIL, restaurant_id: RID }];
     f.t.recipe_current_dish = [{ dish_id: COCKTAIL, restaurant_id: RID, version_id: VER }];
     const out = await new TasteService(f.db).rollupSubject(RID, 'dish', COCKTAIL);
-    expect(out.rollup).toMatchObject({ kind: 'dish', lines: 3, unquantified: 1, dilution: null });
+    expect(out.rollup).toMatchObject({ kind: 'dish', lines: 4, unquantified: 1, dilution: null });
     expect(f.inserts[0].dish_id).toBe(COCKTAIL);
     expect(f.inserts[0].axes.salty.v).toBeGreaterThan(2); // 150000 mg is 150 g, 1200 mg is 1.2 g of salt
+    expect(f.inserts[0].axes.herbal.v).toBeGreaterThan(2.5); // 20000 mg is 20 g of parsley, not 20 kg
+    expect(f.inserts[0].axes.herbal.v).toBeLessThan(4.5);
   });
   it('adds nothing when the same recipe is worked out again', async () => {
     const f = fakeDb(recipe(sour));
