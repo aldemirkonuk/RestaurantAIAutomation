@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { MapPin, PenLine } from 'lucide-react'
-import { BrandMark } from '../components/brand/BrandMark'
+import { AuthSpread } from '../components/brand/AuthSpread'
 import { PlacesAutocomplete, type PlaceResult } from '../components/ui/PlacesAutocomplete'
 import { CountryCombobox } from '../components/ui/CountryCombobox'
 import { MenuCsvUpload } from '../components/onboarding/MenuCsvUpload'
@@ -113,48 +113,47 @@ function submitOnEnter(submit: () => void) {
   }
 }
 
+/** The one open book (AuthSpread) with this flow's step on the folio. */
 function ArrivalShell({
   step,
+  eyebrow = 'Opening your house',
+  title,
+  voice,
   onSignOut,
   children,
 }: {
   /** Null while the entry rule has not decided yet: no step is named. */
   step: Step | null
+  eyebrow?: string
+  /** Omitted while the entry rule or the menu read has not decided: no heading yet. */
+  title?: string
+  voice?: React.ReactNode
   /** The way out for a signed-in person on the wrong account; absent before entry. */
   onSignOut?: () => void
   children?: React.ReactNode
 }) {
-  const label = step
-    ? {
-        restaurant: '01 · Your restaurant',
-        menu: '02 · Your menu',
-      }[step]
-    : null
+  const folio = step ? { restaurant: '01 · Your restaurant', menu: '02 · Your menu' }[step] : undefined
   return (
-    <div className="min-h-screen bg-[#fbfaf7] text-[#211f1b]">
-      <header className="h-14 border-b border-[#211f1b]/15 px-5 flex items-center justify-between bg-white">
-        <BrandMark size={24} alt="Mudavym" />
-        <div className="flex items-center gap-5">
-          {label && (
-            <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#6d685f]">
-              {label}
-            </span>
-          )}
-          {onSignOut && (
-            <button
-              type="button"
-              onClick={onSignOut}
-              className="text-xs text-[#6d685f] underline underline-offset-4"
-            >
-              Sign out
-            </button>
-          )}
-        </div>
-      </header>
-      <main aria-busy={step === null} className="mx-auto w-full max-w-3xl px-5 py-10 sm:py-16">
+    <AuthSpread
+      eyebrow={eyebrow}
+      houseLine="The first page is yours."
+      tag="A place and a menu, then the book opens."
+      folio={folio}
+      pageKey={step ?? 'entering'}
+      title={title}
+      voice={voice}
+      footer={
+        onSignOut ? (
+          <button type="button" onClick={onSignOut} className="mdv-spread-textlink">
+            Sign out
+          </button>
+        ) : undefined
+      }
+    >
+      <div aria-busy={step === null} className="mdv-spread-stack">
         {children}
-      </main>
-    </div>
+      </div>
+    </AuthSpread>
   )
 }
 
@@ -533,23 +532,28 @@ export default function GetStarted() {
 
   if (step === 'restaurant') {
     return (
-      <ArrivalShell step={step} onSignOut={signOut}>
-        <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">
-          Welcome, {name.trim().split(/\s+/)[0] || 'there'}.
-          {!changingName && name.trim() && (
-            <button
-              type="button"
-              onClick={() => setChangingName(true)}
-              className="ml-3 normal-case tracking-normal text-[#6d685f] underline underline-offset-4"
-            >
-              Change your name
-            </button>
-          )}
-        </p>
-        <h1 className="mt-3 font-serif text-4xl sm:text-5xl">Your restaurant</h1>
+      <ArrivalShell
+        step={step}
+        onSignOut={signOut}
+        title="Your restaurant"
+        voice={
+          <>
+            Welcome, {name.trim().split(/\s+/)[0] || 'there'}.
+            {!changingName && name.trim() && (
+              <button
+                type="button"
+                onClick={() => setChangingName(true)}
+                className="mdv-spread-textlink ml-3"
+              >
+                Change your name
+              </button>
+            )}
+          </>
+        }
+      >
         {(changingName || !name.trim()) && (
-          <label className="mt-6 block max-w-md border-b border-[#211f1b]/25 pb-2">
-            <span className="text-xs uppercase tracking-wider">Your name · required</span>
+          <label className="block">
+            <span className="mdv-label">Your name · required</span>
             <input
               aria-label="Your name"
               onKeyDown={submitOnEnter(() => void createHouse())}
@@ -558,21 +562,21 @@ export default function GetStarted() {
                 nameTouched.current = true
                 setName(event.target.value)
               }}
-              className="mt-2 block w-full bg-transparent font-serif text-2xl outline-none"
+             
             />
           </label>
         )}
-        <p className="mt-3 max-w-xl text-[#6d685f]">
+        <p>
           {mapsOn
             ? "Find the exact place. Its address sets the house's clock and suggests its money."
             : "Its country sets the house's clock and suggests its money."}
         </p>
         {!mapsOn && (
-          <p role="status" className="mt-4 text-sm text-[#6d685f]">
+          <p role="status">
             Search is off here; type the address.
           </p>
         )}
-        <div className="mt-9 space-y-5">
+        <div className="mdv-spread-stack">
           {/* Maps off (walk 2026-11-11): the find box was still drawn, bound to
               the same address as the field below, and "Use my location" only
               centres a search that does not exist; its failure line then said
@@ -581,7 +585,7 @@ export default function GetStarted() {
           {mapsOn && (
           <>
           <label htmlFor="arrival-place" className="block">
-            <span className="text-xs uppercase tracking-wider">Find your restaurant</span>
+            <span className="mdv-label">Find your restaurant</span>
             <PlacesAutocomplete
               id="arrival-place"
               value={address}
@@ -598,35 +602,35 @@ export default function GetStarted() {
               className="mt-2 rounded-none border-x-0 border-t-0 bg-transparent"
             />
           </label>
-          <button type="button" onClick={useMyLocation} className="flex items-center gap-2 text-sm text-[#1a5e6b]">
+          <button type="button" onClick={useMyLocation} className="mdv-spread-textlink">
             <MapPin className="h-4 w-4" /> Use my location
           </button>
-          {locationStatus && <p role="status" className="text-xs text-[#6d685f]">{locationStatus}</p>}
+          {locationStatus && <p role="status">{locationStatus}</p>}
           </>
           )}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="border-b border-[#211f1b]/25 pb-2">
-              <span className="text-xs uppercase tracking-wider">Restaurant name · required</span>
-              <input aria-label="Restaurant name" onKeyDown={submitOnEnter(() => void createHouse())} value={restaurantName} onChange={(e) => setRestaurantName(e.target.value)} className="mt-2 w-full bg-transparent text-lg outline-none" />
+          <div className="mdv-spread-stack">
+            <label className="block">
+              <span className="mdv-label">Restaurant name · required</span>
+              <input aria-label="Restaurant name" onKeyDown={submitOnEnter(() => void createHouse())} value={restaurantName} onChange={(e) => setRestaurantName(e.target.value)} />
             </label>
-            <label className="border-b border-[#211f1b]/25 pb-2">
-              <span className="text-xs uppercase tracking-wider">Address · required</span>
-              <input aria-label="Address" onKeyDown={submitOnEnter(() => void createHouse())} value={address} onChange={(e) => { setAddress(e.target.value); setPlacePoint(null) }} className="mt-2 w-full bg-transparent text-lg outline-none" />
+            <label className="block">
+              <span className="mdv-label">Address · required</span>
+              <input aria-label="Address" onKeyDown={submitOnEnter(() => void createHouse())} value={address} onChange={(e) => { setAddress(e.target.value); setPlacePoint(null) }} />
             </label>
-            <label className="border-b border-[#211f1b]/25 pb-2">
-              <span className="text-xs uppercase tracking-wider">Restaurant phone · optional</span>
-              <input aria-label="Restaurant phone" onKeyDown={submitOnEnter(() => void createHouse())} value={restaurantPhone} onChange={(e) => setRestaurantPhone(e.target.value)} className="mt-2 w-full bg-transparent text-lg outline-none" />
+            <label className="block">
+              <span className="mdv-label">Restaurant phone · optional</span>
+              <input aria-label="Restaurant phone" onKeyDown={submitOnEnter(() => void createHouse())} value={restaurantPhone} onChange={(e) => setRestaurantPhone(e.target.value)} />
             </label>
-            <label className="border-b border-[#211f1b]/25 pb-2">
-              <span className="text-xs uppercase tracking-wider">City · required</span>
-              <input aria-label="City" onKeyDown={submitOnEnter(() => void createHouse())} value={city} onChange={(e) => setCity(e.target.value)} className="mt-2 w-full bg-transparent text-lg outline-none" />
+            <label className="block">
+              <span className="mdv-label">City · required</span>
+              <input aria-label="City" onKeyDown={submitOnEnter(() => void createHouse())} value={city} onChange={(e) => setCity(e.target.value)} />
             </label>
             <div>
-              <label htmlFor="arrival-country" className="text-xs uppercase tracking-wider">Country · required</label>
+              <label htmlFor="arrival-country" className="mdv-label">Country · required</label>
               <CountryCombobox id="arrival-country" value={country} onChange={changeCountry} />
             </div>
           </div>
-          <div className="border-y border-[#211f1b]/15 py-4 text-sm">
+          <div className="mdv-spread-facts-line">
             {zone.source === 'pick' ? (
               <label className="mr-6 inline-flex flex-wrap items-center gap-2">
                 <span>Clock · this browser&apos;s clock is not the place&apos;s. Choose:</span>
@@ -634,7 +638,6 @@ export default function GetStarted() {
                   aria-label="The house's clock"
                   value={pickStands ? pickedZone : ''}
                   onChange={(event) => setPickedZone(event.target.value)}
-                  className="border-b border-[#211f1b]/25 bg-transparent"
                 >
                   <option value="">Choose…</option>
                   {zone.choices.map((choice) => (
@@ -656,7 +659,6 @@ export default function GetStarted() {
                 aria-label="The house's money"
                 value={currency ?? ''}
                 onChange={(event) => setCurrencyChoice(event.target.value)}
-                className="border-b border-[#211f1b]/25 bg-transparent"
               >
                 <option value="">{countryCurrency ? 'Not set yet' : 'Choose…'}</option>
                 {CURRENCY_CODES.map((code) => (
@@ -681,18 +683,18 @@ export default function GetStarted() {
             </label>
           </div>
         </div>
-        {error && <p role="alert" className="mt-5 text-sm text-red-700">{error}</p>}
+        {error && <p role="alert" className="mdv-alert">{error}</p>}
         {needsVerify && (
-          <Link to="/verify-email" replace className="mt-3 inline-block text-sm text-[#1a5e6b] underline underline-offset-4">
+          <Link to="/verify-email" replace className="mdv-spread-textlink">
             Verify your email
           </Link>
         )}
         {houseNotLoaded && (
-          <Link to="/choose-house" replace className="mt-3 inline-block text-sm text-[#1a5e6b] underline underline-offset-4">
+          <Link to="/choose-house" replace className="mdv-spread-textlink">
             Choose your house
           </Link>
         )}
-        <button type="button" onClick={createHouse} disabled={saving} className="mt-8 bg-[#1a5e6b] px-6 py-3 text-white disabled:opacity-40">
+        <button type="button" onClick={createHouse} disabled={saving} className="mdv-btn mdv-btn--seal">
           {saving ? 'Opening the house…' : 'This is us'}
         </button>
       </ArrivalShell>
@@ -707,7 +709,7 @@ export default function GetStarted() {
   if (step === 'menu' && !openedHere.current && menuStanding === null) {
     return (
       <ArrivalShell step={step} onSignOut={signOut}>
-        <p role="status" className="font-mono text-xs uppercase tracking-[0.16em] text-[#6d685f]" data-testid="menu-standing-reading">
+        <p role="status" data-testid="menu-standing-reading">
           Looking at your house’s menu…
         </p>
       </ArrivalShell>
@@ -716,19 +718,20 @@ export default function GetStarted() {
 
   if (step === 'menu') {
     return (
-      <ArrivalShell step={step} onSignOut={signOut}>
+      <ArrivalShell
+        step={step}
+        onSignOut={signOut}
+        eyebrow="Next"
+        title="Your menu"
+        voice="A photo, a file, or a few typed lines. Mudavym sets it out as the house's own list, and you check it on the next page."
+      >
         {/* r36 onboarding gap 11: "One last step" was followed by the proof,
             the plan, a vendor, an invite and the next steps. */}
-        <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">Next</p>
-        <h1 className="mt-3 font-serif text-4xl sm:text-5xl">Your menu</h1>
-        <p className="mt-3 text-[#6d685f]">
-          A photo, a file, or a few typed lines. Mudavym sets it out as the house&apos;s own list, and you check it on the next page.
-        </p>
-        {notice && <p role="status" className="mt-3 text-sm text-[#6d685f]">{notice}</p>}
+        {notice && <p role="status">{notice}</p>}
         {menuStanding === 'draft' && (
-          <p role="status" className="mt-3 text-sm text-[#6d685f]">
+          <p role="status">
             A menu read earlier is kept as a draft. Choose it on{' '}
-            <Link to="/menu" className="text-[#1a5e6b] underline underline-offset-4">Menu</Link>
+            <Link to="/menu" className="mdv-spread-textlink">Menu</Link>
             , or read another here.
           </p>
         )}
@@ -746,35 +749,34 @@ export default function GetStarted() {
             setDropping(false)
             ingestDrop(Array.from(event.dataTransfer.files ?? []))
           }}
-          className={`mt-10 flex min-h-[220px] w-full flex-col items-center justify-center border border-dashed px-6 text-center ${
-            dropping ? 'border-[#1a5e6b] bg-white' : 'border-[#211f1b]/25 bg-[#fbfaf7]'
-          }`}
+          className="mdv-spread-drop"
+          data-dropping={dropping ? '' : undefined}
         >
-          <span className="font-serif text-3xl">Drop the menu here</span>
-          <span className="mt-3 text-sm text-[#6d685f]">
+          <span className="mdv-spread-drop-title">Drop the menu here</span>
+          <span className="mdv-spread-drop-sub">
             {saving ? 'Reading…' : 'A photo, a PDF or a spreadsheet. Or click to photograph.'}
           </span>
         </button>
-        {error && <p role="alert" className="mt-5 text-sm text-red-700">{error}</p>}
-        <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+        {error && <p role="alert" className="mdv-alert">{error}</p>}
+        <div className="mdv-spread-links">
           <button
             type="button"
             onClick={() => chooseMethod(menuMethod === 'file' ? null : 'file')}
-            className="text-[#1a5e6b] underline underline-offset-4"
+            className="mdv-spread-textlink"
           >
             Send a file
           </button>
-          <button type="button" onClick={() => chooseMethod(menuMethod === 'typed' ? null : 'typed')} className="flex items-center gap-1 text-[#1a5e6b] underline underline-offset-4">
+          <button type="button" onClick={() => chooseMethod(menuMethod === 'typed' ? null : 'typed')} className="mdv-spread-textlink">
             <PenLine className="h-3.5 w-3.5" /> Type a few lines
           </button>
         </div>
-        <div className="mt-6">
+        <div>
           {menuMethod === 'photo' && <MenuScanUpload onSuccess={menuRead} />}
           {menuMethod === 'file' && <MenuCsvUpload onSuccess={menuRead} droppedFiles={droppedFiles} />}
           {menuMethod === 'typed' && <MenuManualEntry onSuccess={menuRead} currency={menuCurrency} />}
         </div>
-        <div className="mt-6 border-t border-[#211f1b]/15 pt-5">
-          <button type="button" onClick={() => navigate('/house', { replace: true })} className="text-sm text-[#6d685f] underline underline-offset-4">
+        <div>
+          <button type="button" onClick={() => navigate('/house', { replace: true })} className="mdv-spread-textlink">
             Skip for now — open the house
           </button>
         </div>
