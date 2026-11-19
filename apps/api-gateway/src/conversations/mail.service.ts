@@ -18,6 +18,7 @@ import type {
   MailNoReplyAnswer,
   MailOrderRef,
   MailPeoplePage,
+  MailPersonKind,
   MailPersonRow,
   MailSummary,
   MailThreadPage,
@@ -55,7 +56,10 @@ import {
   encodeMailCursor,
   mailDirectionOf as direction,
   mailDoorOf,
+  mailKindOf,
   mailSearchOf,
+  otherPersonOf,
+  otherPersonRef,
   personRef,
   stripSubjectLine,
   withholdsHouseLetters,
@@ -148,8 +152,8 @@ export class MailService {
       people: page.map(
         (r): MailPersonRow => ({
           key: r.key,
-          kind: "vendor",
-          providerId: r.provider_id,
+          kind: mailKindOf(r.kind),
+          providerId: r.provider_id ?? null,
           name: r.name ?? null,
           lastAt: r.last_at,
           lastLine: r.last_line ?? null,
@@ -168,8 +172,36 @@ export class MailService {
         rows.length > limit && last
           ? encodeMailCursor(last.last_at, last.key)
           : null,
-      storedKinds: ["vendor"],
+      storedKinds: await this.storedKinds(
+        houseId,
+        withholdsHouseLetters(callerRole),
+      ),
     };
+  }
+
+  /** Vendors always; team and guest only when stored and the caller may read them. */
+  private async storedKinds(
+    houseId: string,
+    withhold: boolean,
+  ): Promise<MailPersonKind[]> {
+    const kinds: MailPersonKind[] = ["vendor"];
+    if (withhold) return kinds;
+    const others = ["team", "guest"] as const;
+    const reads = await Promise.all(
+      others.map((kind) =>
+        this.db
+          .from("procurement_conversations")
+          .select("id")
+          .eq("restaurant_id", houseId)
+          .eq("kind", kind)
+          .limit(1),
+      ),
+    );
+    reads.forEach((res, i) => {
+      if (res.error) this.failed("kinds", res.error);
+      if (((res.data ?? []) as unknown[]).length) kinds.push(others[i]);
+    });
+    return kinds;
   }
 
   async listThreads(
@@ -182,18 +214,26 @@ export class MailService {
     const providerId = PERSON_KEY_RE.exec(
       (opts.with ?? "").trim(),
     )?.[1]?.toLowerCase();
-    // F11: a person this house has no mail with — a bad key, another kind not
-    // stored yet, or another house's vendor — is an empty answer, never theirs.
-    if (!providerId || !UUID_RE.test(providerId)) {
+    const other = otherPersonOf(opts.with);
+    const withhold = withholdsHouseLetters(callerRole);
+    // F11: a bad key, another house's vendor, or a team or guest person to a
+    // caller who may not read them is an empty answer, never theirs.
+    if (
+      (other && withhold) ||
+      (!other && (!providerId || !UUID_RE.test(providerId)))
+    ) {
       return { person: null, threads: [], next: null };
     }
-    const withhold = withholdsHouseLetters(callerRole);
 
     let personQuery = this.db
       .from("procurement_conversations")
       .select("provider_id, providers (id, name)")
       .eq("restaurant_id", houseId)
-      .eq("provider_id", providerId);
+      .eq(
+        other ? "from_address" : "provider_id",
+        other?.address ?? providerId!,
+      );
+    if (other) personQuery = personQuery.eq("kind", other.kind);
     if (withhold) {
       personQuery = personQuery
         .or(WITHHOLD_HOUSE_DRAFT)
@@ -201,9 +241,11 @@ export class MailService {
     }
     const [personRes, threadsRes] = await Promise.all([
       personQuery.limit(1),
-      this.db.rpc("list_mail_threads", {
+      this.db.rpc(other ? "list_mail_threads_other" : "list_mail_threads", {
         p_restaurant_id: houseId,
-        p_provider_id: providerId,
+        ...(other
+          ? { p_kind: other.kind, p_address: other.address }
+          : { p_provider_id: providerId }),
         p_withhold_house_letters: withhold,
         p_after_at: after?.at ?? null,
         p_after_key: after?.key ?? null,
@@ -223,7 +265,9 @@ export class MailService {
     const page = rows.slice(0, limit);
     const last = page[page.length - 1];
     return {
-      person: personRef(providerId, provider?.name),
+      person: other
+        ? otherPersonRef(other)
+        : personRef(providerId!, provider?.name),
       threads: page.map(
         (t): MailThreadRow => ({
           key: t.thread_key,
@@ -275,23 +319,32 @@ export class MailService {
       return emptyThread(key);
     }
     const withRaw = (opts.with ?? "").trim();
+    const other = otherPersonOf(withRaw);
     const providerId = withRaw
       ? PERSON_KEY_RE.exec(withRaw)?.[1]?.toLowerCase()
       : undefined;
-    if (withRaw && !providerId) return emptyThread(key);
+    if (withRaw && !providerId && !other) return emptyThread(key);
+    // A team or guest person's letters are for the owner and managers alone.
+    const withhold = withholdsHouseLetters(callerRole);
+    if (other && withhold) return emptyThread(key);
 
     // One read: the page, newest first by each letter's own time (received
     // for inbound, sent for outbound), keyset-paged on (at, id). The function
     // returns explicit columns: never email_headers, Gmail ids or message_id.
-    const { data, error } = await this.db.rpc("mail_thread_letters", {
-      p_restaurant_id: houseId,
-      p_thread_key: key,
-      p_provider_id: providerId ?? null,
-      p_withhold_house_letters: withholdsHouseLetters(callerRole),
-      p_before_at: before?.at ?? null,
-      p_before_id: before?.key ?? null,
-      p_limit: MAIL_THREAD_PAGE + 1,
-    });
+    const { data, error } = await this.db.rpc(
+      other ? "mail_thread_letters_other" : "mail_thread_letters",
+      {
+        p_restaurant_id: houseId,
+        p_thread_key: key,
+        ...(other
+          ? { p_kind: other.kind, p_address: other.address }
+          : { p_provider_id: providerId ?? null }),
+        p_withhold_house_letters: withhold,
+        p_before_at: before?.at ?? null,
+        p_before_id: before?.key ?? null,
+        p_limit: MAIL_THREAD_PAGE + 1,
+      },
+    );
     if (error) this.failed("thread", error);
     const rows = (data ?? []) as any[];
     const head = rows[0];
@@ -310,15 +363,21 @@ export class MailService {
     const kept = rows.slice(0, MAIL_THREAD_PAGE);
     const oldest = kept[kept.length - 1];
     const files = await this.readAttachments(kept.map((m) => m.id));
+    const who = await this.readWho(
+      houseId,
+      kept.map((m) => m.id),
+    );
     return {
       key,
       subject:
         typeof head.thread_subject === "string" && head.thread_subject.trim()
           ? head.thread_subject.trim()
           : null,
-      person: head.provider_id
-        ? personRef(head.provider_id, head.provider_name)
-        : null,
+      person: other
+        ? otherPersonRef(other)
+        : head.provider_id
+          ? personRef(head.provider_id, head.provider_name)
+          : null,
       order,
       messages: kept
         .slice()
@@ -336,6 +395,9 @@ export class MailService {
             createdAt: m.created_at,
             rawDeletedAt: m.raw_deleted_at ?? null,
             door: mailDoorOf(m),
+            kind: who.get(m.id)?.kind ?? "vendor",
+            fromAddress: who.get(m.id)?.from ?? null,
+            toAddresses: who.get(m.id)?.to ?? [],
             automatic: m.automatic === true,
             noReplyMarkedAt:
               typeof m.no_reply_marked_at === "string"
@@ -352,6 +414,29 @@ export class MailService {
       waiting: head.thread_waiting === true,
       attachmentsRead: files !== null,
     };
+  }
+
+  /** Each letter's kind, sender and recipients. A failed read fails the page, never "no sender". */
+  private async readWho(houseId: string, letterIds: string[]) {
+    const out = new Map<
+      string,
+      { kind: MailPersonKind; from: string | null; to: string[] }
+    >();
+    if (!letterIds.length) return out;
+    const { data, error } = await this.db
+      .from("procurement_conversations")
+      .select("id, kind, from_address, to_addresses")
+      .eq("restaurant_id", houseId)
+      .in("id", letterIds);
+    if (error) this.failed("letter addresses", error);
+    for (const r of (data ?? []) as any[]) {
+      out.set(r.id, {
+        kind: mailKindOf(r.kind),
+        from: typeof r.from_address === "string" ? r.from_address : null,
+        to: Array.isArray(r.to_addresses) ? r.to_addresses : [],
+      });
+    }
+    return out;
   }
 
   /**
