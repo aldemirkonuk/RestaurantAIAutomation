@@ -33,3 +33,18 @@ export class AppendHouseTasteDto {
   @IsString()
   method!: string;
 }
+
+/** A recipe typed on a sheet. Content is checked by `parsePreview` (taste.service.ts), so a refusal is a sentence. */
+export class RollupPreviewDto {
+  @ApiProperty({ enum: ["cocktail", "dish"] })
+  @IsString()
+  kind!: string;
+
+  @ApiPropertyOptional({ description: "How it is made (shake, stir, build...)" })
+  @IsOptional()
+  method?: unknown;
+
+  @ApiProperty({ description: "[{ name, lines: [{ name, qty, unit: g|ml, prep? }] }]" })
+  @IsArray()
+  components!: unknown[];
+}
