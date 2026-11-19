@@ -126,7 +126,7 @@ export function useUpdateInventoryItem() {
       return inventoryApi.updateInventoryItem(
         itemId,
         {
-          stockLive: data.stockLive,
+          stockLive: data.stockLive ?? undefined,
           shadowStock: data.shadowStock,
           thresholdMin: data.thresholdMin,
           thresholdMax: data.thresholdMax,

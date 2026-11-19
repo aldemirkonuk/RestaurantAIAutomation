@@ -97,6 +97,40 @@ export function fmtQty(n: number, uom: string | null): string {
   }
 }
 
+/** Goods kept as a weight or a volume: each figure on a list carries its own unit (kg, g, l, ml). */
+const MEASURED_UOM = new Set(['g', 'mg', 'ml', 'l']);
+
+/**
+ * One figure on the /inventory list in the good's unit: "2.5 kg", "750 ml",
+ * "—" for an unread count. A counted good's figure stays the bare number (its
+ * unit is said once for the line, see listUnitTail), and so does a row whose
+ * unit was never read (`uom` undefined).
+ */
+export function listFigure(n: number | null, uom: string | null | undefined): string {
+  if (n === null) return EM;
+  if (uom !== undefined && uom !== null && MEASURED_UOM.has(uom)) return fmtQty(n, uom);
+  return fmtCount(n);
+}
+
+/**
+ * The counted unit a line of list figures is in, said once after it: "bottles"
+ * (a good with no unit recorded is in bottles), "kegs", "items" for each, and
+ * the singular for exactly one. Null for a weighed or poured good (each of its
+ * figures carries its own unit) and for a row whose unit was never read.
+ */
+export function listUnitTail(uom: string | null | undefined, n: number | null): string | null {
+  if (uom === undefined || (uom !== null && MEASURED_UOM.has(uom))) return null;
+  const one = n === 1;
+  if (uom === 'each') return one ? 'item' : 'items';
+  const [singular, many] = UNIT_WORDS[uom ?? 'bottle'] ?? [uom ?? 'bottle', uom ?? 'bottles'];
+  return one ? singular : many;
+}
+
+/** The pace on the list: a weighed or poured good says its unit a day ("1.25 kg"); a counted one stays a bare pace. */
+export function listPace(v: number, uom: string | null | undefined): string {
+  return uom === 'g' || uom === 'mg' || uom === 'ml' ? usageWords(v, uom) : fmtPace(v);
+}
+
 /** A cost is per kg or per l for a weighed or poured good: per g would read 0.01. */
 export function perUnit(wac: number, uom: string | null): { amount: number; per: string } {
   if (uom === 'g') return { amount: wac * 1000, per: 'a kg' };

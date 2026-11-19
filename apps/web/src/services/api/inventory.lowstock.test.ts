@@ -61,7 +61,7 @@ describe('getLowStockItems delivers the type it declares', () => {
     expect(wine.wineName || wine.wineProducer || 'Unknown wine').toBe("Graham's Tawny Porto")
     expect(wine.stockLive).toBe(3)
     expect(wine.thresholdMin).toBe(4)
-    expect(wine.stockLive <= wine.thresholdMin * 0.5).toBe(false) // 'high', not 'critical'
+    expect((wine.stockLive ?? 0) <= wine.thresholdMin * 0.5).toBe(false) // 'high', not 'critical'
     // The rest of the declared shape the card's navigation and menu rely on.
     expect(wine.id).toBe('inv-porto')
     expect(wine.wineId).toBe('mw-porto')

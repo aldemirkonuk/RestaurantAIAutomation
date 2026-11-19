@@ -12,8 +12,16 @@
  */
 import { Fragment, type CSSProperties } from 'react';
 import { HousePriceCell, type AdviceLoad } from '../command/HousePriceCell';
-import { cellMoney, EM, fmtCount, SEVERITY_GROUP, severity, statusWord, type HouseCurrency, type InvRow } from './useInventoryNextData';
+import { cellMoney, fmtCount, SEVERITY_GROUP, severity, statusWord, type HouseCurrency, type InvRow } from './useInventoryNextData';
 import { NameHint } from './NameThisWine';
+import { listFigure, listUnitTail } from './ItemCards';
+
+/** "12 bottles", "2.5 kg", "—": the live count in the good's unit. */
+function liveWords(row: InvRow): string {
+  const figure = listFigure(row.stock, row.uom);
+  const unit = row.stock === null ? null : listUnitTail(row.uom, row.stock);
+  return unit === null ? figure : `${figure} ${unit}`;
+}
 
 export interface PhoneRowsProps {
   rows: InvRow[];
@@ -98,7 +106,7 @@ export default function PhoneRows(props: PhoneRowsProps) {
                 <span className="ivc-name">{name}</span>
                 <span className="ivc-line ivc-sub">
                   <span className="iv-num">
-                    {row.stock === null ? EM : fmtCount(row.stock)} live · par {row.par === null ? EM : fmtCount(row.par)}
+                    {liveWords(row)} live · par {listFigure(row.par, row.uom)}
                   </span>
                   <span className="ivc-status" data-standing={row.standing}>
                     <span aria-hidden className="ivc-dot" />
