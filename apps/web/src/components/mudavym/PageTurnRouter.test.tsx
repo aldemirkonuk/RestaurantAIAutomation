@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { createElement } from 'react'
+import { createElement, lazy, Suspense } from 'react'
 import { Link, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PAGE_TURN } from '../../lib/mudavym/viewTransition'
 import { PageTurnRouter } from './PageTurnRouter'
 
@@ -98,6 +98,62 @@ describe('PageTurnRouter', () => {
       await new Promise((r) => setTimeout(r, 30))
     })
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('/login')
+  })
+})
+
+describe('a slow lazy page', () => {
+  afterEach(() => vi.useRealTimers())
+
+  it('holds the old page for holdMs, lets the turn go ahead, and lands the page when its chunk arrives', async () => {
+    vi.useFakeTimers()
+    window.history.replaceState(null, '', '/login')
+    const CHUNK_MS = 900
+    const Slow = lazy(
+      () => new Promise<{ default: () => ReturnType<typeof createElement> }>((done) => setTimeout(() => done({ default: () => createElement('h1', null, 'slow page') }), CHUNK_MS)),
+    )
+    let released = false
+    ;(document as unknown as { startViewTransition: unknown }).startViewTransition = (cb: () => Promise<void> | void) => {
+      const update = Promise.resolve(cb())
+      const finished = update.then(() => {
+        released = true
+      })
+      return { finished }
+    }
+    render(
+      createElement(
+        PageTurnRouter,
+        null,
+        createElement(
+          Suspense,
+          { fallback: createElement('p', null, 'loading') },
+          createElement(
+            Routes,
+            null,
+            createElement(Route, { path: '/slow', element: createElement(Slow) }),
+            createElement(Route, { path: '*', element: createElement(Link, { to: '/slow' }, 'to slow') }),
+          ),
+        ),
+      ),
+    )
+    await act(async () => {
+      fireEvent.click(screen.getByText('to slow'))
+    })
+    // The address has changed, the chunk has not arrived: the old page is held.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PAGE_TURN.holdMs - 10)
+    })
+    expect(released).toBe(false)
+    expect(screen.queryByText('slow page')).toBeNull()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20)
+    })
+    // At holdMs the turn goes ahead although the chunk is still on its way.
+    expect(released).toBe(true)
+    expect(screen.queryByText('slow page')).toBeNull()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(CHUNK_MS)
+    })
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('slow page')
   })
 })
 
