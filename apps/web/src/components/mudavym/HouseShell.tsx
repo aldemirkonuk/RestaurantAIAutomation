@@ -64,7 +64,7 @@ import { ErrorBoundary } from '../ErrorBoundary';
 import { HouseErrorScreen } from './HouseErrorScreen';
 import { HouseHeader } from './HouseHeader';
 import { HouseRail, RoomsList } from './HouseRail';
-import { HouseCounter, CounterBody } from './HouseCounter';
+import { HouseCounter, CounterBody, isCounterIdle } from './HouseCounter';
 import { HouseDoors } from './HouseDoors';
 import { CounterActSheet, type CounterActTarget } from './CounterActSheet';
 import { Sheet } from './Sheet';
@@ -166,7 +166,17 @@ export function HouseShell({ children }: { children?: ReactNode } = {}) {
   // header's Counter button and the counter's own control say the same thing.
   const askHoldsSlot = ask.open && askDocks;
   const shownWidth = askHoldsSlot ? 'tucked' : width;
-  const onCounterToggle = askHoldsSlot ? ask.close : toggleCounter;
+  // A quiet counter is a column of dots until it is opened by hand. The header's
+  // Counter button opens and folds that same column, and reads pressed only
+  // while the full column is on the page.
+  const [counterPeek, setCounterPeek] = useState(false);
+  const counterQuiet = isCounterIdle(counter);
+  const counterShown = shownWidth === 'open' && (!counterQuiet || counterPeek);
+  const onCounterToggle = askHoldsSlot
+    ? ask.close
+    : shownWidth === 'open' && counterQuiet
+      ? () => setCounterPeek((o) => !o)
+      : toggleCounter;
 
   const toggleRail = useCallback(() => {
     setPrefs((p) => {
@@ -220,7 +230,7 @@ export function HouseShell({ children }: { children?: ReactNode } = {}) {
       type="button"
       className="mdv-hdr__counter"
       onClick={phone ? () => setPhoneCounter((o) => !o) : onCounterToggle}
-      aria-pressed={phone ? phoneCounter : shownWidth === 'open'}
+      aria-pressed={phone ? phoneCounter : counterShown}
       aria-label={
         waiting === true
           ? 'The counter — acts wait on you'
@@ -306,6 +316,8 @@ export function HouseShell({ children }: { children?: ReactNode } = {}) {
                   state={counter}
                   onOpen={openAct}
                   width={shownWidth}
+                  peek={counterPeek}
+                  onPeek={setCounterPeek}
                   onToggle={onCounterToggle}
                 />
               )}

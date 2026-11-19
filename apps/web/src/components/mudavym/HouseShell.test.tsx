@@ -368,6 +368,31 @@ describe('the Ask panel in the counter slot', () => {
     expect(window.localStorage.getItem(prefsKeyFor('u-1'))).toBeNull();
   });
 
+  it('a quiet counter is folded to dots, so the header Counter is not pressed, and pressing it opens the column', async () => {
+    const quiet = {
+      ...READ,
+      registers: [
+        { ...READ.registers[0] },
+        { key: 'credits', verb: 'verify', state: 'answered', readAt: T, ms: 3, count: 0, complete: true, rows: [], act: 'yours' },
+      ],
+    } as unknown as HouseCounterRead;
+    readCounter.mockResolvedValue(quiet);
+    mount('/orders');
+    expect(await screen.findByRole('complementary', { name: 'The counter, nothing waiting' })).toBeTruthy();
+    const counterButton = within(screen.getByRole('banner')).getByRole('button', { name: /^The counter/ });
+    expect(counterButton.getAttribute('aria-pressed')).toBe('false');
+
+    fireEvent.click(counterButton);
+    expect(screen.getByRole('complementary', { name: 'The counter' })).toBeTruthy();
+    expect(counterButton.getAttribute('aria-pressed')).toBe('true');
+
+    fireEvent.click(counterButton);
+    expect(screen.getByRole('complementary', { name: 'The counter, nothing waiting' })).toBeTruthy();
+    expect(counterButton.getAttribute('aria-pressed')).toBe('false');
+    // Opening a quiet counter by hand is not a width choice.
+    expect(window.localStorage.getItem(prefsKeyFor('u-1'))).toBeNull();
+  });
+
   it('below ~1280 px the same panel lies over the page, and the counter keeps its place', async () => {
     setWidth(1180);
     mount('/orders');

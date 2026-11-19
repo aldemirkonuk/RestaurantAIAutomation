@@ -355,6 +355,13 @@ export function CounterBody({ state, onOpen }: CounterBodyProps) {
 export interface HouseCounterProps extends CounterBodyProps {
   width: 'open' | 'tucked';
   onToggle: () => void;
+  /**
+   * Whether a quiet counter has been opened by hand. The shell holds it, so the
+   * header's Counter button can open and fold the same column; left out, the
+   * column keeps it itself.
+   */
+  peek?: boolean;
+  onPeek?: (open: boolean) => void;
 }
 
 /**
@@ -362,13 +369,16 @@ export interface HouseCounterProps extends CounterBodyProps {
  * each verb with its mark — a count, a hollow ring for a register not read, or
  * a dash for one refused — never a blank edge.
  */
-export function HouseCounter({ state, onOpen, width, onToggle }: HouseCounterProps) {
+export function HouseCounter({ state, onOpen, width, onToggle, peek: peekProp, onPeek }: HouseCounterProps) {
   const regs = state.last?.registers ?? [];
   const idle = isCounterIdle(state);
   // Opened by hand while quiet; folds back the moment something waits again.
-  const [peek, setPeek] = useState(false);
+  const [ownPeek, setOwnPeek] = useState(false);
+  const peek = peekProp ?? ownPeek;
+  const setPeek = onPeek ?? setOwnPeek;
   useEffect(() => {
     if (!idle) setPeek(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idle]);
   if (width === 'tucked') {
     return (
