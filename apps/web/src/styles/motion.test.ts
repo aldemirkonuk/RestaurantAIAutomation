@@ -77,6 +77,11 @@ describe('the pill on a phone and on the charcoal ground', () => {
     expect(CSS).toMatch(/@media \(max-width: 480px\)\s*\{\s*\.mdv-pill__opt \{ padding-left: 8px; padding-right: 8px; \}/);
   });
 
+  it('lets the team headline shrink to the phone column so the lens pill cannot widen the page', () => {
+    const team = readFileSync(join(__dirname, '../pages/team/next/team-next.css'), 'utf8');
+    expect(team).toMatch(/\.tm-headline \{[^}]*min-width:\s*0[^}]*max-width:\s*100%/s);
+  });
+
   it('writes the chosen label in the ground ink on charcoal (white on the light seal is 2.5:1)', () => {
     expect(CSS).toMatch(/\.mudavym\[data-ground='charcoal'\] \.mdv-pill__opt\[aria-pressed='true'\]/);
     expect(CSS).toMatch(/html\[data-mudavym-ground='charcoal'\] \.mudavym:not\(\[data-ground\]\) \.mdv-pill__opt\[aria-selected='true'\] \{ color: var\(--paper-0/);
