@@ -245,7 +245,8 @@ describe('the preview, behind its flag', () => {
 
 describe('the stylesheet', () => {
   it('blurs the page behind at 14 px over a 55% scrim', () => {
-    expect(CSS).toContain('backdrop-filter: blur(14px) saturate(1.2)');
+    expect(CSS).toMatch(/(?<!-)backdrop-filter: blur\(14px\) saturate\(1\.2\);/);
+    expect(CSS).toMatch(/-webkit-backdrop-filter: blur\(14px\) saturate\(1\.2\);/);
     expect(CSS).toContain('rgba(23, 19, 15, 0.55)');
     expect(CSS).toContain('rgba(0, 0, 0, 0.55)');
   });
