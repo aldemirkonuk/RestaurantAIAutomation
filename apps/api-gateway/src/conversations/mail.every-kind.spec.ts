@@ -133,6 +133,54 @@ describe("one team or guest person", () => {
   });
 });
 
+describe("a thread opened by its key alone (no `with`)", () => {
+  const row = { id: "L1", provider_id: null, direction: "inbound", channel: "email", message_text: "Subject: Rota\nShift swap", ai_generated: false, status: "DELIVERED", received_at: "2027-01-05 11:00:00+00", created_at: "2027-01-05 11:00:00+00", at: "2027-01-05 11:00:00+00", thread_subject: "Rota", thread_waiting: false };
+  const isLookup = (q: Q) => q.kind === "from" && q.calls.some((c) => c[0] === "eq" && c[1] === "thread_key");
+  /** A house whose only letters under the key are a guest's. */
+  const guestThread = (q: Q): R => {
+    if (q.kind === "rpc") return { data: q.name === "mail_thread_letters_other" ? [row] : [], error: null };
+    if (isLookup(q)) return { data: [{ kind: "guest", from_address: "g@x.example" }], error: null };
+    return { data: [{ id: "L1", kind: "guest", from_address: "g@x.example", to_addresses: ["house@x.example"] }], error: null };
+  };
+
+  it("opens a guest or team letter for the owner and names the person it found", async () => {
+    resolve = guestThread;
+    const page = await svc().getThread(HOUSE, "owner", { key: "gm:t9" });
+    expect(page.messages).toHaveLength(1);
+    expect(page.person).toEqual({ key: "guest:g@x.example", kind: "guest", providerId: null, name: "g@x.example" });
+    expect(queries.filter((q) => q.kind === "rpc").map((q) => [q.name, q.payload.p_kind ?? null, q.payload.p_address ?? null])).toEqual([
+      ["mail_thread_letters", null, null],
+      ["mail_thread_letters_other", "guest", "g@x.example"],
+    ]);
+    const lookup = queries.find(isLookup)!;
+    expect(lookup.calls).toEqual(expect.arrayContaining([["eq", "restaurant_id", HOUSE], ["eq", "thread_key", "gm:t9"]]));
+  });
+
+  it("is still withheld from a caller who may not read them: no lookup, no second read", async () => {
+    resolve = guestThread;
+    for (const role of ["staff", undefined]) {
+      queries = [];
+      const page = await svc().getThread(HOUSE, role, { key: "gm:t9" });
+      expect(page.messages).toEqual([]);
+      expect(queries.map((q) => q.name)).toEqual(["mail_thread_letters"]);
+    }
+  });
+
+  it("leaves a vendor thread to the vendor read, with no lookup", async () => {
+    resolve = (q) => ({ data: q.kind === "rpc" ? [{ ...row, provider_id: VENDOR, provider_name: "V" }] : [], error: null });
+    const page = await svc().getThread(HOUSE, "owner", { key: "gm:v1" });
+    expect(page.person?.providerId).toBe(VENDOR);
+    expect(queries.some(isLookup)).toBe(false);
+  });
+
+  it("is an empty page when no kind holds the key, and a 503 when the lookup fails", async () => {
+    resolve = (q) => ({ data: [], error: null });
+    expect((await svc().getThread(HOUSE, "owner", { key: "gm:none" })).messages).toEqual([]);
+    resolve = (q) => (isLookup(q) ? { data: null, error: { message: "boom" } } : { data: [], error: null });
+    await expect(svc().getThread(HOUSE, "owner", { key: "gm:t9" })).rejects.toThrow(ServiceUnavailableException);
+  });
+});
+
 describe("the key rules", () => {
   it("reads a team or guest key lower-cased, and nothing else", () => {
     expect(otherPersonOf(" Guest:A@B.co ")).toEqual({ kind: "guest", address: "a@b.co" });
