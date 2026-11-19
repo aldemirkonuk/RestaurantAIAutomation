@@ -30,11 +30,11 @@ const ready = (data: Partial<TasteData['effective'] & object> | null, layers = [
   data: { effective: data === null ? null : { axes: {}, descriptors: [], texture: [], conflicts: [], ...data }, layers },
 });
 
-function mount(kind?: string) {
+function mount() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <TasteCard row={{ id: 'i1' }} kind={kind} restaurantId="r1" canManage={false} />
+      <TasteCard row={{ id: 'i1' }} restaurantId="r1" canManage={false} />
     </QueryClientProvider>,
   );
 }
@@ -43,16 +43,6 @@ beforeEach(() => {
   cleanup();
   api.get.mockReset();
   api.add.mockReset();
-});
-
-describe('the form follows the kind', () => {
-  it.each([['wine', 'taste-chip-oak', 'taste-chip-savoury'], ['beer', 'taste-chip-bready', 'taste-chip-savoury'], ['food', 'taste-chip-savoury', 'taste-chip-oak']])('a %s good: its words are offered, the other kind\'s are not', async (kind, yes, no) => {
-    api.get.mockResolvedValue(ready(null));
-    mount(kind);
-    fireEvent.click(await screen.findByRole('button', { name: 'Describe the taste' }));
-    expect(screen.getByTestId(yes)).toBeTruthy();
-    expect(screen.queryByTestId(no)).toBeNull();
-  });
 });
 
 describe('the five states, in words', () => {
