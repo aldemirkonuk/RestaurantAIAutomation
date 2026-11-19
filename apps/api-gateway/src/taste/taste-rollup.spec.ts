@@ -128,9 +128,9 @@ describe('rollup: what it does not know', () => {
     expect(r.axes.sweet.conf).toBeLessThan(base.axes.sweet.conf);
   });
   it('treats ice as a known zero, and an accent-folded name as its class', () => {
-    const r = rollup(withMore([{ name: 'Ice', qty: 50, unit: 'g' }, { name: 'Limon suyu', qty: 5, unit: 'ml' }]));
+    const r = rollup(withMore([{ name: 'Ice', qty: 50, unit: 'g' }, { name: 'Yoğurt', qty: 5, unit: 'g' }, { name: 'Sarımsak', qty: 2, unit: 'g' }]));
     expect(r.basis.unknown).toBe(0);
-    expect(r.basis.classPrior).toBe(5);
+    expect(r.basis.classPrior).toBe(6);
   });
   it('stays inside 0..10 and finite for silly input', () => {
     const r = rollup({ kind: 'dish', components: [{ name: 'x', lines: [{ name: 'Salt', qty: 1e6, unit: 'g' }, { name: 'Oil', qty: 1e6, unit: 'g', prep: 'fried' }] }] });
