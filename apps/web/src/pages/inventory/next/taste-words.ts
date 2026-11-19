@@ -7,7 +7,7 @@
  * provenance kind or source code reaches a screen either: each has a sentence
  * here, and an unknown one has a generic sentence, never the raw code.
  */
-import { AXIS_KEYS, BAND_ONLY_BELOW, type AxisKey, type ProvKind, type TasteAxis, type TasteData, type TasteEffective } from '../../../services/api/taste';
+import { AXIS_KEYS, BAND_ONLY_BELOW, PROV_KINDS, type AxisKey, type ProvKind, type TasteAxis, type TasteData, type TasteEffective } from '../../../services/api/taste';
 
 export const AXIS_LABEL: Record<AxisKey, string> = {
   sweet: 'Sweet',
@@ -179,18 +179,55 @@ export function knownAxes(e: TasteEffective): Array<[AxisKey, TasteAxis]> {
 
 const join = (w: string[]) => (w.length <= 1 ? w.join('') : `${w.slice(0, -1).join(', ')} and ${w[w.length - 1]}`);
 
-/** One sentence from the axes with conf >= 0.4 only (a band-only axis is never a headline). Null when there is nothing to say. */
-export function summaryLine(e: TasteEffective): string | null {
+/** The sentence, and the axes it was built from, taken from axes with conf >= 0.4 only (a band-only axis is never a headline). */
+function summaryParts(e: TasteEffective): { text: string; axes: AxisKey[] } | null {
   const firm = knownAxes(e).filter(([, a]) => !a.bandOnly && a.conf >= BAND_ONLY_BELOW);
   const lead = firm.filter(([, a]) => ['pronounced', 'dominant'].includes(bandOf(a.v))).slice(0, 3);
   const mid = firm.filter(([, a]) => bandOf(a.v) === 'medium').slice(0, 2);
   const light = firm.filter(([, a]) => ['light', 'hint'].includes(bandOf(a.v))).slice(0, 2);
   const w = (xs: typeof firm) => xs.map(([k]) => AXIS_ADJECTIVE[k]);
-  let s: string | null = null;
-  if (lead.length) s = `Mainly ${join(w(lead))}${mid.length ? `, with some ${join(w(mid))}` : ''}`;
-  else if (mid.length) s = `Moderately ${join(w(mid))}`;
-  else if (light.length) s = `Gently ${join(w(light))}`;
-  return s === null ? null : `${s}.`;
+  const keys = (xs: typeof firm) => xs.map(([k]) => k);
+  if (lead.length) return { text: `Mainly ${join(w(lead))}${mid.length ? `, with some ${join(w(mid))}` : ''}`, axes: [...keys(lead), ...keys(mid)] };
+  if (mid.length) return { text: `Moderately ${join(w(mid))}`, axes: keys(mid) };
+  if (light.length) return { text: `Gently ${join(w(light))}`, axes: keys(light) };
+  return null;
+}
+
+/** One sentence from the axes with conf >= 0.4 only. Null when there is nothing to say. */
+export function summaryLine(e: TasteEffective): string | null {
+  const p = summaryParts(e);
+  return p === null ? null : `${p.text}.`;
+}
+
+/** A stored layer's source, as the mark kind it shows under. An unknown source has no mark. */
+const LAYER_KIND: Record<string, ProvKind> = {
+  house: 'staff_line', note: 'staff_note', measured: 'measured', recipe: 'recipe', dataset: 'dataset',
+  standard: 'standard', class_default: 'class_default', class: 'class_default', ai_draft: 'ai_draft',
+};
+const kindsOf = (kinds: Iterable<ProvKind>): ProvKind[] => {
+  const have = new Set(kinds);
+  return PROV_KINDS.filter((k) => have.has(k));
+};
+
+/**
+ * The one line the drawer's first screen shows: the sentence the card leads
+ * with, and the marks of where it came from. A sentence from the axes names
+ * the sources of the axes it used; "Described as ..." and "Sources disagree"
+ * name the sources of the layers. Null when nothing is known, so the first
+ * screen says nothing rather than something empty.
+ */
+export function leadLine(d: TasteData): { sentence: string; kinds: ProvKind[] } | null {
+  const e = d.effective;
+  if (!e) return null;
+  const fromLayers = kindsOf(d.layers.map((l) => LAYER_KIND[l.source]).filter((k): k is ProvKind => k !== undefined));
+  const parts = summaryParts(e);
+  if (parts) {
+    return { sentence: `${parts.text}.`, kinds: kindsOf(parts.axes.flatMap((k) => (e.axes[k] as TasteAxis).prov.map((p) => p.kind))) };
+  }
+  const words = [...e.descriptors, ...e.texture].map(descriptorWord).filter((x): x is string => x !== null);
+  if (words.length) return { sentence: `Described as ${words.join(', ')}.`, kinds: fromLayers };
+  if (e.conflicts.length) return { sentence: `Sources disagree on ${join(e.conflicts.map((c) => axisName(c.axis)))}.`, kinds: fromLayers };
+  return null;
 }
 
 /** The one next step for a row, or null when there is none worth saying. */

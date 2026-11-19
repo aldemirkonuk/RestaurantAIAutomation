@@ -183,3 +183,28 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* The drawer's first-screen taste line (TasteSummary.tsx). */
+.tc-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  margin: 10px 0 0;
+  font-size: 14px;
+}
+.tc-line-k {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.tc-line-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+}
+@media (max-width: 767px), (pointer: coarse) {
+  .tc-line-btn {
+    min-height: 44px;
+  }
+}
