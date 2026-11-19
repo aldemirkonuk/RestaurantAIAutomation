@@ -198,7 +198,7 @@ export function CellarSection() {
       </Note>
 
       <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.55, color: 'var(--ink-4)', margin: '0 0 4px' }}>
-        <span style={{ fontFamily: MONO, fontSize: 9.5, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+        <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
           kept · this restaurant — changed · — the readout carries no date for each answer
         </span>
       </p>

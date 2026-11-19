@@ -227,7 +227,7 @@ export function LedgerSection({ data }: { data: SettingsNextData }) {
               {NOT_YET_FILED.map((r) => (
                 <li key={r.id} style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)' }}>
                   {r.label}{' '}
-                  <span style={{ fontFamily: MONO, fontSize: 10, opacity: 0.8 }}>{r.hint}</span>
+                  <span style={{ fontFamily: MONO, fontSize: 11, opacity: 0.8 }}>{r.hint}</span>
                 </li>
               ))}
             </ul>

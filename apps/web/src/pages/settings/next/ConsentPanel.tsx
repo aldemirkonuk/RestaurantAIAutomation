@@ -118,7 +118,7 @@ export function ConsentTrail({ spec }: { spec: ConsentSwitchSpec }) {
     <ol aria-label={`Changes to ${spec.title}`} style={{ listStyle: 'none', margin: '6px 0 0', padding: 0 }}>
       {entries.map((e) => (
         <li key={e.id} style={{ ...line, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4)', minWidth: 96 }}>
+          <span style={{ fontFamily: MONO, fontSize: 11, color: 'var(--ink-4)', minWidth: 96 }}>
             {e.occurredAt ? fmtWhen(e.occurredAt) : EM}
           </span>
           <span>{spec.describe(e)}</span>
