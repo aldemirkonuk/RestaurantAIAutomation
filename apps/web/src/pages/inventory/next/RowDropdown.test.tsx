@@ -693,6 +693,17 @@ describe('Ported acts in the More menu: Mark inactive and Remove from inventory'
     expect(rowCols).not.toContain('Your bottle price');
   });
 
+  it('Export this row of a food says Kind Food and Unit g, and has no drink heading', async () => {
+    tableExport.exportTable.mockClear();
+    const flour = row({ wineId: null, name: 'Flour 00', kind: 'food', ledgerKind: 'food', uom: 'g', producer: null, vintage: null, grape: null, bottle: null, glass: null, providerName: 'Mill Co', stock: 2250, shadow: 0, openMl: 0 });
+    const food = await menu({ uom: 'g', kind: 'food', row: flour });
+    fireEvent.click(within(food).getByRole('menuitem', { name: 'Export this row' }));
+    const { columns, rows } = tableExport.exportTable.mock.calls[0][0] as { columns: { header: string; value: (r: InvRow) => unknown }[]; rows: InvRow[] };
+    const at = (h: string) => columns.find((c) => c.header === h)!.value(rows[0]);
+    expect([at('Kind'), at('Unit'), at('Vendor')]).toEqual(['Food', 'g', 'Mill Co']);
+    expect(columns.map((c) => c.header)).not.toContain('Your glass price');
+  });
+
   it('Export this row still heads the name column Title for a drink', async () => {
     tableExport.exportTable.mockClear();
     const m = await menu();

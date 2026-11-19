@@ -1729,8 +1729,8 @@ describe('the legacy velocity sort and column-header sort (round 4)', () => {
 // cellar and no bottles. It hears "stock room" and "goods", and the opening
 // sentence does not sum kilograms and litres into "bottles".
 describe('a house of goods is not a cellar', () => {
-  const flour = () => row({ id: 'f', wineId: null, name: 'Bread Flour', type: null, kind: null, stock: 5, par: null, standing: 'above', runway: null, value: null, zones: [] });
-  const sugar = () => row({ id: 's', wineId: null, name: 'Caster Sugar', type: null, kind: null, stock: 3, par: null, standing: 'above', runway: null, value: null, zones: [] });
+  const flour = () => row({ id: 'f', wineId: null, name: 'Bread Flour', type: null, kind: null, ledgerKind: 'food', uom: 'g', stock: 5, par: null, standing: 'above', runway: null, value: null, zones: [] });
+  const sugar = () => row({ id: 's', wineId: null, name: 'Caster Sugar', type: null, kind: null, ledgerKind: 'supply', uom: 'each', stock: 3, par: null, standing: 'above', runway: null, value: null, zones: [] });
   const goods = [
     { id: 'f', kind: 'food', uom: 'g', display_name: 'Bread Flour' },
     { id: 's', kind: 'supply', uom: 'each', display_name: 'Caster Sugar' },
@@ -1807,6 +1807,60 @@ describe('a house of goods is not a cellar', () => {
     });
     const cols = (exportSpy.mock.calls[0][0] as { columns: { header: string }[] }).columns.map((c) => c.header);
     expect(cols).toEqual(expect.arrayContaining(['Producer', 'Vintage', 'Bottle size (ml)']));
+  });
+
+  type CountFile = { rows: InvRow[]; columns: { header: string; value: (r: InvRow) => unknown }[] };
+  const countFile = async (): Promise<CountFile> => {
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export count sheet' }));
+    });
+    return exportSpy.mock.calls[0][0] as CountFile;
+  };
+
+  it('writes Kind, Unit and Vendor for a house of foods, and no wine heading', async () => {
+    exportSpy.mockClear();
+    mock.data = data({ rows: [{ ...flour(), providerName: 'Mill Co' }, sugar()], rawItems: goods });
+    renderPage();
+    const file = await countFile();
+    const h = file.columns.map((c) => c.header);
+    expect(h).toEqual(expect.arrayContaining(['Good', 'Kind', 'Unit', 'Vendor']));
+    for (const d of ['Producer', 'Vintage', 'Bottle size (ml)', 'Your bottle price', 'Your glass price']) expect(h).not.toContain(d);
+    const kind = file.columns.find((c) => c.header === 'Kind')!;
+    const unit = file.columns.find((c) => c.header === 'Unit')!;
+    expect(file.rows.map((r) => [kind.value(r), unit.value(r)])).toEqual([['Food', 'g'], ['Supply', 'each']]);
+  });
+
+  it('orders the count sheet by where it sits, then kind, then name', async () => {
+    exportSpy.mockClear();
+    mock.data = data({
+      rows: [
+        row({ id: 'w', name: 'Barolo', ledgerKind: 'wine', zones: [{ locationId: 'cave', qty: 1 }] }),
+        { ...flour(), name: 'Salt', zones: [{ locationId: 'cave', qty: 1 }] },
+        { ...flour(), id: 'u', name: 'Loose', zones: [] },
+        { ...flour(), id: 'a', name: 'Anchovy', zones: [{ locationId: 'cave', qty: 1 }] },
+      ],
+      rawItems: goods,
+    });
+    renderPage();
+    const file = await countFile();
+    expect(file.rows.map((r) => r.name)).toEqual(['Anchovy', 'Salt', 'Barolo', 'Loose']);
+  });
+
+  it('hands staff a count sheet and a valuation with no WAC or Value, still with Kind and Unit', async () => {
+    exportSpy.mockClear();
+    mock.data = data({ rows: [flour(), sugar()], rawItems: goods, canManage: false });
+    renderPage();
+    const file = await countFile();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export valuation' }));
+    });
+    expect(exportSpy).toHaveBeenCalledTimes(2);
+    for (const [opts] of exportSpy.mock.calls) {
+      const h = (opts as { columns: { header: string }[] }).columns.map((c) => c.header);
+      for (const x of ['WAC', 'Value', 'Value at cost']) expect(h).not.toContain(x);
+      expect(h).toEqual(expect.arrayContaining(['Kind', 'Unit']));
+    }
+    expect(file.columns.map((c) => c.header)).toContain('System qty (live)');
   });
 
   it('copies a nameless good as "Unnamed good"', async () => {

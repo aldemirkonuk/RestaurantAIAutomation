@@ -53,7 +53,7 @@ import { useIsPhone } from '../../../hooks/useIsPhone';
 import CarryThis from './CarryThis';
 import { removeBlocked, removeTarget } from './RowDropdown';
 import { RemoveFromInventoryModal } from '../../../components/inventory/RemoveFromInventoryModal';
-import { blank, forHouse, costColumnsFor, daysSinceCountedCell, oneLine, runExport, today, valuationColumns } from './iv-export';
+import { costColumnsFor, countSheetColumns, forHouse, oneLine, runExport, sortCountSheet, today, valuationColumns } from './iv-export';
 import { COUNT_DUE_DAYS } from '../command/bits';
 import {
   CHIPS,
@@ -61,7 +61,6 @@ import {
   EM,
   inZone,
   latestCount,
-  noZoneWord,
   matchesSearch,
   ofType,
   ALL_WINE,
@@ -558,48 +557,20 @@ export default function InventoryNext() {
     return notes.join('; ');
   };
 
-  const exportCountSheet = () =>
-    runExport<InvRow>(
-      visible,
-      forHouse(words.one === 'good', [
-        {
-          header: 'Location',
-          value: (r) => {
-            if (r.zones === null) return '';
-            const first = r.zones.find((z) => z.locationId !== null && z.qty > 0);
-            if (first) return zoneName(first.locationId);
-            if (r.zones.some((z) => z.qty > 0)) return 'Unassigned';
-            return noZoneWord(r.stock) ?? '';
-          },
-        },
-        { header: nameHead, value: (r) => r.name ?? '' },
-        { header: 'Producer', value: (r) => r.producer ?? '' },
-        { header: 'Vintage', value: (r) => blank(r.vintage) },
-        { header: 'Type', value: (r) => (r.type === null ? '' : typeLabel(r.type)) },
-        { header: 'Bottle size (ml)', value: (r) => blank(r.bottleSizeMl) },
-        { header: 'System qty (live)', value: (r) => blank(r.stock) },
-        { header: 'System qty (shadow)', value: (r) => blank(r.shadow) },
-        { header: 'Par', value: (r) => blank(r.par) },
-        { header: 'Counted qty', value: () => '' },
-        { header: 'Variance', value: () => '' },
-        // Legacy's columns (InventoryCommandPage.tsx:605-660), with Last counted kept
-        // beside Days since counted. An unread figure stays blank, never a 0.
-        { header: 'Days since counted', value: (r) => daysSinceCountedCell(r.lastCountedAt) },
-        { header: 'Last counted', value: (r) => r.lastCountedAt ?? '' },
-        { header: 'Velocity/day', value: (r) => (r.velocity === null ? '' : r.velocity.toFixed(2)) },
-        { header: 'Runway d', value: (r) => (r.runway === null ? '' : Math.round(r.runway)) },
-        { header: 'WAC', value: (r) => blank(r.wac) },
-        { header: 'Value', value: (r) => (r.value === null ? '' : r.value.toFixed(2)) },
-        { header: 'Observation', value: (r) => countObservation(r) },
-      ]),
+  const exportCountSheet = () => {
+    const rowsOut = sortCountSheet(visible, zoneName);
+    return runExport<InvRow>(
+      rowsOut,
+      costColumnsFor(forHouse(words.one === 'good', countSheetColumns(nameHead, zoneName, countObservation)), data.canManage),
       `inventory-count-${today()}`,
       'Inventory count sheet',
     );
+  };
 
   const valuation = valuationColumns(data.currency.code ?? null, nameHead);
 
   const exportValuation = () =>
-    runExport(visible, valuation, `inventory-valuation-${today()}`, 'Inventory valuation');
+    runExport(visible, costColumnsFor(valuation, data.canManage), `inventory-valuation-${today()}`, 'Inventory valuation');
 
   const showTools = () => toolsRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
 
