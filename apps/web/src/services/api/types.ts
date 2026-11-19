@@ -30,7 +30,8 @@ export interface InventoryItem {
   restaurantId: string;
   wineId: string;
   providerId?: string;
-  stockLive: number;
+  /** null = the gateway did not say. Never read as 0: that is "none on hand". */
+  stockLive: number | null;
   physicalStock?: number;
   shadowStock?: number;
   thresholdMin: number;
