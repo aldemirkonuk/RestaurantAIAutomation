@@ -486,7 +486,7 @@
 
 /* Tucked: ~52 px, each verb with its mark. */
 .mdv-counter--strip {
-  width: 52px;
+  width: 68px;
   align-items: center;
   padding-top: 10px;
 }
@@ -515,7 +515,7 @@
   flex-direction: column;
   align-items: center;
   gap: 5px;
-  width: 44px;
+  width: 60px;
   padding: 8px 2px;
   border: 0;
   border-radius: 8px;
@@ -530,9 +530,10 @@
 
 .mdv-counter__stripword {
   font-family: var(--mdv-mono);
-  font-size: 8.5px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.02em;
+  max-width: 100%;
   text-transform: uppercase;
 }
 

@@ -932,6 +932,36 @@ describe('CalendarNext — a passed day holds the record', () => {
     expect(screen.getByText(/forecast said 75°F, 3d ahead/)).toBeInTheDocument();
   });
 
+  it('keeps the tag as text inside the month cell and adds one legend line under the grid', () => {
+    // At 480 px and under CSS hides the tag visually; the text stays for readers.
+    draw();
+    const cell = screen.getByText('covers · recorded').closest('.cn-cell');
+    expect(cell).toBeTruthy();
+    const legend = document.querySelector('.cn-record-legend');
+    expect(legend?.textContent).toBe('Under each passed day: covers recorded.');
+    expect(document.querySelectorAll('.cn-record-legend')).toHaveLength(1);
+    expect(legend?.closest('.cn-cell')).toBeNull();
+  });
+
+  it('the legend says the register could not be read when it refused', () => {
+    state.current = mkData({
+      record: recordWindow({
+        days: [],
+        window: { recordedRefusal: 'The sales register could not be read.' },
+      }),
+    });
+    draw();
+    expect(document.querySelector('.cn-record-legend')?.textContent).toBe(
+      'Under each passed day: the sales register could not be read.',
+    );
+  });
+
+  it('draws no legend when the page holds no record', () => {
+    state.current = mkData({ record: recordWindow({ days: [] }) });
+    draw();
+    expect(document.querySelector('.cn-record-legend')).toBeNull();
+  });
+
   it('never claims an accuracy it cannot compute', () => {
     // No covers model exists (slice 9, gated on 90 observed days) and no
     // temperature observation is recorded anywhere, so the line says so and

@@ -66,7 +66,7 @@
 }
 .cn-eyebrow {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -165,7 +165,7 @@
 .cn-weekday {
   padding-bottom: 4px;
   text-align: center;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -251,7 +251,7 @@
 .cn-ribbon-time {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
-  font-size: 9.5px;
+  font-size: 11px;
   color: var(--ink-4);
   margin-right: 4px;
 }
@@ -365,7 +365,7 @@
   text-align: right;
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--ink-4);
   border-top: 1px solid var(--paper-2);
 }
@@ -474,7 +474,7 @@
 }
 .cn-agenda-key small {
   display: block;
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0;
   text-transform: none;
   opacity: 0.75;
@@ -494,7 +494,7 @@
 .cn-label {
   display: block;
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -646,7 +646,7 @@
   align-items: center;
   gap: 4px;
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.2;
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
@@ -694,6 +694,8 @@
   align-items: baseline;
   gap: 4px;
   line-height: 1.25;
+  min-width: 0;
+  max-width: 100%;
 }
 .cn-record-figure {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
@@ -704,16 +706,42 @@
   font-variant-numeric: tabular-nums;
 }
 .cn-record-tag {
-  font-size: 9px;
+  min-width: 0;
+  overflow-wrap: break-word;
+  hyphens: auto;
+  font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   font-weight: 600;
   color: var(--ink-4);
 }
+/* The tag does not fit a month cell at phone width (~46 px: no 11 px uppercase
+   word of it fits). Keep it as visually hidden text, so a reader still gets it,
+   and let the one legend line under the grid say what the number is. */
+.cn-record-legend {
+  display: none;
+  margin: 8px 0 0;
+}
+@media (max-width: 480px) {
+  .cn-cell .cn-record-tag {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .cn-record-legend {
+    display: block;
+  }
+}
 .cn-record-said {
   flex-basis: 100%;
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 9.5px;
+  font-size: 11px;
   color: var(--ink-4);
 }
 

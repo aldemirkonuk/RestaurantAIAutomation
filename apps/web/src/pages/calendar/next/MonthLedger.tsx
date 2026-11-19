@@ -268,6 +268,8 @@ export default function MonthLedger({
     });
   };
 
+  const refusedRecord = !!data.record.window?.recordedRefusal;
+
   return (
     <>
       <div className="cn-grid" aria-hidden>
@@ -352,6 +354,16 @@ export default function MonthLedger({
           );
         })}
       </div>
+      {/* At phone width a month cell is too narrow to draw the record tag, so
+          the cell keeps it as hidden text and this one line says what the
+          number under a passed day is (CSS shows it at max-width 480 only). */}
+      {(refusedRecord || (data.record.byDay?.size ?? 0) > 0) && (
+        <p className="cn-meta cn-record-legend">
+          {refusedRecord
+            ? 'Under each passed day: the sales register could not be read.'
+            : 'Under each passed day: covers recorded.'}
+        </p>
+      )}
 
       <div className="cn-expand" data-open={!!selected}>
         <div>

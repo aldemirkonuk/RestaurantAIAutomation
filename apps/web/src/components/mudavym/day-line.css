@@ -29,7 +29,7 @@
 .mdv-dayline__eyebrow {
   margin: 0;
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -46,7 +46,7 @@
   margin: 0;
   padding-top: 2px;
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--ink-4);
   /* Wraps rather than running off the card: offline the head carries
      "from 14:02 · offline · will read on return · 2 of 3 registers · 1 not
@@ -112,7 +112,7 @@ a.mdv-dayline__tick:hover {
 
 .mdv-dayline__tickat {
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--ink-4);
 }
 
