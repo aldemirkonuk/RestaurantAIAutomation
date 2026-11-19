@@ -48,6 +48,8 @@ import {
   type UnresolvedLinesResponse,
 } from "../../services/api/posHub";
 import { cn } from "../../lib/utils";
+import { TillRecipeMap } from "./TillRecipeMap";
+import { CheckMarginSection } from "./CheckMarginSection";
 
 interface Props {
   isOpen: boolean;
@@ -582,6 +584,22 @@ export function PosMappingPanel({
               </div>
             </section>
           )}
+          {/* ── 4. till buttons → drink recipes ── */}
+          <TillRecipeMap
+            restaurantId={restaurantId}
+            mappings={mappings.data}
+            mappingsError={mappings.error}
+            seen={unresolved.data?.items ?? []}
+            shelfName={(id) => invById.get(id)?.name ?? null}
+            onChanged={() => {
+              void load();
+              onChanged?.();
+            }}
+          />
+
+          {/* ── 5. a check, after the fact ── */}
+          <CheckMarginSection restaurantId={restaurantId} />
+
         </div>
       </div>
     </div>

@@ -138,6 +138,9 @@ export interface PosItemMapping {
   master_wine_id: string | null;
   sale_unit: string | null;
   sale_volume_ml: number | null;
+  /** The house's drink recipe this button sells (cocktails.id), or null. */
+  cocktail_id?: string | null;
+  category?: string | null;
   updated_at: string | null;
 }
 
@@ -272,6 +275,117 @@ export async function upsertMapping(
   const { data } = await apiClient.post<PosItemMapping>(
     `/pos-hub/mappings/${id}`,
     mapping,
+  );
+  return data;
+}
+
+// ===========================================================================
+// Till button -> drink recipe, and the check view (gap lane till-recipe).
+// ===========================================================================
+
+export interface TillRecipeLink {
+  source: string;
+  external_item_id: string | null;
+  item_name: string | null;
+  category?: string | null;
+  /** A recipe id, or null to take the recipe off. */
+  cocktail_id: string | null;
+  /** Say yes to move a button off the shelf item it draws today. */
+  replace_shelf_link?: boolean;
+}
+
+export async function setTillRecipe(
+  link: TillRecipeLink,
+  restaurantId?: string,
+): Promise<PosItemMapping> {
+  const id = requireRestaurant(restaurantId);
+  const { data } = await apiClient.post<PosItemMapping>(
+    `/pos-hub/mappings/${id}/till-recipe`,
+    {
+      ...link,
+      external_item_id: link.external_item_id ?? "",
+      item_name: link.item_name ?? "",
+    },
+  );
+  return data;
+}
+
+export interface HouseCocktail {
+  id: string;
+  name: string;
+  display_name?: string | null;
+  menu_section?: string | null;
+  price?: number | null;
+}
+
+export interface HouseCocktailList {
+  rows: HouseCocktail[];
+  truncated: boolean;
+}
+
+/** The house's own drink recipes, optionally narrowed by name. */
+export async function getHouseCocktails(
+  restaurantId?: string,
+  search?: string,
+  limit = 200,
+): Promise<HouseCocktailList> {
+  const id = requireRestaurant(restaurantId);
+  const { data } = await apiClient.get<HouseCocktailList>(`/cocktails/${id}`, {
+    params: { limit, ...(search?.trim() ? { search: search.trim() } : {}) },
+  });
+  return { rows: data.rows ?? [], truncated: data.truncated === true };
+}
+
+export interface RecentCheck {
+  source: string;
+  external_check_id: string;
+  closed_at: string | null;
+  total: number | null;
+  voided: boolean | null;
+}
+
+export async function getRecentChecks(
+  restaurantId?: string,
+): Promise<RecentCheck[]> {
+  const id = requireRestaurant(restaurantId);
+  const { data } = await apiClient.get<{ checks: RecentCheck[] }>(
+    `/pos-hub/checks/${id}`,
+  );
+  return data.checks ?? [];
+}
+
+export interface CheckViewLine {
+  wine: string | null;
+  volumeMl: number;
+  revenue: number | null;
+  cost: number | null;
+  costKept: boolean;
+  costNote: string | null;
+}
+
+export interface CheckView {
+  externalCheckId: string;
+  lines: CheckViewLine[];
+  voidedLines: number;
+  revenue: number;
+  cost: number;
+  margin: number | null;
+  marginPct: number | null;
+  linesWithoutCost: number;
+  sentence: string;
+  checkKnown: boolean;
+  total: number | null;
+  voided: boolean;
+  priceNotSentLines: number | null;
+}
+
+export async function getCheckView(
+  checkId: string,
+  restaurantId?: string,
+): Promise<CheckView> {
+  const id = requireRestaurant(restaurantId);
+  const { data } = await apiClient.get<CheckView>(
+    `/pos-hub/checks/${id}/${encodeURIComponent(checkId)}`,
   );
   return data;
 }

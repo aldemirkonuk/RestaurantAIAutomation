@@ -1,7 +1,9 @@
 import {
+  ConflictException,
   Inject,
   Injectable,
   Logger,
+  NotFoundException,
   Optional,
   forwardRef,
 } from "@nestjs/common";
@@ -15,6 +17,10 @@ import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inve
 import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
 import { CanonicalCheck, CheckChannel } from "./pos-types";
 import { ADAPTERS } from "./pos-adapters";
+import {
+  priceNotSentLines,
+  recentChecksLimit,
+} from "./till-check-view";
 import { saleLineKeys, splitQty, fractionMl } from "./sale-line";
 import { sellRecipeLine, supabaseRecipeIo, voidRecipeLine } from "./recipe-sale";
 import {
@@ -2173,6 +2179,106 @@ export class PosHubService {
       return at > 0 && n.startsWith(`${externalCheckId}:`, at + 1);
     });
     return { externalCheckId, ...checkMarginFromRows(rows) };
+  }
+
+  /**
+   * Point a till button at one of the house's drink recipes, or take it off
+   * one. `upsertItemMapping` rebuilds its row from the body, so this reads the
+   * button's row first and states the whole link: a recipe clears the shelf
+   * item and the wine fields (a button draws one thing), and taking the
+   * recipe off clears only the recipe. A button that already draws a shelf
+   * item is moved only when the caller says so (`replace_shelf_link`), never
+   * silently, because that changes which goods its sales draw.
+   */
+  async setTillRecipe(restaurantId: string, body: any) {
+    const b = body && typeof body === "object" ? body : {};
+    const source = typeof b.source === "string" ? b.source.trim() : "";
+    const externalItemId =
+      typeof b.external_item_id === "string" ? b.external_item_id : "";
+    const itemName = typeof b.item_name === "string" ? b.item_name : "";
+    if (!source) throw new Error("The button's till source is needed");
+    if (!externalItemId && !itemName)
+      throw new Error("Mapping needs external_item_id or item_name");
+    const cocktailId = cocktailIdOf({ cocktail_id: b.cocktail_id ?? null });
+
+    const { data: existing, error } = await this.dbService
+      .getClient()
+      .from("pos_item_mappings")
+      .select("category, inventory_id, cocktail_id")
+      .eq("restaurant_id", restaurantId)
+      .eq("source", source)
+      .eq("external_item_id", externalItemId)
+      .eq("item_name", itemName)
+      .maybeSingle();
+    if (error)
+      throw new Error(
+        `The button's current link could not be read (${error.message}); nothing was changed.`,
+      );
+
+    if (cocktailId === null) {
+      if (!existing || !existing.cocktail_id)
+        throw new NotFoundException(
+          "This button is not linked to a drink recipe, so there is nothing to take off.",
+        );
+    } else if (existing?.inventory_id && b.replace_shelf_link !== true) {
+      throw new ConflictException(
+        "This button already draws a shelf item. Say so to move it onto the recipe instead (replace_shelf_link).",
+      );
+    }
+    return this.upsertItemMapping(restaurantId, {
+      source,
+      external_item_id: externalItemId,
+      item_name: itemName,
+      category: existing?.category ?? b.category ?? null,
+      is_wine: false,
+      master_wine_id: null,
+      inventory_id: null,
+      cocktail_id: cocktailId,
+      sale_unit: null,
+      sale_volume_ml: null,
+    });
+  }
+
+  /** The house's recent closed checks, newest first. A failed read throws. */
+  async listRecentChecks(restaurantId: string, limit?: unknown) {
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("pos_checks")
+      .select("source, external_check_id, closed_at, total, voided")
+      .eq("restaurant_id", restaurantId)
+      .not("closed_at", "is", null)
+      .order("closed_at", { ascending: false })
+      .limit(recentChecksLimit(limit));
+    if (error)
+      throw new Error(
+        `The recent checks could not be read (${error.message}); this is not a claim that there are none.`,
+      );
+    return { checks: data || [] };
+  }
+
+  /** A check's margin plus the lines the till sent without a price. */
+  async getCheckView(restaurantId: string, externalCheckId: string) {
+    const margin = await this.getCheckMargin(restaurantId, externalCheckId);
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("pos_checks")
+      .select("items, total, closed_at, voided")
+      .eq("restaurant_id", restaurantId)
+      .eq("external_check_id", externalCheckId)
+      .order("closed_at", { ascending: false })
+      .limit(1);
+    if (error)
+      throw new Error(
+        `The check's lines could not be read (${error.message}); no price check is shown.`,
+      );
+    const row = (data || [])[0] ?? null;
+    return {
+      ...margin,
+      checkKnown: row !== null,
+      total: row?.total ?? null,
+      voided: row?.voided === true,
+      priceNotSentLines: row ? priceNotSentLines(row.items) : null,
+    };
   }
 
   async upsertItemMapping(restaurantId: string, mapping: any) {
