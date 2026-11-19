@@ -58,13 +58,13 @@ import type { CatSeries, Fig, MatrixSeries, PointSeries, TableSpec } from './rp-
 
 const AXIS = {
   stroke: 'var(--paper-2)',
-  tick: { fill: 'var(--ink-4)', fontSize: 9.5, fontFamily: MONO },
+  tick: { fill: 'var(--ink-4)', fontSize: 11, fontFamily: MONO },
   tickLine: false,
 } as const;
 
 const AXIS_LABEL = {
   fill: 'var(--ink-4)',
-  fontSize: 9,
+  fontSize: 11,
   fontFamily: MONO,
   letterSpacing: '0.08em',
 } as const;
@@ -296,7 +296,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
             value: r.label,
             position: 'insideTopRight',
             fill: 'var(--ink-4)',
-            fontSize: 8.5,
+            fontSize: 11,
             fontFamily: MONO,
           }}
         />

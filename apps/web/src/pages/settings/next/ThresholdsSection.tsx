@@ -154,7 +154,7 @@ function RuleEditor({
         <label style={{ display: 'block' }}>
           <span
             style={{
-              display: 'block', fontFamily: MONO, fontSize: 9, fontWeight: 600,
+              display: 'block', fontFamily: MONO, fontSize: 11, fontWeight: 600,
               letterSpacing: '0.11em', textTransform: 'uppercase', color: 'var(--ink-4)', marginBottom: 3,
             }}
           >
@@ -333,7 +333,7 @@ export function ThresholdsSection({ data }: { data: SettingsNextData }) {
             control={
               <span
                 style={{
-                  fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: '0.1em',
+                  fontFamily: MONO, fontSize: 11, fontWeight: 600, letterSpacing: '0.1em',
                   textTransform: 'uppercase', color: 'var(--ink-4)', border: '1px dashed var(--paper-2)',
                   borderRadius: 999, padding: '3px 9px', whiteSpace: 'nowrap',
                 }}

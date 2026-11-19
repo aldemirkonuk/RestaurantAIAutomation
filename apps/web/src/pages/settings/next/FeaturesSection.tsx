@@ -265,7 +265,7 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                         alwaysOn ? (
                           <span
                             style={{
-                              fontFamily: MONO, fontSize: 9.5, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase',
+                              fontFamily: MONO, fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase',
                               color: 'var(--ink-4)', border: '1px dashed var(--paper-2)', borderRadius: 999, padding: '3px 9px', whiteSpace: 'nowrap',
                             }}
                           >
@@ -331,7 +331,7 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                 control={
                   <span
                     style={{
-                      fontFamily: MONO, fontSize: 9.5, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase',
+                      fontFamily: MONO, fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase',
                       color: 'var(--ink-4)', border: '1px dashed var(--paper-2)', borderRadius: 999, padding: '3px 9px', whiteSpace: 'nowrap',
                     }}
                   >

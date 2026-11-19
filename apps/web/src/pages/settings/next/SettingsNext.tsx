@@ -321,10 +321,10 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
                   borderRadius: 8, textDecoration: 'none', color: 'var(--ink-2)',
                 }}
               >
-                <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--seal-deep)', minWidth: 14 }}>{group.roman}</span>
+                <span style={{ fontFamily: MONO, fontSize: 11, color: 'var(--seal-deep)', minWidth: 14 }}>{group.roman}</span>
                 <span style={{ display: 'block', minWidth: 0 }}>
                   <span style={{ fontFamily: SANS, fontSize: 13, fontWeight: 600, display: 'block' }}>{group.title}</span>
-                  <span style={{ fontFamily: SANS, fontSize: 10.5, lineHeight: 1.4, color: 'var(--ink-4)', display: 'block', maxWidth: 200 }}>
+                  <span style={{ fontFamily: SANS, fontSize: 11, lineHeight: 1.4, color: 'var(--ink-4)', display: 'block', maxWidth: 200 }}>
                     {group.hint}
                   </span>
                 </span>
@@ -340,7 +340,7 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
                 <p
                   id="st-group-connections"
                   style={{
-                    fontFamily: MONO, fontSize: 9, fontWeight: 600, letterSpacing: '0.14em',
+                    fontFamily: MONO, fontSize: 11, fontWeight: 600, letterSpacing: '0.14em',
                     textTransform: 'uppercase', color: 'var(--ink-4)', margin: '0 0 1px', padding: '0 9px',
                   }}
                 >
