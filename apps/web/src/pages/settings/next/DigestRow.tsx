@@ -149,7 +149,7 @@ export function DigestRow({ data }: { data: SettingsNextData }) {
               {writer.busy === 'digest' ? 'Working…' : reg.digestEnabled ? 'Turn off' : 'Turn on'}
             </Action>
           ) : (
-            <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: '100%' }}>
               <input
                 aria-label="Digest hour (0-23)"
                 placeholder="hour"
@@ -162,7 +162,7 @@ export function DigestRow({ data }: { data: SettingsNextData }) {
                 aria-label="Least urgency worth a mail"
                 value={urgency}
                 onChange={(ev) => setUrgency(ev.target.value as typeof urgency)}
-                style={{ fontFamily: SANS, fontSize: 12, padding: '5px 8px', borderRadius: 8, border: '1px solid var(--paper-2)', background: 'var(--paper-0)', color: 'var(--ink-1)' }}
+                style={{ fontFamily: SANS, fontSize: 12, padding: '5px 8px', borderRadius: 8, border: '1px solid var(--paper-2)', background: 'var(--paper-0)', color: 'var(--ink-1)', maxWidth: '100%', minWidth: 0, textOverflow: 'ellipsis' }}
               >
                 <option value="" disabled>Choose the least urgency…</option>
                 {URGENCY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}

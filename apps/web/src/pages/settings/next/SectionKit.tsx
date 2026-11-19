@@ -217,7 +217,14 @@ function ProvenanceLine({ kept, when, whenUnknown, verb = 'changed', readBy }: P
         {verb} · {known ? fmtWhen(when) : <span title={whenUnknown}>{EM} {whenUnknown ?? 'no date is recorded'}</span>}
       </p>
       {readBy && (
-        <p style={{ ...microStyle, margin: '2px 0 0', letterSpacing: '0.1em', fontWeight: 500, color: 'var(--ink-4)' }}>
+        <p
+          style={{
+            ...microStyle, margin: '2px 0 0', letterSpacing: '0.1em', fontWeight: 500, color: 'var(--ink-4)',
+            // A long path wraps anywhere and, if it still cannot, scrolls inside
+            // its own line; it never widens the page (Settings at 375, r74).
+            overflowWrap: 'anywhere', overflowX: 'auto', maxWidth: '100%',
+          }}
+        >
           read by · {readBy}
         </p>
       )}
@@ -282,12 +289,12 @@ export function Row({
     <div
       data-cert={cert}
       style={{
-        display: 'flex', alignItems: 'flex-start', gap: 16, padding: '13px 0',
+        display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 8, columnGap: 16, padding: '13px 0',
         borderTop: '1px solid var(--paper-2)',
         background: tone === 'grave' ? 'var(--seal-tint)' : undefined,
       }}
     >
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ flex: '1 1 220px', minWidth: 0 }}>
         <p style={{ fontFamily: SANS, fontSize: 13.5, fontWeight: 600, color: 'var(--ink-1)', margin: 0 }}>
           {cert && <CertaintyTag value={cert} />} {label}
         </p>
@@ -297,7 +304,7 @@ export function Row({
         {provenance && <ProvenanceLine {...provenance} />}
         {children}
       </div>
-      {control && <div style={{ flexShrink: 0, paddingTop: 2 }}>{control}</div>}
+      {control && <div style={{ flexShrink: 0, maxWidth: '100%', paddingTop: 2 }}>{control}</div>}
     </div>
   );
 }

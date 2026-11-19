@@ -601,6 +601,8 @@
   border-radius: 2px;
   padding: 4px 6px;
   min-width: 16em;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 .mudavym .cx-pc-form {
   margin-top: 12px;
@@ -628,8 +630,8 @@
   margin-left: 6px;
   max-width: 100%;
 }
-.mudavym .cx-pc-form input[type='text'] { min-width: 14em; }
-.mudavym .cx-pc-form textarea { min-width: 22em; vertical-align: top; }
+.mudavym .cx-pc-form input[type='text'] { min-width: 14em; max-width: 100%; box-sizing: border-box; }
+.mudavym .cx-pc-form textarea { min-width: 22em; max-width: 100%; box-sizing: border-box; vertical-align: top; }
 .mudavym .cx-pc-form input:disabled,
 .mudavym .cx-pc-form textarea:disabled,
 .mudavym .cx-pc-form select:disabled,
