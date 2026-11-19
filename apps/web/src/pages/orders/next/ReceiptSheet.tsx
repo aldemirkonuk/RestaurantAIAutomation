@@ -20,7 +20,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import type { RefObject } from 'react';
+import { useEffect, useState, type RefObject } from 'react';
 import { Popover, Sheet } from '@/components/mudavym';
 import { EmptyState } from '@/components/mudavym/EmptyState';
 import { GhostDocument } from '@/components/mudavym/emptyArt';
@@ -31,6 +31,9 @@ import type { OrderRowVM } from './useOrdersNextData';
 export const NO_RECEIPT_SENTENCE = 'No receipt has been attached to this order yet.';
 export const RECEIPT_UNREAD_SENTENCE =
   'The receipt could not be read, so this does not say whether one exists.';
+
+/** How long the read may take before the wide sheet opens with its ghost paper. */
+export const RECEIPT_SHEET_DELAY_MS = 120;
 
 /** The popover's width: 360, or the phone's width less its two 16 px gutters. */
 export const RECEIPT_POPOVER_WIDTH = 360;
@@ -50,6 +53,19 @@ export function ReceiptSheet({ open, onClose, row, anchorRef }: ReceiptSheetProp
     enabled: open,
     staleTime: 30_000,
   });
+
+  // With a control to point back at, nothing wide opens until the read has
+  // either answered "found" or has taken longer than a blink: an answer of
+  // "none" would otherwise flash a 640 px sheet and then swap it for the popover.
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    if (!open || !q.isLoading) {
+      setSlow(false);
+      return undefined;
+    }
+    const t = setTimeout(() => setSlow(true), RECEIPT_SHEET_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [open, q.isLoading]);
 
   const label = `The receipt for ${row.wineName ?? 'this order'}`;
   const found = !q.isLoading && !q.isError && q.data?.state === 'found';
@@ -78,7 +94,7 @@ export function ReceiptSheet({ open, onClose, row, anchorRef }: ReceiptSheetProp
   return (
     <>
       <Sheet
-        open={open && (!small || !canPoint)}
+        open={open && (canPoint ? found || (q.isLoading && slow) : !small || !canPoint)}
         onClose={onClose}
         wide={!small}
         label={label}
