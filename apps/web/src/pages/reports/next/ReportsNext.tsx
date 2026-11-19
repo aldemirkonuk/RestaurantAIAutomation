@@ -76,6 +76,8 @@ import {
   type SheetState,
   type Slot,
 } from './rp-sheet';
+import { isStrip, sparkOf, SPARK_IDS, STRIP_ROWS, type SparkSeries } from './rp-strip';
+import { Spark } from './rp-spark';
 import type { ComboPick } from './rp-combo';
 import ExportsShelf from './ExportsShelf';
 import Sheet, { type SheetCutting } from './Sheet';
@@ -461,12 +463,21 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         ? 'The house’s currency could not be read, so money is printed as plain numbers.'
         : null;
 
-  const cuttings: SheetCutting[] = view.cuttings.map((c) => ({
+  const sparks = SPARK_IDS.map((id) => sparkOf(id, data.registers[id], ctx)).filter(
+    (s): s is SparkSeries => s !== null,
+  );
+
+  const cuttings: SheetCutting[] = view.cuttings.map((c) => {
+    // A cutting whose honest answer is a sentence folds to a strip while the
+    // sheet is being READ; arranging gives every cutting its full paper back.
+    const strip = !editing && isStrip(c.id, data.registers[c.id], ctx);
+    return {
     id: c.id,
-    slot: c.slot,
+    slot: strip ? { ...c.slot, h: STRIP_ROWS } : c.slot,
     body: (
       <Cutting
         id={c.id}
+        strip={strip}
         graph={c.graph}
         register={data.registers[c.id]}
         ctx={ctx}
@@ -481,7 +492,8 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         onDays={setTillDays}
       />
     ),
-  }));
+    };
+  });
 
   const offSheet = ANALYSIS_IDS.filter((id) => !onSheet.has(id));
 
@@ -495,7 +507,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     <div className="mudavym rp-page" data-ground={ground}>
       <div className="rp-page__inner">
         <header ref={headRef} className="rp-head">
-          <div style={{ maxWidth: 660 }}>
+          <div className="rp-head__lead">
             <Wordmark size={13} />
             <p className="rp-eyebrow" style={{ display: 'block', margin: '6px 0 0' }}>
               Reports · {today}
@@ -506,6 +518,13 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
             {/* Fraunces speaks only what the ENGINE said — verbatim, or the truth
                 about why it said nothing. This page never writes a sentence. */}
             <p className="rp-voice">{opening}</p>
+            {sparks.length > 0 && (
+              <div className="rp-sparks">
+                {sparks.map((s) => (
+                  <Spark key={s.id} series={s} />
+                ))}
+              </div>
+            )}
             {moneyLine && (
               <p className="rp-cap" data-testid="rp-money-line">
                 {moneyLine}{' '}

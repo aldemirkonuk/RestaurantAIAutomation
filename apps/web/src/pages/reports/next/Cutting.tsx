@@ -114,13 +114,23 @@ export function TillWindowPicker({
   // A year is the window an owner reads a season against (audit G19); the
   // gateway already allows 1–365 house days (`analytics.controller.ts`).
   const options = TILL_WINDOWS;
+  const at = options.findIndex((d) => d === days);
+  // One thumb slides under the pressed window (transform only), so the window
+  // changes with a movement the reader can follow instead of a hard swap. The
+  // segments are equal-width so the thumb needs no measuring.
   return (
-    <div role="group" aria-label="Till window" style={{ display: 'flex', gap: 3 }}>
+    <div
+      role="group"
+      aria-label="Till window"
+      className="rp-seg rp-no-drag"
+      style={{ ['--rp-n' as string]: options.length, ['--rp-i' as string]: Math.max(at, 0) }}
+    >
+      {at >= 0 && <span className="rp-seg__thumb" aria-hidden />}
       {options.map((d) => (
         <button
           key={d}
           type="button"
-          className="rp-chip rp-ink rp-focus rp-no-drag"
+          className="rp-seg__btn rp-ink rp-focus rp-no-drag"
           aria-pressed={days === d}
           onClick={() => onChange(d)}
         >
@@ -281,6 +291,8 @@ export interface CuttingProps {
   onSwap: (to: AnalysisId) => void;
   onRemove: () => void;
   onDays: (d: number) => void;
+  /** Folded to a 72 px strip: the register's honest answer is a sentence (`rp-strip.ts`). */
+  strip?: boolean;
 }
 
 export default function Cutting({
@@ -297,6 +309,7 @@ export default function Cutting({
   onSwap,
   onRemove,
   onDays,
+  strip = false,
 }: CuttingProps) {
   const spec = CATALOGUE[id];
   const drawn = graphOrDefault(id, graph);
@@ -375,7 +388,12 @@ export default function Cutting({
   }, [flat]);
 
   return (
-    <section className="rp-cut" aria-label={spec.title} data-held={held || undefined}>
+    <section
+      className="rp-cut"
+      aria-label={spec.title}
+      data-held={held || undefined}
+      data-strip={strip || undefined}
+    >
       {/* Not a <header>: the section's heading is the h2 below it, and a nested
           banner landmark per cutting would drown the page's own. */}
       <div className="rp-cut__head">

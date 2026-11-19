@@ -26,6 +26,8 @@
  * case below names a string or a role the scaffold does not have.
  */
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
@@ -2404,5 +2406,96 @@ describe('the till window is kept in the page link (audit gap 16)', () => {
     const till = sheet.cuttings.find((c) => c.id === 'till');
     expect(till?.slot.w).toBe(SHEET_MIN_W);
     expect(till?.slot.h).toBe(SHEET_MIN_H);
+  });
+});
+
+/* ── r61 c2: the hero, the strips, the window pill, the bento ──────────────── */
+
+describe('r61 c2 — the opening, the strips and the till window', () => {
+  const zeroWeek = () =>
+    ok({
+      weekdayProfile: [
+        { day: 'Monday', mean: 0, stdev: 0, n: 12 },
+        { day: 'Friday', mean: 0, stdev: 0, n: 12 },
+      ],
+      bestDay: null,
+      worstDay: null,
+      tie: false,
+      trendPerDayPct: 0,
+      basis: { weekday: 'mean units per weekday over 90d', extremes: 'single weekdays' },
+    });
+
+  it('[REVERT-FAILS] draws two sparklines of real series under the opening sentence, 160 x 48', () => {
+    paint();
+    const till = screen.getByTestId('rp-spark-till');
+    const week = screen.getByTestId('rp-spark-week');
+    expect(till.querySelector('svg')).toHaveAttribute('width', '160');
+    expect(till.querySelector('svg')).toHaveAttribute('height', '48');
+    expect(week.querySelector('svg')).toHaveAttribute('height', '48');
+    expect(till.querySelector('svg')).toHaveAttribute('aria-label', expect.stringContaining('2 readings'));
+    expect(screen.getByRole('banner')).toContainElement(till);
+  });
+
+  it('draws no sparkline from a register that is loading, or has one point', () => {
+    const regs = base().registers as Record<string, { data: object }>;
+    hook.current = {
+      ...base(),
+      registers: {
+        ...regs,
+        till: pending,
+        week: ok({ ...regs.week.data, weekdayProfile: [{ day: 'Monday', mean: 2, stdev: 1, n: 12 }] }),
+      },
+    };
+    paint();
+    expect(screen.queryByTestId('rp-spark-till')).toBeNull();
+    expect(screen.queryByTestId('rp-spark-week')).toBeNull();
+  });
+
+  it('[REVERT-FAILS] folds a cutting whose answer is a sentence to a strip, and gives it back while arranging', () => {
+    hook.current = { ...base(), registers: { ...(base().registers as object), week: zeroWeek() } };
+    paint();
+    const week = () => screen.getByRole('region', { name: 'The week’s shape' });
+    expect(week()).toHaveAttribute('data-strip', 'true');
+    expect(screen.getByRole('region', { name: 'Spend pacing' })).not.toHaveAttribute('data-strip');
+    arrange();
+    expect(week()).not.toHaveAttribute('data-strip');
+  });
+
+  it('keeps the till full while it is empty, so its window picker stays in reach', () => {
+    hook.current = {
+      ...base(),
+      registers: { ...(base().registers as object), till: ok({ ...TILL, checkCount: 0, dailySeries: [], revenue: 0 }) },
+    };
+    paint();
+    expect(screen.getByRole('region', { name: 'Through the till' })).not.toHaveAttribute('data-strip');
+  });
+
+  it('[REVERT-FAILS] the window is one pill: four equal segments under a sliding thumb', () => {
+    paint('/reports?days=90');
+    const group = screen.getByRole('group', { name: 'Till window' });
+    expect(group).toHaveClass('rp-seg');
+    expect(group.style.getPropertyValue('--rp-i')).toBe('2');
+    expect(group.style.getPropertyValue('--rp-n')).toBe('4');
+    expect(group.querySelectorAll('.rp-seg__thumb')).toHaveLength(1);
+    fireEvent.click(within(group).getByRole('button', { name: '7 days' }));
+    expect(screen.getByRole('group', { name: 'Till window' }).style.getPropertyValue('--rp-i')).toBe('0');
+  });
+
+  it('[REVERT-FAILS] the stylesheet gives the pill 44 px targets, moves it by transform and clip-path only, and stills it for reduced motion', () => {
+    const css = readFileSync(resolve(__dirname, 'reports-next.css'), 'utf8');
+    const block = css.slice(css.indexOf('r61 c2'));
+    expect(block).toMatch(/\.rp-seg__btn\s*{[^}]*min-height:\s*44px/);
+    expect(block).toMatch(/\.rp-seg__thumb\s*{[^}]*transition:\s*transform 260ms/);
+    expect(block).toMatch(/@keyframes rp-spark-draw[\s\S]*clip-path/);
+    expect(block).not.toMatch(/transition:\s*all/);
+    expect(block).toMatch(/prefers-reduced-motion: reduce\)\s*{[\s\S]*\.rp-seg__thumb[\s\S]*transition:\s*none/);
+    expect(block).toMatch(/\.rp-cut\[data-strip\]\s*{[^}]*height:\s*72px/);
+  });
+
+  it('[REVERT-FAILS] the house sheet is a bento: one tall reading, one wide till', () => {
+    expect(DEFAULT_SLOTS.reading).toMatchObject({ w: 4, h: 12 });
+    expect(DEFAULT_SLOTS.till).toMatchObject({ w: 8, h: 6 });
+    const wide = ['reading', 'till', 'pacing', 'week', 'ahead', 'quadrants'] as const;
+    expect(new Set(wide.map((k) => DEFAULT_SLOTS[k].w)).size).toBeGreaterThan(1);
   });
 });
