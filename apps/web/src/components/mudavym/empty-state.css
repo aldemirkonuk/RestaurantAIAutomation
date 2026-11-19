@@ -102,14 +102,21 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  /* A fixed width capped by its holder. A percentage inside the figure's
-     shrink-to-fit box collapsed the paper to 50 px with 0-wide lines. */
-  width: 420px;
-  max-width: 100%;
+  /* The paper takes its width from a figure that stretches to the empty state
+     (below), then caps at 420 px. A percentage inside a shrink-to-fit figure
+     collapsed it to 50 px, and a fixed 420 px overflowed a 375 px phone. */
+  width: 100%;
+  max-width: 420px;
   box-sizing: border-box;
   padding: 28px 24px;
   border: 1px solid color-mix(in oklch, var(--ink-1) 8%, transparent);
   border-radius: 10px;
+}
+
+.mdv-empty__figure:has(> .mdv-ghost) {
+  align-self: stretch;
+  display: flex;
+  justify-content: center;
 }
 
 .mdv-ghost__line {
