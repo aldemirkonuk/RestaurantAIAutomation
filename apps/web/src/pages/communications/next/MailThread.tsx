@@ -187,6 +187,7 @@ function Letter({
 
 export function MailThread({
   threadKey,
+  withKey,
   onBack,
   backLabel,
   onOpenPerson,
@@ -197,6 +198,8 @@ export function MailThread({
   bookFacts,
 }: {
   threadKey: string;
+  /** The person the thread was opened from (`vendor:`, `team:` or `guest:`), when it was. */
+  withKey?: string | null;
   onBack: () => void;
   backLabel: string;
   onOpenPerson: (key: string) => void;
@@ -209,7 +212,7 @@ export function MailThread({
   onAnswer?: (answer: MailAnswer) => void;
   bookFacts?: ReadonlyMap<string, LetterFacts>;
 }) {
-  const q = useMailThread(threadKey);
+  const q = useMailThread(threadKey, withKey);
   const pages = q.data?.pages ?? [];
   const head = pages[0] ?? null;
   // Pages are held newest-first; the reader joins them oldest-first.

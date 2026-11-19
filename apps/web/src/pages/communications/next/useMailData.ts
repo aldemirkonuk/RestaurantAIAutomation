@@ -55,7 +55,8 @@ export const mailKeys = {
   summary: (house: string) => ['mail-summary', house] as const,
   people: (house: string, waitingOnly: boolean, search = '') => ['mail-people', house, waitingOnly, search] as const,
   threads: (house: string, withKey: string) => ['mail-threads', house, withKey] as const,
-  thread: (house: string, key: string) => ['mail-thread', house, key] as const,
+  thread: (house: string, key: string, withKey?: string | null) =>
+    (withKey ? (['mail-thread', house, key, withKey] as const) : (['mail-thread', house, key] as const)),
 };
 
 /** GET /mail/summary. `poll` is true only while the Mail tab is shown. */
@@ -156,17 +157,19 @@ export function useMailThreads(withKey: string | null) {
 }
 
 /**
- * GET /mail/thread?key=<thread_key>. The first page is the newest 50 letters;
+ * GET /mail/thread?key=<thread_key>[&with=<person key>]. The first page is the newest 50 letters;
  * "Show earlier letters" asks for the page `before` the oldest one held.
  * Pages are stored newest-first, so a reader joins them oldest-first.
  */
-export function useMailThread(key: string | null) {
+export function useMailThread(key: string | null, withKey?: string | null) {
   const house = useHouse();
   return useInfiniteQuery<MailThreadPage>({
-    queryKey: mailKeys.thread(house, key ?? ''),
+    queryKey: mailKeys.thread(house, key ?? '', withKey),
     initialPageParam: null as string | null,
     queryFn: async ({ pageParam }) => {
       const params: Record<string, string> = { key: key ?? '' };
+      // A team or guest thread is read by its person; one key can also be two vendors' threads.
+      if (withKey) params.with = withKey;
       if (pageParam) params.before = String(pageParam);
       return (await apiClient.get<MailThreadPage>('/mail/thread', { params })).data;
     },
