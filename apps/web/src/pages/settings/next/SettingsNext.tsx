@@ -66,13 +66,13 @@
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
-import { Plug } from 'lucide-react';
 import { Wordmark } from '@/components/mudavym';
 import { useAuth } from '@/contexts/AuthContext';
 import { animate, ink, prefersReducedMotion, settle } from '@/lib/mudavym';
+import { GroupPane, GroupRail, useOpenGroup, useScrollAfterPick, type RailGroup } from '@/components/mudavym/GroupRail';
 import { useMudavymDesign } from '@/lib/mudavym/useMudavymDesign';
 import {
-  CONNECTIONS_ANCHOR, INTERVIEW_GROUPS, KEPT_NOTE, MONO, SANS, SERIF,
+  CONNECTIONS_ANCHOR, INTERVIEW_GROUPS, KEPT_NOTE, SANS, SERIF,
   TAB_TO_ANCHOR, isCollapsedSection, isSectionId, keptTally, sectionsFor,
   word, type SectionId, type SectionSpec,
 } from './st-format';
@@ -112,6 +112,13 @@ const CSS = `
   .st-ink, .st-ink *, .st-disc, .st-chev { transition: none !important }
 }
 `;
+
+/** What a closed group head says it holds — the registers, counting the blocks that sit beside `SECTIONS`. */
+function registerCount(groupId: string, members: number): string {
+  const extra = groupId === 'house' ? 2 : groupId === 'own' ? 1 : 0;
+  const n = members + extra;
+  return n === 1 ? '1 register' : `${n} registers`;
+}
 
 /** "Fourteen" — a count word at the head of a sentence. */
 function capitalise(v: string): string {
@@ -209,6 +216,14 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
   const mainRef = useRef<HTMLElement | null>(null);
   const scrolledRef = useRef(false);
 
+  // One group open at a time (r73 c3 need 8). A `?tab=` deep link opens the group
+  // that carries its register, on the very first paint, so the scroll below has a
+  // body to land in. With no deep link the first group is open.
+  const tabGroup = isSectionId(tabParam) ? TAB_TO_ANCHOR[tabParam].replace(/^a-/, '') : null;
+  const { openId, open, toggle, pick, scrollTo } = useOpenGroup(tabGroup ?? INTERVIEW_GROUPS[0].id);
+  useEffect(() => { if (tabGroup) open(tabGroup); }, [tabGroup, open]);
+  useScrollAfterPick(scrollTo, (id) => document.getElementById(`a-${id}`), prefersReducedMotion());
+
   // A `?tab=` bookmark still has to land somewhere true. Every register is
   // already on screen, so "opening" it now means scrolling to its own heading
   // — once, on first paint, never resynced while the reader scrolls (a
@@ -236,12 +251,8 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
     );
   }, []);
 
-  const scrollToAnchor = useCallback((anchor: string) => {
-    const el = document.getElementById(anchor);
-    if (el && typeof el.scrollIntoView === 'function') {
-      el.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
-    }
-  }, []);
+  // Every jump names a group anchor (`a-record`): open that group, then scroll to it.
+  const scrollToAnchor = useCallback((anchor: string) => pick(anchor.replace(/^a-/, '')), [pick]);
 
   // `?tab=services|pos|email|calendar` still has to land somewhere true. The
   // fragment is the register, not the page, so a bookmark to the till opens
@@ -258,6 +269,15 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
     ...g,
     members: live.filter((s) => TAB_TO_ANCHOR[s.id] === g.anchor),
   }));
+
+  // The rail: the seven interview groups, then (while /connections exists) the
+  // one entry that leaves this page — eight in all.
+  const railGroups: RailGroup[] = [
+    ...groups.map((g) => ({ id: g.id, title: g.title, roman: g.roman, hint: g.hint })),
+    ...(connectionsOn
+      ? [{ id: 'connections', title: 'Connections', hint: 'What acts for this house', to: '/connections' }]
+      : []),
+  ];
 
   return (
     <div
@@ -298,7 +318,7 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
 
         <div aria-hidden style={{ borderTop: '1px solid var(--ink-1)', borderBottom: '1px solid var(--ink-1)', height: 3, opacity: 0.5, margin: '16px 0 20px' }} />
 
-        <div style={{ display: 'grid', gap: 26, gridTemplateColumns: 'minmax(0, 1fr)' }} className="st-layout">
+        <div className="gr-layout">
           {/* ── Contents ─────────────────────────────────────────────── */}
           {/*
             THE TABLE OF CONTENTS, sketch 109A.
@@ -309,87 +329,42 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
             own `<section>` rather than opening it, because everything below is
             already rendered.
           */}
-          <nav aria-label="Settings registers" className="st-nav" style={{ alignSelf: 'start' }}>
-            {groups.map((group) => (
-              <a
-                key={group.id}
-                href={`#${group.anchor}`}
-                onClick={(e) => { e.preventDefault(); scrollToAnchor(group.anchor); }}
-                className="st-tab st-ink st-focus"
+          <GroupRail
+            ariaLabel="Settings registers"
+            groups={railGroups}
+            openId={openId}
+            onPick={pick}
+            footer={connectionsOn ? (
+              <div style={{ margin: '4px 0 0' }}>
+                <p
+                id="st-connections-note"
                 style={{
-                  display: 'flex', gap: 9, alignItems: 'baseline', padding: '6px 9px', marginBottom: 2,
-                  borderRadius: 8, textDecoration: 'none', color: 'var(--ink-2)',
+                  fontFamily: SANS, fontSize: 11, lineHeight: 1.45, color: 'var(--ink-4)',
+                  margin: '3px 0 0', padding: '0 9px', maxWidth: 210,
                 }}
-              >
-                <span style={{ fontFamily: MONO, fontSize: 11, color: 'var(--seal-deep)', minWidth: 14 }}>{group.roman}</span>
-                <span style={{ display: 'block', minWidth: 0 }}>
-                  <span style={{ fontFamily: SANS, fontSize: 13, fontWeight: 600, display: 'block' }}>{group.title}</span>
-                  <span style={{ fontFamily: SANS, fontSize: 11, lineHeight: 1.4, color: 'var(--ink-4)', display: 'block', maxWidth: 200 }}>
-                    {group.hint}
-                  </span>
-                </span>
-              </a>
-            ))}
-
-            {/*
-              THE COLLAPSE, 2026-09-04 — four tabs become this one line. Not a
-              numbered register: it leaves this page rather than living on it.
-            */}
-            {connectionsOn ? (
-              <div style={{ margin: '14px 0 0' }}>
-                <p
-                  id="st-group-connections"
-                  style={{
-                    fontFamily: MONO, fontSize: 11, fontWeight: 600, letterSpacing: '0.14em',
-                    textTransform: 'uppercase', color: 'var(--ink-4)', margin: '0 0 1px', padding: '0 9px',
-                  }}
                 >
-                  Elsewhere
-                </p>
-                <Link
-                  to="/connections"
-                  className="st-tab st-ink st-focus"
-                  aria-describedby="st-connections-note"
-                  style={{
-                    display: 'flex', gap: 9, alignItems: 'baseline', padding: '5px 9px',
-                    borderRadius: 8, textDecoration: 'none',
-                    borderLeft: '2px solid var(--seal-ring)', color: 'var(--ink-2)',
-                  }}
-                >
-                  {/* ink-3, deliberately: aria-hidden icon glyph, not a caption — needs only WCAG's 3:1 non-text minimum. */}
-                  <Plug size={12} strokeWidth={1.8} aria-hidden style={{ color: 'var(--ink-3)' }} />
-                  <span style={{ fontFamily: SANS, fontSize: 13, fontWeight: 500, flex: 1, minWidth: 0 }}>
-                    Connections — what acts for this house
-                  </span>
-                </Link>
-                <p
-                  id="st-connections-note"
-                  style={{
-                    fontFamily: SANS, fontSize: 11, lineHeight: 1.45, color: 'var(--ink-4)',
-                    margin: '3px 0 0', padding: '0 9px', maxWidth: 210,
-                  }}
-                >
-                  Services, POS, Email and Calendar were four registers here
-                  and are one list there, with the payment provider and the
-                  servers the house has declared. Managers and owners only.
+                Services, POS, Email and Calendar were four registers here
+                and are one list there, with the payment provider and the
+                servers the house has declared. Managers and owners only.
                 </p>
               </div>
             ) : null}
-          </nav>
+          />
 
           {/* ── The interview — every register, in its fixed order ─────── */}
           <main ref={mainRef} style={{ minWidth: 0 }}>
             {groups.map((group) => (
-              <section key={group.id} id={group.anchor} aria-labelledby={`st-group-${group.id}`} style={{ marginBottom: 36 }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-                  <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: '0.14em', color: 'var(--seal-deep)' }}>
-                    {group.roman}
-                  </span>
-                  <h2 id={`st-group-${group.id}`} style={{ fontFamily: SERIF, fontSize: 23, fontWeight: 600, letterSpacing: '-0.01em', margin: 0 }}>
-                    {group.title}
-                  </h2>
-                </div>
-                <p style={{ fontFamily: SANS, fontSize: 12, lineHeight: 1.5, color: 'var(--ink-4)', margin: '4px 0 18px', maxWidth: 640 }}>
+              <GroupPane
+                key={group.id}
+                anchor={group.anchor}
+                headId={`st-group-${group.id}`}
+                title={group.title}
+                roman={group.roman}
+                meta={registerCount(group.id, group.members.length)}
+                open={openId === group.id}
+                onToggle={() => toggle(group.id)}
+              >
+                <p style={{ fontFamily: SANS, fontSize: 12, lineHeight: 1.5, color: 'var(--ink-4)', margin: '0 0 18px', maxWidth: 640 }}>
                   {group.hint}
                 </p>
 
@@ -447,7 +422,7 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
                     <DigestRow data={data} />
                   </div>
                 )}
-              </section>
+              </GroupPane>
             ))}
           </main>
         </div>
@@ -468,16 +443,6 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
           </p>
         </footer>
       </div>
-      {/*
-        The side bar is sticky on desktop and scrolls on its own if it ever
-        outgrows the viewport — a contents column that scrolls away is a
-        contents column you stop using. It stays a plain wrapping list on
-        narrow screens, where a fixed rail would eat the page.
-      */}
-      <style>{`@media (min-width: 900px) {
-        .st-layout { grid-template-columns: 236px minmax(0, 1fr) !important }
-        .st-layout > .st-nav { position: sticky; top: 18px; max-height: calc(100vh - 36px); overflow-y: auto }
-      }`}</style>
     </div>
   );
 }

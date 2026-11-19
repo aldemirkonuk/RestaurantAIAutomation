@@ -484,7 +484,11 @@ describe('SettingsNext — the editorial spine', () => {
     // nothing left to "open" from the nav; everything below is already
     // rendered, and the nav only jumps to it. The seven fixed interview
     // headings, in their I–VII order:
-    expect(within(nav).getAllByRole('link')).toHaveLength(7);
+    // r73: the seven are now rail buttons (one group open at a time); a link
+    // appears only for the one entry that leaves the page, and only with
+    // /connections on (not here).
+    expect(within(nav).getAllByRole('button')).toHaveLength(7);
+    expect(within(nav).queryAllByRole('link')).toHaveLength(0);
     for (const heading of ['The house', 'What it carries', 'How it buys', 'What it may do on its own', 'Who is here', 'Yours', 'The record']) {
       expect(within(nav).getByText(heading)).toBeInTheDocument();
     }
@@ -1282,7 +1286,7 @@ describe('the collapse — four connection tabs become one line', () => {
   it('offers one line out, naming the four registers it replaces', () => {
     mount();
     const nav = screen.getByRole('navigation', { name: /settings registers/i });
-    const link = within(nav).getByRole('link', { name: /Connections — what acts for this house/ });
+    const link = within(nav).getByRole('link', { name: /Connections/ });
     expect(link).toHaveAttribute('href', '/connections');
     expect(
       within(nav).getByText(/Services, POS, Email and Calendar were four registers here/),
@@ -1325,5 +1329,64 @@ describe('the collapse — four connection tabs become one line', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('/settings?tab=pos');
     const nav = screen.getByRole('navigation', { name: /settings registers/i });
     expect(within(nav).queryByRole('link', { name: /Connections/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('SettingsNext — one group open at a time (r73 c3 need 8)', () => {
+  const head = (title: string) =>
+    screen.getAllByRole('button', { name: new RegExp(`^[IVX]+\\s*${title}`) }).find((b) => b.classList.contains('gr-head-btn')) as HTMLElement;
+  const bodyOf = (anchor: string) => document.getElementById(`${anchor}-body`) as HTMLElement;
+
+  it('opens the first group and keeps the other six closed and inert', () => {
+    mount();
+    expect(head('The house')).toHaveAttribute('aria-expanded', 'true');
+    expect(bodyOf('a-house')).not.toHaveAttribute('inert');
+    for (const [title, anchor] of [['What it carries', 'a-carries'], ['How it buys', 'a-buys'], ['What it may do on its own', 'a-own'], ['Who is here', 'a-who'], ['Yours', 'a-yours'], ['The record', 'a-record']] as const) {
+      expect(head(title)).toHaveAttribute('aria-expanded', 'false');
+      expect(bodyOf(anchor)).toHaveAttribute('inert');
+    }
+  });
+
+  it('opening a group from the rail closes the one that was open', () => {
+    mount();
+    const nav = screen.getByRole('navigation', { name: /settings registers/i });
+    fireEvent.click(within(nav).getByText('How it buys'));
+    expect(head('How it buys')).toHaveAttribute('aria-expanded', 'true');
+    expect(head('The house')).toHaveAttribute('aria-expanded', 'false');
+    expect(bodyOf('a-buys')).not.toHaveAttribute('inert');
+    expect(bodyOf('a-house')).toHaveAttribute('inert');
+  });
+
+  it('a head closes its own group when pressed again', () => {
+    mount();
+    fireEvent.click(head('The house'));
+    expect(head('The house')).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('a ?tab= deep link opens the group that carries the register on first paint', () => {
+    mount('/settings?tab=thresholds');
+    expect(head('How it buys')).toHaveAttribute('aria-expanded', 'true');
+    expect(head('The house')).toHaveAttribute('aria-expanded', 'false');
+    expect(bodyOf('a-buys')).not.toHaveAttribute('inert');
+  });
+
+  it('keeps a closed group mounted, so a half-typed value survives opening another', () => {
+    mount();
+    expect(screen.getByTestId('st-section-team')).toBeInTheDocument();
+    expect(bodyOf('a-who')).toContainElement(screen.getByTestId('st-section-team'));
+  });
+
+  it('is a select at phone width: one option per group, and choosing one opens it', () => {
+    mount();
+    const select = screen.getByLabelText(/jump to a group/i) as HTMLSelectElement;
+    expect(select.options).toHaveLength(7);
+    fireEvent.change(select, { target: { value: 'yours' } });
+    expect(head('Yours')).toHaveAttribute('aria-expanded', 'true');
+    expect(head('The house')).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('says how many registers a closed head holds', () => {
+    mount();
+    expect(head('The record')).toHaveTextContent(/1 register\b/);
   });
 });
