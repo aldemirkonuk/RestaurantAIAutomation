@@ -167,7 +167,7 @@
 /* ── register headings ───────────────────────────────────────────────── */
 
 .mudavym .cx-sec { margin: 36px 0 0; }
-.mudavym .cx-sec-h { display: flex; align-items: baseline; gap: 12px; }
+.mudavym .cx-sec-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
 .mudavym .cx-sec-n {
   font-family: var(--mono, ui-monospace, monospace);
   font-size: 11px;
@@ -603,6 +603,8 @@
   border-radius: 2px;
   padding: 4px 6px;
   min-width: 16em;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 .mudavym .cx-pc-form {
   margin-top: 12px;
@@ -630,8 +632,8 @@
   margin-left: 6px;
   max-width: 100%;
 }
-.mudavym .cx-pc-form input[type='text'] { min-width: 14em; }
-.mudavym .cx-pc-form textarea { min-width: 22em; vertical-align: top; }
+.mudavym .cx-pc-form input[type='text'] { min-width: 14em; max-width: 100%; box-sizing: border-box; }
+.mudavym .cx-pc-form textarea { min-width: 22em; max-width: 100%; box-sizing: border-box; vertical-align: top; }
 .mudavym .cx-pc-form input:disabled,
 .mudavym .cx-pc-form textarea:disabled,
 .mudavym .cx-pc-form select:disabled,
