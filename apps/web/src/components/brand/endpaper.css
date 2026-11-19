@@ -672,6 +672,27 @@ html .mudavym.mdv-endpaper .mdv-ep-leaf input.mdv-ep-code[class*='border-red'] {
   line-height: 24px;
   color: var(--ink-2);
 }
+.mdv-spread-facts {
+  margin: 0;
+  display: grid;
+  gap: 10px;
+  font-size: 15px;
+}
+.mdv-spread-facts > div {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--mdv-ep-rule);
+}
+.mdv-spread-facts dt {
+  color: var(--ink-4);
+}
+.mdv-spread-facts dd {
+  margin: 0;
+  color: var(--ink-1);
+  overflow-wrap: anywhere;
+}
 .mdv-spread-foot {
   margin-top: 28px;
   font-size: 14px;

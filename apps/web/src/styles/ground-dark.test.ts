@@ -90,6 +90,12 @@ describe('charcoal fields', () => {
 });
 
 describe('charcoal chrome', () => {
+  it('the page column behind the page-tip strip is the charcoal ground, not the legacy light grey', () => {
+    charcoal(true);
+    const page = mount('<div class="mdv-shell__page bg-gray-50"></div>');
+    expect(getComputedStyle(page).backgroundColor).toBe('var(--paper-0)');
+  });
+
   it('the tip strip and the palette card flip with the shell', () => {
     charcoal(true);
     const strip = mount('<div class="mdv-guidance-strip"></div>');

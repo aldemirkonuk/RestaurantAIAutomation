@@ -38,7 +38,7 @@ describe('AuthSpread', () => {
 })
 
 describe('the doors wear the one shell', () => {
-  it.each(['ForgotPassword', 'NoAccess', 'ResetPassword', 'VerifyEmail'])(
+  it.each(['ForgotPassword', 'NoAccess', 'ResetPassword', 'VerifyEmail', 'InviteLanding'])(
     '%s is built on AuthSpread, not on a card or the old public shell',
     (page) => {
       const src = read(`src/pages/${page}.tsx`)
@@ -89,6 +89,16 @@ describe('endpaper.css — the spread', () => {
       }
     }
     expect(r).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.mdv-spread > \*,\s*\.mdv-spread-stack > \* \{\s*animation: none/)
+  })
+})
+
+describe('the invite facts', () => {
+  it('are drawn by a class the stylesheet defines, in tokens and not in a literal colour', () => {
+    expect(read('src/pages/InviteLanding.tsx')).toMatch(/<dl className="mdv-spread-facts">/)
+    const r = rules()
+    const block = r.match(/\.mdv-spread-facts > div \{([^}]*)\}/)?.[1] ?? ''
+    expect(block).toMatch(/border-bottom: 1px solid var\(--mdv-ep-rule\)/)
+    expect(block).not.toMatch(/#[0-9a-f]{3,8}\b|rgb|hsl/i)
   })
 })
 
