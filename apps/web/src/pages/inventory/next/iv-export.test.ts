@@ -86,6 +86,20 @@ describe('unit and bottle size', () => {
     expect(bottleSizeCell(wine())).toBe(750);
     expect(bottleSizeCell(spirit())).toBe(700);
   });
+  it('leaves the size blank for a keg or case the gateway defaulted to 750, and keeps a recorded one', () => {
+    const keg = raw({ id: 'k', kind: 'beer', uom: 'keg', wineName: 'Fixture Lager' });
+    const kegSized = raw({ id: 'k2', kind: 'beer', uom: 'keg', wineName: 'Fixture Lager', bottle_size_ml: 30000, bottleSizeMl: 30000 });
+    const kase = raw({ id: 'c', kind: 'wine', uom: 'case', wineName: 'Fixture Case' });
+    expect(keg.bottleSizeMl).toBe(750);
+    expect(bottleSizeCell(keg)).toBe('');
+    expect(bottleSizeCell(kase)).toBe('');
+    expect(bottleSizeCell(kegSized)).toBe(30000);
+  });
+  it('keeps the size of a bottle, a can, and a drink with no unit recorded', () => {
+    expect(bottleSizeCell(raw({ kind: 'beer', uom: 'can', bottleSizeMl: 330 }))).toBe(330);
+    expect(bottleSizeCell(raw({ kind: 'beer', uom: 'Bottles', bottleSizeMl: 500 }))).toBe(500);
+    expect(bottleSizeCell(raw({ kind: 'wine' }))).toBe(750);
+  });
   it('for a good of unknown kind keeps only a size someone recorded', () => {
     expect(bottleSizeCell(raw({ bottle_size_ml: null }))).toBe('');
     expect(bottleSizeCell(raw({ bottle_size_ml: 500, bottleSizeMl: 500 }))).toBe(500);

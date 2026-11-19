@@ -71,14 +71,23 @@ export function unitWord(row: InvRow): string {
   return isDrinkKind(goodKind(row)) ? 'bottle' : '';
 }
 
+/** A unit a bottle size describes: a bottle or a can. A keg, case or crate is not one. */
+const SIZED_UNIT = /^(bottles?|btls?|cans?)$/i;
+
 /**
  * The bottle size to write. The gateway gives an unsized good 750 ml, so a
- * food would read 750: only a drink keeps `bottleSizeMl`; a good of unknown
- * kind keeps only a size someone recorded; a food or supply has none.
+ * food would read 750 and so would a keg or case: a drink keeps `bottleSizeMl`
+ * only when its unit is a bottle or can (or none is recorded, which reads as
+ * "bottle"); a drink in any other unit keeps only a size someone recorded; a
+ * good of unknown kind keeps only a recorded size; a food or supply has none.
  */
 export function bottleSizeCell(row: InvRow): number | string {
   const kind = goodKind(row);
-  if (isDrinkKind(kind)) return blank(row.bottleSizeMl);
+  if (isDrinkKind(kind)) {
+    const uom = row.uom?.trim();
+    if (!uom || SIZED_UNIT.test(uom)) return blank(row.bottleSizeMl);
+    return blank(row.bottleSizeRecordedMl ?? null);
+  }
   if (kind === null || kind === 'unknown') return blank(row.bottleSizeRecordedMl ?? null);
   return '';
 }
