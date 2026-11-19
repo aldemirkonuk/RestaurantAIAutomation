@@ -93,6 +93,13 @@ function gatewaySaid(e: unknown): string | null {
   return said.trim();
 }
 
+/** A failed call's words for a sentence: the gateway's, or "could not be reached" for a dropped connection, never the transport's "Network Error". */
+function failWords(e: unknown, none: string): string {
+  const sent = e as { code?: unknown; response?: unknown; message?: unknown } | null;
+  if (sent?.code === 'ERR_NETWORK' && !sent.response) return 'Mudavym could not be reached just now.';
+  return e instanceof Error ? e.message : none;
+}
+
 function useActiveMenu(restaurantId: string | null) {
   const queryClient = useQueryClient();
   const key = ['menu', 'active', restaurantId] as const;
@@ -303,7 +310,7 @@ export default function MenuNext() {
           <div role="alert" data-testid="menu-error" style={{ display: 'grid', gap: 8, justifyItems: 'start' }}>
             <p className="cl-said">
               {gatewaySaid(q.error) ??
-                `The menu could not be read${q.error instanceof Error ? ` (${q.error.message})` : ''}.`}{' '}
+                `The menu could not be read${q.error instanceof Error ? ` (${failWords(q.error, '')})` : ''}.`}{' '}
               Nothing below is a real count of what this house lists.
             </p>
             <button type="button" className="cl-btn cl-focus" disabled={q.isFetching} onClick={() => {
@@ -330,7 +337,7 @@ export default function MenuNext() {
             <div style={{ marginTop: 16 }}>
               <AddItemForm
                 adding={add.isPending}
-                error={add.isError ? (add.error instanceof Error ? add.error.message : 'no reason given') : null}
+                error={add.isError ? (failWords(add.error, 'no reason given')) : null}
                 onAdd={(fields, opts) => add.mutate(fields, opts)}
               />
               {(() => {
@@ -389,7 +396,7 @@ export default function MenuNext() {
               <div role="alert" data-testid="menu-discard-error" style={{ marginTop: 8, display: 'grid', gap: 8, justifyItems: 'start' }}>
                 <p className="cl-said">
                   {gatewaySaid(discard.error) ??
-                    `That line was not discarded (${discard.error instanceof Error ? discard.error.message : 'no reason given'}).`}
+                    `That line was not discarded (${failWords(discard.error, 'no reason given')}).`}
                 </p>
                 <button
                   type="button"

@@ -142,6 +142,18 @@ describe('MenuNext — reading', () => {
     expect(await screen.findAllByTestId('menu-row')).toHaveLength(1);
   });
 
+  it('an unreachable gateway is said in words, never the transport\'s "Network Error", on the menu and on the kept menus', async () => {
+    mockGetMenu.mockRejectedValue(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
+    mockVersions.mockRejectedValue(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
+    mount();
+    const err = await screen.findByTestId('menu-error');
+    expect(err).toHaveTextContent('The menu could not be read (Mudavym could not be reached just now.).');
+    const kept = await screen.findByTestId('menu-versions-error');
+    expect(kept).toHaveTextContent('could not be read (Mudavym could not be reached just now.)');
+    expect(err.textContent).not.toContain('Network Error');
+    expect(kept.textContent).not.toContain('Network Error');
+  });
+
   it('says a failed read plainly, never as an empty menu', async () => {
     mockGetMenu.mockRejectedValue(new Error('ECONNREFUSED'));
     mount();
@@ -226,6 +238,16 @@ describe('MenuNext — add', () => {
     fireEvent.click(screen.getByRole('button', { name: /Add to menu/ }));
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Forbidden'));
     expect(nameField).toHaveValue('American black coffee');
+  });
+
+  it('a failed add on an unreachable gateway says so in words', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    mockAdd.mockRejectedValue(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
+    mount();
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Tea' } });
+    fireEvent.click(screen.getByRole('button', { name: /Add to menu/ }));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Mudavym could not be reached just now.'));
+    expect(screen.getByRole('alert').textContent).not.toContain('Network Error');
   });
 
   // ADR 0193: a priced line also sets the linked wine's own price, and the

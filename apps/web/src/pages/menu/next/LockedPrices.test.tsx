@@ -174,9 +174,11 @@ describe('Locked prices', () => {
   });
 
   it('L25: a request that fails outright says so too', async () => {
-    mockList.mockRejectedValue(new Error('Network Error'));
+    mockList.mockRejectedValue(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
     mount(true);
-    expect(await screen.findByTestId('locked-prices-error')).toHaveTextContent('could not be read (Network Error). This is not the same as having none.');
+    const said = await screen.findByTestId('locked-prices-error');
+    expect(said).toHaveTextContent('could not be read (Mudavym could not be reached just now.). This is not the same as having none.');
+    expect(said.textContent).not.toContain('Network Error');
   });
 
   it('no locks at all is said plainly', async () => {
