@@ -31,7 +31,7 @@ import { DeliveriesToName } from '@/components/mudavym/DeliveriesToName';
 import { ContextualInsights } from '@/components/insights/ContextualInsights';
 import { NamingUnread } from './NameThisWine';
 import { houseWordsFor } from './iv-house-words';
-import { KIND_CHIPS, readView, writeView, type GoodKind, type IvView } from './iv-url';
+import { IV_DEFAULT, KIND_CHIPS, readView, writeView, type GoodKind, type IvView } from './iv-url';
 import { StorageLocationManager } from '../../../components/inventory/StorageLocationManager';
 import { PosMappingPanel } from '../../../components/inventory/PosMappingPanel';
 import { ManualReceiptWorkspace } from '../../../components/inventory/ManualReceiptWorkspace';
@@ -48,6 +48,8 @@ import { CellarMapView } from '../command/CellarMapView';
 import type { InventoryItem as LegacyItem } from '../useInventoryPage';
 import InventoryTable from './InventoryTable';
 import ItemDrawer from './ItemDrawer';
+import { CountBar, PhoneFilter, activeFilterCount, nextToCount } from './PhoneBook';
+import { useIsPhone } from '../../../hooks/useIsPhone';
 import CarryThis from './CarryThis';
 import { removeBlocked, removeTarget } from './RowDropdown';
 import { RemoveFromInventoryModal } from '../../../components/inventory/RemoveFromInventoryModal';
@@ -197,7 +199,11 @@ export default function InventoryNext() {
     if (openedHere.current) navigate(-1);
     else setV({ open: null });
     openedHere.current = false;
+    setCountFirst(false);
   };
+  // The phone is a count mode for staff (critic c3 round 3, item 13); the Count bar opens the count itself.
+  const phone = useIsPhone();
+  const [countFirst, setCountFirst] = useState(false);
   useEffect(() => {
     if (openParam === null) openedHere.current = false;
   }, [openParam]);
@@ -606,6 +612,121 @@ export default function InventoryNext() {
   const verifyOrder = params.get('verify');
   if (verifyOrder) return <Navigate to={`/receiving?order=${encodeURIComponent(verifyOrder)}`} replace />;
 
+  const countMode = phone && !data.canManage;
+  const clearAll = () => setV({ chip: IV_DEFAULT.chip, kind: IV_DEFAULT.kind, zone: '', type: '', sort: IV_DEFAULT.sort, view: IV_DEFAULT.view });
+  const chipsEl = (
+    <div className="iv-chips" role="group" aria-label="Show only" data-testid="inventory-chips">
+      {CHIPS.map((c) =>
+        c.id === 'dead' && data.paceUnread ? (
+          <button
+            key={c.id}
+            type="button"
+            className="iv-chip"
+            disabled
+            title="Whether a title is dead stock could not be read: the selling pace did not answer"
+          >
+            {c.label} <span className="iv-num">{EM}</span>
+          </button>
+        ) : c.id === 'price' ? (
+          <button
+            key={c.id}
+            type="button"
+            className="iv-chip"
+            disabled
+            title="Price signals need a price feed, and none is read"
+          >
+            {c.label} <span className="iv-num">{EM}</span>
+          </button>
+        ) : (
+          <button
+            key={c.id}
+            type="button"
+            className="iv-chip iv-focus"
+            aria-pressed={activeChip === c.id}
+            data-on={activeChip === c.id}
+            onClick={() => setV({ chip: c.id })}
+          >
+            {c.label} <span className="iv-num">{chipCount(c.id)}</span>
+          </button>
+        ),
+      )}
+    </div>
+  );
+  const kindsEl = carriesGoods ? (
+    <div className="iv-chips" role="group" aria-label="Kind" data-testid="inventory-kinds">
+        {[{ id: '' as const, label: 'Every kind' }, ...KIND_CHIPS].map((k) => (
+          <button
+            key={k.id || 'all'}
+            type="button"
+            className="iv-chip iv-focus"
+            aria-pressed={kind === k.id}
+            data-on={kind === k.id}
+            onClick={() => setV({ kind: k.id })}
+          >
+            {k.label}
+          </button>
+        ))}
+      </div>
+  ) : null;
+  const searchEl = (
+    <label className="iv-search">
+      <span className="iv-sr">{words.search}</span>
+      <input
+        ref={searchRef}
+        type="search"
+        className="iv-field iv-focus"
+        placeholder={words.search}
+        value={query}
+        onChange={(e) => setV({ q: e.target.value })}
+      />
+      <span className="iv-hint">
+        accents ignored<span className="iv-key"> · /</span>
+      </span>
+    </label>
+  );
+  const controlsEl = (
+    <>
+      <Select
+        label="Zone"
+        value={zone}
+        onChange={(v) => setV({ zone: v })}
+        placeholder="All"
+        disabled={locs.unavailable || locs.loading}
+        options={[
+          ...locs.list.map((l) => ({ value: l.id, label: l.name })),
+          { value: 'none', label: 'Unassigned' },
+        ]}
+      />
+      <Select
+        label="Type"
+        value={type}
+        onChange={(v) => setV({ type: v })}
+        placeholder="All"
+        disabled={!data.libraryAnswered}
+        options={typeOptions}
+      />
+      <Select
+        label="Sort"
+        value={sort}
+        onChange={(v) => setV({ sort: (v || 'needs') as SortId })}
+        options={[
+          { value: 'needs', label: 'Needs you first' },
+          { value: 'name', label: 'Name' },
+          { value: 'value', label: 'Value at cost' },
+          { value: 'pace', label: 'Fastest moving' },
+        ]}
+      />
+      <span className="iv-toggle" role="group" aria-label="View">
+        <button type="button" className="iv-btn iv-focus" aria-pressed={view === 'table'} data-on={view === 'table'} onClick={() => setV({ view: 'table' })}>
+          Table
+        </button>
+        <button type="button" className="iv-btn iv-focus" aria-pressed={view === 'map'} data-on={view === 'map'} onClick={() => setV({ view: 'map' })}>
+          {words.map}
+        </button>
+      </span>
+    </>
+  );
+
   return (
     <div className="mudavym iv-page min-h-full" style={{ background: 'var(--paper-0)', color: 'var(--ink-1)', fontFamily: SANS }}>
       <div className="iv-wrap">
@@ -724,9 +845,11 @@ export default function InventoryNext() {
         ) : rows !== null ? (
           /* ── the book ───────────────────────────────────────────────── */
           <>
-            <p className="iv-read" data-testid="inventory-read-sentence">
-              {readSentence(rows, data.currency, !locs.unavailable, words)}
-            </p>
+            {countMode ? null : (
+              <p className="iv-read" data-testid="inventory-read-sentence">
+                {readSentence(rows, data.currency, !locs.unavailable, words)}
+              </p>
+            )}
             {data.stale ? (
               <p className="iv-note" role="status">
                 The last re-read of the stock failed, so these figures are from the read before it.{' '}
@@ -736,113 +859,49 @@ export default function InventoryNext() {
               </p>
             ) : null}
 
-            <div className="iv-chips" role="group" aria-label="Show only" data-testid="inventory-chips">
-              {CHIPS.map((c) =>
-                c.id === 'dead' && data.paceUnread ? (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className="iv-chip"
-                    disabled
-                    title="Whether a title is dead stock could not be read: the selling pace did not answer"
-                  >
-                    {c.label} <span className="iv-num">{EM}</span>
-                  </button>
-                ) : c.id === 'price' ? (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className="iv-chip"
-                    disabled
-                    title="Price signals need a price feed, and none is read"
-                  >
-                    {c.label} <span className="iv-num">{EM}</span>
-                  </button>
-                ) : (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className="iv-chip iv-focus"
-                    aria-pressed={activeChip === c.id}
-                    data-on={activeChip === c.id}
-                    onClick={() => setV({ chip: c.id })}
-                  >
-                    {c.label} <span className="iv-num">{chipCount(c.id)}</span>
-                  </button>
-                ),
-              )}
-            </div>
+            {phone ? null : chipsEl}
 
-            {carriesGoods ? (
-              <div className="iv-chips" role="group" aria-label="Kind" data-testid="inventory-kinds">
-                {[{ id: '' as const, label: 'Every kind' }, ...KIND_CHIPS].map((k) => (
-                  <button
-                    key={k.id || 'all'}
-                    type="button"
-                    className="iv-chip iv-focus"
-                    aria-pressed={kind === k.id}
-                    data-on={kind === k.id}
-                    onClick={() => setV({ kind: k.id })}
-                  >
-                    {k.label}
-                  </button>
-                ))}
+            {phone ? null : kindsEl}
+
+            {countMode ? (
+              <div className="iv-toolbar iv-toolbar--phone" data-solo="true" data-testid="inventory-toolbar">
+                {searchEl}
               </div>
-            ) : null}
-
+            ) : phone ? (
+              <div className="iv-toolbar iv-toolbar--phone" data-testid="inventory-toolbar">
+                {searchEl}
+                <PhoneFilter active={activeFilterCount({ chip: activeChip, kind, zone, type, sort, view })} onClear={clearAll}>
+                  {(close) => (
+                  <>
+                  <div>
+                    <h3 className="iv-sec">Show only</h3>
+                    {chipsEl}
+                  </div>
+                  {kindsEl}
+                  {controlsEl}
+                  <div className="iv-row-controls">
+                    <button
+                      type="button"
+                      className="iv-btn iv-focus"
+                      onClick={() => {
+                        close();
+                        setTimeout(showTools, 0);
+                      }}
+                    >
+                      Tools
+                    </button>
+                    <Link to="/wines" className="iv-btn iv-focus" data-seal="true">
+                      Add a bottle
+                    </Link>
+                  </div>
+                  </>
+                  )}
+                </PhoneFilter>
+              </div>
+            ) : (
             <div className="iv-toolbar" data-testid="inventory-toolbar">
-              <label className="iv-search">
-                <span className="iv-sr">{words.search}</span>
-                <input
-                  ref={searchRef}
-                  type="search"
-                  className="iv-field iv-focus"
-                  placeholder={words.search}
-                  value={query}
-                  onChange={(e) => setV({ q: e.target.value })}
-                />
-                <span className="iv-hint">
-                  accents ignored<span className="iv-key"> · /</span>
-                </span>
-              </label>
-              <Select
-                label="Zone"
-                value={zone}
-                onChange={(v) => setV({ zone: v })}
-                placeholder="All"
-                disabled={locs.unavailable || locs.loading}
-                options={[
-                  ...locs.list.map((l) => ({ value: l.id, label: l.name })),
-                  { value: 'none', label: 'Unassigned' },
-                ]}
-              />
-              <Select
-                label="Type"
-                value={type}
-                onChange={(v) => setV({ type: v })}
-                placeholder="All"
-                disabled={!data.libraryAnswered}
-                options={typeOptions}
-              />
-              <Select
-                label="Sort"
-                value={sort}
-                onChange={(v) => setV({ sort: (v || 'needs') as SortId })}
-                options={[
-                  { value: 'needs', label: 'Needs you first' },
-                  { value: 'name', label: 'Name' },
-                  { value: 'value', label: 'Value at cost' },
-                  { value: 'pace', label: 'Fastest moving' },
-                ]}
-              />
-              <span className="iv-toggle" role="group" aria-label="View">
-                <button type="button" className="iv-btn iv-focus" aria-pressed={view === 'table'} data-on={view === 'table'} onClick={() => setV({ view: 'table' })}>
-                  Table
-                </button>
-                <button type="button" className="iv-btn iv-focus" aria-pressed={view === 'map'} data-on={view === 'map'} onClick={() => setV({ view: 'map' })}>
-                  {words.map}
-                </button>
-              </span>
+              {searchEl}
+              {controlsEl}
               <button type="button" className="iv-btn iv-focus" onClick={showTools}>
                 Tools
               </button>
@@ -850,6 +909,7 @@ export default function InventoryNext() {
                 Add a bottle
               </Link>
             </div>
+            )}
             {data.unread.length > 0 ? (
               <p className="iv-note" data-testid="inv-unread">
                 {data.unread.length === 1 ? 'One read did not answer: ' : 'Some reads did not answer: '}
@@ -860,6 +920,8 @@ export default function InventoryNext() {
               </p>
             ) : null}
 
+            {countMode ? null : (
+              <>
             <QuietLine {...data.waiting} naming={naming} onName={() => setNaming((v) => !v)} />
             {naming ? <DeliveriesToName items={nameable} /> : null}
             {posQueue.isError ? (
@@ -884,7 +946,9 @@ export default function InventoryNext() {
             {/* The insights rail: the legacy page's only mount
                 (InventoryCommandPage.tsx:1087), same props. Its one-tap acts
                 are live since #483. */}
-            <ContextualInsights host="inventory" defaultOpen={false} className="iv-insights" />
+            {phone ? null : <ContextualInsights host="inventory" defaultOpen={false} className="iv-insights" />}
+              </>
+            )}
 
             {view === 'map' ? (
               <div className="iv-map">
@@ -962,9 +1026,9 @@ export default function InventoryNext() {
               ) : null}
               <InventoryTable
                 thing={words.one}
-                selected={selected}
-                onSelect={toggleSelect}
-                onSelectAll={selectAllVisible}
+                selected={countMode ? undefined : selected}
+                onSelect={countMode ? undefined : toggleSelect}
+                onSelectAll={countMode ? undefined : selectAllVisible}
                 rows={visible}
                 libraryUnread={!data.libraryAnswered}
                 grouped={sort === 'needs'}
@@ -988,6 +1052,16 @@ export default function InventoryNext() {
               />
               </>
             )}
+            {countMode && rows !== null && view !== 'map' && visible.length > 0 ? (
+              <CountBar
+                next={nextToCount(visible)}
+                onCount={(r) => {
+                  setCountFirst(true);
+                  openItem(r.id);
+                }}
+              />
+            ) : null}
+            {phone && !countMode ? <ContextualInsights host="inventory" defaultOpen={false} className="iv-insights" /> : null}
             <NamingUnread />
             {zoneUnread > 0 ? (
               <p className="iv-note">
@@ -996,6 +1070,8 @@ export default function InventoryNext() {
               </p>
             ) : null}
 
+            {countMode ? null : (
+              <>
             {/* ── tools ──────────────────────────────────────────────── */}
             <section ref={toolsRef} id="iv-tools" className="iv-tools" aria-labelledby="iv-tools-h">
               <h2 id="iv-tools-h" className="iv-sec">
@@ -1069,6 +1145,8 @@ export default function InventoryNext() {
                 Dead stock tip: feature slow movers by the glass this weekend.
               </p>
             ) : null}
+              </>
+            )}
           </>
         ) : null}
       </div>
@@ -1178,6 +1256,7 @@ export default function InventoryNext() {
           providersError={data.providers.error}
           restaurantId={data.rid}
           onClose={closeItem}
+          startWith={countFirst ? 'count' : undefined}
         />
       ) : null}
     </div>
