@@ -28,6 +28,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Action, Note, Row, fieldStyle } from './SectionKit';
 import { MONO, SANS } from './st-format';
+import { isUnreachable, UNREACHABLE_WORDS } from '@/lib/unreachable';
 import {
   confirmPourSize,
   getTargetMargin,
@@ -137,7 +138,7 @@ function messageOf(err: unknown): string {
   const m = e?.response?.data?.message;
   if (typeof m === 'string' && m) return m;
   if (Array.isArray(m) && m.length) return String(m[0]);
-  return e?.message || 'no reason was given';
+  return (isUnreachable(err) ? UNREACHABLE_WORDS : e?.message) || 'no reason was given';
 }
 
 export function TargetMarginSection({ canManage, onSaved }: { canManage: boolean; onSaved?: () => void }) {

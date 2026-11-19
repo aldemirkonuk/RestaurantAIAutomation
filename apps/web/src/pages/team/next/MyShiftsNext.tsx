@@ -49,6 +49,7 @@ import {
 } from './tm-format';
 import { MutationError } from './tm-bits';
 import './team-next.css';
+import { failureWords } from '@/lib/unreachable';
 
 export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
   const rid = useActiveRestaurantId();
@@ -157,8 +158,8 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
           <div className="tm-banner" role="alert">
             <span>
               {payload
-                ? `Your week could not be refreshed (${q.error instanceof Error ? q.error.message : 'unknown error'}) — what is below is the last answer, not the present.`
-                : `Your week could not be loaded (${q.error instanceof Error ? q.error.message : 'unknown error'}). Nothing below is claimed — this is not a week off.`}
+                ? `Your week could not be refreshed (${failureWords(q.error, 'unknown error')}) — what is below is the last answer, not the present.`
+                : `Your week could not be loaded (${failureWords(q.error, 'unknown error')}). Nothing below is claimed — this is not a week off.`}
             </span>
             <button type="button" className="tm-ctl" onClick={() => void q.refetch()}>
               Try again

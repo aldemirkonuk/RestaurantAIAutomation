@@ -44,11 +44,12 @@ import {
   type WidenReason,
 } from './vendor-scope';
 import type { MenuSupplier } from '../../../services/api/vendorMenuSupply';
+import { failureWords } from '@/lib/unreachable';
 
 function serverMessage(e: unknown): string {
   const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
   if (typeof msg === 'string' && msg.trim()) return msg;
-  return e instanceof Error ? e.message : 'unknown error';
+  return failureWords(e, 'unknown error');
 }
 
 function askedScope(): VendorScope | null {

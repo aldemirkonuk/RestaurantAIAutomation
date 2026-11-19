@@ -22,6 +22,7 @@ import { getFormerStaff, type FormerStaffPerson } from '../../../services/api/te
 import { useActiveRestaurantId } from './useTeamNextData';
 import { EM, fmtDayShort, fmtHours, fmtMoneyExact, fmtMoneyWhole, type HouseMoneyLike } from './tm-format';
 import { Alert } from './tm-bits';
+import { failureWords } from '@/lib/unreachable';
 
 function day(iso: string | null | undefined): string {
   return iso ? fmtDayShort(iso.slice(0, 10)) : EM;
@@ -148,7 +149,7 @@ export function FormerStaffSheet({ onClose }: { onClose: () => void }) {
         {q.isError ? (
           <Alert>
             The former-staff history could not be read
-            {q.error instanceof Error && q.error.message ? ` (${q.error.message})` : ''}, so who
+            {q.error instanceof Error && q.error.message ? ` (${failureWords(q.error, '')})` : ''}, so who
             has left is unknown here — not nobody.
           </Alert>
         ) : q.isLoading || !q.data ? (
