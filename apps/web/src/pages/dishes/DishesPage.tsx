@@ -49,6 +49,7 @@ import RecipeSheet from '../cellar/next/recipe/RecipeSheet';
 import { pourCostShare } from '../cellar/next/recipe/DrinkCards';
 import { PRICE_UNREAD, priceText, readPrice } from '../cellar/next/recipe/price-text';
 import { useHousePercent, type SayPercent } from '../cellar/next/recipe/useHousePercent';
+import type { TakeOffMenuAnswer } from '../../services/api/recipes';
 import { reason, useCanEditRecipe, useCreateDish, useDishFigures, useDishes, useHouseMoney, useMenuPrices, useRemoveDish, useTakeMenuPrices, useTakeOffMenu, useUpdateDish } from '../cellar/next/recipe/useRecipe';
 import { MENU_PRICES_UNREAD, MenuPriceCell } from '../cellar/next/recipe/MenuPriceCell';
 import MenuDishesOffer from './MenuDishesOffer';
@@ -57,7 +58,6 @@ import { AllergenCell, AllergenCheck, keptFor } from '../cellar/next/recipe/List
 import { CostWaits, NoRecipeYet } from '../cellar/next/recipe/ListCostWaits';
 import UseMenuPrice, { menuPriceOffer } from '../cellar/next/recipe/UseMenuPrice';
 import TakeMenuPrices, { type Takeable } from './TakeMenuPrices';
-import TakeOffMenu, { type OffMenu } from './TakeOffMenu';
 import type { DishFigureRow, DishListRow, MenuPrice } from '../../services/api/recipes';
 import { EM, SANS } from '../cellar/next/cellar-format';
 import '../cellar/next/cellar-next.css';
@@ -350,6 +350,118 @@ function DishDetails({
     </form>
   );
 }
+
+/**
+ * The dishes the current menu no longer prints are counted, shown, and
+ * taken off the list together after one confirm (g2 menu gap). A re-uploaded
+ * menu left every dish it dropped live on the list with nothing saying so.
+ *
+ * One line says how many; the sheet lists each by name, and one button takes
+ * them all off. Nothing is written before that button; the gateway reads the
+ * menu again and names every dish it leaves, which is said here in words. A
+ * failed take-off says nothing came off. A dish taken off keeps its recipe's
+ * saved versions.
+ */
+export interface OffMenu {
+  id: string;
+  name: string;
+  section: string | null;
+}
+
+const dishCount = (n: number) => `${n} ${n === 1 ? 'dish' : 'dishes'}`;
+
+function TakeOffMenu({
+  items,
+  showing,
+  onShowing,
+  onTakeOff,
+}: {
+  items: OffMenu[];
+  showing: boolean;
+  onShowing: (v: boolean) => void;
+  onTakeOff: (ids: string[]) => Promise<TakeOffMenuAnswer>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [said, setSaid] = useState<{ ok: boolean; text: string; left: string[] } | null>(null);
+
+  const takeOff = async () => {
+    if (busy) return;
+    setBusy(true);
+    setSaid(null);
+    try {
+      const out = await onTakeOff(items.map((i) => i.id));
+      onShowing(false);
+      setSaid({
+        ok: true,
+        text: out.removed.length > 0 ? `${dishCount(out.removed.length)} ${out.removed.length === 1 ? 'is' : 'are'} off your list.` : 'No dish was taken off.',
+        left: out.skipped.map((s) => `${s.name} was left on the list: ${s.why}`),
+      });
+    } catch (e) {
+      setSaid({ ok: false, text: `Nothing was taken off: ${reason(e)}`, left: [] });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const result = said ? (
+    <div data-testid="take-off-menu-said" role={said.ok ? 'status' : 'alert'} style={{ marginTop: 8 }}>
+      <p className="cl-said">{said.text}</p>
+      {said.left.map((l) => (
+        <p key={l} className="cl-note">{l}</p>
+      ))}
+    </div>
+  ) : null;
+
+  if (items.length === 0) return result ? <div style={{ marginTop: 12 }}>{result}</div> : null;
+
+  return (
+    <div className="cl-panel" style={{ marginTop: 12, display: 'grid', gap: 8 }} data-testid="take-off-menu">
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span className="cl-said">
+          {dishCount(items.length)} {items.length === 1 ? 'is' : 'are'} not on the current menu.
+        </span>
+        <button type="button" className="cl-btn cl-focus" aria-pressed={showing} onClick={() => onShowing(!showing)}>
+          {showing ? 'Show all dishes' : 'Show them'}
+        </button>
+      </div>
+      {showing ? (
+        <div role="group" aria-label="Dishes the current menu does not print" data-testid="take-off-menu-sheet" style={{ display: 'grid', gap: 8 }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="cl-table">
+              <thead>
+                <tr>
+                  <th scope="col">Dish</th>
+                  <th scope="col">Section</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((i) => (
+                  <tr key={i.id} data-testid={`take-off-menu-row-${i.id}`}>
+                    <td>{i.name}</td>
+                    <td>{i.section ?? 'No section'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="cl-note">
+            The current menu has no line of these names. Nothing comes off until you take them off. A dish taken off keeps its recipe’s saved versions. If a dish is on the menu under another name, keep it and rename it.
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" className="cl-btn cl-focus" disabled={busy} onClick={() => void takeOff()}>
+              {busy ? 'Taking off…' : `Take ${items.length === 1 ? 'it' : 'them'} off the list`}
+            </button>
+            <button type="button" className="cl-btn cl-focus" disabled={busy} onClick={() => onShowing(false)}>
+              Keep them
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {result}
+    </div>
+  );
+}
+
 
 export default function DishesPage() {
   const dishes = useDishes();
