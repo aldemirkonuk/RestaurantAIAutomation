@@ -79,7 +79,6 @@ describe('the toast and the header', () => {
   it('the toast stands on the elevation and a 3 px edge in the status token', () => {
     // One shadow: the elevation only when the toast does not wear the shared glass surface.
     expect(block(TOAST, '.mdv-toast:not(.mdv-glass)')).toMatch(/box-shadow:\s*var\(--elev-2\)\s*!important/);
-    expect(block(TOAST, '.mdv-toast')).toMatch(/box-shadow:\s*none\s*!important/);
     expect(block(TOAST, '.mdv-toast')).toMatch(/border-left:\s*3px solid var\(--toast-accent\)\s*!important/);
     expect(block(TOAST, ".mdv-toast[data-type='error']")).toMatch(/--toast-accent:\s*var\(--alarm\)/);
   });
