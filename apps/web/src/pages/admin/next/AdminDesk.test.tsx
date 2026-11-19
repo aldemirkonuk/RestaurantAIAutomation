@@ -176,7 +176,11 @@ describe('the operations desk', () => {
     open(); await screen.findByText('inventory');
     expect(screen.getByText('calendar')).toBeInTheDocument();
     expect(screen.getByText('buffer')).toBeInTheDocument();
+    const filter = screen.getByRole('group', { name: 'Filter by health' });
+    expect(filter).toHaveClass('mdv-pill');
+    expect(filter.querySelectorAll('.mdv-pill__thumb')).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'Needs attention' }));
+    expect(screen.getByRole('button', { name: 'Needs attention' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByText('inventory')).not.toBeInTheDocument();
     expect(screen.getByText('calendar')).toBeInTheDocument();
     expect(screen.queryByText('buffer')).not.toBeInTheDocument();

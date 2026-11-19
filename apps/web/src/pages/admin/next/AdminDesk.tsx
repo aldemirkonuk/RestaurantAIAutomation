@@ -4,6 +4,7 @@ import { Sheet, Wordmark } from '@/components/mudavym';
 import { useAuth } from '@/contexts/AuthContext';
 import apiClient, { getErrorMessage } from '@/services/api/client';
 import { ensureFraunces } from './fonts';
+import { SlidingPill } from '../../../components/mudavym/SlidingPill';
 import './admin-desk.css';
 
 type Agent = { agent_name: string; version: string | null; status: string; healthy: boolean | null };
@@ -186,9 +187,7 @@ export default function AdminDesk() {
         <span>{agents.value ? `Read ${stamp(agents.asOf)}` : initialLoading ? 'Awaiting a reading' : 'No reading yet'}{agents.error && agents.value && <span className="admin-desk__stale"> · re-read failed, showing the last reading</span>}</span></div>
         <p>These services work across every house on Mudavym. {operator ? 'Your platform grant permits restart and stop.' : 'Health is shown here; platform operators handle restarts and stops.'} Select an agent for its counters.</p>
         {agents.error && !agents.value && <p role="alert">Agent health is unavailable. {agents.error}</p>}
-        {!!agents.value?.agents.length && <div role="group" aria-label="Filter by health" className="admin-desk__filters">
-          {([['all', 'All'], ['healthy', 'Healthy'], ['attention', 'Needs attention']] as const).map(([key, label]) => <button key={key} type="button" className="admin-desk__filter" aria-pressed={statusFilter === key} data-active={statusFilter === key} onClick={() => setStatusFilter(key)}>{label}</button>)}
-        </div>}
+        {!!agents.value?.agents.length && <div className="admin-desk__filters"><SlidingPill<'all' | 'healthy' | 'attention'> ariaLabel="Filter by health" value={statusFilter} onChange={setStatusFilter} options={[{ value: 'all', label: 'All' }, { value: 'healthy', label: 'Healthy' }, { value: 'attention', label: 'Needs attention' }]} /></div>}
         {initialLoading ? <p role="status">Reading the agent register…</p> : agents.value?.agents.length === 0 ? <p role="status">The orchestrator answered. It reports no running agents.</p> : agents.value && (() => {
           const visible = agents.value.agents.filter(agent => statusFilter === 'all' ? true : statusFilter === 'healthy' ? agent.healthy === true : agent.healthy === false);
           return visible.length === 0 ? <p role="status">No agent matches this filter.</p> : <div className="admin-desk__register">

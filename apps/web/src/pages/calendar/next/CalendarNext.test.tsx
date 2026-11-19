@@ -324,6 +324,17 @@ describe('CalendarNext — the KEEP', () => {
     expect(screen.getByLabelText(/Friday, September 18 — nothing written/)).toBeInTheDocument();
   });
 
+  it('draws the magnifications as one sliding pill with a shortcut hint on each', () => {
+    draw();
+    const group = screen.getByRole('group', { name: 'Magnification' });
+    expect(group).toHaveClass('mdv-pill');
+    expect(group.querySelectorAll('.mdv-pill__thumb')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Week' })).toHaveAttribute('title', 'Week (w)');
+    fireEvent.click(screen.getByRole('button', { name: 'Agenda' }));
+    expect(screen.getByRole('button', { name: 'Month' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Agenda' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
   it('carries all four magnifications and switches between them', () => {
     draw();
     for (const label of ['Month', 'Week', 'Day', 'Agenda']) {

@@ -41,6 +41,7 @@ import {
 } from '../../../services/api/team';
 import { fmtDayShort, resolveName, todayIso } from './tm-format';
 import { MutationError } from './tm-bits';
+import { SlidingPill } from '../../../components/mudavym/SlidingPill';
 import {
   FIGURES,
   checkRow,
@@ -206,30 +207,18 @@ export function SalesSheet({
       }
     >
       <div className="tm-in tm-form">
-        <div className="tm-actions" role="group" aria-label="How many services">
-          <button
-            type="button"
-            className="tm-ctl tm-ctl--sm"
-            aria-pressed={mode === 'one'}
-            onClick={() => {
-              setMode('one');
-              setResult(null);
-            }}
-          >
-            One service
-          </button>
-          <button
-            type="button"
-            className="tm-ctl tm-ctl--sm"
-            aria-pressed={mode === 'several'}
-            onClick={() => {
-              setMode('several');
-              setResult(null);
-            }}
-          >
-            Several at once
-          </button>
-        </div>
+        <SlidingPill<Mode>
+          ariaLabel="How many services"
+          value={mode}
+          onChange={(next) => {
+            setMode(next);
+            setResult(null);
+          }}
+          options={[
+            { value: 'one', label: 'One service' },
+            { value: 'several', label: 'Several at once' },
+          ]}
+        />
 
         {rosterUnknown &&
           (rosterFailed ? (
