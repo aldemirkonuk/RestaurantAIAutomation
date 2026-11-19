@@ -52,4 +52,10 @@ describe('group-rail.css motion contract (r73 c3)', () => {
     const src = readFileSync(join(__dirname, 'GroupRail.tsx'), 'utf8');
     expect(src).toMatch(/behavior:\s*reduced \? 'instant' : 'smooth'/);
   });
+
+  // r74 walk: an implicit auto column grew to the widest control inside (a 309 px select in
+  // Distributor feeds), so the pane was 355 px in a 327 px column and the page scrolled sideways.
+  it('pins the body to one column that cannot outgrow its container', () => {
+    expect(css).toMatch(/\.gr-body \{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  });
 });

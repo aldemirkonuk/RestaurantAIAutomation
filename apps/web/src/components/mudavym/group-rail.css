@@ -47,7 +47,7 @@
 .gr-pane[data-open="true"] .gr-chev { transform: rotate(180deg); }
 
 .gr-body {
-  display: grid; grid-template-rows: 0fr; opacity: 0;
+  display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 0fr; opacity: 0;
   transition: grid-template-rows 260ms cubic-bezier(0.16, 1, 0.3, 1), opacity 200ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 .gr-body[data-open="true"] { grid-template-rows: 1fr; opacity: 1; }
