@@ -92,4 +92,10 @@ describe('the press on every other control', () => {
     const reduce = CSS.slice(CSS.indexOf('@media (prefers-reduced-motion: reduce)'));
     expect(squash(reduce)).toMatch(/:active:not\([^)]*\)\{scale:none;\}/);
   });
+
+  it('puts the ground ink, not white, on the chosen pill label in charcoal', () => {
+    expect(squash(CSS)).toMatch(
+      /html\[data-mudavym-ground='charcoal'\]\.mdv-pill__opt\[aria-pressed='true'\],html\[data-mudavym-ground='charcoal'\]\.mdv-pill__opt\[aria-selected='true'\]\{color:var\(--paper-0,#15130f\);\}/,
+    );
+  });
 });

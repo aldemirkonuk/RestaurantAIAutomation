@@ -111,6 +111,10 @@
 }
 .mdv-pill__opt[aria-pressed='true'],
 .mdv-pill__opt[aria-selected='true'] { color: #fff; }
+/* Charcoal: the thumb is the light teal, so the chosen label takes the ground's
+   ink (about 7:1) instead of white (2.5:1). */
+html[data-mudavym-ground='charcoal'] .mdv-pill__opt[aria-pressed='true'],
+html[data-mudavym-ground='charcoal'] .mdv-pill__opt[aria-selected='true'] { color: var(--paper-0, #15130f); }
 .mdv-pill__opt:focus-visible { outline: 2px solid var(--seal, #1a5e6b); outline-offset: -2px; }
 .mdv-pill__opt[data-empty='true'] { opacity: 0.4; }
 .mdv-pill__count { display: inline-block; margin-left: 6px; animation: mdv-tick var(--dur-hover) var(--ease-house); }
