@@ -24,6 +24,8 @@ const h = vi.hoisted(() => ({
   get: vi.fn(),
   put: vi.fn(),
   auth: {} as Record<string, unknown>,
+  taste: vi.fn(),
+  roll: vi.fn(),
 }));
 
 vi.mock('../../../../services/api/client', () => ({
@@ -34,6 +36,12 @@ vi.mock('../../../../services/api/client', () => ({
   },
 }));
 vi.mock('../../../../contexts/AuthContext', () => ({ useAuth: () => h.auth }));
+// How it tastes has its own suite (RecipeTaste.test.tsx); here the route is simply not switched on.
+vi.mock('../../../../services/api/taste', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  getTaste: h.taste,
+  rollupTaste: h.roll,
+}));
 
 import RecipeSheet, { LEGACY_NOTE, NEWER_SENTENCE, RESTORED_SENTENCE, SET_ASIDE_SENTENCE, STALE_SENTENCE } from './RecipeSheet';
 import { draftKey, forgetDrafts, keepDraft } from './drafts';
@@ -151,6 +159,8 @@ const amount = (i: number) => (screen.getAllByLabelText('Amount')[i] as HTMLInpu
 beforeEach(() => {
   h.get.mockReset();
   h.put.mockReset();
+  h.taste.mockReset().mockResolvedValue({ state: 'absent' });
+  h.roll.mockReset();
   versions = [];
   past = {};
   other = null;
@@ -181,6 +191,48 @@ function leaveReturnValue(): unknown {
 }
 
 describe('RecipeSheet', () => {
+  it('how it tastes: a one-line summary opens the sheet, then the cards, then the taste card with its action', async () => {
+    h.taste.mockResolvedValue({
+      state: 'ready',
+      data: {
+        effective: { axes: { sour: { v: 7, lo: 6, hi: 8, conf: 0.55, prov: [{ kind: 'recipe', share: 1 }], bandOnly: false } }, descriptors: [], texture: [], conflicts: [] },
+        layers: [{ source: 'recipe', version: 1, method: 'computed', statedByName: null, statedAt: '2026-11-19T10:00:00Z', hasNote: false, noteText: null }],
+      },
+    });
+    serve(negroni());
+    mount();
+    const lead = await screen.findByTestId('recipe-taste-line');
+    expect(lead).toHaveTextContent('How it tastes');
+    expect(lead).toHaveTextContent(/sour/i);
+    expect(h.taste).toHaveBeenCalledWith('cocktail', CID, RID);
+    const card = await screen.findByTestId('recipe-taste');
+    expect(card).toHaveTextContent('Worked out from the recipe');
+    expect(screen.getByTestId('recipe-taste-act')).toHaveTextContent('Read again');
+    // Order: summary line, then the sheet's cards, then the taste card.
+    const sheet = screen.getByTestId('recipe-sheet');
+    const pos = (el: Element) => Array.from(sheet.querySelectorAll('*')).indexOf(el);
+    expect(pos(lead)).toBeLessThan(pos(screen.getByText('Cost a serve')));
+    expect(pos(screen.getByText('Cost a serve'))).toBeLessThan(pos(card));
+  });
+
+  it('how it tastes: Work it out sends this drink to the roll-up and the sheet shows what came back', async () => {
+    h.taste.mockResolvedValue({ state: 'ready', data: { effective: null, layers: [] } });
+    const after = {
+      effective: { axes: { sweet: { v: 6, lo: 5, hi: 7, conf: 0.55, prov: [{ kind: 'recipe', share: 1 }], bandOnly: false } }, descriptors: [], texture: [], conflicts: [] },
+      layers: [{ source: 'recipe', version: 1, method: 'computed', statedByName: null, statedAt: '2026-11-19T10:00:00Z', hasNote: false, noteText: null }],
+    };
+    h.roll.mockImplementation(async () => {
+      h.taste.mockResolvedValue({ state: 'ready', data: after });
+      return { state: 'ready', data: after };
+    });
+    serve(negroni());
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Work it out' }));
+    await waitFor(() => expect(h.roll).toHaveBeenCalledWith('cocktail', CID, RID));
+    expect(await screen.findByTestId('taste-row-sweet')).toBeInTheDocument();
+    expect(screen.getByTestId('recipe-taste-act')).toHaveTextContent('Read again');
+  });
+
   it('2. 2 of 3 lines priced says so and shows no total', async () => {
     serve(
       negroni({

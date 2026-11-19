@@ -70,6 +70,7 @@ import { parseLine, parseSpec, type ProposedLine } from './parseSpec';
 import { qtyText, readsAsThousandAmbiguous } from './units';
 import DrinkCards from './DrinkCards';
 import WhatIsInAServe from './WhatIsInAServe';
+import RecipeTaste, { RecipeTasteLine } from './RecipeTaste';
 import {
   useCanEditRecipe,
   useHouseMoney,
@@ -557,8 +558,16 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
       ) : null}
       {/* The drink opens on its cards, then what is in a serve, then its lines
           (founder ask: a drink shows its KPI cards, then a nutrition card). */}
+      <RecipeTasteLine kind="cocktail" subjectId={cocktailId} restaurantId={activeRestaurantId ?? null} />
       <DrinkCards data={data} sayMoney={say} unsaved={canEdit && dirty} />
       <WhatIsInAServe data={data} unsaved={canEdit && dirty} />
+      <RecipeTaste
+        kind="cocktail"
+        subjectId={cocktailId}
+        restaurantId={activeRestaurantId ?? null}
+        hasRecipe={(data.current?.lines.length ?? 0) > 0}
+        unsaved={canEdit && dirty}
+      />
 
       <header className="cl-rcp-head">
         <h4 className="cl-sec" style={{ margin: 0 }}>Recipe</h4>

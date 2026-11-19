@@ -15,7 +15,7 @@
  */
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getTaste, tasteKeys, type AxisKey, type TasteAxis, type TasteData, type TasteEffective, type TasteRead } from '../../../services/api/taste';
+import { getTaste, tasteKeys, type AxisKey, type SubjectKind, type TasteAxis, type TasteData, type TasteEffective, type TasteRead } from '../../../services/api/taste';
 import { fmtWhen } from '../../../lib/mudavym/format';
 import TasteForm from './TasteForm';
 import './taste-card.css';
@@ -47,6 +47,12 @@ export interface TasteCardProps {
   restaurantId: string | null;
   /** Everyone who works here may describe a taste; kept so the slot matches the nutrition card. */
   canManage?: boolean;
+  /** Whose taste: a good (default), or a cocktail or dish read on its recipe sheet. */
+  subject?: SubjectKind;
+  /** False on a recipe sheet: a cocktail's or dish's taste is worked out from its recipe, not described on this form. */
+  describe?: boolean;
+  /** What an empty profile says (default: nobody has described it). */
+  emptyWords?: string;
 }
 
 export function Glyph({ shape }: { shape: MarkShape }) {
@@ -162,15 +168,15 @@ function Footer({ d }: { d: TasteData }) {
   );
 }
 
-export default function TasteCard({ row, house, restaurantId }: TasteCardProps) {
+export default function TasteCard({ row, house, restaurantId, subject = 'good', describe = true, emptyWords = TASTE_EMPTY }: TasteCardProps) {
   const id = row.id;
   const kind = house?.kind ?? row.kind;
   const qc = useQueryClient();
   const [describing, setDescribing] = useState(false);
-  const key = tasteKeys.subject(restaurantId ?? '', 'good', id);
+  const key = tasteKeys.subject(restaurantId ?? '', subject, id);
   const q = useQuery<TasteRead>({
     queryKey: key,
-    queryFn: () => getTaste('good', id, restaurantId ?? undefined),
+    queryFn: () => getTaste(subject, id, restaurantId ?? undefined),
     enabled: restaurantId !== null && id !== '',
     staleTime: 30_000,
     retry: false,
@@ -243,11 +249,11 @@ export default function TasteCard({ row, house, restaurantId }: TasteCardProps) 
         </>
       ) : (
         <p className="iv-note" data-testid="taste-empty">
-          {TASTE_EMPTY}
+          {emptyWords}
         </p>
       )}
       <Footer d={d} />
-      {describing ? (
+      {!describe ? null : describing ? (
         <TasteForm
           restaurantId={restaurantId}
           itemId={id}

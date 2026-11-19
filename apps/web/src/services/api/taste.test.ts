@@ -5,7 +5,7 @@
  * 404 is absent unless the body says `code: 'subject_not_in_house'`.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { addHouseTaste, AXIS_KEYS, getTaste, parseTasteBody } from './taste';
+import { addHouseTaste, AXIS_KEYS, getTaste, parseTasteBody, rollupTaste, ROLLUP_ABSENT, ROLLUP_FAILED, ROLLUP_RECIPES_UNAVAILABLE, ROLLUP_UNREACHABLE, ROLLUP_UNREADABLE } from './taste';
 import { apiClient } from './client';
 
 vi.mock('./client', async () => {
@@ -141,5 +141,53 @@ describe('the axis list', () => {
   });
   it('parseTasteBody reads the same shape the client parses', () => {
     expect(parseTasteBody(body())?.layers).toHaveLength(1);
+  });
+});
+
+describe('rollupTaste: work a cocktail\u2019s or dish\u2019s taste out of its saved recipe', () => {
+  it('POSTs to the subject\u2019s rollup route and parses what came back', async () => {
+    http.post.mockResolvedValue({ data: body({ sour: axis({ prov: [{ kind: 'recipe', share: 1 }] }) }) });
+    const r = await rollupTaste('cocktail', 'c1', R);
+    expect(http.post).toHaveBeenCalledWith('/taste/r1/cocktail/c1/rollup', {});
+    expect(r.state).toBe('ready');
+    await rollupTaste('dish', 'd1', R);
+    expect(http.post).toHaveBeenLastCalledWith('/taste/r1/dish/d1/rollup', {});
+  });
+
+  it('503 recipes_unavailable is a sentence, not absent', async () => {
+    http.post.mockRejectedValue(refused(503, { code: 'recipes_unavailable', message: 'x' }));
+    expect(await rollupTaste('cocktail', 'c1', R)).toEqual({ state: 'failed', sentence: ROLLUP_RECIPES_UNAVAILABLE });
+  });
+
+  it('no answer at all is the unreachable sentence, never the transport\u2019s word', async () => {
+    http.post.mockRejectedValue(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
+    const r = await rollupTaste('cocktail', 'c1', R);
+    expect(r).toEqual({ state: 'failed', sentence: ROLLUP_UNREACHABLE });
+    expect(JSON.stringify(r)).not.toMatch(/Network Error/);
+  });
+
+  it('a 5xx that arrived is not called unreachable', async () => {
+    http.post.mockRejectedValue(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK', response: { status: 502, data: {} } }));
+    expect(await rollupTaste('cocktail', 'c1', R)).toEqual({ state: 'failed', sentence: ROLLUP_FAILED });
+  });
+
+  it('404 recipe_not_written is the gateway\u2019s sentence (a real answer), but a bare 404 is absent', async () => {
+    http.post.mockRejectedValue(refused(404, { code: 'recipe_not_written', message: 'This has no recipe yet, so there is nothing to work a taste from.' }));
+    expect(await rollupTaste('cocktail', 'c1', R)).toEqual({ state: 'failed', sentence: 'This has no recipe yet, so there is nothing to work a taste from.' });
+    http.post.mockRejectedValue(refused(404, { message: 'Cannot POST /taste/r1/cocktail/c1/rollup' }));
+    expect(await rollupTaste('cocktail', 'c1', R)).toEqual({ state: 'absent' });
+    expect(ROLLUP_ABSENT).toMatch(/not switched on/);
+  });
+
+  it('a 400 refusal shows its sentence; a 500 with a message shows only the generic one', async () => {
+    http.post.mockRejectedValue(refused(400, { message: 'This recipe has no lines, so there is nothing to work a taste from.' }));
+    expect(await rollupTaste('cocktail', 'c1', R)).toEqual({ state: 'failed', sentence: 'This recipe has no lines, so there is nothing to work a taste from.' });
+    http.post.mockRejectedValue(refused(500, { message: 'relation "recipe_lines" does not exist' }));
+    expect(await rollupTaste('cocktail', 'c1', R)).toEqual({ state: 'failed', sentence: ROLLUP_FAILED });
+  });
+
+  it('a 201 that cannot be read says so, never ready', async () => {
+    http.post.mockResolvedValue({ data: { nope: true } });
+    expect(await rollupTaste('cocktail', 'c1', R)).toEqual({ state: 'failed', sentence: ROLLUP_UNREADABLE });
   });
 });
