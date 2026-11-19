@@ -1165,6 +1165,13 @@ describe('ReportsNext — honesty', () => {
     expect(within(desk).getByText('Open the document archive')).toBeInTheDocument();
   });
 
+  it('holds the sheet footprint, not the no-restaurant note, while sign-in is settling', () => {
+    hook.current = { ...base(), restaurantId: null, housePending: true };
+    paint();
+    expect(screen.queryByText(/No restaurant is active yet/)).not.toBeInTheDocument();
+    expect(document.querySelector('.rp-outlines')).not.toBeNull();
+  });
+
   it('admits when no restaurant is active instead of shimmering forever', () => {
     hook.current = { ...base(), restaurantId: null };
     paint();

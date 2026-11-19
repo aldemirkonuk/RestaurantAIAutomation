@@ -229,6 +229,12 @@ export function encodeSheet(state: SheetState): StoredSheet {
 export interface ReportsNextData {
   restaurantId: string | null;
   /**
+   * True while sign-in is still settling and no house is known yet. That is
+   * not "no house": the page holds the sheet's footprint instead of printing the
+   * no-restaurant note for a few frames and then dropping the footer by ~2,700 px.
+   */
+  housePending?: boolean;
+  /**
    * The goals desk's writes. It lives behind this hook rather than beside it so
    * the page has exactly ONE data seam: everything the page does to the
    * gateway — every read and the four writes — arrives through here, which is
@@ -306,7 +312,7 @@ export function useReportsNextData(
   /** Puts a cutting the goals desk proposed onto the page's draft sheet. */
   placeCutting: (cut: { id: AnalysisId; graph: GraphType; days: number | null }) => void = () => {},
 ): ReportsNextData {
-  const { activeRestaurantId, activeRole } = useAuth();
+  const { activeRestaurantId, activeRole, loading: authLoading } = useAuth();
   const rid = activeRestaurantId;
   const qc = useQueryClient();
   const {
@@ -488,6 +494,7 @@ export function useReportsNextData(
 
   return {
     restaurantId: rid,
+    housePending: !rid && authLoading,
     goalsDesk,
     exportDesk,
     registers,

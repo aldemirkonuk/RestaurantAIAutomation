@@ -657,12 +657,12 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
           </p>
         )}
 
-        {data.restaurantId === null ? (
+        {data.restaurantId === null && !data.housePending ? (
           <p role="status" className="rp-note">
             No restaurant is active yet, so none of these registers is addressed to anyone. Pick a
             restaurant and the sheet fills in.
           </p>
-        ) : !data.sheetKnown && !data.sheetUnread ? (
+        ) : data.housePending || (!data.sheetKnown && !data.sheetUnread) ? (
           /* The reader's own arrangement is still on its way. Plain paper on the
              house sheet's footprint (r75: its height is held so the paper below
              does not drop when the sheet lands), not the house sheet: drawing the house sheet first and then swapping it
