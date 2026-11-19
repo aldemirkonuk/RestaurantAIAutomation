@@ -19,6 +19,7 @@ import ItemCards, { CARD_TITLE, type CardId, type FiguresLoad, type InsideLoad }
 import ItemUsedIn, { type DishesLoad, type DrinksLoad, type UsedInLoad } from './ItemUsedIn';
 import WhatIsInIt from './NutritionCard';
 import HowItTastes from './TasteCard';
+import TasteSummary from './TasteSummary';
 import RowDropdown, { type EvidenceSection, type SheetId } from './RowDropdown';
 import { failureReason } from './iv-failure';
 import { noZoneWord, typeLabel, type HouseCurrency, type InvRow } from './useInventoryNextData';
@@ -108,10 +109,19 @@ export default function ItemDrawer(props: ItemDrawerProps) {
   // One sheet for the drawer: the evidence's "Record a count" opens the sheet the acts own.
   const [sheet, setSheet] = useState<SheetId | null>(props.startWith ?? null);
   const detailRef = useRef<HTMLElement | null>(null);
+  const tasteRef = useRef<HTMLDivElement | null>(null);
+  // The first-screen taste line opens the evidence and brings the taste card into view.
+  const [wantTaste, setWantTaste] = useState(false);
   // On a phone the detail card opens below the fold: bring it into view.
   useEffect(() => {
     if (evidence !== null) detailRef.current?.scrollIntoView?.({ block: 'nearest' });
   }, [evidence]);
+  useEffect(() => {
+    if (wantTaste && evidence !== null) {
+      tasteRef.current?.scrollIntoView?.({ block: 'nearest' });
+      setWantTaste(false);
+    }
+  }, [wantTaste, evidence]);
   const id = row?.id ?? '';
   // A supply (napkins, foil) is not eaten or drunk: it has no nutrition or
   // allergens to state, so the drawer neither reads nor offers them.
@@ -223,6 +233,18 @@ export default function ItemDrawer(props: ItemDrawerProps) {
       <p className="ivd-head" data-testid="ivd-head">
         {head}
       </p>
+      {hasContents ? (
+        <TasteSummary
+          id={id}
+          restaurantId={restaurantId}
+          placement="head"
+          open={evidence !== null}
+          onOpen={() => {
+            setEvidence('all');
+            setWantTaste(true);
+          }}
+        />
+      ) : null}
       <ItemCards
         row={row}
         uom={house.uom}
@@ -251,6 +273,17 @@ export default function ItemDrawer(props: ItemDrawerProps) {
         sheet={sheet}
         onSheet={setSheet}
       />
+      {hasContents ? (
+        <TasteSummary
+          id={id}
+          restaurantId={restaurantId}
+          open={evidence !== null}
+          onOpen={() => {
+            setEvidence('all');
+            setWantTaste(true);
+          }}
+        />
+      ) : null}
       <p className="ivd-evbar">
         <button
           type="button"
@@ -299,7 +332,7 @@ export default function ItemDrawer(props: ItemDrawerProps) {
             </div>
           ) : null}
           {hasContents ? (
-            <div className="ivd-taste" data-slot="TasteCard" data-testid="ivd-taste-slot">
+            <div ref={tasteRef} className="ivd-taste" data-slot="TasteCard" data-testid="ivd-taste-slot">
               <h4 className="ivd-used-h">How it tastes</h4>
               <TasteCard row={row} house={house} restaurantId={restaurantId} canManage={canManage} />
             </div>

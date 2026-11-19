@@ -49,7 +49,7 @@ export interface TasteCardProps {
   canManage?: boolean;
 }
 
-function Glyph({ shape }: { shape: MarkShape }) {
+export function Glyph({ shape }: { shape: MarkShape }) {
   const common = { width: 14, height: 14, viewBox: '0 0 14 14', 'aria-hidden': true, focusable: false } as const;
   if (shape === 'solid') {
     return (

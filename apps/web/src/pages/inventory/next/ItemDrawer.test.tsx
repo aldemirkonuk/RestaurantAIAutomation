@@ -531,7 +531,7 @@ describe('the taste card slot', () => {
     open(row(), { TasteCard: Mine });
     fireEvent.click(screen.getByRole('button', { name: 'All the evidence' }));
     expect(within(screen.getByTestId('ivd-taste-slot')).getByTestId('mine').textContent).toBe('i1');
-    expect(api.taste).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('taste-card')).toBeNull();
   });
 
   it('a supply has neither the nutrition nor the taste slot, and taste is never read', async () => {
@@ -541,6 +541,105 @@ describe('the taste card slot', () => {
     expect(screen.queryByTestId('ivd-taste-slot')).toBeNull();
     expect(screen.queryByTestId('ivd-nutrition-slot')).toBeNull();
     expect(screen.queryByTestId('taste-card')).toBeNull();
+    expect(api.taste).not.toHaveBeenCalled();
+  });
+});
+
+describe('the first-screen taste line', () => {
+  const profile = {
+    state: 'ready',
+    data: {
+      effective: { axes: { sweet: { v: 8, lo: null, hi: null, conf: 0.9, prov: [{ kind: 'staff_line', share: 1 }] } }, descriptors: [], texture: [], conflicts: [] },
+      layers: [{ source: 'house', version: 1, method: 'ordinal', statedByName: 'Ayşe', statedAt: '2026-11-19T10:00:00Z', hasNote: false, noteText: null }],
+    },
+  };
+
+  it('shows before the evidence is opened, and one tap opens the full card', async () => {
+    api.taste.mockResolvedValue(profile);
+    open(row());
+    const line = await screen.findByTestId('taste-line-open');
+    expect(line.textContent).toBe('Mainly sweet.');
+    expect(screen.queryByTestId('ivd-evidence')).toBeNull();
+    fireEvent.click(line);
+    const detail = screen.getByTestId('ivd-evidence');
+    expect(within(detail).getByTestId('ivd-taste-slot')).toBeTruthy();
+    expect((await within(detail).findByTestId('taste-summary')).textContent).toBe('Mainly sweet.');
+    expect(api.taste).toHaveBeenCalledTimes(1);
+  });
+
+  it('brings the taste card into view when the line opens it', async () => {
+    api.taste.mockResolvedValue(profile);
+    const spy = vi.fn();
+    const was = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = spy;
+    try {
+      open(row());
+      fireEvent.click(await screen.findByTestId('taste-line-open'));
+      await waitFor(() => expect(spy.mock.contexts).toContain(screen.getByTestId('ivd-taste-slot')));
+    } finally {
+      Element.prototype.scrollIntoView = was;
+    }
+  });
+
+  it('is above the evidence button, never inside the evidence', async () => {
+    api.taste.mockResolvedValue(profile);
+    open(row());
+    const line = await screen.findByTestId('taste-line');
+    const bar = screen.getByRole('button', { name: 'All the evidence' }).closest('p')!;
+    expect(line.nextElementSibling).toBe(bar);
+  });
+
+  it('on a phone the head copy sits right under the header line, above the cards', async () => {
+    api.taste.mockResolvedValue(profile);
+    open(row());
+    const head = await screen.findByTestId('taste-line-head');
+    expect(screen.getByTestId('ivd-head').nextElementSibling).toBe(head);
+    expect(head.nextElementSibling?.classList.contains('ivd-cards')).toBe(true);
+    expect(screen.getByTestId('taste-line-head-open').textContent).toBe('Mainly sweet.');
+    expect(api.taste).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds a one-line slot while the read is pending, then collapses when it says no profile', async () => {
+    let answer: (v: unknown) => void = () => undefined;
+    api.taste.mockImplementation(() => new Promise((r) => (answer = r)));
+    open(row());
+    const hold = screen.getByTestId('taste-line-head-hold');
+    expect(hold.getAttribute('aria-hidden')).toBe('true');
+    expect(screen.getByTestId('ivd-head').nextElementSibling).toBe(hold);
+    answer({ state: 'ready', data: { effective: null, layers: [] } });
+    await waitFor(() => expect(screen.queryByTestId('taste-line-head-hold')).toBeNull());
+    expect(screen.queryByTestId('taste-line-head')).toBeNull();
+  });
+
+  it('a supply holds no slot', async () => {
+    api.taste.mockImplementation(() => new Promise(() => undefined));
+    open(row({ kind: 'supply', name: 'Napkins', bottleSizeMl: null }), { house: { kind: 'supply', uom: 'each', displayName: 'Napkins' } as HouseFields });
+    await waitFor(() => expect(api.figures).toHaveBeenCalled());
+    expect(screen.queryByTestId('taste-line-head-hold')).toBeNull();
+  });
+
+  it('is not there when nobody has described the good, or the house has taste notes off', async () => {
+    api.taste.mockResolvedValue({ state: 'ready', data: { effective: null, layers: [] } });
+    open(row());
+    await waitFor(() => expect(api.taste).toHaveBeenCalled());
+    expect(screen.queryByTestId('taste-line')).toBeNull();
+    cleanup();
+    api.taste.mockResolvedValue({ state: 'absent' });
+    open(row());
+    await waitFor(() => expect(api.taste).toHaveBeenCalledTimes(2));
+    expect(screen.queryByTestId('taste-line')).toBeNull();
+  });
+
+  it('says so when it could not be read', async () => {
+    api.taste.mockResolvedValue({ state: 'failed', reason: 'x' });
+    open(row());
+    expect((await screen.findByTestId('taste-line-open')).textContent).toBe('How it tastes could not be read just now.');
+  });
+
+  it('a supply has no taste line and taste is never read', async () => {
+    open(row({ kind: 'supply', name: 'Napkins', bottleSizeMl: null }), { house: { kind: 'supply', uom: 'each', displayName: 'Napkins' } as HouseFields });
+    await waitFor(() => expect(api.figures).toHaveBeenCalled());
+    expect(screen.queryByTestId('taste-line')).toBeNull();
     expect(api.taste).not.toHaveBeenCalled();
   });
 });

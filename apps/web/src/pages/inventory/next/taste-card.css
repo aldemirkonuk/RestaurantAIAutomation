@@ -183,3 +183,65 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* The drawer's first-screen taste line (TasteSummary.tsx). */
+.tc-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  margin: 10px 0 0;
+  font-size: 14px;
+}
+.tc-line-k {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.tc-line-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+}
+@media (max-width: 767px), (pointer: coarse) {
+  .tc-line-btn {
+    min-height: 44px;
+  }
+}
+/* On a phone the taste line sits under the header line, above the cards: the head copy shows and
+   the foot copy hides; above 640px it is the other way round (desktop is unchanged). A pending
+   read holds one 44 px line so the cards never move when it answers. */
+.tc-line--head {
+  display: none;
+}
+@media (max-width: 640px) {
+  .tc-line--head {
+    display: flex;
+    flex-wrap: nowrap;
+    margin: 0 0 8px;
+    min-height: 44px;
+    max-height: 44px;
+  }
+  /* One line only: a long sentence is cut with an ellipsis (the full words are in the card the
+     tap opens) so the answered line is exactly the 44 px that was held and the cards never move. */
+  .tc-line--head .tc-line-k {
+    flex: none;
+  }
+  .tc-line--head .tc-line-btn {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-height: 44px;
+  }
+  .tc-line--head .tc-line-btn > span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tc-line--head .tc-marks {
+    flex: none;
+  }
+  .tc-line--foot {
+    display: none;
+  }
+}

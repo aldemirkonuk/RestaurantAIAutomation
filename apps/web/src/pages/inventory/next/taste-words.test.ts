@@ -12,6 +12,7 @@ import {
   DESCRIPTOR_GROUPS,
   footerFacts,
   knownAxes,
+  leadLine,
   nextAction,
   ORDINAL_STEPS,
   PROV_MARK,
@@ -145,5 +146,39 @@ describe('flavour words by kind', () => {
       }
       expect(descriptorGroupsFor(k).find((g) => g.title === 'Texture')!.items.map((i) => i.id)).toEqual(['crisp', 'creamy', 'silky']);
     }
+  });
+});
+
+describe('the first-screen line', () => {
+  const data = (e: TasteEffective | null, sources: string[] = ['house']) => ({
+    effective: e,
+    layers: sources.map((source) => ({ source, version: 1, method: null, statedByName: null, statedAt: null, hasNote: false, noteText: null })),
+  });
+  it('is the card\'s own sentence, with the marks of the axes it used and no others', () => {
+    const e = eff({
+      sweet: ax(8, { prov: [{ kind: 'recipe', share: 1 }] }),
+      sour: ax(5, { prov: [{ kind: 'staff_line', share: 1 }] }),
+      umami: ax(9, { conf: 0.3, bandOnly: true, prov: [{ kind: 'class_default', share: 1 }] }),
+    });
+    expect(leadLine(data(e))).toEqual({ sentence: summaryLine(e), kinds: ['recipe', 'staff_line'] });
+    expect(summaryLine(e)).toBe('Mainly sweet, with some sour.');
+  });
+  it('words only: no digit, no axis key, no confidence figure', () => {
+    const l = leadLine(data(eff({ fat: ax(7.37), heat: ax(5.2) })))!;
+    expect(l.sentence).not.toMatch(/\d/);
+    expect(l.sentence).not.toMatch(/fat|heat|conf/);
+  });
+  it('with no sentence from the axes it says how the good was described, marks from the layers', () => {
+    const e = { ...eff({}), descriptors: ['oak'], texture: ['silky', 'drop table'] };
+    expect(leadLine(data(e, ['house', 'note']))).toEqual({ sentence: 'Described as oak, silky.', kinds: ['staff_note', 'staff_line'] });
+  });
+  it('with only a conflict it says the sources disagree; an unknown source has no mark', () => {
+    const e = eff({}, [{ axis: 'sweet', gap: 3 }]);
+    expect(leadLine(data(e, ['mystery']))).toEqual({ sentence: 'Sources disagree on sweet.', kinds: [] });
+  });
+  it('is null when nothing is known: no effective profile, or an empty one, or only band-only axes', () => {
+    expect(leadLine(data(null))).toBeNull();
+    expect(leadLine(data(eff({})))).toBeNull();
+    expect(leadLine(data(eff({ sweet: ax(8, { conf: 0.2, bandOnly: true }) })))).toBeNull();
   });
 });
