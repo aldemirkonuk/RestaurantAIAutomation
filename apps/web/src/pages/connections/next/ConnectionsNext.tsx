@@ -84,6 +84,7 @@ import { IntegrationReturnNotice } from '../../authorize-integration/Integration
  */
 
 import { useEffect, useId, useMemo, useState } from 'react';
+import { GroupPane, GroupRail, useOpenGroup, useScrollAfterPick, type RailGroup } from '../../../components/mudavym/GroupRail';
 // The one write this page makes to a text sender: a manager ending the house's
 // use of it (ADR 0114 — the attachment is the house's, and a manager may stop
 // it). Declaring one is still disabled and still carries the server's reason.
@@ -166,6 +167,28 @@ export const REGISTER_ANCHORS = [
   'grants',
 ] as const;
 
+/**
+ * The eight groups (r73 c3 need 8): the page was 6,065 px with everything open.
+ * Register I is cut into its five attachments, the distributors panel sits beside
+ * them, then Register II and III. One is open at a time; a `#fragment` opens the
+ * group that carries it (`HASH_GROUP`).
+ */
+const CX_GROUPS: RailGroup[] = [
+  { id: 'till', title: 'The till', hint: 'Where checks come in' },
+  { id: 'sender', title: 'The sending address', hint: 'Where letters leave from' },
+  { id: 'text', title: 'Text senders', hint: 'WhatsApp and SMS' },
+  { id: 'feed', title: 'Your calendar link', hint: 'Yours, not the house\u2019s' },
+  { id: 'servers', title: 'Model-context servers', hint: 'What may call a tool' },
+  { id: 'distributors', title: 'Distributor feeds', hint: 'What distributors send you' },
+  { id: 'payment', title: 'What the house pays with', hint: 'Cards on file' },
+  { id: 'grants', title: 'Personal grants', hint: 'People acting inside this house' },
+];
+
+const HASH_GROUP: Record<string, string> = {
+  attached: 'till', till: 'till', sender: 'sender', text: 'text', feed: 'feed',
+  servers: 'servers', distributors: 'distributors', payment: 'payment', grants: 'grants',
+};
+
 export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
   const d = useConnectionsNextData();
   const [copied, setCopied] = useState(false);
@@ -180,18 +203,26 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
    * behaviour is `auto` when the reader has asked for less motion.
    */
   const hash = typeof window === 'undefined' ? '' : window.location.hash.replace('#', '');
+  const hashGroup = HASH_GROUP[hash] ?? null;
+  const { openId, open, toggle, pick, scrollTo } = useOpenGroup(hashGroup ?? CX_GROUPS[0].id);
+  useEffect(() => { if (hashGroup) open(hashGroup); }, [hashGroup, open]);
+  useScrollAfterPick(
+    scrollTo,
+    (id) => document.getElementById(id),
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  );
+  const paneProps = (id: string) => ({ anchor: id, headId: `cx-head-${id}`, open: openId === id, onToggle: () => toggle(id) });
   const anchorReady =
     !d.pos.loading && !d.payments.loading && !d.mcp.loading && !d.houseGrants.loading;
   useEffect(() => {
-    if (!hash || !anchorReady) return;
-    if (!(REGISTER_ANCHORS as readonly string[]).includes(hash)) return;
-    const el = document.getElementById(hash);
+    if (!hash || !anchorReady || !hashGroup) return;
+    const el = document.getElementById(hashGroup);
     if (!el?.scrollIntoView) return;
     const reduced =
       typeof window.matchMedia === 'function' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
-  }, [hash, anchorReady]);
+  }, [hash, anchorReady, hashGroup]);
 
   /* The reader's own calendar link (ADR 0111, 2026-09-21). The address is on
      the answer to the LATEST act that made a secret, and only there — the
@@ -421,11 +452,12 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
         </div>
 
         {/* ══ REGISTER I ════════════════════════════════════════════════ */}
-        <section className="cx-sec" id="attached">
-          <div className="cx-sec-h">
-            <span className="cx-sec-n">Register I</span>
-            <h2>What the house has attached</h2>
-          </div>
+        <div className="gr-layout">
+          <GroupRail groups={CX_GROUPS} openId={openId} onPick={pick} ariaLabel="Connections groups" />
+          <main style={{ minWidth: 0 }}>
+        <GroupPane {...paneProps('till')} title="The till" meta="Register I">
+          {/* `/connections#attached` (a retired `?tab=` link) still has to answer. */}
+          <span id="attached" aria-hidden />
           <p className="cx-sec-d">
             Attachments this restaurant is answerable for. They belong to the
             house and survive the person who connected them — deleting an
@@ -438,7 +470,6 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
           </p>
 
           {/* — the till — (`/settings?tab=pos` lands here) */}
-          <span id="till" aria-hidden />
           {d.pos.loading ? (
             <LoadingRegister name="the till" />
           ) : d.pos.error ? (
@@ -550,7 +581,8 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
           )}
 
           {/* — the sender identity — (`/settings?tab=email` lands here) */}
-          <span id="sender" aria-hidden />
+        </GroupPane>
+        <GroupPane {...paneProps('sender')} title="The sending address" meta="Register I">
           {d.sender.loading ? (
             <LoadingRegister name="the sender identity" />
           ) : d.sender.error ? (
@@ -600,7 +632,8 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
               different registrars, different fees and — in Türkiye — different
               CAPABILITIES: an alphanumeric SMS sender there cannot receive a
               reply at all. One row would have to average that away. */}
-          <span id="text" aria-hidden />
+        </GroupPane>
+        <GroupPane {...paneProps('text')} title="Text senders" meta="Register I">
           {d.textSenders.loading ? (
             <LoadingRegister name="the text senders" />
           ) : d.textSenders.error ? (
@@ -625,7 +658,8 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
           )}
 
           {/* — the reader's own calendar link — (`/settings?tab=calendar` lands here) */}
-          <span id="feed" aria-hidden />
+        </GroupPane>
+        <GroupPane {...paneProps('feed')} title="Your calendar link" meta="Register I">
           {d.ical.loading ? (
             <LoadingRegister name="your calendar link" />
           ) : d.ical.error ? (
@@ -754,7 +788,8 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
           />
 
           {/* — model-context servers — (`/profile`'s Register IV lands here) */}
-          <span id="servers" aria-hidden />
+        </GroupPane>
+        <GroupPane {...paneProps('servers')} title="Model-context servers" meta="Register I">
           {d.mcp.loading ? (
             <LoadingRegister name="the model-context register" />
           ) : d.mcp.error ? (
@@ -934,7 +969,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
               ))}
             </>
           )}
-        </section>
+        </GroupPane>
 
         {/*
           Licensed distributors (ADR 0126, batch 56).
@@ -946,6 +981,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
           Register I because the two ways in are both things the house does,
           and before Register II because neither costs money.
         */}
+        <GroupPane {...paneProps('distributors')} title="Distributor feeds" meta="Licensed distributors">
         <DistributorFeedPanel
           distributors={d.distributors}
           letter={d.feedLetter}
@@ -956,13 +992,10 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
           canManage={d.isManager}
           sessionName={d.sessionName}
         />
+        </GroupPane>
 
         {/* ══ REGISTER II ═══════════════════════════════════════════════ */}
-        <section className="cx-sec" id="payment">
-          <div className="cx-sec-h">
-            <span className="cx-sec-n">Register II</span>
-            <h2>What the house pays with</h2>
-          </div>
+        <GroupPane {...paneProps('payment')} title="What the house pays with" meta="Register II">
           <p className="cx-sec-d">
             Instruments on file for this restaurant. Every field is a copy of
             the provider&rsquo;s answer — the provider stays the system of
@@ -1139,14 +1172,10 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
               ) : null}
             </div>
           )}
-        </section>
+        </GroupPane>
 
         {/* ══ REGISTER III ══════════════════════════════════════════════ */}
-        <section className="cx-sec" id="grants">
-          <div className="cx-sec-h">
-            <span className="cx-sec-n">Register III</span>
-            <h2>Personal grants that act inside this house</h2>
-          </div>
+        <GroupPane {...paneProps('grants')} title="Personal grants that act inside this house" meta="Register III">
           <p className="cx-sec-d">
             These belong to a person, not to this restaurant. They are listed
             here because they act here. A manager may <em>see</em> them and may
@@ -1367,7 +1396,9 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
               ))}
             </>
           )}
-        </section>
+        </GroupPane>
+          </main>
+        </div>
 
         {/* [OVERRULED 2026-09-22 by the founder after the preview review —
             "remove technical secrets / webhooks / terms". Register IV ("Set
