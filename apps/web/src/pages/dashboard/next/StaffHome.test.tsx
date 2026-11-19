@@ -164,6 +164,12 @@ describe('StaffHome', () => {
     expect(screen.queryByTestId('where')).toBeNull();
   });
 
+  it('is not a draggable link, so a mouse drag cannot start the browser link drag and cancel the swipe', () => {
+    mount();
+    const el = screen.getByRole('link', { name: /Etna Rosso/ });
+    expect(el.getAttribute('draggable')).toBe('false');
+  });
+
   it('under reduced motion the row never travels but the swipe still counts', () => {
     reduced(true);
     mount();

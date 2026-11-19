@@ -93,6 +93,10 @@ function SwipeRow({ item }: { item: ReturnType<typeof lowStockView> }) {
         ref={frontRef}
         to={href}
         className="sh-row__front"
+        // A link is draggable by default: a mouse or pen drag along the row
+        // starts the browser's own link drag, which cancels the pointer
+        // before the swipe can finish (walked 2026-11-18, r60).
+        draggable={false}
         aria-label={`${item.name ?? 'Unnamed wine'}, ${item.stock == null ? 'count not known' : `${formatNumber(item.stock)} left`}. Recount.`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
