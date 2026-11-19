@@ -300,7 +300,7 @@ describe('the your-shift strip', () => {
     await waitFor(() => expect(screen.getByText(/aren’t on this house’s roster/)).toBeTruthy());
   });
 
-  it('sits between the actions and the running-low list, and its motion is opacity and transform only', () => {
+  it('moves by opacity and transform only, and holds still under reduced motion', () => {
     const css = readFileSync(resolve(__dirname, 'staff-home.css'), 'utf8');
     const block = css.slice(css.indexOf('.sh-shift {'), css.indexOf('/* ── running low'));
     expect(block).not.toMatch(/transition:\s*all|transition-all/);
