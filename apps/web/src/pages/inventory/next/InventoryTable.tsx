@@ -17,8 +17,10 @@
 import { Fragment } from 'react';
 import { HousePriceCell, type AdviceLoad } from '../command/HousePriceCell';
 import type { RowDropdownProps } from './RowDropdown';
-import { cellMoney, EM, fmtCount, fmtPace, noZoneWord, SEVERITY_GROUP, severity, typeLabel, type InvRow, type SortId } from './useInventoryNextData';
+import { cellMoney, EM, statusWord, fmtCount, fmtPace, noZoneWord, SEVERITY_GROUP, severity, typeLabel, type InvRow, type SortId } from './useInventoryNextData';
 import { NameHint } from './NameThisWine';
+import PhoneRows from './PhoneRows';
+import { useIsPhone } from '../../../hooks/useIsPhone';
 
 export interface InventoryTableProps extends Omit<RowDropdownProps, 'row'> {
   rows: InvRow[];
@@ -47,23 +49,6 @@ const COLUMNS = ['Title', 'Type', 'Zone', 'Live / shadow · par', 'Vel/day', 'Ru
 /** The headers that sort, and the sort each one sets. */
 const HEADER_SORT: Partial<Record<string, SortId>> = { Title: 'name', 'Vel/day': 'pace', Value: 'value' };
 
-/** The status word, never a colour alone. */
-function statusWord(row: InvRow): string {
-  const dry = row.runway !== null && row.runway < 1.5;
-  switch (row.standing) {
-    case 'out':
-      return 'Out';
-    case 'below':
-      return dry ? 'Below par · dry tomorrow' : 'Below par';
-    case 'unknown':
-      return 'Stock not read';
-    case 'nopar':
-      return dry ? 'Dry tomorrow' : 'No par set';
-    default:
-      return dry ? 'Dry tomorrow' : row.standing === 'at' ? 'At par' : 'Above par';
-  }
-}
-
 function ParBar({ row }: { row: InvRow }) {
   if (row.stock === null || row.par === null || row.par <= 0) return null;
   const pct = Math.max(0, Math.min(1, row.stock / row.par)) * 100;
@@ -83,6 +68,8 @@ function zoneCell(row: InvRow, zoneName: (id: string | null) => string, unavaila
 
 export default function InventoryTable(props: InventoryTableProps) {
   const { rows, grouped, openId, onToggle, currency, canManage, advice, onPriceChanged, zoneName } = props;
+  // A phone cannot read nine columns: it gets two-line cards (critic c2 P0-2).
+  const phone = useIsPhone();
   const counts = [0, 0, 0];
   for (const r of rows) counts[severity(r)] += 1;
   const selecting = props.selected !== undefined && props.onSelect !== undefined;
@@ -91,6 +78,25 @@ export default function InventoryTable(props: InventoryTableProps) {
   const span = COLUMNS.length + (selecting ? 1 : 0);
   const allSelected = selecting && rows.length > 0 && rows.every((r) => props.selected!.has(r.id));
   const someSelected = selecting && !allSelected && rows.some((r) => props.selected!.has(r.id));
+
+  if (phone) {
+    return (
+      <PhoneRows
+        rows={rows}
+        thing={thing}
+        grouped={grouped}
+        openId={openId}
+        onToggle={onToggle}
+        canManage={canManage}
+        currency={currency}
+        advice={advice}
+        onPriceChanged={onPriceChanged}
+        selected={props.selected}
+        onSelect={props.onSelect}
+        onSelectAll={props.onSelectAll}
+      />
+    );
+  }
 
   return (
     <div className="iv-tablewrap">

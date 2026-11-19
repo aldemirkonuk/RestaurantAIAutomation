@@ -1,7 +1,8 @@
 /* The /inventory item drawer (ItemDrawer.tsx). Tokens only (styles/mudavym.css);
    the Sheet's portal carries .mudavym, so dark mode follows. Below 768px the
-   drawer is the whole screen, not the Sheet's phone bottom form or 640px sheet. */
-@media (max-width: 767px) {
+   drawer is the whole screen, not the 640px sheet. At 639px and below the Sheet's own bottom form stands: a
+   grabber, a rounded top edge, the page still showing behind it (critic c2 P0-2). */
+@media (min-width: 640px) and (max-width: 767px) {
   .mdv-ovl.mdv-ovl--sheet .mdv-ovl__panel.iv-drawer,
   .mdv-ovl.mdv-ovl--sheet[data-form='bottom'][data-detent='full'] .mdv-ovl__panel.iv-drawer {
     top: 0;

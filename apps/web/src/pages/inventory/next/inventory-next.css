@@ -982,3 +982,191 @@ html .mdv-ovl .iv-sheet-body .mdv-select__control {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+/* ── touch: 44 px targets, 16 px fields (N-11, critic c2 P0-2) ───────────── */
+/* iOS zooms the page into any field set under 16 px, and a thumb needs 44 px.
+   Applies to a narrow window or a coarse pointer, never to a mouse on a wide
+   screen, so the desktop page stays dense. The drawer is a portal outside
+   .iv-page, so it is named here too. */
+@media (max-width: 767px), (pointer: coarse) {
+  .iv-page .iv-chip,
+  .iv-page .iv-btn,
+  .iv-page .iv-field,
+  .iv-page .iv-toolbar .mdv-select__control,
+  .iv-page .iv-linkish,
+  .iv-drawer .iv-btn,
+  .iv-drawer .iv-field {
+    min-height: 44px;
+  }
+  .iv-page .iv-chip,
+  .iv-page .iv-btn {
+    padding-inline: 16px;
+  }
+  .iv-page .iv-field,
+  .iv-page .iv-toolbar .mdv-select__control,
+  .iv-drawer .iv-field,
+  .iv-drawer input:not([type='checkbox']):not([type='radio']),
+  .iv-drawer select,
+  .iv-drawer textarea {
+    font-size: 16px;
+  }
+  .iv-page input[type='checkbox'] {
+    width: 22px;
+    height: 22px;
+  }
+}
+
+/* ── phone: the filter chips are one swipeable line, not a wrapped wall ──── */
+@media (max-width: 767px) {
+  .iv-page .iv-chips {
+    flex-wrap: nowrap;
+    gap: 8px;
+    margin-inline: -16px;
+    padding-inline: 16px;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+  .iv-page .iv-chips::-webkit-scrollbar {
+    display: none;
+  }
+  .iv-page .iv-chips > .iv-chip {
+    flex: none;
+    scroll-snap-align: start;
+  }
+}
+
+/* ── phone cards: a good is two lines (PhoneRows.tsx) ────────────────────── */
+.ivc-list {
+  margin-top: 14px;
+  border-top: 1px solid var(--paper-2);
+}
+.ivc-group {
+  margin: 0;
+  padding: 16px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.ivc-selectall {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.ivc-card {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  min-height: 64px;
+  border-bottom: 1px solid var(--paper-2);
+  background: var(--paper-0);
+  /* Only transform and opacity move. */
+  animation: ivc-in 320ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: calc(var(--i, 0) * 28ms);
+  transition: transform 90ms ease-out;
+}
+.ivc-card[data-open='true'] {
+  background: var(--seal-tint);
+}
+.ivc-card:active {
+  transform: scale(0.985);
+}
+.ivc-pick {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  flex: none;
+}
+.ivc-main {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 64px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 10px 4px 10px 2px;
+  border: 0;
+  background: none;
+  color: var(--ink-1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ivc-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.ivc-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.ivc-sub {
+  font-size: 13px;
+  color: var(--ink-3);
+  justify-content: flex-start;
+}
+.ivc-status {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.ivc-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--ink-4);
+}
+.ivc-status[data-standing='out'] {
+  color: var(--alarm);
+}
+.ivc-status[data-standing='out'] .ivc-dot {
+  background: var(--alarm);
+}
+.ivc-status[data-standing='below'] {
+  color: var(--warn);
+}
+.ivc-status[data-standing='below'] .ivc-dot {
+  background: var(--warn);
+}
+.ivc-status[data-standing='above'] .ivc-dot,
+.ivc-status[data-standing='at'] .ivc-dot {
+  background: var(--seal);
+}
+.ivc-price {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  min-height: 44px;
+  padding: 0 0 10px 8px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.ivc-card .iv-namehint {
+  flex-basis: 100%;
+  padding: 0 4px 8px 2px;
+}
+@keyframes ivc-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
