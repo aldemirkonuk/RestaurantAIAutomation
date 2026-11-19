@@ -388,7 +388,6 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
           accept="image/*,application/pdf,.csv,.xlsx,.xls"
           multiple
           inputLabel="Menu to read"
-          hint="Several photos make one menu. A spreadsheet or CSV works too."
         />
         <div>
           <button
@@ -420,7 +419,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
             </div>
           </div>
         </div>
-        <button type="submit" className={`cl-btn cl-focus${files.length > 0 ? ' cl-ink' : ''}`} style={{ alignSelf: 'flex-start' }} disabled={read.isPending || files.length === 0 || !dateRead.ok || shape.problem !== null}>
+        <button type="submit" className="cl-btn cl-focus cl-ink mdv-read__go" data-held={files.length > 0 ? 'true' : 'false'} disabled={read.isPending || files.length === 0 || !dateRead.ok || shape.problem !== null}>
           {read.isPending ? 'Reading…' : files.length > 1 ? `Read these ${files.length} pages as one menu` : 'Read this menu'}
         </button>
       </form>
@@ -616,6 +615,40 @@ function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan, zone }:
   );
 }
 
+/**
+ * The three sentences that explain the page (what is kept, what a read does
+ * not change, which files work) fold under one line, so the drop zone is the
+ * first thing under "Menus kept" (r61, critic round 2, item 7). Opens by grid
+ * rows, 0fr to 1fr; the fold is closed until asked.
+ */
+function HowThisWorks() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mdv-fold">
+      <button
+        type="button"
+        className="mdv-link mdv-fold__cue"
+        aria-expanded={open}
+        aria-controls="menu-how-this-works"
+        data-testid="menu-how-cue"
+        onClick={() => setOpen((o) => !o)}
+      >
+        How this works
+        <span className="mdv-fold__chev" aria-hidden />
+      </button>
+      <div id="menu-how-this-works" className="mdv-fold__body" data-open={open ? 'true' : 'false'}>
+        <div className="mdv-fold__inner">
+          <p className="cl-note">
+            Every menu this house reads is kept: the file and the lines it found. Reading one does not change the
+            current menu or any price; choosing it does.
+          </p>
+          <p className="cl-note">Several photos make one menu. A spreadsheet or CSV works too.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function MenuVersions({ canManage }: { canManage: boolean }) {
   const queryClient = useQueryClient();
   const [said, setSaid] = useState<string | null>(null);
@@ -639,10 +672,7 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
       <h2 id="menu-versions-h" className="cl-crumb">
         Menus kept
       </h2>
-      <p className="cl-note">
-        Every menu this house reads is kept: the file and the lines it found. Reading one does not change the current
-        menu or any price; choosing it does.
-      </p>
+      <HowThisWorks />
       <ReadMenuForm
         canManage={canManage}
         onRead={refresh}

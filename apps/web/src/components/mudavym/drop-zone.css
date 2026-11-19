@@ -7,7 +7,9 @@
   flex-direction: column;
   gap: 10px;
   min-width: min(100%, 360px);
-  flex: 1 1 360px;
+  /* In a column form a flex-basis is a height: 360 px here left 197 px of void
+     under the zone (critic round 2, item 7). The zone is as tall as it is. */
+  flex: 0 0 auto;
 }
 
 .mdv-drop__input {
@@ -250,5 +252,107 @@
 @media (prefers-reduced-motion: reduce) {
   .mdv-drop__details {
     transition: none;
+  }
+}
+
+/* "How this works": the page's explanation folds under one line (r61, item 7).
+   grid-template-rows and the chevron's transform are the only things that move. */
+.mdv-fold__cue {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+}
+
+.mdv-fold__chev {
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translateY(-1px);
+  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mdv-fold__cue[aria-expanded='true'] .mdv-fold__chev {
+  transform: rotate(225deg) translateY(-1px);
+}
+
+.mdv-fold__body {
+  display: grid;
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition:
+    grid-template-rows 280ms cubic-bezier(0.16, 1, 0.3, 1),
+    visibility 0s linear 280ms;
+}
+
+.mdv-fold__body[data-open='true'] {
+  grid-template-rows: 1fr;
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+.mdv-fold__inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* "Read this menu": a quiet chip until a file is held, then a live 48 px primary
+   that rises into place (opacity and transform only). */
+.cl-btn.mdv-read__go {
+  width: 100%;
+  height: 48px;
+  justify-content: center;
+  border-radius: 12px;
+  font-size: 15px;
+  transition:
+    transform 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cl-btn.mdv-read__go[data-held='true'] {
+  border-color: var(--seal);
+  background: var(--seal);
+  color: var(--paper-0);
+  animation: mdv-read-rise 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.cl-btn.mdv-read__go[data-held='true']:hover:not(:disabled) {
+  border-color: var(--seal);
+  color: var(--paper-0);
+}
+
+.cl-btn.mdv-read__go[data-held='true']:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.cl-btn.mdv-read__go[data-held='true']:disabled {
+  opacity: 0.55;
+}
+
+@keyframes mdv-read-rise {
+  from {
+    opacity: 0.4;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-fold__chev,
+  .mdv-fold__body,
+  .cl-btn.mdv-read__go {
+    transition: none;
+  }
+
+  .cl-btn.mdv-read__go[data-held='true'] {
+    animation: none;
+  }
+
+  .cl-btn.mdv-read__go[data-held='true']:active:not(:disabled) {
+    transform: none;
   }
 }
