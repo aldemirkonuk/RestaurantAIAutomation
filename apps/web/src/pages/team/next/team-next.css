@@ -129,7 +129,7 @@
 }
 .tm-panel__title {
   font-family: var(--tm-mono);
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -205,7 +205,7 @@
 .tm-dayhead__d {
   display: block;
   font-family: var(--tm-mono);
-  font-size: 9.5px;
+  font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--ink-4);
@@ -217,7 +217,7 @@
 }
 .tm-dayhead__s {
   display: block;
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--ink-4);
 }
 .tm-dayhead__s[data-short='true'] {
@@ -253,7 +253,7 @@
   border: 1px solid var(--paper-2);
   background: var(--paper-0);
   font-family: var(--tm-mono);
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--ink-2);
   overflow: hidden;
@@ -282,7 +282,7 @@
 }
 .tm-membercell__sub {
   display: block;
-  font-size: 9.5px;
+  font-size: 11px;
   color: var(--ink-4);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -291,7 +291,7 @@
 .tm-membercell__h {
   margin-left: auto;
   font-family: var(--tm-mono);
-  font-size: 10px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
   color: var(--ink-4);
 }
@@ -339,7 +339,7 @@
 .tm-chip__t {
   display: block;
   font-family: var(--tm-mono);
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--ink-1);
@@ -347,7 +347,7 @@
 }
 .tm-chip__m {
   display: block;
-  font-size: 8.5px;
+  font-size: 11px;
   color: var(--ink-4);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -390,7 +390,7 @@
 .tm-fact__k {
   display: block;
   font-family: var(--tm-mono);
-  font-size: 8.5px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -415,7 +415,7 @@
 }
 .tm-card__h {
   font-family: var(--tm-mono);
-  font-size: 8.5px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.13em;
   text-transform: uppercase;
@@ -467,7 +467,7 @@
 }
 .tm-rrow__line {
   display: block;
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--ink-4);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -480,7 +480,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   padding: 1px 7px;
   border-radius: 999px;
@@ -508,7 +508,7 @@
 .tm-label {
   display: block;
   font-family: var(--tm-mono);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -589,7 +589,7 @@
 .tm-day__dow {
   display: block;
   font-family: var(--tm-mono);
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink-4);
@@ -649,7 +649,7 @@
 }
 .tm-salesgrid thead th {
   font-family: var(--tm-mono);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
