@@ -22,6 +22,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { isUnreachable, UNREACHABLE_WORDS } from '@/lib/unreachable'
 import { apiClient } from '../services/api/client'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -93,6 +94,7 @@ function reasonOf(err: unknown): string {
   const msg = data?.message
   if (Array.isArray(msg) && msg.length) return msg.join('; ')
   if (typeof msg === 'string' && msg) return msg
+  if (isUnreachable(err)) return UNREACHABLE_WORDS
   return err instanceof Error && err.message ? err.message : 'the server did not answer'
 }
 

@@ -10,6 +10,7 @@
  * order log, distinct from the Mudavym /logs timeline.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { isUnreachable, UNREACHABLE_WORDS } from "@/lib/unreachable";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -226,7 +227,7 @@ export function SimposTerminalPage() {
     } catch (e: any) {
       setError(
         e?.response?.data?.message ||
-          e?.message ||
+          (isUnreachable(e) ? UNREACHABLE_WORDS : e?.message) ||
           "Could not save the check details",
       );
     }

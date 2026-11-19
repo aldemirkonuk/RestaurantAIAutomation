@@ -35,6 +35,7 @@
 
 import type { Order, OrderStatus, CreateOrderRequest } from '../services/api/types';
 import { mintOrderSeal } from '../services/api/orders';
+import { isUnreachable, UNREACHABLE_WORDS } from '@/lib/unreachable';
 import {
   useOrders,
   usePendingOrders,
@@ -114,7 +115,7 @@ export function useOrdersData(options: UseOrdersOptions = {}): UseOrdersResult {
     pendingOrders: pendingQuery.data || [],
     pendingCount: pendingQuery.data?.length || 0,
     isLoading: ordersQuery.isLoading,
-    error: ordersQuery.error?.message || null,
+    error: (isUnreachable(ordersQuery.error) ? UNREACHABLE_WORDS : ordersQuery.error?.message) || null,
     refetch,
     createOrder,
     mintOrderSeal,

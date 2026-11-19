@@ -11,6 +11,7 @@
  */
 
 import { useMemo } from 'react';
+import { isUnreachable, UNREACHABLE_WORDS } from '@/lib/unreachable';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
@@ -506,7 +507,7 @@ export function useOrdersNextData(): OrdersNextData {
       dataUpdatedAt: known && ordersQuery.dataUpdatedAt ? ordersQuery.dataUpdatedAt : null,
       isLoading: ordersQuery.isLoading,
       isError: ordersQuery.isError,
-      errorMessage: ordersQuery.isError ? err?.message ?? 'request failed' : null,
+      errorMessage: ordersQuery.isError ? (isUnreachable(ordersQuery.error) ? UNREACHABLE_WORDS : err?.message) ?? 'request failed' : null,
       refetch: () => void ordersQuery.refetch(),
     };
   }, [ordersQuery.data, ordersQuery.isLoading, ordersQuery.isError, ordersQuery.error, ordersQuery.refetch, ordersQuery.dataUpdatedAt, providerNameById, gateQuery.data, gateQuery.isError, gateQuery.error]);

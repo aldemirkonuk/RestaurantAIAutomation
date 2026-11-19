@@ -10,6 +10,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isUnreachable, UNREACHABLE_WORDS } from '@/lib/unreachable';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
@@ -71,7 +72,9 @@ export function failureOf(isError: boolean, error: unknown): FailureVM | null {
   const status =
     num((error as { response?: { status?: unknown } } | null)?.response?.status) ?? null;
   const message =
-    serverMessageOf(error) ?? (error as { message?: string } | null)?.message ?? 'request failed';
+    serverMessageOf(error) ??
+    (isUnreachable(error) ? UNREACHABLE_WORDS : (error as { message?: string } | null)?.message) ??
+    'request failed';
   return { status, message, forbidden: status === 403 || status === 401 };
 }
 
@@ -489,7 +492,7 @@ export function useManagerQueue(): ManagerQueueData {
       hasData: known,
       isLoading: q.isLoading,
       isError: q.isError,
-      errorMessage: q.isError ? err?.message ?? 'request failed' : null,
+      errorMessage: q.isError ? (isUnreachable(q.error) ? UNREACHABLE_WORDS : err?.message) ?? 'request failed' : null,
       failure: failureOf(q.isError, q.error),
       refetch: () => void q.refetch(),
     };

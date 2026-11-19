@@ -12,6 +12,7 @@
  */
 
 import { useCallback } from 'react';
+import { isUnreachable, UNREACHABLE_WORDS } from '@/lib/unreachable';
 import type { InventoryItem, InventorySummary } from '../services/api/types';
 import { useInventory, useInventorySummary, useLowStockItems, useUpdateInventoryItem } from './queries/useInventoryQueries';
 
@@ -85,9 +86,9 @@ export function useInventoryData(_options: UseInventoryOptions = {}): UseInvento
     summary: summaryQuery.data || null,
     lowStockItems: lowStockQuery.data || [],
     isLoading: inventoryQuery.isLoading,
-    error: inventoryQuery.error?.message || null,
-    summaryError: summaryQuery.error?.message || null,
-    lowStockError: lowStockQuery.error?.message || null,
+    error: (isUnreachable(inventoryQuery.error) ? UNREACHABLE_WORDS : inventoryQuery.error?.message) || null,
+    summaryError: (isUnreachable(summaryQuery.error) ? UNREACHABLE_WORDS : summaryQuery.error?.message) || null,
+    lowStockError: (isUnreachable(lowStockQuery.error) ? UNREACHABLE_WORDS : lowStockQuery.error?.message) || null,
     isPending: inventoryQuery.isPending || summaryQuery.isPending || lowStockQuery.isPending,
     refetch,
     updateItem,
