@@ -95,6 +95,16 @@ beforeEach(() => {
 });
 
 describe("ChooseHouse", () => {
+  it("says it is opening the houses at 13 px in full ink, not 14 px grey", () => {
+    vi.mocked(apiClient.get).mockReturnValue(new Promise(() => undefined) as never);
+    renderAt();
+    const line = screen.getByText("Opening your houses…");
+    expect(line.className).toContain("text-[13px]");
+    expect(line.className).toContain("!text-inkm-1");
+    expect(line.className).not.toContain("inkm-3");
+    expect(line.className).not.toContain("text-sm");
+  });
+
   it("warms get-started while the person picks a house", async () => {
     housesAnswer([MODA]);
     renderAt();

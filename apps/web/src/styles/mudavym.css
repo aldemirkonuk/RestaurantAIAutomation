@@ -419,3 +419,24 @@ html .mudavym input[type]::-webkit-datetime-edit-text {
    file: the fix and the rules it must beat now share globals.css's one
    hoisted base block, so this file's placement is irrelevant to it.
    See globals.css's own comment for the corrected mechanism in full. */
+
+
+/* ── the glass surface (c2 need 16) ──────────────────────────────────────────
+   The choose-house card is the model: paper ground, a seal-tint edge, and a
+   two-layer lift tinted by the seal so it reads on charcoal as depth, not as a
+   grey shadow. One class, so a second glass surface (the toast wears it) cannot
+   drift from the first. Tokens resolve at the element, so both grounds work
+   from `--paper-1` / `--seal-tint` alone. Static: it animates nothing, so
+   reduced motion has nothing to take away. */
+.mdv-glass {
+  --glass-bg: var(--paper-1);
+  --glass-edge: var(--seal-tint);
+  --glass-lift: 0 24px 64px -24px var(--seal-tint), 0 8px 24px -12px var(--seal-tint);
+  --glass-lift-sm: 0 12px 28px -14px var(--seal-tint), 0 4px 12px -8px var(--seal-tint);
+  --glass-blur: 12px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-lift);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+}

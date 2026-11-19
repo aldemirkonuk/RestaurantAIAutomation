@@ -21,10 +21,11 @@
 
 .mdv-toast {
   padding: 12px 14px !important;
-  background: var(--paper-0) !important;
-  border: 1px solid var(--paper-2) !important;
+  /* The glass surface (styles/mudavym.css `.mdv-glass`), one lift smaller. */
+  background: var(--glass-bg) !important;
+  border: 1px solid var(--glass-edge) !important;
   border-radius: 10px !important;
-  box-shadow: none !important;
+  box-shadow: var(--glass-lift-sm) !important;
   color: var(--ink-1) !important;
 }
 
