@@ -78,7 +78,8 @@ describe('the pill on a phone and on the charcoal ground', () => {
   });
 
   it('writes the chosen label in the ground ink on charcoal (white on the light seal is 2.5:1)', () => {
-    expect(CSS).toMatch(/\[data-ground='charcoal'\] \.mdv-pill__opt\[aria-pressed='true'\][^{]*\{ color: var\(--paper-0/s);
+    expect(CSS).toMatch(/\.mudavym\[data-ground='charcoal'\] \.mdv-pill__opt\[aria-pressed='true'\]/);
+    expect(CSS).toMatch(/html\[data-mudavym-ground='charcoal'\] \.mudavym:not\(\[data-ground\]\) \.mdv-pill__opt\[aria-selected='true'\] \{ color: var\(--paper-0/);
   });
 });
 
