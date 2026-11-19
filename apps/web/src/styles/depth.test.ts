@@ -82,6 +82,7 @@ describe('the toast and the header', () => {
     expect(block(TOAST, ".mdv-toast[data-type='error']")).toMatch(/--toast-accent:\s*var\(--alarm\)/);
   });
   it('the header blurs 14 px and saturates 1.4', () => {
-    expect(block(HEADER, '.mdv-hdr')).toMatch(/backdrop-filter:\s*blur\(14px\) saturate\(1\.4\)/);
+    expect(block(HEADER, '.mdv-hdr')).toMatch(/(?<!-)backdrop-filter:\s*blur\(14px\) saturate\(1\.4\)/);
+    expect(block(HEADER, '.mdv-hdr')).toMatch(/-webkit-backdrop-filter:\s*blur\(14px\) saturate\(1\.4\)/);
   });
 });
