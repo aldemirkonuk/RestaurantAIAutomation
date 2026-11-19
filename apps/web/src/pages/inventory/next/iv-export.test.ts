@@ -169,6 +169,13 @@ describe('count sheet order', () => {
     expect(sortCountSheet([b, a], named).map((r) => r.id)).toEqual(['a', 'b']);
   });
 
+  it('orders by the zone\'s name as shown, not by its id', () => {
+    const named = (id: string | null) => (id === 'z9' ? 'Alpha room' : id === 'a1' ? 'Zulu room' : 'Unassigned');
+    const inA1 = raw({ id: 'x', kind: 'food', displayName: 'X', locations: [{ locationId: 'a1', qty: 1 }] });
+    const inZ9 = raw({ id: 'y', kind: 'food', displayName: 'Y', locations: [{ locationId: 'z9', qty: 1 }] });
+    expect(sortCountSheet([inA1, inZ9], named).map((r) => r.id)).toEqual(['y', 'x']);
+  });
+
   it('keeps the input order for rows that tie, and does not mutate its input', () => {
     const rows = [at('a', 'Same', 'food', 'dry'), at('b', 'Same', 'food', 'dry'), at('c', 'Same', 'food', 'dry')];
     const copy = [...rows];
