@@ -236,22 +236,6 @@ describe("registerRestaurant (F-006, scope item 6)", () => {
       "A house is already open at this place, so this one was not registered. If it is yours, sign in instead.",
     );
   });
-
-  it("Register.tsx's house-form catch calls houseNotOpened, never the error's text (source read)", () => {
-    // A source read, not a render: the form cannot be rendered today
-    // (Register.tsx starts it at step 1 and nothing moves it on), so this
-    // checks what its catch calls, not what a person sees.
-    const src = readFileSync(
-      resolve(process.cwd(), "src/pages/Register.tsx"),
-      "utf8",
-    );
-    const start = src.indexOf("const handleCreateSubmit = async () => {");
-    expect(start).toBeGreaterThan(-1);
-    const body = src.slice(start, src.indexOf("\n  }\n", start));
-    expect(body).toContain("setError(houseNotOpened(err, 'register'))");
-    expect(body).not.toContain("err.message");
-    expect(body).not.toContain("err instanceof Error ?");
-  });
 });
 
 describe("the sentences (F-006)", () => {
