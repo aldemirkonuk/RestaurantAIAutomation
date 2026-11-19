@@ -1,5 +1,6 @@
 import { DatabaseService } from "../../database/database.service";
 import { RawMailRetentionService } from "./raw-mail-retention.service";
+import { INTEGRATION_DEFINITIONS } from "../../integrations/integrations-oauth.constants";
 import type { HouseMailArchiveService } from "../archive/house-mail-archive.service";
 
 /**
@@ -155,5 +156,15 @@ describe("revoking the wide reading while the vendor-only reading stays consente
     const { db, updates } = build(kinds, true);
     await run(new RawMailRetentionService(db, undefined, noArchive), "gmail_read");
     expect(updates.find((u) => u.table === "procurement_conversations")!.ids).toEqual(["v1"]);
+  });
+});
+
+describe("the consent page says exactly what the revoke does", () => {
+  const kept = INTEGRATION_DEFINITIONS.gmail_read_all.dataHandling.keptFor;
+  it("promises team and guest deletion, vendor replies staying while the vendor-only reading is on, and their deletion when all reading is off", () => {
+    expect(kept).toMatch(/deletes every team and guest message this connection filed straight away/);
+    expect(kept).toMatch(/Vendor replies stay while this house still has the vendor-only connection switched on/);
+    expect(kept).toMatch(/when all mail reading is disconnected, the vendor raw mail is deleted straight away too/);
+    expect(kept).not.toMatch(/vendor raw mail and team and guest messages alike/);
   });
 });
