@@ -306,7 +306,7 @@ export const INTEGRATION_DEFINITIONS: Record<
       visibleTo:
         "Vendor mail: everyone who works in this restaurant. Team and guest mail: the restaurant's owner and managers only. Nobody outside this restaurant, and no other restaurant on this deployment. You can disconnect at any time, and a manager can stop the house using the grant without touching it; either one stops the reading on the next run.",
       keptFor:
-        "A vendor reply is kept as the vendor-only connection keeps it: the raw mail has a window and the order's own facts stay on the order. A team or guest message has no order, so it is deleted whole, with its attachments, when the window runs out. Disconnecting deletes every message this connection filed straight away, vendor raw mail and team and guest messages alike, without waiting for the window.",
+        "A vendor reply is kept as the vendor-only connection keeps it: the raw mail has a window and the order's own facts stay on the order. A team or guest message has no order, so it is deleted whole, with its attachments, when the window runs out. Disconnecting deletes every team and guest message this connection filed straight away, without waiting for the window. Vendor replies stay while this house still has the vendor-only connection switched on, because that connection would have stored them anyway; when all mail reading is disconnected, the vendor raw mail is deleted straight away too.",
     },
   },
   excel: {

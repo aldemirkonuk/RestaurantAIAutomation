@@ -644,6 +644,12 @@ export class RawMailRetentionService {
     /** May be empty: a grant made before a tenant was on the token has none. */
     restaurantId: string | null;
     ownerUserId: string | null;
+    /**
+     * Which grant this was. Only the wide reading (`gmail_read_all`) changes
+     * what the sweep does: its vendor rows stay when the house still has the
+     * vendor-only reading consented. Absent means "treat as vendor-only".
+     */
+    integrationId?: string;
   }): Promise<SweepRun> {
     const { data: rows, error: rowsError } = await this.db.supabase
       .from("procurement_conversations")
@@ -715,7 +721,26 @@ export class RawMailRetentionService {
         " Whether this house keeps its own copy could not be checked: the archive service was not available in this injector. The deletion still happened, because a revocation does not wait.";
     }
 
-    const outcome = await this.deleteRawFor(ids, "grant_revoked");
+    // REVOKING THE WIDE READING KEEPS THE VENDOR ROWS WHILE THE HOUSE STILL HAS
+    // THE VENDOR-ONLY READING CONSENTED (decision 2026-11-19): the vendor-only
+    // reader would have stored those same letters anyway, so deleting them
+    // takes away mail the house agreed to keep. Every non-vendor row still
+    // goes. Only when all mail reading is revoked do the vendor rows go too.
+    // A failed read of that standing is not a yes: the vendor rows are then
+    // swept as before, because a revocation errs toward deleting.
+    let keepVendorRows = false;
+    if (params.integrationId === "gmail_read_all" && restaurantId && ids.length) {
+      const { data: vendorOnly, error: vendorOnlyError } = await this.db.supabase
+        .from("integration_oauth_connections")
+        .select("id")
+        .eq("restaurant_id", restaurantId)
+        .eq("integration_id", "gmail_read")
+        .is("revoked_at", null)
+        .limit(1);
+      keepVendorRows = !vendorOnlyError && (vendorOnly ?? []).length > 0;
+    }
+
+    const outcome = await this.deleteRawFor(ids, "grant_revoked", keepVendorRows);
 
     const notice = restaurantId
       ? await this.tellTheOwner({
@@ -738,7 +763,7 @@ export class RawMailRetentionService {
       archiveMode,
       heldForExport: null,
       error: outcome.error,
-      says: `The grant was disconnected. ${ids.length} mirrored repl${ids.length === 1 ? "y" : "ies"} still held raw mail; ${outcome.deleted} had their body, headers and attachment bytes deleted immediately.${archiveSays} Every order fact those replies produced stays on this restaurant's own record.`,
+      says: `The grant was disconnected. ${ids.length} mirrored repl${ids.length === 1 ? "y" : "ies"} still held raw mail; ${outcome.deleted} had their body, headers and attachment bytes deleted immediately.${outcome.vendorKept ? ` ${outcome.vendorKept} vendor repl${outcome.vendorKept === 1 ? "y was" : "ies were"} kept, because this house still has the vendor-only reading connected and it would have stored them anyway.` : ""}${archiveSays} Every order fact those replies produced stays on this restaurant's own record.`,
     });
   }
 
@@ -759,10 +784,12 @@ export class RawMailRetentionService {
   private async deleteRawFor(
     conversationIds: string[],
     reason: SweepReason,
+    keepVendorRows = false,
   ): Promise<{
     deleted: number;
     attachmentsDeleted: number;
     error: string | null;
+    vendorKept?: number;
   }> {
     if (!conversationIds.length) {
       return { deleted: 0, attachmentsDeleted: 0, error: null };
@@ -808,6 +835,14 @@ export class RawMailRetentionService {
       strangersDeleted = (gone ?? []).length;
     }
     const vendorIds = conversationIds.filter((id) => !strangerIds.includes(id));
+    if (keepVendorRows && vendorIds.length) {
+      return {
+        deleted: strangersDeleted,
+        attachmentsDeleted: strangerAttachments,
+        error: null,
+        vendorKept: vendorIds.length,
+      };
+    }
     if (!vendorIds.length) {
       return {
         deleted: strangersDeleted,

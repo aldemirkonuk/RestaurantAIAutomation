@@ -15,7 +15,10 @@ import type { HouseMailArchiveService } from "../archive/house-mail-archive.serv
 const HOUSE = "aaaaaaaa-0000-4000-8000-aaaaaaaaaaaa";
 const GRANT = "eeeeeeee-0000-4000-8000-eeeeeeeeeeee";
 
-function build(kinds: Array<{ id: string; kind: string }> | { error: { message: string } }) {
+function build(
+  kinds: Array<{ id: string; kind: string }> | { error: { message: string } },
+  vendorOnlyReader: boolean | "unreadable" = false,
+) {
   const updates: Array<{ table: string; body: Record<string, unknown>; ids: string[] }> = [];
   const deletes: Array<{ table: string; ids: string[] }> = [];
   const from = (table: string) => {
@@ -60,6 +63,12 @@ function build(kinds: Array<{ id: string; kind: string }> | { error: { message: 
         }
         return Promise.resolve({ data: ids.map((id) => ({ id })), error: null }).then(resolve);
       }
+      if (table === "integration_oauth_connections") {
+        if (vendorOnlyReader === "unreadable") {
+          return Promise.resolve({ data: null, error: { message: "timeout" } }).then(resolve);
+        }
+        return Promise.resolve({ data: vendorOnlyReader ? [{ id: "ro" }] : [], error: null }).then(resolve);
+      }
       return Promise.resolve({ data: [], error: null }).then(resolve);
     };
     return b;
@@ -79,7 +88,7 @@ const noArchive = {
 } as unknown as HouseMailArchiveService;
 
 describe("sweepForRevokedGrant with the wider grant's rows", () => {
-  it("tombstones the vendor row and deletes the team and guest rows whole", async () => {
+  it("with ALL mail reading revoked, tombstones the vendor row and deletes the team and guest rows whole", async () => {
     const { db, updates, deletes } = build([
       { id: "v1", kind: "vendor" },
       { id: "g1", kind: "guest" },
@@ -91,6 +100,7 @@ describe("sweepForRevokedGrant with the wider grant's rows", () => {
       connectionId: GRANT,
       restaurantId: HOUSE,
       ownerUserId: null,
+      integrationId: "gmail_read_all",
     });
 
     expect(deletes).toEqual([{ table: "procurement_conversations", ids: ["g1", "t1"] }]);
@@ -114,5 +124,36 @@ describe("sweepForRevokedGrant with the wider grant's rows", () => {
     expect(updates.filter((u) => u.table === "procurement_conversations")).toHaveLength(0);
     expect(run.deleted).toBe(0);
     expect(run.error).toMatch(/NOT deleted/);
+  });
+});
+
+describe("revoking the wide reading while the vendor-only reading stays consented", () => {
+  const kinds = [
+    { id: "v1", kind: "vendor" },
+    { id: "g1", kind: "guest" },
+    { id: "t1", kind: "team" },
+  ];
+  const run = (service: RawMailRetentionService, integrationId?: string) =>
+    service.sweepForRevokedGrant({ connectionId: GRANT, restaurantId: HOUSE, ownerUserId: null, integrationId });
+
+  it("deletes team and guest rows whole and leaves the vendor row untouched", async () => {
+    const { db, updates, deletes } = build(kinds, true);
+    const out = await run(new RawMailRetentionService(db, undefined, noArchive), "gmail_read_all");
+    expect(deletes).toEqual([{ table: "procurement_conversations", ids: ["g1", "t1"] }]);
+    expect(updates.filter((u) => u.table === "procurement_conversations")).toHaveLength(0);
+    expect(out.deleted).toBe(2);
+    expect(out.says).toMatch(/1 vendor reply was kept/);
+  });
+
+  it("falls back to tombstoning vendor rows when the vendor-only standing cannot be read", async () => {
+    const { db, updates } = build(kinds, "unreadable");
+    await run(new RawMailRetentionService(db, undefined, noArchive), "gmail_read_all");
+    expect(updates.find((u) => u.table === "procurement_conversations")!.ids).toEqual(["v1"]);
+  });
+
+  it("revoking the vendor-only reading itself is unchanged: its vendor rows are tombstoned", async () => {
+    const { db, updates } = build(kinds, true);
+    await run(new RawMailRetentionService(db, undefined, noArchive), "gmail_read");
+    expect(updates.find((u) => u.table === "procurement_conversations")!.ids).toEqual(["v1"]);
   });
 });
