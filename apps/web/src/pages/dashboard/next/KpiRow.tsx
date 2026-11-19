@@ -30,7 +30,7 @@ interface KpiTileProps {
 function KpiTile({ label, value, format, sub, to, loading, accent }: KpiTileProps) {
   const body = (
     <div className="dn-ink h-full rounded-md border border-paper-2 bg-paper-1 px-4 py-3 hover:border-seal-ring">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-inkm-4">{label}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-inkm-4">{label}</p>
       {loading ? (
         <div className="dn-skel mt-2 h-7 w-16" aria-hidden />
       ) : (
