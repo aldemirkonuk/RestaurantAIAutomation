@@ -44,6 +44,15 @@ function makeFakeSupabase(
     let inserted: Row[] | null = null;
     let insertError: { code: string; message: string } | null = null;
     const extra: Array<(r: Row) => boolean> = [];
+    // `tables.__noColumn = [{ <table>: "<column>" }]` makes a read that names the
+    // column fail as Postgres does when the column was never added (42703).
+    let selected = "";
+    const missingColumn = (): { code: string; message: string } | null => {
+      const col = ((tables as any).__noColumn?.[0] ?? {})[table];
+      return col && selected.includes(col)
+        ? { code: "42703", message: `column ${table}.${col} does not exist` }
+        : null;
+    };
     // `tables.__readFails = [{ <table>: "<message>" }]` makes every READ of
     // that table fail with the message (writes still land), so a test can
     // prove a failed read is said, never taken for "no row".
@@ -56,7 +65,8 @@ function makeFakeSupabase(
           extra.every((f) => f(r)),
       );
     const api: any = {
-      select() {
+      select(cols?: string) {
+        if (typeof cols === "string") selected = cols;
         return api;
       },
       eq(col: string, val: any) {
@@ -133,12 +143,14 @@ function makeFakeSupabase(
         return api;
       },
       maybeSingle: async () => {
+        if (missingColumn()) return { data: null, error: missingColumn() };
         if (readFails()) return { data: null, error: { message: readFails() } };
         const rows = matching();
         return { data: rows[0] ?? null, error: null };
       },
       then(resolve: any) {
         if (inserted) return resolve({ data: inserted, error: null });
+        if (!updatePatch && missingColumn()) return resolve({ data: null, error: missingColumn() });
         if (!updatePatch && readFails()) return resolve({ data: null, error: { message: readFails() } });
         const rows = matching();
         if (updatePatch) for (const row of rows) Object.assign(row, updatePatch);
@@ -1890,5 +1902,39 @@ describe("houseZoneOf -- the zone a house's menu dates are said in (menu r21)", 
     expect(zoned).toMatchObject({ timezone: "Europe/Istanbul", timezoneReason: null });
     expect(bare).toMatchObject({ timezone: null, timezoneReason: "the house has no time zone set" });
     expect(zoned.fingerprint).toBe(bare.fingerprint);
+  });
+});
+
+describe("MenusService — a failed read of the kept menus is said in plain words (r72 menu-error)", () => {
+  const rows = (): Record<string, Row[]> => ({
+    restaurant_menus: [
+      { id: "m1", restaurant_id: "rest-1", status: "active", extracted_at: "2026-09-01T00:00:00Z" },
+    ],
+  });
+
+  it("without the read_warnings column the list still reads, and the notes are unknown, not none", async () => {
+    const tables = rows();
+    (tables as any).__noColumn = [{ restaurant_menus: "read_warnings" }];
+    const r = await makeService(tables).listVersions("rest-1");
+    expect(r.versions.map((v) => v.menuId)).toEqual(["m1"]);
+    expect(r.versions[0].readWarnings).toBeNull();
+  });
+
+  it("any other failed read is a plain sentence; the database's words ride in detail only", async () => {
+    const tables = rows();
+    (tables as any).__readFails = [{ restaurant_menus: "column restaurant_menus.foo does not exist" }];
+    const err: any = await makeService(tables).listVersions("rest-1").catch((e) => e);
+    const body = err.getResponse();
+    expect(err.getStatus()).toBe(500);
+    expect(body.message).toBe("The menus could not be read just now. Try again.");
+    expect(body.message).not.toMatch(/column|restaurant_menus/);
+    expect(body.detail).toMatch(/restaurant_menus\.foo does not exist/);
+  });
+
+  it("a missing column other than read_warnings is not papered over", async () => {
+    const tables = rows();
+    (tables as any).__noColumn = [{ restaurant_menus: "id" }];
+    const err: any = await makeService(tables).listVersions("rest-1").catch((e) => e);
+    expect(err.getResponse().message).toBe("The menus could not be read just now. Try again.");
   });
 });

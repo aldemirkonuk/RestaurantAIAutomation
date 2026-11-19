@@ -330,6 +330,21 @@
   opacity: 0.55;
 }
 
+/* "The menus could not be read just now": a 48 px Retry under the sentence
+   (r72, critic round 3, item 10). Press = transform only. */
+.cl-btn.mdv-retry {
+  min-height: 48px;
+  margin-top: 10px;
+  padding: 0 22px;
+  border-radius: 12px;
+  font-size: 15px;
+  transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cl-btn.mdv-retry:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
 @keyframes mdv-read-rise {
   from {
     opacity: 0.4;
@@ -344,8 +359,13 @@
 @media (prefers-reduced-motion: reduce) {
   .mdv-fold__chev,
   .mdv-fold__body,
+  .cl-btn.mdv-retry,
   .cl-btn.mdv-read__go {
     transition: none;
+  }
+
+  .cl-btn.mdv-retry:active:not(:disabled) {
+    transform: none;
   }
 
   .cl-btn.mdv-read__go[data-held='true'] {

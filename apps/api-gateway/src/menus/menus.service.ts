@@ -385,6 +385,34 @@ const VERSION_SELECT =
   "id, name, status, cadence, menu_date, menu_date_precision, source_method, source_path, source_mime, source_bytes, source_failure, lines_extracted, read_warnings, read_state, read_failure, extracted_at, extracted_by, made_current_at, made_current_by, retired_at, retired_by, created_at";
 
 /**
+ * The same list without `read_warnings`: a gateway that is deployed before the
+ * migration that adds the column (#776) still shows the house's menus, and the
+ * lines' notes read as unknown (null), never as "none".
+ */
+const VERSION_SELECT_WITHOUT_WARNINGS = VERSION_SELECT.replace(" read_warnings,", "");
+
+/** What the house is told when the kept menus cannot be read; the cause rides in `detail`. */
+export const MENUS_UNREADABLE = "The menus could not be read just now. Try again.";
+
+function lacksReadWarnings(error: { code?: string; message?: string }): boolean {
+  return error.code === "42703" && /read_warnings/.test(String(error.message ?? ""));
+}
+
+/**
+ * A failed read of the kept menus is said in plain words. The database's own
+ * sentence (column names and all) is not the message; it rides in `detail` for
+ * the page's "Details" fold.
+ */
+function menusUnreadable(error: { message?: string }): InternalServerErrorException {
+  return new InternalServerErrorException({
+    statusCode: 500,
+    error: "Internal Server Error",
+    message: MENUS_UNREADABLE,
+    detail: `The house's menus could not be read: ${error.message ?? "no reason was given"}`,
+  });
+}
+
+/**
  * The columns every line read asks for. `raw_extracted_text` is read so
  * `lineForViewer` (menu-line-view.ts) can say `kitchen_line`; it leaves this
  * read only when the caller's view allows it (`MenuVersionsController.one`,
@@ -1643,15 +1671,12 @@ export class MenusService {
     const rows: Array<Record<string, any>> = [];
     let after: string | null = null;
     for (;;) {
-      let q = this.dbService.supabase
-        .from("restaurant_menus")
-        .select(VERSION_SELECT)
-        .eq("restaurant_id", restaurantId);
-      if (after) q = q.gt("id", after);
-      const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
-      if (error) {
-        throw new InternalServerErrorException(`The house's menus could not be read: ${error.message}`);
-      }
+      const { data, error } = await this.withVersionColumns((cols) => {
+        let q = this.dbService.supabase.from("restaurant_menus").select(cols).eq("restaurant_id", restaurantId);
+        if (after) q = q.gt("id", after);
+        return q.order("id", { ascending: true }).limit(PAGE_ROWS);
+      });
+      if (error) throw menusUnreadable(error);
       const page = (data ?? []) as Array<Record<string, any>>;
       rows.push(...page);
       if (page.length < PAGE_ROWS) break;
@@ -2126,14 +2151,24 @@ export class MenusService {
     };
   }
 
+  /** Runs a read of a menu's row; if only `read_warnings` is missing, reads again without it. */
+  private async withVersionColumns<T extends { error: any }>(run: (cols: string) => PromiseLike<T>): Promise<T> {
+    const first = await run(VERSION_SELECT);
+    if (!first.error || !lacksReadWarnings(first.error)) return first;
+    this.logger.warn(`restaurant_menus has no read_warnings column yet; reading the menus without it: ${first.error.message}`);
+    return run(VERSION_SELECT_WITHOUT_WARNINGS);
+  }
+
   private async readVersionRow(restaurantId: string, menuId: string): Promise<Record<string, any>> {
-    const { data, error } = await this.dbService.supabase
-      .from("restaurant_menus")
-      .select(VERSION_SELECT)
-      .eq("id", menuId)
-      .eq("restaurant_id", restaurantId)
-      .maybeSingle();
-    if (error) throw new InternalServerErrorException(`The menu could not be read: ${error.message}`);
+    const { data, error } = await this.withVersionColumns((cols) =>
+      this.dbService.supabase
+        .from("restaurant_menus")
+        .select(cols)
+        .eq("id", menuId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle(),
+    );
+    if (error) throw menusUnreadable(error);
     if (!data) throw new NotFoundException("No menu of this restaurant by that id.");
     return data as Record<string, any>;
   }
