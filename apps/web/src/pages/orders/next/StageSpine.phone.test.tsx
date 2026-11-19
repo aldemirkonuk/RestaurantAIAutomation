@@ -1,5 +1,5 @@
 /**
- * On a phone the five stations are a snap strip of 112 x 72 tiles, not five
+ * On a phone the five stations are a snap strip of 148 x 64 tiles, 8 px apart, not five
  * 75 px slivers (design need N-11), the station you pressed is brought into
  * view, and the page's one act is a full-width 52 px button.
  */
@@ -15,11 +15,14 @@ const phoneBlock = /@media \(max-width: 639px\) \{(.*)\}\s*$/.exec(css)?.[1] ?? 
 const counts = { pending: 3, approved: 1, ordered: 2, delivered: 5, cancelled: 0 } as never;
 
 describe('the stage strip on a phone', () => {
-  it('is one horizontal snap strip with 112 x 72 tiles', () => {
+  it('is one horizontal snap strip with 148 x 64 tiles, 8 px apart', () => {
     expect(phoneBlock).toMatch(/\.ord-spine \{[^}]*overflow-x: auto/);
     expect(phoneBlock).toMatch(/\.ord-spine \{[^}]*scroll-snap-type: x mandatory/);
-    expect(phoneBlock).toMatch(/\.ord-spine__tile \{[^}]*flex: 0 0 112px/);
-    expect(phoneBlock).toMatch(/\.ord-spine__tile \{[^}]*min-height: 72px/);
+    expect(phoneBlock).toMatch(/\.ord-spine \{[^}]*gap: 8px/);
+    expect(phoneBlock).toMatch(/\.ord-spine \{[^}]*max-width: 100%/);
+    expect(phoneBlock).toMatch(/\.ord-spine__tile \{[^}]*flex: 0 0 148px/);
+    expect(phoneBlock).toMatch(/\.ord-spine__tile \{[^}]*min-height: 64px/);
+    expect(phoneBlock).toMatch(/\.ord-spine \.ord-spine__tile \{[^}]*padding-block: 7px/);
     expect(phoneBlock).toMatch(/\.ord-spine__tile \{[^}]*scroll-snap-align: start/);
   });
 

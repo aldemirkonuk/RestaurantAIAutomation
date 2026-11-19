@@ -1,9 +1,40 @@
-/* /orders on a phone (design need N-11): the five stages are one snap strip of
-   112 x 72 tiles and the page's primary act is a full-width 52 px button that keeps
+/* /orders on a phone (design needs N-11 and r72 need 1): the five stages are one snap
+   strip of 148 x 64 tiles 8 px apart, each ledger row is a 72 px two-line card (name and
+   money over vendor and stage), and the page's primary act is a full-width 52 px button that keeps
    to one line and the second act a 44 px text link under it. Above 640 px nothing here applies. */
 .ord-write {
   font-size: 12.5px;
   padding: 7px 13px;
+}
+
+/* "Show 20 more": the ledger draws 20 rows and this 48 px button under them. */
+.ord-more {
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 12px;
+  border: 1px solid var(--paper-2, #EAE4D8);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--seal-deep, #14515C);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    opacity 160ms ease;
+}
+
+.ord-more:hover {
+  background: var(--paper-1, #F3EFE6);
+}
+
+.ord-more__left {
+  font-size: 11px;
+  color: var(--ink-4, #665D50);
 }
 
 @media (max-width: 639px) {
@@ -30,7 +61,14 @@
     text-underline-offset: 3px;
   }
 
+  /* The strip is its own scroller and never widens the page. */
   .ord-spine {
+    min-width: 0;
+    max-width: 100%;
+    gap: 8px;
+    padding: 8px 0;
+    border-top: 0 !important;
+    border-bottom: 0 !important;
     overflow-x: auto;
     scroll-snap-type: x mandatory;
     scrollbar-width: none;
@@ -41,9 +79,64 @@
     display: none;
   }
 
-  .ord-spine__tile {
-    flex: 0 0 112px;
-    min-height: 72px;
+  .ord-spine .ord-spine__tile {
+    flex: 0 0 148px;
+    min-height: 64px;
+    /* Two lines of 24 + 17 px plus the rail, in 64 px: the tile's own 12 px padding made it 73. */
+    padding-block: 7px;
     scroll-snap-align: start;
+    overflow: hidden;
+    border: 1px solid var(--paper-2, #EAE4D8);
+    border-radius: 10px;
+  }
+
+  /* A ledger row is a 72 px card: name and money on the first line, vendor and stage on the second. */
+  .ord-row__open {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'text money'
+      'text stage';
+    align-items: center !important;
+    column-gap: 12px;
+    row-gap: 2px;
+    min-height: 72px;
+    min-width: 0;
+  }
+
+  .ord-row__open > :first-child {
+    grid-area: text;
+    min-width: 0;
+  }
+
+  .ord-row__open .ord-row__name {
+    -webkit-line-clamp: 1;
+  }
+
+  .ord-row__open .ord-row__vendor {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .ord-row__money {
+    grid-area: money;
+    min-width: 0 !important;
+  }
+
+  .ord-row__stage {
+    grid-area: stage;
+    justify-self: end;
+  }
+
+  .ord-row__chev {
+    display: none;
+  }
+}
+
+/* Motion is off for a person who asked for none. */
+@media (prefers-reduced-motion: reduce) {
+  .ord-more {
+    transition: none;
   }
 }

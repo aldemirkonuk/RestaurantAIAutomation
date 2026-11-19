@@ -37,7 +37,7 @@ export function StageSpine({ counts, recurringCount, active, onSelect }: StageSp
     <div
       role="tablist"
       aria-label="Order stages"
-      // Under 640px the five stations are one snap strip of 112 x 72 tiles that
+      // Under 640px the five stations are one snap strip of 148 x 64 tiles, 8 px apart, that
       // scrolls inside itself (orders-phone.css): five equal cells cannot hold
       // "DELIVERED" and "RECURRING" in a 390px phone, and a strip that grew the
       // page pushed it sideways (ORD-W18). From sm up, one row as before.

@@ -289,17 +289,17 @@ export function LedgerRow({
           aria-haspopup={clickOpensReceipt ? 'dialog' : undefined}
           data-testid="row-click"
           data-row-click={clickOpensReceipt ? 'receipt' : 'expand'}
-          className="flex flex-1 items-baseline gap-3 py-2.5 text-left"
+          className="ord-row__open flex flex-1 items-baseline gap-3 py-2.5 text-left"
           style={{ fontFamily: SANS, cursor: 'pointer', minWidth: 0 }}
         >
           <span className="min-w-0 flex-1">
             <span
-              className="line-clamp-2 break-words"
+              className="ord-row__name line-clamp-2 break-words"
               style={{ fontFamily: SERIF, fontSize: 15, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}
             >
               {row.wineName ?? EM}
             </span>
-            <span className="block break-words" style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
+            <span className="ord-row__vendor block break-words" style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
               {row.providerName ?? EM}
               {/*
                 * "recurs weekly, next 12 Sep". The clause is rendered whenever
@@ -332,6 +332,7 @@ export function LedgerRow({
             )}
           </span>
           <span
+            className="ord-row__stage"
             style={{
               fontFamily: MONO,
               fontSize: 9,
@@ -348,6 +349,7 @@ export function LedgerRow({
             {row.stage === 'cancelled' ? 'Cancelled' : STAGE_LABEL[row.stage]}
           </span>
           <span
+            className="ord-row__money"
             style={{
               fontFamily: MONO,
               fontSize: 13,
@@ -363,7 +365,7 @@ export function LedgerRow({
           {clickOpensReceipt ? (
             <span className="sr-only"> — open the receipt</span>
           ) : (
-            <span aria-hidden style={chevronStyle(expanded)}>
+            <span aria-hidden className="ord-row__chev" style={chevronStyle(expanded)}>
               ›
             </span>
           )}
