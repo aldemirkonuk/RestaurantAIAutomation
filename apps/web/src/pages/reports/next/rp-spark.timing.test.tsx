@@ -39,8 +39,8 @@ describe('sparkline timing (c3 need 15)', () => {
   it('two figures stagger by their place: the second is 40 ms behind the first', () => {
     render(
       <>
-        <Spark series={{ ...series, id: 'a' } as never} index={0} />
-        <Spark series={{ ...series, id: 'b' } as never} index={1} />
+        <Spark series={{ id: 'a', title: 'Till', of: 'days', last: '$1', values: [1, 2, 3] } as never} index={0} />
+        <Spark series={{ id: 'b', title: 'Till', of: 'days', last: '$1', values: [1, 2, 3] } as never} index={1} />
       </>,
     );
     expect(screen.getByTestId('rp-spark-a').style.getPropertyValue('--rp-spark-i')).toBe('0');
