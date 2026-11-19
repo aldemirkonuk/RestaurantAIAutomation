@@ -166,6 +166,12 @@ describe('the touch rules', () => {
     expect(block).toMatch(/\.iv-page \.iv-field,[\s\S]*?font-size: 16px/);
   });
 
+  it('gives the price button and its editor fields 44 px and 16 px on a card', () => {
+    const block = touch.slice(0, touch.indexOf('phone: the filter chips'));
+    expect(block).toMatch(/\.iv-page \.ivc-price button,\s*\.iv-page \.ivc-price input \{\s*min-height: 44px;/);
+    expect(block).toMatch(/\.iv-page \.ivc-price input \{\s*font-size: 16px;/);
+  });
+
   it('moves only transform and opacity, and never says transition: all', () => {
     expect(css).not.toMatch(/transition:\s*all/);
     const cards = css.slice(css.indexOf('phone cards:'));

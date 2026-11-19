@@ -1014,6 +1014,19 @@ html .mdv-ovl .iv-sheet-body .mdv-select__control {
     width: 22px;
     height: 22px;
   }
+  /* The price on a card (a button, then three fields and two buttons once it
+     opens) is the owner's one control on the row: it takes the same 44 px and
+     16 px as the rest, and never zooms the page. */
+  .iv-page .ivc-price button,
+  .iv-page .ivc-price input {
+    min-height: 44px;
+  }
+  .iv-page .ivc-price button {
+    min-width: 44px;
+  }
+  .iv-page .ivc-price input {
+    font-size: 16px;
+  }
 }
 
 /* ── phone: the filter chips are one swipeable line, not a wrapped wall ──── */
