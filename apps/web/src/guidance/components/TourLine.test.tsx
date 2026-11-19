@@ -109,4 +109,11 @@ describe('TourLine', () => {
     expect(onLater).toHaveBeenCalledTimes(1)
     mm.mockRestore()
   })
+
+  // r74 walk: a 4 px top margin stayed behind while the row folded to nothing and
+  // vanished when the line unmounted, so the heading jumped 4 px at the end of the fold.
+  it('carries no outside margin, so the heading does not jump when the folded line unmounts', () => {
+    mount()
+    expect(line()!.className).not.toMatch(/(^|\s)(sm:)?m[tb]-/)
+  })
 })

@@ -112,7 +112,7 @@ export function TourLine({
           ? 'none'
           : 'grid-template-rows 200ms cubic-bezier(0.16, 1, 0.3, 1), opacity 200ms cubic-bezier(0.16, 1, 0.3, 1)',
       }}
-      className={cn('mdv-guidance-strip mx-3 sm:mx-4 mt-1', className)}
+      className={cn('mdv-guidance-strip mx-3 sm:mx-4', className)}
     >
       <div className="min-h-0 overflow-hidden">
         <div className="flex h-11 items-center gap-1 px-1">
