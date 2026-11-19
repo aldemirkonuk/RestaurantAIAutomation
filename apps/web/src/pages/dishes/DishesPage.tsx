@@ -36,6 +36,9 @@
  * cells say "…" while the figures are read, and a failed figures read blanks
  * only the figures and says so once above the list, never the names.
  * The opened dish offers to take the menu's price, after a confirm.
+ *
+ * Above the list, the dishes whose price the menu states differently are
+ * counted, shown, and taken all at once after one confirm (TakeMenuPrices).
  */
 import { useId, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -44,13 +47,14 @@ import RecipeSheet from '../cellar/next/recipe/RecipeSheet';
 import { pourCostShare } from '../cellar/next/recipe/DrinkCards';
 import { PRICE_UNREAD, priceText, readPrice } from '../cellar/next/recipe/price-text';
 import { useHousePercent, type SayPercent } from '../cellar/next/recipe/useHousePercent';
-import { reason, useCanEditRecipe, useCreateDish, useDishFigures, useDishes, useHouseMoney, useMenuPrices, useRemoveDish, useUpdateDish } from '../cellar/next/recipe/useRecipe';
+import { reason, useCanEditRecipe, useCreateDish, useDishFigures, useDishes, useHouseMoney, useMenuPrices, useRemoveDish, useTakeMenuPrices, useUpdateDish } from '../cellar/next/recipe/useRecipe';
 import { MENU_PRICES_UNREAD, MenuPriceCell } from '../cellar/next/recipe/MenuPriceCell';
 import MenuDishesOffer from './MenuDishesOffer';
 import { dishMatches, sectionsOf } from './fold';
 import { AllergenCell, AllergenCheck, keptFor } from '../cellar/next/recipe/ListAllergens';
 import { CostWaits, NoRecipeYet } from '../cellar/next/recipe/ListCostWaits';
-import UseMenuPrice from '../cellar/next/recipe/UseMenuPrice';
+import UseMenuPrice, { menuPriceOffer } from '../cellar/next/recipe/UseMenuPrice';
+import TakeMenuPrices, { type Takeable } from './TakeMenuPrices';
 import type { DishFigureRow, DishListRow, MenuPrice } from '../../services/api/recipes';
 import { EM, SANS } from '../cellar/next/cellar-format';
 import '../cellar/next/cellar-next.css';
@@ -360,13 +364,31 @@ export default function DishesPage() {
   const all = dishes.data ?? [];
   const sections = sectionsOf(all);
   const [onlyBare, setOnlyBare] = useState(false);
+  const [onlyDiffering, setOnlyDiffering] = useState(false);
+  const take = useTakeMenuPrices();
   const fig = (id: string) => figures.byId?.get(id);
   const figState: FiguresState = figures.loading ? 'reading' : !figures.byId || figures.costsUnread ? 'unread' : 'read';
   const searched = all.filter((d) => dishMatches(d, query));
   const byAllergen = searched.filter((d) => keptFor(fig(d.id)?.allergens, allergen));
   // Which dishes have no recipe is known only once the figures are read.
   const bareIds = figures.byId ? all.filter((d) => !fig(d.id)?.hasRecipe).map((d) => d.id) : [];
-  const rows = canEdit && onlyBare ? byAllergen.filter((d) => bareIds.includes(d.id)) : byAllergen;
+  // The dishes the menu prices apart from the list: one line, one price, and it differs.
+  const takeable: Takeable[] = [];
+  if (showMenu && say) {
+    for (const d of all) {
+      const offer = menuPriceOffer(menu.byId?.get(d.id), d.price);
+      if (offer.length !== 1) continue;
+      const cost = fig(d.id)?.cost ?? null;
+      const shareText = (price: number | null) => {
+        const sh = pourCostShare(cost, price);
+        return 'pct' in sh ? sayPct(sh.pct) : figState === 'reading' ? 'being read' : 'not known';
+      };
+      takeable.push({ id: d.id, name: d.name, from: d.price, to: offer[0], shareNow: shareText(d.price), shareMenu: shareText(offer[0]) });
+    }
+  }
+  const takeIds = new Set(takeable.map((t) => t.id));
+  const filtered = canEdit && onlyBare ? byAllergen.filter((d) => bareIds.includes(d.id)) : byAllergen;
+  const rows = onlyDiffering && takeable.length > 0 ? filtered.filter((d) => takeIds.has(d.id)) : filtered;
   const openId = rows.some((d) => d.id === asked) ? asked : null;
   // A link (the inventory drawer's "used in" lines) to a dish that opens nothing
   // says why, as /cocktails does: it is not on the list, or the search or a check hides it.
@@ -407,6 +429,16 @@ export default function DishesPage() {
           <p className="cl-said" role="status" style={{ marginTop: 12 }} data-testid="dishes-menu-unread">
             {MENU_PRICES_UNREAD}
           </p>
+        ) : null}
+
+        {say && showMenu ? (
+          <TakeMenuPrices
+            items={takeable}
+            say={say}
+            showing={onlyDiffering && takeable.length > 0}
+            onShowing={setOnlyDiffering}
+            onUse={(ids) => take.mutateAsync(ids)}
+          />
         ) : null}
 
         {linkNote === 'missing' ? (

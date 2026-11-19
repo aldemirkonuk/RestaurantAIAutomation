@@ -190,6 +190,16 @@ export class UpdateDishDto {
   description?: string | null;
 }
 
+/** The dishes whose price should become the current menu's price (the ids the manager confirmed). */
+export class TakeMenuPricesDto {
+  @ApiProperty({ type: [String] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(1000)
+  @IsUUID("all", { each: true })
+  ids!: string[];
+}
+
 /** The pasted labels to look up on the shelf by exact folded name (ADR 0366 item 7). */
 export class ShelfMatchDto {
   @ApiProperty({ type: [String] })

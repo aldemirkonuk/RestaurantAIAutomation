@@ -6,7 +6,7 @@ import { Roles } from "../auth/decorators/roles.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RecipesService } from "./recipes.service";
 import { DishesService } from "./dishes.service";
-import { CreateDishDto, PreviewCostDto, SaveRecipeDto, ShelfMatchDto, UpdateDishDto } from "./dto/recipes.dto";
+import { CreateDishDto, PreviewCostDto, SaveRecipeDto, ShelfMatchDto, TakeMenuPricesDto, UpdateDishDto } from "./dto/recipes.dto";
 
 /**
  * A dish and its recipe (ADR 0366), on the drinks' recipe routes. Every route
@@ -45,6 +45,17 @@ export class DishesController {
   @ApiOperation({ summary: "Add a dish (owner/manager); 409 when the house already has one by that name" })
   createDish(@Param("restaurantId", ParseUUIDPipe) restaurantId: string, @Body() dto: CreateDishDto) {
     return this.dishes.createDish(restaurantId, dto);
+  }
+
+  @Post(":restaurantId/dishes/take-menu-prices")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({
+    summary:
+      "Set each named dish's price to the one price the current menu gives it (owner/manager); says which dishes changed and why each other was left",
+  })
+  takeMenuPrices(@Param("restaurantId", ParseUUIDPipe) restaurantId: string, @Body() dto: TakeMenuPricesDto) {
+    return this.dishes.takeMenuPrices(restaurantId, dto.ids);
   }
 
   @Patch(":restaurantId/dishes/:dishId")

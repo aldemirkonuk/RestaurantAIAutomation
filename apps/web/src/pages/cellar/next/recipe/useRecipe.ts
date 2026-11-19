@@ -179,6 +179,16 @@ export function useUpdateDish(dishId: string) {
   });
 }
 
+/** Set many dishes to the current menu's prices; every list and figure is read again. */
+export function useTakeMenuPrices() {
+  const { activeRestaurantId } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) => dishesApi.takeMenuPrices(activeRestaurantId as string, ids),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['recipes', activeRestaurantId ?? null] }),
+  });
+}
+
 /** Take a dish off the list; the list is read again. */
 export function useRemoveDish(dishId: string) {
   const { activeRestaurantId } = useAuth();
