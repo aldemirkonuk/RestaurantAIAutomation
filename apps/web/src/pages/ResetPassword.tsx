@@ -102,18 +102,6 @@ export function ResetPassword() {
             onSubmit={handleSubmit}
             aria-busy={loading}
           >
-            {error && (
-              <div className="mdv-spread-stack">
-                <p className="mdv-alert" role="alert">
-                  {error}
-                </p>
-                {tokenError && (
-                  <Link className="mdv-link" to="/forgot-password">
-                    Request a new link
-                  </Link>
-                )}
-              </div>
-            )}
             <div>
               <label className="mdv-label" htmlFor="password">
                 New password
@@ -153,6 +141,18 @@ export function ResetPassword() {
             >
               {loading ? 'Updating…' : 'Reset password'}
             </button>
+            {error && (
+              <div className="mdv-spread-stack">
+                <p className="mdv-alert" role="alert">
+                  {error}
+                </p>
+                {tokenError && (
+                  <Link className="mdv-link" to="/forgot-password">
+                    Request a new link
+                  </Link>
+                )}
+              </div>
+            )}
           </form>
         )}
       </div>
