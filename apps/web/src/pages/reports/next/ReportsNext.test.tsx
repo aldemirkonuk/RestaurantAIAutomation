@@ -2634,3 +2634,15 @@ describe('r61 c2 — the opening, the strips and the till window', () => {
     expect(full).toBe(36 * 12);
   });
 });
+
+// r74 walk: at 375 px the strip's title wrapped to two or three lines ("The / reading")
+// and pushed the sentence out of the 72 px.
+describe('Reports strip title and window (css contract)', () => {
+  const css = readFileSync(resolve(__dirname, 'reports-next.css'), 'utf8');
+  it('keeps a strip title on one line', () => {
+    expect(css).toMatch(/\.rp-cut\[data-strip\] \.rp-cut__title \{[^}]*white-space: nowrap/);
+  });
+  it('drops the window line on a phone so the sentence has the room', () => {
+    expect(css).toMatch(/@media \(max-width: 480px\) \{\s*(?:\/\*[\s\S]*?\*\/\s*)?\.rp-cut\[data-strip\] \.rp-cut__window \{\s*display: none/);
+  });
+});

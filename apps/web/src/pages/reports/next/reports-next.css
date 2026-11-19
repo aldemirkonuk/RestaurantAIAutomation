@@ -1187,6 +1187,22 @@ html[data-mudavym-ground='charcoal'] .rp-tip {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.rp-cut[data-strip] .rp-cut__title {
+  /* One line, never wrapped: a half-width strip put "The / reading" on two
+     lines and pushed the sentence out of the 72 px. */
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 480px) {
+  /* On a phone the window line has no room beside the title; the sentence
+     underneath is the strip's answer. */
+  .rp-cut[data-strip] .rp-cut__window {
+    display: none;
+  }
+}
 .rp-cut[data-strip] .rp-cut__body {
   padding: 2px 12px 8px;
   overflow: hidden;
