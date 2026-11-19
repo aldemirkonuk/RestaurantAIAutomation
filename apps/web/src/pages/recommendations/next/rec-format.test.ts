@@ -13,6 +13,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  failureOf,
   handOf,
   heldBy,
   receiptFor,
@@ -339,5 +340,17 @@ describe('a key named on Object.prototype is an unknown rule, never an inherited
     expect(leverWords(slip, null)).toBe(
       `This goal is held on ${key}, which is not one of the ${Object.keys(METRIC_CATEGORIES).length} metrics the gateway maps to insight categories, so the rule’s “this goal’s category” has no answer here.`,
     );
+  });
+});
+
+describe('failureOf: a call that got no answer is said in words', () => {
+  const noAnswer = Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' });
+  it('says the unreachable words, not the transport name', () => {
+    expect(failureOf(noAnswer).message).toBe('Mudavym could not be reached just now.');
+  });
+  it('keeps the gateway sentence and an answered failure as they were', () => {
+    const answered = Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK', response: { status: 502 } });
+    expect(failureOf(answered).message).toBe('Network Error');
+    expect(failureOf({ ...answered, response: { status: 400, data: { message: 'bad day' } } }).message).toBe('bad day');
   });
 });

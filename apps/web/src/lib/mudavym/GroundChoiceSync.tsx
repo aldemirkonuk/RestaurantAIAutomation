@@ -53,6 +53,7 @@
  */
 
 import { useEffect } from 'react';
+import { isUnreachable, UNREACHABLE_WORDS } from '@/lib/unreachable';
 import { useAuthStore } from '../../stores';
 import { useUserPreferences } from '../../hooks/useUserPreferences';
 import {
@@ -95,9 +96,11 @@ export function GroundChoiceSync(): null {
     if (!userId) return;
     if (error) {
       reportGroundReadFailure(
-        error instanceof Error && error.message
-          ? error.message
-          : 'the preferences request failed',
+        isUnreachable(error)
+          ? UNREACHABLE_WORDS
+          : error instanceof Error && error.message
+            ? error.message
+            : 'the preferences request failed',
       );
       return;
     }
