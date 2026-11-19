@@ -8,6 +8,7 @@
  * at all under `prefers-reduced-motion`.
  */
 
+import type { CSSProperties } from "react";
 import type { SparkSeries } from "./rp-strip";
 
 export const SPARK_W = 160;
@@ -29,13 +30,17 @@ export function sparkPath(values: number[]): string {
     .join(" ");
 }
 
-export function Spark({ series }: { series: SparkSeries }) {
+export function Spark({ series, index = 0 }: { series: SparkSeries; index?: number }) {
   const d = sparkPath(series.values);
   const last = d.split(" ").slice(-2);
   const cx = Number(last[0].replace("L", ""));
   const cy = Number(last[1]);
   return (
-    <figure className="rp-spark" data-testid={`rp-spark-${series.id}`}>
+    <figure
+      className="rp-spark"
+      data-testid={`rp-spark-${series.id}`}
+      style={{ "--rp-spark-i": index } as CSSProperties}
+    >
       <figcaption className="rp-spark__cap">
         <span>{series.title}</span>
         <span className="rp-spark__last">{series.last}</span>
