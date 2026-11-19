@@ -48,6 +48,23 @@ describe('GroundAskWatch', () => {
     expect(getGroundAskGate().firstTaskAt).not.toBeNull();
   });
 
+  it('[REVERT-FAILS] a preferences write behind a tap is not a task', async () => {
+    authState.userId = 'u1';
+    render(
+      <QueryClientProvider client={client}>
+        <GroundAskWatch />
+      </QueryClientProvider>,
+    );
+    window.dispatchEvent(new Event('pointerdown'));
+    await act(async () => {
+      await client
+        .getMutationCache()
+        .build(client, { mutationKey: ['user-preferences'], mutationFn: async () => 'ok' })
+        .execute(undefined);
+    });
+    expect(getGroundAskGate().firstTaskAt).toBeNull();
+  });
+
   it('watches nothing while nobody is signed in', async () => {
     render(
       <QueryClientProvider client={client}>

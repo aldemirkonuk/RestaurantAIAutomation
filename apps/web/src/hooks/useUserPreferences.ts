@@ -11,6 +11,7 @@ import { queryKeys } from '../lib/query-keys'
 import { apiClient } from '../services/api/client'
 import { useAuthStore } from '../stores'
 import type { AskMode } from '../components/askai/ask-mode'
+import { USER_PREFERENCES_MUTATION_KEY } from '../lib/mudavym/groundAsk'
 
 export interface UserPreferences {
   providerFavorites?: string[]
@@ -146,6 +147,7 @@ export function useUserPreferences() {
     Partial<UserPreferences>,
     { previous: UserPreferences | undefined }
   >({
+    mutationKey: USER_PREFERENCES_MUTATION_KEY,
     mutationFn: (partial) => patchPreferences(userId!, partial),
     onMutate: async (partial) => {
       if (!userId) return { previous: undefined }

@@ -140,10 +140,19 @@ export function useGroundAskGate(): GroundAskGate {
 }
 
 /**
+ * The key `useUserPreferences` puts on its write. A preferences write is the
+ * app remembering something (a tip snoozed, a theme chosen, a filter kept), not
+ * a task the person set out to do, so it never counts as the first task even
+ * though a tap is right behind it. (r62 walk: tapping "Later" on a page tip
+ * wrote `firstTaskAt` 56 ms after the snooze.)
+ */
+export const USER_PREFERENCES_MUTATION_KEY = ['user-preferences'] as const;
+
+/**
  * Watch for the first completed task: a mutation that SUCCEEDED and that a
  * person started with a tap or a key press just before. Background writes
- * (preferences, guidance state, anything the app sends on its own) have no
- * gesture behind them, so they never count. Returns the unsubscribe.
+ * (anything the app sends on its own) have no gesture behind them, and a
+ * preferences write has one but is not a task, so neither counts. Returns the unsubscribe.
  */
 export function watchFirstTask(client: QueryClient, target: Window | null = typeof window === 'undefined' ? null : window): () => void {
   if (!target) return () => {};
@@ -155,6 +164,7 @@ export function watchFirstTask(client: QueryClient, target: Window | null = type
   target.addEventListener('keydown', mark, true);
   const unsubscribe = client.getMutationCache().subscribe((event) => {
     if (event.type !== 'updated' || event.action.type !== 'success') return;
+    if (event.mutation.options.mutationKey?.[0] === USER_PREFERENCES_MUTATION_KEY[0]) return;
     const submittedAt = event.mutation.state.submittedAt;
     if (submittedAt - lastGestureAt > GESTURE_WINDOW_MS) return;
     // The gesture may follow the submit by a hair in a test clock; only a
