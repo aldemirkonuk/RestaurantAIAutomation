@@ -96,7 +96,7 @@ const label = (text: string) => (
   <span
     style={{
       fontFamily: MONO,
-      fontSize: 9,
+      fontSize: 11,
       fontWeight: 500,
       letterSpacing: '0.12em',
       textTransform: 'uppercase' as const,
@@ -334,7 +334,7 @@ export function LedgerRow({
           <span
             style={{
               fontFamily: MONO,
-              fontSize: 9,
+              fontSize: 11,
               fontWeight: 500,
               letterSpacing: '0.1em',
               textTransform: 'uppercase',
@@ -681,7 +681,7 @@ export function LedgerRow({
                     </p>
                   )}
                   {approval && approval.untestable.length > 0 && (
-                    <p style={{ marginTop: 4, fontSize: 10.5, lineHeight: 1.5, color: 'var(--ink-4, #665D50)' }}>
+                    <p style={{ marginTop: 4, fontSize: 11, lineHeight: 1.5, color: 'var(--ink-4, #665D50)' }}>
                       {approval.untestable.length === 1 ? 'One rule' : `${approval.untestable.length} rules`}{' '}
                       could not be tested on this order ({approval.untestable.join(', ')}), so{' '}
                       {approval.untestable.length === 1 ? 'it' : 'they'} did not fire. An
@@ -689,7 +689,7 @@ export function LedgerRow({
                     </p>
                   )}
                   {approvalGateError && (
-                    <p style={{ marginTop: 4, fontSize: 10.5, lineHeight: 1.5, color: 'var(--ink-2, #4F473C)' }} role="status">
+                    <p style={{ marginTop: 4, fontSize: 11, lineHeight: 1.5, color: 'var(--ink-2, #4F473C)' }} role="status">
                       This house&rsquo;s approval rules could not be read ({approvalGateError}), so
                       nothing here says whether you may seal this. The gateway still decides, and
                       will say so if it refuses.
