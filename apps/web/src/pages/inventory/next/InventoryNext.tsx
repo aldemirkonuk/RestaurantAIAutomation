@@ -53,7 +53,7 @@ import { useIsPhone } from '../../../hooks/useIsPhone';
 import CarryThis from './CarryThis';
 import { removeBlocked, removeTarget } from './RowDropdown';
 import { RemoveFromInventoryModal } from '../../../components/inventory/RemoveFromInventoryModal';
-import { costColumnsFor, countSheetColumns, forHouse, oneLine, runExport, sortCountSheet, today, valuationColumns } from './iv-export';
+import { costColumnsFor, countSheetColumns, dropEmptyDetail, oneLine, runExport, sortCountSheet, today, valuationColumns } from './iv-export';
 import { COUNT_DUE_DAYS } from '../command/bits';
 import {
   CHIPS,
@@ -561,7 +561,7 @@ export default function InventoryNext() {
     const rowsOut = sortCountSheet(visible, zoneName);
     return runExport<InvRow>(
       rowsOut,
-      costColumnsFor(forHouse(words.one === 'good', countSheetColumns(nameHead, zoneName, countObservation)), data.canManage),
+      costColumnsFor(dropEmptyDetail(rowsOut, countSheetColumns(nameHead, zoneName, countObservation)), data.canManage),
       `inventory-count-${today()}`,
       'Inventory count sheet',
     );
@@ -570,7 +570,7 @@ export default function InventoryNext() {
   const valuation = valuationColumns(data.currency.code ?? null, nameHead);
 
   const exportValuation = () =>
-    runExport(visible, costColumnsFor(valuation, data.canManage), `inventory-valuation-${today()}`, 'Inventory valuation');
+    runExport(visible, costColumnsFor(dropEmptyDetail(visible, valuation), data.canManage), `inventory-valuation-${today()}`, 'Inventory valuation');
 
   const showTools = () => toolsRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
 
@@ -965,7 +965,7 @@ export default function InventoryNext() {
                     type="button"
                     className="iv-btn iv-focus"
                     onClick={() =>
-                      void runExport(selectedRows, costColumnsFor(valuation, data.canManage), `inventory-selected-${today()}`, 'Inventory selection')
+                      void runExport(selectedRows, costColumnsFor(dropEmptyDetail(selectedRows, valuation), data.canManage), `inventory-selected-${today()}`, 'Inventory selection')
                     }
                   >
                     Export selected

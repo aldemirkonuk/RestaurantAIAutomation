@@ -1729,8 +1729,10 @@ describe('the legacy velocity sort and column-header sort (round 4)', () => {
 // cellar and no bottles. It hears "stock room" and "goods", and the opening
 // sentence does not sum kilograms and litres into "bottles".
 describe('a house of goods is not a cellar', () => {
-  const flour = () => row({ id: 'f', wineId: null, name: 'Bread Flour', type: null, kind: null, ledgerKind: 'food', uom: 'g', stock: 5, par: null, standing: 'above', runway: null, value: null, zones: [] });
-  const sugar = () => row({ id: 's', wineId: null, name: 'Caster Sugar', type: null, kind: null, ledgerKind: 'supply', uom: 'each', stock: 3, par: null, standing: 'above', runway: null, value: null, zones: [] });
+  // A food as the list builds it: no producer, vintage or prices, and the gateway's default 750 ml.
+  const asGood = { producer: null, vintage: null, grape: null, bottle: null, glass: null, bottleSizeMl: 750 };
+  const flour = () => row({ ...asGood, id: 'f', wineId: null, name: 'Bread Flour', type: null, kind: null, ledgerKind: 'food', uom: 'g', stock: 5, par: null, standing: 'above', runway: null, value: null, zones: [] });
+  const sugar = () => row({ ...asGood, id: 's', wineId: null, name: 'Caster Sugar', type: null, kind: null, ledgerKind: 'supply', uom: 'each', stock: 3, par: null, standing: 'above', runway: null, value: null, zones: [] });
   const goods = [
     { id: 'f', kind: 'food', uom: 'g', display_name: 'Bread Flour' },
     { id: 's', kind: 'supply', uom: 'each', display_name: 'Caster Sugar' },
@@ -1817,17 +1819,31 @@ describe('a house of goods is not a cellar', () => {
     return exportSpy.mock.calls[0][0] as CountFile;
   };
 
-  it('writes Kind, Unit and Vendor for a house of foods, and no wine heading', async () => {
+  it('writes Kind, Unit and Vendor for a house of foods, and no wine heading even with the gateway 750', async () => {
     exportSpy.mockClear();
     mock.data = data({ rows: [{ ...flour(), providerName: 'Mill Co' }, sugar()], rawItems: goods });
     renderPage();
     const file = await countFile();
     const h = file.columns.map((c) => c.header);
+    expect(file.rows.every((r) => r.bottleSizeMl === 750)).toBe(true);
     expect(h).toEqual(expect.arrayContaining(['Good', 'Kind', 'Unit', 'Vendor']));
     for (const d of ['Producer', 'Vintage', 'Bottle size (ml)', 'Your bottle price', 'Your glass price']) expect(h).not.toContain(d);
     const kind = file.columns.find((c) => c.header === 'Kind')!;
     const unit = file.columns.find((c) => c.header === 'Unit')!;
     expect(file.rows.map((r) => [kind.value(r), unit.value(r)])).toEqual([['Food', 'g'], ['Supply', 'each']]);
+  });
+
+  it('keeps the wine headings in a house holding a wine and a food, blank on the food', async () => {
+    exportSpy.mockClear();
+    mock.data = data({ rows: [row({ id: 'a', name: 'Ankara Red' }), flour()], rawItems: [goods[0]] });
+    renderPage();
+    const file = await countFile();
+    const col = (h: string) => file.columns.find((c) => c.header === h)!;
+    const food = file.rows.find((r) => r.id === 'f')!;
+    const wine = file.rows.find((r) => r.id === 'a')!;
+    expect([col('Producer').value(food), col('Vintage').value(food), col('Bottle size (ml)').value(food)]).toEqual(['', '', '']);
+    expect([col('Kind').value(food), col('Kind').value(wine)]).toEqual(['Food', 'Wine']);
+    expect([col('Unit').value(food), col('Unit').value(wine)]).toEqual(['g', 'bottle']);
   });
 
   it('orders the count sheet by where it sits, then kind, then name', async () => {

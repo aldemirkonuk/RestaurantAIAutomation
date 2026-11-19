@@ -609,7 +609,7 @@ describe('Ported acts in the More menu: Mark inactive and Remove from inventory'
     const m = await menu({
       uom: 'g',
       kind: 'food',
-      row: row({ wineId: null, name: 'Flour 00', kind: 'food', stock: 2250, shadow: 0, openMl: 0 }),
+      row: row({ wineId: null, name: 'Flour 00', kind: 'food', ledgerKind: 'food', producer: null, vintage: null, grape: null, bottle: null, glass: null, stock: 2250, shadow: 0, openMl: 0 }),
     });
     const item = within(m).getByRole('menuitem', { name: 'Remove from inventory' }) as HTMLButtonElement;
     expect(item.disabled).toBe(false);
@@ -685,7 +685,7 @@ describe('Ported acts in the More menu: Mark inactive and Remove from inventory'
 
   it('Export this row heads the name column Good for a food or supply, Title for a drink', async () => {
     tableExport.exportTable.mockClear();
-    const food = await menu({ uom: 'g', kind: 'food', row: row({ wineId: null, name: 'Flour 00', kind: 'food', stock: 2250, shadow: 0, openMl: 0 }) });
+    const food = await menu({ uom: 'g', kind: 'food', row: row({ wineId: null, name: 'Flour 00', kind: 'food', ledgerKind: 'food', producer: null, vintage: null, grape: null, bottle: null, glass: null, stock: 2250, shadow: 0, openMl: 0 }) });
     fireEvent.click(within(food).getByRole('menuitem', { name: 'Export this row' }));
     expect(tableExport.exportTable.mock.calls[0][0].columns[0].header).toBe('Good');
     const rowCols = tableExport.exportTable.mock.calls[0][0].columns.map((c: { header: string }) => c.header);
