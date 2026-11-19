@@ -27,6 +27,7 @@ import { useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { apiClient } from '../../../../services/api/client';
+import { isUnreachable, UNREACHABLE_WORDS } from '../../../../lib/unreachable';
 
 export interface SenderIdentity {
   kind: 'house_mailbox' | 'mudavym_subdomain' | 'none' | 'unknown';
@@ -133,6 +134,7 @@ function pickMessage(e: unknown): string {
     if (typeof message === 'string' && message.trim()) return message.trim();
     if (Array.isArray(message) && message.length > 0) return message.join(' ');
   }
+  if (isUnreachable(e)) return UNREACHABLE_WORDS;
   if (e instanceof Error && e.message.trim()) return e.message.trim();
   return 'unknown error';
 }

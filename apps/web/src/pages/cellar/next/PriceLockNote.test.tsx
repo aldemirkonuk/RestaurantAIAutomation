@@ -116,10 +116,11 @@ describe('PriceLockNote -- a locked price is said beside the price', () => {
   });
 
   it('says a failed request as unreadable too', async () => {
-    listPriceLocks.mockRejectedValue(new Error('Network Error'));
+    listPriceLocks.mockRejectedValue(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
     mount();
     const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent('Whether this price is locked could not be read (Network Error)');
+    expect(alert).toHaveTextContent('Whether this price is locked could not be read (Mudavym could not be reached just now.)');
+    expect(alert.textContent).not.toContain('Network Error');
   });
 
   it("tells a name that could not be read apart from one that is not on record", async () => {

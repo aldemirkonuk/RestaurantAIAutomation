@@ -27,6 +27,7 @@
 import { useEffect, useState } from 'react'
 import CellarRegistersStep from '../../pages/cellar/next/CellarRegistersStep'
 import { useCellarRegisters } from '../../pages/cellar/next/useCellarNextData'
+import { failureWords } from '../../lib/unreachable';
 import '../../pages/cellar/next/cellar-next.css'
 
 export interface CellarRegistersOnboardingProps {
@@ -83,7 +84,7 @@ export default function CellarRegistersOnboarding({
           } catch (e) {
             // The flow is not advanced on a failed write: the house would
             // otherwise walk away believing it had answered.
-            setSaveError(e instanceof Error ? e.message : 'no reason given')
+            setSaveError(failureWords(e, 'no reason given'))
           }
         }}
       />

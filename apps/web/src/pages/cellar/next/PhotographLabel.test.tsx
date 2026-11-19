@@ -232,6 +232,26 @@ describe('PhotographLabel — Not this bottle, and the error paths', () => {
     expect(mockSubmit).not.toHaveBeenCalled();
   });
 
+  it('an unreachable gateway on the read is said in words, never "Network Error"', async () => {
+    mockScan.mockRejectedValue(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
+    mount();
+    await fireCapture();
+    const err = await screen.findByTestId('label-read-error');
+    expect(err).toHaveTextContent('Mudavym could not be reached just now.');
+    expect(err.textContent).not.toContain('Network Error');
+  });
+
+  it('an unreachable gateway on the submit is said in words, never "Network Error"', async () => {
+    mockScan.mockResolvedValue(wine());
+    mockSubmit.mockRejectedValue(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
+    mount();
+    await capture();
+    fireEvent.click(screen.getByTestId('label-confirm-yes'));
+    const err = await screen.findByTestId('label-submit-error');
+    expect(err).toHaveTextContent('Mudavym could not be reached just now.');
+    expect(err.textContent).not.toContain('Network Error');
+  });
+
   it('a failed submit says so and lets the person try again without losing the reading', async () => {
     mockScan.mockResolvedValue(wine());
     mockSubmit.mockRejectedValue(new Error('the gateway refused it'));

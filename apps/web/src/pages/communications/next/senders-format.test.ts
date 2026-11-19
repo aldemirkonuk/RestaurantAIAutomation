@@ -46,6 +46,14 @@ const stranger = (over: Partial<ProspectDto> = {}): ProspectDto => ({
   ...over,
 });
 
+describe('readFailure: an unreachable gateway', () => {
+  it('is said in words, never the transport\'s "Network Error"', () => {
+    const f = readFailure(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
+    expect(f.message).toBe('Mudavym could not be reached just now.');
+    expect(writeFailureSentence('save it', f)).not.toContain('Network Error');
+  });
+});
+
 describe('senderState', () => {
   it('a suspended domain is never called trusted, whatever its flag says', () => {
     const s = senderState({ trusted: true, suspended: true, suspended_reason: 'spoof signal' });

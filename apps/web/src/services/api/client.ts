@@ -18,6 +18,7 @@
 import axios, { AxiosInstance, AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
 import { goToChooser, noteHouseEnded, storeSession } from '../../lib/houseMemory';
 import { leaveDeadSession } from '../../lib/deadSession';
+import { isUnreachable, UNREACHABLE_WORDS } from '../../lib/unreachable';
 
 const API_GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000';
 
@@ -185,10 +186,12 @@ export interface ApiError {
 export function getErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const apiError = error.response?.data as ApiError | undefined;
+    // A dropped connection has no answer to quote: not the transport's "Network Error".
+    if (!apiError?.message && isUnreachable(error)) return UNREACHABLE_WORDS;
     return apiError?.message || error.message || 'An unexpected error occurred';
   }
   if (error instanceof Error) {
-    return error.message;
+    return isUnreachable(error) ? UNREACHABLE_WORDS : error.message;
   }
   return 'An unexpected error occurred';
 }

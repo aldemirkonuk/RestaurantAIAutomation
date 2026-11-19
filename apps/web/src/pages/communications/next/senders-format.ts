@@ -12,6 +12,7 @@ import type {
   SenderReputationDto,
 } from '../../../hooks/queries/usePromotionsQueries';
 import { EM, GE } from './cm-format';
+import { isUnreachable, UNREACHABLE_WORDS } from '../../../lib/unreachable';
 
 export interface ReadFailure {
   status: number | null;
@@ -31,7 +32,7 @@ export function readFailure(err: unknown): ReadFailure {
   const message =
     (typeof body === 'string' && body) ||
     (Array.isArray(body) && body.join(', ')) ||
-    e?.message ||
+    (isUnreachable(err) ? UNREACHABLE_WORDS : e?.message) ||
     'the request failed';
   return { status, message, expired: status === 401, forbidden: status === 403 };
 }
