@@ -64,8 +64,8 @@ describe('the ruling in play', () => {
     expect(colsForWidth(1440)).toBe(12); // lg
     expect(colsForWidth(1000)).toBe(12); // md
     expect(colsForWidth(800)).toBe(6); // sm
-    expect(colsForWidth(500)).toBe(4); // xs
-    expect(colsForWidth(320)).toBe(2); // xxs
+    expect(colsForWidth(500)).toBe(1); // below 768 the sheet is one stacked column
+    expect(colsForWidth(320)).toBe(1);
   });
 
   it('falls back to the sheet’s own twelve when it cannot measure', () => {
@@ -75,6 +75,22 @@ describe('the ruling in play', () => {
     expect(colsForWidth(0)).toBe(SHEET_COLS);
     expect(colsForWidth(Number.NaN)).toBe(SHEET_COLS);
     expect(colsForWidth(-10)).toBe(SHEET_COLS);
+  });
+
+  it('reads an unmeasured box from the window: a phone window is one column', () => {
+    const was = window.innerWidth;
+    try {
+      Object.defineProperty(window, 'innerWidth', { value: 375, configurable: true });
+      expect(colsForWidth(0)).toBe(1);
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { value: was, configurable: true });
+    }
+  });
+
+  it('says a stacked cutting by its place in the list, naming no column', () => {
+    const slot = { x: 0, y: 0, w: 1, h: 3 };
+    expect(positionWords(slot, 1, { n: 2, of: 5 })).toBe('position 2 of 5, 3 rows tall');
+    expect(pickedUpWords('The till', slot, 1, { n: 2, of: 5 })).not.toMatch(/column|left|right|wider/i);
   });
 
   it('gives a slot no pixel rectangle when the container has no width', () => {

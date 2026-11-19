@@ -109,6 +109,7 @@ import {
   SHEET_MIN_H,
   SHEET_MIN_W,
   SHEET_ROW_HEIGHT,
+  isStackedWidth,
   type AnalysisId,
   type Cutting,
   type Slot,
@@ -127,11 +128,15 @@ const COMPACTOR = getCompactor(SHEET_COMPACT_TYPE, false, false);
  *
  * Read through react-grid-layout's own breakpoint functions from the sheet
  * element's measured width, so the keyboard and the pointer cannot disagree
- * about the ruling. A width of 0 — jsdom, or a sheet not yet laid out — falls
- * back to the sheet's declared twelve rather than to `xxs`'s two, because "we
- * could not measure" must not silently become "this is a phone".
+ * about the ruling. A width of 0 — jsdom, or a sheet not yet laid out — is
+ * read from the window, as `Sheet` does, and on a wide window falls back to the
+ * sheet's declared twelve: "we could not measure" must not silently become
+ * "this is a phone". Below `SHEET_STACK_BELOW` the answer is 1.
  */
 export function colsForWidth(width: number): number {
+  // Below the stack line the sheet is one CSS column (r74): there is one
+  // column on screen, so that is the ruling the keys and the words speak of.
+  if (isStackedWidth(width)) return 1;
   if (!Number.isFinite(width) || width <= 0) return SHEET_COLS;
   const bp = getBreakpointFromWidth(SHEET_BREAKPOINTS, width);
   return getColsFromBreakpoint(bp, SHEET_BREAKPOINT_COLS);
@@ -408,8 +413,23 @@ export function resizeCutting<T extends Placed>(
 
 /* ───────────────────────────────────────────────── what is announced ──── */
 
-/** A slot in the reader's words. 1-based, because paper columns start at one. */
-export function positionWords(slot: Slot, cols: number): string {
+/** Where a cutting stands in the one-column stack: 1-based, in list order. */
+export interface StackAt {
+  n: number;
+  of: number;
+}
+
+export function stackAt(cs: Placed[], id: AnalysisId): StackAt | undefined {
+  const k = cs.findIndex((c) => c.id === id);
+  return k < 0 ? undefined : { n: k + 1, of: cs.length };
+}
+
+/** A slot in the reader's words. 1-based, because paper columns start at one.
+ *  In the one-column stack there is no column to name: its place is its
+ *  position in the list (`at`) and how tall it is. */
+export function positionWords(slot: Slot, cols: number, at?: StackAt): string {
+  if (cols === 1)
+    return `${at ? `position ${at.n} of ${at.of}, ` : ''}${slot.h} ${slot.h === 1 ? 'row' : 'rows'} tall`;
   return `column ${slot.x + 1} of ${cols}, row ${slot.y + 1}, ${slot.w} ${
     slot.w === 1 ? 'column' : 'columns'
   } wide, ${slot.h} ${slot.h === 1 ? 'row' : 'rows'} tall`;
@@ -418,8 +438,14 @@ export function positionWords(slot: Slot, cols: number): string {
 export const ARRANGE_KEY_HELP =
   'Left and right move it one column, up and down move it past the cutting above or below, Shift and an arrow key resize it, Enter places it, Escape puts it back.';
 
-export function pickedUpWords(title: string, slot: Slot, cols: number): string {
-  return `${title} picked up at ${positionWords(slot, cols)}. ${ARRANGE_KEY_HELP}`;
+/** What the keys do on the one-column stack: no sideways, no width. */
+export const ARRANGE_STACK_KEY_HELP =
+  'Up and down move it past the cutting above or below, Shift and Up or Down make it shorter or taller, Enter places it, Escape puts it back.';
+
+export function pickedUpWords(title: string, slot: Slot, cols: number, at?: StackAt): string {
+  return `${title} picked up at ${positionWords(slot, cols, at)}. ${
+    cols === 1 ? ARRANGE_STACK_KEY_HELP : ARRANGE_KEY_HELP
+  }`;
 }
 
 /**
@@ -434,22 +460,32 @@ export function movedWords(
   after: Slot,
   cols: number,
   intent: 'move' | 'resize',
+  at?: { before?: StackAt; after?: StackAt },
 ): string {
-  if (sameSlot(before, after))
+  const held = at?.before && at?.after && at.before.n !== at.after.n ? false : sameSlot(before, after);
+  if (held)
     return `${title} did not ${intent === 'move' ? 'move' : 'change size'} — it is held at ${positionWords(
       after,
       cols,
+      at?.after,
     )}.`;
-  return `${title} is now at ${positionWords(after, cols)}.`;
+  return `${title} is now at ${positionWords(after, cols, at?.after)}.`;
 }
 
-export function placedWords(title: string, from: Slot, to: Slot, cols: number): string {
-  if (sameSlot(from, to)) return `${title} placed back where it was: ${positionWords(to, cols)}.`;
-  return `${title} placed at ${positionWords(to, cols)}, from ${positionWords(from, cols)}. Rule the sheet off to keep it.`;
+export function placedWords(
+  title: string,
+  from: Slot,
+  to: Slot,
+  cols: number,
+  at?: { from?: StackAt; to?: StackAt },
+): string {
+  const same = at?.from && at?.to ? at.from.n === at.to.n && sameSlot(from, to) : sameSlot(from, to);
+  if (same) return `${title} placed back where it was: ${positionWords(to, cols, at?.to)}.`;
+  return `${title} placed at ${positionWords(to, cols, at?.to)}, from ${positionWords(from, cols, at?.from)}. Rule the sheet off to keep it.`;
 }
 
-export function cancelledWords(title: string, back: Slot, cols: number): string {
-  return `Move cancelled. ${title} is back at ${positionWords(back, cols)}.`;
+export function cancelledWords(title: string, back: Slot, cols: number, at?: StackAt): string {
+  return `Move cancelled. ${title} is back at ${positionWords(back, cols, at)}.`;
 }
 
 /* ──────────────────────────────────────────────────────── the hook ────── */
@@ -516,6 +552,15 @@ export function useArrange({ cuttings, apply, sheetRef, arranging }: ArrangeInpu
     }
   }, [arranging, picked]);
 
+  /* The ruling follows the window while arranging, so the buttons and the help
+     text are right before anything is picked up and after a phone is turned. */
+  useEffect(() => {
+    if (!arranging) return;
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [arranging, measure]);
+
   const pickUp = useCallback(
     (id: AnalysisId, title: string) => {
       const cs = live.current;
@@ -529,7 +574,7 @@ export function useArrange({ cuttings, apply, sheetRef, arranging }: ArrangeInpu
       setPicked(id);
       setOrigin({ ...slot });
       setHome(cs);
-      setMessage(pickedUpWords(title, slot, c));
+      setMessage(pickedUpWords(title, slot, c, c === 1 ? stackAt(cs, id) : undefined));
     },
     [measure],
   );
@@ -544,6 +589,8 @@ export function useArrange({ cuttings, apply, sheetRef, arranging }: ArrangeInpu
       const before = slotOf(drawn, picked);
       if (!before) return;
       const intent: 'move' | 'resize' = dw === 0 && dh === 0 ? 'move' : 'resize';
+      // One column on screen: nothing moves sideways and nothing changes width.
+      if (cols === 1 && (dx !== 0 || dw !== 0)) return;
       // Up and down on a narrow ruling change the reading order, not the wide
       // sheet's rows (`reorderCutting`).
       const next =
@@ -563,7 +610,14 @@ export function useArrange({ cuttings, apply, sheetRef, arranging }: ArrangeInpu
       // rather than an echo.
       const after = slotOf(projectCuttings(next, cols), picked);
       setMessage(
-        movedWords(titles.current.get(picked) ?? 'The cutting', before, after ?? before, cols, intent),
+        movedWords(
+          titles.current.get(picked) ?? 'The cutting',
+          before,
+          after ?? before,
+          cols,
+          intent,
+          cols === 1 ? { before: stackAt(cs, picked), after: stackAt(next, picked) } : undefined,
+        ),
       );
     },
     [apply, cols, picked],
@@ -576,11 +630,19 @@ export function useArrange({ cuttings, apply, sheetRef, arranging }: ArrangeInpu
     const cs = live.current;
     if (!picked || !cs || !origin) return;
     const to = slotOf(projectCuttings(cs, cols), picked) ?? origin;
-    setMessage(placedWords(titles.current.get(picked) ?? 'The cutting', origin, to, cols));
+    setMessage(
+      placedWords(
+        titles.current.get(picked) ?? 'The cutting',
+        origin,
+        to,
+        cols,
+        cols === 1 && home ? { from: stackAt(home, picked), to: stackAt(cs, picked) } : undefined,
+      ),
+    );
     setPicked(null);
     setOrigin(null);
     setHome(null);
-  }, [cols, origin, picked]);
+  }, [cols, home, origin, picked]);
 
   const cancel = useCallback(() => {
     const cs = live.current;
@@ -593,6 +655,7 @@ export function useArrange({ cuttings, apply, sheetRef, arranging }: ArrangeInpu
         titles.current.get(picked) ?? 'The cutting',
         slotOf(projectCuttings(restored, cols), picked) ?? origin,
         cols,
+        cols === 1 ? stackAt(restored, picked) : undefined,
       ),
     );
     setPicked(null);
