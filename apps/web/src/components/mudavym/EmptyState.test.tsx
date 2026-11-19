@@ -104,6 +104,13 @@ describe('the stylesheet', () => {
     expect(reduced).toMatch(/\.mdv-ghost__line\s*\{\s*animation: none/);
   });
 
+  it('the ghost paper has a width of its own, not a percentage of a shrink-to-fit figure', () => {
+    const rule = css.slice(css.indexOf('.mdv-ghost {'), css.indexOf('.mdv-ghost__line {'));
+    expect(rule).toMatch(/width: 420px;/);
+    expect(rule).toMatch(/max-width: 100%;/);
+    expect(rule).not.toMatch(/width: min\(/);
+  });
+
   it('the ghost lines are 6% ink in OKLCH, from the ground token', () => {
     expect(css).toMatch(/color-mix\(in oklch, var\(--ink-1\) 6%, transparent\)/);
   });
