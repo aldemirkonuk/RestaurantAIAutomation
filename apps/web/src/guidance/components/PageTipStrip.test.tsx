@@ -33,6 +33,7 @@ function mount(role: string | null) {
 const strip = () => document.querySelector('[data-guidance="tip-strip"]');
 
 beforeEach(() => {
+  window.localStorage.clear();
   page.pageId = 'dashboard';
   resetGroundAskForTests();
 });
