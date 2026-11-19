@@ -7,9 +7,17 @@
 
 /* The page behind goes soft, not black: blur 12. `:has` keeps this to the one
    Panel that wears `.dt-sheet` without touching the shared overlay stylesheet. */
-.mdv-ovl:has(.dt-sheet) .mdv-ovl__scrim {
+.mdv-ovl[data-scrim='on']:has(.dt-sheet) .mdv-ovl__scrim {
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
+}
+/* motion.css sets the scrim blur at one class less; the extra attribute above is
+   what makes 12 win. Reduced motion still gets no blur at all. */
+@media (prefers-reduced-motion: reduce) {
+  .mdv-ovl[data-scrim='on']:has(.dt-sheet) .mdv-ovl__scrim {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }
 
 .mdv-ovl--panel .mdv-ovl__panel.dt-sheet {
@@ -35,6 +43,7 @@
 }
 .dt-sheet .mdv-ovl__foot { padding: 14px 24px 18px; font-size: 13px; }
 
+.dt-body:focus { outline: none; }
 .dt-body {
   display: flex;
   flex-direction: column;

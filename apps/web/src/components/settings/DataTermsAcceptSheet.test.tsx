@@ -188,6 +188,19 @@ describe('a short question first, every word still reachable (design critic roun
     expect(screen.getByText(/TypeSafe \(Jev\), and the services named under/)).toBeInTheDocument();
   });
 
+  it('names four receivers and counts the rest, so the third line stays a line', () => {
+    const sp = (n: string) => ({ name: n, host: `${n}.test`, what: 'x', when: 'always', masked: false });
+    mount({ subprocessors: ['A1', 'B2', 'C3', 'D4', 'E5', 'F6', 'G7'].map(sp) });
+    expect(screen.getByText('A1, B2, C3, D4 and 3 more, all named under “Read it all”.')).toBeInTheDocument();
+    expect(screen.queryByText(/E5, F6/)).toBeNull();
+  });
+
+  it('opens with focus on the top of the body, not on "Read it all", so the panel is not scrolled past its first lines', () => {
+    mount();
+    expect(document.activeElement).not.toBe(screen.getByRole('button', { name: /read it all/i }));
+    expect(document.activeElement?.className).toContain('dt-body');
+  });
+
   it('keeps the long text under "Read it all": closed it is out of reach, open it is reachable and nothing was cut', () => {
     mount();
     const fold = screen.getByRole('button', { name: /read it all/i });

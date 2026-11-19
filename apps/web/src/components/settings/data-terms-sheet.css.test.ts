@@ -10,7 +10,7 @@ const css = readFileSync(join(__dirname, 'data-terms-sheet.css'), 'utf8');
 
 describe('data-terms-sheet.css', () => {
   it('blurs the page behind the sheet by 12 px, standard and prefixed', () => {
-    expect(css).toMatch(/\.mdv-ovl:has\(\.dt-sheet\) \.mdv-ovl__scrim[^}]*backdrop-filter:\s*blur\(12px\)/s);
+    expect(css).toMatch(/\.mdv-ovl\[data-scrim='on'\]:has\(\.dt-sheet\) \.mdv-ovl__scrim[^}]*backdrop-filter:\s*blur\(12px\)/s);
     expect(css).toMatch(/-webkit-backdrop-filter:\s*blur\(12px\)/);
   });
 

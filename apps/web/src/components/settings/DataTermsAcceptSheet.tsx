@@ -52,7 +52,7 @@
  *     exactly as a 409 from the gateway already would have.
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Eye, EyeOff, Users, ChevronDown } from 'lucide-react';
 import { Panel, HoldToApprove } from '../mudavym';
@@ -118,6 +118,9 @@ export function jevConsequence(readout: DataTermsReadout): { short: string; long
   };
 }
 
+/** The opening line names a few receivers; the full list is under the fold. */
+const NAMED_RECEIVERS = 4;
+
 export function DataTermsAcceptSheet({
   readout,
   dismissable,
@@ -128,6 +131,9 @@ export function DataTermsAcceptSheet({
   const [refusal, setRefusal] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [folded, setFolded] = useState(false);
+  // Focus lands on the top of the body, not on "Read it all": focusing a control
+  // below the fold scrolled the panel down and hid the three lines it opens with.
+  const bodyRef = useRef<HTMLDivElement>(null);
 
   const facts = readout.statements.filter((s) => s.kind === 'fact');
   const terms = readout.statements.filter((s) => s.kind === 'term');
@@ -179,6 +185,7 @@ export function DataTermsAcceptSheet({
       closeLabel={dismissable ? 'Put it down' : 'These terms stay open until you accept them'}
       scrim
       className="dt-sheet"
+      initialFocusRef={bodyRef}
       label={
         reaccepting
           ? `This house's data and privacy terms changed. Reading them asks nothing of you yet; ${jev.short}`
@@ -217,7 +224,7 @@ export function DataTermsAcceptSheet({
         </div>
       }
     >
-      <div className="dt-body">
+      <div className="dt-body" ref={bodyRef} tabIndex={-1}>
         {readout.acceptance && (
           <p className="dt-meta">
             {reaccepting
@@ -258,9 +265,11 @@ export function DataTermsAcceptSheet({
             <Users aria-hidden className="dt-points__icon" />
             <span>
               <strong>Who sees it</strong>
-              {receivers.length > 0
-                ? `${receivers.join(', ')}, and the services named under “Read it all”.`
-                : 'The services named under “Read it all”.'}
+              {receivers.length === 0
+                ? 'The services named under “Read it all”.'
+                : receivers.length > NAMED_RECEIVERS
+                  ? `${receivers.slice(0, NAMED_RECEIVERS).join(', ')} and ${receivers.length - NAMED_RECEIVERS} more, all named under “Read it all”.`
+                  : `${receivers.join(', ')}, and the services named under “Read it all”.`}
             </span>
           </li>
         </ul>
