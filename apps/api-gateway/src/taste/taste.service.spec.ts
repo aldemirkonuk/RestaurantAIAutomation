@@ -75,6 +75,21 @@ describe('TasteService', () => {
     await expect(svc(f).appendHouse(RID, 'good', SUBJ, say, { userId: U1 })).resolves.toBeDefined();
   });
 
+  it('the words come from the good\'s kind: wine words on a wine, beer words on a beer, none crossed', async () => {
+    const f = fakeDb({ goods: [
+      { id: SUBJ, restaurant_id: RID, kind: 'wine' },
+      { id: OTHER, restaurant_id: RID, kind: 'beer' },
+      { id: U2, restaurant_id: RID, kind: 'food' },
+    ] });
+    const s = svc(f);
+    await expect(s.appendHouse(RID, 'good', SUBJ, { method: 'cata', descriptors: ['oak', 'red-fruit'] }, { userId: U1 })).resolves.toBeDefined();
+    await expect(s.appendHouse(RID, 'good', SUBJ, { method: 'cata', descriptors: ['bready'] }, { userId: U1 })).rejects.toThrow(/not one of/);
+    await expect(s.appendHouse(RID, 'good', OTHER, { method: 'cata', descriptors: ['bready'] }, { userId: U1 })).resolves.toBeDefined();
+    await expect(s.appendHouse(RID, 'good', OTHER, { method: 'cata', descriptors: ['savoury'] }, { userId: U1 })).rejects.toThrow(/not one of/);
+    await expect(s.appendHouse(RID, 'good', U2, { method: 'cata', descriptors: ['savoury'] }, { userId: U1 })).resolves.toBeDefined();
+    expect(f.inserts).toHaveLength(3);
+  });
+
   it('a dish is not in a house that has no dishes table: same code', async () => {
     const f = fakeDb({ dishesMissing: true });
     await expect(svc(f).read(RID, 'dish', SUBJ)).rejects.toMatchObject({ response: { code: 'subject_not_in_house' } });
@@ -136,6 +151,12 @@ describe('parseHouseBody', () => {
     const all = ['savoury', 'rich', 'fresh', 'bright', 'balanced', 'sharp', 'mellow', 'sweet-and-sour', 'spicy', 'smoky', 'herby', 'tangy'];
     expect(parseHouseBody({ method: 'cata', descriptors: all }).descriptors).toHaveLength(12);
     expect(() => parseHouseBody({ method: 'cata', descriptors: [...all, 'x'] })).toThrow();
+  });
+  it('takes the words of the item: a drink word on a drink, a food word refused there', () => {
+    expect(parseHouseBody({ method: 'cata', descriptors: ['red-fruit', 'oak'] }, 'wine').descriptors).toEqual(['red-fruit', 'oak']);
+    expect(() => parseHouseBody({ method: 'cata', descriptors: ['creamy'] }, 'wine')).toThrow(/not one of/);
+    expect(() => parseHouseBody({ method: 'cata', descriptors: ['oak'] }, 'food')).toThrow(/not one of/);
+    expect(() => parseHouseBody({ method: 'cata', descriptors: ['oak'] })).toThrow(/not one of/);
   });
   it('keeps a typed 0, attaches the staff prior, leaves unstated axes out', () => {
     const p = parseHouseBody({ method: 'ordinal', axes: { sweet: { v: 0 } } });
