@@ -7,6 +7,7 @@ import {
   Inject,
   forwardRef,
 } from "@nestjs/common";
+import { sellRecipeLine, supabaseRecipeIo, voidRecipeLine } from "../pos-hub/recipe-sale";
 import { ConfigService } from "@nestjs/config";
 import * as crypto from "crypto";
 import axios, { AxiosInstance } from "axios";
@@ -533,11 +534,42 @@ export class ToastService {
       // pos_item_mappings in the SimPOS testbed spine repair.
       const { data: mapping } = await db
         .from("pos_item_mappings")
-        .select("inventory_id, sale_unit, item_name")
+        .select("inventory_id, cocktail_id, sale_unit, item_name")
         .eq("restaurant_id", restaurantId)
         .in("source", ["toast", "*"])
         .eq("external_item_id", menuGuid)
         .maybeSingle();
+
+      // A till button that names a drink recipe draws the recipe's goods
+      // (recipe draw, slice 4). The sale key is the same for the sale and its
+      // void, so the void gives back exactly what the sale booked.
+      if (mapping?.cocktail_id) {
+        const recipeKey = `toast_sale_${order.guid}_${menuGuid}`;
+        const io = supabaseRecipeIo(db);
+        try {
+          const out = isVoid
+            ? await voidRecipeLine(io, { restaurantId, saleKey: recipeKey, occurredAt: null })
+            : await sellRecipeLine(io, {
+                restaurantId,
+                cocktailId: mapping.cocktail_id as string,
+                saleKey: recipeKey,
+                serves: qty,
+                occurredAt: null,
+              });
+          if (out.kind === "booked" || out.kind === "returned") {
+            out.inventoryIds.forEach((i) => affectedInventoryIds.add(i));
+          } else if (out.kind === "failed") {
+            this.logger.warn(
+              `Toast recipe ${isVoid ? "void" : "draw"} failed for ${line.name}: ${out.message}`,
+            );
+          } else if (out.kind === "queue") {
+            await this.queueRecipeLine(restaurantId, order.guid, menuGuid, line, qty, out.reason, out.detail);
+          }
+        } catch (err: any) {
+          this.logger.warn(`Toast recipe line threw for ${line.name}: ${err?.message}`);
+        }
+        continue;
+      }
 
       let inventoryId = mapping?.inventory_id as string | undefined;
       // B36: sale unit comes from the mapping row only — never inferred
@@ -713,6 +745,34 @@ export class ToastService {
       void this.lowStockAlerts
         .evaluateInventoryItems(restaurantId, [...affectedInventoryIds])
         .catch(() => undefined);
+    }
+  }
+
+  /** Queue a recipe line that drew nothing, with the sentence a reviewer reads. */
+  private async queueRecipeLine(
+    restaurantId: string,
+    orderGuid: string,
+    menuGuid: string,
+    line: { name?: string | null; unitPrice?: number | null },
+    qty: number,
+    reason: "unmapped" | "no_sale_volume",
+    detail: string,
+  ): Promise<void> {
+    const { error } = await this.databaseService.supabase
+      .from("pos_unresolved_lines")
+      .insert({
+        restaurant_id: restaurantId,
+        source: "toast",
+        external_check_id: orderGuid,
+        external_item_id: menuGuid,
+        item_name: line.name ?? "unknown",
+        qty,
+        price: line.unitPrice ?? null,
+        reason,
+        raw: { ...line, unresolved_detail: detail },
+      });
+    if (error && error.code !== "23505") {
+      this.logger.warn(`Failed to queue Toast recipe line ${line.name}: ${error.message}`);
     }
   }
 
