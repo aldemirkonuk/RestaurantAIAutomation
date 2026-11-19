@@ -136,6 +136,13 @@ describe('GroundChoiceSync — what the account says', () => {
     expect(getGroundState().choice).toBe('paper');
   });
 
+  it('a read that got no answer says the unreachable words as its detail', () => {
+    authState.userId = ALICE;
+    prefsState.error = Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' });
+    mount();
+    expect(getGroundState().detail).toBe('Mudavym could not be reached just now.');
+  });
+
   it('a failed read is reported as a failure, never as paper-by-default', () => {
     authState.userId = ALICE;
     prefsState.error = new Error('Network Error');

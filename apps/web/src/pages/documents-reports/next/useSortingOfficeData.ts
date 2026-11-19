@@ -28,6 +28,7 @@
  */
 
 import { useMemo } from 'react';
+import { failureWords } from '@/lib/unreachable';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../../../services/api/client';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -363,7 +364,7 @@ export function useSortingOfficeData(): SortingOfficeData {
     anyError: labelled.some(([, q]) => settledError(q)),
     errorMessage: firstError
       ? `${firstError[0]} — ${
-          firstError[1].error instanceof Error ? firstError[1].error.message : 'unknown error'
+          failureWords(firstError[1].error, 'unknown error')
         }`
       : 'unknown error',
     refetch: () => {

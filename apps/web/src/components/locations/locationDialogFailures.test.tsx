@@ -117,6 +117,23 @@ describe('a refused write is printed on the dialog that asked for it', () => {
     expect(screen.getByRole('button', { name: 'Add Location' })).toBeTruthy();
   });
 
+  it('AddLocationDialog says the unreachable words when the gateway gave no answer', async () => {
+    post.mockRejectedValueOnce(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
+    render(<AddLocationDialog open onClose={() => {}} />);
+
+    fireEvent.change(screen.getByLabelText(/Location name/), { target: { value: 'Uptown' } });
+    fireEvent.change(screen.getByLabelText('Country'), { target: { value: 'United States' } });
+    fireEvent.change(screen.getByLabelText('Street Address'), { target: { value: '1 Main St' } });
+    fireEvent.change(screen.getByLabelText(/City/), { target: { value: 'Chicago' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add Location' }));
+
+    await waitFor(() => {
+      expect(alertInDialog()).toHaveTextContent('Mudavym could not be reached just now.');
+    });
+    expect(alertInDialog()).not.toHaveTextContent('Network Error');
+    expect(toastError).toHaveBeenCalledWith('Mudavym could not be reached just now.');
+  });
+
   it('AssignToChainDialog says why the locations were not assigned', async () => {
     patch.mockRejectedValueOnce(new Error('chain is at its location limit'));
     const onSaved = vi.fn();

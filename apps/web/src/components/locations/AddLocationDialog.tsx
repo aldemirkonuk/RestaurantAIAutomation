@@ -28,6 +28,7 @@
  */
 
 import { useState, useEffect, useRef, type RefObject } from 'react'
+import { failureWords } from '@/lib/unreachable'
 import * as Dialog from '@radix-ui/react-dialog'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Building2, X } from 'lucide-react'
@@ -151,8 +152,9 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
         handleClose()
       }
     } catch (err: unknown) {
-      setFailure(err instanceof Error ? err.message : 'Failed to add location. Please try again.')
-      toast.error(err instanceof Error ? err.message : 'Failed to add location. Please try again.')
+      const said = failureWords(err, 'Failed to add location. Please try again.')
+      setFailure(said)
+      toast.error(said)
     } finally {
       setIsSubmitting(false)
     }

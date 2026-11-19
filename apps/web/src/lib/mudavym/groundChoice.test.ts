@@ -335,6 +335,20 @@ describe('ADR 0169 — a read that failed is never reported as an answer', () =>
 });
 
 describe('ADR 0169 — a save that failed is never reported as saved', () => {
+  it('says the unreachable words when the save got no answer, not "Network Error"', async () => {
+    setGroundOwner(ALICE);
+    applyAccountGround(undefined);
+    registerGroundWriter(() =>
+      Promise.reject(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' })),
+    );
+
+    setGroundChoice('charcoal');
+    await settle();
+
+    expect(getGroundState().writeError).toContain('Mudavym could not be reached just now.');
+    expect(getGroundState().writeError).not.toContain('Network Error');
+  });
+
   it('reports the failure and leaves the choice applied for this page view', async () => {
     setGroundOwner(ALICE);
     applyAccountGround(undefined);

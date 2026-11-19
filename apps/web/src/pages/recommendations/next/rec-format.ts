@@ -19,6 +19,7 @@
  */
 
 import { roleAllows, roomFor, type ShellRole } from '@/lib/mudavym/rooms';
+import { isUnreachable, UNREACHABLE_WORDS } from '@/lib/unreachable';
 
 export const EM = '—';
 
@@ -691,7 +692,7 @@ export function failureOf(err: unknown): FailureVM {
   const body = (err as { response?: { data?: { message?: unknown } } } | null)?.response?.data;
   const message =
     (typeof body?.message === 'string' && body.message) ||
-    (err as { message?: string } | null)?.message ||
+    (isUnreachable(err) ? UNREACHABLE_WORDS : (err as { message?: string } | null)?.message) ||
     'the request failed';
   return { status, message, expired: status === 401, forbidden: status === 403 };
 }

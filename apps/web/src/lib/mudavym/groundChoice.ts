@@ -97,6 +97,7 @@
  */
 
 import { useSyncExternalStore } from 'react';
+import { isUnreachable, UNREACHABLE_WORDS } from '@/lib/unreachable';
 
 /** What is PAINTED. `<html>`'s attribute is only ever one of these two. */
 export type GroundChoice = 'paper' | 'charcoal';
@@ -520,7 +521,11 @@ export function saveGroundSetting(setting: GroundSetting): Promise<boolean> {
     (error: unknown) => {
       if (ownerId !== owner || state.setting !== setting) return false;
       const message =
-        error instanceof Error && error.message ? error.message : 'the request failed';
+        isUnreachable(error)
+          ? UNREACHABLE_WORDS
+          : error instanceof Error && error.message
+            ? error.message
+            : 'the request failed';
       commit({
         ...state,
         writeError: `This ground is not saved to your account (${message}). It will go back on your next visit.`,
