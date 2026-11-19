@@ -35,7 +35,7 @@ export interface RollupBasis {
 }
 export interface RollupResult { axes: Record<string, RollupAxis>; basis: RollupBasis }
 
-const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ı/g, 'i').toLowerCase().trim();
+const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\u0131/g, 'i').toLowerCase().trim();
 const sat = (x: number, k: number) => 10 * (1 - Math.exp(-Math.max(0, x) / k));
 const r1 = (x: number) => Math.round(x * 10) / 10;
 const r2 = (x: number) => Math.round(x * 100) / 100;
