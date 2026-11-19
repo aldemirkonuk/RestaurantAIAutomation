@@ -607,6 +607,24 @@
   justify-content: center;
 }
 
+/* The full counter opens (a tap on the dots, or an item arriving): it slides in
+   220 ms, transform and opacity only, so the page never reflows while it moves. */
+.mdv-counter--slide .mdv-counter__inner,
+.mdv-counter--slide .mdv-counter__tuck {
+  animation: mdv-counter-slide 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+@keyframes mdv-counter-slide {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @keyframes mdv-idle-in {
   from {
     opacity: 0;
@@ -836,7 +854,9 @@
 
   .mdv-counter__dot[data-kind='owner']::after,
   .mdv-counter__arc,
-  .mdv-counter--idle .mdv-counter__strip {
+  .mdv-counter--idle .mdv-counter__strip,
+  .mdv-counter--slide .mdv-counter__inner,
+  .mdv-counter--slide .mdv-counter__tuck {
     animation: none;
   }
 

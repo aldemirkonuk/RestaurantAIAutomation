@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { HouseCounter, agoWord, isCounterIdle } from './HouseCounter';
+import { COUNTER_SLIDE_MS, HouseCounter, agoWord, isCounterIdle } from './HouseCounter';
 import type { CounterRegister, HouseCounterRead } from '../../lib/mudavym/counterRead';
 import type { HouseCounterState } from '../../lib/mudavym/useHouseCounter';
 import { resetHouseSaid } from '../../lib/mudavym/houseSaid';
@@ -87,6 +87,47 @@ describe('the quiet column', () => {
   });
 });
 
+describe('the 220 ms slide', () => {
+  const css = readFileSync(join(__dirname, 'house-shell.css'), 'utf8');
+  const withCount = [{ ...QUIET[0], count: 1, rows: [] } as CounterRegister, QUIET[1], QUIET[2]];
+  const rerenderWith = (r: ReturnType<typeof mount>['rerender'], s: HouseCounterState) =>
+    r(
+      <MemoryRouter>
+        <HouseCounter state={s} onOpen={vi.fn()} width="open" onToggle={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+  it('does not slide on first paint, even with a live item', () => {
+    mount(state(withCount));
+    expect(screen.getByLabelText('The counter').className).not.toContain('mdv-counter--slide');
+  });
+
+  it('slides when a tap on the dots opens it, then settles', () => {
+    vi.useFakeTimers();
+    mount(state(QUIET));
+    fireEvent.click(screen.getAllByRole('button')[0]);
+    expect(screen.getByLabelText('The counter').className).toContain('mdv-counter--slide');
+    act(() => {
+      vi.advanceTimersByTime(COUNTER_SLIDE_MS + 60);
+    });
+    expect(screen.getByLabelText('The counter').className).not.toContain('mdv-counter--slide');
+  });
+
+  it('slides when an item arrives on a quiet counter', () => {
+    const { rerender } = mount(state(QUIET));
+    rerenderWith(rerender, state(withCount));
+    expect(screen.getByLabelText('The counter').className).toContain('mdv-counter--slide');
+  });
+
+  it('is 220 ms, moves only transform and opacity, and is off under reduced motion', () => {
+    expect(COUNTER_SLIDE_MS).toBe(220);
+    expect(css).toMatch(/\.mdv-counter--slide \.mdv-counter__inner,[^{]*\{[^}]*animation: mdv-counter-slide 220ms/);
+    expect(css).not.toMatch(/transition: all/);
+    const reduced = css.slice(css.lastIndexOf('@media (prefers-reduced-motion: reduce)'));
+    expect(reduced).toMatch(/\.mdv-counter--slide \.mdv-counter__inner[\s\S]*animation: none/);
+  });
+});
+
 describe('the sync line', () => {
   it('says how long ago, each second', () => {
     vi.useFakeTimers();
@@ -114,8 +155,8 @@ describe('the stylesheet', () => {
     expect(reduced).toMatch(/\.mdv-counter__arc/);
   });
   it('moves only transform and opacity', () => {
-    const frames = css.match(/@keyframes mdv-(halo|idle-in|arc)\s*\{[\s\S]*?\n\}/g) ?? [];
-    expect(frames).toHaveLength(3);
+    const frames = css.match(/@keyframes mdv-(halo|idle-in|arc|counter-slide)\s*\{[\s\S]*?\n\}/g) ?? [];
+    expect(frames).toHaveLength(4);
     for (const f of frames) expect(f.replace(/@keyframes[^{]*\{/, '')).not.toMatch(/\b(width|height|top|left|margin|padding)\s*:/);
   });
   it('draws its fill from --seal, which the charcoal ground also defines', () => {

@@ -22,7 +22,7 @@
  * only once its register exists.
  */
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {
   COUNTER_VERBS,
@@ -352,6 +352,9 @@ export function CounterBody({ state, onOpen }: CounterBodyProps) {
   );
 }
 
+/** How long the full counter takes to slide in when it opens (matches house-shell.css). */
+export const COUNTER_SLIDE_MS = 220;
+
 export interface HouseCounterProps extends CounterBodyProps {
   width: 'open' | 'tucked';
   onToggle: () => void;
@@ -380,6 +383,22 @@ export function HouseCounter({ state, onOpen, width, onToggle, peek: peekProp, o
     if (!idle) setPeek(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idle]);
+  // The full column slides in (220 ms, transform and opacity) when it OPENS on a
+  // page that was showing the dots, the strip or nothing: a tap on the dots, or
+  // an item arriving. Never on first paint, never on a re-render of the same face.
+  const face = width === 'tucked' ? 'strip' : idle && !peek ? 'dots' : 'full';
+  const [slide, setSlide] = useState(false);
+  const lastFace = useRef(face);
+  useEffect(() => {
+    if (lastFace.current === face) return;
+    const opening = face === 'full';
+    lastFace.current = face;
+    setSlide(opening);
+    const t = opening ? window.setTimeout(() => setSlide(false), COUNTER_SLIDE_MS + 40) : undefined;
+    return () => {
+      if (t !== undefined) window.clearTimeout(t);
+    };
+  }, [face]);
   if (width === 'tucked') {
     return (
       <aside className="mdv-counter mudavym mdv-counter--strip" aria-label="The counter, tucked">
@@ -453,7 +472,10 @@ export function HouseCounter({ state, onOpen, width, onToggle, peek: peekProp, o
     );
   }
   return (
-    <aside className="mdv-counter mudavym" aria-label="The counter">
+    <aside
+      className={`mdv-counter mudavym${slide ? ' mdv-counter--slide' : ''}`}
+      aria-label="The counter"
+    >
       <CounterBody state={state} onOpen={onOpen} />
       <button type="button" className="mdv-counter__tuck" onClick={idle ? () => setPeek(false) : onToggle}>
         Tuck the counter
