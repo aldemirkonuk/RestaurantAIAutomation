@@ -28,7 +28,7 @@
  * those nulls, and the cuttings render them as em dashes.
  */
 
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
@@ -224,6 +224,20 @@ export function encodeSheet(state: SheetState): StoredSheet {
   };
 }
 
+/** How long a signed-in session may wait for its house before the page says it has none. */
+const HOUSE_WAIT_MS = 3000;
+
+/** The house the stored session names (its token's `restaurantId`), or null. */
+function tokenNamesHouse(): boolean {
+  try {
+    const token = window.localStorage.getItem('accessToken');
+    const payload = token ? JSON.parse(atob(token.split('.')[1] ?? '')) : null;
+    return typeof payload?.restaurantId === 'string' && payload.restaurantId.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 /* ─────────────────────────────────────────────────────── the hook ──────── */
 
 export interface ReportsNextData {
@@ -314,6 +328,16 @@ export function useReportsNextData(
 ): ReportsNextData {
   const { activeRestaurantId, activeRole, loading: authLoading } = useAuth();
   const rid = activeRestaurantId;
+  // The house resolves a beat after sign-in settles (the branches read), so
+  // `rid` is null for a few frames of a reload. A session whose token names a
+  // house is waiting, not houseless; after HOUSE_WAIT_MS the page says so.
+  const waitingForHouse = !rid && (authLoading || tokenNamesHouse());
+  const [houseWaitOver, setHouseWaitOver] = useState(false);
+  useEffect(() => {
+    if (!waitingForHouse) return;
+    const id = setTimeout(() => setHouseWaitOver(true), HOUSE_WAIT_MS);
+    return () => clearTimeout(id);
+  }, [waitingForHouse]);
   const qc = useQueryClient();
   const {
     preferences,
@@ -494,7 +518,7 @@ export function useReportsNextData(
 
   return {
     restaurantId: rid,
-    housePending: !rid && authLoading,
+    housePending: waitingForHouse && !houseWaitOver,
     goalsDesk,
     exportDesk,
     registers,
