@@ -58,4 +58,23 @@ describe('group-rail.css motion contract (r73 c3)', () => {
   it('pins the body to one column that cannot outgrow its container', () => {
     expect(css).toMatch(/\.gr-body \{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
   });
+
+  // r74 walk: .gr-inner is overflow hidden while a group opens (the 0fr -> 1fr collapse needs it), so a
+  // ring drawn outside the first or last control (hold to approve, a focus ring) was cut at the pane's
+  // edge until the 320 ms settle timer ran. The clip box now has room for the ring, so no timer decides.
+  it('[REVERT-FAILS] gives the clip box room for a 6 px ring on every side, without moving the content', () => {
+    const inner = css.match(/\.gr-inner \{([^}]*)\}/)![1];
+    const margin = Number(inner.match(/margin-inline:\s*-(\d+)px/)?.[1]);
+    const padding = Number(inner.match(/padding-inline:\s*(\d+)px/)?.[1]);
+    expect(padding).toBeGreaterThanOrEqual(6);
+    expect(margin).toBe(padding);
+    const pad = css.match(/\.gr-inner > \.gr-pad \{([^}]*)\}/)![1];
+    expect(Number(pad.match(/padding:\s*(\d+)px/)?.[1])).toBeGreaterThanOrEqual(6);
+    expect(Number(pad.match(/padding:\s*\d+px 0 (\d+)px/)?.[1])).toBeGreaterThanOrEqual(6);
+  });
+
+  it('[REVERT-FAILS] does not clip an open group at all under reduced motion (nothing moves, so nothing to hide)', () => {
+    const block = css.slice(css.indexOf('prefers-reduced-motion'));
+    expect(block).toMatch(/\.gr-body\[data-open="true"\] > \.gr-inner \{\s*overflow:\s*visible/);
+  });
 });

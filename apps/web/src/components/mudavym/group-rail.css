@@ -51,10 +51,12 @@
   transition: grid-template-rows 260ms cubic-bezier(0.16, 1, 0.3, 1), opacity 200ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 .gr-body[data-open="true"] { grid-template-rows: 1fr; opacity: 1; }
-.gr-inner { overflow: hidden; min-height: 0; }
+/* The clip box is 8 px wider than the content on each side so a ring (hold to approve, focus) is never cut while the group opens. */
+.gr-inner { overflow: hidden; min-height: 0; margin-inline: -8px; padding-inline: 8px; }
 .gr-inner > .gr-pad { padding: 14px 0 12px; }
 
 @media (prefers-reduced-motion: reduce) {
   .gr-body, .gr-chev, .gr-rail-item { transition: none !important; }
+  .gr-body[data-open="true"] > .gr-inner { overflow: visible; }
 }
 .gr-body[data-open="true"][data-settled="true"] > .gr-inner { overflow: visible; }
