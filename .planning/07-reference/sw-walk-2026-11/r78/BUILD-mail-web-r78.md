@@ -1,0 +1,8 @@
+# BUILD mail-web r78 (2026-11-19)
+Source: r77 WALK-w3 findings 2-4. Base PR #1916 (diff 45,436 chars, already over 30K), so the fix is a stacked DRAFT PR on feat/g3-mail-web-all-conversations. Head 95bff1d28, branch fix/r78-mail-web-scope-layout.
+- F2 placeholder: FIXED (95bff1d28). ReadScope returns an aria-hidden div, min-h-[38px] md:min-h-[20px], while grants are pending (owner/manager only; staff never query grants, so no placeholder).
+- F3 tap targets: FIXED. Chip + "Review and agree" (+ new Settings link) get max-md:min-h-[44px]; chip also max-md:inline-flex items-center. Other 12 px LINK_BUTTONs (offer, Not now, stop) left as they were: not in the finding.
+- F4 pill vs scope line: FIXED as words, not a product change. Fork decided: the status pill is untouched (it reports the house inbox switch truthfully); ReadScope adds READS_ALL_SWITCH_OFF_WORDS when a live wide grant AND mailboxDoor switched_off, with "Open the switch in Settings" (/settings?tab=features) for owner/manager. Staff never see wide-grant state.
+- Finding 1 (gateway read side) is not this lane (mail-gw owns #1917). Not touched.
+Tests: MailTab.read-scope-layout.test.tsx 8 pass; MailTab* 10 files 139 pass 1 skipped; web tsc --noEmit clean. Mutants (5, all killed): placeholder class removed, chip class removed, accept class removed, switch note disabled, note shown without the grant.
+Browser checks owed: CLS at 375 on /communications?tab=mail for an owner (was 0.019); chip and Review-and-agree heights >=44 px at 375, unchanged at >=768; wide grant + inbox switch off shows the note and the button lands on Settings features. Tailwind max-md: variant is only proven by class presence in jsdom.
