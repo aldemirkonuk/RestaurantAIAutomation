@@ -77,6 +77,14 @@ html[data-mudavym-ground="charcoal"] :is(a, button, input, select, textarea, sum
   box-shadow: none !important;
 }
 
+/* The page column. The shell's page region keeps the legacy `bg-gray-50`
+   (HouseShell.tsx), which `.dark` once turned dark; the ground no longer uses
+   `.dark`, so a charcoal house showed a light band around the page-tip strip
+   (r63 walk, 375 and 1440). */
+html[data-mudavym-ground="charcoal"] .mdv-shell__page {
+  background-color: var(--paper-0);
+}
+
 /* The page-tip strip ("Take tour / Later / Don't show again"). It was a white
    card on charcoal; it now follows the shell, with a 1 px top highlight. */
 html[data-mudavym-ground="charcoal"] .mdv-guidance-strip {
