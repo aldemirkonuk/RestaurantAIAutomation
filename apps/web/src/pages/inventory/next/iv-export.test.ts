@@ -87,9 +87,9 @@ describe('unit and bottle size', () => {
     expect(bottleSizeCell(spirit())).toBe(700);
   });
   it('leaves the size blank for a keg or case the gateway defaulted to 750, and keeps a recorded one', () => {
-    const keg = raw({ id: 'k', kind: 'beer', uom: 'keg', wineName: 'Fixture Lager' });
+    const keg = raw({ id: 'k', kind: 'beer', uom: 'keg', wineName: 'Fixture Lager', bottle_size_ml: null });
     const kegSized = raw({ id: 'k2', kind: 'beer', uom: 'keg', wineName: 'Fixture Lager', bottle_size_ml: 30000, bottleSizeMl: 30000 });
-    const kase = raw({ id: 'c', kind: 'wine', uom: 'case', wineName: 'Fixture Case' });
+    const kase = raw({ id: 'c', kind: 'wine', uom: 'case', wineName: 'Fixture Case', bottle_size_ml: null });
     expect(keg.bottleSizeMl).toBe(750);
     expect(bottleSizeCell(keg)).toBe('');
     expect(bottleSizeCell(kase)).toBe('');
