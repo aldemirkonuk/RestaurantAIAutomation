@@ -884,6 +884,8 @@ describe('a side read that did not answer is named, never read as health (INV-W2
   it('still says "not recorded" when the library answered and the title has no type', () => {
     mock.data = data({ rows: [row({ type: null })] });
     renderPage();
+    // Nothing has a type, so the column rests behind the Columns control (N-18).
+    fireEvent.click(screen.getByTestId('inv-columns'));
     const tr = screen.getByTestId('inventory-table').querySelector('tbody tr:not(.iv-group)') as HTMLElement;
     expect(tr.querySelector('td[data-label="Type"]')!.textContent).toBe('not recorded');
   });

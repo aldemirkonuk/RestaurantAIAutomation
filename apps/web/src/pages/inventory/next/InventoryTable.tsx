@@ -6,7 +6,7 @@
  * else by runway — and each group is headed with its count; any other sort
  * is one list.
  *
- * A row is 48px and opens the item drawer (ItemDrawer.tsx): the whole row
+ * A row is 56px and opens the item drawer (ItemDrawer.tsx): the whole row
  * is the hit area, and the title is a real button so the keyboard can reach
  * it (Enter or Space opens it).
  *
@@ -14,12 +14,13 @@
  * managers (it is where a price is changed, ADR 0193); everyone else reads
  * the two figures in the house's currency.
  */
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import { HousePriceCell, type AdviceLoad } from '../command/HousePriceCell';
 import type { RowDropdownProps } from './RowDropdown';
 import { cellMoney, EM, statusWord, fmtCount, fmtPace, noZoneWord, SEVERITY_GROUP, severity, typeLabel, type InvRow, type SortId } from './useInventoryNextData';
 import { NameHint } from './NameThisWine';
 import PhoneRows from './PhoneRows';
+import { emptyColumns } from './iv-columns';
 import { useIsPhone } from '../../../hooks/useIsPhone';
 
 export interface InventoryTableProps extends Omit<RowDropdownProps, 'row'> {
@@ -54,7 +55,7 @@ function ParBar({ row }: { row: InvRow }) {
   const pct = Math.max(0, Math.min(1, row.stock / row.par)) * 100;
   return (
     <span className="iv-parbar" aria-hidden>
-      <i data-standing={row.standing} style={{ width: `${pct}%` }} />
+      <i data-standing={row.standing} style={{ transform: `scaleX(${pct / 100})` }} />
     </span>
   );
 }
@@ -70,12 +71,22 @@ export default function InventoryTable(props: InventoryTableProps) {
   const { rows, grouped, openId, onToggle, currency, canManage, advice, onPriceChanged, zoneName } = props;
   // A phone cannot read nine columns: it gets two-line cards (critic c2 P0-2).
   const phone = useIsPhone();
+  // A column of nothing but dashes stays out of the way until asked for (N-18).
+  const [showEmpty, setShowEmpty] = useState(false);
+  const empty = emptyColumns({
+    rows,
+    canManage,
+    libraryUnread: props.libraryUnread === true,
+    locationsUnavailable: props.locationsUnavailable,
+  });
+  const hidden = showEmpty ? new Set<string>() : empty;
+  const cols = COLUMNS.filter((c) => !hidden.has(c));
   const counts = [0, 0, 0];
   for (const r of rows) counts[severity(r)] += 1;
   const selecting = props.selected !== undefined && props.onSelect !== undefined;
   const thing = props.thing ?? 'title';
   const nameHead = thing.charAt(0).toUpperCase() + thing.slice(1);
-  const span = COLUMNS.length + (selecting ? 1 : 0);
+  const span = cols.length + (selecting ? 1 : 0);
   const allSelected = selecting && rows.length > 0 && rows.every((r) => props.selected!.has(r.id));
   const someSelected = selecting && !allSelected && rows.some((r) => props.selected!.has(r.id));
 
@@ -100,6 +111,21 @@ export default function InventoryTable(props: InventoryTableProps) {
 
   return (
     <div className="iv-tablewrap">
+      {empty.size > 0 ? (
+        <div className="iv-colsbar">
+          <button
+            type="button"
+            className="iv-colsbtn iv-focus"
+            aria-pressed={showEmpty}
+            data-testid="inv-columns"
+            onClick={() => setShowEmpty((v) => !v)}
+          >
+            {showEmpty
+              ? 'Hide empty columns'
+              : `Columns · ${empty.size} empty ${empty.size === 1 ? 'column' : 'columns'} hidden · Show`}
+          </button>
+        </div>
+      ) : null}
       <table className="iv-table" data-testid="inventory-table">
         {/* INV-W39: the book had no name and no heading, so a screen reader
             went from the page title straight to Tools. */}
@@ -120,7 +146,7 @@ export default function InventoryTable(props: InventoryTableProps) {
                 />
               </th>
             ) : null}
-            {COLUMNS.map((c) => {
+            {cols.map((c) => {
               // The legacy column-header sort (InventoryCommandPage.tsx:496,1337):
               // a header that has a sort sets it; clicking the active one goes
               // back to Needs you first. Each sort reads one direction.
@@ -224,31 +250,43 @@ export default function InventoryTable(props: InventoryTableProps) {
                           </span>
                         ) : null}
                       </span>
-                      <span className="iv-producer">
-                        {[row.producer, row.vintage === null ? null : String(row.vintage)].filter(Boolean).join(' · ') || EM}
-                      </span>
+                      {/* No producer and no vintage: no line, never a bare dash (N-18). */}
+                      {row.producer || row.vintage !== null ? (
+                        <span className="iv-producer">
+                          {[row.producer, row.vintage === null ? null : String(row.vintage)].filter(Boolean).join(' · ')}
+                        </span>
+                      ) : null}
                     </button>
                     <NameHint inventoryId={row.id} />
                   </td>
+{!hidden.has('Type') ? (
                   <td data-label="Type" className={row.type && row.type !== 'unclassified' ? undefined : 'iv-dim'}>
                     {row.type ? typeLabel(row.type) : props.libraryUnread ? EM : 'not recorded'}
                   </td>
+ ) : null}
+{!hidden.has('Zone') ? (
                   <td data-label="Zone">{zoneCell(row, zoneName, props.locationsUnavailable)}</td>
+ ) : null}
                   <td data-label="Live / shadow · par" className="iv-r iv-num">
                     <span>
-                      {row.stock === null ? EM : fmtCount(row.stock)}
+                      <span className="iv-live">{row.stock === null ? EM : fmtCount(row.stock)}</span>
                       <span className="iv-dim"> / {row.shadow === null ? EM : fmtCount(row.shadow)}</span>
                       {' · '}
                       {row.par === null ? EM : fmtCount(row.par)}
                     </span>
                     <ParBar row={row} />
                   </td>
+{!hidden.has('Vel/day') ? (
                   <td data-label="Vel/day" className="iv-r iv-num">
                     {row.velocity === null ? EM : fmtPace(row.velocity)}
                   </td>
+ ) : null}
+{!hidden.has('Runway') ? (
                   <td data-label="Runway" className="iv-r iv-num">
                     {row.runway === null ? EM : `${fmtCount(Math.round(row.runway))}d`}
                   </td>
+ ) : null}
+{!hidden.has('Your price') ? (
                   <td data-label="Your price" className="iv-r iv-num" onClick={(e) => e.stopPropagation()}>
                     {canManage ? (
                       <HousePriceCell
@@ -269,10 +307,14 @@ export default function InventoryTable(props: InventoryTableProps) {
                       </>
                     )}
                   </td>
+ ) : null}
+{!hidden.has('Value') ? (
                   <td data-label="Value at cost" className="iv-r iv-num">
                     {cellMoney(row.value, currency)}
                   </td>
+ ) : null}
                   <td data-label="Status" className="iv-status" data-standing={row.standing}>
+                    <span className="iv-dot" aria-hidden />
                     {statusWord(row)}
                   </td>
                 </tr>
