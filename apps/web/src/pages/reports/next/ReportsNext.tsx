@@ -538,8 +538,8 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
             <p className="rp-voice">{opening}</p>
             {sparks.length > 0 && (
               <div className="rp-sparks">
-                {sparks.map((s) => (
-                  <Spark key={s.id} series={s} />
+                {sparks.map((s, i) => (
+                  <Spark key={s.id} series={s} index={i} />
                 ))}
               </div>
             )}
