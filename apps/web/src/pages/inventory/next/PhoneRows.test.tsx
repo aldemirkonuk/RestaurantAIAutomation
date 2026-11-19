@@ -204,3 +204,16 @@ describe('the touch rules', () => {
     expect(here('ItemDrawer.tsx')).not.toMatch(/detents=\{\['full'\]\}\s*\n\s*className="iv-drawer"/);
   });
 });
+
+describe('the 44 px tap rule at 640px and below (r81 walk, finding 3)', () => {
+  const css = readFileSync(resolve(process.cwd(), 'src/pages/inventory/next/inventory-next.css'), 'utf8');
+  const block = css.slice(css.indexOf('phone: the drawer\'s small controls'));
+  const phone = block.slice(block.indexOf('@media (max-width: 640px) {'), block.indexOf('/* ── phone: the filter chips'));
+  it('the drawer Close, "All the evidence" and "Read again" take min-height 44', () => {
+    expect(phone).toMatch(/\.iv-drawer \.mdv-ovl__close,\s*\.iv-drawer \.iv-linkish\s*\{[^}]*min-height:\s*44px/);
+    expect(phone).toMatch(/\.iv-drawer \.mdv-ovl__close\s*\{\s*min-width:\s*44px/);
+  });
+  it('the row checkbox label is a 44 x 44 hit area', () => {
+    expect(phone).toMatch(/\.ivc-pick\s*\{[^}]*min-width:\s*44px;[^}]*min-height:\s*44px/);
+  });
+});
