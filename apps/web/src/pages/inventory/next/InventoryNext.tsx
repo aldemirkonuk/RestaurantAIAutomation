@@ -675,7 +675,7 @@ export default function InventoryNext() {
         ) : rows !== null ? (
           /* ── the book ───────────────────────────────────────────────── */
           <>
-            <p className="iv-read" data-testid="inventory-read-sentence">
+            <p className="iv-read" data-testid="inventory-read-sentence" data-tour="inventory-filters">
               {readSentence(rows, data.currency, !locs.unavailable)}
             </p>
             {data.stale ? (
@@ -687,7 +687,7 @@ export default function InventoryNext() {
               </p>
             ) : null}
 
-            <div className="iv-chips" role="group" aria-label="Show only" data-testid="inventory-chips">
+            <div className="iv-chips" role="group" aria-label="Show only" data-testid="inventory-chips" data-tour="inventory-attention">
               {CHIPS.map((c) =>
                 c.id === 'dead' && data.paceUnread ? (
                   <button
@@ -716,6 +716,7 @@ export default function InventoryNext() {
                     className="iv-chip iv-focus"
                     aria-pressed={activeChip === c.id}
                     data-on={activeChip === c.id}
+                    data-tour={c.id === 'below' ? 'inventory-below-par' : undefined}
                     onClick={() => setV({ chip: c.id })}
                   >
                     {c.label} <span className="iv-num">{chipCount(c.id)}</span>
@@ -724,7 +725,7 @@ export default function InventoryNext() {
               )}
             </div>
 
-            <div className="iv-toolbar" data-testid="inventory-toolbar">
+            <div className="iv-toolbar" data-testid="inventory-toolbar" data-tour="inventory-actions">
               <label className="iv-search">
                 <span className="iv-sr">Search titles, producers, grapes</span>
                 <input

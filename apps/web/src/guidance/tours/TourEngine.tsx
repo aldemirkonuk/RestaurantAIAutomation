@@ -2,7 +2,7 @@ import { useCallback, useRef } from 'react'
 import type { PageTourId } from '../types'
 import { TOUR_REGISTRY } from './registry'
 import { trackGuidance } from '../analytics'
-import { announceGuidance, focusTourHelpButton } from '../announce'
+import { announceGuidance, announceGuidanceVisibly, focusTourHelpButton } from '../announce'
 
 export interface TourEngineApi {
   startTour: (pageId: PageTourId) => Promise<void>
@@ -60,7 +60,7 @@ export function useTourEngine(handlers: {
         })
 
         if (!availableSteps.length) {
-          announceGuidance('Tour unavailable — page sections not ready yet.')
+          announceGuidanceVisibly('This tour could not start: the page is not showing the parts it points at.')
           handlersRef.current.onSkipped(pageId)
           activePageRef.current = null
           focusTourHelpButton()

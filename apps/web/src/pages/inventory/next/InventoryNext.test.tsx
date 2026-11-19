@@ -263,6 +263,21 @@ describe('search ignores accents and folds the Turkish i', () => {
   });
 });
 
+describe('the page tour rings what the page draws', () => {
+  it('[REVERT-FAILS] draws one element for each of the four tour steps (Take the tour started nothing here before)', async () => {
+    const { inventoryTour } = await import('../../../guidance/content/inventory');
+    mock.data = data({ rows: [row({ id: 'a' })] });
+    renderPage();
+    for (const step of inventoryTour.steps) {
+      expect(document.querySelectorAll(step.element), step.element).toHaveLength(1);
+    }
+    expect(screen.getByTestId('inventory-chips').getAttribute('data-tour')).toBe('inventory-attention');
+    expect(
+      within(screen.getByTestId('inventory-chips')).getByRole('button', { name: /^Below par/ }).getAttribute('data-tour'),
+    ).toBe('inventory-below-par');
+  });
+});
+
 describe('unknown is never zero', () => {
   it('shows nothing for 400ms, then "Reading the cellar…", and never a 0', () => {
     vi.useFakeTimers();
