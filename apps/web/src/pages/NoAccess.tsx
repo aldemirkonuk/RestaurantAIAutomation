@@ -1,4 +1,4 @@
-import { PublicShell } from '../components/mudavym/PublicShell'
+import { AuthSpread } from '../components/brand/AuthSpread'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { cachedHouseName, clearHouseEnded, readHouseEnded } from '../lib/houseMemory'
@@ -11,18 +11,17 @@ export function NoAccess() {
   const ended = endedId ? (cachedHouseName(endedId) ?? 'that house') : null
 
   return (
-    <PublicShell
+    <AuthSpread
       title="No restaurant access"
       eyebrow="Workspace access"
       voice="Ask an owner for an invitation to their restaurant."
-      homeHref="/login"
       footer={
         <Link className="mdv-link" to="/login">
           Back to sign in
         </Link>
       }
     >
-      <div className="mdv-pub__plate mdv-pub__stack">
+      <div className="mdv-spread-stack">
         {ended && <p role="status">Your access to {ended} has ended.</p>}
         <p>
           {user?.email ? (
@@ -63,6 +62,6 @@ export function NoAccess() {
           Sign out
         </button>
       </div>
-    </PublicShell>
+    </AuthSpread>
   )
 }

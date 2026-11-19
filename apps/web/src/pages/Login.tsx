@@ -104,6 +104,9 @@ export function Login() {
 
   const [email, setEmail] = useState(prefilledEmail)
   const [password, setPassword] = useState('')
+  // Google sign-in is not set up on this deployment: its row, and the "or"
+  // rule above it, are not drawn at all.
+  const [googleGone, setGoogleGone] = useState(false)
   const [loading, setLoading] = useState(false)
   const [resolving, setResolving] = useState(false)
   const [identity, setIdentity] = useState<SignInMethodsResult | null>(null)
@@ -592,7 +595,7 @@ export function Login() {
         {/* House path: "Continue with Google" also sits on the first page,
             under the address (founder, 2026-09-19). A Google account with no
             Mudavym account is refused by the gateway exactly as before. */}
-        {!atMethodStep && (
+        {!atMethodStep && !googleGone && (
           <div className="mt-5 flex items-center gap-3" aria-hidden>
             <span className="h-px flex-1 bg-paper-2" />
             <span className="text-xs font-medium uppercase tracking-wide text-inkm-3">or</span>
@@ -601,15 +604,16 @@ export function Login() {
         )}
         <div
           className={
-            (atMethodStep ? showGoogle : true)
+            (atMethodStep ? showGoogle : true) && !googleGone
               ? 'mt-5'
               : 'pointer-events-none absolute h-0 w-0 overflow-hidden opacity-0'
           }
-          aria-hidden={!(atMethodStep ? showGoogle : true)}
+          aria-hidden={!(atMethodStep ? showGoogle : true) || googleGone}
         >
           <GoogleSignInButton
             ref={googleRef}
             enableOneTap
+            onUnavailable={() => setGoogleGone(true)}
             disabled={loading}
             onSuccess={() => navigate(from, { replace: true })}
             onError={(message) => {

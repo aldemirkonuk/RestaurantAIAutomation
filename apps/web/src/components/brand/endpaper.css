@@ -39,8 +39,11 @@
   min-height: 100dvh;
   display: flex;
   justify-content: center;
-  align-items: flex-start;
-  padding: clamp(20px, 9vh, 104px) 16px 40px;
+  /* Centred, so the book sits in the middle of the viewport rather than in the
+     top half of it (design critic, 2026-11-18). A short message cannot move
+     it: the book holds a minimum height (below) that the common states fit in. */
+  align-items: center;
+  padding: clamp(20px, 5vh, 56px) 16px 40px;
   background-color: var(--paper-1);
 }
 .mdv-ep-stage {
@@ -73,6 +76,7 @@
   border-radius: 2px;
   overflow: hidden;
   text-align: left;
+  min-height: 540px;
 }
 /* the gutter shadow between the two pages */
 .mdv-ep-book::before {
@@ -120,6 +124,13 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 8px;
+}
+/* The wordmark is the page's name, so it is set in full ink and never dimmed:
+   the mark draws itself on `--ink-1` already, and this keeps a parent's
+   opacity or a button's colour from ever washing it grey. */
+.mdv-endpaper .mdv-ep-wordmark {
+  color: var(--ink-1);
+  opacity: 1;
 }
 .mdv-ep-kicker {
   font: 500 10px/1.4 'JetBrains Mono', ui-monospace, monospace;
@@ -541,11 +552,13 @@ html .mudavym.mdv-endpaper .mdv-ep-leaf input.mdv-ep-code[class*='border-red'] {
 @media (max-width: 700px) {
   .mudavym.mdv-auth.mdv-endpaper {
     padding: 12px 12px 28px;
+    align-items: flex-start;
   }
   .mdv-ep-book,
   .mdv-ep-book--wide {
     grid-template-columns: 1fr;
     width: 100%;
+    min-height: 0;
   }
   .mdv-ep-book::before {
     display: none;
@@ -608,5 +621,119 @@ html .mudavym.mdv-endpaper .mdv-ep-leaf input.mdv-ep-code[class*='border-red'] {
   }
   .mdv-ep-poem-page {
     padding-left: 0;
+  }
+}
+
+/* ── the spread: forgot, reset, verify, no-access, invite, get-started ───
+   `AuthSpread` is the book again for the doors that are not sign-in. Same
+   endpaper, same ruled leaf; what it adds is one heading and one field
+   grammar, so a stranger meets the same page at every door.
+
+   - the heading is the page's one H1, set in Fraunces;
+   - a field is 52px tall and written on a one-pixel hairline;
+   - a plate is 52px tall and as wide as the column;
+   - the leaf's contents rise in, one after another, on transform and
+     opacity only, and not at all under reduced motion. */
+
+.mdv-spread-main {
+  display: block;
+  outline: none;
+}
+.mdv-spread-title {
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 600;
+  font-size: 32px;
+  line-height: 40px;
+  letter-spacing: -0.015em;
+  margin: 0;
+  color: var(--ink-1);
+  background-image: linear-gradient(to bottom, transparent calc(100% - 1px), var(--mdv-ep-rule) calc(100% - 1px));
+  background-size: 100% 40px;
+}
+.mdv-spread-lede {
+  font-family: 'Fraunces', Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+  font-size: 15px;
+  line-height: 28px;
+  margin: 0 0 28px;
+  color: var(--ink-2);
+  background-image: linear-gradient(to bottom, transparent calc(100% - 1px), var(--mdv-ep-rule) calc(100% - 1px));
+  background-size: 100% 28px;
+}
+.mdv-spread-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.mdv-spread-stack > p:not(.mdv-alert):not(.mdv-note) {
+  margin: 0;
+  font-size: 15px;
+  line-height: 24px;
+  color: var(--ink-2);
+}
+.mdv-spread-foot {
+  margin-top: 28px;
+  font-size: 14px;
+  color: var(--ink-3);
+}
+
+html .mudavym.mdv-endpaper .mdv-spread :is(input:not([type]), input[type='text'], input[type='email'], input[type='password'], input[type='tel'], input[type='search'], input[type='url'], input[type='number']) {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  height: 52px;
+  min-height: 52px;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  font-size: 16px;
+  line-height: 24px;
+}
+.mdv-spread .mdv-btn,
+.mdv-spread button[type='submit'] {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 52px;
+  justify-content: center;
+  transition: transform 140ms cubic-bezier(0.16, 1, 0.3, 1), opacity 140ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mdv-spread .mdv-btn:active:not(:disabled),
+.mdv-spread button[type='submit']:active:not(:disabled) {
+  transform: translateY(1px) scale(0.99);
+}
+
+@keyframes mdv-spread-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.mdv-spread > *,
+.mdv-spread-stack > * {
+  animation: mdv-spread-rise 340ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.mdv-spread > :nth-child(2),
+.mdv-spread-stack > :nth-child(1) { animation-delay: 50ms; }
+.mdv-spread > :nth-child(3),
+.mdv-spread-stack > :nth-child(2) { animation-delay: 100ms; }
+.mdv-spread > :nth-child(4),
+.mdv-spread-stack > :nth-child(3) { animation-delay: 150ms; }
+.mdv-spread-stack > :nth-child(n + 4) { animation-delay: 200ms; }
+@media (prefers-reduced-motion: reduce) {
+  .mdv-spread > *,
+  .mdv-spread-stack > * {
+    animation: none;
+  }
+  .mdv-spread .mdv-btn,
+  .mdv-spread button[type='submit'] {
+    transition: none;
+  }
+  .mdv-spread .mdv-btn:active:not(:disabled),
+  .mdv-spread button[type='submit']:active:not(:disabled) {
+    transform: none;
   }
 }
