@@ -9,7 +9,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { InvRow } from './useInventoryNextData';
 import { ALLERGENS, type HouseFields, type ItemFigures, type ItemNutrition } from '../../../services/api/inventory';
 
-const api = vi.hoisted(() => ({ figures: vi.fn(), usedIn: vi.fn(), nutrition: vi.fn(), dishes: vi.fn(), drinks: vi.fn() }));
+const api = vi.hoisted(() => ({ figures: vi.fn(), usedIn: vi.fn(), nutrition: vi.fn(), dishes: vi.fn(), drinks: vi.fn(), taste: vi.fn() }));
+vi.mock('../../../services/api/taste', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  getTaste: api.taste,
+}));
 vi.mock('../../../services/api/itemDishes', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   getItemDishes: api.dishes,
@@ -76,7 +80,7 @@ const CURRENCY = /€|EUR|\$|£|₺|TRY|USD/;
 
 function open(
   r: InvRow | null,
-  opts: { canManage?: boolean; house?: HouseFields; NutritionCard?: (p: NutritionCardProps) => JSX.Element; code?: string } = {},
+  opts: { canManage?: boolean; house?: HouseFields; NutritionCard?: (p: NutritionCardProps) => JSX.Element; TasteCard?: (p: NutritionCardProps) => JSX.Element; code?: string } = {},
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -94,6 +98,7 @@ function open(
         restaurantId="r1"
         onClose={vi.fn()}
         NutritionCard={opts.NutritionCard}
+        TasteCard={opts.TasteCard}
       />
     </QueryClientProvider>,
   );
@@ -110,6 +115,8 @@ beforeEach(() => {
   api.drinks.mockImplementation(() => new Promise(() => undefined));
   api.nutrition.mockReset();
   api.nutrition.mockResolvedValue(nothingStated);
+  api.taste.mockReset();
+  api.taste.mockResolvedValue({ state: 'absent' });
 });
 
 describe('the item drawer', () => {
@@ -499,5 +506,41 @@ describe('a supply has nothing in it to state', () => {
     open(row({ kind: 'food', name: 'Bread flour', bottleSizeMl: null }), { house: { kind: 'food', uom: 'g', displayName: 'Bread flour' } });
     await waitFor(() => expect(api.nutrition).toHaveBeenCalled());
     expect(screen.getByTestId('ivd-card-inside')).toBeTruthy();
+  });
+});
+
+describe('the taste card slot', () => {
+  const napkins = { kind: 'supply', uom: 'each', displayName: 'Napkins' } as HouseFields;
+  const food = { kind: 'food', uom: 'g', displayName: 'Bread flour' } as HouseFields;
+
+  it('mounts directly after the nutrition card, and reads taste for that good once', async () => {
+    open(row({ kind: 'food', name: 'Bread flour', bottleSizeMl: null }), { house: food });
+    fireEvent.click(screen.getByRole('button', { name: 'All the evidence' }));
+    const detail = screen.getByTestId('ivd-evidence');
+    const nutrition = within(detail).getByTestId('ivd-nutrition-slot');
+    const taste = within(detail).getByTestId('ivd-taste-slot');
+    expect(taste.getAttribute('data-slot')).toBe('TasteCard');
+    expect(nutrition.nextElementSibling).toBe(taste);
+    await waitFor(() => expect(within(taste).getByTestId('taste-absent')).toBeTruthy());
+    expect(api.taste).toHaveBeenCalledWith('good', 'i1', 'r1');
+    expect(api.taste).toHaveBeenCalledTimes(1);
+  });
+
+  it('hands the slot the row, so a house can mount its own card', () => {
+    const Mine = (p: NutritionCardProps) => <p data-testid="mine">{p.row.id}</p>;
+    open(row(), { TasteCard: Mine });
+    fireEvent.click(screen.getByRole('button', { name: 'All the evidence' }));
+    expect(within(screen.getByTestId('ivd-taste-slot')).getByTestId('mine').textContent).toBe('i1');
+    expect(api.taste).not.toHaveBeenCalled();
+  });
+
+  it('a supply has neither the nutrition nor the taste slot, and taste is never read', async () => {
+    open(row({ kind: 'supply', name: 'Napkins', bottleSizeMl: null }), { house: napkins });
+    fireEvent.click(screen.getByRole('button', { name: 'All the evidence' }));
+    await waitFor(() => expect(api.figures).toHaveBeenCalled());
+    expect(screen.queryByTestId('ivd-taste-slot')).toBeNull();
+    expect(screen.queryByTestId('ivd-nutrition-slot')).toBeNull();
+    expect(screen.queryByTestId('taste-card')).toBeNull();
+    expect(api.taste).not.toHaveBeenCalled();
   });
 });
