@@ -842,6 +842,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         const { accessToken, refreshToken: refresh } = response.data;
         storeSession(accessToken, refresh);
+        // What became of the verification mail, kept for /verify-email, where
+        // Register.tsx sends the owner next: a send that did not leave is said
+        // there in words, never as "check your inbox" (as registerAccount).
+        noteSignUpMail(response.data?.verificationMail, data.email);
         api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
         const userResponse = await api.get("/api/v1/auth/me");
         setUser(userFrom(userResponse.data.user, accessToken));
@@ -967,6 +971,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await api.post("/api/v1/auth/join", data);
       const { accessToken, refreshToken: refresh } = response.data;
       storeSession(accessToken, refresh);
+      // Present only when this join mailed a verification link.
+      noteSignUpMail(response.data?.verificationMail, data.email);
       api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
       const userResponse = await api.get("/api/v1/auth/me");
       setUser(userFrom(userResponse.data.user, accessToken));

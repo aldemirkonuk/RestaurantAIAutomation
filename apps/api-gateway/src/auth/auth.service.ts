@@ -1948,7 +1948,9 @@ export class AuthService {
    * Path B: Register a new restaurant (creates org + restaurant + user atomically).
    * User starts with email_verified: false and must verify email.
    */
-  async registerRestaurant(dto: RegisterRestaurantDto): Promise<TokenPair> {
+  async registerRestaurant(
+    dto: RegisterRestaurantDto,
+  ): Promise<TokenPair & { verificationMail: VerificationMail }> {
     if (await this.emailAlreadyRegistered(dto.email)) {
       throw new BadRequestException("Email already registered");
     }
@@ -2118,10 +2120,13 @@ export class AuthService {
       // here it has been assigned from the created row and the throw on
       // failure means it cannot be null. Asserting that rather than widening
       // the callee, which would let a genuinely-null id through elsewhere.
-      this.queueEmailVerification(userId as string, dto.email).catch((err) =>
-        this.logger.warn(
-          `queueEmailVerification failed (non-fatal): ${err.message}`,
-        ),
+      // The verification mail is the exception: it is awaited (time-bounded
+      // by queueEmailVerification, never throws) so the answer can say
+      // whether it left, as registerAccount's does. A failed send never fails
+      // the registration; the page offers a resend.
+      const verificationMail = await this.queueEmailVerification(
+        userId as string,
+        dto.email,
       );
 
       this.gmailService
@@ -2147,7 +2152,7 @@ export class AuthService {
           ),
         );
 
-      return tokens;
+      return { ...tokens, verificationMail };
     } catch (err) {
       if (userId)
         await this.databaseService.supabase
@@ -2951,7 +2956,13 @@ export class AuthService {
    */
   async joinViaInvite(
     dto: JoinViaInviteDto,
-  ): Promise<TokenPair & { membershipHeld: boolean }> {
+  ): Promise<
+    TokenPair & {
+      membershipHeld: boolean;
+      /** Set only when this join mailed a verification link. */
+      verificationMail?: VerificationMail;
+    }
+  > {
     // One spelling of the address for every read and write below: the
     // spelling registerAccount stores and the emailed code looks up.
     const email = normalizeEmail(dto.email);
@@ -3017,6 +3028,7 @@ export class AuthService {
     let user: any;
     // Whether the joining account's address is proved right now (fork 13).
     let addressProved: boolean;
+    let verificationMail: VerificationMail | undefined;
 
     if (existingUser) {
       const { data: existingAccess } = await this.databaseService.supabase
@@ -3112,11 +3124,12 @@ export class AuthService {
       user = newUser;
       addressProved = addressProvedByInvite;
       if (!addressProvedByInvite) {
-        // The person proves the address once, as every registrant does.
-        this.queueEmailVerification(user.user_id, email).catch((err) =>
-          this.logger.warn(
-            `queueEmailVerification failed (non-fatal): ${err.message}`,
-          ),
+        // The person proves the address once, as every registrant does. The
+        // result is awaited and answered, so the page can say a mail that did
+        // not leave (a failed send never fails the join).
+        verificationMail = await this.queueEmailVerification(
+          user.user_id,
+          email,
         );
       }
     }
@@ -3152,7 +3165,7 @@ export class AuthService {
           "proving the address; the membership is held until accepted",
       );
       const pair = await this.generateTokens(user, false, null, signedInNow());
-      return { ...pair, membershipHeld: true };
+      return { ...pair, membershipHeld: true, verificationMail };
     }
 
     // Insert-only, and never `owner` (organizations/org-role.ts, ADR 0164).
@@ -3190,7 +3203,7 @@ export class AuthService {
       invite.restaurant_id,
       signedInNow(),
     );
-    return { ...pair, membershipHeld: false };
+    return { ...pair, membershipHeld: false, verificationMail };
   }
 
   /**

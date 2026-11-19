@@ -142,3 +142,54 @@ describe("registerAccount hands the mail outcome to /verify-email (OB-6)", () =>
     expect(readSignUpMail("other@house.test")).toBeNull();
   });
 });
+
+describe("registerRestaurant hands the mail outcome to /verify-email too", () => {
+  const OWNER = {
+    email: "new@house.test",
+    password: "a password of my own",
+    name: "Mira Kaya",
+    restaurantName: "Meyhane",
+    city: "Antalya",
+  };
+
+  it.each(["not_sent", "unconfirmed", "sent"])(
+    "keeps '%s' for the owner's address",
+    async (outcome) => {
+      gatewayAnswers(outcome);
+      const auth = await mount();
+      await act(async () => {
+        await auth().registerRestaurant(OWNER as never);
+      });
+      expect(sessionStorage.getItem(KEY)).toBe(
+        JSON.stringify({ outcome, email: "new@house.test" }),
+      );
+      expect(readSignUpMail("new@house.test")).toBe(outcome);
+    },
+  );
+
+  it("clears an earlier note when the gateway says nothing", async () => {
+    sessionStorage.setItem(KEY, "not_sent");
+    gatewayAnswers(undefined);
+    const auth = await mount();
+    await act(async () => {
+      await auth().registerRestaurant(OWNER as never);
+    });
+    expect(sessionStorage.getItem(KEY)).toBeNull();
+  });
+});
+
+describe("joinViaInvite keeps the outcome of the link it mailed", () => {
+  it("keeps 'not_sent' for the joiner's address", async () => {
+    gatewayAnswers("not_sent");
+    const auth = await mount();
+    await act(async () => {
+      await auth().joinViaInvite({
+        code: "ABC",
+        name: "Mira Kaya",
+        email: "new@house.test",
+        password: "a password of my own",
+      } as never);
+    });
+    expect(readSignUpMail("new@house.test")).toBe("not_sent");
+  });
+});
