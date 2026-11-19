@@ -35,6 +35,7 @@ import { decodeSheet, defaultSheet, encodeSheet } from './useReportsNextData';
 import { CATALOGUE } from './rp-catalogue';
 import { DEFAULT_ON, DEFAULT_SLOTS, SHEET_MIN_H, SHEET_MIN_W } from './rp-sheet';
 import { heldBackFailure } from './rp-format';
+import { isStrip, STRIP_ROWS } from './rp-strip';
 
 /**
  * The two registers added in the fourth pass decode heavily on the way in
@@ -2478,14 +2479,50 @@ describe('r61 c2 — the opening, the strips and the till window', () => {
     expect(pacing()).not.toHaveAttribute('data-strip');
   });
 
-  it('[REVERT-FAILS] a week that reads zero keeps its slot and says "No pours read this week" instead of collapsing', () => {
+  it('[REVERT-FAILS] a week that reads zero folds to a strip: the ruled-off drawing, its own line first, the explanation under it (r73 c3 need 11)', () => {
     hook.current = { ...base(), registers: { ...(base().registers as object), week: zeroWeek() } };
     paint();
     const week = screen.getByRole('region', { name: 'The week’s shape' });
-    expect(week).not.toHaveAttribute('data-strip');
+    expect(week).toHaveAttribute('data-strip', 'true');
     expect(within(week).getByText('No pours read this week')).toBeInTheDocument();
-    expect(slotPx('The week’s shape')).toBe(slotPx('Spend pacing'));
-    expect(slotPx('The week’s shape')).toBeGreaterThanOrEqual(rowsPx(6));
+    expect(week.querySelector('svg.rp-ruled')).not.toBeNull();
+    expect(week.querySelector('svg.rp-ruled')).toHaveAttribute('viewBox', '0 0 96 96');
+    expect(week.querySelector('svg.rp-ruled')).toHaveAttribute('width', '40');
+    expect(slotPx('The week’s shape')).toBe(rowsPx(STRIP_ROWS));
+    // arranging gives the paper back, and the drawing leaves with the strip
+    arrange();
+    expect(week).not.toHaveAttribute('data-strip');
+    expect(week.querySelector('svg.rp-ruled')).toBeNull();
+  });
+
+  it('[REVERT-FAILS] a cutting drawn as a shape its answer does not carry folds to a strip too, a full one is left whole', () => {
+    const ctx = { days: 30 } as never;
+    const full = ok((base().registers as Record<string, { data: unknown }>).week.data);
+    // a view with answers but no categories: bars cannot be drawn from it
+    const spy = vi
+      .spyOn(CATALOGUE.week, 'view')
+      .mockReturnValue({ figures: [], notes: [], basis: [] } as never);
+    try {
+      expect(isStrip('week', full as never, ctx, 'bars')).toBe(true);
+      // no graph given (a caller that has not chosen one): only a spoken answer folds
+      expect(isStrip('week', full as never, ctx)).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+    // the real week view carries its categories, so bars are drawn whole
+    expect(isStrip('week', full as never, ctx, 'bars')).toBe(false);
+  });
+
+  it('[REVERT-FAILS] the stylesheet draws the strip drawing by opacity and transform only, and stills it for reduced motion', () => {
+    const css = readFileSync(resolve(__dirname, 'reports-next.css'), 'utf8');
+    const block = css.slice(css.indexOf('r73 c3 need 11'));
+    expect(block).toMatch(/\.rp-ruled\s*{[^}]*animation:\s*rp-ruled-in 320ms cubic-bezier\(0\.16, 1, 0\.3, 1\)/);
+    const frames = block.slice(block.indexOf('@keyframes rp-ruled-in'), block.indexOf('@media'));
+    expect(frames).toMatch(/opacity/);
+    expect(frames).toMatch(/transform/);
+    expect(frames).not.toMatch(/\b(width|height|top|left|margin)\s*:/);
+    expect(block.slice(0, block.indexOf('The till window')) ).not.toMatch(/transition:\s*all/);
+    expect(block).toMatch(/prefers-reduced-motion: reduce\)\s*{[\s\S]*\.rp-ruled\s*{[^}]*animation:\s*none/);
   });
 
   it('[REVERT-FAILS] pacing is tall enough for its rows: no inner scroll at the house width', () => {

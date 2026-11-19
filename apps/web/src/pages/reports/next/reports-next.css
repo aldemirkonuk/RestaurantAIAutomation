@@ -1200,6 +1200,50 @@ html[data-mudavym-ground='charcoal'] .rp-tip {
   line-height: 1.35;
 }
 
+/* r73 c3 need 11: an empty cutting wears the ruled-off drawing (96 px grid,
+   shown at 40) at the left of its 72 px strip. The week's own "No pours read
+   this week" is the first line, the explanation the second. Opacity and
+   transform only; stilled for reduced motion. */
+.rp-cut[data-strip] .rp-ruled {
+  position: absolute;
+  left: 14px;
+  top: 16px;
+  color: var(--ink-4);
+  animation: rp-ruled-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.rp-cut[data-strip] .rp-cut__head,
+.rp-cut[data-strip] .rp-cut__body {
+  padding-left: 66px;
+}
+.rp-cut[data-strip] .rp-empty-strip {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rp-cut[data-strip] .rp-empty-strip + .rp-quiet {
+  -webkit-line-clamp: 1;
+}
+@keyframes rp-ruled-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rp-cut[data-strip] .rp-ruled {
+    animation: none;
+  }
+}
+
 /* The till window: one segmented pill, a thumb that slides under the pressed
    window (transform only), 44 px targets. */
 .rp-seg {
