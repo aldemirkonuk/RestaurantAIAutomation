@@ -652,7 +652,7 @@ export function Login() {
       pageKey={atMethodStep ? 'methods' : 'address'}
       frontMatter
     >
-      <h2 className="mdv-ep-leaf-title">Welcome back.</h2>
+      <h1 className="mdv-ep-leaf-title">Welcome back.</h1>
       <p className="mdv-ep-leaf-lede">Your house keeps its book here.</p>
       {content}
     </EndpaperShell>
