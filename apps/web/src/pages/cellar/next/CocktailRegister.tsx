@@ -27,7 +27,7 @@
  * a two-step confirm, no wax (MOTIONS.md, "Deliberate non-motions").
  */
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Collapse } from '../../../components/mudavym/Collapse';
 import { AlertTriangle, Check, Pencil, Plus, Trash2, X } from 'lucide-react';
@@ -217,6 +217,11 @@ function Recipe({ cocktailId }: { cocktailId: string }) {
 /** How long the "saved" toast lives (the rise is 220 ms, in house-toast.css). */
 export const SAVED_TOAST_MS = 4000;
 
+/** How long the form may take to open before the page says it did not. */
+export const OPEN_WATCH_MS = 800;
+const OPEN_FAILED =
+  'The cocktail form did not open on this screen. Nothing was saved; reload the page and try again.';
+
 export default function CocktailRegister({
   register,
   registerLoading,
@@ -237,6 +242,27 @@ export default function CocktailRegister({
   const held = useRef<Draft | null>(null);
   if (draft) held.current = draft;
   const d = held.current;
+  // The form is open once Collapse has shown it; if that has not happened a
+  // moment after the button was pressed, the page says so instead of staying quiet.
+  const formOpen = useRef(false);
+  const isDrafting = draft !== null;
+  useEffect(() => {
+    if (!isDrafting) {
+      formOpen.current = false;
+      return;
+    }
+    if (formOpen.current) return;
+    const t = setTimeout(() => {
+      if (!formOpen.current) setSaid(OPEN_FAILED);
+    }, OPEN_WATCH_MS);
+    return () => clearTimeout(t);
+  }, [isDrafting]);
+  const formOpened = () => {
+    formOpen.current = true;
+    setSaid((s) => (s === OPEN_FAILED ? null : s));
+    // The first field takes focus; the panel is still easing open, so do not scroll.
+    document.getElementById('ck-name')?.focus({ preventScroll: true });
+  };
 
   const rows = (data?.rows ?? []).filter((c) => {
     const q = query.trim().toLowerCase();
@@ -310,7 +336,7 @@ export default function CocktailRegister({
 
       {said ? <p className="cl-note" role="status" data-testid="cocktail-said">{said}</p> : null}
 
-      <Collapse open={draft !== null} unmountWhenClosed>
+      <Collapse open={draft !== null} unmountWhenClosed onOpened={formOpened}>
         {d ? (
         <div className="cl-panel" style={{ marginTop: 12 }} data-testid="cocktail-draft">
           <h3 className="cl-h2" style={{ fontSize: 19 }}>

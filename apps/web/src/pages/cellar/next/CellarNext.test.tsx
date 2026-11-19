@@ -1368,6 +1368,34 @@ describe('CellarNext — the registers that are not wines', () => {
     expect(screen.getByTestId('cocktail-draft').closest('.mdv-collapse')).toHaveAttribute('data-open', 'false');
   });
 
+  it('Add a cocktail opens the form and focuses Name even when the page never gets an animation frame (a hidden tab)', async () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: registerVM({ register: 'cocktails', rows: [], counts: { total: 0, houseRows: 0, matched: 0, matchedLoosely: 0, catalogueOnly: 0 } }), loading: false, error: null, refetch: () => {} };
+    mock.writes = {
+      create: { mutateAsync: vi.fn(), isPending: false },
+      amend: { mutateAsync: vi.fn(), isPending: false },
+      retire: { mutateAsync: vi.fn(), isPending: false },
+      setRecipe: { mutateAsync: vi.fn(), isPending: false },
+    };
+    mock.cocktails = {
+      loading: false, error: null,
+      data: { rows: [], count: 0, truncated: false, referenceRows: null, recipesAvailable: false, scopeNote: 'Only cocktails this restaurant owns.' },
+    };
+    // A hidden pane or tab runs no requestAnimationFrame callback at all.
+    const raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 1);
+    try {
+      draw({ category: 'cocktails' });
+      fireEvent.click(screen.getByRole('button', { name: /Add a cocktail/ }));
+      const form = screen.getByTestId('cocktail-draft');
+      expect(form.closest('.mdv-collapse')).toHaveAttribute('data-open', 'false');
+      await waitFor(() => expect(form.closest('.mdv-collapse')).toHaveAttribute('data-open', 'true'));
+      expect(screen.getByLabelText('Name')).toHaveFocus();
+      expect(screen.queryByTestId('cocktail-said')).toBeNull();
+    } finally {
+      raf.mockRestore();
+    }
+  });
+
   it('retiring a cocktail takes two presses and never carries the seal', async () => {
     mock.current = { ...base, registers: readout() };
     mock.register = { data: registerVM({ register: 'cocktails', rows: [], counts: { total: 0, houseRows: 0, matched: 0, matchedLoosely: 0, catalogueOnly: 0 } }), loading: false, error: null, refetch: () => {} };
