@@ -862,6 +862,33 @@ describe('ReceiptsNext — papers that read cleanly reach a swipe (W44)', () => 
     expect(await screen.findByText('Nothing awaits review — the paper trail is caught up.')).toBeTruthy();
   });
 
+  it('an answered, empty queue is the house empty state with the receipt line art (r61 c2)', async () => {
+    api.queue = [];
+    api.clean = [];
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    const sentence = await screen.findByText('Nothing awaits review — the paper trail is caught up.');
+    const box = sentence.closest('.mdv-empty') as HTMLElement;
+    expect(box).toBeTruthy();
+    expect(box.querySelector('svg[data-art="receipt"]')).toBeTruthy();
+    expect(container.querySelectorAll('.mdv-empty').length).toBeGreaterThan(0);
+  });
+
+  it('an unread lane is never drawn as the empty state (W48 holds)', async () => {
+    api.queue = [];
+    api.cleanPending = true;
+    render(<ReceiptsNext />, { wrapper });
+    const reading = await screen.findByText('Reading…');
+    expect(reading.closest('.mdv-empty')).toBeNull();
+  });
+
+  it('the split pane before a choice shows a ghost document and the one sentence (r61 c2)', async () => {
+    render(<ReceiptsNext />, { wrapper });
+    await screen.findByText(/INV-/);
+    const pane = await screen.findByTestId('receipts-choose');
+    expect(pane.querySelector('[data-testid="ghost-document"]')).toBeTruthy();
+    expect(pane.textContent).toMatch(/Choose a document from the queue/);
+  });
+
   it('opens a clean paper like any other, by click and by link', async () => {
     api.queue = [];
     api.clean = [doc({ id: 'c1', doc_number: 'INV-CLEAN', status: 'received' })];

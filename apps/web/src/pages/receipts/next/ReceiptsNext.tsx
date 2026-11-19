@@ -35,6 +35,8 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { HoldToApprove, Wordmark } from '@/components/mudavym';
+import { EmptyState } from '@/components/mudavym/EmptyState';
+import { GhostDocument } from '@/components/mudavym/emptyArt';
 import {
   documentsApi,
   type DocumentLineMatch,
@@ -1920,20 +1922,29 @@ export default function ReceiptsNext() {
           {/* the queue */}
           <section aria-label="Awaiting review" className={selected ? 'hidden 2xl:block' : undefined}>
             {data.queueKnown && data.queue.length === 0 && !data.isError && !data.noRestaurant ? (
-              <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
-                {/* Not "caught up" while clean papers still wait for a swipe (W44),
+              (() => {
+                /* Not "caught up" while clean papers still wait for a swipe (W44),
                     nor before their read has landed: an unread lane is not an
                     empty one (audit of #586, walk-through RECEIPTS-W48). Nor
                     while the door's count is still being read, which its own
-                    line calls unknown (RECEIPTS-W50b). */}
-                {!data.cleanKnown
-                  ? 'Reading…'
-                  : data.clean.length > 0
-                    ? 'Nothing needs a look.'
-                    : !data.deliveriesKnown
-                      ? 'Reading…'
-                      : 'Nothing awaits review — the paper trail is caught up.'}
-              </p>
+                    line calls unknown (RECEIPTS-W50b). Only a lane that answered
+                    gets the house's empty state; an unread one stays a plain
+                    "Reading…". */
+                if (!data.cleanKnown || (data.clean.length === 0 && !data.deliveriesKnown)) {
+                  return <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>Reading…</p>;
+                }
+                return (
+                  <EmptyState
+                    compact
+                    art="receipt"
+                    sentence={
+                      data.clean.length > 0
+                        ? 'Nothing needs a look.'
+                        : 'Nothing awaits review — the paper trail is caught up.'
+                    }
+                  />
+                );
+              })()
             ) : (
               <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
                 {data.queue.map(queueRow)}
@@ -2105,17 +2116,26 @@ export default function ReceiptsNext() {
                 </button>
               </div>
             ) : (
-              <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
-                {/* A list it searches never answered, or with no house none was
-                    asked: the link can be neither opened nor ruled out, so
-                    "Opening…" would never finish (audit of #586, walk-through
-                    RECEIPTS-W50c; the no-house case RECEIPTS-W51). */}
-                {selectedId
-                  ? data.documentsUnread || data.noRestaurant
+              selectedId ? (
+                <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
+                  {/* A list it searches never answered, or with no house none was
+                      asked: the link can be neither opened nor ruled out, so
+                      "Opening…" would never finish (audit of #586, walk-through
+                      RECEIPTS-W50c; the no-house case RECEIPTS-W51). */}
+                  {data.documentsUnread || data.noRestaurant
                     ? 'Could not open the linked document: see the note above.'
-                    : 'Opening the linked document…'
-                  : 'Choose a document from the queue to see its lines and its order, and to confirm it.'}
-              </p>
+                    : 'Opening the linked document…'}
+                </p>
+              ) : (
+                /* The split pane before a choice: a paper that is not there yet,
+                   and the one sentence (r61, c2 need 4). */
+                <div data-testid="receipts-choose">
+                  <EmptyState
+                    art={<GhostDocument />}
+                    sentence="Choose a document from the queue to see its lines and its order, and to confirm it."
+                  />
+                </div>
+              )
             )}
           </section>
         </div>

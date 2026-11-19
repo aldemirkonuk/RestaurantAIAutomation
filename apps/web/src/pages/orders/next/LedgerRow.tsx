@@ -19,7 +19,7 @@
  * on approval only; delivery confirmation is a plain button on `ink`.
  */
 
-import { useState } from 'react';
+import { useState, type MouseEvent } from 'react';
 import { HoldToApprove } from '@/components/mudavym';
 import { ink, settle } from '@/lib/mudavym/motion';
 import { useApproveOrder, useMarkOrderDelivered } from '@/hooks/queries/useOrderQueries';
@@ -86,7 +86,8 @@ export interface LedgerRowProps {
    * On a row whose order has been DELIVERED it is also what the bare row click
    * does (OD-152, founder 2026-09-25) — see `rowOpensReceipt`.
    */
-  onOpenReceipt?: () => void;
+  /** Gets the click, so a popover can point at the control that was pressed. */
+  onOpenReceipt?: (e?: MouseEvent<HTMLElement>) => void;
   /** Why the gate could not be read. Said in words above the ceremony. */
   approvalGateError?: string | null;
 }

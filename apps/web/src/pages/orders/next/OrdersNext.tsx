@@ -117,6 +117,8 @@ export default function OrdersNext() {
   const [recurrenceFor, setRecurrenceFor] = useState<string | null>(null);
   /** Which order's receipt is open. One sheet for the page, as above. */
   const [receiptFor, setReceiptFor] = useState<string | null>(null);
+  /** The control that opened it: a receipt that is not there points back at it. */
+  const receiptAnchor = useRef<HTMLElement | null>(null);
 
   const visibleRows = useMemo(() => {
     const byDate = (a: OrderRowVM, b: OrderRowVM) =>
@@ -362,7 +364,7 @@ export default function OrdersNext() {
         )}
 
         {receiptRow && (
-          <ReceiptSheet open onClose={() => setReceiptFor(null)} row={receiptRow} />
+          <ReceiptSheet open onClose={() => setReceiptFor(null)} row={receiptRow} anchorRef={receiptAnchor} />
         )}
 
         {/* ── the gateway, when it cannot be reached, is said plainly ──── */}
@@ -527,7 +529,10 @@ export default function OrdersNext() {
                       approval={data.approvalByOrder?.get(row.id)}
                       onOpenResponses={() => setResponsesFor(row.id)}
                       onOpenRecurrence={() => setRecurrenceFor(row.id)}
-                      onOpenReceipt={() => setReceiptFor(row.id)}
+                      onOpenReceipt={(e) => {
+                        receiptAnchor.current = e?.currentTarget ?? null;
+                        setReceiptFor(row.id);
+                      }}
                       approvalGateError={data.approvalGateError}
                     />
                   </div>

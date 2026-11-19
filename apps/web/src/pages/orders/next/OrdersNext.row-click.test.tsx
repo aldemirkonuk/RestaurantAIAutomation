@@ -167,7 +167,8 @@ describe('a delivered row opens its receipt', () => {
 
     btn.focus();
     await user.keyboard('{Enter}');
-    expect(await screen.findByTestId('receipt-sheet')).toBeInTheDocument();
+    // This order has no receipt: the answer is a small popover, not a sheet.
+    expect(await screen.findByTestId('receipt-popover')).toBeInTheDocument();
     expect(receiptForOrder).toHaveBeenCalledTimes(1);
   });
 
@@ -178,7 +179,7 @@ describe('a delivered row opens its receipt', () => {
 
     btn.focus();
     await user.keyboard(' ');
-    expect(await screen.findByTestId('receipt-sheet')).toBeInTheDocument();
+    expect(await screen.findByTestId('receipt-popover')).toBeInTheDocument();
   });
 
   it('tells a screen reader it opens a dialog, and claims no expanded state', () => {
