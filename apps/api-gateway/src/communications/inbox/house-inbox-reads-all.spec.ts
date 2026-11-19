@@ -266,3 +266,103 @@ describe("the wide grant files every conversation, marked by who it is from", ()
     expect(urls).toHaveLength(0);
   });
 });
+
+describe("the old grant is never widened", () => {
+  it("keeps the from: bound and the discard on a gmail_read grant, beside a wide one", async () => {
+    const db = build(
+      wideRows({
+        integration_oauth_connections: [
+          grant(WIDE_GRANT, "gmail_read_all"),
+          grant(NARROW_GRANT, "gmail_read", OTHER_PERSON),
+        ],
+      }),
+    );
+    const { service, publish, getAccessToken } = serviceOver(db);
+    const { urls, impl } = gmail([[{ id: "m-vendor" }, { id: "m-guest" }]], {
+      "m-vendor": message({ id: "m-vendor", from: VENDOR, at: CURSOR + 2000 }),
+      "m-guest": message({ id: "m-guest", from: GUEST, at: CURSOR + 1000 }),
+    });
+    service.fetchImpl = impl;
+
+    const run = await service.readDue(CURSOR + 300_000);
+
+    const narrow = run.outcomes.find((o) => o.connectionId === NARROW_GRANT)!;
+    const wide = run.outcomes.find((o) => o.connectionId === WIDE_GRANT)!;
+    expect(narrow.outcome).toBe("read");
+    expect(narrow.mirrored).toBe(1);
+    expect(narrow.discarded).toBe(1);
+    expect(wide.mirrored).toBe(2);
+    const queries = urls
+      .filter((u) => u.includes("/messages?"))
+      .map((u) => new URL(u).searchParams.get("q")!);
+    expect(queries.filter((q) => q.includes("from:("))).toHaveLength(1);
+    expect(queries.filter((q) => !q.includes("from:"))).toHaveLength(1);
+    // The token for each grant is asked for under ITS OWN id.
+    expect(getAccessToken.mock.calls.map((c) => c[2]).sort()).toEqual(["gmail_read", "gmail_read_all"]);
+    const narrowEvents = publish.mock.calls
+      .map((c) => c[2])
+      .filter((e) => e.mirrored_by_grant_id === NARROW_GRANT);
+    expect(narrowEvents).toHaveLength(1);
+    expect(narrowEvents[0].house_mail_kind).toBe("vendor");
+  });
+
+  it("reads a person who holds both grants in one house through the wide one only", async () => {
+    const db = build(
+      wideRows({
+        integration_oauth_connections: [
+          grant(NARROW_GRANT, "gmail_read"),
+          grant(WIDE_GRANT, "gmail_read_all"),
+        ],
+      }),
+    );
+    const { service, getAccessToken } = serviceOver(db);
+    const { impl } = gmail([[]], {});
+    service.fetchImpl = impl;
+
+    const run = await service.readDue(CURSOR + 300_000);
+
+    expect(run.outcomes.find((o) => o.connectionId === NARROW_GRANT)!.outcome).toBe("superseded");
+    expect(getAccessToken).toHaveBeenCalledTimes(1);
+    expect(getAccessToken.mock.calls[0][2]).toBe("gmail_read_all");
+  });
+});
+
+describe("the wide cursor never jumps over unread mail", () => {
+  it(`takes the oldest ${MAX_MESSAGES_PER_TICK} of a longer listing, so the newer wait for the next tick`, async () => {
+    const total = MAX_MESSAGES_PER_TICK + 5;
+    // Gmail lists newest-first: index 0 is the newest.
+    const ids = Array.from({ length: total }, (_, i) => ({ id: `m${total - i}` }));
+    const messages: Record<string, unknown> = {};
+    for (let n = 1; n <= total; n += 1) {
+      messages[`m${n}`] = message({ id: `m${n}`, from: GUEST, at: CURSOR + n * 1000 });
+    }
+    const db = build(wideRows());
+    const { service, publish } = serviceOver(db);
+    const pages = [ids.slice(0, 100), ids.slice(100, 200), ids.slice(200)];
+    const { impl } = gmail(pages, messages);
+    service.fetchImpl = impl;
+
+    const run = await service.readDue(CURSOR + 10_000_000);
+
+    expect(run.outcomes[0].mirrored).toBe(MAX_MESSAGES_PER_TICK);
+    const got = publish.mock.calls.map((c) => c[2].gmail_message_id);
+    expect(got[0]).toBe("m1");
+    expect(got).not.toContain(`m${total}`);
+    expect(run.outcomes[0].cursorAdvancedTo).toBe(CURSOR + MAX_MESSAGES_PER_TICK * 1000);
+  });
+
+  it("calls a listing it cannot prove holds the oldest a failed read and leaves the cursor", async () => {
+    const pages = Array.from({ length: MAX_PAGES_ALL + 1 }, (_, p) => [{ id: `p${p}` }]);
+    const db = build(wideRows());
+    const { service, publish } = serviceOver(db);
+    const { impl } = gmail(pages, {});
+    service.fetchImpl = impl;
+
+    const run = await service.readDue(CURSOR + 300_000);
+
+    expect(run.outcomes[0].outcome).toBe("error");
+    expect(run.outcomes[0].says).toMatch(/oldest could not be found/i);
+    expect(publish).not.toHaveBeenCalled();
+    expect(run.outcomes[0].cursorAdvancedTo).toBe(CURSOR);
+  });
+});
