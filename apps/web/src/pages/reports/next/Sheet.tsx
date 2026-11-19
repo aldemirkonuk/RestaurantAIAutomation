@@ -51,6 +51,7 @@ import {
   SHEET_BREAKPOINTS,
   SHEET_BREAKPOINT_COLS,
   SHEET_MARGIN,
+  SHEET_STACK_BELOW,
   SHEET_ROW_HEIGHT,
   type AnalysisId,
   type Slot,
@@ -87,6 +88,11 @@ function useSheetWidth(el: HTMLElement | null): number {
   return width;
 }
 
+/** A cutting's height on the stack: the rows its slot spans, as the grid would size it. */
+function slotHeightPx(h: number): number {
+  return h * SHEET_ROW_HEIGHT + Math.max(0, h - 1) * SHEET_MARGIN[1];
+}
+
 /** Pointer targets that must never begin a drag — the two new selects included. */
 const DRAG_CANCEL =
   '.react-resizable-handle,button,a,input,textarea,select,option,label,[role="button"],.rp-no-drag';
@@ -114,6 +120,13 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
   const [el, setEl] = useState<HTMLDivElement | null>(null);
   const [ghostBox, setGhostBox] = useState<CSSProperties | null>(null);
   const width = useSheetWidth(el);
+  /* Below 768 px the sheet is a plain CSS column, decided here and not by the
+     grid (r74): `window.innerWidth` is known on the very first render, so a
+     phone never waits on a measurement, and react-grid-layout is not mounted
+     there at all. The measured box width takes over as soon as it exists. */
+  const stacked =
+    (width || (typeof window === 'undefined' ? SHEET_STACK_BELOW : window.innerWidth)) <
+    SHEET_STACK_BELOW;
 
   const layouts = useMemo(
     (): ResponsiveLayouts => sheetLayouts(cuttings, arranging),
@@ -147,7 +160,7 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
      inside `.rp-sheet`, which is `position: relative`, and never a grid child:
      a real child would take part in compaction and push the sheet around. */
   useLayoutEffect(() => {
-    if (!ghost || !el) {
+    if (!ghost || !el || stacked) {
       setGhostBox(null);
       return;
     }
@@ -158,7 +171,7 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
         ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
         : null,
     );
-  }, [el, ghost]);
+  }, [el, ghost, stacked]);
 
   const attach = useCallback(
     (node: HTMLDivElement | null) => {
@@ -173,12 +186,27 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
       ref={attach}
       className="rp-sheet"
       data-arranging={arranging}
-      data-measured={width > 0}
+      data-measured={stacked || width > 0}
+      data-layout={stacked ? 'stack' : 'grid'}
       style={{ ['--rp-tuck' as keyof CSSProperties]: `${tuck.ms}ms ${tuck.easing}` } as CSSProperties}
     >
       {ghostBox && <div className="rp-ghost" style={ghostBox} aria-hidden />}
       {/* Not drawn until the sheet's own width is known (`useSheetWidth`). */}
-      {width > 0 && (
+      {stacked && (
+        <div className="rp-stack">
+          {/* List order IS the narrow reading order (`projectCuttings`). */}
+          {cuttings.map((c) => (
+            <div
+              key={c.id}
+              className="rp-grid-item rp-stack__item"
+              style={{ height: slotHeightPx(c.slot.h) }}
+            >
+              {c.body}
+            </div>
+          ))}
+        </div>
+      )}
+      {!stacked && width > 0 && (
       <Grid
         className="layout"
         width={width}
