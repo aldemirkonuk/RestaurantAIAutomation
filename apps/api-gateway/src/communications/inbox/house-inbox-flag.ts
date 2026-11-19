@@ -37,6 +37,20 @@ export const GMAIL_READ_SCOPE =
 export const GMAIL_READ_INTEGRATION_ID = "gmail_read" as const;
 
 /**
+ * The wider reading grant: every conversation, not only the vendors'. Its own
+ * id, its own consent words, its own row (founder delegation 2026-11-19). It
+ * asks Google for the same `gmail.readonly` scope as `gmail_read`; the reader
+ * bounds a grant by WHICH id it is recorded under, never by the scope alone.
+ */
+export const GMAIL_READ_ALL_INTEGRATION_ID = "gmail_read_all" as const;
+
+/** Every id a reading grant can be recorded under. */
+export const READING_INTEGRATION_IDS = [
+  GMAIL_READ_INTEGRATION_ID,
+  GMAIL_READ_ALL_INTEGRATION_ID,
+] as const;
+
+/**
  * The per-restaurant switch. Column added by migration 20260905020000,
  * `NOT NULL DEFAULT false`.
  */
