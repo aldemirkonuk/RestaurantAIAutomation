@@ -36,7 +36,7 @@ vi.mock('./MailThread', async (importOriginal) => {
 });
 
 import { MailTab } from './MailTab';
-import { READ_ALL_OFFER_WORDS, addressLine, kindEmptyWords, mailKindOf } from './mail-format';
+import { READ_ALL_OFFER_WORDS, addressLine, answerFor, kindEmptyWords, mailKindOf } from './mail-format';
 
 const SUMMARY = {
   waitingPeople: 0,
@@ -124,7 +124,7 @@ beforeEach(() => {
         data: {
           key: 'gm:abc',
           subject: 'Friday',
-          person: { key: 'team:t1', kind: 'team', providerId: 't1', name: 'Deniz Kaya' },
+          person: { key: 'team:deniz@example.com', kind: 'team', providerId: null, name: 'deniz@example.com' },
           order: null,
           messages: [
             letter({ id: 'a', fromAddress: 'deniz@example.com', toAddresses: ['house@example.com', 'ops@example.com'] }),
@@ -207,6 +207,20 @@ describe('the letters', () => {
     expect(addressLine({ fromAddress: 'a@x.com' })).toBe('From a@x.com');
     expect(addressLine({ toAddresses: ['b@x.com'] })).toBe('To b@x.com');
     expect(addressLine({ fromAddress: ' ', toAddresses: [] })).toBeNull();
+  });
+});
+
+describe('a thread with a team member', () => {
+  it('says who it is with, and offers no vendor reply to someone who is not a vendor', async () => {
+    mount('/communications?tab=mail&thread=gm%3Aabc');
+    await screen.findAllByTestId('mail-letter');
+    expect(screen.getByTestId('thread-kind')).toHaveTextContent('team');
+    expect(screen.queryByTestId('write-thread-reply')).toBeNull();
+  });
+
+  it('answerFor offers nothing for a person with no provider', () => {
+    const head = { subject: 'Rota', person: { key: 'guest:a@b.co', kind: 'guest' as const, providerId: null, name: 'a@b.co' } };
+    expect(answerFor(head, [letter({ id: 'a' }) as never])).toBeNull();
   });
 });
 

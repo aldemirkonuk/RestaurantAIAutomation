@@ -146,7 +146,10 @@ describe("listPeople", () => {
   });
 
   it("asks for one row more than the page and turns it into `next`", async () => {
-    resolve = () => ({ data: [person(1), person(2), person(3)], error: null });
+    resolve = (q) => ({
+      data: q.kind === "rpc" ? [person(1), person(2), person(3)] : [],
+      error: null,
+    });
     const page = await service().listPeople(HOUSE, "owner", { limit: "2" });
     const rpc = queries[0];
     expect(rpc.name).toBe("list_mail_people");
@@ -279,11 +282,17 @@ function letter(i: number) {
   };
 }
 
-function threadResolver(pageRows: unknown[]): (q: Query) => Result {
+function threadResolver(
+  pageRows: unknown[],
+  who: unknown[] = [],
+): (q: Query) => Result {
   return (q) =>
-    q.kind === "rpc" && q.name === "mail_thread_letters"
+    q.kind === "rpc" &&
+    (q.name === "mail_thread_letters" || q.name === "mail_thread_letters_other")
       ? { data: pageRows, error: null }
-      : { data: null, error: { message: `unexpected read ${q.name}` } };
+      : q.kind === "from" && q.name === "procurement_conversations"
+        ? { data: who, error: null }
+        : { data: null, error: { message: `unexpected read ${q.name}` } };
 }
 
 describe("getThread", () => {
@@ -294,6 +303,7 @@ describe("getThread", () => {
     expect(queries.map((q) => `${q.kind}:${q.name}`)).toEqual([
       "rpc:mail_thread_letters",
       "from:conversation_attachments",
+      "from:procurement_conversations",
     ]);
     expect(queries[0].payload).toEqual({
       p_restaurant_id: HOUSE,
@@ -482,7 +492,13 @@ describe("getThread: one key, two vendors", () => {
       key: "gm:shared",
       with: `vendor:${V2.toUpperCase()}`,
     });
-    expect(queries.filter((q) => q.name !== "conversation_attachments")).toHaveLength(1);
+    expect(
+      queries.filter(
+        (q) =>
+          q.name !== "conversation_attachments" &&
+          q.name !== "procurement_conversations",
+      ),
+    ).toHaveLength(1);
     expect(queries[0].payload).toMatchObject({
       p_thread_key: "gm:shared",
       p_provider_id: V2,
@@ -514,6 +530,7 @@ describe("getThread: one key, two vendors", () => {
     expect(queries.map((q) => q.name)).toEqual([
       "mail_thread_letters",
       "conversation_attachments",
+      "procurement_conversations",
     ]);
     expect(queries[0].payload).toMatchObject({ p_provider_id: null });
     expect(page.person?.providerId).toBe(V1);
