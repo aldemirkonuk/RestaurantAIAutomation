@@ -2187,3 +2187,14 @@ describe("the house's own copy of its vendor mail", () => {
     expect(screen.queryByText('Never asked')).not.toBeInTheDocument();
   });
 });
+
+describe('the page says how it reads in the owner\'s words (r58 N-04)', () => {
+  it('folds the page note behind a disclosure and keeps developer talk out of it', () => {
+    render(<ConnectionsNext />);
+    const note = document.querySelector('details.cx-foot') as HTMLDetailsElement | null;
+    expect(note).not.toBeNull();
+    expect(note?.open).toBe(false);
+    expect(note?.querySelector('summary')?.textContent).toBe('How this page reads');
+    expect(note?.textContent).not.toMatch(/row component|em dash|a save could write back/i);
+  });
+});

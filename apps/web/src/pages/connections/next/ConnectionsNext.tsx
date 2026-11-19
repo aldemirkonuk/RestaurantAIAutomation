@@ -1378,22 +1378,20 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
             that shows only what a house controls is not a list of what acts on
             its behalf."] */}
 
-        <div className="cx-foot">
+        <details className="cx-foot">
+          <summary>How this page reads</summary>
           <p>
-            <b>Everything on this page is drawn by one row component.</b> A live
-            POS feed and an unconnected grant get the same amount of design —
-            what separates them is the chip, whether the control is live, and the
-            sentence under it. The page therefore cannot flatter an empty
-            attachment by drawing it richer than its evidence, and there is no
-            control on it that can appear to succeed.
+            <b>Every line is drawn the same way.</b> A connection that works and
+            one that is not set up get the same room, so an empty one never looks
+            fuller than it is. What tells them apart is the tag, whether the
+            button is live, and the sentence under it.
           </p>
           <p>
-            <b>Four things on every row, and no fifth.</b> Whose it is, what it
-            may do, what it last did, and how to stop it. A row that cannot be
-            stopped from here names who can. An unknown is an em dash — never a
-            zero, and never a blank a save could write back.
+            <b>Four things on every line.</b> Whose it is, what it may do, what it
+            last did, and how to stop it. When a line cannot be stopped from
+            here, it says who can. A dash means not known, never zero.
           </p>
-        </div>
+        </details>
       </div>
     </div>
   );
