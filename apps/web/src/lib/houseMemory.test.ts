@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import {
   LAST_HOUSE_KEY,
   forgetHouse,
+  goToChooser,
   indexEmail,
   lastHouseFor,
   lastHouseHintFor,
@@ -188,4 +189,29 @@ describe("houseMemory", () => {
     // Another person's last house marks nothing for this one.
     expect(orderForChooser(houses, V).lastOpenedId).toBeNull();
   });
+});
+
+describe("goToChooser", () => {
+  const assign = vi.fn();
+  const at = (pathname: string) =>
+    vi.stubGlobal("location", { pathname, assign });
+  beforeEach(() => assign.mockClear());
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("sends a person on a house page to the chooser", () => {
+    at("/inventory");
+    goToChooser();
+    expect(assign).toHaveBeenCalledWith("/choose-house");
+  });
+
+  // r65 F2: a houseless person on the first-house page is refused every
+  // house-scoped read; moving them on each refusal made a loop.
+  it.each(["/get-started", "/choose-house", "/logout", "/no-access", "/login"])(
+    "leaves a person on %s where they are",
+    (path) => {
+      at(path);
+      goToChooser();
+      expect(assign).not.toHaveBeenCalled();
+    },
+  );
 });

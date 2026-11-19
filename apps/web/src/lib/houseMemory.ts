@@ -329,11 +329,28 @@ export function cachedHouseName(
   }
 }
 
+/**
+ * Pages where a signed-in person with no house belongs and is never moved on
+ * from: the chooser, the page that makes the first house, and the way out. A
+ * house-scoped read refused there (403 HOUSE_REQUIRED) is expected, not a
+ * reason to leave: moving them sent a houseless person round /get-started,
+ * /choose-house and /login on every refused read (r65 F2).
+ */
+export const HOUSELESS_HOME_PATHS = [
+  "/choose-house",
+  "/get-started",
+  "/logout",
+] as const;
+
 /** Send the person to the chooser, unless they are there or on /no-access. */
 export function goToChooser(): void {
   try {
     const here = window.location.pathname;
-    if (here === CHOOSER_PATH || here === "/no-access" || here === "/login")
+    if (
+      (HOUSELESS_HOME_PATHS as readonly string[]).includes(here) ||
+      here === "/no-access" ||
+      here === "/login"
+    )
       return;
     window.location.assign(CHOOSER_PATH);
   } catch {

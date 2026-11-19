@@ -408,4 +408,22 @@ describe("ChooseHouse", () => {
       );
     });
   });
+
+  // r65 F2: a kept sign-in whose person was not read (a busy gateway) is not a
+  // signed-out visitor; sending it to /login made the loop.
+  it("keeps a kept sign-in here, with a calm note, when the person was not read", () => {
+    localStorage.setItem("accessToken", "kept");
+    authAs({ user: null });
+    renderAt();
+    expect(screen.queryByTestId("where")).toBeNull();
+    expect(screen.getByRole("status").textContent).toMatch(/still signed in/i);
+    expect(screen.getByRole("button", { name: /try again/i })).toBeTruthy();
+    expect(vi.mocked(apiClient.get)).not.toHaveBeenCalled();
+  });
+
+  it("sends a signed-out visitor to /login", () => {
+    authAs({ user: null });
+    renderAt();
+    expect(screen.getByTestId("where").textContent).toBe("/login");
+  });
 });
