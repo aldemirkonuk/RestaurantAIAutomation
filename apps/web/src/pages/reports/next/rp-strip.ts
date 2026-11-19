@@ -38,7 +38,9 @@ export function isStrip(
   )
     return false;
   try {
-    return spec.view(register.data, ctx).say != null;
+    const view = spec.view(register.data, ctx);
+    // A view that names its own empty line keeps its slot (the week, r64).
+    return view.say != null && view.empty == null;
   } catch {
     return false;
   }

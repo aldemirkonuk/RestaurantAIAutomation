@@ -116,17 +116,20 @@ export const DEFAULT_SLOTS: Record<AnalysisId, Slot> = {
   // carries no empty tail; pacing and the week then share one row beneath.
   reading: { x: 0, y: 0, w: 4, h: 8 },
   till: { x: 4, y: 0, w: 8, h: 8 },
-  pacing: { x: 0, y: 8, w: 6, h: 6 },
-  week: { x: 6, y: 8, w: 6, h: 6 },
-  goals: { x: 0, y: 14, w: 7, h: 11 },
-  bench: { x: 7, y: 14, w: 5, h: 11 },
-  ahead: { x: 0, y: 25, w: 4, h: 8 },
-  quadrants: { x: 4, y: 25, w: 8, h: 8 },
-  ledger: { x: 0, y: 33, w: 4, h: 8 },
-  seats: { x: 4, y: 33, w: 4, h: 8 },
-  service: { x: 8, y: 33, w: 4, h: 8 },
-  restock: { x: 0, y: 41, w: 12, h: 8 },
-  writing: { x: 0, y: 49, w: 12, h: 3 },
+  // Pacing needs 374 px at the house width (three figures, a note and the
+  // chart): 9 rows, so its body does not scroll. The week beside it takes the
+  // same 9 so the row tiles; its chart flexes to the room.
+  pacing: { x: 0, y: 8, w: 6, h: 9 },
+  week: { x: 6, y: 8, w: 6, h: 9 },
+  goals: { x: 0, y: 17, w: 7, h: 11 },
+  bench: { x: 7, y: 17, w: 5, h: 11 },
+  ahead: { x: 0, y: 28, w: 4, h: 8 },
+  quadrants: { x: 4, y: 28, w: 8, h: 8 },
+  ledger: { x: 0, y: 36, w: 4, h: 8 },
+  seats: { x: 4, y: 36, w: 4, h: 8 },
+  service: { x: 8, y: 36, w: 4, h: 8 },
+  restock: { x: 0, y: 44, w: 12, h: 8 },
+  writing: { x: 0, y: 52, w: 12, h: 3 },
 };
 
 /** Which analyses lie on a sheet nobody has arranged yet. */

@@ -76,6 +76,7 @@ import {
   type SheetState,
   type Slot,
 } from './rp-sheet';
+import { FIT_IDS, fittedRows } from './rp-fit';
 import { isStrip, sparkOf, SPARK_IDS, STRIP_ROWS, type SparkSeries } from './rp-strip';
 import { Spark } from './rp-spark';
 import type { ComboPick } from './rp-combo';
@@ -147,6 +148,17 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   // for this visit, never written (a write then could put the house sheet
   // over theirs). Once the sheet is known the pick lives on the sheet itself.
   const [comboHeld, setComboHeld] = useState<Partial<Record<AnalysisId, ComboPick>>>({});
+  /** What a fitted card's content needs, by cutting (`rp-fit.ts`). Display only: never saved. */
+  const [needPx, setNeedPx] = useState<Partial<Record<AnalysisId, number>>>({});
+  const onFit = useCallback((id: AnalysisId, px: number | null) => {
+    setNeedPx((cur) => {
+      if ((cur[id] ?? null) === px) return cur;
+      const next = { ...cur };
+      if (px === null) delete next[id];
+      else next[id] = px;
+      return next;
+    });
+  }, []);
   const [arranging, setArranging] = useState(false);
   const [draft, setDraft] = useState<SheetState | null>(null);
   // The fetch follows what is ON SCREEN, draft included: a cutting swapped to
@@ -468,16 +480,22 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   );
 
   const cuttings: SheetCutting[] = view.cuttings.map((c) => {
+    const fit = !editing && FIT_IDS.includes(c.id);
     // A cutting whose honest answer is a sentence folds to a strip while the
     // sheet is being READ; arranging gives every cutting its full paper back.
     const strip = !editing && isStrip(c.id, data.registers[c.id], ctx);
     return {
     id: c.id,
-    slot: strip ? { ...c.slot, h: STRIP_ROWS } : c.slot,
+    slot: strip
+      ? { ...c.slot, h: STRIP_ROWS }
+      : fit
+        ? { ...c.slot, h: fittedRows(c.slot.h, needPx[c.id]) }
+        : c.slot,
     body: (
       <Cutting
         id={c.id}
         strip={strip}
+        onFit={FIT_IDS.includes(c.id) ? onFit : undefined}
         graph={c.graph}
         register={data.registers[c.id]}
         ctx={ctx}

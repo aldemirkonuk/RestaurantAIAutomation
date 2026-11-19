@@ -28,7 +28,7 @@
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { decodeSheet, defaultSheet, encodeSheet } from './useReportsNextData';
@@ -2451,14 +2451,92 @@ describe('r61 c2 — the opening, the strips and the till window', () => {
     expect(screen.queryByTestId('rp-spark-week')).toBeNull();
   });
 
+  const zeroPacing = () =>
+    ok({
+      zoneUnset: false,
+      spendLast30d: 0,
+      spendPrev30d: 0,
+      paceDeltaPct: null,
+      projectedNext4Weeks: null,
+      committedOpenOrders: 0,
+      openOrderCount: 0,
+    });
+  /** The height react-grid-layout gave a cutting's slot, in px. */
+  const slotPx = (name: string) =>
+    Number.parseFloat(
+      (screen.getByRole('region', { name }).closest('.react-grid-item') as HTMLElement).style.height,
+    );
+  const rowsPx = (h: number) => h * 34 + (h - 1) * 14;
+
   it('[REVERT-FAILS] folds a cutting whose answer is a sentence to a strip, and gives it back while arranging', () => {
+    hook.current = { ...base(), registers: { ...(base().registers as object), pacing: zeroPacing() } };
+    paint();
+    const pacing = () => screen.getByRole('region', { name: 'Spend pacing' });
+    expect(pacing()).toHaveAttribute('data-strip', 'true');
+    expect(screen.getByRole('region', { name: 'The week’s shape' })).not.toHaveAttribute('data-strip');
+    arrange();
+    expect(pacing()).not.toHaveAttribute('data-strip');
+  });
+
+  it('[REVERT-FAILS] a week that reads zero keeps its slot and says "No pours read this week" instead of collapsing', () => {
     hook.current = { ...base(), registers: { ...(base().registers as object), week: zeroWeek() } };
     paint();
-    const week = () => screen.getByRole('region', { name: 'The week’s shape' });
-    expect(week()).toHaveAttribute('data-strip', 'true');
-    expect(screen.getByRole('region', { name: 'Spend pacing' })).not.toHaveAttribute('data-strip');
-    arrange();
-    expect(week()).not.toHaveAttribute('data-strip');
+    const week = screen.getByRole('region', { name: 'The week’s shape' });
+    expect(week).not.toHaveAttribute('data-strip');
+    expect(within(week).getByText('No pours read this week')).toBeInTheDocument();
+    expect(slotPx('The week’s shape')).toBe(slotPx('Spend pacing'));
+    expect(slotPx('The week’s shape')).toBeGreaterThanOrEqual(rowsPx(6));
+  });
+
+  it('[REVERT-FAILS] pacing is tall enough for its rows: no inner scroll at the house width', () => {
+    paint();
+    // 1440 px measured: the body needed 309 px under a 65 px head (374 px).
+    expect(slotPx('Spend pacing')).toBeGreaterThanOrEqual(374);
+    expect(DEFAULT_SLOTS.pacing.h).toBe(DEFAULT_SLOTS.week.h);
+  });
+
+  describe('the reading follows its content', () => {
+    // jsdom has no layout: give the card a head, a body and two blocks a size.
+    let spy: { mockRestore: () => void } | null = null;
+    const fake = (blocks: number[]) => {
+      spy?.mockRestore();
+      spy = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) {
+        const content = blocks.reduce((a, b) => a + b, 0) + 12;
+        if (this.classList.contains('rp-cut')) return 68 + content;
+        if (this.classList.contains('rp-cut__body')) return content;
+        if (this.parentElement?.classList.contains('rp-cut__body')) {
+          return blocks[[...this.parentElement.children].indexOf(this)] ?? 0;
+        }
+        return 0;
+      });
+    };
+    afterEach(() => {
+      spy?.mockRestore();
+      spy = null;
+    });
+
+    it('[REVERT-FAILS] shrinks to the rows its content needs, never under six', () => {
+      fake([30, 100]); // 68 head + 130 of blocks = 198 px -> 5 rows -> held at 6
+      paint();
+      expect(slotPx('The reading')).toBe(rowsPx(6));
+    });
+
+    it('[REVERT-FAILS] a fuller reading takes the rows it needs, up to its slot', () => {
+      fake([30, 230]); // 68 + 260 = 328 px -> 8 rows
+      paint();
+      expect(slotPx('The reading')).toBe(rowsPx(8));
+      cleanup();
+      fake([30, 90, 90, 90, 90, 90]); // far more than 8 rows: the slot is the cap, the card scrolls
+      paint();
+      expect(slotPx('The reading')).toBe(rowsPx(8));
+    });
+
+    it('keeps its whole slot while the sheet is being arranged', () => {
+      fake([30, 100]);
+      paint();
+      arrange();
+      expect(slotPx('The reading')).toBe(rowsPx(8));
+    });
   });
 
   it('keeps the till full while it is empty, so its window picker stays in reach', () => {
@@ -2495,16 +2573,16 @@ describe('r61 c2 — the opening, the strips and the till window', () => {
   it('[REVERT-FAILS] the house sheet is a bento: reading and till share 8 rows, pacing and week fill the row below', () => {
     expect(DEFAULT_SLOTS.reading).toMatchObject({ x: 0, y: 0, w: 4, h: 8 });
     expect(DEFAULT_SLOTS.till).toMatchObject({ x: 4, y: 0, w: 8, h: 8 });
-    expect(DEFAULT_SLOTS.pacing).toMatchObject({ x: 0, y: 8, w: 6, h: 6 });
-    expect(DEFAULT_SLOTS.week).toMatchObject({ x: 6, y: 8, w: 6, h: 6 });
+    expect(DEFAULT_SLOTS.pacing).toMatchObject({ x: 0, y: 8, w: 6, h: 9 });
+    expect(DEFAULT_SLOTS.week).toMatchObject({ x: 6, y: 8, w: 6, h: 9 });
     // nothing beneath the head rows starts above the row they end on
-    expect(DEFAULT_SLOTS.goals.y).toBe(14);
-    expect(DEFAULT_SLOTS.bench.y).toBe(14);
+    expect(DEFAULT_SLOTS.goals.y).toBe(17);
+    expect(DEFAULT_SLOTS.bench.y).toBe(17);
     const wide = ['reading', 'till', 'pacing', 'week', 'ahead', 'quadrants'] as const;
     expect(new Set(wide.map((k) => DEFAULT_SLOTS[k].w)).size).toBeGreaterThan(1);
   });
 
-  it('[REVERT-FAILS] the first 33 rows of the default sheet tile with no hole and no overlap', () => {
+  it('[REVERT-FAILS] the first 36 rows of the default sheet tile with no hole and no overlap', () => {
     const on = DEFAULT_ON.map((k) => DEFAULT_SLOTS[k]);
     const cells = new Set<string>();
     for (const s of on) {
@@ -2515,7 +2593,7 @@ describe('r61 c2 — the opening, the strips and the till window', () => {
     }
     // seats / service / restock are held off by default, so only the rows above
     // the ledger are a full ruling
-    const full = [...cells].filter((c) => Number(c.split(',')[1]) < 33).length;
-    expect(full).toBe(33 * 12);
+    const full = [...cells].filter((c) => Number(c.split(',')[1]) < 36).length;
+    expect(full).toBe(36 * 12);
   });
 });

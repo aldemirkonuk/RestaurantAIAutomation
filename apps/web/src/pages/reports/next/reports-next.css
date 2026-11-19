@@ -1253,3 +1253,16 @@ html[data-mudavym-ground='charcoal'] .rp-tip {
     animation: none;
   }
 }
+
+/* r64: a cutting that reads empty but keeps its slot says so in one honest
+   line, set as a quiet strip across the top of its body. */
+.rp-empty-strip {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px dashed var(--paper-2);
+  border-radius: 8px;
+  background: var(--paper-0);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
