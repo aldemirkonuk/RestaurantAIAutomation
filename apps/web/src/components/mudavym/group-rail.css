@@ -1,0 +1,62 @@
+/* GroupRail — a long page split into groups, one open at a time (r73 c3, need 8).
+   Desktop: a sticky left rail of group buttons. Phone: the rail becomes one select
+   at the top. Each group is a 44 px sticky head over a body that opens with
+   grid-template-rows 0fr -> 1fr. Only transform, opacity and grid-template-rows
+   move; nothing uses `transition: all`. */
+
+/* --gr-top is the shell header's height: it is sticky, so a sticky head or rail at top 0 sits under it. */
+.gr-layout { --gr-top: 53px; display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
+.gr-rail { display: none; }
+.gr-select { display: block; }
+.gr-select select {
+  width: 100%; min-height: 44px; padding: 0 12px; box-sizing: border-box;
+  font: 600 16px/1.2 var(--sans, 'DM Sans', system-ui, sans-serif); /* 16 px: a smaller select makes iOS zoom the page on focus */
+  color: var(--ink-1); background: var(--paper-0); border: 1px solid var(--paper-2); border-radius: 10px;
+}
+.gr-select label { display: block; font: 600 11px/1.3 var(--mono, ui-monospace, monospace); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-4); margin: 0 0 4px; }
+
+@media (min-width: 900px) {
+  .gr-layout { grid-template-columns: 236px minmax(0, 1fr); gap: 26px; }
+  .gr-select { display: none; }
+  .gr-rail { display: block; align-self: start; position: sticky; top: calc(var(--gr-top) + 18px); max-height: calc(100vh - var(--gr-top) - 36px); overflow-y: auto; }
+}
+
+.gr-rail-item {
+  display: flex; gap: 9px; align-items: baseline; width: 100%; box-sizing: border-box; min-height: 40px;
+  padding: 6px 9px; margin: 0 0 2px; border: 0; border-radius: 8px; background: none; cursor: pointer; text-align: left;
+  color: var(--ink-2); text-decoration: none; font: inherit;
+  transition: background-color 160ms cubic-bezier(0.16, 1, 0.3, 1), color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.gr-rail-item:hover { background: var(--paper-1); color: var(--ink-1); }
+.gr-rail-item[aria-current="true"] { background: var(--paper-1); color: var(--ink-1); box-shadow: inset 2px 0 0 var(--seal); }
+.gr-rail-item:focus-visible, .gr-head-btn:focus-visible { outline: 2px solid var(--seal); outline-offset: 3px; border-radius: 8px; }
+.gr-rail-roman { font: 11px/1.4 var(--mono, ui-monospace, monospace); color: var(--seal-deep); min-width: 14px; }
+.gr-rail-title { display: block; font: 600 13px/1.35 var(--sans, 'DM Sans', system-ui, sans-serif); }
+.gr-rail-hint { display: block; font: 11px/1.4 var(--sans, 'DM Sans', system-ui, sans-serif); color: var(--ink-4); max-width: 200px; }
+
+.gr-pane { margin: 0 0 8px; scroll-margin-top: calc(var(--gr-top) + 8px); }
+.gr-head { margin: 0; position: sticky; top: var(--gr-top, 0px); z-index: 2; background: var(--paper-0); border-bottom: 1px solid var(--paper-2); }
+.gr-head-btn {
+  display: flex; align-items: center; gap: 10px; width: 100%; height: 44px; box-sizing: border-box; padding: 0 4px;
+  border: 0; background: none; color: var(--ink-1); cursor: pointer; text-align: left; font: inherit;
+}
+.gr-head-roman { font: 11px/1 var(--mono, ui-monospace, monospace); letter-spacing: 0.14em; color: var(--seal-deep); }
+.gr-head-title { font: 600 20px/1.2 'Fraunces', Georgia, serif; letter-spacing: -0.01em; flex: 1; min-width: 0; }
+.gr-head-meta { font: 11px/1.2 var(--mono, ui-monospace, monospace); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-4); white-space: nowrap; }
+.gr-chev { width: 16px; height: 16px; flex: none; color: var(--ink-3); transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1); }
+.gr-pane[data-open="true"] .gr-chev { transform: rotate(180deg); }
+
+.gr-body {
+  display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 0fr; opacity: 0;
+  transition: grid-template-rows 260ms cubic-bezier(0.16, 1, 0.3, 1), opacity 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.gr-body[data-open="true"] { grid-template-rows: 1fr; opacity: 1; }
+/* The clip box is 8 px wider than the content on each side so a ring (hold to approve, focus) is never cut while the group opens. */
+.gr-inner { overflow: hidden; min-height: 0; margin-inline: -8px; padding-inline: 8px; }
+.gr-inner > .gr-pad { padding: 14px 0 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .gr-body, .gr-chev, .gr-rail-item { transition: none !important; }
+  .gr-body[data-open="true"] > .gr-inner { overflow: visible; }
+}
+.gr-body[data-open="true"][data-settled="true"] > .gr-inner { overflow: visible; }
