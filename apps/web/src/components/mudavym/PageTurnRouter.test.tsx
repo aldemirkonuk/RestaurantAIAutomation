@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { createElement } from 'react'
 import { Link, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { PAGE_TURN } from '../../lib/mudavym/viewTransition'
 import { PageTurnRouter } from './PageTurnRouter'
 

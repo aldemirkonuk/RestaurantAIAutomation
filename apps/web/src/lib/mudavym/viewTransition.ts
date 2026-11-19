@@ -28,12 +28,14 @@ export function canTurnPage(doc: TransitionDocument = document): boolean {
   return typeof doc.startViewTransition === 'function' && !prefersReducedMotion()
 }
 
-function firstTitle(doc: Document): HTMLElement | null {
-  return doc.querySelector<HTMLElement>('h1')
+type Named = HTMLElement & { style: CSSStyleDeclaration & { viewTransitionName: string } }
+
+function firstTitle(doc: Document): Named | null {
+  return doc.querySelector<Named>('h1')
 }
 
 function clearTitleNames(doc: Document): void {
-  for (const el of Array.from(doc.querySelectorAll<HTMLElement>('h1'))) {
+  for (const el of Array.from(doc.querySelectorAll<Named>('h1'))) {
     if (el.style.viewTransitionName === PAGE_TURN.titleName) el.style.viewTransitionName = ''
   }
 }

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PAGE_TURN, canTurnPage, createPageTurn } from './viewTransition'
 
-type Doc = Document & { startViewTransition?: unknown }
+type Doc = { startViewTransition?: unknown }
 
 function fakeTransition() {
   let release: () => void = () => {}
@@ -9,7 +9,7 @@ function fakeTransition() {
     release = res
   })
   let update: () => Promise<void> | void = () => {}
-  const start = vi.fn((cb: () => Promise<void> | void) => {
+  const start = vi.fn((cb: () => Promise<void> | void): { finished: Promise<void> } => {
     update = cb
     return { finished }
   })
@@ -25,7 +25,7 @@ beforeEach(() => motion(false))
 afterEach(() => {
   window.matchMedia = realMatchMedia
   document.body.innerHTML = ''
-  delete (document as Doc).startViewTransition
+  delete (document as unknown as Doc).startViewTransition
   vi.restoreAllMocks()
   vi.useRealTimers()
 })
@@ -35,7 +35,7 @@ describe('canTurnPage', () => {
     expect(canTurnPage(document)).toBe(false)
   })
   it('is true with the API and false under reduced motion', () => {
-    ;(document as Doc).startViewTransition = vi.fn()
+    ;(document as unknown as Doc).startViewTransition = vi.fn()
     expect(canTurnPage(document)).toBe(true)
     motion(true)
     expect(canTurnPage(document)).toBe(false)
@@ -51,7 +51,7 @@ describe('createPageTurn', () => {
 
   it('applies only inside the transition, after the old page is captured', async () => {
     const t = fakeTransition()
-    ;(document as Doc).startViewTransition = t.start
+    ;(document as unknown as Doc).startViewTransition = t.start
     const apply = vi.fn()
     createPageTurn(document).run(apply)
     expect(t.start).toHaveBeenCalledTimes(1)
@@ -63,28 +63,28 @@ describe('createPageTurn', () => {
   it('moves the page-title name from the old H1 to the new one when the new page commits', async () => {
     document.body.innerHTML = '<h1 id="a">Sign in</h1>'
     const t = fakeTransition()
-    ;(document as Doc).startViewTransition = t.start
+    ;(document as unknown as Doc).startViewTransition = t.start
     const turn = createPageTurn(document)
     turn.run(() => {
       document.body.innerHTML = '<h1 id="b">Create your account</h1>'
     })
-    expect(document.getElementById('a')!.style.viewTransitionName).toBe(PAGE_TURN.titleName)
+    expect((document.getElementById('a')!.style as unknown as { viewTransitionName: string }).viewTransitionName).toBe(PAGE_TURN.titleName)
     const settled = t.runUpdate() as Promise<void>
     turn.committed()
     // Settled by the commit itself, not by the holdMs fallback.
     const early = await Promise.race([settled.then(() => 'commit'), new Promise((r) => setTimeout(() => r('timer'), 60))])
     expect(early).toBe('commit')
-    expect(document.getElementById('b')!.style.viewTransitionName).toBe(PAGE_TURN.titleName)
+    expect((document.getElementById('b')!.style as unknown as { viewTransitionName: string }).viewTransitionName).toBe(PAGE_TURN.titleName)
     t.release()
     await Promise.resolve()
     await Promise.resolve()
-    expect(document.getElementById('b')!.style.viewTransitionName).toBe('')
+    expect((document.getElementById('b')!.style as unknown as { viewTransitionName: string }).viewTransitionName).toBe('')
   })
 
   it('holds the old page no longer than holdMs when the new one is slow', async () => {
     vi.useFakeTimers()
     const t = fakeTransition()
-    ;(document as Doc).startViewTransition = t.start
+    ;(document as unknown as Doc).startViewTransition = t.start
     createPageTurn(document).run(() => {})
     let done = false
     void (t.runUpdate() as Promise<void>).then(() => {
@@ -98,7 +98,7 @@ describe('createPageTurn', () => {
 
   it('does not start a second transition while one is turning', () => {
     const t = fakeTransition()
-    ;(document as Doc).startViewTransition = t.start
+    ;(document as unknown as Doc).startViewTransition = t.start
     const turn = createPageTurn(document)
     turn.run(() => {})
     const second = vi.fn()
