@@ -23,9 +23,19 @@ export interface TasteSummaryProps {
   open: boolean;
   /** Opens the full taste card. */
   onOpen: () => void;
+  /**
+   * 'foot' (default) is the line under the acts. 'head' is the phone's copy under the
+   * header line, above the cards: CSS shows exactly one of the two, the other is
+   * display:none (out of the tab order and the reading order). Both read the same query.
+   * While the read is pending the head copy holds a one-line 44 px slot so the cards do
+   * not move; it collapses when the read answers with nothing to say.
+   */
+  placement?: 'head' | 'foot';
 }
 
-export default function TasteSummary({ id, restaurantId, open, onOpen }: TasteSummaryProps) {
+export default function TasteSummary({ id, restaurantId, open, onOpen, placement = 'foot' }: TasteSummaryProps) {
+  const head = placement === 'head';
+  const tid = head ? 'taste-line-head' : 'taste-line';
   const q = useQuery<TasteRead>({
     queryKey: tasteKeys.subject(restaurantId ?? '', 'good', id),
     queryFn: () => getTaste('good', id, restaurantId ?? undefined),
@@ -41,22 +51,25 @@ export default function TasteSummary({ id, restaurantId, open, onOpen }: TasteSu
     const line = leadLine(q.data.data);
     if (line) ({ sentence, kinds } = line);
   }
-  if (!failed && sentence === null) return null;
+  if (!failed && sentence === null) {
+    if (head && q.isLoading) return <p className="tc-line tc-line--head tc-line--hold" aria-hidden="true" data-testid={`${tid}-hold`} />;
+    return null;
+  }
   const said = failed ? TASTE_LINE_FAILED : (sentence as string);
   return (
-    <p className="tc-line" data-testid="taste-line" data-state={failed ? 'failed' : 'ready'}>
+    <p className={`tc-line tc-line--${placement}`} data-testid={tid} data-state={failed ? 'failed' : 'ready'}>
       <span className="tc-line-k">How it tastes</span>
       <button
         type="button"
         className="iv-linkish iv-focus tc-line-btn"
         aria-expanded={open}
         aria-controls={open ? 'ivd-evidence' : undefined}
-        data-testid="taste-line-open"
+        data-testid={`${tid}-open`}
         onClick={onOpen}
       >
         <span>{said}</span>
         {kinds.length ? (
-          <span className="tc-marks" role="img" aria-label={`Where it came from: ${kinds.map((k) => PROV_MARK[k].words).join(', ')}`} data-testid="taste-line-marks" data-marks={kinds.map((k) => PROV_MARK[k].shape).join(' ')}>
+          <span className="tc-marks" role="img" aria-label={`Where it came from: ${kinds.map((k) => PROV_MARK[k].words).join(', ')}`} data-testid={`${tid}-marks`} data-marks={kinds.map((k) => PROV_MARK[k].shape).join(' ')}>
             {[...new Set(kinds.map((k) => PROV_MARK[k].shape))].map((s) => (
               <span key={s} className="tc-mark" data-shape={s}>
                 <Glyph shape={s} />

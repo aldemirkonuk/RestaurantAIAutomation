@@ -233,6 +233,18 @@ export default function ItemDrawer(props: ItemDrawerProps) {
       <p className="ivd-head" data-testid="ivd-head">
         {head}
       </p>
+      {hasContents ? (
+        <TasteSummary
+          id={id}
+          restaurantId={restaurantId}
+          placement="head"
+          open={evidence !== null}
+          onOpen={() => {
+            setEvidence('all');
+            setWantTaste(true);
+          }}
+        />
+      ) : null}
       <ItemCards
         row={row}
         uom={house.uom}

@@ -208,3 +208,19 @@
     min-height: 44px;
   }
 }
+/* On a phone the taste line sits under the header line, above the cards: the head copy shows and
+   the foot copy hides; above 640px it is the other way round (desktop is unchanged). A pending
+   read holds one 44 px line so the cards never move when it answers. */
+.tc-line--head {
+  display: none;
+}
+@media (max-width: 640px) {
+  .tc-line--head {
+    display: flex;
+    margin: 0 0 8px;
+    min-height: 44px;
+  }
+  .tc-line--foot {
+    display: none;
+  }
+}

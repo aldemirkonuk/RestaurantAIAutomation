@@ -589,6 +589,35 @@ describe('the first-screen taste line', () => {
     expect(line.nextElementSibling).toBe(bar);
   });
 
+  it('on a phone the head copy sits right under the header line, above the cards', async () => {
+    api.taste.mockResolvedValue(profile);
+    open(row());
+    const head = await screen.findByTestId('taste-line-head');
+    expect(screen.getByTestId('ivd-head').nextElementSibling).toBe(head);
+    expect(head.nextElementSibling?.classList.contains('ivd-cards')).toBe(true);
+    expect(screen.getByTestId('taste-line-head-open').textContent).toBe('Mainly sweet.');
+    expect(api.taste).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds a one-line slot while the read is pending, then collapses when it says no profile', async () => {
+    let answer: (v: unknown) => void = () => undefined;
+    api.taste.mockImplementation(() => new Promise((r) => (answer = r)));
+    open(row());
+    const hold = screen.getByTestId('taste-line-head-hold');
+    expect(hold.getAttribute('aria-hidden')).toBe('true');
+    expect(screen.getByTestId('ivd-head').nextElementSibling).toBe(hold);
+    answer({ state: 'ready', data: { effective: null, layers: [] } });
+    await waitFor(() => expect(screen.queryByTestId('taste-line-head-hold')).toBeNull());
+    expect(screen.queryByTestId('taste-line-head')).toBeNull();
+  });
+
+  it('a supply holds no slot', async () => {
+    api.taste.mockImplementation(() => new Promise(() => undefined));
+    open(row({ kind: 'supply', name: 'Napkins', bottleSizeMl: null }), { house: { kind: 'supply', uom: 'each', displayName: 'Napkins' } as HouseFields });
+    await waitFor(() => expect(api.figures).toHaveBeenCalled());
+    expect(screen.queryByTestId('taste-line-head-hold')).toBeNull();
+  });
+
   it('is not there when nobody has described the good, or the house has taste notes off', async () => {
     api.taste.mockResolvedValue({ state: 'ready', data: { effective: null, layers: [] } });
     open(row());

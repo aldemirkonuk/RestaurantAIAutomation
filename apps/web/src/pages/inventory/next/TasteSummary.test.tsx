@@ -2,6 +2,8 @@
  * The drawer's first-screen taste line (TasteSummary.tsx): the card's own
  * sentence with its marks; nothing when nothing is known; a failed read said.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -92,5 +94,15 @@ describe('the first-screen taste line', () => {
     mount();
     expect((await screen.findByTestId('taste-line-open')).textContent).toBe('Described as oak.');
     expect(screen.getByTestId('taste-line-marks').getAttribute('data-marks')).toBe('bubble');
+  });
+});
+
+describe('the phone placement', () => {
+  const css = readFileSync(resolve(process.cwd(), 'src/pages/inventory/next/taste-card.css'), 'utf8');
+  it('shows the head copy and hides the foot copy at 640px and below, the head copy never above', () => {
+    expect(css).toMatch(/\.tc-line--head\s*\{\s*display:\s*none;/);
+    const phone = css.slice(css.indexOf('@media (max-width: 640px)', css.indexOf('.tc-line--head')));
+    expect(phone).toMatch(/\.tc-line--head\s*\{[^}]*display:\s*flex;[^}]*min-height:\s*44px;/);
+    expect(phone).toMatch(/\.tc-line--foot\s*\{[^}]*display:\s*none;/);
   });
 });
