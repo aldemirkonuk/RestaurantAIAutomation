@@ -442,8 +442,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       let retried = false;
       for (;;) {
         try {
-          const response = await shareMeRead(() =>
-            api.get("/api/v1/auth/me"),
+          const response = await shareMeRead(
+            () => api.get("/api/v1/auth/me"),
+            "context",
           );
           if (cancelled) return;
           // Studio roles come from the JWT itself (app_metadata.roles), and the

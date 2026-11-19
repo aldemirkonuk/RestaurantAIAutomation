@@ -9,16 +9,45 @@
  * one in flight, and a caller that arrives while it is in flight gets that
  * same answer, success or failure.
  *
- * Only reads that are in flight are shared. A read that has settled is never
- * reused, so sign-in, house switches and retries always ask the gateway.
+ * Only reads that are in flight are shared, plus the page-load read, which
+ * each of the two named callers may take once within ten seconds even after
+ * it settled. Any other settled read is never reused, so sign-in, house
+ * switches and retries always ask the gateway.
  */
 
 let inFlight: Promise<unknown> | null = null;
 
-export function shareMeRead<T>(read: () => Promise<T>): Promise<T> {
-  if (inFlight) return inFlight as Promise<T>;
+// The page-load read, kept after it settles for the other module's single
+// first ask. The auth store reads as it is imported; AuthContext mounts a
+// little later, and on a fast gateway the store's read has already settled
+// by then, so sharing only what is in flight sent a second request (r69).
+// Each named caller may take this read once, and only within a few seconds.
+const PAGE_LOAD_WINDOW_MS = 10_000;
+let pageLoad: { read: Promise<unknown>; at: number; taken: Set<string> } | null =
+  null;
+
+export function shareMeRead<T>(
+  read: () => Promise<T>,
+  who?: string,
+): Promise<T> {
+  if (inFlight) {
+    if (who && pageLoad && inFlight === pageLoad.read) pageLoad.taken.add(who);
+    return inFlight as Promise<T>;
+  }
+  if (
+    who &&
+    pageLoad &&
+    !pageLoad.taken.has(who) &&
+    Date.now() - pageLoad.at < PAGE_LOAD_WINDOW_MS
+  ) {
+    pageLoad.taken.add(who);
+    return pageLoad.read as Promise<T>;
+  }
   const started = read();
   inFlight = started;
+  if (who && !pageLoad) {
+    pageLoad = { read: started, at: Date.now(), taken: new Set([who]) };
+  }
   const clear = () => {
     if (inFlight === started) inFlight = null;
   };
@@ -29,6 +58,7 @@ export function shareMeRead<T>(read: () => Promise<T>): Promise<T> {
 /** Test seam: forget any read in flight. */
 export function forgetSharedMeRead(): void {
   inFlight = null;
+  pageLoad = null;
 }
 
 /** How long to wait, in whole seconds, before asking again. */

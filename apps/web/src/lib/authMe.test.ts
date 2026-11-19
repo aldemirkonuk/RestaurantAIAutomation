@@ -39,6 +39,34 @@ describe("shareMeRead", () => {
   });
 });
 
+describe("the page-load read", () => {
+  it("is handed to the other module after it settled, once each", async () => {
+    const read = vi.fn(async () => "me");
+    expect(await shareMeRead(read, "store")).toBe("me");
+    await Promise.resolve();
+    expect(await shareMeRead(read, "context")).toBe("me");
+    expect(read).toHaveBeenCalledTimes(1);
+    // Each module has had its one; the next ask goes to the gateway.
+    await shareMeRead(read, "context");
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  it("is not kept past ten seconds, nor for a caller with no name", async () => {
+    vi.useFakeTimers();
+    try {
+      const read = vi.fn(async () => "me");
+      await shareMeRead(read, "store");
+      await shareMeRead(read);
+      expect(read).toHaveBeenCalledTimes(2);
+      vi.setSystemTime(Date.now() + 11_000);
+      await shareMeRead(read, "context");
+      expect(read).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("busy answers", () => {
   it("counts a 429 and a missing answer as busy, nothing else", () => {
     expect(isHouseBusy(withStatus(429))).toBe(true);
