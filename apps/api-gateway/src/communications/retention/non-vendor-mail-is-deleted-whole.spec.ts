@@ -19,6 +19,7 @@ const GRANT = "eeeeeeee-0000-4000-8000-eeeeeeeeeeee";
 function build(
   kinds: Array<{ id: string; kind: string }> | { error: { message: string } },
   vendorOnlyReader: boolean | "unreadable" = false,
+  failHandOver = false,
 ) {
   const updates: Array<{ table: string; body: Record<string, unknown>; ids: string[] }> = [];
   const deletes: Array<{ table: string; ids: string[] }> = [];
@@ -49,7 +50,12 @@ function build(
     };
     b.then = (resolve: (v: unknown) => unknown) => {
       if (table === "procurement_conversations") {
-        if (mode === "update") updates.push({ table, body, ids });
+        if (mode === "update") {
+          updates.push({ table, body, ids });
+          if (failHandOver && "mirrored_by_grant_id" in body) {
+            return Promise.resolve({ data: null, error: { message: "timeout" } }).then(resolve);
+          }
+        }
         if (mode === "delete") deletes.push({ table, ids });
         if (mode === "select" && columns.includes("restaurant_id")) {
           return Promise.resolve({
@@ -141,9 +147,26 @@ describe("revoking the wide reading while the vendor-only reading stays consente
     const { db, updates, deletes } = build(kinds, true);
     const out = await run(new RawMailRetentionService(db, undefined, noArchive), "gmail_read_all");
     expect(deletes).toEqual([{ table: "procurement_conversations", ids: ["g1", "t1"] }]);
-    expect(updates.filter((u) => u.table === "procurement_conversations")).toHaveLength(0);
+    // the vendor row is not tombstoned: its only change is the hand-over to the live vendor-only grant
+    expect(updates).toEqual([{ table: "procurement_conversations", body: { mirrored_by_grant_id: "ro" }, ids: ["v1"] }]);
     expect(out.deleted).toBe(2);
     expect(out.says).toMatch(/1 vendor reply was kept/);
+  });
+
+  it("hands the kept vendor rows to the vendor-only grant, so revoking it later finds them (r83 walk w1)", async () => {
+    const { db, updates } = build(kinds, true);
+    await run(new RawMailRetentionService(db, undefined, noArchive), "gmail_read_all");
+    const handed = updates.find((u) => u.body.mirrored_by_grant_id !== undefined)!;
+    expect(handed.body).toEqual({ mirrored_by_grant_id: "ro" });
+    expect(handed.ids).toEqual(["v1"]);
+    expect(handed.body).not.toHaveProperty("raw_deleted_at");
+  });
+
+  it("says when the hand-over could not be written, because a later revoke would then miss those rows", async () => {
+    const { db } = build(kinds, true, true);
+    const out = await run(new RawMailRetentionService(db, undefined, noArchive), "gmail_read_all");
+    expect(out.error).toMatch(/could NOT be handed to the vendor-only connection/);
+    expect(out.says).toMatch(/could NOT be handed to the vendor-only connection/);
   });
 
   it("falls back to tombstoning vendor rows when the vendor-only standing cannot be read", async () => {
