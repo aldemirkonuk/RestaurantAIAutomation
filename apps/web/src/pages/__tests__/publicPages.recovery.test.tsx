@@ -96,9 +96,14 @@ it('validates reset confirmation before sending the password', async () => {
     target: { value: 'password-two' },
   })
   fireEvent.click(screen.getByRole('button', { name: 'Reset password' }))
-  expect(await screen.findByRole('alert')).toHaveTextContent(
-    'Passwords do not match',
-  )
+  const mismatch = await screen.findByRole('alert')
+  expect(mismatch).toHaveTextContent('Passwords do not match')
+  // Under the plate, so the two fields do not move when it arrives.
+  expect(
+    screen
+      .getByRole('button', { name: 'Reset password' })
+      .compareDocumentPosition(mismatch) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy()
   expect(h.axiosPost).not.toHaveBeenCalled()
 })
 it('gives signed-out verification a sign-in path instead of an authenticated resend', () => {
