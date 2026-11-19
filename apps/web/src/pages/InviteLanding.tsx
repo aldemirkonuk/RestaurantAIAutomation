@@ -1,11 +1,8 @@
-import { PublicShell } from '../components/mudavym/PublicShell'
-import { usePublicDesign } from '../lib/mudavym/publicDesign'
+import { AuthSpread } from '../components/brand/AuthSpread'
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useParams, useLocation, Link } from 'react-router-dom'
 import { readInviteMailSecret, withInviteMailSecret } from '../lib/inviteMailSecret'
 import { useAuth } from '../contexts/AuthContext'
-import { AlertCircle, RefreshCw } from 'lucide-react'
-import { AuthShell, AuthCard } from '../components/brand/AuthShell'
 import { toast } from 'sonner'
 import axios from 'axios'
 import { apiClient, getErrorMessage } from '../services/api/client'
@@ -62,7 +59,6 @@ function unavailableCopy(reason: string | undefined): {
 }
 
 export function InviteLanding() {
-  const publicDesign = usePublicDesign()
   const { code } = useParams<{ code: string }>()
   const navigate = useNavigate()
   // The secret the invite mail's link carries (ADR 0229 fork 9, item 77),
@@ -134,221 +130,100 @@ export function InviteLanding() {
 
   const loginHref = `/login?redirect=${encodeURIComponent(`/invite/${code ?? ''}`)}`
 
-  if (publicDesign) {
-    const valid = preview?.valid === true ? preview : null
-    const restaurantName = valid?.restaurant || 'the restaurant'
-    const unavailable =
-      !loadingPreview && !previewError && !valid
-        ? unavailableCopy(preview?.valid === false ? preview.reason : undefined)
-        : null
-    return (
-      <PublicShell
-        title={
-          loadingPreview
-            ? 'Opening your invitation'
-            : previewError
-              ? 'Invitation unavailable'
-              : unavailable
-                ? unavailable.title
-                : 'You are invited'
-        }
-        eyebrow="Workspace invitation"
-        voice={valid ? `Join ${restaurantName}.` : undefined}
-        homeHref="/login"
-        footer={
-          <Link className="mdv-link" to="/login">
-            Back to sign in
-          </Link>
-        }
-      >
-        <div
-          className="mdv-pub__plate mdv-pub__stack"
-          aria-busy={loadingPreview || accepting}
-        >
-          {loadingPreview ? (
-            <p role="status">Loading invitation…</p>
-          ) : previewError ? (
-            <>
-              <p role="alert">{previewError}</p>
-              <button className="mdv-btn" onClick={() => void loadPreview()}>
-                Try again
-              </button>
-            </>
-          ) : !valid ? (
-            <p>{unavailable?.body ?? 'Ask the restaurant owner for a new link.'}</p>
-          ) : (
-            <>
-              <dl className="mdv-pub__facts">
-                <div>
-                  <dt>Restaurant</dt>
-                  <dd>{restaurantName}</dd>
-                </div>
-                <div>
-                  <dt>Role</dt>
-                  <dd>
-                    {valid.role
-                      ? valid.role.charAt(0).toUpperCase() + valid.role.slice(1)
-                      : 'Member'}
-                  </dd>
-                </div>
-              </dl>
-              {acceptError && (
-                <p className="mdv-alert" role="alert">
-                  {acceptError}
-                </p>
-              )}
-              {isAuthenticated ? (
-                <>
-                  <button
-                    className="mdv-btn mdv-btn--seal"
-                    disabled={accepting}
-                    onClick={() => void handleAccept()}
-                  >
-                    {accepting ? 'Joining…' : `Join ${restaurantName}`}
-                  </button>
-                  <button className="mdv-btn" onClick={() => navigate(-1)}>
-                    Cancel, go back
-                  </button>
-                </>
-              ) : (
-                <>
-                  <Link className="mdv-btn mdv-btn--seal" to={loginHref}>
-                    Sign in to accept
-                  </Link>
-                  <Link
-                    className="mdv-btn"
-                    to={withInviteMailSecret(
-                      `/register?invite=${encodeURIComponent(code ?? '')}`,
-                      mailSecret,
-                    )}
-                  >
-                    Create account to accept
-                  </Link>
-                </>
-              )}
-            </>
-          )}
-        </div>
-      </PublicShell>
-    )
-  }
-
-  if (previewError) {
-    return (
-      <AuthShell title="Invitation unavailable" subtitle={previewError}>
-        <AuthCard>
-          <button type="button" onClick={() => void loadPreview()}>
-            Try again
-          </button>
-        </AuthCard>
-      </AuthShell>
-    )
-  }
-
-  if (loadingPreview || preview === null) {
-    return (
-      <AuthShell title="Mudavym" subtitle="Loading invite…">
-        <AuthCard className="flex justify-center py-10">
-          <RefreshCw
-            className="w-7 h-7 animate-spin text-wine-600"
-            strokeWidth={1.75}
-          />
-        </AuthCard>
-      </AuthShell>
-    )
-  }
-
-  if (!preview.valid) {
-    return (
-      <AuthShell
-        title="This invite has expired"
-        subtitle="Ask the restaurant owner for a new link."
-      >
-        <AuthCard className="text-center">
-          <AlertCircle
-            className="w-8 h-8 text-wine-400 mx-auto mb-3"
-            strokeWidth={1.75}
-          />
-          <Link
-            to="/login"
-            className="mt-4 inline-block border border-gray-200 text-gray-700 rounded-xl px-6 py-3 text-sm font-medium hover:bg-gray-50"
-          >
-            Back to sign in
-          </Link>
-        </AuthCard>
-      </AuthShell>
-    )
-  }
-
-  const restaurantName = preview.restaurant || 'Restaurant'
-  const roleLabel = preview.role
-    ? preview.role.charAt(0).toUpperCase() + preview.role.slice(1)
-    : 'Member'
-
+  const valid = preview?.valid === true ? preview : null
+  const restaurantName = valid?.restaurant || 'the restaurant'
+  const unavailable =
+    !loadingPreview && !previewError && !valid
+      ? unavailableCopy(preview?.valid === false ? preview.reason : undefined)
+      : null
   return (
-    <AuthShell
-      title={!isAuthenticated ? `You're invited` : `Add ${restaurantName}?`}
-      subtitle={
-        !isAuthenticated
-          ? `Join ${restaurantName} and start managing wine inventory together.`
-          : `You'll be added as ${roleLabel} at ${restaurantName}.`
+    <AuthSpread
+      title={
+        loadingPreview
+          ? 'Opening your invitation'
+          : previewError
+            ? 'Invitation unavailable'
+            : unavailable
+              ? unavailable.title
+              : 'You are invited'
+      }
+      eyebrow="Workspace invitation"
+      voice={valid ? `Join ${restaurantName}.` : undefined}
+      footer={
+        <Link className="mdv-link" to="/login">
+          Back to sign in
+        </Link>
       }
     >
-      <AuthCard className="text-center">
-        {!isAuthenticated ? (
+      <div
+        className="mdv-spread-stack"
+        aria-busy={loadingPreview || accepting}
+      >
+        {loadingPreview ? (
+          <p role="status">Loading invitation…</p>
+        ) : previewError ? (
           <>
-            <p className="text-xs text-gray-400">
-              Role:{' '}
-              <span className="font-medium text-gray-600">{roleLabel}</span>
-            </p>
-            <div className="space-y-3 mt-6">
-              <Link
-                to={loginHref}
-                className="block w-full text-center bg-wine-600 text-white rounded-xl py-3 text-sm font-semibold hover:bg-wine-700 shadow-[0_10px_28px_-10px_rgba(26,94,107,0.55)]"
-              >
-                Sign in to accept
-              </Link>
-              <Link
-                to={withInviteMailSecret(`/register?invite=${code}`, mailSecret)}
-                className="block w-full text-center border border-gray-200 text-gray-700 rounded-xl py-3 text-sm font-medium hover:bg-gray-50"
-              >
-                Create account to accept
-              </Link>
-            </div>
+            <p role="alert">{previewError}</p>
+            <button className="mdv-btn" onClick={() => void loadPreview()}>
+              Try again
+            </button>
           </>
+        ) : !valid ? (
+          <p>{unavailable?.body ?? 'Ask the restaurant owner for a new link.'}</p>
         ) : (
           <>
+            <dl className="mdv-spread-facts">
+              <div>
+                <dt>Restaurant</dt>
+                <dd>{restaurantName}</dd>
+              </div>
+              <div>
+                <dt>Role</dt>
+                <dd>
+                  {valid.role
+                    ? valid.role.charAt(0).toUpperCase() + valid.role.slice(1)
+                    : 'Member'}
+                </dd>
+              </div>
+            </dl>
             {acceptError && (
-              <p className="text-sm text-rose-500 mb-3">{acceptError}</p>
+              <p className="mdv-alert" role="alert">
+                {acceptError}
+              </p>
             )}
-            <button
-              type="button"
-              disabled={accepting}
-              onClick={() => void handleAccept()}
-              className="w-full flex items-center justify-center gap-2 bg-wine-600 text-white rounded-xl py-3 text-sm font-semibold hover:bg-wine-700 disabled:opacity-60 shadow-[0_10px_28px_-10px_rgba(26,94,107,0.55)]"
-            >
-              {accepting ? (
-                <>
-                  <RefreshCw
-                    className="w-4 h-4 animate-spin"
-                    strokeWidth={1.75}
-                  />
-                  Adding…
-                </>
-              ) : (
-                `Add ${restaurantName}`
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate(-1)}
-              className="mt-3 w-full text-sm text-gray-400 underline hover:text-gray-600"
-            >
-              Cancel, go back
-            </button>
+            {isAuthenticated ? (
+              <>
+                <button
+                  className="mdv-btn mdv-btn--seal"
+                  disabled={accepting}
+                  onClick={() => void handleAccept()}
+                >
+                  {accepting ? 'Joining…' : `Join ${restaurantName}`}
+                </button>
+                <button className="mdv-btn" onClick={() => navigate(-1)}>
+                  Cancel, go back
+                </button>
+              </>
+            ) : (
+              <>
+                <Link className="mdv-btn mdv-btn--seal" to={loginHref}>
+                  Sign in to accept
+                </Link>
+                <Link
+                  className="mdv-btn"
+                  to={withInviteMailSecret(
+                    `/register?invite=${encodeURIComponent(code ?? '')}`,
+                    mailSecret,
+                  )}
+                >
+                  Create account to accept
+                </Link>
+              </>
+            )}
           </>
         )}
-      </AuthCard>
-    </AuthShell>
+      </div>
+    </AuthSpread>
   )
+
 }
