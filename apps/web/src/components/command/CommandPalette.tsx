@@ -15,6 +15,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -36,6 +37,8 @@ import { ASK_AI_OPEN_EVENT } from "../askai/events";
 import { Panel } from "../mudavym/Sheet";
 import { useMudavymShell } from "../../lib/mudavym/shellGround";
 import { useShellPalette } from "../mudavym/shellPalette";
+import { tuck, useReducedMotion } from "../../lib/mudavym/motion";
+import "./command-palette.css";
 
 const RECENTS_KEY = "wineops.command.recents";
 const MAX_RECENTS = 5;
@@ -50,6 +53,24 @@ const SECTION_ORDER: CommandSection[] = [
   "Insights",
   "Create",
   "Navigation",
+];
+
+/** The preview pane is behind a flag: a build flag, or this device's own switch. */
+export const PREVIEW_STORAGE_KEY = "mudavym.palette.preview";
+function previewOn(): boolean {
+  if (import.meta.env.VITE_PALETTE_PREVIEW === "true") return true;
+  try {
+    return localStorage.getItem(PREVIEW_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** What Tab opens on a row that goes somewhere. */
+type RowAction = "tab" | "copy";
+const ROW_ACTIONS: ReadonlyArray<{ id: RowAction; label: string }> = [
+  { id: "tab", label: "Open in a new tab" },
+  { id: "copy", label: "Copy link" },
 ];
 
 function loadRecents(): string[] {
@@ -88,6 +109,12 @@ export function CommandPalette({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const reduced = useReducedMotion();
+  // Tab on a row that goes somewhere opens its actions in the foot.
+  const [actions, setActions] = useState<{ index: number } | null>(null);
+  // The one highlight pill: where it sits, and whether it may glide there yet.
+  const [pill, setPill] = useState<{ top: number; height: number } | null>(null);
+  const [pillLive, setPillLive] = useState(false);
 
   // Fetch the top recommendation once per open (insight-aware suggestion).
   useEffect(() => {
@@ -237,13 +264,29 @@ export function CommandPalette({
   }, [allCommands, query, recentIds]);
 
   // Flatten in display order for keyboard navigation.
-  const flat = useMemo(() => {
+  const found = useMemo(() => {
     const out: Command[] = [];
     for (const section of SECTION_ORDER) {
       for (const cmd of groups[section] ?? []) out.push(cmd);
     }
     return out;
   }, [groups]);
+
+  // When a search finds nothing, the last row is the way on: ask the books.
+  // (Only under the app shell, where it is drawn.)
+  const askFallback = useMemo<Command>(
+    () => ({
+      id: "askai-nomatch",
+      title: "Ask Mudavym",
+      subtitle: "Nothing on the list matches. Ask the books in your own words.",
+      section: "Create",
+      icon: Sparkles,
+      action: () => window.dispatchEvent(new CustomEvent(ASK_AI_OPEN_EVENT)),
+    }),
+    [],
+  );
+  const noMatch = shell.on && found.length === 0 && query.trim() !== "";
+  const flat = useMemo(() => (noMatch ? [askFallback] : found), [noMatch, askFallback, found]);
 
   useEffect(() => {
     setActive((a) => Math.min(a, Math.max(0, flat.length - 1)));
@@ -262,7 +305,50 @@ export function CommandPalette({
     [navigate, onClose],
   );
 
+  const runAction = useCallback(
+    (action: RowAction, cmd?: Command) => {
+      const href = cmd?.href;
+      if (!href) return;
+      onClose();
+      if (action === "tab") {
+        window.open(href, "_blank", "noopener");
+        return;
+      }
+      const link = `${window.location.origin}${href}`;
+      const write = navigator.clipboard?.writeText(link);
+      if (!write) {
+        toast.error("This browser would not copy the link", { description: link });
+        return;
+      }
+      write
+        .then(() => toast.success("Link copied"))
+        .catch(() => toast.error("The link was not copied", { description: link }));
+    },
+    [onClose, toast],
+  );
+
   const onKeyDown = (e: React.KeyboardEvent) => {
+    if (shell.on && actions) {
+      // The foot is showing this row's actions; the keys belong to it.
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        e.preventDefault();
+        setActions({ index: (actions.index + 1) % ROW_ACTIONS.length });
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        runAction(ROW_ACTIONS[actions.index].id, flat[active]);
+        return;
+      }
+      if (e.key === "Escape" || e.key === "Tab") {
+        e.preventDefault();
+        // Esc backs out of the actions first; the Panel must not take it as "close".
+        e.stopPropagation();
+        setActions(null);
+        return;
+      }
+      setActions(null);
+    }
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setActive((a) => (flat.length ? (a + 1) % flat.length : 0));
@@ -282,8 +368,10 @@ export function CommandPalette({
       e.preventDefault();
       onClose();
     } else if (e.key === "Tab") {
-      // Keep focus inside the input (single focusable) — trap.
+      // Keep focus inside the input (single focusable) — trap. Under the shell,
+      // a row that goes somewhere answers Tab with its actions.
       e.preventDefault();
+      if (shell.on && flat[active]?.href) setActions({ index: 0 });
     }
   };
 
@@ -294,23 +382,128 @@ export function CommandPalette({
     (el as HTMLElement | null)?.scrollIntoView({ block: "nearest" });
   }, [active, open]);
 
+  // Where the highlight pill goes: the active row's top and height inside the list.
+  useLayoutEffect(() => {
+    if (!open || !shell.on) return;
+    const el = listRef.current?.querySelector<HTMLElement>(`[data-idx="${active}"]`);
+    if (!el) {
+      setPill(null);
+      return;
+    }
+    const next = { top: el.offsetTop, height: el.offsetHeight };
+    setPill((p) => (p && p.top === next.top && p.height === next.height ? p : next));
+  }, [open, shell.on, active, flat, query]);
+  // It may glide only after it has been placed once: the first paint must not
+  // slide in from the top of the list.
+  useEffect(() => {
+    if (!open) {
+      setPillLive(false);
+      return;
+    }
+    if (!pill) return;
+    const id = requestAnimationFrame(() => setPillLive(true));
+    return () => cancelAnimationFrame(id);
+  }, [open, pill !== null]);
+  useEffect(() => {
+    setActions(null);
+  }, [active, query, open]);
+
   if (!open) return null;
 
   if (shell.on) {
     let houseIdx = -1;
+    const preview = previewOn();
+    const current = flat[active];
+    const renderRow = (cmd: Command, idx: number, recent: boolean) => {
+      const Icon = cmd.icon;
+      const isActive = idx === active;
+      const glyph = (
+        <Icon
+          size={15}
+          aria-hidden
+          className="mdv-item__icon"
+          style={isActive ? { color: "var(--seal)" } : undefined}
+        />
+      );
+      return (
+        <button
+          key={cmd.id}
+          type="button"
+          id={`cmd-${cmd.id}`}
+          data-idx={idx}
+          role="option"
+          aria-selected={isActive}
+          className="mdv-item"
+          style={{ ["--i" as string]: Math.min(idx, 10) }}
+          onMouseMove={() => setActive(idx)}
+          onClick={() => run(cmd)}
+        >
+          {recent ? <span className="mdv-palette__thumb">{glyph}</span> : glyph}
+          <span className="mdv-item__text">
+            <span className="mdv-item__label">{cmd.title}</span>
+            {cmd.subtitle && <span className="mdv-item__sub">{cmd.subtitle}</span>}
+          </span>
+          {cmd.shortcut
+            ? cmd.shortcut
+                .split(" ")
+                .map((k, i) => (
+                  <kbd key={i} className="mdv-kbd">
+                    {k}
+                  </kbd>
+                ))
+            : isActive && (
+                <span className="mdv-item__icon" aria-hidden>
+                  {cmd.section === "Insights" && cmd.id.startsWith("rec-") ? (
+                    <ArrowRight size={13} />
+                  ) : (
+                    <CornerDownLeft size={13} />
+                  )}
+                </span>
+              )}
+        </button>
+      );
+    };
     return (
       <Panel
         open={open}
         onClose={onClose}
         label="Command palette"
         showClose={false}
+        className={`mdv-palette${preview ? " mdv-palette--preview" : ""}`}
+        enter="lift"
         bodyClassName="mdv-ovl__body--flush"
         footer={
-          <span style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-            <span>
-              <kbd className="mdv-kbd">↑</kbd> <kbd className="mdv-kbd">↓</kbd> to move,{" "}
-              <kbd className="mdv-kbd">↵</kbd> to run
-            </span>
+          <span className="mdv-palette__foot">
+            {actions && current?.href ? (
+              <span className="mdv-palette__foot-acts" role="group" aria-label="Actions for this row">
+                {ROW_ACTIONS.map((a, i) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    className="mdv-palette__act"
+                    aria-pressed={i === actions.index}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => runAction(a.id, current)}
+                  >
+                    {a.label}
+                  </button>
+                ))}
+                <span>
+                  <kbd className="mdv-kbd">←</kbd> <kbd className="mdv-kbd">→</kbd> to choose,{" "}
+                  <kbd className="mdv-kbd">Enter</kbd> to do it
+                </span>
+              </span>
+            ) : (
+              <span>
+                <kbd className="mdv-kbd">Enter</kbd> to {current?.href ? "open" : "run"}
+                {current?.href ? (
+                  <>
+                    {" "}
+                    · <kbd className="mdv-kbd">Tab</kbd> for actions
+                  </>
+                ) : null}
+              </span>
+            )}
             <span>
               <kbd className="mdv-kbd">?</kbd> for all shortcuts
             </span>
@@ -338,62 +531,51 @@ export function CommandPalette({
           />
           <kbd className="mdv-kbd">esc</kbd>
         </div>
-        <div id="command-list" ref={listRef} role="listbox" style={{ padding: "4px 0 8px" }}>
-          {flat.length === 0 ? (
-            <p className="mdv-quiet">Nothing here matches “{query}”.</p>
-          ) : (
-            SECTION_ORDER.filter((sec) => groups[sec]?.length).map((section) => (
-              <div key={section}>
-                <span className="mdv-sect">{section}</span>
-                {groups[section].map((cmd) => {
-                  houseIdx += 1;
-                  const idx = houseIdx;
-                  const Icon = cmd.icon;
-                  const isActive = idx === active;
-                  return (
-                    <button
-                      key={cmd.id}
-                      type="button"
-                      id={`cmd-${cmd.id}`}
-                      data-idx={idx}
-                      role="option"
-                      aria-selected={isActive}
-                      className="mdv-item"
-                      onMouseMove={() => setActive(idx)}
-                      onClick={() => run(cmd)}
-                    >
-                      <Icon
-                        size={15}
-                        aria-hidden
-                        className="mdv-item__icon"
-                        style={isActive ? { color: "var(--seal)" } : undefined}
-                      />
-                      <span className="mdv-item__text">
-                        <span className="mdv-item__label">{cmd.title}</span>
-                        {cmd.subtitle && <span className="mdv-item__sub">{cmd.subtitle}</span>}
-                      </span>
-                      {cmd.shortcut
-                        ? cmd.shortcut
-                            .split(" ")
-                            .map((k, i) => (
-                              <kbd key={i} className="mdv-kbd">
-                                {k}
-                              </kbd>
-                            ))
-                        : isActive && (
-                            <span className="mdv-item__icon" aria-hidden>
-                              {cmd.section === "Insights" && cmd.id.startsWith("rec-") ? (
-                                <ArrowRight size={13} />
-                              ) : (
-                                <CornerDownLeft size={13} />
-                              )}
-                            </span>
-                          )}
-                    </button>
-                  );
-                })}
-              </div>
-            ))
+        <div className="mdv-palette__split">
+          <div id="command-list" ref={listRef} role="listbox" className="mdv-palette__list">
+            {pill && (
+              <span
+                className="mdv-palette__pill"
+                aria-hidden
+                data-live={pillLive && !reduced ? "true" : undefined}
+                style={{
+                  clipPath: `inset(${pill.top}px 8px calc(100% - ${pill.top + pill.height}px) 8px round 8px)`,
+                  transition: pillLive && !reduced ? `clip-path ${tuck.ms}ms ${tuck.easing}` : "none",
+                }}
+              />
+            )}
+            {noMatch ? (
+              <>
+                <p className="mdv-quiet">Nothing here matches “{query}”.</p>
+                {renderRow(askFallback, 0, false)}
+              </>
+            ) : flat.length === 0 ? (
+              <p className="mdv-quiet">Nothing here matches “{query}”.</p>
+            ) : (
+              SECTION_ORDER.filter((sec) => groups[sec]?.length).map((section) => (
+                <div key={section}>
+                  <span className="mdv-sect">{section}</span>
+                  {groups[section].map((cmd) => {
+                    houseIdx += 1;
+                    return renderRow(cmd, houseIdx, section === "Recent");
+                  })}
+                </div>
+              ))
+            )}
+          </div>
+          {preview && (
+            <aside className="mdv-palette__preview" aria-label="Preview of the highlighted row">
+              {current && (
+                <div key={current.id} className="mdv-palette__preview-body">
+                  <span className="mdv-palette__preview-eyebrow">{current.section}</span>
+                  <h3 className="mdv-palette__preview-title">{current.title}</h3>
+                  {current.subtitle && <p className="mdv-palette__preview-sub">{current.subtitle}</p>}
+                  {current.href && (
+                    <span className="mdv-palette__preview-path">Opens {current.href}</span>
+                  )}
+                </div>
+              )}
+            </aside>
           )}
         </div>
       </Panel>

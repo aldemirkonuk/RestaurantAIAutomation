@@ -99,6 +99,7 @@ const HOUSE = 'cubic-bezier(0.16, 1, 0.3, 1)';
 const tuckSpring = springLinear(380, 32); // near-critically damped, ~1% overshoot
 const stampSpring = springLinear(500, 26); // the ceremonial one, ~11.1% overshoot
 const tallySpring = springLinear(120, 26); // overdamped, 0% overshoot
+const liftSpring = springLinear(520, 34); // a card rising into place, ~3% overshoot
 
 /** The house curve. Row expands, chevron turns, fades, panel swaps. */
 export const settle: MotionToken = { easing: HOUSE, ms: 320 };
@@ -126,6 +127,9 @@ export const press: MotionToken = pour;
 /** The seal landing. The only motion in the system allowed to overshoot. */
 export const stamp: MotionToken = { easing: stampSpring.easing, ms: 360 };
 
+/** A palette card lifting into place (N-17): scale .97 to 1, a small settle past it. */
+export const lift: MotionToken = { easing: liftSpring.easing, ms: liftSpring.ms };
+
 /** Number tickers. Overdamped — figures arrive, they never bounce past. */
 export const tally: MotionToken = { easing: tallySpring.easing, ms: 840 };
 
@@ -142,7 +146,7 @@ export const motionTokens = { settle, ink, tuck, turn, pour, stamp, tally } as c
 export type MotionTokenName = keyof typeof motionTokens;
 
 /** Raw spring samples, exported for tests and for canvas/JS-driven motion. */
-export const springs = { tuck: tuckSpring, stamp: stampSpring, tally: tallySpring } as const;
+export const springs = { tuck: tuckSpring, stamp: stampSpring, tally: tallySpring, lift: liftSpring } as const;
 
 /* ── Reduced motion ──────────────────────────────────────────────────────── */
 

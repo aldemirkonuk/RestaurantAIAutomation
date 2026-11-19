@@ -62,7 +62,7 @@ import {
   useMudavymShell,
   type MudavymGround,
 } from '../../lib/mudavym/shellGround';
-import { ink, settle, tuck, useReducedMotion, animate, type MotionToken } from '../../lib/mudavym/motion';
+import { ink, settle, tuck, lift, useReducedMotion, animate, type MotionToken } from '../../lib/mudavym/motion';
 import { useSheetStack } from './sheetStackContext';
 import { Denied, type DeniedProps } from './Denied';
 import {
@@ -209,6 +209,12 @@ export interface OverlayProps {
   /** Default true for sheet/panel, false for popover. */
   showClose?: boolean;
   className?: string;
+  /**
+   * A named entrance, in place of the shape's default: `lift` is the command
+   * palette's card rising into place on its own spring. Still a motion.ts
+   * token, and reduced motion still skips it entirely.
+   */
+  enter?: 'lift';
   /** Extra class on the scrolling body. */
   bodyClassName?: string;
   /**
@@ -345,6 +351,12 @@ interface RootProps extends OverlayProps {
 const TOKEN: Record<OverlayShape, MotionToken> = { sheet: tuck, panel: settle, popover: ink };
 const TOKEN_NAME: Record<OverlayShape, string> = { sheet: 'tuck', panel: 'settle', popover: 'ink' };
 
+/** The palette's card: a hair smaller and a hair high, rising to rest on `lift`. */
+const ENTER_LIFT: Keyframe[] = [
+  { transform: 'translateY(-6px) scale(0.97)', opacity: 0 },
+  { transform: 'none', opacity: 1 },
+];
+
 const ENTER: Record<OverlayShape, Keyframe[]> = {
   sheet: [
     { transform: 'translateX(28px)', opacity: 0 },
@@ -419,6 +431,7 @@ function OverlayRoot({
   closeLabel = 'Close',
   showClose,
   className,
+  enter,
   bodyClassName,
   wide,
   dirty = false,
@@ -670,8 +683,9 @@ function OverlayRoot({
     if (!live || reduced || !holdsLevel()) return;
     const panel = panelRef.current;
     if (!panel) return;
-    animate(panel, bottom ? ENTER_BOTTOM : ENTER[shape], TOKEN[shape]);
-  }, [live, reduced, shape, bottom, holdsLevel]);
+    if (enter === 'lift') animate(panel, ENTER_LIFT, lift);
+    else animate(panel, bottom ? ENTER_BOTTOM : ENTER[shape], TOKEN[shape]);
+  }, [live, reduced, shape, bottom, holdsLevel, enter]);
 
   /* ── the tear (1b) ──────────────────────────────────────────────────────
      A dirty Sheet does not vanish when you press Esc: it leaves on `tuck`, the
@@ -997,7 +1011,7 @@ function OverlayRoot({
         // it; the NAME is never taken from it.
         aria-label={label}
         aria-describedby={contract && !contractRepeatsLabel ? contractId : undefined}
-        data-motion={reduced ? 'none' : TOKEN_NAME[shape]}
+        data-motion={reduced ? 'none' : (enter ?? TOKEN_NAME[shape])}
         tabIndex={-1}
         onKeyDown={onKeyDown}
         style={

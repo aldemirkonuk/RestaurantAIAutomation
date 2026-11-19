@@ -1,0 +1,248 @@
+/* ============================================================
+   The command palette, as the product's signature (N-17).
+
+   Everything is scoped under `.mdv-palette`, the class CommandPalette puts on
+   its Panel, so the Ask panel and every other Panel keeps the shared look.
+   Only transform, opacity and clip-path move; reduced motion draws every
+   state at once and moves nothing.
+   ============================================================ */
+
+/* The page behind goes soft: a blur and a 55% scrim, drawn on the scrim that
+   the Panel already has (so a click on it still closes). */
+.mdv-ovl[data-scrim]:has(> .mdv-palette) > .mdv-ovl__scrim {
+  background: rgba(23, 19, 15, 0.55);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+}
+.dark .mdv-ovl[data-scrim]:has(> .mdv-palette) > .mdv-ovl__scrim,
+.mdv-ovl[data-scrim][data-ground='charcoal']:has(> .mdv-palette) > .mdv-ovl__scrim {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.mdv-palette--preview {
+  width: min(900px, calc(100vw - 32px));
+}
+
+/* The field is chrome, not a box: no fill (the browser paints a white one on a
+   charcoal ground otherwise), and one hairline under it. It stays put while
+   the list scrolls. */
+.mdv-palette .mdv-field {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  padding: 0 18px;
+  background: var(--paper-0);
+  border-bottom: 1px solid var(--paper-2);
+}
+.mdv-palette .mdv-field input {
+  padding: 16px 0;
+  background: transparent;
+  background-color: transparent;
+  border: 0;
+  box-shadow: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+/* The charcoal ground sheet paints every field with an !important fill and a
+   boxed focus outline; the palette's field is chrome, so it says so with a
+   prefix that outranks that sheet. Focus is shown on the hairline instead. */
+html[data-mudavym-ground] .mdv-palette .mdv-field input {
+  background-color: transparent !important;
+  outline: none !important;
+}
+.mdv-palette .mdv-field:focus-within {
+  border-bottom-color: var(--focus-ring, var(--seal));
+}
+
+.mdv-palette .mdv-sect {
+  padding: 12px 18px 4px;
+}
+
+/* ── the list, and the one pill that slides between rows ─────────────────── */
+.mdv-palette__split {
+  display: block;
+}
+.mdv-palette--preview .mdv-palette__split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+}
+
+.mdv-palette__list {
+  position: relative;
+  isolation: isolate;
+  padding: 4px 0 8px;
+  min-width: 0;
+}
+
+/* A full-height layer clipped down to the highlighted row. Animating the clip
+   moves the top and the bottom edge together, so rows of different heights
+   (a sentence that wraps to two lines) slide without the pill stretching. */
+.mdv-palette__pill {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--seal-tint);
+  clip-path: inset(0 8px 100% 8px round 8px);
+}
+
+.mdv-palette .mdv-item {
+  position: relative;
+  z-index: 1;
+  width: calc(100% - 16px);
+  margin: 0 8px;
+  padding: 8px 10px;
+  border-left: 0;
+  border-radius: 8px;
+  background: transparent;
+  transition: none;
+}
+.mdv-palette .mdv-item:hover,
+.mdv-palette .mdv-item[aria-selected='true'] {
+  background: transparent;
+}
+.mdv-palette .mdv-item:focus-visible {
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+
+/* A result is two lines at most: the name (up to two, for a sentence), then
+   one line of what it is. */
+.mdv-palette .mdv-item__label {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+.mdv-palette .mdv-item__sub {
+  margin-top: 1px;
+}
+
+/* A recent is a place you have been: a small tile in front of it. */
+.mdv-palette__thumb {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: var(--paper-1);
+  border: 1px solid var(--paper-2);
+  color: var(--ink-2);
+}
+
+/* ── the foot ────────────────────────────────────────────────────────────── */
+.mdv-palette__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+}
+.mdv-palette__foot-acts {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.mdv-palette__act {
+  font-family: var(--mdv-sans);
+  font-size: 11px;
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid var(--paper-2);
+  border-radius: 6px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.mdv-palette__act[aria-pressed='true'] {
+  color: var(--ink-1);
+  background: var(--seal-tint);
+  border-color: var(--seal-ring);
+}
+
+/* ── the preview (behind a flag) ─────────────────────────────────────────── */
+.mdv-palette__preview {
+  display: none;
+}
+.mdv-palette--preview .mdv-palette__preview {
+  display: block;
+  position: sticky;
+  top: 0;
+  align-self: start;
+  padding: 18px 20px;
+  border-left: 1px solid var(--paper-2);
+  min-height: 160px;
+}
+@media (max-width: 760px) {
+  .mdv-palette--preview {
+    width: min(620px, calc(100vw - 32px));
+  }
+  .mdv-palette--preview .mdv-palette__split {
+    display: block;
+  }
+  .mdv-palette--preview .mdv-palette__preview {
+    display: none;
+  }
+}
+.mdv-palette__preview-eyebrow {
+  display: block;
+  font-family: var(--mdv-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+.mdv-palette__preview-title {
+  margin: 8px 0 0;
+  font-family: var(--mdv-serif);
+  font-size: 20px;
+  line-height: 1.25;
+  font-weight: 400;
+  color: var(--ink-1);
+  text-wrap: balance;
+}
+.mdv-palette__preview-sub {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.mdv-palette__preview-path {
+  display: block;
+  margin-top: 14px;
+  font-family: var(--mdv-mono);
+  font-size: 11px;
+  color: var(--ink-4);
+  overflow-wrap: anywhere;
+}
+
+/* ── motion ──────────────────────────────────────────────────────────────── */
+@keyframes mdv-palette-scrim {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes mdv-palette-row {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes mdv-palette-preview {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .mdv-ovl[data-scrim]:has(> .mdv-palette) > .mdv-ovl__scrim {
+    animation: mdv-palette-scrim 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  /* 14 ms a row, the first ten only: a long list must not make you wait. */
+  .mdv-palette .mdv-item {
+    animation: mdv-palette-row 220ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+    animation-delay: calc(var(--i, 0) * 14ms);
+  }
+  .mdv-palette__preview-body {
+    animation: mdv-palette-preview 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
