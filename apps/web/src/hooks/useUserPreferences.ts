@@ -122,12 +122,15 @@ async function patchPreferences(
 
 export function useUserPreferences() {
   const userId = useAuthStore(s => s.user?.userId) ?? null
+  // A person with no house yet (onboarding) has no preferences the gateway
+  // will serve: it refuses the read (403). Ask once there is a house.
+  const hasHouse = !!useAuthStore(s => s.user?.restaurantId || s.activeRestaurantId)
   const queryClient = useQueryClient()
 
   const query = useQuery<UserPreferences>({
     queryKey: queryKeys.user.preferences(userId ?? ''),
     queryFn: () => fetchPreferences(userId!),
-    enabled: !!userId,
+    enabled: !!userId && hasHouse,
     staleTime: 30_000,
     gcTime: 5 * 60_000,
     placeholderData: {} as UserPreferences,

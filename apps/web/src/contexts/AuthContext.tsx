@@ -29,6 +29,7 @@ import {
 } from "../lib/houseMemory";
 import { doRefresh } from "../lib/sessionRefresh";
 import {
+  BUSY_RETRY_TRIES,
   busyRetrySeconds,
   isHouseBusy,
   shareMeRead,
@@ -215,7 +216,7 @@ export interface HouseOpened {
 /**
  * The session read is waiting out a busy gateway (429 or no answer): the
  * route stays, the person is not signed out, and a calm line says so.
- * `retryAt` is when the one retry fires; `gaveUp` is after it failed too.
+ * `retryAt` is when the next retry fires; `gaveUp` is after the last retry failed too.
  */
 export type MeBusy = { retryAt: number } | { gaveUp: true };
 
@@ -439,7 +440,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // One `/auth/me` per page load: the auth store asks the same question
       // as it is imported, and `shareMeRead` hands both the one answer.
-      let retried = false;
+      let retries = 0;
       for (;;) {
         try {
           const response = await shareMeRead(
@@ -459,15 +460,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (cancelled) return;
           // A busy gateway (429) or no answer at all says "ask again", never
           // "sign in again": keep the route and the tokens, say so, and ask
-          // once more after the gateway's own Retry-After (else 3 s). Only a
+          // again after the gateway's own Retry-After (else 3 s), up to three times. Only a
           // 401 that the refresh could not mend ends the session.
           if (isHouseBusy(err)) {
             console.warn("/auth/me is busy; keeping the session.", err);
-            if (retried) {
+            if (retries >= BUSY_RETRY_TRIES) {
               setMeBusy({ gaveUp: true });
               return; // `loading` stays true: the guards keep the route.
             }
-            retried = true;
+            retries += 1;
             const wait = busyRetrySeconds(err);
             setMeBusy({ retryAt: Date.now() + wait * 1000 });
             await new Promise<void>((resolve) => {
@@ -654,8 +655,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  // Keyed on the person's id, not the `user` object: creating a house swaps
+  // the object (same person) in the same breath as the active house changes,
+  // and each swap re-ran this read (two `/auth/me/role` per new house).
+  const signedInUserId = user?.userId ?? null;
   useEffect(() => {
-    if (!user) {
+    if (!signedInUserId) {
       setActiveRole(null);
       return;
     }
@@ -683,7 +688,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [user, activeRestaurantId]);
+  }, [signedInUserId, activeRestaurantId]);
 
   // Public refresh — can be called after chain/location changes to update the branch switcher
   const refreshBranches = useCallback(async () => {

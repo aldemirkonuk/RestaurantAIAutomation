@@ -107,7 +107,7 @@ describe("/auth/me on page load", () => {
     expect(screen.getByText("the desk")).toBeTruthy();
   });
 
-  it("on a 429 keeps the route and the tokens, says so, and retries once after Retry-After", async () => {
+  it("on a 429 keeps the route and the tokens, says so, and retries after Retry-After", async () => {
     h.instance.get
       .mockRejectedValueOnce(failure(429, { "retry-after": "5" }))
       .mockResolvedValueOnce(person);
@@ -142,13 +142,40 @@ describe("/auth/me on page load", () => {
     expect(screen.getByText("the desk")).toBeTruthy();
   });
 
-  it("after the one retry is also busy, stays put with a calm line and keeps the session", async () => {
-    h.instance.get.mockRejectedValue(failure(429));
+  it("keeps retrying in place, each time after the real Retry-After, and recovers without a reload", async () => {
+    h.instance.get
+      .mockRejectedValueOnce(failure(429, { "retry-after": "12" }))
+      .mockRejectedValueOnce(failure(429, { "retry-after": "8" }))
+      .mockResolvedValueOnce(person);
     mount();
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(10_000);
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    expect(screen.getByRole("status").textContent).toMatch(/trying again in 12s/);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11_900);
+    });
+    expect(meCalls()).toBe(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
     });
     expect(meCalls()).toBe(2);
+    expect(screen.getByRole("status").textContent).toMatch(/trying again in 8s/);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8_000);
+    });
+    expect(meCalls()).toBe(3);
+    expect(screen.getByText("the desk")).toBeTruthy();
+    expect(screen.queryByText("sign in page")).toBeNull();
+  });
+
+  it("after three retries are also busy, stays put with a calm line and keeps the session", async () => {
+    h.instance.get.mockRejectedValue(failure(429, { "retry-after": "20" }));
+    mount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(70_000);
+    });
+    expect(meCalls()).toBe(4);
     expect(screen.getByRole("status").textContent).toMatch(/still busy/);
     expect(screen.queryByText("sign in page")).toBeNull();
     expect(localStorage.getItem("accessToken")).not.toBeNull();

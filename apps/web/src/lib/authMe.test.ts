@@ -78,7 +78,9 @@ describe("busy answers", () => {
 
   it("waits the gateway's Retry-After, else three seconds", () => {
     expect(busyRetrySeconds(withStatus(429, { "retry-after": "7" }))).toBe(7);
-    expect(busyRetrySeconds(withStatus(429, { "retry-after": "999" }))).toBe(60);
+    expect(busyRetrySeconds(withStatus(429, { "retry-after": "12" }))).toBe(12);
+    expect(busyRetrySeconds(withStatus(429, { "retry-after": "999" }))).toBe(20);
+    expect(busyRetrySeconds(withStatus(429, { "retry-after": "0.2" }))).toBe(1);
     expect(busyRetrySeconds(withStatus(429, {}))).toBe(BUSY_RETRY_DEFAULT_SECONDS);
     expect(busyRetrySeconds(withStatus(undefined))).toBe(BUSY_RETRY_DEFAULT_SECONDS);
   });

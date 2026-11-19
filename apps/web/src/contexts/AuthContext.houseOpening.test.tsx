@@ -191,6 +191,24 @@ describe("createFirstHouse (F-006, scope item 5)", () => {
   });
 });
 
+describe("the role read after a house opens (r70)", () => {
+  it("asks /auth/me/role once for the new house, not once per state change", async () => {
+    signedInWithNoHouse("loads");
+    const auth = await mount();
+    const roleCalls = () =>
+      h.instance.get.mock.calls.filter(([url]) => url === "/api/v1/auth/me/role");
+    expect(roleCalls()).toHaveLength(0);
+
+    await act(async () => {
+      await auth().createFirstHouse(HOUSE);
+    });
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(roleCalls()).toHaveLength(1);
+    expect(roleCalls()[0][1]).toEqual({ params: { restaurantId: A } });
+  });
+});
+
 describe("registerRestaurant (F-006, scope item 6)", () => {
   it("hands a refusal to Register's house form with its status", async () => {
     h.instance.post.mockRejectedValue(refused);

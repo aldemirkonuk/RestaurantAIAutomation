@@ -63,7 +63,9 @@ export function forgetSharedMeRead(): void {
 
 /** How long to wait, in whole seconds, before asking again. */
 export const BUSY_RETRY_DEFAULT_SECONDS = 3;
-const BUSY_RETRY_MAX_SECONDS = 60;
+const BUSY_RETRY_MAX_SECONDS = 20;
+/** How many times the page asks again before it tells the person to reload. */
+export const BUSY_RETRY_TRIES = 3;
 
 /**
  * A rate-limited or unreachable gateway is "busy", not "signed out": 429, or
@@ -76,7 +78,7 @@ export function isHouseBusy(err: unknown): boolean {
   return status === 429 || status === undefined;
 }
 
-/** The gateway's `Retry-After` in seconds (1 to 60), else the default. */
+/** The gateway's `Retry-After` in seconds (1 to 20), else the default. */
 export function busyRetrySeconds(err: unknown): number {
   const headers = (
     err as { response?: { headers?: Record<string, unknown> } } | null
