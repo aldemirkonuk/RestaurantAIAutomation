@@ -106,7 +106,24 @@ describe("InventoryService", () => {
       expect(insertCall.threshold_max).toBe(0);
     });
 
-    it("gives the default only to a par the caller left out", async () => {
+    it("gives a par the caller left out the one the house stated", async () => {
+      queueNewWine();
+      mockMaybeSingle.mockResolvedValue({
+        data: { default_threshold_min: 12 },
+        error: null,
+      });
+      await service.createInventoryItem("rest-1", {
+        wineId: "mw-par-house",
+        stockLive: 0,
+        providerId: null,
+      } as any);
+
+      const insertCall = mockSupabaseChain.insert.mock.calls[0][0];
+      expect(insertCall.threshold_min).toBe(12);
+      expect(insertCall.threshold_max).toBe(24);
+    });
+
+    it("gives a house that stated none the same 3 the menu path gives, not 6", async () => {
       queueNewWine();
       await service.createInventoryItem("rest-1", {
         wineId: "mw-par-none",
@@ -115,8 +132,22 @@ describe("InventoryService", () => {
       } as any);
 
       const insertCall = mockSupabaseChain.insert.mock.calls[0][0];
-      expect(insertCall.threshold_min).toBe(6);
+      expect(insertCall.threshold_min).toBe(3);
       expect(insertCall.threshold_max).toBe(24);
+    });
+
+    it("does not ask the house when the caller typed a par, even 0", async () => {
+      queueNewWine();
+      mockMaybeSingle.mockClear();
+      await service.createInventoryItem("rest-1", {
+        wineId: "mw-par-typed",
+        stockLive: 0,
+        providerId: null,
+        thresholdMin: 0,
+      } as any);
+
+      expect(mockSupabaseChain.insert.mock.calls[0][0].threshold_min).toBe(0);
+      expect(mockMaybeSingle).not.toHaveBeenCalled();
     });
   });
 
