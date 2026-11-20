@@ -31,6 +31,7 @@ import { integrationsApi } from '../../../services/api/integrations';
 import { SANS } from './cm-format';
 import { senderLine, setupFailWords, type MailStatus, type SenderLineInput } from './mail-format';
 import { MailArrival } from './MailArrival';
+import { MailMotionStyles } from './mail-motion';
 import { ACT, ALERT, LINK, NOT_YOURS, Part, QUIET, TEXT, TONE } from './MailSetupParts';
 import { useChooseSender, useMailSetup, type MailSenderChoice, type MailSetupView } from './useMailSetup';
 
@@ -251,7 +252,7 @@ function Senders({
               connected.
             </p>
           )}
-          <p role="status" aria-live="polite" data-testid="setup-saved" style={QUIET}>
+          <p role="status" aria-live="polite" data-testid="setup-saved" className={saved && !choose.isPending && !choose.isError ? 'mail-fade-in' : undefined} style={QUIET}>
             {saved && !choose.isPending && !choose.isError ? 'Saved.' : ''}
           </p>
           {choose.isError && (
@@ -301,6 +302,7 @@ export function MailSetup({
   const offered = useGmailOffered(q.data?.canChange === true);
   return (
     <section aria-label="Mail setup" className="grid gap-3" style={{ fontFamily: SANS }} data-testid="mail-setup">
+      <MailMotionStyles />
       <button type="button" onClick={onBack} style={LINK}>
         ← Back to the mail
       </button>

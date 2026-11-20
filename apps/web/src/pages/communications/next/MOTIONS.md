@@ -36,6 +36,8 @@ Deliberate non-motions, and why each one stays still:
 - **A refusal does not shake, flash or slide.** It appears in place, in words.
   A guardrail hit is a sentence to read, not an alarm.
 
+- **Mail moves by opacity only** (`mail-motion.tsx`): arrival settles, rows fade in, chips fade out.
+
 `prefers-reduced-motion` is honoured everywhere: `.cmp-pick` drops its
 transition, and the sheet renders at its end state with nothing scheduled at all
 (`Sheet.tsx` skips `animate()` rather than collapsing it).

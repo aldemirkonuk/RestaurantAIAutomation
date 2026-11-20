@@ -8,7 +8,8 @@
  * 0020), and no address is ever invented.
  */
 
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { MailMotionStyles } from './mail-motion';
 import { MONO } from './cm-format';
 import { setupFailWords, shortSpan } from './mail-format';
 import { ACT, ALERT, NOT_YOURS, Part, QUIET, TEXT } from './MailSetupParts';
@@ -30,6 +31,18 @@ function TestLetter({ view, now }: { view: MailSetupView; now: number }) {
   const waiting = waitingForTestLetter(view, now);
   const started = latest ? Date.parse(latest.startedAt) : NaN;
 
+  // Only a change to "arrived" settles in; a page already arrived draws it as is.
+  const arrived = Boolean(latest?.arrivedAt);
+  const arrivedCode = arrived ? latest?.code : null;
+  const prevArrived = useRef(arrived);
+  const [settleCode, setSettleCode] = useState<string | null>(null);
+  useEffect(() => {
+    if (arrivedCode && !prevArrived.current) setSettleCode(arrivedCode);
+    else if (!arrivedCode) setSettleCode(null);
+    prevArrived.current = arrived;
+  }, [arrived, arrivedCode]);
+  const settling = Boolean(arrivedCode) && settleCode === arrivedCode;
+
   let state: ReactNode;
   if (failed) {
     state = (
@@ -45,7 +58,7 @@ function TestLetter({ view, now }: { view: MailSetupView; now: number }) {
     );
   } else if (latest.arrivedAt) {
     state = (
-      <p data-testid="setup-test-state" data-state="arrived" style={{ ...TEXT, color: 'var(--seal-deep, #14515C)', fontWeight: 600 }}>
+      <p data-testid="setup-test-state" data-state="arrived" className={settling ? 'mail-arrive' : undefined} style={{ ...TEXT, color: 'var(--seal-deep, #14515C)', fontWeight: 600 }}>
         Arrived {shortSpan(now - Date.parse(latest.arrivedAt))} ago.{claimedFrom(latest.arrivedFrom)} Mail reaches this house.
       </p>
     );
@@ -82,6 +95,7 @@ function TestLetter({ view, now }: { view: MailSetupView; now: number }) {
 
   return (
     <div className="grid gap-2" data-testid="setup-test-letter">
+      <MailMotionStyles />
       <h4 style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>Send a test letter</h4>
       {state}
       {view.canChange ? (

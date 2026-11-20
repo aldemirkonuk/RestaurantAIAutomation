@@ -43,10 +43,11 @@ import {
   type MailMessage,
 } from './mail-format';
 import { LetterFiles } from './LetterFiles';
+import { FadeAway, MailMotionStyles } from './mail-motion';
 import { QueuedPullBack } from './QueuedPullBack';
 import { useMailThread, useMarkThreadSeen, useNoReplyMark } from './useMailData';
 
-const QUIET = { fontSize: 11, color: 'var(--ink-4, #665D50)' } as const;
+const QUIET = { fontSize: 12, color: 'var(--ink-4, #665D50)' } as const;
 
 /**
  * Why a letter was held or refused. GET /mail/thread does not carry these
@@ -93,16 +94,16 @@ function Letter({
         <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
           {inbound ? vendor : 'The house'}
         </span>
-        <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>{fmtWhen(letterAt(m))}</span>
+        <span style={{ fontFamily: MONO, fontSize: 12, color: 'var(--ink-4, #665D50)' }}>{fmtWhen(letterAt(m))}</span>
         {look.chip && (
           <span
             data-testid="letter-chip"
             style={{
               marginLeft: 'auto',
               fontFamily: MONO,
-              fontSize: 8.5,
+              fontSize: 11,
               fontWeight: 600,
-              letterSpacing: '0.1em',
+              letterSpacing: '0.06em',
               textTransform: 'uppercase',
               padding: '2px 7px',
               borderRadius: 4,
@@ -165,7 +166,7 @@ function Letter({
         </p>
       )}
       {look.queued && <QueuedPullBack id={m.id} />}
-      {inbound && m.noReplyMarkedAt && (
+      <FadeAway block show={Boolean(inbound && m.noReplyMarkedAt)}>
         <p data-testid="letter-no-reply" className="flex flex-wrap items-baseline gap-2" style={{ ...QUIET, margin: 0 }}>
           <span>Marked as needing no reply, {fmtWhen(m.noReplyMarkedAt)}.</span>
           {onTakeBack && (
@@ -174,13 +175,13 @@ function Letter({
               data-testid="letter-no-reply-undo"
               onClick={onTakeBack}
               disabled={takingBack}
-              style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', fontSize: 11, fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}
+              style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}
             >
               {takingBack ? 'Taking it back…' : 'It needs a reply after all'}
             </button>
           )}
         </p>
-      )}
+      </FadeAway>
     </li>
   );
 }
@@ -249,6 +250,7 @@ export function MailThread({
 
   return (
     <section aria-label="Thread" className="grid gap-3" style={{ fontFamily: SANS }}>
+      <MailMotionStyles />
       <button
         type="button"
         onClick={onBack}
