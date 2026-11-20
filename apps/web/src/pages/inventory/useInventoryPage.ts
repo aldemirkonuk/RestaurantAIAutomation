@@ -48,13 +48,31 @@ export type SortField =
   | "location";
 export type SortOrder = "asc" | "desc";
 
-function calculateMargin(costPrice: number, menuPrice?: number): number {
-  if (!menuPrice || menuPrice === 0) return 0;
-  return ((menuPrice - costPrice) / menuPrice) * 100;
+/**
+ * The house's own bottle price (ADR 0193 -- `menuPriceBottle`, never the
+ * library's figure), or null when the house has not set one. Never an
+ * estimate: a "3x cost" default used to stand in here, so an unpriced wine was
+ * ranked on a menu price and a margin nobody set (ADR 0020: an unknown stays
+ * null; ADR 0104: no invented figure reaches a screen).
+ */
+function houseMenuPrice(item: InventoryItem): number | null {
+  const p = item.menuPriceBottle;
+  return typeof p === "number" && Number.isFinite(p) && p > 0 ? p : null;
 }
 
-function getDefaultMenuPrice(costPrice: number): number {
-  return Math.round(costPrice * 3);
+/**
+ * Margin on the house's own price, or null when either side is unknown. A
+ * missing cost is unknown too (the unresolved-row fallback carries `price: 0`),
+ * not a free bottle with a 100% margin.
+ */
+function marginPercent(item: InventoryItem): number | null {
+  const menu = houseMenuPrice(item);
+  const cost = item.price;
+  if (menu === null) return null;
+  if (typeof cost !== "number" || !Number.isFinite(cost) || cost <= 0) {
+    return null;
+  }
+  return ((menu - cost) / menu) * 100;
 }
 
 export interface UseInventoryPageOptions {
@@ -313,18 +331,12 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
           bVal = b.price;
           break;
         case "menuPrice":
-          aVal = a.menuPrice || getDefaultMenuPrice(a.price);
-          bVal = b.menuPrice || getDefaultMenuPrice(b.price);
+          aVal = houseMenuPrice(a);
+          bVal = houseMenuPrice(b);
           break;
         case "margin":
-          aVal = calculateMargin(
-            a.price,
-            a.menuPrice || getDefaultMenuPrice(a.price),
-          );
-          bVal = calculateMargin(
-            b.price,
-            b.menuPrice || getDefaultMenuPrice(b.price),
-          );
+          aVal = marginPercent(a);
+          bVal = marginPercent(b);
           break;
         case "threshold":
           aVal = a.threshold;
@@ -348,6 +360,13 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
           bVal = b.name;
       }
 
+      // An unknown price or margin has no rank: it sorts LAST whichever way
+      // the column is ordered, and unknowns keep their order among themselves
+      // (Array.prototype.sort is stable).
+      if (aVal === null || bVal === null) {
+        if (aVal === bVal) return 0;
+        return aVal === null ? 1 : -1;
+      }
       if (aVal < bVal) return sortOrder === "asc" ? -1 : 1;
       if (aVal > bVal) return sortOrder === "asc" ? 1 : -1;
       return 0;

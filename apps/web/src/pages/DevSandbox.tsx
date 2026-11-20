@@ -140,7 +140,7 @@ export default function DevSandbox() {
     })
     
     toast.success(`Sale processed: ${saleQuantity} x ${selectedWine.name}`, {
-      description: `Total: $${(selectedWine.price * saleQuantity * 3).toFixed(2)}`
+      description: `Total: $${(selectedWine.price * saleQuantity).toFixed(2)}`
     })
   }
   
