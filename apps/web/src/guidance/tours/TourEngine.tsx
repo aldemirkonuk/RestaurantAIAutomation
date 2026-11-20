@@ -1,8 +1,26 @@
 import { useCallback, useRef } from 'react'
 import type { PageTourId } from '../types'
-import { TOUR_REGISTRY } from './registry'
+import { TOUR_REGISTRY, type TourStep } from './registry'
 import { trackGuidance } from '../analytics'
 import { announceGuidance, focusTourHelpButton } from '../announce'
+import '../components/guidance-note.css'
+
+/**
+ * The steps of `pageId`'s tour whose element is on the page right now. The
+ * tour plays exactly these and leaves the rest out (ADR 0251 D3), so the page
+ * tip counts with this same function before it offers "Show me — N steps".
+ */
+export function stepsOnPage(pageId: PageTourId): TourStep[] {
+  const def = TOUR_REGISTRY[pageId]
+  if (!def?.steps?.length || typeof document === 'undefined') return []
+  return def.steps.filter((s) => {
+    try {
+      return !!document.querySelector(s.element)
+    } catch {
+      return false
+    }
+  })
+}
 
 export interface TourEngineApi {
   startTour: (pageId: PageTourId) => Promise<void>
@@ -51,13 +69,7 @@ export function useTourEngine(handlers: {
         const { driver } = await import('driver.js')
         await import('driver.js/dist/driver.css')
 
-        const availableSteps = def.steps.filter((s) => {
-          try {
-            return !!document.querySelector(s.element)
-          } catch {
-            return false
-          }
-        })
+        const availableSteps = stepsOnPage(pageId)
 
         if (!availableSteps.length) {
           announceGuidance('Tour unavailable — page sections not ready yet.')
@@ -69,10 +81,10 @@ export function useTourEngine(handlers: {
 
         const shortViewport =
           typeof window !== 'undefined' && window.innerHeight < 700
-        const steps = availableSteps.map((s, i, arr) => ({
+        const steps = availableSteps.map((s) => ({
           element: s.element,
           popover: {
-            title: `${i + 1}/${arr.length}  ${s.title}`,
+            title: s.title,
             description: s.description,
             side: (shortViewport ? 'top' : 'bottom') as 'top' | 'bottom',
             align: 'start' as const,
@@ -86,18 +98,85 @@ export function useTourEngine(handlers: {
           window.requestAnimationFrame(() => focusTourHelpButton())
         }
 
+        // Sketch 125, Tips A (locked 2026-10-01): a ring on the real thing and
+        // a small card beside it — no dark veil. The overlay stays (it is what
+        // lets a click elsewhere end the tour) but draws nothing; the ring is
+        // guidance-note.css's outline on `.driver-active-element`, which stays
+        // clickable.
         const d = driver({
           showProgress: true,
+          progressText: 'Step {{current}} of {{total}}',
           animate: !reduceMotion,
           allowClose: true,
-          overlayColor: 'rgba(15, 23, 42, 0.55)',
+          overlayOpacity: 0,
+          popoverClass: 'mudavym mdv-tourcard',
           stagePadding: 6,
-          stageRadius: 8,
-          popoverOffset: shortViewport ? 12 : 10,
+          stageRadius: 10,
+          popoverOffset: shortViewport ? 14 : 12,
           nextBtnText: 'Next',
           prevBtnText: 'Back',
           doneBtnText: 'Done',
           steps,
+          onPopoverRender: (popover, { driver: drv }) => {
+            // "Step 2 of 4" reads as an eyebrow above the title, not a footnote.
+            popover.wrapper.insertBefore(popover.progress, popover.title)
+            // "Stop", in words, beside Back and Next — not a bare × in the corner.
+            popover.closeButton.textContent = 'Stop'
+            popover.closeButton.setAttribute('aria-label', 'Stop the tour')
+            popover.footerButtons.appendChild(popover.closeButton)
+            // "Try it": end the tour and put the person on the real control,
+            // so the next key press does the step itself.
+            const idx = drv.getActiveIndex() ?? 0
+            const selector = availableSteps[idx]?.element
+            const tryIt = document.createElement('button')
+            tryIt.type = 'button'
+            tryIt.className = 'driver-popover-footer-btn mdv-tourcard__try'
+            tryIt.textContent = 'Try it'
+            tryIt.addEventListener('click', () => {
+              completed = true
+              trackGuidance('tour_tried', { pageId, step: idx })
+              handlersRef.current.onCompleted(pageId)
+              drv.destroy()
+              driverRef.current = null
+              activePageRef.current = null
+              window.requestAnimationFrame(() => {
+                const target = selector ? document.querySelector<HTMLElement>(selector) : null
+                if (!target) {
+                  focusTourHelpButton()
+                  return
+                }
+                target.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' })
+                // A ring may sit on a group, not one control; give the group a
+                // focus stop so focus lands on the ringed thing, not the page.
+                // The stop is taken away again when focus leaves the group (or
+                // at once, if the group could not take focus), so a later click
+                // inside it does not focus the whole group.
+                const addedStop = !target.hasAttribute('tabindex') && target.tabIndex < 0
+                if (addedStop) target.setAttribute('tabindex', '-1')
+                target.focus({ preventScroll: true })
+                if (addedStop) {
+                  if (document.activeElement === target) {
+                    target.addEventListener('blur', () => target.removeAttribute('tabindex'), {
+                      once: true,
+                    })
+                  } else {
+                    target.removeAttribute('tabindex')
+                  }
+                }
+              })
+            })
+            popover.footerButtons.prepend(tryIt)
+            // driver.js focuses the card's first button as soon as this hook
+            // returns, and the first button is now "Try it", so a first Enter
+            // would end the tour at step 1. Once it has, hand focus to Next
+            // ("Done" on the last step) so Enter walks the tour forward.
+            const next = popover.nextButton
+            queueMicrotask(() => {
+              if (document.activeElement === tryIt && next.isConnected && !next.disabled) {
+                next.focus()
+              }
+            })
+          },
           onHighlightStarted: (_el, _step, { state }) => {
             const idx = state.activeIndex ?? 0
             const total = steps.length
