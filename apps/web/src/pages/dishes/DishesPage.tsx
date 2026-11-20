@@ -474,6 +474,10 @@ export default function DishesPage() {
   const showMenu = Boolean(say && menu.byId && (menu.currentMenus ?? 0) > 0);
   const [params, setParams] = useSearchParams();
   const asked = params.get('open');
+  // The dish a link named when the page opened (the inventory drawer's "used in"
+  // lines): its sheet holds room while its recipe is read. A dish opened by a
+  // click holds none, the person's own act is not a layout shift.
+  const [fromLink] = useState(asked);
   const [allergen, setAllergen] = useState('');
   const [query, setQuery] = useState('');
   const all = dishes.data ?? [];
@@ -608,7 +612,14 @@ export default function DishesPage() {
               {DISH_ALLERGENS_UNREAD}
             </p>
           ) : null}
-          {canEdit ? <NoRecipeYet bare={bareIds.length} of={all.length} noun="dishes" only={onlyBare} onOnly={setOnlyBare} /> : null}
+          {canEdit && figState === 'reading' ? (
+            // Which dishes have no recipe is known only when the figures land; the line
+            // that says so sits above the table, so its room is held (one line, same
+            // class) until then and the table is not pushed down when it arrives.
+            <p className="cl-said" style={{ marginTop: 12, minHeight: '1lh' }} aria-hidden="true" data-testid="no-recipe-yet-room" />
+          ) : canEdit ? (
+            <NoRecipeYet bare={bareIds.length} of={all.length} noun="dishes" only={onlyBare} onOnly={setOnlyBare} />
+          ) : null}
           <div className="cl-row-controls" style={{ marginTop: 12 }}>
             <label htmlFor="dishes-search" className="cl-sr">Search this house’s dishes</label>
             <input
@@ -661,7 +672,12 @@ export default function DishesPage() {
                     >
                       <td>
                         <span className="cl-serif" style={{ display: 'block', fontWeight: 600, fontSize: 13.5 }}>{d.name}</span>
-                        {figures.byId && !f?.hasRecipe ? <span className="cl-dim" style={{ fontSize: 11 }}>No recipe yet</span> : null}
+                        {/* The line's room is held on every row, said or not: the figures land
+                            after the names, and a row that grew by this line then moved every
+                            row under it (r97 register CLS). */}
+                        <span className="cl-dim" data-testid="dish-sub" style={{ display: 'block', fontSize: 11, minHeight: '1lh' }}>
+                          {figures.byId && !f?.hasRecipe ? 'No recipe yet' : null}
+                        </span>
                       </td>
                       <td>{d.section ?? <span className="cl-dim">{EM}</span>}</td>
                       {c ? <td className="cl-num" style={{ textAlign: 'right' }}>{c.price}</td> : null}
@@ -687,7 +703,7 @@ export default function DishesPage() {
                               say={say}
                             />
                           ) : null}
-                          <RecipeSheet dishId={d.id} />
+                          <RecipeSheet dishId={d.id} holdRoom={d.id === fromLink} />
                         </td>
                       </tr>
                     ) : null,
