@@ -15,7 +15,7 @@ export type AromaFamilyKey = 'fruit' | 'citrus' | 'floral' | 'herbal' | 'spice' 
 export type Aroma = Partial<Record<AromaFamilyKey, number>>;
 
 /** Bump when any value below changes: a stored layer then reads as stale. */
-export const PRIORS_VERSION = 3;
+export const PRIORS_VERSION = 4;
 
 /**
  * How far a source of chemistry is believed (R3 section 3 step 8). A class
@@ -42,7 +42,7 @@ export interface ClassPrior {
 export const CLASS_PRIORS: readonly ClassPrior[] = [
   // --- water, sugars, salt
   { id: 'ice-water', match: /^(ice|crushed ice|water|soda water|club soda|sparkling water)$/, chem: {}, rsd: 0, q: 0.6, tight: true },
-  { id: 'honey-agave', match: /\b(honey|agave|maple)\b/, chem: { se: 75 }, rsd: 0.06, q: 0.5 },
+  { id: 'honey-agave', match: /\b(honey|agave|maple)\b/, chem: { se: 85 }, rsd: 0.06, q: 0.5 },
   { id: 'rich-syrup', match: /\b(rich syrup|demerara syrup)\b/, chem: { se: 85 }, rsd: 0.04, q: 0.55, tight: true },
   { id: 'simple-syrup', match: /\b(simple syrup|gomme|syrup)\b/, chem: { se: 61.5 }, rsd: 0.03, q: 0.6, tight: true, not: /\b(rich|demerara|grenadine|lemon|lime|orange|ginger|maple|cough)\b/ },
   { id: 'sugar', match: /\b(sugar|sucre)\b/, chem: { se: 100 }, rsd: 0.01, q: 0.6, solid: true, not: /\b(snap|pea|beet|cane juice|free)\b/ },
@@ -70,7 +70,7 @@ export const CLASS_PRIORS: readonly ClassPrior[] = [
   { id: 'dark-spirit', match: /\b(bourbon|whiskey|rye|scotch|rum)\b/, chem: { abv: 40, be: 10 }, rsd: 0.04, q: 0.6, aroma: { woody: 0.75 }, not: /\b(bread|flour|grain|berry|cake)\b/ },
   { id: 'clear-spirit', match: /\b(vodka|aquavit|spirit)\b/, chem: { abv: 40, be: 3 }, rsd: 0.04, q: 0.6 },
   // --- wine and beer styles
-  { id: 'red-wine', match: /\b(red wine|cabernet|merlot|pinot noir|shiraz|syrah|malbec|chianti|rioja)\b/, chem: { abv: 13.5, ce: 0.6, se: 0.2, be: 3 }, rsd: 0.12, q: 0.45, aroma: { fruit: 0.6 }, tight: true, not: /\bvinegar\b/ },
+  { id: 'red-wine', match: /\b(red wine|cabernet|merlot|pinot noir|shiraz|syrah|malbec|chianti|rioja)\b/, chem: { abv: 13.5, ce: 0.6, se: 0.6, be: 3 }, rsd: 0.12, q: 0.45, aroma: { fruit: 0.6 }, tight: true, not: /\bvinegar\b/ },
   { id: 'white-wine', match: /\b(white wine|chardonnay|sauvignon blanc|riesling|pinot grigio|chablis|albarino)\b/, chem: { abv: 12.5, ce: 0.75, se: 0.7, be: 0.5 }, rsd: 0.12, q: 0.45, aroma: { fruit: 0.5, floral: 0.2 }, tight: true, not: /\bvinegar\b/ },
   { id: 'sparkling-wine', match: /\b(prosecco|champagne|cava|sparkling wine|cremant)\b/, chem: { abv: 12, ce: 0.7, se: 1, be: 0.5 }, rsd: 0.12, q: 0.45, aroma: { fruit: 0.4 }, tight: true },
   { id: 'fortified-wine', match: /\b(port|sherry|madeira|marsala)\b/, chem: { abv: 18, se: 10, ce: 0.5 }, rsd: 0.25, q: 0.35, aroma: { nutty: 0.5, fruit: 0.4 }, tight: true, not: /\bvinegar\b/ },
@@ -83,18 +83,18 @@ export const CLASS_PRIORS: readonly ClassPrior[] = [
   { id: 'vinegar', match: /\b(vinegar|sirke)\b/, chem: { ce: 2.5 }, rsd: 0.15, q: 0.5, tight: true, not: /\bbalsamic\b/ },
   { id: 'balsamic', match: /\bbalsamic\b/, chem: { se: 14, ce: 3, nacl: 0.06 }, rsd: 0.15, q: 0.4, tight: true },
   { id: 'oil', match: /\b(olive oil|oil|yag)\b/, chem: { fat: 100 }, rsd: 0.01, q: 0.6 },
-  { id: 'soy', match: /\b(soy sauce|tamari)\b/, chem: { nacl: 14, glu: 0.8, nuc: 0.0, se: 1 }, rsd: 0.15, q: 0.4, aroma: { savoury: 0.7 }, tight: true },
+  { id: 'soy', match: /\b(soy sauce|tamari)\b/, chem: { nacl: 14, glu: 0.8, nuc: 0.0, se: 0.5 }, rsd: 0.15, q: 0.4, aroma: { savoury: 0.7 }, tight: true },
   { id: 'fish-sauce', match: /\bfish sauce\b/, chem: { nacl: 20, glu: 1.0 }, rsd: 0.15, q: 0.35, aroma: { savoury: 0.8, funky: 0.6 }, tight: true },
-  { id: 'ketchup', match: /\b(ketchup|catsup)\b/, chem: { se: 24, ce: 1.0, nacl: 2.8, glu: 0.15 }, rsd: 0.15, q: 0.4, tight: true },
+  { id: 'ketchup', match: /\b(ketchup|catsup)\b/, chem: { se: 24, ce: 1.0, nacl: 2.3, glu: 0.15 }, rsd: 0.15, q: 0.4, tight: true },
   { id: 'mayonnaise', match: /\b(mayonnaise|mayo)\b/, chem: { fat: 75, nacl: 1.6, ce: 0.3 }, rsd: 0.1, q: 0.4, tight: true },
   { id: 'tomato-paste', match: /\btomato (paste|puree concentrate)\b/, chem: { se: 12, ce: 3, nacl: 0.3, glu: 0.8 }, rsd: 0.25, q: 0.3, aroma: { savoury: 0.5 }, tight: true },
   { id: 'tomato-canned', match: /\b(canned|tinned|crushed|chopped|plum|peeled) tomato\b|\b(passata|tomato sauce|tomato puree)\b/, chem: { se: 4, ce: 0.7, nacl: 0.35, glu: 0.2 }, rsd: 0.25, q: 0.3, aroma: { savoury: 0.3 }, tight: true },
   { id: 'stock', match: /\b(stock|broth|bouillon|consomme|fumet)\b/, chem: { nacl: 0.5, fat: 0.3, se: 0.3, glu: 0.05, nuc: 0.01 }, rsd: 0.35, q: 0.3, aroma: { savoury: 0.5 }, tight: true, not: /\b(concentrate|paste|base|granule)\b/ },
   // --- dairy and egg
-  { id: 'butter', match: /\b(butter|tereyagi)\b/, chem: { fat: 81, nacl: 1.5 }, rsd: 0.05, q: 0.5, aroma: { dairy: 0.6 }, not: /\b(peanut|almond|nut|cocoa|shea|bean|lettuce|milk)\b/ },
+  { id: 'butter', match: /\b(butter|tereyagi)\b/, chem: { fat: 81, nacl: 1.6 }, rsd: 0.05, q: 0.5, aroma: { dairy: 0.6 }, not: /\b(peanut|almond|nut|cocoa|shea|bean|lettuce|milk)\b/ },
   { id: 'cream', match: /\b(cream|krema)\b/, chem: { fat: 35, se: 0.7, nacl: 0.1 }, rsd: 0.08, q: 0.5, aroma: { dairy: 0.5 }, not: /\b(sour|tartar|coconut|cheese)\b/ },
-  { id: 'yogurt', match: /\b(yogurt|kefir)\b/, chem: { se: 0.94, ce: 0.54, fat: 3.3, nacl: 0.17, glu: 0.003 }, rsd: 0.2, q: 0.4, aroma: { dairy: 0.5 } },
-  { id: 'milk', match: /\b(milk|sut)\b/, chem: { se: 1, fat: 3.5, nacl: 0.1 }, rsd: 0.1, q: 0.5, aroma: { dairy: 0.3 }, not: /\b(coconut|almond|oat|soy|rice|condensed|evaporated|powder)\b/ },
+  { id: 'yogurt', match: /\b(yogurt|kefir)\b/, chem: { se: 0.94, ce: 0.54, fat: 3.3, nacl: 0.12, glu: 0.003 }, rsd: 0.2, q: 0.4, aroma: { dairy: 0.5 } },
+  { id: 'milk', match: /\b(milk|sut)\b/, chem: { se: 1, fat: 3.3, nacl: 0.1 }, rsd: 0.1, q: 0.5, aroma: { dairy: 0.3 }, not: /\b(coconut|almond|oat|soy|rice|condensed|evaporated|powder)\b/ },
   { id: 'hard-cheese', match: /\b(parmesan|grana padano|pecorino|reggiano)\b/, chem: { fat: 26, nacl: 3.9, glu: 1.2 }, rsd: 0.2, q: 0.35, aroma: { dairy: 0.6, funky: 0.4 }, solid: true, tight: true },
   { id: 'feta', match: /\b(feta|halloumi|beyaz peynir)\b/, chem: { fat: 21.5, nacl: 2.3, glu: 0.12 }, rsd: 0.25, q: 0.3, aroma: { dairy: 0.6, funky: 0.3 }, solid: true, tight: true },
   { id: 'cheddar-type', match: /\b(cheddar|gouda|emmental|emmentaler|gruyere|edam|kasar|kashar|kasseri)\b/, chem: { fat: 33, nacl: 1.7, glu: 0.18 }, rsd: 0.2, q: 0.35, aroma: { dairy: 0.6, funky: 0.3 }, solid: true, tight: true },
@@ -102,7 +102,7 @@ export const CLASS_PRIORS: readonly ClassPrior[] = [
   { id: 'egg', match: /\begg\b/, chem: { fat: 9.5, nacl: 0.36, glu: 0.02 }, rsd: 0.1, q: 0.4, aroma: { dairy: 0.2 }, protein: true, solid: true, not: /\b(white|noodle|roll|plant)\b/ },
   // --- tomato, meat, fish
   { id: 'tomato', match: /\b(tomato|domates)\b/, chem: { se: 2.6, ce: 0.4, nacl: 0.01, glu: 0.15, be: 1 }, rsd: 0.25, q: 0.35, solid: true },
-  { id: 'meat-lamb', match: /\b(lamb|kofta|kuzu|mutton)\b/, chem: { fat: 20, nacl: 0.18, glu: 0.012, nuc: 0.03 }, rsd: 0.3, q: 0.3, protein: true, solid: true },
+  { id: 'meat-lamb', match: /\b(lamb|kofta|kuzu|mutton)\b/, chem: { fat: 23, nacl: 0.15, glu: 0.012, nuc: 0.03 }, rsd: 0.3, q: 0.3, protein: true, solid: true },
   { id: 'meat-beef', match: /\b(beef|steak|veal|dana)\b/, chem: { fat: 15, nacl: 0.18, glu: 0.012, nuc: 0.03 }, rsd: 0.3, q: 0.3, protein: true, solid: true },
   { id: 'pork', match: /\bpork\b/, chem: { fat: 14, nacl: 0.17, glu: 0.023, nuc: 0.05 }, rsd: 0.3, q: 0.3, protein: true, solid: true },
   { id: 'bacon', match: /\b(bacon|pancetta|guanciale|lardon)\b/, chem: { fat: 40, nacl: 2.1, glu: 0.03, nuc: 0.05 }, rsd: 0.25, q: 0.3, aroma: { savoury: 0.5 }, protein: true, solid: true, tight: true },
@@ -115,7 +115,7 @@ export const CLASS_PRIORS: readonly ClassPrior[] = [
   { id: 'carrot', match: /\b(carrot|havuc)\b/, chem: { se: 4.7, ce: 0.15, nacl: 0.18, fat: 0.2 }, rsd: 0.25, q: 0.35, solid: true },
   { id: 'bell-pepper', match: /\bbell pepper\b/, chem: { se: 3.5, ce: 0.2, nacl: 0.01, fat: 0.3 }, rsd: 0.3, q: 0.3, solid: true, tight: true },
   { id: 'leafy-greens', match: /\b(lettuce|romaine|arugula|spinach|kale|chard|cabbage)\b/, chem: { se: 0.9, nacl: 0.1, fat: 0.3 }, rsd: 0.35, q: 0.3, solid: true },
-  { id: 'mushroom', match: /\b(mushroom|shiitake|champignon|cremini)\b/, chem: { se: 0.8, nacl: 0.02, fat: 0.3, glu: 0.05 }, rsd: 0.35, q: 0.3, aroma: { earthy: 0.7, savoury: 0.4 }, solid: true },
+  { id: 'mushroom', match: /\b(mushroom|shiitake|champignon|cremini)\b/, chem: { se: 1.5, nacl: 0.02, fat: 0.3, glu: 0.05 }, rsd: 0.35, q: 0.3, aroma: { earthy: 0.7, savoury: 0.4 }, solid: true },
   { id: 'potato', match: /\b(potato|patates)\b/, chem: { se: 0.8, nacl: 0.02, fat: 0.1, glu: 0.03 }, rsd: 0.3, q: 0.35, solid: true },
   { id: 'herb', match: /\b(parsley|mint|basil|dill|thyme|rosemary|oregano|sage|tarragon|cilantro|herb)\b/, chem: {}, rsd: 0, q: 0.3, aroma: { herbal: 0.7 }, solid: true },
   { id: 'spice', match: /\b(cumin|paprika|turmeric|cinnamon|cardamom|clove|allspice|nutmeg|sumac|pepper|peppercorn)\b/, chem: { se: 2, nacl: 0.05, fat: 4 }, rsd: 0.5, q: 0.25, aroma: { spice: 0.85, earthy: 0.3 }, solid: true, not: /\b(bell|sweet|chili|chilli|red|green|yellow|hot|roasted|stuffed|jalapeno)\b/ },
