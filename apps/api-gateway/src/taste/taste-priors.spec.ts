@@ -32,7 +32,7 @@ describe('class priors: the table', () => {
       expect(se + nacl + fat).toBeLessThanOrEqual(100.01);
     }
   });
-  it('is on priors version 5', () => expect(PRIORS_VERSION).toBe(5));
+  it('is on priors version 6', () => expect(PRIORS_VERSION).toBe(6));
 });
 
 describe('class priors: an unverified figure lowers belief (r94)', () => {
