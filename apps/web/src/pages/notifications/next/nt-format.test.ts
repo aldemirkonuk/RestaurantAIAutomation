@@ -159,6 +159,7 @@ describe('the mark drawn in the emoji’s place', () => {
       ['email_classified_promo', 'Vendor mail'],
       ['system', 'System'],
       ['system_alert', 'System'],
+      ['team_member_own_wage_set', 'System'],
       ['payment_due', 'Payments'],
       ['ai_suggestion', 'Advice'],
       ['constraint_triggered', 'Advice'],

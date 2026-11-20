@@ -26,7 +26,45 @@ export type PulseRevenueView =
   | {
       status: "unavailable";
       message: string;
+    }
+  | {
+      /**
+       * Not this person's to see: the gateway serves sales to owners and
+       * managers only and leaves the figures out for anyone else (ADR 0253,
+       * answered 2026-10-01 round 2). Nothing is rendered for it — not a
+       * figure, not a zero, and not the "Connect Toast" line, which would
+       * tell a staff member something false about the house.
+       */
+      status: "withheld";
     };
+
+/**
+ * Sales left out of the response because the signed-in role does not see
+ * money. The gateway leaves the key out (`mobile.service.ts`
+ * `getTodayPulse`); `null` is a different fact (the sales could not be read).
+ */
+export function salesWithheld(data: TodayPulse): boolean {
+  return !Object.prototype.hasOwnProperty.call(data, "revenueToday");
+}
+
+/**
+ * Whether the Insights tab draws its "Sales tonight" card.
+ *
+ * With a pulse in hand, the gateway's answer decides (`salesWithheld`), even
+ * against the role the phone remembers. Without one (still loading, or the
+ * request failed) the phone falls back on the role `/auth/me` gave the
+ * session: only an owner or a manager is drawn the card, so a staff member
+ * whose request failed is not told to "Connect Toast", a line about the house
+ * that is false for them. A role the phone does not know gets no card. This is
+ * a display choice, never the gate: the gateway decides what is sent.
+ */
+export function drawSalesCard(
+  data: TodayPulse | undefined,
+  role: string | undefined,
+): boolean {
+  if (data) return !salesWithheld(data);
+  return role === "owner" || role === "manager";
+}
 
 export interface PulseStripView {
   revenue: PulseRevenueView;
@@ -44,17 +82,19 @@ export interface PulseStripView {
 export function resolvePulseStripView(data: TodayPulse): PulseStripView {
   const revenueKnown = data.revenueToday != null;
 
-  const revenue: PulseRevenueView = revenueKnown
-    ? {
-        status: "known",
-        amount: data.revenueToday as number,
-        checksLabel: data.checksToday != null ? `${data.checksToday} checks` : "sales so far",
-        deltaPct: data.deltaPct,
-      }
-    : {
-        status: "unavailable",
-        message: REVENUE_UNAVAILABLE_MESSAGE,
-      };
+  const revenue: PulseRevenueView = salesWithheld(data)
+    ? { status: "withheld" }
+    : revenueKnown
+      ? {
+          status: "known",
+          amount: data.revenueToday as number,
+          checksLabel: data.checksToday != null ? `${data.checksToday} checks` : "sales so far",
+          deltaPct: data.deltaPct ?? null,
+        }
+      : {
+          status: "unavailable",
+          message: REVENUE_UNAVAILABLE_MESSAGE,
+        };
 
   let decisionsLabel: string | null;
   if (data.pendingDecisions > 0) {

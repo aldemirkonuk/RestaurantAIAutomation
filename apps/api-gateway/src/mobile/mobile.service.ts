@@ -4,6 +4,8 @@ import { ProcurementService } from "../procurement/procurement.service";
 import { ConversationsService } from "../conversations/conversations.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { ToastService } from "../toast/toast.service";
+import { roleSatisfies } from "../procurement/order-approval-gate";
+import { OWN_WAGE_ACTION } from "../team/own-wage-notice";
 import {
   DecisionKind,
   FeedItem,
@@ -11,6 +13,155 @@ import {
   FeedResponse,
   TodayPulseResponse,
 } from "./dto/mobile.dto";
+
+/**
+ * Does this caller see the house's money on the phone?
+ *
+ * The founder, 2026-10-01 (ADR 0253, "Answered 2026-10-01 (round 2)"), to "On
+ * the web, staff never see prices. The phone's Today feed shows staff order
+ * amounts, approve cards and today's revenue. Close that?": *"Close it to
+ * staff (Recommended)"*.
+ *
+ * Owners and managers only. `role` is the caller's role IN THIS HOUSE
+ * (`req.user.role`, re-read from `user_restaurant_access` on every request,
+ * ADR 0162). The rank rule is `roleSatisfies`, the one the order-approval gate
+ * already uses, so `null`, an absent role, `"staff"` and any string nobody has
+ * heard of all rank below manager: a role that cannot be established gets the
+ * staff view, never the money view.
+ *
+ * A staff member holding a live `vendor_send` grant is still not a money role
+ * here. The grant is read by the send gate at the act; this feed does not read
+ * it, so it cannot widen what the feed shows.
+ */
+export function seesHouseMoney(role: string | null | undefined): boolean {
+  return roleSatisfies(role, "manager");
+}
+
+/**
+ * Notification types whose `message` is money-free from EVERY writer of the
+ * type (enumerated 2026-10-01; the writers are listed in
+ * `.planning/tech-debt.d/2026-10-01-fix-phone-feed-no-money-for-staff.md`).
+ *
+ * For a caller who does not see money, a notification card's subtitle is the
+ * row's `message` only when its type is on this list. Every other type falls
+ * back to the card's neutral line, and that includes a type nobody has written
+ * yet, so a new writer that puts money in its sentence cannot reach staff by
+ * default. The text is never scrubbed: a pattern that misses one way of
+ * writing an amount leaks it. Adding a type here means reading every writer of
+ * it first.
+ *
+ * Left off on purpose, because at least one writer puts money or another
+ * person's free text in the sentence: `service_closed`, `invoice_received`,
+ * `goal_reached`, `price_change`, `price_index_upload`, `promo_digest`,
+ * `delivery_proposal`, `authority_grant_issued`, `authority_grant_reapproved`,
+ * `team_member_own_wage_set` (a manager's own wage, owners only),
+ * `system_alert`, `deal`, `order_verification`, `vendor_reply`,
+ * `vendor_deal_declined` and `vendor_letter_declined`.
+ *
+ * `system` is on the list since the own-wage notice moved to its own type
+ * (the founder, 2026-10-01: "Give wages its own type (Recommended)"). Every
+ * writer of `system` was re-read that day and none puts money in the
+ * sentence; a row stored as `system` before the move is still kept quiet by
+ * `isOwnWageNotice`. Three `system` writers do carry a team member's typed
+ * words (a team broadcast, a note, a held team message), so staff read those
+ * on the feed as they already did on the Notifications screen.
+ *
+ * `unknown_sender` is on the list although its sentence quotes up to 80
+ * characters of an incoming email's subject (`_notify_unknown_sender` in the
+ * agent orchestrator's `email_intel_agent.py`): an outsider's text, which can
+ * name a price. The free-text rule above does not decide it. Incoming mail
+ * follows ADR 0253 round 11 F13 (on PR #566), *"Mail kept, AI summaries
+ * neutral (Recommended)"*, under which a vendor mail's subject and text reach
+ * staff. F13 says vendor mail, and this sender is not yet in the providers
+ * list; counting it as vendor mail is this branch's reading, filed as open in
+ * the tech-debt entry named at the top of this comment.
+ */
+export const MONEY_FREE_NOTIFICATION_TYPES: ReadonlySet<string> = new Set([
+  // Deliveries and stock.
+  "order_delivered",
+  "delivery_differs",
+  "delivery_clock",
+  "delivery_lapsed",
+  "delivery_item_to_name",
+  "delivery_scheduled",
+  "order_pending",
+  "inventory_low_stock",
+  "report",
+  // Asking an owner or a manager to send, and what came of it.
+  "vendor_send_requested",
+  "vendor_send_released",
+  "vendor_deal_requested",
+  "vendor_letter_requested",
+  "vendor_deal_released",
+  "vendor_letter_released",
+  "vendor_deal_withdrawn",
+  "vendor_letter_withdrawn",
+  "vendor_letter_rewaiting",
+  "vendor_letter_send_failed",
+  "authority_grant_revoked",
+  "authority_grant_deleted",
+  "authority_grant_hidden",
+  "authority_grant_shown",
+  "authority_grant_suspended",
+  // Vendor mail and the drafting agent.
+  "unknown_sender",
+  "draft_ready",
+  "constraint_triggered",
+  "rate_limit_reached",
+  "off_app_invoice",
+  "scarcity_hold_not_sent",
+  "conversation_reapproval_needed",
+  "mail_retention_deleted",
+  "security_alert",
+  "prospect",
+  // Connections.
+  "grant_suspended",
+  "mcp_tool_added",
+  "mail_grant_absent",
+  // A person's own reminders.
+  "calendar_reminder",
+  "custom_reminder",
+  // Team and account notices: a published schedule, a call-out, a team
+  // message or note in its author's words, Away dates, a change to one's own
+  // access or role, a passkey added or removed.
+  "system",
+]);
+
+/**
+ * Is this notification a manager's own-wage notice? Its metadata names the
+ * action whatever its type, so a row written as `system` before the notice
+ * had its own type (team/own-wage-notice.ts) is still recognised. Such a row
+ * reaches a caller who does not see money only as an owner later demoted in
+ * the same house, and its sentence holds two wages.
+ */
+export function isOwnWageNotice(meta: unknown): boolean {
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return false;
+  return (meta as { action?: unknown }).action === OWN_WAGE_ACTION;
+}
+
+/**
+ * The only notification `metadata` keys a caller who does not see money gets
+ * on a card's `meta`: identifiers and the two labels the card already lifts
+ * (`wineName`, `quantity`). Every other key, including one a writer adds
+ * later, is left out. The phone reads no `meta` key today (apps/mobile), so
+ * nothing it draws depends on the rest.
+ */
+export const NON_MONEY_META_KEYS: ReadonlySet<string> = new Set([
+  "orderId",
+  "orderNumber",
+  "wineName",
+  "quantity",
+]);
+
+/** `meta` cut down to `NON_MONEY_META_KEYS`. */
+export function nonMoneyMeta(meta: unknown): Record<string, unknown> {
+  const kept: Record<string, unknown> = {};
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return kept;
+  for (const [key, value] of Object.entries(meta)) {
+    if (NON_MONEY_META_KEYS.has(key)) kept[key] = value;
+  }
+  return kept;
+}
 
 /**
  * Composes the mobile decision feed and today-pulse from existing domain
@@ -29,7 +180,16 @@ export class MobileService {
     private readonly toastService: ToastService,
   ) {}
 
-  async getFeed(userId: string, restaurantId: string): Promise<FeedResponse> {
+  /**
+   * `role` is required, not defaulted, so a new caller cannot forget it; a
+   * caller that passes `null` gets the staff view (`seesHouseMoney`).
+   */
+  async getFeed(
+    userId: string,
+    restaurantId: string,
+    role: string | null,
+  ): Promise<FeedResponse> {
+    const money = seesHouseMoney(role);
     const [orders, conversations, notifications] = await Promise.all([
       this.procurementService.listPendingOrders(restaurantId).catch((e) => {
         this.logger.warn(`feed orders collector failed: ${e?.message}`);
@@ -60,7 +220,11 @@ export class MobileService {
 
     const items: FeedItem[] = [];
 
-    for (const order of orders as any[]) {
+    // Approve cards carry the order's money (in `amount` and the subtitle), so
+    // they are built only for a caller who sees money (ADR 0253 round 2). The
+    // orders are still read for anyone: `pendingOrderIds` below keeps the
+    // "approval needed" notification echo out of everyone's feed.
+    for (const order of (money ? orders : []) as any[]) {
       const amount =
         order.totalCost ??
         order.finalPrice ??
@@ -122,6 +286,17 @@ export class MobileService {
       const notifOrderId = meta.orderId ?? null;
       const type = n.type ?? "";
 
+      // A notification's own words and metadata reach a caller who does not
+      // see money only through two allowlists: the message only for a type
+      // every writer keeps money-free, and the metadata only under a non-money
+      // key. Anything else, including a type or key added later, falls back to
+      // the card's neutral line and is left out (ADR 0253 round 2). A wage
+      // notice stays quiet under any type.
+      const sayMessage =
+        money ||
+        (MONEY_FREE_NOTIFICATION_TYPES.has(type) && !isOwnWageNotice(meta));
+      const cardMeta = money ? meta : nonMoneyMeta(meta);
+
       if (type === "invoice_received") {
         items.push(
           this.makeItem({
@@ -129,14 +304,15 @@ export class MobileService {
             entityId: notifOrderId ?? n.id,
             title: n.title ?? "Verify delivery",
             subtitle:
-              n.message ?? "Confirm the physical count against the invoice.",
+              (sayMessage ? n.message : null) ??
+              "Confirm the physical count against the invoice.",
             wineName: meta.wineName ?? null,
             quantity: meta.quantity ?? null,
             priority: "critical",
             createdAt: n.createdAt ?? n.created_at ?? new Date().toISOString(),
             orderId: notifOrderId,
             notificationId: n.id,
-            meta,
+            meta: cardMeta,
           }),
         );
         continue;
@@ -151,28 +327,42 @@ export class MobileService {
           kind: "alert",
           entityId: n.id,
           title: n.title ?? "Notification",
-          subtitle: n.message ?? "",
+          subtitle: (sayMessage ? n.message : null) ?? "",
           priority: this.normalizePriority(n.priority),
           createdAt: n.createdAt ?? n.created_at ?? new Date().toISOString(),
           notificationId: n.id,
           orderId: notifOrderId,
-          meta,
+          meta: cardMeta,
         }),
       );
     }
 
     items.sort((a, b) => b.score - a.score);
 
+    // For a caller who does not see money, `amount` is taken off every card
+    // and the order-approval count is left out: absent, never `null` or `0`,
+    // because a withheld figure is not "no amount" and not "none pending"
+    // (ADR 0016, ADR 0020).
+    const served: FeedItem[] = money
+      ? items
+      : items.map(({ amount: _withheld, ...card }) => card);
+
     return {
-      items,
+      items: served,
       counts: {
-        total: items.length,
-        orderApprovals: items.filter((i) => i.kind === "order_approval").length,
-        draftApprovals: items.filter((i) => i.kind === "draft_approval").length,
-        receiptVerifications: items.filter(
+        total: served.length,
+        ...(money
+          ? {
+              orderApprovals: served.filter((i) => i.kind === "order_approval")
+                .length,
+            }
+          : {}),
+        draftApprovals: served.filter((i) => i.kind === "draft_approval")
+          .length,
+        receiptVerifications: served.filter(
           (i) => i.kind === "receipt_verification",
         ).length,
-        alerts: items.filter((i) => i.kind === "alert").length,
+        alerts: served.filter((i) => i.kind === "alert").length,
       },
       generatedAt: new Date().toISOString(),
     };
@@ -182,13 +372,21 @@ export class MobileService {
    * Sales snapshot for the pulse strip. The client sends its local midnight
    * as `start` so "today" is defined by the phone in the manager's pocket,
    * not a server timezone guess.
+   *
+   * The sales figures go to owners and managers only (ADR 0253 round 2). For
+   * anyone else the sales are not read at all and the four figures are left
+   * out of the response; the decision counts are the caller's own feed.
+   * `checksToday` goes with revenue: it is the same sales read and the phone
+   * has only ever shown it beside the revenue figure.
    */
   async getTodayPulse(
     userId: string,
     restaurantId: string,
+    role: string | null,
     startIso?: string,
     endIso?: string,
   ): Promise<TodayPulseResponse> {
+    const money = seesHouseMoney(role);
     const end = this.parseDate(endIso) ?? new Date();
     const start = this.parseDate(startIso) ?? this.utcMidnight(end);
     const weekMs = 7 * 24 * 60 * 60 * 1000;
@@ -196,13 +394,17 @@ export class MobileService {
     const lastWeekEnd = new Date(end.getTime() - weekMs);
 
     const [today, lastWeek, feed] = await Promise.all([
-      this.toastService
-        .getSalesData(restaurantId, start, end)
-        .catch(() => null),
-      this.toastService
-        .getSalesData(restaurantId, lastWeekStart, lastWeekEnd)
-        .catch(() => null),
-      this.getFeed(userId, restaurantId).catch(() => null),
+      money
+        ? this.toastService
+            .getSalesData(restaurantId, start, end)
+            .catch(() => null)
+        : null,
+      money
+        ? this.toastService
+            .getSalesData(restaurantId, lastWeekStart, lastWeekEnd)
+            .catch(() => null)
+        : null,
+      this.getFeed(userId, restaurantId, role).catch(() => null),
     ]);
 
     const revenueToday = today?.totalRevenue ?? null;
@@ -213,10 +415,14 @@ export class MobileService {
         : null;
 
     return {
-      revenueToday,
-      checksToday: today?.total ?? null,
-      revenueLastWeek,
-      deltaPct,
+      ...(money
+        ? {
+            revenueToday,
+            checksToday: today?.total ?? null,
+            revenueLastWeek,
+            deltaPct,
+          }
+        : {}),
       pendingDecisions: feed?.counts.total ?? 0,
       criticalCount:
         feed?.items.filter((i) => i.priority === "critical").length ?? 0,
