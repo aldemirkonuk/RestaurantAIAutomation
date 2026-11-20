@@ -41,7 +41,15 @@ import { createAnchorScanner, type AnchorScanner } from './anchors.scan'
 const WEB = join(__dirname, '..', '..', '..')
 
 /** `<tour id> <selector>` → why the scan cannot check it. Empty today. */
-const CANNOT_CHECK: Record<string, string> = {}
+// Connections draws each register as a <GroupRail> pane whose <section id={anchor}> takes its id
+// from the group's anchor prop, a value the scan cannot resolve. The three sections do exist on
+// the page (walked on a production build, r74).
+const GROUP_PANE = 'GroupRail pane: the section id comes from the group anchor prop'
+const CANNOT_CHECK: Record<string, string> = {
+  'settings-services section#attached': GROUP_PANE,
+  'settings-services section#payment': GROUP_PANE,
+  'settings-services section#grants': GROUP_PANE,
+}
 
 /** Tours a person can still reach from a page or from Help. */
 const LIVE = (Object.keys(PAGE_TOUR_ROUTES) as PageTourId[]).filter((id) => TOUR_REGISTRY[id])

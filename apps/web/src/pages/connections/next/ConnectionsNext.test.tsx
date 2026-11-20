@@ -2187,3 +2187,58 @@ describe("the house's own copy of its vendor mail", () => {
     expect(screen.queryByText('Never asked')).not.toBeInTheDocument();
   });
 });
+
+describe('one group open at a time (r73 c3 need 8)', () => {
+  const head = (title: string) =>
+    screen.getAllByRole('button', { name: new RegExp(`^${title}`) }).find((b) => b.classList.contains('gr-head-btn')) as HTMLElement;
+  const bodyOf = (id: string) => document.getElementById(`${id}-body`) as HTMLElement;
+
+  beforeEach(() => {
+    window.location.hash = '';
+    Element.prototype.scrollIntoView = vi.fn();
+  });
+
+  it('opens the till first and keeps the other seven closed and inert', () => {
+    mockData.current = base();
+    render(<ConnectionsNext />);
+    expect(head('The till')).toHaveAttribute('aria-expanded', 'true');
+    expect(bodyOf('till')).not.toHaveAttribute('inert');
+    for (const id of ['sender', 'text', 'feed', 'servers', 'distributors', 'payment', 'grants']) {
+      expect(bodyOf(id)).toHaveAttribute('inert');
+    }
+    expect(document.querySelectorAll('.gr-head-btn')).toHaveLength(8);
+  });
+
+  it('opening a group from the rail closes the open one', () => {
+    mockData.current = base();
+    render(<ConnectionsNext />);
+    const nav = screen.getByRole('navigation', { name: /connections groups/i });
+    fireEvent.click(within(nav).getByText('What the house pays with'));
+    expect(bodyOf('payment')).not.toHaveAttribute('inert');
+    expect(bodyOf('till')).toHaveAttribute('inert');
+  });
+
+  it('a #fragment opens the group that carries it', () => {
+    window.location.hash = '#grants';
+    mockData.current = base();
+    render(<ConnectionsNext />);
+    expect(head('Personal grants that act inside this house')).toHaveAttribute('aria-expanded', 'true');
+    expect(bodyOf('till')).toHaveAttribute('inert');
+  });
+
+  it('a retired #attached link opens the till', () => {
+    window.location.hash = '#attached';
+    mockData.current = base();
+    render(<ConnectionsNext />);
+    expect(bodyOf('till')).not.toHaveAttribute('inert');
+  });
+
+  it('is a select at phone width with one option per group', () => {
+    mockData.current = base();
+    render(<ConnectionsNext />);
+    const select = screen.getByLabelText(/jump to a group/i) as HTMLSelectElement;
+    expect(select.options).toHaveLength(8);
+    fireEvent.change(select, { target: { value: 'servers' } });
+    expect(bodyOf('servers')).not.toHaveAttribute('inert');
+  });
+});
