@@ -1,9 +1,10 @@
 import { createHash } from 'crypto';
 import {
-  ABV_FLOOR, ABV_SPAN, AromaFamilyKey, BITE_EXPONENT, Chem, CLASS_PRIORS, DILUTION_BY_METHOD,
+  ABV_FLOOR, ABV_SPAN, AromaFamilyKey, BITE_EXPONENT, Chem, DILUTION_BY_METHOD,
   DILUTION_DEFAULT, DILUTION_SD, DILUTION_SD_ASSUMED, DRAWS, K, METHODS, Method, PRIORS_VERSION,
   NONE_BY_CLASS, Q_BY_PROV, RollupProv, ROAST_K, SOLID_SALT_RELEASE, SUPPRESS, YAMAGUCHI,
 } from './taste-priors';
+import { findClass } from './taste-class-match';
 
 /**
  * Work out how a recipe tastes from its lines (R3-DERIVE.md steps 1-8, minus
@@ -94,7 +95,7 @@ function resolve(l: RollupLine): Resolved {
     const prov: RollupProv = l.chemProv ?? 'dataset';
     return { ...base, chem: { ...l.chem }, prov, q: Q_BY_PROV[prov], rsd: prov === 'measured' ? 0.03 : 0.12, aroma: {}, protein: false, solid: false, known: new Set(Object.keys(l.chem) as Array<keyof Chem>), from: 'good' };
   }
-  const cls = CLASS_PRIORS.find((c) => c.match.test(fold(l.name)));
+  const cls = findClass(l.name);
   const ownAxes = Object.entries(l.own?.axes ?? {}).filter(([k, a]) => (k in OWN_CHEM || AROMA_KEYS.includes(k)) && Number.isFinite(a.v));
   if (l.own && ownAxes.length > 0) {
     const chem: Chem = { ...(cls?.chem ?? {}) };

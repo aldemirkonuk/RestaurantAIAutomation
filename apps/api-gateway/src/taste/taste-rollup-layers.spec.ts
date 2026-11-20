@@ -19,7 +19,9 @@ describe('rollup: a line that names a good uses the good\'s own taste', () => {
   it('a bitter, juniper gin lifts the bitter and herbal bands over the label\'s class prior', () => {
     expect(band(layered, 'bitter')).toBe('light');
     expect(band(layered, 'herbal')).toBe('medium');
-    expect(band(label, 'herbal')).toBe('absent'); // the label "Gin" has no aroma in the prior
+    // r92: the label "Gin" now carries a herbal note in its class prior, but the staff's juniper reading is the stronger and the more believed.
+    expect(label.axes.herbal.v).toBeLessThan(layered.axes.herbal.v);
+    expect(label.axes.herbal.conf).toBeLessThanOrEqual(layered.axes.herbal.conf);
     expect(layered.axes.bitter.v).toBeGreaterThan(2);
     expect(layered.axes.herbal.v).toBeGreaterThan(4);
   });

@@ -81,7 +81,8 @@ describe('rollup: a cocktail (R3 section 4, whiskey sour)', () => {
 describe('rollup: a dish (R3 section 5, seared kofta, garlic yogurt, charred tomato)', () => {
   const r = rollup(kofta);
   it('lands on the worked example peaks within a band', () => {
-    near(r.axes.salty.v, 5.5, 0.8);
+    // R3's 5.5 used salty k 0.9; r92 k 1.4 puts this dish (0.8 % salt on raw meat) at 3.6.
+    near(r.axes.salty.v, 3.6, 0.5);
     near(r.axes.umami.v, 6.4, 1.2);
     near(r.axes.fat.v, 7.1, 0.8);
     near(r.axes.sour.v, 3.7, 0.8);
@@ -142,5 +143,17 @@ describe('rollup: what it does not know', () => {
   });
   it('gives an empty recipe no axes at all, not zeros', () => {
     expect(rollup({ kind: 'dish', components: [{ name: 'x', lines: [] }] }).axes).toEqual({});
+  });
+});
+
+describe('rollup: salt and bitter read as a cook would (r92)', () => {
+  const potato = (salt: number) => rollup({ kind: 'dish', components: [{ name: 'x', lines: [{ name: 'Potato', qty: 100 - salt, unit: 'g' }, { name: 'Salt', qty: salt, unit: 'g' }] }] }).axes.salty.v;
+  it('a dish at 1.2 % salt is medium, 2 % pronounced, 3 % dominant', () => {
+    near(potato(1.2), 5, 0.8); near(potato(2), 6.9, 0.8);
+    expect(potato(3)).toBeGreaterThanOrEqual(8);
+  });
+  it('gin at 40 % diluted 3:1 keeps a medium bitter when staff said bitter 6', () => {
+    const r = rollup({ kind: 'cocktail', method: 'neat', components: [{ name: 'd', lines: [{ name: 'Gin', qty: 75, unit: 'ml', own: { prov: 'staff', axes: { bitter: { v: 6 } } } }, { name: 'Water', qty: 25, unit: 'ml' }] }] });
+    near(r.axes.bitter.v, 5, 0.8);
   });
 });

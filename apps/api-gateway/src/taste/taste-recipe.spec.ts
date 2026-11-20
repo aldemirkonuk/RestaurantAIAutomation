@@ -172,7 +172,8 @@ describe('TasteService.rollupSubject: the goods a recipe draws', () => {
     const f = fakeDb(t);
     await new TasteService(f.db).rollupSubject(RID, 'cocktail', COCKTAIL);
     expect(f.inserts[0].axes.bitter).toBeUndefined();
-    expect(f.inserts[0].axes.herbal).toBeUndefined();
+    // Gin's class prior carries a herbal note, so herbal is stated, but from the label, not from the good's layer.
+    expect(f.inserts[0].ext.rollup.lineSources[0]).toEqual({ name: 'Gin', from: 'class_prior', prov: 'class_prior' });
     expect(f.inserts[0].ext.rollup.notKnown).toContain('bitter');
   });
   it('ignores an AI draft and another house\'s layer', async () => {
