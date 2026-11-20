@@ -28,6 +28,13 @@ import {
 import { readOpenLocks, readPeople, type OpenLock } from "../pricing/price-locks";
 
 const FREE_TIER_MANUAL_LIMIT = 25;
+
+/** A kept menu is named for how it was read and the date the person gave, so two reads are told apart (r102 menu-func-5). */
+function versionName(method: string, menuDate: { date: string; precision: "day" | "month" } | null): string {
+  const how = method === "scan" ? "a photo or PDF" : method === "csv" ? "a spreadsheet" : "typed lines";
+  const when = menuDate ? (menuDate.precision === "month" ? menuDate.date.slice(0, 7) : menuDate.date) : null;
+  return when ? `Menu from ${how}, ${when}` : `Menu from ${how}`;
+}
 /** The private bucket the gateway already keeps original bytes in (document intake). */
 const SOURCE_BUCKET = "vendor-attachments";
 /** How long a link to a kept menu source lives. */
@@ -472,18 +479,18 @@ export class MenusService {
 
     // 4-6: resolve against the wine library, insert menu_items, and create the
     // governance submission trail. NOT current, so no inventory or price.
-    const reviewItems = await this.resolveAndPersistItems(
-      items,
-      restaurantId,
-      menu.id,
-      userId,
-      dto.method,
-      false,
-    );
+    // A failed resolve must not leave the draft behind: a version that says
+    // lines_extracted > 0 and holds none could be made current (r102 menu-func-3).
+    let reviewItems: MenuImportReviewItem[];
+    try {
+      reviewItems = await this.resolveAndPersistItems(items, restaurantId, menu.id, userId, dto.method, false);
+    } catch (err) {
+      await this.dropDraft(restaurantId, menu.id);
+      throw err;
+    }
 
-    // 7. Mark menu_uploaded for everyone on this restaurant (matches the
-    // restaurant-scoped pattern used by vendor_added / team_member_invited).
-    await this.markMenuUploaded(restaurantId);
+    // menu_uploaded is NOT ticked here: a draft is not the house's menu and no
+    // price moved. It ticks when a menu is made current (r102 menu-func-5).
 
     return {
       menuId: menu.id,
@@ -584,6 +591,19 @@ export class MenusService {
     }
   }
 
+  /** Takes a draft and its stray lines away after a failed import; a failure to do so is logged, never hidden. */
+  private async dropDraft(restaurantId: string, menuId: string): Promise<void> {
+    const lines = await this.dbService.supabase.from("menu_items").delete().eq("menu_id", menuId).eq("restaurant_id", restaurantId);
+    const menu = await this.dbService.supabase
+      .from("restaurant_menus")
+      .delete()
+      .eq("id", menuId)
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "draft");
+    const failure = lines.error?.message ?? menu.error?.message;
+    if (failure) this.logger.error(`menu ${menuId}: the draft of a failed import could not be removed: ${failure}`);
+  }
+
   private async createVersion(
     restaurantId: string,
     userId: string,
@@ -596,7 +616,7 @@ export class MenusService {
       .from("restaurant_menus")
       .insert({
         restaurant_id: restaurantId,
-        name: "Wine List",
+        name: versionName(dto.method, menuDate),
         menu_type: "beverage",
         status: "draft",
         cadence: dto.cadence ?? null,
@@ -1495,6 +1515,13 @@ export class MenusService {
     // read throws here and nothing is changed.
     const lines = (await this.readLines(menuId, restaurantId)) as unknown as InsertedMenuItem[];
     const version = await this.readVersionRow(restaurantId, menuId);
+    // A menu with no live line would retire the house's real menu and put nothing
+    // in its place (r102 menu-func-3). Said in words; nothing is changed.
+    if (lines.length === 0 && version.status !== "active") {
+      throw new BadRequestException(
+        "This menu has no lines left, so it cannot become the current menu: that would retire the menu the house has and put nothing in its place. Nothing was changed.",
+      );
+    }
     const plan = await this.computePlan(restaurantId, menuId, version.status === "active", lines, readMomentOf(version));
     if (plan.fingerprint !== fingerprint.trim()) {
       throw new ConflictException(
@@ -1530,7 +1557,40 @@ export class MenusService {
       held: [],
       returned: [],
     };
-    if (r.outcome === "already_current") return { outcome: "already_current", ...empty };
+    // The setup's menu step is done when a menu is the house's, not when one was read.
+    await this.markMenuUploaded(restaurantId);
+    if (r.outcome === "already_current") {
+      // A carry that was cut off (a timed-out call) is finished here: only the
+      // lines whose house price still differs are carried, dated by the original
+      // choice, so a price set by hand since still wins (stale) and a locked kind
+      // is held (r102 menu-func-2). A menu that is fully carried changes nothing.
+      if (!madeCurrentAt) return { outcome: "already_current", ...empty };
+      const pending = await this.linesStillToCarry(lines, restaurantId);
+      if (pending.length === 0) return { outcome: "already_current", ...empty };
+      const carried = await this.addToInventory(pending, restaurantId, userId, { effectiveFrom: madeCurrentAt, menuId });
+      await this.backfillMenuItemColumn(carried.inventoryMap, "inventory_item_id");
+      const counts: Record<string, number> = {};
+      const failed: Array<{ menuItemId: string; name: string; error: string }> = [];
+      const held: Array<{
+        menuItemId: string;
+        name: string;
+        kind: "bottle" | "glass";
+        lockId: string;
+        lockedPrice: number | null;
+        lockedBy: string | null;
+        lockedAt: string | null;
+      }> = [];
+      for (const line of pending) {
+        const entry = carried.priceSync.get(line.id);
+        const outcome = entry?.outcome ?? "not_linked";
+        counts[outcome] = (counts[outcome] ?? 0) + 1;
+        for (const h of entry?.held ?? []) held.push({ menuItemId: line.id, name: line.name, ...h });
+        if (entry?.outcome === "failed" || entry?.flagError) {
+          failed.push({ menuItemId: line.id, name: line.name, error: entry.error ?? entry.flagError ?? "" });
+        }
+      }
+      return { outcome: "already_current", ...empty, lines: pending.length, priceSync: counts, failed, held };
+    }
 
     if (!madeCurrentAt) {
       // The menu IS current, and its prices cannot be dated by the choice. Said
@@ -1584,6 +1644,44 @@ export class MenusService {
       held,
       returned,
     };
+  }
+
+  /**
+   * The lines of a menu already current whose carry did not finish: a linked
+   * line, priced, whose house row is missing or whose price differs from the
+   * menu's by 0.005 or more (the plan's own rule). One read for the house's
+   * rows, never one per line.
+   */
+  private async linesStillToCarry(lines: InsertedMenuItem[], restaurantId: string): Promise<InsertedMenuItem[]> {
+    const linked = lines.filter((l) => l.wine_library_id);
+    if (linked.length === 0) return [];
+    const ids = [...new Set(linked.map((l) => l.wine_library_id as string))];
+    const house = new Map<string, { bottle: number | null; glass: number | null }>();
+    for (let i = 0; i < ids.length; i += 200) {
+      const { data, error } = await this.dbService.supabase
+        .from("restaurant_inventory")
+        .select("master_wine_id, menu_price_current, menu_price_glass")
+        .eq("restaurant_id", restaurantId)
+        .in("master_wine_id", ids.slice(i, i + 200));
+      if (error) {
+        throw new InternalServerErrorException(
+          `The house's prices could not be read just now, so the carry was not finished. Try again (${error.message}).`,
+        );
+      }
+      for (const row of (data ?? []) as Array<Record<string, unknown>>) {
+        const n = (v: unknown) => (v === null || v === undefined || v === "" ? null : Number(v));
+        house.set(String(row.master_wine_id), { bottle: n(row.menu_price_current), glass: n(row.menu_price_glass) });
+      }
+    }
+    const differs = (menu: unknown, houseVal: number | null) => {
+      if (menu === null || menu === undefined || menu === "") return false;
+      const m = Number(menu);
+      return Number.isFinite(m) && (houseVal === null || Math.abs(m - houseVal) >= 0.005);
+    };
+    return linked.filter((l) => {
+      const h = house.get(String(l.wine_library_id));
+      return !h || differs(l.bottle_price, h.bottle) || differs(l.by_glass_price, h.glass);
+    });
   }
 
   private async readVersionRow(restaurantId: string, menuId: string): Promise<Record<string, any>> {
