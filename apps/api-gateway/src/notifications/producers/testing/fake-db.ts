@@ -53,6 +53,8 @@ export class FakeDb {
 
   /** Tables the caller wants to fail, and with what message. */
   failures: Record<string, string> = {};
+  /** PostgREST's max_rows (supabase/config.toml:18): when set, no read returns more rows than this. */
+  maxRows: number | null = null;
 
   private seq = 0;
 
@@ -324,6 +326,7 @@ export class FakeQuery {
     if (this.limitN !== null) {
       hit = hit.slice(this.offsetN, this.offsetN + this.limitN);
     }
+    if (this.db.maxRows !== null && !single) hit = hit.slice(0, this.db.maxRows);
     return {
       data: single ? (hit[0] ?? null) : hit,
       error: null,
