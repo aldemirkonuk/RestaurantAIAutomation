@@ -196,13 +196,11 @@ interface CardProps {
   extra?: ReactNode;
   source: ReactNode;
   unread?: boolean;
-  /** The card's answered copy is a sentence, not one line: it holds the room it will fill (r99 check 3). */
-  tall?: boolean;
   open: CardId | null;
   onOpen?: (id: CardId) => void;
 }
 
-function Card({ id, figure, extra, source, unread, tall, open, onOpen }: CardProps) {
+function Card({ id, figure, extra, source, unread, open, onOpen }: CardProps) {
   const body = (
     <>
       <span className="ivd-card-k">{CARD_TITLE[id]}</span>
@@ -215,7 +213,7 @@ function Card({ id, figure, extra, source, unread, tall, open, onOpen }: CardPro
   );
   if (!onOpen) {
     return (
-      <div className="ivd-card" data-testid={`ivd-card-${id}`} data-hold={tall ? 'tall' : undefined}>
+      <div className="ivd-card" data-testid={`ivd-card-${id}`}>
         {body}
       </div>
     );
@@ -225,7 +223,6 @@ function Card({ id, figure, extra, source, unread, tall, open, onOpen }: CardPro
       type="button"
       className="ivd-card iv-focus"
       data-testid={`ivd-card-${id}`}
-      data-hold={tall ? 'tall' : undefined}
       aria-expanded={open === id}
       aria-controls={open === id ? 'ivd-evidence' : undefined}
       data-on={open === id}
@@ -410,20 +407,9 @@ export default function ItemCards({ row, uom, kind, canManage, currency, figures
               : 'On hand divided by usage a day.'
         }
       />
-      <Card
-        id="cost"
-        open={open}
-        onOpen={onOpen}
-        // A good with no costed lot is answered with the server's sentence (several lines); a costed one with a
-        // sparkline and one trend line, so only the first holds the tall room.
-        tall={canManage && row.wac === null}
-        figure={cost}
-        extra={costExtra}
-        source={costSource}
-      />
+      <Card id="cost" open={open} onOpen={onOpen} figure={cost} extra={costExtra} source={costSource} />
       <Card
         id="waste"
-        tall
         open={open}
         onOpen={onOpen}
         unread={figures.status === 'failed' || waste?.readable === false}
