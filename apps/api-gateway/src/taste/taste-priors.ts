@@ -1,3 +1,5 @@
+import { CLASS_SOURCES } from './taste-prior-sources';
+
 /**
  * Every constant the recipe roll-up uses, in one table, so nothing hides in a
  * formula (DESIGN D13). They are STARTING VALUES set from R3-DERIVE.md, not
@@ -15,7 +17,7 @@ export type AromaFamilyKey = 'fruit' | 'citrus' | 'floral' | 'herbal' | 'spice' 
 export type Aroma = Partial<Record<AromaFamilyKey, number>>;
 
 /** Bump when any value below changes: a stored layer then reads as stale. */
-export const PRIORS_VERSION = 4;
+export const PRIORS_VERSION = 5;
 
 /**
  * How far a source of chemistry is believed (R3 section 3 step 8). A class
@@ -23,6 +25,22 @@ export const PRIORS_VERSION = 4;
  */
 export const Q_BY_PROV = { measured: 1.0, dataset: 0.7, staff: 0.6, class_prior: 0.6, unknown: 0 } as const;
 export type RollupProv = keyof typeof Q_BY_PROV;
+
+/**
+ * r94: a class with any figure the r93 check could not verify (code UNV in
+ * taste-prior-sources.ts) is believed at 0.8 of its stated q. Why 0.8: the
+ * verified figures sit within about 10 % of the source page, while the UNV
+ * ones were recalled, cut-dependent or disagreed with the page by 20-25 %
+ * (hard cheese sodium 1530 vs 1175 mg, feta 917 vs 1139 mg); a figure with
+ * twice the error is believed a fifth less. Starting value, not fitted: the
+ * blind panel sets it. The lowered belief reaches every axis the line drives,
+ * and the roll-up marks the line `class_prior_estimate` so the card says so.
+ */
+export const UNV_Q_FACTOR = 0.8;
+export const isUnverifiedClass = (id: string): boolean => CLASS_SOURCES[id]?.codes.includes('UNV') ?? false;
+/** The belief the roll-up reads for a class: its q, discounted when any figure in it is unverified. */
+export const classQ = (c: { id: string; q: number }): number =>
+  isUnverifiedClass(c.id) ? Math.round(c.q * UNV_Q_FACTOR * 1000) / 1000 : c.q;
 
 export interface ClassPrior {
   id: string; match: RegExp; chem: Chem;
