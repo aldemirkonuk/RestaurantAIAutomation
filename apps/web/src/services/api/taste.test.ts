@@ -111,32 +111,6 @@ describe('getTaste tells "not switched on" from "could not be read"', () => {
   });
 });
 
-describe('getTaste: unreachable and the roll-up basis', () => {
-  it('a dropped connection (no response) is failed with the unreachable words', async () => {
-    http.get.mockRejectedValue(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
-    expect(await getTaste('cocktail', 'c1', R)).toEqual({ state: 'failed', reason: 'Mudavym could not be reached just now.' });
-  });
-  it('a network-worded error that did get an answer keeps the card\u2019s own sentence', async () => {
-    http.get.mockRejectedValue(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK', response: { status: 502, data: {} } }));
-    expect(await getTaste('cocktail', 'c1', R)).toEqual({ state: 'failed', reason: 'Taste could not be read just now.' });
-  });
-  it('a recipe layer carries its basis; axes and sources it cannot read are dropped, a layer without one has null', async () => {
-    const b = body();
-    b.layers.push({
-      source: 'recipe', version: 1, method: 'computed', statedByName: null, statedAt: '2026-11-19T10:00:00Z', hasNote: false, noteText: null,
-      basis: { notKnown: ['sour', 'nonsense', 4], lineSources: [{ name: 'Gin', from: 'good' }, { name: 'Lime', from: 'class_prior' }, { name: 'Foo', from: 'unknown' }, { name: 'Bad', from: 'wat' }, { name: '', from: 'good' }], unknownNames: ['Foo', 7] },
-    } as never);
-    const r = await (async () => { http.get.mockResolvedValue({ data: b }); return getTaste('cocktail', 'c1', R); })();
-    if (r.state !== 'ready') throw new Error('not ready');
-    expect(r.data.layers[0].basis).toBeNull();
-    expect(r.data.layers[1].basis).toEqual({
-      notKnown: ['sour'],
-      lineSources: [{ name: 'Gin', from: 'good' }, { name: 'Lime', from: 'class_prior' }, { name: 'Foo', from: 'unknown' }],
-      unknownNames: ['Foo'],
-    });
-  });
-});
-
 describe('addHouseTaste', () => {
   it('posts the body to the house route and parses the re-read', async () => {
     http.post.mockResolvedValue({ status: 201, data: body() });

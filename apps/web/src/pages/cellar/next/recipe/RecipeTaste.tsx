@@ -28,7 +28,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCanEditRecipe } from './useRecipe';
 import TasteCard, { Glyph } from '../../../inventory/next/TasteCard';
 import { PROV_MARK, leadLine } from '../../../inventory/next/taste-words';
-import { UNREACHABLE_WORDS } from '../../../../lib/unreachable';
 import { getTaste, rollupTaste, tasteKeys, ROLLUP_ABSENT, type ProvKind, type TasteRead } from '../../../../services/api/taste';
 
 export const RECIPE_TASTE_EMPTY = 'Not worked out yet. It is worked out from the saved recipe.';
@@ -79,8 +78,7 @@ export function RecipeTasteLine(props: Props) {
     if (line) ({ sentence, kinds } = line);
   }
   if (!failed && sentence === null) return null;
-  const unreachable = q.data?.state === 'failed' && q.data.reason === UNREACHABLE_WORDS;
-  const said = failed ? (unreachable ? UNREACHABLE_WORDS : RECIPE_TASTE_LINE_FAILED) : (sentence as string);
+  const said = failed ? RECIPE_TASTE_LINE_FAILED : (sentence as string);
   return (
     <p className="tc-line tc-line--foot cl-rcp-taste-line" data-testid="recipe-taste-line" data-state={failed ? 'failed' : 'ready'}>
       <span className="tc-line-k">How it tastes</span>

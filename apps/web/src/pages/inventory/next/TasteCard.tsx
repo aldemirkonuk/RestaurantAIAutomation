@@ -15,8 +15,7 @@
  */
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { UNREACHABLE_WORDS } from '../../../lib/unreachable';
-import { getTaste, tasteKeys, type AxisKey, type TasteBasis, type SubjectKind, type TasteAxis, type TasteData, type TasteEffective, type TasteRead } from '../../../services/api/taste';
+import { getTaste, tasteKeys, type AxisKey, type SubjectKind, type TasteAxis, type TasteData, type TasteEffective, type TasteRead } from '../../../services/api/taste';
 import { fmtWhen } from '../../../lib/mudavym/format';
 import TasteForm from './TasteForm';
 import './taste-card.css';
@@ -55,17 +54,6 @@ export interface TasteCardProps {
   /** What an empty profile says (default: nobody has described it). */
   emptyWords?: string;
 }
-
-/** One line of "Worked out from": the line's name and whose taste stood in for it. Lines with no known taste are named in the note instead. */
-const FROM_WORDS = { good: 'its own taste', class_prior: 'typical of its kind' } as const;
-export const workedFromWords = (b: TasteBasis): string | null => {
-  const named = b.lineSources.filter((l): l is { name: string; from: 'good' | 'class_prior' } => l.from !== 'unknown').map((l) => `${l.name} (${FROM_WORDS[l.from]})`);
-  return named.length ? `Worked out from: ${named.join(', ')}.` : null;
-};
-export const unknownLinesWords = (b: TasteBasis): string | null => {
-  const names = [...new Set([...b.unknownNames, ...b.lineSources.filter((l) => l.from === 'unknown').map((l) => l.name)])];
-  return names.length ? `Left out because its taste is not known: ${names.join(', ')}.` : null;
-};
 
 export function Glyph({ shape }: { shape: MarkShape }) {
   const common = { width: 14, height: 14, viewBox: '0 0 14 14', 'aria-hidden': true, focusable: false } as const;
@@ -206,7 +194,7 @@ export default function TasteCard({ row, house, restaurantId, subject = 'good', 
     return (
       <div className="tc" data-testid="taste-card" data-state="failed">
         <p role="alert" className="iv-said iv-said-alarm" data-testid="taste-failed">
-          {q.data?.state === 'failed' && q.data.reason === UNREACHABLE_WORDS ? UNREACHABLE_WORDS : TASTE_FAILED}
+          {TASTE_FAILED}
         </p>
         <button type="button" className="iv-btn iv-focus" onClick={() => void q.refetch()}>
           Try again
@@ -235,13 +223,7 @@ export default function TasteCard({ row, house, restaurantId, subject = 'good', 
   const rows = e ? knownAxes(e) : [];
   const conflicts = e?.conflicts ?? [];
   const words = e ? [...e.descriptors, ...e.texture].map(descriptorWord).filter((w): w is string => w !== null) : [];
-  // A worked-out layer says which axes it could not tell. Those are said as "not known", never as a band.
-  const basis = d.layers.find((l) => l.basis)?.basis ?? null;
-  const shown = new Set(rows.map(([k]) => k));
-  const notKnown = (basis?.notKnown ?? []).filter((k) => !shown.has(k));
-  const workedFrom = basis ? workedFromWords(basis) : null;
-  const leftOut = basis ? unknownLinesWords(basis) : null;
-  const known = rows.length > 0 || conflicts.length > 0 || words.length > 0 || notKnown.length > 0;
+  const known = rows.length > 0 || conflicts.length > 0 || words.length > 0;
   const summary = e ? summaryLine(e) : null;
   const done = (fresh: TasteData) => {
     qc.setQueryData<TasteRead>(key, { state: 'ready', data: fresh });
@@ -250,7 +232,7 @@ export default function TasteCard({ row, house, restaurantId, subject = 'good', 
   };
   return (
     <div className="tc" data-testid="taste-card" data-state={known ? 'ready' : 'empty'}>
-      {known ? (
+      {known && e ? (
         <>
           {summary ? (
             <p className="tc-summary" data-testid="taste-summary">
@@ -263,13 +245,8 @@ export default function TasteCard({ row, house, restaurantId, subject = 'good', 
             </p>
           ) : null}
           <ul className="tc-rows" data-testid="taste-rows">
-            {e ? rows.map(([k, a]) => <Row key={k} axis={k} a={a} e={e} />) : null}
-            {notKnown.map((k) => (
-              <li key={k} className="tc-row tc-notknown" data-testid={`taste-notknown-${k}`}>
-                <span className="tc-label">{AXIS_LABEL[k]}</span>
-                <span className="tc-bar tc-bar-none" aria-hidden="true" />
-                <span className="tc-band">not known</span>
-              </li>
+            {rows.map(([k, a]) => (
+              <Row key={k} axis={k} a={a} e={e} />
             ))}
             {conflicts.map((c) => (
               <li key={c.axis} className="tc-row tc-conflict" data-testid={`taste-conflict-${c.axis}`}>
@@ -277,16 +254,6 @@ export default function TasteCard({ row, house, restaurantId, subject = 'good', 
               </li>
             ))}
           </ul>
-          {workedFrom ? (
-            <p className="iv-note" data-testid="taste-worked-from">
-              {workedFrom}
-            </p>
-          ) : null}
-          {leftOut ? (
-            <p className="iv-note" data-testid="taste-left-out">
-              {leftOut}
-            </p>
-          ) : null}
         </>
       ) : (
         <p className="iv-note" data-testid="taste-empty">

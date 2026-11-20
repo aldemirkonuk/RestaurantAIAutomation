@@ -140,14 +140,6 @@ describe('RecipeTaste', () => {
     expect(screen.queryByTestId('recipe-taste-act')).toBeNull();
   });
 
-  it('a read that could not be reached says so in the line and the card', async () => {
-    api.get.mockResolvedValue({ state: 'failed', reason: 'Mudavym could not be reached just now.' });
-    mount();
-    expect(await screen.findByTestId('taste-failed')).toHaveTextContent('Mudavym could not be reached just now.');
-    expect(screen.getByTestId('recipe-taste-line')).toHaveTextContent('Mudavym could not be reached just now.');
-    expect(screen.getByTestId('recipe-taste-line')).not.toHaveTextContent(RECIPE_TASTE_LINE_FAILED);
-  });
-
   it('taste notes not switched on: the card says so and there is no action', async () => {
     api.get.mockResolvedValue({ state: 'absent' });
     mount();
