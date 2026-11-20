@@ -412,6 +412,9 @@ export class RecipesService {
           costPerServeExact: money ? priced.lines[i].costPerServeExact : null,
           costBasis: money ? priced.lines[i].costBasis : null,
           needs: money ? (priced.lines[i].needs ?? null) : null,
+          // The stated weight this line's price went through, so a mistyped
+          // one is seen beside the price it made and can be changed.
+          weighed: money ? (priced.lines[i].weighed ?? null) : null,
         };
       }),
     };
@@ -518,7 +521,13 @@ export class RecipesService {
       of: priced.of,
       complete: priced.complete,
       partial: priced.partial,
-      lines: priced.lines.map((l) => ({ status: l.status, costPerServe: l.costPerServe, costBasis: l.costBasis, needs: l.needs ?? null })),
+      lines: priced.lines.map((l) => ({
+        status: l.status,
+        costPerServe: l.costPerServe,
+        costBasis: l.costBasis,
+        needs: l.needs ?? null,
+        weighed: l.weighed ?? null,
+      })),
     };
   }
 

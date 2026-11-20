@@ -69,6 +69,18 @@ export interface LineCost {
   costBasis: LineCostBasis | null;
   /** Set only on a unit_mismatch the house can close by stating a weight. */
   needs?: BridgeNeeded;
+  /**
+   * Set only on a line priced through a weight the house stated: which one
+   * and the grams it said, so the sheet can show the figure behind the price
+   * and let a mistyped weight be changed (r28 gap 7).
+   */
+  weighed?: StatedBridge;
+}
+
+/** A stated weight a line was priced through. */
+export interface StatedBridge {
+  by: BridgeNeeded;
+  grams: number;
 }
 
 export interface RecipeCost {
@@ -90,7 +102,7 @@ const CONTAINERS = new Set(["bottle", "keg"]);
 const PACKS = new Set(["case", "pack", "glass", "shot"]);
 
 type Why = "size_not_known" | "pack_size_not_known" | "unit_mismatch";
-type BaseCost = { perBase: number } | { why: Why; needs?: BridgeNeeded };
+type BaseCost = { perBase: number; weighed?: StatedBridge } | { why: Why; needs?: BridgeNeeded };
 
 const WEIGHTS = new Set(["mg", "g", "kg"]);
 
@@ -156,20 +168,20 @@ export function baseUnitCost(item: CostItem, unitCost: number, baseUnit: BaseUni
     if (pieceG === null) return { why: "unit_mismatch", needs: "piece_grams" };
     // One thousandth of a piece weighs pieceG mg.
     const perMg = directCost(uom, item, unitCost, "mg") as { perBase: number };
-    return { perBase: perMg.perBase * pieceG };
+    return { perBase: perMg.perBase * pieceG, weighed: { by: "piece_grams", grams: pieceG } };
   }
   if (baseUnit === "mg" && uom === "each") {
     const pieceG = stated(item.piece_grams);
     if (pieceG === null) return { why: "unit_mismatch", needs: "piece_grams" };
     // One piece is pieceG x 1,000 mg.
-    return { perBase: unitCost / (pieceG * 1000) };
+    return { perBase: unitCost / (pieceG * 1000), weighed: { by: "piece_grams", grams: pieceG } };
   }
   if (baseUnit === "ml10" && WEIGHTS.has(uom)) {
     const mlG = stated(item.ml_grams);
     if (mlG === null) return { why: "unit_mismatch", needs: "ml_grams" };
     // A tenth of a ml weighs mlG x 100 mg.
     const perMg = directCost(uom, item, unitCost, "mg") as { perBase: number };
-    return { perBase: perMg.perBase * mlG * 100 };
+    return { perBase: perMg.perBase * mlG * 100, weighed: { by: "ml_grams", grams: mlG } };
   }
   if (baseUnit === "mg" && (uom === "ml" || uom === "l" || CONTAINERS.has(uom))) {
     const perMl10 = directCost(uom, item, unitCost, "ml10");
@@ -178,7 +190,7 @@ export function baseUnitCost(item: CostItem, unitCost: number, baseUnit: BaseUni
     const mlG = stated(item.ml_grams);
     if (mlG === null) return { why: "unit_mismatch", needs: "ml_grams" };
     // One mg is 1 / (mlG x 100) tenths of a ml.
-    return { perBase: perMl10.perBase / (mlG * 100) };
+    return { perBase: perMl10.perBase / (mlG * 100), weighed: { by: "ml_grams", grams: mlG } };
   }
   return direct;
 }
@@ -220,7 +232,9 @@ export function recipeCost(lines: CostLineInput[], yieldServes: number): RecipeC
     if (costBasis === "invoice_lot_wac_partial") partial += 1;
     // Cents from the six-place figure, so two lines that cost the same to six
     // places never fall on different sides of a half cent.
-    return { status: "linked", costPerServe: round2(round6(cost)), costPerServeExact: round6(cost), costBasis };
+    const done: LineCost = { status: "linked", costPerServe: round2(round6(cost)), costPerServeExact: round6(cost), costBasis };
+    if (base.weighed) done.weighed = base.weighed;
+    return done;
   });
   const complete = of > 0 && priced === of;
   if (!complete) return { lines: out, perServe: null, perServeExact: null, priced, of, complete, partial };
