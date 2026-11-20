@@ -17,6 +17,15 @@ export const UNIT_LABEL: Record<RecipeUnit, string> = {
 };
 
 /**
+ * The units a line's picker lists: the recipe kind's own, plus the unit the
+ * line already carries when that is not among them (a dish line pasted as
+ * "1 oz butter"), so a saved line never shows an empty picker.
+ */
+export function unitChoices(units: readonly RecipeUnit[], current: RecipeUnit | ''): readonly RecipeUnit[] {
+  return current && !units.includes(current) ? [...units, current] : units;
+}
+
+/**
  * The unit as a reader says it after an amount: "2 dashes", "1 dash", "2
  * barspoons" (browser walk 2026-11-11, R3: "2 dash"). Symbols and
  * abbreviations (ml, US oz, tsp) and "each" do not take a plural.

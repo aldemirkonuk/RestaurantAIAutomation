@@ -43,6 +43,47 @@ export interface RecipeLine {
    * size), pack_size_not_known (case, pack, glass, shot), unit_mismatch.
    */
   costBasis: string | null;
+  /**
+   * Beside costBasis "unit_mismatch": the weight the house can state for the
+   * linked good so the line is priced (r28 gap 7). Absent from an older gateway.
+   */
+  needs?: WeightNeeded | null;
+  /**
+   * The stated weight this line's price went through, when it went through
+   * one (2 eggs against eggs kept by the kg). Absent from an older gateway.
+   */
+  weighed?: WeighedBy | null;
+  /**
+   * Beside costBasis "last_known_lot_cost" (nothing on hand is priced, so the
+   * line is priced at what its good was last bought at): when that lot came
+   * in. Absent from an older gateway.
+   */
+  boughtAt?: string | null;
+  /** What one piece of the linked good weighs, in g, as the house stated it. */
+  itemPieceGrams?: number | null;
+  /** What one ml of the linked good weighs, in g, as the house stated it. */
+  itemMlGrams?: number | null;
+}
+
+/** piece_grams: what one piece weighs; ml_grams: what one ml weighs. */
+export type WeightNeeded = 'piece_grams' | 'ml_grams';
+
+/** A stated weight a line was priced through: which one, and its grams. */
+export interface WeighedBy {
+  by: WeightNeeded;
+  grams: number;
+}
+
+/** PUT .../items/:itemId/weights: a field left out is kept, null takes it off. */
+export interface StateWeightsBody {
+  pieceGrams?: number | null;
+  mlGrams?: number | null;
+}
+
+export interface StatedWeights {
+  id: string;
+  pieceGrams: number | null;
+  mlGrams: number | null;
 }
 
 export interface RecipeVersion {
@@ -64,6 +105,8 @@ export interface RecipeCost {
   complete: boolean;
   /** Priced lines whose average covers only part of the stock on hand. */
   partial?: number;
+  /** Priced lines whose good has nothing priced on hand, at what it last cost. */
+  lastBought?: number;
 }
 
 export interface LegacyRecipeLine {
@@ -177,13 +220,27 @@ export interface PreviewCostBody {
 
 /** What a draft would cost at today's prices: the saved cost's shape, plus each line in the order sent. */
 export interface CostPreview extends RecipeCost {
-  lines: Array<{ status: RecipeLineStatus; costPerServe: number | null; costBasis: string | null }>;
+  lines: Array<{ status: RecipeLineStatus; costPerServe: number | null; costBasis: string | null; needs?: WeightNeeded | null }>;
 }
 
 export interface SaveRecipeResult {
   versionId: string;
   version: number;
   lines: unknown[];
+}
+
+/** POST /inventory/:rid/house-items, as house-item.service.ts takes it. */
+export interface AddToShelfBody {
+  kind: string;
+  uom: string;
+  displayName: string;
+}
+
+export interface AddedToShelf {
+  id: string;
+  kind: string;
+  uom: string;
+  displayName: string;
 }
 
 export interface ShelfItem {
@@ -257,6 +314,23 @@ export const recipesApi = {
   /** Proposes a shelf item for each pasted label; writes nothing. */
   async matchShelf(restaurantId: string, labels: string[]): Promise<ShelfMatch[]> {
     const r = await apiClient.post<ShelfMatch[]>(`${base(restaurantId)}/shelf/match`, { labels });
+    return r.data;
+  },
+
+  /**
+   * Adds a good to the house's shelf from a recipe line that found none (r28
+   * gap 8): the inventory's own "carry this" route (POST /inventory/:rid/
+   * house-items, owner or manager), so there is one writer of a house good.
+   * Stock is never entered here: it arrives with a delivery.
+   */
+  async addToShelf(restaurantId: string, body: AddToShelfBody): Promise<AddedToShelf> {
+    const r = await apiClient.post<AddedToShelf>(`/inventory/${encodeURIComponent(restaurantId)}/house-items`, body);
+    return r.data;
+  },
+
+  /** States what one piece and one ml of a good weigh (owner or manager); the gateway bounds both. */
+  async stateWeights(restaurantId: string, itemId: string, body: StateWeightsBody): Promise<StatedWeights> {
+    const r = await apiClient.put<StatedWeights>(`${base(restaurantId)}/items/${encodeURIComponent(itemId)}/weights`, body);
     return r.data;
   },
 

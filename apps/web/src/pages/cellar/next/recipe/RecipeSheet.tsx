@@ -84,10 +84,13 @@ import { parseLine, parseSpec, type ProposedLine } from './parseSpec';
 import { amountWithUnit, qtyText, readsAsThousandAmbiguous } from './units';
 import DrinkCards, { type DraftCost } from './DrinkCards';
 import { useHousePercent } from './useHousePercent';
+import { useListTax } from './useListTax';
+import { useSayGrams } from './WeighBox';
 import WhatIsInAServe from './WhatIsInAServe';
 import RecipeTaste, { RecipeTasteLine } from './RecipeTaste';
 import { UNREACHABLE_WORDS } from '../../../../lib/unreachable';
 import { SHEET_HOLD_ROOM } from './holdRoom';
+import { recipeWords, type RecipeWords } from './recipeWords';
 import {
   useCanEditRecipe,
   useCostPreview,
@@ -136,7 +139,15 @@ function fromServer(l: RecipeLine): DraftRow {
     qtyText: qtyText(l.qtyEntered),
     storedQty: l.qtyEntered,
     unit: (l.unitCode as DraftRow['unit']) ?? '',
-    saved: { status: l.status, costPerServe: l.costPerServe, costPerServeExact: l.costPerServeExact ?? null, costBasis: l.costBasis },
+    saved: {
+      status: l.status,
+      costPerServe: l.costPerServe,
+      costPerServeExact: l.costPerServeExact ?? null,
+      costBasis: l.costBasis,
+      needs: l.needs ?? null,
+      weighed: l.weighed ?? null,
+      boughtAt: l.boughtAt ?? null,
+    },
   };
 }
 
@@ -399,10 +410,10 @@ export function costPreviewBody(rows: DraftRow[], serves: number): { body: Previ
 }
 
 /** Why Save is off, naming the first line that stops it. */
-export function whyBlocked(rows: DraftRow[], serves: number = 1, dish = false): string | null {
+export function whyBlocked(rows: DraftRow[], serves: number = 1, words: RecipeWords = recipeWords('cocktail')): string | null {
   if (rows.length === 0) return 'Add at least one ingredient.';
   if (!Number.isInteger(serves) || serves < 1 || serves > MAX_SERVES) {
-    return `Say how many ${dish ? 'plates' : 'serves'} it makes: a whole number from 1 to ${MAX_SERVES.toLocaleString('en-US')}.`;
+    return `Say how many ${words.unit}s it makes: a whole number from 1 to ${MAX_SERVES.toLocaleString('en-US')}.`;
   }
   if (rows.length > MAX_LINES) return tooMany(rows.length);
   const named = (i: number) => {
@@ -442,10 +453,13 @@ function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
   const cocktailId = owner.id;
   const dId = draftId(owner);
   const isDish = owner.kind === 'dish';
+  const words = recipeWords(owner.kind);
   const recipe = useRecipe(owner);
   const canEdit = useCanEditRecipe();
   const sayMoney = useHouseMoney();
   const sayPct = useHousePercent();
+  const listTax = useListTax();
+  const sayGrams = useSayGrams();
   const save = useSaveRecipe(owner);
   const { user, activeRestaurantId } = useAuth();
   const storeKey = draftKey(user?.userId, activeRestaurantId, dId);
@@ -541,8 +555,11 @@ function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
     seed(data);
   }, [data, versionId, dirty, seed]);
 
+  const dirtyNow = useRef(dirty);
+  dirtyNow.current = dirty;
+
   const shownMeta = meta ?? metaOf(data?.current);
-  const blocked = useMemo(() => whyBlocked(rows ?? [], shownMeta.yieldServes, isDish), [rows, shownMeta.yieldServes, isDish]);
+  const blocked = useMemo(() => whyBlocked(rows ?? [], shownMeta.yieldServes, words), [rows, shownMeta.yieldServes, words]);
 
   // Money only where the server sent it, and never to a role that cannot edit.
   const money = Boolean(canEdit && data && (data.cost !== null || data.cocktail.price !== null));
@@ -605,6 +622,19 @@ function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
   };
   const patch = (key: string, p: Partial<DraftRow>) =>
     edit((rs) => rs.map((r) => (r.key === key ? { ...r, ...p } : r)));
+
+  // A kept weight changes no version, so the seed above would not run again.
+  // A clean sheet is seeded from a fresh read, unless something was typed
+  // while it was read. An unsaved draft keeps every typed line: its lines on
+  // that good drop what the server last said, and the draft is priced again.
+  const weighed = async (itemId: string) => {
+    if (dirtyNow.current) {
+      setRows((rs) => (rs ?? []).map((r) => (r.inventoryId === itemId ? { ...r, saved: null } : r)));
+      return;
+    }
+    const r = await recipe.refetch();
+    if (!r.isError && r.data && !dirtyNow.current) seed(r.data);
+  };
 
   const putBack = () => {
     if (!setAside) return;
@@ -687,7 +717,7 @@ function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
   // something else (it once read "₺0.00" where the card said "Under ₺0.01").
   const footer =
     !data.current && lines.length === 0 && !hasLegacy
-      ? canEdit ? 'No recipe yet. Add what goes in it, or paste a spec.' : 'No recipe yet.'
+      ? canEdit ? `No recipe yet. Add what goes in it, or paste a ${words.pasteWord}.` : 'No recipe yet.'
       : null;
 
   // The same good on more than one counted line: said, not merged; a split pour is real.
@@ -718,8 +748,16 @@ function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
       {/* The drink opens on its cards, then what is in a serve, then its lines
           (founder ask: a drink shows its KPI cards, then a nutrition card). */}
       <RecipeTasteLine kind={owner.kind} subjectId={cocktailId} restaurantId={activeRestaurantId ?? null} hasRecipe={(data.current?.lines.length ?? 0) > 0} />
-      <DrinkCards data={data} sayMoney={say} unsaved={canEdit && dirty} draftCost={draftCost} sayPct={sayPct} />
-      <WhatIsInAServe data={data} unsaved={canEdit && dirty} />
+      <DrinkCards
+        data={data}
+        sayMoney={say}
+        sayPct={sayPct}
+        tax={listTax}
+        unsaved={canEdit && dirty}
+        draftCost={draftCost}
+        nutritionId={`rcp-whatisin-${cocktailId}`}
+      />
+      <WhatIsInAServe data={data} unsaved={canEdit && dirty} id={`rcp-whatisin-${cocktailId}`} />
       <RecipeTaste
         kind={owner.kind}
         subjectId={cocktailId}
@@ -744,9 +782,11 @@ function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
                 key={r.key}
                 row={r}
                 say={say}
-                dish={isDish}
                 onChange={(p) => patch(r.key, p)}
                 onRemove={() => edit((rs) => rs.filter((x) => x.key !== r.key))}
+                kind={owner.kind}
+                onWeighed={weighed}
+                sayGrams={sayGrams}
               />
             ) : (
               <LineRowRead key={r.key} row={r} />
@@ -757,7 +797,7 @@ function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
 
       {canEdit && repeated.length > 0 ? (
         <p className="cl-note" data-testid="recipe-repeated">
-          {repeated.map(([name, n]) => `${name} is on ${n} lines; a ${isDish ? 'plate' : 'serve'} takes all of them.`).join(' ')}
+          {repeated.map(([name, n]) => `${name} is on ${n} lines; a ${words.unit} takes all of them.`).join(' ')}
         </p>
       ) : null}
 
@@ -785,11 +825,11 @@ function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
           )}
           <label>
             Garnish
-            <input className="cl-field cl-focus" value={shownMeta.garnish} maxLength={200} placeholder={c.garnish ?? 'Orange peel'} onChange={(e) => setField({ garnish: e.target.value })} />
+            <input className="cl-field cl-focus" value={shownMeta.garnish} maxLength={200} placeholder={c.garnish ?? words.garnishPlaceholder} onChange={(e) => setField({ garnish: e.target.value })} />
           </label>
           <label className="cl-rcp-method">
             Method
-            <textarea className="cl-field cl-focus" rows={2} value={shownMeta.method} maxLength={4000} placeholder="Stir with ice, strain over a large cube" onChange={(e) => setField({ method: e.target.value })} />
+            <textarea className="cl-field cl-focus" rows={2} value={shownMeta.method} maxLength={4000} placeholder={words.methodPlaceholder} onChange={(e) => setField({ method: e.target.value })} />
           </label>
         </div>
       ) : !canEdit && data.current?.method ? (
@@ -890,7 +930,7 @@ function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
       {canEdit && pasteOpen && !proposed ? (
         <div className="cl-rcp-paste">
           <label htmlFor={`rcp-paste-${cocktailId}`} className="cl-note" style={{ display: 'block', marginTop: 0 }}>
-            Paste a spec, one ingredient per line
+            Paste a {words.pasteWord}, one ingredient per line
           </label>
           <textarea
             id={`rcp-paste-${cocktailId}`}
@@ -898,7 +938,7 @@ function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
             rows={4}
             value={pasteText}
             onChange={(e) => setPasteText(e.target.value)}
-            placeholder={'1½ oz gin\n2 dashes Angostura\n1 egg white\nOrange twist garnish'}
+            placeholder={words.pastePlaceholder}
             style={{ width: '100%', height: 'auto', padding: 8, lineHeight: 1.5 }}
           />
           <span style={{ display: 'inline-flex', gap: 6, marginTop: 6 }}>
@@ -925,7 +965,7 @@ function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
             onClick={() =>
               edit((rs) => [
                 ...rs,
-                { key: nextKey(), role: 'stocked', inventoryId: null, itemName: null, itemKind: null, label: '', qtyText: '', unit: 'ml', saved: null },
+                { key: nextKey(), role: 'stocked', inventoryId: null, itemName: null, itemKind: null, label: '', qtyText: '', unit: words.newLineUnit, saved: null },
               ])
             }
           >
@@ -935,7 +975,7 @@ function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
           {!pasteOpen && !proposed ? (
             <button type="button" className="cl-btn cl-focus" onClick={() => setPasteOpen(true)}>
               <ClipboardPaste size={13} aria-hidden />
-              Paste a spec
+              Paste a {words.pasteWord}
             </button>
           ) : null}
           <button

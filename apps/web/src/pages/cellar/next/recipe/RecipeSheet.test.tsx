@@ -128,9 +128,11 @@ function margarita(): CocktailRecipe {
 let versions: unknown[] = [];
 let past: Record<string, unknown> = {};
 let other: CocktailRecipe | null = null;
+let taxBasis: unknown = null;
 function serve(recipe: CocktailRecipe, shelf: unknown[] = []) {
   h.get.mockImplementation(async (url: string) => {
     if (url === '/settings/currency') return { data: { restaurantId: RID, code: 'TRY', country: 'Turkey', readable: true, reason: null, statedAt: null } };
+    if (taxBasis && url === '/settings/tax-basis') return { data: taxBasis };
     if (url === `/recipes/${RID}/cocktails/${CID}`) return { data: recipe };
     if (other && url === `/recipes/${RID}/cocktails/${CID2}`) return { data: other };
     if (url === `/recipes/${RID}/shelf`) return { data: shelf };
@@ -213,8 +215,8 @@ describe('RecipeSheet', () => {
     // Order: summary line, then the sheet's cards, then the taste card.
     const sheet = screen.getByTestId('recipe-sheet');
     const pos = (el: Element) => Array.from(sheet.querySelectorAll('*')).indexOf(el);
-    expect(pos(lead)).toBeLessThan(pos(screen.getByText('Cost a serve')));
-    expect(pos(screen.getByText('Cost a serve'))).toBeLessThan(pos(card));
+    expect(pos(lead)).toBeLessThan(pos(screen.getByText('Cost per serve')));
+    expect(pos(screen.getByText('Cost per serve'))).toBeLessThan(pos(card));
   });
 
   it('how it tastes: Work it out sends this drink to the roll-up and the sheet shows what came back', async () => {
@@ -293,12 +295,48 @@ describe('RecipeSheet', () => {
     mount();
     const card = await screen.findByTestId('drink-card-cost');
     expect(card).toHaveAttribute('data-known', 'false');
-    expect(card).toHaveTextContent('Cost a serve');
+    expect(card).toHaveTextContent('Cost per serve');
     expect(card).toHaveTextContent('Not known');
     expect(card).toHaveTextContent('2 of 3 ingredients priced; no price yet for sweet vermouth.');
     // 30 + 15 of the priced lines is never shown as the drink's cost.
     expect(card.textContent).not.toMatch(/₺|45/);
     expect(screen.getByTestId('drink-card-ingredients')).toHaveTextContent('3 from your shelf.');
+  });
+
+  it('the pour cost is written the lira way in a lira house (r28 recipes audit, gap 15)', async () => {
+    serve(negroni({ cocktail: { ...negroni().cocktail, price: 20 }, cost: { perServe: 3, perServeExact: 3, priced: 3, of: 3, complete: true } }));
+    mount();
+    const card = await screen.findByTestId('drink-card-pour-cost');
+    // 3 over 20 is 15 %; the currency is read once and the share follows it.
+    await waitFor(() => expect(card).toHaveTextContent('%15,0'));
+    expect(card.textContent).not.toMatch(/15\.0%/);
+  });
+
+  it('a house whose prices include tax gets no pour cost on the listed price, and says why', async () => {
+    taxBasis = { restaurantId: RID, basis: 'prices_include_tax', readable: true };
+    try {
+      serve(negroni({ cocktail: { ...negroni().cocktail, price: 20 }, cost: { perServe: 3, perServeExact: 3, priced: 3, of: 3, complete: true } }));
+      mount();
+      const card = await screen.findByTestId('drink-card-pour-cost');
+      await waitFor(() => expect(card).toHaveAttribute('data-known', 'false'));
+      expect(card).toHaveTextContent('Your list prices include tax and no tax rate for them is recorded');
+      expect(card.textContent).not.toMatch(/15/);
+    } finally {
+      taxBasis = null;
+    }
+  });
+
+  it('a house whose prices exclude tax keeps the pour cost on the listed price, and says it holds no tax', async () => {
+    taxBasis = { restaurantId: RID, basis: 'prices_exclude_tax', readable: true };
+    try {
+      serve(negroni({ cocktail: { ...negroni().cocktail, price: 20 }, cost: { perServe: 3, perServeExact: 3, priced: 3, of: 3, complete: true } }));
+      mount();
+      const card = await screen.findByTestId('drink-card-pour-cost');
+      await waitFor(() => expect(card).toHaveTextContent('which holds no tax'));
+      expect(card).toHaveTextContent('%15,0');
+    } finally {
+      taxBasis = null;
+    }
   });
 
   it('the cards say a complete cost, the price, and what a serve holds; a line under a cent is not free', async () => {
@@ -593,6 +631,17 @@ describe('RecipeSheet', () => {
     expect(banner).toHaveTextContent('What is shown is the last read.');
     expect(screen.getAllByTestId('recipe-line')).toHaveLength(3);
     expect(amount(0)).toBe('45');
+  });
+
+  it('r36 gap 1: a line priced at what its good last cost carries its bought day onto the sheet', async () => {
+    const base = negroni();
+    const at = new Date().getFullYear() + '-03-07T09:00:00Z';
+    const lines = base.current!.lines.map((l, i) =>
+      i === 1 ? { ...l, costPerServe: 4, costBasis: 'last_known_lot_cost', boughtAt: at } : l,
+    );
+    serve(negroni({ current: { ...base.current!, lines } }));
+    mount();
+    expect(await screen.findByText(/at what Campari last cost \(bought 7 Mar\)/)).toBeInTheDocument();
   });
 
   it('a manager sees the price and each line’s cost; staff see neither', async () => {
@@ -1510,5 +1559,50 @@ describe('a pasted line proposes its shelf item by exact name (ADR 0366 item 7)'
     expect(fromProposal({ ...p, link: { status: 'linked', item: BOLS } })).toMatchObject({ inventoryId: GIN, itemName: 'Bols Gin', itemUom: 'bottle' });
     expect(fromProposal({ ...p, link: { status: 'same-name', n: 2 } }).inventoryId).toBeNull();
     expect(fromProposal({ ...p, link: { status: 'looking' } }).inventoryId).toBeNull();
+  });
+});
+
+describe('a fresh line starts in the unit its kind measures by', () => {
+  function mountDish() {
+    h.get.mockImplementation(async (url: string) => {
+      if (url === '/settings/currency') return { data: { restaurantId: RID, code: 'TRY', country: 'Turkey', readable: true, reason: null, statedAt: null } };
+      if (url === `/recipes/${RID}/dishes/${CID}`) {
+        const { cocktail, ...rest } = EMPTY;
+        return { data: { ...rest, dish: { id: cocktail.id, name: 'Lemon Tart', section: null, price: null, description: null } } };
+      }
+      if (url === `/recipes/${RID}/shelf`) return { data: [] };
+      if (url === `/recipes/${RID}/dishes/${CID}/versions`) return { data: [] };
+      throw new Error(`unexpected GET ${url}`);
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const wrap = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+    return render(<RecipeSheet dishId={CID} />, { wrapper: wrap });
+  }
+  const lastUnit = () => {
+    const units = document.querySelectorAll<HTMLSelectElement>('select.cl-rcp-unit');
+    return units[units.length - 1].value;
+  };
+
+  it('a dish line starts in grams', async () => {
+    mountDish();
+    fireEvent.click(await screen.findByRole('button', { name: 'Add an ingredient' }));
+    expect(lastUnit()).toBe('g');
+  });
+
+  it('a drink line still starts in ml', async () => {
+    serve(EMPTY);
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Add an ingredient' }));
+    expect(lastUnit()).toBe('ml');
+  });
+});
+
+describe('the sheet’s cards open what is in a serve (r36 recipes audit, gap 9)', () => {
+  it('the energy card moves the focus to the card below it; the margin card reads price less cost', async () => {
+    serve(negroni());
+    mount();
+    fireEvent.click(await screen.findByTestId('drink-card-energy-open'));
+    expect(document.activeElement).toBe(screen.getByTestId('recipe-whatisin-unread'));
+    expect(screen.getByTestId('drink-card-margin')).toHaveTextContent('₺393.00');
   });
 });

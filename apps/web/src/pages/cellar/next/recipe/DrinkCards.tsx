@@ -16,11 +16,24 @@
  * which side is missing, never a % of a partial cost. The house's tax basis
  * is still open (ADR 0359, #784), so the card says the % is of the price as
  * the list has it, and that whether that price includes tax is not recorded.
+ *
+ * The margin card (r36 recipes audit, gap 9) is the same two figures as
+ * money: the price less the cost a serve, under the same rule (a complete
+ * cost and a price above 0, or "Not known"). A drink that costs more than its
+ * price reads as a minus and is marked.
+ *
+ * The energy and pure-alcohol cards open the full card of what is in a serve
+ * (`WhatIsInAServe`, below the cards) when the sheet names it: a click moves
+ * to it and puts the focus there, so a reader of the figure gets its
+ * allergens and every other figure in one step (the goal's "KPI card ->
+ * nutrition card").
  */
+import type { SayPercent } from './useHousePercent';
+import { UNSET_TAX, priceForShare, taxSaid, type ListTax } from './listTax';
 import type { CocktailRecipe, CostPreview, RecipeCost, RecipeLine } from '../../../../services/api/recipes';
 import { alcoholGrams, figureAmount, figureUnknown, names } from './WhatIsInAServe';
-import type { SayPercent } from './useHousePercent';
 import { formatHousePercent } from '../../../../lib/house-number';
+import { recipeWords, type RecipeWords } from './recipeWords';
 
 interface Card {
   id: string;
@@ -51,9 +64,17 @@ export const ROUNDING_NOTE = 'Each line is rounded to the cent; the total is not
 const linesDoNotAdd = (total: number | null, lineCosts: Array<number | null>): boolean =>
   total != null && lineCosts.length > 0 && Math.round(lineCosts.reduce<number>((a, c) => a + (c ?? 0), 0) * 100) !== Math.round(total * 100);
 
-function costCard(cost: RecipeCost | null, missing: string, sayMoney: (n: number) => string, draft: boolean, dish = false, lineCount = cost?.of ?? 0, lineCosts: Array<number | null> = []): Card | null {
+function costCard(
+  cost: RecipeCost | null,
+  missing: string,
+  sayMoney: (n: number) => string,
+  draft: boolean,
+  words: RecipeWords,
+  lineCount = cost?.of ?? 0,
+  lineCosts: Array<number | null> = [],
+): Card | null {
   if (!cost) return null;
-  const base = { id: 'cost', label: 'Cost a serve' };
+  const base = { id: 'cost', label: 'Cost per serve' };
   // A line switched to "not counted" leaves the figure lower without a word; say how many are left out, beside the figure.
   const left = Math.max(0, lineCount - cost.of);
   const leftOut = left > 0 ? ` ${capital(count(left, 'line is', 'lines are'))} not counted.` : '';
@@ -61,19 +82,22 @@ function costCard(cost: RecipeCost | null, missing: string, sayMoney: (n: number
     const exact = cost.perServeExact ?? null;
     const figure = cost.perServe === 0 && exact != null && exact > 0 ? `Under ${sayMoney(0.01)}` : sayMoney(cost.perServe);
     const part = cost.partial ?? 0;
+    const last = cost.lastBought ?? 0;
     const lead = draft ? "Your unsaved lines, at today's prices" : "At today's prices";
     const priced = draft ? '' : cost.of === 1 ? ', its one ingredient priced' : `, all ${cost.of} ingredients priced`;
     const rounding = linesDoNotAdd(cost.perServe, lineCosts) ? ` ${ROUNDING_NOTE}` : '';
+    const notes = [
+      part > 0 ? `${count(part, 'ingredient is', 'ingredients are')} priced from the ${words.stockWord} with an invoice only` : null,
+      // Nothing of it on hand is priced: the figure is what it last cost (r36 gap 1).
+      last > 0
+        ? `${count(last, 'ingredient is priced at what it last cost', 'ingredients are priced at what they last cost')}, with none priced on hand`
+        : null,
+    ].filter((n): n is string => n !== null);
     return {
       ...base,
       figure,
       known: true,
-      said:
-        (part > 0
-          ? `${lead}; ${count(part, 'ingredient is', 'ingredients are')} priced from the ${dish ? 'goods' : 'bottles'} with an invoice only.`
-          : `${lead}${priced}.`) +
-        leftOut +
-        rounding,
+      said: (notes.length ? `${lead}; ${notes.join('; ')}.` : `${lead}${priced}.`) + leftOut + rounding,
     };
   }
   if (cost.of === 0) {
@@ -88,37 +112,80 @@ function costCard(cost: RecipeCost | null, missing: string, sayMoney: (n: number
   };
 }
 
-function priceCard(data: CocktailRecipe, sayMoney: (n: number) => string): Card {
-  const unit = data.kind === 'dish' ? 'plate' : 'serve';
+function priceCard(data: CocktailRecipe, sayMoney: (n: number) => string, words: RecipeWords): Card {
   const price = data.cocktail.price;
   return price != null
-    ? { id: 'price', label: 'Price', figure: sayMoney(price), known: true, said: `A ${unit}, as your list has it.` }
+    ? { id: 'price', label: 'Price', figure: sayMoney(price), known: true, said: `A ${words.unit}, as your list has it.` }
     : { id: 'price', label: 'Price', figure: 'No price', known: false, said: 'Your list has no price for it.' };
 }
 
 /** Said under every pour-cost %, until the house's tax basis is set (ADR 0359). */
-export const POUR_COST_BASIS = 'Of the price as your list has it; whether that price includes tax is not recorded.';
+export const POUR_COST_BASIS = taxSaid(UNSET_TAX);
 
 /**
- * Cost a serve over the price, as a % to one decimal; or what is missing.
+ * Cost per serve over the price, as a % to one decimal; or what is missing.
  * Only a complete cost and a price above 0 make a %: a partial cost would
  * read as a cheaper pour than the real one (ADR 0051).
  */
-export function pourCostShare(cost: RecipeCost | null, price: number | null): { pct: number } | { missing: string[] } {
+export function pourCostShare(
+  cost: RecipeCost | null,
+  price: number | null,
+  tax: ListTax = UNSET_TAX,
+): { pct: number } | { missing: string[] } {
   const exact = cost?.complete ? (cost.perServeExact ?? cost.perServe) : null;
   const missing: string[] = [];
   if (exact == null) missing.push('the cost is not complete');
   if (price == null) missing.push('your list has no price for it');
   else if (!(price > 0)) missing.push('the price on your list is 0');
+  else {
+    const net = priceForShare(price, tax);
+    if ('missing' in net) missing.push(net.missing);
+  }
   if (missing.length || exact == null || price == null) return { missing };
-  return { pct: Math.round((exact / price) * 1000) / 10 };
+  const against = (priceForShare(price, tax) as { price: number }).price;
+  return { pct: Math.round((exact / against) * 1000) / 10 };
 }
 
-function pourCostCard(cost: RecipeCost | null, price: number | null, sayPct: SayPercent): Card {
-  const share = pourCostShare(cost, price);
+/**
+ * The price less the cost a serve, to the cent; or what is missing. The same
+ * rule as `pourCostShare`: only a complete cost and a price above 0.
+ */
+export function marginPerServe(
+  cost: RecipeCost | null,
+  price: number | null,
+  tax: ListTax = UNSET_TAX,
+): { margin: number } | { missing: string[] } {
+  const share = pourCostShare(cost, price, tax);
+  if (!('pct' in share)) return share;
+  const exact = (cost?.perServeExact ?? cost?.perServe) as number;
+  const against = (priceForShare(price as number, tax) as { price: number }).price;
+  return { margin: Math.round((against - exact) * 100) / 100 };
+}
+
+function marginCard(cost: RecipeCost | null, price: number | null, sayMoney: (n: number) => string, words: RecipeWords, tax: ListTax): Card {
+  const m = marginPerServe(cost, price, tax);
+  const base = { id: 'margin', label: `Margin a ${words.unit}` };
+  if (!('margin' in m)) return { ...base, figure: 'Not known', known: false, said: `${capital(m.missing.join(' and '))}.` };
+  if (m.margin < 0) {
+    return {
+      ...base,
+      figure: `\u2212${sayMoney(-m.margin)}`,
+      known: true,
+      warn: true,
+      said: `It costs more to make than ${tax.basis === 'prices_include_tax' ? 'your price without tax brings in' : 'your list charges for it'}. ${taxSaid(tax)}`,
+    };
+  }
+  return { ...base, figure: sayMoney(m.margin), known: true, said: `Your price less the cost a ${words.unit}. ${taxSaid(tax)}` };
+}
+
+/** A share in the reader's own form, for a caller that does not know the house's. */
+const readerPercent: SayPercent = (points) => formatHousePercent(points, null);
+
+function pourCostCard(cost: RecipeCost | null, price: number | null, sayPct: SayPercent, tax: ListTax): Card {
+  const share = pourCostShare(cost, price, tax);
   const base = { id: 'pour-cost', label: 'Pour cost' };
   return 'pct' in share
-    ? { ...base, figure: sayPct(share.pct), known: true, said: POUR_COST_BASIS }
+    ? { ...base, figure: sayPct(share.pct), known: true, said: taxSaid(tax) }
     : { ...base, figure: 'Not known', known: false, said: `${capital(share.missing.join(' and '))}.` };
 }
 
@@ -143,11 +210,11 @@ function ingredientsCard(data: CocktailRecipe): Card | null {
   };
 }
 
-function nutritionCards(data: CocktailRecipe): Card[] {
+function nutritionCards(data: CocktailRecipe, words: RecipeWords): Card[] {
   const w = data.whatIsIn;
   if (!data.current) return [];
   if (!w || !w.readable) {
-    const said = `What is in a ${data.kind === 'dish' ? 'plate' : 'serve'} could not be read here, so it is not shown as known.`;
+    const said = `What is in a ${words.unit} could not be read here, so it is not shown as known.`;
     return [
       { id: 'energy', label: 'Energy a serve', figure: 'Not read', known: false, said },
       { id: 'alcohol', label: 'Pure alcohol a serve', figure: 'Not read', known: false, said },
@@ -184,8 +251,44 @@ function nutritionCards(data: CocktailRecipe): Card[] {
   return out;
 }
 
+/** The cards that open the full card of what is in a serve. */
+const OPENS_NUTRITION = new Set(['energy', 'alcohol']);
+
+/** The card's own face, as a button: the card's column, no button chrome, a pointer. */
+const OPEN_STYLE = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 2,
+  width: '100%',
+  padding: 0,
+  border: 0,
+  background: 'none',
+  font: 'inherit',
+  color: 'inherit',
+  textAlign: 'left',
+  cursor: 'pointer',
+} as const;
+
+/** Moves to the card of what is in a serve and puts the focus on it. */
+function openNutrition(id: string) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+  el.focus({ preventScroll: true });
+}
+
 /** A dish says plate and food cost, and has no alcohol card (ADR 0366). */
-const DISH_LABELS: Record<string, string> = { cost: 'Cost a plate', 'pour-cost': 'Food cost', energy: 'Energy a plate' };
+const DISH_LABELS: Record<string, string> = { cost: 'Cost per plate', 'pour-cost': 'Food cost', energy: 'Energy a plate' };
+
+function CardFace({ c }: { c: Card }) {
+  return (
+    <>
+      <span className="cl-rcp-card-label">{c.label}</span>
+      <span className="cl-rcp-card-fig cl-num">{c.figure}</span>
+      <span className="cl-rcp-card-said">{c.said}</span>
+    </>
+  );
+}
 
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -194,7 +297,9 @@ export default function DrinkCards({
   sayMoney,
   unsaved,
   draftCost,
-  sayPct = (points) => formatHousePercent(points, null),
+  sayPct = readerPercent,
+  tax = UNSET_TAX,
+  nutritionId,
 }: {
   data: CocktailRecipe;
   /** Null for a role that does not see money: then no cost or price card. */
@@ -206,10 +311,26 @@ export default function DrinkCards({
    * enough to price: then the cost card keeps the saved recipe's figure.
    */
   draftCost?: DraftCost | null;
-  /** The house's form for a share ("%13,1" in a lira house); the reader's own until the house is read. */
+  /**
+   * Writes the pour/food cost share in the house's form ("%18,7" in a lira
+   * house), as /dishes and the inventory drawer write it (r28 recipes audit,
+   * gap 15). The reader's own form when not given.
+   */
   sayPct?: SayPercent;
+  /**
+   * What the house says about tax in its list prices. The pour/food cost share
+   * and the margin are taken against the price without tax when the house says
+   * its prices include it. Unset when not given (the figures as they were).
+   */
+  tax?: ListTax;
+  /**
+   * The id of the sheet's card of what is in a serve. When given, the energy
+   * and pure-alcohol cards open it (r36 recipes audit, gap 9).
+   */
+  nutritionId?: string;
 }) {
   const isDish = data.kind === 'dish';
+  const words = recipeWords(data.kind);
   const draft = unsaved && draftCost ? draftCost : null;
   // A drink never saved has no saved figures; its only card is the draft's
   // cost (and the list's price), once its lines are whole enough to price.
@@ -224,22 +345,23 @@ export default function DrinkCards({
           names(draft.cost.lines.flatMap((l, i) => (l.status !== 'untracked' && l.costPerServe == null ? [draft.labels[i] ?? 'a line'] : []))),
           sayMoney,
           true,
-          isDish,
+          words,
           draft.cost.lines.length,
           draft.cost.lines.map((l) => l.costPerServe),
         )
       : data.current
-        ? costCard(data.cost, unpricedNames(data.current.lines), sayMoney, false, isDish, data.current.lines.length, data.current.lines.map((l) => l.costPerServe))
+        ? costCard(data.cost, unpricedNames(data.current.lines), sayMoney, false, words, data.current.lines.length, data.current.lines.map((l) => l.costPerServe))
         : null;
   const cards = [
     cost,
-    sayMoney ? priceCard(data, sayMoney) : null,
-    sayMoney ? pourCostCard(shownCost, data.cocktail.price, sayPct) : null,
+    sayMoney ? priceCard(data, sayMoney, words) : null,
+    sayMoney ? pourCostCard(shownCost, data.cocktail.price, sayPct, tax) : null,
+    sayMoney ? marginCard(shownCost, data.cocktail.price, sayMoney, words, tax) : null,
     ingredientsCard(data),
-    ...nutritionCards(data),
+    ...nutritionCards(data, words),
   ]
     .filter((c): c is Card => c !== null)
-    .filter((c) => !isDish || c.id !== 'alcohol')
+    .filter((c) => words.alcohol || c.id !== 'alcohol')
     .map((c) => (isDish && DISH_LABELS[c.id] ? { ...c, label: DISH_LABELS[c.id] } : c));
   return (
     <section className="cl-rcp-kpis" data-testid="drink-cards" aria-label={isDish ? 'This dish in figures' : 'This drink in figures'}>
@@ -261,9 +383,21 @@ export default function DrinkCards({
             data-known={c.known ? 'true' : 'false'}
             data-warn={c.warn ? 'true' : 'false'}
           >
-            <span className="cl-rcp-card-label">{c.label}</span>
-            <span className="cl-rcp-card-fig cl-num">{c.figure}</span>
-            <span className="cl-rcp-card-said">{c.said}</span>
+            {nutritionId && OPENS_NUTRITION.has(c.id) ? (
+              <button
+                type="button"
+                className="cl-rcp-card-open cl-focus"
+                aria-controls={nutritionId}
+                title={`See what is in a ${words.unit}`}
+                data-testid={`drink-card-${c.id}-open`}
+                onClick={() => openNutrition(nutritionId)}
+                style={OPEN_STYLE}
+              >
+                <CardFace c={c} />
+              </button>
+            ) : (
+              <CardFace c={c} />
+            )}
           </li>
         ))}
       </ul>
