@@ -32,7 +32,7 @@ import {
   provenanceWords,
   rangeWords,
   sourceWords,
-  summaryLine,
+  summaryFor,
   type MarkShape,
 } from './taste-words';
 
@@ -232,17 +232,22 @@ export default function TasteCard({ row, house, restaurantId, subject = 'good', 
   }
   const d = q.data.data;
   const e = d.effective;
-  const rows = e ? knownAxes(e) : [];
+  // A dish has no alcohol line to be unknown about, and its unknown tastes are one quiet line, not a row each. A cocktail keeps its rows.
+  const isDish = subject === 'dish';
+  // A dish whose alcohol only reads "none" (a salad, a grill) draws no alcohol row; one that cooks with wine keeps it.
+  const rows = (e ? knownAxes(e) : []).filter(([k, a]) => !(isDish && k === 'alcohol' && bandOf(a.v) === 'none'));
   const conflicts = e?.conflicts ?? [];
   const words = e ? [...e.descriptors, ...e.texture].map(descriptorWord).filter((w): w is string => w !== null) : [];
   // A worked-out layer says which axes it could not tell. Those are said as "not known", never as a band.
   const basis = d.layers.find((l) => l.basis)?.basis ?? null;
   const shown = new Set(rows.map(([k]) => k));
-  const notKnown = (basis?.notKnown ?? []).filter((k) => !shown.has(k));
+  const notKnownAll = (basis?.notKnown ?? []).filter((k) => !shown.has(k) && !(isDish && k === 'alcohol'));
+  const notKnown = isDish ? [] : notKnownAll;
+  const notKnownLine = isDish && notKnownAll.length ? `Not known yet: ${notKnownAll.map(axisName).join(', ')}.` : null;
   const workedFrom = basis ? workedFromWords(basis) : null;
   const leftOut = basis ? unknownLinesWords(basis) : null;
-  const known = rows.length > 0 || conflicts.length > 0 || words.length > 0 || notKnown.length > 0;
-  const summary = e ? summaryLine(e) : null;
+  const known = rows.length > 0 || conflicts.length > 0 || words.length > 0 || notKnownAll.length > 0;
+  const summary = summaryFor(d);
   const done = (fresh: TasteData) => {
     qc.setQueryData<TasteRead>(key, { state: 'ready', data: fresh });
     void qc.invalidateQueries({ queryKey: key });
@@ -277,6 +282,11 @@ export default function TasteCard({ row, house, restaurantId, subject = 'good', 
               </li>
             ))}
           </ul>
+          {notKnownLine ? (
+            <p className="iv-note" data-testid="taste-notknown-line">
+              {notKnownLine}
+            </p>
+          ) : null}
           {workedFrom ? (
             <p className="iv-note" data-testid="taste-worked-from">
               {workedFrom}

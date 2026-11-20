@@ -67,6 +67,8 @@ export interface TasteBasis {
   lineSources: Array<{ name: string; from: LineFrom }>;
   /** Lines whose taste is not known at all (they add nothing). */
   unknownNames: string[];
+  /** The tastes a cook would name first, strongest first (at most three, each at least medium). Null when the layer predates it (a stale layer). */
+  lead: string[] | null;
 }
 
 export interface TasteLayer {
@@ -152,7 +154,8 @@ function parseBasis(raw: unknown): TasteBasis | null {
     .filter((l): l is Record<string, unknown> => isObj(l) && typeof l.name === 'string' && l.name.trim() !== '' && typeof l.from === 'string' && LINE_FROM.has(l.from))
     .map((l) => ({ name: l.name as string, from: l.from as LineFrom }));
   const unknownNames = (Array.isArray(raw.unknownNames) ? raw.unknownNames : []).filter((n): n is string => typeof n === 'string' && n.trim() !== '');
-  return { notKnown, lineSources, unknownNames };
+  const lead = Array.isArray(raw.lead) ? raw.lead.filter((k): k is string => typeof k === 'string') : null;
+  return { notKnown, lineSources, unknownNames, lead };
 }
 
 /** A body this file can read, or null. `layers` must be a list; `effective` may be null. */
