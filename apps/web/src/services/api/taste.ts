@@ -17,6 +17,7 @@
  * 0..10 or a missing confidence is dropped, never shown.
  */
 import { apiClient, getActiveRestaurantId, getErrorStatus } from './client';
+import { isUnreachable, UNREACHABLE_WORDS } from '../../lib/unreachable';
 
 /** Copy of the gateway's AXIS_KEYS (lane B). Do not reorder or extend alone. */
 export const AXIS_KEYS = [
@@ -55,6 +56,19 @@ export interface TasteEffective {
   conflicts: TasteConflict[];
 }
 
+/** Where a roll-up line's taste came from: the good's own, a typical one of its kind, or nothing known. */
+export type LineFrom = 'good' | 'class_prior' | 'unknown';
+const LINE_FROM: ReadonlySet<string> = new Set<LineFrom>(['good', 'class_prior', 'unknown']);
+
+/** What a worked-out (recipe) layer rests on. Absent on every other layer. */
+export interface TasteBasis {
+  /** Axes the roll-up could not tell: said as "not known", never as "none". */
+  notKnown: AxisKey[];
+  lineSources: Array<{ name: string; from: LineFrom }>;
+  /** Lines whose taste is not known at all (they add nothing). */
+  unknownNames: string[];
+}
+
 export interface TasteLayer {
   source: string;
   version: number | null;
@@ -63,6 +77,7 @@ export interface TasteLayer {
   statedAt: string | null;
   hasNote: boolean;
   noteText: string | null;
+  basis?: TasteBasis | null;
 }
 
 export interface TasteData {
@@ -130,6 +145,16 @@ function parseEffective(raw: unknown): TasteEffective | null {
   return { axes, descriptors: words(raw.descriptors), texture: words(raw.texture), conflicts };
 }
 
+function parseBasis(raw: unknown): TasteBasis | null {
+  if (!isObj(raw)) return null;
+  const notKnown = (Array.isArray(raw.notKnown) ? raw.notKnown : []).filter((k): k is AxisKey => typeof k === 'string' && AXIS_SET.has(k));
+  const lineSources = (Array.isArray(raw.lineSources) ? raw.lineSources : [])
+    .filter((l): l is Record<string, unknown> => isObj(l) && typeof l.name === 'string' && l.name.trim() !== '' && typeof l.from === 'string' && LINE_FROM.has(l.from))
+    .map((l) => ({ name: l.name as string, from: l.from as LineFrom }));
+  const unknownNames = (Array.isArray(raw.unknownNames) ? raw.unknownNames : []).filter((n): n is string => typeof n === 'string' && n.trim() !== '');
+  return { notKnown, lineSources, unknownNames };
+}
+
 /** A body this file can read, or null. `layers` must be a list; `effective` may be null. */
 export function parseTasteBody(body: unknown): TasteData | null {
   if (!isObj(body) || !Array.isArray(body.layers) || !('effective' in body)) return null;
@@ -143,6 +168,7 @@ export function parseTasteBody(body: unknown): TasteData | null {
     statedAt: strOrNull(l.statedAt),
     hasNote: l.hasNote === true,
     noteText: strOrNull(l.noteText),
+    basis: parseBasis(l.basis),
   }));
   return { effective, layers };
 }
@@ -177,6 +203,8 @@ export async function getTaste(kind: SubjectKind, id: string, restaurantId?: str
     const data = parseTasteBody(res?.data);
     return data ? { state: 'ready', data } : { state: 'failed', reason: NOT_READ };
   } catch (e) {
+    // No answer at all is said as such; every other failure is the card's own sentence.
+    if (isUnreachable(e)) return { state: 'failed', reason: UNREACHABLE_WORDS };
     const o = classify(e);
     return o.kind === 'absent' ? { state: 'absent' } : { state: 'failed', reason: NOT_READ };
   }
