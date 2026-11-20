@@ -13,7 +13,7 @@
  */
 import { useCallback, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AnimatePresence, motion } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -27,6 +27,7 @@ import {
   Wine as WineIcon,
   X,
 } from 'lucide-react'
+import { settle, useReducedMotion } from '../../lib/mudavym/motion'
 import { useAuth } from '../../contexts/AuthContext'
 import { isUnconfirmedWrite } from '../../services/api/client'
 import { useWines } from '../../hooks/queries'
@@ -52,9 +53,13 @@ interface ManualReceiptWorkspaceProps {
 
 const EMPTY_DRAFT = { name: '', producer: '', vintage: '', country: '', region: '', grapeVariety: '' }
 
+/** The house easing (motion.ts HOUSE) as framer's cubic-bezier tuple. */
+const HOUSE_EASE: [number, number, number, number] = [0.16, 1, 0.3, 1]
+
 export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualReceiptWorkspaceProps) {
   const { user, activeRestaurantId } = useAuth()
   const queryClient = useQueryClient()
+  const reduced = useReducedMotion()
   const { locations } = useStorageLocations()
   const restaurantId = activeRestaurantId || user?.restaurantId || ''
   const { data: providers = [] } = useProviders(restaurantId)
@@ -240,18 +245,22 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
     'w-full h-8 px-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-wine-500 focus:ring-2 focus:ring-wine-100'
 
   return createPortal(
-    <AnimatePresence>
+    <>
+      {/* The overlay returns null when closed, so it never stays mounted to
+          exit: no exit props (ADR 0112, no overlay exit animation). Entry
+          settles on the house token; under reduced motion it is an instant
+          swap. */}
       <motion.div
-        initial={{ opacity: 0 }}
+        initial={reduced ? false : { opacity: 0 }}
         animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
+        transition={{ duration: settle.ms / 1000, ease: HOUSE_EASE }}
         className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-3"
         onClick={close}
       >
         <motion.div
-          initial={{ opacity: 0, scale: 0.97, y: 16 }}
+          initial={reduced ? false : { opacity: 0, scale: 0.97, y: 16 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.97, y: 16 }}
+          transition={{ duration: settle.ms / 1000, ease: HOUSE_EASE }}
           onClick={(e) => e.stopPropagation()}
           className="bg-white rounded-3xl shadow-2xl w-full max-w-6xl h-[94vh] overflow-hidden flex flex-col"
         >
@@ -513,7 +522,7 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
           </div>
         </motion.div>
       </motion.div>
-    </AnimatePresence>,
+    </>,
     document.body,
   )
 }
