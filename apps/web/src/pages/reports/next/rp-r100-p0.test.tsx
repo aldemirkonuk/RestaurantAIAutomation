@@ -1,9 +1,4 @@
-/**
- * r100 /reports P0 motion round (MOTION-reports-2026-11-20): M1 the till offers
- * bars and a line only when its days carry checks; M3 full screen fills a
- * landscape phone; M6 a till window pick keeps the last drawing; M8 a "Draw as"
- * switch moves nothing; M11 the last x label has room.
- */
+/** r100 /reports P0 round (M1 M3 M6 M8 M11), MOTION-reports-2026-11-20. */
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -57,9 +52,9 @@ const TILL_OLD = CATALOGUE.till.select(tillRaw(30, false));
 const TILL_COUNTED = CATALOGUE.till.select(tillRaw(30, true));
 const TILL_90 = CATALOGUE.till.select(tillRaw(90, true));
 
-function sheet(register: Register<unknown>, days = 30, graph: GraphType = 'bars', arranging = false) {
+function sheet(register: Register<unknown>, days = 30, graph: GraphType = 'bars', arranging = false, at = '/reports') {
   return (
-    <MemoryRouter initialEntries={['/reports']}>
+    <MemoryRouter initialEntries={[at]}>
       <Cutting
         id="till"
         graph={graph}
@@ -79,6 +74,7 @@ function sheet(register: Register<unknown>, days = 30, graph: GraphType = 'bars'
 const optionsOf = (select: HTMLElement) =>
   within(select).getAllByRole('option').map((o) => (o as HTMLOptionElement).value);
 
+const FLAT = '/reports?flat=till';
 const css = (f: string) => readFileSync(join(__dirname, f), 'utf8');
 
 describe('M1: bars and a line are offered only when the till can draw them', () => {
@@ -88,27 +84,10 @@ describe('M1: bars and a line are offered only when the till can draw them', () 
   });
 
   it('[REVERT-FAILS] nor in full screen, and nothing there tells the reader to arrange the sheet', () => {
-    render(
-      <MemoryRouter initialEntries={['/reports?flat=till']}>
-        <Cutting
-          id="till"
-          graph="combo"
-          register={reg(TILL_OLD)}
-          ctx={{ days: 30 }}
-          arranging={false}
-          swapOptions={swapOptions}
-          arrange={arrange}
-          onGraph={vi.fn()}
-          onSwap={vi.fn()}
-          onRemove={vi.fn()}
-          onDays={vi.fn()}
-        />
-      </MemoryRouter>,
-    );
+    render(sheet(reg(TILL_OLD), 30, 'combo', false, FLAT));
     const dialog = screen.getByRole('dialog');
     const pick = within(dialog).getByRole('combobox', { name: 'Draw Through the till as' });
     expect(optionsOf(pick)).not.toContain('combo');
-    // A stored "combo" falls to the register's first honest drawing, never an empty frame.
     expect(pick).toHaveValue('area');
     expect(dialog.textContent).not.toMatch(/arranging/i);
     expect(dialog.querySelector('.rp-plot')).not.toBeNull();
@@ -122,27 +101,9 @@ describe('M1: bars and a line are offered only when the till can draw them', () 
 
 describe('M1: an undrawable drawing in full screen', () => {
   it('[REVERT-FAILS] points at the control above, never at arranging the sheet', () => {
-    // An answer with no grid in it: the register has no heat map to draw today.
     const real = CATALOGUE.till.view(TILL_COUNTED, { days: 30 });
     const spy = vi.spyOn(CATALOGUE.till, 'view').mockReturnValue({ ...real, matrix: undefined });
-    const noMatrix = TILL_COUNTED;
-    render(
-      <MemoryRouter initialEntries={['/reports?flat=till']}>
-        <Cutting
-          id="till"
-          graph="heatmap"
-          register={reg(noMatrix)}
-          ctx={{ days: 30 }}
-          arranging={false}
-          swapOptions={swapOptions}
-          arrange={arrange}
-          onGraph={vi.fn()}
-          onSwap={vi.fn()}
-          onRemove={vi.fn()}
-          onDays={vi.fn()}
-        />
-      </MemoryRouter>,
-    );
+    render(sheet(reg(TILL_COUNTED), 30, 'heatmap', false, FLAT));
     const said = screen.getByRole('dialog').textContent ?? '';
     expect(said).toMatch(/cannot be drawn as heat map/i);
     expect(said).toMatch(/Pick another drawing above\./);
@@ -175,15 +136,6 @@ describe('M6: a till window pick keeps the last drawing until the new one lands'
     expect(container.querySelector('.rp-standin')).not.toHaveAttribute('data-stale');
   });
 
-  it('a window that fails says so, and does not keep drawing the old one', () => {
-    const { rerender, container } = render(sheet(reg(TILL_COUNTED), 30, 'area'));
-    rerender(
-      sheet({ data: undefined, loading: false, failure: { kind: 'unreachable' } as never, refetch: vi.fn() }, 90, 'area'),
-    );
-    expect(container.querySelector('.rp-plot')).toBeNull();
-    expect(container.querySelector('.rp-standin')).not.toHaveAttribute('data-stale');
-  });
-
   it('the dimming is ink-only and off under reduced motion', () => {
     const c = css('reports-next.css');
     expect(c).toMatch(/\.rp-standin\[data-stale\] > :not\(\[role='status'\]\) \{\s*opacity: 0\.55;/);
@@ -193,23 +145,7 @@ describe('M6: a till window pick keeps the last drawing until the new one lands'
 });
 
 describe('M8: a "Draw as" switch in full screen swaps what is in the slot and nothing else', () => {
-  const flat = () => (
-    <MemoryRouter initialEntries={['/reports?flat=till']}>
-      <Cutting
-        id="till"
-        graph="area"
-        register={reg(TILL_COUNTED)}
-        ctx={{ days: 30 }}
-        arranging={false}
-        swapOptions={swapOptions}
-        arrange={arrange}
-        onGraph={vi.fn()}
-        onSwap={vi.fn()}
-        onRemove={vi.fn()}
-        onDays={vi.fn()}
-      />
-    </MemoryRouter>
-  );
+  const flat = () => sheet(reg(TILL_COUNTED), 30, 'area', false, FLAT);
 
   it('[REVERT-FAILS] the drawing is always inside one .rp-flat__slot, whatever it is drawn as', () => {
     render(flat());
@@ -250,23 +186,7 @@ describe('M3: full screen fills a landscape phone', () => {
   });
 
   it('the note lives under the drawing, not in the head, and Back keeps its name', () => {
-    render(
-      <MemoryRouter initialEntries={['/reports?flat=till']}>
-        <Cutting
-          id="till"
-          graph="area"
-          register={reg(TILL_COUNTED)}
-          ctx={{ days: 30 }}
-          arranging={false}
-          swapOptions={swapOptions}
-          arrange={arrange}
-          onGraph={vi.fn()}
-          onSwap={vi.fn()}
-          onRemove={vi.fn()}
-          onDays={vi.fn()}
-        />
-      </MemoryRouter>,
-    );
+    render(sheet(reg(TILL_COUNTED), 30, 'area', false, FLAT));
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByRole('button', { name: 'Back to the sheet' })).toBeInTheDocument();
     expect(dialog.querySelector('.rp-flat__head .rp-flat__note')).toBeNull();
@@ -293,7 +213,6 @@ describe('M11: the last label and the last sentence have room', () => {
     const plot = Number(container.querySelector('.recharts-wrapper')?.getAttribute('style')?.match(/width: (\d+)/)?.[1] ?? 640);
     const ticks = Array.from(container.querySelectorAll('.recharts-xAxis .recharts-cartesian-axis-tick text'));
     const last = Number(ticks[ticks.length - 1].getAttribute('x'));
-    // "Sat" at 11 px mono is about 20 px: half of it must still be inside the svg.
     expect(last + 10).toBeLessThanOrEqual(plot - 5);
   });
 

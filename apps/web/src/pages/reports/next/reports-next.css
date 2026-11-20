@@ -235,10 +235,8 @@
   opacity: 0.55;
 }
 
-/* A sentence under a chart is clamped to three lines on the sheet, where the
-   card's slot is fixed, so it ends in an ellipsis rather than mid-word at the
-   card's edge; the full sentence is on the paragraph's title and whole in the
-   full-screen view. */
+/* On the sheet a note under a chart ends in an ellipsis at three lines, not mid-word
+   at the card's edge; whole in its title and in full screen. */
 .rp-cut__body > p.rp-cap,
 .rp-cut__body > .rp-standin > p.rp-cap {
   display: -webkit-box;

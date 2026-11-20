@@ -319,11 +319,8 @@ export default function Cutting({
 }: CuttingProps) {
   const spec = CATALOGUE[id];
 
-  /* The window the figures on screen were read for. While a newly picked till
-     window is in flight the last drawing stays up, dimmed and labelled with its
-     own days, instead of a skeleton (never under the new window's label:
-     ADR 0020). Only for a window change: a first read, or another house's,
-     has nothing of ours to show. */
+  /* While a newly picked till window is read, the last drawing stays, dimmed and
+     labelled with its own days (ADR 0020); never for a first read or another house. */
   const lastRead = useRef<{ data: unknown; days: number } | null>(null);
   if (spec.takesWindow && register && !register.loading && !register.failure && register.data !== undefined)
     lastRead.current = { data: register.data, days: ctx.days };
@@ -338,9 +335,7 @@ export default function Cutting({
   const viewCtx: ViewCtx = standIn ? { ...ctx, days: standIn.days } : ctx;
   const windowLine = spec.window(viewCtx);
 
-  /* A drawing the register's answer cannot carry is not offered. The till's
-     bars and line need a count of checks on every day; a gateway that does not
-     send it left the option in the list and an empty frame behind it. */
+  // A drawing the answer cannot carry (bars and a line without per-day checks) is not offered.
   const answer = standIn ? standIn.data : register?.data;
   const offered = ((): GraphType[] => {
     if (!readsRegister(spec) || answer === undefined) return spec.graphs;
@@ -355,8 +350,7 @@ export default function Cutting({
   // The flat view passes its own bars-and-line choice (view-only, kept across
   // its "Draw as" flips); the sheet passes the page's, keyed by cutting id.
   const sheetCombo: ComboControl = { pick: comboPick, onPick: onComboPick };
-  // Only the till takes a window, so only its body needs a frame to hold the
-  // dimming; every other body keeps its blocks as direct children of the card.
+  // Only the till takes a window; other bodies keep their blocks as direct children.
   const framed = (kids: ReactNode) =>
     spec.takesWindow ? (
       <div className="rp-standin" data-stale={standIn ? '' : undefined} aria-busy={standIn ? true : undefined}>

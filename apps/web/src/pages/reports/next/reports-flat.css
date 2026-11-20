@@ -33,14 +33,12 @@
 .rp-flat {
   position: fixed;
   inset: 0;
-  /* The dynamic viewport, so a phone's collapsing toolbar or a rotation never
-     leaves a strip of the sheet showing or a bottom edge under the chrome. */
+  /* The dynamic viewport: a phone's toolbar or a rotation never leaves a strip. */
   width: 100vw;
   width: 100dvw;
   height: 100vh;
   height: 100dvh;
-  /* The drawing's slot: one height for a plot, a table and a figure, so a
-     "Draw as" switch swaps what is inside and moves nothing. */
+  /* The drawing's slot: one height for every drawing, so "Draw as" moves nothing. */
   --rp-flat-slot: clamp(200px, 56dvh, 640px);
   z-index: 1000000000;
   display: flex;
@@ -90,9 +88,7 @@
   min-width: 0;
 }
 
-/* The body scrolls (the figures and the working run under the drawing), never
-   the page. The drawing itself sits in `.rp-flat__slot`, which does not size to
-   what is in it. */
+/* The body scrolls under the drawing; the drawing sits in a fixed-height slot. */
 .rp-flat__body {
   flex: 1 1 auto;
   min-height: 0;
@@ -127,9 +123,7 @@
   margin: 8px 0 0;
 }
 
-/* A landscape phone: the head is one row (Back, title, window, controls), the
-   note sits under the drawing, and the slot takes what is left of the viewport,
-   so the plot, its axis and its figures are on screen without scrolling. */
+/* A landscape phone: a one-row head, and the slot takes the rest of the viewport. */
 @media (max-height: 500px) {
   .rp-flat {
     --rp-flat-slot: max(
