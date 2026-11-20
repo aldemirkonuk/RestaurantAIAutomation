@@ -227,7 +227,7 @@ describe('RecipeSheet', () => {
     });
     serve(negroni());
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Work it out' }));
+    fireEvent.click(await screen.findByTestId('recipe-taste-act'));
     await waitFor(() => expect(h.roll).toHaveBeenCalledWith('cocktail', CID, RID));
     expect(await screen.findByTestId('taste-row-sweet')).toBeInTheDocument();
     expect(screen.getByTestId('recipe-taste-act')).toHaveTextContent('Read again');

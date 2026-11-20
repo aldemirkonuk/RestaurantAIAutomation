@@ -575,7 +575,7 @@ function Sheet({ cocktailId, holdRoom }: { cocktailId: string; holdRoom: boolean
       ) : null}
       {/* The drink opens on its cards, then what is in a serve, then its lines
           (founder ask: a drink shows its KPI cards, then a nutrition card). */}
-      <RecipeTasteLine kind="cocktail" subjectId={cocktailId} restaurantId={activeRestaurantId ?? null} />
+      <RecipeTasteLine kind="cocktail" subjectId={cocktailId} restaurantId={activeRestaurantId ?? null} hasRecipe={(data.current?.lines.length ?? 0) > 0} />
       <DrinkCards data={data} sayMoney={say} unsaved={canEdit && dirty} />
       <WhatIsInAServe data={data} unsaved={canEdit && dirty} />
       <RecipeTaste
