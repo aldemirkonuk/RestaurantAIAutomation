@@ -354,6 +354,24 @@ describe("D2 — a verified invoice restates the lot instead of rivalling it", (
     expect(reval!.args.p_source_order_id).toBe(ORDER);
   });
 
+  it("verifyReceipt restates the sales already rung up from the delivery, at the invoice's cost", async () => {
+    const { db, calls } = makeDb();
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 43,
+      invoiceCurrency: "USD",
+      acceptedQuantity: 10,
+      priceOverrideReason: "fuel surcharge agreed by phone",
+    } as any);
+
+    const restate = calls.rpc.find((c) => c.name === "restate_sale_cost");
+    expect(restate).toBeDefined();
+    expect(restate!.args.p_unit_cost).toBeCloseTo(43);
+    expect(restate!.args.p_source_order_id).toBe(ORDER);
+    expect(restate!.args.p_restaurant_id).toBe(REST);
+  });
+
   it("an equal-quantity price correction still reaches the lot", async () => {
     // ledgerDelta is 0 here (accepted == already stocked). Pre-fix this was the
     // silent case: no movement, so the corrected price landed nowhere at all.
