@@ -31,9 +31,7 @@ function TestLetter({ view, now }: { view: MailSetupView; now: number }) {
   const waiting = waitingForTestLetter(view, now);
   const started = latest ? Date.parse(latest.startedAt) : NaN;
 
-  // The moment a letter proves the address is the one thing here that moves:
-  // only a change to "arrived" settles in. A page opened on an arrival, or one
-  // already arrived, draws it as it is (mail-motion-3).
+  // Only a change to "arrived" settles in; a page already arrived draws it as is.
   const arrived = Boolean(latest?.arrivedAt);
   const arrivedCode = arrived ? latest?.code : null;
   const prevArrived = useRef(arrived);

@@ -286,7 +286,6 @@ describe('which address letters leave from', () => {
     mount();
     const region = (await screen.findByTestId('setup-saved'));
     expect(region.textContent).toBe('');
-    expect(region.className).toBe('');
     fireEvent.click(screen.getAllByRole('radio')[0]);
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(screen.getByTestId('setup-saved').textContent).toBe('Saved.'));

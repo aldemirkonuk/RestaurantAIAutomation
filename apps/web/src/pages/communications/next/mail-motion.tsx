@@ -1,16 +1,10 @@
-/**
- * The Mail tab's few motions, all quiet (MOTIONS.md, ADR 0112): an opacity
- * step of 160 ms ("ink") and a 320 ms settle for the one moment a test letter
- * proves the address. Nothing slides, pulses or changes size; a row that
- * arrives never moves the rows already there. Reduced motion: no animation at
- * all, and a leaving thing is gone at once.
- */
+/** The Mail tab's few motions (MOTIONS.md, ADR 0112): opacity and one colour step only; reduced motion draws end states. */
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
-export const INK_MS = 160;
-export const SETTLE_MS = 320;
-export const STAGGER_MS = 24;
-export const STAGGER_CAP = 6;
+const INK_MS = 160;
+const SETTLE_MS = 320;
+const STAGGER_MS = 24;
+const STAGGER_CAP = 6;
 
 export const MAIL_MOTION_CSS = `
   @keyframes mail-fade-in { from { opacity: 0 } to { opacity: 1 } }
@@ -24,26 +18,19 @@ export const MAIL_MOTION_CSS = `
   }
 `;
 
-/** One style block per surface; the rules are identical, so a second copy is harmless. */
 export function MailMotionStyles() {
-  return <style data-testid="mail-motion-css">{MAIL_MOTION_CSS}</style>;
+  return <style>{MAIL_MOTION_CSS}</style>;
 }
 
-export function prefersReducedMotion(): boolean {
+function prefersReducedMotion(): boolean {
   try {
-    return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   } catch {
     return false;
   }
 }
 
-/**
- * Keys that arrived after the list was first drawn (or after `resetKey`
- * changed, which is a different list rather than more of the same one). Each
- * maps to its place among the new ones, so rows can be delayed a step apiece.
- * Nothing enters while the list is not `ready` (still reading, or showing the
- * previous list as a placeholder): the first ready list is the baseline.
- */
+/** Keys that arrived after the first ready list (a new `resetKey` is a different list); value = place among the new. */
 export function useEnteringKeys(keys: string[], resetKey: string, ready: boolean): Map<string, number> {
   const seen = useRef<Set<string> | null>(null);
   const lastReset = useRef(resetKey);
@@ -68,21 +55,15 @@ export function useEnteringKeys(keys: string[], resetKey: string, ready: boolean
       fresh.forEach((k, i) => next.set(k, i));
       return next;
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [joined, resetKey, ready]);
   return entering;
 }
 
-/** The inline style of an entering row: a 24 ms step apiece, batched after six. */
 export function enterDelay(place: number): { animationDelay: string } {
   return { animationDelay: `${Math.min(place, STAGGER_CAP) * STAGGER_MS}ms` };
 }
 
-/**
- * Keeps what it wrapped on screen for one ink step after `show` turns false,
- * fading, then takes it out (so the space is given back on the next render, and
- * nothing animates a size). Reduced motion: gone at once.
- */
+/** Keeps its children one ink step after `show` turns false, fading; no size animates. Reduced motion: gone at once. */
 export function FadeAway({ show, block, children }: { show: boolean; block?: boolean; children: ReactNode }) {
   const last = useRef<ReactNode>(children);
   if (show) last.current = children;

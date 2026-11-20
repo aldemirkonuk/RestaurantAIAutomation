@@ -166,7 +166,6 @@ function Letter({
         </p>
       )}
       {look.queued && <QueuedPullBack id={m.id} />}
-      {/* Taken back, the line fades for one ink step and then gives its space up (mail-motion-5). */}
       <FadeAway block show={Boolean(inbound && m.noReplyMarkedAt)}>
         <p data-testid="letter-no-reply" className="flex flex-wrap items-baseline gap-2" style={{ ...QUIET, margin: 0 }}>
           <span>Marked as needing no reply, {fmtWhen(m.noReplyMarkedAt)}.</span>
