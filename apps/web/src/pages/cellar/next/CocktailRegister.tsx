@@ -40,6 +40,7 @@ import {
 } from './cellar-format';
 import RecipeSheet from './recipe/RecipeSheet';
 import MenuDrinksOffer from './MenuDrinksOffer';
+import { readingRowCount } from './readingRows';
 import { PRICE_UNREAD, priceText, readPrice } from './recipe/price-text';
 import { pourCostShare } from './recipe/DrinkCards';
 import { useCanEditRecipe, useDrinkFigures, useHouseMoney, useMenuPrices } from './recipe/useRecipe';
@@ -247,6 +248,28 @@ export default function CocktailRegister({
   const bareIds = figures.byId ? (data?.rows ?? []).filter((c) => !figures.byId?.get(c.id)?.hasRecipe).map((c) => c.id) : [];
   const rows = seesCost && onlyBare ? byAllergen.filter((c) => bareIds.includes(c.id)) : byAllergen;
   const openShown = Boolean(openId && rows.some((x) => x.id === openId));
+  // A drink a link named opens only once the table under it has laid out: the
+  // stand first draws closed, then (after a forced style flush, so the change is
+  // seen as a change) opens with its own settle. The page then reads as one
+  // entrance, table then leaf, not a table and a leaf in the same frame. A click
+  // is the person's own act and opens at once. `steady` is the settle done; the
+  // books below the leaf stay unseen until then, so they are not seen to move.
+  const [linked] = useState(Boolean(openParam));
+  const [laid, setLaid] = useState(!linked);
+  const [steady, setSteady] = useState(!linked);
+  const standRef = useRef<HTMLDivElement | null>(null);
+  const listed = !loading && Boolean(data);
+  useEffect(() => {
+    if (laid || !listed) return;
+    standRef.current?.getBoundingClientRect();
+    setLaid(true);
+  }, [laid, listed]);
+  useEffect(() => {
+    if (!laid || steady) return;
+    const t = setTimeout(() => setSteady(true), 340);
+    return () => clearTimeout(t);
+  }, [laid, steady]);
+  const settling = loading || (linked && listed && !steady);
   // The recipe opens below the whole list, so a drink opened by a click (or a
   // link) is brought into view whenever its heading would land off the screen;
   // otherwise a click on a top row of a long list seemed to do nothing
@@ -296,7 +319,7 @@ export default function CocktailRegister({
   };
 
   return (
-    <div data-testid="cocktail-register">
+    <div data-testid="cocktail-register" data-settling={settling ? 'true' : undefined}>
       <div className="cl-row-controls">
         <label htmlFor="cl-ck-search" className="cl-sr">Search this house’s cocktails</label>
         <input
@@ -387,8 +410,9 @@ export default function CocktailRegister({
         <>
           {/* The loaded page opens with the scope note (two lines) over the
               table, so the read in flight holds that same room: the note's own
-              class and height, then the table's head and three empty rows
-              (the fewest a house's list has). First paint is the loaded
+              class and height, then the table's head and as many empty rows as the
+              page already knows the list to have (one when it knows nothing;
+              readingRows.ts). First paint is the loaded
               layout, so the books below it do not move when the list lands. */}
           <p className="cl-note" role="status" style={{ minHeight: '2lh' }}>
             Reading this house’s cocktails…
@@ -411,7 +435,7 @@ export default function CocktailRegister({
                 </tr>
               </thead>
               <tbody>
-                {[0, 1, 2].map((i) => (
+                {Array.from({ length: readingRowCount(figures.byId?.size) }, (_, i) => i).map((i) => (
                   <tr key={i} style={{ cursor: 'default' }}>
                     <td>
                       <span className="cl-serif" style={{ display: 'block', fontWeight: 600, fontSize: 13.5 }}>
@@ -555,7 +579,7 @@ export default function CocktailRegister({
 
           {/* the leaf: recipe + the two acts a house can take on its own row */}
           {/* Only a drink the list shows opens: an id from a link or a filtered-out row leaves no empty panel. */}
-          <div className="cl-stand" data-open={openShown ? 'true' : 'false'} style={{ marginTop: openShown ? 14 : 0 }}>
+          <div ref={standRef} className="cl-stand" data-open={openShown && laid ? 'true' : 'false'} style={{ marginTop: openShown && laid ? 14 : 0 }}>
             <div>
               {openShown ? (
                 <div className="cl-panel" data-testid="cocktail-leaf" ref={leafRef}>
@@ -640,7 +664,7 @@ export default function CocktailRegister({
       )}
 
       {/* ── the other books ──────────────────────────────────────────────── */}
-      <section style={{ marginTop: 26 }} data-testid="cocktail-ledger">
+      <section style={{ marginTop: 26, visibility: settling ? 'hidden' : undefined }} data-testid="cocktail-ledger">
         <h2 className="cl-sec">What the rest of this house’s books say</h2>
         {registerLoading ? (
           <p className="cl-said" role="status">Reading the menu and the till…</p>

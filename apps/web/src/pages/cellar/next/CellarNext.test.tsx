@@ -2308,7 +2308,7 @@ describe('CellarNext — first paint is the loaded layout (r90)', () => {
     setRecipe: { mutateAsync: vi.fn(), isPending: false },
   };
 
-  it('while the cocktail list is read it holds the table: head and three empty rows, hidden from a screen reader', () => {
+  it('while the cocktail list is read it holds the table: head and one empty row (nothing is known of the list), hidden from a screen reader', () => {
     mock.current = { ...base, registers: readout() };
     mock.register = cocktailsRegister;
     mock.writes = writes;
@@ -2317,7 +2317,7 @@ describe('CellarNext — first paint is the loaded layout (r90)', () => {
     expect(screen.getByText('Reading this house’s cocktails…')).toHaveAttribute('role', 'status');
     const room = screen.getByTestId('cocktails-reading-room');
     expect(room).toHaveAttribute('aria-hidden', 'true');
-    expect(room.querySelectorAll('tbody tr')).toHaveLength(3);
+    expect(room.querySelectorAll('tbody tr')).toHaveLength(1);
     expect(room.querySelectorAll('thead th')).toHaveLength(7);
   });
 
@@ -2376,6 +2376,6 @@ describe('CellarNext — first paint is the loaded layout (r90)', () => {
     unmount();
     mock.current = { ...base, registers: readout(), registersLoading: false };
     const read = draw();
-    expect((read.container.querySelector('footer') as HTMLElement).style.visibility).toBe('visible');
+    expect((read.container.querySelector('footer') as HTMLElement).style.visibility).toBe('');
   });
 });
