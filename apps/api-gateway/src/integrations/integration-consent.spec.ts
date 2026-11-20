@@ -50,7 +50,7 @@ function fixture() {
         if (table === 'integration_consent_receipts' && rows.some(row => row.seal_id === payload.seal_id)) return { data: null, error: { code: '23505' } };
         rows.push(structuredClone(payload)); return { data: null, error: null };
       }
-      if (action === 'upsert') { rows.push(structuredClone(payload)); return { data: null, error: null }; }
+      if (action === 'upsert') { rows.push(structuredClone(payload)); return { data: [structuredClone(payload)], error: null }; }
       const found = rows.filter(row => filters.every(matches => matches(row)));
       if (action === 'update') found.forEach(row => Object.assign(row, structuredClone(payload)));
       return { data: structuredClone(found), error: null };
