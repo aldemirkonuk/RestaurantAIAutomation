@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   Logger,
   ServiceUnavailableException,
@@ -12,15 +13,37 @@ import { NfVerdictService } from "../common/model-client/nf-verdict.service";
 import { PARSE_BASIS, photoCountParseVerdict } from "./photo-count-verdict";
 
 const COUNT_PROMPT =
-  "You are helping a bar/restaurant staff member count bottles of a specific " +
-  "wine on a shelf or in a bin, from a single photo. Count only intact, " +
-  "visibly full-or-partial bottles of the wine described. Return ONLY a JSON " +
+  "You are helping a bar/restaurant staff member count units of a specific " +
+  "item (a product such as a bottle, can, keg, box or bag) on a shelf or in " +
+  "a bin, from a single photo. Count only intact, visibly full-or-partial " +
+  "units of the item described. Return ONLY a JSON " +
   'object, no surrounding text: {"suggestedQty": <integer or null>, ' +
   '"confidence": "low"|"medium"|"high", "note": "<one short sentence>"}. ' +
   'Set suggestedQty to null and confidence to "low" if the photo does not ' +
-  "clearly show countable bottles (e.g. too blurry, wrong item, empty shelf " +
-  "with no bottles). Never guess wildly — a null with a clear note is better " +
+  "clearly show countable units (e.g. too blurry, wrong item, empty shelf " +
+  "with none of the item). Never guess wildly — a null with a clear note is better " +
   "than a confident wrong number.";
+
+/** One clause, so it reads inside the sheet's "The photo could not be read — …". */
+export const UNREADABLE_PHOTO =
+  "This photo's format cannot be read here; take it as a JPEG or PNG";
+
+/**
+ * The type the bytes are, by magic number, of the four the model reads; else
+ * null. HEIC/HEIF (`ftyp`), PDF and unknown bytes used to go as image/jpeg.
+ */
+export function sniffPhotoMediaType(base64: string) {
+  const head = Buffer.from(base64.slice(0, 16), "base64");
+  const at = (i: number, bytes: number[]) =>
+    bytes.every((b, k) => head[i + k] === b);
+  if (at(0, [0xff, 0xd8, 0xff])) return "image/jpeg";
+  if (at(0, [0x89, 0x50, 0x4e, 0x47])) return "image/png";
+  if (at(0, [0x47, 0x49, 0x46, 0x38])) return "image/gif";
+  if (at(0, [0x52, 0x49, 0x46, 0x46]) && at(8, [0x57, 0x45, 0x42, 0x50])) {
+    return "image/webp";
+  }
+  return null;
+}
 
 export interface PhotoCountEstimate {
   suggestedQty: number | null;
@@ -55,18 +78,20 @@ export class PhotoCountService {
    */
   async estimate(
     imageBase64: string,
-    wineName: string,
+    itemName: string,
     restaurantId?: string,
     eventRef?: NfEventRef,
   ): Promise<PhotoCountEstimate> {
+    // Refused before the key check, so no model call is spent on it.
+    const mediaType = sniffPhotoMediaType(imageBase64);
+    if (!mediaType) throw new BadRequestException(UNREADABLE_PHOTO);
+
     const apiKey = this.configService.get<string>("ANTHROPIC_API_KEY");
     if (!apiKey) {
       throw new ServiceUnavailableException(
         "Anthropic API key not configured — set ANTHROPIC_API_KEY",
       );
     }
-
-    const mediaType = this.detectMediaType(imageBase64);
 
     try {
       // P1 NF-A: model client owns transport + emission. The 30s budget is a
@@ -90,7 +115,7 @@ export class PhotoCountService {
                 },
                 {
                   type: "text",
-                  text: `${COUNT_PROMPT}\n\nWine being counted: "${wineName}".`,
+                  text: `${COUNT_PROMPT}\n\nItem being counted: "${itemName}".`,
                 },
               ],
             },
@@ -127,15 +152,6 @@ export class PhotoCountService {
         "Photo count estimate temporarily unavailable",
       );
     }
-  }
-
-  private detectMediaType(
-    base64: string,
-  ): "image/jpeg" | "image/png" | "image/webp" | "image/gif" {
-    if (base64.startsWith("/9j/")) return "image/jpeg";
-    if (base64.startsWith("iVBORw")) return "image/png";
-    if (base64.startsWith("UklGR")) return "image/webp";
-    return "image/jpeg";
   }
 
   private parseResponse(text: string): PhotoCountEstimate {

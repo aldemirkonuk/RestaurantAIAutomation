@@ -267,7 +267,7 @@ describe('OrderSheet (INV-W20, INV-W21)', () => {
 describe('CountSheet (INV-W22, blind count)', () => {
   it('starts empty and does not show the book\'s figure before the seal', () => {
     mount(<CountSheet row={row({ stock: 7 })} onClose={() => {}} />);
-    expect((screen.getByRole('textbox', { name: 'Bottles counted' }) as HTMLInputElement).value).toBe('');
+    expect((screen.getByRole('textbox', { name: 'Counted' }) as HTMLInputElement).value).toBe('');
     expect(document.body.textContent).not.toMatch(/\b7\b/);
     expect(screen.getByRole('button', { name: 'Type the count first' })).toBeDisabled();
   });
@@ -275,7 +275,7 @@ describe('CountSheet (INV-W22, blind count)', () => {
   it('after the seal, says the gap against the book as it read when the sheet opened', async () => {
     api.submit.mockResolvedValue({ synced: true });
     mount(<CountSheet row={row({ stock: 7 })} onClose={() => {}} />);
-    fireEvent.change(screen.getByRole('textbox', { name: 'Bottles counted' }), { target: { value: '5' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Counted' }), { target: { value: '5' } });
     holdByKeyboard(screen.getByRole('button', { name: /Hold to record 5/ }));
     await waitFor(() =>
       expect(document.body.textContent).toContain('Counted 5; the book said 7, so the shelf is 2 short. Barolo now reads 5.'),
@@ -337,7 +337,7 @@ describe('Failures in the house\u2019s words (INV-W31)', () => {
   it('a refused count says nothing was recorded', async () => {
     api.submit.mockRejectedValue(answered(403));
     mount(<CountSheet row={row()} onClose={() => {}} />);
-    fireEvent.change(screen.getByRole('textbox', { name: 'Bottles counted' }), { target: { value: '5' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Counted' }), { target: { value: '5' } });
     holdByKeyboard(screen.getByRole('button', { name: 'Hold to record 5' }));
     const t = await alertText();
     expect(t).toContain('Nothing was recorded — this account is not allowed to do that in this house.');
@@ -347,7 +347,7 @@ describe('Failures in the house\u2019s words (INV-W31)', () => {
   it('a count the device could not hold is said as unknown, never as nothing recorded', async () => {
     api.submit.mockRejectedValue(new Error('QuotaExceededError'));
     mount(<CountSheet row={row()} onClose={() => {}} />);
-    fireEvent.change(screen.getByRole('textbox', { name: 'Bottles counted' }), { target: { value: '5' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Counted' }), { target: { value: '5' } });
     holdByKeyboard(screen.getByRole('button', { name: 'Hold to record 5' }));
     const t = await alertText();
     expect(t).toContain('This device could not hold the count to send later, so it is not known whether it was recorded. Trying again is safe: it is recorded once.');
@@ -531,7 +531,7 @@ describe('counts read with grouped digits, as money does (INV-W33)', () => {
 
   it('groups the count sheet\'s hold', () => {
     mount(<CountSheet row={row()} onClose={() => {}} />);
-    fireEvent.change(screen.getByRole('textbox', { name: 'Bottles counted' }), { target: { value: '1240' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Counted' }), { target: { value: '1240' } });
     expect(screen.getByRole('button', { name: 'Hold to record 1,240' })).toBeTruthy();
   });
 
@@ -568,14 +568,15 @@ describe('counts read with grouped digits, as money does (INV-W33)', () => {
     mount(<CountSheet row={row()} onClose={() => {}} />);
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: [new File(['x'], 'shelf.jpg', { type: 'image/jpeg' })] } });
-    await waitFor(() => expect(document.body.textContent).toContain('The photo suggests 1,240 (high confidence).'));
-    expect((screen.getByRole('textbox', { name: 'Bottles counted' }) as HTMLInputElement).value).toBe('1240');
+    await waitFor(() => expect(document.body.textContent).toContain('The photo suggests 1,240. It only fills the field'));
+    expect(document.body.textContent?.toLowerCase()).not.toContain('confidence'); // ADR 0104, G11
+    expect((screen.getByRole('textbox', { name: 'Counted' }) as HTMLInputElement).value).toBe('1240');
   });
 
   it('groups the count held on this device and what its seal bound', async () => {
     api.submit.mockResolvedValue({ synced: false });
     mount(<CountSheet row={row()} onClose={() => {}} />);
-    fireEvent.change(screen.getByRole('textbox', { name: 'Bottles counted' }), { target: { value: '1240' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Counted' }), { target: { value: '1240' } });
     holdByKeyboard(screen.getByRole('button', { name: 'Hold to record 1,240' }));
     await waitFor(() => expect(document.body.textContent).toContain('The count of 1,240 goes out when the connection returns'));
     await waitFor(() => expect(document.body.textContent).toContain('Barolo: 1,240 counted'));
@@ -674,5 +675,41 @@ describe('a 409 on a keyed write means an earlier attempt landed (security findi
     expect(t).not.toMatch(/key|Nothing was recorded|nothing new/i);
     expect(reread).toHaveBeenCalled();
     reread.mockRestore();
+  });
+});
+
+describe('the photo count reads the file it got (inventory walk #7, I2: G10, G11, G22)', () => {
+  const pickPhoto = (file = new File(['x'], 'shelf.jpg', { type: 'image/jpeg' })) => {
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+  };
+
+  it('says a whole number without a unit', () => {
+    mount(<CountSheet row={row()} onClose={() => {}} />);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Counted' }), { target: { value: '2.5' } });
+    expect(document.body.textContent).toContain('A count is a whole number, with no fractions.');
+  });
+
+  it('offers photos only, not PDFs, to count from', () => {
+    mount(<CountSheet row={row()} onClose={() => {}} />);
+    const accept = (document.querySelector('input[type="file"]') as HTMLInputElement).accept;
+    expect(accept).toContain('.heic');
+    expect(accept).not.toMatch(/pdf/i);
+  });
+
+  it('sends the photo re-encoded as JPEG when this browser can draw it (sizes: photoToJpeg.test.ts)', async () => {
+    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 4032, height: 3024, close: vi.fn() }));
+    const ctx = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as never);
+    const url = vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/jpeg;base64,SMALL');
+    try {
+      api.photo.mockResolvedValue({ suggestedQty: 3, confidence: 'low', note: '' });
+      mount(<CountSheet row={row()} onClose={() => {}} />);
+      pickPhoto(new File(['heic'], 'IMG_0001.HEIC', { type: 'image/heic' }));
+      await waitFor(() => expect(api.photo).toHaveBeenCalledWith('i1', 'SMALL'));
+    } finally {
+      ctx.mockRestore();
+      url.mockRestore();
+      vi.unstubAllGlobals();
+    }
   });
 });
