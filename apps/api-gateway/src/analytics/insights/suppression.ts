@@ -51,6 +51,8 @@
  * anything, and a key that IS generated can never be silently unmatched.
  */
 
+import { houseToday } from "../../common/house-day";
+
 export const SUPPRESSION_SEP = "#";
 export const ANY = "*";
 
@@ -230,9 +232,9 @@ export type FiringPeriod = "day" | "week" | "month";
 
 /**
  * The grain of a firing: `fire:day:2026-09-21`, `fire:week:2026-W39`,
- * `fire:month:2026-09`. Read in UTC, like every business date this engine
- * computes (`getUTCDay` in the generator); there is no house time zone in the
- * analytics path to read instead.
+ * `fire:month:2026-09`. Read in UTC from the instant it is given; a caller
+ * that knows the house's zone hands it `onHouseClock(at, zone)`, the house's
+ * calendar day, so the grain names the house's day and not UTC's.
  *
  * Deliberately NOT the `d:`/`m:` data grains. Those name the days the
  * NUMBERS cover, and `dateOfGrain` offers to exclude such a day from the
@@ -270,6 +272,20 @@ export function firingGrain(period: FiringPeriod, at: Date): string {
   return `${FIRING_GRAIN_PREFIX}:week:${w.year}-W${pad2(w.week)}`;
 }
 
+/**
+ * The house's calendar day for an instant, as that day's UTC midnight, so
+ * `firingGrain` reads the house's day, week and month. With no zone it is the
+ * instant itself, read in UTC: the one clock a house with no zone has.
+ *
+ * QA round 4 H4 (2026-11-07): firings were keyed on the UTC day only, so a US
+ * house's day rolled at 7 or 8pm local. A card dismissed at lunch came back
+ * the same evening, and the weekly key rolled on Sunday evening.
+ */
+export function onHouseClock(at: Date, zone: string | null): Date {
+  if (!zone) return at;
+  return new Date(`${houseToday(zone, at)}T00:00:00Z`);
+}
+
 /** Whether a grain is a firing (`fire:…`) rather than the numbers' own period. */
 export function isFiringGrain(grain: string | null | undefined): boolean {
   return (
@@ -288,10 +304,12 @@ export function isFiringGrain(grain: string | null | undefined): boolean {
 export function withFiring<T extends SuppressionTarget>(
   target: T,
   period: FiringPeriod,
-  at: Date,
+  instant: Date,
+  zone: string | null = null,
 ): T {
   if (slugSubject(target.subject) !== ANY || safeGrain(target.periodKey) !== ANY)
     return target;
+  const at = onHouseClock(instant, zone);
   return { ...target, periodKey: firingGrain(period, at) };
 }
 
