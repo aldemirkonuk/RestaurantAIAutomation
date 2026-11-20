@@ -397,6 +397,8 @@ describe('the item drawer', () => {
       open(row());
       fireEvent.click(screen.getByTestId('ivd-card-onhand'));
       expect(spy).not.toHaveBeenCalled();
+      await new Promise((r) => setTimeout(r, 100));
+      expect(spy).not.toHaveBeenCalled();
       await waitFor(() => expect(spy.mock.contexts).toContain(screen.getByTestId('ivd-evidence')));
       spy.mockClear();
       cleanup();
