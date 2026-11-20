@@ -151,11 +151,31 @@ function ArrivalShell({
       }
     >
       <div aria-busy={step === null} className="mdv-spread-stack">
+        {step && (
+          <div
+            className="mdv-spread-progress"
+            role="progressbar"
+            aria-label="Set-up progress"
+            aria-valuemin={1}
+            aria-valuemax={2}
+            aria-valuenow={step === 'menu' ? 2 : 1}
+            aria-valuetext={step === 'menu' ? 'Step 2 of 2' : 'Step 1 of 2'}
+          >
+            <span
+              data-testid="gs-progress-fill"
+              className="mdv-spread-progress__fill"
+              style={{ width: step === 'menu' ? '100%' : '50%' }}
+            />
+          </div>
+        )}
         {children}
       </div>
     </AuthSpread>
   )
 }
+
+/** Height of the menu step the standing read gives way to (r102 walk, 375 px). */
+const MENU_STEP_MIN_HEIGHT_PX = 378
 
 export default function GetStarted() {
   const navigate = useNavigate()
@@ -715,8 +735,23 @@ export default function GetStarted() {
   // never waits; a read that fails ('unread') shows the step as before.
   if (step === 'menu' && !openedHere.current && menuStanding === null) {
     return (
-      <ArrivalShell step={step} onSignOut={signOut}>
-        <p role="status" data-testid="menu-standing-reading">
+      <ArrivalShell
+        step={step}
+        onSignOut={signOut}
+        eyebrow="Next"
+        title="Your menu"
+        voice="A photo, a file, or a few typed lines. Mudavym sets it out as the house's own list, and you check it on the next page."
+      >
+        {/* r103: the menu step it gives way to stands 378 px tall and opens
+            under its own heading; holding both keeps the page still when the
+            read lands (CLS 0.30 at 375 px under reduced motion, r102 check 5;
+            0.10 after the height alone, r103 walk: the heading arrived 124 px
+            higher than the line it replaced). */}
+        <p
+          role="status"
+          data-testid="menu-standing-reading"
+          style={{ minHeight: MENU_STEP_MIN_HEIGHT_PX }}
+        >
           Looking at your house’s menu…
         </p>
       </ArrivalShell>
