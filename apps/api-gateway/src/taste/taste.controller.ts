@@ -4,11 +4,15 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { roleSatisfies } from '../procurement/order-approval-gate';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AppendHouseTasteDto, RollupPreviewDto } from './dto/taste.dto';
 import { isSubjectKind, SubjectKind, TasteService } from './taste.service';
 
-type Caller = { userId: string; restaurantId: string; name?: string; email?: string };
+export const ROLLUP_REFUSAL =
+  "Working out a taste from a recipe is for the house's owners and managers.";
+
+type Caller = { userId: string; restaurantId: string; role?: string | null; name?: string; email?: string };
 
 /**
  * How a good, cocktail or dish tastes: every layer, and the fused result.
@@ -16,7 +20,12 @@ type Caller = { userId: string; restaurantId: string; name?: string; email?: str
  * TENANT SCOPE. The restaurant is named in the path, so `assertTenantMatch`
  * inside `JwtAuthGuard` refuses a caller reaching into another house before
  * this runs; the check below repeats it so no future guard change can open it.
- * Any member of the house may describe a taste; roles gate money, not palates.
+ * Any member of the house may read a taste, describe their own, or preview an
+ * unsaved recipe; roles gate money, not palates. Working out a taste from a
+ * recipe writes the house's recipe layer for a drink or dish, so that one is for
+ * owners and managers (`roleSatisfies` ranks null, staff, admin and unknown
+ * roles below manager, as RolesGuard's exact lists do, ADR 0164) and refuses in
+ * words, not with a bare "Forbidden resource".
  */
 @ApiTags('taste')
 @Controller('taste')
@@ -70,7 +79,9 @@ export class TasteController {
     @Param('subjectId', ParseUUIDPipe) subjectId: string,
     @CurrentUser() user: Caller,
   ) {
-    return this.taste.rollupSubject(restaurantId, this.subject(kind, restaurantId, user), subjectId);
+    const subject = this.subject(kind, restaurantId, user);
+    if (!roleSatisfies(user.role, 'manager')) throw new ForbiddenException(ROLLUP_REFUSAL);
+    return this.taste.rollupSubject(restaurantId, subject, subjectId);
   }
 
   @Post(':restaurantId/:subjectKind/:subjectId/house')
