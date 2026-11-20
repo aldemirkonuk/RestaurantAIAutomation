@@ -19,8 +19,8 @@
  * is the library's, and is exercised by using the page.
  */
 
-import { describe, expect, it, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, render } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
 /** The props `Sheet` last handed the grid. */
@@ -57,7 +57,18 @@ function paint(arranging: boolean) {
   return { onMove, props: grid.props as NonNullable<typeof grid.props> };
 }
 
+const later = () =>
+  act(() => {
+    vi.advanceTimersByTime(100);
+  });
+
 describe('Sheet — the drag-to-rearrange canvas', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
   it('turns a finished drag into the moved cutting’s new slot', () => {
     const { onMove, props } = paint(true);
     expect(typeof props.onDragStop).toBe('function');
@@ -112,6 +123,11 @@ describe('Sheet — the drag-to-rearrange canvas', () => {
 
   it('moves and resizes only while arranging, and pins every cutting while reading', () => {
     const arranging = paint(true);
+    // r103: the page answers the tap in its first frame; the handles of ten cards mount a task later.
+    expect(grid.props?.isDraggable).toBe(false);
+    expect(grid.props?.isResizable).toBe(false);
+    later();
+    arranging.props = grid.props as NonNullable<typeof grid.props>;
     expect(arranging.props.isDraggable).toBe(true);
     expect(arranging.props.isResizable).toBe(true);
     expect(arranging.props.layouts?.lg.every((l) => l.static === false)).toBe(true);
