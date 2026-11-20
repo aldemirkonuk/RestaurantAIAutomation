@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { MapPin, PenLine } from 'lucide-react'
 import { BrandMark } from '../components/brand/BrandMark'
 import { PlacesAutocomplete, type PlaceResult } from '../components/ui/PlacesAutocomplete'
@@ -7,8 +7,8 @@ import { CountryCombobox } from '../components/ui/CountryCombobox'
 import { MenuCsvUpload } from '../components/onboarding/MenuCsvUpload'
 import { MenuScanUpload } from '../components/onboarding/MenuScanUpload'
 import { MenuManualEntry } from '../components/onboarding/MenuManualEntry'
-import { useAuth } from '../contexts/AuthContext'
-import { apiClient } from '../services/api/client'
+import { useAuth, type User } from '../contexts/AuthContext'
+import { apiClient, getErrorStatus, isUnconfirmedWrite } from '../services/api/client'
 import { importMenu, type MenuImportResult } from '../services/api/menus'
 import { currencyForCountry } from '../lib/currency'
 import { getBrowserTimezone } from '../lib/browserTimezone'
@@ -16,43 +16,88 @@ import { writeProof } from '../lib/firstProof'
 import { isMapsConfigured } from '../lib/googleMaps'
 import { houseNotOpened, HOUSE_OPEN_DETAILS_LATER } from '../lib/houseOpeningWords'
 
-type Step = 'you' | 'restaurant' | 'menu' | 'reading'
+type Step = 'you' | 'restaurant' | 'menu'
 type Role = 'Owner' | 'General manager' | 'Beverage lead' | 'Chef'
 type MenuMethod = 'photo' | 'file' | 'typed' | null
 
 const roles: Role[] = ['Owner', 'General manager', 'Beverage lead', 'Chef']
 
+/** Where a signed-out visitor is sent, and brought back here after. */
+const SIGN_IN_THEN_GET_STARTED = '/login?redirect=%2Fget-started'
+
+/**
+ * The entry rule (BL-1, B-12; fork F8), from the session's house and role:
+ * staff and managers go to the desk, never owner onboarding; an owner (or no
+ * role) resumes at the menu step; no house starts at the first step.
+ */
+type Entry = 'sign-in' | 'desk' | 'menu' | 'you'
+
+function entryFor(user: Pick<User, 'restaurantId' | 'role'> | null): Entry {
+  if (!user) return 'sign-in'
+  if (user.restaurantId) {
+    return user.role === 'staff' || user.role === 'manager' ? 'desk' : 'menu'
+  }
+  return 'you'
+}
+
+/** Said when the account has a house but this page could not load it. */
+const HOUSE_NOT_LOADED =
+  'This account already has a house, but it did not load here just now. Choose it to go on.'
+
+/** What the menu step says when a dropped photo is not read, from the status alone. */
+function photoNotRead(cause: unknown): string {
+  const status = getErrorStatus(cause)
+  if (status === 413) return 'That photo is too large to send. Try a smaller one, or send a file.'
+  if (status === 429) return 'Too many tries in a short time. Wait a minute, then try again.'
+  if (isUnconfirmedWrite(cause)) return 'We could not read that photo just now. Try again in a moment.'
+  if (status === 400 || status === 422)
+    return 'We could not find a menu in that photo. Try a clearer photo, or send a file.'
+  return 'We could not read that photo.'
+}
+
 function ArrivalShell({
   step,
   children,
 }: {
-  step: Step
-  children: React.ReactNode
+  /** Null while the entry rule has not decided yet: no step is named. */
+  step: Step | null
+  children?: React.ReactNode
 }) {
-  const label = {
-    you: '01 · You',
-    restaurant: '02 · Your restaurant',
-    menu: '03 · Your menu',
-    reading: '04 · Reading',
-  }[step]
+  const label = step
+    ? {
+        you: '01 · You',
+        restaurant: '02 · Your restaurant',
+        menu: '03 · Your menu',
+      }[step]
+    : null
   return (
     <div className="min-h-screen bg-[#fbfaf7] text-[#211f1b]">
       <header className="h-14 border-b border-[#211f1b]/15 px-5 flex items-center justify-between bg-white">
         <BrandMark size={24} alt="Mudavym" />
-        <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#6d685f]">
-          {label}
-        </span>
+        {label && (
+          <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#6d685f]">
+            {label}
+          </span>
+        )}
       </header>
-      <main className="mx-auto w-full max-w-3xl px-5 py-10 sm:py-16">{children}</main>
+      <main aria-busy={step === null} className="mx-auto w-full max-w-3xl px-5 py-10 sm:py-16">
+        {children}
+      </main>
     </div>
   )
 }
 
 export default function GetStarted() {
   const navigate = useNavigate()
-  const { user, createFirstHouse } = useAuth()
+  const { user, loading, createFirstHouse, signInWithSession } = useAuth()
+  // No step shows until the entry rule decides, so Welcome never flashes.
   const [step, setStep] = useState<Step>('you')
+  const [entered, setEntered] = useState(false)
+  const entryDecided = useRef(false)
   const [name, setName] = useState(user?.name ?? '')
+  const nameTouched = useRef(false)
+  const [rerouting, setRerouting] = useState(false)
+  const [houseNotLoaded, setHouseNotLoaded] = useState(false)
   const [mobile, setMobile] = useState('')
   const [role, setRole] = useState<Role | null>(null)
   const [restaurantName, setRestaurantName] = useState('')
@@ -73,8 +118,6 @@ export default function GetStarted() {
   } | null>(null)
   const [locationStatus, setLocationStatus] = useState<string | null>(null)
   const [menuMethod, setMenuMethod] = useState<MenuMethod>(null)
-  const [pendingResult, setPendingResult] = useState<MenuImportResult | null>(null)
-  const [sourceImage, setSourceImage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -86,14 +129,38 @@ export default function GetStarted() {
   // omitted, the gateway stores NULL rather than inventing a clock.
   const timezone = useMemo(() => getBrowserTimezone(), [])
 
+  // Decided once: later step changes are the person's own.
   useEffect(() => {
-    if (step !== 'reading' || !pendingResult) return
-    const timer = window.setTimeout(() => {
-      writeProof(pendingResult, sourceImage)
-      navigate('/house/menu', { replace: true })
-    }, 1200)
-    return () => window.clearTimeout(timer)
-  }, [navigate, pendingResult, sourceImage, step])
+    if (loading || entryDecided.current) return
+    entryDecided.current = true
+    const entry = entryFor(user)
+    if (entry === 'sign-in') navigate(SIGN_IN_THEN_GET_STARTED, { replace: true })
+    else if (entry === 'desk') navigate('/', { replace: true })
+    else {
+      if (entry === 'menu') setStep('menu')
+      setEntered(true)
+    }
+  }, [loading, navigate, user])
+
+  // B-14: `user` can arrive late; its name fills unless the person typed.
+  useEffect(() => {
+    if (!nameTouched.current && user?.name) setName(user.name)
+  }, [user?.name])
+
+  // After a 409 the re-read session is routed by the same rule; no house in
+  // it means the house is one to choose (F8).
+  useEffect(() => {
+    if (!rerouting) return
+    setRerouting(false)
+    const entry = entryFor(user)
+    if (entry === 'menu') {
+      setError(null)
+      setNotice(null)
+      setStep('menu')
+    } else if (entry === 'desk') navigate('/', { replace: true })
+    else if (entry === 'sign-in') navigate(SIGN_IN_THEN_GET_STARTED, { replace: true })
+    else navigate('/choose-house', { replace: true })
+  }, [navigate, rerouting, user])
 
   const saveYou = async () => {
     setSaving(true)
@@ -151,6 +218,7 @@ export default function GetStarted() {
     }
     setSaving(true)
     setError(null)
+    setHouseNotLoaded(false)
     try {
       const opened = await createFirstHouse({
         restaurantName: restaurantName.trim(),
@@ -169,18 +237,48 @@ export default function GetStarted() {
       setNotice(opened.detailsLoaded ? null : HOUSE_OPEN_DETAILS_LATER)
       setStep('menu')
     } catch (cause) {
-      // Said from the status alone (F-006). A 409 means an earlier press
-      // opened the house; going on into it from here is F-006 OPEN-2.
+      if (getErrorStatus(cause) === 409) {
+        // An earlier press (or another tab) opened it: re-read the session
+        // and route by the entry rule (F8, ADR 0265 OPEN-2).
+        await stepIntoTheHouse()
+        return
+      }
+      // Said from the status alone (F-006).
       setError(houseNotOpened(cause, 'arrival'))
     } finally {
       setSaving(false)
     }
   }
 
+  const stepIntoTheHouse = async () => {
+    setHouseNotLoaded(false)
+    let accessToken: string | null = null
+    let refreshToken: string | null = null
+    try {
+      accessToken = localStorage.getItem('accessToken')
+      refreshToken = localStorage.getItem('refreshToken')
+    } catch {
+      /* storage blocked: said below */
+    }
+    if (!accessToken || !refreshToken) {
+      setHouseNotLoaded(true)
+      setError(HOUSE_NOT_LOADED)
+      return
+    }
+    try {
+      await signInWithSession({ accessToken, refreshToken })
+      setRerouting(true)
+    } catch (cause) {
+      console.warn('get-started: the house exists but the session did not reload', cause)
+      setHouseNotLoaded(true)
+      setError(HOUSE_NOT_LOADED)
+    }
+  }
+
+  // The first proof opens at once, with no staged pause.
   const menuRead = (result: MenuImportResult, source?: { image?: string | null }) => {
-    setPendingResult(result)
-    setSourceImage(source?.image ?? null)
-    setStep('reading')
+    writeProof(result, source?.image ?? null)
+    navigate('/house/menu', { replace: true })
   }
 
   const ingestDroppedImage = async (file: File) => {
@@ -199,12 +297,14 @@ export default function GetStarted() {
       })
       const result = await importMenu('scan', { imageBase64: image })
       menuRead(result, { image })
-    } catch (cause: any) {
-      setError(cause?.response?.data?.message || cause?.message || 'We could not read that photo.')
+    } catch (cause) {
+      setError(photoNotRead(cause))
     } finally {
       setSaving(false)
     }
   }
+
+  if (!entered) return <ArrivalShell step={null} />
 
   if (step === 'you') {
     return (
@@ -219,7 +319,10 @@ export default function GetStarted() {
             <input
               aria-label="Your name"
               value={name}
-              onChange={(event) => setName(event.target.value)}
+              onChange={(event) => {
+                nameTouched.current = true
+                setName(event.target.value)
+              }}
               className="mt-2 block w-full bg-transparent font-serif text-2xl outline-none"
             />
           </label>
@@ -329,6 +432,11 @@ export default function GetStarted() {
           </div>
         </div>
         {error && <p role="alert" className="mt-5 text-sm text-red-700">{error}</p>}
+        {houseNotLoaded && (
+          <Link to="/choose-house" replace className="mt-3 inline-block text-sm text-[#1a5e6b] underline underline-offset-4">
+            Choose your house
+          </Link>
+        )}
         <button type="button" onClick={createHouse} disabled={saving} className="mt-8 bg-[#1a5e6b] px-6 py-3 text-white disabled:opacity-40">
           {saving ? 'Opening the house…' : 'This is us'}
         </button>
@@ -367,6 +475,7 @@ export default function GetStarted() {
             {saving ? 'Reading…' : 'A photo, or click to photograph.'}
           </span>
         </button>
+        {error && <p role="alert" className="mt-5 text-sm text-red-700">{error}</p>}
         <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm">
           <button type="button" onClick={() => setMenuMethod(menuMethod === 'file' ? null : 'file')} className="text-[#1a5e6b] underline underline-offset-4">
             Send a file
@@ -393,17 +502,6 @@ export default function GetStarted() {
     )
   }
 
-  return (
-    <ArrivalShell step="reading">
-      <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">Reading</p>
-      <h1 className="mt-3 font-serif text-4xl sm:text-5xl">The facts are settling.</h1>
-      <div className="mt-12 space-y-4 border-y border-[#211f1b]/20 py-7 font-serif text-2xl">
-        <p>Lines named.</p>
-        <p>Prices placed.</p>
-        <p>Sections taking shape.</p>
-      </div>
-      <p role="status" className="mt-6 text-sm text-[#6d685f]">Opening the first proof…</p>
-    </ArrivalShell>
-  )
+  // Unreachable: every step returns above.
+  return null
 }
-
