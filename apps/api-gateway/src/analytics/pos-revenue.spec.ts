@@ -423,7 +423,12 @@ describe("GoalsService.getPosRevenueWindow — checks per house day (r100 check 
     );
     const has = (k: string, v: unknown) =>
       windowed.some((c) => c.args[0] === k && c.args[1] === v);
-    expect(has("restaurant_id", "tenant-a")).toBe(true);
+    // The probe and the windowed read each name the tenant.
+    expect(
+      windowed.filter(
+        (c) => c.args[0] === "restaurant_id" && c.args[1] === "tenant-a",
+      ),
+    ).toHaveLength(2);
     expect(has("voided", false)).toBe(true);
     // One windowed read of pos_checks (plus the probe): the count is not a
     // second query that could drift from the revenue.
