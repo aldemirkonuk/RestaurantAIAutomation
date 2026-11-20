@@ -38,6 +38,7 @@ export function AskAiSurface() {
       onClose={ask.close}
       followUp={ask.followUp}
       onDropFollowUp={ask.dropFollowUp}
+      session={ask.session}
     />
   )
 }

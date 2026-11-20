@@ -299,6 +299,7 @@ export function HouseShell({ children }: { children?: ReactNode } = {}) {
                   onClose={ask.close}
                   followUp={ask.followUp}
                   onDropFollowUp={ask.dropFollowUp}
+                  session={ask.session}
                 />
               )}
               {!phone && (
@@ -370,6 +371,7 @@ export function HouseShell({ children }: { children?: ReactNode } = {}) {
                 onClose={ask.close}
                 followUp={ask.followUp}
                 onDropFollowUp={ask.dropFollowUp}
+                session={ask.session}
               />
             )}
           </div>
