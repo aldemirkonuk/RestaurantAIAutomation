@@ -88,3 +88,19 @@ describe("ProtectedRoute", () => {
     expect(screen.queryByText("the page")).not.toBeInTheDocument();
   });
 });
+
+describe("the session check's spinner under reduced motion (r103 mail-8)", () => {
+  it("does not spin when the person asked for reduced motion", () => {
+    vi.mocked(useAuth).mockReturnValue({ user: null, loading: true, isAuthenticated: false } as any);
+    const { container } = render(
+      <MemoryRouter>
+        <ProtectedRoute>
+          <div>the page</div>
+        </ProtectedRoute>
+      </MemoryRouter>,
+    );
+    const spinner = container.querySelector(".animate-spin");
+    expect(spinner).not.toBeNull();
+    expect(spinner!.className).toContain("motion-reduce:animate-none");
+  });
+});
