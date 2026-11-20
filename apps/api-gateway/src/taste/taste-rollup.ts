@@ -2,7 +2,7 @@ import { createHash } from 'crypto';
 import {
   ABV_FLOOR, ABV_SPAN, AromaFamilyKey, BITE_EXPONENT, Chem, CLASS_PRIORS, DILUTION_BY_METHOD,
   DILUTION_DEFAULT, DILUTION_SD, DILUTION_SD_ASSUMED, DRAWS, K, METHODS, Method, PRIORS_VERSION,
-  Q_BY_PROV, RollupProv, ROAST_K, SOLID_SALT_RELEASE, SUPPRESS, YAMAGUCHI,
+  NONE_BY_CLASS, Q_BY_PROV, RollupProv, ROAST_K, SOLID_SALT_RELEASE, SUPPRESS, YAMAGUCHI,
 } from './taste-priors';
 
 /**
@@ -83,8 +83,8 @@ const OWN_CHEM: Record<string, (v: number) => [keyof Chem, number]> = {
 };
 const AROMA_KEYS: readonly string[] = ['fruit', 'citrus', 'floral', 'herbal', 'spice', 'nutty', 'roasted', 'smoky', 'savoury', 'earthy', 'dairy', 'woody', 'funky'];
 /** What a class prior is sure of: the fields it gives and the ones it says are absent. */
-const priorKnown = (c: { chem: Chem; none?: ReadonlyArray<keyof Chem> }): Set<keyof Chem> =>
-  new Set<keyof Chem>([...(Object.keys(c.chem) as Array<keyof Chem>), ...(c.none ?? [])]);
+const priorKnown = (c: { id: string; chem: Chem }): Set<keyof Chem> =>
+  new Set<keyof Chem>([...(Object.keys(c.chem) as Array<keyof Chem>), ...(NONE_BY_CLASS[c.id] ?? [])]);
 
 function resolve(l: RollupLine): Resolved {
   const mass = l.qty !== null && Number.isFinite(l.qty) && l.qty > 0 ? l.qty : null;
