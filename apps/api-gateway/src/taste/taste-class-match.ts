@@ -11,7 +11,7 @@ const SYNONYM: ReadonlyArray<[RegExp, string]> = [
   [/\bcapsicum\b/g, 'bell pepper'], [/\b(green onion|spring onion)\b/g, 'scallion'], [/\brocket\b/g, 'arugula'],
   [/\b(courgette)\b/g, 'zucchini'], [/\b(prawn)\b/g, 'shrimp'], [/\b(sugar|caster|icing) syrup\b/g, 'simple syrup'],
 ];
-/** A prepared thing is not an ingredient: its chemistry is not its main word's. */
+/** A prepared dish is not its main word. */
 const PREPARED = /\b(soup|stew|salad|dressing|sandwich|pie|cake|cookie|biscuit|ice cream|gelato|sorbet|jam|marmalade|pudding|custard|batter|chocolate|sauce mix|mix|blend|cordial|curd|zest|peel|rind|yolk|cube|powder)\b/;
 
 const singular = (w: string): string => {

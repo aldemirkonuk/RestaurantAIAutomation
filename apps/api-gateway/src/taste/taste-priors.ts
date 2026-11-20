@@ -37,8 +37,7 @@ export interface ClassPrior {
   not?: RegExp;
 }
 
-// Matching is on the normalised label (taste-class-match.ts: lower-case, accent-folded, singular, synonyms).
-// One class -> it; several -> only a single `tight` class may win, else the label stays unknown. Sources: taste-prior-sources.ts.
+// Matching: taste-class-match.ts. One class -> it; several -> a single `tight` class wins, else unknown.
 export const CLASS_PRIORS: readonly ClassPrior[] = [
   // --- water, sugars, salt
   { id: 'ice-water', match: /^(ice|crushed ice|water|soda water|club soda|sparkling water)$/, chem: {}, rsd: 0, q: 0.6, tight: true },
@@ -179,11 +178,8 @@ export const DILUTION_SD_ASSUMED = 0.08;
 
 /**
  * Saturating curves (R3 step 4): value = 10 * (1 - exp(-x / k)).
- * salty k 0.9 -> 1.4 (r92): at 0.9 a dish seasoned to the usual 1.2 % read 6.6
- * "pronounced" and a grilled kofta at 1.8 % read 7.1, so well-seasoned food read
- * as loudly salty. At 1.4 a solid at 1.2 % reads 5.0 (medium, "noticeably
- * salty"), 2 % reads 6.8, and 3 % (over-salted) still reaches "dominant".
- * bitter k 25 checked, kept: a 20 IBU lager reads 5.5 (medium), a 50 IBU IPA 8.6.
+ * salty k 0.9 -> 1.4 (r92): a solid at 1.2 % salt now reads 5.0 (medium), 2 % 6.8, 3 % dominant.
+ * bitter k 25 kept: a 20 IBU lager reads 5.5, a 50 IBU IPA 8.6.
  */
 export const K = { sweet: 12, sour: 8, salty: 1.4, bitter: 25, umami: 0.5, fat: 12, aromaRef: 28 } as const;
 export const SOLID_SALT_RELEASE = 0.8;

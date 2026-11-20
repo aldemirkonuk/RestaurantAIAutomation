@@ -81,7 +81,7 @@ describe('rollup: a cocktail (R3 section 4, whiskey sour)', () => {
 describe('rollup: a dish (R3 section 5, seared kofta, garlic yogurt, charred tomato)', () => {
   const r = rollup(kofta);
   it('lands on the worked example peaks within a band', () => {
-    // R3's 5.5 used salty k 0.9; r92 recalibrated k to 1.4 (well-seasoned food reads medium), which puts this dish (0.8 % salt on the raw meat, shared with yogurt and tomato) at 3.6.
+    // R3's 5.5 used salty k 0.9; r92 k 1.4 puts this dish (0.8 % salt on raw meat) at 3.6.
     near(r.axes.salty.v, 3.6, 0.5);
     near(r.axes.umami.v, 6.4, 1.2);
     near(r.axes.fat.v, 7.1, 0.8);
