@@ -199,6 +199,27 @@ describe("drinks: the list's figures", () => {
     expect(out.drinks.find((d) => d.cocktailId === SOUR)?.hasRecipe).toBe(true);
   });
 
+  it("a failed pricing read leaves only the costs unread; the recipes stay", async () => {
+    const fake = fakeDb(withDrinks());
+    const client = fake.db.getClient() as unknown as { from: (t: string) => unknown };
+    const real = client.from;
+    client.from = (t: string) => {
+      const q = real(t) as Record<string, unknown>;
+      if (t === "restaurant_inventory") q.then = (ok: (v: unknown) => unknown) => ok({ data: null, error: { message: "boom" } });
+      return q;
+    };
+    const out = await new DishesService(fake.db, new RecipesService(fake.db)).drinkFigures(HOUSE_A, "owner");
+    expect(out.costsUnread).toBe(true);
+    expect(out.drinks).toHaveLength(2);
+    expect(out.drinks.every((d) => d.cost === null)).toBe(true);
+    expect(out.drinks.find((d) => d.cocktailId === GT)).toMatchObject({ hasRecipe: true, lineCount: 2, price: 12 });
+  });
+
+  it("a read that prices says its costs are read, and staff never meet it", async () => {
+    expect((await service().drinkFigures(HOUSE_A, "owner")).costsUnread).toBe(false);
+    expect((await service().drinkFigures(HOUSE_A, "staff")).costsUnread).toBe(false);
+  });
+
   it("a failed read is a 503 with its sentence, never a list with no costs", async () => {
     for (const table of ["cocktails", "recipe_lines"]) {
       const fake = fakeDb(withDrinks());
