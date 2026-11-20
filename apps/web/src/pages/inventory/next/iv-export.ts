@@ -11,7 +11,7 @@
 import { toast } from 'sonner';
 import { exportTable, type TableExportColumn } from '../../../lib/tableExport';
 import { plainText } from './iv-failure';
-import { fmtCount, typeLabel, type InvRow } from './useInventoryNextData';
+import { fmtCount, goodKind, isDrinkKind, kindLabel, noZoneWord, typeLabel, type InvRow } from './useInventoryNextData';
 
 export function blank(v: number | null): number | string {
   return v === null ? '' : v;
@@ -49,36 +49,75 @@ export async function runExport<T>(rows: T[], columns: TableExportColumn<T>[], f
 }
 
 /**
+ * What the Location cell says for a row: the first zone holding stock, else
+ * "Unassigned" for stock outside every zone, else the no-zone word. The count
+ * sheet is sorted on this same text, so the order is what the person reads.
+ */
+export function locationCell(row: InvRow, zoneName: (id: string | null) => string): string {
+  if (row.zones === null) return '';
+  const first = row.zones.find((z) => z.locationId !== null && z.qty > 0);
+  if (first) return zoneName(first.locationId);
+  if (row.zones.some((z) => z.qty > 0)) return 'Unassigned';
+  return noZoneWord(row.stock) ?? '';
+}
+
+/**
+ * The unit the quantities are in: the good's own unit, else "bottle" for a
+ * drink with none recorded, else blank. It only labels the ledger base unit;
+ * no figure is converted (#1373 holds the kg/l conversion).
+ */
+export function unitWord(row: InvRow): string {
+  if (row.uom) return row.uom;
+  return isDrinkKind(goodKind(row)) ? 'bottle' : '';
+}
+
+/**
+ * The bottle size to write. The gateway gives an unsized good 750 ml, so a
+ * food would read 750: only a drink keeps `bottleSizeMl`; a good of unknown
+ * kind keeps only a size someone recorded; a food or supply has none.
+ */
+export function bottleSizeCell(row: InvRow): number | string {
+  const kind = goodKind(row);
+  if (isDrinkKind(kind)) return blank(row.bottleSizeMl);
+  if (kind === null || kind === 'unknown') return blank(row.bottleSizeRecordedMl ?? null);
+  return '';
+}
+
+export const KIND_HEADER = 'Kind';
+export const UNIT_HEADER = 'Unit';
+export const VENDOR_HEADER = 'Vendor';
+
+export const kindColumn: TableExportColumn<InvRow> = { header: KIND_HEADER, value: (r) => kindLabel(goodKind(r)) };
+export const unitColumn: TableExportColumn<InvRow> = { header: UNIT_HEADER, value: (r) => unitWord(r) };
+export const vendorColumn: TableExportColumn<InvRow> = { header: VENDOR_HEADER, value: (r) => r.providerName ?? '' };
+
+/**
  * `nameHead` is the name column's head: "Title" for a drink, "Good" in a house of goods.
- * A house of goods has no producer, bottle price or glass price to write, so those
- * columns are left out of its file rather than sent empty.
+ * Every row carries its Kind, Unit and Vendor; run the columns through
+ * `dropEmptyDetail` over the rows being written so a column nobody fills is left out.
  */
 export function valuationColumns(currencyCode: string | null, nameHead = 'Title'): TableExportColumn<InvRow>[] {
-  const goods = nameHead === 'Good';
-  const cols: TableExportColumn<InvRow>[] = [
+  return [
     { header: nameHead, value: (r) => r.name ?? '' },
+    kindColumn,
     { header: 'Producer', value: (r) => r.producer ?? '' },
     { header: 'Type', value: (r) => (r.type === null ? '' : typeLabel(r.type)) },
     { header: 'Live', value: (r) => blank(r.stock) },
     { header: 'Shadow', value: (r) => blank(r.shadow) },
     { header: 'Par', value: (r) => blank(r.par) },
+    unitColumn,
     { header: 'Velocity/day', value: (r) => (r.velocity === null ? '' : r.velocity.toFixed(2)) },
     { header: 'Runway d', value: (r) => (r.runway === null ? '' : Math.round(r.runway)) },
     { header: 'WAC', value: (r) => blank(r.wac) },
     { header: 'Your bottle price', value: (r) => blank(r.bottle) },
     { header: 'Your glass price', value: (r) => blank(r.glass) },
     { header: 'Value at cost', value: (r) => (r.value === null ? '' : r.value.toFixed(2)) },
+    vendorColumn,
     { header: 'Currency', value: () => currencyCode ?? '' },
   ];
-  return forHouse(goods, cols);
 }
 
-/** A house of goods' file without the drink-only columns; a house with a drink keeps them all. */
-export function forHouse<T>(goods: boolean, columns: TableExportColumn<T>[]): TableExportColumn<T>[] {
-  return goods ? columns.filter((c) => !DRINK_ONLY_HEADERS.has(c.header)) : columns;
-}
-
-/** Columns that only a drink fills: left out of a house of goods' files. */
+/** Columns that only some goods fill: kept in a file only when a written row has a value for them. */
 export const DRINK_ONLY_HEADERS: ReadonlySet<string> = new Set([
   'Producer',
   'Vintage',
@@ -87,13 +126,79 @@ export const DRINK_ONLY_HEADERS: ReadonlySet<string> = new Set([
   'Your glass price',
 ]);
 
+const DETAIL_HEADERS: ReadonlySet<string> = new Set([...DRINK_ONLY_HEADERS, VENDOR_HEADER]);
+
+/**
+ * Leaves out a detail column (Producer, Vintage, Bottle size, the bottle and
+ * glass prices, Vendor) when no row being written has a value for it, so a
+ * file of foods has no wine headings and a mixed file keeps them with blank
+ * cells on the food rows. With no rows nothing is judged and every column stays.
+ */
+export function dropEmptyDetail<T>(rows: T[], columns: TableExportColumn<T>[]): TableExportColumn<T>[] {
+  if (rows.length === 0) return columns;
+  return columns.filter((c) => {
+    if (!DETAIL_HEADERS.has(c.header)) return true;
+    return rows.some((r) => {
+      const v = c.value(r);
+      return v !== null && v !== undefined && v !== '';
+    });
+  });
+}
+
+/**
+ * The count sheet's order: where it sits (the Location cell, stock outside any
+ * zone last), then what kind of good, then its name. Rows that tie keep the
+ * order they came in. Reorders rows only; no figure changes.
+ */
+export function sortCountSheet(rows: InvRow[], zoneName: (id: string | null) => string): InvRow[] {
+  const keyed = rows.map((r, i) => {
+    const loc = locationCell(r, zoneName);
+    return { r, i, loc, last: loc === '' || loc === 'Unassigned' || loc === 'none on hand', kind: kindLabel(goodKind(r)), name: r.name ?? '' };
+  });
+  const cmp = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+  keyed.sort(
+    (a, b) =>
+      Number(a.last) - Number(b.last) || cmp(a.loc, b.loc) || cmp(a.kind, b.kind) || cmp(a.name, b.name) || a.i - b.i,
+  );
+  return keyed.map((k) => k.r);
+}
+
+/** The columns of the count sheet (the sheet someone walks the shelves with). */
+export function countSheetColumns(nameHead: string, zoneName: (id: string | null) => string, observation: (r: InvRow) => string): TableExportColumn<InvRow>[] {
+  return [
+    { header: 'Location', value: (r) => locationCell(r, zoneName) },
+    { header: nameHead, value: (r) => r.name ?? '' },
+    kindColumn,
+    { header: 'Producer', value: (r) => r.producer ?? '' },
+    { header: 'Vintage', value: (r) => blank(r.vintage) },
+    { header: 'Type', value: (r) => (r.type === null ? '' : typeLabel(r.type)) },
+    { header: 'Bottle size (ml)', value: (r) => bottleSizeCell(r) },
+    unitColumn,
+    { header: 'System qty (live)', value: (r) => blank(r.stock) },
+    { header: 'System qty (shadow)', value: (r) => blank(r.shadow) },
+    { header: 'Par', value: (r) => blank(r.par) },
+    { header: 'Counted qty', value: () => '' },
+    { header: 'Variance', value: () => '' },
+    // Legacy's columns (InventoryCommandPage.tsx:605-660), with Last counted kept
+    // beside Days since counted. An unread figure stays blank, never a 0.
+    { header: 'Days since counted', value: (r) => daysSinceCountedCell(r.lastCountedAt) },
+    { header: 'Last counted', value: (r) => r.lastCountedAt ?? '' },
+    { header: 'Velocity/day', value: (r) => (r.velocity === null ? '' : r.velocity.toFixed(2)) },
+    { header: 'Runway d', value: (r) => (r.runway === null ? '' : Math.round(r.runway)) },
+    { header: 'WAC', value: (r) => blank(r.wac) },
+    { header: 'Value', value: (r) => (r.value === null ? '' : r.value.toFixed(2)) },
+    vendorColumn,
+    { header: 'Observation', value: (r) => observation(r) },
+  ];
+}
+
 /** Legacy's file name for one row: the title, slugged (InventoryCommandPage.tsx "Export this row"). */
 export function rowFilename(row: InvRow): string {
   return (row.name ?? '').replace(/[^\w]+/g, '-').toLowerCase() || 'inventory-row';
 }
 
-/** The cost columns a valuation export carries: WAC and value at cost. */
-export const COST_HEADERS: ReadonlySet<string> = new Set(['WAC', 'Value at cost']);
+/** The cost columns the exports carry: WAC and value (the count sheet's "Value", the valuation's "Value at cost"). */
+export const COST_HEADERS: ReadonlySet<string> = new Set(['WAC', 'Value', 'Value at cost']);
 
 /**
  * The columns this reader may take away: all of them for an owner or a

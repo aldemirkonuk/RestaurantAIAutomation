@@ -94,6 +94,13 @@ export interface InvRow {
    * when there is nothing to read it from.
    */
   kind: string | null;
+  /**
+   * The house's own kind for the good (`restaurant_inventory.kind`: wine, beer,
+   * whiskey, spirit, liqueur, cocktail, sake, cider, non_alcoholic, soft_drink,
+   * food, supply, other), read raw from the list row. A food has no library
+   * row, so this is the only kind it has. Absent on a row not built by toRow.
+   */
+  ledgerKind?: string | null;
   vintage: number | null;
   grape: string | null;
   bottleSizeMl: number | null;
@@ -219,6 +226,42 @@ export function typeLabel(key: string): string {
   return TYPE_WORDS[key] ?? key.charAt(0).toUpperCase() + key.slice(1);
 }
 
+const KIND_WORDS: Record<string, string> = {
+  wine: 'Wine',
+  spirit: 'Spirit',
+  whiskey: 'Spirit',
+  beer: 'Beer',
+  sake: 'Sake',
+  cider: 'Cider',
+  liqueur: 'Liqueur',
+  cocktail: 'Cocktail',
+  non_alcoholic: 'Non-alcoholic',
+  soft_drink: 'Soft drink',
+  food: 'Food',
+  supply: 'Supply',
+  other: 'Other',
+};
+
+/** The kinds that are poured from a bottle, can or keg: the ones that carry a producer, vintage and bottle size. */
+const DRINK_KINDS: ReadonlySet<string> = new Set([
+  'wine', 'spirit', 'whiskey', 'beer', 'sake', 'cider', 'liqueur', 'cocktail', 'non_alcoholic', 'soft_drink',
+]);
+
+/** What a good is: the house's own kind, else the library's. Null when neither says. */
+export function goodKind(row: Pick<InvRow, 'kind'> & { ledgerKind?: string | null }): string | null {
+  return row.ledgerKind ?? row.kind;
+}
+
+/** The word for a kind in a file or a sentence. A kind nobody recorded (or the classifier could not tell) says so. */
+export function kindLabel(kind: string | null): string {
+  return (kind !== null && KIND_WORDS[kind]) || 'Not recorded';
+}
+
+/** True only when the kind is known and is a drink; an unknown kind is not guessed. */
+export function isDrinkKind(kind: string | null): boolean {
+  return kind !== null && DRINK_KINDS.has(kind);
+}
+
 /** The Type filter's value for every wine at once, shown only when the house holds other drinks too. */
 export const ALL_WINE = 'kind:wine';
 
@@ -288,6 +331,7 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
     bottleSizeMl: num(r.bottleSizeMl) ?? num(w?.bottleSizeMl),
     bottleSizeRecordedMl: ('bottle_size_ml' in r ? num(r.bottle_size_ml) : num(r.bottleSizeMl)) ?? num(w?.bottleSizeMl),
     uom: text(r.uom),
+    ledgerKind: typeof r.kind === 'string' && r.kind.trim() !== '' ? r.kind.trim().toLowerCase() : null,
     stock,
     shadow: num(r.shadowStock),
     par,

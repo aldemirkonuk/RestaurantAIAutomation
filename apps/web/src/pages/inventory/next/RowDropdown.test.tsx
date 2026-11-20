@@ -609,7 +609,7 @@ describe('Ported acts in the More menu: Mark inactive and Remove from inventory'
     const m = await menu({
       uom: 'g',
       kind: 'food',
-      row: row({ wineId: null, name: 'Flour 00', kind: 'food', stock: 2250, shadow: 0, openMl: 0 }),
+      row: row({ wineId: null, name: 'Flour 00', kind: 'food', ledgerKind: 'food', producer: null, vintage: null, grape: null, bottle: null, glass: null, stock: 2250, shadow: 0, openMl: 0 }),
     });
     const item = within(m).getByRole('menuitem', { name: 'Remove from inventory' }) as HTMLButtonElement;
     expect(item.disabled).toBe(false);
@@ -685,12 +685,23 @@ describe('Ported acts in the More menu: Mark inactive and Remove from inventory'
 
   it('Export this row heads the name column Good for a food or supply, Title for a drink', async () => {
     tableExport.exportTable.mockClear();
-    const food = await menu({ uom: 'g', kind: 'food', row: row({ wineId: null, name: 'Flour 00', kind: 'food', stock: 2250, shadow: 0, openMl: 0 }) });
+    const food = await menu({ uom: 'g', kind: 'food', row: row({ wineId: null, name: 'Flour 00', kind: 'food', ledgerKind: 'food', producer: null, vintage: null, grape: null, bottle: null, glass: null, stock: 2250, shadow: 0, openMl: 0 }) });
     fireEvent.click(within(food).getByRole('menuitem', { name: 'Export this row' }));
     expect(tableExport.exportTable.mock.calls[0][0].columns[0].header).toBe('Good');
     const rowCols = tableExport.exportTable.mock.calls[0][0].columns.map((c: { header: string }) => c.header);
     expect(rowCols).not.toContain('Producer');
     expect(rowCols).not.toContain('Your bottle price');
+  });
+
+  it('Export this row of a food says Kind Food and Unit g, and has no drink heading', async () => {
+    tableExport.exportTable.mockClear();
+    const flour = row({ wineId: null, name: 'Flour 00', kind: 'food', ledgerKind: 'food', uom: 'g', producer: null, vintage: null, grape: null, bottle: null, glass: null, providerName: 'Mill Co', stock: 2250, shadow: 0, openMl: 0 });
+    const food = await menu({ uom: 'g', kind: 'food', row: flour });
+    fireEvent.click(within(food).getByRole('menuitem', { name: 'Export this row' }));
+    const { columns, rows } = tableExport.exportTable.mock.calls[0][0] as { columns: { header: string; value: (r: InvRow) => unknown }[]; rows: InvRow[] };
+    const at = (h: string) => columns.find((c) => c.header === h)!.value(rows[0]);
+    expect([at('Kind'), at('Unit'), at('Vendor')]).toEqual(['Food', 'g', 'Mill Co']);
+    expect(columns.map((c) => c.header)).not.toContain('Your glass price');
   });
 
   it('Export this row still heads the name column Title for a drink', async () => {
