@@ -25,6 +25,7 @@
  */
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCanEditRecipe } from './useRecipe';
 import TasteCard, { Glyph } from '../../../inventory/next/TasteCard';
 import { PROV_MARK, leadLine } from '../../../inventory/next/taste-words';
 import { getTaste, rollupTaste, tasteKeys, ROLLUP_ABSENT, type ProvKind, type TasteRead } from '../../../../services/api/taste';
@@ -33,7 +34,18 @@ export const RECIPE_TASTE_EMPTY = 'Not worked out yet. It is worked out from the
 export const RECIPE_TASTE_LINE_FAILED = 'How it tastes could not be read just now.';
 export const RECIPE_TASTE_UNSAVED = 'Worked out from the saved recipe, not the lines you have typed since.';
 export const RECIPE_TASTE_NO_RECIPE = 'Save a recipe with lines, then its taste can be worked out from it.';
+export const RECIPE_TASTE_EMPTY_READ = 'Not worked out yet. A manager works it out from the saved recipe.';
+export const RECIPE_TASTE_NO_RECIPE_READ = 'No recipe yet, so there is nothing to work a taste out from.';
 const CARD_ID = 'recipe-taste-card';
+/**
+ * The height the taste reserves from the first paint, so what is below it does
+ * not move when the read lands (r85 walk: CLS 0.064 at 1440 on a ?open= deep
+ * link). A worked-out card is about 450px tall at desktop width, its top line
+ * one line. A drink with nothing to show gives the space back once the read
+ * says so.
+ */
+export const TASTE_CARD_RESERVE_PX = 450;
+export const TASTE_LINE_RESERVE_PX = 30;
 
 type Kind = 'cocktail' | 'dish';
 
@@ -58,6 +70,9 @@ export function RecipeTasteLine(props: Props) {
   let sentence: string | null = null;
   let kinds: ProvKind[] = [];
   const failed = q.isError || q.data?.state === 'failed';
+  if (q.isLoading) {
+    return <p className="tc-line tc-line--foot cl-rcp-taste-line" data-testid="recipe-taste-line-wait" aria-hidden style={{ minHeight: TASTE_LINE_RESERVE_PX }} />;
+  }
   if (!failed && q.data?.state === 'ready') {
     const line = leadLine(q.data.data);
     if (line) ({ sentence, kinds } = line);
@@ -92,6 +107,8 @@ export default function RecipeTaste(props: Props & { /** The saved recipe has at
   const { kind, subjectId, restaurantId, hasRecipe, unsaved } = props;
   const qc = useQueryClient();
   const q = useTaste(props);
+  // The sheet is read-only to staff; the recipe layer is written by who writes the recipe.
+  const canWrite = useCanEditRecipe();
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState<string | null>(null);
   const readable = q.data?.state === 'ready';
@@ -109,19 +126,26 @@ export default function RecipeTaste(props: Props & { /** The saved recipe has at
   };
 
   return (
-    <section id={CARD_ID} className="cl-rcp-taste" data-testid="recipe-taste" aria-label="How it tastes">
+    <section
+      id={CARD_ID}
+      className="cl-rcp-taste"
+      data-testid="recipe-taste"
+      data-state={q.isLoading ? 'loading' : 'settled'}
+      aria-label="How it tastes"
+      style={q.isLoading ? { minHeight: TASTE_CARD_RESERVE_PX } : undefined}
+    >
       <h4 className="cl-sec" style={{ margin: 0 }}>How it tastes</h4>
-      <TasteCard row={{ id: subjectId }} restaurantId={restaurantId} subject={kind} describe={false} emptyWords={RECIPE_TASTE_EMPTY} />
+      <TasteCard row={{ id: subjectId }} restaurantId={restaurantId} subject={kind} describe={false} emptyWords={canWrite ? RECIPE_TASTE_EMPTY : RECIPE_TASTE_EMPTY_READ} />
       {readable ? (
-        hasRecipe ? (
+        !hasRecipe ? (
+          <p className="cl-note" data-testid="recipe-taste-norecipe">{canWrite ? RECIPE_TASTE_NO_RECIPE : RECIPE_TASTE_NO_RECIPE_READ}</p>
+        ) : canWrite ? (
           <p className="cl-rcp-taste-acts">
             <button type="button" className="cl-btn cl-focus" data-testid="recipe-taste-act" disabled={busy} onClick={() => void run()}>
               {busy ? (worked ? 'Reading again…' : 'Working it out…') : worked ? 'Read again' : 'Work it out'}
             </button>
           </p>
-        ) : (
-          <p className="cl-note" data-testid="recipe-taste-norecipe">{RECIPE_TASTE_NO_RECIPE}</p>
-        )
+        ) : null
       ) : null}
       {readable && hasRecipe && unsaved ? (
         <p className="cl-note" data-testid="recipe-taste-unsaved">{RECIPE_TASTE_UNSAVED}</p>

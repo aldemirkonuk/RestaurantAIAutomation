@@ -18,6 +18,7 @@ import { useAuth } from '../../../../contexts/AuthContext';
 import { draftId, draftKey, dropDraft } from './drafts';
 import { dishesApi, ownerOf, recipesApi, type DishBody, type DishChange, type MenuPrice, type PreviewCostBody, type RecipeOwner, type SaveRecipeBody } from '../../../../services/api/recipes';
 import { getErrorStatus } from '../../../../services/api/client';
+import { isUnreachable } from '../../../../lib/unreachable';
 import { managesHouse } from '../../../communications/next/cm-format';
 
 /** A cocktail's key is `['recipes', rid, id]`; a dish's has `'dish'` before the id. */
@@ -237,6 +238,8 @@ export function useRecipe(cocktailId: string | RecipeOwner) {
     loading: q.isLoading,
     fetching: q.isFetching,
     error: q.isError ? reason(q.error) : null,
+    /** The read got no answer at all (the gateway or the network is down): said in words, never as the transport's "Network Error". */
+    unreachable: q.isError && isUnreachable(q.error),
     /** The HTTP status of a failed read; 404 means the drink is gone from this house. */
     status: q.isError ? getErrorStatus(q.error) : null,
     refetch: q.refetch,
