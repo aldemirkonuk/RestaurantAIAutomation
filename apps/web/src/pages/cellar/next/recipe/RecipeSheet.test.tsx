@@ -260,7 +260,7 @@ describe('RecipeSheet', () => {
     expect(await screen.findByTestId('recipe-taste')).toBeInTheDocument();
     expect(h.taste).toHaveBeenCalledWith('dish', CID, RID);
     expect(h.taste).not.toHaveBeenCalledWith('cocktail', CID, RID);
-    fireEvent.click(await screen.findByRole('button', { name: 'Work it out' }));
+    fireEvent.click(await screen.findByTestId('recipe-taste-act'));
     await waitFor(() => expect(h.roll).toHaveBeenCalledWith('dish', CID, RID));
     expect(h.roll).not.toHaveBeenCalledWith('cocktail', CID, RID);
     expect(await screen.findByTestId('taste-row-salty')).toBeInTheDocument();
