@@ -808,6 +808,11 @@ export class NotificationsService {
       // Routed writes push only to the people routing ALERTED (ADR 0218).
       // `skipMobilePush` opts a caller OUT of this leg entirely, for when it
       // is running its own — see the option's doc comment.
+      // Each person's own settings decide their phone (QA round 4 B1,
+      // 2026-11-07): push switched off holds every push, and inside their
+      // quiet hours on the house's clock everything below critical is dropped
+      // — the inbox row above is already written, so nothing is lost
+      // (`push/push-gate.ts`). Before, this leg read no preference at all.
       const pushTo = alertIds ?? userIds;
       if (
         this.expoPushService &&
@@ -815,16 +820,24 @@ export class NotificationsService {
         (payload.priority ?? "medium") !== "low" &&
         pushTo.length > 0
       ) {
-        await this.expoPushService.sendToUsers(pushTo, {
-          title: payload.title,
-          body: payload.message,
-          priority: payload.priority === "critical" ? "high" : "default",
-          data: {
-            type: payload.type,
-            actionUrl: payload.actionUrl ?? null,
-            ...(opts.pushData ?? payload.metadata ?? {}),
-          },
+        const gate = await this.expoPushService.pushGate(restaurantId, pushTo, {
+          critical: payload.priority === "critical",
         });
+        if (gate.unjudged)
+          this.logger.warn(
+            `persistForRestaurant push for restaurant ${restaurantId}: ${gate.unjudged}`,
+          );
+        if (gate.send.length)
+          await this.expoPushService.sendToUsers(gate.send, {
+            title: payload.title,
+            body: payload.message,
+            priority: payload.priority === "critical" ? "high" : "default",
+            data: {
+              type: payload.type,
+              actionUrl: payload.actionUrl ?? null,
+              ...(opts.pushData ?? payload.metadata ?? {}),
+            },
+          });
       }
 
       return { inserted: rows.length, ids, routing };
