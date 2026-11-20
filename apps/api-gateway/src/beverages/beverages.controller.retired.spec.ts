@@ -15,6 +15,8 @@ describe("the old recipe box writer is retired", () => {
     expect(thrown).toBeInstanceOf(HttpException);
     expect((thrown as HttpException).getStatus()).toBe(HttpStatus.GONE);
     expect((thrown as HttpException).message).toMatch(/nothing was written/);
+    // It names the sheet and the versioned route that replaces it (DD-r102-27).
+    expect((thrown as HttpException).message).toMatch(/recipe sheet.*PUT \/recipes\/\{restaurantId\}\/cocktails\/\{cocktailId\}/);
   });
 
   it("leaves the service with no delete-then-insert writer for cocktail_ingredients", () => {

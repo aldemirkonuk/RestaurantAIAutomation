@@ -239,7 +239,7 @@ export class BeveragesController {
   @ApiResponse({ status: 410, description: "This writer is retired." })
   setIngredients(): never {
     throw new HttpException(
-      "The old recipe box no longer saves. Save the recipe from the drink's recipe sheet; nothing was written.",
+      "The old recipe box no longer saves. Save the recipe from the drink's recipe sheet, which saves through PUT /recipes/{restaurantId}/cocktails/{cocktailId}; nothing was written.",
       HttpStatus.GONE,
     );
   }
