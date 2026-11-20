@@ -256,7 +256,9 @@ describe('useInventoryNextData — open bottles and zones that could not be read
     m.items = [{ ...normalised, rollupReadable: false, locationsReadable: false }];
     const { result } = mount();
     await waitFor(() => expect(result.current.advice.status).toBe('ready'));
-    expect(result.current.unread).toContain('the open bottles, so open ml says it could not be read');
+    expect(result.current.unread).toContain(
+      'the open bottles and costs, so open ml, cost, value and margin say they could not be read',
+    );
     expect(result.current.unread).toContain('where each title sits, so its zones say they could not be read');
     act(() => result.current.rereadUnread());
     expect(m.listRefetch).toHaveBeenCalledTimes(1);

@@ -74,6 +74,8 @@ import {
   marketDeltaPct,
   daysSinceCounted,
   fmtMoney,
+  paidPer,
+  UNREAD,
   COUNT_DUE_DAYS,
   type RowFlag,
 } from "./bits";
@@ -470,7 +472,7 @@ export function InventoryCommandPage() {
       ? filteredInventory.filter((i) => rowFlags(i).includes(activeFlag))
       : [...filteredInventory];
     const val = (i: InventoryItem) =>
-      (i.wac ?? i.price ?? 0) * ((i.liveStock ?? 0) + (i.shadowStock ?? 0));
+      (paidPer(i) ?? 0) * ((i.liveStock ?? 0) + (i.shadowStock ?? 0));
     // Comparator in the key's natural ascending order; sortDir flips it.
     const cmp = (a: InventoryItem, b: InventoryItem) => {
       switch (sort) {
@@ -585,7 +587,7 @@ export function InventoryCommandPage() {
           return r == null ? "" : Math.round(r);
         },
       },
-      { header: "WAC", value: (i) => i.wac ?? i.price ?? "" },
+      { header: "WAC", value: (i) => (i.rollupReadable === false ? UNREAD : (paidPer(i) ?? "")) },
       // The house's own prices (ADR 0193), beside -- never instead of -- Market.
       { header: "Your bottle price", value: (i) => i.menuPriceBottle ?? "" },
       { header: "Your glass price", value: (i) => i.menuPriceGlass ?? "" },
@@ -593,10 +595,12 @@ export function InventoryCommandPage() {
       {
         header: "Value",
         value: (i) =>
-          (
-            (i.wac ?? i.price ?? 0) *
-            ((i.liveStock ?? 0) + (i.shadowStock ?? 0))
-          ).toFixed(2),
+          i.rollupReadable === false
+            ? UNREAD
+            : (
+                (paidPer(i) ?? 0) *
+                ((i.liveStock ?? 0) + (i.shadowStock ?? 0))
+              ).toFixed(2),
       },
     ],
     [],
@@ -607,6 +611,7 @@ export function InventoryCommandPage() {
       {
         header: "Location",
         value: (i) => {
+          if (i.locationsReadable === false) return UNREAD;
           const first = (i.locations ?? []).find((l) => l.locationId);
           if (!first) return "Unassigned";
           const loc = locations.find((l) => l.id === first.locationId);
@@ -645,14 +650,16 @@ export function InventoryCommandPage() {
           return r == null ? "" : Math.round(r);
         },
       },
-      { header: "WAC", value: (i) => i.wac ?? i.price ?? "" },
+      { header: "WAC", value: (i) => (i.rollupReadable === false ? UNREAD : (paidPer(i) ?? "")) },
       {
         header: "Value",
         value: (i) =>
-          (
-            (i.wac ?? i.price ?? 0) *
-            ((i.liveStock ?? 0) + (i.shadowStock ?? 0))
-          ).toFixed(2),
+          i.rollupReadable === false
+            ? UNREAD
+            : (
+                (paidPer(i) ?? 0) *
+                ((i.liveStock ?? 0) + (i.shadowStock ?? 0))
+              ).toFixed(2),
       },
       { header: "Observation", value: (i) => countObservation(i) },
     ],
@@ -1053,7 +1060,13 @@ export function InventoryCommandPage() {
         />
         <Kpi
           label="Value on hand"
-          value={figuresUnknown ? UNKNOWN : fmtMoney(kpis.valueOnHand)}
+          value={
+            figuresUnknown
+              ? UNKNOWN
+              : filteredInventory.some((i) => i.rollupReadable === false)
+                ? UNREAD
+                : fmtMoney(kpis.valueOnHand)
+          }
           sub={
             figuresUnknown
               ? UNKNOWN
@@ -1470,7 +1483,7 @@ export function InventoryCommandPage() {
                               }}
                               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-dashed border-gray-300 text-[11px] text-gray-400 hover:text-gray-600 hover:border-gray-400"
                             >
-                              <MapPin className="w-3 h-3" /> Assign
+                              {item.locationsReadable === false ? UNREAD : <><MapPin className="w-3 h-3" /> Assign</>}
                             </button>
                           )}
                         </div>
@@ -1526,7 +1539,7 @@ export function InventoryCommandPage() {
                             : `${delta > 0 ? "+" : ""}${delta.toFixed(0)}%`}
                         </div>
                         <div className="text-right font-mono text-xs font-semibold text-gray-700">
-                          {fmtMoney(value)}
+                          {item.rollupReadable === false ? UNREAD : fmtMoney(value)}
                         </div>
                         <div>
                           <StatusChip item={item} />

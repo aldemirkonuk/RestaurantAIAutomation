@@ -659,7 +659,7 @@ function WhatItHasCost({
       <h4 className="iv-sec">What it has cost</h4>
       <dl>
         <KV k="Weighted average cost">
-          <span className="iv-num">{cellMoney(row.wac, currency)}</span>
+          <span className="iv-num">{row.rollupReadable ? cellMoney(row.wac, currency) : 'could not be read'}</span>
           {row.wac !== null && row.costProvenance ? <span className="iv-dim"> · {row.costProvenance === 'invoice' ? 'from invoices' : 'estimated'}</span> : null}
         </KV>
         <KV k="Last bought">{bought(last)}</KV>
@@ -680,7 +680,7 @@ function WhatItHasCost({
           </span>
         </KV>
         <KV k="Margin over cost">
-          <span className="iv-num">{margin === null ? EM : `${margin.toFixed(0)}%`}</span>
+          <span className="iv-num">{!row.rollupReadable ? 'could not be read' : margin === null ? EM : `${margin.toFixed(0)}%`}</span>
         </KV>
         <KV k="Market">
           {EM} <span className="iv-dim">no market price is read</span>

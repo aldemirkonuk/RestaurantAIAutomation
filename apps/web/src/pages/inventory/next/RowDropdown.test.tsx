@@ -389,6 +389,13 @@ describe('RowDropdown says an open bottle or zones it could not read (G15)', () 
     expect(screen.getByTestId('row-dropdown').textContent).not.toContain('0 ml left');
   });
 
+  // QA round 10b: the rollup also carries the cost; a failed read is not "no cost".
+  it('a failed rollup read says cost and margin could not be read, never —', () => {
+    renderDrop({ row: row({ rollupReadable: false, wac: null, bottle: 40 }) });
+    expect(fact('Weighted average cost')).toBe('could not be read');
+    expect(fact('Margin over cost')).toBe('could not be read');
+  });
+
   it('a failed location read says where could not be read, never "none on hand"', () => {
     renderDrop({ row: row({ stock: 0, locationsReadable: false, zones: [] }) });
     expect(fact('Where')).toBe('could not be read');

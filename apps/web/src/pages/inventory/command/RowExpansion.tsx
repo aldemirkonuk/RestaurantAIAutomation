@@ -18,7 +18,7 @@ import { useRestaurantSettingsStore } from '../../../stores/restaurantSettingsSt
 import { cn } from '../../../lib/utils'
 import type { InventoryItem } from '../useInventoryPage'
 import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign'
-import { fmtMoneyExact, marketDeltaPct, daysSinceCounted, HoursHeatmap, runwayDays } from './bits'
+import { fmtMoneyExact, marketDeltaPct, daysSinceCounted, HoursHeatmap, paidPer, runwayDays, UNREAD } from './bits'
 import { ReceiptDepth } from './ReceiptDepth'
 import { SpotCountPanel } from './SpotCountPanel'
 import { NameThisWine } from './NameThisWine'
@@ -148,7 +148,7 @@ export function RowExpansion({
 
   const live = item.liveStock ?? 0
   const shadow = item.shadowStock ?? 0
-  const paid = item.wac ?? item.price
+  const paid = paidPer(item)
   const delta$ = marketDeltaPct(item)
   const counted = daysSinceCounted(item)
   const run = runwayDays(item)
@@ -183,9 +183,9 @@ export function RowExpansion({
             {counted == null ? 'never' : `${counted} days ago`}
           </b>
         </div>
-        {(item.openMl ?? 0) > 0 && (
+        {(item.rollupReadable === false || (item.openMl ?? 0) > 0) && (
           <span className="ml-auto inline-flex items-center gap-2 text-[11px] text-gray-500 bg-gray-50 border border-gray-100 rounded-full px-3 py-1">
-            Open bottle: <b className="font-mono text-gray-700">{item.openMl} ml left</b>
+            Open bottle: <b className="font-mono text-gray-700">{item.rollupReadable === false ? UNREAD : `${item.openMl} ml left`}</b>
           </span>
         )}
       </div>
@@ -242,7 +242,7 @@ export function RowExpansion({
           }
         >
           <KV k={`Market avg (${formatVolume(item.bottleSizeMl ?? 750, measurementUnit)})`} v={fmtMoneyExact(item.marketPrice)} />
-          <KV k="You paid (WAC)" v={fmtMoneyExact(paid)} />
+          <KV k="You paid (WAC)" v={item.rollupReadable === false ? UNREAD : fmtMoneyExact(paid)} />
           <KV
             k="Delta"
             v={delta$ == null ? 'n/a' : `${delta$ > 0 ? '+' : ''}${delta$.toFixed(0)}%${delta$ >= 15 ? ', appreciating, hold' : delta$ <= -5 ? ', re-quote vendor' : ''}`}
@@ -384,12 +384,16 @@ export function RowExpansion({
         <span className="w-px h-6 bg-gray-200" />
 
         <span className="text-[10.5px] font-bold uppercase tracking-wider text-gray-400">Locations</span>
-        <MultiLocationCell
-          totalLive={live}
-          breakdown={item.locations ?? []}
-          locations={locations}
-          onTransfer={doTransfer}
-        />
+        {item.locationsReadable === false ? (
+          <span className="text-xs text-gray-500">{UNREAD}</span>
+        ) : (
+          <MultiLocationCell
+            totalLive={live}
+            breakdown={item.locations ?? []}
+            locations={locations}
+            onTransfer={doTransfer}
+          />
+        )}
 
         {(item.saleType === 'glass' || item.saleType === 'both') && (live > 0 || (item.openMl ?? 0) > 0) && (
           <>

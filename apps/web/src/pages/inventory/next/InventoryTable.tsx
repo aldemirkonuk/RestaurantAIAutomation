@@ -259,7 +259,7 @@ export default function InventoryTable(props: InventoryTableProps) {
                     )}
                   </td>
                   <td data-label="Value at cost" className="iv-r iv-num">
-                    {cellMoney(row.value, currency)}
+                    {row.rollupReadable ? cellMoney(row.value, currency) : 'could not be read'}
                   </td>
                   <td data-label="Status" className="iv-status" data-standing={row.standing}>
                     {statusWord(row)}
