@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, InternalServerErrorException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { parsePreview, TasteService } from './taste.service';
 
 const RID = '11111111-1111-4111-8111-111111111111';
@@ -12,17 +12,19 @@ function fakeDb(t: Record<string, Row[]>, missing: string[] = [], failFirstInser
   const inserts: Row[] = [];
   const from = (table: string) => {
     const eqs: Array<[string, any]> = []; const nulls: string[] = [];
+    const ins: Array<[string, any[]]> = [];
     let desc: string | null = null; let asc: string | null = null; let lim = Infinity;
     const run = () => {
       if (missing.includes(table)) return { data: null, error: { code: '42P01', message: 'no relation' } };
       let src = table === 'taste_profile_current' ? latest(t.taste_profiles ?? []) : t[table] ?? [];
-      src = src.filter((r) => eqs.every(([c, v]) => r[c] === v) && nulls.every((c) => r[c] == null));
+      src = src.filter((r) => eqs.every(([c, v]) => r[c] === v) && nulls.every((c) => r[c] == null) && ins.every(([c, vs]) => vs.includes(r[c])));
       if (desc) src = [...src].sort((a, b) => b[desc!] - a[desc!]);
       if (asc) src = [...src].sort((a, b) => a[asc!] - b[asc!]);
       return { data: src.slice(0, lim), error: null };
     };
     const api: any = {
       select: () => api,
+      in: (c: string, vs: any[]) => { ins.push([c, vs]); return api; },
       eq: (c: string, v: any) => { eqs.push([c, v]); return api; },
       is: (c: string, v: any) => { if (v === null) nulls.push(c); else eqs.push([c, v]); return api; },
       order: (c: string, o: { ascending: boolean }) => { if (o.ascending) asc = c; else desc = c; return api; },
@@ -41,7 +43,7 @@ function fakeDb(t: Record<string, Row[]>, missing: string[] = [], failFirstInser
 }
 const latest = (rows: Row[]) => {
   const best = new Map<string, Row>();
-  for (const r of rows) { const k = [r.source, r.stated_by ?? '-'].join('|'); if (!best.has(k) || best.get(k)!.version < r.version) best.set(k, r); }
+  for (const r of rows) { const k = [r.cocktail_id ?? r.dish_id ?? r.good_id, r.source, r.stated_by ?? '-'].join('|'); if (!best.has(k) || best.get(k)!.version < r.version) best.set(k, r); }
   return [...best.values()];
 };
 const recipe = (lines: Array<[string, number, string]>, method = 'Shake') => ({
@@ -141,5 +143,58 @@ describe('parsePreview and preview', () => {
   it('works a recipe out without a database', () => {
     const r = new TasteService({} as any).preview(ok);
     expect(r.axes.alcohol.v).toBeGreaterThan(3);
+  });
+});
+
+describe('TasteService.rollupSubject: the goods a recipe draws', () => {
+  const GIN = '77777777-7777-4777-8777-777777777777';
+  const gimlet: Array<[string, number, string]> = [['Gin', 500, 'ml10'], ['Lime juice', 200, 'ml10'], ['Simple syrup', 150, 'ml10']];
+  const withGin = (extra: Record<string, any>[] = []) => {
+    const t: Record<string, any[]> = recipe(gimlet);
+    t.recipe_lines[0].inventory_id = GIN;
+    t.taste_profiles = [
+      { restaurant_id: RID, subject_kind: 'good', good_id: GIN, source: 'house', stated_by: 'u1', version: 1, axes: { bitter: { v: 6 }, herbal: { v: 7 } }, created_at: '2026-11-19T09:00:00Z' },
+      ...extra,
+    ];
+    return t;
+  };
+  it('works a linked line from the good\'s own taste, and says so in the basis', async () => {
+    const f = fakeDb(withGin());
+    await new TasteService(f.db).rollupSubject(RID, 'cocktail', COCKTAIL);
+    const row = f.inserts[0];
+    expect(row.axes.bitter.v).toBeGreaterThan(2);
+    expect(row.axes.herbal.v).toBeGreaterThan(4);
+    expect(row.ext.rollup.lineSources[0]).toEqual({ name: 'Gin', from: 'good', prov: 'staff' });
+    expect(row.ext.rollup.lineSources[1].from).toBe('class_prior');
+  });
+  it('without the good\'s layer the same line falls back to the label and bitter is not known', async () => {
+    const t = withGin(); t.taste_profiles = [];
+    const f = fakeDb(t);
+    await new TasteService(f.db).rollupSubject(RID, 'cocktail', COCKTAIL);
+    expect(f.inserts[0].axes.bitter).toBeUndefined();
+    expect(f.inserts[0].axes.herbal).toBeUndefined();
+    expect(f.inserts[0].ext.rollup.notKnown).toContain('bitter');
+  });
+  it('ignores an AI draft and another house\'s layer', async () => {
+    const t = withGin(); t.taste_profiles = [
+      { restaurant_id: RID, subject_kind: 'good', good_id: GIN, source: 'ai_draft', stated_by: null, version: 1, axes: { bitter: { v: 9 } }, created_at: '2026-11-19T09:00:00Z' },
+      { restaurant_id: 'other', subject_kind: 'good', good_id: GIN, source: 'house', stated_by: 'u9', version: 1, axes: { bitter: { v: 9 } }, created_at: '2026-11-19T09:00:00Z' },
+    ];
+    const f = fakeDb(t);
+    await new TasteService(f.db).rollupSubject(RID, 'cocktail', COCKTAIL);
+    expect(f.inserts[0].axes.bitter).toBeUndefined();
+  });
+  it('moves to a new version when the good\'s taste changes under the same recipe', async () => {
+    const t = withGin(); const f = fakeDb(t);
+    const s = new TasteService(f.db);
+    await s.rollupSubject(RID, 'cocktail', COCKTAIL);
+    t.taste_profiles[0] = { ...t.taste_profiles[0], version: 2, axes: { bitter: { v: 8 }, herbal: { v: 7 } } };
+    await s.rollupSubject(RID, 'cocktail', COCKTAIL);
+    expect(f.inserts.filter((i) => i.source === 'recipe').map((i) => i.version)).toEqual([1, 2]);
+  });
+  it('does not read an unreadable goods table as "no good has a taste"', async () => {
+    const f = fakeDb(withGin(), ['taste_profile_current']);
+    await expect(new TasteService(f.db).rollupSubject(RID, 'cocktail', COCKTAIL)).rejects.toThrow(InternalServerErrorException);
+    expect(f.inserts).toHaveLength(0);
   });
 });
