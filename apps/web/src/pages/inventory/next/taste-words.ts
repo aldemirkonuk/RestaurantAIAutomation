@@ -262,7 +262,8 @@ export interface FooterWords {
 }
 /** Who stated it, when, and how many layers say so. */
 export function footerFacts(d: TasteData): FooterWords {
-  const names = [...new Set(d.layers.map((l) => l.statedByName).filter((n): n is string => n !== null))];
+  // Only a house layer was stated by a person; a recipe layer carries a label in that column.
+  const names = [...new Set(d.layers.filter((l) => l.source === 'house').map((l) => l.statedByName).filter((n): n is string => n !== null))];
   const times = d.layers.map((l) => l.statedAt).filter((t): t is string => t !== null);
   const latest = times.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] ?? null;
   return { names, latest, sources: d.layers.length };

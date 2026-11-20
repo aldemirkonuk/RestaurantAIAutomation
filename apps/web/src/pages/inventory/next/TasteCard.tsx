@@ -147,17 +147,25 @@ function Footer({ d }: { d: TasteData }) {
   const f = footerFacts(d);
   const when = f.latest ? `, ${fmtWhen(f.latest)}` : '';
   const count = `${f.sources} ${f.sources === 1 ? 'source' : 'sources'}`;
-  const who = f.names.length ? `Stated by ${f.names.length > 1 ? `${f.names.slice(0, -1).join(', ')} and ${f.names[f.names.length - 1]}` : f.names[0]}` : 'Stated';
+  const sources = [...new Set(d.layers.map((l) => l.source))];
+  const who = f.names.length
+    ? `Stated by ${f.names.length > 1 ? `${f.names.slice(0, -1).join(', ')} and ${f.names[f.names.length - 1]}` : f.names[0]}`
+    : sources.length === 1 && sources[0] !== 'house' ? sourceWords(sources[0]) : 'Stated';
+  // One layer, worked out from the recipe: the list below says where it came
+  // from and when, so the footer would say the same thing twice.
+  const recipeOnly = d.layers.length === 1 && d.layers[0].source === 'recipe';
   return (
     <>
-      <p className="iv-note" data-testid="taste-footer">
-        {who}
-        {when}, {count}.
-      </p>
+      {recipeOnly ? null : (
+        <p className="iv-note" data-testid="taste-footer">
+          {who}
+          {when}, {count}.
+        </p>
+      )}
       <ul className="tc-layers" data-testid="taste-layers">
         {d.layers.map((l, i) => (
           <li key={i}>
-            {l.statedByName ? `${l.statedByName}: ` : ''}
+            {l.statedByName && l.source === 'house' ? `${l.statedByName}: ` : ''}
             {sourceWords(l.source)}
             {l.statedAt ? `, ${fmtWhen(l.statedAt)}` : ''}
             {l.noteText ? <q className="tc-note">{l.noteText}</q> : l.hasNote ? ' (with a note)' : ''}
