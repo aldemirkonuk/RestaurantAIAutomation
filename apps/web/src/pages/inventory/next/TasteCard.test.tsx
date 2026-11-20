@@ -129,6 +129,11 @@ describe('a worked-out layer says what it rests on', () => {
     expect(screen.getByTestId('taste-left-out').textContent).toBe('Left out because its taste is not known: House shrub 7.');
     expect(document.body.textContent).not.toMatch(/\d\.\d|conf/i);
   });
+  it('a line from a class with an unverified figure is called an estimate, and the others keep their words', async () => {
+    api.get.mockResolvedValue(ready(null, [basisLayer({ ...basis, lineSources: [{ name: 'Gin', from: 'good' }, { name: 'Lime juice', from: 'class_prior' }, { name: 'Tomato', from: 'class_prior_estimate' }], unknownNames: [] }) as never]));
+    mount();
+    expect((await screen.findByTestId('taste-worked-from')).textContent).toBe('Worked out from: Gin (its own taste), Lime juice (typical of its kind), Tomato (typical of its kind, an estimate).');
+  });
   it('a layer with no basis draws none of it', async () => {
     api.get.mockResolvedValue(ready({ axes: { bitter: ax(4) } }));
     mount();

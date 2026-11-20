@@ -22,6 +22,7 @@ import RecipeTaste, {
   RECIPE_TASTE_EMPTY,
   RECIPE_TASTE_EMPTY_READ,
   RECIPE_TASTE_LINE_FAILED,
+  RECIPE_TASTE_LINE_NONE,
   RECIPE_TASTE_NO_RECIPE,
   RECIPE_TASTE_NO_RECIPE_READ,
   RECIPE_TASTE_UNSAVED,
@@ -51,7 +52,7 @@ function mount(over: Partial<{ kind: 'cocktail' | 'dish'; hasRecipe: boolean; un
   const kind = over.kind ?? 'cocktail';
   return render(
     <QueryClientProvider client={qc}>
-      <RecipeTasteLine kind={kind} subjectId="c1" restaurantId="r1" />
+      <RecipeTasteLine kind={kind} subjectId="c1" restaurantId="r1" hasRecipe={over.hasRecipe ?? true} />
       <RecipeTaste kind={kind} subjectId="c1" restaurantId="r1" hasRecipe={over.hasRecipe ?? true} unsaved={over.unsaved ?? false} />
     </QueryClientProvider>,
   );
@@ -94,7 +95,7 @@ describe('RecipeTaste', () => {
     mount();
     expect(await screen.findByTestId('taste-empty')).toHaveTextContent(RECIPE_TASTE_EMPTY);
     expect(screen.queryByTestId('recipe-taste-line')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Work it out' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Work it out' })[1]);
     await waitFor(() => expect(api.roll).toHaveBeenCalledWith('cocktail', 'c1', 'r1'));
     expect(await screen.findByTestId('taste-row-sour')).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'Read again' })).toBeInTheDocument();
@@ -105,7 +106,7 @@ describe('RecipeTaste', () => {
     api.get.mockResolvedValue({ state: 'ready', data: none() });
     api.roll.mockResolvedValue({ state: 'ready', data: worked() });
     mount({ kind: 'dish' });
-    fireEvent.click(await screen.findByRole('button', { name: 'Work it out' }));
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Work it out' }))[0]);
     await waitFor(() => expect(api.roll).toHaveBeenCalledWith('dish', 'c1', 'r1'));
     expect(api.get).toHaveBeenCalledWith('dish', 'c1', 'r1');
   });
@@ -125,7 +126,7 @@ describe('RecipeTaste', () => {
     api.get.mockResolvedValue({ state: 'ready', data: none() });
     api.roll.mockResolvedValue({ state: 'failed', sentence: ROLLUP_UNREACHABLE });
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Work it out' }));
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Work it out' }))[1]);
     const said = await screen.findByTestId('recipe-taste-said');
     expect(said).toHaveTextContent('Mudavym could not be reached just now.');
     expect(document.body.textContent).not.toMatch(/Network Error/);
@@ -154,6 +155,9 @@ describe('RecipeTaste', () => {
     expect(await screen.findByTestId('taste-absent')).toBeInTheDocument();
     expect(screen.queryByTestId('recipe-taste-act')).toBeNull();
     expect(screen.queryByTestId('recipe-taste-line')).toBeNull();
+    // The line still keeps its one line, in words only: nothing to work out while it is off.
+    expect(screen.getByTestId('recipe-taste-line-none-words')).toHaveTextContent(RECIPE_TASTE_LINE_NONE);
+    expect(screen.queryByTestId('recipe-taste-line-work')).toBeNull();
   });
 
   it('a drink with no saved recipe says what to do instead of offering the roll-up', async () => {
@@ -174,7 +178,7 @@ describe('RecipeTaste', () => {
     let release: (v: unknown) => void = () => {};
     api.roll.mockReturnValue(new Promise((r) => { release = r; }));
     mount();
-    const btn = await screen.findByRole('button', { name: 'Work it out' });
+    const btn = (await screen.findAllByRole('button', { name: 'Work it out' }))[1];
     fireEvent.click(btn);
     await waitFor(() => expect(screen.getByTestId('recipe-taste-act')).toBeDisabled());
     fireEvent.click(screen.getByTestId('recipe-taste-act'));
@@ -214,7 +218,7 @@ describe('RecipeTaste', () => {
     api.auth = { activeRole: 'owner', user: { role: 'owner' } };
     api.get.mockResolvedValue({ state: 'ready', data: none() });
     mount();
-    expect(await screen.findByRole('button', { name: 'Work it out' })).toBeEnabled();
+    expect((await screen.findAllByRole('button', { name: 'Work it out' }))[1]).toBeEnabled();
   });
 
   it('while the taste is being read the line and the card already hold the height they will have, so nothing below moves', async () => {
@@ -231,5 +235,73 @@ describe('RecipeTaste', () => {
     expect(screen.queryByTestId('recipe-taste-line-wait')).toBeNull();
     expect(screen.getByTestId('recipe-taste').getAttribute('data-state')).toBe('settled');
     expect(screen.getByTestId('recipe-taste').style.minHeight).toBe('');
+  });
+
+  describe('the top line never collapses (r91)', () => {
+    it('pending: a placeholder of the line height; a sentence: the sentence at that same height floor; no taste yet: words that keep it', async () => {
+      let release: (v: unknown) => void = () => {};
+      api.get.mockReturnValue(new Promise((r) => { release = r; }));
+      mount();
+      expect((await screen.findByTestId('recipe-taste-line-wait')).style.minHeight).toBe(`${TASTE_LINE_RESERVE_PX}px`);
+      release({ state: 'ready', data: none() });
+      const none_ = await screen.findByTestId('recipe-taste-line-none');
+      expect(none_.style.minHeight).toBe(`${TASTE_LINE_RESERVE_PX}px`);
+      expect(none_).toHaveTextContent(RECIPE_TASTE_LINE_NONE);
+      expect(screen.queryByTestId('recipe-taste-line-wait')).toBeNull();
+    });
+
+    it('a sentence is shown as the sentence, with no "no taste" words', async () => {
+      api.get.mockResolvedValue({ state: 'ready', data: worked() });
+      mount();
+      expect(await screen.findByTestId('recipe-taste-line')).toBeInTheDocument();
+      expect(screen.queryByTestId('recipe-taste-line-none')).toBeNull();
+      expect(document.body.textContent).not.toContain(RECIPE_TASTE_LINE_NONE);
+    });
+
+    it('no taste yet, manager: the words and a Work it out link that runs the roll-up and swaps in the sentence', async () => {
+      api.get.mockResolvedValue({ state: 'ready', data: none() });
+      api.roll.mockImplementation(async () => {
+        api.get.mockResolvedValue({ state: 'ready', data: worked() });
+        return { state: 'ready', data: worked() };
+      });
+      mount();
+      const link = await screen.findByTestId('recipe-taste-line-work');
+      expect(screen.getByTestId('recipe-taste-line-none')).toHaveTextContent(RECIPE_TASTE_LINE_NONE);
+      fireEvent.click(link);
+      await waitFor(() => expect(api.roll).toHaveBeenCalledWith('cocktail', 'c1', 'r1'));
+      expect(await screen.findByTestId('recipe-taste-line')).toBeInTheDocument();
+      expect(screen.queryByTestId('recipe-taste-line-none')).toBeNull();
+    });
+
+    it('no taste yet, owner: the same link', async () => {
+      api.auth = { activeRole: 'owner', user: { role: 'owner' } };
+      api.get.mockResolvedValue({ state: 'ready', data: none() });
+      mount();
+      expect(await screen.findByTestId('recipe-taste-line-work')).toBeEnabled();
+    });
+
+    it('no taste yet, staff: the words only, no link', async () => {
+      api.auth = { activeRole: 'staff', user: { role: 'staff' } };
+      api.get.mockResolvedValue({ state: 'ready', data: none() });
+      mount();
+      expect(await screen.findByTestId('recipe-taste-line-none')).toHaveTextContent(RECIPE_TASTE_LINE_NONE);
+      expect(screen.queryByTestId('recipe-taste-line-work')).toBeNull();
+    });
+
+    it('no taste yet and no saved recipe: the words, and no link to a roll-up with nothing to work from', async () => {
+      api.get.mockResolvedValue({ state: 'ready', data: none() });
+      mount({ hasRecipe: false });
+      expect(await screen.findByTestId('recipe-taste-line-none')).toHaveTextContent(RECIPE_TASTE_LINE_NONE);
+      expect(screen.queryByTestId('recipe-taste-line-work')).toBeNull();
+    });
+
+    it('a roll-up that fails is said on the line and the words stay', async () => {
+      api.get.mockResolvedValue({ state: 'ready', data: none() });
+      api.roll.mockResolvedValue({ state: 'failed', sentence: ROLLUP_UNREACHABLE });
+      mount();
+      fireEvent.click(await screen.findByTestId('recipe-taste-line-work'));
+      expect(await screen.findByTestId('recipe-taste-line-said')).toHaveTextContent('Mudavym could not be reached just now.');
+      expect(screen.getByTestId('recipe-taste-line-none-words')).toHaveTextContent(RECIPE_TASTE_LINE_NONE);
+    });
   });
 });

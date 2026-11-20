@@ -86,6 +86,7 @@ import DrinkCards, { type DraftCost } from './DrinkCards';
 import WhatIsInAServe from './WhatIsInAServe';
 import RecipeTaste, { RecipeTasteLine } from './RecipeTaste';
 import { UNREACHABLE_WORDS } from '../../../../lib/unreachable';
+import { SHEET_HOLD_ROOM } from './holdRoom';
 import {
   useCanEditRecipe,
   useCostPreview,
@@ -431,12 +432,12 @@ export function whyBlocked(rows: DraftRow[], serves: number = 1, dish = false): 
  * One sheet per drink. The key is what keeps a draft typed for one drink out
  * of another: React drops the inner sheet's state when the drink changes.
  */
-export default function RecipeSheet(props: { cocktailId: string } | { dishId: string }) {
+export default function RecipeSheet(props: ({ cocktailId: string } | { dishId: string }) & { holdRoom?: boolean }) {
   const owner: RecipeOwner = 'dishId' in props ? { kind: 'dish', id: props.dishId } : { kind: 'cocktail', id: props.cocktailId };
-  return <Sheet key={owner.id} owner={owner} />;
+  return <Sheet key={owner.id} owner={owner} holdRoom={props.holdRoom ?? false} />;
 }
 
-function Sheet({ owner }: { owner: RecipeOwner }) {
+function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
   const cocktailId = owner.id;
   const dId = draftId(owner);
   const isDish = owner.kind === 'dish';
@@ -557,7 +558,18 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
   const preview = useCostPreview(owner, draftBody?.body ?? null);
   const draftCost: DraftCost | null = preview && draftBody ? { cost: preview, labels: draftBody.labels } : null;
 
-  if (recipe.loading) return <p className="cl-note" role="status">Reading the recipe…</p>;
+  // Opened from a link, the page is still arriving, so this panel holds the
+  // room the sheet will fill: what sits under it (the other books, the
+  // signature) is below the fold before and after, not dragged down the screen
+  // when the recipe lands. Opened by a click it needs none (the person's own
+  // act is not a layout shift).
+  if (recipe.loading) {
+    return (
+      <p className="cl-note" role="status" style={holdRoom ? { minHeight: SHEET_HOLD_ROOM } : undefined}>
+        Reading the recipe…
+      </p>
+    );
+  }
   if (!data) {
     return (
       <p className="cl-note" role="alert" data-testid="recipe-unread">
@@ -703,7 +715,7 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
       ) : null}
       {/* The drink opens on its cards, then what is in a serve, then its lines
           (founder ask: a drink shows its KPI cards, then a nutrition card). */}
-      <RecipeTasteLine kind={owner.kind} subjectId={cocktailId} restaurantId={activeRestaurantId ?? null} />
+      <RecipeTasteLine kind={owner.kind} subjectId={cocktailId} restaurantId={activeRestaurantId ?? null} hasRecipe={(data.current?.lines.length ?? 0) > 0} />
       <DrinkCards data={data} sayMoney={say} unsaved={canEdit && dirty} draftCost={draftCost} />
       <WhatIsInAServe data={data} unsaved={canEdit && dirty} />
       <RecipeTaste

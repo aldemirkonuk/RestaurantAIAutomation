@@ -229,7 +229,7 @@ describe('RecipeSheet', () => {
     });
     serve(negroni());
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Work it out' }));
+    fireEvent.click(await screen.findByTestId('recipe-taste-act'));
     await waitFor(() => expect(h.roll).toHaveBeenCalledWith('cocktail', CID, RID));
     expect(await screen.findByTestId('taste-row-sweet')).toBeInTheDocument();
     expect(screen.getByTestId('recipe-taste-act')).toHaveTextContent('Read again');
@@ -1250,6 +1250,22 @@ describe('RecipeSheet', () => {
     serve(negroni({ current: { ...n.current!, lines: [linked('gin', 30, GIN), { ...linked('gin', 15, GIN), id: 'gin-2' }] } }));
     mount();
     expect(await screen.findByTestId('recipe-repeated')).toHaveTextContent('gin is on 2 lines; a serve takes all of them.');
+  });
+
+  it('opened from a link, the panel holds the screen\'s room while the recipe is read; opened by a click it holds none (r90)', async () => {
+    serve(negroni());
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const wrap = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+    const linked = render(<RecipeSheet cocktailId={CID} holdRoom />, { wrapper: wrap });
+    expect(screen.getByText('Reading the recipe…').style.minHeight).toBe('calc(100vh - 56px)');
+    await screen.findByTestId('recipe-sheet');
+    expect(screen.queryByText('Reading the recipe…')).toBeNull();
+    linked.unmount();
+    const qc2 = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const wrap2 = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc2}>{children}</QueryClientProvider>;
+    render(<RecipeSheet cocktailId={CID} />, { wrapper: wrap2 });
+    expect(screen.getByText('Reading the recipe…').style.minHeight).toBe('');
+    await screen.findByTestId('recipe-sheet');
   });
 });
 

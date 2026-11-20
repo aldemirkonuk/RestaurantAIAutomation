@@ -49,6 +49,7 @@ import { MENU_PRICES_UNREAD, MenuPriceCell } from './recipe/MenuPriceCell';
 import UseMenuPrice from './recipe/UseMenuPrice';
 import { useHousePercent, type SayPercent } from './recipe/useHousePercent';
 import type { DrinkFigureRow } from '../../../services/api/recipes';
+import { SHEET_HOLD_ROOM } from './recipe/holdRoom';
 import {
   useCocktailRegister,
   useCocktailWrites,
@@ -383,9 +384,52 @@ export default function CocktailRegister({
       ) : null}
 
       {loading ? (
-        <p className="cl-said" role="status" style={{ marginTop: 12 }}>
-          Reading this house’s cocktails…
-        </p>
+        <>
+          {/* The loaded page opens with the scope note (two lines) over the
+              table, so the read in flight holds that same room: the note's own
+              class and height, then the table's head and three empty rows
+              (the fewest a house's list has). First paint is the loaded
+              layout, so the books below it do not move when the list lands. */}
+          <p className="cl-note" role="status" style={{ minHeight: '2lh' }}>
+            Reading this house’s cocktails…
+          </p>
+          <div
+            aria-hidden="true"
+            data-testid="cocktails-reading-room"
+            style={{ marginTop: 12, overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10 }}
+          >
+            <table className="cl-table">
+              <thead>
+                <tr>
+                  <th scope="col">Cocktail</th>
+                  <th scope="col">Section</th>
+                  <th scope="col">Method</th>
+                  <th scope="col">Glass</th>
+                  <th scope="col">Garnish</th>
+                  <th scope="col" style={{ textAlign: 'right' }}>Price</th>
+                  <th scope="col" style={{ textAlign: 'right' }}>Kept</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[0, 1, 2].map((i) => (
+                  <tr key={i} style={{ cursor: 'default' }}>
+                    <td>
+                      <span className="cl-serif" style={{ display: 'block', fontWeight: 600, fontSize: 13.5 }}>
+                        &nbsp;
+                      </span>
+                    </td>
+                    <td colSpan={6} />
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {openParam ? (
+            // A link names a drink: its panel opens under the list the moment
+            // the list lands, so its room is held from the first paint too.
+            <div aria-hidden="true" style={{ marginTop: 14, minHeight: SHEET_HOLD_ROOM }} />
+          ) : null}
+        </>
       ) : error || !data ? (
         <p className="cl-said" role="alert" style={{ marginTop: 12 }} data-testid="cocktails-unread">
           <AlertTriangle size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} />
@@ -584,7 +628,7 @@ export default function CocktailRegister({
                           </div>
                         ) : null}
                         {/* The sheet keys its own draft by drink (RecipeSheet's default export), so typed lines never cross drinks. */}
-                        <RecipeSheet cocktailId={c.id} />
+                        <RecipeSheet cocktailId={c.id} holdRoom={c.id === openParam} />
                       </>
                     );
                   })()}

@@ -37,6 +37,8 @@ export const RECIPE_TASTE_UNSAVED = 'Worked out from the saved recipe, not the l
 export const RECIPE_TASTE_NO_RECIPE = 'Save a recipe with lines, then its taste can be worked out from it.';
 export const RECIPE_TASTE_EMPTY_READ = 'Not worked out yet. A manager works it out from the saved recipe.';
 export const RECIPE_TASTE_NO_RECIPE_READ = 'No recipe yet, so there is nothing to work a taste out from.';
+/** The top line when the read came back with no taste: it keeps its one line (r91). */
+export const RECIPE_TASTE_LINE_NONE = 'No taste worked out yet.';
 const CARD_ID = 'recipe-taste-card';
 /**
  * The height the taste reserves from the first paint, so what is below it does
@@ -66,19 +68,59 @@ function useTaste({ kind, subjectId, restaurantId }: Props) {
   });
 }
 
-export function RecipeTasteLine(props: Props) {
+/** Work the taste out of the saved recipe; the answer replaces what the sheet holds. */
+function useWorkOut({ kind, subjectId, restaurantId }: Props) {
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [said, setSaid] = useState<string | null>(null);
+  const run = async () => {
+    setBusy(true);
+    setSaid(null);
+    const r = await rollupTaste(kind, subjectId, restaurantId ?? undefined);
+    setBusy(false);
+    if (r.state === 'ready') {
+      qc.setQueryData<TasteRead>(tasteKeys.subject(restaurantId ?? '', kind, subjectId), { state: 'ready', data: r.data });
+      void qc.invalidateQueries({ queryKey: tasteKeys.subject(restaurantId ?? '', kind, subjectId) });
+    } else setSaid(r.state === 'absent' ? ROLLUP_ABSENT : r.sentence);
+  };
+  return { busy, said, run };
+}
+
+/**
+ * The top line never collapses once the sheet opens (r91 decision): pending is
+ * a placeholder of the same height, a sentence is the sentence, and no taste
+ * yet is "No taste worked out yet." with, for who writes the recipe, a link
+ * that works it out. Staff read the words only.
+ */
+export function RecipeTasteLine(props: Props & { /** The saved recipe has at least one line (nothing to work out from otherwise). */ hasRecipe?: boolean }) {
   const q = useTaste(props);
+  const canWrite = useCanEditRecipe();
+  const work = useWorkOut(props);
   let sentence: string | null = null;
   let kinds: ProvKind[] = [];
   const failed = q.isError || q.data?.state === 'failed';
-  if (q.isLoading) {
+  if (q.isLoading || (q.data === undefined && !q.isError)) {
     return <p className="tc-line tc-line--foot cl-rcp-taste-line" data-testid="recipe-taste-line-wait" aria-hidden style={{ minHeight: TASTE_LINE_RESERVE_PX }} />;
   }
   if (!failed && q.data?.state === 'ready') {
     const line = leadLine(q.data.data);
     if (line) ({ sentence, kinds } = line);
   }
-  if (!failed && sentence === null) return null;
+  if (!failed && sentence === null) {
+    const canWork = canWrite && q.data?.state === 'ready' && (props.hasRecipe ?? true);
+    return (
+      <p className="tc-line tc-line--foot cl-rcp-taste-line" data-testid="recipe-taste-line-none" style={{ minHeight: TASTE_LINE_RESERVE_PX }}>
+        <span className="tc-line-k">How it tastes</span>
+        <span data-testid="recipe-taste-line-none-words">{RECIPE_TASTE_LINE_NONE}</span>
+        {canWork ? (
+          <button type="button" className="iv-linkish iv-focus tc-line-btn" data-testid="recipe-taste-line-work" disabled={work.busy} onClick={() => void work.run()}>
+            {work.busy ? 'Working it out…' : 'Work it out'}
+          </button>
+        ) : null}
+        {work.said ? <span role="alert" data-testid="recipe-taste-line-said">{work.said}</span> : null}
+      </p>
+    );
+  }
   const unreachable = q.data?.state === 'failed' && q.data.reason === UNREACHABLE_WORDS;
   const said = failed ? (unreachable ? UNREACHABLE_WORDS : RECIPE_TASTE_LINE_FAILED) : (sentence as string);
   return (
@@ -107,25 +149,12 @@ export function RecipeTasteLine(props: Props) {
 
 export default function RecipeTaste(props: Props & { /** The saved recipe has at least one line. */ hasRecipe: boolean; /** Lines are typed on the sheet and not saved. */ unsaved: boolean }) {
   const { kind, subjectId, restaurantId, hasRecipe, unsaved } = props;
-  const qc = useQueryClient();
   const q = useTaste(props);
   // The sheet is read-only to staff; the recipe layer is written by who writes the recipe.
   const canWrite = useCanEditRecipe();
-  const [busy, setBusy] = useState(false);
-  const [said, setSaid] = useState<string | null>(null);
+  const { busy, said, run } = useWorkOut(props);
   const readable = q.data?.state === 'ready';
   const worked = q.data?.state === 'ready' && q.data.data.layers.some((l) => l.source === 'recipe');
-
-  const run = async () => {
-    setBusy(true);
-    setSaid(null);
-    const r = await rollupTaste(kind, subjectId, restaurantId ?? undefined);
-    setBusy(false);
-    if (r.state === 'ready') {
-      qc.setQueryData<TasteRead>(tasteKeys.subject(restaurantId ?? '', kind, subjectId), { state: 'ready', data: r.data });
-      void qc.invalidateQueries({ queryKey: tasteKeys.subject(restaurantId ?? '', kind, subjectId) });
-    } else setSaid(r.state === 'absent' ? ROLLUP_ABSENT : r.sentence);
-  };
 
   return (
     <section
