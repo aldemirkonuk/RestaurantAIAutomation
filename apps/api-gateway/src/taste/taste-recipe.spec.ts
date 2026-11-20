@@ -80,6 +80,20 @@ describe('TasteService.rollupSubject', () => {
     expect(f.inserts[0].axes.herbal.v).toBeGreaterThan(2.5); // 20000 mg is 20 g of parsley, not 20 kg
     expect(f.inserts[0].axes.herbal.v).toBeLessThan(4.5);
   });
+  it('weighs a counted line by the grams the house stated for that good, and leaves an unstated one unweighed', async () => {
+    const EGG = '77777777-7777-4777-8777-777777777777';
+    const LIME = '88888888-8888-4888-8888-888888888888';
+    const t: any = recipe([['Bourbon', 600, 'ml10'], ['Egg white', 1000, 'each_milli'], ['Lime wedge', 1000, 'each_milli']]);
+    t.recipe_lines[1].inventory_id = EGG; t.recipe_lines[2].inventory_id = LIME;
+    t.restaurant_inventory = [{ id: EGG, restaurant_id: RID, piece_grams: 33 }, { id: LIME, restaurant_id: RID, piece_grams: null }, { id: EGG, restaurant_id: 'other', piece_grams: 99 }];
+    const out = await new TasteService(fakeDb(t).db).rollupSubject(RID, 'cocktail', COCKTAIL);
+    expect(out.rollup).toMatchObject({ lines: 3, unquantified: 1 });
+  });
+  it('refuses, in a sentence, when the stated weights cannot be read', async () => {
+    const t: any = recipe([['Egg white', 1000, 'each_milli']]);
+    t.recipe_lines[0].inventory_id = '77777777-7777-4777-8777-777777777777';
+    await expect(new TasteService(fakeDb(t, ['restaurant_inventory']).db).rollupSubject(RID, 'cocktail', COCKTAIL)).rejects.toThrow(/cannot read recipes|could not be read/);
+  });
   it('adds nothing when the same recipe is worked out again', async () => {
     const f = fakeDb(recipe(sour));
     const s = new TasteService(f.db);

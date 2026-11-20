@@ -133,10 +133,19 @@ export class ItemUsedInService {
       this.inDrinkRecipes(client, restaurantId, item),
     ]);
 
+    // A cocktail with a versioned recipe is shown once, from that recipe (the
+    // real source for cost and taste); its old lines stay only for a cocktail
+    // that has none. If the versioned read failed we cannot tell, so keep both.
+    const versioned = new Set((inDrinkRecipes.lines ?? []).map((l) => l.cocktailId));
+    const legacy: Group<CocktailLine> =
+      inCocktails.readable && inCocktails.lines && inDrinkRecipes.readable
+        ? { ...inCocktails, lines: inCocktails.lines.filter((l) => !versioned.has(l.cocktailId)) }
+        : inCocktails;
+
     return {
       item: { id: item.id, kind: item.kind, displayName: item.displayName },
       soldAs: menu.soldAs,
-      inCocktails,
+      inCocktails: legacy,
       inDrinkRecipes,
       namedNotLinked: menu.namedNotLinked,
     };
@@ -264,35 +273,50 @@ export class ItemUsedInService {
         source: "A cocktail recipe names a catalogue drink, and this item is not one.",
       };
     }
-    const ing = await client
-      .from("cocktail_ingredients")
-      .select("cocktail_id, quantity, unit")
-      .or(keys.join(","));
-    if (ing.error) return failed("The cocktail recipes", ing.error.message);
-    const rows = (ing.data ?? []) as Array<Record<string, any>>;
-    if (rows.length === 0) return { readable: true, lines: [], source };
-    const cocktails = await client
-      .from("cocktails")
-      .select("id, name, display_name")
-      .in("id", [...new Set(rows.map((r) => r.cocktail_id))])
-      // NULL restaurant_id is the catalogue, not this house's.
-      .eq("restaurant_id", restaurantId)
-      .is("deleted_at", null);
-    if (cocktails.error) return failed("The cocktail recipes", cocktails.error.message);
-    const byId = new Map(
-      ((cocktails.data ?? []) as Array<Record<string, any>>).map((c) => [c.id, c]),
-    );
-    const lines = rows
-      .filter((r) => byId.has(r.cocktail_id))
-      .map((r) => {
-        const c = byId.get(r.cocktail_id)!;
-        return {
-          cocktailId: c.id,
-          name: c.display_name || c.name,
+    // cocktail_ingredients carries no restaurant_id, so the house is found
+    // first (its cocktails, paged by id) and only those cocktails' lines are
+    // read. Reading the lines first let another house's lines of a popular
+    // catalogue drink fill PostgREST's 1,000-row page before this house's own.
+    const names = new Map<string, string>();
+    let after: string | null = null;
+    for (;;) {
+      let q = client
+        .from("cocktails")
+        .select("id, name, display_name")
+        // NULL restaurant_id is the catalogue, not this house's.
+        .eq("restaurant_id", restaurantId)
+        .is("deleted_at", null);
+      if (after) q = q.gt("id", after);
+      const { data, error } = await q.order("id", { ascending: true }).limit(PAGE);
+      if (error) return failed("The cocktail recipes", error.message);
+      const page = (data ?? []) as Array<Record<string, any>>;
+      for (const c of page) names.set(String(c.id), c.display_name || c.name);
+      if (page.length < PAGE) break;
+      after = String(page[page.length - 1].id);
+    }
+    const ids = [...names.keys()];
+    const lines: CocktailLine[] = [];
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const { data, error } = await client
+        .from("cocktail_ingredients")
+        .select("cocktail_id, quantity, unit")
+        .in("cocktail_id", ids.slice(i, i + CHUNK))
+        .or(keys.join(","))
+        .limit(PAGE);
+      if (error) return failed("The cocktail recipes", error.message);
+      const rows = (data ?? []) as Array<Record<string, any>>;
+      // 100 cocktails cannot hold 1,000 lines of one drink; if they do, say so rather than drop some.
+      if (rows.length >= PAGE) return failed("The cocktail recipes", "too many lines for one read");
+      for (const r of rows) {
+        const id = String(r.cocktail_id);
+        lines.push({
+          cocktailId: id,
+          name: names.get(id)!,
           quantity: r.quantity == null ? null : Number(r.quantity),
           unit: r.unit ?? null,
-        };
-      });
+        });
+      }
+    }
     return { readable: true, lines, source };
   }
 
