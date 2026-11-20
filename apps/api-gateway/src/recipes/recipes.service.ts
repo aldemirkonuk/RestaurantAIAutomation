@@ -115,8 +115,10 @@ export class RecipesService {
   async getDishRecipe(restaurantId: string, dishId: string, role: string | null | undefined) {
     const money = seesHouseAmounts(role);
     const client = this.db.getClient();
-    const dish = await this.houseDish(restaurantId, dishId);
-    const [pointer, count] = await Promise.all([
+    // The house check and the pointer reads go at once (gap 17). Both reads
+    // name the house, and the check's 404 is the answer when it refuses.
+    const [dish, pointer, count] = await Promise.all([
+      this.houseDish(restaurantId, dishId),
       client
         .from("recipe_current_dish")
         .select("version_id")
@@ -161,9 +163,11 @@ export class RecipesService {
   async getRecipe(restaurantId: string, cocktailId: string, role: string | null | undefined) {
     const money = seesHouseAmounts(role);
     const client = this.db.getClient();
-    const cocktail = await this.houseCocktail(restaurantId, cocktailId);
-
-    const [pointer, count, legacy] = await Promise.all([
+    // The house check and the pointer reads go at once (gap 17). When the
+    // check refuses another house's drink, what the other reads found is
+    // dropped with the 404 and never answered.
+    const [cocktail, pointer, count, legacy] = await Promise.all([
+      this.houseCocktail(restaurantId, cocktailId),
       client
         .from("recipe_current")
         .select("version_id")
@@ -337,10 +341,14 @@ export class RecipesService {
     const rows = (lines.data ?? []) as any[];
     const ids = [...new Set(rows.map((l) => l.inventory_id).filter(Boolean))] as string[];
 
-    const { items, lots } = await this.readPricing(restaurantId, ids, money);
-
+    // The prices and what is in a serve are read at once: neither needs the
+    // other (r28 recipes audit, gap 17). whatIsIn never throws; a failed
+    // pricing read still fails the whole sheet.
     const v = version.data as Record<string, any>;
-    const whatIsIn = withWhatIsIn ? await this.whatIsIn(restaurantId, ids, rows, Number(v.yield_serves)) : null;
+    const [{ items, lots }, whatIsIn] = await Promise.all([
+      this.readPricing(restaurantId, ids, money),
+      withWhatIsIn ? this.whatIsIn(restaurantId, ids, rows, Number(v.yield_serves)) : Promise.resolve(null),
+    ]);
     const priced = recipeCost(
       rows.map((l) => ({
         role: l.role,
@@ -442,22 +450,25 @@ export class RecipesService {
     const pairs = new Map<string, { qty: number; unit: string }>();
     for (const l of stocked) pairs.set(`${l.qtyEntered}|${l.unitCode}`, { qty: l.qtyEntered, unit: l.unitCode });
     const converted = new Map<string, { qtyBase: number; baseUnit: BaseUnit } | null>();
-    await Promise.all(
-      [...pairs.entries()].map(async ([k, p]) => {
-        const { data, error } = await client.rpc("recipe_qty_base", { p_qty: p.qty, p_unit: p.unit });
-        if (error) this.failed("quantity conversion", error);
-        const row = (Array.isArray(data) ? data[0] : data) as { qty_base?: unknown; base_unit?: unknown } | null;
-        converted.set(
-          k,
-          row && row.qty_base != null && row.base_unit != null
-            ? { qtyBase: Number(row.qty_base), baseUnit: row.base_unit as BaseUnit }
-            : null,
-        );
-      }),
-    );
-
     const ids = [...new Set(stocked.map((l) => l.inventoryId).filter(Boolean))] as string[];
-    const { items, lots } = await this.readPricing(restaurantId, ids, true);
+    // The conversions and the prices are read at once (r28 gap 17): the
+    // prices need only the linked items, never a converted quantity.
+    const [, { items, lots }] = await Promise.all([
+      Promise.all(
+        [...pairs.entries()].map(async ([k, p]) => {
+          const { data, error } = await client.rpc("recipe_qty_base", { p_qty: p.qty, p_unit: p.unit });
+          if (error) this.failed("quantity conversion", error);
+          const row = (Array.isArray(data) ? data[0] : data) as { qty_base?: unknown; base_unit?: unknown } | null;
+          converted.set(
+            k,
+            row && row.qty_base != null && row.base_unit != null
+              ? { qtyBase: Number(row.qty_base), baseUnit: row.base_unit as BaseUnit }
+              : null,
+          );
+        }),
+      ),
+      this.readPricing(restaurantId, ids, true),
+    ]);
 
     const priced = recipeCost(
       dto.lines.map((l) => {
