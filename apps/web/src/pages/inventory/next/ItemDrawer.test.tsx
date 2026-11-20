@@ -349,6 +349,67 @@ describe('the item drawer', () => {
     }
   });
 
+  it('says how many dishes and drinks use the good in one line, and goes to them; says nothing while a read fails (r102 critic-4)', async () => {
+    const used = { section: null, price: 10, hasRecipe: true, yieldServes: 1, lineCount: 1, cost: null, uses: [{ label: 'Flour', qtyEntered: 5, unitCode: 'g' }] };
+    api.dishes.mockResolvedValue({ dishes: ['d1', 'd2', 'd3'].map((dishId) => ({ ...used, dishId, name: dishId })) });
+    api.drinks.mockResolvedValue({ drinks: ['k1', 'k2'].map((cocktailId) => ({ ...used, cocktailId, name: cocktailId })) });
+    const spy = vi.fn();
+    const was = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = spy;
+    try {
+      open(row());
+      const chip = await screen.findByTestId('ivd-used-chip');
+      expect(chip.textContent).toBe('Used in 3 dishes, 2 drinks');
+      fireEvent.click(chip);
+      expect(spy.mock.contexts.some((el) => (el as HTMLElement).id === 'ivd-used')).toBe(true);
+    } finally {
+      Element.prototype.scrollIntoView = was;
+    }
+    cleanup();
+    api.dishes.mockRejectedValue(new Error('down'));
+    open(row());
+    await waitFor(() => expect(screen.getByTestId('ivd-used')).toBeTruthy());
+    expect(screen.queryByTestId('ivd-used-chip')).toBeNull();
+  });
+
+  it('the detail card sits in a wrapper that stays mounted: data-open flips, the content mounts and goes at once (r102 motion-1)', () => {
+    open(row());
+    const wrap = screen.getByTestId('ivd-evwrap');
+    expect(wrap.getAttribute('data-open')).toBe('false');
+    expect(within(wrap).queryByTestId('ivd-evidence')).toBeNull();
+    const card = screen.getByTestId('ivd-card-onhand');
+    fireEvent.click(card);
+    expect(screen.getByTestId('ivd-evwrap')).toBe(wrap);
+    expect(wrap.getAttribute('data-open')).toBe('true');
+    expect(within(wrap).getByTestId('ivd-evidence')).toBeTruthy();
+    fireEvent.click(card);
+    expect(screen.getByTestId('ivd-evwrap')).toBe(wrap);
+    expect(wrap.getAttribute('data-open')).toBe('false');
+    expect(within(wrap).queryByTestId('ivd-evidence')).toBeNull();
+  });
+
+  it('brings the opened card into view only after its 200 ms open, and at once for reduced motion (r102 motion-1)', async () => {
+    const spy = vi.fn();
+    const was = Element.prototype.scrollIntoView;
+    const wasMq = window.matchMedia;
+    Element.prototype.scrollIntoView = spy;
+    try {
+      open(row());
+      fireEvent.click(screen.getByTestId('ivd-card-onhand'));
+      expect(spy).not.toHaveBeenCalled();
+      await waitFor(() => expect(spy.mock.contexts).toContain(screen.getByTestId('ivd-evidence')));
+      spy.mockClear();
+      cleanup();
+      window.matchMedia = ((q: string) => ({ matches: q.includes('reduce'), media: q, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;
+      open(row());
+      fireEvent.click(screen.getByTestId('ivd-card-onhand'));
+      await waitFor(() => expect(spy).toHaveBeenCalled());
+    } finally {
+      Element.prototype.scrollIntoView = was;
+      window.matchMedia = wasMq;
+    }
+  });
+
   it('shows energy per 100 ml on the "What’s in it" card, and the nutrition card in the slot', async () => {
     api.nutrition.mockResolvedValue({
       ...nothingStated,

@@ -57,13 +57,25 @@
 }
 button.ivd-card {
   cursor: pointer;
+  transition: border-color 120ms ease-out, background-color 120ms ease-out, transform 120ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 button.ivd-card:hover {
   border-color: var(--ink-4);
 }
+button.ivd-card:active {
+  transform: scale(0.985);
+}
 .ivd-card[data-on='true'] {
   border-color: var(--ink-2);
   background: var(--paper-0);
+}
+@media (prefers-reduced-motion: reduce) {
+  button.ivd-card {
+    transition: none;
+  }
+  button.ivd-card:active {
+    transform: none;
+  }
 }
 /* Cost (no costed lot) and Waste answer with a sentence: the room is held at its answered height, 139 px
    in the one-column phone sheet and 153 px in the two-column sheet (r99 walk, in-sheet CLS 0.0244). */
@@ -118,6 +130,41 @@ button.ivd-card:hover {
 
 .ivd-evbar {
   margin: 10px 0 0;
+}
+/* The detail card opens by height and opacity (taste-card.css .tc-detail-wrap); it closes at once, because
+   ADR 0112 allows no overlay exit animation. Reduced motion: the end state, no tween. */
+.ivd-evwrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  visibility: hidden;
+}
+.ivd-evwrap[data-open='true'] {
+  grid-template-rows: 1fr;
+  visibility: visible;
+  transition: grid-template-rows 200ms cubic-bezier(0.16, 1, 0.3, 1), margin-top 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.ivd-evclip {
+  min-height: 0;
+  overflow: hidden;
+}
+.ivd-evwrap[data-open='true'] .ivd-evidence {
+  animation: ivd-ev-in 160ms ease-out 40ms both;
+}
+@keyframes ivd-ev-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ivd-evwrap[data-open='true'] {
+    transition: none;
+  }
+  .ivd-evwrap[data-open='true'] .ivd-evidence {
+    animation: none;
+  }
 }
 .ivd-evidence {
   margin-top: 8px;
@@ -181,4 +228,21 @@ button.ivd-card:hover {
 }
 .ivd-dish-h {
   margin: 0 0 6px;
+}
+
+/* The one-line "Used in 3 dishes, 2 drinks" under the head: a 44 px tap that scrolls to where it is used. */
+.ivd-usedchip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
 }
