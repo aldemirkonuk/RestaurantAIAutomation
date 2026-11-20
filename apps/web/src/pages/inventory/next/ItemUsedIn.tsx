@@ -428,7 +428,7 @@ export default function ItemUsedIn({
   }
 
   return (
-    <section className="ivd-used" aria-labelledby="ivd-used-title" data-testid="ivd-used">
+    <section id="ivd-used" className="ivd-used" aria-labelledby="ivd-used-title" data-testid="ivd-used">
       <h3 id="ivd-used-title" className="iv-sec">
         Used in
       </h3>

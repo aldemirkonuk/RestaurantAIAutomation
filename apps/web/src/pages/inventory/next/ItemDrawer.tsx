@@ -101,6 +101,15 @@ export interface ItemDrawerProps {
   startWith?: SheetId;
 }
 
+/** How long the evidence takes to open: its 200 ms tween, or none when the person asked for reduced motion. */
+function openMs(): number {
+  try {
+    return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : 220;
+  } catch {
+    return 220;
+  }
+}
+
 export default function ItemDrawer(props: ItemDrawerProps) {
   const { row, house, canManage, currency, zoneName, restaurantId, onClose } = props;
   const NutritionCard = props.NutritionCard ?? WhatIsInIt;
@@ -113,14 +122,19 @@ export default function ItemDrawer(props: ItemDrawerProps) {
   // The first-screen taste line opens the evidence and brings the taste card into view.
   const [wantTaste, setWantTaste] = useState(false);
   // On a phone the detail card opens below the fold: bring it into view.
+  // It waits for the open to finish (200 ms), so the page does not scroll toward a card still at 0 height.
   useEffect(() => {
-    if (evidence !== null) detailRef.current?.scrollIntoView?.({ block: 'nearest' });
+    if (evidence === null) return;
+    const t = window.setTimeout(() => detailRef.current?.scrollIntoView?.({ block: 'nearest' }), openMs());
+    return () => window.clearTimeout(t);
   }, [evidence]);
   useEffect(() => {
-    if (wantTaste && evidence !== null) {
+    if (!wantTaste || evidence === null) return;
+    const t = window.setTimeout(() => {
       tasteRef.current?.scrollIntoView?.({ block: 'nearest' });
       setWantTaste(false);
-    }
+    }, openMs());
+    return () => window.clearTimeout(t);
   }, [wantTaste, evidence]);
   const id = row?.id ?? '';
   // A supply (napkins, foil) is not eaten or drunk: it has no nutrition or
@@ -202,6 +216,20 @@ export default function ItemDrawer(props: ItemDrawerProps) {
     : drinksQ.data
       ? { status: 'ready', data: drinksQ.data }
       : { status: 'reading' };
+  // Where a good is used is the first question and the last block: one line up top says how many and goes
+  // there. Said only when all three reads answered with something; a pending or failed read says nothing here.
+  // A drink counts once whether its recipe line or a catalogue cocktail card names the good (the block below
+  // lists both), so the line never says fewer than the block shows.
+  const cardsRead = usedIn.status === 'ready' && usedIn.data.inCocktails.readable && usedIn.data.inCocktails.lines !== null;
+  const drinkIds = new Set<string>();
+  if (drinks.status === 'ready') for (const d of drinks.data.drinks) drinkIds.add(d.cocktailId);
+  if (usedIn.status === 'ready' && cardsRead) for (const c of usedIn.data.inCocktails.lines ?? []) drinkIds.add(c.cocktailId);
+  const nDishes = dishes.status === 'ready' ? dishes.data.dishes.length : 0;
+  const nDrinks = drinkIds.size;
+  const usedChip =
+    dishes.status === 'ready' && drinks.status === 'ready' && cardsRead && nDishes + nDrinks > 0
+      ? `Used in ${[nDishes > 0 ? `${nDishes} ${nDishes === 1 ? 'dish' : 'dishes'}` : '', nDrinks > 0 ? `${nDrinks} ${nDrinks === 1 ? 'drink' : 'drinks'}` : ''].filter(Boolean).join(', ')}`
+      : null;
 
   const name = row.name ?? house.displayName ?? 'Unnamed item';
   const held = row.zones?.filter((z) => z.qty > 0) ?? null;
@@ -233,6 +261,18 @@ export default function ItemDrawer(props: ItemDrawerProps) {
       <p className="ivd-head" data-testid="ivd-head">
         {head}
       </p>
+      {usedChip ? (
+        <button
+          type="button"
+          className="ivd-usedchip iv-focus"
+          data-testid="ivd-used-chip"
+          onClick={() =>
+            document.getElementById('ivd-used')?.scrollIntoView?.({ block: 'start', behavior: openMs() === 0 ? 'auto' : 'smooth' })
+          }
+        >
+          {usedChip}
+        </button>
+      ) : null}
       {hasContents ? (
         <TasteSummary
           id={id}
@@ -295,6 +335,8 @@ export default function ItemDrawer(props: ItemDrawerProps) {
           {evidence !== null ? 'Hide the evidence' : 'All the evidence'}
         </button>
       </p>
+      <div className="ivd-evwrap" data-open={evidence !== null} data-testid="ivd-evwrap">
+        <div className="ivd-evclip">
       {evidence !== null ? (
         <section
           ref={detailRef}
@@ -339,6 +381,8 @@ export default function ItemDrawer(props: ItemDrawerProps) {
           ) : null}
         </section>
       ) : null}
+        </div>
+      </div>
       <ItemUsedIn
         load={usedIn}
         dishes={dishes}
