@@ -5,7 +5,7 @@
  * fails without this line.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, renderHook, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, renderHook, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 
@@ -66,11 +66,34 @@ describe('LineRow', () => {
     ).toBeInTheDocument();
   });
 
-  it('switching a line to Not counted drops its link', () => {
+  it('switching a line to Not counted keeps its link, dimmed, and switching back restores it', () => {
     mount(<Harness start={{ ...blank, inventoryId: GIN, itemName: 'gin', label: 'gin' }} />);
     fireEvent.click(screen.getByRole('switch'));
-    expect(last).toMatchObject({ role: 'untracked', inventoryId: null, itemName: null });
+    expect(last).toMatchObject({ role: 'untracked', inventoryId: GIN, itemName: 'gin' });
     expect(screen.getByRole('switch')).toHaveTextContent('Not counted');
+    expect(screen.getByTestId('kept-link')).toHaveTextContent('Linked to gin');
+    fireEvent.click(screen.getByRole('switch'));
+    expect(last).toMatchObject({ role: 'stocked', inventoryId: GIN });
+    expect(screen.queryByTestId('kept-link')).toBeNull();
+  });
+
+  it('switching off says what the cost drops by, undoes in one tap, and goes after 3 s', () => {
+    vi.useFakeTimers();
+    try {
+      const linked = { ...blank, inventoryId: GIN, itemName: 'gin', label: 'gin' };
+      mount(<Harness start={{ ...linked, saved: { status: 'linked', costPerServe: 1.5, costBasis: 'lot_wac' } }} say={(n) => `₺${n.toFixed(2)}`} />);
+      fireEvent.click(screen.getByRole('switch'));
+      expect(screen.getByTestId('not-counted-undo')).toHaveTextContent('the cost drops by ₺1.50 a serve');
+      fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+      expect(last).toMatchObject({ role: 'stocked', inventoryId: GIN, saved: { costPerServe: 1.5 } });
+      expect(screen.queryByTestId('not-counted-undo')).toBeNull();
+      fireEvent.click(screen.getByRole('switch'));
+      expect(screen.getByTestId('not-counted-undo')).toBeInTheDocument();
+      act(() => { vi.advanceTimersByTime(3100); });
+      expect(screen.queryByTestId('not-counted-undo')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('a linked line with no price says why, and a priced one says its cost', () => {

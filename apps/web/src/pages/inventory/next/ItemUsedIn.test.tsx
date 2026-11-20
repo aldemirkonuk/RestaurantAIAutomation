@@ -186,6 +186,20 @@ describe('Used in', () => {
     err.mockRestore();
   });
 
+  it('writes a recipe quantity in the house form: a lira house gets the decimal comma', () => {
+    render(
+      <ItemUsedIn
+        dishes={NO_DISHES}
+        onRetryDishes={vi.fn()}
+        load={load({ inCocktails: ok([{ cocktailId: 'c2', name: 'Lion milk', quantity: 29.5735295625, unit: 'ml' }]) })}
+        canManage
+        currency={{ state: 'recorded', code: 'TRY' }}
+        onRetry={vi.fn()}
+      />,
+    );
+    expect(within(screen.getByTestId('ivd-used-cocktails')).getByRole('listitem').textContent).toBe('Lion milk29,57 ml');
+  });
+
   it('shows menu prices to owners and managers only', () => {
     const { unmount } = render(<ItemUsedIn dishes={NO_DISHES} onRetryDishes={vi.fn()} load={load()} canManage currency={EUR} onRetry={vi.fn()} />);
     expect(screen.getByTestId('ivd-used-sold').textContent).toMatch(/€/);
