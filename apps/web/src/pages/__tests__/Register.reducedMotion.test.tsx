@@ -50,4 +50,24 @@ describe('reduced motion on the way in', () => {
       for (const l of lines) expect(l).toContain('motion-reduce:animate-none')
     }
   })
+
+  // r103 (DD-r102-3): reduced means no animation, opacity fades included.
+  it('gives every framer duration through dur(), which is 0 under reduced motion', () => {
+    const reg = src('pages/Register.tsx')
+    expect(reg).toMatch(/const dur = \(seconds: number\) => \(prefersReducedMotion\(\) \? 0 : seconds\)/)
+    const durations = reg.match(/duration: [^,}\s]+/g) ?? []
+    expect(durations.length).toBeGreaterThan(5)
+    for (const d of durations) expect(d).toMatch(/^duration: (dur\(|0$)/)
+    expect(reg).not.toMatch(/transition=\{\{ delay/)
+  })
+
+  it('takes the colour and opacity transitions off the inputs and Continue under reduced motion', () => {
+    const reg = src('pages/Register.tsx')
+    const all = reg.match(/transition-all[^'`\s]*(\s+[^'`\s]+)?/g) ?? []
+    expect(all.length).toBeGreaterThan(0)
+    for (const m of all) expect(m).toContain('motion-reduce:transition-none')
+    const buttons = reg.split('<Button').slice(1)
+    expect(buttons.length).toBe(3)
+    for (const b of buttons) expect(b.slice(0, 300)).toContain('motion-reduce:transition-none')
+  })
 })

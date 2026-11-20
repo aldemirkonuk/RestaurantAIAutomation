@@ -8,9 +8,13 @@ import { BrandMark } from '../components/brand/BrandMark'
 import { EndpaperShell } from '../components/brand/EndpaperShell'
 import { Button } from '../components/ui'
 import { apiClient } from '../services/api/client'
+import { prefersReducedMotion } from '../lib/mudavym/motion'
 import { usePublicDesign } from '../lib/mudavym/publicDesign'
 import { GoogleSignInButton } from '../components/auth/GoogleSignInButton'
 import '../components/brand/auth-house.css'
+
+/** ADR 0112 / DD-r102-3: reduced motion is no animation, opacity fades included. */
+const dur = (seconds: number) => (prefersReducedMotion() ? 0 : seconds)
 
 /*
  * THE HOUSE PATH (ADR 0133 §Decision 1). `usePublicDesign()` is the public
@@ -252,7 +256,7 @@ export function Register() {
             className={[
               'block w-full py-4 px-[18px] pr-[50px]',
               'font-mono text-2xl font-bold tracking-[0.2em] uppercase text-center',
-              'border-2 rounded-xl outline-none transition-all',
+              'border-2 rounded-xl outline-none transition-all motion-reduce:transition-none',
               // House path: the status border stays (no status token), and
               // the three hand-drawn focus halos go — the seal outline comes
               // from auth-house.css.
@@ -300,8 +304,8 @@ export function Register() {
           <motion.div
             key="trust-card"
             initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0, transition: { duration: 0.18, ease: 'easeOut' } }}
-            exit={{ opacity: 0, y: -6, transition: { duration: 0.13, ease: 'easeIn' } }}
+            animate={{ opacity: 1, y: 0, transition: { duration: dur(0.18), ease: 'easeOut' } }}
+            exit={{ opacity: 0, y: -6, transition: { duration: dur(0.13), ease: 'easeIn' } }}
             className={on ? 'mb-4 border border-paper-2 rounded-[3px] overflow-hidden' : 'mb-4 border border-green-200 rounded-xl overflow-hidden'}
           >
             {/* Green top — on the house path, a paper plate: the seal marks it good */}
@@ -348,6 +352,7 @@ export function Register() {
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: dur(0.2) }}
             className={on ? 'mdv-ep-note border-red-700' : 'mb-4 flex items-center gap-[9px] bg-red-50 border border-red-200 rounded-lg px-[14px] py-[11px]'}
           >
             {!on && <X className="w-[15px] h-[15px] text-red-600 flex-shrink-0" />}
@@ -363,7 +368,7 @@ export function Register() {
       </AnimatePresence>
 
       <Button
-        className={on ? `w-full h-12 ${HOUSE_BUTTON}` : 'w-full h-12'}
+        className={on ? `w-full h-12 motion-reduce:transition-none ${HOUSE_BUTTON}` : 'w-full h-12 motion-reduce:transition-none'}
         disabled={!invitePreview?.valid || loading}
         type="button"
         onClick={() => setPathAStep(2)}
@@ -458,8 +463,8 @@ export function Register() {
               placeholder="jane@restaurant.com"
               className={[
                 on
-                  ? 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-paper-0 focus:outline-none transition-all'
-                  : 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-white/80 focus:ring-2 focus:outline-none transition-all',
+                  ? 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-paper-0 focus:outline-none transition-all motion-reduce:transition-none'
+                  : 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-white/80 focus:ring-2 focus:outline-none transition-all motion-reduce:transition-none',
                 joinEmailCheck.available === false
                   ? (on ? 'border-red-400' : 'border-red-400 focus:border-red-500 focus:ring-red-500/20')
                   : joinEmailCheck.available === true
@@ -489,8 +494,8 @@ export function Register() {
             {joinEmailCheck.available === false && joinEmailCheck.error && (
               <motion.div
                 initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0, transition: { duration: 0.18, ease: 'easeOut' } }}
-                exit={{ opacity: 0, y: -4, transition: { duration: 0.13, ease: 'easeIn' } }}
+                animate={{ opacity: 1, y: 0, transition: { duration: dur(0.18), ease: 'easeOut' } }}
+                exit={{ opacity: 0, y: -4, transition: { duration: dur(0.13), ease: 'easeIn' } }}
                 className="mt-2 flex items-center gap-2 text-sm text-red-600"
               >
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -503,8 +508,8 @@ export function Register() {
             {joinEmailCheck.available === true && (
               <motion.p
                 initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0, transition: { duration: 0.18, ease: 'easeOut' } }}
-                exit={{ opacity: 0, y: -4, transition: { duration: 0.13, ease: 'easeIn' } }}
+                animate={{ opacity: 1, y: 0, transition: { duration: dur(0.18), ease: 'easeOut' } }}
+                exit={{ opacity: 0, y: -4, transition: { duration: dur(0.13), ease: 'easeIn' } }}
                 className={on ? 'mt-1 text-xs !text-seal' : 'mt-1 text-xs text-green-600'}
               >
                 Email is available
@@ -553,7 +558,7 @@ export function Register() {
         </div>
       )}
       <Button
-        className={on ? `w-full h-12 mt-5 ${HOUSE_BUTTON}` : 'w-full h-12 mt-5'}
+        className={on ? `w-full h-12 mt-5 motion-reduce:transition-none ${HOUSE_BUTTON}` : 'w-full h-12 mt-5 motion-reduce:transition-none'}
         disabled={loading || joinEmailCheck.checking || !joinName || !joinEmail || !joinPassword || !joinConfirm || joinEmailCheck.available === false}
         onClick={async () => {
           // If debounced check hasn't settled, run immediately before submitting
@@ -639,8 +644,8 @@ export function Register() {
               placeholder="john@myrestaurant.com"
               className={[
                 on
-                  ? 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-paper-0 focus:outline-none transition-all'
-                  : 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-white/80 focus:ring-2 focus:outline-none transition-all',
+                  ? 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-paper-0 focus:outline-none transition-all motion-reduce:transition-none'
+                  : 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-white/80 focus:ring-2 focus:outline-none transition-all motion-reduce:transition-none',
                 createEmailCheck.available === false
                   ? (on ? 'border-red-400' : 'border-red-400 focus:border-red-500 focus:ring-red-500/20')
                   : createEmailCheck.available === true
@@ -670,8 +675,8 @@ export function Register() {
             {createEmailCheck.available === false && createEmailCheck.error && (
               <motion.div
                 initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0, transition: { duration: 0.18, ease: 'easeOut' } }}
-                exit={{ opacity: 0, y: -4, transition: { duration: 0.13, ease: 'easeIn' } }}
+                animate={{ opacity: 1, y: 0, transition: { duration: dur(0.18), ease: 'easeOut' } }}
+                exit={{ opacity: 0, y: -4, transition: { duration: dur(0.13), ease: 'easeIn' } }}
                 className="mt-2 flex items-center gap-2 text-sm text-red-600"
               >
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -684,8 +689,8 @@ export function Register() {
             {createEmailCheck.available === true && (
               <motion.p
                 initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0, transition: { duration: 0.18, ease: 'easeOut' } }}
-                exit={{ opacity: 0, y: -4, transition: { duration: 0.13, ease: 'easeIn' } }}
+                animate={{ opacity: 1, y: 0, transition: { duration: dur(0.18), ease: 'easeOut' } }}
+                exit={{ opacity: 0, y: -4, transition: { duration: dur(0.13), ease: 'easeIn' } }}
                 className={on ? 'mt-1 text-xs !text-seal' : 'mt-1 text-xs text-green-600'}
               >
                 Email is available
@@ -729,7 +734,7 @@ export function Register() {
       </div>
       <Button
         type="button"
-        className={on ? `w-full h-12 mt-5 ${HOUSE_BUTTON}` : 'w-full h-12 mt-5'}
+        className={on ? `w-full h-12 mt-5 motion-reduce:transition-none ${HOUSE_BUTTON}` : 'w-full h-12 mt-5 motion-reduce:transition-none'}
         disabled={
           !createName ||
           !createEmail ||
@@ -862,14 +867,14 @@ export function Register() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
+        transition={{ duration: dur(0.5) }}
         className="relative w-full max-w-2xl"
       >
         <div className="text-center mb-8">
           <motion.div
             initial={{ scale: 0.5, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.1, type: 'spring' }}
+            transition={prefersReducedMotion() ? { duration: 0 } : { delay: 0.1, type: 'spring' }}
             className="inline-flex mb-5"
           >
             <BrandMark size={34} />
