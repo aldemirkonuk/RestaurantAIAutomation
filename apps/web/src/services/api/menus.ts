@@ -135,6 +135,8 @@ export interface MenuReadLabels {
   readAgain?: boolean
   /** Told once the server has the file and is reading it in the background. */
   onReading?: (menuId: string) => void
+  /** The share of the file the server has received, 0 to 1 (null when the size is unknown). */
+  onUploadProgress?: (share: number | null) => void
 }
 
 export type MenuImportSuccess = (
@@ -300,7 +302,12 @@ export async function importMenu(
     ...(labels.cadence ? { cadence: labels.cadence } : {}),
     ...(labels.menuDate ? { menuDate: labels.menuDate } : {}),
     ...(labels.readAgain ? { readAgain: true } : {}),
-  })
+  }, labels.onUploadProgress
+    ? {
+        onUploadProgress: (e: { loaded: number; total?: number }) =>
+          labels.onUploadProgress?.(e.total ? e.loaded / e.total : null),
+      }
+    : undefined)
   // A scan is read in the background (founder 2026-11-07): the reply names the
   // version being read, and the page waits on it in short polls, so no read
   // is cut off by the client's 30-second timeout.

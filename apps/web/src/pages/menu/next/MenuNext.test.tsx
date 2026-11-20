@@ -260,3 +260,77 @@ describe('MenuNext — discard', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('not discarded');
   });
 });
+
+// r102 menu-motion-4: a row dims while its discard is pending, goes at once on success,
+// and a line that turns up later inks in (DD-r103-7).
+describe('MenuNext — rows move, they do not jump (r102 menu-motion-4)', () => {
+  const rowOf = (name: string) => screen.getByText(name).closest('tr') as HTMLElement;
+
+  it('a pending discard dims the row and takes its pointer', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'a', name: 'Raki' })] }));
+    mockDiscard.mockReturnValue(new Promise(() => {}));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
+    await waitFor(() => expect(rowOf('Raki')).toHaveAttribute('data-state', 'pending'));
+  });
+
+  it('a discarded row goes at once, with no fade state and no wait on the refetch', async () => {
+    mockGetMenu.mockResolvedValueOnce(menu({ items: [line({ id: 'a', name: 'Raki' }), line({ id: 'b', name: 'Tea' })] }));
+    // The confirming read is slow: the row must already be gone before it answers.
+    mockGetMenu.mockReturnValue(new Promise(() => {}));
+    mockDiscard.mockResolvedValue(undefined as never);
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
+    await waitFor(() => expect(screen.queryByText('Raki')).not.toBeInTheDocument());
+    expect(screen.getByText('Tea')).toBeInTheDocument();
+    expect(document.querySelector('[data-state="leaving"]')).toBeNull();
+  });
+
+  it('the first list animates nothing; a line that arrives later is new', async () => {
+    mockGetMenu.mockResolvedValueOnce(menu({ items: [line({ id: 'a', name: 'Raki' }), line({ id: 'b', name: 'Tea' })] }));
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'b', name: 'Tea' }), line({ id: 'c', name: 'Salep' })] }));
+    mockDiscard.mockResolvedValue(undefined as never);
+    mount();
+    await screen.findByText('Raki');
+    expect(rowOf('Raki')).not.toHaveAttribute('data-new');
+    fireEvent.click(screen.getByRole('button', { name: 'Discard Raki' }));
+    await screen.findByText('Salep');
+    expect(rowOf('Salep')).toHaveAttribute('data-new', 'true');
+    expect(rowOf('Tea')).not.toHaveAttribute('data-new');
+  });
+
+  it('under reduced motion a discarded row goes at once, with no fade state', async () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ matches: q.includes('reduce'), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false, onchange: null })) as never;
+    try {
+      mockGetMenu.mockResolvedValueOnce(menu({ items: [line({ id: 'a', name: 'Raki' })] }));
+      mockGetMenu.mockResolvedValue(menu({ items: [] }));
+      mockDiscard.mockResolvedValue(undefined as never);
+      const seen = new Set<string | null>();
+      const watch = new MutationObserver(() => {
+        const tr = document.querySelector('[data-testid="menu-row"]');
+        if (tr) seen.add(tr.getAttribute('data-state'));
+      });
+      mount();
+      await screen.findByText('Raki');
+      watch.observe(document.body, { attributes: true, subtree: true, childList: true });
+      fireEvent.click(screen.getByRole('button', { name: 'Discard Raki' }));
+      await waitFor(() => expect(screen.queryByText('Raki')).not.toBeInTheDocument());
+      watch.disconnect();
+      expect(seen.has('leaving')).toBe(false);
+    } finally {
+      window.matchMedia = original;
+    }
+  });
+
+  it('the stylesheet dims 160 ms and inks a new line in 160 ms: no enter, no wash, no exit hold; reduced motion has none', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const css = readFileSync(join(__dirname, 'menu-rows.css'), 'utf8');
+    const code = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(code).toMatch(/\.mdv-row\s*\{[^}]*opacity 160ms/);
+    expect(code).toMatch(/mdv-row-ink 160ms/);
+    expect(code).not.toMatch(/mdv-row-enter|mdv-row-wash|seal-tint|240ms|600ms|data-state='leaving'/);
+    expect(code).toMatch(/prefers-reduced-motion: reduce\)\s*\{[\s\S]*animation: none/);
+  });
+});

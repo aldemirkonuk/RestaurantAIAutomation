@@ -1,0 +1,37 @@
+/* /menu rows: a pending discard dims; a discarded row leaves at once (the
+   page's own copy drops it, no exit hold); a new line inks in. The arrival is
+   the house's `ink` (cubic-bezier(0.16, 1, 0.3, 1) at 160 ms), opacity only,
+   as `mdv-stub-ink` is: no slide and no seal-tint wash, the seal being kept for
+   commitment (MOTIONS.md "No stamp"). Rows are not overlays, so ADR 0112's
+   no-exit-animation rule is untouched (r102 menu-motion-4, DD-r102-9/DD-r103-7). */
+.mdv-row {
+  transition: opacity 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mdv-row[data-state='pending'] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.mdv-row[data-new='true'] {
+  animation: mdv-row-ink 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes mdv-row-ink {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-row {
+    transition: none;
+  }
+
+  .mdv-row[data-new='true'] {
+    animation: none;
+  }
+}
