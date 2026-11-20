@@ -234,17 +234,22 @@ export function SwipeToConfirm({
           opacity: disabled && !done ? 0.5 : 1,
         }}
       >
-        {/* fill rises with the gesture */}
+        {/* Fill rises with the gesture. A full-height layer scaled from its
+            bottom edge: transform only, never height, so a drag frame is a
+            compositor write and not a layout (r102 motion-1). */}
         <div
           aria-hidden="true"
+          data-testid="swipe-fill"
           style={{
             position: 'absolute',
             left: 0,
             right: 0,
             bottom: 0,
-            height: `${Math.round(progress * 100)}%`,
+            height: '100%',
+            transformOrigin: 'bottom',
+            transform: `scaleY(${progress})`,
             background: done ? 'var(--seal, #1A5E6B)' : 'var(--seal-tint, rgba(26,94,107,.10))',
-            transition: settling && !reduced ? `height ${tuck.ms}ms ${tuck.easing}` : 'none',
+            transition: settling && !reduced ? `transform ${tuck.ms}ms ${tuck.easing}` : 'none',
           }}
         />
         <button
@@ -265,8 +270,10 @@ export function SwipeToConfirm({
           style={{
             position: 'absolute',
             left: '50%',
-            bottom: done ? TRAVEL : progress * TRAVEL,
-            transform: 'translateX(-50%)',
+            bottom: 0,
+            // Rides the finger 1:1 on translateY. On completion it sits at
+            // TRAVEL with no transition: the money moment does not ease.
+            transform: `translateX(-50%) translateY(${-(done ? TRAVEL : progress * TRAVEL)}px)`,
             width: 60,
             height: 40,
             borderRadius: 20,
@@ -278,7 +285,7 @@ export function SwipeToConfirm({
             justifyContent: 'center',
             cursor: disabled || done ? 'default' : 'grab',
             touchAction: 'none',
-            transition: settling && !reduced ? `bottom ${tuck.ms}ms ${tuck.easing}` : 'none',
+            transition: settling && !reduced && !done ? `transform ${tuck.ms}ms ${tuck.easing}` : 'none',
             fontFamily: MONO,
             fontSize: 15,
           }}
