@@ -158,6 +158,11 @@ function fakeDb(rows: Record<string, Row[]>, rpc?: (args: Row) => { data?: unkno
       is: (c: string, v: unknown) => (filters.push((r) => (r[c] ?? null) === v), q),
       in: (c: string, vs: unknown[]) => (filters.push((r) => vs.includes(r[c])), q),
       ilike: (c: string, p: string) => (filters.push((r) => likeToRegExp(p).test(String(r[c] ?? ""))), q),
+      // PostgREST `imatch` is PostgreSQL's `~*`: a case-insensitive regex, found anywhere.
+      filter: (c: string, op: string, p: string) => {
+        if (op !== "imatch") throw new Error(`fake: filter ${op} not modelled`);
+        return filters.push((r) => new RegExp(p, "i").test(String(r[c] ?? ""))), q;
+      },
       order: (c: string, o?: { ascending?: boolean }) => ((sortBy = { col: c, asc: o?.ascending !== false }), q),
       limit: (n: number) => ((cap = n), q),
       maybeSingle: async () => ({ data: hits()[0] ?? null, error: null }),
@@ -256,6 +261,10 @@ function twoHouses() {
       item(ITEM_B, HOUSE_B, "B-ONLY campari"),
       item("a3000000-0000-4000-8000-0000000000aa", HOUSE_A, "100% agave"),
       item("a3000000-0000-4000-8000-0000000000ab", HOUSE_A, "Gin_x"),
+      item("a3000000-0000-4000-8000-0000000000b1", HOUSE_A, "Yeni Rakı"),
+      item("a3000000-0000-4000-8000-0000000000b2", HOUSE_A, "Toz Şeker", { kind: "food", uom: "g", bottle_size_ml: null }),
+      item("a3000000-0000-4000-8000-0000000000b3", HOUSE_A, "İSOT  biberi", { kind: "food", uom: "g", bottle_size_ml: null }),
+      item("b3000000-0000-4000-8000-0000000000b4", HOUSE_B, "B-ONLY rakı"),
       item(ITEM_A_ARCHIVED, HOUSE_A, "Archived amaro", { is_active: false }),
       item("a3000000-0000-4000-8000-0000000000ad", HOUSE_A, "Deleted amaro", { deleted_at: "2026-10-01" }),
       item("b3000000-0000-4000-8000-0000000000ae", HOUSE_B, "B-ONLY amaro"),
@@ -405,6 +414,25 @@ describe("recipes: house A never reads, versions or saves house B's recipe (real
     const all = await service().svc.shelf(HOUSE_A, "amaro", undefined);
     expect(all.map((x) => x.name)).toEqual([]);
     expect((await service().svc.shelf(HOUSE_A, "gin", undefined)).map((x) => x.name)).toEqual(["Gin_x", "House gin"]);
+  });
+
+  it.each([
+    ["RAKI", ["Yeni Rakı"]],
+    ["raki", ["Yeni Rakı"]],
+    ["rakı", ["Yeni Rakı"]],
+    ["seker", ["Toz Şeker"]],
+    ["ŞEKER", ["Toz Şeker"]],
+    ["isot biberi", ["İSOT  biberi"]],
+    ["İsot", ["İSOT  biberi"]],
+    ["ISOT", ["İSOT  biberi"]],
+  ])("shelf: %s is read the Turkish way, and finds only this house's good (r28 gap 14)", async (term, names) => {
+    expect((await service().svc.shelf(HOUSE_A, term, undefined)).map((x) => x.name)).toEqual(names);
+  });
+
+  it("shelf: a folded letter never widens past its own letter", async () => {
+    // "g_n" would be a wildcard; the class for i is i-letters only.
+    expect((await service().svc.shelf(HOUSE_A, "gxn", undefined)).map((x) => x.name)).toEqual([]);
+    expect((await service().svc.shelf(HOUSE_A, "gİN", undefined)).map((x) => x.name)).toEqual(["Gin_x", "House gin"]);
   });
 
   it("shelf: never lists house B's items", async () => {
