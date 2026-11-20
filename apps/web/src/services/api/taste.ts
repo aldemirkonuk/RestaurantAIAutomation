@@ -57,8 +57,8 @@ export interface TasteEffective {
 }
 
 /** Where a roll-up line's taste came from: the good's own, a typical one of its kind, or nothing known. */
-export type LineFrom = 'good' | 'class_prior' | 'unknown';
-const LINE_FROM: ReadonlySet<string> = new Set<LineFrom>(['good', 'class_prior', 'unknown']);
+export type LineFrom = 'good' | 'class_prior' | 'class_prior_estimate' | 'unknown';
+const LINE_FROM: ReadonlySet<string> = new Set<LineFrom>(['good', 'class_prior', 'class_prior_estimate', 'unknown']);
 
 /** What a worked-out (recipe) layer rests on. Absent on every other layer. */
 export interface TasteBasis {
