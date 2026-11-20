@@ -10,6 +10,11 @@ import { toast } from 'sonner'
 import { getOnboardingProgress } from '../services/api/menus'
 import { apiClient, getErrorMessage } from '../services/api/client'
 import { storeSession } from '../lib/houseMemory'
+import {
+  resendOutcome,
+  verificationMailSentence,
+  type VerificationResendAnswer,
+} from '../lib/verificationMail'
 
 /**
  * The two answers the verify route gives a click it will not honour (ADR 0229
@@ -140,9 +145,18 @@ export function VerifyEmail() {
     setResending(true)
     setError(null)
     try {
-      await apiClient.post('/auth/resend-verification')
+      const { data } = await apiClient.post<VerificationResendAnswer>(
+        '/auth/resend-verification',
+      )
+      // Said from what the mailer answered (round 2 B-5, round 6 #789): a
+      // refused send is an inline error in words, never "check your inbox".
+      const outcome = resendOutcome(data)
+      if (outcome === 'not_sent') {
+        setError(verificationMailSentence('not_sent'))
+        return
+      }
       setLastResent(new Date())
-      toast.success('Verification email requested. Check your inbox.')
+      toast.success(verificationMailSentence('sent', user?.email))
     } catch (err: unknown) {
       // Inline only (both renderings already show `error`) — a toast here
       // duplicated the same failure as a second, dismissable surface.
@@ -189,13 +203,32 @@ export function VerifyEmail() {
               )}
               {token ? (
                 linkGate ?? (
-                  <button
-                    className="mdv-btn mdv-btn--seal"
-                    onClick={handleVerify}
-                    disabled={verifying}
-                  >
-                    {verifying ? 'Verifying…' : 'Verify my email'}
-                  </button>
+                  <>
+                    <button
+                      className="mdv-btn mdv-btn--seal"
+                      onClick={handleVerify}
+                      disabled={verifying}
+                    >
+                      {verifying ? 'Verifying…' : 'Verify my email'}
+                    </button>
+                    {/* Round 2 B-4: a link the gateway refused (expired,
+                        used) offers a fresh one, not only the same button. */}
+                    {error && user && (
+                      <button
+                        className="mdv-btn"
+                        onClick={handleResend}
+                        disabled={resending}
+                      >
+                        {resending ? 'Requesting…' : 'Send me a new link'}
+                      </button>
+                    )}
+                    {lastResent && (
+                      <p role="status" className="mdv-note">
+                        Another verification email was sent at{' '}
+                        {lastResent.toLocaleTimeString()}.
+                      </p>
+                    )}
+                  </>
                 )
               ) : (
                 <>
@@ -226,7 +259,7 @@ export function VerifyEmail() {
                   )}
                   {lastResent && (
                     <p role="status" className="mdv-note">
-                      Another verification email was requested at{' '}
+                      Another verification email was sent at{' '}
                       {lastResent.toLocaleTimeString()}. Wait one minute before
                       requesting again.
                     </p>
@@ -324,6 +357,22 @@ export function VerifyEmail() {
                 'Verify My Email'
               )}
             </Button>
+            {error && user && (
+              <Button
+                variant="outline"
+                className="w-full"
+                size="lg"
+                onClick={handleResend}
+                disabled={resending}
+              >
+                {resending ? 'Resending...' : 'Send me a new link'}
+              </Button>
+            )}
+            {lastResent && (
+              <p className="text-xs text-center text-gray-400">
+                Sent at {lastResent.toLocaleTimeString()}.
+              </p>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
@@ -352,7 +401,7 @@ export function VerifyEmail() {
             </Button>
             {lastResent && (
               <p className="text-xs text-center text-gray-400">
-                Resent at {lastResent.toLocaleTimeString()}. Wait 1 minute
+                Sent at {lastResent.toLocaleTimeString()}. Wait 1 minute
                 before resending again.
               </p>
             )}
