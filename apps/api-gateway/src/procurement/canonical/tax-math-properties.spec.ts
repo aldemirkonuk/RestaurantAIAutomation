@@ -162,19 +162,22 @@ describe("what a house books follows its tax answers", () => {
     };
   };
 
-  it("a reclaiming house books the net, any other charging house the gross, an unread paper as printed with no stamp", () => {
+  it("a reclaiming house books the net, any other charging house the gross, an unread paper that shows tax is held as 'tax basis unknown'", () => {
     let stamped = 0;
+    let heldUnknown = 0;
     for (let i = 0; i < 800; i++) {
       const t = paper();
       const lines = t.printed.map((_, k) => mk(t, k, null, null));
       const booked = Object.fromEntries(t.qty.map((q, k) => [`i${k}`, q]));
+      const unread = rnd() < 0.3;
       const header: PaperHeaderRow = {
         id: "d",
         doc_number: "X",
         currency: "USD",
         tax: t.tax,
-        total: t.total,
-        tax_breakdown: t.breakdown,
+        // r103: some papers print a tax and nothing that proves whether the prices hold it.
+        total: unread ? null : t.total,
+        tax_breakdown: unread ? null : t.breakdown,
         extracted_lines: t.rates.map((r, k) => ({ lineNo: k + 1, lineKind: "goods", vatRatePercent: r })),
       };
       for (const reclaims of [true, false]) {
@@ -202,6 +205,15 @@ describe("what a house books follows its tax answers", () => {
         const gross = idx.reduce((s, k) => s + t.gross[k], 0);
         const printed = idx.reduce((s, k) => s + t.printed[k], 0);
         const stamps = costed.map((id) => res.byItem.get(id)).filter((p): p is NonNullable<typeof p> => !!p).map((p) => p.costTaxBasis);
+        if (unread && t.tax > 0) {
+          // DD-r102-17: tax shown, basis unproven: every line HELD in words, none booked as printed.
+          holds(costed.length === 0, { i, reclaims, truth: t, costed });
+          for (const id of Object.keys(booked)) {
+            holds(/tax basis unknown/.test(res.held.get(id) ?? ""), { i, id, held: [...res.held.entries()] });
+            heldUnknown++;
+          }
+          continue;
+        }
         const tol = 0.05 + costed.length * 0.01;
         const ctx = { i, reclaims, truth: t, value, net, gross, stamps, held: [...res.held.entries()], refused: [...res.refused.entries()] };
         if (stamps.every((s) => s === "net")) {
@@ -217,5 +229,66 @@ describe("what a house books follows its tax answers", () => {
       }
     }
     expect(stamped).toBeGreaterThan(300);
+    // Not vacuous: papers with an unproven basis really were held in those words.
+    expect(heldUnknown).toBeGreaterThan(20);
+  });
+});
+
+describe("lines plus tax, charges included, equal the paper's total to the cent (r103)", () => {
+  // A house that keeps its tax books the whole paper: Σ booked lots = the total
+  // the paper prints, freight and its tax included. Single-rate papers only
+  // (a charge carries one rate); the basis is proven by the paper's own total.
+  it("a house that keeps its tax books exactly the printed total, 500 single-rate papers with freight", () => {
+    let checked = 0;
+    for (let i = 0; i < 1500 && checked < 500; i++) {
+      const t = paper();
+      if (new Set(t.rates).size !== 1) continue;
+      const rate = t.rates[0];
+      if (rate === 0) continue;
+      const F = cents(2, 60); // freight as the paper's prices are: before tax or tax inside
+      const fNet = t.basis === "excludes_tax" ? F : r2(F / (1 + rate / 100));
+      const fTax = t.basis === "excludes_tax" ? r2(F * (rate / 100)) : r2(F - fNet);
+      const tax = r2(t.tax + fTax);
+      const total = r2(t.total + (t.basis === "excludes_tax" ? F + fTax : F));
+      const lines = t.printed.map((p, k) => ({
+        row: {
+          document_id: "d",
+          line_no: k + 1,
+          inventory_id: `i${k}`,
+          qty_bottles: t.qty[k],
+          free_goods_qty: 0,
+          unit_price: r2(p / t.qty[k]),
+          uom: "bottle",
+          pack_size: 1,
+          line_total: p,
+          allowance: null,
+          deposit: null,
+        } as PaperLineRow,
+        cost: perBottleLotCost({ unit_price: r2(p / t.qty[k]), uom: "bottle", pack_size: 1, price_base_qty: null, price_base_uom: null, qty_bottles: t.qty[k], line_total: p }),
+      }));
+      const header: PaperHeaderRow = {
+        id: "d",
+        doc_number: "X",
+        currency: "USD",
+        freight: F,
+        tax,
+        total,
+        extracted_lines: t.rates.map((r, k) => ({ lineNo: k + 1, lineKind: "goods", vatRatePercent: r })),
+      };
+      const booked = Object.fromEntries(t.qty.map((q, k) => [`i${k}`, q]));
+      const res = landDelivery({
+        papers: [header],
+        lines,
+        booked: new Map(Object.entries(booked)),
+        houseCurrency: "USD",
+        houseTax: { tax_basis: t.basis === "includes_tax" ? "prices_include_tax" : "prices_exclude_tax", reclaims_input_tax: false },
+      });
+      const costed = Object.keys(booked).filter((id) => res.byItem.has(id));
+      if (costed.length !== Object.keys(booked).length) continue; // a lot that cannot add back to the cent is held, never costed wrong
+      const value = costed.reduce((s, id) => s + (res.byItem.get(id)?.unitCost ?? NaN) * booked[id], 0);
+      checked++;
+      holds(Math.abs(value - total) <= 0.01 * (costed.length + 1), { i, truth: t, F, tax, total, value, held: [...res.held.entries()] });
+    }
+    expect(checked).toBeGreaterThan(100);
   });
 });

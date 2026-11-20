@@ -202,9 +202,10 @@ describe("landDelivery — a house that answered is costed by what its paper pro
     expect(k.byItem.get(A)?.taxSaid).toMatch(/It prints 2 tax rates and not which line carries which/);
   });
 
-  it("a paper that proves nothing is costed as printed, unstamped, as before", () => {
-    const p = run({ tax: 100, total: 1100 }, reclaims).byItem.get(A);
-    expect(p).toMatchObject({ unitCost: 110, costTaxBasis: null });
+  it("a paper that shows tax and proves no basis is held, in words, for a house that answered (r103)", () => {
+    const r = run({ tax: 100, total: 1100 }, reclaims);
+    expect(r.byItem.get(A)).toBeUndefined();
+    expect(r.held.get(A)).toContain("tax basis unknown");
   });
 
   it("freight 55 on a receipt with KDV 10 % inside is shared before tax too: (1100 + 55) / 1.1 / 10 = 105", () => {
