@@ -193,6 +193,29 @@ function summaryParts(e: TasteEffective): { text: string; axes: AxisKey[] } | nu
   return null;
 }
 
+/** What a cook calls each key of a roll-up's lead: fat is "rich", umami is "savoury". An unknown key has no word and is dropped. */
+export const LEAD_WORD: Record<string, string> = { sweet: 'sweet', sour: 'sour', salty: 'salty', bitter: 'bitter', umami: 'savoury', fat: 'rich', savoury: 'savoury' };
+
+/**
+ * The lead of a worked-out recipe layer: the words it names, and the axes
+ * they stand on. Null when no layer carries a lead, or it names nothing (a
+ * stale layer, or no taste reached medium): the caller then reads the axes.
+ */
+function leadOf(d: TasteData): { words: string[]; axes: AxisKey[] } | null {
+  const lead = d.layers.find((l) => l.basis?.lead)?.basis?.lead ?? null;
+  if (!lead) return null;
+  const known = lead.filter((k) => k in LEAD_WORD);
+  const words = [...new Set(known.map((k) => LEAD_WORD[k]))];
+  return words.length ? { words, axes: known.filter((k): k is AxisKey => (AXIS_KEYS as readonly string[]).includes(k)) } : null;
+}
+
+/** The card's header sentence: the roll-up's lead when it has one (no confidence gate: it is the loudest tastes, said), else the axes. */
+export function summaryFor(d: TasteData): string | null {
+  const lead = leadOf(d);
+  if (lead) return `Mainly ${join(lead.words)}.`;
+  return d.effective ? summaryLine(d.effective) : null;
+}
+
 /** One sentence from the axes with conf >= 0.4 only. Null when there is nothing to say. */
 export function summaryLine(e: TasteEffective): string | null {
   const p = summaryParts(e);
@@ -220,6 +243,11 @@ export function leadLine(d: TasteData): { sentence: string; kinds: ProvKind[] } 
   const e = d.effective;
   if (!e) return null;
   const fromLayers = kindsOf(d.layers.map((l) => LAYER_KIND[l.source]).filter((k): k is ProvKind => k !== undefined));
+  const lead = leadOf(d);
+  if (lead) {
+    const kinds = kindsOf(lead.axes.flatMap((k) => (e.axes[k]?.prov ?? []).map((p) => p.kind)));
+    return { sentence: `Mainly ${join(lead.words)}.`, kinds: kinds.length ? kinds : ['recipe'] };
+  }
   const parts = summaryParts(e);
   if (parts) {
     return { sentence: `${parts.text}.`, kinds: kindsOf(parts.axes.flatMap((k) => (e.axes[k] as TasteAxis).prov.map((p) => p.kind))) };
