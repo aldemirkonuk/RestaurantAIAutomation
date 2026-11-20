@@ -117,8 +117,8 @@ export function StudioInviteRedeem() {
           </>
         ) : status === 'error' ? (
           <>
-            <div className="w-14 h-14 mb-5 bg-danger-100 rounded-2xl flex items-center justify-center">
-              <AlertCircle className="w-7 h-7 text-danger-600" />
+            <div className="w-14 h-14 mb-5 bg-red-100 rounded-2xl flex items-center justify-center">
+              <AlertCircle className="w-7 h-7 text-red-600" />
             </div>
             <h1 className="text-2xl font-bold text-slate-900 mb-2">Invite not accepted</h1>
             <p className="text-slate-500 mb-8">{errorMessage}</p>

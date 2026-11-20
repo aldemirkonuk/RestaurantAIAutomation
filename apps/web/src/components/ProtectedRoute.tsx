@@ -32,7 +32,7 @@ export function ProtectedRoute({
         <div className="text-center">
           <div className="w-12 h-12 mx-auto mb-4 relative">
             <div className="w-12 h-12 border-3 border-slate-200 rounded-full" />
-            <div className="absolute inset-0 w-12 h-12 border-3 border-brand-500 rounded-full border-t-transparent animate-spin" />
+            <div className="absolute inset-0 w-12 h-12 border-3 border-wine-500 rounded-full border-t-transparent animate-spin" />
           </div>
           <p className="text-slate-500 font-medium">Loading...</p>
         </div>
@@ -67,7 +67,7 @@ export function ProtectedRoute({
         <div className="text-center">
           <div className="w-12 h-12 mx-auto mb-4 relative">
             <div className="w-12 h-12 border-3 border-slate-200 rounded-full" />
-            <div className="absolute inset-0 w-12 h-12 border-3 border-brand-500 rounded-full border-t-transparent animate-spin" />
+            <div className="absolute inset-0 w-12 h-12 border-3 border-wine-500 rounded-full border-t-transparent animate-spin" />
           </div>
           <p className="text-slate-500 font-medium">Loading permissions...</p>
         </div>
@@ -91,8 +91,8 @@ export function ProtectedRoute({
         <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-card p-8 max-w-md w-full text-center">
             {/* Icon */}
-            <div className="w-16 h-16 mx-auto mb-6 bg-danger-100 rounded-2xl flex items-center justify-center">
-              <ShieldAlert className="w-8 h-8 text-danger-600" />
+            <div className="w-16 h-16 mx-auto mb-6 bg-red-100 rounded-2xl flex items-center justify-center">
+              <ShieldAlert className="w-8 h-8 text-red-600" />
             </div>
 
             {/* Content */}
@@ -128,8 +128,8 @@ export function ProtectedRoute({
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl border border-slate-200 shadow-card p-8 max-w-md w-full text-center">
-          <div className="w-16 h-16 mx-auto mb-6 bg-danger-100 rounded-2xl flex items-center justify-center">
-            <ShieldAlert className="w-8 h-8 text-danger-600" />
+          <div className="w-16 h-16 mx-auto mb-6 bg-red-100 rounded-2xl flex items-center justify-center">
+            <ShieldAlert className="w-8 h-8 text-red-600" />
           </div>
           <h2 className="text-2xl font-bold text-slate-900 mb-2">Studio Access Required</h2>
           <p className="text-slate-500 mb-8">

@@ -4,6 +4,8 @@
 @import './mudavym.css';
 /* The charcoal ground's missing half: page, fields, focus ring (N-01). */
 @import './ground-dark.css';
+/* One seal ramp, corner doctrine, tinted shadows (N-10). */
+@import './house-tokens.css';
 /* The product's two sans faces, served from /fonts (ADR 0158). */
 @import './fonts-sans.css';
 
@@ -294,16 +296,16 @@
   .dark .text-wine-500,
   .dark .text-wine-600,
   .dark .text-wine-700,
-  .dark .text-brand-500,
-  .dark .text-brand-600,
-  .dark .text-brand-700 {
+  .dark .text-wine-500,
+  .dark .text-wine-600,
+  .dark .text-wine-700 {
     color: #5FB0BC !important;
   }
 
   .dark .bg-wine-50,
   .dark .bg-wine-100,
-  .dark .bg-brand-50,
-  .dark .bg-brand-100 {
+  .dark .bg-wine-50,
+  .dark .bg-wine-100 {
     background-color: rgba(95, 176, 188, 0.14) !important; /* --seal-tint dark */
   }
 
@@ -401,7 +403,7 @@
   }
 
   .card-danger {
-    @apply bg-danger-50 rounded-xl border border-danger-200;
+    @apply bg-red-50 rounded-xl border border-red-200;
   }
 
   .card-info {
@@ -428,8 +430,8 @@
   }
 
   .btn-brand {
-    @apply btn bg-brand-600 text-white hover:bg-brand-700;
-    @apply focus-visible:ring-brand-500;
+    @apply btn bg-wine-600 text-white hover:bg-wine-700;
+    @apply focus-visible:ring-wine-500;
   }
 
   .btn-success {
@@ -438,8 +440,8 @@
   }
 
   .btn-danger {
-    @apply btn bg-danger-600 text-white hover:bg-danger-700;
-    @apply focus-visible:ring-danger-500;
+    @apply btn bg-red-600 text-white hover:bg-red-700;
+    @apply focus-visible:ring-red-500;
   }
 
   .btn-ghost {
@@ -589,7 +591,7 @@
   }
 
   .badge-danger {
-    @apply badge bg-danger-100 text-danger-700;
+    @apply badge bg-red-100 text-red-700;
   }
 
   .badge-info {
@@ -597,7 +599,7 @@
   }
 
   .badge-brand {
-    @apply badge bg-brand-100 text-brand-700;
+    @apply badge bg-wine-100 text-wine-700;
   }
 
   /* Status indicator dot */
@@ -614,7 +616,7 @@
   }
 
   .status-dot-danger {
-    @apply status-dot bg-danger-500;
+    @apply status-dot bg-red-500;
   }
 
   .status-dot-pulse {
@@ -695,7 +697,7 @@
 
   /* Gradient text */
   .text-gradient {
-    @apply bg-gradient-to-r from-brand-600 to-brand-400 bg-clip-text text-transparent;
+    @apply bg-gradient-to-r from-wine-600 to-wine-400 bg-clip-text text-transparent;
   }
 
   /* Custom scrollbar */

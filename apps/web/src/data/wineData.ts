@@ -260,8 +260,8 @@ export const getWineTypeColor = (type: Wine["type"]) => {
       return { bg: "bg-amber-100", text: "text-amber-700", accent: "#d97706" };
     case "sparkling":
       return {
-        bg: "bg-yellow-100",
-        text: "text-yellow-700",
+        bg: "bg-warning-100",
+        text: "text-warning-700",
         accent: "#ca8a04",
       };
     case "rose":

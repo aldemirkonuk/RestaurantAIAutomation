@@ -11,7 +11,7 @@ const badgeVariants = cva(
         secondary: "border-transparent bg-gray-100 text-gray-900 hover:bg-gray-200",
         destructive: "border-transparent bg-red-100 text-red-800 hover:bg-red-200",
         success: "border-transparent bg-wine-green-100 text-wine-green-800 hover:bg-wine-green-200",
-        warning: "border-transparent bg-yellow-100 text-yellow-800 hover:bg-yellow-200",
+        warning: "border-transparent bg-warning-100 text-warning-800 hover:bg-warning-200",
         outline: "border-wine-200 text-wine-700 hover:bg-wine-50",
         glass: "border-white/20 bg-white/40 backdrop-blur-sm text-gray-900",
       },
