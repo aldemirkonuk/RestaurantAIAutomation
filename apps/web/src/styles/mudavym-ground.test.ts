@@ -363,7 +363,10 @@ describe('every .mudavym scope root says what ground it is on', () => {
         roots += 1;
         const named = tag.includes('data-ground');
         const inline = /background(Color)?\s*:/.test(tag);
-        const viaCss = [...tag.matchAll(/["'\s]([a-z][\w-]*)["'\s]/g)].some((c) =>
+        // The closing quote or space is looked ahead, not consumed: consuming it
+        // hid every class that followed the first after a single space
+        // ("mudavym mdv-railhint" saw only "mudavym").
+        const viaCss = [...tag.matchAll(/["'\s]([a-z][\w-]*)(?=["'\s])/g)].some((c) =>
           paintedByCss.has(c[1]),
         );
         if (!named && !inline && !viaCss) {
