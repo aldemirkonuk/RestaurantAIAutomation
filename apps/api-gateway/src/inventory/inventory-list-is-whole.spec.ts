@@ -128,6 +128,23 @@ describe("the /inventory list is read whole past PostgREST's 1,000-row cap (H-1)
     expect(new Set(rows.map((r: Row) => r.id)).size).toBe(GOODS);
   });
 
+  it("reads 1,001 goods whole: the one past the first page is kept, and pages run id ascending", async () => {
+    // The table is handed over newest-id first; only an `order id asc` keyset
+    // can walk it to the end without skipping or repeating a row at the seam.
+    const edge = goods.slice(0, 1001).reverse();
+    const { client, calls } = fakePostgrest({ restaurant_inventory: edge });
+    const db = new DatabaseService({} as any);
+    db.supabase = client as any;
+
+    const rows = await db.getRestaurantInventory("r1");
+
+    expect(rows).toHaveLength(1001);
+    expect(rows.map((r: Row) => r.id)).toEqual(
+      goods.slice(0, 1001).map((g) => g.id),
+    );
+    expect(calls.restaurant_inventory).toBe(2);
+  });
+
   it("refuses the list when a page fails, instead of answering with the pages in hand", async () => {
     const { client } = fakePostgrest(
       { restaurant_inventory: goods },

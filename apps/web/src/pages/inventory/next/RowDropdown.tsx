@@ -359,7 +359,9 @@ export default function RowDropdown(props: RowDropdownProps) {
   if (row.vintage !== null) head.push({ k: 'Vintage', v: String(row.vintage) });
   // open_ml is what is LEFT in the open bottle: each pour subtracts from it
   // (inventory_lots.open_bottle_ml), as the legacy row says ("ml left").
-  if (row.openMl !== null && row.openMl > 0) head.push({ k: 'Open bottle', v: `${fmtCount(row.openMl)} ml left` });
+  // G15: a failed rollup read says so; it never reads as an empty bottle.
+  if (!row.rollupReadable) head.push({ k: 'Open bottle', v: 'could not be read' });
+  else if (row.openMl !== null && row.openMl > 0) head.push({ k: 'Open bottle', v: `${fmtCount(row.openMl)} ml left` });
 
   return (
     <div
@@ -623,7 +625,7 @@ function WhereTheCountComesFrom({
           )}
         </KV>
         <KV k="Where">
-          {zones === null
+          {!row.locationsReadable || zones === null
             ? 'could not be read'
             : zones.length === 0
               ? (noZoneWord(row.stock) ?? EM)
