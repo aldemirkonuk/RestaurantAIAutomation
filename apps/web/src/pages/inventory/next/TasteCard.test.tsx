@@ -214,6 +214,16 @@ describe('the rows', () => {
     expect(list.querySelector('b')).toBeNull();
   });
 
+  it('a layer worked out from a recipe is not "stated by" a person: the footer and the list say it once, plainly', async () => {
+    api.get.mockResolvedValue(ready({ axes: { salty: ax(5) } }, [layer('Worked out from the recipe', 'recipe')]));
+    mount();
+    const f = await screen.findByTestId('taste-footer');
+    expect(f.textContent).toMatch(/^Worked out from the recipe, .+, 1 source\.$/);
+    expect(f.textContent).not.toMatch(/Stated by/);
+    const li = screen.getByTestId('taste-layers').querySelectorAll('li');
+    expect(li[0].textContent).toMatch(/^Worked out from the recipe, [^:]*$/);
+  });
+
   it('one layer says one source', async () => {
     api.get.mockResolvedValue(ready({ axes: { salty: ax(5) } }));
     mount();

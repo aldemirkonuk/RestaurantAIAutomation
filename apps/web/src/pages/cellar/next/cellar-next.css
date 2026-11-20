@@ -1026,3 +1026,55 @@ textarea.cl-field {
   .cl-rcp-edit { grid-template-columns: 1fr 88px 108px; }
   .cl-rcp-remove { min-width: 44px; justify-content: center; }
 }
+
+/* ── How it tastes on a recipe sheet (RecipeTaste.tsx) ───────────────────────
+   The card is the inventory drawer's, which words itself in that page's `iv-*`
+   classes. This page does not load inventory-next.css, so inside the sheet they
+   take the cellar's own rules (same values as the inventory ones). */
+.cl-rcp .iv-note { margin: 10px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-4); }
+.cl-rcp .iv-said { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); }
+.cl-rcp .iv-said-alarm {
+  padding: 9px 12px;
+  border: 1px solid var(--paper-2);
+  border-left: 2px solid var(--ink-2);
+  border-radius: 10px;
+  background: var(--paper-1);
+  color: var(--ink-1);
+}
+.cl-rcp .iv-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--paper-2);
+  border-radius: 7px;
+  background: var(--paper-1);
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+.cl-rcp .iv-btn:hover:not(:disabled) { border-color: var(--seal-ring); color: var(--seal-deep); }
+.cl-rcp .iv-linkish {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--seal-deep);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.cl-rcp .iv-focus:focus-visible { outline: 2px solid var(--seal); outline-offset: 2px; }
+.cl-rcp-taste { margin: 18px 0 0; }
+.cl-rcp-taste-acts { margin: 10px 0 0; }
+.cl-rcp-taste-line { margin: 0 0 10px; }
+@media (max-width: 719px), (pointer: coarse) {
+  .cl-rcp .iv-btn,
+  .cl-rcp .iv-linkish,
+  .cl-rcp .tc-more { min-height: 44px; }
+  .cl-rcp .iv-btn { font-size: 14px; }
+}
