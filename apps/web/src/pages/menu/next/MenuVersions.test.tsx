@@ -294,9 +294,26 @@ describe('makeCurrentSentence -- a finished carry, and the result row settles', 
   it('says a menu already current that carried nothing changed nothing, and one that carried lines says so', async () => {
     const { makeCurrentSentence } = await import('./MenuVersions');
     expect(makeCurrentSentence({ ...base, outcome: 'already_current', lines: 0 } as never)).toBe('That menu was already the current one. Nothing changed.');
-    expect(makeCurrentSentence({ ...base, outcome: 'already_current', lines: 3 } as never)).toBe(
+    expect(makeCurrentSentence({ ...base, outcome: 'already_current', lines: 3, priceSync: { changed: 3 } } as never)).toBe(
       "That menu was already the current one. 3 lines had not reached the house's prices and were carried now.",
     );
+  });
+
+  it('never says a line was carried when its price was set by hand after the choice', async () => {
+    const { makeCurrentSentence } = await import('./MenuVersions');
+    expect(makeCurrentSentence({ ...base, outcome: 'already_current', lines: 2, priceSync: { stale: 2 } } as never)).toBe(
+      'That menu was already the current one. No line was carried. 2 lines kept their price, set by hand after this menu was chosen or held by a lock.',
+    );
+    expect(makeCurrentSentence({ ...base, outcome: 'already_current', lines: 3, priceSync: { changed: 1, stale: 1, locked: 1 } } as never)).toBe(
+      "That menu was already the current one. 1 line had not reached the house's prices and was carried now. 2 lines kept their price, set by hand after this menu was chosen or held by a lock.",
+    );
+  });
+
+  it('the sentence a choice from the kept list says settles too, not only the one under a fresh read', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const src = readFileSync(resolve(__dirname, 'MenuVersions.tsx'), 'utf8');
+    expect(src).toMatch(/className="cl-said mdv-settle"[^>]*data-testid="menu-list-choice-said"/);
   });
 
   it('the settle is 280 ms and stops for reduced motion', async () => {

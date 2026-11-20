@@ -173,6 +173,23 @@ describe('MenuPlan -- the section before the choice (L13)', () => {
     expect(onDone).not.toHaveBeenCalled();
   });
 
+  it('a refusal that already says nothing was changed is not followed by a second "nothing" or a doubled stop', async () => {
+    mockPlan.mockResolvedValue(plan());
+    mockMake.mockRejectedValue({ response: { status: 400, data: { message: 'This menu has no lines left. Nothing was changed.' } } });
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
+    const said = await screen.findByRole('alert');
+    expect(said.textContent).toBe('It was not made current: This menu has no lines left. Nothing was changed.');
+  });
+
+  it('a refusal that does not say it gets the one closing sentence', async () => {
+    mockPlan.mockResolvedValue(plan());
+    mockMake.mockRejectedValue({ response: { status: 500, data: { message: 'The write failed' } } });
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('It was not made current: The write failed. Nothing has changed.');
+  });
+
   it('a plan that cannot be worked out says so, and offers no choice', async () => {
     mockPlan.mockRejectedValue({ response: { status: 500, data: { message: "the house's price locks could not be read" } } });
     mount(true);

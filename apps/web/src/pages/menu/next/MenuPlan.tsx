@@ -451,7 +451,11 @@ export function MenuPlan({
       )}
       {choose.isError && !moved ? (
         <p role="alert" className="cl-said" style={{ marginTop: 8 }}>
-          It was not made current: {reasonOf(choose.error)}. Nothing has changed.
+          {(() => {
+            // The gateway's own sentence may already say nothing was changed.
+            const why = reasonOf(choose.error).trim().replace(/\.+$/, '');
+            return `It was not made current: ${why}.${/nothing (was|has) changed$/i.test(why) ? '' : ' Nothing has changed.'}`;
+          })()}
         </p>
       ) : null}
     </section>

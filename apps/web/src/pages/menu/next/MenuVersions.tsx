@@ -98,7 +98,12 @@ export function makeCurrentSentence(r: MakeCurrentResult): string {
   if (r.outcome === 'already_current' && r.lines === 0) return 'That menu was already the current one. Nothing changed.';
   // A carry that was cut off is finished by choosing the menu again (r102 menu-func-2).
   if (r.outcome === 'already_current') {
-    return `That menu was already the current one. ${r.lines} line${r.lines === 1 ? '' : 's'} had not reached the house's prices and ${r.lines === 1 ? 'was' : 'were'} carried now.`;
+    // Only a line the house's price took is "carried": one set by hand after the read or held by a lock stays (r102 walk).
+    const carried = r.priceSync.changed ?? 0;
+    const kept = (r.priceSync.stale ?? 0) + (r.priceSync.locked ?? 0);
+    const said = carried > 0 ? `${carried} line${carried === 1 ? '' : 's'} had not reached the house's prices and ${carried === 1 ? 'was' : 'were'} carried now.` : 'No line was carried.';
+    const left = kept > 0 ? ` ${kept} line${kept === 1 ? '' : 's'} kept ${kept === 1 ? 'its' : 'their'} price, set by hand after this menu was chosen or held by a lock.` : '';
+    return `That menu was already the current one. ${said}${left}`;
   }
   const parts = [`${r.lines} line${r.lines === 1 ? '' : 's'}`];
   const keys = Object.keys(r.priceSync);
@@ -354,7 +359,7 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
       </p>
       <ReadMenuForm canManage={canManage} onRead={refresh} />
       {said ? (
-        <p role="status" className="cl-said" style={{ marginTop: 10 }}>
+        <p role="status" className="cl-said mdv-settle" style={{ marginTop: 10 }} data-testid="menu-list-choice-said">
           {said}
         </p>
       ) : null}
