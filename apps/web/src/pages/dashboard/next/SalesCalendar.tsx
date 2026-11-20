@@ -86,6 +86,8 @@ export interface SalesCalendarProps {
    * role that sees counts, not money. The squares then carry deliveries and
    * their shade measures deliveries; no dollar figure is drawn.
    */
+  // Omitted reads as false (fail closed): a caller that forgets it draws no
+  // money (PR #579 audit note 6). Every production caller passes it.
   seesAmounts?: boolean;
 }
 
@@ -245,7 +247,7 @@ function cellLabel(
   return `${head}: ${parts.join(', ')}`;
 }
 
-export function SalesCalendar({ restaurantId, alerts, activity, zone = null, seesAmounts: mayShow = true }: SalesCalendarProps) {
+export function SalesCalendar({ restaurantId, alerts, activity, zone = null, seesAmounts: mayShow = false }: SalesCalendarProps) {
   const now = new Date();
   // DASH-W20: the clock's today is the house's (the stats' zone) — it picks the
   // month the address leaves out. ADR 0290: once the month answers, its own
@@ -330,7 +332,15 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
   const firstWeekday = (new Date(cursor.year, cursor.month - 1, 1).getDay() + 6) % 7;
   const daysInMonth = new Date(cursor.year, cursor.month, 0).getDate();
 
-  const selectedDay = selected ? daily.find((d) => d.date === selected) ?? null : null;
+  // The panel opens on the days the grid lets you press, and no others. A
+  // `?day=` link to a future day with nothing on the calendar (hand-edited or
+  // stale) used to open a panel for a square the grid disables (W13/W29; PR
+  // #579 audit note 1); it now reads as closed, like the grid.
+  const selectedDay = useMemo(() => {
+    const d = selected ? daily.find((x) => x.date === selected) ?? null : null;
+    if (!d) return null;
+    return d.date > todayStr && d.events.length === 0 ? null : d;
+  }, [selected, daily, todayStr]);
 
   /* Staggered arrival — once per month load, on the real cells. */
   useEffect(() => {
