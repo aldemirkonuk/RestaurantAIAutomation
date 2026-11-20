@@ -1000,7 +1000,8 @@ describe("MenusService — every menu read is kept as its own version", () => {
     const listed = await service.listVersions("rest-1");
     const v = listed.versions.find((x) => x.menuId === r.menuId)!;
     expect([v.readWarnings, v.readState]).toEqual([warnings, "done"]);
-    expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(true);
+    // A read is a draft, not the house's menu: the setup's menu step waits for make-current (r103 menu-2).
+    expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(false);
   });
 
   // QA B-5: a read with no line used to make a "Wine List" draft and answer 200
@@ -1033,6 +1034,22 @@ describe("MenusService — every menu read is kept as its own version", () => {
     const read = await service.readStatus("rest-1", r.menuId);
     expect(read).toMatchObject({ state: "failed", warnings, reply: null });
     expect(read.failure).toMatch(/^No line could be read from this file\./);
+    expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(false);
+  });
+
+  it("a spreadsheet import keeps its draft without ticking the setup's menu step (r103 menu-2)", async () => {
+    const tables: Record<string, Row[]> = {
+      ...base(),
+      user_onboarding_progress: [{ id: "p-1", restaurant_id: "rest-1", menu_uploaded: false }],
+    };
+    const service = makeService(tables, { wineSubmissions, csvParser: new CsvParserService() });
+    const spy = jest.spyOn(service as any, "markMenuUploaded");
+    const r: any = await service.importMenu(
+      { method: "csv", data: { csvContent: "name,bottle_price\nOpus One,62\n" }, restaurantId: "rest-1" } as any,
+      "user-1",
+    );
+    expect(r.itemsExtracted).toBeGreaterThan(0);
+    expect(spy).not.toHaveBeenCalled();
     expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(false);
   });
 
@@ -1839,7 +1856,7 @@ describe("MenusService — a scan reads in the background (founder 2026-11-07)",
     const tables = base();
     const service = makeService(tables, { wineSubmissions, scanParser: reads().parser });
     // Breaks after menu_items were inserted for this version.
-    jest.spyOn(service as any, "markMenuUploaded").mockRejectedValue(new Error("progress table down"));
+    jest.spyOn(service as any, "endRead").mockRejectedValueOnce(new Error("progress table down"));
     const r = await service.importMenu({ method: "scan", data: { imageBase64: PNG }, restaurantId: "rest-1" } as any, "user-1");
     await service.whenRead(r.menuId);
     const read = await service.readStatus("rest-1", r.menuId);

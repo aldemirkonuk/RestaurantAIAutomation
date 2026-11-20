@@ -40,7 +40,7 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
-import { addMenuItem, discardMenuItem, getMenu, type MenuLine } from '../../../services/api/menus';
+import { addMenuItem, discardMenuItem, getMenu, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
 import { housePriceNote } from './menu-price-note';
 import { MenuVersions } from './MenuVersions';
 import { LockedPrices } from './LockedPrices';
@@ -101,8 +101,6 @@ function failWords(e: unknown, none: string): string {
   return e instanceof Error ? e.message : none;
 }
 
-const ROW_LEAVE_MS = 160;
-
 function useActiveMenu(restaurantId: string | null) {
   const queryClient = useQueryClient();
   const key = ['menu', 'active', restaurantId] as const;
@@ -113,22 +111,16 @@ function useActiveMenu(restaurantId: string | null) {
     queryFn: () => getMenu(restaurantId as string),
   });
 
-  // A discarded row fades for 160 ms before the refetch removes it, so the rows
-  // below it do not jump while it is still there (r102 menu-motion-4). Under
-  // reduced motion it goes at once.
-  const [leavingId, setLeavingId] = useState<string | null>(null);
+  // A discarded line leaves at once: on success the page's own copy drops it
+  // (no wait on the refetch, no exit hold), then the read confirms. While the
+  // discard is pending the row is dimmed; a failure puts it back (DD-r103-7).
   const discard = useMutation({
     mutationFn: (itemId: string) => discardMenuItem(restaurantId as string, itemId),
     onSuccess: async (_done, itemId) => {
-      if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-        setLeavingId(itemId);
-        await new Promise((resolve) => setTimeout(resolve, ROW_LEAVE_MS));
-      }
-      try {
-        await queryClient.invalidateQueries({ queryKey: key });
-      } finally {
-        setLeavingId(null);
-      }
+      queryClient.setQueryData(key, (old: ActiveMenu | undefined) =>
+        old ? { ...old, items: old.items.filter((l) => l.id !== itemId) } : old,
+      );
+      await queryClient.invalidateQueries({ queryKey: key });
     },
   });
 
@@ -149,7 +141,7 @@ function useActiveMenu(restaurantId: string | null) {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: key }),
   });
 
-  return { q, discard, add, leavingId };
+  return { q, discard, add };
 }
 
 function AddItemForm({ onAdd, adding, error }: {
@@ -252,11 +244,10 @@ function AddItemForm({ onAdd, adding, error }: {
   );
 }
 
-function MenuRow({ line, currency, onDiscard, discarding, leaving, isNew }: {
+function MenuRow({ line, currency, onDiscard, discarding, isNew }: {
   line: MenuLine
   /** The line was discarded and is fading out before it is removed. */
-  leaving: boolean
-  /** The line arrived after the list was first shown: it enters and washes. */
+  /** The line arrived after the list was first shown: it inks in (160 ms, no wash). */
   isNew: boolean
   currency: string | null
   /** Absent for a member who may not discard (ADR 0358 D2: owner or manager only). */
@@ -267,7 +258,7 @@ function MenuRow({ line, currency, onDiscard, discarding, leaving, isNew }: {
     <tr
       data-testid="menu-row"
       className="mdv-row"
-      data-state={leaving ? 'leaving' : discarding ? 'pending' : undefined}
+      data-state={discarding ? 'pending' : undefined}
       data-new={isNew ? 'true' : undefined}
     >
       <td>{line.name}</td>
@@ -309,10 +300,10 @@ export default function MenuNext() {
   // gateway refuses anyone else regardless of what this page offers.
   const role = (activeRole ?? user?.role ?? null) as string | null;
   const canManage = role === 'owner' || role === 'manager';
-  const { q, discard, add, leavingId } = useActiveMenu(activeRestaurantId);
+  const { q, discard, add } = useActiveMenu(activeRestaurantId);
   const queryClient = useQueryClient();
   // Lines already shown. A line that turns up later is new: it enters and
-  // washes, and stays marked so a later render does not cancel the animation.
+  // inks in, and stays marked so a later render does not cancel the animation.
   // The first list, and a change of house, animate nothing.
   const seen = useRef<{ house: string | null; ids: Set<string>; fresh: Set<string> } | null>(null);
   if (q.data) {
@@ -428,7 +419,6 @@ export default function MenuNext() {
                         line={line}
                         currency={currency}
                         discarding={discard.isPending && discardingId === line.id}
-                        leaving={leavingId === line.id}
                         isNew={fresh?.has(line.id) ?? false}
                         onDiscard={!canManage ? undefined : () => {
                           setDiscardingId(line.id);

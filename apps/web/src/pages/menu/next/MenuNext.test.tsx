@@ -327,8 +327,8 @@ describe('MenuNext — discard', () => {
   });
 });
 
-// r102 menu-motion-4: a row dims while its discard is pending, fades 160 ms
-// before it is removed, and a line that turns up later enters and washes.
+// r102 menu-motion-4: a row dims while its discard is pending, goes at once on success,
+// and a line that turns up later inks in (DD-r103-7).
 describe('MenuNext — rows move, they do not jump (r102 menu-motion-4)', () => {
   const rowOf = (name: string) => screen.getByText(name).closest('tr') as HTMLElement;
 
@@ -340,15 +340,16 @@ describe('MenuNext — rows move, they do not jump (r102 menu-motion-4)', () => 
     await waitFor(() => expect(rowOf('Raki')).toHaveAttribute('data-state', 'pending'));
   });
 
-  it('a discarded row fades first, then the refetch removes it', async () => {
+  it('a discarded row goes at once, with no fade state and no wait on the refetch', async () => {
     mockGetMenu.mockResolvedValueOnce(menu({ items: [line({ id: 'a', name: 'Raki' }), line({ id: 'b', name: 'Tea' })] }));
-    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'b', name: 'Tea' })] }));
+    // The confirming read is slow: the row must already be gone before it answers.
+    mockGetMenu.mockReturnValue(new Promise(() => {}));
     mockDiscard.mockResolvedValue(undefined as never);
     mount();
     fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
-    await waitFor(() => expect(rowOf('Raki')).toHaveAttribute('data-state', 'leaving'));
-    expect(mockGetMenu).toHaveBeenCalledTimes(1); // not refetched while it fades
     await waitFor(() => expect(screen.queryByText('Raki')).not.toBeInTheDocument());
+    expect(screen.getByText('Tea')).toBeInTheDocument();
+    expect(document.querySelector('[data-state="leaving"]')).toBeNull();
   });
 
   it('the first list animates nothing; a line that arrives later is new', async () => {
@@ -388,13 +389,14 @@ describe('MenuNext — rows move, they do not jump (r102 menu-motion-4)', () => 
     }
   });
 
-  it('the stylesheet fades 160 ms, enters 240 ms, washes 600 ms, and stops for reduced motion', async () => {
+  it('the stylesheet dims 160 ms and inks a new line in 160 ms: no enter, no wash, no exit hold; reduced motion has none', async () => {
     const { readFileSync } = await import('node:fs');
     const { join } = await import('node:path');
     const css = readFileSync(join(__dirname, 'menu-rows.css'), 'utf8');
-    expect(css).toMatch(/\.mdv-row\s*\{[^}]*opacity 160ms/);
-    expect(css).toMatch(/mdv-row-enter 240ms/);
-    expect(css).toMatch(/mdv-row-wash 600ms/);
-    expect(css).toMatch(/prefers-reduced-motion: reduce\)\s*\{[\s\S]*animation: none/);
+    const code = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(code).toMatch(/\.mdv-row\s*\{[^}]*opacity 160ms/);
+    expect(code).toMatch(/mdv-row-ink 160ms/);
+    expect(code).not.toMatch(/mdv-row-enter|mdv-row-wash|seal-tint|240ms|600ms|data-state='leaving'/);
+    expect(code).toMatch(/prefers-reduced-motion: reduce\)\s*\{[\s\S]*animation: none/);
   });
 });

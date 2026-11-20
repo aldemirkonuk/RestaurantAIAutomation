@@ -927,7 +927,6 @@ export class MenusService {
         .eq("restaurant_id", restaurantId);
       if (linesError) throw new Error(`the lines read could not be kept: ${linesError.message}`);
       const reviewItems = await this.resolveAndPersistItems(items, restaurantId, menuId, userId, dto.method, false);
-      await this.markMenuUploaded(restaurantId);
       const reply: MenuImportReply = {
         menuId,
         current: false,
