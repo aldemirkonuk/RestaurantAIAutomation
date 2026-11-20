@@ -91,7 +91,7 @@ export const READ_SCOPE_HOLD = {
   two: 'min-h-[127px] md:min-h-[46px]',
 } as const;
 export const VENDOR_ONLY_LINE = 'This tab shows vendor mail only.';
-export const READS_ALL_LINE = 'This tab shows every conversation in the mailbox: vendors, team and guests.';
+export const READS_ALL_LINE = 'This tab shows the letters that arrived in the mailbox: vendors, team and guests.';
 /**
  * Agreeing to the wide reading does not switch the house's own inbox on: the
  * two are separate. Said when the first is agreed and the second is off, so

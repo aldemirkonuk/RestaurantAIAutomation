@@ -255,7 +255,7 @@ describe('reading every conversation', () => {
     ];
     mount();
     await waitFor(() => expect(screen.getByTestId('read-scope').getAttribute('data-state')).toBe('all'));
-    expect(screen.getByTestId('read-scope')).toHaveTextContent('every conversation in the mailbox');
+    expect(screen.getByTestId('read-scope')).toHaveTextContent('the letters that arrived in the mailbox');
   });
 
   it('a grant the house has stopped using does not count', async () => {
