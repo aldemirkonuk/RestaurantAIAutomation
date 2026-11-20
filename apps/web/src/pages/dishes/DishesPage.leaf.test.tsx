@@ -1,6 +1,6 @@
 /**
  * r98 (motion need M10): the dish leaf opens with the SAME settle as the cocktail leaf. It sits in
- * `tr > td[colspan] > div.cl-stand`, draws closed, and opens a style flush later (the stylesheet's
+ * `tr > td[colspan] > div.cl-stand`, draws closed, and opens a style flush later (except the dish a link named at load, which draws open at once) (the stylesheet's
  * `.cl-stand` carries the 320 ms house curve and none under reduced motion). Switching dishes does not
  * settle again; a leaf opened by a click settles too (nothing was open). Close removes the row at once.
  */
@@ -63,7 +63,7 @@ function watchFlush() {
 }
 
 describe('the dish leaf settles like the cocktail leaf', () => {
-  it('sits in tr > td[colspan] > div.cl-stand, drawn closed and opened after a style flush', async () => {
+  it('sits in tr > td[colspan] > div.cl-stand, open at once for the dish a link named', async () => {
     const seen = watchFlush();
     mount(`/dishes?open=${A}`);
     const leaf = await screen.findByTestId(`dish-leaf-${A}`);
@@ -71,7 +71,8 @@ describe('the dish leaf settles like the cocktail leaf', () => {
     const td = leaf.querySelector(':scope > td') as HTMLTableCellElement;
     expect(td.colSpan).toBeGreaterThan(1);
     expect(stand(A).dataset.open).toBe('true');
-    expect(seen).toContain('false');
+    // A cold ?open= is not the person's act: a tween would be counted as layout shift, so it never draws closed.
+    expect(seen).not.toContain('false');
   });
 
   it('a dish opened by a click, with none open, settles the same way', async () => {

@@ -544,6 +544,8 @@ export default function DishesPage() {
   const openId = rows.some((d) => d.id === asked) ? asked : null;
   // Whether a dish was open on the render before this one: a dish opened from none settles open;
   // one opened while another was open takes its place with no second settle (the cocktail leaf's way).
+  // The dish a link named when the page opened draws open at once: its growth is not the person's act,
+  // so a tween would count as layout shift (Caesar at 1440: 0.0588 tweened, 0.0349 at once).
   const lastOpen = useRef<string | null>(null);
   const wasOpen = lastOpen.current !== null;
   useEffect(() => {
@@ -725,7 +727,7 @@ export default function DishesPage() {
                       <AllergenCell id={d.id} a={f?.allergens} />
                     </tr>,
                     d.id === openId ? (
-                      <DishLeafRow key={`${d.id}-leaf`} id={d.id} cols={cols} settle={!wasOpen}>
+                      <DishLeafRow key={`${d.id}-leaf`} id={d.id} cols={cols} settle={!wasOpen && d.id !== fromLink}>
                           {canEdit ? (
                             <DishDetails
                               key={d.id}
