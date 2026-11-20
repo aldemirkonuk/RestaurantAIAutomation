@@ -72,6 +72,7 @@ import DrinkCards from './DrinkCards';
 import WhatIsInAServe from './WhatIsInAServe';
 import RecipeTaste, { RecipeTasteLine } from './RecipeTaste';
 import { UNREACHABLE_WORDS } from '../../../../lib/unreachable';
+import { SHEET_HOLD_ROOM } from './holdRoom';
 import {
   useCanEditRecipe,
   useHouseMoney,
@@ -331,11 +332,11 @@ export function whyBlocked(rows: DraftRow[], serves: number = 1): string | null 
  * One sheet per drink. The key is what keeps a draft typed for one drink out
  * of another: React drops the inner sheet's state when the drink changes.
  */
-export default function RecipeSheet({ cocktailId }: { cocktailId: string }) {
-  return <Sheet key={cocktailId} cocktailId={cocktailId} />;
+export default function RecipeSheet({ cocktailId, holdRoom = false }: { cocktailId: string; holdRoom?: boolean }) {
+  return <Sheet key={cocktailId} cocktailId={cocktailId} holdRoom={holdRoom} />;
 }
 
-function Sheet({ cocktailId }: { cocktailId: string }) {
+function Sheet({ cocktailId, holdRoom }: { cocktailId: string; holdRoom: boolean }) {
   const recipe = useRecipe(cocktailId);
   const canEdit = useCanEditRecipe();
   const sayMoney = useHouseMoney();
@@ -408,7 +409,18 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
   const shownMeta = meta ?? metaOf(data?.current);
   const blocked = useMemo(() => whyBlocked(rows ?? [], shownMeta.yieldServes), [rows, shownMeta.yieldServes]);
 
-  if (recipe.loading) return <p className="cl-note" role="status">Reading the recipe…</p>;
+  // Opened from a link, the page is still arriving, so this panel holds the
+  // room the sheet will fill: what sits under it (the other books, the
+  // signature) is below the fold before and after, not dragged down the screen
+  // when the recipe lands. Opened by a click it needs none (the person's own
+  // act is not a layout shift).
+  if (recipe.loading) {
+    return (
+      <p className="cl-note" role="status" style={holdRoom ? { minHeight: SHEET_HOLD_ROOM } : undefined}>
+        Reading the recipe…
+      </p>
+    );
+  }
   if (!data) {
     return (
       <p className="cl-note" role="alert" data-testid="recipe-unread">
