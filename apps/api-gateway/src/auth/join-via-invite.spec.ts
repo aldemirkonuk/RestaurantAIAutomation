@@ -1,4 +1,7 @@
-import { UnauthorizedException } from "@nestjs/common";
+import {
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from "@nestjs/common";
 import * as bcrypt from "bcrypt";
 import { AuthService } from "./auth.service";
 import { asDatabaseService, makeStubDb } from "../team/testing/supabase-stub";
@@ -86,8 +89,11 @@ function makeService(opts: {
   (svc as any).claimTeamMemberFromInvite = jest
     .fn()
     .mockResolvedValue(undefined);
+  stubDbOf.set(svc, db);
   return svc;
 }
+
+const stubDbOf = new WeakMap<AuthService, ReturnType<typeof makeStubDb>>();
 
 describe("AuthService#joinViaInvite — existing account branch", () => {
   const email = "owner@restaurant.com";
@@ -162,5 +168,118 @@ describe("AuthService#joinViaInvite — existing account branch", () => {
       membershipHeld: false,
     });
     expect((svc as any).generateTokens).toHaveBeenCalled();
+  });
+});
+
+/**
+ * QA round 11, R11-03: the invite is consumed before the password is checked,
+ * and a wrong password used to leave it consumed. One typo, or anyone who
+ * holds the code and types a member's address, spent the code for the person
+ * it was made for.
+ *
+ * PRE-FIX PROOF: without the give-back in the `!passwordMatches` branch,
+ * `used_at` stays set and the real member's join is refused as "invalid,
+ * expired, or already used" -- both cases fail.
+ */
+describe("AuthService#joinViaInvite — a wrong password gives the invite back (R11-03)", () => {
+  const email = "member@restaurant.com";
+
+  it("leaves the invite unused after a wrong password", async () => {
+    const existingUser = {
+      user_id: "member",
+      email,
+      name: "Member",
+      password_hash: await bcrypt.hash("the-real-password", 10),
+    };
+    const svc = makeService({ existingUser });
+
+    await expect(
+      svc.joinViaInvite({
+        code: "INVITE",
+        email,
+        name: "Member",
+        password: "a-typo",
+      } as any),
+    ).rejects.toThrow(UnauthorizedException);
+
+    const invite = stubDbOf.get(svc)!.tables.organization_invites[0];
+    expect(invite.used_at).toBeNull();
+    expect(invite.used_by_email).toBeNull();
+  });
+
+  it("so the member can still join with the right password afterwards", async () => {
+    const existingUser = {
+      user_id: "member",
+      email,
+      name: "Member",
+      password_hash: await bcrypt.hash("the-real-password", 10),
+      email_verified: true,
+    };
+    const svc = makeService({ existingUser });
+
+    await expect(
+      svc.joinViaInvite({
+        code: "INVITE",
+        email,
+        name: "Member",
+        password: "a-typo",
+      } as any),
+    ).rejects.toThrow(UnauthorizedException);
+
+    await expect(
+      svc.joinViaInvite({
+        code: "INVITE",
+        email,
+        name: "Member",
+        password: "the-real-password",
+      } as any),
+    ).resolves.toMatchObject({ accessToken: "a" });
+  });
+});
+
+/**
+ * QA round 11, R11-09 (its side note): `acceptInviteAsExistingUser` read the
+ * accepting account without checking the read, so a failed read went on to
+ * spend the invite with no `used_by_email`.
+ *
+ * PRE-FIX PROOF: without the `actorErr` check the call goes on, the invite is
+ * spent, and the case fails on both assertions.
+ */
+describe("AuthService#acceptInviteAsExistingUser — an unreadable account spends nothing", () => {
+  it("refuses before the invite is touched", async () => {
+    const invite = {
+      id: "inv-1",
+      code: "INVITE",
+      restaurant_id: HOUSE,
+      organization_id: "org-1",
+      invited_by: ISSUER,
+      role: "staff",
+      used_at: null,
+      expires_at: FUTURE,
+    };
+    const db = makeStubDb(
+      {
+        organization_invites: [invite],
+        users: [{ user_id: "member", email: "member@restaurant.com" }],
+        user_restaurant_access: [
+          { user_id: ISSUER, restaurant_id: HOUSE, role: "owner", is_active: true },
+        ],
+        organization_members: [],
+      },
+      { "users:select": { message: "connection reset" } },
+    );
+    const svc = new AuthService(
+      { sign: () => "tok", signAsync: async () => "tok" } as any,
+      { get: () => undefined } as any,
+      asDatabaseService(db),
+      { isBlacklisted: async () => false } as any,
+      { sendEmail: async () => undefined } as any,
+    );
+
+    await expect(
+      svc.acceptInviteAsExistingUser("member", "INVITE"),
+    ).rejects.toThrow(ServiceUnavailableException);
+    expect(db.tables.organization_invites[0].used_at).toBeNull();
+    expect(db.tables.user_restaurant_access).toHaveLength(1);
   });
 });
