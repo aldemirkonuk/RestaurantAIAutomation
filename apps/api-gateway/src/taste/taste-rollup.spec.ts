@@ -145,3 +145,15 @@ describe('rollup: what it does not know', () => {
     expect(rollup({ kind: 'dish', components: [{ name: 'x', lines: [] }] }).axes).toEqual({});
   });
 });
+
+describe('rollup: salt and bitter read as a cook would (r92)', () => {
+  const potato = (salt: number) => rollup({ kind: 'dish', components: [{ name: 'x', lines: [{ name: 'Potato', qty: 100 - salt, unit: 'g' }, { name: 'Salt', qty: salt, unit: 'g' }] }] }).axes.salty.v;
+  it('a dish at 1.2 % salt is medium, 2 % pronounced, 3 % dominant', () => {
+    near(potato(1.2), 5, 0.8); near(potato(2), 6.9, 0.8);
+    expect(potato(3)).toBeGreaterThanOrEqual(8);
+  });
+  it('gin at 40 % diluted 3:1 keeps a medium bitter when staff said bitter 6', () => {
+    const r = rollup({ kind: 'cocktail', method: 'neat', components: [{ name: 'd', lines: [{ name: 'Gin', qty: 75, unit: 'ml', own: { prov: 'staff', axes: { bitter: { v: 6 } } } }, { name: 'Water', qty: 25, unit: 'ml' }] }] });
+    near(r.axes.bitter.v, 5, 0.8);
+  });
+});
