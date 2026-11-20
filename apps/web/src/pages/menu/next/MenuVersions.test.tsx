@@ -286,3 +286,24 @@ describe('MenuVersions', () => {
     expect(await screen.findByTestId('menu-read-error')).toHaveTextContent(/the menu read is waiting: nothing was sent/);
   });
 });
+
+// r102 menu-func-2 / menu-critic-3: the sentence for a cut-off carry finished, and the settle.
+describe('makeCurrentSentence -- a finished carry, and the result row settles', () => {
+  const base = { menuId: 'm1', previousMenuIds: [], madeCurrentAt: null, priceSync: {}, flagged: 0, failed: [], held: [], returned: [] };
+
+  it('says a menu already current that carried nothing changed nothing, and one that carried lines says so', async () => {
+    const { makeCurrentSentence } = await import('./MenuVersions');
+    expect(makeCurrentSentence({ ...base, outcome: 'already_current', lines: 0 } as never)).toBe('That menu was already the current one. Nothing changed.');
+    expect(makeCurrentSentence({ ...base, outcome: 'already_current', lines: 3 } as never)).toBe(
+      "That menu was already the current one. 3 lines had not reached the house's prices and were carried now.",
+    );
+  });
+
+  it('the settle is 280 ms and stops for reduced motion', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const css = readFileSync(resolve(__dirname, 'menu-settle.css'), 'utf8');
+    expect(css).toMatch(/\.mdv-settle\s*\{[^}]*animation: mdv-settle 280ms/);
+    expect(css).toMatch(/prefers-reduced-motion: reduce\)\s*\{\s*\.mdv-settle\s*\{\s*animation: none/);
+  });
+});

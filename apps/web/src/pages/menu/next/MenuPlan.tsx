@@ -89,6 +89,35 @@ export function planSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'curre
   return more.length ? `${lead} ${more.join('; ')}.` : lead;
 }
 
+/**
+ * The move that matters most when a menu is chosen: how many prices move, the
+ * largest one (by the size of the change, in the house's money) and how many
+ * locked prices stay. Null when no price moves (r102 menu-critic-3).
+ */
+export function largestMove(plan: Pick<Plan, 'lines' | 'counts'>): {
+  moved: number;
+  kept: number;
+  name: string;
+  kind: 'bottle' | 'glass';
+  from: number;
+  to: number;
+} | null {
+  let best: { name: string; kind: 'bottle' | 'glass'; from: number; to: number } | null = null;
+  let moved = 0;
+  for (const line of plan.lines) {
+    for (const k of [line.bottle, line.glass]) {
+      if (k.result !== 'change') continue;
+      moved += 1;
+      if (k.menuPrice === null || k.housePrice === null) continue;
+      if (!best || Math.abs(k.menuPrice - k.housePrice) > Math.abs(best.to - best.from)) {
+        best = { name: line.name, kind: k.kind, from: k.housePrice, to: k.menuPrice };
+      }
+    }
+  }
+  if (moved === 0) return null;
+  return { moved, kept: plan.counts.held_by_lock ?? 0, name: best?.name ?? '', kind: best?.kind ?? 'bottle', from: best?.from ?? 0, to: best?.to ?? 0 };
+}
+
 /** Who set the price that would be replaced, in words. */
 function setWords(k: PlanKind): string {
   if (!k.lastSet) return '';
@@ -240,6 +269,7 @@ export function MenuPlan({
   const typedAfter = replacing.filter((r) => r.k.setAfterRead === true).length;
   const returned = plan.lines.filter((l) => l.returned);
   const mismatched = plan.lines.filter((l) => l.vintageMismatch);
+  const move = largestMove(plan);
 
   return (
     <section className="cl-panel" style={{ marginTop: 12 }} aria-labelledby={`plan-h-${menuId}`} data-testid="menu-plan">
@@ -384,6 +414,16 @@ export function MenuPlan({
       {said ? (
         <p role="status" className="cl-said" style={{ marginTop: 8 }}>
           {said}
+        </p>
+      ) : null}
+
+      {canManage && !plan.current && move ? (
+        <p className="cl-standing" style={{ marginTop: 12 }} data-testid="menu-plan-change-summary">
+          {plural(move.moved, 'price moves', 'prices move')}.{' '}
+          {move.name
+            ? `The largest is ${move.name}, ${move.kind}: ${money(move.from)} to ${money(move.to)}, ${money(Math.abs(move.to - move.from))} ${move.to >= move.from ? 'more' : 'less'}. `
+            : ''}
+          {move.kept > 0 ? `${plural(move.kept, 'locked price stays', 'locked prices stay')} as ${move.kept === 1 ? 'it is' : 'they are'}.` : 'No locked price is in the way.'}
         </p>
       ) : null}
 
