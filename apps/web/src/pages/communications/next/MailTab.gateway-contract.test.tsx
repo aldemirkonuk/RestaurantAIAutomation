@@ -165,7 +165,7 @@ describe('the Mail tab and the gateway agree', () => {
     const guess = (method: string, url: string, params: string[] = [], body: string[] = []): Call => ({ method, url, params, body });
     expect(unmatched([guess('POST', '/mail/consent', [], ['scope'])])).toHaveLength(1);
     expect(unmatched([guess('DELETE', '/mail/consent', ['scope'])])).toHaveLength(1);
-    expect(unmatched([guess('GET', '/mail/people', ['kind'])])).toHaveLength(1);
+    expect(unmatched([guess('GET', '/mail/people', ['nonsense'])])).toHaveLength(1);
     expect(unmatched([guess('POST', '/mail/people')])).toHaveLength(1);
     expect(unmatched([guess('GET', '/mail/people', ['waiting', 'q', 'after'])])).toHaveLength(0);
   });
