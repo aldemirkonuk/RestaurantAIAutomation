@@ -9,6 +9,7 @@ import {
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { seesHouseAmounts } from "../dashboard/amounts-for-role";
+import { mergeAgreedLotCost } from "../analytics/inventory-cost";
 import { BaseUnit, CostItem, recipeCost } from "./recipe-cost";
 import { PreviewCostDto, SaveRecipeDto } from "./dto/recipes.dto";
 import { FIGURE_KEYS, ItemFigures, ServeNutrition, serveNutrition } from "./recipe-nutrition";
@@ -223,20 +224,30 @@ export class RecipesService {
    * read for the saved version and for a draft, so the two can never price
    * differently. Scoped to the house on both tables: an id that is not this
    * house's is simply not found, and its line reads as an unknown item.
+   *
+   * What a unit of a good costs now is the inventory list's answer, not a
+   * second one (r23 walk: flour read ₺1,20 a kg in the drawer and "no price
+   * yet" on the dish). Both hand `resolveUnitCost` the rollup row with the
+   * settled cost from `inventory_lot_agreed_cost` merged in by
+   * `mergeAgreedLotCost`: invoiced lot WAC, then a cost settled without an
+   * invoice (a price the house entered, or one agreed at delivery), then the
+   * last purchase price, else unknown. Before this the recipe read the rollup
+   * alone, so a good costed only by hand read as unknown here and only here.
    */
   async readPricing(restaurantId: string, ids: string[], money: boolean) {
     const client = this.db.getClient();
     const items = new Map<string, any>();
     const lots = new Map<string, any>();
     if (ids.length) {
-      // Two literal column lists, so the read-columns guard can check both;
-      // a role without money never reads the price.
+      // Literal column lists, so the read-columns guard can check each; a
+      // role without money never reads the price or either cost view.
       const itemQuery = money
         ? client
             .from("restaurant_inventory")
             .select("id, display_name, kind, uom, bottle_size_ml, last_purchase_price, is_active, deleted_at")
         : client.from("restaurant_inventory").select("id, display_name, kind, uom, bottle_size_ml, is_active, deleted_at");
-      const [itemRead, lotRead] = await Promise.all([
+      const none = Promise.resolve({ data: [], error: null });
+      const [itemRead, lotRead, agreedRead] = await Promise.all([
         itemQuery.eq("restaurant_id", restaurantId).in("id", ids),
         money
           ? client
@@ -244,12 +255,25 @@ export class RecipesService {
               .select("inventory_id, live_qty, wac, has_invoice_cost, wac_qty")
               .eq("restaurant_id", restaurantId)
               .in("inventory_id", ids)
-          : Promise.resolve({ data: [], error: null }),
+          : none,
+        // The same columns as AGREED_LOT_COST_SELECT, which the inventory
+        // list reads; written out for the guard.
+        money
+          ? client
+              .from("inventory_lot_agreed_cost")
+              .select("inventory_id, has_agreed_cost, agreed_wac")
+              .eq("restaurant_id", restaurantId)
+              .in("inventory_id", ids)
+          : none,
       ]);
       if (itemRead.error) this.failed("item read", itemRead.error);
       if (lotRead.error) this.failed("lot read", lotRead.error);
+      // A failed read of the settled cost refuses like the rollup's: priced
+      // without it, a hand-costed good would read "no price yet" as if true.
+      if (agreedRead.error) this.failed("agreed cost read", agreedRead.error);
       for (const i of (itemRead.data ?? []) as any[]) items.set(i.id, i);
       for (const l of (lotRead.data ?? []) as any[]) lots.set(l.inventory_id, l);
+      mergeAgreedLotCost(lots, agreedRead.data as Array<Record<string, unknown>> | null);
     }
     return { items, lots };
   }
