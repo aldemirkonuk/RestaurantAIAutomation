@@ -970,6 +970,31 @@ describe('N-12 — the view pill and the row that eases open', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cellar map' }));
     expect(screen.getByRole('button', { name: 'Cellar map' })).toHaveAttribute('aria-pressed', 'true');
   });
+
+  it('opens a row into a collapse that eases shut and leaves the table after the close', () => {
+    vi.useFakeTimers();
+    try {
+      mock.data = data({ rows: [row({ id: 'a', name: 'Barolo' })] });
+      renderPage();
+      expect(document.querySelector('.iv-openrow')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: /Barolo/ }));
+      const panel = () => document.querySelector('.iv-openrow .mdv-collapse');
+      // The frame it mounts in is closed, so the opening has somewhere to travel from.
+      expect(panel()).toHaveAttribute('data-open', 'false');
+      act(() => { vi.advanceTimersByTime(40); });
+      expect(panel()).toHaveAttribute('data-open', 'true');
+      expect(screen.getByTestId('row-dropdown')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: /Barolo/ }));
+      // Shut, not removed: the rows below travel up instead of jumping.
+      expect(panel()).toHaveAttribute('data-open', 'false');
+      expect(document.querySelector('.iv-openrow')).not.toBeNull();
+      act(() => { vi.advanceTimersByTime(400); });
+      expect(document.querySelector('.iv-openrow')).toBeNull();
+      expect(screen.queryByTestId('row-dropdown')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('INV-W38 — the view is the URL', () => {

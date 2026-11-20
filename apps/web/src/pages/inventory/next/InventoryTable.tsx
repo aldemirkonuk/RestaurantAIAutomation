@@ -15,11 +15,39 @@
  * managers (it is where a price is changed, ADR 0193); everyone else reads
  * the two figures in the house's currency.
  */
-import { Fragment } from 'react';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
+import { Collapse } from '../../../components/mudavym/Collapse';
 import { HousePriceCell, type AdviceLoad } from '../command/HousePriceCell';
 import RowDropdown, { type RowDropdownProps } from './RowDropdown';
 import { cellMoney, EM, fmtCount, fmtPace, noZoneWord, SEVERITY_GROUP, severity, typeLabel, type InvRow, type SortId } from './useInventoryNextData';
 import { NameHint } from './NameThisWine';
+
+/**
+ * The row an opened title drops into. It eases open and shut in place (the
+ * grid row goes 0fr to 1fr), so the rows beneath it travel instead of jumping;
+ * the row itself stays in the table until the close has finished.
+ */
+function OpenRow({ open, span, children }: { open: boolean; span: number; children: ReactNode }) {
+  const [present, setPresent] = useState(open);
+  useEffect(() => {
+    if (open) {
+      setPresent(true);
+      return;
+    }
+    const t = setTimeout(() => setPresent(false), 340);
+    return () => clearTimeout(t);
+  }, [open]);
+  if (!open && !present) return null;
+  return (
+    <tr className="iv-openrow">
+      <td colSpan={span}>
+        <Collapse open={open} unmountWhenClosed appear>
+          {children}
+        </Collapse>
+      </td>
+    </tr>
+  );
+}
 
 export interface InventoryTableProps extends Omit<RowDropdownProps, 'row'> {
   rows: InvRow[];
@@ -265,9 +293,7 @@ export default function InventoryTable(props: InventoryTableProps) {
                     {statusWord(row)}
                   </td>
                 </tr>
-                {open ? (
-                  <tr className="iv-openrow">
-                    <td colSpan={span}>
+                <OpenRow open={open} span={span}>
                       <RowDropdown
                         row={row}
                         canManage={canManage}
@@ -279,9 +305,7 @@ export default function InventoryTable(props: InventoryTableProps) {
                         providersError={props.providersError}
                         restaurantId={props.restaurantId}
                       />
-                    </td>
-                  </tr>
-                ) : null}
+                </OpenRow>
               </Fragment>
             );
           })}
