@@ -53,6 +53,7 @@ import {
   clampMailLimit,
   decodeMailCursor,
   encodeMailCursor,
+  mailChannelsOf,
   mailDirectionOf as direction,
   mailDoorOf,
   mailSearchOf,
@@ -157,7 +158,7 @@ export class MailService {
           waiting: r.waiting === true,
           waitingSince: r.waiting_since ?? null,
           openThreads: Number(r.open_threads ?? 0),
-          channels: Array.isArray(r.channels) ? r.channels : [],
+          channels: mailChannelsOf(r.channels),
           newestOpenOrderId: r.newest_open_order_id ?? null,
           newestOpenOrderNumber: r.newest_open_order_number ?? null,
           unsentStatus:
