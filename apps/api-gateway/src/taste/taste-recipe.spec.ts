@@ -89,6 +89,20 @@ describe('TasteService.rollupSubject', () => {
     const out = await new TasteService(fakeDb(t).db).rollupSubject(RID, 'cocktail', COCKTAIL);
     expect(out.rollup).toMatchObject({ lines: 3, unquantified: 1 });
   });
+  it('counts every each line with no stated weight as unquantified, linked to a good with no weight, to a good with no row, or to none (r103 need 5)', async () => {
+    const NONE = '99999999-9999-4999-8999-999999999999';
+    const NOROW = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const t: any = recipe([['Bourbon', 600, 'ml10'], ['Mint sprig', 2000, 'each_milli'], ['Cherry', 1000, 'each_milli'], ['Orange twist', 1000, 'each_milli']]);
+    t.recipe_lines[2].inventory_id = NONE; t.recipe_lines[3].inventory_id = NOROW;
+    t.restaurant_inventory = [{ id: NONE, restaurant_id: RID, piece_grams: null }];
+    const f = fakeDb(t);
+    const out = await new TasteService(f.db).rollupSubject(RID, 'cocktail', COCKTAIL);
+    expect(out.rollup).toMatchObject({ lines: 4, unquantified: 3 });
+    // A different count is a different roll-up, so the card's "N not weighed" cannot go stale.
+    t.restaurant_inventory.push({ id: NOROW, restaurant_id: RID, piece_grams: 12 });
+    const again = await new TasteService(f.db).rollupSubject(RID, 'cocktail', COCKTAIL);
+    expect(again.rollup).toMatchObject({ unquantified: 2 });
+  });
   it('refuses, in a sentence, when the stated weights cannot be read', async () => {
     const t: any = recipe([['Egg white', 1000, 'each_milli']]);
     t.recipe_lines[0].inventory_id = '77777777-7777-4777-8777-777777777777';
