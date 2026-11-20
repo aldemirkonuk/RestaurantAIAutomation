@@ -151,6 +151,23 @@ function ArrivalShell({
       }
     >
       <div aria-busy={step === null} className="mdv-spread-stack">
+        {step && (
+          <div
+            className="mdv-spread-progress"
+            role="progressbar"
+            aria-label="Set-up progress"
+            aria-valuemin={1}
+            aria-valuemax={2}
+            aria-valuenow={step === 'menu' ? 2 : 1}
+            aria-valuetext={step === 'menu' ? 'Step 2 of 2' : 'Step 1 of 2'}
+          >
+            <span
+              data-testid="gs-progress-fill"
+              className="mdv-spread-progress__fill"
+              style={{ width: step === 'menu' ? '100%' : '50%' }}
+            />
+          </div>
+        )}
         {children}
       </div>
     </AuthSpread>

@@ -11,6 +11,11 @@ import { getOnboardingProgress } from '../services/api/menus'
 import { apiClient, getErrorMessage } from '../services/api/client'
 import { storeSession } from '../lib/houseMemory'
 import { prefetchWhenIdle } from '../lib/stepPrefetch'
+import { prefersReducedMotion } from '../lib/mudavym/motion'
+import { motion } from 'framer-motion'
+
+/** The "Email Verified" check settles for this long before the page moves on. */
+export const VERIFIED_SETTLE_MS = 240
 
 /**
  * The two answers the verify route gives a click it will not honour (ADR 0229
@@ -31,7 +36,7 @@ export function VerifyEmail() {
   const publicDesign = usePublicDesign()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const { user, loading, logout } = useAuth()
+  const { user, loading, logout, signInWithSession } = useAuth()
   const [verifying, setVerifying] = useState(false)
   const [resending, setResending] = useState(false)
   const [verified, setVerified] = useState(false)
@@ -71,6 +76,19 @@ export function VerifyEmail() {
       const house = storeSession(data.accessToken, data.refreshToken)
       setVerified(true)
       toast.success('Email verified! Redirecting...')
+      // The session state is refreshed in place (store + /auth/me), so the
+      // verified flag is read from the new token without reloading the whole
+      // document in the middle of onboarding. If that read fails the stored
+      // session is still right, and a reload reads it back.
+      let refreshed = true
+      try {
+        await signInWithSession({
+          accessToken: data.accessToken,
+          refreshToken: data.refreshToken,
+        })
+      } catch {
+        refreshed = false
+      }
       // A session in no house goes to the chooser (ADR 0164): it shows a
       // membership waiting to be accepted (ADR 0229 fork 13), and sends an
       // account-only signup (ADR 0213) with nothing waiting on to
@@ -82,9 +100,13 @@ export function VerifyEmail() {
         : progress?.menu_uploaded
           ? '/'
           : '/get-started'
-      setTimeout(() => {
+      if (!refreshed) {
         window.location.href = destination
-      }, 1500)
+        return
+      }
+      // Reduced motion: no settle, an instant swap.
+      const settle = prefersReducedMotion() ? 0 : VERIFIED_SETTLE_MS
+      setTimeout(() => navigate(destination, { replace: true }), settle)
     } catch (err: unknown) {
       const refused = linkRefusal(err)
       if (refused) setRefusal(refused)
@@ -247,10 +269,17 @@ export function VerifyEmail() {
     return (
       <AuthShell title="Email Verified!" subtitle="Redirecting you now…">
         <AuthCard className="text-center py-10">
-          <CheckCircle
-            className="w-14 h-14 text-emerald-500 mx-auto"
-            strokeWidth={1.5}
-          />
+          <motion.div
+            data-testid="verified-check"
+            initial={prefersReducedMotion() ? false : { opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: VERIFIED_SETTLE_MS / 1000, ease: 'easeOut' }}
+          >
+            <CheckCircle
+              className="w-14 h-14 text-emerald-500 mx-auto"
+              strokeWidth={1.5}
+            />
+          </motion.div>
         </AuthCard>
       </AuthShell>
     )
