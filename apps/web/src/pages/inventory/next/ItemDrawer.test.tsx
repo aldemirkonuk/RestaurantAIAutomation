@@ -353,13 +353,24 @@ describe('the item drawer', () => {
     const used = { section: null, price: 10, hasRecipe: true, yieldServes: 1, lineCount: 1, cost: null, uses: [{ label: 'Flour', qtyEntered: 5, unitCode: 'g' }] };
     api.dishes.mockResolvedValue({ dishes: ['d1', 'd2', 'd3'].map((dishId) => ({ ...used, dishId, name: dishId })) });
     api.drinks.mockResolvedValue({ drinks: ['k1', 'k2'].map((cocktailId) => ({ ...used, cocktailId, name: cocktailId })) });
+    // Two catalogue cocktail cards: k2 is also a recipe drink (counted once), k9 only a card (counted).
+    const group = (lines: unknown[], readable = true) => ({ readable, lines: readable ? lines : null, source: 's' });
+    const usedInData = (cards: unknown[], readable = true) => ({
+      item: { id: 'i1', kind: 'spirit', displayName: 'x' },
+      soldAs: group([]),
+      inCocktails: group(cards, readable),
+      inDrinkRecipes: group([]),
+      namedNotLinked: group([]),
+    });
+    const card = (cocktailId: string) => ({ cocktailId, name: cocktailId, quantity: 25, unit: 'ml' });
+    api.usedIn.mockResolvedValue(usedInData([card('k2'), card('k9')]));
     const spy = vi.fn();
     const was = Element.prototype.scrollIntoView;
     Element.prototype.scrollIntoView = spy;
     try {
       open(row());
       const chip = await screen.findByTestId('ivd-used-chip');
-      expect(chip.textContent).toBe('Used in 3 dishes, 2 drinks');
+      expect(chip.textContent).toBe('Used in 3 dishes, 3 drinks');
       fireEvent.click(chip);
       expect(spy.mock.contexts.some((el) => (el as HTMLElement).id === 'ivd-used')).toBe(true);
     } finally {
@@ -367,6 +378,14 @@ describe('the item drawer', () => {
     }
     cleanup();
     api.drinks.mockRejectedValue(new Error('down'));
+    open(row());
+    await screen.findByTestId('ivd-used');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByTestId('ivd-used-chip')).toBeNull();
+    // The cocktail cards unread: the line would say fewer drinks than the block, so it says nothing.
+    cleanup();
+    api.drinks.mockResolvedValue({ drinks: ['k1'].map((cocktailId) => ({ ...used, cocktailId, name: cocktailId })) });
+    api.usedIn.mockResolvedValue(usedInData([], false));
     open(row());
     await screen.findByTestId('ivd-used');
     await new Promise((r) => setTimeout(r, 50));

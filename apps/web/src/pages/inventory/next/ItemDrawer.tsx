@@ -217,11 +217,17 @@ export default function ItemDrawer(props: ItemDrawerProps) {
       ? { status: 'ready', data: drinksQ.data }
       : { status: 'reading' };
   // Where a good is used is the first question and the last block: one line up top says how many and goes
-  // there. Said only when both reads answered with something; a pending or failed read says nothing here.
+  // there. Said only when all three reads answered with something; a pending or failed read says nothing here.
+  // A drink counts once whether its recipe line or a catalogue cocktail card names the good (the block below
+  // lists both), so the line never says fewer than the block shows.
+  const cardsRead = usedIn.status === 'ready' && usedIn.data.inCocktails.readable && usedIn.data.inCocktails.lines !== null;
+  const drinkIds = new Set<string>();
+  if (drinks.status === 'ready') for (const d of drinks.data.drinks) drinkIds.add(d.cocktailId);
+  if (usedIn.status === 'ready' && cardsRead) for (const c of usedIn.data.inCocktails.lines ?? []) drinkIds.add(c.cocktailId);
   const nDishes = dishes.status === 'ready' ? dishes.data.dishes.length : 0;
-  const nDrinks = drinks.status === 'ready' ? drinks.data.drinks.length : 0;
+  const nDrinks = drinkIds.size;
   const usedChip =
-    dishes.status === 'ready' && drinks.status === 'ready' && nDishes + nDrinks > 0
+    dishes.status === 'ready' && drinks.status === 'ready' && cardsRead && nDishes + nDrinks > 0
       ? `Used in ${[nDishes > 0 ? `${nDishes} ${nDishes === 1 ? 'dish' : 'dishes'}` : '', nDrinks > 0 ? `${nDrinks} ${nDrinks === 1 ? 'drink' : 'drinks'}` : ''].filter(Boolean).join(', ')}`
       : null;
 
