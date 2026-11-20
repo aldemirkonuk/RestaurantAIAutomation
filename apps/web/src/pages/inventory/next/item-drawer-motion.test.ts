@@ -14,10 +14,11 @@ const rule = (sel: string): string => {
 const reduced = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'));
 
 describe('the detail card opens by rows, closes at once', () => {
-  it('opens on 200 ms cubic-bezier(0.16, 1, 0.3, 1) over rows and margin, fades in 160 ms after 40 ms', () => {
+  it('opens on 200 ms cubic-bezier(0.16, 1, 0.3, 1) over rows only (the wrapper has no margin to tween), fades in 160 ms after 40 ms', () => {
     const open = rule(".ivd-evwrap[data-open='true']");
     expect(open).toContain('grid-template-rows 200ms cubic-bezier(0.16, 1, 0.3, 1)');
-    expect(open).toContain('margin-top 200ms cubic-bezier(0.16, 1, 0.3, 1)');
+    expect(open).not.toContain('margin-top');
+    expect(rule('.ivd-evwrap')).not.toContain('margin');
     expect(rule(".ivd-evwrap[data-open='true'] .ivd-evidence")).toContain('160ms ease-out 40ms');
   });
   it('the closed state has no transition, so closing is instant (ADR 0112: no overlay exit animation)', () => {
