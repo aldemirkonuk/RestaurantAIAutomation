@@ -186,6 +186,10 @@ export const MAX_MESSAGES_PER_TICK = 250;
  */
 export const MAX_PAGES_ALL = 50;
 
+/** The tabs the wide query leaves out; the vendor query beside it does not (r103 mail-2). */
+export const WIDE_CATEGORY_BOUND =
+  "-category:promotions -category:social -category:forums -category:updates";
+
 /** Who a message in a wider read is from, relative to THIS house. */
 export type MailKind = "vendor" | "team" | "guest";
 
@@ -482,10 +486,13 @@ export class HouseInboxService {
     let highWater = cursor;
 
     try {
-      const ids = wide
-        ? await this.listSinceAll(token, cursor)
-        : await this.listSince(token, addresses, cursor);
+      const listing = wide
+        ? await this.listWide(token, cursor, addresses)
+        : { ids: await this.listSince(token, addresses, cursor), horizonId: null };
+      const ids = listing.ids;
       listed = ids.length;
+      /** When each fetched message arrived, for the listing's horizon below. */
+      const arrivedAt = new Map<string, number>();
 
       // Fetch, filter, THEN sort oldest-first before anything is published.
       //
@@ -508,6 +515,7 @@ export class HouseInboxService {
       for (const listedMessage of ids) {
         const message = await this.getMessage(token, listedMessage.id);
         if (!message) continue;
+        arrivedAt.set(listedMessage.id, Number(message.internalDate ?? 0));
 
         const headers = (message.payload?.headers ?? []) as Array<{
           name?: string | null;
@@ -549,6 +557,23 @@ export class HouseInboxService {
           headers,
           payload: (message.payload ?? {}) as GmailPayloadPart,
         });
+      }
+
+      // A cut wide listing: nothing newer than its newest kept message is filed
+      // this tick (see listWide). The rest is listed again next tick. A horizon
+      // that cannot be dated is a failed read, never a guess.
+      if (listing.horizonId !== null) {
+        const horizon = arrivedAt.get(listing.horizonId);
+        if (horizon === undefined || !Number.isFinite(horizon)) {
+          throw new Error(
+            "the newest message of a cut listing could not be dated, so what may be filed this tick could not be bounded",
+          );
+        }
+        const before = admissible.length;
+        const kept = admissible.filter((m) => m.internalDate <= horizon);
+        admissible.length = 0;
+        admissible.push(...kept);
+        admitted -= before - kept.length;
       }
 
       admissible.sort((a, b) => a.internalDate - b.internalDate);
@@ -708,32 +733,30 @@ export class HouseInboxService {
    * person sent and their drafts are left out, so a letter this house sent
    * through `gmail_send` is not read back as an inbound message. Spam and trash
    * are out by Gmail's own default.
+   *
+   * Gmail's Promotions, Social, Forums and Updates tabs are out of THIS query
+   * only (r103 mail-2, DD-r102-2): newsletters, receipts and notifications are
+   * not conversations, and they would fill every tick's cap and be filed as
+   * guests. A vendor's price list can sit in Promotions or Updates, so the
+   * vendors are read by their own query, `buildQuery`, which has no category
+   * bound and runs beside this one.
    */
   buildQueryAll(sinceMs: number): string {
-    return `after:${Math.floor(sinceMs / 1000)} -in:sent -in:drafts`;
+    return `after:${Math.floor(sinceMs / 1000)} -in:sent -in:drafts ${WIDE_CATEGORY_BOUND}`;
   }
 
   /**
-   * Every id after the cursor, ALL pages, then the oldest `MAX_MESSAGES_PER_TICK`.
-   *
-   * Gmail lists newest-first. Cutting a listing short at the cap would keep the
-   * NEWEST messages, advance the cursor above them and silently skip every older
-   * one it never saw. Taking the whole listing and keeping its oldest tail means
-   * the cursor only ever moves past messages that were really filed, and the
-   * newer ones are read on the next tick. A listing longer than `MAX_PAGES_ALL`
-   * pages cannot be proven to hold the oldest, so it throws, which the caller
-   * records as a failed read with the cursor untouched.
+   * Every id of one query, ALL pages, newest first. A listing longer than
+   * `MAX_PAGES_ALL` pages cannot be proven to hold the oldest, so it throws,
+   * which the caller records as a failed read with the cursor untouched.
    */
-  private async listSinceAll(
-    token: string,
-    sinceMs: number,
-  ): Promise<GmailListed[]> {
+  private async listEveryPage(token: string, q: string): Promise<GmailListed[]> {
     const all: GmailListed[] = [];
     const seen = new Set<string>();
     let pageToken: string | undefined;
     for (let page = 0; page < MAX_PAGES_ALL; page += 1) {
       const url = new URL(`${GMAIL_API}/users/me/messages`);
-      url.searchParams.set("q", this.buildQueryAll(sinceMs));
+      url.searchParams.set("q", q);
       url.searchParams.set("maxResults", "100");
       if (pageToken) url.searchParams.set("pageToken", pageToken);
       const body = await this.gmailGet<{
@@ -746,16 +769,45 @@ export class HouseInboxService {
           all.push(m);
         }
       }
-      if (!body.nextPageToken) {
-        return all.length > MAX_MESSAGES_PER_TICK
-          ? all.slice(all.length - MAX_MESSAGES_PER_TICK)
-          : all;
-      }
+      if (!body.nextPageToken) return all;
       pageToken = body.nextPageToken;
     }
     throw new Error(
       `the mailbox listed more than ${MAX_PAGES_ALL * 100} messages since the cursor, so the oldest could not be found without guessing`,
     );
+  }
+
+  /**
+   * What the wider grant reads: the wide query (every conversation, without the
+   * newsletter tabs) and, beside it, the vendor query (the book's addresses,
+   * with no category bound), joined by id.
+   *
+   * Gmail lists newest-first. Cutting a listing short at the cap would keep the
+   * NEWEST messages, advance the cursor above them and silently skip every older
+   * one it never saw. So the wide listing is taken whole and its oldest
+   * `MAX_MESSAGES_PER_TICK` kept. When it was cut, `horizonId` names the newest
+   * message kept: nothing newer than it may be filed this tick, vendor mail
+   * included, because the cursor would then pass wide mail that was never read.
+   * The vendor listings are taken whole and never cut.
+   */
+  private async listWide(
+    token: string,
+    sinceMs: number,
+    addresses: string[],
+  ): Promise<{ ids: GmailListed[]; horizonId: string | null }> {
+    let wide = await this.listEveryPage(token, this.buildQueryAll(sinceMs));
+    let horizonId: string | null = null;
+    if (wide.length > MAX_MESSAGES_PER_TICK) {
+      wide = wide.slice(wide.length - MAX_MESSAGES_PER_TICK);
+      horizonId = wide[0].id;
+    }
+    const byId = new Map(wide.map((m) => [m.id, m]));
+    for (const q of this.buildQuery(addresses, sinceMs)) {
+      for (const m of await this.listEveryPage(token, q)) {
+        if (!byId.has(m.id)) byId.set(m.id, m);
+      }
+    }
+    return { ids: [...byId.values()], horizonId };
   }
 
   /**
