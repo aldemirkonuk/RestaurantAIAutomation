@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>125 · People · each role's screen</title>
+<style>
+.mudavym{
+  --seal:#1a5e6b;--seal-deep:#14515c;--seal-tint:rgba(26,94,107,.1);--seal-ring:rgba(26,94,107,.32);
+  --paper-0:#fffdf8;--paper-1:#f3efe6;--paper-2:#eae4d8;
+  --ink-1:#211c16;--ink-2:#4f473c;--ink-3:#7c7365;
+  --warn:#96601A;--warn-tint:rgba(150,96,26,.12);--loss:#A8402C;--loss-tint:rgba(168,64,44,.1);
+  color-scheme:light;background:var(--paper-0);color:var(--ink-1)}
+*{box-sizing:border-box} html,body{margin:0;padding:0}
+body{background:#f7f3ea;font-family:"DM Sans","Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+a{color:var(--seal-deep)}
+.serif{font-family:Fraunces,"Iowan Old Style",Georgia,serif;letter-spacing:-.015em}
+.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+.banner{background:var(--seal);color:#fffdf8;font:500 11px/1.3 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;padding:8px 16px;display:flex;gap:14px;flex-wrap:wrap}
+.banner a{color:#fffdf8}
+.note{max-width:1200px;margin:18px auto 0;padding:0 16px;color:var(--ink-2);font-size:13.5px}
+.note b{color:var(--ink-1);font-weight:600}
+.cap{max-width:1200px;margin:26px auto 0;padding:0 16px;font:500 11px/1 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.frame{max-width:1200px;margin:10px auto 30px;border:1px solid var(--paper-2);border-radius:10px;overflow:hidden;background:var(--paper-0)}
+.page{padding:24px 24px 32px}
+.eyebrow{font:500 11px/1.3 "JetBrains Mono",ui-monospace,monospace;text-transform:uppercase;letter-spacing:.14em;color:var(--ink-3);margin:0}
+h1{font-family:Fraunces,Georgia,serif;font-weight:420;font-size:34px;line-height:1.08;margin:6px 0 0}
+h2{font-family:Fraunces,Georgia,serif;font-weight:500;font-size:19px;margin:0 0 8px}
+h3{font-family:Fraunces,Georgia,serif;font-weight:500;font-size:15.5px;margin:0 0 6px}
+.standing{font-family:Fraunces,Georgia,serif;font-style:italic;font-size:16px;color:var(--ink-2);margin:10px 0 0;max-width:860px}
+.standing b{font-style:normal;font-weight:500;color:var(--ink-1)}
+.readat{font:10.5px/1.5 "JetBrains Mono",ui-monospace,monospace;color:var(--ink-3);margin-top:6px}
+.muted{color:var(--ink-3)} .small{font-size:12px}
+.chip{display:inline-flex;align-items:center;gap:4px;font:500 10px/1.4 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.05em;text-transform:uppercase;border:1px solid var(--paper-2);border-radius:4px;padding:2px 6px;color:var(--ink-2);white-space:nowrap}
+.chip.on{border-color:var(--seal);background:var(--seal-tint);color:var(--seal-deep)}
+.chip.warn{border-color:rgba(150,96,26,.45);color:var(--warn)}
+.chip.loss{border-color:rgba(168,64,44,.45);color:var(--loss)}
+.chip.off{color:var(--ink-3);border-style:dashed}
+.btn{border:1px solid var(--paper-2);background:var(--paper-0);color:var(--ink-1);border-radius:8px;padding:6px 12px;font:13px inherit;font-family:inherit;display:inline-flex;gap:6px;align-items:center;cursor:default;white-space:nowrap}
+.btn.primary{border-color:var(--seal);background:var(--seal);color:#fffdf8}
+.btn.soft{border-color:var(--seal);background:var(--seal-tint);color:var(--seal-deep)}
+.btn.quiet{border-color:transparent;background:transparent;color:var(--ink-3);padding-left:4px;padding-right:4px}
+.btn.big{padding:12px 18px;font-size:15px;border-radius:10px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.spread{display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap}
+.card{border:1px solid var(--paper-2);border-radius:12px;background:var(--paper-1);padding:14px 16px;min-width:0}
+.card.white{background:var(--paper-0)}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.fig{font-family:Fraunces,Georgia,serif;font-weight:500;letter-spacing:-.03em;line-height:.95;font-variant-numeric:tabular-nums}
+.up{color:var(--seal-deep)} .down{color:var(--loss)} .amber{color:var(--warn)}
+.bar{display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--paper-2)}
+.bar span{display:block;height:100%}
+.h1c{background:#1a5e6b}.h2c{background:#4f8a93}.h3c{background:#8fb5b9}.h4c{background:#c9a46a}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;vertical-align:middle}
+.track{position:relative;height:8px;border-radius:4px;background:var(--paper-2)}
+.track i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:var(--seal)}
+.track b{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--ink-1)}
+.list{display:grid;gap:0}
+.list > div{display:grid;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--paper-2)}
+.list > div:first-child{border-top:0}
+table.t{width:100%;border-collapse:collapse;font-size:13px}
+table.t th{font:500 10px/1.3 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);text-align:right;padding:8px 8px;border-bottom:1px solid var(--paper-2);font-weight:500}
+table.t th:first-child,table.t td:first-child{text-align:left}
+table.t td{padding:9px 8px;border-bottom:1px solid var(--paper-2);text-align:right;font-variant-numeric:tabular-nums}
+table.t tr.total td{font-weight:600;background:var(--paper-1);border-bottom:2px solid var(--ink-3)}
+table.t tr.out td{color:var(--ink-3);font-style:italic}
+/* app chrome */
+.topbar{display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid var(--paper-2);background:var(--paper-0);flex-wrap:wrap}
+.mark{font-family:Fraunces,Georgia,serif;font-weight:500;font-size:17px;color:var(--seal-deep)}
+.switch{border:1px solid var(--paper-2);border-radius:8px;padding:4px 10px;font-size:12.5px;display:inline-flex;gap:6px;align-items:center;background:var(--paper-1)}
+.switch b{font-weight:600}
+.grow{flex:1}
+.shell{display:grid;grid-template-columns:190px 1fr;min-height:420px}
+.shell.counter{grid-template-columns:190px 1fr 250px}
+.rail{border-right:1px solid var(--paper-2);padding:14px 12px;background:var(--paper-1);font-size:12.5px}
+.rail p{margin:12px 0 4px;font:500 9.5px/1 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.rail p:first-child{margin-top:0}
+.rail div{padding:3px 8px;border-radius:6px;color:var(--ink-2)}
+.rail div.here{background:var(--seal-tint);color:var(--seal-deep);font-weight:600}
+.rail div.new{color:var(--seal-deep);font-weight:600}
+.rail div.new::after{content:" new";font:500 9px "JetBrains Mono",monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--warn)}
+.ctr{border-left:1px solid var(--paper-2);padding:14px;background:var(--paper-1);font-size:12.5px}
+.sheet{max-width:620px;margin:0 auto;border:1px solid var(--paper-2);border-radius:14px;background:var(--paper-0);box-shadow:0 18px 40px rgba(33,28,22,.12);padding:20px 22px}
+.veil{background:rgba(33,28,22,.06);padding:28px 16px}
+.field{display:grid;gap:4px;margin-top:14px}
+.field label{font:500 10.5px/1 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.input{border:1px solid var(--paper-2);border-radius:8px;padding:8px 10px;background:var(--paper-1);font-size:14px}
+.radio{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border:1px solid var(--paper-2);border-radius:8px;margin-top:6px;background:var(--paper-0)}
+.radio .o{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--ink-3);flex:none;margin-top:2px}
+.radio.sel{border-color:var(--seal);background:var(--seal-tint)} .radio.sel .o{border:4px solid var(--seal)}
+.callout{border-left:3px solid var(--warn);background:var(--warn-tint);padding:10px 12px;border-radius:0 8px 8px 0;margin-top:14px;font-size:13px}
+.callout.seal{border-left-color:var(--seal);background:var(--seal-tint)}
+.callout.loss{border-left-color:var(--loss);background:var(--loss-tint)}
+.tog{display:inline-block;width:30px;height:17px;border-radius:9px;background:var(--paper-2);position:relative;vertical-align:middle;flex:none}
+.tog::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.tog.on{background:var(--seal)} .tog.on::after{left:15px}
+.lock{font-size:11px;color:var(--ink-3)}
+.rules{max-width:1200px;margin:0 auto 18px;padding:0 16px}
+.rules .card{background:var(--paper-0)}
+.rules li,.forks li{margin:5px 0}
+.forks{max-width:1200px;margin:0 auto 60px;padding:0 16px;color:var(--ink-2);font-size:13.5px}
+.before{border:1px dashed var(--ink-3);border-radius:10px;padding:12px;background:#fff;opacity:.92}
+.ring{outline:2px solid var(--seal);outline-offset:4px;box-shadow:0 0 0 9px var(--seal-tint);border-radius:8px}
+.phone{width:340px;max-width:100%;border:1px solid var(--paper-2);border-radius:26px;background:var(--paper-0);padding:16px 14px 18px;box-shadow:0 10px 30px rgba(33,28,22,.08);margin:0 auto}
+@media (max-width:1000px){.g4{grid-template-columns:1fr 1fr}.shell.counter{grid-template-columns:170px 1fr}.shell.counter .ctr{grid-column:1/-1;border-left:0;border-top:1px solid var(--paper-2)}}
+@media (max-width:780px){
+  h1{font-size:27px}.page{padding:18px 16px 26px}
+  .g2,.g3,.g4{grid-template-columns:1fr}
+  .shell,.shell.counter{grid-template-columns:1fr}
+  .rail{border-right:0;border-bottom:1px solid var(--paper-2);display:flex;flex-wrap:wrap;gap:4px}
+  .rail p{width:100%;margin:6px 0 2px}
+  table.t thead{display:none}
+  table.t tr{display:grid;grid-template-columns:1fr 1fr;padding:8px 0;border-bottom:1px solid var(--paper-2)}
+  table.t td{border:0;padding:3px 4px;text-align:left}
+  table.t td:first-child{grid-column:1/-1;font-weight:600}
+  table.t td[data-l]::before{content:attr(data-l) " ";font:500 9.5px "JetBrains Mono",monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+  .veil{padding:12px 8px}.sheet{padding:16px}
+  .list>div{grid-template-columns:1fr !important;gap:4px}.phone{width:auto}
+}
+</style></head>
+<body class="mudavym">
+<div class="banner"><b>Sketch 125 · People · each role's screen</b><span>owner → manager → staff, and what changes with more access</span><span>example data</span><a href="index.html">all frames</a></div>
+<p class="note"><b>The idea.</b> The same Friday morning at Sim Bistro, seen by four people. <b>Owners and managers get the house; staff get their jobs.</b> Staff see only what they need and the buttons to finish it — and the screen grows by exactly what they are given.</p>
+<div class="rules"><div class="card"><h3>Already decided, drawn as decided</h3><ul><li>Staff work on the phone app and the web — your answer, <b>"Phone app and web (Recommended)"</b> (ADR 0253). Their screen opens on today's jobs.</li><li>Staff see their jobs plus the rooms their rights open; everything else is hidden and the server refuses it (round 5). What staff do today is <b>closed until given</b> (round 2), Place orders included from day one (ADR 0253 round 13, on PR #566).</li><li>Managers get one of three packages (round 8). <b>Full:</b> "All houses" with profit and pay, owners' wages still hidden; "may give" comes ticked for each money and send action, with your cap, and you can untick any one (round 13). <b>Standard:</b> "All houses" with sales, goals and decisions, no profit or pay. <b>Light:</b> their own house only.</li><li>Pay: an owner's. An owner switches it on for a manager (ADR 0215), only for someone who sees the house's money; profit needs both (ADR 0253 F14).</li><li>Sending to vendors: owners and managers send, each send sealed (ADR 0175). Money and send rights are given by an owner, or by a manager where an owner allowed that action, up to the owner's cap (round 6, confirmed in round 12 — ADR 0253, on PR #566).</li><li>There is one Place orders right; each person's amount lives in the house's approval rule. Until approvals are built, every order waits for an owner or a manager (round 13).</li><li>Zone setup: owners, managers <b>"+ the people they assign"</b> (your words, ADR 0238) — already built as one switch on the team sheet.</li><li>Managers grant manager or staff (ADR 0162). Area leads act on cards only (ADR 0218).</li></ul></div></div>
+<p class="cap">Owner — everything in the house, money included, and "All houses"</p>
+<div class="frame "><div class="topbar"><span class="mark">Mudavym</span><span class="switch"><b>Sim Bistro</b> ▾</span><span class="chip">All houses is one tap</span><span class="grow"></span><span class="btn quiet">Ask</span><span class="btn quiet">Counter</span><span class="chip">You · owner</span></div><div class="shell"><div class="rail"><p>The floor</p><div class="here">Today</div><div class="">Notifications</div><div class="">Calendar</div><div class="">Recommendations</div><p>The door</p><div class="">Orders</div><div class="">Receiving</div><div class="">Vendors</div><div class="">Promotions</div><div class="">Vendor prices</div><p>The cellar</p><div class="">Inventory</div><div class="">Cellar</div><p>The books</p><div class="">Receipts</div><div class="">Reports</div><div class="">Logs</div><p>The people</p><div class="">Team</div><div class="">Communications</div><p></p><div class="">Settings</div><div class="">Connections</div><div class="">The desk</div><div class="">Help</div></div>
+<div class="page"><p class="eyebrow">Owner · You · Sim Bistro · Fri Oct 3, 10:40</p><h1 style="font-size:28px">Today.</h1>
+<div class="g3" style="margin-top:14px"><div class="card"><p class="eyebrow">Sales so far</p><div class="fig" style="font-size:28px">$3,420</div></div>
+<div class="card"><p class="eyebrow">Hours today</p><div class="fig" style="font-size:28px">$612</div><div class="small muted">pay included</div></div>
+<div class="card"><p class="eyebrow">Goods this week</p><div class="fig" style="font-size:28px">34.1%</div><div class="small muted">goal under 34%</div></div></div>
+<div class="list" style="margin-top:12px">
+<div style="grid-template-columns:1fr auto"><b>2 orders over $1,500 wait for you</b><span class="btn soft">Look</span></div>
+<div style="grid-template-columns:1fr auto"><b>House pour, copied Oct 1: Sim Bistro changed it since · Kaleiçi didn't save</b><span class="btn quiet">All houses</span></div>
+<div style="grid-template-columns:1fr auto"><span>Jobs you gave: <b>3 open</b>, 1 late</span><span class="btn quiet">Jobs</span></div></div></div></div></div>
+<p class="cap">Manager on Full, adjusted — the house's day, with pay; owners' wages left out</p>
+<div class="frame "><div class="topbar"><span class="mark">Mudavym</span><span class="switch"><b>Sim Bistro</b> ▾</span><span class="grow"></span><span class="btn quiet">Ask</span><span class="btn quiet">Counter</span><span class="chip">Ayla · manager · Full, adjusted</span></div><div class="shell"><div class="rail"><p>The floor</p><div class="here">Today</div><div class="">Notifications</div><div class="">Calendar</div><div class="">Recommendations</div><p>The door</p><div class="">Orders</div><div class="">Receiving</div><div class="">Vendors</div><div class="">Promotions</div><div class="">Vendor prices</div><p>The cellar</p><div class="">Inventory</div><div class="">Cellar</div><p>The books</p><div class="">Receipts</div><div class="">Reports</div><div class="">Logs</div><p>The people</p><div class="">Team</div><div class="">Communications</div><p></p><div class="">Settings</div><div class="">Connections</div><div class="">Help</div></div>
+<div class="page"><p class="eyebrow">Manager · Ayla · Sim Bistro · Fri Oct 3, 10:40</p><h1 style="font-size:28px">Today.</h1>
+<div class="g3" style="margin-top:14px"><div class="card"><p class="eyebrow">Sales so far</p><div class="fig" style="font-size:28px">$3,420</div></div>
+<div class="card"><p class="eyebrow">Hours today</p><div class="fig" style="font-size:28px">$540</div><div class="small muted">41 h · owners' wages left out</div></div>
+<div class="card"><p class="eyebrow">Below par</p><div class="fig" style="font-size:28px">4 wines</div></div></div>
+<div class="list" style="margin-top:12px">
+<div style="grid-template-columns:1fr auto"><b>An order for $1,240 waits for you</b><span class="btn soft">Approve</span></div>
+<div style="grid-template-columns:1fr auto"><span>Deniz receives Empire Merchants at 11:00</span><span class="btn quiet">Watch</span></div>
+<div style="grid-template-columns:1fr auto"><span>House pour: you changed it here to 175 ml on Oct 1 · shows on All houses as changed since</span><span class="btn quiet">Open</span></div>
+<div style="grid-template-columns:1fr auto"><span>Jobs you gave: <b>2 open</b></span><span class="btn soft">Give a job</span></div></div></div></div></div>
+<p class="cap">Staff — a different screen: today's jobs and the buttons to do them, nothing else</p>
+<div class="frame "><div class="page"><div class="g2" style="align-items:start"><div class="phone"><div class="spread"><span class="mark">Mudavym</span><span class="small muted">Sim Bistro</span></div>
+<p class="eyebrow" style="margin-top:12px">Staff · Mert · Fri Oct 3, 10:40</p>
+<h1 style="font-size:26px">Good morning, Mert.</h1><p class="small muted" style="margin:4px 0 0">2 jobs open.</p>
+<div style="display:grid;gap:10px;margin-top:12px"><div class="card white"><b>Count zone B — whites</b><div class="small muted">by 12:00 · from Ayla</div><div style="margin-top:8px"><span class="btn primary big" style="width:100%;justify-content:center">Start counting</span></div></div><div class="card white"><b>Set up the new cooler as a zone</b><div class="small muted">by Sat · from the owner</div><div style="margin-top:8px"><span class="btn primary big" style="width:100%;justify-content:center">Open the cellar</span></div></div></div>
+<div class="row" style="margin-top:12px"><span class="btn">Ask a manager</span><span class="btn quiet">My hours: 31 h this week</span></div>
+<p class="small muted" style="margin:12px 0 0">What you can do here: Receive deliveries · Count stock · Set up storage zones. Rooms: only the ones these open.</p></div><div class="phone"><div class="spread"><span class="mark">Mudavym</span><span class="small muted">Sim Bistro</span></div>
+<p class="eyebrow" style="margin-top:12px">Staff · Deniz · Fri Oct 3, 10:40</p>
+<h1 style="font-size:26px">Good morning, Deniz.</h1><p class="small muted" style="margin:4px 0 0">1 thing today.</p><div class="callout seal"><b>New:</b> Ayla let you place orders. Your approval-rule amount: $500. <span class="btn quiet">Show me</span></div>
+<div style="display:grid;gap:10px;margin-top:12px"><div class="card white"><b>Receive Empire Merchants</b><div class="small muted">11:00 · for this job · from Ayla</div><div style="margin-top:8px"><span class="btn primary big" style="width:100%;justify-content:center">Start receiving</span></div></div><div class="card" style="border-style:dashed"><b>Order something</b><div class="small muted">Approval-rule amount $500 · each order waits for an owner or a manager until approvals are built</div></div></div>
+<div class="row" style="margin-top:12px"><span class="btn">Ask a manager</span><span class="btn quiet">My hours: 31 h this week</span></div>
+<p class="small muted" style="margin:12px 0 0">What you can do here: Receive deliveries (this job) · Count stock · <b>Place orders (approval-rule amount $500)</b>. Rooms: only the ones these open.</p></div></div><p class="small" style="margin-top:14px;max-width:760px">Left: Mert, listed on Team → Jobs to receive, count and set up zones — the same three the rights grid shows. Nothing else is open to him. Right: Deniz the same morning, after Ayla gave Deniz Place orders and set Deniz's approval-rule amount at $500. Ayla could, because she is Full, adjusted: Full ticked "may give" for setting that amount, up to a $750 cap the owner set (the sketch's reading), and the owner unticked only Send to vendors. A note says what is new and one tile appears. Deniz sees order amounts only on the orders Deniz may place, plus that amount (round 12). Nothing else moves. Take the right back and the tile goes, with a note saying so.</p></div></div>
+<p class="cap">How a screen is built: role + the rights given + the jobs given</p>
+<div class="frame "><div class="page"><h2>What appears when someone is given more</h2><div class="list"><div style="grid-template-columns:200px 1fr"><b>Receive deliveries</b><span class="small">Receiving's staff screen (already built: “Which delivery are you receiving?”) + a Start receiving card when one is due</span></div><div style="grid-template-columns:200px 1fr"><b>Count stock</b><span class="small">A Count card when a count is due; the zone opens straight to counting</span></div><div style="grid-template-columns:200px 1fr"><b>Place orders</b><span class="small">Order something tile. One right; the person's amount, if any, is their approval-rule amount: orders under it go through, orders over it wait. Until approvals are built, every order waits for an owner or a manager. A manager gives the right as their package allows; the amount is set by an owner, or by a manager the owner allowed — Full comes allowed — up to the owner's cap (rounds 12–13; that a Full manager may set the amount is the sketch's reading)</span></div><div style="grid-template-columns:200px 1fr"><b>Set up storage zones</b><span class="small">Cellar opens with editing on (built, ADR 0238)</span></div><div style="grid-template-columns:200px 1fr"><b>Check invoices</b><span class="small">A Check card per invoice waiting; Receipts opens to the match</span></div><div style="grid-template-columns:200px 1fr"><b>See and set pay</b><span class="small">Pay column on Team, money on Hours. Managers only; an owner switches it on, only for someone who sees the house's money (F14)</span></div><div style="grid-template-columns:200px 1fr"><b>Promoted to manager</b><span class="small">Today switches to the manager's Today, the rooms appear, and they can give jobs — told once; a tour only if they tap Show me (ADR 0251)</span></div></div><p class="small muted" style="margin:10px 0 0">Today the rail hides only four rooms from staff (<code>rooms.ts</code> <code>minRole</code>), and only Receiving already draws three ways by role. This makes every room follow the same rule.</p></div></div>
+<div class="forks"><h2>Answered — your picks (ADR 0253, ADR 0252)</h2><ol><li><b>Where staff work</b> — <i>"Phone app and web (Recommended)"</i>.</li><li><b>What staff see outside their jobs</b> — <i>"Only what rights open (Recommended)"</i> (round 5): their jobs plus the rooms a right needs.</li><li><b>Managers and money</b> — the packages, <i>"Yes, as drawn (Recommended)"</i> (round 8): Full sees profit and pay, owners' wages hidden; Standard and Light see no profit or pay. Every package turns on the house's money (F2); profit needs money and pay (F14).</li><li><b>"All houses" for a manager of two houses</b> — <i>"yes they see all with profit if authorized…"</i> (ADR 0252 round 5), narrowed by round 8 to Full and Standard managers.</li><li><b>What Full gives</b> — <i>"Full pre-ticks, you adjust (Recommended)"</i> (round 13). <b>One order right or two</b> — <i>"One right, amount in approvals (Recommended)"</i>; rejected "Two rights" (round 13).</li></ol><h2>Still open</h2><ol><li><b>Which rights are on the list</b> (OD-208). Place orders is one right (round 13); the rest of the list is still yours. These screens grow by whatever rights it holds.</li></ol></div>
+<script>addEventListener('load',()=>{new Image().src='/__seen?b='+(/Chrome\//.test(navigator.userAgent)?'chrome':'safari')+'&p='+location.pathname.split('/').pop()+'&w='+[...document.images].map(i=>i.naturalWidth).join('-')})</script>
+</body></html>
