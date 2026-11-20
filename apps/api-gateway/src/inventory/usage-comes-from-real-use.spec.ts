@@ -16,7 +16,16 @@ function service(analyticsRows: unknown[], error: unknown = null) {
       selects.push(cols);
       return chain;
     }),
-    eq: jest.fn(() => Promise.resolve({ data: analyticsRows, error })),
+    // The read pages to the end (H-1): eq -> order -> range, with a count.
+    eq: jest.fn(() => chain),
+    order: jest.fn(() => chain),
+    range: jest.fn(() =>
+      Promise.resolve({
+        data: error ? null : analyticsRows,
+        error,
+        count: analyticsRows.length,
+      }),
+    ),
   };
   const db = { getClient: () => chain } as any;
   const svc = new InventoryService(db);
