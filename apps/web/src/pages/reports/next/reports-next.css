@@ -1251,6 +1251,11 @@ html[data-mudavym-ground='charcoal'] .rp-tip {
   gap: 8px;
   min-width: 0;
 }
+/* The title never shrinks or wraps; the window beside it takes the ellipsis (r102). */
+.rp-cut[data-strip] .rp-cut__title {
+  flex: none;
+  white-space: nowrap;
+}
 .rp-cut[data-strip] .rp-cut__window {
   margin: 0;
   white-space: nowrap;
@@ -1294,6 +1299,14 @@ html[data-mudavym-ground='charcoal'] .rp-tip {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.rp-cut[data-strip] .rp-empty-strip,
+.rp-cut[data-strip] .rp-quiet {
+  flex: 0 0 auto;
+}
+/* A strip is its sentence: the figure rows would only squeeze it to nothing in 72 px (r102). */
+.rp-cut[data-strip] .rp-cut__body > :not(.rp-empty-strip):not(.rp-quiet) {
+  display: none;
 }
 .rp-cut[data-strip] .rp-empty-strip + .rp-quiet {
   -webkit-line-clamp: 1;

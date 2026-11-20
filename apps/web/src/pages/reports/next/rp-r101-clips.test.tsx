@@ -30,8 +30,17 @@ import { controlRows } from './rp-fit';
 import { ANALYSIS_IDS } from './rp-sheet';
 import type { ArrangeApi } from './rp-arrange';
 
+let widthSpy: { mockRestore: () => void } | null = null;
+const setWidth = () => {
+  Object.defineProperty(window, 'innerWidth', { value: 375, configurable: true });
+  widthSpy = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(343);
+};
 const css = (f: string) => readFileSync(join(__dirname, f), 'utf8');
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  widthSpy?.mockRestore();
+  widthSpy = null;
+});
 
 describe('controlRows', () => {
   it('[REVERT-FAILS] counts the 48 px rows that hold the controls, rounding up', () => {
@@ -107,6 +116,26 @@ describe('a card reports the height of its arrange controls', () => {
 });
 
 describe('the stylesheets', () => {
+  it('[REVERT-FAILS] only text cards (reading, goals, writing) grow; arranging adds the controls rows to a held chart', () => {
+    setWidth();
+    const cs = [
+      { id: 'till' as const, slot: { x: 0, y: 0, w: 4, h: 8 }, extraRows: 3, body: <p>t</p> },
+      { id: 'writing' as const, slot: { x: 0, y: 8, w: 4, h: 3 }, body: <p>w</p> },
+    ];
+    const { container } = render(<Sheet cuttings={cs} arranging={false} onMove={() => {}} />);
+    const [till, writing] = Array.from(container.querySelectorAll<HTMLElement>('.rp-stack__item'));
+    expect([till.style.height, till.style.minHeight]).toEqual(['370px', '']);
+    expect([writing.style.height, writing.style.minHeight]).toEqual(['', '130px']);
+    cleanup();
+    const a = render(<Sheet cuttings={cs} arranging onMove={() => {}} />);
+    expect(a.container.querySelector<HTMLElement>('.rp-stack__item')!.style.height).toBe('566px');
+  });
+  it('[REVERT-FAILS] a strip keeps its sentence: it never shrinks, the figure rows hide, the title never shrinks', () => {
+    const t = css('reports-next.css');
+    expect(t).toMatch(/\.rp-cut\[data-strip\] \.rp-empty-strip,\s*\.rp-cut\[data-strip\] \.rp-quiet \{\s*flex: 0 0 auto;/);
+    expect(t).toMatch(/\.rp-cut\[data-strip\] \.rp-cut__body > :not\(\.rp-empty-strip\):not\(\.rp-quiet\) \{\s*display: none;/);
+    expect(t).toMatch(/\.rp-cut\[data-strip\] \.rp-cut__title \{\s*flex: none;/);
+  });
   it('[REVERT-FAILS] the phone stack card fills a slot that is only a floor, and grows past it', () => {
     const t = css('reports-next.css');
     expect(t).toMatch(/\.rp-stack__item \{[^}]*display: flex;[^}]*flex-direction: column;/);

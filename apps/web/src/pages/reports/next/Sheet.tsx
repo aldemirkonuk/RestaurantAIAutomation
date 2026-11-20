@@ -52,6 +52,7 @@ import {
   SHEET_BREAKPOINT_COLS,
   SHEET_MARGIN,
   SHEET_ROW_HEIGHT,
+  TEXT_IDS,
   isStackedWidth,
   slotHeightPx,
   type AnalysisId,
@@ -205,11 +206,16 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
       {stacked && (
         <div className="rp-stack">
           {/* List order IS the narrow reading order (`projectCuttings`). */}
-          {cuttings.map((c) => (
+          {shown.map((c) => (
             <div
               key={c.id}
               className="rp-grid-item rp-stack__item"
-              style={{ minHeight: slotHeightPx(c.slot.h) }}
+              data-grows={TEXT_IDS.has(c.id) || undefined}
+              style={
+                TEXT_IDS.has(c.id)
+                  ? { minHeight: slotHeightPx(c.slot.h) }
+                  : { height: slotHeightPx(c.slot.h) }
+              }
             >
               {c.body}
             </div>
