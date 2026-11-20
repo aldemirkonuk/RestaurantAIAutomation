@@ -6,10 +6,11 @@
  * stubbed; the sheets and the ceremony stub are real mounts.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { InvRow } from './useInventoryNextData';
+import { cellMoney, EM, toRow, type InvRow } from './useInventoryNextData';
+import { shortDate } from '../../cellar/next/cellar-format';
 import type { Provider } from '../../../services/api/providers';
 
 // Per-test overrides for the stubbed reads (INV-W8 / INV-W9).
@@ -79,7 +80,7 @@ vi.mock('../../../hooks/queries/useProviderQueries', async (orig) => ({
   useRecommendedProviders: () => ({ data: undefined, isError: false }),
 }));
 
-import RowDropdown, { type RowDropdownProps } from './RowDropdown';
+import RowDropdown, { bottleCost, COST_IS_A_MANAGERS, MARGIN_TAX_NOTE, type RowDropdownProps } from './RowDropdown';
 
 function row(over: Partial<InvRow> = {}): InvRow {
   return {
@@ -102,6 +103,10 @@ function row(over: Partial<InvRow> = {}): InvRow {
     runway: 3,
     daysSinceSale: 1,
     deadStock: false,
+    usageSource: null,
+    usageSince: null,
+    usageUntil: null,
+    usageQty: null,
     bottle: 92,
     glass: 18,
     pourMl: 150,
@@ -289,6 +294,38 @@ describe('RowDropdown head facts (INV-W13, W16, W17)', () => {
     const drop = screen.getByTestId('row-dropdown');
     expect(drop.textContent).toContain('About 0.03 a day (1 sold in the last 30 days); at that pace it lasts 330 days.');
     expect(drop.textContent).not.toContain('0.0 a day');
+  });
+
+  it('a good measured by its counts says its use a day, the counts it comes from, and its runway', () => {
+    renderDrop({
+      row: row({
+        velocity: 290,
+        runway: 28,
+        usageSource: 'counts',
+        usageSince: '2026-10-22T09:00:00Z',
+        usageUntil: '2026-11-11T09:00:00Z',
+        usageQty: 5800,
+      }),
+      uom: 'g',
+      kind: 'food',
+    });
+    const t = screen.getByTestId('row-dropdown').textContent ?? '';
+    expect(t).toContain('About 290 g a day: 5.8 kg used between the counts of 22 Oct 2026 and 11 Nov 2026; at that pace, counting the use since the last count, it lasts 28 days.');
+    expect(t).not.toContain('sold in the last 30 days');
+  });
+
+  it('a food not yet counted twice says how its use will be measured', () => {
+    renderDrop({ row: row({ velocity: 0, runway: null }), uom: 'g', kind: 'food' });
+    expect(screen.getByTestId('row-dropdown').textContent).toContain('count it twice, at least 3 days apart');
+  });
+
+  it('a good carried 10 days says what it sold in those 10 days, less voids', () => {
+    renderDrop({
+      row: row({ velocity: 1, runway: 3, usageSource: 'sales', usageSince: '2026-11-02T09:00:00Z', usageUntil: '2026-11-12T09:00:00Z', usageQty: 10 }),
+    });
+    expect(screen.getByTestId('row-dropdown').textContent).toContain(
+      'About 1.0 a day (10 bottles sold in the last 10 days, less voids); at that pace it lasts 3 days.',
+    );
   });
 
   it('says what is left in the open bottle', () => {
@@ -491,10 +528,29 @@ describe('Ported acts in the More menu: Mark inactive and Remove from inventory'
     return screen.findByRole('menu');
   }
 
-  it('both acts are reachable from More, for staff as well as managers (legacy gates neither)', async () => {
-    const m = await menu({ canManage: false });
+  it('a food or a good weighed in grams is never offered "Record a pour"; a wine still is', async () => {
+    const food = await menu({ uom: 'g', kind: 'food' });
+    expect(within(food).queryByRole('menuitem', { name: 'Record a pour' })).toBeNull();
+    cleanup();
+    const wine = await menu();
+    expect(within(wine).getByRole('menuitem', { name: 'Record a pour' })).toBeTruthy();
+  });
+
+  // Inventory r28, gap 2: legacy gated neither, and so Remove (which counts a
+  // good to zero and soft-deletes it) let staff do what Write off refuses them.
+  // Both are now an owner's or a manager's, here and at the gateway.
+  it('both acts are reachable from More for a manager, and neither for staff, who are told why', async () => {
+    const m = await menu({ canManage: true });
     expect(within(m).getByRole('menuitem', { name: 'Mark inactive' })).toBeTruthy();
     expect(within(m).getByRole('menuitem', { name: 'Remove from inventory' })).toBeTruthy();
+    expect(within(m).queryByTestId('remove-is-a-managers')).toBeNull();
+    cleanup();
+    const s = await menu({ canManage: false, row: row({ active: true, stock: 0, shadow: 0, openMl: 0 }) });
+    expect(within(s).queryByRole('menuitem', { name: 'Mark inactive' })).toBeNull();
+    expect(within(s).queryByRole('menuitem', { name: 'Remove from inventory' })).toBeNull();
+    expect(within(s).getByTestId('remove-is-a-managers').textContent).toBe(
+      'Removing a good or marking it inactive is for owners and managers.',
+    );
   });
 
   it('Mark inactive sends the legacy PATCH body to updateInventoryItem for this row and house', async () => {
@@ -546,6 +602,29 @@ describe('Ported acts in the More menu: Mark inactive and Remove from inventory'
       fireEvent.click(confirm);
     });
     expect(inv.reconcile).toHaveBeenCalledWith('i1', expect.objectContaining({ wineId: 'w1', actualCount: 0 }));
+    expect(inv.del).toHaveBeenCalledWith('i1');
+  });
+
+  it('a good with no library title is removed too: zeroed with no wineId, said in its unit, then soft-deleted', async () => {
+    const m = await menu({
+      uom: 'g',
+      kind: 'food',
+      row: row({ wineId: null, name: 'Flour 00', kind: 'food', stock: 2250, shadow: 0, openMl: 0 }),
+    });
+    const item = within(m).getByRole('menuitem', { name: 'Remove from inventory' }) as HTMLButtonElement;
+    expect(item.disabled).toBe(false);
+    expect(screen.queryByTestId('remove-blocked')).toBeNull();
+    fireEvent.click(item);
+    const confirm = await screen.findByRole('button', { name: 'Remove item' });
+    expect(screen.getByText(/2\.25 kg live \/ 0 g shadow/)).toBeTruthy();
+    expect(screen.queryByText(/Wine Library/)).toBeNull();
+    await act(async () => {
+      fireEvent.click(confirm);
+    });
+    expect(inv.reconcile).toHaveBeenCalledTimes(1);
+    const body = inv.reconcile.mock.calls[0][1] as Record<string, unknown>;
+    expect(body).toEqual(expect.objectContaining({ actualCount: 0 }));
+    expect('wineId' in body).toBe(false);
     expect(inv.del).toHaveBeenCalledWith('i1');
   });
 
@@ -602,6 +681,132 @@ describe('Ported acts in the More menu: Mark inactive and Remove from inventory'
     expect(arg.rows).toHaveLength(1);
     expect(arg.rows[0].id).toBe('i1');
     expect(arg.columns.map((c: { header: string }) => c.header)).toContain('Value at cost');
+  });
+
+  it('Export this row heads the name column Good for a food or supply, Title for a drink', async () => {
+    tableExport.exportTable.mockClear();
+    const food = await menu({ uom: 'g', kind: 'food', row: row({ wineId: null, name: 'Flour 00', kind: 'food', stock: 2250, shadow: 0, openMl: 0 }) });
+    fireEvent.click(within(food).getByRole('menuitem', { name: 'Export this row' }));
+    expect(tableExport.exportTable.mock.calls[0][0].columns[0].header).toBe('Good');
+    const rowCols = tableExport.exportTable.mock.calls[0][0].columns.map((c: { header: string }) => c.header);
+    expect(rowCols).not.toContain('Producer');
+    expect(rowCols).not.toContain('Your bottle price');
+  });
+
+  it('Export this row still heads the name column Title for a drink', async () => {
+    tableExport.exportTable.mockClear();
+    const m = await menu();
+    fireEvent.click(within(m).getByRole('menuitem', { name: 'Export this row' }));
+    expect(tableExport.exportTable.mock.calls[0][0].columns[0].header).toBe('Title');
+  });
+});
+
+describe('the cost column says per what, and to whom (inventory r28 gaps 9, 10)', () => {
+  const eur = { state: 'recorded', code: 'EUR' } as const;
+  async function menu(over: Partial<RowDropdownProps> = {}) {
+    renderDrop(over);
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    return screen.findByRole('menu');
+  }
+  beforeEach(() => {
+    reads.detail = {
+      purchases: [
+        { id: 'l2', at: '2026-11-10T10:00:00Z', qty: 700, unitCost: 0.03, orderId: null },
+        { id: 'l1', at: '2026-10-10T10:00:00Z', qty: 700, unitCost: 0.025, orderId: null },
+      ],
+    };
+  });
+
+  it('staff read that cost is an owner’s and a manager’s, never "none on the ledger", and keep the selling price', () => {
+    renderDrop({ canManage: false });
+    const drop = screen.getByTestId('row-dropdown');
+    expect(screen.getByTestId('cost-is-a-managers')).toHaveTextContent(COST_IS_A_MANAGERS);
+    expect(drop.textContent).not.toContain('none on the ledger');
+    for (const k of ['Weighted average cost', 'Last bought', 'Before that', 'Margin on your bottle price', 'Auction lots'])
+      expect(within(drop).queryByText(k)).toBeNull();
+    expect(within(drop).getByText('Your price')).toBeTruthy();
+  });
+
+  it('staff are told about cost for a food too, with no selling price', () => {
+    renderDrop({ canManage: false, kind: 'food', uom: 'g', row: row({ kind: 'food', bottle: null, glass: null }) });
+    expect(screen.getByTestId('cost-is-a-managers')).toBeTruthy();
+    expect(within(screen.getByTestId('row-dropdown')).queryByText('Your price')).toBeNull();
+  });
+
+  it('a spirit kept in ml reads its cost a litre and its margin on what one bottle cost', () => {
+    // 0.03 a ml in a 700 ml bottle: 21 a bottle; sold at 60: a margin of 65 in a hundred.
+    renderDrop({ row: row({ kind: 'spirit', bottleSizeMl: 700, bottle: 60, wac: 0.03 }), uom: 'ml', kind: 'spirit' });
+    const text = screen.getByTestId('row-dropdown').textContent ?? '';
+    expect(text).toContain(`Weighted average cost${cellMoney(30, eur)} a litre`);
+    expect(text).toContain('Margin on your bottle price65%');
+    expect(screen.getByTestId('margin-tax-note')).toHaveTextContent(MARGIN_TAX_NOTE);
+  });
+
+  it('a spirit with no bottle size gives no margin and says why, rather than comparing a bottle with a ml', () => {
+    renderDrop({ row: row({ kind: 'spirit', bottleSizeMl: null, bottle: 60, wac: 0.03 }), uom: 'ml', kind: 'spirit' });
+    const text = screen.getByTestId('row-dropdown').textContent ?? '';
+    expect(text).toContain(`Margin on your bottle price${EM} the bottle size is not recorded`);
+    expect(text).not.toContain('100%');
+  });
+
+  it('a spirit whose size only the gateway filled in (750) still gives no margin', () => {
+    // The live row: bottleSizeMl 750 is the gateway's fallback; nothing was recorded.
+    renderDrop({ row: row({ kind: 'spirit', bottleSizeMl: 750, bottleSizeRecordedMl: null, bottle: 60, wac: 0.03 }), uom: 'ml', kind: 'spirit' });
+    const text = screen.getByTestId('row-dropdown').textContent ?? '';
+    expect(text).toContain(`Margin on your bottle price${EM} the bottle size is not recorded`);
+    expect(text).not.toContain('63%');
+  });
+
+  it('a recorded size wins over the field the gateway fills in', () => {
+    renderDrop({ row: row({ kind: 'spirit', bottleSizeMl: 750, bottleSizeRecordedMl: 700, bottle: 60, wac: 0.03 }), uom: 'ml', kind: 'spirit' });
+    expect(screen.getByTestId('row-dropdown').textContent ?? '').toContain('Margin on your bottle price65%');
+  });
+
+  it('toRow keeps the size the house recorded apart from the gateway fallback', () => {
+    const base = { id: 'x', wineName: 'Vodka', uom: 'ml' } as Record<string, unknown>;
+    expect(toRow({ ...base, bottle_size_ml: null, bottleSizeMl: 750 } as never).bottleSizeRecordedMl).toBeNull();
+    expect(toRow({ ...base, bottle_size_ml: null, bottleSizeMl: 750 } as never).bottleSizeMl).toBe(750);
+    expect(toRow({ ...base, bottle_size_ml: 700, bottleSizeMl: 700 } as never).bottleSizeRecordedMl).toBe(700);
+    // A wine the house left unsized takes the library's size, as before.
+    expect(toRow({ ...base, bottle_size_ml: null, bottleSizeMl: 750 } as never, { bottleSizeMl: 1500 } as never).bottleSizeRecordedMl).toBe(1500);
+    // A caller that sends only the camel field keeps reading it.
+    expect(toRow({ ...base, bottleSizeMl: 500 } as never).bottleSizeRecordedMl).toBe(500);
+  });
+
+  it('a wine kept in bottles keeps its cost a bottle', () => {
+    // 40 a bottle sold at 92: 57.
+    renderDrop({ row: row({ bottle: 92, wac: 40 }) });
+    const text = screen.getByTestId('row-dropdown').textContent ?? '';
+    expect(text).toContain(`Weighted average cost${cellMoney(40, eur)}`);
+    expect(text).not.toContain('a litre');
+    expect(text).toContain('Margin on your bottle price57%');
+  });
+
+  it('bottleCost converts only what it can', () => {
+    expect(bottleCost(40, null, null)).toBe(40);
+    expect(bottleCost(40, 'bottle', 750)).toBe(40);
+    expect(bottleCost(0.03, 'ml', 700)).toBeCloseTo(21);
+    expect(bottleCost(30, 'l', 700)).toBeCloseTo(21);
+    expect(bottleCost(0.03, 'ml', null)).toBeNull();
+    expect(bottleCost(0.03, 'ml', 0)).toBeNull();
+    expect(bottleCost(2, 'g', 700)).toBeNull();
+  });
+
+  it('Export this row hands staff no cost columns, and a manager all of them', async () => {
+    tableExport.exportTable.mockClear();
+    const staff = await menu({ canManage: false });
+    fireEvent.click(within(staff).getByRole('menuitem', { name: 'Export this row' }));
+    const headers = tableExport.exportTable.mock.calls[0][0].columns.map((c: { header: string }) => c.header);
+    expect(headers).not.toContain('WAC');
+    expect(headers).not.toContain('Value at cost');
+    expect(headers).toContain('Live');
+    cleanup();
+    tableExport.exportTable.mockClear();
+    const manager = await menu({ canManage: true });
+    fireEvent.click(within(manager).getByRole('menuitem', { name: 'Export this row' }));
+    const all = tableExport.exportTable.mock.calls[0][0].columns.map((c: { header: string }) => c.header);
+    expect(all).toContain('WAC');
+    expect(all).toContain('Value at cost');
   });
 });
 
@@ -666,6 +871,27 @@ describe('Name this wine in the opened row (ADR 0192, ported from RowExpansion.t
   });
 });
 
+describe('the evidence-only copy the drawer mounts (actions={false})', () => {
+  it('is named apart from the opened row, draws no acts, and asks the holder for the count sheet', () => {
+    const onSheet = vi.fn();
+    renderDrop({ actions: false, sections: ['where'], onSheet, sheet: null });
+    expect(screen.queryByTestId('row-dropdown')).toBeNull();
+    const ev = screen.getByTestId('row-evidence');
+    expect(ev.getAttribute('aria-label')).toBe('Gravner Ribolla: the evidence');
+    expect(screen.queryByRole('button', { name: 'More' })).toBeNull();
+    fireEvent.click(within(ev).getByRole('button', { name: 'Record a count' }));
+    expect(onSheet).toHaveBeenCalledWith('count');
+  });
+
+  it('draws no sheet even when the shared state names one; the acts copy draws it', () => {
+    renderDrop({ actions: false, sections: ['where'], onSheet: vi.fn(), sheet: 'count' });
+    expect(screen.queryByRole('textbox', { name: 'Bottles counted' })).toBeNull();
+    cleanup();
+    renderDrop({ sections: [], onSheet: vi.fn(), sheet: 'count' });
+    expect(screen.getByRole('textbox', { name: 'Bottles counted' })).toBeTruthy();
+  });
+});
+
 describe('the rest of the legacy expansion (round 4 census)', () => {
   beforeEach(() => {
     inv.reconcile.mockReset().mockResolvedValue({});
@@ -687,6 +913,23 @@ describe('the rest of the legacy expansion (round 4 census)', () => {
     expect(inv.reconcile).toHaveBeenCalledWith('i1', { wineId: 'w1', actualCount: 5, notes: 'Shadow reconciled into live' });
     expect(toasts.success.mock.calls[0][0]).toBe('Gravner Ribolla: live set to 5, the shadow bottles counted in.');
     expect(toasts.success.mock.calls[0][0]).not.toMatch(/booked|moved/);
+  });
+
+  it('a good with no library title reconciles its shadow too, and sends no wineId', async () => {
+    const m = await openMore({ row: row({ wineId: null, stock: 3, shadow: 2 }) });
+    await act(async () => {
+      fireEvent.click(within(m).getByRole('menuitem', { name: 'Reconcile 2 into live' }));
+    });
+    expect(inv.reconcile).toHaveBeenCalledWith('i1', { actualCount: 5, notes: 'Shadow reconciled into live' });
+  });
+
+  it('a good kept in grams reconciles in kg, never "bottles"', async () => {
+    const m = await openMore({ row: row({ stock: 3_000, shadow: 2_500 }), uom: 'g', kind: 'food' });
+    await act(async () => {
+      fireEvent.click(within(m).getByRole('menuitem', { name: 'Reconcile 2.5 kg into live' }));
+    });
+    expect(inv.reconcile).toHaveBeenCalledWith('i1', { wineId: 'w1', actualCount: 5_500, notes: 'Shadow reconciled into live' });
+    expect(toasts.success.mock.calls[0][0]).toBe('Gravner Ribolla: live set to 5.5 kg, the shadow counted in.');
   });
 
   it('holds Reconcile while live stock is unread', async () => {
@@ -835,5 +1078,155 @@ describe('the format reads in the house unit (RowExpansion.tsx:69,172)', () => {
     useRestaurantSettingsStore.setState({ measurementUnit: 'ml' });
     renderDrop();
     expect(screen.getByText('750ml')).toBeTruthy();
+  });
+});
+
+describe('a food or supply is costed in its own unit, with no price, margin, market or lots (#1221 follow-up)', () => {
+  const food = row({ name: 'Bread Flour', kind: 'food', bottleSizeMl: null, bottle: null, glass: null, wac: 0.009, openMl: 0 });
+  const eur = { state: 'recorded', code: 'EUR' } as const;
+
+  beforeEach(() => {
+    reads.detail = {
+      purchases: [
+        { id: 'l2', at: '2026-11-10T10:00:00Z', qty: 5000, unitCost: 0.009, orderId: null },
+        { id: 'l1', at: '2026-10-10T10:00:00Z', qty: 5000, unitCost: 0.0075, orderId: null },
+      ],
+    };
+  });
+
+  it('a food kept in g reads its costs a kg and says it is costed, not priced', () => {
+    renderDrop({ row: food, kind: 'food', uom: 'g' });
+    const drop = screen.getByTestId('row-dropdown');
+    const kg = (n: number) => `${cellMoney(n, eur)} a kg`;
+    expect(drop.textContent).toContain(`Weighted average cost${kg(9)}`);
+    expect(drop.textContent).toContain(`${kg(7.5)} → ${kg(9)} (+20%)`);
+    for (const k of ['Your price', 'Margin on your bottle price', 'Market', 'Auction lots']) expect(within(drop).queryByText(k)).toBeNull();
+    expect(screen.getByTestId('good-not-priced')).toHaveTextContent('A food is costed, not priced');
+  });
+
+  it('a supply kept each reads each; one with no recorded unit reads a dash, never a guessed bottle', () => {
+    renderDrop({ row: food, kind: 'supply', uom: 'each' });
+    expect(screen.getByTestId('row-dropdown').textContent).toContain(`Weighted average cost${cellMoney(0.009, eur)} each`);
+    expect(screen.getByTestId('good-not-priced')).toHaveTextContent('A supply is costed, not priced.');
+    cleanup();
+    renderDrop({ row: food, kind: 'supply', uom: null });
+    expect(screen.getByTestId('row-dropdown').textContent).toContain(`Weighted average cost${EM}`);
+  });
+
+  it('a lira house writes the cost change and the margin the way it writes its money (r23 walk)', () => {
+    const tl = { state: 'recorded', code: 'TRY' } as const;
+    renderDrop({ row: food, kind: 'food', uom: 'g', currency: tl });
+    expect(screen.getByTestId('row-dropdown').textContent).toContain('(+%20)');
+    cleanup();
+    // 92 a bottle on a cost of 40: a margin of 57 in a hundred.
+    renderDrop({ currency: tl });
+    expect(screen.getByTestId('row-dropdown').textContent).toContain('Margin on your bottle price%57');
+    cleanup();
+    renderDrop({ currency: { state: 'recorded', code: 'GBP' } });
+    expect(screen.getByTestId('row-dropdown').textContent).toContain('Margin on your bottle price57%');
+  });
+
+  it('a drink is drawn as before', () => {
+    renderDrop();
+    const drop = screen.getByTestId('row-dropdown');
+    for (const k of ['Your price', 'Margin on your bottle price', 'Market', 'Auction lots']) expect(within(drop).getByText(k)).toBeTruthy();
+    expect(screen.queryByTestId('good-not-priced')).toBeNull();
+  });
+});
+
+describe('Last bought reads the settled price, not only the ledger (r35, gap 8 slice 2)', () => {
+  const eur = { state: 'recorded', code: 'EUR' } as const;
+  const food = row({ name: 'Bread Flour', kind: 'food', bottleSizeMl: null, bottle: null, glass: null, wac: 0.009, openMl: 0 });
+  const kg = (n: number) => `${cellMoney(n, eur)} a kg`;
+  const kv = (k: string) => within(screen.getByTestId('row-dropdown')).getByText(k).parentElement!.textContent ?? '';
+
+  beforeEach(() => {
+    // A door delivery: booked with no cost, never restated on the ledger.
+    reads.detail = { purchases: [{ id: 'l1', at: '2026-11-10T10:00:00Z', qty: 5000, unitCost: null, orderId: 'o1' }] };
+  });
+
+  it('a delivery whose price was settled reads it, newest first, with the change between the last two', () => {
+    renderDrop({
+      row: food,
+      kind: 'food',
+      uom: 'g',
+      settled: [
+        { receivedAt: '2026-09-01T10:00:00Z', unitCost: 0.006 },
+        { receivedAt: '2026-10-01T10:00:00Z', unitCost: 0.0075 },
+        { receivedAt: '2026-11-01T10:00:00Z', unitCost: 0.009 },
+      ],
+    });
+    expect(kv('Last bought')).toContain(`${kg(9)} · settled ${shortDate('2026-11-01T10:00:00Z')}`);
+    expect(kv('Before that')).toContain(`${kg(7.5)} · settled ${shortDate('2026-10-01T10:00:00Z')}`);
+    expect(kv('Was → now')).toContain(`${kg(7.5)} → ${kg(9)} (+20%)`);
+    expect(screen.getByTestId('row-dropdown').textContent).not.toContain('none on the ledger');
+  });
+
+  it('no settled price falls back to the ledger, which here has no priced line', () => {
+    renderDrop({ row: food, kind: 'food', uom: 'g', settled: [] });
+    expect(kv('Last bought')).toContain('none on the ledger');
+    cleanup();
+    reads.detail = { purchases: [{ id: 'l1', at: '2026-11-10T10:00:00Z', qty: 5000, unitCost: 0.008, orderId: null }] };
+    renderDrop({ row: food, kind: 'food', uom: 'g', settled: null });
+    expect(kv('Last bought')).toContain(`${kg(8)} · ${shortDate('2026-11-10T10:00:00Z')}`);
+    expect(kv('Last bought')).not.toContain('settled');
+  });
+
+  it('a settled price is shown even while the ledger read failed or is still reading', () => {
+    reads.detail = { purchases: null, purchasesError: 'timeout' };
+    renderDrop({ row: food, kind: 'food', uom: 'g', settled: [{ receivedAt: '2026-11-01T10:00:00Z', unitCost: 0.009 }] });
+    expect(kv('Last bought')).toContain(kg(9));
+    expect(kv('Last bought')).not.toContain('could not be read');
+    expect(kv('Before that')).toContain('none settled before it');
+    cleanup();
+    reads.detail = { purchases: null, purchasesError: null };
+    renderDrop({ row: food, kind: 'food', uom: 'g', settled: [{ receivedAt: '2026-11-01T10:00:00Z', unitCost: 0.009 }] });
+    expect(kv('Last bought')).toContain(kg(9));
+  });
+
+  // r36 inventory audit, gap 9: while the figures read, or after they failed,
+  // whether a price was settled is not known. The ledger's door lines carry no
+  // cost, so falling back to it said "none on the ledger" under a Cost card
+  // that says the costs could not be read.
+  it('while the figures read, Last bought reads a dash, never the ledger', () => {
+    renderDrop({ row: food, kind: 'food', uom: 'g', settled: 'reading' });
+    expect(kv('Last bought')).toContain('—');
+    expect(screen.getByTestId('row-dropdown').textContent).not.toContain('none on the ledger');
+  });
+
+  it('after the figures failed, Last bought says it could not be read, even with a priced ledger line', () => {
+    renderDrop({ row: food, kind: 'food', uom: 'g', settled: 'failed' });
+    expect(kv('Last bought')).toContain('could not be read');
+    expect(screen.getByTestId('row-dropdown').textContent).not.toContain('none on the ledger');
+    cleanup();
+    reads.detail = {
+      purchases: [
+        { id: 'l1', at: '2026-11-10T10:00:00Z', qty: 5000, unitCost: 0.008, orderId: null },
+        { id: 'l0', at: '2026-10-10T10:00:00Z', qty: 5000, unitCost: 0.006, orderId: null },
+      ],
+    };
+    renderDrop({ row: food, kind: 'food', uom: 'g', settled: 'failed' });
+    expect(kv('Last bought')).toContain('could not be read');
+    expect(kv('Last bought')).not.toContain(kg(8));
+    // no change is worked out from a ledger the figures may have replaced
+    expect(kv('Was → now')).not.toContain('%');
+  });
+});
+
+// A kitchen good is a good, not a title: its drawer says so in every line it
+// says about "this" row. A wine keeps "title".
+describe('a food or supply says good, not title', () => {
+  it('names the acts and the unread pace as a good', () => {
+    renderDrop({ kind: 'food', uom: 'g', row: row({ kind: 'food', name: null, analyticsReadable: false }) });
+    expect(screen.getByRole('group', { name: 'What to do with this good' })).toBeTruthy();
+    expect(screen.getByTestId('row-dropdown').textContent).toContain('This is a read error, not a good with nothing sold.');
+    expect(screen.getByLabelText('This good, opened')).toBeTruthy();
+    expect(screen.getByTestId('row-dropdown').textContent).not.toMatch(/\btitle\b/);
+  });
+
+  it('keeps title for a wine', () => {
+    renderDrop({ row: row({ analyticsReadable: false }) });
+    expect(screen.getByRole('group', { name: 'What to do with this title' })).toBeTruthy();
+    expect(screen.getByTestId('row-dropdown').textContent).toContain('not a title with nothing sold.');
   });
 });

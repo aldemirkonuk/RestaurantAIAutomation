@@ -30,7 +30,8 @@ export interface InventoryItem {
   restaurantId: string;
   wineId: string;
   providerId?: string;
-  stockLive: number;
+  /** null = the gateway did not say. Never read as 0: that is "none on hand". */
+  stockLive: number | null;
   physicalStock?: number;
   shadowStock?: number;
   thresholdMin: number;
@@ -73,6 +74,17 @@ export interface InventoryItem {
   abcClass?: 'A' | 'B' | 'C';
   deadStock?: boolean;
   daysSinceSale?: number;
+  /**
+   * Where velocityPerDay comes from (inventory_analytics, migration
+   * days_of_stock_from_real_use): 'sales' when the till drew it in 90 days,
+   * 'counts' when two counts measured it (a food or supply the till never
+   * draws), absent when neither. usageQty was used between usageSince and
+   * usageUntil, in the good's own unit.
+   */
+  usageSource?: 'sales' | 'counts';
+  usageSince?: string;
+  usageUntil?: string;
+  usageQty?: number;
   /**
    * False means the `inventory_analytics` join itself could not be read for
    * this batch — a failed read, told apart from a row with genuinely no

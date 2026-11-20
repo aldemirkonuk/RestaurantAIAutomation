@@ -8,13 +8,11 @@
  * — everywhere else the absence of one is the honest answer rather than an
  * oversight.
  *
- * THE RECIPE HALF, WHICH HAS NEVER EXISTED. `cocktail_ingredients` was created
- * empty and stayed empty because the extraction pass over the scanned cocktail
- * sections never ran (20260817090000_cocktails.sql:20-25). Every version of
- * this page has repeated that as though it were a permanent property of the
- * product: *"this register can list names and never a recipe."* It was a fact
- * about the EXTRACTOR. It was never a reason a bartender could not type one.
- * The recipe editor below is the first writer that table has ever had.
+ * THE RECIPE. A drink's recipe is its own sheet (`recipe/RecipeSheet.tsx`,
+ * ADR 0360): each ingredient linked to something on the house's shelf, a cost
+ * a serve at today's prices, and every save a new version. It replaced a text
+ * box whose lines a regex split into words that linked to nothing and cost
+ * nothing.
  *
  * TWO BOOKS, NOT ONE. The house's cocktail list is `public.cocktails`. What the
  * house's OTHER books say about cocktails — menu lines, till lines — is the
@@ -27,7 +25,8 @@
  * a two-step confirm, no wax (MOTIONS.md, "Deliberate non-motions").
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { AlertTriangle, Check, Pencil, Plus, Trash2, X } from 'lucide-react';
 import {
   BOOK_LABEL,
@@ -38,8 +37,9 @@ import {
   shortDate,
   type HouseBookId,
 } from './cellar-format';
+import RecipeSheet from './recipe/RecipeSheet';
+import { SHEET_HOLD_ROOM } from './recipe/holdRoom';
 import {
-  useCocktailRecipe,
   useCocktailRegister,
   useCocktailWrites,
   type CocktailInput,
@@ -77,139 +77,6 @@ function Field({
   );
 }
 
-/* ── the recipe: the first writer cocktail_ingredients has ever had ──────── */
-
-function Recipe({ cocktailId }: { cocktailId: string }) {
-  const recipe = useCocktailRecipe(cocktailId);
-  const { setRecipe } = useCocktailWrites();
-  const [editing, setEditing] = useState(false);
-  const [text, setText] = useState('');
-  const [said, setSaid] = useState<string | null>(null);
-
-  const start = () => {
-    setText(
-      (recipe.data?.rows ?? [])
-        .map((l) =>
-          [l.quantity ?? '', l.unit ?? '', l.free_text ?? '']
-            .filter((v) => String(v).trim() !== '')
-            .join(' '),
-        )
-        .join('\n'),
-    );
-    setEditing(true);
-    setSaid(null);
-  };
-
-  const save = async () => {
-    // One line of free text per row, with a leading quantity and unit when the
-    // bartender wrote one. Nothing is parsed beyond that: a recipe line is a
-    // sentence a human wrote, and guessing structure out of it would put words
-    // in their mouth.
-    const lines = text
-      .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .map((l, i) => {
-        const m = /^(\d+(?:[.,]\d+)?)\s*([a-zA-Z]{1,10})?\s+(.*)$/.exec(l);
-        return m
-          ? {
-              quantity: Number(m[1].replace(',', '.')),
-              unit: m[2] || undefined,
-              freeText: m[3],
-              sortOrder: i,
-            }
-          : { freeText: l, sortOrder: i };
-      });
-    try {
-      const out = await setRecipe.mutateAsync({ id: cocktailId, lines });
-      setEditing(false);
-      setSaid(
-        `${out.lines} ${out.lines === 1 ? 'line' : 'lines'} recorded. This is the first recipe data this house has ever had — cocktail_ingredients was created empty in August and no extraction pass ever filled it.`,
-      );
-    } catch (e) {
-      setSaid(
-        `The recipe was NOT recorded${e instanceof Error ? ` — ${e.message}` : ''}. Nothing was changed.`,
-      );
-    }
-  };
-
-  if (recipe.loading) {
-    return <p className="cl-note" role="status">Reading the recipe…</p>;
-  }
-  if (recipe.error) {
-    return (
-      <p className="cl-note" role="alert">
-        <AlertTriangle size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} />
-        The recipe could not be read ({recipe.error}). It is unread, not absent.
-      </p>
-    );
-  }
-
-  return (
-    <div style={{ marginTop: 10 }}>
-      <h4 className="cl-sec" style={{ margin: '0 0 6px' }}>Recipe</h4>
-      {editing ? (
-        <>
-          <label htmlFor={`cl-recipe-${cocktailId}`} className="cl-sr">Recipe lines</label>
-          <textarea
-            id={`cl-recipe-${cocktailId}`}
-            className="cl-field cl-focus"
-            rows={6}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder={'30 ml gin\n30 ml Campari\n30 ml sweet vermouth\norange peel'}
-            style={{ width: '100%', height: 'auto', padding: 8, lineHeight: 1.5 }}
-          />
-          <p className="cl-note" style={{ marginTop: 4 }}>
-            One ingredient per line. A leading number and unit are read as the
-            measure; everything else is kept as the bartender wrote it.
-          </p>
-          <span style={{ display: 'inline-flex', gap: 6, marginTop: 8 }}>
-            <button type="button" className="cl-btn cl-focus" onClick={save} disabled={setRecipe.isPending}>
-              <Check size={13} aria-hidden />
-              {setRecipe.isPending ? 'Recording…' : 'Record the recipe'}
-            </button>
-            <button type="button" className="cl-btn cl-focus" onClick={() => setEditing(false)}>
-              <X size={13} aria-hidden />
-              Leave it
-            </button>
-          </span>
-        </>
-      ) : (recipe.data?.rows.length ?? 0) === 0 ? (
-        <>
-          <p className="cl-said" data-testid="recipe-empty">
-            No recipe has been recorded for this cocktail. The table has been
-            writable since this pass — it was empty because the extraction pass
-            over the scanned menus never ran, not because a recipe cannot be kept.
-          </p>
-          <button type="button" className="cl-btn cl-focus" onClick={start} style={{ marginTop: 8 }}>
-            <Plus size={13} aria-hidden />
-            Write the recipe
-          </button>
-        </>
-      ) : (
-        <>
-          <ol style={{ margin: '0 0 0 18px', padding: 0, fontSize: 12.5, lineHeight: 1.7 }}>
-            {recipe.data!.rows.map((l, i) => (
-              <li key={l.id ?? i}>
-                {l.quantity !== null && l.quantity !== undefined ? (
-                  <span className="cl-num">{l.quantity}{l.unit ? ` ${l.unit}` : ''} </span>
-                ) : null}
-                {l.free_text ?? EM}
-              </li>
-            ))}
-          </ol>
-          <button type="button" className="cl-btn cl-focus" onClick={start} style={{ marginTop: 8 }}>
-            <Pencil size={13} aria-hidden />
-            Amend the recipe
-          </button>
-        </>
-      )}
-      {said ? <p className="cl-note" role="status">{said}</p> : null}
-    </div>
-  );
-}
-
 /* ── the register ───────────────────────────────────────────────────────── */
 
 export default function CocktailRegister({
@@ -224,10 +91,29 @@ export default function CocktailRegister({
   const { create, amend, retire } = useCocktailWrites();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
-  const [openId, setOpenId] = useState<string | null>(null);
+  // /cocktails?open=<id> opens that drink: the inventory drawer's "used in"
+  // lines link here, so a good leads to the drink that uses it, and the drink
+  // opens on its cards and its nutrition card.
+  const [params] = useSearchParams();
+  const openParam = params.get('open');
+  const [openId, setOpenId] = useState<string | null>(openParam);
+  // A second link followed while already on /cocktails changes only the search:
+  // the page stays mounted, so the drink it names is opened here, not at mount alone.
+  useEffect(() => {
+    if (openParam) setOpenId(openParam);
+  }, [openParam]);
+  const leafRef = useRef<HTMLDivElement | null>(null);
   const [confirmRetire, setConfirmRetire] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+
+  // Opened from a link: bring the drink into view once the list has it. A
+  // link to a drink this house's list does not hold is said, not ignored.
+  const linkedRow = openParam ? (data?.rows ?? []).find((c) => c.id === openParam) ?? null : null;
+  const linkedMissing = Boolean(openParam && data && !linkedRow);
+  useEffect(() => {
+    if (linkedRow && openId === linkedRow.id) leafRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+  }, [linkedRow, openId]);
 
   const rows = (data?.rows ?? []).filter((c) => {
     const q = query.trim().toLowerCase();
@@ -235,6 +121,7 @@ export default function CocktailRegister({
     return [c.name, c.display_name, c.menu_section, c.method, c.glass]
       .filter(Boolean).join(' ').toLowerCase().includes(q);
   });
+  const openShown = Boolean(openId && rows.some((x) => x.id === openId));
 
   const submit = async () => {
     if (!draft?.name?.trim()) return;
@@ -350,9 +237,52 @@ export default function CocktailRegister({
       ) : null}
 
       {loading ? (
-        <p className="cl-said" role="status" style={{ marginTop: 12 }}>
-          Reading this house’s cocktails…
-        </p>
+        <>
+          {/* The loaded page opens with the scope note (two lines) over the
+              table, so the read in flight holds that same room: the note's own
+              class and height, then the table's head and three empty rows
+              (the fewest a house's list has). First paint is the loaded
+              layout, so the books below it do not move when the list lands. */}
+          <p className="cl-note" role="status" style={{ minHeight: '2lh' }}>
+            Reading this house’s cocktails…
+          </p>
+          <div
+            aria-hidden="true"
+            data-testid="cocktails-reading-room"
+            style={{ marginTop: 12, overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10 }}
+          >
+            <table className="cl-table">
+              <thead>
+                <tr>
+                  <th scope="col">Cocktail</th>
+                  <th scope="col">Section</th>
+                  <th scope="col">Method</th>
+                  <th scope="col">Glass</th>
+                  <th scope="col">Garnish</th>
+                  <th scope="col" style={{ textAlign: 'right' }}>Price</th>
+                  <th scope="col" style={{ textAlign: 'right' }}>Kept</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[0, 1, 2].map((i) => (
+                  <tr key={i} style={{ cursor: 'default' }}>
+                    <td>
+                      <span className="cl-serif" style={{ display: 'block', fontWeight: 600, fontSize: 13.5 }}>
+                        &nbsp;
+                      </span>
+                    </td>
+                    <td colSpan={6} />
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {openParam ? (
+            // A link names a drink: its panel opens under the list the moment
+            // the list lands, so its room is held from the first paint too.
+            <div aria-hidden="true" style={{ marginTop: 14, minHeight: SHEET_HOLD_ROOM }} />
+          ) : null}
+        </>
       ) : error || !data ? (
         <p className="cl-said" role="alert" style={{ marginTop: 12 }} data-testid="cocktails-unread">
           <AlertTriangle size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} />
@@ -367,6 +297,12 @@ export default function CocktailRegister({
               ? 'The count of unattributed reference cocktails could not be read.'
               : `${count(data.referenceRows)} unattributed reference cocktails from the demo corpus exist and are deliberately not listed as this house’s.`}
           </p>
+
+          {linkedMissing ? (
+            <p className="cl-said" role="status" style={{ marginTop: 12 }} data-testid="cocktails-link-missing">
+              The drink that link names is not on this house’s list. It may have been taken off it.
+            </p>
+          ) : null}
 
           {rows.length === 0 ? (
             <p className="cl-said" style={{ marginTop: 12 }} data-testid="cocktails-empty">
@@ -423,10 +359,11 @@ export default function CocktailRegister({
           )}
 
           {/* the leaf: recipe + the two acts a house can take on its own row */}
-          <div className="cl-stand" data-open={openId ? 'true' : 'false'} style={{ marginTop: openId ? 14 : 0 }}>
+          {/* Only a drink the list shows opens: an id from a link or a filtered-out row leaves no empty panel. */}
+          <div className="cl-stand" data-open={openShown ? 'true' : 'false'} style={{ marginTop: openShown ? 14 : 0 }}>
             <div>
-              {openId ? (
-                <div className="cl-panel" data-testid="cocktail-leaf">
+              {openShown ? (
+                <div className="cl-panel" data-testid="cocktail-leaf" ref={leafRef}>
                   {(() => {
                     const c = rows.find((x) => x.id === openId);
                     if (!c) return null;
@@ -477,7 +414,8 @@ export default function CocktailRegister({
                             </button>
                           </span>
                         </div>
-                        <Recipe cocktailId={c.id} />
+                        {/* The sheet keys its own draft by drink (RecipeSheet's default export), so typed lines never cross drinks. */}
+                        <RecipeSheet cocktailId={c.id} holdRoom={c.id === openParam} />
                       </>
                     );
                   })()}

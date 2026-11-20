@@ -47,6 +47,7 @@ import { fmtMoney } from '../../../lib/mudavym/format';
 import { queryKeys } from '../../../lib/query-keys';
 import { pendingSpotCountCount, watchSpotCountOutbox } from '../../../lib/spotCountOutbox';
 import { num, text } from '../../cellar/next/cellar-format';
+import { DRINK_WORDS, type HouseWords } from './iv-house-words';
 import type { MapTone } from '../command/CellarMapView';
 import type { InventoryItem as LegacyItem } from '../useInventoryPage';
 import { COUNT_DUE_DAYS } from '../command/bits';
@@ -96,6 +97,19 @@ export interface InvRow {
   vintage: number | null;
   grape: string | null;
   bottleSizeMl: number | null;
+  /**
+   * The bottle size the house or the library actually recorded; null when
+   * neither did. The gateway's `bottleSizeMl` falls back to 750 for an unsized
+   * good, so a margin read from it would cost a bottle no one measured (r33
+   * walk). Absent on a row not built by toRow: read `bottleSizeMl` then.
+   */
+  bottleSizeRecordedMl?: number | null;
+  /**
+   * The good's own unit (house item `uom`): 'g', 'ml', 'each', 'bottle', 'keg'.
+   * Null = none recorded (a drink, so bottles). Absent on a row not built by
+   * toRow: the list then says the plain count.
+   */
+  uom?: string | null;
   stock: number | null;
   shadow: number | null;
   par: number | null;
@@ -107,6 +121,15 @@ export interface InvRow {
   runway: number | null;
   daysSinceSale: number | null;
   deadStock: boolean;
+  /**
+   * Where `velocity` comes from: 'sales' (the till drew it), 'counts' (two
+   * counts and what moved between them), or null (neither, or unread).
+   */
+  usageSource: 'sales' | 'counts' | null;
+  /** The window the pace covers, and what was used in it (the good's own unit). */
+  usageSince: string | null;
+  usageUntil: string | null;
+  usageQty: number | null;
   /** The analytics ABC class (inventory.service.ts:169); absent when not sent. */
   abc?: 'A' | 'B' | 'C' | null;
   bottle: number | null;
@@ -199,6 +222,31 @@ export function typeLabel(key: string): string {
 /** The Type filter's value for every wine at once, shown only when the house holds other drinks too. */
 export const ALL_WINE = 'kind:wine';
 
+/**
+ * The gateway row carries the library's type, grape, kind, producer, vintage
+ * and display name (`libraryType`, `libraryGrape`, `libraryKind`,
+ * `libraryProducer`, `libraryVintage`, `libraryDisplayName`). A value there is
+ * the answer, null included
+ * ("the library records none"); only an absent field (an older gateway) falls
+ * back to the library wine read.
+ */
+function fromRow(onRow: unknown, onWine: unknown): unknown {
+  return onRow === undefined ? onWine : onRow;
+}
+
+/** True when a row carries what the library read would add, so that read can be skipped. */
+export function carriesLibraryType(item: ApiItem): boolean {
+  const r = item as unknown as Raw;
+  return (
+    r.libraryType !== undefined &&
+    r.libraryGrape !== undefined &&
+    r.libraryKind !== undefined &&
+    r.libraryProducer !== undefined &&
+    r.libraryVintage !== undefined &&
+    r.libraryDisplayName !== undefined
+  );
+}
+
 /** One gateway row (already through `normalizeInventoryItem`) and its library wine. */
 export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
   const r = item as unknown as Raw;
@@ -213,7 +261,14 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
   const wac = num(r.wac);
   // `wineName` is the house's alias when it set one; `libraryName` is the
   // library's own name, carried beside it (inventory.service.ts:95-103).
-  const name = text(r.wineName) ?? text(w?.displayName) ?? text(w?.name);
+  // A food or supply has no library wine, so its name is the house's own
+  // (`display_name` on the inventory row), read before the library's names.
+  const name =
+    text(r.wineName) ??
+    text(r.displayName) ??
+    text(r.display_name) ??
+    text(fromRow(r.libraryDisplayName, w?.displayName)) ??
+    text(w?.name);
   const library = text(r.libraryName) ?? text(w?.name);
   const zones = Array.isArray(r.locations)
     ? (r.locations as Raw[])
@@ -226,11 +281,13 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
     wineId: text(r.wineId),
     name,
     libraryName: library && library !== name ? library : null,
-    producer: text(r.wineProducer) ?? text(w?.producer),
-    ...typeOf(w?.category, w?.beverageKind),
-    vintage: num(r.wineVintage) ?? num(w?.vintage),
-    grape: text(w?.grapeVariety),
+    producer: text(r.wineProducer) ?? text(fromRow(r.libraryProducer, w?.producer)),
+    ...typeOf(fromRow(r.libraryType, w?.category), fromRow(r.libraryKind, w?.beverageKind)),
+    vintage: num(r.wineVintage) ?? num(fromRow(r.libraryVintage, w?.vintage)),
+    grape: text(fromRow(r.libraryGrape, w?.grapeVariety)),
     bottleSizeMl: num(r.bottleSizeMl) ?? num(w?.bottleSizeMl),
+    bottleSizeRecordedMl: ('bottle_size_ml' in r ? num(r.bottle_size_ml) : num(r.bottleSizeMl)) ?? num(w?.bottleSizeMl),
+    uom: text(r.uom),
     stock,
     shadow: num(r.shadowStock),
     par,
@@ -240,6 +297,10 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
     runway,
     daysSinceSale: num(r.daysSinceSale),
     deadStock: r.deadStock === true,
+    usageSource: analyticsReadable && (r.usageSource === 'sales' || r.usageSource === 'counts') ? r.usageSource : null,
+    usageSince: analyticsReadable ? text(r.usageSince) : null,
+    usageUntil: analyticsReadable ? text(r.usageUntil) : null,
+    usageQty: analyticsReadable ? num(r.usageQty) : null,
     abc: r.abcClass === 'A' || r.abcClass === 'B' || r.abcClass === 'C' ? r.abcClass : null,
     bottle: num(r.menuPriceBottle),
     glass: num(r.menuPriceGlass),
@@ -273,6 +334,23 @@ export function severity(row: InvRow): 0 | 1 | 2 {
   return 2;
 }
 
+/** The status word, never a colour alone. */
+export function statusWord(row: InvRow): string {
+  const dry = row.runway !== null && row.runway < 1.5;
+  switch (row.standing) {
+    case 'out':
+      return 'Out';
+    case 'below':
+      return dry ? 'Below par · dry tomorrow' : 'Below par';
+    case 'unknown':
+      return 'Stock not read';
+    case 'nopar':
+      return dry ? 'Dry tomorrow' : 'No par set';
+    default:
+      return dry ? 'Dry tomorrow' : row.standing === 'at' ? 'At par' : 'Above par';
+  }
+}
+
 export const SEVERITY_GROUP = ['Out', 'Below par', 'Everything else, by runway'] as const;
 
 /**
@@ -304,12 +382,12 @@ export const SORT_LABEL: Record<SortId, string> = {
  * listed title the value sort has nothing to sort by and falls back to Needs
  * you first (sortRows below); the line says so instead of going quiet.
  */
-export function sortWords(sort: SortId, rows: InvRow[]): string {
+export function sortWords(sort: SortId, rows: InvRow[], words: HouseWords = DRINK_WORDS): string {
   if (sort === 'value' && rows.length > 0 && rows.every((r) => r.value === null)) {
-    return 'sorted Value at cost, though no title listed has a cost yet, so they stay in Needs you first order';
+    return `sorted Value at cost, though no ${words.one} listed has a cost yet, so they stay in Needs you first order`;
   }
   if (sort === 'pace' && rows.length > 0 && rows.every((r) => r.velocity === null)) {
-    return 'sorted Fastest moving, though no pace was read for any title listed, so they stay in Needs you first order';
+    return `sorted Fastest moving, though no pace was read for any ${words.one} listed, so they stay in Needs you first order`;
   }
   return `sorted ${SORT_LABEL[sort]}`;
 }
@@ -472,7 +550,11 @@ export function fmtPace(v: number): string {
   return v < 0.1 ? v.toFixed(2) : v.toFixed(1);
 }
 
-/** Bottles sold in the last 30 days, recovered from the stored pace (sold_30d / 30). */
+/**
+ * Bottles sold in the last 30 days, recovered from the stored pace (sold_30d / 30).
+ * Only a fallback for a row with no usageQty: the pace of a good carried less
+ * than 30 days is over the days it was carried, not 30.
+ */
 export function sold30(v: number): number {
   return Math.round(v * 30);
 }
@@ -508,7 +590,12 @@ export function dryTomorrow(row: InvRow): boolean {
  * The one read sentence at the top (no KPI tiles). Every number in it is a
  * count of what was read; what was not read is named, never folded into a 0.
  */
-export function readSentence(rows: InvRow[], currency: HouseCurrency, zonesReadable: boolean): string {
+export function readSentence(
+  rows: InvRow[],
+  currency: HouseCurrency,
+  zonesReadable: boolean,
+  words: HouseWords = DRINK_WORDS,
+): string {
   const n = rows.length;
   const read = rows.filter((r) => r.stock !== null);
   const bottles = read.reduce((sum, r) => sum + Math.max(0, r.stock ?? 0), 0);
@@ -516,19 +603,32 @@ export function readSentence(rows: InvRow[], currency: HouseCurrency, zonesReada
   for (const r of rows) for (const z of r.zones ?? []) if (z.locationId !== null && z.qty > 0) zoneIds.add(z.locationId);
   const parts: string[] = [];
 
-  let first =
-    read.length === 0
-      ? `${plural(n, 'title', 'titles')}; no title's stock could be read, so the bottle count is unknown`
-      : read.length < n
-        ? `${plural(n, 'title', 'titles')}, ${plural(bottles, 'bottle', 'bottles')} on the ${fmtCount(read.length)} whose stock was read (${fmtCount(n - read.length)} could not be read)`
-        : `${plural(n, 'title', 'titles')}, ${plural(bottles, 'bottle', 'bottles')}`;
+  const count = plural(n, words.one, words.many);
+  let first: string;
+  if (!words.bottles) {
+    // Kilograms, litres and each do not add up to one number, so a house of
+    // goods says how many it carries and how many were read, and no sum.
+    first =
+      read.length === 0
+        ? `${count}; no ${words.one}'s stock could be read, so what is on hand is unknown`
+        : read.length < n
+          ? `${count}, ${fmtCount(read.length)} with stock read (${fmtCount(n - read.length)} could not be read)`
+          : count;
+  } else {
+    first =
+      read.length === 0
+        ? `${count}; no ${words.one}'s stock could be read, so the bottle count is unknown`
+        : read.length < n
+          ? `${count}, ${plural(bottles, 'bottle', 'bottles')} on the ${fmtCount(read.length)} whose stock was read (${fmtCount(n - read.length)} could not be read)`
+          : `${count}, ${plural(bottles, 'bottle', 'bottles')}`;
+  }
   if (zonesReadable && zoneIds.size > 0) first += ` across ${plural(zoneIds.size, 'zone', 'zones')}`;
   parts.push(`${first}.`);
 
   const out = rows.filter((r) => r.standing === 'out').length;
   const below = rows.filter((r) => r.standing === 'below').length;
   const dry = rows.filter(dryTomorrow).length;
-  const lead = read.length < n ? 'Of the titles read, nothing' : 'Nothing';
+  const lead = read.length < n ? `Of the ${words.many} read, nothing` : 'Nothing';
   if (read.length === 0) {
     // No stock was read, so nothing can be said to be out or fine.
   } else if (out === 0 && below === 0) {
@@ -544,12 +644,12 @@ export function readSentence(rows: InvRow[], currency: HouseCurrency, zonesReada
 
   const priced = rows.filter((r) => r.value !== null);
   if (priced.length === 0) {
-    parts.push('No title has a cost on the books yet, so the value at cost reads —, not 0.');
+    parts.push(`No ${words.one} has a cost on the books yet, so the value at cost reads —, not 0.`);
   } else {
     const total = priced.reduce((sum, r) => sum + (r.value ?? 0), 0);
     const missing = n - priced.length;
     parts.push(
-      `At cost the cellar holds ${cellMoney(total, currency)}, with ${fmtCount(priced.length)} of ${fmtCount(n)} titles priced${
+      `At cost the ${words.place} holds ${cellMoney(total, currency)}, with ${fmtCount(priced.length)} of ${fmtCount(n)} ${words.many} priced${
         missing > 0 ? `; the ${fmtCount(missing)} without a cost show —, never 0` : ''
       }.`,
     );
@@ -599,8 +699,17 @@ export function useInventoryNextData() {
   const list = useInventory();
   const items = list.data ?? null;
 
+  // Only a row that does not carry its library type, grape and kind (an older
+  // gateway) sends the page to /wines for them.
   const wineIds = useMemo(
-    () => [...new Set((items ?? []).map((i) => i.wineId).filter((id): id is string => !!id))],
+    () => [
+      ...new Set(
+        (items ?? [])
+          .filter((i) => !carriesLibraryType(i))
+          .map((i) => i.wineId)
+          .filter((id): id is string => !!id),
+      ),
+    ],
     [items],
   );
   const wines = useWinesByIds(wineIds);
@@ -815,13 +924,33 @@ export interface PaperRead {
 const PAPERWORK_LINES = 3;
 
 /**
+ * Which of the opened row's reads a caller draws. Absent reads them all, as
+ * the row always has. The drawer mounts its acts with no evidence panel, and a
+ * staff reader is never shown a cost, so each open read the purchase ledger,
+ * up to three order-document reads after it and the auction lots for nothing
+ * (inventory r36 audit, gap 7).
+ */
+export interface RowDetailNeed {
+  /** The ledger's purchases: the Paperwork table, or the cost panel's ledger fallback. */
+  purchases: boolean;
+  /** Each purchase's order documents (Paperwork only). Needs the purchases. */
+  paper: boolean;
+  /** The auction lots (a drink's cost panel). */
+  lots: boolean;
+}
+
+const READ_ALL: RowDetailNeed = { purchases: true, paper: true, lots: true };
+
+/**
  * The opened row's own reads, made on the gesture rather than on the page:
  * the last purchases from the ledger (GET /inventory-ledger/transactions with
  * transactionType=purchase), each one's paper (GET /procurement/documents
- * ?orderId=), and the auction lots that carried the title in.
+ * ?orderId=), and the auction lots that carried the title in. Each is read
+ * only when `need` asks for it; what is not asked for stays null, never "none".
  */
-export function useRowDetail(inventoryId: string) {
+export function useRowDetail(inventoryId: string, need: RowDetailNeed = READ_ALL) {
   const { activeRestaurantId } = useAuth();
+  const readPaper = need.paper && need.purchases;
   const purchasesQ = useQuery({
     queryKey: ['inventory-next', 'purchases', activeRestaurantId, inventoryId],
     queryFn: async () => {
@@ -846,7 +975,7 @@ export function useRowDetail(inventoryId: string) {
         total: num(body.total),
       };
     },
-    enabled: Boolean(activeRestaurantId) && inventoryId !== '',
+    enabled: need.purchases && Boolean(activeRestaurantId) && inventoryId !== '',
     staleTime: 30_000,
   });
 
@@ -855,14 +984,14 @@ export function useRowDetail(inventoryId: string) {
     [purchasesQ.data],
   );
   const docQs = useQueries({
-    queries: orderIds.map((orderId) => ({
+    queries: (readPaper ? orderIds : []).map((orderId) => ({
       queryKey: ['inventory-next', 'order-docs', activeRestaurantId, orderId],
       queryFn: () => documentsApi.forOrder(orderId),
       staleTime: 60_000,
     })),
   });
   const paper = new Map<string, PaperRead>();
-  orderIds.forEach((orderId, i) => {
+  (readPaper ? orderIds : []).forEach((orderId, i) => {
     const q = docQs[i];
     paper.set(orderId, {
       docs: q?.data ?? null,
@@ -873,7 +1002,7 @@ export function useRowDetail(inventoryId: string) {
   const lotsQ = useQuery<AuctionLotRecord[]>({
     queryKey: ['inventory-next', 'auction-lots', activeRestaurantId, inventoryId],
     queryFn: () => fetchAuctionLotRecords(inventoryId),
-    enabled: Boolean(activeRestaurantId) && inventoryId !== '',
+    enabled: need.lots && Boolean(activeRestaurantId) && inventoryId !== '',
     staleTime: 60_000,
   });
 
