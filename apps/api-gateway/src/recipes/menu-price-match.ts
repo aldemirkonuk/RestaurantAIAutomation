@@ -26,6 +26,18 @@ export interface MenuLine {
   category: unknown;
   bottle_price: unknown;
   by_glass_price: unknown;
+  /** `readCurrentMenuLines` decides it as /menu does (r36 menu audit N4). */
+  kitchen_line?: unknown;
+}
+
+/**
+ * A dish, as /menu says it (r36 menu audit N4): the read's `kitchen_line`,
+ * decided once from the section, the raw line and the drink fields. A row
+ * without it (an older read) falls back to the section alone.
+ */
+export function isMenuDish(l: MenuLine): boolean {
+  if (typeof l.kitchen_line === "boolean") return l.kitchen_line;
+  return isKitchenLine(l.category, null);
 }
 
 export type MenuPrice =
@@ -58,7 +70,7 @@ export function menuIndex(lines: MenuLine[]): MenuIndex {
     const prices = [...new Set([cents(l.bottle_price), cents(l.by_glass_price)].filter((p): p is number => p !== null))].sort(
       (a, b) => a - b,
     );
-    out.set(key, [...(out.get(key) ?? []), { kitchen: isKitchenLine(l.category, null), prices }]);
+    out.set(key, [...(out.get(key) ?? []), { kitchen: isMenuDish(l), prices }]);
   }
   return out;
 }

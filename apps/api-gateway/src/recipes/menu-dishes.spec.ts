@@ -4,6 +4,7 @@ import { DishesController } from "./dishes.controller";
 import { DishesService, MENU_DISHES_UNREAD } from "./dishes.service";
 import { RecipesService } from "./recipes.service";
 import { menuDishesNotListed } from "./menu-dishes";
+import { isMenuDish, menuIndex, menuPriceFor } from "./menu-price-match";
 import { HOUSE_A, HOUSE_B, fakeDb, twoHouses, type Row } from "./dishes.testing";
 
 /**
@@ -233,5 +234,29 @@ describe("DishesController: only an owner or a manager reads or takes the offer"
   it.each(["menuDishes", "addMenuDishes"] as const)("%s is owner/manager only", (method) => {
     const roles = Reflect.getMetadata(ROLES_KEY, DishesController.prototype[method]);
     expect(roles).toEqual(["owner", "manager"]);
+  });
+});
+
+// r36 menu audit N4: dish or drink is the read's `kitchen_line` (/menu's own
+// call), not the section alone, on /dishes and in the Menu column alike.
+describe("a dish is told from a drink as /menu tells it (r36 N4)", () => {
+  const sauternes = { name: "Sauternes", category: "dessert", bottle_price: 14, by_glass_price: null, kitchen_line: false };
+  const csvDish = { name: "Köfte", category: null, bottle_price: 18, by_glass_price: null, kitchen_line: true };
+
+  it("takes the read's kitchen_line over the section, and the section only without it", () => {
+    expect(isMenuDish(sauternes)).toBe(false);
+    expect(isMenuDish(csvDish)).toBe(true);
+    expect(isMenuDish({ ...sauternes, kitchen_line: undefined })).toBe(true);
+    expect(isMenuDish({ ...csvDish, kitchen_line: undefined })).toBe(false);
+  });
+
+  it("/dishes offers the CSV dish /menu sets apart, and never the dessert wine", () => {
+    expect(menuDishesNotListed([sauternes, csvDish], [])).toEqual([{ name: "Köfte", section: null, price: 18, pricesDiffer: false }]);
+  });
+
+  it("the Menu column matches a dessert wine to a drink, not to a dish of its name", () => {
+    const index = menuIndex([sauternes, { ...csvDish, name: "Sauternes", bottle_price: 9 }]);
+    expect(menuPriceFor(["Sauternes"], "drink", 14, index)).toEqual({ found: "one", prices: [14], agrees: true });
+    expect(menuPriceFor(["Sauternes"], "dish", 9, index)).toEqual({ found: "one", prices: [9], agrees: true });
   });
 });

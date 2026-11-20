@@ -1,6 +1,5 @@
-import { isKitchenLine } from "../menus/menu-line-view";
 import { foldName } from "./name-fold";
-import type { MenuLine } from "./menu-price-match";
+import { isMenuDish, type MenuLine } from "./menu-price-match";
 
 /**
  * The current menu's dishes that are not on the house's dish list yet
@@ -14,10 +13,9 @@ import type { MenuLine } from "./menu-price-match";
  *
  * THE RULE.
  *  - Only a kitchen line of a CURRENT menu is offered (the caller reads
- *    `readCurrentMenuLines`; this decides kitchen the way the Menu column
- *    does, `isKitchenLine(category, null)` in menu-price-match.ts). Which
- *    sections count as kitchen is that rule's call, not this file's: the
- *    menu chain widens it to "Mains", "Meze", "Çorbalar" and the like.
+ *    `readCurrentMenuLines`; `isMenuDish` in menu-price-match.ts takes the
+ *    read's `kitchen_line`, /menu's own call, and the section alone only
+ *    for a row without it). Which lines are kitchen is that rule's call.
  *  - A line whose folded name (`foldName`: case, the dotless ı, accents,
  *    spaces) is already a live dish is never offered, so a dish is never made
  *    twice and a dish the house typed itself is left as it is.
@@ -80,7 +78,7 @@ export function menuDishesNotListed(lines: MenuLine[], listed: Array<string | nu
     const name = tidy(l.name).slice(0, NAME_MAX).trim();
     const key = foldName(name);
     if (!key || have.has(key)) continue;
-    if (!isKitchenLine(l.category, null)) continue;
+    if (!isMenuDish(l)) continue;
     const price = linePrice(l);
     let dish = out.get(key);
     if (!dish) {
