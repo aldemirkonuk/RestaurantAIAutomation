@@ -156,20 +156,40 @@ export const SHEET_MIN_W = 3;
 export const SHEET_MIN_H = 3;
 
 /**
+ * Below this container width the sheet FLOWS: one full-width cutting under
+ * another, in (y, x) order, and nothing done there writes a slot. At or above
+ * it the sheet is the one twelve-column ruling (a desktop with the sidebar
+ * open measures about 900 px). The sheet is saved once, in twelve columns; a
+ * 6-, 4- or 2-column ruling used to hand its own coordinates back through
+ * `onDragStop`, and they were saved over the desktop sheet — how cuttings
+ * switched places. Saving every breakpoint was rejected: three states to drift.
+ */
+export const SHEET_FLOW_BELOW = 768;
+
+/**
  * The responsive ruling, shared by the grid and by the keyboard.
  *
  * `Sheet.tsx` hands these to react-grid-layout; `rp-arrange.ts` reads them
  * back through the library's OWN `getBreakpointFromWidth`, so a keyboard move
  * on a narrow screen lands on the same ruling a dragged one would.
+ *
+ * `sm` is `SHEET_FLOW_BELOW - 1` because the library picks a breakpoint when
+ * the width is strictly GREATER: 768 is `sm` (twelve), 767 is `xs`. Nothing is
+ * ever written at `xs` or `xxs`.
  */
-export const SHEET_BREAKPOINTS = { lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 };
+export const SHEET_BREAKPOINTS = { lg: 1200, md: 996, sm: SHEET_FLOW_BELOW - 1, xs: 480, xxs: 0 };
 export const SHEET_BREAKPOINT_COLS = {
   lg: SHEET_COLS,
   md: SHEET_COLS,
-  sm: 6,
+  sm: SHEET_COLS,
   xs: 4,
   xxs: 2,
 };
+
+/** A flowing cutting's floor: ceil((300 + 14) / (34 + 14)) = 7 rows = 322 px. */
+export const SHEET_FLOW_MIN_H = Math.ceil(
+  (300 + SHEET_MARGIN[1]) / (SHEET_ROW_HEIGHT + SHEET_MARGIN[1]),
+);
 
 /* ─────────────────────────────────────────── named house layouts ───────── */
 

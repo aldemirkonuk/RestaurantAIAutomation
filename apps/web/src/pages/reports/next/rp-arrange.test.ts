@@ -14,7 +14,8 @@
  * half is arithmetic, and arithmetic can be pinned exactly.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { act, renderHook } from '@testing-library/react';
 import {
   cancelledWords,
   colsForWidth,
@@ -27,6 +28,7 @@ import {
   sameSlot,
   slotOf,
   slotRect,
+  useArrange,
 } from './rp-arrange';
 import { SHEET_COLS, SHEET_MIN_H, SHEET_MIN_W, type Cutting } from './rp-sheet';
 
@@ -50,7 +52,12 @@ describe('the ruling in play', () => {
   it('reads the column count through the library’s own breakpoints', () => {
     expect(colsForWidth(1440)).toBe(12); // lg
     expect(colsForWidth(1000)).toBe(12); // md
-    expect(colsForWidth(800)).toBe(6); // sm
+    // sm is twelve now: a desktop with the sidebar open measures about 900,
+    // and a six-column ruling there wrote slots over the desktop sheet.
+    expect(colsForWidth(900)).toBe(12); // sm
+    expect(colsForWidth(800)).toBe(12); // sm
+    expect(colsForWidth(768)).toBe(12); // sm — 768 or more is the desktop ruling
+    expect(colsForWidth(767)).toBe(4); // xs — below it the sheet flows
     expect(colsForWidth(500)).toBe(4); // xs
     expect(colsForWidth(320)).toBe(2); // xxs
   });
@@ -218,5 +225,73 @@ describe('what a screen reader is told', () => {
     expect(cancelledWords('The room', { x: 0, y: 0, w: 6, h: 8 }, 12)).toBe(
       'Move cancelled. The room is back at column 1 of 12, row 1, 6 columns wide, 8 rows tall.',
     );
+  });
+});
+
+/**
+ * The keyboard is the sheet's second writer, so it obeys the same rule as the
+ * pointer: nothing done below 768 px writes a slot. It says why, through the
+ * same live region every other keyboard sentence uses.
+ */
+describe('the keyboard on a narrow sheet', () => {
+  const WIDER = 'Moving cuttings needs a wider screen.';
+
+  function hold(width: number) {
+    const apply = vi.fn();
+    const sheetRef = { current: { clientWidth: width } as unknown as HTMLElement };
+    const hook = renderHook(() =>
+      useArrange({ cuttings: side(), apply, sheetRef, arranging: true }),
+    );
+    return { apply, sheetRef, hook };
+  }
+
+  it('refuses a move at 700 px, says so, and writes no slot', () => {
+    const { apply, hook } = hold(700);
+    act(() => hook.result.current.pickUp('till', 'Through the till'));
+    act(() => hook.result.current.nudge(1, 0));
+    act(() => hook.result.current.resize(1, 0));
+    expect(apply).not.toHaveBeenCalled();
+    expect(hook.result.current.picked).toBeNull();
+    expect(hook.result.current.message).toBe(WIDER);
+  });
+
+  it('refuses the key model too — Space picks nothing up, arrows move nothing', () => {
+    const { apply, hook } = hold(700);
+    const key = (k: string) =>
+      act(() =>
+        hook.result.current.keyDown('till', 'Through the till')({
+          key: k,
+          shiftKey: false,
+          preventDefault: () => {},
+        }),
+      );
+    key(' ');
+    key('ArrowRight');
+    expect(apply).not.toHaveBeenCalled();
+    expect(hook.result.current.message).toBe(WIDER);
+  });
+
+  it('refuses a move when the sheet narrowed after the pick-up', () => {
+    const { apply, sheetRef, hook } = hold(1280);
+    act(() => hook.result.current.pickUp('till', 'Through the till'));
+    (sheetRef.current as unknown as { clientWidth: number }).clientWidth = 600;
+    act(() => hook.result.current.nudge(1, 0));
+    expect(apply).not.toHaveBeenCalled();
+    expect(hook.result.current.message).toBe(WIDER);
+  });
+
+  it('moves at 900 px on the twelve-column ruling', () => {
+    const { apply, hook } = hold(900);
+    act(() => hook.result.current.pickUp('till', 'Through the till'));
+    act(() => hook.result.current.nudge(0, 1));
+    expect(apply).toHaveBeenCalledTimes(1);
+    expect(hook.result.current.cols).toBe(12);
+  });
+
+  it('still moves when the width cannot be measured (0 means twelve, not a phone)', () => {
+    const { apply, hook } = hold(0);
+    act(() => hook.result.current.pickUp('till', 'Through the till'));
+    act(() => hook.result.current.nudge(0, 1));
+    expect(apply).toHaveBeenCalledTimes(1);
   });
 });

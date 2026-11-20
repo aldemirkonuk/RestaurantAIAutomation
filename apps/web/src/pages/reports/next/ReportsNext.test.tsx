@@ -27,7 +27,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { decodeSheet, defaultSheet, encodeSheet } from './useReportsNextData';
 import { CATALOGUE } from './rp-catalogue';
@@ -455,6 +455,11 @@ function paint() {
 }
 
 const arrange = () => fireEvent.click(screen.getByText('Arrange the sheet'));
+/** Press "Rule it off" and let the preference write settle. */
+const ruleItOff = () =>
+  act(async () => {
+    fireEvent.click(screen.getByText('Rule it off'));
+  });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -1754,5 +1759,45 @@ describe('ReportsNext — a register this role is not sent (ADR 0348)', () => {
     const room = screen.getByRole('region', { name: 'The room' });
     expect(within(room).getByText(/Your role cannot read the table register/)).toBeInTheDocument();
     expect(within(room).queryByText(/written for owners and managers/)).not.toBeInTheDocument();
+  });
+});
+
+describe('ReportsNext — the sheet below 768 px', () => {
+  const region = (name: string) => screen.getByRole('region', { name });
+
+  it('under 768 px: says moving needs a wider screen, and Take off / Show instead move nobody else', async () => {
+    const RO = global.ResizeObserver;
+    global.ResizeObserver = vi.fn().mockImplementation((cb: ResizeObserverCallback) => ({
+      observe: () => cb([{ contentRect: { width: 500 } } as ResizeObserverEntry], {} as ResizeObserver),
+      unobserve: vi.fn(),
+      disconnect: vi.fn(),
+    })) as unknown as typeof ResizeObserver;
+    try {
+      const { container } = paint();
+      arrange();
+      expect(container.querySelector('.rp-sheet')).toHaveAttribute('data-flow', 'true');
+      expect(screen.getByText('Moving cuttings needs a wider screen.')).toBeInTheDocument();
+      expect(screen.queryByText(/Drag a cutting anywhere on the ruling/)).toBeNull();
+
+      fireEvent.click(within(region('The reading')).getByText('Take off'));
+      fireEvent.change(
+        within(region('Margin against movement')).getByLabelText('Show instead of Margin against movement'),
+        { target: { value: 'seats' } },
+      );
+      await ruleItOff();
+
+      const saved = saveSheet.mock.calls[0][0] as {
+        cuttings: Array<{ id: string; slot: unknown }>;
+      };
+      for (const c of defaultSheet().cuttings) {
+        if (c.id === 'reading' || c.id === 'quadrants') continue;
+        const kept = saved.cuttings.find((s) => s.id === c.id);
+        expect(JSON.stringify(kept?.slot)).toBe(JSON.stringify(c.slot));
+      }
+      expect(saved.cuttings.find((s) => s.id === 'seats')?.slot).toEqual(DEFAULT_SLOTS.quadrants);
+      expect(saved.cuttings.some((s) => s.id === 'reading')).toBe(false);
+    } finally {
+      global.ResizeObserver = RO;
+    }
   });
 });

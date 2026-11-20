@@ -56,7 +56,7 @@ import { animate, settle } from '@/lib/mudavym';
 import AskTheBook from './AskTheBook';
 import Cutting from './Cutting';
 import { ArrangeAnnouncer, ArrangeHelp } from './Placing';
-import { useArrange } from './rp-arrange';
+import { useArrange, WIDER_SCREEN_WORDS } from './rp-arrange';
 import { CATALOGUE, defaultGraph } from './rp-catalogue';
 import { failureLine } from './rp-format';
 import {
@@ -126,6 +126,9 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   const data = useReportsNextData(tillDays, setTillDays, showing, place);
   const [asking, setAsking] = useState(false);
   const [ruledOff, setRuledOff] = useState(false);
+  /* True while the sheet flows in one column (under 768 px): nothing can be
+     moved there, and the arrange note says so. Reported by the grid itself. */
+  const [flowing, setFlowing] = useState(false);
   const headRef = useRef<HTMLElement | null>(null);
 
   /* One quiet entrance for the opening line — settle, 6px, once. */
@@ -387,14 +390,22 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         {arranging && (
           <div className="rp-arrange">
             <p className="rp-note" style={{ margin: 0 }}>
-              Drag a cutting anywhere on the ruling; pull its corner to resize. Each one can change
-              what it shows and how it is drawn — a drawing is only offered where it is true of that
-              register.
+              {/* Under 768 px the sheet flows in one column and nothing moves
+                  (see `SHEET_FLOW_BELOW`); everything else here still works,
+                  because it edits the twelve-column draft. */}
+              <span>
+                {flowing
+                  ? WIDER_SCREEN_WORDS
+                  : 'Drag a cutting anywhere on the ruling; pull its corner to resize.'}
+              </span>{' '}
+              Each one can change what it shows and how it is drawn — a drawing is only offered where
+              it is true of that register.
             </p>
             {/* The keyboard sentence lives in ArrangeHelp and nowhere else: it is
                 what every grip's `aria-describedby` points at, so saying it twice
-                would read it twice to the reader who most needs it once. */}
-            <ArrangeHelp />
+                would read it twice to the reader who most needs it once. The
+                grips are hidden while the sheet flows, and so is this. */}
+            {!flowing && <ArrangeHelp />}
             <p className="rp-row" style={{ margin: 0 }}>
               <span className="rp-eyebrow">Start from a house layout</span>
               {HOUSE_LAYOUT_IDS.map((id) => (
@@ -444,6 +455,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
             onMove={onMove}
             containerRef={holdSheetEl}
             ghost={arrange.origin}
+            onFlowChange={setFlowing}
           />
         )}
 

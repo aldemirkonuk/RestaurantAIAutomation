@@ -136,6 +136,18 @@ export function colsForWidth(width: number): number {
   return getColsFromBreakpoint(bp, SHEET_BREAKPOINT_COLS);
 }
 
+/**
+ * True when the sheet is measured narrower than `SHEET_FLOW_BELOW`, where it
+ * flows and no move may write a slot. Through `colsForWidth`, so the keyboard
+ * refuses at exactly the widths the grid flows at. Width 0 is "not measured".
+ */
+export function sheetFlows(width: number): boolean {
+  return Number.isFinite(width) && width > 0 && colsForWidth(width) !== SHEET_COLS;
+}
+
+/** What a refused move says. The same sentence the arrange note shows. */
+export const WIDER_SCREEN_WORDS = 'Moving cuttings needs a wider screen.';
+
 /** The pixel rectangle of one slot, from the library's own position maths. */
 export function slotRect(
   slot: Slot,
@@ -347,6 +359,17 @@ export function useArrange({ cuttings, apply, sheetRef, arranging }: ArrangeInpu
     return next;
   }, [sheetRef]);
 
+  /* A narrow sheet flows, and a move made there would write a 4- or 2-column
+     slot over the desktop sheet. Refused at the pick-up AND at every step,
+     because the window can narrow while a cutting is held. */
+  const refused = useCallback((): boolean => {
+    if (!sheetFlows(sheetRef.current?.clientWidth ?? 0)) return false;
+    setPicked(null);
+    setOrigin(null);
+    setMessage(WIDER_SCREEN_WORDS);
+    return true;
+  }, [sheetRef]);
+
   /* Leaving arrange mode drops the pick-up: a cutting held on a sheet that is
      no longer being arranged would be held forever, and the grip is gone. */
   useEffect(() => {
@@ -363,13 +386,14 @@ export function useArrange({ cuttings, apply, sheetRef, arranging }: ArrangeInpu
       if (!cs) return;
       const slot = slotOf(cs, id);
       if (!slot) return;
+      if (refused()) return;
       titles.current.set(id, title);
       const c = measure();
       setPicked(id);
       setOrigin({ ...slot });
       setMessage(pickedUpWords(title, slot, c));
     },
-    [measure],
+    [measure, refused],
   );
 
   const step = useCallback(
@@ -378,6 +402,7 @@ export function useArrange({ cuttings, apply, sheetRef, arranging }: ArrangeInpu
       if (!cs || !picked) return;
       const before = slotOf(cs, picked);
       if (!before) return;
+      if (refused()) return;
       const intent: 'move' | 'resize' = dw === 0 && dh === 0 ? 'move' : 'resize';
       const next =
         intent === 'move'
@@ -391,7 +416,7 @@ export function useArrange({ cuttings, apply, sheetRef, arranging }: ArrangeInpu
         movedWords(titles.current.get(picked) ?? 'The cutting', before, after ?? before, cols, intent),
       );
     },
-    [apply, cols, picked],
+    [apply, cols, picked, refused],
   );
 
   const nudge = useCallback((dx: number, dy: number) => step(dx, dy, 0, 0), [step]);
