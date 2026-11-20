@@ -10,14 +10,25 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { TasteData } from '../../../../services/api/taste';
 
-const api = vi.hoisted(() => ({ get: vi.fn(), roll: vi.fn() }));
+const api = vi.hoisted(() => ({ get: vi.fn(), roll: vi.fn(), auth: { activeRole: 'manager', user: { role: 'manager' } } as Record<string, unknown> }));
+vi.mock('../../../../contexts/AuthContext', () => ({ useAuth: () => api.auth }));
 vi.mock('../../../../services/api/taste', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   getTaste: api.get,
   rollupTaste: api.roll,
 }));
 
-import RecipeTaste, { RECIPE_TASTE_EMPTY, RECIPE_TASTE_LINE_FAILED, RECIPE_TASTE_NO_RECIPE, RECIPE_TASTE_UNSAVED, RecipeTasteLine } from './RecipeTaste';
+import RecipeTaste, {
+  RECIPE_TASTE_EMPTY,
+  RECIPE_TASTE_EMPTY_READ,
+  RECIPE_TASTE_LINE_FAILED,
+  RECIPE_TASTE_NO_RECIPE,
+  RECIPE_TASTE_NO_RECIPE_READ,
+  RECIPE_TASTE_UNSAVED,
+  RecipeTasteLine,
+  TASTE_CARD_RESERVE_PX,
+  TASTE_LINE_RESERVE_PX,
+} from './RecipeTaste';
 import { ROLLUP_RECIPES_UNAVAILABLE, ROLLUP_UNREACHABLE } from '../../../../services/api/taste';
 
 const recipeLayer = { source: 'recipe', version: 1, method: 'computed', statedByName: null, statedAt: '2026-11-19T10:00:00Z', hasNote: false, noteText: null };
@@ -50,6 +61,7 @@ beforeEach(() => {
   cleanup();
   api.get.mockReset();
   api.roll.mockReset();
+  api.auth = { activeRole: 'manager', user: { role: 'manager' } };
 });
 
 describe('RecipeTaste', () => {
@@ -161,5 +173,55 @@ describe('RecipeTaste', () => {
     expect(api.roll).toHaveBeenCalledTimes(1);
     release({ state: 'ready', data: worked() });
     await waitFor(() => expect(screen.getByTestId('recipe-taste-act')).toBeEnabled());
+  });
+
+  it('staff see the card and the line but are not offered Work it out or Read again (the sheet is read-only to them)', async () => {
+    api.auth = { activeRole: 'staff', user: { role: 'staff' } };
+    api.get.mockResolvedValue({ state: 'ready', data: worked() });
+    mount();
+    expect(await screen.findByTestId('taste-row-sour')).toBeInTheDocument();
+    expect(screen.getByTestId('recipe-taste-line')).toBeInTheDocument();
+    expect(screen.queryByTestId('recipe-taste-act')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Work it out|Read again/ })).toBeNull();
+  });
+
+  it('staff on a drink not worked out yet are told who works it out, and given no instruction they cannot follow', async () => {
+    api.auth = { activeRole: 'staff', user: { role: 'staff' } };
+    api.get.mockResolvedValue({ state: 'ready', data: none() });
+    mount();
+    expect(await screen.findByTestId('taste-empty')).toHaveTextContent(RECIPE_TASTE_EMPTY_READ);
+    expect(screen.queryByTestId('recipe-taste-act')).toBeNull();
+    expect(document.body.textContent).not.toContain(RECIPE_TASTE_EMPTY);
+  });
+
+  it('staff on a drink with no recipe are not told to save one', async () => {
+    api.auth = { activeRole: 'staff', user: { role: 'staff' } };
+    api.get.mockResolvedValue({ state: 'ready', data: none() });
+    mount({ hasRecipe: false });
+    expect(await screen.findByTestId('recipe-taste-norecipe')).toHaveTextContent(RECIPE_TASTE_NO_RECIPE_READ);
+    expect(document.body.textContent).not.toContain(RECIPE_TASTE_NO_RECIPE);
+  });
+
+  it('an owner is offered the action', async () => {
+    api.auth = { activeRole: 'owner', user: { role: 'owner' } };
+    api.get.mockResolvedValue({ state: 'ready', data: none() });
+    mount();
+    expect(await screen.findByRole('button', { name: 'Work it out' })).toBeEnabled();
+  });
+
+  it('while the taste is being read the line and the card already hold the height they will have, so nothing below moves', async () => {
+    let release: (v: unknown) => void = () => {};
+    api.get.mockReturnValue(new Promise((r) => { release = r; }));
+    mount();
+    const wait = await screen.findByTestId('recipe-taste-line-wait');
+    expect(wait.style.minHeight).toBe(`${TASTE_LINE_RESERVE_PX}px`);
+    const card = screen.getByTestId('recipe-taste');
+    expect(card.getAttribute('data-state')).toBe('loading');
+    expect(card.style.minHeight).toBe(`${TASTE_CARD_RESERVE_PX}px`);
+    release({ state: 'ready', data: worked() });
+    expect(await screen.findByTestId('recipe-taste-line')).toBeInTheDocument();
+    expect(screen.queryByTestId('recipe-taste-line-wait')).toBeNull();
+    expect(screen.getByTestId('recipe-taste').getAttribute('data-state')).toBe('settled');
+    expect(screen.getByTestId('recipe-taste').style.minHeight).toBe('');
   });
 });
