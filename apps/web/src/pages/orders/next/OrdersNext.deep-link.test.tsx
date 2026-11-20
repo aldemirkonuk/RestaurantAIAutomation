@@ -359,3 +359,39 @@ describe('the stage strip at phone width (ORD-W18)', () => {
     expect(tabs[0].className).not.toMatch(/\bborder-l\b/);
   });
 });
+
+describe('the scroll to a deep-linked order', () => {
+  const scrolls: Array<ScrollIntoViewOptions | undefined> = [];
+  const original = Element.prototype.scrollIntoView;
+  const asks = (reduce: boolean) =>
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (q: string) => ({ matches: reduce && q.includes('reduce'), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false, onchange: null }) as MediaQueryList,
+    );
+  beforeEach(() => {
+    scrolls.length = 0;
+    Element.prototype.scrollIntoView = function (o?: boolean | ScrollIntoViewOptions) { scrolls.push(o as ScrollIntoViewOptions); };
+  });
+  afterEach(() => {
+    Element.prototype.scrollIntoView = original;
+    vi.restoreAllMocks();
+  });
+  const open = async () => {
+    state.current = ordersData({ rows: [row({ id: 'o-1', stage: 'approved' })], counts: { pending: 0, approved: 1, ordered: 0, delivered: 0 } });
+    harness('/orders/o-1');
+    await screen.findByTestId('order-row-o-1');
+    await new Promise((r) => setTimeout(r, 20));
+  };
+
+  it('lands at once for a reader who asked for less motion', async () => {
+    asks(true);
+    await open();
+    expect(scrolls.length).toBeGreaterThan(0);
+    scrolls.forEach((o) => expect(o?.behavior).toBe('auto'));
+  });
+
+  it('glides for everyone else', async () => {
+    asks(false);
+    await open();
+    expect(scrolls.some((o) => o?.behavior === 'smooth')).toBe(true);
+  });
+});

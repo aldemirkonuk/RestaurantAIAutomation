@@ -157,6 +157,15 @@ export function prefersReducedMotion(): boolean {
   );
 }
 
+/**
+ * The `behavior` a scripted scroll asks for: a reader who asked for less motion
+ * is moved at once ('auto' follows the html rule in globals.css, which is also
+ * 'auto' for them), everyone else gets the glide.
+ */
+export function scrollBehavior(): 'smooth' | 'auto' {
+  return prefersReducedMotion() ? 'auto' : 'smooth';
+}
+
 /** Reactive `prefers-reduced-motion`, live across OS setting changes. */
 export function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(prefersReducedMotion);
