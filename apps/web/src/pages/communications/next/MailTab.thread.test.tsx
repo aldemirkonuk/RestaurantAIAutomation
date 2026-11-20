@@ -153,6 +153,7 @@ describe('a thread', () => {
     const letters = await screen.findAllByTestId('mail-letter');
     expect(letters.map((l) => l.getAttribute('data-testid'))).toHaveLength(5);
     expect(letters[0]).toHaveTextContent('First, from the vendor.');
+    expect(screen.queryByTestId('thread-arrived-only')).toBeNull();
     expect(within(letters[0]).getByTestId('letter-provenance')).toHaveTextContent('arrived in your mailbox');
     expect(within(letters[1]).getByTestId('letter-chip')).toHaveTextContent('Draft · not sent');
     expect(within(letters[1]).getByTestId('letter-provenance')).toHaveTextContent('not sent · written by Mudavym');

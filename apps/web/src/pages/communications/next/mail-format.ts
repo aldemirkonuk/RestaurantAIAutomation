@@ -819,9 +819,13 @@ export function letterAt(m: MailMessage): string {
  * The quiet line under the chips: only vendor mail reaches Mudavym today
  * (`storedKinds`), so the list says what it does not cover (proposal F5).
  */
+/** What a team or guest thread holds: only what came in. The reader never reads the house's own sent mail (r102 func-1). */
+export const ARRIVED_ONLY =
+  'Only letters that arrived are read for team and guests; replies sent from your own mailbox are not, so these threads show what came in, not the whole conversation.';
+
 export function storedKindsLine(storedKinds: readonly string[] | null): string {
   if (storedKinds && storedKinds.some((k) => k !== 'vendor')) {
-    return `Mail from ${storedKinds.join(', ')} reaches Mudavym.`;
+    return `Mail that arrived from ${storedKinds.join(', ')} is listed by person and thread. ${ARRIVED_ONLY}`;
   }
   // r28 gap 6: a letter from an unknown sender is kept (as a prospect, under
   // Who is writing) only when it carries an attachment or reads as an offer;
