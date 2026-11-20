@@ -140,6 +140,11 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
     // follow-up after PR #617, the way #617 withholds them, not refused here
     // (ADR 0348 §Decision 3; its §Decision 5 names the four role-less writes).
     // Pinned end to end by analytics/analytics-money-needs-a-manager.spec.ts.
+    // PosHubController (QA round 11, R11-06): its eight POSTs that write --
+    // check import (stock moves through apply_stock_movement), item mapping,
+    // sale units and catalog-match approve/reject -- name owner AND manager.
+    // The HMAC webhook stays @Public and every GET stays open to the house.
+    // Pinned by pos-hub/pos-hub-writes-need-a-manager.spec.ts.
     expect(controllersWithRoles()).toEqual([
       "analytics/analytics.controller.ts",
       "ask-ai/ask-ai.controller.ts",
@@ -154,6 +159,7 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
       "house/house-counter.controller.ts",
       "house/house-day.controller.ts",
       "inventory-ledger/inventory-ledger.controller.ts",
+      "pos-hub/pos-hub.controller.ts",
       "price-index/price-index.controller.ts",
       "procurement/documents/credits.controller.ts",
       "procurement/receiving.controller.ts",
