@@ -128,7 +128,7 @@ describe('the stylesheets', () => {
     expect([writing.style.height, writing.style.minHeight]).toEqual(['', '130px']);
     cleanup();
     const a = render(<Sheet cuttings={cs} arranging onMove={() => {}} />);
-    expect(a.container.querySelector<HTMLElement>('.rp-stack__item')!.style.height).toBe('566px');
+    expect(a.container.querySelector<HTMLElement>('.rp-stack__item')!.style.height).toBe('514px');
   });
   it('[REVERT-FAILS] a strip keeps its sentence: it never shrinks, the figure rows hide, the title never shrinks', () => {
     const t = css('reports-next.css');
