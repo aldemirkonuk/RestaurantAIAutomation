@@ -34,6 +34,8 @@ vi.mock('../../../services/api/client', () => ({
 vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({ activeRestaurantId: RID, activeRole: h.role, user: { role: h.role } }),
 }));
+const tax = vi.hoisted(() => ({ basis: 'prices_exclude_tax' as 'prices_exclude_tax' | 'unset' }));
+vi.mock('./recipe/useListTax', () => ({ useListTax: () => ({ basis: tax.basis }) }));
 vi.mock('./recipe/RecipeSheet', () => ({ default: () => <div data-testid="sheet" /> }));
 vi.mock('./useCellarNextData', () => ({
   useCocktailRegister: () => ({
@@ -110,6 +112,18 @@ describe('the cocktail list cost columns', () => {
     h.currency = 'GBP';
     mount();
     await waitFor(() => expect(text(`drink-share-${GT}`)).toBe('12.5%'));
+  });
+
+  it('with the house basis unset the pour cost is in the warn tone with its sentence under it (r103 need 2)', async () => {
+    tax.basis = 'unset';
+    try {
+      mount();
+      await waitFor(() => expect(text(`drink-share-${GT}`)).toContain('%12,5'));
+      expect(text(`drink-share-${GT}`)).toContain('whether that price includes tax is not recorded');
+      expect(screen.getByTestId(`drink-share-${GT}`).querySelector('[data-warn="true"]')).not.toBeNull();
+    } finally {
+      tax.basis = 'prices_exclude_tax';
+    }
   });
 
   it('an incomplete cost is "Not known", never a smaller figure, and makes no pour cost', async () => {

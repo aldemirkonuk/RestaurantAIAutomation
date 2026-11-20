@@ -40,27 +40,14 @@ import {
 import { cellMoney, type HouseCurrency } from './useInventoryNextData';
 // A share in the house's form, as its money is: "%13,1" beside "₺12,00" (r23 walk).
 import { formatHouseNumber, formatHousePercent } from '../../../lib/house-number';
+import { pourCostShare } from '../../cellar/next/recipe/DrinkCards';
+import { UNSET_TAX, shareBasis, type ListTax } from '../../cellar/next/recipe/listTax';
 
 export type UsedInLoad = { status: 'reading' } | { status: 'failed'; reason: string } | { status: 'ready'; data: UsedIn };
 
 export type DishesLoad = { status: 'reading' } | { status: 'failed'; reason: string } | { status: 'ready'; data: ItemDishes };
 
 export type DrinksLoad = { status: 'reading' } | { status: 'failed'; reason: string } | { status: 'ready'; data: ItemDrinks };
-
-export const FOOD_COST_TAX_NOTE = 'of the price as your list has it; whether that price includes tax is not recorded';
-
-/** Food (or pour) cost as a share of the price: only from a complete cost and a price above zero. */
-export function foodCostShare(
-  cost: ItemDishCost | null,
-  price: number | null,
-  noun: 'dish' | 'drink' = 'dish',
-): { pct: number } | { missing: string[] } {
-  const missing: string[] = [];
-  if (!(cost?.complete === true && cost.perServeExact !== null)) missing.push('the cost is not complete');
-  if (!(price !== null && price > 0)) missing.push(`the ${noun} has no price`);
-  if (missing.length > 0 || cost === null || cost.perServeExact === null || price === null) return { missing };
-  return { pct: Math.round((cost.perServeExact / price) * 1000) / 10 };
-}
 
 /** Where a drink opens: its own card on /cocktails, with its recipe. */
 export const drinkHref = (cocktailId: string) => `/cocktails?open=${encodeURIComponent(cocktailId)}`;
@@ -90,11 +77,11 @@ export function fmtRecipeQty(n: number, code: string | null = null): string {
   return formatHouseNumber(n, code, { max: 2 });
 }
 
-function DishCard({ id, title, value, sub }: { id: string; title: string; value: string; sub?: string }) {
+function DishCard({ id, title, value, sub, warn }: { id: string; title: string; value: string; sub?: string; warn?: boolean }) {
   return (
     <div className="ivd-card" data-testid={id}>
       <span className="ivd-card-k">{title}</span>
-      <span className="ivd-card-v">{value}</span>
+      <span className="ivd-card-v" data-warn={warn ? 'true' : undefined}>{value}</span>
       {sub ? <span className="ivd-card-s">{sub}</span> : null}
     </div>
   );
@@ -127,6 +114,7 @@ function RecipeBlock({
   price,
   canManage,
   currency,
+  tax,
 }: {
   kind: 'dish' | 'drink';
   id: string;
@@ -139,12 +127,14 @@ function RecipeBlock({
   price: number | null;
   canManage: boolean;
   currency: HouseCurrency;
+  tax: ListTax;
 }) {
   const w = RECIPE_WORDS[kind];
   const t = `ivd-${kind}-${id}`;
   const known = y !== null && y > 0;
   const perServe = known ? uses.map((u) => `${fmtRecipeQty(u.qtyEntered / y, currency.code)} ${u.unitCode}`).join(' + ') : '';
-  const share = foodCostShare(cost, price, kind);
+  const share = pourCostShare(cost, price, tax);
+  const basis = shareBasis(tax);
   return (
     <div className={`ivd-dish ivd-${kind}`} data-testid={t}>
       <p className="ivd-dish-h">
@@ -174,7 +164,8 @@ function RecipeBlock({
             id={`${t}-${w.shareId}`}
             title={w.share}
             value={'pct' in share ? formatHousePercent(share.pct, currency.code) : 'Not known'}
-            sub={'pct' in share ? FOOD_COST_TAX_NOTE : share.missing.join(' and ')}
+            warn={'pct' in share && basis.warn}
+            sub={'pct' in share ? basis.text : share.missing.join(' and ')}
           />
         ) : null}
       </div>
@@ -182,7 +173,7 @@ function RecipeBlock({
   );
 }
 
-function DishBlock({ dish, canManage, currency }: { dish: ItemDish; canManage: boolean; currency: HouseCurrency }) {
+function DishBlock({ dish, canManage, currency, tax }: { dish: ItemDish; canManage: boolean; currency: HouseCurrency; tax: ListTax }) {
   return (
     <RecipeBlock
       kind="dish"
@@ -196,11 +187,12 @@ function DishBlock({ dish, canManage, currency }: { dish: ItemDish; canManage: b
       price={dish.price}
       canManage={canManage}
       currency={currency}
+      tax={tax}
     />
   );
 }
 
-function DrinkBlock({ drink, canManage, currency }: { drink: ItemDrink; canManage: boolean; currency: HouseCurrency }) {
+function DrinkBlock({ drink, canManage, currency, tax }: { drink: ItemDrink; canManage: boolean; currency: HouseCurrency; tax: ListTax }) {
   return (
     <RecipeBlock
       kind="drink"
@@ -214,6 +206,7 @@ function DrinkBlock({ drink, canManage, currency }: { drink: ItemDrink; canManag
       price={drink.price}
       canManage={canManage}
       currency={currency}
+      tax={tax}
     />
   );
 }
@@ -308,6 +301,7 @@ export default function ItemUsedIn({
   drinks,
   canManage,
   currency,
+  tax = UNSET_TAX,
   onRetry,
   onRetryDishes,
   onRetryDrinks,
@@ -318,6 +312,8 @@ export default function ItemUsedIn({
   drinks?: DrinksLoad;
   canManage: boolean;
   currency: HouseCurrency;
+  /** What the house says about tax in its list prices (the drawer reads it); unset when not given. */
+  tax?: ListTax;
   onRetry: () => void;
   onRetryDishes: () => void;
   onRetryDrinks?: () => void;
@@ -394,7 +390,7 @@ export default function ItemUsedIn({
             <h4 className="ivd-used-h">In drink recipes</h4>
             <p className="iv-note">{DRINKS_DO_NOT_DRAW}</p>
             {figuredRecipes.map((d) => (
-              <DrinkBlock key={d.cocktailId} drink={d} canManage={canManage} currency={currency} />
+              <DrinkBlock key={d.cocktailId} drink={d} canManage={canManage} currency={currency} tax={tax} />
             ))}
           </section>
         ) : inDrinkRecipes === null ? null : (
@@ -452,7 +448,7 @@ export default function ItemUsedIn({
             <p className="iv-note">No dish&apos;s current recipe uses this good.</p>
           </>
         ) : (
-          dishes.data.dishes.map((d) => <DishBlock key={d.dishId} dish={d} canManage={canManage} currency={currency} />)
+          dishes.data.dishes.map((d) => <DishBlock key={d.dishId} dish={d} canManage={canManage} currency={currency} tax={tax} />)
         )}
       </section>
     </section>
