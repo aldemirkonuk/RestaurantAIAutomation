@@ -59,6 +59,15 @@ describe("ItemUsedInService (proposal I4/I11)", () => {
     expect(out.inCocktails.lines).toHaveLength(1100);
   });
 
+  it("(r102) one chunk of cocktails holding over 1000 matching ingredient rows is paged, not cut", async () => {
+    const { db, svc } = seed({ kind: "spirit", display_name: "Unx", beverage_id: "bev-1", master_wine_id: null });
+    db.maxRows = 1000;
+    db.tables.cocktails = Array.from({ length: 100 }, (_, k) => ({ id: `c${String(k).padStart(3, "0")}`, restaurant_id: H, name: `D${k}`, deleted_at: null }));
+    db.tables.cocktail_ingredients = Array.from({ length: 1200 }, (_, k) => ({ id: `i${String(k).padStart(5, "0")}`, cocktail_id: `c${String(k % 100).padStart(3, "0")}`, beverage_id: "bev-1", quantity: 5, unit: "ml" }));
+    const out = await svc.usedIn(H, I);
+    expect(out.inCocktails.lines).toHaveLength(1200);
+  });
+
   it("(a) lists the linked menu line and the house cocktail; a same-named unlinked line is only in namedNotLinked", async () => {
     const { db, svc } = seed({ kind: "spirit", display_name: "Unx", beverage_id: "bev-1", master_wine_id: null });
     db.tables.menu_items = [
