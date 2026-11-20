@@ -41,6 +41,7 @@ import { EM, MONO, SANS, SERIF, fmtMoneyWhole, fmtReadTime } from './format';
 import { emptyStationSentence } from './recurrence';
 import { STAGES, useOrdersNextData, type OrderRowVM } from './useOrdersNextData';
 import { useAuth } from '@/contexts/AuthContext';
+import { scrollBehavior } from '@/lib/mudavym/motion';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
 
 const monthName = new Intl.DateTimeFormat('en-GB', { month: 'long' });
@@ -180,7 +181,7 @@ export default function OrdersNext() {
       // a page that scrolls nowhere is a much smaller honesty gap than one
       // that throws.
       if (el && typeof el.scrollIntoView === 'function') {
-        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        el.scrollIntoView({ block: 'center', behavior: scrollBehavior() });
       }
     }, 0);
     return () => window.clearTimeout(t);

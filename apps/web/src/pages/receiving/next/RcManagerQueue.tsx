@@ -42,7 +42,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ink, settle } from '@/lib/mudavym/motion';
+import { ink, scrollBehavior, settle } from '@/lib/mudavym/motion';
 import type { UnverifiedDelivery } from '@/services/api/receiving';
 import { RcLineHistory } from './RcLineHistory';
 import { RcTally } from './RcTally';
@@ -654,7 +654,7 @@ export function RcManagerQueue({
       // a page that scrolls nowhere is a much smaller honesty gap than one
       // that throws.
       if (el && typeof el.scrollIntoView === 'function') {
-        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        el.scrollIntoView({ block: 'center', behavior: scrollBehavior() });
       }
     }, 0);
     return () => window.clearTimeout(t);

@@ -632,9 +632,9 @@ html[data-mudavym-ground="charcoal"] .ld-soon + .ld-block { border-top: 1px soli
 /* ================================================================== */
 /* Motion. Only where the reader has not asked for less of it.        */
 /* ================================================================== */
-/* The app glides every page scroll (globals.css puts `scroll-smooth` on html),
-   and a script's 'auto' scroll follows it. A reader who asked for less motion
-   lands at once when they pick a chapter or a section. */
+/* globals.css already keeps html at `auto` for a reader who asked for less
+   motion (DD-r97-1). This stays as the landing's own belt: a chapter or a
+   section pick lands at once, whatever the app rule does later. */
 @media (prefers-reduced-motion: reduce) {
   html:has(.mdv-landing) { scroll-behavior: auto; }
 }

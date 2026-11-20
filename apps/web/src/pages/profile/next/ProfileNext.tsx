@@ -128,7 +128,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { DoorOpen } from 'lucide-react';
 import { HoldToApprove, Wordmark } from '../../../components/mudavym';
-import { animate, settle } from '../../../lib/mudavym/motion';
+import { animate, scrollBehavior, settle } from '../../../lib/mudavym/motion';
 import { EM, MONO, SANS, SERIF, countWord, roleLabel } from './pf-format';
 import { Btn, Card, Note, PF_CSS, Register, StatusLine } from './pf-ui';
 import { IdentityRegister } from './IdentityRegister';
@@ -246,7 +246,7 @@ export default function ProfileNext({ ground }: ProfileNextProps) {
 
   const goToSecurity = () => {
     const el = document.getElementById('pf-security');
-    el?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    el?.scrollIntoView?.({ behavior: scrollBehavior(), block: 'start' });
     document.getElementById('pf-new-password')?.focus({ preventScroll: true });
   };
 

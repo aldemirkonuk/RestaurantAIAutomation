@@ -22,6 +22,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
+import { scrollBehavior } from '../../../lib/mudavym/motion';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTypedInventorySubscription } from '../../../contexts/RealtimeContext';
 import { getUnresolvedLines } from '../../../services/api/posHub';
@@ -558,7 +559,7 @@ export default function InventoryNext() {
   const exportValuation = () =>
     runExport(visible, valuation, `inventory-valuation-${today()}`, 'Inventory valuation');
 
-  const showTools = () => toolsRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  const showTools = () => toolsRef.current?.scrollIntoView?.({ behavior: scrollBehavior(), block: 'start' });
 
   const nameable = useMemo(() => data.rawItems.map((i) => ({ inventoryId: i.id, name: i.wineName ?? null })), [data.rawItems]);
 
