@@ -47,6 +47,7 @@ import {
   READ_ALL_OFFER_WORDS,
   VENDOR_ONLY_LINE,
   kindEmptyWords,
+  kindPartialWords,
   mailKindOf,
   readAllConsentPath,
   type MailKindFilter,
@@ -443,9 +444,9 @@ function People({
   /** setupLinkWords(canReply): staff are not told to set up what they cannot change. */
   setupWords: string;
 }) {
-  const q = useMailPeople(waitingOnly, search);
+  const q = useMailPeople(waitingOnly, search, kind);
   const pages = q.data?.pages ?? [];
-  // The gateway has no kind filter on this route, so the list narrows to the chosen kind here.
+  // The gateway filters by kind; the same narrowing here keeps an older gateway, which ignores `kind`, right.
   const people = pages.flatMap((p) => p.people).filter((p) => kind === 'all' || mailKindOf(p) === kind);
   const listIdentity = `${kind}|${waitingOnly ? 'w' : 'a'}|${search}`;
   const ready = Boolean(q.data) && !q.isPlaceholderData;
@@ -484,6 +485,11 @@ function People({
           <button type="button" data-testid="search-clear-empty" onClick={onClearSearch} style={LINK_BUTTON}>
             Clear the search
           </button>
+        </p>
+      ) : people.length === 0 && kind !== 'all' && q.hasNextPage ? (
+        // More people are still to be read: not "none" (ADR 0020).
+        <p data-testid="people-partial-kind" role="status" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', maxWidth: '68ch' }}>
+          {kindPartialWords(kind)}
         </p>
       ) : people.length === 0 && kind !== 'all' ? (
         <p data-testid="people-empty-kind" role="status" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', maxWidth: '68ch' }}>
