@@ -40,6 +40,7 @@ export const RECIPE_TASTE_NO_RECIPE_READ = 'No recipe yet, so there is nothing t
 /** The top line when the read came back with no taste: it keeps its one line (r91). */
 export const RECIPE_TASTE_LINE_NONE = 'No taste worked out yet.';
 const CARD_ID = 'recipe-taste-card';
+const CARD_HEADING_ID = 'recipe-taste-card-heading';
 /**
  * The height the taste reserves from the first paint, so what is below it does
  * not move when the read lands (r85 walk: CLS 0.064 at 1440 on a ?open= deep
@@ -130,7 +131,11 @@ export function RecipeTasteLine(props: Props & { /** The saved recipe has at lea
         type="button"
         className="iv-linkish iv-focus tc-line-btn"
         data-testid="recipe-taste-line-open"
-        onClick={() => document.getElementById(CARD_ID)?.scrollIntoView?.({ block: 'start' })}
+        onClick={() => {
+          document.getElementById(CARD_ID)?.scrollIntoView?.({ block: 'start' });
+          // The jump is confirmed by where focus is, not by a pulse (ADR 0112: reduced motion renders none).
+          document.getElementById(CARD_HEADING_ID)?.focus({ preventScroll: true });
+        }}
       >
         <span>{said}</span>
         {kinds.length ? (
@@ -165,7 +170,7 @@ export default function RecipeTaste(props: Props & { /** The saved recipe has at
       aria-label="How it tastes"
       style={q.isLoading ? { minHeight: TASTE_CARD_RESERVE_PX } : undefined}
     >
-      <h4 className="cl-sec" style={{ margin: 0 }}>How it tastes</h4>
+      <h4 id={CARD_HEADING_ID} tabIndex={-1} className="cl-sec" style={{ margin: 0 }}>How it tastes</h4>
       <TasteCard row={{ id: subjectId }} restaurantId={restaurantId} subject={kind} describe={false} emptyWords={canWrite ? RECIPE_TASTE_EMPTY : RECIPE_TASTE_EMPTY_READ} />
       {readable ? (
         !hasRecipe ? (
