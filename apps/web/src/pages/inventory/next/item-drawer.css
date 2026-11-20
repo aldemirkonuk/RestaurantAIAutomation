@@ -38,6 +38,14 @@
   }
 }
 
+/* A card holds its answered height from the first paint (94 px at the desktop sheet), so a card that
+   says "Reading…" and then fills in does not push the acts and "Used in" down (r97 M6). */
+@media (min-width: 768px) {
+  .ivd-card {
+    min-height: 94px;
+  }
+}
+
 .ivd-card {
   display: flex;
   flex-direction: column;

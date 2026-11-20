@@ -42,7 +42,7 @@
  * so are the dishes the current menu prints no line of, which can be taken
  * off the list together (TakeOffMenu).
  */
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AlertTriangle, Plus } from 'lucide-react';
 import RecipeSheet from '../cellar/next/recipe/RecipeSheet';
@@ -123,6 +123,33 @@ function SectionList({ id, sections }: { id: string; sections: string[] }) {
         <option key={s} value={s} />
       ))}
     </datalist>
+  );
+}
+
+/**
+ * The row an opened dish's sheet sits in. It draws closed, then (after a forced style flush, so
+ * the change is seen as one) opens with the cocktail leaf's own settle (`.cl-stand`: grid rows
+ * 0fr to 1fr, 320 ms, the house curve; none under reduced motion). `tr > td[colspan] > div` so
+ * the table stays valid. Switching from one open dish to another does not settle again, as the
+ * cocktail leaf does not; closing removes the row at once, as the cocktail leaf's content goes
+ * at once (the empty track under it has nothing to show).
+ */
+function DishLeafRow({ id, cols, settle, children }: { id: string; cols: number; settle: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(!settle);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (open) return;
+    ref.current?.getBoundingClientRect();
+    setOpen(true);
+  }, [open]);
+  return (
+    <tr data-testid={`dish-leaf-${id}`}>
+      <td colSpan={cols} style={{ padding: 0 }}>
+        <div ref={ref} className="cl-stand" data-open={open ? 'true' : 'false'}>
+          <div style={{ padding: '7px 10px' }}>{children}</div>
+        </div>
+      </td>
+    </tr>
   );
 }
 
@@ -515,6 +542,13 @@ export default function DishesPage() {
   const byDiffering = onlyDiffering && takeable.length > 0 ? filtered.filter((d) => takeIds.has(d.id)) : filtered;
   const rows = onlyOff && offMenu.length > 0 ? byDiffering.filter((d) => offIds.has(d.id)) : byDiffering;
   const openId = rows.some((d) => d.id === asked) ? asked : null;
+  // Whether a dish was open on the render before this one: a dish opened from none settles open;
+  // one opened while another was open takes its place with no second settle (the cocktail leaf's way).
+  const lastOpen = useRef<string | null>(null);
+  const wasOpen = lastOpen.current !== null;
+  useEffect(() => {
+    lastOpen.current = openId;
+  });
   // A link (the inventory drawer's "used in" lines) to a dish that opens nothing
   // says why, as /cocktails does: it is not on the list, or the search or a check hides it.
   const linkNote =
@@ -691,8 +725,7 @@ export default function DishesPage() {
                       <AllergenCell id={d.id} a={f?.allergens} />
                     </tr>,
                     d.id === openId ? (
-                      <tr key={`${d.id}-leaf`} data-testid={`dish-leaf-${d.id}`}>
-                        <td colSpan={cols}>
+                      <DishLeafRow key={`${d.id}-leaf`} id={d.id} cols={cols} settle={!wasOpen}>
                           {canEdit ? (
                             <DishDetails
                               key={d.id}
@@ -704,8 +737,7 @@ export default function DishesPage() {
                             />
                           ) : null}
                           <RecipeSheet dishId={d.id} holdRoom={d.id === fromLink} />
-                        </td>
-                      </tr>
+                      </DishLeafRow>
                     ) : null,
                   ];
                 })}
