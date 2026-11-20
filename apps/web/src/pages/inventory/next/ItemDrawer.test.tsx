@@ -366,9 +366,10 @@ describe('the item drawer', () => {
       Element.prototype.scrollIntoView = was;
     }
     cleanup();
-    api.dishes.mockRejectedValue(new Error('down'));
+    api.drinks.mockRejectedValue(new Error('down'));
     open(row());
-    await waitFor(() => expect(screen.getByTestId('ivd-used')).toBeTruthy());
+    await screen.findByTestId('ivd-used');
+    await new Promise((r) => setTimeout(r, 50));
     expect(screen.queryByTestId('ivd-used-chip')).toBeNull();
   });
 
