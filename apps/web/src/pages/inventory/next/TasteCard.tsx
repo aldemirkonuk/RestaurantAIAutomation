@@ -151,17 +151,12 @@ function Footer({ d }: { d: TasteData }) {
   const who = f.names.length
     ? `Stated by ${f.names.length > 1 ? `${f.names.slice(0, -1).join(', ')} and ${f.names[f.names.length - 1]}` : f.names[0]}`
     : sources.length === 1 && sources[0] !== 'house' ? sourceWords(sources[0]) : 'Stated';
-  // One layer, worked out from the recipe: the list below says where it came
-  // from and when, so the footer would say the same thing twice.
-  const recipeOnly = d.layers.length === 1 && d.layers[0].source === 'recipe';
   return (
     <>
-      {recipeOnly ? null : (
-        <p className="iv-note" data-testid="taste-footer">
-          {who}
-          {when}, {count}.
-        </p>
-      )}
+      <p className="iv-note" data-testid="taste-footer">
+        {who}
+        {when}, {count}.
+      </p>
       <ul className="tc-layers" data-testid="taste-layers">
         {d.layers.map((l, i) => (
           <li key={i}>

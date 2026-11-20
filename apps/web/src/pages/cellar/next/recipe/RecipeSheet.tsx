@@ -71,7 +71,6 @@ import { qtyText, readsAsThousandAmbiguous } from './units';
 import DrinkCards from './DrinkCards';
 import WhatIsInAServe from './WhatIsInAServe';
 import RecipeTaste, { RecipeTasteLine } from './RecipeTaste';
-import { UNREACHABLE_WORDS } from '../../../../lib/unreachable';
 import {
   useCanEditRecipe,
   useHouseMoney,
@@ -413,9 +412,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
     return (
       <p className="cl-note" role="alert" data-testid="recipe-unread">
         <AlertTriangle size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} />
-        {recipe.unreachable
-          ? `${UNREACHABLE_WORDS} The recipe could not be read. It is unread, not absent.`
-          : `The recipe could not be read${recipe.error ? ` (${recipe.error})` : ''}. It is unread, not absent.`}
+        The recipe could not be read{recipe.error ? ` (${recipe.error})` : ''}. It is unread, not absent.
       </p>
     );
   }
@@ -556,9 +553,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
       {recipe.error ? (
         <p className="cl-note" role="alert" data-testid="recipe-reread-failed">
           <AlertTriangle size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} />
-          {recipe.unreachable
-            ? `${UNREACHABLE_WORDS} The recipe could not be read again. What is shown is the last read.`
-            : `The recipe could not be read again just now (${recipe.error}). What is shown is the last read.`}
+          The recipe could not be read again just now ({recipe.error}). What is shown is the last read.
         </p>
       ) : null}
       {/* The drink opens on its cards, then what is in a serve, then its lines

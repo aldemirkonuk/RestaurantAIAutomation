@@ -493,34 +493,13 @@ describe('RecipeSheet', () => {
     expect(await screen.findByTestId('recipe-unread')).toHaveTextContent('could not be read');
   });
 
-  it('an answered failure still says its reason in the re-read banner', async () => {
-    serve(negroni());
-    const { qc } = mount();
-    await screen.findAllByLabelText('Amount');
-    h.get.mockRejectedValue(new Error('boom'));
-    await refocus(qc);
-    expect(await screen.findByTestId('recipe-reread-failed')).toHaveTextContent('could not be read again just now (boom)');
-  });
-
-  it('a first read with no answer at all says the house could not be reached, not "Network Error"', async () => {
-    h.get.mockRejectedValue(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
-    mount();
-    const unread = await screen.findByTestId('recipe-unread');
-    expect(unread).toHaveTextContent('Mudavym could not be reached just now.');
-    expect(unread).toHaveTextContent('unread, not absent');
-    expect(unread.textContent).not.toMatch(/Network Error/);
-  });
-
   it('a failed re-read says so and keeps the typed lines on the sheet', async () => {
     serve(negroni());
     const { qc } = mount();
     fireEvent.change((await screen.findAllByLabelText('Amount'))[0], { target: { value: '45' } });
-    h.get.mockRejectedValue(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
+    h.get.mockRejectedValue(new Error('Network Error'));
     await refocus(qc);
-    const banner = await screen.findByTestId('recipe-reread-failed');
-    expect(banner).toHaveTextContent('Mudavym could not be reached just now.');
-    expect(banner.textContent).not.toMatch(/Network Error/);
-    expect(banner).toHaveTextContent('What is shown is the last read.');
+    expect(await screen.findByTestId('recipe-reread-failed')).toHaveTextContent('could not be read again just now (Network Error)');
     expect(screen.getAllByTestId('recipe-line')).toHaveLength(3);
     expect(amount(0)).toBe('45');
   });
