@@ -63,8 +63,14 @@ export class PromotionExtractorService {
       const discount_value: Record<string, any> = {};
       if (promo.discount_pct != null)
         discount_value.percent = promo.discount_pct;
-      if (promo.discount_amount != null)
+      if (promo.discount_amount != null) {
         discount_value.amount = promo.discount_amount;
+        // "$15 off per case" is stored as per case, with the case's bottle
+        // count when the mail gave one; the grader never takes a per-case
+        // amount from a bottle price without it (offer-grade.ts).
+        if (promo.amount_unit) discount_value.amount_unit = promo.amount_unit;
+        if (promo.pack_size != null) discount_value.pack_size = promo.pack_size;
+      }
       if (promo.free_shipping) discount_value.free_shipping = true;
       if (promo.currency) discount_value.currency = promo.currency;
 
@@ -111,9 +117,14 @@ export class PromotionExtractorService {
         trust,
       });
 
+      // An offer whose stated end was already behind us when the mail was
+      // read is filed as ended: it shows on /promotions as passed and is
+      // never toasted or put in the morning digest. Its days-to-expiry is
+      // negative, which the urgency rule above would otherwise read as the
+      // most urgent offer of all.
       const conditions: Record<string, any> = {
         signature: promo.signature,
-        priority: bucket,
+        priority: promo.ended ? "ended" : bucket,
       };
       if (promo.threshold_qty != null) conditions.min_qty = promo.threshold_qty;
       if (promo.threshold_amount != null)
@@ -155,7 +166,7 @@ export class PromotionExtractorService {
       // /promotions: /providers now redirects to /vendors (web App.tsx).
       const relevant = applicableWines.length > 0;
       const provider = ctx.providerName || "A supplier";
-      if (bucket !== "digest") {
+      if (!promo.ended && bucket !== "digest") {
         await this.websocketGateway.emitRoleNotification(
           ctx.restaurantId,
           OWNER_AND_MANAGER,
