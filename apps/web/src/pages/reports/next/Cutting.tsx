@@ -151,11 +151,14 @@ function Drawing({
   graph,
   windowLine,
   combo,
+  flat = false,
 }: {
   view: AnalysisView;
   graph: GraphType;
   windowLine: string;
   combo?: ComboControl;
+  /** The full-screen view, where "Draw as" sits in the head, not on a sheet being arranged. */
+  flat?: boolean;
 }) {
   if (view.say)
     return (
@@ -164,7 +167,7 @@ function Drawing({
         <Nothing>{view.say}</Nothing>
       </>
     );
-  if (cannotDraw(view, graph)) return <Undrawable graph={graph} why={view.undrawn} />;
+  if (cannotDraw(view, graph)) return <Undrawable graph={graph} why={view.undrawn} flat={flat} />;
   switch (graph) {
     case 'line':
     case 'area':
@@ -189,13 +192,21 @@ function Drawing({
  *  shape in it. Said, never drawn as an empty axis. When the register knows
  *  WHY (`view.undrawn` — say, no order fell in either window), only that real
  *  reason is said: a generic line above it would only bury it (r56). */
-function Undrawable({ graph, why }: { graph: GraphType; why?: ReactNode }) {
+function Undrawable({
+  graph,
+  why,
+  flat = false,
+}: {
+  graph: GraphType;
+  why?: ReactNode;
+  flat?: boolean;
+}) {
   if (why != null) return <Nothing>{why}</Nothing>;
   return (
     <Nothing>
       This register answered, and what it returned cannot be drawn as{' '}
-      {GRAPH_LABEL[graph].toLowerCase()} — nothing is plotted rather than an empty frame. Pick
-      another drawing while arranging the sheet.
+      {GRAPH_LABEL[graph].toLowerCase()} — nothing is plotted rather than an empty frame.{' '}
+      {flat ? 'Pick another drawing above.' : 'Pick another drawing while arranging the sheet.'}
     </Nothing>
   );
 }
@@ -212,10 +223,13 @@ function Body({
   windowLine,
   workingOpen = false,
   combo,
+  flat = false,
 }: {
   view: AnalysisView;
   graph: GraphType;
   windowLine: string;
+  /** The full-screen view: the drawing sits in a slot whose height does not depend on what is drawn. */
+  flat?: boolean;
   /** Which measure is the bars and which the line, when the drawing is `combo`. */
   combo?: ComboControl;
   /** Start with the server's working shown — the flat view has the room. */
@@ -232,7 +246,13 @@ function Body({
       : view.notes;
   return (
     <>
-      <Drawing view={view} graph={graph} windowLine={windowLine} combo={combo} />
+      {flat ? (
+        <div className="rp-flat__slot" data-graph={graph}>
+          <Drawing view={view} graph={graph} windowLine={windowLine} combo={combo} flat />
+        </div>
+      ) : (
+        <Drawing view={view} graph={graph} windowLine={windowLine} combo={combo} />
+      )}
       {figures.length > 0 && (
         <dl className="rp-dl">
           {figures.map((f) => (
@@ -241,7 +261,7 @@ function Body({
         </dl>
       )}
       {notes.map((n, i) => (
-        <p key={i} className="rp-cap">
+        <p key={i} className="rp-cap" title={typeof n === 'string' ? n : undefined}>
           {n}
         </p>
       ))}
@@ -298,32 +318,77 @@ export default function Cutting({
   onFit,
 }: CuttingProps) {
   const spec = CATALOGUE[id];
-  const drawn = graphOrDefault(id, graph);
-  const windowLine = spec.window(ctx);
+
+  /* While a newly picked till window is read, the last drawing stays, dimmed and
+     labelled with its own days (ADR 0020); never for a first read or another house. */
+  const lastRead = useRef<{ data: unknown; days: number } | null>(null);
+  if (spec.takesWindow && register && !register.loading && !register.failure && register.data !== undefined)
+    lastRead.current = { data: register.data, days: ctx.days };
+  const standIn =
+    spec.takesWindow &&
+    register?.loading &&
+    !register.failure &&
+    lastRead.current &&
+    lastRead.current.days !== ctx.days
+      ? lastRead.current
+      : null;
+  const viewCtx: ViewCtx = standIn ? { ...ctx, days: standIn.days } : ctx;
+  const windowLine = spec.window(viewCtx);
+
+  // A drawing the answer cannot carry (bars and a line without per-day checks) is not offered.
+  const answer = standIn ? standIn.data : register?.data;
+  const offered = ((): GraphType[] => {
+    if (!readsRegister(spec) || answer === undefined) return spec.graphs;
+    const v = spec.view(answer, viewCtx);
+    if (v.say) return spec.graphs;
+    return spec.graphs.filter((g) => !(g === 'combo' && cannotDraw(v, 'combo')));
+  })();
+  const stored = graphOrDefault(id, graph);
+  const drawn: GraphType = offered.includes(stored) ? stored : (offered[0] ?? 'table');
 
   // One body, two places: the sheet, and the flat view (working open).
   // The flat view passes its own bars-and-line choice (view-only, kept across
   // its "Draw as" flips); the sheet passes the page's, keyed by cutting id.
   const sheetCombo: ComboControl = { pick: comboPick, onPick: onComboPick };
+  // Only the till takes a window; other bodies keep their blocks as direct children.
+  const framed = (kids: ReactNode) =>
+    spec.takesWindow ? (
+      <div className="rp-standin" data-stale={standIn ? '' : undefined} aria-busy={standIn ? true : undefined}>
+        {kids}
+      </div>
+    ) : (
+      kids
+    );
   const bodyFor = (g: GraphType, workingOpen = false, combo: ComboControl = sheetCombo) =>
     readsRegister(spec) ? (
-      <RegisterBody
-        register={spec.register}
-        loading={register?.loading ?? true}
-        failure={register?.failure ?? null}
-        data={register?.data}
-        onRetry={() => register?.refetch()}
-      >
-        {(data) => (
-          <Body
-            view={spec.view(data, ctx)}
-            graph={g}
-            windowLine={windowLine}
-            workingOpen={workingOpen}
-            combo={combo}
-          />
+      framed(
+        <>
+        {standIn && (
+          <p className="rp-cap" role="status">
+            Reading the last {ctx.days} days. Until they arrive, the figures shown are the last{' '}
+            {standIn.days} days.
+          </p>
         )}
-      </RegisterBody>
+        <RegisterBody
+          register={spec.register}
+          loading={standIn ? false : (register?.loading ?? true)}
+          failure={register?.failure ?? null}
+          data={standIn ? standIn.data : register?.data}
+          onRetry={() => register?.refetch()}
+        >
+          {(data) => (
+            <Body
+              view={spec.view(data, viewCtx)}
+              graph={g}
+              windowLine={windowLine}
+              workingOpen={workingOpen}
+              combo={combo}
+              flat={workingOpen}
+            />
+          )}
+        </RegisterBody>
+        </>,
+      )
     ) : (
       <Body
         view={spec.view(null, ctx)}
@@ -331,6 +396,7 @@ export default function Cutting({
         windowLine={windowLine}
         workingOpen={workingOpen}
         combo={combo}
+        flat={workingOpen}
       />
     );
   const body = bodyFor(drawn);
@@ -461,7 +527,7 @@ export default function Cutting({
               ))}
             </select>
           </label>
-          {spec.graphs.length > 0 ? (
+          {offered.length > 0 ? (
             <label className="rp-field">
               <span className="rp-eyebrow">
                 <GraphIcon graph={drawn} /> Draw as
@@ -472,7 +538,7 @@ export default function Cutting({
                 value={drawn}
                 onChange={(e) => onGraph(e.target.value as GraphType)}
               >
-                {spec.graphs.map((g) => (
+                {offered.map((g) => (
                   <option key={g} value={g}>
                     {GRAPH_LABEL[g]}
                   </option>
@@ -494,7 +560,7 @@ export default function Cutting({
         <CuttingFlat
           title={spec.title}
           windowLine={windowLine}
-          graphs={spec.graphs}
+          graphs={offered}
           initialGraph={drawn}
           initialComboPick={comboPick}
           renderBody={(g, combo) => bodyFor(g, true, combo)}
