@@ -92,7 +92,7 @@ describe('/dishes keeps its rows still while the figures arrive', () => {
     expect(subLine(B).style.minHeight).toBe('1lh');
   });
 
-  it('an owner\'s "no recipe yet" line has its room held while the figures are read, and the held room goes once nothing is bare', async () => {
+  it('an owner\'s "no recipe yet" line has its room held while the figures are read, and the room is kept, never dropped, once nothing is bare', async () => {
     let release: (v: unknown) => void = () => {};
     answer[FIGURES] = () => new Promise((r) => { release = r; });
     mount();
@@ -105,6 +105,31 @@ describe('/dishes keeps its rows still while the figures arrive', () => {
     // The real line takes the held one's place (one is on the page, never both).
     expect(await screen.findByTestId('no-recipe-yet')).toBeInTheDocument();
     expect(screen.queryByTestId('no-recipe-yet-room')).toBeNull();
+  });
+
+  it('a house whose dishes all have recipes keeps the same room, and the line that takes it says so', async () => {
+    let release: (v: unknown) => void = () => {};
+    answer[FIGURES] = () => new Promise((r) => { release = r; });
+    mount();
+    await waitFor(() => expect(screen.getByTestId(`dish-row-${A}`)).toBeInTheDocument());
+    expect(screen.getByTestId('no-recipe-yet-room').style.minHeight).toBe('1lh');
+    release({ data: { ...figures, dishes: figures.dishes.map((d) => ({ ...d, hasRecipe: true })) } });
+    const taken = await screen.findByTestId('every-dish-has-recipe');
+    // The one room on the page: same class, same hold, same margin as before the read settled.
+    expect(taken.style.minHeight).toBe('1lh');
+    expect(taken.style.marginTop).toBe('12px');
+    expect(taken).toHaveTextContent('Every dish has a recipe.');
+    expect(screen.queryByTestId('no-recipe-yet-room')).toBeNull();
+    expect(screen.queryByTestId('no-recipe-yet')).toBeNull();
+  });
+
+  it('a figures read that failed keeps the room too, and says nothing it does not know', async () => {
+    answer[FIGURES] = () => Promise.reject(new Error('down'));
+    mount();
+    const room = await screen.findByTestId('no-recipe-yet-room');
+    await screen.findByTestId('dishes-allergens-unread');
+    expect(room.style.minHeight).toBe('1lh');
+    expect(screen.queryByTestId('every-dish-has-recipe')).toBeNull();
   });
 
   it('staff are shown no such line, so none is held', async () => {
