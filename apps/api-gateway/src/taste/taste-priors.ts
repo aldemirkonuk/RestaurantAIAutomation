@@ -21,7 +21,7 @@ export const PRIORS_VERSION = 1;
  * How far a source of chemistry is believed (R3 section 3 step 8). A class
  * prior is never above 0.6: it is the kind of ingredient, not this bottle.
  */
-export const Q_BY_PROV = { measured: 1.0, dataset: 0.7, class_prior: 0.6, unknown: 0 } as const;
+export const Q_BY_PROV = { measured: 1.0, dataset: 0.7, staff: 0.6, class_prior: 0.6, unknown: 0 } as const;
 export type RollupProv = keyof typeof Q_BY_PROV;
 
 export interface ClassPrior {
@@ -31,31 +31,40 @@ export interface ClassPrior {
   /** Belief in this class (<= Q_BY_PROV.class_prior); loose classes are lower. */
   q: number;
   aroma?: Aroma; protein?: boolean; solid?: boolean;
+  /**
+   * Fields this class states to be ABSENT (a real zero): plain gin has no fat,
+   * no salt. A field is known for a line only if it is in `chem` or here;
+   * anything else is unknown, and an unknown field is never read as 0.
+   */
+  none?: ReadonlyArray<keyof Chem>;
 }
+/** Absent in every drink class below. */
+const NO_SAVOURY: ReadonlyArray<keyof Chem> = ['fat', 'nacl', 'glu'];
+const NO_ALC_SAVOURY: ReadonlyArray<keyof Chem> = ['abv', 'fat', 'nacl', 'glu'];
 
 // Tight classes first (a standard strength, a standard syrup); loose ones after.
 // Matching is on the accent-folded lower-case name; first match wins.
 export const CLASS_PRIORS: readonly ClassPrior[] = [
-  { id: 'ice-water', match: /^(ice|crushed ice|water|soda water|club soda|sparkling water)$/, chem: {}, rsd: 0, q: 0.6 },
-  { id: 'honey-agave', match: /\b(honey|agave|maple)\b/, chem: { se: 75 }, rsd: 0.06, q: 0.5 },
-  { id: 'rich-syrup', match: /\b(rich syrup|demerara syrup)\b/, chem: { se: 85 }, rsd: 0.04, q: 0.55 },
-  { id: 'simple-syrup', match: /\b(simple syrup|sugar syrup|syrup)\b/, chem: { se: 61.5 }, rsd: 0.03, q: 0.6 },
-  { id: 'sugar', match: /\b(sugar|sucre)\b/, chem: { se: 100 }, rsd: 0.01, q: 0.6, solid: true },
+  { id: 'ice-water', match: /^(ice|crushed ice|water|soda water|club soda|sparkling water)$/, chem: {}, rsd: 0, q: 0.6, none: ['abv', 'se', 'ce', 'nacl', 'fat', 'glu', 'nuc', 'be'] },
+  { id: 'honey-agave', match: /\b(honey|agave|maple)\b/, chem: { se: 75 }, rsd: 0.06, q: 0.5, none: [...NO_ALC_SAVOURY, 'ce', 'be'] },
+  { id: 'rich-syrup', match: /\b(rich syrup|demerara syrup)\b/, chem: { se: 85 }, rsd: 0.04, q: 0.55, none: [...NO_ALC_SAVOURY, 'ce', 'be'] },
+  { id: 'simple-syrup', match: /\b(simple syrup|sugar syrup|syrup)\b/, chem: { se: 61.5 }, rsd: 0.03, q: 0.6, none: [...NO_ALC_SAVOURY, 'ce', 'be'] },
+  { id: 'sugar', match: /\b(sugar|sucre)\b/, chem: { se: 100 }, rsd: 0.01, q: 0.6, solid: true, none: [...NO_ALC_SAVOURY, 'ce', 'be'] },
   { id: 'salt', match: /\b(salt|sea salt|sel)\b/, chem: { nacl: 100 }, rsd: 0.01, q: 0.6, solid: true },
-  { id: 'lemon-lime', match: /\b(lemon|lime|limon)\b/, chem: { ce: 6.0, se: 2.5 }, rsd: 0.13, q: 0.5, aroma: { citrus: 0.75 } },
-  { id: 'orange-juice', match: /\b(orange|portakal)\b.*\b(juice|suyu)\b|\b(juice|suyu)\b.*\b(orange|portakal)\b/, chem: { ce: 1.0, se: 8.5 }, rsd: 0.15, q: 0.45, aroma: { citrus: 0.6 } },
-  { id: 'grapefruit-juice', match: /\bgrapefruit\b/, chem: { ce: 1.5, se: 7 }, rsd: 0.15, q: 0.45, aroma: { citrus: 0.6 } },
-  { id: 'sweet-vermouth', match: /\b(sweet vermouth|rosso)\b/, chem: { abv: 16, se: 14, ce: 0.6, be: 8 }, rsd: 0.1, q: 0.45, aroma: { herbal: 0.6 } },
-  { id: 'dry-vermouth', match: /\b(dry vermouth|vermouth)\b/, chem: { abv: 18, se: 3, ce: 0.6, be: 6 }, rsd: 0.1, q: 0.45, aroma: { herbal: 0.6 } },
-  { id: 'bitter-liqueur', match: /\b(campari|aperol|amaro|fernet)\b/, chem: { abv: 25, se: 22, be: 55 }, rsd: 0.15, q: 0.4, aroma: { herbal: 0.6 } },
-  { id: 'orange-liqueur', match: /\b(triple sec|cointreau|curacao|liqueur)\b/, chem: { abv: 35, se: 25 }, rsd: 0.12, q: 0.4 },
-  { id: 'bitters', match: /\b(bitters)\b/, chem: { abv: 44, be: 120 }, rsd: 0.2, q: 0.4, aroma: { spice: 0.6 } },
-  { id: 'dark-spirit', match: /\b(bourbon|whiskey|whisky|rye|scotch|rum|brandy|cognac|calvados)\b/, chem: { abv: 40, be: 10 }, rsd: 0.04, q: 0.6, aroma: { woody: 0.75 } },
-  { id: 'clear-spirit', match: /\b(vodka|gin|tequila|mezcal|raki|aquavit|spirit)\b/, chem: { abv: 40, be: 3 }, rsd: 0.04, q: 0.6 },
-  { id: 'wine', match: /\b(wine|prosecco|champagne|sparkling)\b/, chem: { abv: 12.5, ce: 0.6, se: 0.6 }, rsd: 0.15, q: 0.45 },
-  { id: 'tonic-cola', match: /\b(tonic|cola|ginger ale|lemonade)\b/, chem: { se: 9, be: 6 }, rsd: 0.15, q: 0.4 },
-  { id: 'beer', match: /\b(beer|lager|ale|stout)\b/, chem: { abv: 5, be: 20, se: 0.3 }, rsd: 0.25, q: 0.4 },
-  { id: 'vinegar', match: /\b(vinegar|sirke)\b/, chem: { ce: 2.5 }, rsd: 0.15, q: 0.5 },
+  { id: 'lemon-lime', match: /\b(lemon|lime|limon)\b/, chem: { ce: 6.0, se: 2.5 }, rsd: 0.13, q: 0.5, aroma: { citrus: 0.75 }, none: NO_ALC_SAVOURY },
+  { id: 'orange-juice', match: /\b(orange|portakal)\b.*\b(juice|suyu)\b|\b(juice|suyu)\b.*\b(orange|portakal)\b/, chem: { ce: 1.0, se: 8.5 }, rsd: 0.15, q: 0.45, aroma: { citrus: 0.6 }, none: NO_ALC_SAVOURY },
+  { id: 'grapefruit-juice', match: /\bgrapefruit\b/, chem: { ce: 1.5, se: 7 }, rsd: 0.15, q: 0.45, aroma: { citrus: 0.6 }, none: NO_ALC_SAVOURY },
+  { id: 'sweet-vermouth', match: /\b(sweet vermouth|rosso)\b/, chem: { abv: 16, se: 14, ce: 0.6, be: 8 }, rsd: 0.1, q: 0.45, aroma: { herbal: 0.6 }, none: NO_SAVOURY },
+  { id: 'dry-vermouth', match: /\b(dry vermouth|vermouth)\b/, chem: { abv: 18, se: 3, ce: 0.6, be: 6 }, rsd: 0.1, q: 0.45, aroma: { herbal: 0.6 }, none: NO_SAVOURY },
+  { id: 'bitter-liqueur', match: /\b(campari|aperol|amaro|fernet)\b/, chem: { abv: 25, se: 22, be: 55 }, rsd: 0.15, q: 0.4, aroma: { herbal: 0.6 }, none: NO_SAVOURY },
+  { id: 'orange-liqueur', match: /\b(triple sec|cointreau|curacao|liqueur)\b/, chem: { abv: 35, se: 25 }, rsd: 0.12, q: 0.4, none: NO_SAVOURY },
+  { id: 'bitters', match: /\b(bitters)\b/, chem: { abv: 44, be: 120 }, rsd: 0.2, q: 0.4, aroma: { spice: 0.6 }, none: NO_SAVOURY },
+  { id: 'dark-spirit', match: /\b(bourbon|whiskey|whisky|rye|scotch|rum|brandy|cognac|calvados)\b/, chem: { abv: 40, be: 10 }, rsd: 0.04, q: 0.6, aroma: { woody: 0.75 }, none: [...NO_SAVOURY, 'se', 'ce'] },
+  { id: 'clear-spirit', match: /\b(vodka|gin|tequila|mezcal|raki|aquavit|spirit)\b/, chem: { abv: 40, be: 3 }, rsd: 0.04, q: 0.6, none: [...NO_SAVOURY, 'se', 'ce'] },
+  { id: 'wine', match: /\b(wine|prosecco|champagne|sparkling)\b/, chem: { abv: 12.5, ce: 0.6, se: 0.6 }, rsd: 0.15, q: 0.45, none: NO_SAVOURY },
+  { id: 'tonic-cola', match: /\b(tonic|cola|ginger ale|lemonade)\b/, chem: { se: 9, be: 6 }, rsd: 0.15, q: 0.4, none: NO_ALC_SAVOURY },
+  { id: 'beer', match: /\b(beer|lager|ale|stout)\b/, chem: { abv: 5, be: 20, se: 0.3 }, rsd: 0.25, q: 0.4, none: NO_SAVOURY },
+  { id: 'vinegar', match: /\b(vinegar|sirke)\b/, chem: { ce: 2.5 }, rsd: 0.15, q: 0.5, none: NO_ALC_SAVOURY },
   { id: 'oil', match: /\b(olive oil|oil|yag)\b/, chem: { fat: 100 }, rsd: 0.01, q: 0.6 },
   { id: 'butter', match: /\b(butter|tereyagi)\b/, chem: { fat: 81, nacl: 1.5 }, rsd: 0.05, q: 0.5, aroma: { dairy: 0.6 } },
   { id: 'cream', match: /\b(cream|krema)\b/, chem: { fat: 35, se: 0.7, nacl: 0.1 }, rsd: 0.08, q: 0.5, aroma: { dairy: 0.5 } },
