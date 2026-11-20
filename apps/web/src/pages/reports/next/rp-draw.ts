@@ -13,7 +13,7 @@
  * Only transform and opacity ever move (reports-next.css, `rp-grow`), so none
  * of this touches layout.
  */
-import { useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 
 /** The reader asked their system for less motion. A browser that cannot say is read as "no preference". */
 export function reducedMotion(): boolean {
@@ -29,8 +29,28 @@ export function tipMotion(): { isAnimationActive: boolean; animationDuration: nu
   return { isAnimationActive: !reducedMotion(), animationDuration: 120, animationEasing: 'ease-out' };
 }
 
-/** Bars hold flat (`pending`) until in view, then rise once (`drawn`). `still` never moves: reduced motion, or no way to tell what is in view. */
-export type DrawState = 'still' | 'pending' | 'drawn';
+/**
+ * Bars hold flat (`pending`) until in view, then rise once (`drawn`), then rest
+ * (`settled`: painted where they are, nothing animates). `still` never moves:
+ * reduced motion, or no way to tell what is in view.
+ */
+export type DrawState = 'still' | 'pending' | 'drawn' | 'settled';
+
+/** The rise, in ms: the longest stagger sweep (160) plus one bar's own 360. The stylesheet's numbers, kept in step by a test. */
+export const RISE_MS = 520;
+
+/**
+ * Which cutting and drawing a plot belongs to (`<cutting id>:<graph>`). A plot
+ * whose key has already risen this page session starts `settled`, so a rotate,
+ * a resize or a remount of the same drawing does not replay the entrance.
+ */
+export const DrawKey = createContext<string | null>(null);
+
+const risen = new Set<string>();
+/** Forget what has risen (tests only). */
+export function forgetRisen(): void {
+  risen.clear();
+}
 
 /** How much of the plot must be on screen before the bars rise. */
 export const DRAW_AT = 0.4;
@@ -41,7 +61,17 @@ export function canDraw(): boolean {
 
 export function useDrawIn() {
   const ref = useRef<HTMLDivElement>(null);
-  const [state, setState] = useState<DrawState>(() => (canDraw() ? 'pending' : 'still'));
+  const key = useContext(DrawKey);
+  const [state, setState] = useState<DrawState>(() =>
+    key != null && risen.has(key) ? 'settled' : canDraw() ? 'pending' : 'still',
+  );
+  useEffect(() => {
+    if (state !== 'drawn') return;
+    if (key != null) risen.add(key);
+    // Not `animationend`: an area or a line has no bars and would never fire it.
+    const t = setTimeout(() => setState('settled'), RISE_MS);
+    return () => clearTimeout(t);
+  }, [state, key]);
   useEffect(() => {
     if (state !== 'pending') return;
     const el = ref.current;
