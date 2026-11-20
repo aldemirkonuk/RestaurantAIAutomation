@@ -39,7 +39,7 @@ import {
 } from '../../../services/api/itemDishes';
 import { cellMoney, type HouseCurrency } from './useInventoryNextData';
 // A share in the house's form, as its money is: "%13,1" beside "₺12,00" (r23 walk).
-import { formatHousePercent } from '../../../lib/house-number';
+import { formatHouseNumber, formatHousePercent } from '../../../lib/house-number';
 
 export type UsedInLoad = { status: 'reading' } | { status: 'failed'; reason: string } | { status: 'ready'; data: UsedIn };
 
@@ -86,8 +86,8 @@ export const DRINKS_DO_NOT_DRAW =
   'A sale of these drinks does not take this item from stock yet; counts and write-offs move it.';
 
 /** A recipe quantity as a person writes it: 0.30000000000000004 reads 0.3, 29.5735295625 reads 29.57. */
-export function fmtRecipeQty(n: number): string {
-  return n.toLocaleString('en-GB', { maximumFractionDigits: 2 });
+export function fmtRecipeQty(n: number, code: string | null = null): string {
+  return formatHouseNumber(n, code, { max: 2 });
 }
 
 function DishCard({ id, title, value, sub }: { id: string; title: string; value: string; sub?: string }) {
@@ -143,7 +143,7 @@ function RecipeBlock({
   const w = RECIPE_WORDS[kind];
   const t = `ivd-${kind}-${id}`;
   const known = y !== null && y > 0;
-  const perServe = known ? uses.map((u) => `${fmtRecipeQty(u.qtyEntered / y)} ${u.unitCode}`).join(' + ') : '';
+  const perServe = known ? uses.map((u) => `${fmtRecipeQty(u.qtyEntered / y, currency.code)} ${u.unitCode}`).join(' + ') : '';
   const share = foodCostShare(cost, price, kind);
   return (
     <div className={`ivd-dish ivd-${kind}`} data-testid={t}>
@@ -385,7 +385,7 @@ export default function ItemUsedIn({
             key: `${c.cocktailId}-${i}`,
             text: c.name,
             to: drinkHref(c.cocktailId),
-            side: c.quantity !== null ? `${fmtRecipeQty(c.quantity)}${c.unit ? ` ${c.unit}` : ''}` : undefined,
+            side: c.quantity !== null ? `${fmtRecipeQty(c.quantity, currency.code)}${c.unit ? ` ${c.unit}` : ''}` : undefined,
           })}
         />
         ) : null}
@@ -408,7 +408,7 @@ export default function ItemUsedIn({
           note={DRINKS_DO_NOT_DRAW}
           line={(d, i) => ({
             key: `${d.cocktailId}-${i}`,
-            text: `${d.name} — ${fmtRecipeQty(d.qtyEntered)} ${d.unitCode} (${d.label})`,
+            text: `${d.name} — ${fmtRecipeQty(d.qtyEntered, currency.code)} ${d.unitCode} (${d.label})`,
             to: drinkHref(d.cocktailId),
           })}
         />
