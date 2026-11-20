@@ -82,7 +82,7 @@ numpy==1.26.3
 # every published version, so pinning 12.x there is ResolutionImpossible. This file
 # has no surya-ocr, and it is the one the Dockerfile installs — so the container that
 # actually ships gets the patched Pillow. Revisit when surya-ocr lifts its <11 cap.
-pillow==12.3.0
+pillow==13.0.0
 pytz==2024.1
 
 # Async utilities
