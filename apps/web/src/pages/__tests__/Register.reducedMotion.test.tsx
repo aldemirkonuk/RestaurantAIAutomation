@@ -9,12 +9,13 @@ import { createElement } from 'react'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 
 vi.mock('../../contexts/AuthContext', () => ({
   useAuth: () => ({ registerAccount: vi.fn(), joinViaInvite: vi.fn(), error: null }),
 }))
-vi.mock('../../services/api/client', () => ({ apiClient: { get: vi.fn() } }))
+const get = vi.hoisted(() => vi.fn())
+vi.mock('../../services/api/client', () => ({ apiClient: { get } }))
 vi.mock('../../components/auth/GoogleSignInButton', () => ({ GoogleSignInButton: () => null }))
 
 import { Register } from '../Register'
@@ -69,5 +70,22 @@ describe('reduced motion on the way in', () => {
     const buttons = reg.split('<Button').slice(1)
     expect(buttons.length).toBe(3)
     for (const b of buttons) expect(b.slice(0, 300)).toContain('motion-reduce:transition-none')
+  })
+
+  it('holds the invite card\'s room while its read is out, then gives it up', async () => {
+    let settle: (v: unknown) => void = () => {}
+    get.mockReturnValue(new Promise((r) => { settle = r }))
+    render(
+      createElement(
+        MemoryRouter,
+        { initialEntries: ['/register?type=join'] },
+        createElement(Routes, null, createElement(Route, { path: '/register', element: createElement(Register) })),
+      ),
+    )
+    expect(screen.queryByTestId('invite-card-room')).toBeNull()
+    fireEvent.change(screen.getByLabelText('Invite Code'), { target: { value: 'ABCD2345' } })
+    expect(screen.getByTestId('invite-card-room')).toHaveStyle({ minHeight: '142px' })
+    settle({ data: { valid: false, reason: 'not_found' } })
+    await waitFor(() => expect(screen.queryByTestId('invite-card-room')).toBeNull())
   })
 })

@@ -13,6 +13,9 @@ import { usePublicDesign } from '../lib/mudavym/publicDesign'
 import { GoogleSignInButton } from '../components/auth/GoogleSignInButton'
 import '../components/brand/auth-house.css'
 
+/** Height the valid-invite card takes (16 px gap included), measured in the r102 walk at 375 px. */
+const INVITE_CARD_ROOM_PX = 142
+
 /** ADR 0112 / DD-r102-3: reduced motion is no animation, opacity fades included. */
 const dur = (seconds: number) => (prefersReducedMotion() ? 0 : seconds)
 
@@ -298,6 +301,11 @@ export function Register() {
         </div>
       </div>
 
+      {/* r103: the card that arrives after the preview read pushed Continue from
+          451 to 593 px (CLS 0.02 at 375). While the read is out, its room is held. */}
+      {inviteCode.length === 8 && invitePreview === null && (
+        <div aria-hidden data-testid="invite-card-room" style={{ minHeight: INVITE_CARD_ROOM_PX }} />
+      )}
       {/* Trust card (valid) */}
       <AnimatePresence>
         {invitePreview?.valid === true && (
