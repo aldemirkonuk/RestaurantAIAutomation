@@ -8,6 +8,7 @@ import {
   type MakeCurrentResult,
   type MenuImportResult,
   type MenuImportReviewItem,
+  type PlanLine,
 } from '../../services/api/menus'
 import { makeCurrentSentence } from '../../pages/menu/next/MenuVersions'
 import { MenuPlan } from '../../pages/menu/next/MenuPlan'
@@ -17,6 +18,10 @@ interface MenuReviewScreenProps {
   /** `true` when the menu was made the current one here; otherwise it stays a kept draft. */
   onConfirm: (madeCurrent?: boolean) => void
   onSkip: () => void
+  /** Drawn inside a page that already has its own frame (the menu page), not as a page of its own. */
+  embedded?: boolean
+  /** The host's own word on who may choose the current menu; without it, the signed-in role decides. */
+  canChoose?: boolean
 }
 
 interface EditableCellProps {
@@ -79,14 +84,14 @@ function EditableCell({ value, placeholder, onSave }: EditableCellProps) {
   )
 }
 
-export function MenuReviewScreen({ result, onConfirm, onSkip }: MenuReviewScreenProps) {
+export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, canChoose: hostCanChoose }: MenuReviewScreenProps) {
   // ADR 0193 (menu versions, founder 2026-09-21): a read menu is KEPT as a
   // draft; after the extraction the person chooses whether it becomes the
   // current menu. That choice is an owner's or a manager's; the gateway
   // refuses anyone else regardless of what this screen offers.
   const auth = useAuth()
   const role = (auth?.activeRole ?? auth?.user?.role ?? null) as string | null
-  const canChoose = role === 'owner' || role === 'manager'
+  const canChoose = hostCanChoose ?? (role === 'owner' || role === 'manager')
   // What the switch did, when there is something to say: a line whose price
   // failed, or a blank price that kept the last known one. Said here and the
   // review waits for Continue, rather than moving on as if every price landed
@@ -96,10 +101,10 @@ export function MenuReviewScreen({ result, onConfirm, onSkip }: MenuReviewScreen
   // shows -- what the menu would change, a Keep switch on each price -- and
   // names the plan's fingerprint. Nothing is chosen blind.
   const [planning, setPlanning] = useState(false)
-  const madeCurrent = (made: MakeCurrentResult) => {
+  const madeCurrent = (made: MakeCurrentResult, lines: PlanLine[]) => {
     setPlanning(false)
     if (made.failed.length > 0 || made.flagged > 0 || (made.held?.length ?? 0) > 0) {
-      setMadeNote(makeCurrentSentence(made))
+      setMadeNote(makeCurrentSentence(made, undefined, lines))
       return
     }
     onConfirm(true)
@@ -189,7 +194,10 @@ export function MenuReviewScreen({ result, onConfirm, onSkip }: MenuReviewScreen
   )
 
   return (
-    <div className="min-h-screen bg-white flex flex-col items-center px-4 pt-10 pb-16">
+    <div
+      className={embedded ? 'bg-white flex flex-col items-center px-4 py-6' : 'min-h-screen bg-white flex flex-col items-center px-4 pt-10 pb-16'}
+      data-testid="menu-read-review"
+    >
       <div className="w-full max-w-2xl">
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Review &amp; confirm</h1>
