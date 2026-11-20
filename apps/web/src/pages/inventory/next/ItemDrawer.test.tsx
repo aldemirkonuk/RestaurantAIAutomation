@@ -599,7 +599,7 @@ describe('the first-screen taste line', () => {
     expect(api.taste).toHaveBeenCalledTimes(1);
   });
 
-  it('holds a one-line slot while the read is pending, then collapses when it says no profile', async () => {
+  it('holds a one-line slot while the read is pending, then keeps it when it says no profile (r101)', async () => {
     let answer: (v: unknown) => void = () => undefined;
     api.taste.mockImplementation(() => new Promise((r) => (answer = r)));
     open(row());
@@ -607,7 +607,9 @@ describe('the first-screen taste line', () => {
     expect(hold.getAttribute('aria-hidden')).toBe('true');
     expect(screen.getByTestId('ivd-head').nextElementSibling).toBe(hold);
     answer({ state: 'ready', data: { effective: null, layers: [] } });
-    await waitFor(() => expect(screen.queryByTestId('taste-line-head-hold')).toBeNull());
+    await waitFor(() => expect(api.taste).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 700));
+    expect(screen.getByTestId('taste-line-head-hold')).toBe(hold);
     expect(screen.queryByTestId('taste-line-head')).toBeNull();
   });
 
