@@ -418,6 +418,7 @@ Page tree: **0** user-visible strings. Reachable-but-shared:
 - **Still open, found by the PR #579 audit** (`.planning/tech-debt.d/2026-10-01-fix-review-dashboard.md`):
   - `/procurement/orders/pending` and `/history` still send prices to staff (the server half of W22).
   - A failed alerts or activity read shows as an empty list: the shared client and the page's own hook both empty it, and Lately has no failure line (the web half of W11).
+    [2026-10-08: PR #565 closes this, except that the failure lines have no "Try again". See the debt entry's bracket.]
   - Three dashboard routes no page reads (`sales-chart`, `inventory-breakdown`, `summary`) still answer empty on a failed read.
     [2026-10-08: since #609, `sales-chart` refuses a failed consumption read; only its orders read still answers zero. See the debt entry's bracket.]
   - Read errors reach the client with table names and PostgREST text.

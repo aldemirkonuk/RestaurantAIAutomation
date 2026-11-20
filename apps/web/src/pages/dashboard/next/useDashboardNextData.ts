@@ -12,10 +12,13 @@
  *   null      → the fetch failed (em dash / honest copy)
  *   T         → a real answer, including a real empty list
  *
- * Caveats inherited from the services (documented, not hidden):
- *  - getRecentActivity / getAlerts catch internally and return [] on failure,
- *    so for those two slices an empty list can also mean "unreachable"; the
- *    panels use neutral copy that is true in both cases.
+ * getRecentActivity / getAlerts used to catch internally and return [] on
+ * failure, so an empty activity or alerts list could also mean
+ * "unreachable" — and the panels printed it as a quiet day. They now reject
+ * like the stats read, so those two slices follow the same three states
+ * (DASH-W3, DASH-W11).
+ *
+ * Caveat inherited from the services (documented, not hidden):
  *  - getCalendarRevenue catches internally and returns { daily: [] }. A
  *    successful month always carries >= 28 day rows (the gateway fills every
  *    day), so `daily.length === 0` is decodable as "unknown".
@@ -194,8 +197,8 @@ export interface DashboardSpine {
   stats: DashboardStats | null | undefined;
   pending: Order[] | null | undefined;
   lowStock: InventoryItem[] | null | undefined;
-  activity: ActivityItem[] | undefined; // [] may mean unreachable (see header)
-  alerts: AlertItem[] | undefined; //      "
+  activity: ActivityItem[] | null | undefined;
+  alerts: AlertItem[] | null | undefined;
   refetch: () => Promise<void>;
 }
 
@@ -225,10 +228,12 @@ export function useDashboardSpine(restaurantId: string | null): DashboardSpine {
   const [lowStock, setLowStock] = useState<InventoryItem[] | null | undefined>(
     undefined,
   );
-  const [activity, setActivity] = useState<ActivityItem[] | undefined>(
+  const [activity, setActivity] = useState<ActivityItem[] | null | undefined>(
     undefined,
   );
-  const [alerts, setAlerts] = useState<AlertItem[] | undefined>(undefined);
+  const [alerts, setAlerts] = useState<AlertItem[] | null | undefined>(
+    undefined,
+  );
   const alive = useRef(true);
 
   const refetch = useCallback(async () => {
@@ -249,8 +254,8 @@ export function useDashboardSpine(restaurantId: string | null): DashboardSpine {
     setStats(s);
     setPending(Array.isArray(p) ? p : null);
     setLowStock(Array.isArray(l) ? l : null);
-    setActivity(Array.isArray(act) ? (act as ActivityItem[]) : []);
-    setAlerts(Array.isArray(al) ? (al as AlertItem[]) : []);
+    setActivity(Array.isArray(act) ? (act as ActivityItem[]) : null);
+    setAlerts(Array.isArray(al) ? (al as AlertItem[]) : null);
   }, [restaurantId]);
 
   useEffect(() => {

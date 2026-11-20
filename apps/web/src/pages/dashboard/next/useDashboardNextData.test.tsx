@@ -1,12 +1,17 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
-import { useMonthLedger } from "./useDashboardNextData";
-import { dashboardApi } from "@/services/api";
+import { useDashboardSpine, useMonthLedger } from "./useDashboardNextData";
+import { dashboardApi, inventoryApi, ordersApi } from "@/services/api";
 
 vi.mock("@/services/api", () => ({
-  dashboardApi: { getCalendarRevenue: vi.fn() },
-  inventoryApi: {},
-  ordersApi: {},
+  dashboardApi: {
+    getCalendarRevenue: vi.fn(),
+    getDashboardStats: vi.fn(),
+    getRecentActivity: vi.fn(),
+    getAlerts: vi.fn(),
+  },
+  inventoryApi: { getLowStockItems: vi.fn() },
+  ordersApi: { getOrdersNeedingApproval: vi.fn() },
 }));
 const month = (spend: number) => ({
   year: 2026,
@@ -77,4 +82,34 @@ it("does not let a delayed response replace a different house restored from cach
     state: "ready",
     ledger: { monthlySpend: 10 },
   });
+});
+
+// DASH-W3 / DASH-W11: the spine used to fold a failed activity or alerts read
+// into `[]`, which the panels printed as a quiet day. A failed read is `null`
+// (unreachable); only a list that was actually read may be empty.
+function spineAnswers(activity: Promise<unknown>, alerts: Promise<unknown>) {
+  vi.mocked(dashboardApi.getDashboardStats).mockResolvedValue({} as any);
+  vi.mocked(ordersApi.getOrdersNeedingApproval).mockResolvedValue([]);
+  vi.mocked(inventoryApi.getLowStockItems).mockResolvedValue([]);
+  vi.mocked(dashboardApi.getRecentActivity).mockReturnValue(activity as any);
+  vi.mocked(dashboardApi.getAlerts).mockReturnValue(alerts as any);
+}
+
+it("keeps a failed activity or alerts read as null, never an empty list", async () => {
+  spineAnswers(
+    Promise.reject(new Error("503")),
+    Promise.reject(new Error("503")),
+  );
+  const { result } = renderHook(() => useDashboardSpine("A"));
+  await waitFor(() => expect(result.current.stats).not.toBeUndefined());
+  expect(result.current.activity).toBeNull();
+  expect(result.current.alerts).toBeNull();
+});
+
+it("keeps a real empty activity or alerts list as an empty list", async () => {
+  spineAnswers(Promise.resolve([]), Promise.resolve([]));
+  const { result } = renderHook(() => useDashboardSpine("A"));
+  await waitFor(() => expect(result.current.stats).not.toBeUndefined());
+  expect(result.current.activity).toEqual([]);
+  expect(result.current.alerts).toEqual([]);
 });

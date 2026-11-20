@@ -85,12 +85,15 @@ function monthLedger() {
  * Route every GET by URL substring so one mock covers every service module
  * DashboardNext's tree touches. `overrides` replaces the default body for a
  * pattern; a value of `null` resolves `{ data: null }` (the defect 6 repro —
- * a 200 whose body is null, not a thrown error).
+ * a 200 whose body is null, not a thrown error), and an `Error` rejects the
+ * GET (a read that failed).
  */
 function routeGets(overrides: Record<string, unknown> = {}) {
   api.get.mockImplementation((url: string) => {
     for (const [pattern, value] of Object.entries(overrides)) {
-      if (url.includes(pattern)) return Promise.resolve({ data: value });
+      if (url.includes(pattern)) {
+        return value instanceof Error ? Promise.reject(value) : Promise.resolve({ data: value });
+      }
     }
     if (url.includes('/dashboard/stats/')) {
       return Promise.resolve({
@@ -1230,5 +1233,175 @@ describe('DashboardNext — the calendar fits the shell (ADR 0290 §9)', () => {
     expect(figureColumns(6)).toBe('repeat(auto-fill, minmax(max(8rem, calc((100% - 2rem) / 3 - 1px)), 1fr))');
     expect(figureColumns(4)).toBe('repeat(auto-fill, minmax(max(8rem, calc((100% - 1rem) / 2 - 1px)), 1fr))');
     expect(SECTION_COLUMNS).toBe('repeat(auto-fill, minmax(max(16rem, calc((100% - 1.25rem) / 2 - 1px)), 1fr))');
+  });
+});
+
+/**
+ * DASH-W3 / DASH-W11 (founder, 2026-10-01): a failed activity or alerts read
+ * was caught to `[]` in the service and again in the hook, so the page called
+ * a read it never got a quiet day. A failed read must say it failed; a real
+ * empty list keeps the quiet line.
+ */
+describe('DashboardNext — a failed activity or alerts read is not a quiet day', () => {
+  /** The month the grid opens on, every day present — so today's cell opens the day panel. */
+  function thisMonthLedger() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const mm = String(month).padStart(2, '0');
+    return {
+      ...monthLedger(),
+      year,
+      month,
+      daily: Array.from({ length: new Date(year, month, 0).getDate() }, (_, i) => ({
+        date: `${year}-${mm}-${String(i + 1).padStart(2, '0')}`,
+        procurement_spend: 0,
+        bottles_sold: 0,
+        events: [],
+        order_count: 0,
+      })),
+    };
+  }
+
+  async function openToday() {
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    // Found by its date (W35 labels lead with words, not the ISO date), once
+    // the month ledger has drawn the grid.
+    const cell = await waitFor(() => dayCell(today));
+    fireEvent.click(cell);
+    // The day's own deliveries read settles too, so nothing updates after the test.
+    await screen.findByText('No deliveries landed this day.');
+    const section = (title: string) => screen.getByText(title).parentElement as HTMLElement;
+    return { alerts: section('Alerts raised'), activity: section('Activity') };
+  }
+
+  it('the Lately panel says the activity read failed instead of calling the day quiet', async () => {
+    routeGets({ '/dashboard/activity/': new Error('503') });
+
+    mount();
+
+    const lately = screen.getByRole('region', { name: 'Lately' });
+    await waitFor(() =>
+      expect(within(lately).getByText(/Activity couldn’t be reached just now\./)).toBeInTheDocument(),
+    );
+    expect(within(lately).queryByText(/Quiet\. Activity lands here/)).not.toBeInTheDocument();
+    expect(unhandled).toEqual([]);
+  });
+
+  it('the Lately panel keeps the quiet line for a real empty list', async () => {
+    routeGets();
+
+    mount();
+
+    const lately = screen.getByRole('region', { name: 'Lately' });
+    await waitFor(() =>
+      expect(within(lately).getByText('Quiet. Activity lands here as the day moves.')).toBeInTheDocument(),
+    );
+    expect(within(lately).queryByText(/couldn’t be reached/)).not.toBeInTheDocument();
+  });
+
+  it('the day panel says the alerts and activity reads failed instead of "none"', async () => {
+    routeGets({
+      '/dashboard/alerts/': new Error('503'),
+      '/dashboard/activity/': new Error('503'),
+      '/dashboard/calendar-revenue/': thisMonthLedger(),
+    });
+
+    mount();
+    // Let the spine settle before the day opens, as it has on a real visit.
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('region', { name: 'Lately' })).getByText(/couldn’t be reached/),
+      ).toBeInTheDocument(),
+    );
+    const day = await openToday();
+
+    expect(within(day.alerts).getByText(/Alerts couldn’t be reached just now\./)).toBeInTheDocument();
+    expect(within(day.alerts).queryByText('No alerts carry this date.')).not.toBeInTheDocument();
+    expect(within(day.activity).getByText(/Activity couldn’t be reached just now\./)).toBeInTheDocument();
+    expect(within(day.activity).queryByText('No recorded activity for this day.')).not.toBeInTheDocument();
+    expect(unhandled).toEqual([]);
+  });
+
+  it('the day panel does not call the day empty while alerts and activity are still being read', async () => {
+    routeGets({ '/dashboard/calendar-revenue/': thisMonthLedger() });
+    const routed = api.get.getMockImplementation()!;
+    // The alerts read never answers, so the whole spine stays in flight.
+    api.get.mockImplementation((url: string, ...rest: unknown[]) =>
+      url.includes('/dashboard/alerts/') ? new Promise(() => {}) : routed(url, ...rest),
+    );
+
+    mount();
+    const day = await openToday();
+
+    expect(within(day.alerts).queryByText('No alerts carry this date.')).not.toBeInTheDocument();
+    expect(within(day.activity).queryByText('No recorded activity for this day.')).not.toBeInTheDocument();
+    expect(within(day.alerts).queryByText(/couldn’t be reached/)).not.toBeInTheDocument();
+    // In flight is drawn as a skeleton in both sections, not as a blank.
+    expect(day.alerts.querySelector('.dn-skel')).not.toBeNull();
+    expect(day.activity.querySelector('.dn-skel')).not.toBeNull();
+  });
+
+  it('the day panel names only the alerts read when only it fails', async () => {
+    routeGets({
+      '/dashboard/alerts/': new Error('503'),
+      '/dashboard/calendar-revenue/': thisMonthLedger(),
+    });
+
+    mount();
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('region', { name: 'Lately' })).getByText(/^Quiet\./),
+      ).toBeInTheDocument(),
+    );
+    const day = await openToday();
+
+    await waitFor(() =>
+      expect(within(day.alerts).getByText(/Alerts couldn’t be reached just now\./)).toBeInTheDocument(),
+    );
+    expect(within(day.alerts).queryByText('No alerts carry this date.')).not.toBeInTheDocument();
+    expect(within(day.activity).getByText('No recorded activity for this day.')).toBeInTheDocument();
+    expect(within(day.activity).queryByText(/couldn’t be reached/)).not.toBeInTheDocument();
+    expect(unhandled).toEqual([]);
+  });
+
+  it('the day panel names only the activity read when only it fails', async () => {
+    routeGets({
+      '/dashboard/activity/': new Error('503'),
+      '/dashboard/calendar-revenue/': thisMonthLedger(),
+    });
+
+    mount();
+    const lately = screen.getByRole('region', { name: 'Lately' });
+    await waitFor(() =>
+      expect(within(lately).getByText(/Activity couldn’t be reached just now\./)).toBeInTheDocument(),
+    );
+    const day = await openToday();
+
+    await waitFor(() =>
+      expect(within(day.activity).getByText(/Activity couldn’t be reached just now\./)).toBeInTheDocument(),
+    );
+    expect(within(day.activity).queryByText('No recorded activity for this day.')).not.toBeInTheDocument();
+    expect(within(day.alerts).getByText('No alerts carry this date.')).toBeInTheDocument();
+    expect(within(day.alerts).queryByText(/couldn’t be reached/)).not.toBeInTheDocument();
+    expect(unhandled).toEqual([]);
+  });
+
+  it('the day panel keeps "none" for real empty alerts and activity', async () => {
+    routeGets({ '/dashboard/calendar-revenue/': thisMonthLedger() });
+
+    mount();
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('region', { name: 'Lately' })).getByText(/^Quiet\./),
+      ).toBeInTheDocument(),
+    );
+    const day = await openToday();
+
+    expect(within(day.alerts).getByText('No alerts carry this date.')).toBeInTheDocument();
+    expect(within(day.activity).getByText('No recorded activity for this day.')).toBeInTheDocument();
+    expect(within(day.alerts).queryByText(/couldn’t be reached/)).not.toBeInTheDocument();
+    expect(within(day.activity).queryByText(/couldn’t be reached/)).not.toBeInTheDocument();
   });
 });

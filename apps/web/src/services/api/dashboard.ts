@@ -65,6 +65,12 @@ export async function getDashboardSummary(restaurantId?: string): Promise<{
 
 /**
  * Get recent activity for dashboard
+ *
+ * A failed read REJECTS. It used to be caught to `[]`, and the dashboard's
+ * "Lately" panel printed that as "Quiet. Activity lands here as the day
+ * moves." — a read that failed reported as a quiet day (DASH-W3). The one
+ * caller `settle`s it and shows the read as not reached
+ * (useDashboardNextData.ts).
  */
 export async function getRecentActivity(
   limit: number = 10,
@@ -73,29 +79,25 @@ export async function getRecentActivity(
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
 
-  try {
-    const response = await apiClient.get(`${DASHBOARD_PATH}/activity/${id}`, {
-      params: { limit },
-    });
-    return response.data;
-  } catch {
-    return [];
-  }
+  const response = await apiClient.get(`${DASHBOARD_PATH}/activity/${id}`, {
+    params: { limit },
+  });
+  return response.data;
 }
 
 /**
  * Get alerts/notifications for dashboard
+ *
+ * A failed read REJECTS, like the stats path. Caught to `[]`, it printed as
+ * "No alerts carry this date." on the day panel (DASH-W11); the caller now
+ * tells "could not read the alerts" apart from "there were none".
  */
 export async function getAlerts(restaurantId?: string): Promise<any[]> {
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
 
-  try {
-    const response = await apiClient.get(`${DASHBOARD_PATH}/alerts/${id}`);
-    return response.data;
-  } catch {
-    return [];
-  }
+  const response = await apiClient.get(`${DASHBOARD_PATH}/alerts/${id}`);
+  return response.data;
 }
 
 /**

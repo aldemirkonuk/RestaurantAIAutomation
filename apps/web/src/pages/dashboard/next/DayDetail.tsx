@@ -191,8 +191,10 @@ export interface DayDetailProps {
   zone?: string | null;
   sales?: MonthSales;
   dayOrders: DayOrdersState;
-  alerts: AlertItem[] | undefined;
-  activity: ActivityItem[] | undefined;
+  /** undefined = loading · null = unreachable · [] = genuinely nothing */
+  alerts: AlertItem[] | null | undefined;
+  /** undefined = loading · null = unreachable · [] = genuinely nothing */
+  activity: ActivityItem[] | null | undefined;
   onScrub: (date: string) => void;
   onClose: () => void;
   /** DASH-W22: false for a role that sees counts, not money (staff). */
@@ -412,8 +414,17 @@ export function DayDetail({
 
         {calendarSection}
 
+        {/*
+          "No alerts" / "no activity" is a claim about the day, so it prints
+          only over a list that was actually read. A failed read says so; a
+          read still in flight is a skeleton, not an empty day.
+        */}
         <Section title="Alerts raised">
-          {dayAlerts.length === 0 && (
+          {alerts === undefined && <div className="dn-skel h-9" aria-hidden />}
+          {alerts === null && (
+            <EmptyLine>{DASH} Alerts couldn’t be reached just now.</EmptyLine>
+          )}
+          {alerts != null && dayAlerts.length === 0 && (
             <EmptyLine>{zone === null ? noZoneLine : 'No alerts carry this date.'}</EmptyLine>
           )}
           {dayAlerts.map((a) => (
@@ -430,7 +441,11 @@ export function DayDetail({
         </Section>
 
         <Section title="Activity">
-          {dayActivity.length === 0 && (
+          {activity === undefined && <div className="dn-skel h-9" aria-hidden />}
+          {activity === null && (
+            <EmptyLine>{DASH} Activity couldn’t be reached just now.</EmptyLine>
+          )}
+          {activity != null && dayActivity.length === 0 && (
             <EmptyLine>{zone === null ? noZoneLine : 'No recorded activity for this day.'}</EmptyLine>
           )}
           {dayActivity.map((a) => (
