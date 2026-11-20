@@ -107,4 +107,18 @@ describe('what a dish does not know', () => {
     expect(screen.getByTestId('taste-notknown-alcohol').textContent).toMatch(/Alcohol warmth/);
     expect(screen.queryByTestId('taste-notknown-line')).toBeNull();
   });
+  it('a dish whose alcohol only reads none draws no alcohol row, and one that cooks with wine keeps it', async () => {
+    mount(data({ fat: ax(6), alcohol: ax(0) }, ['fat']), 'dish');
+    await screen.findByTestId('taste-summary');
+    expect(document.body.textContent).not.toMatch(/Alcohol warmth/);
+    cleanup();
+    mount(data({ fat: ax(6), alcohol: ax(4) }, ['fat']), 'dish');
+    await screen.findByTestId('taste-summary');
+    expect(document.body.textContent).toMatch(/Alcohol warmth/);
+  });
+  it('a cocktail keeps an alcohol row that reads none', async () => {
+    mount(data({ sweet: ax(5), alcohol: ax(0) }, ['sweet']), 'cocktail');
+    await screen.findByTestId('taste-summary');
+    expect(document.body.textContent).toMatch(/Alcohol warmth/);
+  });
 });
