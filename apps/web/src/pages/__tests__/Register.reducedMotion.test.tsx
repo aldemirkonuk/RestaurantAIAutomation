@@ -4,6 +4,7 @@
  * (the Endpaper page turn is the one motion, never doubled by a 20 px slide);
  * the raw spinners stop under reduced motion.
  */
+import { renderToString } from 'react-dom/server'
 import { describe, it, expect, vi } from 'vitest'
 import { createElement } from 'react'
 import { readFileSync } from 'node:fs'
@@ -87,5 +88,17 @@ describe('reduced motion on the way in', () => {
     expect(screen.getByTestId('invite-card-room')).toHaveStyle({ minHeight: '142px' })
     settle({ data: { valid: false, reason: 'not_found' } })
     await waitFor(() => expect(screen.queryByTestId('invite-card-room')).toBeNull())
+  })
+
+  it('holds that room on the very first render of an invite link (not one effect later)', () => {
+    const html = renderToString(
+      createElement(
+        MemoryRouter,
+        { initialEntries: ['/register?invite=abcd2345'] },
+        createElement(Routes, null, createElement(Route, { path: '/register', element: createElement(Register) })),
+      ),
+    )
+    expect(html).toContain('data-testid="invite-card-room"')
+    expect(html).toContain('value="ABCD2345"')
   })
 })

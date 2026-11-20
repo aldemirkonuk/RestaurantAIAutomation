@@ -89,7 +89,9 @@ export function Register() {
   const [error, setError] = useState<string | null>(null)
 
   // Path A state
-  const [inviteCode, setInviteCode] = useState('')
+  // An invite link carries its code; read it before the first paint so the
+  // card's room is held from the first frame, not one commit later (r103).
+  const [inviteCode, setInviteCode] = useState(() => (searchParams.get('invite') ?? '').toUpperCase())
   const [invitePreview, setInvitePreview] = useState<InvitePreview | null>(null)
   const [validating, setValidating] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
