@@ -65,6 +65,16 @@ button.ivd-card:hover {
   border-color: var(--ink-2);
   background: var(--paper-0);
 }
+/* Cost (no costed lot) and Waste answer with a sentence: the room is held at its answered height, 139 px
+   in the one-column phone sheet and 153 px in the two-column sheet (r99 walk, in-sheet CLS 0.0244). */
+.ivd-card[data-hold='tall'] {
+  min-height: 139px;
+}
+@media (min-width: 768px) {
+  .ivd-card[data-hold='tall'] {
+    min-height: 153px;
+  }
+}
 .ivd-card-k {
   color: var(--ink-4);
   font-size: 11px;
