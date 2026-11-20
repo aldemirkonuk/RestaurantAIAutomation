@@ -982,10 +982,15 @@ export class DeliveryService {
       };
     }
 
+    // Each item's own reason: a price refused per bottle is not "no price".
+    const held = cost.value.stillProvisional;
+    const why = [...new Set(held.map((p) => p.reason))]
+      .map((r) => r.charAt(0).toUpperCase() + r.slice(1))
+      .join(" ");
     const note = cost.value.finalised.length
-      ? `Cost posted for ${cost.value.finalised.length} item(s); ${cost.value.stillProvisional.length} left provisional because no agreed price reaches them.`
-      : cost.value.stillProvisional.length
-        ? `No cost was posted: ${cost.value.stillProvisional.length} item(s) have no agreed price on the record, so their lots stay provisional rather than becoming a final cost nobody agreed.`
+      ? `Cost posted for ${cost.value.finalised.length} item(s); ${held.length} left provisional.${held.length ? ` ${why}` : ""}`
+      : held.length
+        ? `No cost was posted: ${held.length} item(s) stay provisional. ${why}`
         : "This delivery booked no stock at the door, so there was no cost to settle.";
 
     return {
