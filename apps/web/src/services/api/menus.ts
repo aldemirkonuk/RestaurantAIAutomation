@@ -124,6 +124,13 @@ type MenuImportData =
   | { items: WineExtractItem[]; imageBase64?: never; csvContent?: never; fileBase64?: never }
   | { fileBase64: string; imageBase64?: never; csvContent?: never; items?: never }
 
+/**
+ * A menu read is one billed call that can run for minutes (a PDF is read in
+ * chunks, up to 3 min each). The shared client gives up at 30 s while the
+ * gateway keeps reading and billing, so a retry paid twice (r102 menu-func-1).
+ */
+export const MENU_READ_TIMEOUT_MS = 10 * 60 * 1000
+
 export async function importMenu(
   method: 'scan' | 'csv' | 'manual',
   data: MenuImportData,
@@ -140,7 +147,7 @@ export async function importMenu(
     // Sent only when the person gave them: a missing tag stays missing.
     ...(labels.cadence ? { cadence: labels.cadence } : {}),
     ...(labels.menuDate ? { menuDate: labels.menuDate } : {}),
-  })
+  }, { timeout: MENU_READ_TIMEOUT_MS })
   return response.data
 }
 
