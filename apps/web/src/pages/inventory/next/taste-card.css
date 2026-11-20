@@ -245,3 +245,60 @@
     display: none;
   }
 }
+
+/* The held slot of the taste line (TasteSummary.tsx): 23 px on the desktop foot, 44 px on the phone head. An
+   empty answer gives it back over 200 ms (after the sheet's slide); reduced motion gives it back at once. */
+.tc-line--foot.tc-line--hold {
+  min-height: 23px;
+  max-height: 23px;
+}
+.tc-line--hold {
+  overflow: hidden;
+  transition: min-height 200ms ease-in-out, max-height 200ms ease-in-out, margin 200ms ease-in-out;
+}
+.tc-line--hold[data-collapsing='true'] {
+  min-height: 0;
+  max-height: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tc-line--hold {
+    transition: none;
+  }
+}
+
+/* "More" on a taste row: the detail opens by height and opacity (r97 M8), closes quicker; its room is the
+   row's own, never the row under it. Reduced motion: no tween, the end state at once. */
+.tc-detail-wrap {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-rows: 0fr;
+  margin-top: -4px;
+  visibility: hidden;
+  transition: grid-template-rows 140ms ease-in, margin-top 140ms ease-in, visibility 0s linear 140ms;
+}
+.tc-detail-wrap[data-open='true'] {
+  grid-template-rows: 1fr;
+  margin-top: 0;
+  visibility: visible;
+  transition: grid-template-rows 200ms cubic-bezier(0.16, 1, 0.3, 1), margin-top 200ms cubic-bezier(0.16, 1, 0.3, 1), visibility 0s;
+}
+.tc-detail-clip {
+  min-height: 0;
+  overflow: hidden;
+}
+.tc-detail-wrap .tc-detail {
+  opacity: 0;
+  transition: opacity 80ms ease-in;
+}
+.tc-detail-wrap[data-open='true'] .tc-detail {
+  opacity: 1;
+  transition: opacity 160ms ease-out 40ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tc-detail-wrap,
+  .tc-detail-wrap .tc-detail {
+    transition: none;
+  }
+}
