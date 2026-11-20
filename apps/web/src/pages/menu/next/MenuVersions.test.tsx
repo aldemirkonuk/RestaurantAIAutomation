@@ -614,11 +614,12 @@ describe('makeCurrentSentence -- a finished carry, and the result row settles', 
     expect(src).toMatch(/className="cl-said mdv-settle"[^>]*data-testid="menu-list-choice-said"/);
   });
 
-  it('the settle is 280 ms and stops for reduced motion', async () => {
+  it('the settle is the house settle, 320 ms, never a new 280 ms, and stops for reduced motion', async () => {
     const { readFileSync } = await import('node:fs');
     const { resolve } = await import('node:path');
     const css = readFileSync(resolve(__dirname, 'menu-settle.css'), 'utf8');
-    expect(css).toMatch(/\.mdv-settle\s*\{[^}]*animation: mdv-settle 280ms/);
+    expect(css).toMatch(/\.mdv-settle\s*\{[^}]*animation: mdv-settle 320ms/);
+    expect(css.replace(/\/\*[\s\S]*?\*\//g, '')).not.toMatch(/280ms/);
     expect(css).toMatch(/prefers-reduced-motion: reduce\)\s*\{\s*\.mdv-settle\s*\{\s*animation: none/);
   });
 });
