@@ -36,6 +36,13 @@ Deliberate non-motions, and why each one stays still:
 - **A refusal does not shake, flash or slide.** It appears in place, in words.
   A guardrail hit is a sentence to read, not an alarm.
 
+- **Mail's few moves are opacity steps** (`mail-motion.tsx`, r102). A test letter
+  that arrives settles in over 320 ms with one colour step; rows appended by
+  "Show older people" fade in 160 ms, 24 ms apart, batched after six; a search
+  crossfades the whole list; a "New" dot or a taken-back line fades out over
+  160 ms and gives its space up on the next render. Nothing slides, pulses or
+  changes size, and the waiting dot and unsent chip stay instant.
+
 `prefers-reduced-motion` is honoured everywhere: `.cmp-pick` drops its
 transition, and the sheet renders at its end state with nothing scheduled at all
 (`Sheet.tsx` skips `animate()` rather than collapsing it).
