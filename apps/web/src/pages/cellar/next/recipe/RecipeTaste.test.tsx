@@ -52,7 +52,7 @@ function mount(over: Partial<{ kind: 'cocktail' | 'dish'; hasRecipe: boolean; un
   const kind = over.kind ?? 'cocktail';
   return render(
     <QueryClientProvider client={qc}>
-      <RecipeTasteLine kind={kind} subjectId="c1" restaurantId="r1" />
+      <RecipeTasteLine kind={kind} subjectId="c1" restaurantId="r1" hasRecipe={over.hasRecipe ?? true} />
       <RecipeTaste kind={kind} subjectId="c1" restaurantId="r1" hasRecipe={over.hasRecipe ?? true} unsaved={over.unsaved ?? false} />
     </QueryClientProvider>,
   );
@@ -284,6 +284,13 @@ describe('RecipeTaste', () => {
       api.auth = { activeRole: 'staff', user: { role: 'staff' } };
       api.get.mockResolvedValue({ state: 'ready', data: none() });
       mount();
+      expect(await screen.findByTestId('recipe-taste-line-none')).toHaveTextContent(RECIPE_TASTE_LINE_NONE);
+      expect(screen.queryByTestId('recipe-taste-line-work')).toBeNull();
+    });
+
+    it('no taste yet and no saved recipe: the words, and no link to a roll-up with nothing to work from', async () => {
+      api.get.mockResolvedValue({ state: 'ready', data: none() });
+      mount({ hasRecipe: false });
       expect(await screen.findByTestId('recipe-taste-line-none')).toHaveTextContent(RECIPE_TASTE_LINE_NONE);
       expect(screen.queryByTestId('recipe-taste-line-work')).toBeNull();
     });
