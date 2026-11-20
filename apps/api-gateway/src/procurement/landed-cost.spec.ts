@@ -383,6 +383,19 @@ describe("landedCost: tax follows the line's basis and the house's reclaim (ADR 
     expect(noBasis.unresolved).toContain("tax basis unknown");
   });
 
+  it("a line printed at rate 0 is not held beside a line whose basis is unknown (r103)", () => {
+    const r = cost(
+      {},
+      [
+        { ...inside(), line_no: 1, vat_rate_percent: 0, price_tax_basis: null },
+        { ...inside(), line_no: 2, price_tax_basis: null },
+      ],
+      RECLAIMS,
+    );
+    expect(costed(r.lines[0]).cost_value).toBeCloseTo(118, 6);
+    expect(open(r.lines[1]).unresolved).toContain("tax basis unknown");
+  });
+
   it("a paper that prints tax but no rate and no basis is held for an answered house, and costed as printed for an unset one (r103)", () => {
     const l = [{ ...inside(), vat_rate_percent: null, price_tax_basis: null }];
     for (const house of [RECLAIMS, DOES_NOT_RECLAIM]) {
