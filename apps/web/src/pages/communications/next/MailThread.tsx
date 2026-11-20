@@ -36,6 +36,7 @@ import {
   letterAt,
   letterLook,
   ARRIVED_ONLY,
+  AUTOMATIC_LETTER_WORDS,
   mailKindOf,
   noReplyFailWords,
   noReplyTarget,
@@ -142,6 +143,13 @@ function Letter({
       <p data-testid="letter-provenance" style={{ ...QUIET, margin: 0 }}>
         {look.line}
       </p>
+      {m.automatic === true && (
+        // r103 mail-6: the gateway names an out-of-office or a bounce; the letter says so too, so it is not read as
+        // a person's answer. Static text, no motion, 11.5px like the lines around it.
+        <p data-testid="letter-automatic" style={{ ...QUIET, margin: 0 }}>
+          {AUTOMATIC_LETTER_WORDS}
+        </p>
+      )}
       {!inbound && m.status === 'RELAY_REFUSED' && (
         // ADR 0099, founder 2026-09-21: the draft closed, not retried, and
         // the manager sees why — the gateway's own sentence, verbatim.

@@ -37,6 +37,18 @@ export const MAIL_KIND_FILTERS: ReadonlyArray<{ id: MailKindFilter; label: strin
   { id: 'guest', label: 'Guests' },
 ];
 
+/** Said under a letter the gateway names automatic: an auto-reply or a bounce, never a person's answer. */
+export const AUTOMATIC_LETTER_WORDS = 'Automatic mail (an auto-reply or a bounce), not written by a person.';
+
+/**
+ * The chosen kind found no one among the people read so far, and more people are still to be read. That is not
+ * "none": say what was looked at, never an empty claim (ADR 0020).
+ */
+export function kindPartialWords(kind: MailKindFilter): string {
+  const who = kind === 'team' ? 'a team member' : kind === 'guest' ? 'a guest' : 'a vendor';
+  return `Showing the people loaded so far, and none of them is ${who}. Show older people to look further.`;
+}
+
 /** What the list says when the chosen kind has nobody in it. */
 export function kindEmptyWords(kind: MailKindFilter, readsAll: boolean): string {
   const who = kind === 'team' ? 'team members' : kind === 'guest' ? 'guests' : 'vendors';

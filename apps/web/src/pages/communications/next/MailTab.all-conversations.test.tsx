@@ -71,6 +71,9 @@ let sender: Record<string, unknown>;
 let grants: Array<Record<string, unknown>>;
 let offered: boolean;
 let peopleFor: (p: Record<string, string>) => unknown[];
+/** Whether /mail/people says another page follows, and whether the thread's second letter is an auto-reply. */
+let peopleNext: string | null = null;
+let autoB = false;
 
 const letter = (extra: Record<string, unknown>) => ({
   id: 'm1',
@@ -108,6 +111,8 @@ beforeEach(() => {
   grants = [];
   offered = true;
   peopleFor = () => MIXED;
+  peopleNext = null;
+  autoB = false;
   api.get.mockReset();
   api.post.mockReset();
   api.delete.mockReset();
@@ -118,7 +123,7 @@ beforeEach(() => {
     if (url === '/integrations/oauth/house-grants') return { data: { success: true, grants, unattributed: 0 } };
     if (url === '/integrations/oauth/catalog')
       return { data: { success: true, integrations: [{ id: 'gmail_read_all', available: offered }, { id: 'gmail_read', available: true }] } };
-    if (url === '/mail/people') return { data: { people: peopleFor(cfg?.params ?? {}), next: null, storedKinds: ['vendor'] } };
+    if (url === '/mail/people') return { data: { people: peopleFor(cfg?.params ?? {}), next: peopleNext, storedKinds: ['vendor'] } };
     if (url === '/mail/thread')
       return {
         data: {
@@ -128,7 +133,7 @@ beforeEach(() => {
           order: null,
           messages: [
             letter({ id: 'a', fromAddress: 'deniz@example.com', toAddresses: ['house@example.com', 'ops@example.com'] }),
-            letter({ id: 'b', text: 'Older gateway.' }),
+            letter({ id: 'b', text: 'Older gateway.', ...(autoB ? { automatic: true } : {}) }),
           ],
           before: null,
         },
@@ -138,15 +143,30 @@ beforeEach(() => {
 });
 
 describe('the kind filter', () => {
-  it('lists every kind under All and narrows to one kind without asking the gateway for it', async () => {
+  it('lists every kind under All and narrows to one kind, asking the gateway for it (r103 mail-1)', async () => {
     mount();
     expect(await screen.findAllByTestId('mail-person')).toHaveLength(3);
     fireEvent.click(screen.getByRole('button', { name: 'Team' }));
     await waitFor(() => expect(screen.getAllByTestId('mail-person')).toHaveLength(1));
     expect(screen.getByTestId('mail-person')).toHaveTextContent('Deniz Kaya');
     expect(within(screen.getByTestId('mail-person')).getByTestId('person-kind')).toHaveTextContent('team');
-    // /mail/people declares no kind parameter, so none is ever sent.
-    expect(peopleCalls().every((p) => p.kind === undefined)).toBe(true);
+    // All sends no kind; a chip sends its own, so the page the gateway returns holds that kind only.
+    expect(peopleCalls().some((p) => p.kind === 'team')).toBe(true);
+    expect(peopleCalls().filter((p) => p.kind === undefined).length).toBeGreaterThan(0);
+    expect(peopleCalls().every((p) => p.kind === undefined || p.kind === 'team')).toBe(true);
+  });
+
+  it('a chip with nobody found yet and more people to read says what was looked at, never "none"', async () => {
+    // An older gateway ignores `kind`: the first page holds no team person, and a second page exists.
+    peopleFor = () => [MIXED[0], MIXED[2]];
+    peopleNext = 'cursor-2';
+    mount();
+    await screen.findAllByTestId('mail-person');
+    fireEvent.click(screen.getByRole('button', { name: 'Team' }));
+    const line = await screen.findByTestId('people-partial-kind');
+    expect(line).toHaveTextContent('Showing the people loaded so far');
+    expect(screen.queryByTestId('people-empty-kind')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Show older people' })).toBeInTheDocument();
   });
 
   it('holds to the chosen kind', async () => {
@@ -195,6 +215,16 @@ describe('the letters', () => {
     chunk.release();
     await screen.findAllByTestId('mail-letter');
     expect(screen.queryByTestId('letters-opening')).toBeNull();
+  });
+
+  it('an automatic letter says it is automatic, and a person\'s letter says nothing of the kind (r103 mail-6)', async () => {
+    autoB = true;
+    mount('/communications?tab=mail&thread=gm%3Aabc');
+    chunk.release();
+    const all = await screen.findAllByTestId('mail-letter');
+    expect(all).toHaveLength(2);
+    expect(within(all[1]).getByTestId('letter-automatic')).toHaveTextContent('Automatic mail');
+    expect(within(all[0]).queryByTestId('letter-automatic')).toBeNull();
   });
 
   it('each says where it came from and went to; a letter without them says nothing', async () => {
