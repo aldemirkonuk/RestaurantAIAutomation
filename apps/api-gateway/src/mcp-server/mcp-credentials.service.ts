@@ -283,29 +283,39 @@ export class McpCredentialsService {
   /**
    * True while this credential is inside its window.
    *
+   * `cost` is the number of JSON-RPC messages the request carries. The window
+   * counts CALLS, not HTTP requests: counting one token per POST let a single
+   * batched body of 5,000 messages run every one of them against a 60-call
+   * window. A request whose cost does not fit what is left is refused WHOLE
+   * and spends nothing — running the first few messages of a batch and
+   * refusing the rest would leave the client to work out which ones ran.
+   *
    * Returns the remaining allowance too, so the caller can put it on the
    * response rather than the client having to hit the wall to learn the shape.
    */
-  consume(credentialId: string): {
+  consume(
+    credentialId: string,
+    cost = 1,
+  ): {
     allowed: boolean;
     remaining: number;
     resetAt: number;
   } {
+    const spend = Math.max(1, Math.floor(cost));
     const now = Date.now();
-    const bucket = this.buckets.get(credentialId);
+    let bucket = this.buckets.get(credentialId);
     if (!bucket || bucket.resetAt <= now) {
-      const resetAt = now + RATE_WINDOW_MS;
-      this.buckets.set(credentialId, { count: 1, resetAt });
+      bucket = { count: 0, resetAt: now + RATE_WINDOW_MS };
+      this.buckets.set(credentialId, bucket);
+    }
+    if (bucket.count + spend > RATE_LIMIT_PER_MINUTE) {
       return {
-        allowed: true,
-        remaining: RATE_LIMIT_PER_MINUTE - 1,
-        resetAt,
+        allowed: false,
+        remaining: RATE_LIMIT_PER_MINUTE - bucket.count,
+        resetAt: bucket.resetAt,
       };
     }
-    if (bucket.count >= RATE_LIMIT_PER_MINUTE) {
-      return { allowed: false, remaining: 0, resetAt: bucket.resetAt };
-    }
-    bucket.count += 1;
+    bucket.count += spend;
     return {
       allowed: true,
       remaining: RATE_LIMIT_PER_MINUTE - bucket.count,

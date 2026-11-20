@@ -341,9 +341,34 @@ export class McpServerService {
    * every date with the same rows.
    */
   private resources(credential: McpCredential): unknown[] {
+    // §7b: an ungranted scope HIDES. A resource is a read like any tool, so it
+    // is listed only to a key that holds the scope its matching tool needs.
+    return this.resourceCatalogue(credential.restaurantId)
+      .filter((r) => holdsScope(credential, r.scope))
+      .map(({ scope: _scope, ...listed }) => listed);
+  }
+
+  /**
+   * Every resource with the read scope that gates it.
+   *
+   * The scope is the one the SAME data needs as a tool, so a resource can never
+   * be a side door around a tool's gate: the day-book is `logs.timeline`'s data
+   * (`logs:read`), and the cellar book is the house's stock registers, read
+   * beside `inventory.low_stock` in the `walk-the-cellar` prompt
+   * (`inventory:read`).
+   */
+  private resourceCatalogue(house: string): Array<{
+    uri: string;
+    scope: string;
+    name: string;
+    title: string;
+    description: string;
+    mimeType: string;
+  }> {
     return [
       {
-        uri: `mudavym://day-book/${credential.restaurantId}`,
+        uri: `mudavym://day-book/${house}`,
+        scope: "logs:read",
         name: "The day-book",
         title: "Today's movements, deliveries and decisions",
         description:
@@ -351,7 +376,8 @@ export class McpServerService {
         mimeType: "application/json",
       },
       {
-        uri: `mudavym://cellar/${credential.restaurantId}`,
+        uri: `mudavym://cellar/${house}`,
+        scope: "inventory:read",
         name: "The cellar book",
         title: "The house's cellar registers",
         description:
@@ -387,6 +413,18 @@ export class McpServerService {
         id,
         RPC_INVALID_PARAMS,
         `No resource at ${uri || "(no uri)"}. Call resources/list.`,
+      );
+    }
+
+    // The house matched; now the scope. Without this a key minted for
+    // `inventory:read` alone read the whole day-book that `logs.timeline`
+    // refuses it — the resource was a side door around the tool's gate.
+    const resource = this.resourceCatalogue(house).find((r) => r.uri === uri);
+    if (!resource || !holdsScope(credential, resource.scope)) {
+      return this.fail(
+        id,
+        RPC_INVALID_PARAMS,
+        `This key does not hold the scope \`${resource?.scope ?? "(unknown)"}\`, so it cannot read ${uri}. The resource exists; this key was not granted it. Scopes are set when the key is minted on /connections.`,
       );
     }
 
@@ -518,3 +556,13 @@ export const PROMPTS = [
       "Say what changed. Read logs.timeline for the recent record and inventory.low_stock for what is newly short. If the timeline's completeness field says FLOOR, say so plainly at the top: some sources did not answer and the list is what could be read, not what happened.",
   },
 ];
+
+/**
+ * Whether this key holds `scope`, compared the way `visibleTools` compares
+ * (`tool-catalog.ts`): trimmed and lowercased, so what the list shows and what
+ * a read allows cannot disagree.
+ */
+function holdsScope(credential: McpCredential, scope: string): boolean {
+  const wanted = scope.trim().toLowerCase();
+  return credential.scopes.some((s) => s.trim().toLowerCase() === wanted);
+}

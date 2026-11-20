@@ -114,6 +114,55 @@ describe("McpServerController — the transport", () => {
     expect(body.error.message).toContain("per credential");
   });
 
+  it("charges a batch one call per message, not one per request", async () => {
+    const { controller, server, credentials, request } = build();
+    (server.handle as jest.Mock).mockImplementation(async (m) => ({
+      jsonrpc: "2.0",
+      id: m.id,
+      result: {},
+    }));
+
+    await controller.rpc(
+      request,
+      [
+        { jsonrpc: "2.0", id: 1, method: "ping" },
+        { jsonrpc: "2.0", id: 2, method: "ping" },
+        { jsonrpc: "2.0", id: 3, method: "ping" },
+      ],
+      res().response,
+    );
+
+    expect(credentials.consume).toHaveBeenCalledWith("cred-1", 3);
+  });
+
+  it("runs none of a batch that is bigger than the window (QA round 5 BG-4)", async () => {
+    // The REAL limiter, not a mock: the hole was the limiter and the loop
+    // disagreeing about what one unit is, and a mock would agree with anything.
+    const { controller, server, request } = build();
+    const limiter = Object.assign(new McpCredentialsService({} as never), {
+      stampUse: jest.fn(),
+    });
+    type Wired = { credentials: McpCredentialsService };
+    (controller as unknown as Wired).credentials = limiter;
+    const { response, state, headers } = res();
+
+    const pings = Array.from({ length: 5000 }, (_, i) => ({
+      jsonrpc: "2.0",
+      id: i,
+      method: "ping",
+    }));
+    const body = (await controller.rpc(request, pings, response)) as {
+      error: { message: string };
+    };
+
+    expect(state.status).toBe(429);
+    expect(server.handle).not.toHaveBeenCalled();
+    expect(body.error.message).toContain("5000 calls");
+    expect(body.error.message).toContain("None of them ran");
+    // Nothing was spent, so the header still shows the whole window.
+    expect(headers["X-Mcp-RateLimit-Remaining"]).toBe("60");
+  });
+
   it("stamps last_used_at only on a request that actually ran", async () => {
     const { controller, credentials, request } = build({ allowed: false });
     await controller.rpc(
