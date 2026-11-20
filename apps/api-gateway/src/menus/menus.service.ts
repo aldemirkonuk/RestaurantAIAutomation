@@ -656,11 +656,8 @@ export class MenusService {
       false,
     );
 
-    // 7. Mark menu_uploaded for everyone on this restaurant (matches the
-    // restaurant-scoped pattern used by vendor_added / team_member_invited).
-    // Only a read with a line gets here (1b): an empty read is not proof
-    // (ADR 0213 #17).
-    await this.markMenuUploaded(restaurantId);
+    // menu_uploaded is NOT ticked here: a draft is not the house's menu and no
+    // price moved. It ticks when a menu is made current (r102 menu-func-5).
 
     return {
       menuId: menu.id,
@@ -922,7 +919,6 @@ export class MenusService {
         .eq("restaurant_id", restaurantId);
       if (linesError) throw new Error(`the lines read could not be kept: ${linesError.message}`);
       const reviewItems = await this.resolveAndPersistItems(items, restaurantId, menuId, userId, dto.method, false);
-      await this.markMenuUploaded(restaurantId);
       const reply: MenuImportReply = {
         menuId,
         current: false,
