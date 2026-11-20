@@ -140,7 +140,8 @@ describe('GetStarted: the menu step waits for where the menu stands', () => {
     // r103: it holds the menu step's height so the page does not shift (CLS).
     expect(screen.getByTestId('menu-standing-reading')).toHaveStyle({ minHeight: '378px' })
     expect(screen.queryByText('Drop the menu here')).toBeNull()
-    expect(screen.queryByRole('heading', { name: 'Your menu' })).toBeNull()
+    // r103: the page's own heading is already there, so nothing moves when the read lands.
+    expect(screen.getByRole('heading', { name: 'Your menu' })).toBeInTheDocument()
   })
 
   it('a current menu goes on to /house without the menu step ever painting', async () => {

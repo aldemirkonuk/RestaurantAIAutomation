@@ -735,10 +735,18 @@ export default function GetStarted() {
   // never waits; a read that fails ('unread') shows the step as before.
   if (step === 'menu' && !openedHere.current && menuStanding === null) {
     return (
-      <ArrivalShell step={step} onSignOut={signOut}>
-        {/* r103: the menu step it gives way to stands 378 px tall; holding
-            that height keeps the page still when the read lands (CLS 0.30 at
-            375 px under reduced motion, r102 check 5). */}
+      <ArrivalShell
+        step={step}
+        onSignOut={signOut}
+        eyebrow="Next"
+        title="Your menu"
+        voice="A photo, a file, or a few typed lines. Mudavym sets it out as the house's own list, and you check it on the next page."
+      >
+        {/* r103: the menu step it gives way to stands 378 px tall and opens
+            under its own heading; holding both keeps the page still when the
+            read lands (CLS 0.30 at 375 px under reduced motion, r102 check 5;
+            0.10 after the height alone, r103 walk: the heading arrived 124 px
+            higher than the line it replaced). */}
         <p
           role="status"
           data-testid="menu-standing-reading"
