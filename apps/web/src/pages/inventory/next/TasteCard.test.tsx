@@ -18,6 +18,7 @@ vi.mock('../../../services/api/taste', async (orig) => ({
 }));
 
 import TasteCard, { TASTE_ABSENT, TASTE_EMPTY, TASTE_FAILED } from './TasteCard';
+import { UNREACHABLE_WORDS } from '../../../lib/unreachable';
 
 const ax = (v: number, over: Partial<TasteAxis> = {}): TasteAxis => ({
   v, lo: null, hi: null, conf: 0.6, prov: [{ kind: 'staff_note', share: 1 }], bandOnly: false, ...over,
@@ -104,6 +105,57 @@ describe('the five states, in words', () => {
     api.get.mockRejectedValue(new Error('boom'));
     mount();
     expect((await screen.findByTestId('taste-failed')).textContent).toBe(TASTE_FAILED);
+  });
+});
+
+describe('a worked-out layer says what it rests on', () => {
+  const basisLayer = (basis: object) => ({ ...layer(null, 'recipe'), method: 'computed', basis });
+  const basis = {
+    notKnown: ['sweet', 'sour', 'salty'],
+    lineSources: [{ name: 'Gin', from: 'good' }, { name: 'Lime juice', from: 'class_prior' }, { name: 'House shrub 7', from: 'unknown' }],
+    unknownNames: ['House shrub 7'],
+  };
+  it('axes not known are rows of words with no bar and never the band none; the sources and unknown lines are named', async () => {
+    api.get.mockResolvedValue(ready({ axes: { bitter: ax(4) } }, [basisLayer(basis) as never]));
+    mount();
+    for (const k of ['sweet', 'sour', 'salty']) {
+      const row = await screen.findByTestId(`taste-notknown-${k}`);
+      expect(row.textContent).toMatch(/not known/);
+      expect(row.textContent).not.toMatch(/none/i);
+      expect(within(row).queryByRole('img')).toBeNull();
+    }
+    expect(screen.queryByTestId('taste-band-sweet')).toBeNull();
+    expect(screen.getByTestId('taste-worked-from').textContent).toBe('Worked out from: Gin (its own taste), Lime juice (typical of its kind).');
+    expect(screen.getByTestId('taste-left-out').textContent).toBe('Left out because its taste is not known: House shrub 7.');
+    expect(document.body.textContent).not.toMatch(/\d\.\d|conf/i);
+  });
+  it('a layer with no basis draws none of it', async () => {
+    api.get.mockResolvedValue(ready({ axes: { bitter: ax(4) } }));
+    mount();
+    await screen.findByTestId('taste-row-bitter');
+    expect(screen.queryByTestId('taste-worked-from')).toBeNull();
+    expect(screen.queryByTestId('taste-left-out')).toBeNull();
+    expect(screen.queryByTestId('taste-notknown-sweet')).toBeNull();
+  });
+  it('a card whose only news is what is not known still shows it, not "nobody has described it"', async () => {
+    api.get.mockResolvedValue(ready(null, [basisLayer({ notKnown: ['salty'], lineSources: [], unknownNames: [] }) as never]));
+    mount();
+    expect(await screen.findByTestId('taste-notknown-salty')).toBeTruthy();
+    expect(screen.queryByTestId('taste-empty')).toBeNull();
+  });
+  it('an axis that is known is not also listed as not known', async () => {
+    api.get.mockResolvedValue(ready({ axes: { salty: ax(5) } }, [basisLayer({ notKnown: ['salty'], lineSources: [], unknownNames: [] }) as never]));
+    mount();
+    await screen.findByTestId('taste-row-salty');
+    expect(screen.queryByTestId('taste-notknown-salty')).toBeNull();
+  });
+});
+
+describe('the failed read says unreachable when nothing answered', () => {
+  it('the unreachable reason is the card\u2019s sentence', async () => {
+    api.get.mockResolvedValue({ state: 'failed', reason: UNREACHABLE_WORDS });
+    mount();
+    expect((await screen.findByTestId('taste-failed')).textContent).toBe('Mudavym could not be reached just now.');
   });
 });
 
