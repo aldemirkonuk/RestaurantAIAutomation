@@ -133,3 +133,47 @@ export function studioJsonRequest<T = unknown>(
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   })
 }
+
+/**
+ * What the orchestrator reports happened to the WINE after an override was applied
+ * (`library` on POST /overrides and PATCH /queue/{id}). The override's own status
+ * ("auto_promoted") never says this: until 2026-11-07 the library insert failed on
+ * every promotion while the contributor read "Override saved" (QA round 5, B-1).
+ */
+export interface LibraryReport {
+  library?: string
+  library_detail?: string
+}
+
+export interface StudioNotice {
+  tone: 'success' | 'info' | 'error'
+  title: string
+  description?: string
+}
+
+/**
+ * The toast for a library outcome, or null when there is nothing to say (the wine
+ * still has fields waiting for review). An outcome this code does not know is not
+ * read as success (ADR 0020): it says it could not tell.
+ */
+export function libraryNotice(report: LibraryReport | null | undefined): StudioNotice | null {
+  const outcome = report?.library
+  if (!outcome || outcome === 'not_ready') return null
+  const description = report?.library_detail
+  if (outcome === 'promoted') return { tone: 'success', title: 'Added to the wine library', description }
+  if (outcome === 'already_in_library') {
+    return { tone: 'info', title: 'Already in the wine library', description }
+  }
+  if (outcome === 'failed') {
+    return {
+      tone: 'error',
+      title: 'The wine did not reach the library',
+      description: description ?? 'Nothing was added. Try again, or tell a reviewer.',
+    }
+  }
+  return {
+    tone: 'error',
+    title: 'Could not tell whether the wine reached the library',
+    description: 'Check the wine library before promoting it again.',
+  }
+}

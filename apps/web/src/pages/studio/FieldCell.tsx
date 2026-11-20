@@ -4,7 +4,7 @@ import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ReasonInput } from './ReasonInput'
 import { Badge } from '../../components/ui/badge'
-import { studioJsonRequest, studioErrorMessage } from './studioApi'
+import { studioJsonRequest, studioErrorMessage, libraryNotice, type LibraryReport } from './studioApi'
 
 interface FieldEntry {
   value: string | null
@@ -69,7 +69,7 @@ export function FieldCell({ submissionId, sessionId, field, entry, onOverrideSuc
     try {
       // Orchestrator, not the gateway (studioApi.ts). studioJsonRequest throws on any
       // non-2xx, so the success toasts below are unreachable unless the write landed.
-      const data = await studioJsonRequest<{ status?: string }>(
+      const data = await studioJsonRequest<{ status?: string; detail?: string } & LibraryReport>(
         '/api/v1/studio/overrides',
         'POST',
         {
@@ -81,6 +81,14 @@ export function FieldCell({ submissionId, sessionId, field, entry, onOverrideSuc
           citation_url: citationUrl.trim() || null,
         },
       )
+      if (data.status === 'logged_apply_failed') {
+        // The override is on record but the field was NOT changed: say so, and
+        // leave the cell as it was rather than showing the new value as applied.
+        const message = 'Your change is recorded but was not applied to the wine.'
+        setSaveError(message)
+        toast.error('Change not applied', { description: message })
+        return
+      }
       setIsEditing(false)
       onOverrideSuccess(field, newValue.trim())
       if (data.status === 'pending') {
@@ -88,6 +96,10 @@ export function FieldCell({ submissionId, sessionId, field, entry, onOverrideSuc
       } else {
         toast.success('Override saved', { description: `${field} updated` })
       }
+      // What happened to the wine is its own sentence: a saved override is not a
+      // wine in the library.
+      const notice = libraryNotice(data)
+      if (notice) toast[notice.tone](notice.title, { description: notice.description })
     } catch (err: unknown) {
       const message = studioErrorMessage(err)
       setSaveError(message)
