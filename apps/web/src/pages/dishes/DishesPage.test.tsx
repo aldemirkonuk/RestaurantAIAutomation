@@ -18,7 +18,8 @@ vi.mock('../../services/api/client', () => ({
 }));
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => h.auth }));
 
-import DishesPage, { PRICE_UNREAD, readPrice } from './DishesPage';
+import DishesPage from './DishesPage';
+import { PRICE_UNREAD, readPrice } from '../cellar/next/recipe/price-text';
 
 const full = { perServe: 300, perServeExact: 300, priced: 2, of: 2, complete: true, partial: 0 };
 const row = (id: string, name: string, over: Record<string, unknown> = {}) => ({

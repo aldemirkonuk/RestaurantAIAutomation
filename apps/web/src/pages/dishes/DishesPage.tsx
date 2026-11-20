@@ -19,30 +19,13 @@ import { useSearchParams } from 'react-router-dom';
 import { AlertTriangle, Plus } from 'lucide-react';
 import RecipeSheet from '../cellar/next/recipe/RecipeSheet';
 import { pourCostShare } from '../cellar/next/recipe/DrinkCards';
+import { PRICE_UNREAD, priceText, readPrice } from '../cellar/next/recipe/price-text';
 import { reason, useCanEditRecipe, useCreateDish, useDishes, useHouseMoney, useRemoveDish, useUpdateDish } from '../cellar/next/recipe/useRecipe';
 import type { DishListRow } from '../../services/api/recipes';
 import { EM, SANS } from '../cellar/next/cellar-format';
 import '../cellar/next/cellar-next.css';
 
 type Say = (n: number | null | undefined) => string;
-
-/** Said when a typed price cannot be read. */
-export const PRICE_UNREAD = 'Type the price as a number, like 12.50 or 12,50.';
-
-/**
- * A typed price: blank is "no price" (null), "12,50" and "12.50" are 12.5.
- * At most two decimals and one separator, so "1.250" or "1,250" (a thousand,
- * or one and a quarter?) is refused rather than guessed. `bad` when unread.
- */
-export function readPrice(text: string): { price: number | null; bad: boolean } {
-  const t = text.trim().replace(/\s+/g, '');
-  if (t === '') return { price: null, bad: false };
-  if (!/^\d+(?:[.,]\d{1,2})?$/.test(t)) return { price: null, bad: true };
-  const n = Number(t.replace(',', '.'));
-  return Number.isFinite(n) && n >= 0 && n <= 9_999_999_999 ? { price: n, bad: false } : { price: null, bad: true };
-}
-
-const priceText = (n: number | null) => (n == null ? '' : String(n));
 
 function cells(d: DishListRow, say: Say) {
   const dim = <span className="cl-dim">{EM}</span>;
