@@ -89,6 +89,7 @@ import {
 } from './useMailData';
 import { useMailSetup } from './useMailSetup';
 
+const SR_ONLY = { position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' } as const;
 const QUIET = { fontSize: 11.5, color: 'var(--ink-4, #665D50)' } as const;
 const LINK_BUTTON = {
   background: 'none',
@@ -134,20 +135,9 @@ function NewChip({ on }: { on: boolean | null | undefined }) {
     <FadeAway show={on === true}>
       <span
         data-testid="new-to-you"
-        style={{
-          fontFamily: MONO,
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: '0.06em',
-          textTransform: 'uppercase',
-          padding: '2px 7px',
-          borderRadius: 4,
-          color: 'var(--paper-0, #FAF7F1)',
-          background: 'var(--seal, #1A5E6B)',
-          alignSelf: 'center',
-        }}
+        style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--seal, #1A5E6B)', alignSelf: 'center', flex: 'none', position: 'relative' }}
       >
-        {NEW_TO_YOU}
+        <span style={SR_ONLY}>{NEW_TO_YOU}</span>
       </span>
     </FadeAway>
   );
@@ -241,6 +231,7 @@ function PeoplePlaceholder({ rows }: { rows: number }) {
             style={{ borderBottom: '1px solid var(--paper-2, #EAE4D8)', padding: '10px 4px', display: 'grid', gap: 6, minHeight: PERSON_ROW_MIN }}
           >
             <span style={{ height: 13, width: `${42 + ((i * 17) % 30)}%`, borderRadius: 4, background: 'var(--paper-2, #EAE4D8)' }} />
+            <span style={{ height: 11, width: '30%', borderRadius: 4, background: 'var(--paper-2, #EAE4D8)', opacity: 0.4 }} />
             <span style={{ height: 11, width: '70%', borderRadius: 4, background: 'var(--paper-2, #EAE4D8)', opacity: 0.6 }} />
           </li>
         ))}
@@ -271,22 +262,28 @@ function PersonRow({
     <li
       className={enterPlace === undefined ? undefined : 'mail-fade-in'}
       data-entering={enterPlace === undefined ? undefined : ''}
-      style={{ borderBottom: '1px solid var(--paper-2, #EAE4D8)', ...(enterPlace === undefined ? null : enterDelay(enterPlace)) }}
+      style={{ borderBottom: '1px solid var(--paper-2, #EAE4D8)', ...(enterPlace === undefined ? {} : enterDelay(enterPlace)) }}
     >
       <button
         type="button"
         data-testid="mail-person"
         onClick={onOpen}
         className="cm-row grid w-full gap-0.5 px-1 py-2.5 text-left"
-        style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: SANS }}
+        style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: SANS, minHeight: PERSON_ROW_MIN }}
       >
-        <span className="flex flex-wrap items-baseline gap-2">
+        {/* Line one holds three things: the waiting dot, the name, the time (r102 critic 4). */}
+        <span className="flex items-baseline gap-2">
           {p.waiting && <WaitingDot on={on} />}
           <NewChip on={p.newToYou} />
-          <UnsentChip status={p.unsentStatus} />
           <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink-1, #211C16)', overflowWrap: 'anywhere' }}>
             {p.name ?? NO_NAME[mailKindOf(p)]}
           </span>
+          <span className="ml-auto" style={{ fontFamily: MONO, fontSize: 12, color: 'var(--ink-4, #665D50)', flex: 'none' }}>
+            {fmtWhen(p.lastAt)}
+          </span>
+        </span>
+        {/* Line two is quiet: what kind, by what road, which order, how many threads, unsent. */}
+        <span data-testid="person-facts" className="flex flex-wrap items-center gap-x-2 gap-y-0.5" style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
           <span data-testid="person-kind" style={QUIET}>
             {KIND_WORD[mailKindOf(p)]}
           </span>
@@ -307,9 +304,7 @@ function PersonRow({
             </span>
           )}
           {p.openThreads > 1 && <span style={QUIET}>{p.openThreads} open threads</span>}
-          <span className="ml-auto" style={{ fontFamily: MONO, fontSize: 12, color: 'var(--ink-4, #665D50)' }}>
-            {fmtWhen(p.lastAt)}
-          </span>
+          <UnsentChip status={p.unsentStatus} />
         </span>
         <span
           style={{

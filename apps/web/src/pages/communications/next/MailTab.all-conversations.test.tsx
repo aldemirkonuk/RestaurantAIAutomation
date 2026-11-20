@@ -36,7 +36,7 @@ vi.mock('./MailThread', async (importOriginal) => {
 });
 
 import { MailTab } from './MailTab';
-import { READ_ALL_OFFER_WORDS, addressLine, answerFor, kindEmptyWords, mailKindOf } from './mail-format';
+import { ARRIVED_ONLY, READ_ALL_OFFER_WORDS, addressLine, answerFor, kindEmptyWords, mailKindOf } from './mail-format';
 
 const SUMMARY = {
   waitingPeople: 0,
@@ -215,6 +215,7 @@ describe('a thread with a team member', () => {
     mount('/communications?tab=mail&thread=gm%3Aabc');
     await screen.findAllByTestId('mail-letter');
     expect(screen.getByTestId('thread-kind')).toHaveTextContent('team');
+    expect(screen.getByTestId('thread-arrived-only')).toHaveTextContent(ARRIVED_ONLY);
     expect(screen.queryByTestId('write-thread-reply')).toBeNull();
   });
 
@@ -254,7 +255,7 @@ describe('reading every conversation', () => {
     ];
     mount();
     await waitFor(() => expect(screen.getByTestId('read-scope').getAttribute('data-state')).toBe('all'));
-    expect(screen.getByTestId('read-scope')).toHaveTextContent('every conversation in the mailbox');
+    expect(screen.getByTestId('read-scope')).toHaveTextContent('the letters that arrived in the mailbox');
   });
 
   it('a grant the house has stopped using does not count', async () => {
