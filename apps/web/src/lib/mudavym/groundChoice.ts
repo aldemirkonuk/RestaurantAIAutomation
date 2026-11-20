@@ -604,6 +604,26 @@ export const GROUND_OPTIONS: ReadonlyArray<{
   { value: 'system', label: 'System', hint: 'Follows this device’s light or dark setting.' },
 ];
 
+/** True when this device is set to dark right now. Never throws. */
+export function deviceIsDark(): boolean {
+  try {
+    return typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The options in the order the first question shows them. On a device set to
+ * dark, System leads and is the one pre-selected (Paper still leads everywhere
+ * else: "everyone starts on Paper" stands for a light device).
+ */
+export function firstChoiceOptions(dark: boolean): typeof GROUND_OPTIONS {
+  if (!dark) return GROUND_OPTIONS;
+  const system = GROUND_OPTIONS.find((o) => o.value === 'system')!;
+  return [system, ...GROUND_OPTIONS.filter((o) => o.value !== 'system')];
+}
+
 /**
  * Under these, nobody has told us what this person chose — so a control marks
  * nothing chosen. `default` is NOT one of them: paper-because-they-never-chose

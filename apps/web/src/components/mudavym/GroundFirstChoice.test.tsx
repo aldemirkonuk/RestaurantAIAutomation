@@ -28,6 +28,15 @@ import {
   resetGroundChoiceForTests,
   setGroundOwner,
 } from '../../lib/mudavym/groundChoice';
+import {
+  GROUND_ASK_SNOOZE_MS,
+  applyAccountGroundAsk,
+  getGroundAskGate,
+  registerGroundAskWriter,
+  resetGroundAskForTests,
+  type GroundAskRecord,
+  noteGroundTaskDone,
+} from '../../lib/mudavym/groundAsk';
 import type { DataTermsReadout } from '../../services/api/dataTerms';
 
 const roleMock = vi.hoisted(() => ({ current: 'manager' as string | null }));
@@ -86,6 +95,16 @@ function radio(name: 'Paper' | 'Charcoal' | 'System'): HTMLInputElement {
 function neverChose() {
   setGroundOwner(ALICE);
   applyAccountGround(undefined);
+  // ...and she has finished a task, the gate for the question (N-08 / P0-1).
+  applyAccountGroundAsk({ firstTaskAt: '2026-11-01T10:00:00.000Z' });
+}
+function askWriter() {
+  const sent: GroundAskRecord[] = [];
+  registerGroundAskWriter((record) => {
+    sent.push(record);
+    return Promise.resolve();
+  });
+  return sent;
 }
 function acceptingWriter() {
   const saved: string[] = [];
@@ -110,12 +129,14 @@ beforeEach(() => {
   window.localStorage.clear();
   document.documentElement.removeAttribute(GROUND_CHOICE_ATTR);
   resetGroundChoiceForTests();
+  resetGroundAskForTests();
 });
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
   document.documentElement.removeAttribute(GROUND_CHOICE_ATTR);
   resetGroundChoiceForTests();
+  resetGroundAskForTests();
 });
 
 describe('when it asks', () => {
@@ -171,8 +192,88 @@ describe('when it asks', () => {
     setGroundOwner(ALICE);
     mount();
     expect(ask()).toBeNull();
-    act(() => applyAccountGround(undefined));
+    act(() => {
+      applyAccountGround(undefined);
+      applyAccountGroundAsk({ firstTaskAt: '2026-11-01T10:00:00.000Z' });
+    });
     expect(ask()).toBeInTheDocument();
+  });
+
+  it('[REVERT-FAILS] does not ask before the first completed task, however the account answers', () => {
+    setGroundOwner(ALICE);
+    applyAccountGround(undefined);
+    applyAccountGroundAsk(undefined);
+    mount();
+    expect(ask()).toBeNull();
+  });
+
+  it('[REVERT-FAILS] does not ask while the account has not said what it holds about the question', () => {
+    setGroundOwner(ALICE);
+    applyAccountGround(undefined);
+    mount();
+    expect(getGroundAskGate().known).toBe(false);
+    expect(ask()).toBeNull();
+  });
+
+  it('asks the moment the first task lands', () => {
+    setGroundOwner(ALICE);
+    applyAccountGround(undefined);
+    applyAccountGroundAsk(undefined);
+    mount();
+    expect(ask()).toBeNull();
+    act(() => noteGroundTaskDone());
+    expect(ask()).toBeInTheDocument();
+  });
+
+  it('[REVERT-FAILS] stays quiet inside a 30-day snooze and asks once it has run out', () => {
+    setGroundOwner(ALICE);
+    applyAccountGround(undefined);
+    const future = new Date(Date.now() + 5 * 24 * 3600 * 1000).toISOString();
+    applyAccountGroundAsk({ firstTaskAt: '2026-11-01T10:00:00.000Z', snoozedUntil: future });
+    const first = mount();
+    expect(ask()).toBeNull();
+    first.unmount();
+    cleanup();
+    resetGroundAskForTests();
+    applyAccountGroundAsk({
+      firstTaskAt: '2026-11-01T10:00:00.000Z',
+      snoozedUntil: new Date(Date.now() - 1000).toISOString(),
+    });
+    mount();
+    expect(ask()).toBeInTheDocument();
+  });
+});
+
+describe('on a dark device', () => {
+  function dark(matches: boolean) {
+    vi.stubGlobal('matchMedia', (q: string) => ({
+      matches: matches && /dark/.test(q),
+      media: q,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+    }));
+  }
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('[REVERT-FAILS] offers System first and has it selected', () => {
+    dark(true);
+    neverChose();
+    mount();
+    const labels = screen.getAllByRole('radio').map((r) => (r as HTMLInputElement).value);
+    expect(labels).toEqual(['system', 'paper', 'charcoal']);
+    expect(radio('System').checked).toBe(true);
+    expect(radio('Paper').checked).toBe(false);
+  });
+
+  it('a light device keeps Paper first and selected', () => {
+    dark(false);
+    neverChose();
+    mount();
+    const labels = screen.getAllByRole('radio').map((r) => (r as HTMLInputElement).value);
+    expect(labels).toEqual(['paper', 'charcoal', 'system']);
+    expect(radio('Paper').checked).toBe(true);
   });
 });
 
@@ -288,7 +389,7 @@ describe('answering it', () => {
   });
 });
 
-describe('closing without saving writes nothing (ruled 2026-10-01: ask again next load)', () => {
+describe('closing without saving writes no theme, and is remembered for 30 days', () => {
   for (const [how, close] of [
     ['Not now', () => fireEvent.click(screen.getByRole('button', { name: 'Not now' }))],
     ['Escape', () => fireEvent.keyDown(window, { key: 'Escape' })],
@@ -297,32 +398,44 @@ describe('closing without saving writes nothing (ruled 2026-10-01: ask again nex
       () => fireEvent.click(document.querySelector('.mdv-ovl__scrim') as HTMLElement),
     ],
   ] as const) {
-    it(`${how} closes it, writes nothing, and the account still says "never chosen"`, () => {
+    it(`${how} closes it, writes no theme, snoozes the question, and the account still says "never chosen"`, () => {
       neverChose();
       const calls = countingWriter();
+      const sent = askWriter();
       mount();
       fireEvent.click(radio('Charcoal'));
+      const before = Date.now();
       act(() => close());
       expect(ask()).toBeNull();
       expect(calls).toEqual([]);
       expect(getGroundState()).toMatchObject({ setting: 'paper', source: 'default' });
       expect(document.documentElement.getAttribute(GROUND_CHOICE_ATTR)).toBe('paper');
+      // The snooze is written WHOLE (the first-task stamp rides with it).
+      expect(sent).toHaveLength(1);
+      expect(sent[0].firstTaskAt).toBe('2026-11-01T10:00:00.000Z');
+      const until = Date.parse(sent[0].snoozedUntil!);
+      expect(until - before).toBeGreaterThanOrEqual(GROUND_ASK_SNOOZE_MS - 1000);
+      expect(until - before).toBeLessThanOrEqual(GROUND_ASK_SNOOZE_MS + 5000);
     });
   }
 
-  it('asks again on the next load', () => {
+  it('[REVERT-FAILS] does not ask again on the next load', () => {
     neverChose();
     countingWriter();
+    const sent = askWriter();
     const first = mount();
     act(() => fireEvent.keyDown(window, { key: 'Escape' }));
     expect(ask()).toBeNull();
     first.unmount();
 
-    // A fresh page load: the account answers "never chosen" again.
+    // A fresh page load: the account answers with what it was sent.
     resetGroundChoiceForTests();
-    neverChose();
+    resetGroundAskForTests();
+    setGroundOwner(ALICE);
+    applyAccountGround(undefined);
+    applyAccountGroundAsk(sent[0]);
     mount();
-    expect(ask()).toBeInTheDocument();
+    expect(ask()).toBeNull();
   });
 
   it('a different person signing in on this tab is asked afresh', () => {
@@ -332,7 +445,9 @@ describe('closing without saving writes nothing (ruled 2026-10-01: ask again nex
     expect(ask()).toBeNull();
     act(() => {
       setGroundOwner('user-bob');
+      resetGroundAskForTests();
       applyAccountGround(undefined);
+      applyAccountGroundAsk({ firstTaskAt: '2026-11-02T10:00:00.000Z' });
     });
     expect(ask()).toBeInTheDocument();
   });
