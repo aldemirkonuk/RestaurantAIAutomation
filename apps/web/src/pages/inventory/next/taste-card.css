@@ -246,26 +246,14 @@
   }
 }
 
-/* The held slot of the taste line (TasteSummary.tsx): 23 px on the desktop foot, 44 px on the phone head. An
-   empty answer gives it back over 200 ms (after the sheet's slide); reduced motion gives it back at once. */
+/* The held slot of the taste line (TasteSummary.tsx): 23 px on the desktop foot, 44 px on the phone head. It is
+   kept for a good with no taste answer too: a stable sheet beats a reclaimed 44 px (r101). */
 .tc-line--foot.tc-line--hold {
   min-height: 23px;
   max-height: 23px;
 }
 .tc-line--hold {
   overflow: hidden;
-  transition: min-height 200ms ease-in-out, max-height 200ms ease-in-out, margin 200ms ease-in-out;
-}
-.tc-line--hold[data-collapsing='true'] {
-  min-height: 0;
-  max-height: 0;
-  margin-top: 0;
-  margin-bottom: 0;
-}
-@media (prefers-reduced-motion: reduce) {
-  .tc-line--hold {
-    transition: none;
-  }
 }
 
 /* "More" on a taste row: the detail opens by height and opacity (r97 M8), closes quicker; its room is the
