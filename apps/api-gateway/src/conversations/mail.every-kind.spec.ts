@@ -5,7 +5,7 @@
  * vendors only. The SQL is proven in supabase/tests/20271204100000_*_test.sql;
  * this proves what the service asks of it. The database is a recording fake.
  */
-import { ServiceUnavailableException } from "@nestjs/common";
+import { BadRequestException, ServiceUnavailableException } from "@nestjs/common";
 import { MailService } from "./mail.service";
 import { mailKindOf, otherPersonOf } from "./mail.read-rules";
 
@@ -76,6 +76,24 @@ describe("people", () => {
       expect(queries.map((q) => q.name)).toEqual(["list_mail_people"]);
       expect(queries[0].payload.p_withhold_house_letters).toBe(true);
     }
+  });
+
+  it("asks SQL for one kind only when one is named, so the page holds that kind (r103 mail-1)", async () => {
+    resolve = stored([]);
+    await svc().listPeople(HOUSE, "owner", { kind: "team" });
+    expect(queries[0].payload.p_kind).toBe("team");
+    queries = [];
+    await svc().listPeople(HOUSE, "owner", {});
+    expect("p_kind" in queries[0].payload).toBe(false);
+    queries = [];
+    await svc().listPeople(HOUSE, "owner", { kind: "" });
+    expect("p_kind" in queries[0].payload).toBe(false);
+  });
+
+  it("refuses a kind it does not know, with a 400 and no read", async () => {
+    await expect(svc().listPeople(HOUSE, "owner", { kind: "robot" })).rejects.toThrow(BadRequestException);
+    await expect(svc().listPeople(HOUSE, "owner", { kind: ["team"] })).rejects.toThrow(BadRequestException);
+    expect(queries).toEqual([]);
   });
 
   it("a failed read of what is stored is a 503, never 'vendors only'", async () => {
