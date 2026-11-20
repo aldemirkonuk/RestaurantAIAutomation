@@ -8,7 +8,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MenuPlan, kindWords, orderedRows, planSentence } from './MenuPlan';
+import { MenuPlan, kindWords, largestMove, orderedRows, planSentence } from './MenuPlan';
 import { getMenuPlan, makeMenuCurrent, type MenuPlan as Plan, type PlanLine } from '../../../services/api/menus';
 import { lockPrice, releasePriceLock } from '../../../services/api/pricing';
 
@@ -173,6 +173,23 @@ describe('MenuPlan -- the section before the choice (L13)', () => {
     expect(onDone).not.toHaveBeenCalled();
   });
 
+  it('a refusal that already says nothing was changed is not followed by a second "nothing" or a doubled stop', async () => {
+    mockPlan.mockResolvedValue(plan());
+    mockMake.mockRejectedValue({ response: { status: 400, data: { message: 'This menu has no lines left. Nothing was changed.' } } });
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
+    const said = await screen.findByRole('alert');
+    expect(said.textContent).toBe('It was not made current: This menu has no lines left. Nothing was changed.');
+  });
+
+  it('a refusal that does not say it gets the one closing sentence', async () => {
+    mockPlan.mockResolvedValue(plan());
+    mockMake.mockRejectedValue({ response: { status: 500, data: { message: 'The write failed' } } });
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('It was not made current: The write failed. Nothing has changed.');
+  });
+
   it('a plan that cannot be worked out says so, and offers no choice', async () => {
     mockPlan.mockRejectedValue({ response: { status: 500, data: { message: "the house's price locks could not be read" } } });
     mount(true);
@@ -292,5 +309,42 @@ describe('L2 on the plan: nothing to keep where the house has no price', () => {
     const rows = await screen.findAllByTestId('menu-plan-row');
     expect(within(rows[0]).getByText('Nothing to keep yet')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Keep the bottle price of Vermentino' })).not.toBeInTheDocument();
+  });
+});
+
+// r102 menu-critic-3: the act that moves house prices says how much it moves.
+describe('the price-change summary above Make it current (r102 menu-critic-3)', () => {
+  const big = line({
+    menuItemId: 'n7',
+    name: 'Amarone',
+    bottle: { kind: 'bottle', menuPrice: 120, housePrice: 90, result: 'change', lastSet: null, lock: null },
+  });
+
+  it('counts the prices that move, names the largest in the house money, and counts locked prices kept', () => {
+    const move = largestMove(plan({ lines: [line(), BAROLO, big], counts: { ...plan().counts, change: 2 } }));
+    expect(move).toEqual({ moved: 2, kept: 1, name: 'Amarone', kind: 'bottle', from: 90, to: 120 });
+    expect(largestMove(plan({ lines: [BAROLO], counts: { ...plan().counts, change: 0 } }))).toBeNull();
+  });
+
+  it('shows it above the button, to a manager only, with a lock in the way or not', async () => {
+    mockPlan.mockResolvedValue(plan({ lines: [line(), BAROLO, big], counts: { ...plan().counts, change: 2 } }));
+    mount(true);
+    const said = await screen.findByTestId('menu-plan-change-summary');
+    expect(said).toHaveTextContent('2 prices move. The largest is Amarone, bottle: 90.00 to 120.00, 30.00 more. 1 locked price stays as it is.');
+    expect(said.compareDocumentPosition(screen.getByRole('button', { name: 'Make it current' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('says a price that falls falls, and no lock in the way', async () => {
+    const cut = line({ bottle: { kind: 'bottle', menuPrice: 40, housePrice: 50, result: 'change', lastSet: null, lock: null } });
+    mockPlan.mockResolvedValue(plan({ lines: [cut], counts: { ...plan().counts, change: 1, held_by_lock: 0 } }));
+    mount(true);
+    expect(await screen.findByTestId('menu-plan-change-summary')).toHaveTextContent('1 price moves. The largest is Chianti, bottle: 50.00 to 40.00, 10.00 less. No locked price is in the way.');
+  });
+
+  it('a person who cannot choose is not shown a summary of a choice they cannot make', async () => {
+    mockPlan.mockResolvedValue(plan());
+    mount(false);
+    await screen.findAllByTestId('menu-plan-row');
+    expect(screen.queryByTestId('menu-plan-change-summary')).toBeNull();
   });
 });
