@@ -70,6 +70,16 @@ describe('class priors: an unverified figure lowers belief (r94)', () => {
     // the values themselves do not move: only the belief does
     expect(flagged.axes.umami.v).toBe(plain.axes.umami.v);
   });
+  it('a good that states only some axes and borrows the rest from an unverified class is believed less too', () => {
+    const run = () => rollup(dish(['plate', [L('Tomato', 150, 'g', { own: { prov: 'staff', axes: { sweet: { v: 4 } } } })]]));
+    const flagged = run();
+    const codes = CLASS_SOURCES.tomato.codes;
+    CLASS_SOURCES.tomato.codes = codes.filter((c) => c !== 'UNV');
+    let plain: ReturnType<typeof run>;
+    try { plain = run(); } finally { CLASS_SOURCES.tomato.codes = codes; }
+    expect(flagged.basis.lineSources[0].from).toBe('good');
+    expect(flagged.axes.umami.conf).toBeLessThan(plain.axes.umami.conf);
+  });
 });
 
 describe('class priors: matching a label', () => {
