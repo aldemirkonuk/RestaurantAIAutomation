@@ -1,4 +1,7 @@
+import type { CSSProperties, ReactNode } from 'react';
 import { cn } from '../../lib/utils';
+import '../mudavym/shell-motion.css';
+import '../mudavym/shell-transitions.css';
 
 interface SkeletonProps {
   className?: string;
@@ -6,22 +9,38 @@ interface SkeletonProps {
 }
 
 /**
- * Base Skeleton component with optional shimmer effect
+ * Base Skeleton: a paper block with one sheen crossing it (`.mdv-sheen`, in
+ * shell-transitions.css). The sheen is a transformed child, so it runs on the
+ * compositor and stops under prefers-reduced-motion. `shimmer={false}` keeps
+ * the block and drops the sheen.
  */
 export function Skeleton({ className, shimmer = true }: SkeletonProps) {
   return (
     <div
-      className={cn(
-        'animate-pulse rounded-md bg-gray-200 dark:bg-gray-700',
-        shimmer && 'relative overflow-hidden',
-        className
-      )}
+      className={cn('mdv-sheen rounded-md', !shimmer && 'mdv-sheen--still', className)}
       role="status"
       aria-label="Loading..."
-    >
-      {shimmer && (
-        <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-      )}
+    />
+  );
+}
+
+/**
+ * Content that replaces a skeleton: fades in over 240 ms, `index` x 40 ms
+ * later than the one before (opacity only). Give it the skeleton's own box so
+ * nothing shifts when it arrives.
+ */
+export function Reveal({
+  children,
+  index = 0,
+  className,
+}: {
+  children: ReactNode;
+  index?: number;
+  className?: string;
+}) {
+  return (
+    <div className={cn('mdv-reveal', className)} style={{ '--mdv-i': Math.min(index, 8) } as CSSProperties}>
+      {children}
     </div>
   );
 }
@@ -33,7 +52,7 @@ export function StatCardSkeleton({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        'rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800',
+        'rounded-xl border border-[var(--paper-2,#eae4d8)] bg-[var(--paper-0,#fffdf8)] p-5',
         className
       )}
     >
@@ -78,7 +97,7 @@ export function CardSkeleton({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        'rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800',
+        'rounded-2xl border border-[var(--paper-2,#eae4d8)] bg-[var(--paper-0,#fffdf8)] p-6',
         className
       )}
     >
@@ -105,9 +124,9 @@ export function TableSkeleton({
   className?: string;
 }) {
   return (
-    <div className={cn('overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700', className)}>
+    <div className={cn('overflow-hidden rounded-xl border border-[var(--paper-2,#eae4d8)]', className)}>
       {/* Header */}
-      <div className="flex gap-4 border-b border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800">
+      <div className="flex gap-4 border-b border-[var(--paper-2,#eae4d8)] bg-[var(--paper-1,#f3efe6)] p-4">
         {Array.from({ length: columns }).map((_, i) => (
           <Skeleton key={i} className="h-4 flex-1" />
         ))}
@@ -116,7 +135,7 @@ export function TableSkeleton({
       {Array.from({ length: rows }).map((_, rowIndex) => (
         <div
           key={rowIndex}
-          className="flex gap-4 border-b border-gray-100 p-4 last:border-0 dark:border-gray-700"
+          className="flex gap-4 border-b border-[var(--paper-2,#eae4d8)] p-4 last:border-0"
         >
           {Array.from({ length: columns }).map((_, colIndex) => (
             <Skeleton key={colIndex} className="h-4 flex-1" />
@@ -134,7 +153,7 @@ export function ListItemSkeleton({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        'flex items-center gap-4 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800',
+        'flex items-center gap-4 rounded-xl border border-[var(--paper-2,#eae4d8)] bg-[var(--paper-0,#fffdf8)] p-4',
         className
       )}
     >
@@ -173,13 +192,13 @@ export function DashboardSkeleton() {
       {/* Main content */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Chart */}
-        <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+        <div className="rounded-2xl border border-[var(--paper-2,#eae4d8)] bg-[var(--paper-0,#fffdf8)] p-6">
           <Skeleton className="h-5 w-32 mb-4" />
           <Skeleton className="h-64 w-full rounded-xl" />
         </div>
 
         {/* List */}
-        <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+        <div className="rounded-2xl border border-[var(--paper-2,#eae4d8)] bg-[var(--paper-0,#fffdf8)] p-6">
           <Skeleton className="h-5 w-32 mb-4" />
           <div className="space-y-3">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -244,7 +263,7 @@ export function OrdersSkeleton() {
         {Array.from({ length: 6 }).map((_, i) => (
           <div
             key={i}
-            className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800"
+            className="rounded-2xl border border-[var(--paper-2,#eae4d8)] bg-[var(--paper-0,#fffdf8)] p-6"
           >
             <div className="flex items-center justify-between mb-4">
               <Skeleton className="h-5 w-24" />

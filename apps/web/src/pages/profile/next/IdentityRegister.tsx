@@ -37,7 +37,9 @@
  */
 
 import { useState } from 'react';
+import { flushSync } from 'react-dom';
 import { UserRound } from 'lucide-react';
+import { runViewTransition } from '../../../lib/mudavym/viewTransition';
 import { EM, MONO, SANS, roleLabel } from './pf-format';
 import { Btn, Card, Field, Note, Register, StatusLine } from './pf-ui';
 import type { ProfileNextData } from './useProfileNextData';
@@ -185,7 +187,13 @@ export function IdentityRegister({ data }: { data: ProfileNextData }) {
                 className="pf-btn pf-focus"
                 aria-pressed={pressed}
                 aria-describedby={hint ? `pf-ground-hint-${value}` : undefined}
-                onClick={() => setGroundChoice(value)}
+                onClick={(e) => {
+                  // The new ground opens as a circle from the chip pressed.
+                  const box = e.currentTarget.getBoundingClientRect();
+                  runViewTransition(() => flushSync(() => setGroundChoice(value)), {
+                    origin: { x: box.left + box.width / 2, y: box.top + box.height / 2 },
+                  });
+                }}
                 style={{
                   fontFamily: SANS,
                   fontSize: 12,

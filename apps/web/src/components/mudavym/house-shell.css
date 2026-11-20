@@ -134,7 +134,19 @@
   font-size: 13px;
   color: var(--ink-2);
   text-decoration: none;
+  position: relative;
   transition: background-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* The current room's bar is a real element (it was an inset shadow) so it can
+   be a shared element in a route transition and slide to the next room. */
+.mdv-rail__bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--seal);
 }
 
 .mdv-rail__room:hover {
@@ -145,7 +157,6 @@
 .mdv-rail__room[aria-current='page'] {
   background: var(--paper-1);
   color: var(--ink-1);
-  box-shadow: inset 2px 0 0 var(--seal);
 }
 
 .mdv-rail__room:focus-visible,
