@@ -1,14 +1,16 @@
-/* The sentence that says what choosing a menu did settles in 280 ms. It is a
-   row, not an overlay, so ADR 0112's no-exit-animation rule is untouched
+/* The sentence that says what choosing a menu did settles on the house's
+   `settle` (cubic-bezier(0.16, 1, 0.3, 1) at 320 ms, 6px up + opacity, as
+   MOTIONS.md's mdv-panel-settle: no second duration, DD-r102-10). It is a row,
+   not an overlay, so ADR 0112's no-exit-animation rule is untouched
    (r102 menu-critic-3). */
 .mdv-settle {
-  animation: mdv-settle 280ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: mdv-settle 320ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes mdv-settle {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
