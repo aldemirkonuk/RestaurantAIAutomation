@@ -264,35 +264,52 @@ export class ItemUsedInService {
         source: "A cocktail recipe names a catalogue drink, and this item is not one.",
       };
     }
-    const ing = await client
-      .from("cocktail_ingredients")
-      .select("cocktail_id, quantity, unit")
-      .or(keys.join(","));
-    if (ing.error) return failed("The cocktail recipes", ing.error.message);
-    const rows = (ing.data ?? []) as Array<Record<string, any>>;
-    if (rows.length === 0) return { readable: true, lines: [], source };
-    const cocktails = await client
-      .from("cocktails")
-      .select("id, name, display_name")
-      .in("id", [...new Set(rows.map((r) => r.cocktail_id))])
-      // NULL restaurant_id is the catalogue, not this house's.
-      .eq("restaurant_id", restaurantId)
-      .is("deleted_at", null);
-    if (cocktails.error) return failed("The cocktail recipes", cocktails.error.message);
-    const byId = new Map(
-      ((cocktails.data ?? []) as Array<Record<string, any>>).map((c) => [c.id, c]),
-    );
-    const lines = rows
-      .filter((r) => byId.has(r.cocktail_id))
-      .map((r) => {
-        const c = byId.get(r.cocktail_id)!;
-        return {
-          cocktailId: c.id,
-          name: c.display_name || c.name,
-          quantity: r.quantity == null ? null : Number(r.quantity),
-          unit: r.unit ?? null,
-        };
-      });
+    // The house's own live cocktails first (a house is small), then only their ingredient rows: the
+    // catalogue's rows for a popular drink can pass PostgREST's 1000-row page and push the house's off it.
+    const byId = new Map<string, Record<string, any>>();
+    let after: string | null = null;
+    for (;;) {
+      let q = client
+        .from("cocktails")
+        .select("id, name, display_name")
+        // NULL restaurant_id is the catalogue, not this house's.
+        .eq("restaurant_id", restaurantId)
+        .is("deleted_at", null);
+      if (after) q = q.gt("id", after);
+      const { data, error } = await q.order("id", { ascending: true }).limit(PAGE);
+      if (error) return failed("The cocktail recipes", error.message);
+      const page = (data ?? []) as Array<Record<string, any>>;
+      for (const c of page) byId.set(String(c.id), c);
+      if (page.length < PAGE) break;
+      after = String(page[page.length - 1].id);
+    }
+    const ids = [...byId.keys()];
+    const lines: CocktailLine[] = [];
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      let ingAfter: string | null = null;
+      for (;;) {
+        let q = client
+          .from("cocktail_ingredients")
+          .select("id, cocktail_id, quantity, unit")
+          .in("cocktail_id", ids.slice(i, i + CHUNK))
+          .or(keys.join(","));
+        if (ingAfter) q = q.gt("id", ingAfter);
+        const { data, error } = await q.order("id", { ascending: true }).limit(PAGE);
+        if (error) return failed("The cocktail recipes", error.message);
+        const rows = (data ?? []) as Array<Record<string, any>>;
+        for (const r of rows) {
+          const c = byId.get(String(r.cocktail_id))!;
+          lines.push({
+            cocktailId: c.id,
+            name: c.display_name || c.name,
+            quantity: r.quantity == null ? null : Number(r.quantity),
+            unit: r.unit ?? null,
+          });
+        }
+        if (rows.length < PAGE) break;
+        ingAfter = String(rows[rows.length - 1].id);
+      }
+    }
     return { readable: true, lines, source };
   }
 

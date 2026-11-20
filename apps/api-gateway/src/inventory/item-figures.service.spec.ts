@@ -10,8 +10,9 @@ function seed() {
   const db = new FakeDb();
   db.tables.restaurant_inventory = [{ id: I, restaurant_id: H, kind: "food", display_name: "Un" }];
   db.tables.inventory_lot_rollup = [{ inventory_id: I, restaurant_id: H, wac: 10 }];
+  let n = 0;
   const tx = (type: string, qty: number, days: number, unit_cost: number | null = null) => ({
-    inventory_id: I, restaurant_id: H, stock_type: "live", transaction_type: type,
+    id: `tx-${String(++n).padStart(6, "0")}`, inventory_id: I, restaurant_id: H, stock_type: "live", transaction_type: type,
     quantity_change: qty, transaction_date: ago(days), unit_cost,
   });
   db.tables.inventory_transactions = [
@@ -78,5 +79,16 @@ describe("ItemFiguresService (proposal K1-K10)", () => {
     const { waste } = await svc.figures(H, I, "shown", NOW);
     expect(waste.value30d).toBeNull();
     expect(waste.source).toContain("no received lot of this item has a cost yet");
+  });
+
+  it("(r102) a 30-day waste sum past PostgREST's 1000-row page is whole, not the first page", async () => {
+    const { db, svc } = seed();
+    db.maxRows = 1000;
+    db.tables.inventory_transactions = Array.from({ length: 2500 }, (_, k) => ({
+      id: `w-${String(k).padStart(6, "0")}`, inventory_id: I, restaurant_id: H, stock_type: "live",
+      transaction_type: "waste", quantity_change: -1, transaction_date: ago(2), unit_cost: 1,
+    }));
+    const { waste } = await svc.figures(H, I, "shown", NOW);
+    expect(waste).toMatchObject({ readable: true, qty30d: 2500, value30d: 2500 });
   });
 });

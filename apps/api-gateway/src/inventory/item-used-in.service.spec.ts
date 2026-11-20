@@ -34,6 +34,31 @@ const line = (id: string, name: string, more: Record<string, any> = {}) => ({
 });
 
 describe("ItemUsedInService (proposal I4/I11)", () => {
+  it("(r102) a catalogue drink in more than 1000 other rows still finds the house's own cocktail", async () => {
+    const { db, svc } = seed({ kind: "spirit", display_name: "Unx", beverage_id: "bev-1", master_wine_id: null });
+    db.maxRows = 1000;
+    db.tables.cocktails = [
+      { id: "c-house", restaurant_id: H, name: "Unx Sour", deleted_at: null },
+      ...Array.from({ length: 1200 }, (_, k) => ({ id: `c-other-${k}`, restaurant_id: null, name: `Other ${k}`, deleted_at: null })),
+    ];
+    db.tables.cocktail_ingredients = [
+      ...Array.from({ length: 1200 }, (_, k) => ({ id: `a-${String(k).padStart(5, "0")}`, cocktail_id: `c-other-${k}`, beverage_id: "bev-1", quantity: 10, unit: "ml" })),
+      { id: "z-house", cocktail_id: "c-house", beverage_id: "bev-1", quantity: 50, unit: "ml" },
+    ];
+    const out = await svc.usedIn(H, I);
+    expect(out.inCocktails).toMatchObject({ readable: true });
+    expect(out.inCocktails.lines).toEqual([expect.objectContaining({ cocktailId: "c-house", quantity: 50 })]);
+  });
+
+  it("(r102) a house with more than 1000 cocktails is read whole", async () => {
+    const { db, svc } = seed({ kind: "spirit", display_name: "Unx", beverage_id: "bev-1", master_wine_id: null });
+    db.maxRows = 1000;
+    db.tables.cocktails = Array.from({ length: 1100 }, (_, k) => ({ id: `c${String(k).padStart(5, "0")}`, restaurant_id: H, name: `D${k}`, deleted_at: null }));
+    db.tables.cocktail_ingredients = db.tables.cocktails.map((c, k) => ({ id: `i${String(k).padStart(5, "0")}`, cocktail_id: c.id, beverage_id: "bev-1", quantity: 5, unit: "ml" }));
+    const out = await svc.usedIn(H, I);
+    expect(out.inCocktails.lines).toHaveLength(1100);
+  });
+
   it("(a) lists the linked menu line and the house cocktail; a same-named unlinked line is only in namedNotLinked", async () => {
     const { db, svc } = seed({ kind: "spirit", display_name: "Unx", beverage_id: "bev-1", master_wine_id: null });
     db.tables.menu_items = [
@@ -43,8 +68,8 @@ describe("ItemUsedInService (proposal I4/I11)", () => {
       line("l-archived", "Unx", { menu_id: "menu-old", inventory_item_id: I }),
     ];
     db.tables.cocktail_ingredients = [
-      { cocktail_id: "c-house", beverage_id: "bev-1", quantity: 50, unit: "ml" },
-      { cocktail_id: "c-catalogue", beverage_id: "bev-1", quantity: 40, unit: "ml" },
+      { id: "i-1", cocktail_id: "c-house", beverage_id: "bev-1", quantity: 50, unit: "ml" },
+      { id: "i-2", cocktail_id: "c-catalogue", beverage_id: "bev-1", quantity: 40, unit: "ml" },
     ];
     db.tables.cocktails = [
       { id: "c-house", restaurant_id: H, name: "Unx Sour", deleted_at: null },
@@ -197,7 +222,7 @@ describe("ItemUsedInService reads its groups at once (the drawer waits for the s
     for (let i = 0; i < 5; i += 1) await new Promise((r) => setImmediate(r));
     // The menu read is held; the cocktail card and recipe reads have already gone out.
     expect(started).toContain("restaurant_menus");
-    expect(started).toContain("cocktail_ingredients");
+    expect(started).toContain("cocktails");
     expect(started).toContain("recipe_lines");
     expect(started).not.toContain("menu_items");
     open();
