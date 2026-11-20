@@ -56,6 +56,7 @@ import {
   encodeMailCursor,
   mailDirectionOf as direction,
   mailDoorOf,
+  mailKindFilterOf,
   mailKindOf,
   mailSearchOf,
   otherPersonOf,
@@ -127,11 +128,14 @@ export class MailService {
       limit?: string | number;
       /** r28 mail gap 16: a name, subject, order number or a letter's words. */
       query?: unknown;
+      /** r103 mail-1: only this kind of person (vendor, team, guest). */
+      kind?: unknown;
     },
   ): Promise<MailPeoplePage> {
     const limit = clampMailLimit(opts.limit);
     const after = opts.after ? decodeMailCursor(opts.after) : null;
     const query = mailSearchOf(opts.query);
+    const kind = mailKindFilterOf(opts.kind);
     const { data, error } = await this.db.rpc("list_mail_people", {
       p_restaurant_id: houseId,
       p_withhold_house_letters: withholdsHouseLetters(callerRole),
@@ -143,6 +147,9 @@ export class MailService {
       // Named only when there is a search, so a list with none is the same
       // call as before the search existed.
       ...(query ? { p_query: query } : {}),
+      // Asked for in SQL, so a page holds that kind and the next page is
+      // the next of that kind, never "none" for a kind on a later page.
+      ...(kind ? { p_kind: kind } : {}),
     });
     if (error) this.failed("people", error);
     const rows = (data ?? []) as any[];
