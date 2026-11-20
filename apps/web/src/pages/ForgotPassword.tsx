@@ -1,20 +1,11 @@
 import { PublicShell } from '../components/mudavym/PublicShell'
-import { usePublicDesign } from '../lib/mudavym/publicDesign'
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import axios from 'axios'
-import { Mail, AlertCircle, CheckCircle2 } from 'lucide-react'
-import { motion } from 'framer-motion'
-import { Button } from '../components/ui'
-import { AuthShell, AuthCard } from '../components/brand/AuthShell'
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 
-const fieldClass =
-  'block w-full pl-11 pr-3 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 shadow-sm transition-all focus:outline-none focus:border-wine-600 focus:ring-4 focus:ring-wine-600/10 disabled:opacity-60'
-
 export function ForgotPassword() {
-  const publicDesign = usePublicDesign()
   // /login hands the address over when it sends someone here to set a first
   // password (ADR 0024) — retyping it is friction with no purpose. Nothing is
   // revealed by the prefill: this endpoint answers identically for every
@@ -55,186 +46,65 @@ export function ForgotPassword() {
     }
   }
 
-  if (publicDesign) {
-    return (
-      <PublicShell
-        title={submitted ? 'Check your email' : 'Reset your password'}
-        eyebrow="Account access"
-        voice={
-          submitted
-            ? 'A way back, if this address has an account.'
-            : 'Enter the address you use to sign in.'
-        }
-        homeHref="/login"
-        footer={
-          <Link className="mdv-link" to="/login">
-            Back to sign in
-          </Link>
-        }
-      >
-        <div className="mdv-pub__plate mdv-pub__stack">
-          {submitted ? (
-            <p role="status">
-              If an account exists for <strong>{email}</strong>, a password
-              reset email has been requested. Check your inbox and spam folder.
-              Reset links expire after one hour.
-            </p>
-          ) : (
-            <form
-              onSubmit={handleSubmit}
-              className="mdv-pub__stack"
-              aria-busy={loading}
-            >
-              {error && (
-                <p className="mdv-alert" role="alert">
-                  {error}
-                </p>
-              )}
-              <div>
-                <label className="mdv-label" htmlFor="email">
-                  Email address
-                </label>
-                <input
-                  className="mdv-input"
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  disabled={loading}
-                />
-              </div>
-              <button
-                className="mdv-btn mdv-btn--seal"
-                type="submit"
-                disabled={loading}
-              >
-                {loading ? 'Requesting link…' : 'Send reset link'}
-              </button>
-            </form>
-          )}
-        </div>
-      </PublicShell>
-    )
-  }
-
-  if (submitted) {
-    return (
-      <AuthShell title="Mudavym" subtitle="Check your email">
-        <AuthCard>
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col items-center text-center gap-4 py-4"
-          >
-            <div className="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center">
-              <CheckCircle2
-                className="w-7 h-7 text-emerald-600"
-                strokeWidth={1.75}
-              />
-            </div>
-            <div>
-              <p className="text-base font-semibold text-gray-900">
-                Check your email
-              </p>
-              <p className="mt-1.5 text-sm text-gray-500 leading-relaxed">
-                If an account exists for{' '}
-                <span className="font-medium text-gray-700">{email}</span>,
-                we've sent a link to reset your password. The link expires in 1
-                hour.
-              </p>
-            </div>
-            <Link
-              to="/login"
-              className="text-sm font-medium text-wine-600 hover:text-wine-700 mt-2"
-            >
-              Back to sign in
-            </Link>
-          </motion.div>
-        </AuthCard>
-      </AuthShell>
-    )
-  }
-
   return (
-    <AuthShell title="Mudavym" subtitle="Reset your password">
-      <AuthCard>
-        {error && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3"
+    <PublicShell
+      title={submitted ? 'Check your email' : 'Reset your password'}
+      eyebrow="Account access"
+      voice={
+        submitted
+          ? 'A way back, if this address has an account.'
+          : 'Enter the address you use to sign in.'
+      }
+      homeHref="/login"
+      footer={
+        <Link className="mdv-link" to="/login">
+          Back to sign in
+        </Link>
+      }
+    >
+      <div className="mdv-pub__plate mdv-pub__stack">
+        {submitted ? (
+          <p role="status">
+            If an account exists for <strong>{email}</strong>, a password
+            reset email has been requested. Check your inbox and spam folder.
+            Reset links expire after one hour.
+          </p>
+        ) : (
+          <form
+            onSubmit={handleSubmit}
+            className="mdv-pub__stack"
+            aria-busy={loading}
           >
-            <AlertCircle
-              className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5"
-              strokeWidth={1.75}
-            />
-            <p className="text-sm text-red-700">{error}</p>
-          </motion.div>
-        )}
-
-        <p className="text-sm text-gray-500 mb-6 leading-relaxed">
-          Enter the email address on your account and we'll send you a link to
-          reset your password.
-        </p>
-
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label
-              htmlFor="email"
-              className="block text-sm font-medium text-gray-700 mb-2"
-            >
-              Email Address
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                <Mail
-                  className="h-[18px] w-[18px] text-wine-400"
-                  strokeWidth={1.75}
-                />
-              </div>
+            {error && (
+              <p className="mdv-alert" role="alert">
+                {error}
+              </p>
+            )}
+            <div>
+              <label className="mdv-label" htmlFor="email">
+                Email address
+              </label>
               <input
+                className="mdv-input"
                 id="email"
                 type="email"
+                autoComplete="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className={fieldClass}
-                placeholder="you@restaurant.com"
                 disabled={loading}
-                autoFocus
               />
             </div>
-          </div>
-
-          <Button
-            type="submit"
-            variant="default"
-            size="lg"
-            className="w-full"
-            disabled={loading}
-          >
-            {loading ? (
-              <span className="flex items-center justify-center gap-2">
-                <span className="w-4 h-4 border-2 border-white/80 border-t-transparent rounded-full animate-spin" />
-                Sending...
-              </span>
-            ) : (
-              'Send Reset Link'
-            )}
-          </Button>
-
-          <p className="text-center text-sm text-gray-500">
-            <Link
-              to="/login"
-              className="font-medium text-wine-600 hover:text-wine-700"
+            <button
+              className="mdv-btn mdv-btn--seal"
+              type="submit"
+              disabled={loading}
             >
-              Back to sign in
-            </Link>
-          </p>
-        </form>
-      </AuthCard>
-    </AuthShell>
+              {loading ? 'Requesting link…' : 'Send reset link'}
+            </button>
+          </form>
+        )}
+      </div>
+    </PublicShell>
   )
 }

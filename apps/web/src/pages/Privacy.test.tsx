@@ -62,11 +62,10 @@ describe('Privacy page: where a question goes to be answered (round 6z)', () => 
     expect(screen.getByText(sentence)).toBeInTheDocument()
   })
 
-  it('says it on the legacy Section copy too', () => {
+  it('has no legacy Section copy left: the old QA off override still shows the plate', () => {
     window.localStorage.setItem(PUBLIC_OVERRIDE_KEY, 'off')
     renderWithProviders(<Privacy />)
-    expect(document.querySelector('.mdv-pub__plate')).toBeNull()
-    expect(screen.getByRole('heading', { name: /questions you ask mudavym/i })).toBeInTheDocument()
+    expect(document.querySelector('.mdv-pub__plate')).not.toBeNull()
     expect(screen.getByText(sentence)).toBeInTheDocument()
   })
 })
