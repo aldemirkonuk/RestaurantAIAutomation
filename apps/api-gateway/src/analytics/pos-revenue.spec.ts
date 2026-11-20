@@ -320,6 +320,136 @@ describe("house-day — the one rule (ADR 0296)", () => {
   });
 });
 
+describe("GoalsService.getPosRevenueWindow — checks per house day (r100 check 1)", () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(NOW));
+  });
+  afterEach(() => jest.useRealTimers());
+
+  const countsOf = (r: {
+    dailySeries: Array<{ date: string; checks: number }>;
+  }) => Object.fromEntries(r.dailySeries.map((d) => [d.date, d.checks]));
+
+  it("counts each day's checks on the house's clock: a dinner that closes after UTC midnight stays on its own day", async () => {
+    // Aug 28 in Los Angeles: 3 lunches (19:00-20:00 UTC) and 4 dinners that
+    // close 00:30-02:00 UTC on Aug 29. Aug 29: one lunch.
+    const lunches = checksClosing(3, "2026-08-28T19:00:00Z", 30, 100);
+    const dinners = checksClosing(4, "2026-08-29T00:30:00Z", 30, 200);
+    const next = checksClosing(1, "2026-08-29T19:00:00Z", 0, 50);
+    const { service } = makeGoals({
+      pos_checks: probeThen([...lunches, ...dinners, ...next]),
+    });
+
+    const result = await service.getPosRevenueWindow("r1", 7);
+
+    expect(countsOf(result)).toEqual({ "2026-08-28": 7, "2026-08-29": 1 });
+    // Sum of the days is the window's own checkCount: one pass, one set.
+    expect(result.dailySeries.reduce((n, d) => n + d.checks, 0)).toBe(
+      result.checkCount,
+    );
+  });
+
+  it("files a check that crosses the house midnight on the day it closed", async () => {
+    const late = {
+      total: 180,
+      opened_at: "2026-08-21T06:30:00Z", // 23:30 LA Aug 20
+      closed_at: "2026-08-21T07:20:00Z", // 00:20 LA Aug 21
+      items: [],
+    };
+    const { service } = makeGoals({ pos_checks: probeThen([late]) });
+
+    const result = await service.getPosRevenueWindow("r1", 30);
+
+    expect(countsOf(result)).toEqual({ "2026-08-21": 1 });
+  });
+
+  it("does not count a check whose house day precedes the window, so a day reads the same in every window", async () => {
+    const before = {
+      total: 999,
+      opened_at: "2026-08-26T03:00:00Z",
+      closed_at: "2026-08-26T05:00:00Z", // 22:00 LA Aug 25
+      items: [],
+    };
+    const inside = {
+      total: 150,
+      opened_at: "2026-08-26T18:00:00Z",
+      closed_at: "2026-08-26T19:30:00Z",
+      items: [],
+    };
+    const seven = await makeGoals({
+      pos_checks: probeThen([before, inside]),
+    }).service.getPosRevenueWindow("r1", 7);
+    const eight = await makeGoals({
+      pos_checks: probeThen([before, inside]),
+    }).service.getPosRevenueWindow("r1", 8);
+
+    expect(countsOf(seven)).toEqual({ "2026-08-26": 1 });
+    expect(countsOf(eight)).toEqual({ "2026-08-25": 1, "2026-08-26": 1 });
+  });
+
+  it("counts a zero-total check the till did book, and never invents a day with no check", async () => {
+    const comp = {
+      total: 0,
+      opened_at: "2026-08-30T19:00:00Z",
+      closed_at: "2026-08-30T20:00:00Z",
+      items: [],
+    };
+    const paid = {
+      total: 80,
+      opened_at: "2026-09-01T19:00:00Z",
+      closed_at: "2026-09-01T20:00:00Z",
+      items: [],
+    };
+    const { service } = makeGoals({ pos_checks: probeThen([comp, paid]) });
+
+    const result = await service.getPosRevenueWindow("r1", 7);
+
+    expect(result.dailySeries).toEqual([
+      { date: "2026-08-30", revenue: 0, checks: 1 },
+      { date: "2026-09-01", revenue: 80, checks: 1 },
+    ]);
+    // 31 Aug had no check at all: absent, not a 0 the page would draw.
+    expect(countsOf(result)["2026-08-31"]).toBeUndefined();
+  });
+
+  it("reads the same voided=false, tenant-scoped query the revenue does, and nothing else", async () => {
+    const { service, client } = makeGoals({ pos_checks: probeThen([]) });
+
+    await service.getPosRevenueWindow("tenant-a", 7);
+
+    const windowed = client.calls.filter(
+      (c) => c.table === "pos_checks" && c.method === "eq",
+    );
+    const has = (k: string, v: unknown) =>
+      windowed.some((c) => c.args[0] === k && c.args[1] === v);
+    // The probe and the windowed read each name the tenant.
+    expect(
+      windowed.filter(
+        (c) => c.args[0] === "restaurant_id" && c.args[1] === "tenant-a",
+      ),
+    ).toHaveLength(2);
+    expect(has("voided", false)).toBe(true);
+    // One windowed read of pos_checks (plus the probe): the count is not a
+    // second query that could drift from the revenue.
+    expect(
+      client.calls.filter((c) => c.table === "pos_checks" && c.method === "select"),
+    ).toHaveLength(2);
+  });
+
+  it("states no days, and so no counts, for a house with no zone", async () => {
+    const { service } = makeGoals({
+      restaurants: [{ timezone: null, country: "US" }],
+      pos_checks: probeThen([]),
+    });
+
+    const result = await service.getPosRevenueWindow("r1", 7);
+
+    expect(result.zoneUnset).toBe(true);
+    expect(result.dailySeries).toEqual([]);
+  });
+});
+
 describe("GoalsService.getPosRevenueWindow", () => {
   beforeEach(() => {
     jest.useFakeTimers();
@@ -357,7 +487,9 @@ describe("GoalsService.getPosRevenueWindow", () => {
     expect(result.posConnected).toBe(true);
     expect(result.revenue).toBeCloseTo(200);
     expect(result.checkCount).toBe(2);
-    expect(result.dailySeries).toEqual([{ date: LA_TODAY, revenue: 200 }]);
+    expect(result.dailySeries).toEqual([
+      { date: LA_TODAY, revenue: 200, checks: 2 },
+    ]);
 
     // The void filter is not optional: a voided check never happened.
     const voidFilter = client.calls.find(
