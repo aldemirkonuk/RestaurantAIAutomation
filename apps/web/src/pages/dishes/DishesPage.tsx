@@ -46,7 +46,9 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AlertTriangle, Plus } from 'lucide-react';
 import RecipeSheet from '../cellar/next/recipe/RecipeSheet';
-import { pourCostShare } from '../cellar/next/recipe/DrinkCards';
+import { ShareFigure, pourCostShare } from '../cellar/next/recipe/DrinkCards';
+import { useListTax } from '../cellar/next/recipe/useListTax';
+import type { ListTax } from '../cellar/next/recipe/listTax';
 import { PRICE_UNREAD, priceText, readPrice } from '../cellar/next/recipe/price-text';
 import { useHousePercent, type SayPercent } from '../cellar/next/recipe/useHousePercent';
 import type { TakeOffMenuAnswer } from '../../services/api/recipes';
@@ -76,7 +78,7 @@ export const DISH_ALLERGENS_UNREAD = 'The dishes’ allergens could not be read 
 /** Where the figures stand: being read, read, or not readable just now. */
 export type FiguresState = 'reading' | 'read' | 'unread';
 
-function cells(d: DishListRow, f: DishFigureRow | undefined, state: FiguresState, say: Say, sayPct: SayPercent) {
+function cells(d: DishListRow, f: DishFigureRow | undefined, state: FiguresState, say: Say, sayPct: SayPercent, tax: ListTax) {
   const dim = <span className="cl-dim">{EM}</span>;
   const price = d.price != null ? say(d.price) : 'No price';
   // While the figures are read the cell says so; "—" is a dish with no recipe.
@@ -89,7 +91,7 @@ function cells(d: DishListRow, f: DishFigureRow | undefined, state: FiguresState
     return { price, cost: reading('cost'), share: reading('share') };
   }
   if (state === 'unread' || !f || !f.hasRecipe) return { price, cost: dim, share: dim };
-  const share = pourCostShare(f.cost, d.price);
+  const share = pourCostShare(f.cost, d.price, tax);
   const per = f.cost?.complete ? f.cost.perServe : null;
   // `partial` counts priced lines whose invoice cost covers only part of the
   // stock (bought another way, invoiced at 0, or not yet verified).
@@ -112,7 +114,7 @@ function cells(d: DishListRow, f: DishFigureRow | undefined, state: FiguresState
       ) : (
         say(per)
       ),
-    share: 'pct' in share ? sayPct(share.pct) : 'Not known',
+    share: 'pct' in share ? <ShareFigure text={sayPct(share.pct)} tax={tax} /> : 'Not known',
   };
 }
 
@@ -496,6 +498,7 @@ export default function DishesPage() {
   const canEdit = useCanEditRecipe();
   const sayMoney = useHouseMoney();
   const sayPct = useHousePercent();
+  const tax = useListTax();
   const say = canEdit ? sayMoney : null;
   const menu = useMenuPrices('dish', canEdit);
   const showMenu = Boolean(say && menu.byId && (menu.currentMenus ?? 0) > 0);
@@ -528,7 +531,7 @@ export default function DishesPage() {
       if (offer.length !== 1) continue;
       const cost = fig(d.id)?.cost ?? null;
       const shareText = (price: number | null) => {
-        const sh = pourCostShare(cost, price);
+        const sh = pourCostShare(cost, price, tax);
         return 'pct' in sh ? sayPct(sh.pct) : figState === 'reading' ? 'being read' : 'not known';
       };
       takeable.push({ id: d.id, name: d.name, from: d.price, to: offer[0], shareNow: shareText(d.price), shareMenu: shareText(offer[0]) });
@@ -699,7 +702,7 @@ export default function DishesPage() {
               <tbody>
                 {rows.map((d) => {
                   const f = fig(d.id);
-                  const c = say ? cells(d, f, figState, say, sayPct) : null;
+                  const c = say ? cells(d, f, figState, say, sayPct, tax) : null;
                   return [
                     <tr
                       key={d.id}

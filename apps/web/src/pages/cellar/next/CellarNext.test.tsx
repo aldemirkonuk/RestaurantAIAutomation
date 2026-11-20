@@ -94,6 +94,7 @@ vi.mock('./recipe/useRecipe', async (orig) => ({
   useDrinkFigures: () => ({ byId: null, loading: false, error: null }),
   useMenuPrices: () => ({ byId: null, currentMenus: null, error: null }),
 }));
+vi.mock('./recipe/useListTax', () => ({ useListTax: () => ({ basis: 'prices_exclude_tax' }) }));
 vi.mock('./recipe/useHousePercent', () => ({ useHousePercent: () => (p: number) => `%${p}` }));
 vi.mock('./useCellarNextData', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),

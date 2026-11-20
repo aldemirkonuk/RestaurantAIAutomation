@@ -29,7 +29,7 @@
  * nutrition card").
  */
 import type { SayPercent } from './useHousePercent';
-import { UNSET_TAX, priceForShare, taxSaid, type ListTax } from './listTax';
+import { UNSET_TAX, priceForShare, shareBasis, taxSaid, type ListTax } from './listTax';
 import type { CocktailRecipe, CostPreview, RecipeCost, RecipeLine } from '../../../../services/api/recipes';
 import { alcoholGrams, figureAmount, figureUnknown, names } from './WhatIsInAServe';
 import { formatHousePercent } from '../../../../lib/house-number';
@@ -117,6 +117,20 @@ function priceCard(data: CocktailRecipe, sayMoney: (n: number) => string, words:
   return price != null
     ? { id: 'price', label: 'Price', figure: sayMoney(price), known: true, said: `A ${words.unit}, as your list has it.` }
     : { id: 'price', label: 'Price', figure: 'No price', known: false, said: 'Your list has no price for it.' };
+}
+
+/** A share in a list cell: plain once the basis is set, else warned with its sentence under it. */
+export function ShareFigure({ text, tax }: { text: string; tax: ListTax }) {
+  const basis = shareBasis(tax);
+  if (!basis.warn) return <span title={basis.text}>{text}</span>;
+  return (
+    <>
+      <span style={{ color: 'var(--warn)' }} data-warn="true">{text}</span>
+      <span className="cl-dim" style={{ display: 'block', fontSize: 11 }} data-testid="share-basis">
+        {basis.text}
+      </span>
+    </>
+  );
 }
 
 /** Said under every pour-cost %, until the house's tax basis is set (ADR 0359). */

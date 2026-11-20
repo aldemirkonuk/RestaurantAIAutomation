@@ -23,13 +23,18 @@ export function listTaxFromReadout(r: TaxBasisReadout | undefined, failed: boole
   return { basis: 'unset' };
 }
 
-export function useListTax(): ListTax {
-  const { activeRestaurantId } = useAuth();
+/** The same read for a caller handed its house (the drawer), which can leave it unread (staff). */
+export function useListTaxFor(restaurantId: string | null, enabled = true): ListTax {
   const q = useQuery({
-    queryKey: ['settings', 'tax-basis', activeRestaurantId ?? null],
-    enabled: Boolean(activeRestaurantId),
+    queryKey: ['settings', 'tax-basis', restaurantId ?? null],
+    enabled: enabled && Boolean(restaurantId),
     queryFn: async () => (await apiClient.get<TaxBasisReadout>('/settings/tax-basis')).data,
     staleTime: 5 * 60_000,
   });
   return listTaxFromReadout(q.data, q.isError);
+}
+
+export function useListTax(enabled = true): ListTax {
+  const { activeRestaurantId } = useAuth();
+  return useListTaxFor(activeRestaurantId ?? null, enabled);
 }

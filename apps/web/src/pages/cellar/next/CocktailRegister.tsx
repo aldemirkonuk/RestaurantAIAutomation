@@ -42,7 +42,9 @@ import RecipeSheet from './recipe/RecipeSheet';
 import MenuDrinksOffer from './MenuDrinksOffer';
 import { readingRowCount } from './readingRows';
 import { PRICE_UNREAD, priceText, readPrice } from './recipe/price-text';
-import { pourCostShare } from './recipe/DrinkCards';
+import { ShareFigure, pourCostShare } from './recipe/DrinkCards';
+import { useListTax } from './recipe/useListTax';
+import type { ListTax } from './recipe/listTax';
 import { useCanEditRecipe, useDrinkFigures, useHouseMoney, useMenuPrices } from './recipe/useRecipe';
 import { AllergenCell, AllergenCheck, keptFor } from './recipe/ListAllergens';
 import { CostWaits, NoRecipeYet } from './recipe/ListCostWaits';
@@ -123,12 +125,13 @@ function drinkCells(
   read: boolean,
   say: (n: number | null | undefined) => string,
   sayPct: SayPercent,
+  tax: ListTax,
 ) {
   const dim = <span className="cl-dim">{EM}</span>;
   if (!read || !f || !f.hasRecipe) return { cost: dim, share: dim };
   const per = f.cost?.complete ? f.cost.perServe : null;
   const part = f.cost?.partial ?? 0;
-  const share = pourCostShare(f.cost, price);
+  const share = pourCostShare(f.cost, price, tax);
   return {
     cost:
       per == null ? (
@@ -146,7 +149,7 @@ function drinkCells(
       ) : (
         say(per)
       ),
-    share: 'pct' in share ? sayPct(share.pct) : 'Not known',
+    share: 'pct' in share ? <ShareFigure text={sayPct(share.pct)} tax={tax} /> : 'Not known',
   };
 }
 
@@ -193,6 +196,7 @@ export default function CocktailRegister({
   const menu = useMenuPrices('drink', seesCost);
   const showMenu = Boolean(seesCost && menu.byId && (menu.currentMenus ?? 0) > 0);
   const sayPct = useHousePercent();
+  const tax = useListTax();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   // /cocktails?open=<id> opens that drink: the inventory drawer's "used in"
@@ -529,7 +533,7 @@ export default function CocktailRegister({
                 <tbody>
                   {rows.map((c) => {
                     const fc = seesCost
-                      ? drinkCells(c.id, c.price ?? null, figures.byId?.get(c.id), Boolean(figures.byId) && !figures.costsUnread, money, sayPct)
+                      ? drinkCells(c.id, c.price ?? null, figures.byId?.get(c.id), Boolean(figures.byId) && !figures.costsUnread, money, sayPct, tax)
                       : null;
                     return (
                     <tr

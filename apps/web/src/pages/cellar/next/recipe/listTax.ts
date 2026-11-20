@@ -26,6 +26,13 @@ export function priceForShare(price: number, tax: ListTax): { price: number } | 
   return { price: price / (1 + r / 100) };
 }
 
+/** What a lone share is of: "of the price before tax" once the basis is set; else the warned sentence. */
+export function shareBasis(tax: ListTax): { text: string; warn: boolean } {
+  return tax.basis === 'unset' || tax.basis === 'unread'
+    ? { text: taxSaid(tax), warn: true }
+    : { text: 'of the price before tax', warn: false };
+}
+
 /** Said under a share or a margin: which price it is of. */
 export function taxSaid(tax: ListTax): string {
   switch (tax.basis) {
