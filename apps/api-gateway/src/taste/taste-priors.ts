@@ -15,13 +15,13 @@ export type AromaFamilyKey = 'fruit' | 'citrus' | 'floral' | 'herbal' | 'spice' 
 export type Aroma = Partial<Record<AromaFamilyKey, number>>;
 
 /** Bump when any value below changes: a stored layer then reads as stale. */
-export const PRIORS_VERSION = 1;
+export const PRIORS_VERSION = 2;
 
 /**
  * How far a source of chemistry is believed (R3 section 3 step 8). A class
  * prior is never above 0.6: it is the kind of ingredient, not this bottle.
  */
-export const Q_BY_PROV = { measured: 1.0, dataset: 0.7, class_prior: 0.6, unknown: 0 } as const;
+export const Q_BY_PROV = { measured: 1.0, dataset: 0.7, staff: 0.6, class_prior: 0.6, unknown: 0 } as const;
 export type RollupProv = keyof typeof Q_BY_PROV;
 
 export interface ClassPrior {
@@ -72,6 +72,25 @@ export const CLASS_PRIORS: readonly ClassPrior[] = [
   { id: 'herb', match: /\b(parsley|mint|basil|dill|thyme|rosemary|herb)\b/, chem: {}, rsd: 0, q: 0.3, aroma: { herbal: 0.7 }, solid: true },
   { id: 'starch', match: /\b(flour|rice|pasta|bread|potato|bulgur|noodle)\b/, chem: { fat: 1, nacl: 0.05 }, rsd: 0.3, q: 0.3, solid: true },
 ];
+
+/**
+ * Fields a class states to be ABSENT (a real zero): plain gin has no fat, no
+ * salt. A field is known for a line only if it is in the class's `chem` or in
+ * this list; anything else is unknown, and an unknown field is never read as 0.
+ */
+const NO_SAVOURY: ReadonlyArray<keyof Chem> = ['fat', 'nacl', 'glu'];
+const NO_ALC_SAVOURY: ReadonlyArray<keyof Chem> = ['abv', 'fat', 'nacl', 'glu'];
+const PURE_SWEET: ReadonlyArray<keyof Chem> = [...NO_ALC_SAVOURY, 'ce', 'be'];
+const SPIRIT: ReadonlyArray<keyof Chem> = [...NO_SAVOURY, 'se', 'ce'];
+export const NONE_BY_CLASS: Record<string, ReadonlyArray<keyof Chem>> = {
+  'ice-water': ['abv', 'se', 'ce', 'nacl', 'fat', 'glu', 'nuc', 'be'],
+  'honey-agave': PURE_SWEET, 'rich-syrup': PURE_SWEET, 'simple-syrup': PURE_SWEET, sugar: PURE_SWEET,
+  'lemon-lime': NO_ALC_SAVOURY, 'orange-juice': NO_ALC_SAVOURY, 'grapefruit-juice': NO_ALC_SAVOURY,
+  vinegar: NO_ALC_SAVOURY, 'tonic-cola': NO_ALC_SAVOURY,
+  'sweet-vermouth': NO_SAVOURY, 'dry-vermouth': NO_SAVOURY, 'bitter-liqueur': NO_SAVOURY,
+  'orange-liqueur': NO_SAVOURY, bitters: NO_SAVOURY, wine: NO_SAVOURY, beer: NO_SAVOURY,
+  'dark-spirit': SPIRIT, 'clear-spirit': SPIRIT,
+};
 
 /** Cooking: y = mass kept, B = browning 0..1, fatUp = fat taken up (g/100 g), smoky = char. */
 export interface Method { id: string; match: RegExp; y: number; B: number; fatUp?: number; smoky?: boolean; umamiX?: number }

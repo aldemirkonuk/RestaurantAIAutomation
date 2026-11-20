@@ -2,7 +2,7 @@ import { createHash } from 'crypto';
 import {
   ABV_FLOOR, ABV_SPAN, AromaFamilyKey, BITE_EXPONENT, Chem, CLASS_PRIORS, DILUTION_BY_METHOD,
   DILUTION_DEFAULT, DILUTION_SD, DILUTION_SD_ASSUMED, DRAWS, K, METHODS, Method, PRIORS_VERSION,
-  Q_BY_PROV, RollupProv, ROAST_K, SOLID_SALT_RELEASE, SUPPRESS, YAMAGUCHI,
+  NONE_BY_CLASS, Q_BY_PROV, RollupProv, ROAST_K, SOLID_SALT_RELEASE, SUPPRESS, YAMAGUCHI,
 } from './taste-priors';
 
 /**
@@ -21,7 +21,17 @@ export interface RollupLine {
   prep?: string;
   /** Chemistry the house stated or measured; beats the class prior. */
   chem?: Chem; chemProv?: 'measured' | 'dataset';
+  /**
+   * The good this line draws, as the house currently tastes it (its fused
+   * layers: measured, dataset, staff). Each axis it states beats the class prior
+   * read from the label; an axis it does not state falls back to that prior.
+   */
+  own?: GoodTaste;
 }
+/** A good's current taste, 0-10 as the good is tasted on its own. `prov` is its strongest layer. */
+export interface GoodTaste { prov: 'measured' | 'dataset' | 'staff'; axes: Record<string, { v: number }> }
+/** Where a line's profile came from, for the card: the good itself, a class prior, or nowhere. */
+export type LineFrom = 'good' | 'class_prior' | 'unknown';
 export interface RollupComponent { name: string; lines: RollupLine[] }
 export interface RollupInput { kind: 'cocktail' | 'dish'; method?: string | null; components: RollupComponent[] }
 
@@ -29,6 +39,12 @@ export interface RollupAxis { v: number; lo: number; hi: number; sd: number; con
 export interface RollupBasis {
   kind: 'cocktail' | 'dish'; lines: number; classPrior: number; dataset: number; measured: number;
   unknown: number; unquantified: number; unknownNames: string[];
+  /** How many lines drew their profile from the good's own layers (staff included). */
+  staff: number;
+  /** One row per line: which profile it used. The good's own, or the class prior from its label. */
+  lineSources: Array<{ name: string; from: LineFrom; prov: RollupProv }>;
+  /** Core axes the roll-up will not state, because a line's value on them is not known. */
+  notKnown: string[];
   dilution: number | null; dilutionAssumed: boolean; method: string | null;
   mean: Record<string, number>; contrast: Record<string, number>;
   inputHash: string; priorsVersion: number;
@@ -48,8 +64,27 @@ const FIELD: Record<string, keyof Chem> = {
 
 interface Resolved {
   name: string; mass: number | null; chem: Chem; prov: RollupProv; q: number; rsd: number;
+  /** Fields whose value is known for this line (a stated zero counts; absent does not). */
+  known: ReadonlySet<keyof Chem>; from: LineFrom;
   aroma: Partial<Record<AromaFamilyKey, number>>; method?: Method; protein: boolean; solid: boolean;
 }
+
+const OWN_CAP = 9.5;
+/** Undo the saturating curve: the pooled amount that tastes like `v` on its own. */
+const unsat = (v: number, k: number) => -k * Math.log(1 - Math.min(OWN_CAP, Math.max(0, v)) / 10);
+const OWN_CHEM: Record<string, (v: number) => [keyof Chem, number]> = {
+  sweet: (v) => ['se', unsat(v, K.sweet)],
+  sour: (v) => ['ce', unsat(v, K.sour) / 10],
+  salty: (v) => ['nacl', unsat(v, K.salty)],
+  bitter: (v) => ['be', unsat(v, K.bitter)],
+  umami: (v) => ['glu', unsat(v, K.umami)],
+  fat: (v) => ['fat', unsat(v, K.fat)],
+  alcohol: (v) => ['abv', v <= 0 ? 0 : ABV_FLOOR + (Math.min(10, v) / 10) * ABV_SPAN],
+};
+const AROMA_KEYS: readonly string[] = ['fruit', 'citrus', 'floral', 'herbal', 'spice', 'nutty', 'roasted', 'smoky', 'savoury', 'earthy', 'dairy', 'woody', 'funky'];
+/** What a class prior is sure of: the fields it gives and the ones it says are absent. */
+const priorKnown = (c: { id: string; chem: Chem }): Set<keyof Chem> =>
+  new Set<keyof Chem>([...(Object.keys(c.chem) as Array<keyof Chem>), ...(NONE_BY_CLASS[c.id] ?? [])]);
 
 function resolve(l: RollupLine): Resolved {
   const mass = l.qty !== null && Number.isFinite(l.qty) && l.qty > 0 ? l.qty : null;
@@ -57,11 +92,27 @@ function resolve(l: RollupLine): Resolved {
   const base = { name: l.name, mass, method };
   if (l.chem) {
     const prov: RollupProv = l.chemProv ?? 'dataset';
-    return { ...base, chem: { ...l.chem }, prov, q: Q_BY_PROV[prov], rsd: prov === 'measured' ? 0.03 : 0.12, aroma: {}, protein: false, solid: false };
+    return { ...base, chem: { ...l.chem }, prov, q: Q_BY_PROV[prov], rsd: prov === 'measured' ? 0.03 : 0.12, aroma: {}, protein: false, solid: false, known: new Set(Object.keys(l.chem) as Array<keyof Chem>), from: 'good' };
   }
   const cls = CLASS_PRIORS.find((c) => c.match.test(fold(l.name)));
-  if (!cls) return { ...base, chem: {}, prov: 'unknown', q: 0, rsd: 0, aroma: {}, protein: false, solid: false };
-  return { ...base, chem: { ...cls.chem }, prov: 'class_prior', q: cls.q, rsd: cls.rsd, aroma: cls.aroma ?? {}, protein: !!cls.protein, solid: !!cls.solid };
+  const ownAxes = Object.entries(l.own?.axes ?? {}).filter(([k, a]) => (k in OWN_CHEM || AROMA_KEYS.includes(k)) && Number.isFinite(a.v));
+  if (l.own && ownAxes.length > 0) {
+    const chem: Chem = { ...(cls?.chem ?? {}) };
+    const known = cls ? priorKnown(cls) : new Set<keyof Chem>();
+    const aroma: Partial<Record<AromaFamilyKey, number>> = { ...(cls?.aroma ?? {}) };
+    const ownFields = new Set<keyof Chem>();
+    for (const [k, a] of ownAxes) {
+      if (AROMA_KEYS.includes(k)) { aroma[k as AromaFamilyKey] = Math.min(1, Math.max(0, a.v / 10)); continue; }
+      const [field, val] = OWN_CHEM[k](a.v);
+      chem[field] = val; known.add(field); ownFields.add(field);
+    }
+    // Belief drops toward the prior's only while the prior still supplies a field the good did not state.
+    const borrowed = !!cls && (Object.keys(cls.chem) as Array<keyof Chem>).some((f) => !ownFields.has(f));
+    const qOwn = Q_BY_PROV[l.own.prov];
+    return { ...base, chem, prov: l.own.prov, q: borrowed && cls ? (qOwn + cls.q) / 2 : qOwn, rsd: l.own.prov === 'measured' ? 0.03 : 0.12, aroma, protein: !!cls?.protein, solid: !!cls?.solid, known, from: 'good' };
+  }
+  if (!cls) return { ...base, chem: {}, prov: 'unknown', q: 0, rsd: 0, aroma: {}, protein: false, solid: false, known: new Set(), from: 'unknown' };
+  return { ...base, chem: { ...cls.chem }, prov: 'class_prior', q: cls.q, rsd: cls.rsd, aroma: cls.aroma ?? {}, protein: !!cls.protein, solid: !!cls.solid, known: priorKnown(cls), from: 'class_prior' };
 }
 
 /** Cooking: solutes concentrate by 1 / yield; frying takes up fat. Alcohol is left alone. */
@@ -195,11 +246,13 @@ export function rollup(input: RollupInput): RollupResult {
   const complete = (1 - nullQty / Math.max(1, flat.length)) * (1 - unknownShare);
   const meanQ = flat.reduce((a, r) => a + massOf(r) * r.q, 0) / knownMass;
   const axes: Record<string, RollupAxis> = {};
+  const notKnown: string[] = [];
   for (const key of Object.keys(base.peak)) {
     const v = base.peak[key];
     const isCore = (CORE as readonly string[]).includes(key);
     if (!isCore && v < 0.05) continue;
-    if (isCore && v < 0.05 && unknownShare > 0) continue; // a zero is only stated when every line is understood
+    // "None" (under half a point) is only stated when every line's value on this axis is known.
+    if (isCore && v < 0.5 && !flat.every((r) => r.mass !== null && r.known.has(FIELD[key]))) { notKnown.push(key); continue; }
     let num = 0; let den = 0;
     base.parts.forEach((p, ci) => {
       p.infl[key]?.forEach((x, i) => { num += x * comps[ci][i].q; den += x; });
@@ -217,6 +270,9 @@ export function rollup(input: RollupInput): RollupResult {
     basis: {
       kind: input.kind, lines: flat.length, classPrior: count('class_prior'), dataset: count('dataset'),
       measured: count('measured'), unknown: count('unknown'), unquantified: nullQty,
+      staff: count('staff'),
+      lineSources: flat.map((r) => ({ name: r.name, from: r.from, prov: r.prov })),
+      notKnown,
       unknownNames: flat.filter((r) => r.prov === 'unknown').map((r) => r.name).slice(0, 5),
       dilution: input.kind === 'cocktail' ? dil.d : null, dilutionAssumed: dil.assumed,
       method: input.method ?? null, mean: rd(base.mean),
