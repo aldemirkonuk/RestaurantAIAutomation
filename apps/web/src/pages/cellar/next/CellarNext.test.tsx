@@ -78,7 +78,9 @@ const mock = vi.hoisted(() => ({
 // The recipe sheet has its own suite (recipe/RecipeSheet.test.tsx); here it
 // is only asserted to be mounted on the opened cocktail.
 vi.mock('./recipe/RecipeSheet', () => ({
-  default: ({ cocktailId }: { cocktailId: string }) => <div data-testid="recipe-sheet-mounted">{cocktailId}</div>,
+  default: ({ cocktailId, holdRoom }: { cocktailId: string; holdRoom?: boolean }) => (
+    <div data-testid="recipe-sheet-mounted" data-hold-room={holdRoom ? 'true' : undefined}>{cocktailId}</div>
+  ),
 }));
 vi.mock('./useCellarNextData', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
@@ -2273,5 +2275,94 @@ describe('the floor — confirmed zones only', () => {
     expect(screen.getByTestId('floor-none')).toHaveTextContent(
       /a fact about the\s+book, not about the building/,
     );
+  });
+});
+
+describe('CellarNext — first paint is the loaded layout (r90)', () => {
+  const cocktailRow = {
+    id: 'c1', name: 'Negroni', display_name: null, menu_section: 'Aperitivo',
+    method: 'stirred', glass: 'rocks', garnish: null, price: 18, description: null,
+  };
+  const loadedList = {
+    loading: false, error: null,
+    data: { rows: [cocktailRow], count: 1, truncated: false, referenceRows: 55, recipesAvailable: false, scopeNote: 'Only cocktails this restaurant owns.' },
+  };
+  const cocktailsRegister = { data: null, loading: true, error: null, refetch: () => {} };
+  const writes = {
+    create: { mutateAsync: vi.fn(), isPending: false },
+    amend: { mutateAsync: vi.fn(), isPending: false },
+    retire: { mutateAsync: vi.fn(), isPending: false },
+    setRecipe: { mutateAsync: vi.fn(), isPending: false },
+  };
+
+  it('while the cocktail list is read it holds the table: head and three empty rows, hidden from a screen reader', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = cocktailsRegister;
+    mock.writes = writes;
+    mock.cocktails = { data: null, loading: true, error: null };
+    draw({ category: 'cocktails' });
+    expect(screen.getByText('Reading this house’s cocktails…')).toHaveAttribute('role', 'status');
+    const room = screen.getByTestId('cocktails-reading-room');
+    expect(room).toHaveAttribute('aria-hidden', 'true');
+    expect(room.querySelectorAll('tbody tr')).toHaveLength(3);
+    expect(room.querySelectorAll('thead th')).toHaveLength(7);
+  });
+
+  it('the held table is gone once the list is read (no empty rows beside real ones)', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = cocktailsRegister;
+    mock.writes = writes;
+    mock.cocktails = loadedList;
+    draw({ category: 'cocktails' });
+    expect(screen.queryByTestId('cocktails-reading-room')).toBeNull();
+    expect(screen.getByText('Negroni')).toBeInTheDocument();
+  });
+
+  it('a link that names a drink holds the panel\'s room from the list read on; a plain visit holds none', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = cocktailsRegister;
+    mock.writes = writes;
+    mock.cocktails = { data: null, loading: true, error: null };
+    const { container, unmount } = draw({ category: 'cocktails' }, '/cocktails?open=c1');
+    const held = (c: HTMLElement) =>
+      [...c.querySelectorAll<HTMLElement>('div[aria-hidden="true"]')].filter((d) => d.style.minHeight === 'calc(100vh - 56px)');
+    expect(held(container)).toHaveLength(1);
+    unmount();
+    const plain = draw({ category: 'cocktails' });
+    expect(held(plain.container)).toHaveLength(0);
+  });
+
+  it('the opened drink is told it came from a link, so its sheet holds room while its recipe is read', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = cocktailsRegister;
+    mock.writes = writes;
+    mock.cocktails = loadedList;
+    draw({ category: 'cocktails' }, '/cocktails?open=c1');
+    expect(screen.getByTestId('recipe-sheet-mounted')).toHaveAttribute('data-hold-room', 'true');
+  });
+
+  it('the register head holds the two lines the readout brings while it is read, and not once it has failed', () => {
+    mock.register = cocktailsRegister;
+    mock.writes = writes;
+    mock.cocktails = loadedList;
+    mock.current = { ...base, registers: null, registersLoading: true };
+    const { container, unmount } = draw({ category: 'cocktails' });
+    const blanks = () => container.querySelectorAll('p[aria-hidden="true"]');
+    expect(blanks()).toHaveLength(2);
+    unmount();
+    mock.current = { ...base, registers: null, registersLoading: false, registersError: 'down' };
+    const failed = draw({ category: 'cocktails' });
+    expect(failed.container.querySelectorAll('p[aria-hidden="true"]')).toHaveLength(0);
+  });
+
+  it('the signature keeps its place but is not drawn until the page has been read', () => {
+    mock.current = { ...base, registers: null, registersLoading: true };
+    const { container, unmount } = draw();
+    const foot = () => container.querySelector('footer') as HTMLElement;
+    expect(foot().style.visibility).toBe('hidden');
+    unmount();
+    mock.current = { ...base, registers: readout(), registersLoading: false };
+    const read = draw();
+    expect((read.container.querySelector('footer') as HTMLElement).style.visibility).toBe('visible');
   });
 });
