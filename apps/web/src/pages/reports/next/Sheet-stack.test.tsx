@@ -41,8 +41,10 @@ describe('Sheet — phone stack', () => {
     const items = container.querySelectorAll<HTMLElement>('.rp-stack > .rp-stack__item');
     expect(Array.from(items).map((i) => i.textContent)).toEqual(['the week', 'through the till']);
     // 8 rows of 34 px and 7 gaps of 14; 3 rows and 2 gaps.
-    expect(items[0].style.height).toBe('370px');
-    expect(items[1].style.height).toBe('130px');
+    expect(items[0].style.minHeight).toBe('370px');
+    expect(items[1].style.minHeight).toBe('130px');
+    // r101: the slot is a floor, not a ceiling: a card taller than it grows instead of clipping.
+    expect(items[0].style.height).toBe('');
     expect(container.querySelector('.rp-sheet')).toHaveAttribute('data-layout', 'stack');
     expect(container.querySelector('.rp-sheet')).toHaveAttribute('data-measured', 'true');
   });

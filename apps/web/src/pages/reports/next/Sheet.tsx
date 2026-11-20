@@ -98,6 +98,8 @@ export interface SheetCutting {
   slot: Slot;
   /** Folded to a strip: it runs the sheet's full width while reading (`flowStrips`). */
   strip?: boolean;
+  /** Rows the arrange controls add to the card while arranging (r101): drawn on top of the stored slot, never written back. */
+  extraRows?: number;
   /** The whole cutting, already rendered — the sheet only lays paper out. */
   body: ReactNode;
 }
@@ -124,9 +126,18 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
      there at all. The measured box width takes over as soon as it exists. */
   const stacked = isStackedWidth(width);
 
-  const layouts = useMemo(
-    (): ResponsiveLayouts => sheetLayouts(cuttings, arranging),
+  /* While arranging, a card's controls row is room the card gains, not room the plot gives up (r101): the grid
+     draws the slot plus the rows the controls take, and what the reader moves or resizes is written back without them. */
+  const shown = useMemo(
+    () =>
+      arranging
+        ? cuttings.map((c) => (c.extraRows ? { ...c, slot: { ...c.slot, h: c.slot.h + c.extraRows } } : c))
+        : cuttings,
     [cuttings, arranging],
+  );
+  const layouts = useMemo(
+    (): ResponsiveLayouts => sheetLayouts(shown, arranging),
+    [shown, arranging],
   );
 
   /* The grid hands back the layout of the ruling it is drawing. On a narrow
@@ -142,12 +153,15 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
         id: l.i as AnalysisId,
         slot: { x: l.x, y: l.y, w: l.w, h: l.h },
       }));
-      const lifted = liftCuttings(cuttings, projectCuttings(cuttings, cols), placed, cols);
+      const lifted = liftCuttings(shown, projectCuttings(shown, cols), placed, cols);
       const slots: Partial<Record<AnalysisId, Slot>> = {};
-      for (const c of lifted) slots[c.id] = c.slot;
+      for (const c of lifted) {
+        const extra = shown.find((x) => x.id === c.id)?.extraRows ?? 0;
+        slots[c.id] = extra ? { ...c.slot, h: Math.max(1, c.slot.h - extra) } : c.slot;
+      }
       onMove(slots, lifted.map((c) => c.id));
     },
-    [arranging, cuttings, el, onMove],
+    [arranging, shown, el, onMove],
   );
 
   /* The ghost is positioned from react-grid-layout's OWN `calcGridItemPosition`
@@ -195,7 +209,7 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
             <div
               key={c.id}
               className="rp-grid-item rp-stack__item"
-              style={{ height: slotHeightPx(c.slot.h) }}
+              style={{ minHeight: slotHeightPx(c.slot.h) }}
             >
               {c.body}
             </div>
