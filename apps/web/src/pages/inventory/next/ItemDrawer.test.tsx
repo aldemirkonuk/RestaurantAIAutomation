@@ -608,7 +608,7 @@ describe('the first-screen taste line', () => {
     expect(screen.getByTestId('ivd-head').nextElementSibling).toBe(hold);
     answer({ state: 'ready', data: { effective: null, layers: [] } });
     await waitFor(() => expect(api.taste).toHaveBeenCalled());
-    await new Promise((r) => setTimeout(r, 450));
+    await new Promise((r) => setTimeout(r, 700));
     expect(screen.getByTestId('taste-line-head-hold')).toBe(hold);
     expect(screen.queryByTestId('taste-line-head')).toBeNull();
   });
