@@ -77,9 +77,11 @@ const AXIS = {
  * Room for the first x label on a line or an area. Its centre sits on the
  * plot's left edge, so half of "Oct 20" used to print over the "$0" of the
  * value axis. Twenty pixels clears half of a six-glyph label at tick size.
+ * The right is for the last label, centred on the plot's right edge, whose
+ * second half used to run out of the svg ("Sat" ended a pixel past the plot).
  * Bars keep their band padding and need none.
  */
-export const X_ORIGIN_PAD = { left: 20, right: 0 } as const;
+export const X_ORIGIN_PAD = { left: 20, right: 14 } as const;
 
 /** A hairline at 6% ink: the grid is there to be read against, not looked at. */
 const GRID = { stroke: 'var(--ink-1)', strokeOpacity: 0.06 } as const;

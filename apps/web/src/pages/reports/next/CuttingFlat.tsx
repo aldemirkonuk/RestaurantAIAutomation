@@ -90,7 +90,9 @@ export default function CuttingFlat({
   anchorRef,
   onClose,
 }: CuttingFlatProps) {
-  const [graph, setGraph] = useState<GraphType>(initialGraph);
+  const [picked, setGraph] = useState<GraphType>(initialGraph);
+  // A drawing the data turned out not to carry (the list shrinks when the read lands) is not held on to.
+  const graph: GraphType = graphs.length === 0 || graphs.includes(picked) ? picked : graphs[0];
   const [comboPick, setComboPick] = useState<Partial<ComboPick> | undefined>(initialComboPick);
   const [ground, setGround] = useState<MudavymGround | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -183,7 +185,7 @@ export default function CuttingFlat({
           onClick={onClose}
         >
           <ArrowLeft size={14} strokeWidth={1.8} aria-hidden />
-          Back to the sheet
+          <span className="rp-flat__back-label">Back to the sheet</span>
         </button>
         <div className="rp-flat__row">
           <div style={{ minWidth: 0 }}>
@@ -213,14 +215,14 @@ export default function CuttingFlat({
             {windowControl}
           </div>
         </div>
-        <p className="rp-cap">
-          This view is not saved to your sheet.
-          {windowControl ? ' The window you pick is kept in the page link, so a reload or a shared link opens on it.' : ''}
-        </p>
       </div>
       <div className="rp-flat__body">
         {renderBody(graph, { pick: comboPick, onPick: setComboPick })}
       </div>
+      <p className="rp-cap rp-flat__note">
+        This view is not saved to your sheet.
+        {windowControl ? ' The window you pick is kept in the page link, so a reload or a shared link opens on it.' : ''}
+      </p>
     </div>,
     document.body,
   );

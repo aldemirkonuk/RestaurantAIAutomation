@@ -219,6 +219,35 @@
   gap: 8px;
 }
 
+/* The till's body while a newly picked window is in flight: the last drawing
+   stays, dimmed, and says which days it is (Cutting.tsx). Ink only, 160 ms
+   ease-out; none under reduced motion. */
+.rp-standin {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 auto;
+}
+.rp-standin > * {
+  transition: opacity 160ms ease-out;
+}
+.rp-standin[data-stale] > :not([role='status']) {
+  opacity: 0.55;
+}
+
+/* A sentence under a chart is clamped to three lines on the sheet, where the
+   card's slot is fixed, so it ends in an ellipsis rather than mid-word at the
+   card's edge; the full sentence is on the paragraph's title and whole in the
+   full-screen view. */
+.rp-cut__body > p.rp-cap,
+.rp-cut__body > .rp-standin > p.rp-cap {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
 /* A chart takes the room the reader gave the cutting when they resized it.
    The inner container is taken OUT of flow on purpose: recharts' own
    ResponsiveContainer measures its parent, so leaving it in a flex column
@@ -509,6 +538,9 @@ html[data-mudavym-ground='charcoal'] .rp-tip {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .rp-standin > * {
+    transition: none;
+  }
   .rp-sheet::before,
   .rp-cut,
   .rp-ink,
