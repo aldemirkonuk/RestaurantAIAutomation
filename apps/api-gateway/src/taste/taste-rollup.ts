@@ -2,7 +2,7 @@ import { createHash } from 'crypto';
 import {
   ABV_FLOOR, ABV_SPAN, AromaFamilyKey, BITE_EXPONENT, Chem, DILUTION_BY_METHOD,
   DILUTION_DEFAULT, DILUTION_SD, DILUTION_SD_ASSUMED, DRAWS, K, METHODS, Method, PRIORS_VERSION,
-  NONE_BY_CLASS, Q_BY_PROV, RollupProv, ROAST_K, SOLID_SALT_RELEASE, SUPPRESS, YAMAGUCHI,
+  NONE_BY_CLASS, Q_BY_PROV, classQ, isUnverifiedClass, RollupProv, ROAST_K, SOLID_SALT_RELEASE, SUPPRESS, YAMAGUCHI,
 } from './taste-priors';
 import { findClass } from './taste-class-match';
 
@@ -31,8 +31,8 @@ export interface RollupLine {
 }
 /** A good's current taste, 0-10 as the good is tasted on its own. `prov` is its strongest layer. */
 export interface GoodTaste { prov: 'measured' | 'dataset' | 'staff'; axes: Record<string, { v: number }> }
-/** Where a line's profile came from, for the card: the good itself, a class prior, or nowhere. */
-export type LineFrom = 'good' | 'class_prior' | 'unknown';
+/** Where a line's profile came from, for the card: the good itself, a class prior, a class prior with an unverified figure (r94), or nowhere. */
+export type LineFrom = 'good' | 'class_prior' | 'class_prior_estimate' | 'unknown';
 export interface RollupComponent { name: string; lines: RollupLine[] }
 export interface RollupInput { kind: 'cocktail' | 'dish'; method?: string | null; components: RollupComponent[] }
 
@@ -110,10 +110,10 @@ function resolve(l: RollupLine): Resolved {
     // Belief drops toward the prior's only while the prior still supplies a field the good did not state.
     const borrowed = !!cls && (Object.keys(cls.chem) as Array<keyof Chem>).some((f) => !ownFields.has(f));
     const qOwn = Q_BY_PROV[l.own.prov];
-    return { ...base, chem, prov: l.own.prov, q: borrowed && cls ? (qOwn + cls.q) / 2 : qOwn, rsd: l.own.prov === 'measured' ? 0.03 : 0.12, aroma, protein: !!cls?.protein, solid: !!cls?.solid, known, from: 'good' };
+    return { ...base, chem, prov: l.own.prov, q: borrowed && cls ? (qOwn + classQ(cls)) / 2 : qOwn, rsd: l.own.prov === 'measured' ? 0.03 : 0.12, aroma, protein: !!cls?.protein, solid: !!cls?.solid, known, from: 'good' };
   }
   if (!cls) return { ...base, chem: {}, prov: 'unknown', q: 0, rsd: 0, aroma: {}, protein: false, solid: false, known: new Set(), from: 'unknown' };
-  return { ...base, chem: { ...cls.chem }, prov: 'class_prior', q: cls.q, rsd: cls.rsd, aroma: cls.aroma ?? {}, protein: !!cls.protein, solid: !!cls.solid, known: priorKnown(cls), from: 'class_prior' };
+  return { ...base, chem: { ...cls.chem }, prov: 'class_prior', q: classQ(cls), rsd: cls.rsd, aroma: cls.aroma ?? {}, protein: !!cls.protein, solid: !!cls.solid, known: priorKnown(cls), from: isUnverifiedClass(cls.id) ? 'class_prior_estimate' : 'class_prior' };
 }
 
 /** Cooking: solutes concentrate by 1 / yield; frying takes up fat. Alcohol is left alone. */

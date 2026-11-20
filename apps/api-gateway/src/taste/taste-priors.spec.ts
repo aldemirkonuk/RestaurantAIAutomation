@@ -1,6 +1,6 @@
 import { bandWord } from './taste-axes';
 import { findClass } from './taste-class-match';
-import { CLASS_PRIORS, NONE_BY_CLASS, PRIORS_VERSION, Q_BY_PROV } from './taste-priors';
+import { CLASS_PRIORS, classQ, isUnverifiedClass, NONE_BY_CLASS, PRIORS_VERSION, Q_BY_PROV, UNV_Q_FACTOR } from './taste-priors';
 import { CLASS_SOURCES, PRIOR_SOURCES } from './taste-prior-sources';
 import { rollup, RollupInput, RollupLine } from './taste-rollup';
 
@@ -32,7 +32,44 @@ describe('class priors: the table', () => {
       expect(se + nacl + fat).toBeLessThanOrEqual(100.01);
     }
   });
-  it('is on priors version 4', () => expect(PRIORS_VERSION).toBe(4));
+  it('is on priors version 5', () => expect(PRIORS_VERSION).toBe(5));
+});
+
+describe('class priors: an unverified figure lowers belief (r94)', () => {
+  const unv = CLASS_PRIORS.filter((c) => CLASS_SOURCES[c.id].codes.includes('UNV'));
+  it('discounts exactly the classes whose source codes carry UNV, by the stated factor', () => {
+    expect(UNV_Q_FACTOR).toBe(0.8);
+    expect(unv.length).toBeGreaterThanOrEqual(15);
+    for (const c of CLASS_PRIORS) {
+      const has = CLASS_SOURCES[c.id].codes.includes('UNV');
+      expect(isUnverifiedClass(c.id)).toBe(has);
+      expect(classQ(c)).toBeCloseTo(has ? c.q * 0.8 : c.q, 3);
+    }
+  });
+  it('a verified class and an unverified one both stay at or under the class-prior ceiling', () => {
+    for (const c of CLASS_PRIORS) expect(classQ(c)).toBeLessThanOrEqual(Q_BY_PROV.class_prior);
+  });
+  it('the roll-up marks an unverified line class_prior_estimate and a verified one class_prior', () => {
+    const r = rollup(dish(['plate', [L('Tomato', 100), L('Salt', 1)]]));
+    expect(r.basis.lineSources).toEqual([
+      { name: 'Tomato', from: 'class_prior_estimate', prov: 'class_prior' },
+      { name: 'Salt', from: 'class_prior', prov: 'class_prior' },
+    ]);
+    expect(r.basis.classPrior).toBe(2);
+  });
+  it('an unverified line lowers the confidence of the axes it drives, against the same line read as verified', () => {
+    const run = () => rollup(dish(['plate', [L('Tomato', 150)]]));
+    const flagged = run();
+    const codes = CLASS_SOURCES.tomato.codes;
+    CLASS_SOURCES.tomato.codes = codes.filter((c) => c !== 'UNV');
+    let plain: ReturnType<typeof run>;
+    try { plain = run(); } finally { CLASS_SOURCES.tomato.codes = codes; }
+    expect(plain.basis.lineSources[0].from).toBe('class_prior');
+    expect(flagged.axes.umami.conf).toBeLessThan(plain.axes.umami.conf);
+    expect(flagged.axes.sweet.conf).toBeLessThan(plain.axes.sweet.conf);
+    // the values themselves do not move: only the belief does
+    expect(flagged.axes.umami.v).toBe(plain.axes.umami.v);
+  });
 });
 
 describe('class priors: matching a label', () => {
