@@ -8,7 +8,7 @@ import {
   MAX_NOTE_CHARS, TEXTURE_KEYS, TasteSource, validateAxes,
 } from './taste-axes';
 import { EffectiveTaste, FusionLayer, fuse } from './taste-fusion';
-import { RollupBasis, RollupInput, RollupLine, rollup } from './taste-rollup';
+import { GoodTaste, RollupBasis, RollupInput, RollupLine, rollup } from './taste-rollup';
 
 export type SubjectKind = 'good' | 'cocktail' | 'dish';
 export const SUBJECT_KINDS: readonly SubjectKind[] = ['good', 'cocktail', 'dish'];
@@ -232,14 +232,19 @@ export class TasteService {
     }
     const ver = await client.from('recipe_versions').select('method').eq('id', versionId).eq('restaurant_id', restaurantId).maybeSingle();
     if (ver.error) throw readFail(ver.error);
-    const rows = await client.from('recipe_lines').select('label, qty_base, base_unit')
+    const rows = await client.from('recipe_lines').select('label, qty_base, base_unit, inventory_id')
       .eq('version_id', versionId).eq('restaurant_id', restaurantId).order('position', { ascending: true });
     if (rows.error) throw readFail(rows.error);
-    const lines: RollupLine[] = ((rows.data ?? []) as Array<{ label: string; qty_base: number; base_unit: string }>).map((r) => {
+    const raw = (rows.data ?? []) as Array<{ label: string; qty_base: number; base_unit: string; inventory_id?: string | null }>;
+    // A line that names a good is worked from that good's own taste first; the label's class prior is the fallback.
+    const own = await this.goodTastes(restaurantId, raw.map((r) => r.inventory_id ?? null));
+    const lines: RollupLine[] = raw.map((r) => {
+      const o = r.inventory_id ? own.get(r.inventory_id) : undefined;
+      const base = o ? { own: o } : {};
       // ml10 = tenths of a ml, mg = milligrams; a count ("1 each") has no known weight.
-      if (r.base_unit === 'ml10') return { name: r.label, qty: Number(r.qty_base) / 10, unit: 'ml' as const };
-      if (r.base_unit === 'mg') return { name: r.label, qty: Number(r.qty_base) / 1000, unit: 'g' as const };
-      return { name: r.label, qty: null, unit: 'g' as const };
+      if (r.base_unit === 'ml10') return { name: r.label, qty: Number(r.qty_base) / 10, unit: 'ml' as const, ...base };
+      if (r.base_unit === 'mg') return { name: r.label, qty: Number(r.qty_base) / 1000, unit: 'g' as const, ...base };
+      return { name: r.label, qty: null, unit: 'g' as const, ...base };
     });
     if (lines.length === 0) {
       throw refuse('This recipe has no lines, so there is nothing to work a taste from.');
@@ -280,6 +285,39 @@ export class TasteService {
       break;
     }
     throw new InternalServerErrorException('The taste could not be saved just now.');
+  }
+
+  /**
+   * The current fused taste of each good a recipe draws, by id. Layers from
+   * measured, dataset, standard, staff line and staff note count; an AI draft
+   * never does. A good with no layer is simply absent. A failed read is said,
+   * never read as "no goods have a taste".
+   */
+  private async goodTastes(restaurantId: string, ids: Array<string | null>): Promise<Map<string, GoodTaste>> {
+    const want = [...new Set(ids.filter((x): x is string => !!x))];
+    const out = new Map<string, GoodTaste>();
+    if (want.length === 0) return out;
+    const { data, error } = await this.db.getClient().from('taste_profile_current').select('*')
+      .eq('restaurant_id', restaurantId).eq('subject_kind', 'good').in('good_id', want);
+    if (error) {
+      this.logger.error(`Could not read the goods' tastes: ${error.message}`);
+      throw new InternalServerErrorException('The tastes of the goods in this recipe could not be read just now.');
+    }
+    const byGood = new Map<string, Array<Record<string, any>>>();
+    for (const r of (data ?? []) as Array<Record<string, any>>) {
+      if (r.source === 'ai_draft' || r.source === 'recipe') continue;
+      byGood.set(r.good_id, [...(byGood.get(r.good_id) ?? []), r]);
+    }
+    for (const [id, rs] of byGood) {
+      const fused = fuse(rs.map((r) => ({ source: r.source as TasteSource, statedBy: r.stated_by, axes: r.axes ?? {} })));
+      if (!fused || Object.keys(fused.axes).length === 0) continue;
+      const has = (...src: string[]) => rs.some((r) => src.includes(r.source));
+      out.set(id, {
+        prov: has('measured') ? 'measured' : has('dataset', 'standard') ? 'dataset' : 'staff',
+        axes: Object.fromEntries(Object.entries(fused.axes).map(([k, a]) => [k, { v: a.v }])),
+      });
+    }
+    return out;
   }
 
   private async latestRecipeVersion(restaurantId: string, kind: SubjectKind, id: string): Promise<number> {
