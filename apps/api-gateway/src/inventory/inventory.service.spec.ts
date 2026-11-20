@@ -78,6 +78,48 @@ describe("InventoryService", () => {
     service = module.get<InventoryService>(InventoryService);
   });
 
+  describe("createInventoryItem — a par of 0 stays 0 (QA round 2, U-3)", () => {
+    const queueNewWine = () =>
+      mockSingle
+        .mockResolvedValueOnce({ data: { name: "Lime wedge" }, error: null })
+        .mockResolvedValueOnce({
+          data: null,
+          error: { code: "PGRST116", message: "not found" },
+        })
+        .mockResolvedValueOnce({
+          data: { id: "inv-par-0", wine_name: "Lime wedge" },
+          error: null,
+        });
+
+    it("saves par 0 and max 0 as 0, not as 6 and 24", async () => {
+      queueNewWine();
+      await service.createInventoryItem("rest-1", {
+        wineId: "mw-par-0",
+        stockLive: 0,
+        providerId: null,
+        thresholdMin: 0,
+        thresholdMax: 0,
+      } as any);
+
+      const insertCall = mockSupabaseChain.insert.mock.calls[0][0];
+      expect(insertCall.threshold_min).toBe(0);
+      expect(insertCall.threshold_max).toBe(0);
+    });
+
+    it("gives the default only to a par the caller left out", async () => {
+      queueNewWine();
+      await service.createInventoryItem("rest-1", {
+        wineId: "mw-par-none",
+        stockLive: 0,
+        providerId: null,
+      } as any);
+
+      const insertCall = mockSupabaseChain.insert.mock.calls[0][0];
+      expect(insertCall.threshold_min).toBe(6);
+      expect(insertCall.threshold_max).toBe(24);
+    });
+  });
+
   describe("createInventoryItem — wine_name population (regression: Bug 1)", () => {
     it("returns a non-null wineName when the master wine library resolves a name", async () => {
       // Call 1: no existing inventory item (duplicate check → PGRST116 = not found)
