@@ -235,12 +235,15 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
 
         {/* ── the signature ─────────────────────────────────────────────── */}
         <footer
+          className="cl-signature"
           style={{
             // Kept in its place but not drawn until the page has been read: the
             // signature says what was read, so before the read it has nothing
             // to say, and a drawn line that the content then pushes down is a
-            // shift. (A hidden element holds its room and is not a shift.)
-            visibility: data.authLoading || data.registersLoading ? 'hidden' : 'visible',
+            // shift. (A hidden element holds its room and is not a shift.) A
+            // register still settling (data-settling, see cellar-next.css) hides
+            // it the same way; its rule can only win while this stays unset.
+            visibility: data.authLoading || data.registersLoading ? 'hidden' : undefined,
             marginTop: 40,
             paddingTop: 12,
             borderTop: '1px solid var(--paper-2)',

@@ -88,7 +88,13 @@ export default function MenuDishesOffer() {
     onSettled: () => qc.invalidateQueries({ queryKey: dishesKey(rid) }),
   });
 
-  if (offer.isPending && !said) return null;
+  // The offer's own line is known only when the menu read lands, and the form
+  // (or the drink table's controls) sits under it: its room is held, one line
+  // of the class it takes, until then, so what is below does not drop when it
+  // arrives. A house with nothing to offer gives the room back.
+  if (offer.isPending && !said) {
+    return <p className="cl-said" aria-hidden="true" data-testid="menu-dishes-offer-room" style={{ marginTop: 12, minHeight: '1lh' }} />;
+  }
 
   const items = offer.isError ? [] : (offer.data?.dishes ?? []);
   const names = items.map((d) => d.name);

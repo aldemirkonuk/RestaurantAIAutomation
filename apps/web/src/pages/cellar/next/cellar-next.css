@@ -34,6 +34,12 @@
   overflow: hidden;
 }
 
+/* The signature waits, unseen, while a register settles (a list in flight, or a
+   drink a link named still opening): it holds its room and is not seen to move. */
+.mudavym:has([data-settling='true']) .cl-signature {
+  visibility: hidden;
+}
+
 /* ── sketch 121 (2026-09-19): the wine register's own record opens BESIDE a
    narrowed index, not above the full table — `.cl-stand` above is unchanged
    and still used by CatalogueRegister/CocktailRegister (MOTIONS.md's third
@@ -1077,4 +1083,15 @@ textarea.cl-field {
   .cl-rcp .iv-linkish,
   .cl-rcp .tc-more { min-height: 44px; }
   .cl-rcp .iv-btn { font-size: 14px; }
+}
+
+/* ── the dish register's controls are a thumb's size on a phone (r97 walk: Add
+   dish, Save changes, Take off the list and every box were 30 px at 375). One
+   scope class on the page, so the other registers' controls are not changed. ── */
+@media (max-width: 640px) {
+  .cl-touch .cl-btn,
+  .cl-touch .cl-field {
+    height: 44px;
+    min-height: 44px;
+  }
 }

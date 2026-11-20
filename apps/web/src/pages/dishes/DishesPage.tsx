@@ -540,7 +540,7 @@ export default function DishesPage() {
   const cols = (say ? 6 : 3) + (showMenu ? 1 : 0);
 
   return (
-    <div className="mudavym min-h-full" style={{ background: 'var(--paper-0)', color: 'var(--ink-1)', fontFamily: SANS }}>
+    <div className="mudavym min-h-full cl-touch" style={{ background: 'var(--paper-0)', color: 'var(--ink-1)', fontFamily: SANS }}>
       <div style={{ margin: '0 auto', maxWidth: 1200, padding: '22px 16px 40px' }} data-testid="dishes-page">
         <h1 className="cl-h1">Dishes.</h1>
         <p className="cl-said" style={{ marginTop: 8 }}>

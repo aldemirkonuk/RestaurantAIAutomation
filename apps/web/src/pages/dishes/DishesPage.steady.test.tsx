@@ -13,6 +13,8 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 const RID = '11111111-1111-4111-8111-111111111111';
 const A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -127,5 +129,32 @@ describe('/dishes opened by a link holds the sheet\'s room', () => {
     await screen.findByTestId(`sheet-${A}`);
     (container.querySelector(`[data-testid="dish-row-${B}"]`) as HTMLElement).click();
     expect(await screen.findByTestId(`sheet-${B}`)).not.toHaveAttribute('data-hold-room');
+  });
+});
+
+describe('r98: /dishes holds the menu offer\'s line and gives the dish register a thumb\'s size on a phone', () => {
+  const OFFER = `/recipes/${RID}/dishes/from-menu`;
+
+  it('holds one line of room above the add form until the menu offer is read, then the real line takes it', async () => {
+    let release: (v: unknown) => void = () => {};
+    answer[OFFER] = () => new Promise((r) => { release = r; });
+    mount();
+    const room = await screen.findByTestId('menu-dishes-offer-room');
+    expect(room).toHaveAttribute('aria-hidden', 'true');
+    expect(room.style.minHeight).toBe('1lh');
+    expect(screen.getByTestId('dish-add')).toBeInTheDocument();
+    release({ data: { currentMenus: 0, dishes: [] } });
+    expect(await screen.findByTestId('menu-dishes-no-menu')).toBeInTheDocument();
+    expect(screen.queryByTestId('menu-dishes-offer-room')).toBeNull();
+  });
+
+  it('the page carries the scope class, and the stylesheet makes its buttons and boxes 44 px at 640 px and under', () => {
+    mount();
+    expect(screen.getByTestId('dishes-page').parentElement).toHaveClass('cl-touch');
+    const css = readFileSync(resolve(__dirname, '../cellar/next/cellar-next.css'), 'utf8');
+    const rule = css.match(/@media \(max-width: 640px\) \{\s*\.cl-touch \.cl-btn,\s*\.cl-touch \.cl-field \{([^}]*)\}/);
+    expect(rule).not.toBeNull();
+    expect(rule?.[1]).toMatch(/height: 44px;/);
+    expect(rule?.[1]).toMatch(/min-height: 44px;/);
   });
 });
