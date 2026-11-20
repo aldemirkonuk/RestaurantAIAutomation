@@ -95,12 +95,16 @@ import { OrchestratorService } from "../../common/orchestrator/orchestrator.serv
 import { IntegrationsOauthService } from "../../integrations/integrations-oauth.service";
 import { HouseLettersService } from "../letters/house-letters.service";
 import {
+  GMAIL_READ_ALL_INTEGRATION_ID,
   GMAIL_READ_INTEGRATION_ID,
   GMAIL_READ_SCOPE,
   HOUSE_INBOX_FLAG,
   isHouseInboxReadEnabled,
+  READING_INTEGRATION_IDS,
 } from "./house-inbox-flag";
+import { isLiveMembership } from "../../common/tenant/live-membership";
 import {
+  addressesInHeader,
   addressInFromHeader,
   extractEmailContent,
   headerValue,
@@ -117,6 +121,7 @@ import {
 export {
   GMAIL_READ_SCOPE,
   GMAIL_READ_INTEGRATION_ID,
+  GMAIL_READ_ALL_INTEGRATION_ID,
   HOUSE_INBOX_FLAG,
 } from "./house-inbox-flag";
 
@@ -174,6 +179,31 @@ export const BOOK_CHUNK_SIZE = 25;
 export const MAX_PAGES_PER_CHUNK = 3;
 export const MAX_MESSAGES_PER_TICK = 250;
 
+/**
+ * The wider reader lists ids across pages (100 per page, 5 quota units each)
+ * until Gmail has no more, and refuses to guess past this many pages. See
+ * `listSinceAll` for why it must see the whole listing.
+ */
+export const MAX_PAGES_ALL = 50;
+
+/** Who a message in a wider read is from, relative to THIS house. */
+export type MailKind = "vendor" | "team" | "guest";
+
+/**
+ * A sender's kind. A book address is a vendor even if the same person is also
+ * a member (the vendor's reply must reach the order it answers); a member who
+ * is not in the book is team; everyone else is a guest.
+ */
+export function classifySender(
+  sender: string,
+  book: ReadonlySet<string>,
+  team: ReadonlySet<string>,
+): MailKind {
+  if (book.has(sender)) return "vendor";
+  if (team.has(sender)) return "team";
+  return "guest";
+}
+
 const GMAIL_API = "https://gmail.googleapis.com/gmail/v1";
 
 export interface GrantReadOutcome {
@@ -186,6 +216,7 @@ export interface GrantReadOutcome {
     | "flag_off"
     | "no_house"
     | "empty_book"
+    | "superseded"
     | "house_revoked"
     | "error";
   says: string;
@@ -251,7 +282,7 @@ export class HouseInboxService {
     const { data, error } = await this.db.client
       .from("integration_oauth_connections")
       .select("id, user_id, restaurant_id, integration_id, scopes, revoked_at")
-      .eq("integration_id", GMAIL_READ_INTEGRATION_ID)
+      .in("integration_id", [...READING_INTEGRATION_IDS])
       .is("revoked_at", null);
 
     if (error) {
@@ -272,7 +303,28 @@ export class HouseInboxService {
     const rows = (data ?? []) as unknown as Record<string, unknown>[];
     const outcomes: GrantReadOutcome[] = [];
 
+    // A person who holds BOTH the vendor-only and the wider grant in one house
+    // is read through the wider one only. Reading the same mailbox twice would
+    // cost quota and, worse, let whichever grant ran first own the row that
+    // revoking the other would not delete.
+    const wideKeys = new Set(
+      rows
+        .filter((r) => r.integration_id === GMAIL_READ_ALL_INTEGRATION_ID)
+        .map((r) => `${String(r.user_id)}|${String(r.restaurant_id ?? "")}`),
+    );
+
     for (const row of rows) {
+      if (
+        row.integration_id === GMAIL_READ_INTEGRATION_ID &&
+        wideKeys.has(`${String(row.user_id)}|${String(row.restaurant_id ?? "")}`)
+      ) {
+        outcomes.push(
+          this.blank(row, "superseded", {
+            says: `This person also holds ${GMAIL_READ_ALL_INTEGRATION_ID} for this house, which reads the same mailbox, so this vendor-only grant was not read separately.`,
+          }),
+        );
+        continue;
+      }
       // The stored scope decides, not the id. A row recorded under this
       // integration that does not carry the scope is not a reading grant, and
       // treating the id as the answer is the flag-instead-of-scope mistake ADR
@@ -281,7 +333,7 @@ export class HouseInboxService {
       if (!scopes.includes(GMAIL_READ_SCOPE)) {
         outcomes.push(
           this.blank(row, "error", {
-            says: `This grant is recorded as ${GMAIL_READ_INTEGRATION_ID} but its stored scopes do not include ${GMAIL_READ_SCOPE}, so nothing was read against it. A grant counts by what the person consented to, never by what the row is called.`,
+            says: `This grant is recorded as ${String(row.integration_id)} but its stored scopes do not include ${GMAIL_READ_SCOPE}, so nothing was read against it. A grant counts by what the person consented to, never by what the row is called.`,
           }),
         );
         continue;
@@ -325,6 +377,13 @@ export class HouseInboxService {
     const connectionId = String(row.id);
     const userId = String(row.user_id);
     const restaurantId = row.restaurant_id ? String(row.restaurant_id) : null;
+    // WHICH PROMISE THE PERSON ACCEPTED decides how wide this grant reads: the
+    // id it is recorded under, never the scope (both ask Google for the same
+    // `gmail.readonly`). Only `gmail_read_all` reads past the vendor book.
+    const wide = row.integration_id === GMAIL_READ_ALL_INTEGRATION_ID;
+    const integrationId = wide
+      ? GMAIL_READ_ALL_INTEGRATION_ID
+      : GMAIL_READ_INTEGRATION_ID;
 
     // A grant with no recorded house has no book to bound against and no tenant
     // to write into. It is NOT dropped silently: G21's rule is that a null
@@ -359,11 +418,28 @@ export class HouseInboxService {
       });
     }
 
-    if (addresses.length === 0) {
+    if (!wide && addresses.length === 0) {
       return this.blank(row, "empty_book", {
         says: "This house's vendor book holds no address, so there was nothing to filter a request by and no request was made. An unbounded read is not the fallback for an empty book.",
       });
     }
+
+    // The people who work here, for the wider read's team/guest split. A failed
+    // read is an error: an unreadable team list read as an empty one would file
+    // a colleague as a guest, which is the wrong answer stated as a fact.
+    let team = new Set<string>();
+    if (wide) {
+      try {
+        team = await this.teamAddresses(restaurantId);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return this.blank(row, "error", {
+          bookAddresses: addresses.length,
+          says: `The people who work in this house could not be read (${message}), so nothing was filed: a message could not be told apart as a colleague's or a guest's. The cursor was left where it was.`,
+        });
+      }
+    }
+    const bookSet = new Set(addresses);
 
     // The cursor. Absent means this grant has never been read: seed it at NOW
     // and read nothing. Turning the reader on does not sweep the mailbox.
@@ -374,7 +450,7 @@ export class HouseInboxService {
         bookAddresses: addresses.length,
         cursorAdvancedTo: seeded ? nowMs : null,
         says: seeded
-          ? `First run for this grant. The cursor starts at ${new Date(nowMs).toISOString()} and nothing older was read: switching the reader on never reaches backwards into a person's mail. Vendor replies that arrive from now on will be filed in this house's book.`
+          ? `First run for this grant. The cursor starts at ${new Date(nowMs).toISOString()} and nothing older was read: switching the reader on never reaches backwards into a person's mail. ${wide ? "Every conversation" : "Vendor replies"} that arrive from now on will be filed in this house's book.`
           : "First run for this grant, and the cursor could not be written. Nothing was read, because a reader with no durable cursor would re-read the same mail on every tick.",
       });
     }
@@ -385,7 +461,7 @@ export class HouseInboxService {
       token = await this.oauth.getAccessToken(
         userId,
         restaurantId,
-        GMAIL_READ_INTEGRATION_ID,
+        integrationId,
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -406,7 +482,9 @@ export class HouseInboxService {
     let highWater = cursor;
 
     try {
-      const ids = await this.listSince(token, addresses, cursor);
+      const ids = wide
+        ? await this.listSinceAll(token, cursor)
+        : await this.listSince(token, addresses, cursor);
       listed = ids.length;
 
       // Fetch, filter, THEN sort oldest-first before anything is published.
@@ -421,6 +499,8 @@ export class HouseInboxService {
         id: string;
         threadId: string | null;
         internalDate: number;
+        kind: MailKind;
+        sender: string;
         headers: Array<{ name?: string | null; value?: string | null }>;
         payload: GmailPayloadPart;
       }> = [];
@@ -441,7 +521,11 @@ export class HouseInboxService {
         // of the payload, published, logged or counted as anything but a
         // discard, and its internalDate never touches the cursor — a discarded
         // message leaves no trace at all.
-        if (!sender || !addresses.includes(sender)) {
+        //
+        // The wider grant has no book to bound it by (that is what its person
+        // accepted), so the only message it drops is one with no sender address
+        // to file it under.
+        if (!sender || (!wide && !addresses.includes(sender))) {
           discarded += 1;
           continue;
         }
@@ -460,6 +544,8 @@ export class HouseInboxService {
           id: listedMessage.id,
           threadId: message.threadId ?? listedMessage.threadId ?? null,
           internalDate,
+          kind: wide ? classifySender(sender, bookSet, team) : "vendor",
+          sender,
           headers,
           payload: (message.payload ?? {}) as GmailPayloadPart,
         });
@@ -477,9 +563,12 @@ export class HouseInboxService {
             "utf-8",
           );
         }
-        const attachments = attachmentRefs.length
-          ? await this.fetchAttachments(token, message.id, attachmentRefs)
-          : [];
+        // A team or guest message is filed as text only: its attachment bytes
+        // are never fetched, so there is nothing of a stranger's to store.
+        const attachments =
+          attachmentRefs.length && message.kind === "vendor"
+            ? await this.fetchAttachments(token, message.id, attachmentRefs)
+            : [];
 
         // THE MIRROR. Not an insert — the same event the shared mailbox
         // publishes, so `RabbitMqBridgeService.handleInboundEmail` does the
@@ -505,6 +594,18 @@ export class HouseInboxService {
                 .map((h) => [h.name!.toLowerCase(), h.value]),
             ),
             source: "house-inbox",
+            // The wider reading's three-way split, decided here from the grant's
+            // house and nothing the message says. The bridge files a team or
+            // guest message as a plain conversation row and never hands it to
+            // the order matcher or the autonomous responder.
+            house_mail_kind: message.kind,
+            from_address: message.sender,
+            to_addresses: Array.from(
+              new Set([
+                ...addressesInHeader(headerValue(headers, "to")),
+                ...addressesInHeader(headerValue(headers, "cc")),
+              ]),
+            ),
             // WHICH GRANT MIRRORED IT (ADR 0118, retention, 2026-09-05).
             // `source: "house-inbox"` says a personal mailbox was the origin
             // and nothing more, and the bridge never read it. Without the
@@ -572,6 +673,90 @@ export class HouseInboxService {
   // ==========================================================================
   // Gmail
   // ==========================================================================
+
+  /**
+   * The addresses of the people who work in this house: live memberships only,
+   * by the one membership predicate, joined to their account address. THROWS on
+   * a failed read.
+   */
+  async teamAddresses(restaurantId: string): Promise<Set<string>> {
+    const { data, error } = await this.db.client
+      .from("user_restaurant_access")
+      .select("user_id, is_active, valid_from, valid_until")
+      .eq("restaurant_id", restaurantId)
+      .eq("is_active", true);
+    if (error) throw new Error(`user_restaurant_access read failed: ${error.message}`);
+    const now = Date.now();
+    const userIds = (data ?? [])
+      .filter((r: any) => isLiveMembership(r, now))
+      .map((r: any) => String(r.user_id));
+    if (userIds.length === 0) return new Set();
+    const { data: users, error: usersError } = await this.db.client
+      .from("users")
+      .select("user_id, email")
+      .in("user_id", userIds);
+    if (usersError) throw new Error(`users read failed: ${usersError.message}`);
+    return new Set(
+      (users ?? [])
+        .map((u: any) => String(u.email ?? "").trim().toLowerCase())
+        .filter((e: string) => e.includes("@")),
+    );
+  }
+
+  /**
+   * The wider grant's query: everything that ARRIVED after the cursor. Mail the
+   * person sent and their drafts are left out, so a letter this house sent
+   * through `gmail_send` is not read back as an inbound message. Spam and trash
+   * are out by Gmail's own default.
+   */
+  buildQueryAll(sinceMs: number): string {
+    return `after:${Math.floor(sinceMs / 1000)} -in:sent -in:drafts`;
+  }
+
+  /**
+   * Every id after the cursor, ALL pages, then the oldest `MAX_MESSAGES_PER_TICK`.
+   *
+   * Gmail lists newest-first. Cutting a listing short at the cap would keep the
+   * NEWEST messages, advance the cursor above them and silently skip every older
+   * one it never saw. Taking the whole listing and keeping its oldest tail means
+   * the cursor only ever moves past messages that were really filed, and the
+   * newer ones are read on the next tick. A listing longer than `MAX_PAGES_ALL`
+   * pages cannot be proven to hold the oldest, so it throws, which the caller
+   * records as a failed read with the cursor untouched.
+   */
+  private async listSinceAll(
+    token: string,
+    sinceMs: number,
+  ): Promise<GmailListed[]> {
+    const all: GmailListed[] = [];
+    const seen = new Set<string>();
+    let pageToken: string | undefined;
+    for (let page = 0; page < MAX_PAGES_ALL; page += 1) {
+      const url = new URL(`${GMAIL_API}/users/me/messages`);
+      url.searchParams.set("q", this.buildQueryAll(sinceMs));
+      url.searchParams.set("maxResults", "100");
+      if (pageToken) url.searchParams.set("pageToken", pageToken);
+      const body = await this.gmailGet<{
+        messages?: GmailListed[];
+        nextPageToken?: string;
+      }>(token, url.toString());
+      for (const m of body.messages ?? []) {
+        if (m?.id && !seen.has(m.id)) {
+          seen.add(m.id);
+          all.push(m);
+        }
+      }
+      if (!body.nextPageToken) {
+        return all.length > MAX_MESSAGES_PER_TICK
+          ? all.slice(all.length - MAX_MESSAGES_PER_TICK)
+          : all;
+      }
+      pageToken = body.nextPageToken;
+    }
+    throw new Error(
+      `the mailbox listed more than ${MAX_PAGES_ALL * 100} messages since the cursor, so the oldest could not be found without guessing`,
+    );
+  }
 
   /**
    * The bounded query. `from:(...)` is the first bound; `after:` is the cursor.
@@ -823,7 +1008,8 @@ export class HouseInboxService {
       .from("integration_oauth_connections")
       .select("id, user_id, scopes, account_email, connected_at")
       .eq("restaurant_id", restaurantId)
-      .eq("integration_id", GMAIL_READ_INTEGRATION_ID)
+      // Both reading grants speak for the house: the old vendor-only one and the wider one.
+      .in("integration_id", [...READING_INTEGRATION_IDS])
       .is("revoked_at", null)
       // A fixed order (r36 mail audit, gap 3): two reads of the same house
       // must speak of the same mailbox, never whichever row came back first.

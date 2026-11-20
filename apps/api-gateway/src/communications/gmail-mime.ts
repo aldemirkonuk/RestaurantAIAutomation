@@ -168,6 +168,27 @@ export function addressInFromHeader(from: string | null | undefined): string | n
   return candidate.includes("@") ? candidate : null;
 }
 
+/**
+ * Every bare address in a `To` / `Cc` header value, lower-cased and de-duplicated.
+ *
+ * `"Doe, Jane" <jane@x.com>, bob@y.com` has a comma inside a quoted display
+ * name, so the header is not split on commas. An address is whatever sits in
+ * angle brackets, or a bare token containing an `@` when there are none.
+ */
+export function addressesInHeader(value: string | null | undefined): string[] {
+  const raw = (value ?? "").trim();
+  if (!raw) return [];
+  const found: string[] = [];
+  const angled = /<([^<>\s]+@[^<>\s]+)>/g;
+  let m: RegExpExecArray | null;
+  while ((m = angled.exec(raw)) !== null) found.push(m[1].toLowerCase());
+  const rest = raw.replace(/"[^"]*"/g, " ").replace(/<[^<>]*>/g, " ");
+  for (const token of rest.split(/[\s,;]+/)) {
+    if (/^[^\s@]+@[^\s@]+$/.test(token)) found.push(token.toLowerCase());
+  }
+  return Array.from(new Set(found));
+}
+
 /** Case-insensitive header lookup over Gmail's `payload.headers` array. */
 export function headerValue(
   headers: Array<{ name?: string | null; value?: string | null }> | null | undefined,

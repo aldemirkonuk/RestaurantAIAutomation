@@ -3,7 +3,8 @@ export type IntegrationId =
   | "google_drive"
   | "excel"
   | "gmail_send"
-  | "gmail_read";
+  | "gmail_read"
+  | "gmail_read_all";
 
 export interface ScopeDisclosure {
   /** The raw scope string sent to the provider. */
@@ -258,6 +259,56 @@ export const INTEGRATION_DEFINITIONS: Record<
         "A reply is kept as two separate things. The MAIL ITSELF — the body, its headers and any attachment — is a copy of your mailbox and has a window: the longest dispute this restaurant has actually recorded, plus a margin, worked out again every quarter from this restaurant's own conversations. When it runs out, the body, headers and attachment bytes are deleted and the row says when and why. Disconnecting deletes that raw mail straight away, without waiting for the window. What the ORDER needs from the reply — a quoted price, a confirmed date, a commitment and the exact sentence it was stated in — is written onto this restaurant's own order record and stays there under the bookkeeping law of the country the restaurant is in, because that is the house's record and not a copy of your mailbox. The current figure, its derivation and the statute behind the floor are on this page.",
     },
   },
+  /**
+   * The wider receiving grant: every conversation in the mailbox, not only the
+   * vendors'. A THIRD id beside `gmail_send` and `gmail_read`, for the reason
+   * `gmail_read` is not a second scope on `gmail_send`: `UNIQUE (user_id,
+   * integration_id)` makes an id a grant, so the wider reading gets its own
+   * consent screen, its own row, its own cursor and its own disconnect.
+   *
+   * It asks Google for the same `gmail.readonly` scope; what differs is the
+   * promise made to the person, and a grant counts by what its person read and
+   * accepted. A person who agreed to `gmail_read` agreed to the vendor-only
+   * words, so that grant is NEVER widened in place: the reader bounds it by the
+   * vendor book exactly as before until the same person connects this one.
+   * Founder delegation 2026-11-19, forks (a) and (b).
+   */
+  gmail_read_all: {
+    id: "gmail_read_all",
+    provider: "google",
+    label: "Gmail — reading every conversation",
+    providerLabel: "Google",
+    description:
+      "Lets this house's conversation book show every conversation in your mailbox from the moment you connect: vendors, team and guests.",
+    scopes: [
+      {
+        scope: "https://www.googleapis.com/auth/gmail.readonly",
+        label:
+          "Reads every conversation in this mailbox: vendors, team and guests",
+        reason:
+          "Unlike the vendor-only connection, nothing narrows this one to the vendor book: every message that arrives after you connect is filed in this house's conversation book, marked as a vendor, a team member or a guest. It can never send, label, archive or delete anything, and it never looks at mail that arrived before you connected.",
+      },
+    ],
+    notRequested: [
+      "Anything that arrived before you connected; it starts from the moment you consent and never looks backwards",
+      "Spam and trash",
+      "Sending mail as you, which is a separate connection you agree to separately",
+      "Changing anything at all: no labelling, no archiving, no marking read, no deleting",
+      "Your drafts, filters, settings, contacts or chat",
+    ],
+    dataHandling: {
+      reads:
+        "Every message that reaches this mailbox after you connect, whoever it is from. Each one is marked as a vendor (the sender is in this restaurant's vendor book), a team member (the sender is a member of this restaurant) or a guest (anyone else).",
+      doesNotRead:
+        "Anything older than the moment you connected, spam, trash, your drafts, filters, settings, contacts and chat. Nothing is ever changed in your mailbox.",
+      landsIn:
+        "This restaurant's conversation book, `procurement_conversations`, with who it was from and who it was sent to. A vendor's reply takes the same path a shared-mailbox reply takes; a team or guest message is filed with no order and no vendor, and never starts an automatic reply.",
+      visibleTo:
+        "Vendor mail: everyone who works in this restaurant. Team and guest mail: the restaurant's owner and managers only. Nobody outside this restaurant, and no other restaurant on this deployment. You can disconnect at any time, and a manager can stop the house using the grant without touching it; either one stops the reading on the next run.",
+      keptFor:
+        "A vendor reply is kept as the vendor-only connection keeps it: the raw mail has a window and the order's own facts stay on the order. A team or guest message has no order, so it is deleted whole, with its attachments, when the window runs out. Disconnecting deletes every message this connection filed straight away, vendor raw mail and team and guest messages alike, without waiting for the window.",
+    },
+  },
   excel: {
     id: "excel",
     provider: "microsoft",
@@ -321,7 +372,10 @@ export const INTEGRATION_IDS = Object.keys(
  * disclosure route serves this list as `appliesTo`, so the consent screen never
  * hard-codes it either.
  */
-export const MIRRORING_INTEGRATION_IDS: IntegrationId[] = ["gmail_read"];
+export const MIRRORING_INTEGRATION_IDS: IntegrationId[] = [
+  "gmail_read",
+  "gmail_read_all",
+];
 
 export function isIntegrationId(value: string): value is IntegrationId {
   return Object.prototype.hasOwnProperty.call(INTEGRATION_DEFINITIONS, value);
