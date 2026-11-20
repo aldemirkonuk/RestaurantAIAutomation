@@ -85,6 +85,19 @@ describe('RecipeTaste', () => {
     expect(screen.queryByRole('button', { name: /Describe the taste/ })).toBeNull();
   });
 
+  it('the line jump moves focus to the card heading without scrolling again', async () => {
+    api.get.mockResolvedValue({ state: 'ready', data: worked() });
+    mount();
+    const open = await screen.findByTestId('recipe-taste-line-open');
+    await screen.findByTestId('taste-row-sour');
+    const heading = screen.getByRole('heading', { name: 'How it tastes' });
+    expect(heading).toHaveAttribute('tabindex', '-1');
+    const focus = vi.spyOn(heading, 'focus');
+    fireEvent.click(open);
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+    expect(document.activeElement).toBe(heading);
+  });
+
   it('a drink with no taste yet says it is not worked out and offers Work it out; the answer replaces the card', async () => {
     api.get.mockResolvedValue({ state: 'ready', data: none() });
     // Once worked out, a read finds it (the gateway keeps the layer).
