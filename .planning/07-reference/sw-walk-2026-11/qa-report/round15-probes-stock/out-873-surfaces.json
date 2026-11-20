@@ -1,0 +1,178 @@
+{
+ "table": [
+  {
+   "wine": "U1_uncounted_recv_sold_2of3",
+   "inbox": "low",
+   "dashAlert": "warning",
+   "mcp": "y",
+   "chip": "y",
+   "onList": "y"
+  },
+  {
+   "wine": "U2_uncounted_recv_sold_0of3",
+   "inbox": "critical",
+   "dashAlert": "critical",
+   "mcp": "y",
+   "chip": "y",
+   "onList": "y"
+  },
+  {
+   "wine": "U3_uncounted_never_moved_0of3",
+   "inbox": "-",
+   "dashAlert": "-",
+   "mcp": "n",
+   "chip": "n",
+   "onList": "y"
+  },
+  {
+   "wine": "C1_counted_2of5_critical",
+   "inbox": "critical",
+   "dashAlert": "critical",
+   "mcp": "y",
+   "chip": "y",
+   "onList": "y"
+  },
+  {
+   "wine": "C2_counted_4of5_low",
+   "inbox": "low",
+   "dashAlert": "warning",
+   "mcp": "y",
+   "chip": "y",
+   "onList": "y"
+  },
+  {
+   "wine": "P0_par0_counted_0",
+   "inbox": "-",
+   "dashAlert": "-",
+   "mcp": "n",
+   "chip": "n",
+   "onList": "y"
+  },
+  {
+   "wine": "Z_counted_zero_par3",
+   "inbox": "critical",
+   "dashAlert": "critical",
+   "mcp": "y",
+   "chip": "y",
+   "onList": "y"
+  },
+  {
+   "wine": "NEG_negative_stock",
+   "inbox": "critical",
+   "dashAlert": "critical",
+   "mcp": "y",
+   "chip": "y",
+   "onList": "y"
+  },
+  {
+   "wine": "RC_recent_count_above_par",
+   "inbox": "-",
+   "dashAlert": "-",
+   "mcp": "n",
+   "chip": "n",
+   "onList": "y"
+  },
+  {
+   "wine": "AR_archived_counted_1of3",
+   "inbox": "-",
+   "dashAlert": "-",
+   "mcp": "n",
+   "chip": "n",
+   "onList": "n"
+  },
+  {
+   "wine": "CB_closed_bottle_only_1of3",
+   "inbox": "critical",
+   "dashAlert": "critical",
+   "mcp": "y",
+   "chip": "y",
+   "onList": "y"
+  },
+  {
+   "wine": "OB_open_bottle_only_0of3",
+   "inbox": "critical",
+   "dashAlert": "critical",
+   "mcp": "y",
+   "chip": "y",
+   "onList": "y"
+  },
+  {
+   "wine": "AT_at_par_3of3",
+   "inbox": "-",
+   "dashAlert": "-",
+   "mcp": "n",
+   "chip": "n",
+   "onList": "y"
+  },
+  {
+   "wine": "IT_in_transit_counted_1of3",
+   "inbox": "-",
+   "dashAlert": "-",
+   "mcp": "n",
+   "chip": "n",
+   "onList": "y"
+  },
+  {
+   "wine": "DL_deleted_at_counted_1of3",
+   "inbox": "-",
+   "dashAlert": "-",
+   "mcp": "n",
+   "chip": "n",
+   "onList": "n"
+  },
+  {
+   "wine": "HD_house_declared_beer_counted_1of3",
+   "inbox": "-",
+   "dashAlert": "-",
+   "mcp": "n",
+   "chip": "n",
+   "onList": "y"
+  }
+ ],
+ "stats": {
+  "totalWines": 14,
+  "lowStockItems": 8
+ },
+ "card": {
+  "totalItems": 14,
+  "totalBottles": 19,
+  "lowStockCount": 9,
+  "criticalCount": 7,
+  "healthyCount": 1
+ },
+ "invSummary": {
+  "totalItems": 14,
+  "totalBottles": 19,
+  "lowStockCount": 9,
+  "criticalCount": 7,
+  "atParCount": 1,
+  "unknownCount": 2,
+  "healthyCount": 1,
+  "toastMappedCount": 0,
+  "toastUnmappedCount": 14
+ },
+ "inboxCount": 8,
+ "inboxCritical": 6,
+ "dashAlertCount": 8,
+ "mcpCount": 8,
+ "chipCount": 8,
+ "warns": [
+  "Low-stock count disagreement for 0d161900-0000-4000-8000-0000000000aa: v_low_stock_items says 8, classifyStock over restaurant_inventory says 9. One of the two predicates has drifted — see datasets/sim/fixtures/below-par-cases.json."
+ ],
+ "listIds": [
+  "U1_uncounted_recv_sold_2of3",
+  "U2_uncounted_recv_sold_0of3",
+  "U3_uncounted_never_moved_0of3",
+  "C1_counted_2of5_critical",
+  "C2_counted_4of5_low",
+  "P0_par0_counted_0",
+  "Z_counted_zero_par3",
+  "NEG_negative_stock",
+  "RC_recent_count_above_par",
+  "CB_closed_bottle_only_1of3",
+  "OB_open_bottle_only_0of3",
+  "AT_at_par_3of3",
+  "IT_in_transit_counted_1of3",
+  "HD_house_declared_beer_counted_1of3"
+ ]
+}

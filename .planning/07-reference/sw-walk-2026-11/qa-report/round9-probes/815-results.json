@@ -1,0 +1,193 @@
+{
+ "f01_freight10_excl18_reclaim": {
+  "per": 11,
+  "stamp": "net",
+  "share": 10,
+  "dshare": 0
+ },
+ "f02_freight118_incl18_reclaim": {
+  "per": 11,
+  "stamp": "net",
+  "share": 10.000000000000002,
+  "dshare": 0
+ },
+ "f03_freight118_incl18_NOreclaim": {
+  "per": 12.98,
+  "stamp": "gross_cost",
+  "share": 11.8,
+  "dshare": 0
+ },
+ "f04_freight10_basis_null_reclaim": {
+  "per": 11,
+  "stamp": null,
+  "share": 10,
+  "dshare": 0
+ },
+ "f05_freight10_basis_known_rate_null": {
+  "per": 11,
+  "stamp": null,
+  "share": 10,
+  "dshare": 0
+ },
+ "f06_freight10_unset_house": {
+  "per": 11,
+  "stamp": null,
+  "share": 10,
+  "dshare": 0
+ },
+ "d01_discount11_8_incl18_reclaim": {
+  "per": 9,
+  "stamp": "net",
+  "share": 0,
+  "dshare": -10.000000000000002
+ },
+ "d02_freight_and_discount_stamp": {
+  "per": 10.5,
+  "stamp": "net",
+  "share": 10,
+  "dshare": -5
+ },
+ "d03_freight_incl_discount_excl_cannot_be_stated": "header has ONE charges_tax_basis + ONE rate for freight, fuel, fees AND discount (landed-cost.ts:57-60)",
+ "t01_tax_exact": {
+  "per": 10,
+  "stamp": "net",
+  "share": 0,
+  "dshare": 0
+ },
+ "t02_tax_wrong_20": {
+  "status": "unresolved",
+  "why": "The paper prints tax of 20.00, but its lines' rates come to 18.00, so no line's cost can be final."
+ },
+ "t03_tax_off_by_penny": {
+  "per": 10,
+  "stamp": "net",
+  "share": 0,
+  "dshare": 0
+ },
+ "t04_tax_off_by_2c_one_line": {
+  "per": 10,
+  "stamp": "net",
+  "share": 0,
+  "dshare": 0
+ },
+ "t05_tax_null": {
+  "per": 10,
+  "stamp": "net",
+  "share": 0,
+  "dshare": 0
+ },
+ "t06_tax_zero_while_rate18": {
+  "status": "unresolved",
+  "why": "The paper prints tax of 0.00, but its lines' rates come to 18.00, so no line's cost can be final."
+ },
+ "t07_tax_inclusive_line": {
+  "per": 10,
+  "stamp": "net",
+  "share": 0,
+  "dshare": 0
+ },
+ "t08_mixed_rates_8_18_tax_ok": [
+  {
+   "per": 10,
+   "stamp": "net",
+   "share": 0,
+   "dshare": 0
+  },
+  {
+   "status": "unresolved",
+   "why": "The paper prints tax of 35.00, but its lines' rates come to 34.00, so no line's cost can be final."
+  }
+ ],
+ "t09_two_lines_each_off_by_penny": {
+  "per": 10,
+  "stamp": "net",
+  "share": 0,
+  "dshare": 0
+ },
+ "t10_tax_check_skipped_when_a_line_unresolved": [
+  {
+   "per": 10,
+   "stamp": "net",
+   "share": 0,
+   "dshare": 0
+  },
+  {
+   "status": "unresolved",
+   "why": "Line 2 prints neither a line total nor a quantity and unit price, so it has no value to cost."
+  }
+ ],
+ "t11_tax_check_skipped_when_a_line_not_stock": [
+  {
+   "per": 10,
+   "stamp": "net",
+   "share": 0,
+   "dshare": 0
+  },
+  {
+   "status": "not_stocked",
+   "why": "Line 2 is not stock, so it carries no share of the paper's charges or discount."
+  }
+ ],
+ "t12_tax_check_vs_noreclaim_house": {
+  "status": "unresolved",
+  "why": "The paper prints tax of 20.00, but its lines' rates come to 18.00, so no line's cost can be final."
+ },
+ "t13_tax_check_unset_house": {
+  "status": "unresolved",
+  "why": "The paper prints tax of 20.00, but its lines' rates come to 18.00, so no line's cost can be final."
+ },
+ "t14_line_rate_missing_so_check_skipped": {
+  "per": 10,
+  "stamp": "net",
+  "share": 0,
+  "dshare": 0
+ },
+ "t15_negative_tax_credit": {
+  "status": "unresolved",
+  "why": "Line 1 prints a figure that is negative or not a number, so it cannot be read as stock this paper delivered."
+ },
+ "t16_tax_check_ignores_allowance_and_deposit": {
+  "status": "unresolved",
+  "why": "The paper prints tax of 18.00, but its lines' rates come to 16.20, so no line's cost can be final."
+ },
+ "t17_header_subtotal_checked": {
+  "per": 10,
+  "stamp": "net",
+  "share": 0,
+  "dshare": 0
+ },
+ "t18_discount_tax_sign": {
+  "per": 9,
+  "stamp": "net",
+  "share": 0,
+  "dshare": -10
+ },
+ "t19_discount_tax_sign_wrong_direction": {
+  "status": "unresolved",
+  "why": "The paper prints tax of 19.80, but its lines' rates come to 16.20, so no line's cost can be final."
+ },
+ "r01_charges_rate0": {
+  "per": 11,
+  "stamp": "net",
+  "share": 10,
+  "dshare": 0
+ },
+ "r02_charges_rate100": {
+  "status": "unresolved",
+  "why": "The paper's charges prints a tax rate that is not a rate, so its cost cannot be said."
+ },
+ "r03_charges_neg": {
+  "status": "unresolved",
+  "why": "The paper's freight is negative or not a number, so no line's cost can be final."
+ },
+ "s01_case_price_as_bottle_qty24_no_total": {
+  "per": 264,
+  "stamp": "net",
+  "share": 0,
+  "dshare": 0
+ },
+ "s02_pack_size_read": true,
+ "s03_wired_importers": "see shell",
+ "c01_currency_word": false,
+ "u01_third": 0.3333333333333333
+}

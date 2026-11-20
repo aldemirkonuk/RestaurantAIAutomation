@@ -1,0 +1,324 @@
+{"c":"USD","v":0.035,"places":5,"unit":"US$0.035","price":"US$0.04","cell":"US$0.035","err":null}
+{"c":"USD","v":0.3333333333333333,"places":4,"unit":"US$0.3333","price":"US$0.33","cell":"US$0.3333","err":null}
+{"c":"USD","v":0.333333,"places":4,"unit":"US$0.3333","price":"US$0.33","cell":"US$0.3333","err":null}
+{"c":"USD","v":0.0356667,"places":5,"unit":"US$0.03567","price":"US$0.04","cell":"US$0.03567","err":null}
+{"c":"USD","v":0.035667,"places":5,"unit":"US$0.03567","price":"US$0.04","cell":"US$0.03567","err":null}
+{"c":"USD","v":0.5,"places":4,"unit":"US$0.50","price":"US$0.50","cell":"US$0.50","err":null}
+{"c":"USD","v":0.9,"places":4,"unit":"US$0.90","price":"US$0.90","cell":"US$0.90","err":null}
+{"c":"USD","v":0.999,"places":4,"unit":"US$0.999","price":"US$1.00","cell":"US$0.999","err":null}
+{"c":"USD","v":0.99996,"places":4,"unit":"US$1.00","price":"US$1.00","cell":"US$1.00","err":null}
+{"c":"USD","v":0.99999999,"places":4,"unit":"US$1.00","price":"US$1.00","cell":"US$1.00","err":null}
+{"c":"USD","v":1,"places":null,"unit":"US$1","price":"US$1","cell":"US$1","err":null}
+{"c":"USD","v":1.5,"places":null,"unit":"US$1.50","price":"US$1.50","cell":"US$1.50","err":null}
+{"c":"USD","v":22,"places":null,"unit":"US$22","price":"US$22","cell":"US$22","err":null}
+{"c":"USD","v":33.333333,"places":null,"unit":"US$33.33","price":"US$33.33","cell":"US$33.33","err":null}
+{"c":"USD","v":33.33333333333333,"places":null,"unit":"US$33.33","price":"US$33.33","cell":"US$33.33","err":null}
+{"c":"USD","v":0.1,"places":5,"unit":"US$0.10","price":"US$0.10","cell":"US$0.10","err":null}
+{"c":"USD","v":0.01,"places":6,"unit":"US$0.01","price":"US$0.01","cell":"US$0.01","err":null}
+{"c":"USD","v":0.001,"places":6,"unit":"US$0.001","price":"US$0.00","cell":"US$0.001","err":null}
+{"c":"USD","v":0.0001,"places":6,"unit":"US$0.0001","price":"US$0.00","cell":"US$0.0001","err":null}
+{"c":"USD","v":0.000001,"places":6,"unit":"US$0.000001","price":"US$0.00","cell":"US$0.000001","err":null}
+{"c":"USD","v":4e-7,"places":6,"unit":"US$0.00","price":"US$0.00","cell":"US$0.00","err":null}
+{"c":"USD","v":0,"places":null,"unit":"US$0","price":"US$0","cell":"US$0","err":null}
+{"c":"USD","v":-0.035,"places":5,"unit":"-US$0.035","price":"-US$0.04","cell":"-US$0.035","err":null}
+{"c":"USD","v":null,"places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"USD","v":"NaN","places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"USD","v":null,"places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"USD","v":1234.5678,"places":null,"unit":"US$1,234.57","price":"US$1,234.57","cell":"US$1,234.57","err":null}
+{"c":"JPY","v":0.035,"places":5,"unit":"JP¥0.035","price":"JP¥0.04","cell":"JP¥0.035","err":null}
+{"c":"JPY","v":0.3333333333333333,"places":4,"unit":"JP¥0.3333","price":"JP¥0.33","cell":"JP¥0.3333","err":null}
+{"c":"JPY","v":0.333333,"places":4,"unit":"JP¥0.3333","price":"JP¥0.33","cell":"JP¥0.3333","err":null}
+{"c":"JPY","v":0.0356667,"places":5,"unit":"JP¥0.03567","price":"JP¥0.04","cell":"JP¥0.03567","err":null}
+{"c":"JPY","v":0.035667,"places":5,"unit":"JP¥0.03567","price":"JP¥0.04","cell":"JP¥0.03567","err":null}
+{"c":"JPY","v":0.5,"places":4,"unit":"JP¥0.5","price":"JP¥0.5","cell":"JP¥0.5","err":null}
+{"c":"JPY","v":0.9,"places":4,"unit":"JP¥0.9","price":"JP¥0.9","cell":"JP¥0.9","err":null}
+{"c":"JPY","v":0.999,"places":4,"unit":"JP¥0.999","price":"JP¥1","cell":"JP¥0.999","err":null}
+{"c":"JPY","v":0.99996,"places":4,"unit":"JP¥1","price":"JP¥1","cell":"JP¥1","err":null}
+{"c":"JPY","v":0.99999999,"places":4,"unit":"JP¥1","price":"JP¥1","cell":"JP¥1","err":null}
+{"c":"JPY","v":1,"places":null,"unit":"JP¥1","price":"JP¥1","cell":"JP¥1","err":null}
+{"c":"JPY","v":1.5,"places":null,"unit":"JP¥1.5","price":"JP¥1.5","cell":"JP¥1.5","err":null}
+{"c":"JPY","v":22,"places":null,"unit":"JP¥22","price":"JP¥22","cell":"JP¥22","err":null}
+{"c":"JPY","v":33.333333,"places":null,"unit":"JP¥33.33","price":"JP¥33.33","cell":"JP¥33.33","err":null}
+{"c":"JPY","v":33.33333333333333,"places":null,"unit":"JP¥33.33","price":"JP¥33.33","cell":"JP¥33.33","err":null}
+{"c":"JPY","v":0.1,"places":5,"unit":"JP¥0.1","price":"JP¥0.1","cell":"JP¥0.1","err":null}
+{"c":"JPY","v":0.01,"places":6,"unit":"JP¥0.01","price":"JP¥0.01","cell":"JP¥0.01","err":null}
+{"c":"JPY","v":0.001,"places":6,"unit":"JP¥0.001","price":"JP¥0","cell":"JP¥0.001","err":null}
+{"c":"JPY","v":0.0001,"places":6,"unit":"JP¥0.0001","price":"JP¥0","cell":"JP¥0.0001","err":null}
+{"c":"JPY","v":0.000001,"places":6,"unit":"JP¥0.000001","price":"JP¥0","cell":"JP¥0.000001","err":null}
+{"c":"JPY","v":4e-7,"places":6,"unit":"JP¥0","price":"JP¥0","cell":"JP¥0","err":null}
+{"c":"JPY","v":0,"places":null,"unit":"JP¥0","price":"JP¥0","cell":"JP¥0","err":null}
+{"c":"JPY","v":-0.035,"places":5,"unit":"-JP¥0.035","price":"-JP¥0.04","cell":"-JP¥0.035","err":null}
+{"c":"JPY","v":null,"places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"JPY","v":"NaN","places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"JPY","v":null,"places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"JPY","v":1234.5678,"places":null,"unit":"JP¥1,234.57","price":"JP¥1,234.57","cell":"JP¥1,234.57","err":null}
+{"c":"KWD","v":0.035,"places":5,"unit":"KWD 0.035","price":"KWD 0.04","cell":"KWD 0.035","err":null}
+{"c":"KWD","v":0.3333333333333333,"places":4,"unit":"KWD 0.3333","price":"KWD 0.33","cell":"KWD 0.3333","err":null}
+{"c":"KWD","v":0.333333,"places":4,"unit":"KWD 0.3333","price":"KWD 0.33","cell":"KWD 0.3333","err":null}
+{"c":"KWD","v":0.0356667,"places":5,"unit":"KWD 0.03567","price":"KWD 0.04","cell":"KWD 0.03567","err":null}
+{"c":"KWD","v":0.035667,"places":5,"unit":"KWD 0.03567","price":"KWD 0.04","cell":"KWD 0.03567","err":null}
+{"c":"KWD","v":0.5,"places":4,"unit":"KWD 0.500","price":"KWD 0.50","cell":"KWD 0.500","err":null}
+{"c":"KWD","v":0.9,"places":4,"unit":"KWD 0.900","price":"KWD 0.90","cell":"KWD 0.900","err":null}
+{"c":"KWD","v":0.999,"places":4,"unit":"KWD 0.999","price":"KWD 1.00","cell":"KWD 0.999","err":null}
+{"c":"KWD","v":0.99996,"places":4,"unit":"KWD 1.000","price":"KWD 1.00","cell":"KWD 1.000","err":null}
+{"c":"KWD","v":0.99999999,"places":4,"unit":"KWD 1.000","price":"KWD 1.00","cell":"KWD 1.000","err":null}
+{"c":"KWD","v":1,"places":null,"unit":"KWD 1","price":"KWD 1","cell":"KWD 1","err":null}
+{"c":"KWD","v":1.5,"places":null,"unit":"KWD 1.50","price":"KWD 1.50","cell":"KWD 1.50","err":null}
+{"c":"KWD","v":22,"places":null,"unit":"KWD 22","price":"KWD 22","cell":"KWD 22","err":null}
+{"c":"KWD","v":33.333333,"places":null,"unit":"KWD 33.33","price":"KWD 33.33","cell":"KWD 33.33","err":null}
+{"c":"KWD","v":33.33333333333333,"places":null,"unit":"KWD 33.33","price":"KWD 33.33","cell":"KWD 33.33","err":null}
+{"c":"KWD","v":0.1,"places":5,"unit":"KWD 0.100","price":"KWD 0.10","cell":"KWD 0.100","err":null}
+{"c":"KWD","v":0.01,"places":6,"unit":"KWD 0.010","price":"KWD 0.01","cell":"KWD 0.010","err":null}
+{"c":"KWD","v":0.001,"places":6,"unit":"KWD 0.001","price":"KWD 0.00","cell":"KWD 0.001","err":null}
+{"c":"KWD","v":0.0001,"places":6,"unit":"KWD 0.0001","price":"KWD 0.00","cell":"KWD 0.0001","err":null}
+{"c":"KWD","v":0.000001,"places":6,"unit":"KWD 0.000001","price":"KWD 0.00","cell":"KWD 0.000001","err":null}
+{"c":"KWD","v":4e-7,"places":6,"unit":"KWD 0.000","price":"KWD 0.00","cell":"KWD 0.000","err":null}
+{"c":"KWD","v":0,"places":null,"unit":"KWD 0","price":"KWD 0","cell":"KWD 0","err":null}
+{"c":"KWD","v":-0.035,"places":5,"unit":"-KWD 0.035","price":"-KWD 0.04","cell":"-KWD 0.035","err":null}
+{"c":"KWD","v":null,"places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"KWD","v":"NaN","places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"KWD","v":null,"places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"KWD","v":1234.5678,"places":null,"unit":"KWD 1,234.57","price":"KWD 1,234.57","cell":"KWD 1,234.57","err":null}
+{"c":"TRY","v":0.035,"places":5,"unit":"TRY 0.035","price":"TRY 0.04","cell":"TRY 0.035","err":null}
+{"c":"TRY","v":0.3333333333333333,"places":4,"unit":"TRY 0.3333","price":"TRY 0.33","cell":"TRY 0.3333","err":null}
+{"c":"TRY","v":0.333333,"places":4,"unit":"TRY 0.3333","price":"TRY 0.33","cell":"TRY 0.3333","err":null}
+{"c":"TRY","v":0.0356667,"places":5,"unit":"TRY 0.03567","price":"TRY 0.04","cell":"TRY 0.03567","err":null}
+{"c":"TRY","v":0.035667,"places":5,"unit":"TRY 0.03567","price":"TRY 0.04","cell":"TRY 0.03567","err":null}
+{"c":"TRY","v":0.5,"places":4,"unit":"TRY 0.50","price":"TRY 0.50","cell":"TRY 0.50","err":null}
+{"c":"TRY","v":0.9,"places":4,"unit":"TRY 0.90","price":"TRY 0.90","cell":"TRY 0.90","err":null}
+{"c":"TRY","v":0.999,"places":4,"unit":"TRY 0.999","price":"TRY 1.00","cell":"TRY 0.999","err":null}
+{"c":"TRY","v":0.99996,"places":4,"unit":"TRY 1.00","price":"TRY 1.00","cell":"TRY 1.00","err":null}
+{"c":"TRY","v":0.99999999,"places":4,"unit":"TRY 1.00","price":"TRY 1.00","cell":"TRY 1.00","err":null}
+{"c":"TRY","v":1,"places":null,"unit":"TRY 1","price":"TRY 1","cell":"TRY 1","err":null}
+{"c":"TRY","v":1.5,"places":null,"unit":"TRY 1.50","price":"TRY 1.50","cell":"TRY 1.50","err":null}
+{"c":"TRY","v":22,"places":null,"unit":"TRY 22","price":"TRY 22","cell":"TRY 22","err":null}
+{"c":"TRY","v":33.333333,"places":null,"unit":"TRY 33.33","price":"TRY 33.33","cell":"TRY 33.33","err":null}
+{"c":"TRY","v":33.33333333333333,"places":null,"unit":"TRY 33.33","price":"TRY 33.33","cell":"TRY 33.33","err":null}
+{"c":"TRY","v":0.1,"places":5,"unit":"TRY 0.10","price":"TRY 0.10","cell":"TRY 0.10","err":null}
+{"c":"TRY","v":0.01,"places":6,"unit":"TRY 0.01","price":"TRY 0.01","cell":"TRY 0.01","err":null}
+{"c":"TRY","v":0.001,"places":6,"unit":"TRY 0.001","price":"TRY 0.00","cell":"TRY 0.001","err":null}
+{"c":"TRY","v":0.0001,"places":6,"unit":"TRY 0.0001","price":"TRY 0.00","cell":"TRY 0.0001","err":null}
+{"c":"TRY","v":0.000001,"places":6,"unit":"TRY 0.000001","price":"TRY 0.00","cell":"TRY 0.000001","err":null}
+{"c":"TRY","v":4e-7,"places":6,"unit":"TRY 0.00","price":"TRY 0.00","cell":"TRY 0.00","err":null}
+{"c":"TRY","v":0,"places":null,"unit":"TRY 0","price":"TRY 0","cell":"TRY 0","err":null}
+{"c":"TRY","v":-0.035,"places":5,"unit":"-TRY 0.035","price":"-TRY 0.04","cell":"-TRY 0.035","err":null}
+{"c":"TRY","v":null,"places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"TRY","v":"NaN","places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"TRY","v":null,"places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"TRY","v":1234.5678,"places":null,"unit":"TRY 1,234.57","price":"TRY 1,234.57","cell":"TRY 1,234.57","err":null}
+{"c":"EUR","v":0.035,"places":5,"unit":"€0.035","price":"€0.04","cell":"€0.035","err":null}
+{"c":"EUR","v":0.3333333333333333,"places":4,"unit":"€0.3333","price":"€0.33","cell":"€0.3333","err":null}
+{"c":"EUR","v":0.333333,"places":4,"unit":"€0.3333","price":"€0.33","cell":"€0.3333","err":null}
+{"c":"EUR","v":0.0356667,"places":5,"unit":"€0.03567","price":"€0.04","cell":"€0.03567","err":null}
+{"c":"EUR","v":0.035667,"places":5,"unit":"€0.03567","price":"€0.04","cell":"€0.03567","err":null}
+{"c":"EUR","v":0.5,"places":4,"unit":"€0.50","price":"€0.50","cell":"€0.50","err":null}
+{"c":"EUR","v":0.9,"places":4,"unit":"€0.90","price":"€0.90","cell":"€0.90","err":null}
+{"c":"EUR","v":0.999,"places":4,"unit":"€0.999","price":"€1.00","cell":"€0.999","err":null}
+{"c":"EUR","v":0.99996,"places":4,"unit":"€1.00","price":"€1.00","cell":"€1.00","err":null}
+{"c":"EUR","v":0.99999999,"places":4,"unit":"€1.00","price":"€1.00","cell":"€1.00","err":null}
+{"c":"EUR","v":1,"places":null,"unit":"€1","price":"€1","cell":"€1","err":null}
+{"c":"EUR","v":1.5,"places":null,"unit":"€1.50","price":"€1.50","cell":"€1.50","err":null}
+{"c":"EUR","v":22,"places":null,"unit":"€22","price":"€22","cell":"€22","err":null}
+{"c":"EUR","v":33.333333,"places":null,"unit":"€33.33","price":"€33.33","cell":"€33.33","err":null}
+{"c":"EUR","v":33.33333333333333,"places":null,"unit":"€33.33","price":"€33.33","cell":"€33.33","err":null}
+{"c":"EUR","v":0.1,"places":5,"unit":"€0.10","price":"€0.10","cell":"€0.10","err":null}
+{"c":"EUR","v":0.01,"places":6,"unit":"€0.01","price":"€0.01","cell":"€0.01","err":null}
+{"c":"EUR","v":0.001,"places":6,"unit":"€0.001","price":"€0.00","cell":"€0.001","err":null}
+{"c":"EUR","v":0.0001,"places":6,"unit":"€0.0001","price":"€0.00","cell":"€0.0001","err":null}
+{"c":"EUR","v":0.000001,"places":6,"unit":"€0.000001","price":"€0.00","cell":"€0.000001","err":null}
+{"c":"EUR","v":4e-7,"places":6,"unit":"€0.00","price":"€0.00","cell":"€0.00","err":null}
+{"c":"EUR","v":0,"places":null,"unit":"€0","price":"€0","cell":"€0","err":null}
+{"c":"EUR","v":-0.035,"places":5,"unit":"-€0.035","price":"-€0.04","cell":"-€0.035","err":null}
+{"c":"EUR","v":null,"places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"EUR","v":"NaN","places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"EUR","v":null,"places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"EUR","v":1234.5678,"places":null,"unit":"€1,234.57","price":"€1,234.57","cell":"€1,234.57","err":null}
+{"c":"CLF","v":0.035,"places":5,"unit":"CLF 0.0350","price":"CLF 0.04","cell":"CLF 0.0350","err":null}
+{"c":"CLF","v":0.3333333333333333,"places":4,"unit":"CLF 0.3333","price":"CLF 0.33","cell":"CLF 0.3333","err":null}
+{"c":"CLF","v":0.333333,"places":4,"unit":"CLF 0.3333","price":"CLF 0.33","cell":"CLF 0.3333","err":null}
+{"c":"CLF","v":0.0356667,"places":5,"unit":"CLF 0.03567","price":"CLF 0.04","cell":"CLF 0.03567","err":null}
+{"c":"CLF","v":0.035667,"places":5,"unit":"CLF 0.03567","price":"CLF 0.04","cell":"CLF 0.03567","err":null}
+{"c":"CLF","v":0.5,"places":4,"unit":"CLF 0.5000","price":"CLF 0.50","cell":"CLF 0.5000","err":null}
+{"c":"CLF","v":0.9,"places":4,"unit":"CLF 0.9000","price":"CLF 0.90","cell":"CLF 0.9000","err":null}
+{"c":"CLF","v":0.999,"places":4,"unit":"CLF 0.9990","price":"CLF 1.00","cell":"CLF 0.9990","err":null}
+{"c":"CLF","v":0.99996,"places":4,"unit":"CLF 1.0000","price":"CLF 1.00","cell":"CLF 1.0000","err":null}
+{"c":"CLF","v":0.99999999,"places":4,"unit":"CLF 1.0000","price":"CLF 1.00","cell":"CLF 1.0000","err":null}
+{"c":"CLF","v":1,"places":null,"unit":"CLF 1","price":"CLF 1","cell":"CLF 1","err":null}
+{"c":"CLF","v":1.5,"places":null,"unit":"CLF 1.50","price":"CLF 1.50","cell":"CLF 1.50","err":null}
+{"c":"CLF","v":22,"places":null,"unit":"CLF 22","price":"CLF 22","cell":"CLF 22","err":null}
+{"c":"CLF","v":33.333333,"places":null,"unit":"CLF 33.33","price":"CLF 33.33","cell":"CLF 33.33","err":null}
+{"c":"CLF","v":33.33333333333333,"places":null,"unit":"CLF 33.33","price":"CLF 33.33","cell":"CLF 33.33","err":null}
+{"c":"CLF","v":0.1,"places":5,"unit":"CLF 0.1000","price":"CLF 0.10","cell":"CLF 0.1000","err":null}
+{"c":"CLF","v":0.01,"places":6,"unit":"CLF 0.0100","price":"CLF 0.01","cell":"CLF 0.0100","err":null}
+{"c":"CLF","v":0.001,"places":6,"unit":"CLF 0.0010","price":"CLF 0.00","cell":"CLF 0.0010","err":null}
+{"c":"CLF","v":0.0001,"places":6,"unit":"CLF 0.0001","price":"CLF 0.00","cell":"CLF 0.0001","err":null}
+{"c":"CLF","v":0.000001,"places":6,"unit":"CLF 0.000001","price":"CLF 0.00","cell":"CLF 0.000001","err":null}
+{"c":"CLF","v":4e-7,"places":6,"unit":"CLF 0.0000","price":"CLF 0.00","cell":"CLF 0.0000","err":null}
+{"c":"CLF","v":0,"places":null,"unit":"CLF 0","price":"CLF 0","cell":"CLF 0","err":null}
+{"c":"CLF","v":-0.035,"places":5,"unit":"-CLF 0.0350","price":"-CLF 0.04","cell":"-CLF 0.0350","err":null}
+{"c":"CLF","v":null,"places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"CLF","v":"NaN","places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"CLF","v":null,"places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"CLF","v":1234.5678,"places":null,"unit":"CLF 1,234.57","price":"CLF 1,234.57","cell":"CLF 1,234.57","err":null}
+{"c":"BHD","v":0.035,"places":5,"unit":"BHD 0.035","price":"BHD 0.04","cell":"BHD 0.035","err":null}
+{"c":"BHD","v":0.3333333333333333,"places":4,"unit":"BHD 0.3333","price":"BHD 0.33","cell":"BHD 0.3333","err":null}
+{"c":"BHD","v":0.333333,"places":4,"unit":"BHD 0.3333","price":"BHD 0.33","cell":"BHD 0.3333","err":null}
+{"c":"BHD","v":0.0356667,"places":5,"unit":"BHD 0.03567","price":"BHD 0.04","cell":"BHD 0.03567","err":null}
+{"c":"BHD","v":0.035667,"places":5,"unit":"BHD 0.03567","price":"BHD 0.04","cell":"BHD 0.03567","err":null}
+{"c":"BHD","v":0.5,"places":4,"unit":"BHD 0.500","price":"BHD 0.50","cell":"BHD 0.500","err":null}
+{"c":"BHD","v":0.9,"places":4,"unit":"BHD 0.900","price":"BHD 0.90","cell":"BHD 0.900","err":null}
+{"c":"BHD","v":0.999,"places":4,"unit":"BHD 0.999","price":"BHD 1.00","cell":"BHD 0.999","err":null}
+{"c":"BHD","v":0.99996,"places":4,"unit":"BHD 1.000","price":"BHD 1.00","cell":"BHD 1.000","err":null}
+{"c":"BHD","v":0.99999999,"places":4,"unit":"BHD 1.000","price":"BHD 1.00","cell":"BHD 1.000","err":null}
+{"c":"BHD","v":1,"places":null,"unit":"BHD 1","price":"BHD 1","cell":"BHD 1","err":null}
+{"c":"BHD","v":1.5,"places":null,"unit":"BHD 1.50","price":"BHD 1.50","cell":"BHD 1.50","err":null}
+{"c":"BHD","v":22,"places":null,"unit":"BHD 22","price":"BHD 22","cell":"BHD 22","err":null}
+{"c":"BHD","v":33.333333,"places":null,"unit":"BHD 33.33","price":"BHD 33.33","cell":"BHD 33.33","err":null}
+{"c":"BHD","v":33.33333333333333,"places":null,"unit":"BHD 33.33","price":"BHD 33.33","cell":"BHD 33.33","err":null}
+{"c":"BHD","v":0.1,"places":5,"unit":"BHD 0.100","price":"BHD 0.10","cell":"BHD 0.100","err":null}
+{"c":"BHD","v":0.01,"places":6,"unit":"BHD 0.010","price":"BHD 0.01","cell":"BHD 0.010","err":null}
+{"c":"BHD","v":0.001,"places":6,"unit":"BHD 0.001","price":"BHD 0.00","cell":"BHD 0.001","err":null}
+{"c":"BHD","v":0.0001,"places":6,"unit":"BHD 0.0001","price":"BHD 0.00","cell":"BHD 0.0001","err":null}
+{"c":"BHD","v":0.000001,"places":6,"unit":"BHD 0.000001","price":"BHD 0.00","cell":"BHD 0.000001","err":null}
+{"c":"BHD","v":4e-7,"places":6,"unit":"BHD 0.000","price":"BHD 0.00","cell":"BHD 0.000","err":null}
+{"c":"BHD","v":0,"places":null,"unit":"BHD 0","price":"BHD 0","cell":"BHD 0","err":null}
+{"c":"BHD","v":-0.035,"places":5,"unit":"-BHD 0.035","price":"-BHD 0.04","cell":"-BHD 0.035","err":null}
+{"c":"BHD","v":null,"places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"BHD","v":"NaN","places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"BHD","v":null,"places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"BHD","v":1234.5678,"places":null,"unit":"BHD 1,234.57","price":"BHD 1,234.57","cell":"BHD 1,234.57","err":null}
+{"c":"XXX","v":0.035,"places":5,"unit":"¤0.035","price":"¤0.04","cell":"¤0.035","err":null}
+{"c":"XXX","v":0.3333333333333333,"places":4,"unit":"¤0.3333","price":"¤0.33","cell":"¤0.3333","err":null}
+{"c":"XXX","v":0.333333,"places":4,"unit":"¤0.3333","price":"¤0.33","cell":"¤0.3333","err":null}
+{"c":"XXX","v":0.0356667,"places":5,"unit":"¤0.03567","price":"¤0.04","cell":"¤0.03567","err":null}
+{"c":"XXX","v":0.035667,"places":5,"unit":"¤0.03567","price":"¤0.04","cell":"¤0.03567","err":null}
+{"c":"XXX","v":0.5,"places":4,"unit":"¤0.50","price":"¤0.50","cell":"¤0.50","err":null}
+{"c":"XXX","v":0.9,"places":4,"unit":"¤0.90","price":"¤0.90","cell":"¤0.90","err":null}
+{"c":"XXX","v":0.999,"places":4,"unit":"¤0.999","price":"¤1.00","cell":"¤0.999","err":null}
+{"c":"XXX","v":0.99996,"places":4,"unit":"¤1.00","price":"¤1.00","cell":"¤1.00","err":null}
+{"c":"XXX","v":0.99999999,"places":4,"unit":"¤1.00","price":"¤1.00","cell":"¤1.00","err":null}
+{"c":"XXX","v":1,"places":null,"unit":"¤1","price":"¤1","cell":"¤1","err":null}
+{"c":"XXX","v":1.5,"places":null,"unit":"¤1.50","price":"¤1.50","cell":"¤1.50","err":null}
+{"c":"XXX","v":22,"places":null,"unit":"¤22","price":"¤22","cell":"¤22","err":null}
+{"c":"XXX","v":33.333333,"places":null,"unit":"¤33.33","price":"¤33.33","cell":"¤33.33","err":null}
+{"c":"XXX","v":33.33333333333333,"places":null,"unit":"¤33.33","price":"¤33.33","cell":"¤33.33","err":null}
+{"c":"XXX","v":0.1,"places":5,"unit":"¤0.10","price":"¤0.10","cell":"¤0.10","err":null}
+{"c":"XXX","v":0.01,"places":6,"unit":"¤0.01","price":"¤0.01","cell":"¤0.01","err":null}
+{"c":"XXX","v":0.001,"places":6,"unit":"¤0.001","price":"¤0.00","cell":"¤0.001","err":null}
+{"c":"XXX","v":0.0001,"places":6,"unit":"¤0.0001","price":"¤0.00","cell":"¤0.0001","err":null}
+{"c":"XXX","v":0.000001,"places":6,"unit":"¤0.000001","price":"¤0.00","cell":"¤0.000001","err":null}
+{"c":"XXX","v":4e-7,"places":6,"unit":"¤0.00","price":"¤0.00","cell":"¤0.00","err":null}
+{"c":"XXX","v":0,"places":null,"unit":"¤0","price":"¤0","cell":"¤0","err":null}
+{"c":"XXX","v":-0.035,"places":5,"unit":"-¤0.035","price":"-¤0.04","cell":"-¤0.035","err":null}
+{"c":"XXX","v":null,"places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"XXX","v":"NaN","places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"XXX","v":null,"places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"XXX","v":1234.5678,"places":null,"unit":"¤1,234.57","price":"¤1,234.57","cell":"¤1,234.57","err":null}
+{"c":"ZZZ","v":0.035,"places":5,"unit":"ZZZ 0.035","price":"ZZZ 0.04","cell":"ZZZ 0.035","err":null}
+{"c":"ZZZ","v":0.3333333333333333,"places":4,"unit":"ZZZ 0.3333","price":"ZZZ 0.33","cell":"ZZZ 0.3333","err":null}
+{"c":"ZZZ","v":0.333333,"places":4,"unit":"ZZZ 0.3333","price":"ZZZ 0.33","cell":"ZZZ 0.3333","err":null}
+{"c":"ZZZ","v":0.0356667,"places":5,"unit":"ZZZ 0.03567","price":"ZZZ 0.04","cell":"ZZZ 0.03567","err":null}
+{"c":"ZZZ","v":0.035667,"places":5,"unit":"ZZZ 0.03567","price":"ZZZ 0.04","cell":"ZZZ 0.03567","err":null}
+{"c":"ZZZ","v":0.5,"places":4,"unit":"ZZZ 0.50","price":"ZZZ 0.50","cell":"ZZZ 0.50","err":null}
+{"c":"ZZZ","v":0.9,"places":4,"unit":"ZZZ 0.90","price":"ZZZ 0.90","cell":"ZZZ 0.90","err":null}
+{"c":"ZZZ","v":0.999,"places":4,"unit":"ZZZ 0.999","price":"ZZZ 1.00","cell":"ZZZ 0.999","err":null}
+{"c":"ZZZ","v":0.99996,"places":4,"unit":"ZZZ 1.00","price":"ZZZ 1.00","cell":"ZZZ 1.00","err":null}
+{"c":"ZZZ","v":0.99999999,"places":4,"unit":"ZZZ 1.00","price":"ZZZ 1.00","cell":"ZZZ 1.00","err":null}
+{"c":"ZZZ","v":1,"places":null,"unit":"ZZZ 1","price":"ZZZ 1","cell":"ZZZ 1","err":null}
+{"c":"ZZZ","v":1.5,"places":null,"unit":"ZZZ 1.50","price":"ZZZ 1.50","cell":"ZZZ 1.50","err":null}
+{"c":"ZZZ","v":22,"places":null,"unit":"ZZZ 22","price":"ZZZ 22","cell":"ZZZ 22","err":null}
+{"c":"ZZZ","v":33.333333,"places":null,"unit":"ZZZ 33.33","price":"ZZZ 33.33","cell":"ZZZ 33.33","err":null}
+{"c":"ZZZ","v":33.33333333333333,"places":null,"unit":"ZZZ 33.33","price":"ZZZ 33.33","cell":"ZZZ 33.33","err":null}
+{"c":"ZZZ","v":0.1,"places":5,"unit":"ZZZ 0.10","price":"ZZZ 0.10","cell":"ZZZ 0.10","err":null}
+{"c":"ZZZ","v":0.01,"places":6,"unit":"ZZZ 0.01","price":"ZZZ 0.01","cell":"ZZZ 0.01","err":null}
+{"c":"ZZZ","v":0.001,"places":6,"unit":"ZZZ 0.001","price":"ZZZ 0.00","cell":"ZZZ 0.001","err":null}
+{"c":"ZZZ","v":0.0001,"places":6,"unit":"ZZZ 0.0001","price":"ZZZ 0.00","cell":"ZZZ 0.0001","err":null}
+{"c":"ZZZ","v":0.000001,"places":6,"unit":"ZZZ 0.000001","price":"ZZZ 0.00","cell":"ZZZ 0.000001","err":null}
+{"c":"ZZZ","v":4e-7,"places":6,"unit":"ZZZ 0.00","price":"ZZZ 0.00","cell":"ZZZ 0.00","err":null}
+{"c":"ZZZ","v":0,"places":null,"unit":"ZZZ 0","price":"ZZZ 0","cell":"ZZZ 0","err":null}
+{"c":"ZZZ","v":-0.035,"places":5,"unit":"-ZZZ 0.035","price":"-ZZZ 0.04","cell":"-ZZZ 0.035","err":null}
+{"c":"ZZZ","v":null,"places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"ZZZ","v":"NaN","places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"ZZZ","v":null,"places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"ZZZ","v":1234.5678,"places":null,"unit":"ZZZ 1,234.57","price":"ZZZ 1,234.57","cell":"ZZZ 1,234.57","err":null}
+{"c":"usd","v":0.035,"places":5,"unit":"0.035 (currency not recorded)","price":"0.035 (currency not recorded)","cell":"0.035 (currency not recorded)","err":null}
+{"c":"usd","v":0.3333333333333333,"places":4,"unit":"0.3333 (currency not recorded)","price":"0.333 (currency not recorded)","cell":"0.3333 (currency not recorded)","err":null}
+{"c":"usd","v":0.333333,"places":4,"unit":"0.3333 (currency not recorded)","price":"0.333 (currency not recorded)","cell":"0.3333 (currency not recorded)","err":null}
+{"c":"usd","v":0.0356667,"places":5,"unit":"0.03567 (currency not recorded)","price":"0.036 (currency not recorded)","cell":"0.03567 (currency not recorded)","err":null}
+{"c":"usd","v":0.035667,"places":5,"unit":"0.03567 (currency not recorded)","price":"0.036 (currency not recorded)","cell":"0.03567 (currency not recorded)","err":null}
+{"c":"usd","v":0.5,"places":4,"unit":"0.5 (currency not recorded)","price":"0.5 (currency not recorded)","cell":"0.5 (currency not recorded)","err":null}
+{"c":"usd","v":0.9,"places":4,"unit":"0.9 (currency not recorded)","price":"0.9 (currency not recorded)","cell":"0.9 (currency not recorded)","err":null}
+{"c":"usd","v":0.999,"places":4,"unit":"0.999 (currency not recorded)","price":"0.999 (currency not recorded)","cell":"0.999 (currency not recorded)","err":null}
+{"c":"usd","v":0.99996,"places":4,"unit":"1 (currency not recorded)","price":"1 (currency not recorded)","cell":"1 (currency not recorded)","err":null}
+{"c":"usd","v":0.99999999,"places":4,"unit":"1 (currency not recorded)","price":"1 (currency not recorded)","cell":"1 (currency not recorded)","err":null}
+{"c":"usd","v":1,"places":null,"unit":"1 (currency not recorded)","price":"1 (currency not recorded)","cell":"1 (currency not recorded)","err":null}
+{"c":"usd","v":1.5,"places":null,"unit":"1.5 (currency not recorded)","price":"1.5 (currency not recorded)","cell":"1.5 (currency not recorded)","err":null}
+{"c":"usd","v":22,"places":null,"unit":"22 (currency not recorded)","price":"22 (currency not recorded)","cell":"22 (currency not recorded)","err":null}
+{"c":"usd","v":33.333333,"places":null,"unit":"33.333 (currency not recorded)","price":"33.333 (currency not recorded)","cell":"33.333 (currency not recorded)","err":null}
+{"c":"usd","v":33.33333333333333,"places":null,"unit":"33.333 (currency not recorded)","price":"33.333 (currency not recorded)","cell":"33.333 (currency not recorded)","err":null}
+{"c":"usd","v":0.1,"places":5,"unit":"0.1 (currency not recorded)","price":"0.1 (currency not recorded)","cell":"0.1 (currency not recorded)","err":null}
+{"c":"usd","v":0.01,"places":6,"unit":"0.01 (currency not recorded)","price":"0.01 (currency not recorded)","cell":"0.01 (currency not recorded)","err":null}
+{"c":"usd","v":0.001,"places":6,"unit":"0.001 (currency not recorded)","price":"0.001 (currency not recorded)","cell":"0.001 (currency not recorded)","err":null}
+{"c":"usd","v":0.0001,"places":6,"unit":"0.0001 (currency not recorded)","price":"0 (currency not recorded)","cell":"0.0001 (currency not recorded)","err":null}
+{"c":"usd","v":0.000001,"places":6,"unit":"0.000001 (currency not recorded)","price":"0 (currency not recorded)","cell":"0.000001 (currency not recorded)","err":null}
+{"c":"usd","v":4e-7,"places":6,"unit":"0 (currency not recorded)","price":"0 (currency not recorded)","cell":"0 (currency not recorded)","err":null}
+{"c":"usd","v":0,"places":null,"unit":"0 (currency not recorded)","price":"0 (currency not recorded)","cell":"0 (currency not recorded)","err":null}
+{"c":"usd","v":-0.035,"places":5,"unit":"-0.035 (currency not recorded)","price":"-0.035 (currency not recorded)","cell":"-0.035 (currency not recorded)","err":null}
+{"c":"usd","v":null,"places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"usd","v":"NaN","places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"usd","v":null,"places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"usd","v":1234.5678,"places":null,"unit":"1,234.568 (currency not recorded)","price":"1,234.568 (currency not recorded)","cell":"1,234.568 (currency not recorded)","err":null}
+{"c":"","v":0.035,"places":5,"unit":"0.035 (currency not recorded)","price":"0.035 (currency not recorded)","cell":"0.035","err":null}
+{"c":"","v":0.3333333333333333,"places":4,"unit":"0.3333 (currency not recorded)","price":"0.333 (currency not recorded)","cell":"0.3333","err":null}
+{"c":"","v":0.333333,"places":4,"unit":"0.3333 (currency not recorded)","price":"0.333 (currency not recorded)","cell":"0.3333","err":null}
+{"c":"","v":0.0356667,"places":5,"unit":"0.03567 (currency not recorded)","price":"0.036 (currency not recorded)","cell":"0.03567","err":null}
+{"c":"","v":0.035667,"places":5,"unit":"0.03567 (currency not recorded)","price":"0.036 (currency not recorded)","cell":"0.03567","err":null}
+{"c":"","v":0.5,"places":4,"unit":"0.5 (currency not recorded)","price":"0.5 (currency not recorded)","cell":"0.5","err":null}
+{"c":"","v":0.9,"places":4,"unit":"0.9 (currency not recorded)","price":"0.9 (currency not recorded)","cell":"0.9","err":null}
+{"c":"","v":0.999,"places":4,"unit":"0.999 (currency not recorded)","price":"0.999 (currency not recorded)","cell":"0.999","err":null}
+{"c":"","v":0.99996,"places":4,"unit":"1 (currency not recorded)","price":"1 (currency not recorded)","cell":"1","err":null}
+{"c":"","v":0.99999999,"places":4,"unit":"1 (currency not recorded)","price":"1 (currency not recorded)","cell":"1","err":null}
+{"c":"","v":1,"places":null,"unit":"1 (currency not recorded)","price":"1 (currency not recorded)","cell":"1","err":null}
+{"c":"","v":1.5,"places":null,"unit":"1.5 (currency not recorded)","price":"1.5 (currency not recorded)","cell":"1.5","err":null}
+{"c":"","v":22,"places":null,"unit":"22 (currency not recorded)","price":"22 (currency not recorded)","cell":"22","err":null}
+{"c":"","v":33.333333,"places":null,"unit":"33.333 (currency not recorded)","price":"33.333 (currency not recorded)","cell":"33.33","err":null}
+{"c":"","v":33.33333333333333,"places":null,"unit":"33.333 (currency not recorded)","price":"33.333 (currency not recorded)","cell":"33.33","err":null}
+{"c":"","v":0.1,"places":5,"unit":"0.1 (currency not recorded)","price":"0.1 (currency not recorded)","cell":"0.1","err":null}
+{"c":"","v":0.01,"places":6,"unit":"0.01 (currency not recorded)","price":"0.01 (currency not recorded)","cell":"0.01","err":null}
+{"c":"","v":0.001,"places":6,"unit":"0.001 (currency not recorded)","price":"0.001 (currency not recorded)","cell":"0.001","err":null}
+{"c":"","v":0.0001,"places":6,"unit":"0.0001 (currency not recorded)","price":"0 (currency not recorded)","cell":"0.0001","err":null}
+{"c":"","v":0.000001,"places":6,"unit":"0.000001 (currency not recorded)","price":"0 (currency not recorded)","cell":"0.000001","err":null}
+{"c":"","v":4e-7,"places":6,"unit":"0 (currency not recorded)","price":"0 (currency not recorded)","cell":"0","err":null}
+{"c":"","v":0,"places":null,"unit":"0 (currency not recorded)","price":"0 (currency not recorded)","cell":"0","err":null}
+{"c":"","v":-0.035,"places":5,"unit":"-0.035 (currency not recorded)","price":"-0.035 (currency not recorded)","cell":"-0.035","err":null}
+{"c":"","v":null,"places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"","v":"NaN","places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"","v":null,"places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":"","v":1234.5678,"places":null,"unit":"1,234.568 (currency not recorded)","price":"1,234.568 (currency not recorded)","cell":"1,234.57","err":null}
+{"c":null,"v":0.035,"places":5,"unit":"0.035 (currency not recorded)","price":"0.035 (currency not recorded)","cell":"0.035","err":null}
+{"c":null,"v":0.3333333333333333,"places":4,"unit":"0.3333 (currency not recorded)","price":"0.333 (currency not recorded)","cell":"0.3333","err":null}
+{"c":null,"v":0.333333,"places":4,"unit":"0.3333 (currency not recorded)","price":"0.333 (currency not recorded)","cell":"0.3333","err":null}
+{"c":null,"v":0.0356667,"places":5,"unit":"0.03567 (currency not recorded)","price":"0.036 (currency not recorded)","cell":"0.03567","err":null}
+{"c":null,"v":0.035667,"places":5,"unit":"0.03567 (currency not recorded)","price":"0.036 (currency not recorded)","cell":"0.03567","err":null}
+{"c":null,"v":0.5,"places":4,"unit":"0.5 (currency not recorded)","price":"0.5 (currency not recorded)","cell":"0.5","err":null}
+{"c":null,"v":0.9,"places":4,"unit":"0.9 (currency not recorded)","price":"0.9 (currency not recorded)","cell":"0.9","err":null}
+{"c":null,"v":0.999,"places":4,"unit":"0.999 (currency not recorded)","price":"0.999 (currency not recorded)","cell":"0.999","err":null}
+{"c":null,"v":0.99996,"places":4,"unit":"1 (currency not recorded)","price":"1 (currency not recorded)","cell":"1","err":null}
+{"c":null,"v":0.99999999,"places":4,"unit":"1 (currency not recorded)","price":"1 (currency not recorded)","cell":"1","err":null}
+{"c":null,"v":1,"places":null,"unit":"1 (currency not recorded)","price":"1 (currency not recorded)","cell":"1","err":null}
+{"c":null,"v":1.5,"places":null,"unit":"1.5 (currency not recorded)","price":"1.5 (currency not recorded)","cell":"1.5","err":null}
+{"c":null,"v":22,"places":null,"unit":"22 (currency not recorded)","price":"22 (currency not recorded)","cell":"22","err":null}
+{"c":null,"v":33.333333,"places":null,"unit":"33.333 (currency not recorded)","price":"33.333 (currency not recorded)","cell":"33.33","err":null}
+{"c":null,"v":33.33333333333333,"places":null,"unit":"33.333 (currency not recorded)","price":"33.333 (currency not recorded)","cell":"33.33","err":null}
+{"c":null,"v":0.1,"places":5,"unit":"0.1 (currency not recorded)","price":"0.1 (currency not recorded)","cell":"0.1","err":null}
+{"c":null,"v":0.01,"places":6,"unit":"0.01 (currency not recorded)","price":"0.01 (currency not recorded)","cell":"0.01","err":null}
+{"c":null,"v":0.001,"places":6,"unit":"0.001 (currency not recorded)","price":"0.001 (currency not recorded)","cell":"0.001","err":null}
+{"c":null,"v":0.0001,"places":6,"unit":"0.0001 (currency not recorded)","price":"0 (currency not recorded)","cell":"0.0001","err":null}
+{"c":null,"v":0.000001,"places":6,"unit":"0.000001 (currency not recorded)","price":"0 (currency not recorded)","cell":"0.000001","err":null}
+{"c":null,"v":4e-7,"places":6,"unit":"0 (currency not recorded)","price":"0 (currency not recorded)","cell":"0","err":null}
+{"c":null,"v":0,"places":null,"unit":"0 (currency not recorded)","price":"0 (currency not recorded)","cell":"0","err":null}
+{"c":null,"v":-0.035,"places":5,"unit":"-0.035 (currency not recorded)","price":"-0.035 (currency not recorded)","cell":"-0.035","err":null}
+{"c":null,"v":null,"places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":null,"v":"NaN","places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":null,"v":null,"places":null,"unit":"—","price":"—","cell":"—","err":null}
+{"c":null,"v":1234.5678,"places":null,"unit":"1,234.568 (currency not recorded)","price":"1,234.568 (currency not recorded)","cell":"1,234.57","err":null}

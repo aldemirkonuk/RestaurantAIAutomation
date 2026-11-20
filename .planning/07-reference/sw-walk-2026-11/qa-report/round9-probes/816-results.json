@@ -1,0 +1,295 @@
+{
+ "p01_case_priced_264_pack12": {
+  "ok": true,
+  "posted": [
+   {
+    "item": "A",
+    "cost": 22,
+    "reason": "delivery dddddddd-dddd-dddd-dddd-dddddddddddd verified (ADR 0103 A1); invoice price 264 per case of 12 = 22.0000 per bottle"
+   }
+  ],
+  "prov": []
+ },
+ "p02_bottle_priced_22": {
+  "ok": true,
+  "posted": [
+   {
+    "item": "A",
+    "cost": 22,
+    "reason": "delivery dddddddd-dddd-dddd-dddd-dddddddddddd verified (ADR 0103 A1); invoice price 22 per bottle; booked as-is"
+   }
+  ],
+  "prov": []
+ },
+ "p03_base_missing_case_line": {
+  "cost": 22,
+  "exact": 22,
+  "basis": "invoice price 264 per case of 12 = 22.0000 per bottle"
+ },
+ "p03b_bottle_row_case_price_no_base": {
+  "ok": true,
+  "posted": [
+   {
+    "item": "A",
+    "cost": 264,
+    "reason": "delivery dddddddd-dddd-dddd-dddd-dddddddddddd verified (ADR 0103 A1); invoice price 264 per bottle; booked as-is"
+   }
+  ],
+  "prov": []
+ },
+ "p03c_same_but_pack1": {
+  "ok": true,
+  "posted": [
+   {
+    "item": "A",
+    "cost": 264,
+    "reason": "delivery dddddddd-dddd-dddd-dddd-dddddddddddd verified (ADR 0103 A1); invoice price 264 per bottle; booked as-is"
+   }
+  ],
+  "prov": []
+ },
+ "p04_pack_null": {
+  "REFUSED": "refused",
+  "reason": "the invoice line prices 264 per case but does not state how many bottles a case holds, so the price of one bottle is not known"
+ },
+ "p04_pack_undefined": {
+  "REFUSED": "refused",
+  "reason": "the invoice line prices 264 per case but does not state how many bottles a case holds, so the price of one bottle is not known"
+ },
+ "p04_pack_0": {
+  "REFUSED": "refused",
+  "reason": "the invoice line prices 264 per case but does not state how many bottles a case holds, so the price of one bottle is not known"
+ },
+ "p04_pack_1": {
+  "REFUSED": "refused",
+  "reason": "the invoice line prices 264 per case but does not state how many bottles a case holds, so the price of one bottle is not known"
+ },
+ "p04_pack_12": {
+  "cost": 22,
+  "exact": 22,
+  "basis": "invoice price 264 per case of 12 = 22.0000 per bottle"
+ },
+ "p04_pack_6": {
+  "cost": 44,
+  "exact": 44,
+  "basis": "invoice price 264 per case of 6 = 44.0000 per bottle"
+ },
+ "p04_pack_-1": {
+  "REFUSED": "refused",
+  "reason": "the invoice line prices 264 per case but does not state how many bottles a case holds, so the price of one bottle is not known"
+ },
+ "p04_pack_abc": {
+  "REFUSED": "refused",
+  "reason": "the invoice line prices 264 per case but does not state how many bottles a case holds, so the price of one bottle is not known"
+ },
+ "p04_pack_1.5": {
+  "cost": 176,
+  "exact": 176,
+  "basis": "invoice price 264 per case of 1.5 = 176.0000 per bottle"
+ },
+ "p04b_bottle_line_pack0": {
+  "cost": 22,
+  "exact": 22,
+  "basis": "invoice price 22 per bottle; booked as-is"
+ },
+ "p05_mixed_two_items": {
+  "ok": true,
+  "posted": [
+   {
+    "item": "A",
+    "cost": 22,
+    "reason": "delivery dddddddd-dddd-dddd-dddd-dddddddddddd verified (ADR 0103 A1); invoice price 264 per case of 12 = 22.0000 per bottle"
+   },
+   {
+    "item": "B",
+    "cost": 31.5,
+    "reason": "delivery dddddddd-dddd-dddd-dddd-dddddddddddd verified (ADR 0103 A1); invoice price 31.5 per bottle; booked as-is"
+   }
+  ],
+  "prov": []
+ },
+ "p05b_same_item_two_lines": {
+  "ok": true,
+  "posted": [
+   {
+    "item": "A",
+    "cost": 25,
+    "reason": "delivery dddddddd-dddd-dddd-dddd-dddddddddddd verified (ADR 0103 A1); invoice price 25 per bottle; booked as-is"
+   }
+  ],
+  "prov": []
+ },
+ "p06_magnum_case_of_6": {
+  "cost": 65,
+  "exact": 65,
+  "basis": "invoice price 390 per case of 6 = 65.0000 per bottle"
+ },
+ "p06b_half_bottle_each": {
+  "cost": 9.5,
+  "exact": 9.5,
+  "basis": "invoice price 9.5 per each; booked as-is"
+ },
+ "p06c_half_case_24": {
+  "cost": 8,
+  "exact": 8,
+  "basis": "invoice price 192 per case of 24 = 8.0000 per bottle"
+ },
+ "p07_kdv_inclusive_exclusive": "perBottleLotCost has no tax input; 264 incl-18% and 264 excl both give {\"cost\":22,\"exact\":22,\"basis\":\"invoice price 264 per case of 12 = 22.0000 per bottle\"}",
+ "p09a_freight_line_unattached_with_item": {
+  "ok": true,
+  "posted": [
+   {
+    "item": "A",
+    "cost": 22,
+    "reason": "delivery dddddddd-dddd-dddd-dddd-dddddddddddd verified (ADR 0103 A1); invoice price 264 per case of 12 = 22.0000 per bottle"
+   }
+  ],
+  "prov": []
+ },
+ "p09b_item_unpriced_plus_freight_one_item": {
+  "ok": true,
+  "posted": [
+   {
+    "item": "A",
+    "cost": 40,
+    "reason": "delivery dddddddd-dddd-dddd-dddd-dddddddddddd verified (ADR 0103 A1); invoice price 40 per each; booked as-is"
+   }
+  ],
+  "prov": []
+ },
+ "p09c_discount_line_negative": {
+  "ok": true,
+  "posted": [
+   {
+    "item": "A",
+    "cost": 22,
+    "reason": "delivery dddddddd-dddd-dddd-dddd-dddddddddddd verified (ADR 0103 A1); invoice price 264 per case of 12 = 22.0000 per bottle"
+   }
+  ],
+  "prov": []
+ },
+ "p09d_item_unattached_plus_freight_unattached": {
+  "ok": true,
+  "posted": [],
+  "prov": [
+   "A: no agreed price reaches this item — the invoice line does not name it and no accepted proposal covers it. The lot stays provisional: a cost nobody agr"
+  ]
+ },
+ "p10_one_third": {
+  "cost": 0.33,
+  "exact": 0.3333,
+  "basis": "invoice price 1 per 3 bottles = 0.3333 per bottle"
+ },
+ "p10b_100_over_3": {
+  "cost": 33.33,
+  "exact": 33.3333,
+  "basis": "invoice price 100 per 3 bottles = 33.3333 per bottle"
+ },
+ "p10c_roundtrip_loss": {
+  "cost": 33.33,
+  "x3": 99.99,
+  "paper": 100
+ },
+ "p10d_case_of_7_price_100": {
+  "cost": 14.29,
+  "exact": 14.2857,
+  "x7": 100.03,
+  "paper": 100
+ },
+ "p10e_huge": [
+  {
+   "cost": 1000000000,
+   "exact": 1000000000,
+   "basis": "invoice price 1000000000 per bottle; booked as-is"
+  },
+  {
+   "REFUSED": "refused",
+   "reason": "the invoice line's price per bottle of 1.0000000000000001e+21 rounds to NaN at the two places a lot's cost is kept, and a lot is never booked at a cost of nothing"
+  },
+  null
+ ],
+ "p10f_sub_cent": {
+  "REFUSED": "refused",
+  "reason": "the invoice line's price per bottle of 0.004 rounds to 0.00 at the two places a lot's cost is kept, and a lot is never booked at a cost of nothing"
+ },
+ "p11_currency": "perBottleLotCost / agreedPrices select no currency column; TRY and EUR lines would post their raw numbers into numeric(10,2) with no currency",
+ "p12_partial_6_of_12": {
+  "ok": true,
+  "posted": [
+   {
+    "item": "A",
+    "cost": 22,
+    "reason": "delivery dddddddd-dddd-dddd-dddd-dddddddddddd verified (ADR 0103 A1); invoice price 264 per case of 12 = 22.0000 per bottle"
+   }
+  ],
+  "prov": []
+ },
+ "p13a_credit_note_role": {
+  "ok": true,
+  "posted": [],
+  "prov": [
+   "A: no agreed price reaches this item — the invoice line does not name it and no accepted proposal covers it. The lot stays provisional: a cost nobody agr"
+  ]
+ },
+ "p13b_invoice_role_negative_qty_positive_price": {
+  "ok": true,
+  "posted": [
+   {
+    "item": "A",
+    "cost": 22,
+    "reason": "delivery dddddddd-dddd-dddd-dddd-dddddddddddd verified (ADR 0103 A1); invoice price 264 per case of 12 = 22.0000 per bottle"
+   }
+  ],
+  "prov": []
+ },
+ "p13c_invoice_role_negative_price": {
+  "ok": true,
+  "posted": [],
+  "prov": [
+   "A: no agreed price reaches this item — the invoice line does not name it and no accepted proposal covers it. The lot stays provisional: a cost nobody agr"
+  ]
+ },
+ "p14_proposal_overrides": {
+  "ok": true,
+  "posted": [
+   {
+    "item": "A",
+    "cost": 264,
+    "reason": "delivery dddddddd-dddd-dddd-dddd-dddddddddddd verified (ADR 0103 A1)"
+   }
+  ],
+  "prov": []
+ },
+ "p15a_keg_per_keg": {
+  "cost": 300,
+  "exact": 300,
+  "basis": "invoice price 300 per keg; booked as-is"
+ },
+ "p15b_keg_priced_per_bottle": {
+  "REFUSED": "refused",
+  "reason": "the invoice line is counted in kegs but priced per bottle, and a keg is not a number of bottles"
+ },
+ "p15c_case_priced_per_keg": {
+  "REFUSED": "refused",
+  "reason": "the invoice line is counted in cases but priced per keg, and a keg is not a number of bottles"
+ },
+ "p16_each_line_priced_per_case": {
+  "cost": 22,
+  "exact": 22,
+  "basis": "invoice price 264 per case of 12 = 22.0000 per bottle"
+ },
+ "p17_comma": {
+  "REFUSED": "no_price"
+ },
+ "p18_allowance_deposit_freegoods": {
+  "ok": true,
+  "posted": [
+   {
+    "item": "A",
+    "cost": 22,
+    "reason": "delivery dddddddd-dddd-dddd-dddd-dddddddddddd verified (ADR 0103 A1); invoice price 264 per case of 12 = 22.0000 per bottle"
+   }
+  ],
+  "prov": []
+ }
+}

@@ -1,0 +1,222 @@
+[
+ [
+  "M1 landed price not wired (byItem loop dropped)",
+  35,
+  7,
+  [
+   "delivery-cost-note.spec.ts",
+   "delivery-landed-wiring.spec.ts",
+   "delivery-stock.service.spec.ts"
+  ],
+  []
+ ],
+ [
+  "M2 held reasons not merged",
+  17,
+  4,
+  [
+   "delivery-landed-wiring.spec.ts",
+   "delivery-stock.service.spec.ts"
+  ],
+  []
+ ],
+ [
+  "M3 header select loses charge columns",
+  1,
+  1,
+  [
+   "delivery-landed-wiring.spec.ts"
+  ],
+  []
+ ],
+ [
+  "M4 unreadable header swallowed",
+  2,
+  1,
+  [
+   "delivery-landed-wiring.spec.ts",
+   "delivery-stock.service.spec.ts"
+  ],
+  []
+ ],
+ [
+  "M5 booked not given to landDelivery",
+  34,
+  6,
+  [
+   "delivery-cost-note.spec.ts",
+   "delivery-landed-wiring.spec.ts",
+   "delivery-stock.service.spec.ts"
+  ],
+  []
+ ],
+ [
+  "M6 repair never recognises printed case price",
+  8,
+  3,
+  [
+   "delivery-cost-note.spec.ts",
+   "delivery-landed-wiring.spec.ts",
+   "delivery-stock.service.spec.ts"
+  ],
+  []
+ ],
+ [
+  "M7 repair has no line-only fallback",
+  2,
+  1,
+  [
+   "delivery-landed-wiring.spec.ts",
+   "delivery-stock.service.spec.ts"
+  ],
+  []
+ ],
+ [
+  "M8 basis not in ledger reason",
+  5,
+  1,
+  [
+   "delivery-landed-wiring.spec.ts",
+   "delivery-stock.service.spec.ts"
+  ],
+  []
+ ],
+ [
+  "M9 left-out sentence dropped",
+  4,
+  3,
+  [
+   "delivery-cost-note.spec.ts",
+   "delivery.service.spec.ts"
+  ],
+  []
+ ],
+ [
+  "M10 tax sentence dropped",
+  2,
+  1,
+  [
+   "delivery-cost-note.spec.ts",
+   "delivery.service.spec.ts"
+  ],
+  []
+ ],
+ [
+  "M11 repaired-landed sentence dropped",
+  2,
+  1,
+  [
+   "delivery-cost-note.spec.ts",
+   "delivery.service.spec.ts"
+  ],
+  []
+ ],
+ [
+  "X1 currency guard bypassed (landDelivery)",
+  5,
+  0,
+  [
+   "delivery-stock.service.spec.ts",
+   "paper-landed-cost.spec.ts"
+  ],
+  []
+ ],
+ [
+  "X2 houseCurrency not passed to landDelivery",
+  2,
+  0,
+  [
+   "delivery-stock.service.spec.ts"
+  ],
+  []
+ ],
+ [
+  "X3 accepted-proposal currency check dropped",
+  1,
+  0,
+  [
+   "delivery-stock.service.spec.ts"
+  ],
+  []
+ ],
+ [
+  "X4 finishProvisional ignores cost_state filter",
+  0,
+  0,
+  [],
+  []
+ ],
+ [
+  "X5 finishProvisional posts sold-out lots",
+  1,
+  0,
+  [
+   "delivery-stock.service.spec.ts"
+  ],
+  []
+ ],
+ [
+  "X6 `only` filter dropped (re-verify reposts every item)",
+  1,
+  0,
+  [
+   "delivery-stock.service.spec.ts"
+  ],
+  []
+ ],
+ [
+  "X7 re-verify never calls finishProvisional",
+  1,
+  0,
+  [
+   "delivery.service.spec.ts"
+  ],
+  []
+ ],
+ [
+  "X8 six-place -> two-place landed rounding",
+  9,
+  1,
+  [
+   "delivery-landed-wiring.spec.ts",
+   "delivery-stock.service.spec.ts",
+   "paper-landed-cost.spec.ts"
+  ],
+  []
+ ],
+ [
+  "X9 largest-remainder leftovers dropped",
+  5,
+  1,
+  [
+   "delivery-landed-wiring.spec.ts",
+   "delivery-stock.service.spec.ts",
+   "landed-cost.spec.ts",
+   "paper-landed-cost.spec.ts"
+  ],
+  []
+ ],
+ [
+  "X10 6-place cent check dropped",
+  1,
+  0,
+  [
+   "paper-landed-cost.spec.ts"
+  ],
+  []
+ ],
+ [
+  "X11 finishProvisional tenant filter dropped",
+  0,
+  0,
+  [],
+  []
+ ],
+ [
+  "X12 house currency read tenant filter dropped",
+  0,
+  0,
+  [],
+  []
+ ]
+]

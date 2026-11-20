@@ -1,0 +1,23 @@
+{
+ "storedPreFold": "kavakl dere|yakut|unstated|750|1",
+ "Kavaklıdere": {
+  "foldedKey": "kavaklidere|yakut|unstated|750|1",
+  "preFoldLookupKey": "kavakl dere|yakut|unstated|750|1",
+  "findsStoredRow": true
+ },
+ "KAVAKLIDERE": {
+  "foldedKey": "kavaklidere|yakut|unstated|750|1",
+  "preFoldLookupKey": null,
+  "findsStoredRow": false
+ },
+ "Kavaklidere": {
+  "foldedKey": "kavaklidere|yakut|unstated|750|1",
+  "preFoldLookupKey": null,
+  "findsStoredRow": false
+ },
+ "kavaklıdere": {
+  "foldedKey": "kavaklidere|yakut|unstated|750|1",
+  "preFoldLookupKey": "kavakl dere|yakut|unstated|750|1",
+  "findsStoredRow": true
+ }
+}

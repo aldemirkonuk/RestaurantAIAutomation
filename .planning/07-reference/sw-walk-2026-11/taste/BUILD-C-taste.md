@@ -1,0 +1,7 @@
+# BUILD C - taste card (2026-11-19)
+PR: https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/1918 (DRAFT, base feat/g2-inventory-quantities-carry-their-unit = #1912). Branch feat/taste-c-card, head 9719e222a. 10 files, +1597/-2.
+Tests (apps/web, heavy.sh): taste.test.ts 19, taste-words.test.ts 28, TasteCard.test.tsx 22, ItemDrawer.test.tsx 39 (3 new): 108 pass. src/pages/inventory: 35 files, 736 tests pass. tsc --noEmit clean.
+Mutants (all killed): M1 value shown for low-conf axis; M2 every 404 failed; M3 every 404 absent; M4 marks dropped; M5 'none' to missing; M6 card for supply; M7 low-conf axis in summary; M8b bar for band-only (M8 whisker-only was an equivalent mutant: whisker lives inside the non-band-only branch); M9 conflict value shown.
+Decisions: see PR body (K8 classification; drop axes with no source; band-only has no bar; client-built summary; method ordinal/cata; own descriptor chip list).
+Owed: browser checks 1-6 (3-6 need lane B + C merged on local stack). Lane B's closed descriptor list must contain taste-words.ts DESCRIPTOR_GROUPS ids (savoury rich fresh bright balanced sharp mellow sweet-and-sour spicy smoky herby tangy; crisp creamy chewy flaky juicy silky crunchy tender grainy sticky); a mismatch shows the gateway's 400 sentence and saves nothing.
+Not done: dish and cocktail mounting (S5), export columns (S4); CSS not eyeballed in a browser (jsdom only).

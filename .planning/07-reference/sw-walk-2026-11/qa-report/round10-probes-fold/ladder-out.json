@@ -1,0 +1,50 @@
+{
+ "wine=Kavaklıdere": {
+  "vendors": [
+   "Vendor-caps",
+   "Vendor-post-fold",
+   "Vendor-pre-fold"
+  ],
+  "productOr": 1,
+  "eq": 0
+ },
+ "wine=KAVAKLIDERE": {
+  "vendors": [
+   "Vendor-caps",
+   "Vendor-post-fold"
+  ],
+  "productOr": 1,
+  "eq": 0
+ },
+ "wine=Kavaklidere": {
+  "vendors": [
+   "Vendor-caps",
+   "Vendor-post-fold"
+  ],
+  "productOr": 1,
+  "eq": 0
+ },
+ "wine=Kavaklıdere NFD": {
+  "vendors": [
+   "Vendor-caps",
+   "Vendor-post-fold",
+   "Vendor-pre-fold"
+  ],
+  "productOr": 1,
+  "eq": 0
+ },
+ "signatureHash-only(new hash)": [
+  "Vendor-caps",
+  "Vendor-post-fold"
+ ],
+ "tenant": {
+  "productClauses": [
+   "master_wine_id.eq.11111111-2222-3333-4444-555555555555,signature_hash.eq.fbbb0dd4b351ecf518e2639b8853d7e1a9cd077142c1d39a3cbddb832c083245,signature_hash.eq.9c6193766fcc284c6ee4a14bbddefe7b02551f6f40a98ddbeaee60c6fba81a65"
+  ],
+  "scopeClauses": [
+   "visibility.is.null,visibility.neq.contributed_aggregate_only",
+   "restaurant_id.is.null,restaurant_id.eq.tenant-A"
+  ],
+  "isHexOnly": true
+ }
+}

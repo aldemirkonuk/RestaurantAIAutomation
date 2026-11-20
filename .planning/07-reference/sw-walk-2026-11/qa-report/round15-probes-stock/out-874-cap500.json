@@ -1,0 +1,11 @@
+{
+ "listRows": 500,
+ "card": {
+  "totalItems": 500,
+  "totalBottles": 500,
+  "lowStockCount": 500,
+  "criticalCount": 0,
+  "healthyCount": 0
+ },
+ "inboxRows": 500
+}

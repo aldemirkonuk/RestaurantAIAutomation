@@ -1,0 +1,11 @@
+{
+ "rows": 1200,
+ "withVelocity": 1000,
+ "firstVel": 1.5,
+ "lateAnalyticsReadable": true,
+ "keys": [
+  "velocityPerDay",
+  "daysOfCover",
+  "analyticsReadable"
+ ]
+}

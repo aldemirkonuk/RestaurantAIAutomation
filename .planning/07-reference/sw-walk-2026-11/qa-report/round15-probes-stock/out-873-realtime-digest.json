@@ -1,0 +1,9 @@
+{
+ "levels": {
+  "C1_counted_2of5_critical": "critical",
+  "U2_uncounted_recv_sold_0of3": "critical"
+ },
+ "writes": [],
+ "fired": [],
+ "digestSent": 0
+}

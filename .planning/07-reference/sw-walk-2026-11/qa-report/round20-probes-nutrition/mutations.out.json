@@ -1,0 +1,182 @@
+[
+ {
+  "pr": "923",
+  "mutant": "n1 unknown figure becomes 0",
+  "result": "KILLED"
+ },
+ {
+  "pr": "923",
+  "mutant": "n9 100 g cap raised to 1000",
+  "result": "KILLED"
+ },
+ {
+  "pr": "923",
+  "mutant": "n5 ABV allowed per 100 g",
+  "result": "SURVIVED"
+ },
+ {
+  "pr": "923",
+  "mutant": "n11 saturates may exceed fat",
+  "result": "KILLED"
+ },
+ {
+  "pr": "923",
+  "mutant": "n12 lookup w/o ref allowed",
+  "result": "KILLED"
+ },
+ {
+  "pr": "924",
+  "mutant": "n2 nutrition read drops house filter",
+  "result": "KILLED"
+ },
+ {
+  "pr": "924",
+  "mutant": "n2b item read drops house filter",
+  "result": "KILLED"
+ },
+ {
+  "pr": "924",
+  "mutant": "n7 failed figures read -> empty card",
+  "result": "KILLED"
+ },
+ {
+  "pr": "924",
+  "mutant": "n7b failed allergens read -> all not_stated",
+  "result": "KILLED"
+ },
+ {
+  "pr": "924",
+  "mutant": "n8 controller role gate removed",
+  "result": "KILLED"
+ },
+ {
+  "pr": "924",
+  "mutant": "n10 other-house save -> 503 not 404",
+  "result": "KILLED"
+ },
+ {
+  "pr": "924",
+  "mutant": "n13 duplicate allergen allowed",
+  "result": "KILLED"
+ },
+ {
+  "pr": "924",
+  "mutant": "n14 unstated allergen sent as row",
+  "result": "KILLED"
+ },
+ {
+  "pr": "926",
+  "mutant": "n3 pack-listed allergen drafted as free",
+  "result": "KILLED"
+ },
+ {
+  "pr": "926",
+  "mutant": "n15 missing salt becomes 0",
+  "result": "KILLED"
+ },
+ {
+  "pr": "926",
+  "mutant": "n16 ABV kept per 100 g",
+  "result": "KILLED"
+ },
+ {
+  "pr": "926",
+  "mutant": "n17 kJ conversion /4.184 -> /4",
+  "result": "KILLED"
+ },
+ {
+  "pr": "926",
+  "mutant": "n18 attribution text dropped",
+  "result": "KILLED"
+ },
+ {
+  "pr": "927",
+  "mutant": "n4 barcode shape unchecked",
+  "result": "KILLED"
+ },
+ {
+  "pr": "927",
+  "mutant": "n19 fdcId shape unchecked",
+  "result": "SURVIVED"
+ },
+ {
+  "pr": "927",
+  "mutant": "n20 name not URL-encoded",
+  "result": "SURVIVED"
+ },
+ {
+  "pr": "927",
+  "mutant": "n21 item ownership not checked before fetch",
+  "result": "KILLED"
+ },
+ {
+  "pr": "927",
+  "mutant": "n22 500 answered as no-product",
+  "result": "KILLED"
+ },
+ {
+  "pr": "927",
+  "mutant": "n23 unreachable swallowed as none",
+  "result": "KILLED"
+ },
+ {
+  "pr": "927",
+  "mutant": "n24 timeout removed",
+  "result": "SURVIVED"
+ },
+ {
+  "pr": "927",
+  "mutant": "n25 lookup open to any role",
+  "result": "SURVIVED"
+ },
+ {
+  "pr": "928",
+  "mutant": "c1 gap drawn as zero",
+  "result": "KILLED"
+ },
+ {
+  "pr": "928",
+  "mutant": "c1b line gap drawn as zero",
+  "result": "KILLED"
+ },
+ {
+  "pr": "928",
+  "mutant": "c2 units never split",
+  "result": "KILLED"
+ },
+ {
+  "pr": "928",
+  "mutant": "c3 line connects across gaps",
+  "result": "SURVIVED"
+ },
+ {
+  "pr": "928",
+  "mutant": "c4 choose() never swaps",
+  "result": "KILLED"
+ },
+ {
+  "pr": "928",
+  "mutant": "c5 line may equal bars",
+  "result": "KILLED"
+ },
+ {
+  "pr": "928",
+  "mutant": "c6 picker hidden",
+  "result": "KILLED"
+ },
+ {
+  "pr": "928",
+  "mutant": "c7 caption words removed",
+  "result": "KILLED"
+ },
+ {
+  "pr": "928",
+  "mutant": "c8 sheet pick not remembered (page keeps none)",
+  "result": "SURVIVED"
+ },
+ {
+  "pr": "928",
+  "mutant": "c9 full-screen passes onPick (would save to sheet)",
+  "result": "SURVIVED"
+ }
+]

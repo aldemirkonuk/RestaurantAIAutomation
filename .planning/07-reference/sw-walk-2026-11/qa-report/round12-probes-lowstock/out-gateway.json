@@ -1,0 +1,199 @@
+{
+ "table": [
+  {
+   "wine": "U1_uncounted_recv_sold_2of3",
+   "inbox": "low",
+   "dashAlert": "warning",
+   "onList": "y"
+  },
+  {
+   "wine": "U2_uncounted_recv_sold_0of3",
+   "inbox": "critical",
+   "dashAlert": "critical",
+   "onList": "y"
+  },
+  {
+   "wine": "U3_uncounted_never_moved_0of3",
+   "inbox": "-",
+   "dashAlert": "-",
+   "onList": "y"
+  },
+  {
+   "wine": "C1_counted_2of5_critical",
+   "inbox": "critical",
+   "dashAlert": "warning",
+   "onList": "y"
+  },
+  {
+   "wine": "C2_counted_4of5_low",
+   "inbox": "low",
+   "dashAlert": "warning",
+   "onList": "y"
+  },
+  {
+   "wine": "P0_par0_counted_0",
+   "inbox": "-",
+   "dashAlert": "-",
+   "onList": "y"
+  },
+  {
+   "wine": "Z_counted_zero_par3",
+   "inbox": "critical",
+   "dashAlert": "critical",
+   "onList": "y"
+  },
+  {
+   "wine": "NEG_negative_stock",
+   "inbox": "critical",
+   "dashAlert": "warning",
+   "onList": "y"
+  },
+  {
+   "wine": "RC_recent_count_above_par",
+   "inbox": "-",
+   "dashAlert": "-",
+   "onList": "y"
+  },
+  {
+   "wine": "AR_archived_counted_1of3",
+   "inbox": "-",
+   "dashAlert": "-",
+   "onList": "n"
+  },
+  {
+   "wine": "CB_closed_bottle_only_1of3",
+   "inbox": "critical",
+   "dashAlert": "warning",
+   "onList": "y"
+  },
+  {
+   "wine": "OB_open_bottle_only_0of3",
+   "inbox": "critical",
+   "dashAlert": "critical",
+   "onList": "y"
+  },
+  {
+   "wine": "AT_at_par_3of3",
+   "inbox": "-",
+   "dashAlert": "-",
+   "onList": "y"
+  },
+  {
+   "wine": "IT_in_transit_counted_1of3",
+   "inbox": "-",
+   "dashAlert": "-",
+   "onList": "y"
+  },
+  {
+   "wine": "DL_deleted_at_counted_1of3",
+   "inbox": "-",
+   "dashAlert": "-",
+   "onList": "y"
+  }
+ ],
+ "s": {
+  "inbox": {
+   "U1_uncounted_recv_sold_2of3": {
+    "severity": "low",
+    "notCounted": true,
+    "stock": 2
+   },
+   "U2_uncounted_recv_sold_0of3": {
+    "severity": "critical",
+    "notCounted": true,
+    "stock": 0
+   },
+   "C1_counted_2of5_critical": {
+    "severity": "critical",
+    "notCounted": false,
+    "stock": 2
+   },
+   "C2_counted_4of5_low": {
+    "severity": "low",
+    "notCounted": false,
+    "stock": 4
+   },
+   "Z_counted_zero_par3": {
+    "severity": "critical",
+    "notCounted": false,
+    "stock": 0
+   },
+   "NEG_negative_stock": {
+    "severity": "critical",
+    "notCounted": false,
+    "stock": -1
+   },
+   "CB_closed_bottle_only_1of3": {
+    "severity": "critical",
+    "notCounted": false,
+    "stock": 1
+   },
+   "OB_open_bottle_only_0of3": {
+    "severity": "critical",
+    "notCounted": false,
+    "stock": 0
+   }
+  },
+  "dashAlerts": {
+   "U2_uncounted_recv_sold_0of3": {
+    "severity": "critical",
+    "message": "Çalkarası 2019 — 0 bottles by receipts and sales, not counted yet, you keep at least 3"
+   },
+   "Z_counted_zero_par3": {
+    "severity": "critical",
+    "message": "Boğazkere 2019 — 0 bottles left, you keep at least 3"
+   },
+   "OB_open_bottle_only_0of3": {
+    "severity": "critical",
+    "message": "Ismet 2019 — 0 bottles left, you keep at least 3"
+   },
+   "U1_uncounted_recv_sold_2of3": {
+    "severity": "warning",
+    "message": "Öküzgözü 2019 — 2 bottles by receipts and sales, not counted yet, you keep at least 3"
+   },
+   "C1_counted_2of5_critical": {
+    "severity": "warning",
+    "message": "Şiraz 2019 — 2 bottles left, you keep at least 5"
+   },
+   "C2_counted_4of5_low": {
+    "severity": "warning",
+    "message": "Ada 2019 — 4 bottles left, you keep at least 5"
+   },
+   "NEG_negative_stock": {
+    "severity": "warning",
+    "message": "Kalecik 2019 — -1 bottles left, you keep at least 3"
+   },
+   "CB_closed_bottle_only_1of3": {
+    "severity": "warning",
+    "message": "Dikmen 2019 — 1 bottle left, you keep at least 3"
+   }
+  },
+  "dashOutOfStock": [
+   "Zeytin 2019 — out of stock"
+  ],
+  "inboxCount": 8,
+  "inboxCritical": 6,
+  "dashAlertsThrew": null,
+  "dashSummary": {
+   "totalItems": 14,
+   "totalBottles": 19,
+   "lowStockCount": 10,
+   "criticalCount": 8,
+   "healthyCount": 1
+  },
+  "invSummary": {
+   "totalItems": 14,
+   "totalBottles": 19,
+   "lowStockCount": 10,
+   "criticalCount": 8,
+   "atParCount": 1,
+   "unknownCount": 2,
+   "healthyCount": 1,
+   "toastMappedCount": 0,
+   "toastUnmappedCount": 14
+  }
+ },
+ "warns": [
+  "Low-stock count disagreement for 0d161900-0000-4000-8000-0000000000aa: v_low_stock_items says 8, classifyStock over restaurant_inventory says 10. One of the two predicates has drifted — see datasets/sim/fixtures/below-par-cases.json."
+ ]
+}

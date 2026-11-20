@@ -1,0 +1,126 @@
+{
+ "generator_sunday_21_NY": {
+  "periodKey": "fire:week:2026-W39",
+  "suppressionKey": "insight:overall.revenue.trend_direction#*#fire:week:2026-W40",
+  "suppressionKeys": {
+   "insight": "insight:overall.revenue.trend_direction#*#fire:week:2026-W40",
+   "subject": "insight:overall.revenue.trend_direction",
+   "rule": "insight:overall.revenue.trend_direction"
+  },
+  "keyFromPeriodKey": "insight:overall.revenue.trend_direction#*#fire:week:2026-W39",
+  "suppressionFollowsPeriodKey": false
+ },
+ "generator_dismiss_with_insight_suppression_key_then_reread": {
+  "shownAfterDismiss": 1,
+  "suppressed": 0
+ },
+ "generator_dismiss_with_rekeyed_key_then_reread": {
+  "shownAfterDismiss": 0,
+  "suppressed": 1
+ },
+ "house_clock": {
+  "Pacific/Auckland 2026-12-31T11:30:00Z": {
+   "note": "NZDT UTC+13: 00:30 Jan 1 local",
+   "day": "fire:day:2027-01-01",
+   "week": "fire:week:2026-W53",
+   "month": "fire:month:2027-01",
+   "utcDay": "fire:day:2026-12-31"
+  },
+  "Pacific/Apia 2026-12-31T10:30:00Z": {
+   "note": "Apia UTC+13 (no DST since 2021): 23:30 Dec 31",
+   "day": "fire:day:2026-12-31",
+   "week": "fire:week:2026-W53",
+   "month": "fire:month:2026-12",
+   "utcDay": "fire:day:2026-12-31"
+  },
+  "Pacific/Kiritimati 2026-12-31T10:30:00Z": {
+   "note": "UTC+14: 00:30 Jan 1",
+   "day": "fire:day:2027-01-01",
+   "week": "fire:week:2026-W53",
+   "month": "fire:month:2027-01",
+   "utcDay": "fire:day:2026-12-31"
+  },
+  "Etc/GMT+12 2026-12-31T23:30:00Z": {
+   "note": "UTC-12: 11:30 Dec 31",
+   "day": "fire:day:2026-12-31",
+   "week": "fire:week:2026-W53",
+   "month": "fire:month:2026-12",
+   "utcDay": "fire:day:2026-12-31"
+  },
+  "Etc/GMT+12 2027-01-01T11:59:00Z": {
+   "note": "UTC-12: 23:59 Dec 31 local",
+   "day": "fire:day:2026-12-31",
+   "week": "fire:week:2026-W53",
+   "month": "fire:month:2026-12",
+   "utcDay": "fire:day:2027-01-01"
+  },
+  "Etc/GMT+12 2027-01-01T12:01:00Z": {
+   "note": "UTC-12: 00:01 Jan 1 local",
+   "day": "fire:day:2027-01-01",
+   "week": "fire:week:2026-W53",
+   "month": "fire:month:2027-01",
+   "utcDay": "fire:day:2027-01-01"
+  },
+  "America/New_York 2027-03-14T06:59:00Z": {
+   "note": "NY 01:59 EST spring forward day",
+   "day": "fire:day:2027-03-14",
+   "week": "fire:week:2027-W10",
+   "month": "fire:month:2027-03",
+   "utcDay": "fire:day:2027-03-14"
+  },
+  "America/New_York 2027-03-14T07:00:00Z": {
+   "note": "NY 03:00 EDT",
+   "day": "fire:day:2027-03-14",
+   "week": "fire:week:2027-W10",
+   "month": "fire:month:2027-03",
+   "utcDay": "fire:day:2027-03-14"
+  },
+  "America/New_York 2026-11-02T04:59:00Z": {
+   "note": "NY 23:59 EST Sun->Mon edge? (Mon Nov2 04:59Z = Sun 23:59)",
+   "day": "fire:day:2026-11-01",
+   "week": "fire:week:2026-W44",
+   "month": "fire:month:2026-11",
+   "utcDay": "fire:day:2026-11-02"
+  },
+  "America/New_York 2026-11-02T05:01:00Z": {
+   "note": "NY 00:01 Mon",
+   "day": "fire:day:2026-11-02",
+   "week": "fire:week:2026-W45",
+   "month": "fire:month:2026-11",
+   "utcDay": "fire:day:2026-11-02"
+  },
+  "Europe/Istanbul 2026-11-07T20:59:00Z": {
+   "note": "Istanbul 23:59 Sat",
+   "day": "fire:day:2026-11-07",
+   "week": "fire:week:2026-W45",
+   "month": "fire:month:2026-11",
+   "utcDay": "fire:day:2026-11-07"
+  },
+  "Europe/Istanbul 2026-11-07T21:01:00Z": {
+   "note": "Istanbul 00:01 Sun",
+   "day": "fire:day:2026-11-08",
+   "week": "fire:week:2026-W45",
+   "month": "fire:month:2026-11",
+   "utcDay": "fire:day:2026-11-07"
+  },
+  "Pacific/Auckland 2026-12-27T10:59:00Z": {
+   "note": "Auckland Sun 23:59 local (ISO wk boundary)",
+   "day": "fire:day:2026-12-27",
+   "week": "fire:week:2026-W52",
+   "month": "fire:month:2026-12",
+   "utcDay": "fire:day:2026-12-27"
+  },
+  "Pacific/Auckland 2026-12-27T11:01:00Z": {
+   "note": "Auckland Mon 00:01 local",
+   "day": "fire:day:2026-12-28",
+   "week": "fire:week:2026-W53",
+   "month": "fire:month:2026-12",
+   "utcDay": "fire:day:2026-12-27"
+  }
+ },
+ "unknown_zone_name": "THROWS Invalid time zone specified: Nope/Zone",
+ "dismiss_2359_ny": {
+  "at2359": "fire:day:2026-11-03",
+  "at0001": "fire:day:2026-11-04"
+ }
+}

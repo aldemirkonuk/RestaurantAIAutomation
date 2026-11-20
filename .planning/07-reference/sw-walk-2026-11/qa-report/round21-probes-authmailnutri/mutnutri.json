@@ -1,0 +1,18 @@
+{"cwd":"apps/web","cmd":"npx vitest run src/pages/inventory/next/NutritionForm.test.tsx src/pages/inventory/next/NutritionCard.test.tsx src/pages/inventory/next/nutrition-sum.test.ts src/pages/inventory/next/ItemDrawer.test.tsx >/dev/null 2>&1",
+"mutants":[
+{"id":"n1 null->0 in readFigure","file":"apps/web/src/pages/inventory/next/NutritionForm.tsx","old":"if (t === '') return null;","new":"if (t === '') return 0;"},
+{"id":"n2 all-empty sends figures obj","file":"apps/web/src/pages/inventory/next/NutritionForm.tsx","old":"const figures = anyFigure\n      ?","new":"const figures = true\n      ?"},
+{"id":"n3 unknown figure shows 0","file":"apps/web/src/pages/inventory/next/nutrition-words.ts","old":"if (v === null) return 'not known';","new":"if (v === null) return '0 g';"},
+{"id":"n4 unstated reads free","file":"apps/web/src/pages/inventory/next/nutrition-words.ts","old":"if (unstated.length === allergens.length) {","new":"if (false) {"},
+{"id":"n5 not-stated line dropped","file":"apps/web/src/pages/inventory/next/nutrition-words.ts","old":"if (unstated.length) lines.push(`Not stated: ${list(unstated)}.`);","new":""},
+{"id":"n6 502 sentence off","file":"apps/web/src/pages/inventory/next/NutritionForm.tsx","old":"getErrorStatus(e) === 502 ? LOOKUP_UNREACHED","new":"false ? LOOKUP_UNREACHED"},
+{"id":"n7 sum every->some free","file":"apps/web/src/pages/inventory/next/nutrition-sum.ts","old":"statuses.every((s) => s === 'free')","new":"statuses.some((s) => s === 'free')"},
+{"id":"n8 sum atLeast off","file":"apps/web/src/pages/inventory/next/nutrition-sum.ts","old":"atLeast: total !== null && atLeast","new":"atLeast: false"},
+{"id":"n9 sum missing null=0","file":"apps/web/src/pages/inventory/next/nutrition-sum.ts","old":"if (per100 === null) {","new":"if (false) {"},
+{"id":"n10 sum no-nutrition counted","file":"apps/web/src/pages/inventory/next/nutrition-sum.ts","old":"if (!line.nutrition) return 'nothing is recorded about what is in it';","new":""},
+{"id":"n11 basis mismatch ignored","file":"apps/web/src/pages/inventory/next/nutrition-sum.ts","old":"if (line.nutrition.basis !== base.per) {","new":"if (false) {"},
+{"id":"n12 abv energy not marked","file":"apps/web/src/pages/inventory/next/nutrition-sum.ts","old":"if (k === 'energyKcal' && line.nutrition!.energyFromAbv) atLeast = true;","new":""},
+{"id":"n13 readFigure negative ok","file":"apps/web/src/pages/inventory/next/NutritionForm.tsx","old":"Number.isFinite(n) && n >= 0","new":"Number.isFinite(n)"},
+{"id":"n14 lookup auto-saves","file":"apps/web/src/pages/inventory/next/NutritionForm.tsx","old":"onSuccess: (r) => (r.kind === 'draft' ? fill(r.draft) : setFound(r)),","new":"onSuccess: (r) => { if (r.kind === 'draft') { fill(r.draft); save.mutate({ figures: null, allergens: [] }); } else setFound(r); },"},
+{"id":"n15 card error shows data","file":"apps/web/src/pages/inventory/next/NutritionCard.tsx","old":"if (q.isError) {","new":"if (false) {"}
+]}

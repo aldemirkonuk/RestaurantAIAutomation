@@ -1,0 +1,36 @@
+{
+ "truth": {
+  "titles": 5000,
+  "low": 5000,
+  "critical": 5000
+ },
+ "inboxRows": 1000,
+ "inboxNull": false,
+ "dashAlerts": 1000,
+ "card": {
+  "totalItems": 5000,
+  "totalBottles": 5000,
+  "lowStockCount": 1000,
+  "criticalCount": 0,
+  "healthyCount": 4000
+ },
+ "invSummary": {
+  "totalItems": 5000,
+  "totalBottles": 5000,
+  "lowStockCount": 5000,
+  "criticalCount": 5000,
+  "atParCount": 0,
+  "unknownCount": 0,
+  "healthyCount": 0,
+  "toastMappedCount": 0,
+  "toastUnmappedCount": 5000
+ },
+ "listRows": 5000,
+ "mcpRows": 1000,
+ "chipRows": 1000,
+ "requests": {
+  "inv": 20,
+  "view": 7
+ },
+ "distinctListIds": 5000
+}

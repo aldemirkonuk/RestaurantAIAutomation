@@ -1,0 +1,14 @@
+{"cwd":"apps/web","cmd":"npx vitest run src/pages/cellar/next/recipe/RecipeSheet.test.tsx src/pages/cellar/next/recipe/LineRow.test.tsx >/dev/null 2>&1",
+"mutants":[
+{"id":"u1 ambiguity off","file":"apps/web/src/pages/cellar/next/recipe/units.ts","old":"if (AMBIGUOUS_AMOUNT.test(text.trim())) return null;","new":""},
+{"id":"u2 regex any digits","file":"apps/web/src/pages/cellar/next/recipe/units.ts","old":"/^[1-9]\\d{0,2}[.,]\\d{3}$/","new":"/^[1-9]\\d{0,2}[.,]\\d{3,}$/"},
+{"id":"u3 leading zero also ambiguous","file":"apps/web/src/pages/cellar/next/recipe/units.ts","old":"/^[1-9]\\d{0,2}[.,]\\d{3}$/","new":"/^\\d{1,3}[.,]\\d{3}$/"},
+{"id":"u4 4-digit integer part also","file":"apps/web/src/pages/cellar/next/recipe/units.ts","old":"/^[1-9]\\d{0,2}[.,]\\d{3}$/","new":"/^[1-9]\\d{0,3}[.,]\\d{3}$/"},
+{"id":"d1 guard never added","file":"apps/web/src/pages/cellar/next/recipe/drafts.ts","old":"window.addEventListener('beforeunload', warn);","new":""},
+{"id":"d2 warn does not prevent","file":"apps/web/src/pages/cellar/next/recipe/drafts.ts","old":"  e.preventDefault();\n  // Older","new":"  // Older"},
+{"id":"d3 returnValue not set (old Chrome)","file":"apps/web/src/pages/cellar/next/recipe/drafts.ts","old":"e.returnValue = true;","new":""},
+{"id":"d4 key drops house","file":"apps/web/src/pages/cellar/next/recipe/drafts.ts","old":"`${userId ?? ''}|${rid ?? ''}|${cocktailId}`","new":"`${userId ?? ''}||${cocktailId}`"},
+{"id":"d5 key drops drink","file":"apps/web/src/pages/cellar/next/recipe/drafts.ts","old":"`${userId ?? ''}|${rid ?? ''}|${cocktailId}`","new":"`${userId ?? ''}|${rid ?? ''}|`"},
+{"id":"d6 set-aside alone doesn't keep","file":"apps/web/src/pages/cellar/next/recipe/RecipeSheet.tsx","old":"if ((dirty && rows) || setAside) keepDraft","new":"if ((dirty && rows)) keepDraft"},
+{"id":"d7 canEdit gate on store removed","file":"apps/web/src/pages/cellar/next/recipe/RecipeSheet.tsx","old":"const [kept] = useState(() => (canEdit ? takeDraft(storeKey) : null));","new":"const [kept] = useState(() => takeDraft(storeKey));"}
+]}

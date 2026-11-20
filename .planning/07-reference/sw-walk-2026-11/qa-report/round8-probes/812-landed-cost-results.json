@@ -1,0 +1,140 @@
+{
+ "case_priced_2cases_264": [
+  22,
+  "net"
+ ],
+ "bottle_priced_24_at_22": [
+  22,
+  "net"
+ ],
+ "price_base_12_142": [
+  11.833333333333334,
+  "net"
+ ],
+ "seam_qty24_bottles_price264_percase_no_base": [
+  264,
+  "net"
+ ],
+ "seam_listed_bottles_equals_cases": [
+  264,
+  "net"
+ ],
+ "seam_total_528_vs_price264_qty24": [
+  "unresolved",
+  "Line 1 does not add up: 24 bottle at 264.00 is 6336.00, but the paper prints 528.00. Its cost stays open until someone reads the paper."
+ ],
+ "kdv_inside_reclaim": [
+  10,
+  "net"
+ ],
+ "kdv_inside_noreclaim": [
+  11.8,
+  "gross_cost"
+ ],
+ "kdv_outside_reclaim": [
+  10,
+  "net"
+ ],
+ "kdv_outside_noreclaim": [
+  11.8,
+  "gross_cost"
+ ],
+ "kdv_outside_reclaim_with_freight10": [
+  11,
+  null
+ ],
+ "kdv_inside_reclaim_with_freight10": [
+  11,
+  null
+ ],
+ "mixed_rate_lines": [
+  [
+   10.5,
+   null
+  ],
+  [
+   10.5,
+   null
+  ]
+ ],
+ "includes_rate0_reclaim": [
+  11.8,
+  "net"
+ ],
+ "freight_discount": [
+  [
+   52.5,
+   null
+  ],
+  [
+   42,
+   null
+  ]
+ ],
+ "freight_short6": [
+  [
+   55,
+   null
+  ],
+  [
+   44,
+   null
+  ]
+ ],
+ "freight_short6_values": [
+  [
+   660,
+   330
+  ],
+  [
+   440,
+   440
+  ]
+ ],
+ "third": [
+  0.3333333333333333,
+  4,
+  3.96
+ ],
+ "third_exact_price": [
+  0.3333333333333333,
+  "net"
+ ],
+ "currency_fields_in_module": false,
+ "mixed_currency_same_paper": [
+  22,
+  "net"
+ ],
+ "qty0": [
+  "unresolved",
+  "Line 1 does not say how many bottles it lists."
+ ],
+ "qty0_listed12": [
+  0,
+  "net"
+ ],
+ "qty_neg": [
+  "unresolved",
+  "Line 1 prints a figure that is negative or not a number, so it cannot be read as stock this paper delivered."
+ ],
+ "credit_note_neg_price": [
+  "unresolved",
+  "Line 1 prints a figure that is negative or not a number, so it cannot be read as stock this paper delivered."
+ ],
+ "accepted0": [
+  null,
+  "net"
+ ],
+ "negative_freight": [
+  "unresolved",
+  "The paper's freight is negative or not a number, so no line's cost can be final."
+ ],
+ "nan_price": [
+  "unresolved",
+  "Line 1 prints a figure that is negative or not a number, so it cannot be read as stock this paper delivered."
+ ],
+ "rate_100": [
+  "unresolved",
+  "Line 1 prints a tax rate that is not a rate, so its cost cannot be said."
+ ]
+}

@@ -1,0 +1,106 @@
+{
+ "firstBytes": [
+  34,
+  84,
+  105
+ ],
+ "type": "text/csv;charset=utf-8",
+ "cells": [
+  {
+   "name": "Plain Cabernet",
+   "readable": true,
+   "wac": 12.5,
+   "value": "62.50"
+  },
+  {
+   "name": "Plain Cabernet (unread)",
+   "readable": false,
+   "wac": "could not be read",
+   "value": "could not be read"
+  },
+  {
+   "name": "Comma, Quote \" and, more (unread)",
+   "readable": false,
+   "wac": "could not be read",
+   "value": "could not be read"
+  },
+  {
+   "name": "Line\nBreak \"x\" (unread)",
+   "readable": false,
+   "wac": "could not be read",
+   "value": "could not be read"
+  },
+  {
+   "name": "İsmail Şarabı Ğ Ç Ö Ü ı (unread)",
+   "readable": false,
+   "wac": "could not be read",
+   "value": "could not be read"
+  },
+  {
+   "name": "=1+1 (unread)",
+   "readable": false,
+   "wac": "could not be read",
+   "value": "could not be read"
+  },
+  {
+   "name": "+90 212 (unread)",
+   "readable": false,
+   "wac": "could not be read",
+   "value": "could not be read"
+  },
+  {
+   "name": "-2+3 (unread)",
+   "readable": false,
+   "wac": "could not be read",
+   "value": "could not be read"
+  },
+  {
+   "name": "@SUM(A1) (unread)",
+   "readable": false,
+   "wac": "could not be read",
+   "value": "could not be read"
+  },
+  {
+   "name": "=cmd (unread)",
+   "readable": false,
+   "wac": "could not be read",
+   "value": "could not be read"
+  },
+  {
+   "name": "-5 (unread)",
+   "readable": false,
+   "wac": "could not be read",
+   "value": "could not be read"
+  },
+  {
+   "name": "=lead space (unread)",
+   "readable": false,
+   "wac": "could not be read",
+   "value": "could not be read"
+  },
+  {
+   "name": "=HYPERLINK(\"http://evil\",\"x\") (unread)",
+   "readable": false,
+   "wac": "could not be read",
+   "value": "could not be read"
+  },
+  {
+   "name": "\"=quoted\" (unread)",
+   "readable": false,
+   "wac": "could not be read",
+   "value": "could not be read"
+  },
+  {
+   "name": "00123 (unread)",
+   "readable": false,
+   "wac": "could not be read",
+   "value": "could not be read"
+  },
+  {
+   "name": "No cost on record",
+   "readable": true,
+   "wac": "",
+   "value": ""
+  }
+ ]
+}

@@ -1,0 +1,194 @@
+[
+ {
+  "label": "normalizeSignatureText vs python norm() [no abbrevs only if none]",
+  "s": "Ch. Margaux",
+  "a": "chateau margaux",
+  "b": "ch margaux"
+ },
+ {
+  "label": "normalizeIdentityText vs wine_normalize_text",
+  "s": "Ch. Margaux",
+  "a": "ch margaux",
+  "b": "chateau margaux"
+ },
+ {
+  "label": "normalizeSignatureText vs python norm() [no abbrevs only if none]",
+  "s": "CH. MARGAUX",
+  "a": "chateau margaux",
+  "b": "ch margaux"
+ },
+ {
+  "label": "normalizeIdentityText vs wine_normalize_text",
+  "s": "CH. MARGAUX",
+  "a": "ch margaux",
+  "b": "chateau margaux"
+ },
+ {
+  "label": "normalizeSignatureText vs python norm() [no abbrevs only if none]",
+  "s": "ch. margaux",
+  "a": "chateau margaux",
+  "b": "ch margaux"
+ },
+ {
+  "label": "normalizeIdentityText vs wine_normalize_text",
+  "s": "ch. margaux",
+  "a": "ch margaux",
+  "b": "chateau margaux"
+ },
+ {
+  "label": "normalizeSignatureText vs python norm() [no abbrevs only if none]",
+  "s": "St. Émilion",
+  "a": "saint emilion",
+  "b": "st emilion"
+ },
+ {
+  "label": "normalizeIdentityText vs wine_normalize_text",
+  "s": "St. Émilion",
+  "a": "st emilion",
+  "b": "saint emilion"
+ },
+ {
+  "label": "normalizeSignatureText vs python norm() [no abbrevs only if none]",
+  "s": "St. Émilion",
+  "a": "saint emilion",
+  "b": "st emilion"
+ },
+ {
+  "label": "normalizeIdentityText vs wine_normalize_text",
+  "s": "St. Émilion",
+  "a": "st emilion",
+  "b": "saint emilion"
+ },
+ {
+  "label": "normalizeSignatureText vs python norm() [no abbrevs only if none]",
+  "s": "ST. ÉMILION",
+  "a": "saint emilion",
+  "b": "st emilion"
+ },
+ {
+  "label": "normalizeIdentityText vs wine_normalize_text",
+  "s": "ST. ÉMILION",
+  "a": "st emilion",
+  "b": "saint emilion"
+ },
+ {
+  "label": "normalizeSignatureText vs python norm() [no abbrevs only if none]",
+  "s": "st. émilion",
+  "a": "saint emilion",
+  "b": "st emilion"
+ },
+ {
+  "label": "normalizeIdentityText vs wine_normalize_text",
+  "s": "st. émilion",
+  "a": "st emilion",
+  "b": "saint emilion"
+ },
+ {
+  "label": "normalizeSignatureText vs python norm() [no abbrevs only if none]",
+  "s": "ST. ÉMİLİON",
+  "a": "saint emilion",
+  "b": "st emilion"
+ },
+ {
+  "label": "normalizeIdentityText vs wine_normalize_text",
+  "s": "ST. ÉMİLİON",
+  "a": "st emilion",
+  "b": "saint emilion"
+ },
+ {
+  "label": "normalizeSignatureText vs python norm() [no abbrevs only if none]",
+  "s": "Dom. Ott",
+  "a": "domaine ott",
+  "b": "dom ott"
+ },
+ {
+  "label": "normalizeIdentityText vs wine_normalize_text",
+  "s": "Dom. Ott",
+  "a": "dom ott",
+  "b": "domaine ott"
+ },
+ {
+  "label": "normalizeSignatureText vs python norm() [no abbrevs only if none]",
+  "s": "DOM. OTT",
+  "a": "domaine ott",
+  "b": "dom ott"
+ },
+ {
+  "label": "normalizeIdentityText vs wine_normalize_text",
+  "s": "DOM. OTT",
+  "a": "dom ott",
+  "b": "domaine ott"
+ },
+ {
+  "label": "normalizeSignatureText vs python norm() [no abbrevs only if none]",
+  "s": "dom. ott",
+  "a": "domaine ott",
+  "b": "dom ott"
+ },
+ {
+  "label": "normalizeIdentityText vs wine_normalize_text",
+  "s": "dom. ott",
+  "a": "dom ott",
+  "b": "domaine ott"
+ },
+ {
+  "label": "normalizeSignatureText vs python norm() [no abbrevs only if none]",
+  "s": "Mt. Ida",
+  "a": "monte ida",
+  "b": "mt ida"
+ },
+ {
+  "label": "normalizeIdentityText vs wine_normalize_text",
+  "s": "Mt. Ida",
+  "a": "mt ida",
+  "b": "monte ida"
+ },
+ {
+  "label": "normalizeSignatureText vs python norm() [no abbrevs only if none]",
+  "s": "MT. IDA",
+  "a": "monte ida",
+  "b": "mt ida"
+ },
+ {
+  "label": "normalizeIdentityText vs wine_normalize_text",
+  "s": "MT. IDA",
+  "a": "mt ida",
+  "b": "monte ida"
+ },
+ {
+  "label": "normalizeSignatureText vs python norm() [no abbrevs only if none]",
+  "s": "mt. ida",
+  "a": "monte ida",
+  "b": "mt ida"
+ },
+ {
+  "label": "normalizeIdentityText vs wine_normalize_text",
+  "s": "mt. ida",
+  "a": "mt ida",
+  "b": "monte ida"
+ },
+ {
+  "label": "normalizeSignatureText vs python norm() [no abbrevs only if none]",
+  "s": "mt. ıda",
+  "a": "monte ida",
+  "b": "mt ida"
+ },
+ {
+  "label": "normalizeIdentityText vs wine_normalize_text",
+  "s": "mt. ıda",
+  "a": "mt ida",
+  "b": "monte ida"
+ },
+ {
+  "label": "normalizeSignatureText vs python norm() [no abbrevs only if none]",
+  "s": "dom. ı",
+  "a": "domaine i",
+  "b": "dom i"
+ },
+ {
+  "label": "normalizeIdentityText vs wine_normalize_text",
+  "s": "dom. ı",
+  "a": "dom i",
+  "b": "domaine i"
+ }
+]

@@ -1,0 +1,16 @@
+{
+ "severityAfterRestate": {
+  "entrySeverity": "low",
+  "nowBand": "critical (1/3)",
+  "message": "Counted since: 1 bottle (par: 3). The alert's 2 was by receipts and sales."
+ },
+ "countedAbovePar": "Counted since: 6 bottles (par: 3). The alert's 2 was by receipts and sales.",
+ "notifReadError": 0,
+ "countedReadError": 0,
+ "digestRestated": 1,
+ "digestPatchKeys": [
+  [
+   "metadata"
+  ]
+ ]
+}

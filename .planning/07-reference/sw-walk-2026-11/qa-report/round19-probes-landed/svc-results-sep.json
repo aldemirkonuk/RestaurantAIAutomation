@@ -1,0 +1,140 @@
+{
+ "S1": [
+  {
+   "n": 1,
+   "extras": false,
+   "runs": 15,
+   "exact": 15,
+   "held": 0,
+   "offs": {},
+   "heldEx": []
+  },
+  {
+   "n": 1,
+   "extras": true,
+   "runs": 15,
+   "exact": 15,
+   "held": 0,
+   "offs": {},
+   "heldEx": []
+  },
+  {
+   "n": 2,
+   "extras": false,
+   "runs": 15,
+   "exact": 15,
+   "held": 0,
+   "offs": {},
+   "heldEx": []
+  },
+  {
+   "n": 2,
+   "extras": true,
+   "runs": 15,
+   "exact": 15,
+   "held": 0,
+   "offs": {},
+   "heldEx": []
+  },
+  {
+   "n": 3,
+   "extras": false,
+   "runs": 15,
+   "exact": 15,
+   "held": 0,
+   "offs": {},
+   "heldEx": []
+  },
+  {
+   "n": 3,
+   "extras": true,
+   "runs": 15,
+   "exact": 15,
+   "held": 0,
+   "offs": {},
+   "heldEx": []
+  },
+  {
+   "n": 10,
+   "extras": false,
+   "runs": 15,
+   "exact": 15,
+   "held": 0,
+   "offs": {},
+   "heldEx": []
+  },
+  {
+   "n": 10,
+   "extras": true,
+   "runs": 15,
+   "exact": 14,
+   "held": 0,
+   "offs": {
+    "1": 1
+   },
+   "heldEx": []
+  },
+  {
+   "n": 50,
+   "extras": false,
+   "runs": 15,
+   "exact": 15,
+   "held": 0,
+   "offs": {},
+   "heldEx": []
+  },
+  {
+   "n": 50,
+   "extras": true,
+   "runs": 15,
+   "exact": 15,
+   "held": 0,
+   "offs": {},
+   "heldEx": []
+  },
+  {
+   "n": 100,
+   "extras": false,
+   "runs": 15,
+   "exact": 15,
+   "held": 0,
+   "offs": {},
+   "heldEx": []
+  },
+  {
+   "n": 100,
+   "extras": true,
+   "runs": 15,
+   "exact": 12,
+   "held": 0,
+   "offs": {
+    "2": 1,
+    "-1": 2
+   },
+   "heldEx": []
+  },
+  {
+   "n": 200,
+   "extras": false,
+   "runs": 15,
+   "exact": 15,
+   "held": 0,
+   "offs": {},
+   "heldEx": []
+  },
+  {
+   "n": 200,
+   "extras": true,
+   "runs": 15,
+   "exact": 10,
+   "held": 1,
+   "offs": {
+    "1": 3,
+    "-1": 1
+   },
+   "heldEx": [
+    "Line 30 could not be priced, so this paper's charges and discount cannot be shared out and no line's cost is final. The lot stays provisional."
+   ]
+  }
+ ]
+}

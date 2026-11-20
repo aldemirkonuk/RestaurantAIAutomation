@@ -1,0 +1,15 @@
+{
+ "\"x <a@trusted.com>\" <b@evil.example>": "evil.example",
+ "bigdist.com": "bigdist.com",
+ "BigDist.COM": "bigdist.com",
+ "a@b.com": "b.com",
+ "Name <a@b.com>": "b.com",
+ "<a@b.com> c@d.com": "",
+ "not a domain": "",
+ "@": "",
+ "x@": "",
+ "a.b": "a.b",
+ "a..b": "a..b",
+ ".com": "",
+ "evil.example/trusted.com": "evil.example/trusted.com"
+}

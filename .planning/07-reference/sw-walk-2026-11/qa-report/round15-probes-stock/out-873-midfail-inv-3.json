@@ -1,0 +1,6 @@
+{
+ "listRows": 2500,
+ "cardThrew": "The house's inventory could not be read whole: the database refused one of its pages (page 1: XX000 injected failure on restaurant_inventory request 3). Nothing is reported from part of it.",
+ "inboxRows": 2500,
+ "mcpRows": 2500
+}

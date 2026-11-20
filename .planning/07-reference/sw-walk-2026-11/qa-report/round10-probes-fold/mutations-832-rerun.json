@@ -1,0 +1,10 @@
+[
+ [
+  "832-skip-submissions",
+  "jest[Test Suites: 1 passed, 1 total | Tests:       5 passed, 5 total] ## scenarios[FAIL no roster row is left orphaned from the library by the refold (every roster hash still joins a live row) :: [{\"wine_name\":\"Karasi Ozel (old key)\"}];FAIL B1 moved: its submission, its 2 menu_changes and its roster copy all followed to the folded hash :: {\"sub\":4,\"mc\":4};]"
+ ],
+ [
+  "832-skip-menu-changes",
+  "jest[Test Suites: 1 passed, 1 total | Tests:       5 passed, 5 total] ## scenarios[FAIL no roster row is left orphaned from the library by the refold (every roster hash still joins a live row) :: [{\"wine_name\":\"Karasi Ozel (old key)\"}];FAIL B1 moved: its submission, its 2 menu_changes and its roster copy all followed to the folded hash :: {\"sub\":4,\"mc\":4};]"
+ ]
+]
