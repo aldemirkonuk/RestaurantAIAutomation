@@ -90,3 +90,31 @@ export function useDrawIn() {
   }, [state]);
   return { ref, state };
 }
+
+/**
+ * Hold a heavy mount until the first frame has painted (r103). A reader's tap
+ * (a 365-day window, Arrange) must show the page answer in its first frame, so
+ * the expensive part (124 bars, ten cards' drag and resize handles) mounts in a
+ * later task. Returns true once that task has run for `key`; `null` means
+ * nothing is waiting and always answers false. A key that changes waits again;
+ * `null` forgets, so the next heavy mount holds a frame once more.
+ */
+export function useAfterPaint(key: string | null): boolean {
+  const [done, setDone] = useState<string | null>(null);
+  useEffect(() => {
+    if (key === null) {
+      setDone(null);
+      return;
+    }
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const later = () => {
+      t = setTimeout(() => setDone(key), 0);
+    };
+    const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame(later) : (later(), 0);
+    return () => {
+      if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(raf);
+      if (t !== undefined) clearTimeout(t);
+    };
+  }, [key]);
+  return key !== null && done === key;
+}

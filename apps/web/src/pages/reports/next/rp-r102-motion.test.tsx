@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render } from '@testing-library/react';
-import { CatPlot, MAX_DRAWN, thinCats } from './rp-plot';
+import { CatPlot, HOLD_OVER, MAX_DRAWN, thinCats } from './rp-plot';
 import { DrawKey, RISE_MS, forgetRisen } from './rp-draw';
 import type { CatSeries } from './rp-view';
 
@@ -128,6 +128,10 @@ describe('a long window draws a bounded number of points', () => {
   it('[REVERT-FAILS] 365 days draw at most MAX_DRAWN bars, keep the first, last and highest, and say so', () => {
     const s = series(365);
     const { container } = render(<CatPlot series={s} kind="bars" />);
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    expect(bars(container)).toBeGreaterThan(HOLD_OVER);
     expect(bars(container)).toBeLessThanOrEqual(MAX_DRAWN);
     const kept = thinCats(s.data);
     expect(kept[0]).toBe(s.data[0]);
@@ -148,5 +152,33 @@ describe('a long window draws a bounded number of points', () => {
     expect(kept.map((d) => d.label)).toContain('D200');
     const short = series(40).data;
     expect(thinCats(short)).toBe(short);
+  });
+});
+
+describe('a heavy plot answers in the first frame and mounts its bars after (r103)', () => {
+  const flush = () =>
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+
+  it('[REVERT-FAILS] 365 days: the first commit holds the slot, caption and label; the bars come a task later', () => {
+    const { container } = render(<CatPlot series={series(365)} kind="bars" />);
+    expect(plot(container)).not.toBeNull();
+    expect(plot(container).getAttribute('aria-label')).toMatch(/taken by day/);
+    expect(container.textContent).toMatch(/of 365/);
+    expect(bars(container)).toBe(0);
+    flush();
+    expect(bars(container)).toBeGreaterThan(HOLD_OVER);
+  });
+
+  it('[REVERT-FAILS] switching a light window to a heavy one holds again; a light one never waits', () => {
+    const { container, rerender } = render(<CatPlot series={series(30)} kind="bars" />);
+    expect(bars(container)).toBe(30);
+    rerender(<CatPlot series={series(365)} kind="bars" />);
+    expect(bars(container)).toBe(0);
+    flush();
+    expect(bars(container)).toBeGreaterThan(HOLD_OVER);
+    rerender(<CatPlot series={series(90)} kind="bars" />);
+    expect(bars(container)).toBe(90);
   });
 });

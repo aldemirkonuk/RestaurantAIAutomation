@@ -56,7 +56,7 @@ import {
   ZAxis,
 } from 'recharts';
 import { turn } from '@/lib/mudavym';
-import { tipMotion, useDrawIn } from './rp-draw';
+import { tipMotion, useAfterPaint, useDrawIn } from './rp-draw';
 import { EM, MONO, failureLine, type Failure } from './rp-format';
 import { choose, planCombo, type ComboPick, type ComboPlan } from './rp-combo';
 import type { CatSeries, Fig, MatrixSeries, PointSeries, TableSpec } from './rp-view';
@@ -177,9 +177,12 @@ function Plot({
   children,
   label,
   caption,
+  held = false,
 }: {
   children: ReactNode;
   label: string;
+  /** The slot is drawn, the drawing is not yet (`useAfterPaint`): a heavy plot's first frame. */
+  held?: boolean;
   /** What is drawn, said once above the plot (N-03). */
   caption?: ReactNode;
 }) {
@@ -188,9 +191,11 @@ function Plot({
     <>
       {caption != null && <PlotCaption>{caption}</PlotCaption>}
       <div className="rp-plot" role="img" aria-label={label} ref={ref} data-draw={state}>
-        <ResponsiveContainer width="100%" height="100%" debounce={1}>
-          {children as never}
-        </ResponsiveContainer>
+        {!held && (
+          <ResponsiveContainer width="100%" height="100%" debounce={1}>
+            {children as never}
+          </ResponsiveContainer>
+        )}
       </div>
     </>
   );
@@ -354,13 +359,27 @@ export function Working({
 /* ─────────────────────────────────────────────── figures of record ─────── */
 
 /** One labelled figure. Tabular mono; an unknown is the dash, always. */
-export function FigureRow({ label, value, note }: { label: string; value: string; note?: string }) {
+const NBSP = '\u00a0';
+
+export function FigureRow({
+  label,
+  value,
+  note,
+  held = false,
+}: {
+  label: string;
+  value: string;
+  note?: string;
+  /** Not shown for this drawing: on a phone its row keeps the space (hidden), elsewhere it is not drawn. */
+  held?: boolean;
+}) {
   const unknown = value === EM;
   return (
-    <div className="rp-fig">
-      <dt>{label}</dt>
+    <div className="rp-fig" data-held={held ? '' : undefined} aria-hidden={held ? true : undefined}>
+      {/* A held row says nothing (a non-breaking space), so the figure is never on the page twice. */}
+      <dt>{held ? NBSP : label}</dt>
       <dd data-unknown={unknown} title={unknown ? note : undefined}>
-        {value}
+        {held ? NBSP : value}
       </dd>
     </div>
   );
@@ -455,9 +474,15 @@ export function thinCats<T extends { label: string; value?: number | null; proje
   return [...must].sort((a, b) => a - b).map((i) => data[i]);
 }
 
+/** More drawn points than this (a 365-day till: 124 bars) mount a frame after the tap, not in it. */
+export const HOLD_OVER = 100;
+
 export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'area' | 'bars' }) {
   const { data: all, xLabel, yLabel, unit, format, refs, projectedLabel } = series;
   const data = thinCats(all, refs);
+  const heavy = data.length > HOLD_OVER;
+  const painted = useAfterPaint(heavy ? `${kind}:${data.length}` : null);
+  const held = heavy && !painted;
   const thinned = data.length < all.length;
   const hasProjection = all.some((d) => d.projected != null);
   const label = `${KIND_WORDS[kind]} of ${yLabel} by ${xLabel}${
@@ -537,7 +562,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
     }));
     const labelled = rows.length <= LABEL_BARS_MAX;
     return (
-      <Plot label={label} caption={caption}>
+      <Plot label={label} caption={caption} held={held}>
         <BarChart data={rows} margin={labelled ? { ...MARGIN, top: 20 } : MARGIN}>
           {axes}
           <Bar dataKey="shown" radius={[3, 3, 0, 0]} isAnimationActive={false}>
@@ -564,7 +589,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
 
   if (kind === 'area')
     return (
-      <Plot label={label} caption={caption}>
+      <Plot label={label} caption={caption} held={held}>
         <AreaChart data={data} margin={MARGIN}>
           {axes}
           <Area
@@ -595,7 +620,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
     );
 
   return (
-    <Plot label={label} caption={caption}>
+    <Plot label={label} caption={caption} held={held}>
       <LineChart data={data} margin={MARGIN}>
         {axes}
         <Line
