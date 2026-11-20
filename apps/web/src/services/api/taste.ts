@@ -196,3 +196,44 @@ export async function addHouseTaste(kind: SubjectKind, id: string, body: HouseTa
     return { state: 'failed', reason: o.status !== null && o.status >= 400 && o.status < 500 ? o.sentence : null, status: o.status };
   }
 }
+
+/* ── work a cocktail's or dish's taste out of its saved recipe ─────────────
+ * POST /taste/:restaurantId/:kind/:id/rollup. Every outcome is a sentence:
+ * the sheet shows it and the taste stays as it was. A 404 here is NOT "route
+ * not switched on" the way it is for a read: the gateway answers 404 with
+ * code `recipe_not_written` when the drink has no saved recipe, and that is a
+ * real answer. Only a 404 with no code (Nest's own "Cannot POST") is absent. */
+
+export const ROLLUP_UNREACHABLE = 'Mudavym could not be reached just now. The taste is as it was.';
+export const ROLLUP_RECIPES_UNAVAILABLE = 'This house cannot read recipes yet, so a taste cannot be worked out from one. The taste is as it was.';
+export const ROLLUP_FAILED = 'The taste could not be worked out just now. It is as it was.';
+export const ROLLUP_UNREADABLE = 'The taste may have been worked out, but the answer could not be read. Read again to see.';
+export const ROLLUP_ABSENT = 'Taste notes are not switched on for this house yet.';
+
+export type TasteRollup =
+  | { state: 'ready'; data: TasteData }
+  | { state: 'absent' }
+  | { state: 'failed'; sentence: string };
+
+export async function rollupTaste(kind: 'cocktail' | 'dish', id: string, restaurantId?: string): Promise<TasteRollup> {
+  const p = path(restaurantId, kind, id);
+  if (p === null) return { state: 'failed', sentence: ROLLUP_FAILED };
+  try {
+    const res = await apiClient.post<unknown>(`${p}/rollup`, {});
+    const data = parseTasteBody(res?.data);
+    return data ? { state: 'ready', data } : { state: 'failed', sentence: ROLLUP_UNREADABLE };
+  } catch (e) {
+    const sent = e as { code?: unknown; response?: unknown } | null;
+    // No answer at all (axios names it "Network Error"): the transport's word is never shown.
+    if (sent?.code === 'ERR_NETWORK' && !sent.response) return { state: 'failed', sentence: ROLLUP_UNREACHABLE };
+    const status = getErrorStatus(e);
+    const data = (e as { response?: { data?: unknown } } | null)?.response?.data;
+    const body = isObj(data) ? data : {};
+    if (status === 503 && body.code === 'recipes_unavailable') return { state: 'failed', sentence: ROLLUP_RECIPES_UNAVAILABLE };
+    if ((status === 404 && body.code === undefined) || status === 405 || status === 501) return { state: 'absent' };
+    const raw = Array.isArray(body.message) ? body.message[0] : body.message;
+    // The gateway's own sentence for a refusal it chose (no recipe yet, no lines, nothing to work out).
+    if (status !== null && status >= 400 && status < 500 && typeof raw === 'string' && raw.trim() !== '') return { state: 'failed', sentence: raw };
+    return { state: 'failed', sentence: ROLLUP_FAILED };
+  }
+}
