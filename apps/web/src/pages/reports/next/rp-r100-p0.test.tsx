@@ -120,6 +120,37 @@ describe('M1: bars and a line are offered only when the till can draw them', () 
   });
 });
 
+describe('M1: an undrawable drawing in full screen', () => {
+  it('[REVERT-FAILS] points at the control above, never at arranging the sheet', () => {
+    // An answer with no grid in it: the register has no heat map to draw today.
+    const real = CATALOGUE.till.view(TILL_COUNTED, { days: 30 });
+    const spy = vi.spyOn(CATALOGUE.till, 'view').mockReturnValue({ ...real, matrix: undefined });
+    const noMatrix = TILL_COUNTED;
+    render(
+      <MemoryRouter initialEntries={['/reports?flat=till']}>
+        <Cutting
+          id="till"
+          graph="heatmap"
+          register={reg(noMatrix)}
+          ctx={{ days: 30 }}
+          arranging={false}
+          swapOptions={swapOptions}
+          arrange={arrange}
+          onGraph={vi.fn()}
+          onSwap={vi.fn()}
+          onRemove={vi.fn()}
+          onDays={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    const said = screen.getByRole('dialog').textContent ?? '';
+    expect(said).toMatch(/cannot be drawn as heat map/i);
+    expect(said).toMatch(/Pick another drawing above\./);
+    expect(said).not.toMatch(/while arranging/);
+    spy.mockRestore();
+  });
+});
+
 describe('M6: a till window pick keeps the last drawing until the new one lands', () => {
   it('[REVERT-FAILS] keeps the 30-day plot, says which days it is, and never shows a skeleton', () => {
     const { rerender, container } = render(sheet(reg(TILL_COUNTED), 30, 'area'));
@@ -156,7 +187,7 @@ describe('M6: a till window pick keeps the last drawing until the new one lands'
   it('the dimming is ink-only and off under reduced motion', () => {
     const c = css('reports-next.css');
     expect(c).toMatch(/\.rp-standin\[data-stale\] > :not\(\[role='status'\]\) \{\s*opacity: 0\.55;/);
-    expect(c).toMatch(/transition: opacity 160ms ease-out/);
+    expect(c).toMatch(/transition: opacity 160ms cubic-bezier\(0\.16, 1, 0\.3, 1\)/);
     expect(c).toMatch(/prefers-reduced-motion: reduce\) \{\s*\.rp-standin > \* \{\s*transition: none;/);
   });
 });

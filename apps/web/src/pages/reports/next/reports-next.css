@@ -220,8 +220,8 @@
 }
 
 /* The till's body while a newly picked window is in flight: the last drawing
-   stays, dimmed, and says which days it is (Cutting.tsx). Ink only, 160 ms
-   ease-out; none under reduced motion. */
+   stays, dimmed, and says which days it is (Cutting.tsx). The `ink` token (160 ms,
+   MOTIONS.md); none under reduced motion. */
 .rp-standin {
   display: flex;
   flex-direction: column;
@@ -229,7 +229,7 @@
   flex: 1 1 auto;
 }
 .rp-standin > * {
-  transition: opacity 160ms ease-out;
+  transition: opacity 160ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 .rp-standin[data-stale] > :not([role='status']) {
   opacity: 0.55;
