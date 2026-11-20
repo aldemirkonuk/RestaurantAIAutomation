@@ -37,7 +37,7 @@
  * shown an empty add form that would 404 on submit.
  */
 
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import { addMenuItem, discardMenuItem, getMenu, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
@@ -99,6 +99,26 @@ function failWords(e: unknown, none: string): string {
   const sent = e as { code?: unknown; response?: unknown; message?: unknown } | null;
   if (sent?.code === 'ERR_NETWORK' && !sent.response) return 'Mudavym could not be reached just now.';
   return e instanceof Error ? e.message : none;
+}
+
+/**
+ * The room the current menu's table takes, from the walk: 4 lines were 287 px
+ * (a 63 px head and 56 px a line). The count is the house's last, kept on this
+ * device; with none it is 4. A house with no current menu reserves nothing.
+ */
+const HEAD_PX = 63;
+const LINE_PX = 56;
+export function reservedFor(lines: number): number {
+  return lines > 0 ? HEAD_PX + lines * LINE_PX : 0;
+}
+const countKey = (house: string | null) => `mdv.menu.lines.${house ?? ''}`;
+function lastLineCount(house: string | null): number {
+  try {
+    const n = Number(window.localStorage.getItem(countKey(house)));
+    return Number.isInteger(n) && n >= 0 && window.localStorage.getItem(countKey(house)) !== null ? n : 4;
+  } catch {
+    return 4;
+  }
 }
 
 function useActiveMenu(restaurantId: string | null) {
@@ -301,6 +321,17 @@ export default function MenuNext() {
   const role = (activeRole ?? user?.role ?? null) as string | null;
   const canManage = role === 'owner' || role === 'manager';
   const { q, discard, add } = useActiveMenu(activeRestaurantId);
+  const lastCount = lastLineCount(activeRestaurantId);
+  // Remember how many lines the current menu had, to hold their room next time.
+  const shown = q.data ? (q.data.menuId ? q.data.items.length : 0) : null;
+  useEffect(() => {
+    if (shown === null) return;
+    try {
+      window.localStorage.setItem(countKey(activeRestaurantId), String(shown));
+    } catch {
+      /* a device that keeps nothing keeps nothing */
+    }
+  }, [shown, activeRestaurantId]);
   const queryClient = useQueryClient();
   // Lines already shown. A line that turns up later is new: it enters and
   // inks in, and stays marked so a later render does not cancel the animation.
@@ -340,9 +371,13 @@ export default function MenuNext() {
         </h1>
 
         {authLoading || q.isLoading ? (
-          <p className="cl-said" role="status">
-            Reading the menu…
-          </p>
+          // The table that lands is about 287 px for 4 lines at desktop width: the room is held while it is read, so the
+          // sections below do not jump when it arrives (r103 menu-7, walk F2).
+          <div className="mdv-reserve" style={{ ['--mdv-reserve' as string]: `${reservedFor(lastCount)}px` }} data-testid="menu-reserve">
+            <p className="cl-said" role="status">
+              Reading the menu…
+            </p>
+          </div>
         ) : q.isError ? (
           <div role="alert" data-testid="menu-error" style={{ display: 'grid', gap: 8, justifyItems: 'start' }}>
             <p className="cl-said">
@@ -459,7 +494,7 @@ export default function MenuNext() {
             where you can lock price, but wha f that menu item disappears?"). */}
         {activeRestaurantId ? <LockedPrices canManage={canManage} /> : null}
 
-        {activeRestaurantId ? <MenuVersions canManage={canManage} /> : null}
+        {activeRestaurantId ? <MenuVersions canManage={canManage} retryAbove={q.isError} /> : null}
 
         <footer
           style={{

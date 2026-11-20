@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   MenuVersions,
@@ -389,7 +389,7 @@ describe('MenuVersions', () => {
     mockList.mockRejectedValue(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
     mount(true);
     const said = await screen.findByTestId('menu-versions-error');
-    expect(said).toHaveTextContent('could not be read (Mudavym could not be reached just now.)');
+    expect(said).toHaveTextContent('could not be read: Mudavym could not be reached just now.');
     expect(said.textContent).not.toContain('Network Error');
   });
 
@@ -705,6 +705,24 @@ describe('a read in the background, several photos, the same file again (founder
     expect(await screen.findByText('being read now')).toBeInTheDocument();
     expect(screen.getByText('the read failed: No menu line could be read from this file.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Make .* current$/ })).not.toBeInTheDocument();
+  });
+});
+
+// r103 menu-7 (walk F1): a read's row is held in the list from the click, so it
+// does not arrive seconds later and push the page down.
+describe('MenuVersions -- the row for a read is held from the click (r103 menu-7)', () => {
+  it('shows "being read now" in the list as the read is sent, before the server has answered', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [version({ menuId: 'old', readState: 'done' })] });
+    mockImport.mockReturnValue(new Promise(() => {}));
+    mount(true);
+    await screen.findAllByTestId('menu-version-row');
+    expect(screen.queryByText('being read now')).not.toBeInTheDocument();
+    fireEvent.change(await screen.findByLabelText('Menu to read'), { target: { files: [new File(['x'], 'p1.jpg', { type: 'image/jpeg' })] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
+    expect(await screen.findByText('being read now')).toBeInTheDocument();
+    const rows = screen.getAllByTestId('menu-version-row');
+    expect(rows).toHaveLength(2);
+    expect(within(rows[0]).getByText('being read now')).toBeInTheDocument();
   });
 });
 

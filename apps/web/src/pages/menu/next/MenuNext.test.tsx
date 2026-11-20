@@ -14,7 +14,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MenuNext from './MenuNext';
 import { housePriceNote } from './menu-price-note';
@@ -152,7 +152,7 @@ describe('MenuNext — reading', () => {
     const err = await screen.findByTestId('menu-error');
     expect(err).toHaveTextContent('The menu could not be read (Mudavym could not be reached just now.).');
     const kept = await screen.findByTestId('menu-versions-error');
-    expect(kept).toHaveTextContent('could not be read (Mudavym could not be reached just now.)');
+    expect(kept).toHaveTextContent('could not be read: Mudavym could not be reached just now.');
     expect(err.textContent).not.toContain('Network Error');
     expect(kept.textContent).not.toContain('Network Error');
   });
@@ -186,6 +186,9 @@ describe('MenuNext — reading', () => {
     mount();
     await screen.findByTestId('menu-error');
     expect(await screen.findByTestId('menu-versions-error')).toBeInTheDocument();
+    // One Retry on the page while both reads failed, not one per panel (r103 menu-3).
+    expect(screen.getAllByRole('button', { name: 'Retry' })).toHaveLength(1);
+    expect(screen.queryByTestId('menu-versions-retry')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(await screen.findAllByTestId('menu-row')).toHaveLength(1);
     await waitFor(() => expect(screen.queryByTestId('menu-versions-error')).not.toBeInTheDocument());
@@ -398,5 +401,40 @@ describe('MenuNext — rows move, they do not jump (r102 menu-motion-4)', () => 
     expect(code).toMatch(/mdv-row-ink 160ms/);
     expect(code).not.toMatch(/mdv-row-enter|mdv-row-wash|seal-tint|240ms|600ms|data-state='leaving'/);
     expect(code).toMatch(/prefers-reduced-motion: reduce\)\s*\{[\s\S]*animation: none/);
+  });
+});
+
+// r103 menu-7 (walk F2): the room of the current menu's table is held while it is read.
+describe('MenuNext — the table\'s room is held while it is read (r103 menu-7)', () => {
+  afterEach(() => window.localStorage.clear());
+
+  it('holds 287 px for the 4 lines it assumes, 63 for the head and 56 a line', async () => {
+    const { reservedFor } = await import('./MenuNext');
+    expect(reservedFor(4)).toBe(287);
+    expect(reservedFor(0)).toBe(0);
+  });
+
+  it('while the menu is read, the box is held at the last count this device saw', async () => {
+    window.localStorage.setItem('mdv.menu.lines.r1', '2');
+    mockGetMenu.mockReturnValue(new Promise(() => {}));
+    mount();
+    const held = await screen.findByTestId('menu-reserve');
+    expect(held.style.getPropertyValue('--mdv-reserve')).toBe('175px');
+    expect(within(held).getByText('Reading the menu…')).toBeInTheDocument();
+  });
+
+  it('with no count kept it holds 4 lines, and the count is kept once the menu lands', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'a', name: 'Raki' }), line({ id: 'b', name: 'Tea' }), line({ id: 'c', name: 'Salep' })] }));
+    mount();
+    expect(screen.getByTestId('menu-reserve').style.getPropertyValue('--mdv-reserve')).toBe('287px');
+    await screen.findAllByTestId('menu-row');
+    await waitFor(() => expect(window.localStorage.getItem('mdv.menu.lines.r1')).toBe('3'));
+  });
+
+  it('is held on desktop only, where the jump was measured', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const css = readFileSync(join(__dirname, 'menu-rows.css'), 'utf8');
+    expect(css).toMatch(/@media \(min-width: 900px\)\s*\{\s*\.mdv-reserve\s*\{\s*min-height: var\(--mdv-reserve/);
   });
 });
