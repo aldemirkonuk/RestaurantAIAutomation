@@ -79,7 +79,8 @@ export interface DraftedReply {
   wineName: string | null;
   providerName: string | null;
   providerEmail: string | null;
-  emailType: string;
+  /** NULL on a row an agent never typed (procurement_conversations.outbound_email_type is nullable). */
+  emailType: string | null;
   roundCount: number;
   draftContent: string | null;
   constraintFlags?: unknown;
@@ -109,8 +110,12 @@ const KINDS: Record<string, string> = {
   MANUAL_REPLY: 'replying in a person’s own words',
 };
 
-export function kindWords(emailType: string): string {
-  return KINDS[emailType] ?? emailType.toLowerCase().replace(/_/g, ' ');
+export function kindWords(emailType: string | null | undefined): string {
+  const t = String(emailType ?? '').trim();
+  // An untyped draft is still a reply the house is writing; say that, finishing
+  // the sentence "the house is ...", rather than throwing the panel away.
+  if (t === '') return 'replying';
+  return KINDS[t] ?? t.toLowerCase().replace(/_/g, ' ');
 }
 
 
