@@ -911,3 +911,96 @@ describe("InventoryService", () => {
     });
   });
 });
+
+// G15: a failed rollup or breakdown read is not 0 ml open or "in no location".
+describe("InventoryService list reads say when they fail (G15)", () => {
+  type Answer = { data: any; error: any; failFrom?: number };
+  const ROW = { id: "inv1", restaurant_id: "r1", master_wine_id: "w1" };
+
+  function serviceWith(answers: Record<string, Answer>, rows: any[] = [ROW]) {
+    const client = {
+      from: (table: string) => {
+        const answer = answers[table] ?? { data: [], error: null };
+        let range: [number, number] | null = null;
+        const builder: any = {
+          select: () => builder,
+          eq: () => builder,
+          order: () => builder,
+          range: (a: number, b: number) => ((range = [a, b]), builder),
+          then: (resolve: (a: Answer) => unknown, reject?: any) => {
+            const [a, b] = range ?? [0, 999];
+            if (a >= (answer.failFrom ?? Infinity)) return Promise.resolve(failed).then(resolve, reject);
+            const data = Array.isArray(answer.data) ? answer.data.slice(a, Math.min(b, a + 999) + 1) : answer.data;
+            return Promise.resolve({ ...answer, data }).then(resolve, reject);
+          },
+        };
+        return builder;
+      },
+    };
+    const db = {
+      getClient: () => client,
+      getRestaurantInventory: jest.fn().mockResolvedValue(rows),
+    };
+    return new InventoryService(db as unknown as DatabaseService);
+  }
+
+  const failed: Answer = { data: null, error: { message: "boom" } };
+  async function firstItem(answers: Record<string, Answer>) {
+    const items = await serviceWith(answers).getRestaurantInventory("r1");
+    return items[0] as Record<string, any>;
+  }
+
+  it("a failed rollup read gives no open ml and says it was not read", async () => {
+    const item = await firstItem({ inventory_lot_rollup: failed });
+    expect(item.openMl).toBeUndefined();
+    expect(item.rollupReadable).toBe(false);
+    expect(item.locations).toEqual([]);
+    expect(item.locationsReadable).toBe(true);
+  });
+
+  it("a failed location read gives no location list and says it was not read", async () => {
+    const item = await firstItem({ inventory_location_breakdown: failed });
+    expect(item.locations).toBeUndefined();
+    expect(item.locationsReadable).toBe(false);
+    expect(item.openMl).toBe(0);
+    expect(item.rollupReadable).toBe(true);
+  });
+
+  it("a read with no row for the item says 0 ml and no locations", async () => {
+    const item = await firstItem({});
+    expect(item.openMl).toBe(0);
+    expect(item.locations).toEqual([]);
+    expect(item.rollupReadable).toBe(true);
+    expect(item.locationsReadable).toBe(true);
+  });
+
+  // QA round 10b: PostgREST's max_rows (1000) cut the rest of the house off.
+  const ids = Array.from({ length: 1200 }, (_, i) => `inv${i}`);
+  const big = (failFrom?: number) =>
+    serviceWith(
+      {
+        inventory_lot_rollup: { data: ids.map((id) => ({ inventory_id: id, open_ml: 100 })), error: null, failFrom },
+        inventory_location_breakdown: { data: ids.map((id) => ({ inventory_id: id, location_id: "z1", qty: 1, wac: 5 })), error: null, failFrom },
+      },
+      ids.map((id) => ({ ...ROW, id })),
+    ).getRestaurantInventory("r1") as Promise<Record<string, any>[]>;
+
+  it("reads every page past the 1000-row cap", async () => {
+    const last = (await big())[1199];
+    expect(last.openMl).toBe(100);
+    expect(last.locations).toEqual([{ locationId: "z1", qty: 1, wac: 5 }]);
+    expect(last.rollupReadable).toBe(true);
+  });
+
+  it("a failed later page fails the whole read", async () => {
+    const first = (await big(1000))[0];
+    expect(first.rollupReadable).toBe(false);
+    expect(first.locationsReadable).toBe(false);
+  });
+
+  it("a mapper call that read neither side claims no read", () => {
+    const item = (serviceWith({}) as any).mapInventoryItem(ROW);
+    expect(item).not.toHaveProperty("rollupReadable");
+    expect(item).not.toHaveProperty("locationsReadable");
+  });
+});

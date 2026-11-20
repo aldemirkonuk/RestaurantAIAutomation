@@ -109,7 +109,9 @@ function row(over: Partial<InvRow> = {}): InvRow {
     costProvenance: 'invoice',
     value: 120,
     lastCountedAt: '2026-09-30T10:00:00Z',
+    rollupReadable: true,
     openMl: 0,
+    locationsReadable: true,
     zones: [{ locationId: 'z1', qty: 3 }],
     providerId: 'p1',
     providerName: 'Vinoteca',
@@ -372,6 +374,29 @@ describe('RowDropdown says what a title no zone holds reads (INV-W34)', () => {
   it('shows — when the stock itself was not read, since it cannot say which', () => {
     renderDrop({ row: row({ stock: null, zones: [] }) });
     expect(where()).toBe('—');
+  });
+});
+
+describe('RowDropdown says an open bottle or zones it could not read (G15)', () => {
+  const fact = (k: string) => {
+    const dt = within(screen.getByTestId('row-dropdown')).getByText(k);
+    return dt.nextElementSibling!.textContent;
+  };
+
+  it('a failed rollup read says the open bottle could not be read, not 0 or nothing', () => {
+    renderDrop({ row: row({ rollupReadable: false, openMl: null }) });
+    expect(fact('Open bottle')).toBe('could not be read');
+    expect(screen.getByTestId('row-dropdown').textContent).not.toContain('0 ml left');
+  });
+
+  it('a failed location read says where could not be read, never "none on hand"', () => {
+    renderDrop({ row: row({ stock: 0, locationsReadable: false, zones: [] }) });
+    expect(fact('Where')).toBe('could not be read');
+  });
+
+  it('a read, empty open bottle is not mentioned at all', () => {
+    renderDrop({ row: row({ rollupReadable: true, openMl: 0 }) });
+    expect(within(screen.getByTestId('row-dropdown')).queryByText('Open bottle')).toBeNull();
   });
 });
 
