@@ -17,7 +17,7 @@ export type AromaFamilyKey = 'fruit' | 'citrus' | 'floral' | 'herbal' | 'spice' 
 export type Aroma = Partial<Record<AromaFamilyKey, number>>;
 
 /** Bump when any value below changes: a stored layer then reads as stale. */
-export const PRIORS_VERSION = 5;
+export const PRIORS_VERSION = 6;
 
 /**
  * How far a source of chemistry is believed (R3 section 3 step 8). A class
@@ -53,6 +53,8 @@ export interface ClassPrior {
   tight?: boolean;
   /** A label that fits `match` but also this is not this class ("salted", "almond milk"). */
   not?: RegExp;
+  /** A prepared item (a dressing, a crouton) that is its own class: it keeps its label past the "prepared dish" veto in taste-class-match.ts. */
+  prepared?: boolean;
 }
 
 // Matching is on the normalised label (taste-class-match.ts: lower-case, accent-folded, singular, synonyms).
@@ -74,7 +76,7 @@ export const CLASS_PRIORS: readonly ClassPrior[] = [
   // --- vermouth, bitter liqueurs, liqueurs
   { id: 'sweet-vermouth', match: /\b(sweet vermouth|vermouth rosso|rosso|carpano|antica formula)\b/, chem: { abv: 16, se: 14, ce: 0.6, be: 8 }, rsd: 0.1, q: 0.45, aroma: { herbal: 0.6 }, tight: true },
   { id: 'dry-vermouth', match: /\b(dry vermouth|vermouth dry|noilly prat|dolin dry)\b/, chem: { abv: 18, se: 3, ce: 0.6, be: 6 }, rsd: 0.1, q: 0.45, aroma: { herbal: 0.6 }, tight: true },
-  { id: 'bitter-liqueur', match: /\b(campari|amaro|averna|cynar)\b/, chem: { abv: 25, se: 22, be: 55 }, rsd: 0.15, q: 0.4, aroma: { herbal: 0.6 }, tight: true },
+  { id: 'bitter-liqueur', match: /\b(campari|amaro|amari|averna|cynar|montenegro|ramazzotti|nonino|lucano|suze)\b/, chem: { abv: 25, se: 22, be: 55 }, rsd: 0.15, q: 0.4, aroma: { herbal: 0.6 }, tight: true },
   { id: 'aperol', match: /\baperol\b/, chem: { abv: 11, se: 24, be: 28 }, rsd: 0.15, q: 0.4, aroma: { citrus: 0.5, herbal: 0.4 }, tight: true },
   { id: 'fernet', match: /\bfernet\b/, chem: { abv: 39, se: 9, be: 80 }, rsd: 0.2, q: 0.35, aroma: { herbal: 0.7, spice: 0.3 }, tight: true },
   { id: 'orange-liqueur', match: /\b(triple sec|cointreau|curacao|grand marnier|orange liqueur)\b/, chem: { abv: 35, se: 25 }, rsd: 0.12, q: 0.4, aroma: { citrus: 0.6 }, tight: true },
@@ -105,6 +107,7 @@ export const CLASS_PRIORS: readonly ClassPrior[] = [
   { id: 'fish-sauce', match: /\bfish sauce\b/, chem: { nacl: 20, glu: 1.0 }, rsd: 0.15, q: 0.35, aroma: { savoury: 0.8, funky: 0.6 }, tight: true },
   { id: 'ketchup', match: /\b(ketchup|catsup)\b/, chem: { se: 24, ce: 1.0, nacl: 2.3, glu: 0.15 }, rsd: 0.15, q: 0.4, tight: true },
   { id: 'mayonnaise', match: /\b(mayonnaise|mayo)\b/, chem: { fat: 75, nacl: 1.6, ce: 0.3 }, rsd: 0.1, q: 0.4, tight: true },
+  { id: 'caesar-dressing', match: /\bcaesar dressing\b/, chem: { fat: 45, nacl: 2.0, se: 2, ce: 0.5, glu: 0.25 }, rsd: 0.3, q: 0.3, aroma: { savoury: 0.6, funky: 0.4, dairy: 0.3 }, tight: true, prepared: true },
   { id: 'tomato-paste', match: /\btomato (paste|puree concentrate)\b/, chem: { se: 12, ce: 3, nacl: 0.3, glu: 0.8 }, rsd: 0.25, q: 0.3, aroma: { savoury: 0.5 }, tight: true },
   { id: 'tomato-canned', match: /\b(canned|tinned|crushed|chopped|plum|peeled) tomato\b|\b(passata|tomato sauce|tomato puree)\b/, chem: { se: 4, ce: 0.7, nacl: 0.35, glu: 0.2 }, rsd: 0.25, q: 0.3, aroma: { savoury: 0.3 }, tight: true },
   { id: 'stock', match: /\b(stock|broth|bouillon|consomme|fumet)\b/, chem: { nacl: 0.5, fat: 0.3, se: 0.3, glu: 0.05, nuc: 0.01 }, rsd: 0.35, q: 0.3, aroma: { savoury: 0.5 }, tight: true, not: /\b(concentrate|paste|base|granule)\b/ },
@@ -138,6 +141,7 @@ export const CLASS_PRIORS: readonly ClassPrior[] = [
   { id: 'herb', match: /\b(parsley|mint|basil|dill|thyme|rosemary|oregano|sage|tarragon|cilantro|herb)\b/, chem: {}, rsd: 0, q: 0.3, aroma: { herbal: 0.7 }, solid: true },
   { id: 'spice', match: /\b(cumin|paprika|turmeric|cinnamon|cardamom|clove|allspice|nutmeg|sumac|pepper|peppercorn)\b/, chem: { se: 2, nacl: 0.05, fat: 4 }, rsd: 0.5, q: 0.25, aroma: { spice: 0.85, earthy: 0.3 }, solid: true, not: /\b(bell|sweet|chili|chilli|red|green|yellow|hot|roasted|stuffed|jalapeno)\b/ },
   { id: 'nut', match: /\b(almond|walnut|pistachio|hazelnut|cashew|pine nut|peanut)\b/, chem: { se: 4, fat: 55, nacl: 0.01 }, rsd: 0.15, q: 0.35, aroma: { nutty: 0.8 }, solid: true, not: /\b(milk|oil|flour|extract|liqueur|paste)\b/ },
+  { id: 'crouton', match: /\b(crouton|rusk)\b/, chem: { fat: 10, nacl: 1.9, se: 4 }, rsd: 0.35, q: 0.3, aroma: { roasted: 0.3 }, solid: true, tight: true, prepared: true },
   { id: 'starch', match: /\b(flour|rice|pasta|bread|bulgur|noodle|couscous)\b/, chem: { fat: 1, nacl: 0.05 }, rsd: 0.3, q: 0.3, solid: true },
 ];
 
@@ -166,7 +170,7 @@ export const NONE_BY_CLASS: Record<string, ReadonlyArray<keyof Chem>> = {
   butter: PLAIN_FOOD, cream: PLAIN_FOOD, yogurt: PLAIN_FOOD, milk: PLAIN_FOOD, cheese: PLAIN_FOOD, 'hard-cheese': PLAIN_FOOD, feta: PLAIN_FOOD,
   'cheddar-type': PLAIN_FOOD, egg: PLAIN_FOOD, 'meat-lamb': PLAIN_FOOD, 'meat-beef': PLAIN_FOOD, pork: PLAIN_FOOD,
   bacon: PLAIN_FOOD, poultry: PLAIN_FOOD, fish: PLAIN_FOOD, anchovy: PLAIN_FOOD, starch: PLAIN_FOOD, oil: [...PLAIN_FOOD, 'se', 'nacl', 'glu'],
-  soy: ['abv', 'be'], 'fish-sauce': ['abv', 'be', 'se', 'fat'], mayonnaise: ['abv', 'be', 'se', 'glu'], stock: ['abv', 'be'],
+  soy: ['abv', 'be'], 'fish-sauce': ['abv', 'be', 'se', 'fat'], mayonnaise: ['abv', 'be', 'se', 'glu'], 'caesar-dressing': ['abv', 'be'], crouton: ['abv', 'be'], stock: ['abv', 'be'],
   onion: ['abv'], garlic: ['abv'], carrot: ['abv'], 'bell-pepper': ['abv'], 'leafy-greens': ['abv'],
   mushroom: ['abv'], potato: ['abv', 'be'], tomato: ['abv'], spice: ['abv'], nut: ['abv', 'nacl'], herb: ['abv', 'se', 'nacl', 'fat'],
 };
@@ -196,14 +200,58 @@ export const DILUTION_SD = 0.05;
 export const DILUTION_SD_ASSUMED = 0.08;
 
 /**
- * Saturating curves (R3 step 4): value = 10 * (1 - exp(-x / k)).
- * salty k 0.9 -> 1.4 (r92): at 0.9 a dish seasoned to the usual 1.2 % read 6.6
- * "pronounced" and a grilled kofta at 1.8 % read 7.1, so well-seasoned food read
- * as loudly salty. At 1.4 a solid at 1.2 % reads 5.0 (medium, "noticeably
- * salty"), 2 % reads 6.8, and 3 % (over-salted) still reaches "dominant".
- * bitter k 25 checked, kept: a 20 IBU lager reads 5.5 (medium), a 50 IBU IPA 8.6.
+ * Perceived intensity from the concentration in the FINISHED mix (r96). One law
+ * for six tastes, a Stevens power law taken over a detection threshold:
+ *
+ *   value = 10 * ((c - T) / (C10 - T)) ^ n,  0 at or under T, capped at 10.
+ *
+ * c is the pooled concentration after water, cooking and (for a solid) salt
+ * release (taste-rollup.ts), so a potent line is judged by how much of it the
+ * mouth meets, not by its share of the mass. T is the detection threshold: under
+ * it the taste is not perceived at all. C10 is the concentration that reads 10
+ * on the 0-10 band scale. n is a CATEGORY-scale exponent, fitted so that the
+ * curve keeps the R3 / r92 anchors the old saturating curve had (a 20 IBU lager
+ * 5.5, a 50 IBU IPA 8.6, a solid at 1.2 % salt 5.0, the whiskey sour of R3
+ * section 4): at a fitted n of 0.5-0.7 the curve stays within a few tenths of a band
+ * point of those anchors over the working range (the existing worked-example
+ * specs are the check). It is NOT the Stevens magnitude-estimation exponent
+ * (sucrose about 1.3, NaCl about 1.4, citric acid and quinine near or under 1,
+ * Stevens 1957; Moskowitz 1971; recalled, pages not re-opened, so UNV): a band
+ * word is a category rating, which grows far slower than a magnitude estimate,
+ * and fitting the magnitude exponents to the band anchors misses them by 1 to 1.7
+ * points. `mag` keeps the recalled magnitude exponent beside it so the panel fit
+ * can use either.
+ *
+ * T per taste (pooled units of this table; all UNV, recalled): sucrose about
+ * 0.5 g/100 mL (Moskowitz 1971 order of magnitude), citric acid about 0.03 g/100 mL,
+ * NaCl about 0.06 g/100 mL, bitter 2 IBU-eq (low: quinine and iso-alpha acids are
+ * noticed at a few mg/L, the lowest threshold of the four basic tastes, which is
+ * why a bitter liqueur drives a drink), glutamate about 0.03 g/100 mL (MSG),
+ * fat 1 g/100 g (oil in a water-based food). Fitted to the anchors, not to a panel.
  */
-export const K = { sweet: 12, sour: 8, salty: 1.4, bitter: 25, umami: 0.5, fat: 12, aromaRef: 28 } as const;
+export interface Potency { T: number; n: number; c10: number; mag: number }
+export const POTENCY = {
+  sweet: { T: 0.5, n: 0.6, c10: 27, mag: 1.3 },
+  sour: { T: 0.03, n: 0.7, c10: 1.66, mag: 0.85 },
+  salty: { T: 0.06, n: 0.6, c10: 2.9, mag: 1.4 },
+  bitter: { T: 2, n: 0.5, c10: 64.5, mag: 0.9 },
+  umami: { T: 0.03, n: 0.55, c10: 1.2, mag: 0.55 },
+  fat: { T: 1, n: 0.5, c10: 35, mag: 1.0 },
+} as const satisfies Record<string, Potency>;
+export type PotentTaste = keyof typeof POTENCY;
+/** The 0-10 value a concentration reads as (sour is in citric-eq g, not x10). */
+export function perceive(taste: PotentTaste, c: number): number {
+  const { T, n, c10 } = POTENCY[taste];
+  if (!(c > T)) return 0;
+  return 10 * Math.min(1, ((c - T) / (c10 - T)) ** n);
+}
+/** The concentration that reads as `v` on its own: the inverse of `perceive`. 0 stays 0. */
+export function unperceive(taste: PotentTaste, v: number): number {
+  if (!(v > 0)) return 0;
+  const { T, n, c10 } = POTENCY[taste];
+  return T + (c10 - T) * Math.min(1, v / 10) ** (1 / n);
+}
+export const K = { aromaRef: 28 } as const;
 export const SOLID_SALT_RELEASE = 0.8;
 export const YAMAGUCHI = 1218;
 /** Mutual suppression (R3 step 5). */

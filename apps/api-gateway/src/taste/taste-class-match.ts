@@ -31,8 +31,10 @@ export function normaliseLabel(raw: string): string {
 
 export function findClass(label: string): ClassPrior | undefined {
   const n = normaliseLabel(label);
-  if (!n || PREPARED.test(n)) return undefined;
-  const hits = CLASS_PRIORS.filter((c) => c.match.test(n) && !(c.not && c.not.test(n)));
+  if (!n) return undefined;
+  const prepared = PREPARED.test(n);
+  // A prepared label is no ingredient, unless a class is made for exactly that prepared item (caesar dressing, crouton).
+  const hits = CLASS_PRIORS.filter((c) => (!prepared || c.prepared) && c.match.test(n) && !(c.not && c.not.test(n)));
   if (hits.length <= 1) return hits[0];
   const tight = hits.filter((c) => c.tight);
   return tight.length === 1 ? tight[0] : undefined;

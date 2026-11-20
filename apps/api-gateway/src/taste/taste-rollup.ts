@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import {
   ABV_FLOOR, ABV_SPAN, AromaFamilyKey, BITE_EXPONENT, Chem, DILUTION_BY_METHOD,
-  DILUTION_DEFAULT, DILUTION_SD, DILUTION_SD_ASSUMED, DRAWS, K, METHODS, Method, PRIORS_VERSION,
+  DILUTION_DEFAULT, DILUTION_SD, DILUTION_SD_ASSUMED, DRAWS, K, METHODS, Method, perceive, PRIORS_VERSION, unperceive,
   NONE_BY_CLASS, Q_BY_PROV, classQ, isUnverifiedClass, RollupProv, ROAST_K, SOLID_SALT_RELEASE, SUPPRESS, YAMAGUCHI,
 } from './taste-priors';
 import { findClass } from './taste-class-match';
@@ -48,12 +48,34 @@ export interface RollupBasis {
   notKnown: string[];
   dilution: number | null; dilutionAssumed: boolean; method: string | null;
   mean: Record<string, number>; contrast: Record<string, number>;
+  /** The tastes a cook would name first, strongest first (at most three, each at least medium): the summary line reads these, not the volume share. */
+  lead: string[];
   inputHash: string; priorsVersion: number;
 }
+/** Tastes the lead may name, and the least value that counts as named. Aroma families and warmth are named after the tastes, except "savoury" (below). */
+export const LEAD_TASTES = ['sweet', 'sour', 'salty', 'bitter', 'umami', 'fat'] as const;
+export const LEAD_MIN = 4;
+export const LEAD_MAX = 3;
+/** What a cook calls each lead key: fat is "rich", umami and the savoury aroma are both "savoury". */
+export const LEAD_WORD: Record<string, string> = { sweet: 'sweet', sour: 'sour', salty: 'salty', bitter: 'bitter', umami: 'savoury', fat: 'rich', savoury: 'savoury' };
+/**
+ * The perceived top tastes of a roll-up: each already a power law over its
+ * detection threshold of the concentration in the finished mix, so a potent
+ * line (Campari, parmesan, lamb fat) is named by how loud it is, not by its
+ * mass share. A taste under "medium" is not named; none qualifying is an empty
+ * lead. The savoury aroma (anchovy, cheese, browned meat) stands in for umami
+ * when the glutamate alone reads under medium, and is never named twice.
+ */
+export function leadTastes(axes: Record<string, { v: number }>): string[] {
+  const keys: string[] = [...LEAD_TASTES];
+  if ((axes.umami?.v ?? 0) < LEAD_MIN) keys.push('savoury');
+  return keys.filter((k) => (axes[k]?.v ?? 0) >= LEAD_MIN)
+    .sort((a, b) => axes[b].v - axes[a].v).slice(0, LEAD_MAX);
+}
+
 export interface RollupResult { axes: Record<string, RollupAxis>; basis: RollupBasis }
 
 const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\u0131/g, 'i').toLowerCase().trim();
-const sat = (x: number, k: number) => 10 * (1 - Math.exp(-Math.max(0, x) / k));
 const r1 = (x: number) => Math.round(x * 10) / 10;
 const r2 = (x: number) => Math.round(x * 100) / 100;
 const clamp10 = (x: number) => Math.min(10, Math.max(0, x));
@@ -71,15 +93,14 @@ interface Resolved {
 }
 
 const OWN_CAP = 9.5;
-/** Undo the saturating curve: the pooled amount that tastes like `v` on its own. */
-const unsat = (v: number, k: number) => -k * Math.log(1 - Math.min(OWN_CAP, Math.max(0, v)) / 10);
+/** The pooled amount that tastes like `v` on its own (the inverse of the potency law, taste-priors.ts). */
 const OWN_CHEM: Record<string, (v: number) => [keyof Chem, number]> = {
-  sweet: (v) => ['se', unsat(v, K.sweet)],
-  sour: (v) => ['ce', unsat(v, K.sour) / 10],
-  salty: (v) => ['nacl', unsat(v, K.salty)],
-  bitter: (v) => ['be', unsat(v, K.bitter)],
-  umami: (v) => ['glu', unsat(v, K.umami)],
-  fat: (v) => ['fat', unsat(v, K.fat)],
+  sweet: (v) => ['se', unperceive('sweet', Math.min(OWN_CAP, v))],
+  sour: (v) => ['ce', unperceive('sour', Math.min(OWN_CAP, v))],
+  salty: (v) => ['nacl', unperceive('salty', Math.min(OWN_CAP, v))],
+  bitter: (v) => ['be', unperceive('bitter', Math.min(OWN_CAP, v))],
+  umami: (v) => ['glu', unperceive('umami', Math.min(OWN_CAP, v))],
+  fat: (v) => ['fat', unperceive('fat', Math.min(OWN_CAP, v))],
   alcohol: (v) => ['abv', v <= 0 ? 0 : ABV_FLOOR + (Math.min(10, v) / 10) * ABV_SPAN],
 };
 const AROMA_KEYS: readonly string[] = ['fruit', 'citrus', 'floral', 'herbal', 'spice', 'nutty', 'roasted', 'smoky', 'savoury', 'earthy', 'dairy', 'woody', 'funky'];
@@ -150,12 +171,12 @@ function component(rs: Resolved[], factor: number[], d: number): CompOut {
   const solid = total > 0 && rs.reduce((a, r, i) => a + (r.solid ? m[i] : 0), 0) / total > 0.5;
   const glu = pool('glu'); const nuc = pool('nuc');
   const euc = glu + YAMAGUCHI * glu * nuc;
-  let sweet = sat(pool('se'), K.sweet); let sour = sat(pool('ce') * 10, K.sour);
-  const salty = sat((solid ? SOLID_SALT_RELEASE : 1) * pool('nacl'), K.salty);
-  let bitter = sat(pool('be'), K.bitter);
+  let sweet = perceive('sweet', pool('se')); let sour = perceive('sour', pool('ce'));
+  const salty = perceive('salty', (solid ? SOLID_SALT_RELEASE : 1) * pool('nacl'));
+  let bitter = perceive('bitter', pool('be'));
   const abv = pool('abv');
   const vals: Record<string, number> = {
-    umami: sat(euc, K.umami), fat: sat(pool('fat'), K.fat),
+    umami: perceive('umami', euc), fat: perceive('fat', pool('fat')),
     alcohol: 10 * Math.min(1, Math.max(0, (abv - ABV_FLOOR) / ABV_SPAN)),
   };
   const sw = sweet; const so = sour;
@@ -276,7 +297,7 @@ export function rollup(input: RollupInput): RollupResult {
       notKnown,
       unknownNames: flat.filter((r) => r.prov === 'unknown').map((r) => r.name).slice(0, 5),
       dilution: input.kind === 'cocktail' ? dil.d : null, dilutionAssumed: dil.assumed,
-      method: input.method ?? null, mean: rd(base.mean),
+      method: input.method ?? null, mean: rd(base.mean), lead: leadTastes(axes),
       contrast: rd(Object.fromEntries(Object.keys(base.peak).map((x) => [x, base.peak[x] - base.mean[x]]))),
       inputHash, priorsVersion: PRIORS_VERSION,
     },
