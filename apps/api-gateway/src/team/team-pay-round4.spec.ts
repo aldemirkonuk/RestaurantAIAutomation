@@ -285,6 +285,10 @@ function withFormer(db: StubDb, opts: { audited?: boolean } = {}) {
     status: "approved",
     leave_type: "paid",
     reason: "a private sentence",
+    // The real column (baseline `time_off_requests.created_at NOT NULL`):
+    // `listTimeOff` sorts by it, and now refuses the read the stub fails
+    // when the fixture row lacks it, rather than listing nothing.
+    created_at: "2026-08-15T09:00:00.000Z",
   });
   db.tables.team_member_wage_changes.push({
     restaurant_id: RID,
