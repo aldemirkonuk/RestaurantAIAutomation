@@ -188,7 +188,8 @@ describe('the menu offer holds its line while the menu is read', () => {
     mount();
     const room = await screen.findByTestId('menu-drinks-offer-room');
     expect(room).toHaveAttribute('aria-hidden', 'true');
-    expect(room.style.minHeight).toBe('1lh');
+    expect(room).toHaveClass('cl-offer-room');
+    expect(room.style.minHeight).toBe('');
     expect(room.textContent).toBe('');
     await act(async () => { release({ data: { currentMenus: 1, drinks: [] } }); });
     expect(screen.queryByTestId('menu-drinks-offer-room')).toBeNull();

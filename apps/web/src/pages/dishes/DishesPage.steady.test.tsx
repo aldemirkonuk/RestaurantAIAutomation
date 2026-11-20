@@ -166,11 +166,21 @@ describe('r98: /dishes holds the menu offer\'s line and gives the dish register 
     mount();
     const room = await screen.findByTestId('menu-dishes-offer-room');
     expect(room).toHaveAttribute('aria-hidden', 'true');
-    expect(room.style.minHeight).toBe('1lh');
+    // One line of room above 640 px (an inline height would beat the phone rule), two at 640 px and under.
+    expect(room).toHaveClass('cl-offer-room');
+    expect(room.style.minHeight).toBe('');
     expect(screen.getByTestId('dish-add')).toBeInTheDocument();
     release({ data: { currentMenus: 0, dishes: [] } });
     expect(await screen.findByTestId('menu-dishes-no-menu')).toBeInTheDocument();
     expect(screen.queryByTestId('menu-dishes-offer-room')).toBeNull();
+  });
+
+  it('the offer room is one line above 640 px and two at 640 px and under, where the "no menu" sentence wraps', () => {
+    const css = readFileSync(resolve(__dirname, '../cellar/next/cellar-next.css'), 'utf8');
+    expect(css).toMatch(/\.cl-offer-room\s*\{[^}]*min-height: 1lh;/);
+    const phone = css.match(/@media \(max-width: 640px\) \{\s*\.cl-offer-room\s*\{([^}]*)\}/);
+    expect(phone).not.toBeNull();
+    expect(phone?.[1]).toMatch(/min-height: 2lh;/);
   });
 
   it('the page carries the scope class, and the stylesheet makes its buttons and boxes 44 px at 640 px and under', () => {
