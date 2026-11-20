@@ -290,6 +290,12 @@ describe('the cost card says what its figure leaves out, and the share is in the
     expect(screen.getByTestId('drink-card-cost').textContent).not.toMatch(/not counted/);
   });
 
+  it('says it on the figure that is not known too, when a line is not counted and another has no price', () => {
+    const d = gAndT();
+    render(<DrinkCards data={{ ...d, cost: { perServe: null, perServeExact: null, priced: 1, of: 2, complete: false, partial: 0 } }} sayMoney={say} unsaved={false} />);
+    expect(screen.getByTestId('drink-card-cost').textContent).toMatch(/1 of 2 ingredients priced.*1 line is not counted\.$/);
+  });
+
   it('says it when the lines, each to the cent, do not add to the total', () => {
     const d = gAndT();
     const withLines = (costs: number[]): CocktailRecipe => ({

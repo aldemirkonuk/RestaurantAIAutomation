@@ -54,15 +54,15 @@ const linesDoNotAdd = (total: number | null, lineCosts: Array<number | null>): b
 function costCard(cost: RecipeCost | null, missing: string, sayMoney: (n: number) => string, draft: boolean, dish = false, lineCount = cost?.of ?? 0, lineCosts: Array<number | null> = []): Card | null {
   if (!cost) return null;
   const base = { id: 'cost', label: 'Cost a serve' };
+  // A line switched to "not counted" leaves the figure lower without a word; say how many are left out, beside the figure.
+  const left = Math.max(0, lineCount - cost.of);
+  const leftOut = left > 0 ? ` ${capital(count(left, 'line is', 'lines are'))} not counted.` : '';
   if (cost.complete && cost.perServe != null) {
     const exact = cost.perServeExact ?? null;
     const figure = cost.perServe === 0 && exact != null && exact > 0 ? `Under ${sayMoney(0.01)}` : sayMoney(cost.perServe);
     const part = cost.partial ?? 0;
     const lead = draft ? "Your unsaved lines, at today's prices" : "At today's prices";
     const priced = draft ? '' : cost.of === 1 ? ', its one ingredient priced' : `, all ${cost.of} ingredients priced`;
-    // A line switched to "not counted" leaves the figure lower without a word; say how many are left out, beside the figure.
-    const left = Math.max(0, lineCount - cost.of);
-    const leftOut = left > 0 ? ` ${capital(count(left, 'line is', 'lines are'))} not counted.` : '';
     const rounding = linesDoNotAdd(cost.perServe, lineCosts) ? ` ${ROUNDING_NOTE}` : '';
     return {
       ...base,
@@ -84,7 +84,7 @@ function costCard(cost: RecipeCost | null, missing: string, sayMoney: (n: number
     figure: 'Not known',
     known: false,
     warn: true,
-    said: `${cost.priced} of ${count(cost.of, 'ingredient', 'ingredients')} priced${missing ? `; no price yet for ${missing}` : ''}.`,
+    said: `${cost.priced} of ${count(cost.of, 'ingredient', 'ingredients')} priced${missing ? `; no price yet for ${missing}` : ''}.${leftOut}`,
   };
 }
 
