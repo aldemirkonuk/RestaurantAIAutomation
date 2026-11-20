@@ -214,14 +214,22 @@ describe('the rows', () => {
     expect(list.querySelector('b')).toBeNull();
   });
 
-  it('a layer worked out from a recipe is not "stated by" a person: the footer and the list say it once, plainly', async () => {
+  it('a drink worked out from its recipe shows where it came from once: the layer, with no second footer line saying the same', async () => {
     api.get.mockResolvedValue(ready({ axes: { salty: ax(5) } }, [layer('Worked out from the recipe', 'recipe')]));
     mount();
-    const f = await screen.findByTestId('taste-footer');
-    expect(f.textContent).toMatch(/^Worked out from the recipe, .+, 1 source\.$/);
-    expect(f.textContent).not.toMatch(/Stated by/);
-    const li = screen.getByTestId('taste-layers').querySelectorAll('li');
+    const li = (await screen.findByTestId('taste-layers')).querySelectorAll('li');
+    expect(li).toHaveLength(1);
     expect(li[0].textContent).toMatch(/^Worked out from the recipe, [^:]*$/);
+    expect(screen.queryByTestId('taste-footer')).toBeNull();
+    expect(document.body.textContent).not.toMatch(/Stated by/);
+    expect((document.body.textContent ?? '').match(/Worked out from the recipe/g)).toHaveLength(1);
+  });
+
+  it('a recipe layer beside a person\'s layer keeps the footer, which names the person only', async () => {
+    api.get.mockResolvedValue(ready({ axes: { salty: ax(5) } }, [layer('Ayşe', 'house'), layer('Worked out from the recipe', 'recipe')]));
+    mount();
+    const f = await screen.findByTestId('taste-footer');
+    expect(f.textContent).toMatch(/^Stated by Ayşe, .+, 2 sources\.$/);
   });
 
   it('one layer says one source', async () => {
