@@ -1,7 +1,7 @@
 import { ServiceUnavailableException } from "@nestjs/common";
 import { ROLES_KEY } from "../auth/decorators/roles.decorator";
 import { DishesController } from "./dishes.controller";
-import { DishesService, MENU_DISHES_UNREAD } from "./dishes.service";
+import { DishesService, MENU_DISH_BATCH, MENU_DISHES_UNREAD } from "./dishes.service";
 import { RecipesService } from "./recipes.service";
 import { menuDishesNotListed } from "./menu-dishes";
 import { HOUSE_A, HOUSE_B, fakeDb, twoHouses, type Row } from "./dishes.testing";
@@ -110,15 +110,18 @@ const fold = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
 
 /**
  * The fake's dishes table, with the migration's index: one live dish per
- * house per lower-cased, space-folded name (a second is a 23505). `fail`
- * makes the insert of that name fail another way; `race` adds a dish of
- * that name, as another tab would, just before the first insert.
+ * house per lower-cased, space-folded name (a second is a 23505). An insert
+ * takes one row or an array, as supabase-js does, and an array is all or
+ * nothing, as one INSERT statement is. `fail` makes the insert of that name
+ * fail another way; `race` adds a dish of that name, as another tab would,
+ * just before the first insert. `calls` counts the inserts sent.
  */
 function service(r = rows(), opts: { fail?: string; race?: string; readFails?: boolean } = {}) {
   const fake = fakeDb(r);
   const client: any = fake.db.getClient();
   const base = client.from;
   const inserts: Row[] = [];
+  const calls: number[] = [];
   let raced = false;
   client.from = (table: string) => {
     if (opts.readFails && table === "restaurant_menus") {
@@ -126,25 +129,39 @@ function service(r = rows(), opts: { fail?: string; race?: string; readFails?: b
     }
     const q = base(table);
     if (table !== "dishes") return q;
-    q.insert = (row: Row) => {
+    q.insert = (rowOrRows: Row | Row[]) => {
+      const batch = Array.isArray(rowOrRows) ? rowOrRows : [rowOrRows];
       const answer = () => {
+        calls.push(batch.length);
         if (opts.race && !raced) {
           raced = true;
-          r.dishes.push({ id: "d0000000-0000-4000-8000-0000000race1", restaurant_id: row.restaurant_id, name: opts.race, deleted_at: null });
+          r.dishes.push({ id: "d0000000-0000-4000-8000-0000000race1", restaurant_id: batch[0].restaurant_id, name: opts.race, deleted_at: null });
         }
-        if (row.name === opts.fail) return { data: null, error: { code: "08006", message: "connection lost" } };
-        const taken = r.dishes.some((d) => d.restaurant_id === row.restaurant_id && d.deleted_at == null && fold(d.name) === fold(row.name));
-        if (taken) return { data: null, error: { code: "23505", message: "duplicate key" } };
-        const made = { id: `d0000000-0000-4000-8000-${String(inserts.length + 1).padStart(12, "0")}`, deleted_at: null, ...row };
-        inserts.push(made);
-        r.dishes.push(made);
-        return { data: made, error: null };
+        const seen = new Set<string>();
+        for (const row of batch) {
+          if (row.name === opts.fail) return { data: null, error: { code: "08006", message: "connection lost" } };
+          const taken = r.dishes.some((d) => d.restaurant_id === row.restaurant_id && d.deleted_at == null && fold(d.name) === fold(row.name));
+          if (taken || seen.has(fold(row.name))) return { data: null, error: { code: "23505", message: "duplicate key" } };
+          seen.add(fold(row.name));
+        }
+        const made = batch.map((row) => {
+          const m = { id: `d0000000-0000-4000-8000-${String(inserts.length + 1).padStart(12, "0")}`, deleted_at: null, ...row };
+          inserts.push(m);
+          r.dishes.push(m);
+          return m;
+        });
+        return { data: Array.isArray(rowOrRows) ? made : made[0], error: null };
       };
-      return { select: () => ({ single: async () => answer() }) };
+      return {
+        select: () => ({
+          single: async () => answer(),
+          then: (ok: (v: unknown) => unknown, bad?: (e: unknown) => unknown) => Promise.resolve().then(answer).then(ok, bad),
+        }),
+      };
     };
     return q;
   };
-  return { svc: new DishesService(fake.db, new RecipesService(fake.db)), inserts };
+  return { svc: new DishesService(fake.db, new RecipesService(fake.db)), inserts, calls };
 }
 
 describe("DishesService.menuDishes: the offer read from the current menu", () => {
@@ -218,14 +235,61 @@ describe("DishesService.addMenuDishes: the offer put on the list", () => {
     expect(inserts).toHaveLength(1);
   });
 
-  it("stops at a failed write: what was made is said, the rest are not added", async () => {
+  it("stops at a failed write: one batch is all or nothing, so none of it is made and every name is said", async () => {
     const r = rows();
     r.menu_items.push(mline(MENU_NOW, HOUSE_A, "Baklava", "Desserts", 140));
     const { svc, inserts } = service(r, { fail: "Mercimek çorbası" });
     const out = await svc.addMenuDishes(HOUSE_A, ["Adana kebap", "Mercimek çorbası", "Baklava"]);
-    expect(out.added.map((d) => d.name)).toEqual(["Adana kebap"]);
-    expect(out.notAdded).toEqual(["Mercimek çorbası", "Baklava"]);
-    expect(inserts.map((d) => d.name)).toEqual(["Adana kebap"]);
+    expect(out.added).toEqual([]);
+    expect(out.notAdded).toEqual(["Adana kebap", "Mercimek çorbası", "Baklava"]);
+    expect(inserts).toEqual([]);
+  });
+});
+
+describe("DishesService.addMenuDishes: a long menu in batches (r36 gap 14)", () => {
+  const long = (n: number) => {
+    const r = rows();
+    for (let i = 0; i < n; i++) r.menu_items.push(mline(MENU_NOW, HOUSE_A, `Meze ${String(i).padStart(3, "0")}`, "Starters", 50 + i));
+    return r;
+  };
+  const names = (n: number) => Array.from({ length: n }, (_, i) => `Meze ${String(i).padStart(3, "0")}`);
+
+  it("puts 250 dishes on the list in three inserts, not 250", async () => {
+    const { svc, inserts, calls } = service(long(250));
+    const out = await svc.addMenuDishes(HOUSE_A, names(250));
+    expect(calls).toEqual([MENU_DISH_BATCH, MENU_DISH_BATCH, 50]);
+    expect(out.added).toHaveLength(250);
+    expect(out).toMatchObject({ already: [], notAdded: [], notOffered: [] });
+    expect(inserts[249]).toMatchObject({ restaurant_id: HOUSE_A, name: "Meze 249", menu_section: "Starters", price: 299, description: null });
+    expect(new Set(out.added.map((d) => d.id)).size).toBe(250);
+  });
+
+  it("a batch refused for a name listed since is put on one by one: that name is already, the rest are made", async () => {
+    const { svc, calls } = service(long(150), { race: "meze 020" });
+    const out = await svc.addMenuDishes(HOUSE_A, names(150));
+    expect(out.already).toEqual(["Meze 020"]);
+    expect(out.added).toHaveLength(149);
+    expect(out.notAdded).toEqual([]);
+    // The first batch (and the race) is refused, so 100 one by one; the second batch of 50 goes whole.
+    expect(calls).toEqual([MENU_DISH_BATCH, ...Array(MENU_DISH_BATCH).fill(1), 50]);
+  });
+
+  it("a batch that fails another way stops the run: earlier batches stay made, the rest are not added", async () => {
+    const { svc, inserts } = service(long(250), { fail: "Meze 150" });
+    const out = await svc.addMenuDishes(HOUSE_A, names(250));
+    expect(out.added).toHaveLength(100);
+    expect(out.notAdded).toEqual(names(250).slice(100));
+    expect(inserts).toHaveLength(100);
+  });
+
+  it("a one-by-one write that fails another way stops there, and says every name after it", async () => {
+    const { svc } = service(long(150), { race: "Meze 010", fail: "Meze 050" });
+    const out = await svc.addMenuDishes(HOUSE_A, names(150));
+    expect(out.already).toEqual(["Meze 010"]);
+    expect(out.added).toHaveLength(49);
+    expect(out.notAdded).toEqual(names(150).slice(50));
+    const all = [...out.added.map((d) => d.name), ...out.already, ...out.notAdded];
+    expect(all.sort()).toEqual(names(150));
   });
 });
 
