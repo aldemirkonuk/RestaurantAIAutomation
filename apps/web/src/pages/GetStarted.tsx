@@ -174,6 +174,9 @@ function ArrivalShell({
   )
 }
 
+/** Height of the menu step the standing read gives way to (r102 walk, 375 px). */
+const MENU_STEP_MIN_HEIGHT_PX = 378
+
 export default function GetStarted() {
   const navigate = useNavigate()
   const { user, loading, createFirstHouse, signInWithSession, logout } = useAuth()
@@ -733,7 +736,14 @@ export default function GetStarted() {
   if (step === 'menu' && !openedHere.current && menuStanding === null) {
     return (
       <ArrivalShell step={step} onSignOut={signOut}>
-        <p role="status" data-testid="menu-standing-reading">
+        {/* r103: the menu step it gives way to stands 378 px tall; holding
+            that height keeps the page still when the read lands (CLS 0.30 at
+            375 px under reduced motion, r102 check 5). */}
+        <p
+          role="status"
+          data-testid="menu-standing-reading"
+          style={{ minHeight: MENU_STEP_MIN_HEIGHT_PX }}
+        >
           Looking at your house’s menu…
         </p>
       </ArrivalShell>
