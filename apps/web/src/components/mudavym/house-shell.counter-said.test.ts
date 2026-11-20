@@ -21,4 +21,8 @@ describe('the rail log', () => {
   it('takes the quiet line\'s own margin away so the two states do not differ by it', () => {
     expect(rule('.mdv-counter__said .mdv-counter__quiet')).toMatch(/margin:\s*0\s*;/)
   })
+
+  it('holds the foot at its two-line height so "reading" turning into "read ... Read now" moves nothing', () => {
+    expect(rule('.mdv-counter__foot')).toMatch(/min-height:\s*53px/)
+  })
 })
