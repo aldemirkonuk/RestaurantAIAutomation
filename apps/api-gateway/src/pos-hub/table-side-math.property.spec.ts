@@ -409,7 +409,10 @@ describe("cost at sale (P9, D4)", () => {
     ).toMatchObject({
       unitCost: 99,
       basis: "last_purchase_price",
-      lotId: null,
+      // r102: the lot a pour draws from first is named under this basis too,
+      // so the invoice that verifies its delivery can restate the line.
+      lotId: "old",
+      orderId: "o1",
     });
     expect(
       pickSaleCostSource({ last_purchase_price: 0 }, null, lots),
