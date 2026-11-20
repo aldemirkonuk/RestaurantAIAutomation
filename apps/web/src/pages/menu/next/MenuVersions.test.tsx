@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   MenuVersions,
@@ -530,10 +530,35 @@ describe('MenuVersions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
     await waitFor(() => expect(mockImport).toHaveBeenCalled());
     expect(mockImport.mock.calls[0][0]).toBe('scan');
-    const { onReading, ...sent } = mockImport.mock.calls[0][2] ?? {};
+    const { onReading, onUploadProgress, ...sent } = mockImport.mock.calls[0][2] ?? {};
     expect(typeof onReading).toBe('function');
+    expect(typeof onUploadProgress).toBe('function');
     expect(sent).toEqual({});
     expect(await screen.findByText(/An owner or a manager chooses whether it becomes the current menu/)).toBeInTheDocument();
+  });
+
+  it('a read shows Sending with a bar that never goes back, then Kept once the server has it (r102 menu-motion-2)', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    let finish: (v: never) => void = () => {};
+    let labelsSeen: { onUploadProgress?: (n: number | null) => void; onReading?: (id: string) => void } = {};
+    mockImport.mockImplementation((_m, _d, labels) => {
+      labelsSeen = labels as typeof labelsSeen;
+      return new Promise((resolve) => { finish = resolve as never; });
+    });
+    const { container } = mount(false);
+    const file = new File(['%PDF'], 'menu.pdf', { type: 'application/pdf' });
+    fireEvent.change(await screen.findByLabelText('Menu to read'), { target: { files: [file] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
+    await waitFor(() => expect(mockImport).toHaveBeenCalled());
+    act(() => { labelsSeen.onUploadProgress?.(0.6); });
+    act(() => { labelsSeen.onUploadProgress?.(0.3); });
+    const bar = () => container.querySelector('.mdv-drop__bar i') as HTMLElement;
+    expect(bar().style.transform).toBe('scaleX(0.6)');
+    expect(container.querySelector('.mdv-drop__dots')).toBeNull();
+    act(() => { labelsSeen.onReading?.('m9'); });
+    expect(container.querySelector('.mdv-drop__bar')).toBeNull();
+    expect(container.querySelector('.mdv-drop__dots')).not.toBeNull();
+    finish({ menuId: 'm9', itemsExtracted: 0, submissionsCreated: 0, items: [] } as never);
   });
 
   it('a read that WAITS on the spend record says the gateway\'s reason', async () => {

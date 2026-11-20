@@ -30,6 +30,14 @@ export interface DropZoneProps {
   onClear?: () => void;
   /** The host is reading what is held. */
   reading?: boolean;
+  /**
+   * Where the read stands. `sending` shows the upload bar (`sent`, 0 to 1);
+   * `kept` is the file held by the server, which is reading it: the only stage
+   * with the dots, because the gateway reports only reading, done or failed.
+   * `reading` (the default) is a host that has no stages.
+   */
+  stage?: 'sending' | 'kept' | 'reading';
+  sent?: number;
   accept: string;
   multiple?: boolean;
   /** The accessible name of the file input. */
@@ -82,6 +90,8 @@ export function DropZone({
   onFiles,
   onClear,
   reading = false,
+  stage = 'reading',
+  sent = 0,
   accept,
   multiple = false,
   inputLabel,
@@ -182,11 +192,24 @@ export function DropZone({
               </span>
               {reading ? (
                 <span className="mdv-drop__reading" role="status">
-                  Reading
-                  <span className="mdv-drop__dots" aria-hidden>
-                    <i />
-                    <i />
-                    <i />
+                  <span className="mdv-drop__stage" key={stage} data-stage={stage}>
+                    {stage === 'sending' ? (
+                      <>
+                        Sending
+                        <span className="mdv-drop__bar" aria-hidden>
+                          <i style={{ transform: `scaleX(${Math.min(1, Math.max(0, sent))})` }} />
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        {stage === 'kept' ? 'Kept, reading' : 'Reading'}
+                        <span className="mdv-drop__dots" aria-hidden>
+                          <i />
+                          <i />
+                          <i />
+                        </span>
+                      </>
+                    )}
                   </span>
                 </span>
               ) : (
