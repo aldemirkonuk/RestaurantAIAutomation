@@ -401,9 +401,8 @@ export function tickInterval(rows: ReadonlyArray<{ label: string }>): 0 | 'prese
   return rows.length <= 7 && rows.every((r) => r.label.length <= 5) ? 0 : 'preserveStartEnd';
 }
 
-/** One bar's place in the rise: `--rp-i` of `--rp-n` fixes its delay inside the 160 ms sweep (reports-next.css, `rp-grow`). */
-const stagger = (i: number, n: number): CSSProperties =>
-  ({ ['--rp-i' as string]: i, ['--rp-n' as string]: n }) as CSSProperties;
+/** One bar's place in the rise: `--rp-i` times 40 ms is its delay (reports-next.css, `rp-grow`). */
+const stagger = (i: number): CSSProperties => ({ ['--rp-i' as string]: i }) as CSSProperties;
 
 /** Value labels over bars hold when the bars are few enough that they cannot touch. */
 export const LABEL_BARS_MAX = 8;
@@ -423,56 +422,20 @@ function valueLabels(dataKey: string, format: (v: number) => string) {
 
 const KIND_WORDS = { line: 'A line', area: 'An area', bars: 'Bars' } as const;
 
-/** The most points a drawing carries; the table keeps every one (r102 M7: 365 days drew 365 recharts nodes and froze a frame). */
-export const MAX_DRAWN = 150;
-
-/**
- * At most `max` of the rows, in order: the first and last, the seam where
- * measurement stops (and any row a reference line names), and the highest row
- * of each stretch between. A row kept is a real row, never an average, so a
- * tooltip still tells a day that happened.
- */
-export function thinCats<T extends { label: string; value?: number | null; projected?: number | null }>(
-  data: readonly T[],
-  refs: ReadonlyArray<{ x?: string | number | null }> = [],
-  max: number = MAX_DRAWN,
-): T[] {
-  if (data.length <= max) return data as T[];
-  const must = new Set<number>([0, data.length - 1]);
-  const named = new Set(refs.map((r) => r.x).filter((x) => x != null).map(String));
-  data.forEach((d, i) => {
-    const edge = i > 0 && (data[i - 1].value == null) !== (d.value == null);
-    if (edge || named.has(d.label)) must.add(i);
-  });
-  const rest = data.map((_, i) => i).filter((i) => !must.has(i));
-  const buckets = Math.max(max - must.size, 1);
-  const size = Math.ceil(rest.length / buckets);
-  for (let at = 0; at < rest.length; at += size) {
-    const chunk = rest.slice(at, at + size);
-    const top = (i: number) => data[i].value ?? data[i].projected ?? -Infinity;
-    must.add(chunk.reduce((best, i) => (top(i) > top(best) ? i : best), chunk[0]));
-  }
-  return [...must].sort((a, b) => a - b).map((i) => data[i]);
-}
-
 export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'area' | 'bars' }) {
-  const { data: all, xLabel, yLabel, unit, format, refs, projectedLabel } = series;
-  const data = thinCats(all, refs);
-  const thinned = data.length < all.length;
-  const hasProjection = all.some((d) => d.projected != null);
+  const { data, xLabel, yLabel, unit, format, refs, projectedLabel } = series;
+  const hasProjection = data.some((d) => d.projected != null);
   const label = `${KIND_WORDS[kind]} of ${yLabel} by ${xLabel}${
     hasProjection ? `, the ${projectedLabel ?? 'projected'} part dashed` : ''
   }${readingOf(
-    all.map((d) => ({ label: d.full ?? d.label, v: d.value ?? d.projected })),
+    data.map((d) => ({ label: d.full ?? d.label, v: d.value ?? d.projected })),
     format,
     unit,
   )}`;
-  const caption = `${titled(yLabel, unit)} · by ${xLabel}${
-    thinned ? ` · ${data.length} of ${all.length}, the highest of each stretch; the table has every one` : ''
-  }`;
+  const caption = `${titled(yLabel, unit)} · by ${xLabel}`;
   const gutter = gutterFor(
     tickLabels(
-      [...all.map((d) => d.value), ...all.map((d) => d.projected), ...(refs ?? []).map((r) => r.y)],
+      [...data.map((d) => d.value), ...data.map((d) => d.projected), ...(refs ?? []).map((r) => r.y)],
       format,
     ),
   );
@@ -550,10 +513,10 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
                   stroke="var(--seal-deep)"
                   strokeDasharray="3 2"
                   data-projected="true"
-                  style={stagger(i, rows.length)}
+                  style={stagger(i)}
                 />
               ) : (
-                <Cell key={`${i}:${r.label}`} fill="var(--seal)" data-projected="false" style={stagger(i, rows.length)} />
+                <Cell key={`${i}:${r.label}`} fill="var(--seal)" data-projected="false" style={stagger(i)} />
               ),
             )}
           </Bar>
@@ -754,7 +717,7 @@ export function ComboPlot({
           >
             {rows.length <= LABEL_BARS_MAX && valueLabels('bar', bars.format)}
             {rows.map((r, i) => (
-              <Cell key={`${i}:${r.label}`} fill="var(--seal)" style={stagger(i, rows.length)} />
+              <Cell key={`${i}:${r.label}`} fill="var(--seal)" style={stagger(i)} />
             ))}
           </Bar>
           <Line
