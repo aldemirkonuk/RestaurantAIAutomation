@@ -1,4 +1,5 @@
 import { restoreArrivalEntry } from "../arrival/restore-entry";
+import { readHouseThresholdMin } from "../inventory/house-par";
 import * as crypto from "crypto";
 import {
   Injectable,
@@ -34,7 +35,6 @@ const SOURCE_BUCKET = "vendor-attachments";
 const SOURCE_URL_SECONDS = 300;
 /** PostgREST's max_rows (supabase/config.toml): a page never holds more. */
 const PAGE_ROWS = 1000;
-const DEFAULT_THRESHOLD_MIN_FALLBACK = 3;
 const PRICE_FIELDS = new Set(["by_glass_price", "bottle_price"]);
 
 interface ResolvedItem {
@@ -2075,12 +2075,7 @@ export class MenusService {
   }
 
   private async getDefaultThresholdMin(restaurantId: string): Promise<number> {
-    const { data } = await this.dbService.supabase
-      .from("restaurants")
-      .select("default_threshold_min")
-      .eq("id", restaurantId)
-      .maybeSingle();
-    return data?.default_threshold_min ?? DEFAULT_THRESHOLD_MIN_FALLBACK;
+    return readHouseThresholdMin(this.dbService.supabase, restaurantId);
   }
 
   private async backfillMenuItemColumn(

@@ -8,6 +8,7 @@ import {
   Inject,
   forwardRef,
 } from "@nestjs/common";
+import { readHouseThresholdMin } from "./house-par";
 import { DatabaseService } from "../database/database.service";
 import { readViewWhole } from "./read-view-whole";
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
@@ -1077,7 +1078,9 @@ export class InventoryService {
       // `??`, not `||`: a par of 0 is the house saying "do not stock this"
       // (a garnish, a wine being run down), and `|| 6` turned it into 6 (QA
       // round 2, U-3). Only a par the caller left out gets the default.
-      threshold_min: dto.thresholdMin ?? 6,
+      threshold_min:
+        dto.thresholdMin ??
+        (await readHouseThresholdMin(this.dbService.getClient(), restaurantId)),
       threshold_max: dto.thresholdMax ?? 24,
       toast_item_guid: dto.toastItemGuid || null,
       is_active: true,
@@ -1432,7 +1435,9 @@ export class InventoryService {
         master_wine_id: masterWineId,
         provider_id: line.providerId || null,
         stock_live: 0, // lots are the source of truth; booked via the RPC below
-        threshold_min: line.thresholdMin ?? 6,
+        threshold_min:
+          line.thresholdMin ??
+          (await readHouseThresholdMin(client, restaurantId)),
         threshold_max: line.thresholdMax ?? 24,
         is_active: true,
       };
