@@ -191,6 +191,16 @@ describe("writes answer for the caller only", () => {
     expect(service.deleteAllRead).not.toHaveBeenCalled();
   });
 
+  it("[REVERT-FAILS] deleting all read clears the token's house only (QA round 4 B3)", async () => {
+    const { controller, service } = makeController();
+    await controller.deleteAllRead({} as any, req());
+    expect(service.deleteAllRead).toHaveBeenCalledWith(OWN, HOUSE);
+    await expect(
+      controller.deleteAllRead({ restaurantId: OTHER_HOUSE } as any, req()),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(service.deleteAllRead).toHaveBeenCalledTimes(1);
+  });
+
   it("[REVERT-FAILS] a test notification goes only to the caller", async () => {
     const { controller, service } = makeController();
     await expect(
