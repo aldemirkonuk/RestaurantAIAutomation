@@ -347,7 +347,12 @@ studio — plus deliberate chrome-free escapes (door receipt, SimPOS terminal,
      ring for a verb with a register not read, a dash for one refused — never a
      blank edge); after that each person's choice per page wins [Corrected
      2026-10-07: one choice, kept for every page, since the founder's
-     2026-10-01 narrowing (`counterPrefs.ts`'s header); not one per page]. Kept per device
+     2026-10-01 narrowing (`counterPrefs.ts`'s header); not one per page].
+     **[Added 2026-10-02, PR #566 gate round 2 (audit at `65ddb2cd2`): one exception,
+     merged as PR #575 (`5a330a88e`). While Ask is docked in the counter's slot (1280
+     px and wider, never on a phone), the counter shows tucked and its control closes
+     Ask. The person's stored choice is not touched (`HouseShell.tsx:139`, `:164-169`
+     at `a62dbd105`).]** Kept per device
      in localStorage keyed by the person (`lib/mudavym/counterPrefs.ts` says why
      not the server route).
    - **The house said** — the sitting's own log of what the house sealed,
