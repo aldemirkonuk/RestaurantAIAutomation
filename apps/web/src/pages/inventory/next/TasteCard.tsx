@@ -16,7 +16,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { UNREACHABLE_WORDS } from '../../../lib/unreachable';
-import { getTaste, tasteKeys, type AxisKey, type TasteBasis, type SubjectKind, type TasteAxis, type TasteData, type TasteEffective, type TasteRead } from '../../../services/api/taste';
+import { getTaste, tasteKeys, type AxisKey, type LineFrom, type TasteBasis, type SubjectKind, type TasteAxis, type TasteData, type TasteEffective, type TasteRead } from '../../../services/api/taste';
 import { fmtWhen } from '../../../lib/mudavym/format';
 import TasteForm from './TasteForm';
 import './taste-card.css';
@@ -57,9 +57,9 @@ export interface TasteCardProps {
 }
 
 /** One line of "Worked out from": the line's name and whose taste stood in for it. Lines with no known taste are named in the note instead. */
-const FROM_WORDS = { good: 'its own taste', class_prior: 'typical of its kind' } as const;
+const FROM_WORDS = { good: 'its own taste', class_prior: 'typical of its kind', class_prior_estimate: 'typical of its kind, an estimate' } as const;
 export const workedFromWords = (b: TasteBasis): string | null => {
-  const named = b.lineSources.filter((l): l is { name: string; from: 'good' | 'class_prior' } => l.from !== 'unknown').map((l) => `${l.name} (${FROM_WORDS[l.from]})`);
+  const named = b.lineSources.filter((l): l is { name: string; from: Exclude<LineFrom, 'unknown'> } => l.from !== 'unknown').map((l) => `${l.name} (${FROM_WORDS[l.from]})`);
   return named.length ? `Worked out from: ${named.join(', ')}.` : null;
 };
 export const unknownLinesWords = (b: TasteBasis): string | null => {
