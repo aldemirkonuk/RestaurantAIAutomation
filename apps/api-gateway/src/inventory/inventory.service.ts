@@ -84,7 +84,11 @@ export class InventoryService {
     rollup?: Record<string, any>,
     locations?: any[],
     analytics?: Record<string, any>,
+    // G15: omitted = never read; false = read failed, so not 0 or [].
+    reads?: { rollup?: boolean; locations?: boolean },
   ): Record<string, any> {
+    const rollupFailed = reads?.rollup === false;
+    const locationsFailed = reads?.locations === false;
     const wineBottleMl = row.master_wine_library?.bottle_size_ml ?? 750;
     const defaultPourMl = row.restaurants?.default_pour_ml ?? 150;
     const effectiveBottleSizeMl = row.bottle_size_ml ?? wineBottleMl;
@@ -176,7 +180,7 @@ export class InventoryService {
       lotLiveQty: rollup?.live_qty ?? undefined,
       lotLocationCount: rollup?.live_location_count ?? undefined,
       // Phase 2 (2c) by-the-glass: total open-bottle ml across live lots.
-      openMl: rollup?.open_ml ?? 0,
+      openMl: rollupFailed ? undefined : (rollup?.open_ml ?? 0),
       // Phase 2 (2d/2e): velocity / days-of-cover / reorder / ABC / dead-stock.
       velocityPerDay: analytics?.velocity_per_day ?? undefined,
       daysOfCover: analytics?.days_of_cover ?? undefined,
@@ -198,14 +202,18 @@ export class InventoryService {
           ? undefined
           : Number(analytics.usage_qty),
       // Phase 2 multi-location: per-location live quantities ([{locationId, qty, wac}]).
-      locations: locations ?? [],
+      locations: locationsFailed ? undefined : (locations ?? []),
+      ...(reads?.rollup !== undefined ? { rollupReadable: reads.rollup } : {}),
+      ...(reads?.locations !== undefined
+        ? { locationsReadable: reads.locations }
+        : {}),
     };
   }
 
-  /** Phase 2: per-inventory WAC / on-hand / location spread derived from inventory_lots. */
+  /** Phase 2: per-inventory WAC / on-hand / location spread. `ok: false` = failed read (G15). */
   private async fetchLotRollup(
     restaurantId: string,
-  ): Promise<Map<string, any>> {
+  ): Promise<{ ok: boolean; data: Map<string, any> }> {
     const map = new Map<string, any>();
     try {
       const client = this.dbService.getClient();
@@ -223,16 +231,17 @@ export class InventoryService {
         ["inventory_id"],
       );
       for (const r of data) map.set(r.inventory_id, r);
+      return { ok: true, data: map };
     } catch (err: any) {
       this.logger.warn(`fetchLotRollup failed: ${err?.message}`);
+      return { ok: false, data: new Map() };
     }
-    return map;
   }
 
   /** Phase 2 multi-location: per-inventory live lot quantities by location. */
   private async fetchLocationBreakdown(
     restaurantId: string,
-  ): Promise<Map<string, any[]>> {
+  ): Promise<{ ok: boolean; data: Map<string, any[]> }> {
     const map = new Map<string, any[]>();
     try {
       const client = this.dbService.getClient();
@@ -254,10 +263,11 @@ export class InventoryService {
         arr.push({ locationId: r.location_id, qty: r.qty, wac: r.wac });
         map.set(r.inventory_id, arr);
       }
+      return { ok: true, data: map };
     } catch (err: any) {
       this.logger.warn(`fetchLocationBreakdown failed: ${err?.message}`);
+      return { ok: false, data: new Map() };
     }
-    return map;
   }
 
   /**
@@ -312,9 +322,10 @@ export class InventoryService {
     return (data || []).map((row) => ({
       ...this.mapInventoryItem(
         row,
-        rollup.get(row.id),
-        locations.get(row.id),
+        rollup.data.get(row.id),
+        locations.data.get(row.id),
         analytics.map.get(row.id),
+        { rollup: rollup.ok, locations: locations.ok },
       ),
       // Additive: every existing reader that does not know this field simply
       // ignores it. `false` means the analytics join itself could not be
@@ -384,8 +395,10 @@ export class InventoryService {
     return row.data
       ? this.mapInventoryItem(
           row.data,
-          rollup.get(inventoryId),
-          locations.get(inventoryId),
+          rollup.data.get(inventoryId),
+          locations.data.get(inventoryId),
+          undefined,
+          { rollup: rollup.ok, locations: locations.ok },
         )
       : null;
   }
@@ -486,8 +499,10 @@ export class InventoryService {
       item: row.data
         ? this.mapInventoryItem(
             row.data,
-            rollup.get(inventoryId),
-            locations.get(inventoryId),
+            rollup.data.get(inventoryId),
+            locations.data.get(inventoryId),
+            undefined,
+            { rollup: rollup.ok, locations: locations.ok },
           )
         : null,
     };
@@ -665,8 +680,10 @@ export class InventoryService {
       item: row.data
         ? this.mapInventoryItem(
             row.data,
-            rollup.get(inventoryId),
-            locations.get(inventoryId),
+            rollup.data.get(inventoryId),
+            locations.data.get(inventoryId),
+            undefined,
+            { rollup: rollup.ok, locations: locations.ok },
           )
         : null,
       // ADR 0078: the count itself, including the case that used to be invisible
@@ -1080,7 +1097,10 @@ export class InventoryService {
         const reactRollup = await this.fetchLotRollup(restaurantId);
         const reactMapped = this.mapInventoryItem(
           freshReact ?? reactivated,
-          reactRollup.get(existing.id),
+          reactRollup.data.get(existing.id),
+          undefined,
+          undefined,
+          { rollup: reactRollup.ok },
         );
         return reactPrice ? { ...reactMapped, priceChange: reactPrice } : reactMapped;
       }
@@ -1184,7 +1204,13 @@ export class InventoryService {
       .eq("id", data.id)
       .single();
     const rollup = await this.fetchLotRollup(restaurantId);
-    const mapped = this.mapInventoryItem(fresh ?? data, rollup.get(data.id));
+    const mapped = this.mapInventoryItem(
+      fresh ?? data,
+      rollup.data.get(data.id),
+      undefined,
+      undefined,
+      { rollup: rollup.ok },
+    );
     return price ? { ...mapped, priceChange: price } : mapped;
   }
 
@@ -1891,7 +1917,13 @@ export class InventoryService {
     }
 
     const rollup = await this.fetchLotRollup(restaurantId);
-    const mapped = this.mapInventoryItem(data, rollup.get(itemId));
+    const mapped = this.mapInventoryItem(
+      data,
+      rollup.data.get(itemId),
+      undefined,
+      undefined,
+      { rollup: rollup.ok },
+    );
     // Said, not implied: "unchanged" and "stale" are different answers from
     // "changed", and the page tells the manager which one happened.
     return priceChange ? { ...mapped, priceChange } : mapped;
