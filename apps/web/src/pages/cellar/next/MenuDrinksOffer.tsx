@@ -78,7 +78,7 @@ export default function MenuDrinksOffer() {
   // of the class it takes, until then, so what is below does not drop when it
   // arrives. A house with nothing to offer gives the room back.
   if (offer.isPending && !said) {
-    return <p className="cl-said" aria-hidden="true" data-testid="menu-drinks-offer-room" style={{ marginTop: 12, minHeight: '1lh' }} />;
+    return <p className="cl-said cl-offer-room" aria-hidden="true" data-testid="menu-drinks-offer-room" style={{ marginTop: 12 }} />;
   }
 
   const items = offer.isError ? [] : (offer.data?.drinks ?? []);

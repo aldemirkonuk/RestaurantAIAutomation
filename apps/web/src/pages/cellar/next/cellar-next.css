@@ -386,6 +386,12 @@
    raise contrast, never lower it, wherever `.cl-note` already appears. */
 .cl-note { margin: 10px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-4); }
 .cl-said { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); }
+/* The menu offers hold their line before the menu read lands: one line, and two at a phone where the
+   "no menu is current" sentence wraps. Not an inline height: that would beat this rule. */
+.cl-offer-room { min-height: 1lh; }
+@media (max-width: 640px) {
+  .cl-offer-room { min-height: 2lh; }
+}
 
 /* facts of record: a label above the figure, never a label beside it */
 .cl-facts {

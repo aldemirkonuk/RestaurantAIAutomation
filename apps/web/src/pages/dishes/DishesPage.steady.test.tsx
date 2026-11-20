@@ -94,7 +94,7 @@ describe('/dishes keeps its rows still while the figures arrive', () => {
     expect(subLine(B).style.minHeight).toBe('1lh');
   });
 
-  it('an owner\'s "no recipe yet" line has its room held while the figures are read, and the held room goes once nothing is bare', async () => {
+  it('an owner\'s "no recipe yet" line has its room held while the figures are read, and the room is kept, never dropped, once nothing is bare', async () => {
     let release: (v: unknown) => void = () => {};
     answer[FIGURES] = () => new Promise((r) => { release = r; });
     mount();
@@ -107,6 +107,31 @@ describe('/dishes keeps its rows still while the figures arrive', () => {
     // The real line takes the held one's place (one is on the page, never both).
     expect(await screen.findByTestId('no-recipe-yet')).toBeInTheDocument();
     expect(screen.queryByTestId('no-recipe-yet-room')).toBeNull();
+  });
+
+  it('a house whose dishes all have recipes keeps the same room, and the line that takes it says so', async () => {
+    let release: (v: unknown) => void = () => {};
+    answer[FIGURES] = () => new Promise((r) => { release = r; });
+    mount();
+    await waitFor(() => expect(screen.getByTestId(`dish-row-${A}`)).toBeInTheDocument());
+    expect(screen.getByTestId('no-recipe-yet-room').style.minHeight).toBe('1lh');
+    release({ data: { ...figures, dishes: figures.dishes.map((d) => ({ ...d, hasRecipe: true })) } });
+    const taken = await screen.findByTestId('every-dish-has-recipe');
+    // The one room on the page: same class, same hold, same margin as before the read settled.
+    expect(taken.style.minHeight).toBe('1lh');
+    expect(taken.style.marginTop).toBe('12px');
+    expect(taken).toHaveTextContent('Every dish has a recipe.');
+    expect(screen.queryByTestId('no-recipe-yet-room')).toBeNull();
+    expect(screen.queryByTestId('no-recipe-yet')).toBeNull();
+  });
+
+  it('a figures read that failed keeps the room too, and says nothing it does not know', async () => {
+    answer[FIGURES] = () => Promise.reject(new Error('down'));
+    mount();
+    const room = await screen.findByTestId('no-recipe-yet-room');
+    await screen.findByTestId('dishes-allergens-unread');
+    expect(room.style.minHeight).toBe('1lh');
+    expect(screen.queryByTestId('every-dish-has-recipe')).toBeNull();
   });
 
   it('staff are shown no such line, so none is held', async () => {
@@ -141,11 +166,21 @@ describe('r98: /dishes holds the menu offer\'s line and gives the dish register 
     mount();
     const room = await screen.findByTestId('menu-dishes-offer-room');
     expect(room).toHaveAttribute('aria-hidden', 'true');
-    expect(room.style.minHeight).toBe('1lh');
+    // One line of room above 640 px (an inline height would beat the phone rule), two at 640 px and under.
+    expect(room).toHaveClass('cl-offer-room');
+    expect(room.style.minHeight).toBe('');
     expect(screen.getByTestId('dish-add')).toBeInTheDocument();
     release({ data: { currentMenus: 0, dishes: [] } });
     expect(await screen.findByTestId('menu-dishes-no-menu')).toBeInTheDocument();
     expect(screen.queryByTestId('menu-dishes-offer-room')).toBeNull();
+  });
+
+  it('the offer room is one line above 640 px and two at 640 px and under, where the "no menu" sentence wraps', () => {
+    const css = readFileSync(resolve(__dirname, '../cellar/next/cellar-next.css'), 'utf8');
+    expect(css).toMatch(/\.cl-offer-room\s*\{[^}]*min-height: 1lh;/);
+    const phone = css.match(/@media \(max-width: 640px\) \{\s*\.cl-offer-room\s*\{([^}]*)\}/);
+    expect(phone).not.toBeNull();
+    expect(phone?.[1]).toMatch(/min-height: 2lh;/);
   });
 
   it('the page carries the scope class, and the stylesheet makes its buttons and boxes 44 px at 640 px and under', () => {

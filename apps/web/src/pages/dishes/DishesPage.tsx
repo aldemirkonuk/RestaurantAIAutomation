@@ -648,13 +648,22 @@ export default function DishesPage() {
               {DISH_ALLERGENS_UNREAD}
             </p>
           ) : null}
-          {canEdit && figState === 'reading' ? (
-            // Which dishes have no recipe is known only when the figures land; the line
-            // that says so sits above the table, so its room is held (one line, same
-            // class) until then and the table is not pushed down when it arrives.
-            <p className="cl-said" style={{ marginTop: 12, minHeight: '1lh' }} aria-hidden="true" data-testid="no-recipe-yet-room" />
-          ) : canEdit ? (
+          {canEdit && figState === 'read' && bareIds.length > 0 ? (
             <NoRecipeYet bare={bareIds.length} of={all.length} noun="dishes" only={onlyBare} onOnly={setOnlyBare} />
+          ) : canEdit ? (
+            // Which dishes have no recipe is known only when the figures land; the line
+            // that says so sits above the table, so its room (one line, same class) is
+            // held while they are read and KEPT once they land: NoRecipeYet takes it, or
+            // "every dish has a recipe" when none is bare, or it stays empty when the
+            // figures could not be read. Dropping it pulled the table up 31 px at ~210 ms.
+            <p
+              className="cl-said"
+              style={{ marginTop: 12, minHeight: '1lh' }}
+              aria-hidden={figState === 'read' ? undefined : 'true'}
+              data-testid={figState === 'read' ? 'every-dish-has-recipe' : 'no-recipe-yet-room'}
+            >
+              {figState === 'read' ? 'Every dish has a recipe.' : null}
+            </p>
           ) : null}
           <div className="cl-row-controls" style={{ marginTop: 12 }}>
             <label htmlFor="dishes-search" className="cl-sr">Search this house’s dishes</label>
