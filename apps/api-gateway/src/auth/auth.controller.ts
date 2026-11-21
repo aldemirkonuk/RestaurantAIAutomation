@@ -25,6 +25,7 @@ import { AllowsTenantChange } from "../common/tenant/allows-tenant-change.decora
 import { AllowsNoHouse } from "../common/tenant/allows-no-house.decorator";
 import { AllowUnverified } from "./decorators/allow-unverified.decorator";
 import { CheckEmailDto } from "./dto/check-email.dto";
+import { ChangeUnverifiedEmailDto } from "./dto/change-unverified-email.dto";
 import { VerifyEmailDto } from "./dto/verify-email.dto";
 import { AcceptHeldMembershipDto } from "./dto/accept-held-membership.dto";
 import { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
@@ -603,6 +604,26 @@ export class AuthController {
       req.user.email,
       // Exempt from the fork 8 lapse exactly where a refresh is (fork 10).
       req.user.devBypass === true && devBypassEnvEnabled(),
+    );
+    return { success: true, ...result };
+  }
+
+  /**
+   * Move an unverified account to the address its owner meant (r104 gap 2,
+   * ADR 0390). Session required; the service refuses a verified account.
+   */
+  @Post("change-unverified-email")
+  @UseGuards(JwtAuthGuard)
+  @AllowUnverified() // an unverified person is exactly who needs it
+  @AllowsNoHouse()
+  async changeUnverifiedEmail(
+    @Req() req: Request & { user: any },
+    @Body() dto: ChangeUnverifiedEmailDto,
+  ) {
+    const result = await this.authService.changeUnverifiedEmail(
+      req.user.userId,
+      dto.email,
+      req.user.restaurantId ?? null,
     );
     return { success: true, ...result };
   }
