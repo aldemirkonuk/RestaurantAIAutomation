@@ -70,6 +70,39 @@ describe("a credit is not also a cost (r28 G6)", () => {
     expect(r.effectiveUnitCost).toBe(0);
   });
 
+  describe("an unknown cost is never written as 0 (DD-r103-11)", () => {
+    // A zero cost is a claim (a free bottle the paper declared); no price at all
+    // is unknown and must stay null, whatever else the delivery says.
+    const unknownPrice = [null, undefined] as const;
+    for (const price of unknownPrice)
+      it.each([
+        [12, 12, 0, 0],
+        [12, 10, 2, 0],
+        [12, 5, 1, 0],
+        [12, 11, 0, 2],
+      ])(`price ${price}: billed %d, accepted %d, rejected %d, free %d keeps no cost`, (billed, accepted, rejected, free) => {
+        const r = computeMatch({
+          orderedQty: billed,
+          poUnitPrice: 10,
+          invoiceQty: billed,
+          invoiceUnitPrice: price as null,
+          acceptedQty: accepted,
+          rejectedQty: rejected,
+          freeGoodsQty: free,
+          allocatedCharges: 7.5,
+        });
+        expect(r.effectiveUnitCost).toBeNull();
+        expect(r.effectiveUnitCost).not.toBe(0);
+      });
+
+    it("a declared free bottle is a real 0, and only when the paper declared it", () => {
+      const declared = computeMatch({ ...twelveAtTen, invoiceQty: 10, acceptedQty: 1, rejectedQty: 1, freeGoodsQty: 2 });
+      expect(declared.effectiveUnitCost).toBe(0);
+      const undeclared = computeMatch({ ...twelveAtTen, invoiceQty: 10, acceptedQty: 1, rejectedQty: 1 });
+      expect(undeclared.effectiveUnitCost).not.toBe(0);
+    });
+  });
+
   describe("the books hold the bill exactly once", () => {
     const cases: [number, number, number, number, number][] = [];
     for (const billed of [6, 12, 24])
@@ -91,7 +124,11 @@ describe("a credit is not also a cost (r28 G6)", () => {
       const owedUnits = billed - accepted;
       const claimed = owedUnits > 0 ? (r.creditAmount as number) : 0;
       expect(owedUnits > 0 ? r.creditAmount : null).toBe(owedUnits > 0 ? Math.round(owedUnits * price * 100) / 100 : null);
-      expect((r.effectiveUnitCost as number) * accepted + claimed).toBeCloseTo(billed * price + charges, 1);
+      // cent-exact (DD-r102-17): the kept bottles carry the bill plus charges less
+      // the claim, to the cent. A tolerance of 0.05 hid a claim off by 4 cents.
+      expect(Math.round(((r.effectiveUnitCost as number) * accepted + claimed) * 100)).toBe(
+        Math.round((billed * price + charges) * 100),
+      );
       expect(r.effectiveUnitCost as number).toBeCloseTo(price + charges / accepted, 8);
     });
   });
