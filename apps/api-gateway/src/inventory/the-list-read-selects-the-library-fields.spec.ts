@@ -16,6 +16,7 @@ describe("the stock list read selects what the row carries", () => {
         return chain;
       },
       eq: () => chain,
+      is: () => chain,
       order: () => chain,
       gt: () => chain,
       limit: () => chain,

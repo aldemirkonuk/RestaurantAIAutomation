@@ -18,7 +18,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { deleteInventoryItem, reconcileItem } from '../../services/api/inventory'
 import { ThemedSelect } from '../ui/ThemedSelect'
-import { fmtMoney } from '../../pages/inventory/command/bits'
+import { fmtMoney, paidPer, UNREAD } from '../../pages/inventory/command/bits'
 import type { InventoryItem } from '../../pages/inventory/useInventoryPage'
 
 const REMOVE_REASONS = [
@@ -58,13 +58,15 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved, sa
         const shadow = item.shadowStock ?? 0
         const openMl = item.openMl ?? 0
         const total = live + shadow
-        const value = (item.wac ?? item.price ?? 0) * total
-        return { item, live, shadow, openMl, total, value }
+        const unread = item.rollupReadable === false
+        const value = (paidPer(item) ?? 0) * total
+        return { item, live, shadow, openMl, total, value, unread }
       }),
     [items],
   )
   const totalValue = rows.reduce((s, r) => s + r.value, 0)
-  const anyStock = rows.some((r) => r.total > 0 || r.openMl > 0)
+  const valueUnread = rows.some((r) => r.unread)
+  const anyStock = rows.some((r) => r.total > 0 || r.openMl > 0 || r.unread)
   // A row with no library title (ADR 0115: flour, napkins) is a good, not a
   // wine, and nothing of it stays in the Wine Library.
   const allWines = items.every((i) => Boolean(i.id))
@@ -175,13 +177,13 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved, sa
           <div className="p-5 space-y-4">
             {/* Stock list */}
             <div className="max-h-40 overflow-y-auto border border-gray-100 rounded-xl divide-y divide-gray-50">
-              {rows.map(({ item, live, shadow, openMl, value }) => (
+              {rows.map(({ item, live, shadow, openMl, value, unread }) => (
                 <div key={item.inventoryId} className="flex items-center justify-between px-3 py-2 text-xs">
                   <span className="font-medium text-gray-800 truncate pr-2">{item.name}</span>
                   <span className="font-mono text-gray-500 shrink-0">
                     {live + shadow > 0 ? `${say(live)} live / ${say(shadow)} shadow` : 'no stock'}
-                    {openMl > 0 ? ` · ${openMl}ml open` : ''}
-                    {value > 0 && <b className="ml-2 text-gray-700">{fmtMoney(value)}</b>}
+                    {unread ? ` · open bottle and value ${UNREAD}` : openMl > 0 ? ` · ${openMl}ml open` : ''}
+                    {!unread && value > 0 && <b className="ml-2 text-gray-700">{fmtMoney(value)}</b>}
                   </span>
                 </div>
               ))}
@@ -191,7 +193,9 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved, sa
               <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 border border-amber-100">
                 <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                 <p className="text-xs text-amber-800 leading-relaxed">
-                  {totalValue > 0 ? (
+                  {valueUnread ? (
+                    <>The on-hand value {UNREAD}, so what this writes off is not known. </>
+                  ) : totalValue > 0 ? (
                     <>This will write off <b>{fmtMoney(totalValue)}</b> in on-hand value. </>
                   ) : null}
                   Remaining stock is reconciled to zero and logged to the ledger with the reason below before removal —
