@@ -180,16 +180,30 @@ export function otherPersonOf(
 }
 
 /** A team or guest person as the list draws one: the address is the name. */
-export function otherPersonRef(person: {
-  kind: "team" | "guest";
-  address: string;
-}): MailPersonRef {
+export function otherPersonRef(
+  person: { kind: "team" | "guest"; address: string },
+  name?: string | null,
+): MailPersonRef {
   return {
     key: `${person.kind}:${person.address}`,
     kind: person.kind,
     providerId: null,
-    name: person.address,
+    // Display only (r104 mail-gap g3): the key stays kind:address; an unnamed
+    // person is shown by the address.
+    name: name || person.address,
   };
+}
+
+/**
+ * The display name in a From header ("Jane Roe <j@x.example>") when it names
+ * `address`, else null. A name that is itself an address is no name.
+ */
+export function fromDisplayName(from: unknown, address: string): string | null {
+  if (typeof from !== "string") return null;
+  const m = /^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/.exec(from);
+  if (!m || m[2].trim().toLowerCase() !== address.toLowerCase()) return null;
+  const name = m[1].trim();
+  return name && !name.includes("@") && name.length <= 80 ? name : null;
 }
 
 /** A stored kind, read as one of the three; anything else is a vendor's. */
