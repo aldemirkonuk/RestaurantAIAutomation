@@ -10,7 +10,7 @@ import {
 import { DatabaseService } from "../database/database.service";
 import { seesHouseAmounts } from "../dashboard/amounts-for-role";
 import { mergeAgreedLotCost, mergeInvoiceLotCost } from "../analytics/inventory-cost";
-import { BaseUnit, CostItem, recipeCost } from "./recipe-cost";
+import { BaseUnit, CostItem, componentPerBase, recipeCost } from "./recipe-cost";
 import { PreviewCostDto, SaveRecipeDto, StateWeightsDto } from "./dto/recipes.dto";
 import { FIGURE_KEYS, ItemFigures, ServeNutrition, serveNutrition } from "./recipe-nutrition";
 import { shelfSearchPattern } from "./name-fold";
@@ -321,6 +321,77 @@ export class RecipesService {
   }
 
   /**
+   * What one base unit of each house-made component costs at today's prices
+   * (ADR 0397): each component's current version, priced as one batch, over what
+   * the batch makes. A component that is gone, has no recipe, is not wholly
+   * priced, or sits deeper than three levels has `perBase: null`, which prices
+   * the line that draws it as unknown, never as free. Components that use
+   * components are read one level at a time, so a loop the database already
+   * refuses could not be walked past the depth cap.
+   */
+  private async componentRates(
+    restaurantId: string,
+    componentIds: string[],
+    money: boolean,
+    depth: number,
+  ): Promise<Map<string, { name: string; perBase: number | null }>> {
+    const out = new Map<string, { name: string; perBase: number | null }>();
+    if (!componentIds.length) return out;
+    const client = this.db.getClient();
+    const [dishes, pointers] = await Promise.all([
+      client
+        .from("dishes")
+        .select("id, name, yield_qty_base, deleted_at")
+        .eq("restaurant_id", restaurantId)
+        .in("id", componentIds),
+      client
+        .from("recipe_current_dish")
+        .select("dish_id, version_id")
+        .eq("restaurant_id", restaurantId)
+        .in("dish_id", componentIds),
+    ]);
+    if (dishes.error) this.failed("component read", dishes.error);
+    if (pointers.error) this.failed("component recipe read", pointers.error);
+    const versionOf = new Map(((pointers.data ?? []) as any[]).map((p) => [p.dish_id as string, p.version_id as string]));
+    const versionIds = [...new Set(versionOf.values())];
+    const lineRead = versionIds.length
+      ? await client
+          .from("recipe_lines")
+          .select("version_id, role, inventory_id, component_dish_id, qty_base, base_unit, usable_pct")
+          .eq("restaurant_id", restaurantId)
+          .in("version_id", versionIds)
+      : { data: [], error: null };
+    if (lineRead.error) this.failed("component line read", lineRead.error);
+    const linesOf = new Map<string, any[]>();
+    for (const l of (lineRead.data ?? []) as any[]) linesOf.set(l.version_id, [...(linesOf.get(l.version_id) ?? []), l]);
+    const rows = [...linesOf.values()].flat();
+    const [{ items, lots }, inner] = await Promise.all([
+      this.readPricing(restaurantId, [...new Set(rows.map((l) => l.inventory_id).filter(Boolean))] as string[], money),
+      depth >= 3
+        ? Promise.resolve(new Map<string, { name: string; perBase: number | null }>())
+        : this.componentRates(restaurantId, [...new Set(rows.map((l) => l.component_dish_id).filter(Boolean))] as string[], money, depth + 1),
+    ]);
+    for (const d of (dishes.data ?? []) as any[]) {
+      const lines = linesOf.get(versionOf.get(d.id) ?? "") ?? [];
+      const batch = recipeCost(
+        lines.map((l) => ({
+          role: l.role,
+          made: l.component_dish_id ? (inner.get(l.component_dish_id) ?? null) : null,
+          inventoryId: l.inventory_id,
+          qtyBase: Number(l.qty_base),
+          baseUnit: l.base_unit as BaseUnit,
+          item: (l.inventory_id && (items.get(l.inventory_id) as CostItem)) || null,
+          lot: (l.inventory_id && lots.get(l.inventory_id)) || null,
+          usablePct: l.usable_pct ?? null,
+        })),
+        1,
+      );
+      out.set(d.id, { name: d.name, perBase: d.deleted_at || !lines.length ? null : componentPerBase(batch, d.yield_qty_base) });
+    }
+    return out;
+  }
+
+  /**
    * One saved version as the sheet reads it: its lines linked to the house's
    * items, each line's cost at today's prices, and (for the current version)
    * what is in a serve. The version is read by its id AND the house, so a
@@ -350,7 +421,7 @@ export class RecipesService {
       versionQuery.maybeSingle(),
       client
         .from("recipe_lines")
-        .select("id, position, role, inventory_id, label, qty_entered, unit_code, qty_base, base_unit, usable_pct")
+        .select("id, position, role, inventory_id, component_dish_id, label, qty_entered, unit_code, qty_base, base_unit, usable_pct")
         .eq("version_id", versionId)
         .eq("restaurant_id", restaurantId)
         .order("position", { ascending: true }),
@@ -368,13 +439,16 @@ export class RecipesService {
     // other (r28 recipes audit, gap 17). whatIsIn never throws; a failed
     // pricing read still fails the whole sheet.
     const v = version.data as Record<string, any>;
-    const [{ items, lots }, whatIsIn] = await Promise.all([
+    const madeIds = [...new Set(rows.map((l) => l.component_dish_id).filter(Boolean))] as string[];
+    const [{ items, lots }, whatIsIn, components] = await Promise.all([
       this.readPricing(restaurantId, ids, money),
       withWhatIsIn ? this.whatIsIn(restaurantId, ids, rows, Number(v.yield_serves), kind) : Promise.resolve(null),
+      this.componentRates(restaurantId, madeIds, money, 1),
     ]);
     const priced = recipeCost(
       rows.map((l) => ({
         role: l.role,
+        made: l.component_dish_id ? (components.get(l.component_dish_id) ?? null) : null,
         inventoryId: l.inventory_id,
         qtyBase: Number(l.qty_base),
         baseUnit: l.base_unit as BaseUnit,
@@ -399,6 +473,9 @@ export class RecipesService {
           position: l.position,
           role: l.role,
           inventoryId: l.inventory_id ?? null,
+          // A made line names the component it draws (ADR 0397).
+          componentId: l.component_dish_id ?? null,
+          componentName: money ? (priced.lines[i].throughComponent ?? null) : null,
           label: l.label,
           itemName: item?.display_name ?? null,
           itemKind: item?.kind ?? null,
@@ -692,7 +769,7 @@ export class RecipesService {
             `Ingredient ${i + 1} (${l.label}): the usable share is a number of percent, from 1 to 100.`,
           );
         }
-        if (l.role === "untracked" && u !== 100) {
+        if (l.role !== "stocked" && u !== 100) {
           throw new BadRequestException(`Ingredient ${i + 1} (${l.label}) is not counted, so it has no usable share.`);
         }
       }
@@ -719,6 +796,7 @@ export class RecipesService {
       p_lines: dto.lines.map((l) => ({
         role: l.role,
         inventoryId: l.inventoryId ?? null,
+        componentId: l.componentId ?? null,
         label: l.label,
         qty: l.qty,
         unit: l.unit,
@@ -745,6 +823,7 @@ export class RecipesService {
       p_lines: dto.lines.map((l) => ({
         role: l.role,
         inventoryId: l.inventoryId ?? null,
+        componentId: l.componentId ?? null,
         label: l.label,
         qty: l.qty,
         unit: l.unit,
