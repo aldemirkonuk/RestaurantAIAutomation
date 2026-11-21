@@ -492,4 +492,25 @@ describe('InventoryCommandPage — the empty table says which of three facts it 
     expect(await screen.findByText('Produttori Barbaresco')).toBeInTheDocument();
     expect(screen.queryByText(/match this search/)).not.toBeInTheDocument();
   });
+
+  it('a row whose cost could not be read sorts last by Value, in either direction', async () => {
+    routeGets({
+      'inventory-low-stock': [],
+      'inventory-summary': { totalWines: 2, totalValue: 0 },
+      'inventory-list': [
+        { id: 'row-1', wineId: 'wine-1', wineName: 'Unreadable Barolo', stockLive: 6, thresholdMin: 2, price: 40, rollupReadable: false },
+        { id: 'row-2', wineId: 'wine-2', wineName: 'Cheap Chianti', stockLive: 6, thresholdMin: 2, price: 9, wac: 5 },
+      ],
+    });
+    mount();
+    await screen.findByText('Cheap Chianti');
+    const order = () => {
+      const t = document.body.textContent ?? '';
+      return t.indexOf('Cheap Chianti') < t.indexOf('Unreadable Barolo') ? 'readable first' : 'unread first';
+    };
+    fireEvent.click(screen.getByRole('button', { name: /^Value/ }));
+    expect(order()).toBe('readable first');
+    fireEvent.click(screen.getByRole('button', { name: /^Value/ }));
+    expect(order()).toBe('readable first');
+  });
 });
