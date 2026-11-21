@@ -1291,14 +1291,14 @@ describe('ReceiptsNext — a lane holds its place while it is read (r41 invoices
     await waitFor(() => expect(outlines(container)).toBe(0));
   });
 
-  it('an empty queue says nothing, and holds its slot, until every read has landed', async () => {
+  it('an empty queue says it is still reading, and holds its height, until every read has landed', async () => {
     api.queue = [];
     let open!: () => void;
     api.gate = new Promise<void>((r) => (open = r));
     api.verifiedPending = true;
     const { container } = render(<ReceiptsNext />, { wrapper });
-    await waitFor(() => expect(screen.getByTestId('lane-slot-queue')).toBeTruthy());
-    expect(screen.getByTestId('lane-slot-queue').style.minHeight).toBe('156px');
+    await screen.findByText('Reading…'); // the queue answered empty; the verified book has not
+    expect(screen.getByTestId('lane-slot-queue').getAttribute('style')).toContain('min-height: 156px');
     expect(screen.queryByText(/the paper trail is caught up/)).toBeNull();
     await act(async () => {
       open();

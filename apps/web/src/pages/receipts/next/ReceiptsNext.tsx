@@ -1953,11 +1953,11 @@ export default function ReceiptsNext() {
           {/* the queue */}
           <section aria-label="Awaiting review" className={selected ? 'hidden 2xl:block' : undefined}>
             {data.queueKnown && data.queue.length === 0 && !data.isError && !data.noRestaurant ? (
-              {/* While any read is still on its way the empty queue keeps the height its
-                  outline held, and says it is still reading; it settles once, when the last
-                  read lands (r104 g5). */}
               <div
                 data-testid={data.lanesSettling ? 'lane-slot-queue' : undefined}
+                // While any read is on its way the empty queue keeps the height its
+                // outline held and says it is still reading; it settles once, when
+                // the last read lands (r104 g5).
                 style={{ minHeight: data.lanesSettling ? 156 : undefined }}
               >
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
