@@ -209,6 +209,7 @@ function Tip({
   unit,
   format,
   projectedLabel,
+  priorLabel,
 }: {
   active?: boolean;
   payload?: Array<{ dataKey?: string | number; value?: number | null; payload?: unknown }>;
@@ -216,6 +217,7 @@ function Tip({
   unit: string;
   format: (v: number) => string;
   projectedLabel?: string;
+  priorLabel?: string;
 }) {
   if (!active || !payload || payload.length === 0) return null;
   const row = payload[0]?.payload as { full?: string; isProjected?: boolean } | undefined;
@@ -232,6 +234,7 @@ function Tip({
           <span key={String(p.dataKey)} className="rp-tip__row">
             <b>{format(p.value as number)}</b> {unit}
             {projected && projectedLabel ? ` · ${projectedLabel}` : ''}
+            {p.dataKey === 'prior' && priorLabel ? ` · ${priorLabel}` : ''}
           </span>
         );
       })}
@@ -478,16 +481,19 @@ export function thinCats<T extends { label: string; value?: number | null; proje
 export const HOLD_OVER = 100;
 
 export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'area' | 'bars' }) {
-  const { data: all, xLabel, yLabel, unit, format, refs, projectedLabel } = series;
+  const { data: all, xLabel, yLabel, unit, format, refs, projectedLabel, priorLabel } = series;
   const data = thinCats(all, refs);
   const heavy = data.length > HOLD_OVER;
   const painted = useAfterPaint(heavy ? `${kind}:${data.length}` : null);
   const held = heavy && !painted;
   const thinned = data.length < all.length;
   const hasProjection = all.some((d) => d.projected != null);
+  // The window just before, dashed beside the measured one. Drawn only when
+  // some day of it is known; a day that is not stays a gap, never a zero.
+  const hasPrior = all.some((d) => d.prior != null);
   const label = `${KIND_WORDS[kind]} of ${yLabel} by ${xLabel}${
     hasProjection ? `, the ${projectedLabel ?? 'projected'} part dashed` : ''
-  }${readingOf(
+  }${hasPrior ? `, ${priorLabel ?? 'the prior window'} dashed beside it` : ''}${readingOf(
     all.map((d) => ({ label: d.full ?? d.label, v: d.value ?? d.projected })),
     format,
     unit,
@@ -497,7 +503,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
   }`;
   const gutter = gutterFor(
     tickLabels(
-      [...all.map((d) => d.value), ...all.map((d) => d.projected), ...(refs ?? []).map((r) => r.y)],
+      [...all.map((d) => d.value), ...all.map((d) => d.projected), ...all.map((d) => d.prior), ...(refs ?? []).map((r) => r.y)],
       format,
     ),
   );
@@ -507,7 +513,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
       {...tipMotion()}
       cursor={kind === 'bars' ? { fill: 'var(--seal-tint)' } : CROSSHAIR}
       content={
-        <Tip unit={unit} format={format} projectedLabel={projectedLabel} /> as unknown as never
+        <Tip unit={unit} format={format} projectedLabel={projectedLabel} priorLabel={priorLabel} /> as unknown as never
       }
     />
   );
@@ -582,6 +588,17 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
               ),
             )}
           </Bar>
+          {hasPrior && (
+            <Bar
+              dataKey="prior"
+              fill="transparent"
+              stroke="var(--seal-deep)"
+              strokeDasharray="3 2"
+              radius={[3, 3, 0, 0]}
+              isAnimationActive={false}
+              data-prior="true"
+            />
+          )}
         </BarChart>
       </Plot>
     );
@@ -615,6 +632,19 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
               dot={false}
             />
           )}
+          {hasPrior && (
+            <Area
+              type="monotone"
+              dataKey="prior"
+              stroke="var(--ink-3)"
+              strokeWidth={1.2}
+              strokeDasharray="2 3"
+              fill="transparent"
+              isAnimationActive={false}
+              connectNulls={false}
+              dot={false}
+            />
+          )}
         </AreaChart>
       </Plot>
     );
@@ -639,6 +669,18 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
             stroke="var(--seal-deep)"
             strokeWidth={1.4}
             strokeDasharray="4 3"
+            dot={false}
+            isAnimationActive={false}
+            connectNulls={false}
+          />
+        )}
+        {hasPrior && (
+          <Line
+            type="monotone"
+            dataKey="prior"
+            stroke="var(--ink-3)"
+            strokeWidth={1.2}
+            strokeDasharray="2 3"
             dot={false}
             isAnimationActive={false}
             connectNulls={false}

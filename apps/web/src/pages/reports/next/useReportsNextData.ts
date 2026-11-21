@@ -305,6 +305,8 @@ export function useReportsNextData(
   showing: AnalysisId[] | null = null,
   /** Puts a cutting the goals desk proposed onto the page's draft sheet. */
   placeCutting: (cut: { id: AnalysisId; graph: GraphType; days: number | null }) => void = () => {},
+  /** Lay the till beside the same-length window just before it (`?compare=prior`). */
+  tillCompare = false,
 ): ReportsNextData {
   const { activeRestaurantId, activeRole } = useAuth();
   const rid = activeRestaurantId;
@@ -389,12 +391,12 @@ export function useReportsNextData(
     queries: active.map((id) => {
       const spec = CATALOGUE[id];
       return {
-        queryKey: [ROOT, id, rid, spec.takesWindow ? tillDays : null],
+        queryKey: [ROOT, id, rid, spec.takesWindow ? tillDays : null, spec.takesWindow && tillCompare ? 'prior' : null],
         enabled: !!rid && !heldBack.has(id),
         staleTime: 60_000,
         retry: 1,
         queryFn: async () => {
-          const ctx = { days: tillDays };
+          const ctx = { days: tillDays, compare: tillCompare };
           if (spec.sources) {
             // A composed register (the bench): each source read once per
             // minute however many cuttings share it; a failed source is null,
