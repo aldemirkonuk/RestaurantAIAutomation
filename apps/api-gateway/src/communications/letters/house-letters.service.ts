@@ -99,14 +99,18 @@ export const HOUSE_LETTER_ACT = "queue_house_letter";
 
 /** What the hold was over: the recipient, the vendor, the subject and the words. */
 export function houseLetterSealArgs(dto: {
-  providerId: string;
+  providerId?: string | null;
   to: string;
   subject: string;
   body: string;
   orderId?: string | null;
+  answers?: string | null;
 }): Record<string, unknown> {
   return {
-    providerId: dto.providerId,
+    providerId: dto.providerId ?? null,
+    // A reply to a team or guest letter has no vendor: the hold is over the
+    // letter it answers too (r104 mail-gap g1).
+    ...(dto.providerId ? {} : { answers: dto.answers ?? null }),
     to: (dto.to ?? "").trim().toLowerCase(),
     subject: (dto.subject ?? "").replace(/\s+/g, " ").trim(),
     body: (dto.body ?? "").replace(/\s+/g, " ").trim(),
@@ -263,6 +267,11 @@ export class HouseLettersService {
   }): Promise<{ requestId: string; requestedAt: string; told: number; says: string; notices: GuardrailHit[] }> {
     const { restaurantId, dto } = params;
     const userId = assertNamedActor(params.userId, "asked and nothing was sent");
+    if (!dto.providerId) {
+      throw new UnprocessableEntityException(
+        "Only the house's owner or a manager can write to a team member or a guest, so there is nothing to ask a manager about. Nothing was asked and nothing was sent.",
+      );
+    }
     if (!this.requests) {
       throw new InternalServerErrorException(
         "Requests could not be recorded (not wired into the composer), so nothing was asked and nothing was sent.",
@@ -394,7 +403,7 @@ export class HouseLettersService {
   private async checkLetter(
     restaurantId: string,
     dto: QueueLetterDto,
-  ): Promise<{ match: BookEntry; hits: GuardrailHit[]; priorOutbound: number | null }> {
+  ): Promise<{ match: Pick<BookEntry, "email" | "providerName">; hits: GuardrailHit[]; priorOutbound: number | null }> {
     const book = await this.book(restaurantId).catch((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
       throw new BadRequestException(
@@ -413,6 +422,13 @@ export class HouseLettersService {
         `${dto.to} is not in this house's book for that vendor. The addresses on record are: ${forProvider.map((e) => e.email).join(", ")}. Add it to the book first — Mudavym does not write to an address it has no record of.`,
       );
     }
+    return { match, ...(await this.checkWords(dto)) };
+  }
+
+  /** The guardrails over the letter's own words and order; blocking ones refuse it. */
+  private async checkWords(
+    dto: QueueLetterDto,
+  ): Promise<{ hits: GuardrailHit[]; priorOutbound: number | null }> {
     const priorOutbound = dto.orderId ? await this.countOutboundOnOrder(dto.orderId) : null;
     const hits = this.guardrails({
       body: dto.body,
@@ -426,7 +442,7 @@ export class HouseLettersService {
         guardrails: blocking,
       });
     }
-    return { match, hits, priorOutbound };
+    return { hits, priorOutbound };
   }
 
   /**
@@ -446,7 +462,7 @@ export class HouseLettersService {
       restaurantId: params.restaurantId,
       actorUserId: userId,
       subjectKind: "house_letter",
-      subjectId: params.dto.providerId,
+      subjectId: params.dto.providerId ?? params.dto.answers ?? "",
       action: HOUSE_LETTER_ACT,
       args: houseLetterSealArgs(params.dto),
     });
@@ -628,6 +644,23 @@ export class HouseLettersService {
       canAsk: true,
     });
 
+    // ── 0c. a reply to a team member or a guest (r104 mail-gap g1) ──────────
+    // No vendor, so no book: the only address is the one that wrote, on the
+    // letter it wrote, for an owner or a manager. Nothing is free-typed.
+    const person = !dto.providerId;
+    if (person) {
+      if (!isOwnerOrManager(params.role)) {
+        throw new ForbiddenException(
+          "Only the house's owner or a manager can write to a team member or a guest. Nothing was queued and nothing was sent.",
+        );
+      }
+      if (!dto.answers || dto.draftId || dto.requestId || dto.orderId || (dto.insights?.length ?? 0) > 0) {
+        throw new UnprocessableEntityException(
+          "A letter with no vendor can only answer a letter the house received: it carries no draft, request, order or inserted figure. Nothing was queued and nothing was sent.",
+        );
+      }
+    }
+
     // ── 0a. a letter sent FROM a draft must still be that house's draft ────
     // Sending a draft is the approval (ADR 0230). It is refused when the row is
     // not a draft any more (already sent, discarded, or another tab sent it),
@@ -690,12 +723,21 @@ export class HouseLettersService {
 
     // ── 1. the recipient must be in the book; 2. the guardrails ─────────────
     // (`checkLetter`, shared with `ask` so the two cannot disagree.)
-    const { match, hits, priorOutbound } = await this.checkLetter(restaurantId, dto);
-
-    // ── 2b. a reply names the letter it answers (r28 mail audit, gap 3) ─────
-    const answered = dto.answers
-      ? await this.readAnswered(restaurantId, dto.providerId, dto.answers)
-      : null;
+    // A person's reply reads the letter it answers first: its address is the
+    // only one the letter may go to.
+    let answered: Awaited<ReturnType<HouseLettersService["readAnswered"]>> | null = null;
+    let checked: Awaited<ReturnType<HouseLettersService["checkLetter"]>>;
+    if (person) {
+      answered = await this.readAnswered(restaurantId, null, dto.answers as string, dto.to);
+      checked = { match: { email: answered.address ?? dto.to, providerName: "" }, ...(await this.checkWords(dto)) };
+    } else {
+      checked = await this.checkLetter(restaurantId, dto);
+      // ── 2b. a reply names the letter it answers (r28 mail audit, gap 3) ───
+      answered = dto.answers
+        ? await this.readAnswered(restaurantId, dto.providerId as string, dto.answers)
+        : null;
+    }
+    const { match, hits, priorOutbound } = checked;
 
     // ── 3. the house must have a sending identity ───────────────────────────
     const identity = await this.sender.resolve(restaurantId, userId);
@@ -743,7 +785,7 @@ export class HouseLettersService {
       restaurantId,
       actorUserId: userId,
       subjectKind: "house_letter",
-      subjectId: dto.providerId,
+      subjectId: dto.providerId ?? dto.answers ?? "",
       action: HOUSE_LETTER_ACT,
       args: houseLetterSealArgs(dto),
       challenge: params.challenge,
@@ -754,7 +796,7 @@ export class HouseLettersService {
       userId,
       restaurantId,
       act: HOUSE_LETTER_ACT,
-      subject: `house_letter:${dto.providerId}`,
+      subject: `house_letter:${dto.providerId ?? dto.answers}`,
     });
 
     // The release takes the request ONCE (two managers releasing together:
@@ -777,7 +819,10 @@ export class HouseLettersService {
     const letter = {
       order_id: dto.orderId ?? draft?.orderId ?? null,
       restaurant_id: restaurantId,
-      provider_id: dto.providerId,
+      provider_id: dto.providerId ?? null,
+      // A reply to a team member or a guest is filed under that person, the
+      // way their letters are, so the thread shows it without Gmail's sent label.
+      ...(person && answered ? { kind: answered.kind, from_address: answered.address } : {}),
       direction: "outbound",
       channel: "email",
       content: dto.body,
@@ -1057,9 +1102,12 @@ export class HouseLettersService {
    */
   private async readAnswered(
     restaurantId: string,
-    providerId: string,
+    providerId: string | null,
     id: string,
+    personTo?: string,
   ): Promise<{
+    kind: "team" | "guest" | null;
+    address: string | null;
     id: string;
     threadKey: string | null;
     inReplyTo: string | null;
@@ -1068,7 +1116,7 @@ export class HouseLettersService {
     const { data, error } = await this.db.client
       .from("procurement_conversations")
       .select(
-        "id, restaurant_id, provider_id, direction, channel, sent_at, message_id, thread_key, email_headers",
+        "id, restaurant_id, provider_id, kind, from_address, direction, channel, sent_at, message_id, thread_key, email_headers",
       )
       .eq("id", id)
       .eq("restaurant_id", restaurantId)
@@ -1084,7 +1132,26 @@ export class HouseLettersService {
         "The letter this answers is not one of this house's letters. Nothing was queued and nothing was sent.",
       );
     }
-    if (row.provider_id !== providerId) {
+    let person: { kind: "team" | "guest"; address: string } | null = null;
+    if (providerId === null) {
+      // A reply to a team member or a guest: that letter's own address, nothing else.
+      if (
+        row.provider_id ||
+        (row.kind !== "team" && row.kind !== "guest") ||
+        typeof row.from_address !== "string" ||
+        !row.from_address
+      ) {
+        throw new UnprocessableEntityException(
+          "That letter is a vendor's, not a team member's or a guest's, so it is answered to its vendor. Nothing was queued and nothing was sent.",
+        );
+      }
+      if (!personTo || !sameAddress(row.from_address, personTo)) {
+        throw new UnprocessableEntityException(
+          "A reply goes to the address that wrote the letter it answers, and to no other. Write to someone else from the vendor book. Nothing was queued and nothing was sent.",
+        );
+      }
+      person = { kind: row.kind, address: row.from_address };
+    } else if (row.provider_id !== providerId) {
       throw new UnprocessableEntityException(
         "The letter this answers is from a different vendor. A reply goes to the vendor of that letter; write a new letter to write to someone else. Nothing was queued and nothing was sent.",
       );
@@ -1112,6 +1179,8 @@ export class HouseLettersService {
       ...(own ? [own] : []),
     ].slice(-10);
     return {
+      kind: person?.kind ?? null,
+      address: person?.address ?? null,
       id: String(row.id),
       threadKey:
         typeof row.thread_key === "string" && row.thread_key.trim()
