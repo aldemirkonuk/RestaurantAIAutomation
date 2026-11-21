@@ -28,7 +28,7 @@
  */
 import { useEffect, useMemo } from 'react';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { formatHouseNumber } from '../../../lib/house-number';
+import { formatHouseNumber, houseNumberLocale } from '../../../lib/house-number';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useInventory } from '../../../hooks/queries/useInventoryQueries';
 import { useWinesByIds } from '../../../hooks/queries/useWineQueries';
@@ -583,7 +583,7 @@ export function sold30(v: number): number {
 export function cellMoney(v: number | null, currency: HouseCurrency): string {
   if (v === null || !Number.isFinite(v)) return EM;
   if (currency.state === 'reading') return EM;
-  if (currency.state === 'recorded') return fmtMoney(v, currency.code);
+  if (currency.state === 'recorded') return fmtMoney(v, currency.code, houseNumberLocale(currency.code));
   return houseNumber(v, 2);
 }
 
