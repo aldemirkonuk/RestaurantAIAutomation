@@ -101,6 +101,10 @@ export const DEFAULT_TILL_DAYS = 30;
 /** The page link's name for the till window: `/reports?days=90`. */
 export const DAYS_PARAM = 'days';
 
+/** The page link's name for laying the till beside the window just before it: `/reports?compare=prior`. */
+export const COMPARE_PARAM = 'compare';
+export const COMPARE_PRIOR = 'prior';
+
 /** The till window a link names, or the default when it names none we offer. */
 export function tillDaysOf(raw: string | null): number {
   const n = Number(raw);
@@ -111,9 +115,13 @@ export function tillDaysOf(raw: string | null): number {
 export function TillWindowPicker({
   days,
   onChange,
+  compare = false,
+  onCompare,
 }: {
   days: number;
   onChange: (d: number) => void;
+  compare?: boolean;
+  onCompare?: (on: boolean) => void;
 }) {
   // A year is the window an owner reads a season against (audit G19); the
   // gateway already allows 1–365 house days (`analytics.controller.ts`).
@@ -123,6 +131,7 @@ export function TillWindowPicker({
   // changes with a movement the reader can follow instead of a hard swap. The
   // segments are equal-width so the thumb needs no measuring.
   return (
+    <>
     <div
       role="group"
       aria-label="Till window"
@@ -142,6 +151,17 @@ export function TillWindowPicker({
         </button>
       ))}
     </div>
+    {onCompare && (
+      <button
+        type="button"
+        className="rp-mini rp-ink rp-focus rp-no-drag"
+        aria-pressed={compare}
+        onClick={() => onCompare(!compare)}
+      >
+        Against the prior {days} days
+      </button>
+    )}
+    </>
   );
 }
 
@@ -297,6 +317,8 @@ export interface CuttingProps {
   onSwap: (to: AnalysisId) => void;
   onRemove: () => void;
   onDays: (d: number) => void;
+  /** Lays the till beside the same-length window just before it; absent where the page does not offer it. */
+  onCompare?: (on: boolean) => void;
   /** Reports the height this card's content needs (`rp-fit.ts`), so the sheet can draw its slot to fit. */
   onFit?: (id: AnalysisId, px: number | null) => void;
   /** While arranging, the height of the controls row, so the sheet adds it to the card (r101). */
@@ -319,6 +341,7 @@ export default function Cutting({
   onSwap,
   onRemove,
   onDays,
+  onCompare,
   strip = false,
   onFit,
   onControls,
@@ -515,7 +538,9 @@ export default function Cutting({
           </div>
         ) : spec.takesWindow || canLayFlat ? (
           <div className="rp-row" style={{ gap: 6 }}>
-            {spec.takesWindow && <TillWindowPicker days={ctx.days} onChange={onDays} />}
+            {spec.takesWindow && (
+              <TillWindowPicker days={ctx.days} onChange={onDays} compare={ctx.compare} onCompare={onCompare} />
+            )}
             {canLayFlat && (
               <button
                 ref={openerRef}
@@ -590,7 +615,9 @@ export default function Cutting({
           initialComboPick={comboPick}
           renderBody={(g, combo) => bodyFor(g, true, combo)}
           windowControl={
-            spec.takesWindow ? <TillWindowPicker days={ctx.days} onChange={onDays} /> : undefined
+            spec.takesWindow ? (
+              <TillWindowPicker days={ctx.days} onChange={onDays} compare={ctx.compare} onCompare={onCompare} />
+            ) : undefined
           }
           anchorRef={openerRef}
           onClose={closeFlat}

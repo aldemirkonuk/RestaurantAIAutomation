@@ -55,7 +55,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Seal, Wordmark } from '@/components/mudavym';
 import { animate, settle } from '@/lib/mudavym';
 import AskTheBook from './AskTheBook';
-import Cutting, { DAYS_PARAM, DEFAULT_TILL_DAYS, tillDaysOf } from './Cutting';
+import Cutting, { COMPARE_PARAM, COMPARE_PRIOR, DAYS_PARAM, DEFAULT_TILL_DAYS, tillDaysOf } from './Cutting';
 import { ArrangeAnnouncer, ArrangeHelp } from './Placing';
 import { useArrange } from './rp-arrange';
 import { CATALOGUE, defaultGraph } from './rp-catalogue';
@@ -149,6 +149,22 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
       ),
     [setParams],
   );
+  // Laying the till beside the window just before it lives in the link too
+  // (`?compare=prior`), for the same reasons the window does.
+  const tillCompare = params.get(COMPARE_PARAM) === COMPARE_PRIOR;
+  const setTillCompare = useCallback(
+    (on: boolean) =>
+      setParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (on) next.set(COMPARE_PARAM, COMPARE_PRIOR);
+          else next.delete(COMPARE_PARAM);
+          return next;
+        },
+        { replace: true },
+      ),
+    [setParams],
+  );
   // A bars-and-line pick made before the reader's own sheet is known: shown
   // for this visit, never written (a write then could put the house sheet
   // over theirs). Once the sheet is known the pick lives on the sheet itself.
@@ -191,7 +207,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     (cut: { id: AnalysisId; graph: GraphType; days: number | null }) => placeRef.current(cut),
     [],
   );
-  const data = useReportsNextData(tillDays, setTillDays, showing, place);
+  const data = useReportsNextData(tillDays, setTillDays, showing, place, tillCompare);
   const [asking, setAsking] = useState(false);
   const [ruledOff, setRuledOff] = useState(false);
   /* Ruling off is a WRITE to the reader's preferences, so the page says it is
@@ -478,10 +494,11 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   const ctx = useMemo(
     () => ({
       days: tillDays,
+      compare: tillCompare,
       goals: { ...data.goalsDesk, placeBlocked: saving },
       currency: currencyCode,
     }),
-    [data.goalsDesk, tillDays, currencyCode, saving],
+    [data.goalsDesk, tillDays, tillCompare, currencyCode, saving],
   );
   // Said once for the whole sheet, never beside each figure (audit G5).
   const moneyLine =
@@ -533,6 +550,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         onSwap={(to) => onSwap(c.id, to)}
         onRemove={() => onRemove(c.id)}
         onDays={setTillDays}
+        onCompare={setTillCompare}
       />
     ),
     };
