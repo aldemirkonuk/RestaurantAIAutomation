@@ -399,7 +399,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
   const reviewing = result !== null && !reviewed && !isCurrent && !result.reopened && result.items.length > 0 && chosen === null;
 
   return (
-    <div style={{ border: '1px solid var(--paper-2)', borderRadius: 10, padding: 14, marginTop: 16 }} data-testid="menu-read-form">
+    <div id="menu-read-drop" style={{ border: '1px solid var(--paper-2)', borderRadius: 10, padding: 14, marginTop: 16 }} data-testid="menu-read-form">
       <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'stretch' }}>
         <DropZone
           files={files}
@@ -760,6 +760,43 @@ function readingNow(): MenuVersion {
   };
 }
 
+const CADENCE_WORD: Record<string, string> = { weekly: 'weekly', monthly: 'monthly', quarterly: 'every quarter', yearly: 'yearly' };
+
+/** How long ago, in the house's words: days under two weeks, then weeks, months, years. */
+export function agoWords(days: number): string {
+  if (days < 14) return `${days} ${days === 1 ? 'day' : 'days'} ago`;
+  if (days < 60) return `${Math.floor(days / 7)} weeks ago`;
+  if (days < 730) return `${Math.floor(days / 30)} months ago`;
+  return `${Math.floor(days / 365)} years ago`;
+}
+
+/**
+ * The reminder to read a newer menu (menu r104 g1): one sentence under the
+ * standing line, only when the current menu's own cadence says it is due, and
+ * only to the people who can choose a menu. It scrolls to the drop zone; no
+ * motion of its own (ADR 0112: reduced motion is no animation at all, so the
+ * scroll is an instant jump).
+ */
+function DueSentence({ due }: { due: MenuVersionsReply['due'] }) {
+  if (!due || due.state === 'ok') return null;
+  return (
+    <p className="cl-said" role="status" style={{ marginTop: 6 }} data-testid="menu-due">
+      This menu was made current {agoWords(due.daysSince)} and you keep it {CADENCE_WORD[due.cadence] ?? due.cadence}.{' '}
+      <button
+        type="button"
+        className="cl-btn cl-focus"
+        data-testid="menu-due-go"
+        onClick={() => {
+          const el = document.getElementById('menu-read-drop');
+          if (el) el.scrollIntoView({ block: 'start' });
+        }}
+      >
+        Read the new one below.
+      </button>
+    </p>
+  );
+}
+
 export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; retryAbove?: boolean }) {
   const queryClient = useQueryClient();
   const [said, setSaid] = useState<string | null>(null);
@@ -826,6 +863,7 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
             {q.data?.current ? `Current: ${nameOf(q.data.current)}.` : 'No menu is current yet.'}{' '}
             {q.data?.lastUsed ? `Last one used: ${nameOf(q.data.lastUsed)}.` : 'No earlier menu has been used.'}
           </p>
+          {canManage ? <DueSentence due={q.data?.due ?? null} /> : null}
           {q.data && q.data.versions.length > 0 ? (
             <>
             <div style={{ overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10, marginTop: 10 }}>
