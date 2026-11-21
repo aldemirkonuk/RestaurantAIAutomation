@@ -184,6 +184,7 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
     } = {},
   ) {
     const refileCalls: Array<[string, string, string]> = [];
+    const fxSeen: Array<{ step: string; fx: unknown }> = [];
     const inserts: Array<{ table: string; row: any }> = [];
     const updates: Array<{ table: string; row: any }> = [];
 
@@ -231,7 +232,8 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
        * asks it before writing the audit row, because the row records what the
        * re-filing was about to move and where those figures came from.
        */
-      planRefileForCurrency: async () => {
+      planRefileForCurrency: async (_i: string, _r: string, fx?: unknown) => {
+        fxSeen.push({ step: "plan", fx: fx ?? null });
         if (opts.planThrows) throw opts.planThrows;
         return (
           opts.plan ?? {
@@ -251,8 +253,10 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
         documentId: string,
         restaurantId: string,
         currency: string,
+        fx?: unknown,
       ) => {
         refileCalls.push([documentId, restaurantId, currency]);
+        fxSeen.push({ step: "refile", fx: fx ?? null });
         if (opts.refileThrows) throw opts.refileThrows;
         return (
           opts.refile ?? {
@@ -314,7 +318,7 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
       {} as any,
       { redeem: async () => ({ sealId: "seal-1" }) } as any,
     );
-    return { controller, inserts, updates, refileCalls };
+    return { controller, inserts, updates, refileCalls, fxSeen };
   }
 
   let roleToReturn: string | null = "manager";
@@ -401,6 +405,47 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
     )!.row;
     expect(row.money_refiled.source).toBe("current_rows");
     expect(row.money_refiled.source_said).toContain("as it stands now");
+  });
+
+  it("a conversion carries its rate to the plan, the writer and the audit row, and says where it was filed", async () => {
+    const { controller, inserts, fxSeen } = harness();
+    const out = await controller.restateCurrency(
+      "doc-9",
+      { currency: "USD", fromCurrency: "EUR", rate: 1.084, rateDate: "2026-11-20" },
+      user,
+    );
+    const row = inserts.find((i) => i.table === "procurement_document_currency_changes")!.row;
+    expect(row.paper_currency).toBe("EUR");
+    expect(row.exchange_rate).toBe(1.084);
+    expect(row.rate_date).toBe("2026-11-20");
+    const want = { rate: 1.084, from: "EUR", rateDate: "2026-11-20" };
+    expect(fxSeen).toEqual([
+      { step: "plan", fx: want },
+      { step: "refile", fx: want },
+    ]);
+    expect((out as any).filedAt.sentence).toBe("filed at 1 EUR = 1.0840 USD on 20 Nov");
+  });
+
+  it("a plain relabel stores no rate", async () => {
+    const { controller, inserts, fxSeen } = harness();
+    await controller.restateCurrency("doc-9", { currency: "TRY" }, user);
+    const row = inserts.find((i) => i.table === "procurement_document_currency_changes")!.row;
+    expect([row.paper_currency, row.exchange_rate, row.rate_date]).toEqual([null, null, null]);
+    expect(fxSeen.map((f) => f.fx)).toEqual([null, null]);
+  });
+
+  it.each([
+    ["no rate at all", { currency: "USD", fromCurrency: "EUR", rateDate: "2026-11-20" }],
+    ["a rate of zero", { currency: "USD", fromCurrency: "EUR", rate: 0, rateDate: "2026-11-20" }],
+    ["no paper currency", { currency: "USD", rate: 1.084, rateDate: "2026-11-20" }],
+    ["no day", { currency: "USD", fromCurrency: "EUR", rate: 1.084 }],
+    ["a day that is not a date", { currency: "USD", fromCurrency: "EUR", rate: 1.084, rateDate: "2026-02-31" }],
+    ["the same currency both sides", { currency: "USD", fromCurrency: "USD", rate: 1.084, rateDate: "2026-11-20" }],
+  ])("refuses a half-stated conversion (%s) and writes nothing", async (_n, body) => {
+    const { controller, inserts, updates } = harness();
+    await expect(controller.restateCurrency("doc-9", body as any, user)).rejects.toMatchObject({ status: 400 });
+    expect(inserts).toHaveLength(0);
+    expect(updates).toHaveLength(0);
   });
 
   it("names a failed read of the FIGURES instead of changing the currency anyway", async () => {

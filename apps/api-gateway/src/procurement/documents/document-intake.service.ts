@@ -15,6 +15,7 @@ import {
   type RefilePlan,
   type RefileSource,
 } from "./invoice-currency";
+import { filedAtSentence } from "./fx-convert";
 import { applyTieOut, ParsedDocument, ParsedLine } from "./parsed-document";
 import { readSnapshot } from "../canonical/from-document-rows";
 import { LineMatch, matchLines, MatchLinesResult } from "./line-matcher";
@@ -2205,6 +2206,7 @@ export class DocumentIntakeService {
   async planRefileForCurrency(
     documentId: string,
     restaurantId: string,
+    fx?: { rate: number } | null,
   ): Promise<{
     plan: RefilePlan | null;
     previousTotal: number | null;
@@ -2262,6 +2264,7 @@ export class DocumentIntakeService {
         },
         lines: lines ?? [],
         extracted: row.extracted,
+        fx: fx ?? null,
       }),
       previousTotal: typeof row.total === "number" ? row.total : null,
       previousCurrency:
@@ -2325,6 +2328,7 @@ export class DocumentIntakeService {
     documentId: string,
     restaurantId: string,
     currency: string,
+    fx?: { rate: number; from: string; rateDate: string } | null,
   ): Promise<{
     snapshotReadable: boolean;
     /** Which reading the figures came from, or `null` when nothing was written. */
@@ -2339,6 +2343,7 @@ export class DocumentIntakeService {
     const { plan, previousTotal } = await this.planRefileForCurrency(
       documentId,
       restaurantId,
+      fx,
     );
 
     if (!plan)
@@ -2362,8 +2367,13 @@ export class DocumentIntakeService {
       (l) => l.unit_price != null || l.line_total != null,
     ).length;
 
-    const sentence =
-      refilingSentence({
+    const sentence = fx
+      ? `Costed in ${currency}: the paper's figures were CONVERTED from ${fx.from}, ${filedAtSentence(fx.from, currency, fx.rate, fx.rateDate)}. ` +
+        (plan.document.total == null
+          ? "The document states no total"
+          : `Its total is now ${plan.document.total.toFixed(2)} ${currency}`) +
+        `, with ${pricedLines} of ${plan.lines.length} line${plan.lines.length === 1 ? "" : "s"} priced. The figures came from ${plan.sourceSaid}.`
+      : refilingSentence({
         previous: null,
         next: currency,
         // WHAT was put back and WHAT was kept, part by part (2026-09-11, audit
@@ -2377,7 +2387,8 @@ export class DocumentIntakeService {
         documentTotal: plan.document.total,
         lineCount: plan.lines.length,
         pricedLines,
-      }) + ` The figures came from ${plan.sourceSaid}.`;
+      }) +
+      ` The figures came from ${plan.sourceSaid}.`;
 
     // Inline literal, never a spread: `check_order_capture_contract.py` can
     // only read a write whose column names are literal, and a payload it
