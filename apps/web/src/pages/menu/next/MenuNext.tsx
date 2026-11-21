@@ -395,10 +395,15 @@ export default function MenuNext() {
             </button>
           </div>
         ) : !q.data?.menuId ? (
-          <p className="cl-said" data-testid="menu-no-active">
-            No current menu yet. Read one below and make it current — Add to menu has nothing to
-            add to until a menu is current.
-          </p>
+          // The room held while reading is held here too, so the sections below do not jump up
+          // when the read ends with no current menu (r103 F8: CLS 0.125 at 1440 px; a reserve, not
+          // an ease). The house's stored count decides it; a stored 0 holds nothing.
+          <div className="mdv-reserve" style={{ ['--mdv-reserve' as string]: `${reservedFor(lastCount)}px` }} data-testid="menu-no-active-reserve">
+            <p className="cl-said" data-testid="menu-no-active">
+              No current menu yet. Read one below and make it current — Add to menu has nothing to
+              add to until a menu is current.
+            </p>
+          </div>
         ) : (
           <>
             <p className="cl-standing" style={{ fontSize: 15.5 }}>
