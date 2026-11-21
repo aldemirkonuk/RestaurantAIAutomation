@@ -113,6 +113,8 @@ describe('the printable recipe card', () => {
     expect(document.documentElement).not.toHaveAttribute('data-print-card');
     fireEvent.click(screen.getByTestId('recipe-print-button'));
     expect(window.print).toHaveBeenCalledTimes(1);
+    // paper hides every other child of <body>, so the card must be one (visibility alone left blank sheets)
+    expect(card().parentElement).toBe(document.body);
     expect(document.documentElement).toHaveAttribute('data-print-card');
     window.dispatchEvent(new Event('afterprint'));
     await waitFor(() => expect(document.documentElement).not.toHaveAttribute('data-print-card'));
@@ -122,7 +124,7 @@ describe('the printable recipe card', () => {
     const css = readFileSync(join(__dirname, '../cellar-next.css'), 'utf8');
     expect(css).toMatch(/\.cl-print-card \{ display: none; \}/);
     const print = css.slice(css.lastIndexOf('@media print {'));
-    expect(print).toMatch(/html\[data-print-card\] body \* \{ visibility: hidden; \}/);
+    expect(print).toMatch(/html\[data-print-card\] body > \*:not\(\.cl-print-card\) \{ display: none !important; \}/);
     expect(print).toMatch(/html\[data-print-card\] \.cl-print-card \{\s*display: block;/);
     expect(print).not.toMatch(/animation|transition/);
   });

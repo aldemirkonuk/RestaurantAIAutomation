@@ -12,6 +12,7 @@
  * untouched. No overlay, no animation.
  */
 import { useEffect, useId, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Printer } from 'lucide-react';
 import type { CocktailRecipe } from '../../../../services/api/recipes';
 import { marginPerServe, pourCostShare } from './DrinkCards';
@@ -91,31 +92,35 @@ export default function RecipeCard({
         ) : null}
       </div>
 
-      <section className="cl-print-card" data-testid="recipe-card" aria-hidden="true">
-        <h1>{data.cocktail.name}</h1>
-        <p>
-          Makes {v.yieldServes} {v.yieldServes === 1 ? words.unit : `${words.unit}s`}
-          {!isDish && glass ? ` · ${glass}` : ''}
-          {` · version ${v.version}${dated ? `, ${dated}` : ''}`}
-        </p>
-        <ol>
-          {v.lines.map((l) => (
-            <li key={l.id}>
-              <b>{amountWithUnit(l.qtyEntered, l.unitCode as never)}</b> {l.itemName ?? l.label}
-            </li>
-          ))}
-        </ol>
-        {method ? <p className="cl-print-method">{method}</p> : null}
-        {garnish ? <p>Garnish: {garnish}</p> : null}
-        <p>{cardAllergens(data.whatIsIn)}</p>
-        {showCost ? (
-          <p data-testid="recipe-card-cost">
-            {`Cost per serve ${per == null ? 'not known' : sayMoney(per)} · Price ${price == null ? 'not set' : sayMoney(price)}`}
-            {` · Pour cost ${'pct' in share ? sayPct(share.pct) : 'not known'}`}
-            {` · Margin ${'margin' in margin ? sayMoney(margin.margin) : 'not known'}`}
+      {/* Out of the app's own tree, so paper can hide everything else and leave one page (r104 walk: visibility alone left blank sheets). */}
+      {createPortal(
+        <section className="cl-print-card" data-testid="recipe-card" aria-hidden="true">
+          <h1>{data.cocktail.name}</h1>
+          <p>
+            Makes {v.yieldServes} {v.yieldServes === 1 ? words.unit : `${words.unit}s`}
+            {!isDish && glass ? ` · ${glass}` : ''}
+            {` · version ${v.version}${dated ? `, ${dated}` : ''}`}
           </p>
-        ) : null}
-      </section>
+          <ol>
+            {v.lines.map((l) => (
+              <li key={l.id}>
+                <b>{amountWithUnit(l.qtyEntered, l.unitCode as never)}</b> {l.itemName ?? l.label}
+              </li>
+            ))}
+          </ol>
+          {method ? <p className="cl-print-method">{method}</p> : null}
+          {garnish ? <p>Garnish: {garnish}</p> : null}
+          <p>{cardAllergens(data.whatIsIn)}</p>
+          {showCost ? (
+            <p data-testid="recipe-card-cost">
+              {`Cost per serve ${per == null ? 'not known' : sayMoney(per)} · Price ${price == null ? 'not set' : sayMoney(price)}`}
+              {` · Pour cost ${'pct' in share ? sayPct(share.pct) : 'not known'}`}
+              {` · Margin ${'margin' in margin ? sayMoney(margin.margin) : 'not known'}`}
+            </p>
+          ) : null}
+        </section>,
+        document.body,
+      )}
     </>
   );
 }
