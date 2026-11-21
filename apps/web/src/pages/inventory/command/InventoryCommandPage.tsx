@@ -489,7 +489,13 @@ export function InventoryCommandPage() {
         }
       }
     };
-    items.sort((a, b) => (sortDir === "asc" ? cmp(a, b) : -cmp(a, b)));
+    // A row whose cost could not be read has no value to rank: it sorts last
+    // in either direction, never as a 0 among the cheap rows.
+    const unread = (i: InventoryItem) => sort === "value" && i.rollupReadable === false;
+    items.sort((a, b) => {
+      if (unread(a) !== unread(b)) return unread(a) ? 1 : -1;
+      return sortDir === "asc" ? cmp(a, b) : -cmp(a, b);
+    });
     return items;
   }, [filteredInventory, activeFlag, sort, sortDir]);
 

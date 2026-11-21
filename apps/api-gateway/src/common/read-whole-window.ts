@@ -21,7 +21,8 @@ import { Logger, ServiceUnavailableException } from "@nestjs/common";
  * The window comes back whole, in `id` order, or this throws `WholeReadError`.
  * It never returns a prefix.
  *
- *   * Keyset paging on the primary key: page 0 is `order(id).limit(n)`, every
+ *   * Keyset paging on the primary key (or `options.key` on a view with no
+ *     `id`): page 0 is `order(id).limit(n)`, every
  *     later page adds `.gt("id", <last id>)`. Offsets would skip or repeat rows
  *     when a check lands or is voided mid-read; a key cursor does not.
  *   * `build()` is a FACTORY. A supabase-js builder is a single-use thenable,
@@ -139,6 +140,11 @@ export interface WholeWindowOptions {
   pageSize?: number;
   /** Rows past which the read refuses. Defaults to `WHOLE_READ_CEILING`. */
   ceiling?: number;
+  /**
+   * The unique column to page on, for a view with no `id` (one row per
+   * `inventory_id`, say). Defaults to `id`; it must be unique per row.
+   */
+  key?: string;
 }
 
 const logger = new Logger("readWholeWindow");
@@ -169,6 +175,7 @@ async function readOnce<T>(
 ): Promise<Attempt<T>> {
   let size = Math.max(1, Math.trunc(options.pageSize ?? WHOLE_READ_PAGE));
   const ceiling = options.ceiling ?? WHOLE_READ_CEILING;
+  const column = options.key ?? "id";
   const rows: T[] = [];
   const seen = new Set<string>();
   let total: number | null = null;
@@ -180,8 +187,8 @@ async function readOnce<T>(
       error: new WholeReadError(what, reason, rows.length, total, detail),
     });
 
-    let q = build().order("id", { ascending: true });
-    if (cursor !== null) q = q.gt("id", cursor);
+    let q = build().order(column, { ascending: true });
+    if (cursor !== null) q = q.gt(column, cursor);
     const { data, error, count } = await q.limit(size);
 
     if (error) {
@@ -236,7 +243,7 @@ async function readOnce<T>(
 
     let missingId = false;
     for (const row of data) {
-      const id = (row as { id?: unknown } | null)?.id;
+      const id = (row as Record<string, unknown> | null)?.[column];
       if (id === null || id === undefined || id === "") {
         missingId = true;
         continue;
@@ -285,7 +292,7 @@ async function readOnce<T>(
         `full page ${page + 1} held rows with no id to page from`,
       );
     }
-    cursor = String((data[data.length - 1] as { id: unknown }).id);
+    cursor = String((data[data.length - 1] as Record<string, unknown>)[column]);
   }
 
   if (total !== null && (seen.size !== total || rows.length !== total)) {
