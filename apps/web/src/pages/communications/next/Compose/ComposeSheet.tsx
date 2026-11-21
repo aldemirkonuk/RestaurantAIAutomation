@@ -90,6 +90,8 @@ export interface HeldLetter {
   templateId: string;
   /** The house's letter this one answers, when it was opened from Mail's "Write a reply". */
   answers?: string;
+  /** Set on a reply to a team member or a guest, so a held letter comes back to the same fixed address. */
+  person?: { address: string; name: string | null };
 }
 
 export interface ComposeSheetProps {
@@ -127,6 +129,11 @@ export interface ComposeSheetProps {
      * In-Reply-To. With no `to`, the vendor's own address in the book is chosen.
      */
     answers?: string;
+    /**
+     * A reply to a team member or a guest who wrote to the house (ADR 0396): the
+     * one address that wrote, fixed. There is no vendor and no book to choose from.
+     */
+    person?: { address: string; name: string | null };
   } | null;
   /** Called once a draft was discarded, so the page can drop it. */
   onDiscarded?: () => void;
@@ -134,7 +141,10 @@ export interface ComposeSheetProps {
 
 export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: ComposeSheetProps) {
   const data = useComposeData();
-  const [to, setTo] = useState<Recipient | null>(null);
+  const person = prefill?.person ?? null;
+  const [to, setTo] = useState<Recipient | null>(
+    person ? { providerId: null, providerName: person.name ?? '', email: person.address } : null,
+  );
   const draftId = prefill?.draftId;
   const [discarded, setDiscarded] = useState<string | null>(null);
 
@@ -234,7 +244,9 @@ export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: Co
   // vendor, so closing it unwritten writes nothing and holds nothing (r31 walk:
   // the held "Re:" stub then came back as "Write a letter"). Its vendor is
   // compared by id: the address is only chosen once the book is read.
-  const changed = replyVendor
+  const changed = person
+    ? subject.trim() !== (prefill?.subject ?? '').trim() || body.trim() !== ''
+    : replyVendor
     ? (to !== null && to.providerId !== replyVendor) ||
       subject.trim() !== (prefill?.subject ?? '').trim() ||
       body.trim() !== ''
@@ -243,7 +255,7 @@ export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: Co
       body.trim() !== base.body.trim();
   const dirty = !gone && changed;
   const leave = () => {
-    if (dirty) onHold?.({ to, subject, body, insights: chosen, templateId, answers });
+    if (dirty) onHold?.({ to, subject, body, insights: chosen, templateId, answers, ...(person ? { person } : {}) });
     onClose();
   };
 
@@ -273,7 +285,7 @@ export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: Co
     () =>
       to
         ? {
-            providerId: to.providerId,
+            providerId: to.providerId ?? undefined,
             to: to.email,
             subject: subject.trim(),
             body,
@@ -282,7 +294,7 @@ export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: Co
             draftId: draftId || undefined,
             templateId: templateId || undefined,
             // A reply names the letter it answers, and only to that letter's vendor.
-            answers: answers && to.providerId === prefill?.providerId ? answers : undefined,
+            answers: answers && (to.providerId ?? null) === (prefill?.providerId ?? null) ? answers : undefined,
             insights: chosen.map((c) => ({
               candidateKey: c.candidateKey,
               sentence: c.sentence,
@@ -433,6 +445,7 @@ export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: Co
           value={to}
           onChange={setTo}
           onBookChanged={data.refetchQueued}
+          fixed={person ?? undefined}
         />
 
         {/* the house's templates */}
@@ -765,7 +778,9 @@ export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: Co
                       }`
                   : ceremony === 'seal'
                     ? 'Held under the seal because a letter on the shared Mudavym domain affects every other house that sends from it.'
-                    : `Sends after ${fmtWindowLength(sender.undoMs)}. Nothing is sent automatically, and nothing is sent to an address the book does not hold.`}
+                    : `Sends after ${fmtWindowLength(sender.undoMs)}. Nothing is sent automatically, and nothing is sent to ${
+                        person ? 'any address but the one that wrote' : 'an address the book does not hold'
+                      }.`}
           </p>
         </div>
       </div>

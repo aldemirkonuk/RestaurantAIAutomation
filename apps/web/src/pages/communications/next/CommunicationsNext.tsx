@@ -808,16 +808,22 @@ export default function CommunicationsNext() {
         prefill={
           composeFrom
             ? {
-                providerId: composeFrom.to?.providerId,
+                providerId: composeFrom.to?.providerId ?? undefined,
                 to: composeFrom.to?.email ?? null,
                 subject: composeFrom.subject,
                 body: composeFrom.body,
                 insights: composeFrom.insights,
                 templateId: composeFrom.templateId,
                 answers: composeFrom.answers,
+                person: composeFrom.person,
               }
             : answerFrom
-              ? { providerId: answerFrom.providerId, subject: answerFrom.subject, answers: answerFrom.answers }
+              ? {
+                  providerId: answerFrom.providerId ?? undefined,
+                  subject: answerFrom.subject,
+                  answers: answerFrom.answers,
+                  person: answerFrom.person,
+                }
               : null
         }
       />

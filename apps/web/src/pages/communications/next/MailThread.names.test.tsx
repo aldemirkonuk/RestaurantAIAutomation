@@ -38,12 +38,12 @@ const letter = {
 };
 
 let name: string | null;
-function mount() {
+function mount(onAnswer: (a: unknown) => void = vi.fn()) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   render(
     <MemoryRouter initialEntries={['/communications?thread=gm%3At1']}>
       <QueryClientProvider client={qc}>
-        <MailTab draftedOrderIds={new Set<string>()} onOpenReply={vi.fn()} />
+        <MailTab draftedOrderIds={new Set<string>()} onOpenReply={vi.fn()} onAnswer={onAnswer} />
       </QueryClientProvider>
     </MemoryRouter>,
   );
@@ -90,6 +90,29 @@ describe('a guest thread', () => {
     await screen.findByText('A table');
     expect((await screen.findAllByText('The guest')).length).toBeGreaterThanOrEqual(2);
     expect(document.body.textContent).not.toContain('The vendor');
+  });
+});
+
+describe('answering a guest (r104 mail-gap g1, ADR 0396)', () => {
+  it('offers the reply to an owner, naming the address that wrote', async () => {
+    const onAnswer = vi.fn();
+    mount(onAnswer);
+    const act = await screen.findByTestId('write-thread-reply');
+    act.click();
+    expect(onAnswer).toHaveBeenCalledWith(
+      expect.objectContaining({ providerId: null, answers: 'g1', person: expect.objectContaining({ kind: 'guest', address: 'j@x.example' }) }),
+    );
+  });
+  it('offers it to a manager', async () => {
+    auth.current = { user: { role: 'manager', restaurantId: 'r1' }, activeRestaurantId: 'r1', activeRole: 'manager' };
+    mount();
+    expect(await screen.findByTestId('write-thread-reply')).toBeInTheDocument();
+  });
+  it('offers it to no one else', async () => {
+    auth.current = { user: { role: 'waiter', restaurantId: 'r1' }, activeRestaurantId: 'r1', activeRole: 'waiter' };
+    mount();
+    await screen.findByText('A table');
+    expect(screen.queryByTestId('write-thread-reply')).toBeNull();
   });
 });
 
