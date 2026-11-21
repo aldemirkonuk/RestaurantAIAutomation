@@ -122,12 +122,12 @@ describe('a tab whose address was verified elsewhere', () => {
     expect(h.get).not.toHaveBeenCalled()
   })
 
-  it('asks every 30 s while shown', async () => {
+  it('asks first after 5 s while shown', async () => {
     vi.useFakeTimers()
     mount()
     expect(h.get).not.toHaveBeenCalled()
     await act(async () => {
-      vi.advanceTimersByTime(29_000)
+      vi.advanceTimersByTime(4_000)
     })
     expect(h.get).not.toHaveBeenCalled()
     await act(async () => {
