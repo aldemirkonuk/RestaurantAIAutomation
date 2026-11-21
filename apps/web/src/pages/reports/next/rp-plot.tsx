@@ -33,7 +33,7 @@
  * a screen reader without a second description.
  */
 
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import {
   Area,
   AreaChart,
@@ -477,9 +477,37 @@ export function thinCats<T extends { label: string; value?: number | null; proje
 /** More drawn points than this (a 365-day till: 124 bars) mount a frame after the tap, not in it. */
 export const HOLD_OVER = 100;
 
+/** A phone cannot tell 124 bars on 375 px apart (about 2.5 px each), so it draws at most this many: under HOLD_OVER, so a 365-day switch is as light as the 90-day one (r104). */
+export const PHONE_DRAWN = 90;
+const PHONE_QUERY = '(max-width: 767px)';
+
+/** The phone width, following a rotation. A browser that cannot say is read as a desk. */
+function usePhone(): boolean {
+  return useSyncExternalStore(
+    (notify) => {
+      try {
+        const m = window.matchMedia(PHONE_QUERY);
+        m.addEventListener('change', notify);
+        return () => m.removeEventListener('change', notify);
+      } catch {
+        return () => {};
+      }
+    },
+    () => {
+      try {
+        return window.matchMedia(PHONE_QUERY).matches;
+      } catch {
+        return false;
+      }
+    },
+    () => false,
+  );
+}
+
 export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'area' | 'bars' }) {
   const { data: all, xLabel, yLabel, unit, format, refs, projectedLabel } = series;
-  const data = thinCats(all, refs);
+  const phone = usePhone();
+  const data = thinCats(all, refs, phone ? PHONE_DRAWN : MAX_DRAWN);
   const heavy = data.length > HOLD_OVER;
   const painted = useAfterPaint(heavy ? `${kind}:${data.length}` : null);
   const held = heavy && !painted;
