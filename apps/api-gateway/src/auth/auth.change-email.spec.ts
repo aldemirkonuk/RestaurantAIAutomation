@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   HttpException,
   ServiceUnavailableException,
 } from "@nestjs/common";
@@ -112,10 +111,13 @@ describe("changeUnverifiedEmail", () => {
   });
 
   it("a verified account is refused and nothing is written or mailed", async () => {
-    const { service, users, sent } = setup({
+    const { service, users, verifs, sent } = setup({
       users: [{ user_id: "u1", email: "a@house.test", email_verified: true }],
     });
-    await expect(service.changeUnverifiedEmail("u1", "b@house.test")).rejects.toBeInstanceOf(ConflictException);
+    await expect(service.changeUnverifiedEmail("u1", "b@house.test")).rejects.toMatchObject({
+      response: { code: "EMAIL_ALREADY_VERIFIED" },
+    });
+    expect(verifs).toHaveLength(1); // refused before anything was voided
     expect(users[0].email).toBe("a@house.test");
     expect(sent).toHaveLength(0);
   });
