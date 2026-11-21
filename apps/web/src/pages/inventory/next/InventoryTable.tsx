@@ -14,7 +14,7 @@
  * managers (it is where a price is changed, ADR 0193); everyone else reads
  * the two figures in the house's currency.
  */
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { HousePriceCell, type AdviceLoad } from '../command/HousePriceCell';
 import type { RowDropdownProps } from './RowDropdown';
 import { cellMoney, EM, statusWord, fmtCount, noZoneWord, SEVERITY_GROUP, severity, typeLabel, type InvRow, type SortId } from './useInventoryNextData';
@@ -23,6 +23,7 @@ import { listFigure, listPace, listUnitTail } from './ItemCards';
 import PhoneRows from './PhoneRows';
 import { emptyColumns } from './iv-columns';
 import { useIsPhone } from '../../../hooks/useIsPhone';
+import { rowOffsets, useRowWindow } from './useRowWindow';
 
 export interface InventoryTableProps extends Omit<RowDropdownProps, 'row'> {
   rows: InvRow[];
@@ -45,6 +46,10 @@ export interface InventoryTableProps extends Omit<RowDropdownProps, 'row'> {
   /** Selects every listed row, or clears them when all are already selected. */
   onSelectAll?: () => void;
 }
+
+/** The table's row and group-head heights (inventory-next.css .iv-row, .iv-group td). */
+export const ROW_PX = 56;
+export const GROUP_PX = 30;
 
 const COLUMNS = ['Title', 'Type', 'Zone', 'Live / shadow · par', 'Vel/day', 'Runway', 'Your price', 'Value', 'Status'];
 
@@ -84,12 +89,37 @@ export default function InventoryTable(props: InventoryTableProps) {
   const cols = COLUMNS.filter((c) => !hidden.has(c));
   const counts = [0, 0, 0];
   for (const r of rows) counts[severity(r)] += 1;
+  const groupHeads = grouped ? counts.filter((c) => c > 0).length : 0;
   const selecting = props.selected !== undefined && props.onSelect !== undefined;
   const thing = props.thing ?? 'title';
   const nameHead = thing.charAt(0).toUpperCase() + thing.slice(1);
   const span = cols.length + (selecting ? 1 : 0);
   const allSelected = selecting && rows.length > 0 && rows.every((r) => props.selected!.has(r.id));
   const someSelected = selecting && !allSelected && rows.some((r) => props.selected!.has(r.id));
+
+  // Only the rows near the screen are drawn (r104 g2); the list stays whole.
+  const offsets = useMemo(
+    () => rowOffsets(rows.length, ROW_PX, grouped ? GROUP_PX : 0, (i) => grouped && (i === 0 || severity(rows[i - 1]) !== severity(rows[i]))),
+    [rows, grouped],
+  );
+  // Group heads above row i, read from the offsets (each head adds GROUP_PX).
+  const heads = (i: number) => (grouped ? Math.round((offsets[i] - i * ROW_PX) / GROUP_PX) : 0);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const focused = focusId === null ? -1 : rows.findIndex((r) => r.id === focusId);
+  const anchor = useRef(openId === null ? null : rows.findIndex((r) => r.id === openId)).current;
+  const win = useRowWindow({ n: rows.length, offsets, listRef: wrapRef, anchor: anchor !== null && anchor >= 0 ? anchor : null, focused });
+  // A row opened from outside the window (not by a tap on it) is brought in and into view.
+  const openAt = openId === null ? -1 : rows.findIndex((r) => r.id === openId);
+  const { jumpTo, start: winStart, end: winEnd } = win;
+  useEffect(() => {
+    if (phone || openAt < 0 || (openAt >= winStart && openAt < winEnd)) return;
+    jumpTo(openAt);
+    const t = window.requestAnimationFrame(() => document.getElementById(`iv-row-${openId}`)?.scrollIntoView?.({ block: 'center' }));
+    return () => window.cancelAnimationFrame(t);
+    // Only a change of the opened row moves the window; scrolling past it must not drag it back.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId]);
 
   if (phone) {
     return (
@@ -111,7 +141,12 @@ export default function InventoryTable(props: InventoryTableProps) {
   }
 
   return (
-    <div className="iv-tablewrap">
+    <div
+      className="iv-tablewrap"
+      ref={wrapRef}
+      onFocus={(e) => setFocusId((e.target as HTMLElement).closest?.('[data-row-id]')?.getAttribute('data-row-id') ?? null)}
+      onBlur={() => setFocusId(null)}
+    >
       {empty.size > 0 ? (
         <div className="iv-colsbar">
           <button
@@ -127,7 +162,7 @@ export default function InventoryTable(props: InventoryTableProps) {
           </button>
         </div>
       ) : null}
-      <table className="iv-table" data-testid="inventory-table">
+      <table className="iv-table" data-testid="inventory-table" aria-rowcount={rows.length + groupHeads + 1}>
         {/* INV-W39: the book had no name and no heading, so a screen reader
             went from the page title straight to Tools. */}
         <caption className="sr-only">The book: every {thing} on hand</caption>
@@ -199,7 +234,13 @@ export default function InventoryTable(props: InventoryTableProps) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, i) => {
+          {win.before > 0 ? (
+            <tr aria-hidden="true" data-testid="inv-rows-before">
+              <td colSpan={span} style={{ height: win.before, padding: 0, border: 0 }} />
+            </tr>
+          ) : null}
+          {rows.slice(win.start, win.end).map((row, k) => {
+            const i = win.start + k;
             const sev = severity(row);
             const startsGroup = grouped && (i === 0 || severity(rows[i - 1]) !== sev);
             const open = openId === row.id;
@@ -208,7 +249,7 @@ export default function InventoryTable(props: InventoryTableProps) {
             return (
               <Fragment key={row.id}>
                 {startsGroup ? (
-                  <tr className="iv-group">
+                  <tr className="iv-group" aria-rowindex={i + heads(i) + 2}>
                     <td colSpan={span}>
                       {SEVERITY_GROUP[sev]}
                       {sev < 2 ? <span className="iv-num"> {fmtCount(counts[sev])}</span> : null}
@@ -218,6 +259,7 @@ export default function InventoryTable(props: InventoryTableProps) {
                 <tr
                   id={`iv-row-${row.id}`}
                   className="iv-row"
+                  aria-rowindex={i + heads(i) + (startsGroup ? 1 : 0) + 2}
                   data-testid={`inv-row-${row.id}`}
                   data-standing={row.standing}
                   aria-selected={open}
@@ -325,6 +367,11 @@ export default function InventoryTable(props: InventoryTableProps) {
               </Fragment>
             );
           })}
+          {win.after > 0 ? (
+            <tr aria-hidden="true" data-testid="inv-rows-after">
+              <td colSpan={span} style={{ height: win.after, padding: 0, border: 0 }} />
+            </tr>
+          ) : null}
         </tbody>
       </table>
     </div>

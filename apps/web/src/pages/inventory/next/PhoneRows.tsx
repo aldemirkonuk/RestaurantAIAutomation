@@ -10,11 +10,12 @@
  * An unread count is a dash, never zero. A manager still sets the price from
  * the card: the price sits beside the tap target, not inside it.
  */
-import { Fragment, type CSSProperties } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { HousePriceCell, type AdviceLoad } from '../command/HousePriceCell';
 import { cellMoney, fmtCount, SEVERITY_GROUP, severity, statusWord, type HouseCurrency, type InvRow } from './useInventoryNextData';
 import { NameHint } from './NameThisWine';
 import { listFigure, listUnitTail } from './ItemCards';
+import { rowOffsets, useRowWindow } from './useRowWindow';
 
 /** "12 bottles", "2.5 kg", "—": the live count in the good's unit. */
 function liveWords(row: InvRow): string {
@@ -41,6 +42,10 @@ export interface PhoneRowsProps {
 /** The first few cards rise in one after another (28 ms apart); card 9 on is just there. */
 const STAGGER_CARDS = 8;
 
+/** A card's least height (inventory-next.css .ivc-card) with room for its price control; a group head's. */
+const CARD_PX = 72;
+const GROUP_HEAD_PX = 40;
+
 export default function PhoneRows(props: PhoneRowsProps) {
   const { rows, thing, grouped, openId, onToggle, canManage, currency, advice, onPriceChanged } = props;
   const selecting = props.selected !== undefined && props.onSelect !== undefined;
@@ -48,8 +53,48 @@ export default function PhoneRows(props: PhoneRowsProps) {
   for (const r of rows) counts[severity(r)] += 1;
   const allSelected = selecting && rows.length > 0 && rows.every((r) => props.selected!.has(r.id));
 
+  // Only the cards near the screen are drawn (r104 g2); the list stays whole.
+  // A card is at least 64 px and grows with its price control, so the height
+  // standing for the cards not drawn is the average of the ones that are.
+  const [cardPx, setCardPx] = useState(CARD_PX);
+  const offsets = useMemo(
+    () => rowOffsets(rows.length, cardPx, grouped ? GROUP_HEAD_PX : 0, (i) => grouped && (i === 0 || severity(rows[i - 1]) !== severity(rows[i]))),
+    [rows, grouped, cardPx],
+  );
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const focused = focusId === null ? -1 : rows.findIndex((r) => r.id === focusId);
+  const anchor = useRef(openId === null ? null : rows.findIndex((r) => r.id === openId)).current;
+  const win = useRowWindow({ n: rows.length, offsets, listRef, anchor: anchor !== null && anchor >= 0 ? anchor : null, focused });
+  const openAt = openId === null ? -1 : rows.findIndex((r) => r.id === openId);
+  const { jumpTo, start: winStart, end: winEnd } = win;
+  useEffect(() => {
+    if (openAt < 0 || (openAt >= winStart && openAt < winEnd)) return;
+    jumpTo(openAt);
+    const t = window.requestAnimationFrame(() => document.querySelector(`[data-row-id="${CSS.escape(openId as string)}"]`)?.scrollIntoView?.({ block: 'center' }));
+    return () => window.cancelAnimationFrame(t);
+    // Only a change of the opened card moves the window.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId]);
+  useEffect(() => {
+    const cards = listRef.current?.querySelectorAll<HTMLElement>('.ivc-card');
+    if (!cards || cards.length === 0) return;
+    let sum = 0;
+    cards.forEach((c) => (sum += c.offsetHeight));
+    const avg = Math.round(sum / cards.length);
+    if (avg > 0 && Math.abs(avg - cardPx) > 2) setCardPx(avg);
+  }, [win.start, win.end, cardPx]);
+
   return (
-    <div className="ivc-list" data-testid="inventory-cards" role="group" aria-label={`The book: every ${thing} on hand`}>
+    <div
+      className="ivc-list"
+      ref={listRef}
+      onFocus={(e) => setFocusId((e.target as HTMLElement).closest?.('[data-row-id]')?.getAttribute('data-row-id') ?? null)}
+      onBlur={() => setFocusId(null)}
+      data-testid="inventory-cards"
+      role="group"
+      aria-label={`The book: every ${thing} on hand`}
+    >
       {canManage && advice.status === 'ready' && !advice.targetSet ? (
         <p className="ivc-target" data-testid="inventory-no-target">
           <a href="/settings?tab=target-margin">No target margin is set</a>, so no price advice is given.
@@ -61,7 +106,9 @@ export default function PhoneRows(props: PhoneRowsProps) {
           <span>Select every {thing} listed</span>
         </label>
       ) : null}
-      {rows.map((row, i) => {
+      {win.before > 0 ? <div aria-hidden="true" data-testid="inv-cards-before" style={{ height: win.before }} /> : null}
+      {rows.slice(win.start, win.end).map((row, k) => {
+        const i = win.start + k;
         const sev = severity(row);
         const startsGroup = grouped && (i === 0 || severity(rows[i - 1]) !== sev);
         const open = openId === row.id;
@@ -136,6 +183,7 @@ export default function PhoneRows(props: PhoneRowsProps) {
           </Fragment>
         );
       })}
+      {win.after > 0 ? <div aria-hidden="true" data-testid="inv-cards-after" style={{ height: win.after }} /> : null}
     </div>
   );
 }
