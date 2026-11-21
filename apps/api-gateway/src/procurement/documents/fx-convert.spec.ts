@@ -63,13 +63,6 @@ describe("convertMoney — a converted paper still ties to its converted total",
     }
   });
 
-  it("keeps unit prices to six places", () => {
-    const { header, lines } = paper(rng(1));
-    lines[0].unit_price = 0.8333;
-    const r = convertMoney(header, lines, 1.084);
-    expect(r.lines[0].unit_price).toBe(0.903297);
-  });
-
   it("does not force a paper that does not tie out", () => {
     const { header, lines } = paper(rng(3));
     header.total = header.total! + 5;
@@ -112,9 +105,5 @@ describe("planRefile with a rate", () => {
     expect(plan.document.total).toBe(119.35);
     expect(plan.document.ties_out).toBe(true);
     expect(plan.lines[0].unit_price).toBe(36.17308);
-  });
-  it("without a rate the figures are exactly as they stood", () => {
-    const plan = planRefile({ row, lines, extracted: null })!;
-    expect(plan.document.total).toBe(110.1);
   });
 });

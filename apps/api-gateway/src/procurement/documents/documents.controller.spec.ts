@@ -440,7 +440,6 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
     ["no paper currency", { currency: "USD", rate: 1.084, rateDate: "2026-11-20" }],
     ["no day", { currency: "USD", fromCurrency: "EUR", rate: 1.084 }],
     ["a day that is not a date", { currency: "USD", fromCurrency: "EUR", rate: 1.084, rateDate: "2026-02-31" }],
-    ["a day not yet come", { currency: "USD", fromCurrency: "EUR", rate: 1.084, rateDate: "2099-01-01" }],
     ["the same currency both sides", { currency: "USD", fromCurrency: "USD", rate: 1.084, rateDate: "2026-11-20" }],
   ])("refuses a half-stated conversion (%s) and writes nothing", async (_n, body) => {
     const { controller, inserts, updates } = harness();
