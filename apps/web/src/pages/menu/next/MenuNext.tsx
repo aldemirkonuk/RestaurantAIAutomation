@@ -37,7 +37,7 @@
  * shown an empty add form that would 404 on submit.
  */
 
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import { addMenuItem, discardMenuItem, getMenu, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
@@ -321,7 +321,8 @@ export default function MenuNext() {
   const role = (activeRole ?? user?.role ?? null) as string | null;
   const canManage = role === 'owner' || role === 'manager';
   const { q, discard, add } = useActiveMenu(activeRestaurantId);
-  const lastCount = lastLineCount(activeRestaurantId);
+  // Read once for the house: the count this page stores below must not take the room away at the next render.
+  const lastCount = useMemo(() => lastLineCount(activeRestaurantId), [activeRestaurantId]);
   // Remember how many lines the current menu had, to hold their room next time.
   const shown = q.data ? (q.data.menuId ? q.data.items.length : 0) : null;
   useEffect(() => {
@@ -395,10 +396,15 @@ export default function MenuNext() {
             </button>
           </div>
         ) : !q.data?.menuId ? (
-          <p className="cl-said" data-testid="menu-no-active">
-            No current menu yet. Read one below and make it current — Add to menu has nothing to
-            add to until a menu is current.
-          </p>
+          // The room held while reading is held here too, so the sections below do not jump up
+          // when the read ends with no current menu (r103 F8: CLS 0.125 at 1440 px; a reserve, not
+          // an ease). The house's stored count decides it; a stored 0 holds nothing.
+          <div className="mdv-reserve" style={{ ['--mdv-reserve' as string]: `${reservedFor(lastCount)}px` }} data-testid="menu-no-active-reserve">
+            <p className="cl-said" data-testid="menu-no-active">
+              No current menu yet. Read one below and make it current — Add to menu has nothing to
+              add to until a menu is current.
+            </p>
+          </div>
         ) : (
           <>
             <p className="cl-standing" style={{ fontSize: 15.5 }}>

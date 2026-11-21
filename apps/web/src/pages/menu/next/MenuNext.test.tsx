@@ -431,6 +431,43 @@ describe('MenuNext — the table\'s room is held while it is read (r103 menu-7)'
     await waitFor(() => expect(window.localStorage.getItem('mdv.menu.lines.r1')).toBe('3'));
   });
 
+  // r104 menu-g4 (r103 F8): a house with no current menu held the room while reading and gave it all back.
+  it('a house with no current menu keeps the room it held while reading (cold device: 4 lines)', async () => {
+    mockGetMenu.mockResolvedValue(menu({ menuId: null, items: [] }));
+    mount();
+    const held = (await screen.findByTestId('menu-no-active-reserve')) as HTMLElement;
+    expect(held.style.getPropertyValue('--mdv-reserve')).toBe('287px');
+    expect(within(held).getByTestId('menu-no-active')).toBeInTheDocument();
+  });
+
+  // r104 walk w-menu: the count was read again on every render, so the 0 the page stored for a
+  // no-current house took the room away at the next render (CLS 0.11 at 1440 px, cold device).
+  it('keeps the room it held through a later render, though the page has stored a 0 by then', async () => {
+    mockGetMenu.mockResolvedValue(menu({ menuId: null, items: [] }));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const tree = () => (
+      <QueryClientProvider client={qc}>
+        <MenuNext />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(tree());
+    await screen.findByTestId('menu-no-active-reserve');
+    await waitFor(() => expect(window.localStorage.getItem('mdv.menu.lines.r1')).toBe('0'));
+    rerender(tree());
+    expect(screen.getByTestId('menu-no-active-reserve').style.getPropertyValue('--mdv-reserve')).toBe('287px');
+  });
+
+  it('holds the stored count\'s room for it, and nothing when the stored count is 0', async () => {
+    window.localStorage.setItem('mdv.menu.lines.r1', '2');
+    mockGetMenu.mockResolvedValue(menu({ menuId: null, items: [] }));
+    const a = mount();
+    expect((await screen.findByTestId('menu-no-active-reserve')).style.getPropertyValue('--mdv-reserve')).toBe('175px');
+    a.unmount();
+    window.localStorage.setItem('mdv.menu.lines.r1', '0');
+    mount();
+    expect((await screen.findByTestId('menu-no-active-reserve')).style.getPropertyValue('--mdv-reserve')).toBe('0px');
+  });
+
   it('is held on desktop only, where the jump was measured', async () => {
     const { readFileSync } = await import('node:fs');
     const { join } = await import('node:path');
