@@ -119,17 +119,32 @@ function priceCard(data: CocktailRecipe, sayMoney: (n: number) => string, words:
     : { id: 'price', label: 'Price', figure: 'No price', known: false, said: 'Your list has no price for it.' };
 }
 
-/** A share in a list cell: plain once the basis is set, else warned with its sentence under it. */
+/**
+ * A share in a list cell: the figure alone. While the tax basis is unset or unread it is warned
+ * (colour + a hover title), and the sentence is said ONCE under the table (`ShareBasisCaption`),
+ * not under every row: a sentence under each figure grew every row (35 to 56 px) the moment the
+ * basis was read, a layout shift of 0.10-0.13 on /cocktails (r103 FAIL 11).
+ */
 export function ShareFigure({ text, tax }: { text: string; tax: ListTax }) {
   const basis = shareBasis(tax);
   if (!basis.warn) return <span title={basis.text}>{text}</span>;
   return (
-    <>
-      <span style={{ color: 'var(--warn)' }} data-warn="true">{text}</span>
-      <span className="cl-dim" style={{ display: 'block', fontSize: 11 }} data-testid="share-basis">
-        {basis.text}
-      </span>
-    </>
+    <span style={{ color: 'var(--warn)' }} data-warn="true" title={basis.text}>
+      {text}
+    </span>
+  );
+}
+
+/**
+ * The one sentence under a table of shares. Its room is held from first paint, whatever the basis
+ * turns out to be (empty once it is set), so reading the basis moves nothing (ADR 0112: no fade).
+ */
+export function ShareBasisCaption({ tax }: { tax: ListTax }) {
+  const basis = shareBasis(tax);
+  return (
+    <p className="cl-share-caption cl-dim" data-testid="share-basis-caption" data-warn={basis.warn ? 'true' : 'false'}>
+      {basis.warn ? basis.text : ''}
+    </p>
   );
 }
 

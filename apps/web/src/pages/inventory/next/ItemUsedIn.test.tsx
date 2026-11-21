@@ -209,7 +209,7 @@ describe('Used in', () => {
         onRetry={vi.fn()}
       />,
     );
-    expect(within(screen.getByTestId('ivd-used-cocktails')).getByRole('listitem').textContent).toBe('Lion milk29,57 ml');
+    expect(within(screen.getByTestId('ivd-used-cocktails')).getByRole('listitem').textContent).toBe('Lion milk29,57 ml · old recipe box, read only');
   });
 
   it('shows menu prices to owners and managers only', () => {

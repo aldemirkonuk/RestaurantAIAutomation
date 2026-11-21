@@ -46,7 +46,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AlertTriangle, Plus } from 'lucide-react';
 import RecipeSheet from '../cellar/next/recipe/RecipeSheet';
-import { ShareFigure, pourCostShare } from '../cellar/next/recipe/DrinkCards';
+import { ShareBasisCaption, ShareFigure, pourCostShare } from '../cellar/next/recipe/DrinkCards';
 import { useListTax } from '../cellar/next/recipe/useListTax';
 import type { ListTax } from '../cellar/next/recipe/listTax';
 import { PRICE_UNREAD, priceText, readPrice } from '../cellar/next/recipe/price-text';
@@ -758,6 +758,7 @@ export default function DishesPage() {
               </tbody>
             </table>
           </div>
+          {canEdit ? <ShareBasisCaption tax={tax} /> : null}
           </>
         )}
       </div>
