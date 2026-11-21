@@ -91,9 +91,23 @@ describe('LineRow', () => {
       expect(screen.getByTestId('not-counted-undo')).toBeInTheDocument();
       act(() => { vi.advanceTimersByTime(3100); });
       expect(screen.queryByTestId('not-counted-undo')).toBeNull();
+      // Its room stays, unseen and out of reach, so the lines below do not move when it goes (r103 need 4).
+      const room = screen.getByTestId('not-counted-undo-room');
+      expect(room).toHaveAttribute('aria-hidden', 'true');
+      expect(room).toHaveAttribute('data-spent', 'true');
+      expect(room.querySelector('button')).toBeDisabled();
+      // Editing the line again lets the room go.
+      fireEvent.change(screen.getByLabelText('What it is'), { target: { value: 'gin 2' } });
+      expect(screen.queryByTestId('not-counted-undo-room')).toBeNull();
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('the spent undo row keeps its height: hidden, not removed, and not animated (ADR 0112)', async () => {
+    const { readFileSync } = await import('node:fs');
+    const css = readFileSync(`${__dirname}/../cellar-next.css`, 'utf8').replace(/\s+/g, ' ');
+    expect(css).toMatch(/\.cl-rcp-undo\[data-spent='true'\] \{ visibility: hidden; animation: none; \}/);
   });
 
   it('a linked line with no price says why, and a priced one says its cost', () => {

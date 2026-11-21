@@ -28,6 +28,7 @@
  */
 import { useEffect, useMemo } from 'react';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { formatHouseNumber } from '../../../lib/house-number';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useInventory } from '../../../hooks/queries/useInventoryQueries';
 import { useWinesByIds } from '../../../hooks/queries/useWineQueries';
@@ -527,6 +528,26 @@ export function ofType(row: InvRow, type: string): boolean {
 
 /* ── money ───────────────────────────────────────────────────────────────── */
 
+/**
+ * The money code whose number form this page writes quantities in ("1.250,5"
+ * in a lira house, "1,250.5" in a pound house). A quantity is written deep in
+ * helpers with no house in reach (fmtCount, fmtQty), so the page, and the
+ * drawer's cards, say which house they are once they have read it
+ * (`sayHouseNumbers`). Until then, or when the money could not be read, no
+ * house's form is guessed: the reader's own is used (r103 need 3; it was a
+ * fixed en-GB, so a lira house read a pound house's numbers).
+ */
+let houseNumberCode: string | null = null;
+
+export function sayHouseNumbers(currency: { state: string; code: string | null }): void {
+  houseNumberCode = currency.state === 'recorded' ? currency.code : null;
+}
+
+/** A plain number in the house's form, up to `max` places (trailing zeros drop). */
+export function houseNumber(n: number, max: number): string {
+  return formatHouseNumber(n, houseNumberCode, { max });
+}
+
 export type HouseCurrency =
   | { state: 'reading'; code: null }
   | { state: 'recorded'; code: string }
@@ -563,7 +584,7 @@ export function cellMoney(v: number | null, currency: HouseCurrency): string {
   if (v === null || !Number.isFinite(v)) return EM;
   if (currency.state === 'reading') return EM;
   if (currency.state === 'recorded') return fmtMoney(v, currency.code);
-  return v.toLocaleString('en-GB', { maximumFractionDigits: 2 });
+  return houseNumber(v, 2);
 }
 
 /* ── the read sentence ───────────────────────────────────────────────────── */
@@ -574,7 +595,7 @@ export function cellMoney(v: number | null, currency: HouseCurrency): string {
  * the bare number.
  */
 export function fmtCount(n: number): string {
-  return n.toLocaleString('en-GB', { maximumFractionDigits: 1 });
+  return houseNumber(n, 1);
 }
 
 function plural(n: number, one: string, many: string): string {
@@ -736,6 +757,7 @@ export function useInventoryNextData() {
       : currencyQ.data.code
         ? { state: 'recorded', code: currencyQ.data.code }
         : { state: 'not_recorded', code: null };
+  sayHouseNumbers(currency);
 
   const storage = useStorageLocations();
   const providersQ = useProviders(rid ?? '');

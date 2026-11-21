@@ -345,13 +345,20 @@ export default function LineRow({
   const id = useId();
   const [picking, setPicking] = useState(false);
   // What the line cost a serve just before it was switched off, for 3 s, so the one tap can be undone.
-  const [undo, setUndo] = useState<{ cost: number | null; saved: DraftRow['saved'] } | null>(null);
+  // After the 3 s the row keeps its room, unseen, until the line is edited again, so its going shifts nothing (r103 need 4).
+  const [undo, setUndo] = useState<{ cost: number | null; saved: DraftRow['saved']; spent: boolean } | null>(null);
+  const undoOpen = undo !== null && !undo.spent;
   useEffect(() => {
-    if (!undo) return;
-    const t = setTimeout(() => setUndo(null), 3000);
+    if (!undoOpen) return;
+    const t = setTimeout(() => setUndo((u) => (u ? { ...u, spent: true } : u)), 3000);
     return () => clearTimeout(t);
-  }, [undo]);
+  }, [undoOpen]);
   const [reweighing, setReweighing] = useState(false);
+  // An edit to the line itself (not the switch) ends the undo and its room.
+  const edit = (patch: Partial<DraftRow>) => {
+    setUndo(null);
+    onChange(patch);
+  };
   const stocked = row.role === 'stocked';
   const qty = rowQty(row);
 
@@ -404,7 +411,7 @@ export default function LineRow({
                 className="cl-field cl-focus"
                 value={row.label}
                 placeholder={words.notCountedPlaceholder}
-                onChange={(e) => onChange({ label: e.target.value })}
+                onChange={(e) => edit({ label: e.target.value })}
                 style={{ width: '100%' }}
               />
               {row.inventoryId ? (
@@ -424,7 +431,7 @@ export default function LineRow({
           value={row.qtyText}
           placeholder="30"
           aria-invalid={qty === null}
-          onChange={(e) => onChange({ qtyText: e.target.value, storedQty: null, saved: null })}
+          onChange={(e) => edit({ qtyText: e.target.value, storedQty: null, saved: null })}
         />
 
         <label htmlFor={`${id}-unit`} className="cl-sr">Unit</label>
@@ -433,7 +440,7 @@ export default function LineRow({
           className="cl-field cl-focus cl-rcp-unit"
           value={row.unit}
           aria-invalid={row.unit === ''}
-          onChange={(e) => onChange({ unit: e.target.value as RecipeUnit | '', saved: null })}
+          onChange={(e) => edit({ unit: e.target.value as RecipeUnit | '', saved: null })}
         >
           <option value="">unit</option>
           {unitChoices(words.units, row.unit).map((u) => (
@@ -449,7 +456,7 @@ export default function LineRow({
           data-on={stocked}
           onClick={() => {
             if (stocked) {
-              setUndo({ cost: row.saved?.costPerServe ?? null, saved: row.saved });
+              setUndo({ cost: row.saved?.costPerServe ?? null, saved: row.saved, spent: false });
               onChange({ role: 'untracked', saved: null });
             } else {
               setUndo(null);
@@ -503,13 +510,21 @@ export default function LineRow({
         />
       ) : null}
       {undo && !stocked ? (
-        <p className="cl-rcp-undo" role="status" data-testid="not-counted-undo">
+        <p
+          className="cl-rcp-undo"
+          role="status"
+          data-testid={undo.spent ? 'not-counted-undo-room' : 'not-counted-undo'}
+          data-spent={undo.spent}
+          aria-hidden={undo.spent}
+        >
           {say && undo.cost != null
             ? `Not counted now: the cost drops by ${say(undo.cost)} a ${words.unit}.`
             : 'Not counted now: the cost no longer includes this line.'}{' '}
           <button
             type="button"
             className="cl-rcp-undo-btn cl-focus"
+            tabIndex={undo.spent ? -1 : undefined}
+            disabled={undo.spent}
             onClick={() => {
               onChange({ role: 'stocked', saved: undo.saved });
               setUndo(null);
