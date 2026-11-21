@@ -43,6 +43,7 @@ import { useAuthStore } from '../../../stores';
 import { MenuPlan } from './MenuPlan';
 import { MenuReviewScreen } from '../../../components/onboarding/MenuReviewScreen';
 import { DropZone } from '../../../components/mudavym/DropZone';
+import { MenuSheetButton } from './MenuSheetButton';
 import { deviceClockNote, houseDay, houseMoment } from './menu-clock';
 import { versionsPollMs } from './menu-read-poll';
 import { isPhoto, pagesProblem, photoToJpegBase64, photosToPages } from '../../../lib/menuPhotos';
@@ -424,6 +425,11 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
           </button>
           <div id="menu-read-details" className="mdv-drop__details" data-open={detailsOpen ? 'true' : 'false'}>
             <div className="mdv-drop__detailsinner">
+              {canManage ? (
+                <p className="cl-said" style={{ margin: 0 }}>
+                  <MenuSheetButton kind="sample" label="Sample sheet" filename="menu-sample.csv" testId="menu-sample" />
+                </p>
+              ) : null}
               <label className="cl-said" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 How often it changes (optional)
                 <select aria-label="How often it changes" value={cadence} onChange={(e) => setCadence(e.target.value as MenuCadence | '')}>
