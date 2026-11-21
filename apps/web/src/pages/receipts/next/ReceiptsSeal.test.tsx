@@ -38,6 +38,7 @@ const api = vi.hoisted(() => ({
   mintVerifySeal: vi.fn(),
   mintLineEditSeal: vi.fn(),
   mintCurrencySeal: vi.fn(),
+  house: vi.fn(() => Promise.resolve<string | null>('USD')),
   /** Every call, in order, so the TIMING can be asserted rather than assumed. */
   calls: [] as string[],
 }));
@@ -65,6 +66,7 @@ vi.mock('../../../services/api/documents', async (importOriginal) => {
       mintVerifySeal: api.mintVerifySeal,
       mintLineEditSeal: api.mintLineEditSeal,
       mintCurrencySeal: api.mintCurrencySeal,
+      houseCurrency: api.house,
     },
   };
 });
@@ -256,6 +258,73 @@ describe('the seal is minted when the gesture begins, not by the write', () => {
     holdToApprove(/Hold to file this invoice in TRY/);
     await waitFor(() => expect(api.restateCurrency).toHaveBeenCalled());
     expect(api.calls).toEqual(['mintCurrencySeal', 'restateCurrency']);
+  });
+
+  it('costs the paper in the house money at the rate a manager gives, sealed over the house code', async () => {
+    api.restateCurrency.mockImplementationOnce(() => {
+      api.calls.push('restateCurrency');
+      return Promise.resolve({
+        currency: 'USD',
+        previousCurrency: 'EUR',
+        sentence: 'Costed in USD: filed at 1 TRY = 0.0295 USD on 20 Nov.',
+        moneyRefiled: true,
+        linesRefiled: 1,
+        lineFailures: [],
+        filedAt: { sentence: 'filed at 1 TRY = 0.0295 USD on 20 Nov' },
+      });
+    });
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    openCurrencyChanger();
+    fireEvent.change(screen.getByLabelText('Currency this invoice is denominated in'), {
+      target: { value: 'TRY' },
+    });
+    fireEvent.change(await screen.findByLabelText('How many USD one TRY is worth'), {
+      target: { value: '0.0295' },
+    });
+    fireEvent.change(screen.getByLabelText('The day that rate is from'), {
+      target: { value: '2026-11-20' },
+    });
+    holdToApprove(/Hold to file this invoice in USD at 1 TRY = 0.0295 USD/);
+    await waitFor(() => expect(api.restateCurrency).toHaveBeenCalled());
+    expect(api.mintCurrencySeal).toHaveBeenCalledWith('d1', 'USD');
+    expect(api.restateCurrency.mock.calls[0][0]).toBe('d1');
+    expect(api.restateCurrency.mock.calls[0][1]).toBe('USD');
+    expect(api.restateCurrency.mock.calls[0][4]).toEqual({
+      fromCurrency: 'TRY',
+      rate: 0.0295,
+      rateDate: '2026-11-20',
+    });
+    expect(await screen.findByText(/filed at 1 TRY = 0\.0295 USD on 20 Nov/)).toBeTruthy();
+  });
+
+  it("offers the paper's own filed money as the one to convert from when it is not the house's", async () => {
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    openCurrencyChanger();
+    const picker = screen.getByLabelText('Currency this invoice is denominated in') as HTMLSelectElement;
+    await screen.findByLabelText('Currency this invoice is denominated in');
+    await waitFor(() => expect([...picker.options].map((o) => o.value)).toContain('EUR'));
+    fireEvent.change(picker, { target: { value: 'EUR' } });
+    fireEvent.change(await screen.findByLabelText('How many USD one EUR is worth'), {
+      target: { value: '1.08' },
+    });
+    holdToApprove(/Hold to file this invoice in USD at 1 EUR = 1.08 USD/);
+    await waitFor(() => expect(api.restateCurrency).toHaveBeenCalled());
+    expect(api.restateCurrency.mock.calls[0][4]).toMatchObject({ fromCurrency: 'EUR', rate: 1.08 });
+  });
+
+  it('without a rate it only relabels, as before', async () => {
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    openCurrencyChanger();
+    fireEvent.change(screen.getByLabelText('Currency this invoice is denominated in'), {
+      target: { value: 'TRY' },
+    });
+    holdToApprove(/Hold to file this invoice in TRY/);
+    await waitFor(() => expect(api.restateCurrency).toHaveBeenCalled());
+    expect(api.restateCurrency.mock.calls[0][1]).toBe('TRY');
+    expect(api.restateCurrency.mock.calls[0][4]).toBeUndefined();
   });
 
   it('mints the verify seal BEFORE the confirmation is sent', async () => {

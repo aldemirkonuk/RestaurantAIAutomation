@@ -185,6 +185,22 @@ function CurrencyBlock({
   const [error, setError] = useState<string | null>(null);
   const [moved, setMoved] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  // r104 g1 — a paper in another currency than the house's can be COSTED at a
+  // rate the manager gives, instead of only relabelled.
+  const [rate, setRate] = useState('');
+  const [rateDate, setRateDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const house = useQuery({
+    queryKey: ['house-currency-for-papers'],
+    queryFn: () => documentsApi.houseCurrency(),
+    staleTime: 5 * 60_000,
+  });
+  const houseCode = house.data ?? null;
+  const rateNumber = Number(rate);
+  const converting =
+    !!houseCode && !!choice && choice !== houseCode && rate.trim() !== '' && rateNumber > 0;
+  // The currency the paper ends up filed in: the house's when costed, the
+  // chosen one when only relabelled.
+  const target = converting ? (houseCode as string) : choice;
 
   /*
    * FOCUS FOLLOWS THE FOLD (walk-through W12, 2026-10-01). Opening or keeping
@@ -211,7 +227,13 @@ function CurrencyBlock({
      * gate is still role FIRST: staff never reach the hold at all.
      */
     mutationFn: (challenge?: string | null) =>
-      documentsApi.restateCurrency(doc.id, choice, reason || undefined, challenge),
+      converting
+        ? documentsApi.restateCurrency(doc.id, target, reason || undefined, challenge, {
+            fromCurrency: choice,
+            rate: rateNumber,
+            rateDate,
+          })
+        : documentsApi.restateCurrency(doc.id, target, reason || undefined, challenge),
     onSuccess: (res) => {
       setError(null);
       // The SERVER'S sentence, not ours. It names the figures that moved and
@@ -223,6 +245,7 @@ function CurrencyBlock({
       );
       setChoice('');
       setReason('');
+      setRate('');
       onChanged();
     },
     onError: (e) => {
@@ -337,7 +360,10 @@ function CurrencyBlock({
             }}
           >
             <option value="">select a currency</option>
-            {CURRENCY_CODES.filter((c) => c !== filed).map((c) => (
+            {/* The code already filed stays on offer when it is not the house's: a paper
+                  filed in a foreign money is costed FROM that money, so it has to be
+                  nameable as the paper's own (r104 g1, walk finding). */}
+            {CURRENCY_CODES.filter((c) => c !== filed || (!!houseCode && filed !== houseCode)).map((c) => (
               <option key={c} value={c}>
                 {currencyLabel(c)}
               </option>
@@ -362,6 +388,38 @@ function CurrencyBlock({
         />
       </div>
 
+      {houseCode && choice && choice !== houseCode && (
+        <div className="mt-2 flex flex-wrap items-center gap-2" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)' }}>
+          <label>
+            Cost it in {houseCode}: 1 {choice} ={' '}
+            <input
+              type="number"
+              inputMode="decimal"
+              step="any"
+              min="0"
+              value={rate}
+              onChange={(e) => setRate(e.target.value)}
+              disabled={!canManage || restate.isPending}
+              aria-label={`How many ${houseCode} one ${choice} is worth`}
+              style={{ width: 90, fontSize: 11.5, padding: '3px 6px', borderRadius: 6, border: '1px solid var(--line-control, #8F8674)', background: 'var(--paper-0, #FBF8F1)' }}
+            />{' '}
+            {houseCode}
+          </label>
+          <label>
+            on{' '}
+            <input
+              type="date"
+              value={rateDate}
+              onChange={(e) => setRateDate(e.target.value)}
+              disabled={!canManage || restate.isPending}
+              aria-label="The day that rate is from"
+              style={{ fontSize: 11.5, padding: '3px 6px', borderRadius: 6, border: '1px solid var(--line-control, #8F8674)', background: 'var(--paper-0, #FBF8F1)' }}
+            />
+          </label>
+          <span>{rate.trim() === '' ? 'Leave the rate empty to only relabel it.' : null}</span>
+        </div>
+      )}
+
       {/*
         THE HOLD, not a button. Founder, 2026-09-06 (batch 64): "Decide as a
         module: seal all three." A restatement re-files a whole invoice's money,
@@ -375,15 +433,17 @@ function CurrencyBlock({
       */}
       <div style={{ maxWidth: 300, marginTop: 8 }}>
         <HoldToApprove
-          key={`restate-${choice}-${restate.failureCount}`}
+          key={`restate-${choice}-${converting}-${restate.failureCount}`}
           label={
             choice
-              ? `Hold to file this invoice in ${choice}`
+              ? converting
+                ? `Hold to file this invoice in ${target} at 1 ${choice} = ${rateNumber} ${target}`
+                : `Hold to file this invoice in ${choice}`
               : 'Choose a currency first'
           }
           approvedLabel="Sealed"
           disabled={!canManage || !choice || restate.isPending}
-          onChallenge={() => documentsApi.mintCurrencySeal(doc.id, choice)}
+          onChallenge={() => documentsApi.mintCurrencySeal(doc.id, target)}
           onApprove={(challenge) => restate.mutate(challenge)}
         />
       </div>
@@ -404,9 +464,10 @@ function CurrencyBlock({
         </p>
       )}
       <p style={{ fontSize: 10.5, color: 'var(--ink-4, #665D50)', margin: '5px 0 0' }}>
-        Nothing is converted: there is no exchange rate in this system. The vendor&rsquo;s own
-        figures stay as they are and only the money they are stated in changes. Who changed it,
-        when, and what it was before are recorded.
+        Without a rate nothing is converted: the vendor&rsquo;s own figures stay as they are and
+        only the money they are stated in changes. With a rate you give, each line and charge is
+        converted to the cent and the rate and its day are kept. Who changed it, when, and what it
+        was before are recorded.
       </p>
       {settled && (
         <button
