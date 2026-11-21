@@ -416,6 +416,45 @@ describe("GoalsService.getPosRevenueWindow", () => {
     expect(result.days).toBe(7);
   });
 
+  it("compare=prior: the window just before, same length, summed on its own and sparse", async () => {
+    const day = `${LA_TODAY}T19:00:00Z`;
+    // Thirty house days back from today's window start is the prior window's
+    // first day; its last is the day before the window starts.
+    const { service } = makeGoals({
+      pos_checks: (call) =>
+        call === 0
+          ? [{ id: "c1" }]
+          : call === 1
+            ? [{ total: 200, opened_at: day, closed_at: day, items: [] }]
+            : [
+                { total: 70, opened_at: "2026-07-20T19:00:00Z", closed_at: "2026-07-20T19:00:00Z", items: [] },
+                { total: 30, opened_at: "2026-07-20T19:30:00Z", closed_at: "2026-07-20T19:30:00Z", items: [] },
+              ],
+    });
+
+    const result = await service.getPosRevenueWindow("r1", 30, "prior");
+
+    expect(result.revenue).toBeCloseTo(200);
+    expect(result.prior).toBeDefined();
+    const span = (a: string, b: string) =>
+      (Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000 + 1;
+    expect(span(result.prior!.from, result.prior!.to)).toBe(30);
+    // The prior window ends the day before this one starts: nothing overlaps.
+    expect(span(result.prior!.to, result.from!)).toBe(2);
+    // Its own sum, not the current window's.
+    expect(result.prior!.revenue).toBeCloseTo(100);
+    expect(result.prior!.checkCount).toBe(2);
+    // A day with no check is absent from the prior series, never a 0 row.
+    expect(result.prior!.dailySeries).toEqual([{ date: "2026-07-20", revenue: 100 }]);
+  });
+
+  it("without compare=prior, or with no POS or no zone, the payload carries no prior", async () => {
+    const { service } = makeGoals({ pos_checks: [] });
+    expect((await service.getPosRevenueWindow("r1", 30)).prior).toBeUndefined();
+    // No POS ever: nothing to compare, and nothing is invented as a 0.
+    expect((await service.getPosRevenueWindow("r1", 30, "prior")).prior).toBeUndefined();
+  });
+
   // ── F-086 / A-027: Tuzlu Rüzgar's days, on Tuzlu's clock ──────────────
 
   it("(a) files Tuzlu's opening day whole: 52 checks, $10,945 on Jul 1 — the dinners included", async () => {
@@ -1205,6 +1244,22 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
     expect(body.zoneUnset).toBe(true);
     expect(body.consumption).toBeNull();
     expect(analytics.getPosConsumptionBreakdown).not.toHaveBeenCalled();
+  });
+
+  it("passes compare=prior through, and ignores any other compare value", async () => {
+    goals.getPosRevenueWindow.mockResolvedValue({
+      from: "a",
+      to: "b",
+      days: 30,
+      posConnected: false,
+      revenue: null,
+      checkCount: null,
+      dailySeries: [],
+    });
+    await controller.getPosRevenue("r1", "30", "prior");
+    expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 30, "prior");
+    await controller.getPosRevenue("r1", "30", "year");
+    expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 30);
   });
 
   it("clamps an absurd or unparseable `days` to a sane window", async () => {
