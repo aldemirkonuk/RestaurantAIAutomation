@@ -62,6 +62,9 @@ import { blank, forHouse, costColumnsFor, daysSinceCountedCell, oneLine, runExpo
 import { COUNT_DUE_DAYS } from '../command/bits';
 import {
   CHIPS,
+  PRICE_SIGNAL_WORDS,
+  priceSignalsHaveBasis,
+  priceSignalsReadable,
   chipMatch,
   EM,
   inZone,
@@ -263,7 +266,18 @@ export default function InventoryNext() {
   }, []);
 
   // A chip whose count could not be read cannot hold the list (INV-W29).
-  const activeChip: ChipId = chip === 'dead' && data.paceUnread ? 'all' : chip;
+  // Price signals: only a house's own reader sees them (they are cost), only when the read answered and
+  // some good has two settled deliveries to compare (r104 g3).
+  const priceRead: 'staff' | 'unread' | 'nothing' | 'ready' = !data.canManage
+    ? 'staff'
+    : !priceSignalsReadable(rows ?? [])
+      ? (rows ?? []).length === 0
+        ? 'nothing'
+        : 'unread'
+      : priceSignalsHaveBasis(rows ?? [])
+        ? 'ready'
+        : 'nothing';
+  const activeChip: ChipId = (chip === 'dead' && data.paceUnread) || (chip === 'price' && priceRead !== 'ready') ? 'all' : chip;
   const chipCounts = useMemo(() => {
     const now = Date.now();
     const m = new Map<ChipId, number>();
@@ -638,13 +652,17 @@ export default function InventoryNext() {
           >
             {c.label} <span className="iv-num">{EM}</span>
           </button>
-        ) : c.id === 'price' ? (
+        ) : c.id === 'price' && priceRead === 'staff' ? null : c.id === 'price' && priceRead !== 'ready' ? (
           <button
             key={c.id}
             type="button"
             className="iv-chip"
             disabled
-            title="Price signals need a price feed, and none is read"
+            title={
+              priceRead === 'unread'
+                ? 'What each delivery finally cost could not be read, so no price move can be named'
+                : 'No good has two settled deliveries yet, so no price has moved to compare'
+            }
           >
             {c.label} <span className="iv-num">{EM}</span>
           </button>
@@ -655,6 +673,7 @@ export default function InventoryNext() {
             className="iv-chip iv-focus"
             aria-pressed={activeChip === c.id}
             data-on={activeChip === c.id}
+            title={c.id === 'price' ? PRICE_SIGNAL_WORDS : undefined}
             onClick={() => setV({ chip: c.id })}
           >
             {c.label} <span className="iv-num">{chipCount(c.id)}</span>
