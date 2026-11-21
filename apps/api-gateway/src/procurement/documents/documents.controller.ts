@@ -47,6 +47,7 @@ import { DeliveryStockService } from "../canonical/delivery-stock.service";
 import { LineMappingService } from "../canonical/line-mapping.service";
 import { DoorCountDto } from "../dto/deliveries.dto";
 import { SealChallengeService } from "../../common/seal/seal-challenge.service";
+import { DEFAULT_MOVE_THRESHOLD_PCT, priceMove } from "./price-move";
 import {
   DOCUMENT_SEAL_SUBJECT_KIND,
   DocumentSealAct,
@@ -1447,6 +1448,82 @@ export class DocumentsController {
         orderNumber: orderRow?.order_number ?? null,
         failure: null,
       },
+    };
+  }
+
+  @Get(":id/price-moves")
+  @ApiOperation({
+    summary: "Lines whose cost moved against the good's last invoiced cost",
+    description:
+      "Information only: it never blocks a verification and never changes a cost. A line is compared only when it is mapped to a good, the good has an invoiced lot, and both are costed per bottle; every other line is listed as not compared, with the reason.",
+  })
+  @ApiQuery({ name: "thresholdPct", required: false })
+  async priceMoves(
+    @Param("id") id: string,
+    @CurrentUser() user: AuthedUser,
+    @Query("thresholdPct") thresholdPct?: string,
+  ) {
+    const parsed = Number(thresholdPct);
+    const threshold =
+      thresholdPct != null && Number.isFinite(parsed) && parsed >= 0
+        ? parsed
+        : DEFAULT_MOVE_THRESHOLD_PCT;
+    const client = this.db.getClient();
+    const { data: lines, error } = await client
+      .from("procurement_document_lines")
+      .select("id, line_no, description, uom, unit_price, inventory_id")
+      .eq("document_id", id)
+      .eq("restaurant_id", user.restaurantId)
+      .order("line_no", { ascending: true });
+    if (error)
+      throw new HttpException(
+        `The lines could not be read, so no price was compared: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    const rows = (lines ?? []) as {
+      id: string;
+      line_no: number;
+      description: string | null;
+      uom: string | null;
+      unit_price: number | string | null;
+      inventory_id: string | null;
+    }[];
+    const goods = [...new Set(rows.map((l) => l.inventory_id).filter((x): x is string => !!x))];
+    const last = new Map<string, number>();
+    if (goods.length) {
+      const { data: lots, error: lotErr } = await client
+        .from("inventory_lots")
+        .select("inventory_id, unit_cost, received_at")
+        .eq("restaurant_id", user.restaurantId)
+        .eq("cost_provenance", "invoice")
+        .in("inventory_id", goods)
+        .not("unit_cost", "is", null)
+        .order("received_at", { ascending: false })
+        .limit(1000);
+      if (lotErr)
+        throw new HttpException(
+          `The goods' last invoiced costs could not be read, so no price was compared: ${lotErr.message}`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      // Newest first: the first lot seen for a good is its last invoiced cost.
+      for (const lot of (lots ?? []) as { inventory_id: string; unit_cost: number | string }[])
+        if (!last.has(lot.inventory_id)) last.set(lot.inventory_id, Number(lot.unit_cost));
+    }
+    const perBottle = (uom: string | null) => /^(bottle|btl|bt)$/i.test((uom ?? "").trim());
+    return {
+      thresholdPct: threshold,
+      lines: rows.map((l) => {
+        const prev = l.inventory_id ? last.get(l.inventory_id) : undefined;
+        const price = l.unit_price == null ? null : Number(l.unit_price);
+        // A lot's cost is per bottle. A line priced per case (or in a unit this
+        // does not know) is not converted here: it is not compared.
+        const result = priceMove(
+          prev == null ? null : { cost: prev, unit: "bottle" },
+          { cost: price, unit: perBottle(l.uom) ? "bottle" : l.uom },
+          threshold,
+        );
+        return { lineId: l.id, lineNo: l.line_no, description: l.description, ...result };
+      }),
     };
   }
 
