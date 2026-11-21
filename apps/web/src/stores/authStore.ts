@@ -285,7 +285,7 @@ export const useAuthStore = create<AuthState>()(
         }
 
         try {
-          const response = await shareMeRead(readMe)
+          const response = await shareMeRead(readMe, 'store')
           applyUserData(response.data.user, response.data.availableRestaurants)
         } catch (err: any) {
           const status = err?.response?.status
