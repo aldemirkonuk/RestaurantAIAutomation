@@ -56,6 +56,7 @@ import {
 } from '../../../hooks/queries/useConversationQueries';
 import { useActiveConversations } from '../../../hooks/queries/useDraftEmailQueries';
 import { failedReadWords, sendState } from './cm-format';
+import { lettersLast30 } from './mail-format';
 import { useMailSummary } from './useMailData';
 
 /**
@@ -164,7 +165,7 @@ export function useCommsNextData() {
           : historyQ.data.filter((i) => i.direction !== 'INBOUND' && sendState(i.status) === 'sent' && within30(i))
               .length,
       // A server older than D6 sends no inLast30: unknown, never 0.
-      repliesLast30: mailQ.data?.inLast30 ?? null,
+      repliesLast30: lettersLast30(mailQ.data),
       // The history endpoint serves at most COMMS_SERVER_WINDOWS.HISTORY_ROWS;
       // when the window is full the sent figure is a floor, and the strip says
       // so with GE. The replies figure is counted by the server and is exact.
