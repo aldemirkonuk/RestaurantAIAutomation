@@ -88,6 +88,7 @@ import { useListTax } from './useListTax';
 import { useSayGrams } from './WeighBox';
 import WhatIsInAServe from './WhatIsInAServe';
 import RecipeTaste, { RecipeTasteLine } from './RecipeTaste';
+import RecipeCard from './RecipeCard';
 import { UNREACHABLE_WORDS } from '../../../../lib/unreachable';
 import { SHEET_HOLD_ROOM } from './holdRoom';
 import { recipeWords, type RecipeWords } from './recipeWords';
@@ -773,6 +774,8 @@ function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
           {garnish ? <div><dt>Garnish</dt><dd>{garnish}</dd></div> : null}
         </dl>
       </header>
+
+      <RecipeCard data={data} words={words} canSeeCost={money} sayMoney={sayMoney} sayPct={sayPct} tax={listTax} />
 
       {lines.length > 0 ? (
         <ol className="cl-rcp-lines">
