@@ -21,6 +21,9 @@ export interface InventoryItem extends Wine {
   costProvenance?: "invoice" | "estimated";
   lotLocationCount?: number;
   openMl?: number;
+  /** False when that read failed (G15). */
+  rollupReadable?: boolean;
+  locationsReadable?: boolean;
   velocityPerDay?: number;
   daysOfCover?: number;
   reorderSuggested?: boolean;
@@ -218,14 +221,16 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
         wac: (item as any).wac ?? undefined,
         costProvenance: (item as any).costProvenance ?? undefined,
         lotLocationCount: (item as any).lotLocationCount ?? undefined,
-        openMl: (item as any).openMl ?? 0,
+        rollupReadable: (item as any).rollupReadable !== false,
+        openMl: (item as any).rollupReadable === false ? undefined : ((item as any).openMl ?? 0),
         velocityPerDay: (item as any).velocityPerDay ?? undefined,
         daysOfCover: (item as any).daysOfCover ?? undefined,
         reorderSuggested: (item as any).reorderSuggested ?? false,
         abcClass: (item as any).abcClass ?? undefined,
         deadStock: (item as any).deadStock ?? false,
         daysSinceSale: (item as any).daysSinceSale ?? undefined,
-        locations: (item as any).locations ?? [],
+        locationsReadable: (item as any).locationsReadable !== false,
+        locations: (item as any).locationsReadable === false ? undefined : ((item as any).locations ?? []),
         // The library's own name, carried for SEARCH only and never rendered
         // in place of the house's alias (ADR 0124, the naming rule). Read
         // through `as any` like every other field on this object that the

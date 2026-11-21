@@ -20,8 +20,14 @@ export function runwayDays(item: InventoryItem): number | null {
   return item.liveStock / v
 }
 
+/** Unit cost; undefined when the rollup read failed (G15). */
+export const paidPer = (item: InventoryItem) =>
+  item.rollupReadable === false ? undefined : (item.wac ?? item.price)
+
+export const UNREAD = 'could not be read'
+
 export function marketDeltaPct(item: InventoryItem): number | null {
-  const paid = item.wac ?? item.price
+  const paid = paidPer(item)
   if (!paid || !item.marketPrice) return null
   return ((item.marketPrice - paid) / paid) * 100
 }
