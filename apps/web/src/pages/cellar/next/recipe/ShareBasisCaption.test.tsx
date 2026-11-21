@@ -31,6 +31,11 @@ describe('the unset basis is said once, under the table', () => {
     expect(caption.getAttribute('data-warn')).toBe('false');
   });
 
+  it('a house whose prices include tax, with no rate recorded, is told once why its shares read Not known', () => {
+    render(<ShareBasisCaption tax={{ basis: 'prices_include_tax', ratePct: null }} />);
+    expect(screen.getByTestId('share-basis-caption').textContent).toBe('Your list prices include tax and no rate for it is recorded.');
+  });
+
   it('its room is held in CSS, one line wide and two on a phone, with no transition (ADR 0112)', () => {
     const css = readFileSync(`${__dirname}/../cellar-next.css`, 'utf8').replace(/\s+/g, ' ');
     expect(css).toMatch(/\.cl-share-caption \{[^}]*min-height: 1\.4em;/);

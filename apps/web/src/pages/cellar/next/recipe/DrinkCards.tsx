@@ -141,9 +141,11 @@ export function ShareFigure({ text, tax }: { text: string; tax: ListTax }) {
  */
 export function ShareBasisCaption({ tax }: { tax: ListTax }) {
   const basis = shareBasis(tax);
+  // A house whose prices include tax, with no rate recorded, reads "Not known" in every share cell: say why, once, here.
+  const saysWhy = basis.warn || (tax.basis === 'prices_include_tax' && tax.ratePct == null);
   return (
     <p className="cl-share-caption cl-dim" data-testid="share-basis-caption" data-warn={basis.warn ? 'true' : 'false'}>
-      {basis.warn ? basis.text : ''}
+      {saysWhy ? taxSaid(tax) : ''}
     </p>
   );
 }
