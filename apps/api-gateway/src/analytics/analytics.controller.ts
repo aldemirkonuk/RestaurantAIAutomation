@@ -1193,20 +1193,31 @@ export class AnalyticsController {
     required: false,
     description: "Window length in days (1–365, default 30).",
   })
+  @ApiQuery({
+    name: "compare",
+    required: false,
+    description:
+      "`prior` also answers the same-length window just before this one, as `prior`. Any other value is ignored.",
+  })
   @ApiResponse({ status: 200, description: "POS revenue window" })
   async getPosRevenue(
     @Param("restaurantId") restaurantId: string,
     @Query("days") days?: string,
+    @Query("compare") compare?: string,
   ) {
     const parsed = Number.parseInt(days ?? "", 10);
     const span = Number.isFinite(parsed)
       ? Math.min(Math.max(parsed, 1), 365)
       : 30;
     try {
-      const window = await this.goalsService.getPosRevenueWindow(
-        restaurantId,
-        span,
-      );
+      const window =
+        compare === "prior"
+          ? await this.goalsService.getPosRevenueWindow(
+              restaurantId,
+              span,
+              "prior",
+            )
+          : await this.goalsService.getPosRevenueWindow(restaurantId, span);
       // Skipped entirely when no POS is wired: there is nothing to break down,
       // and issuing the query anyway would only make "no POS" cost two round
       // trips to discover. Skipped too when the house has no zone: its days
