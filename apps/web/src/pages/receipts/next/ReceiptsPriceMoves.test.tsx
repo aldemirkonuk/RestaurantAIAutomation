@@ -126,7 +126,9 @@ const moved = {
   sentence: 'was 10.00, now 11.80, up 18 percent',
 };
 
-beforeEach(() => api.moves.mockReset());
+beforeEach(() => {
+  api.moves.mockReset();
+});
 
 describe('the check card on a cost that moved', () => {
   it('says what moved, in words, against the last invoiced cost', async () => {
@@ -149,7 +151,9 @@ describe('the check card on a cost that moved', () => {
   });
 
   it('says the comparison could not be made when the read fails', async () => {
-    api.moves.mockRejectedValue(new Error('down'));
+    api.moves.mockImplementation(() =>
+      Promise.reject(Object.assign(new Error('down'), { response: { status: 503, data: { message: 'gateway is down' } } })),
+    );
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
     expect(await screen.findByText(/earlier costs could not be read, so no price was compared/)).toBeTruthy();
