@@ -794,6 +794,19 @@ describe("registerRestaurant", () => {
     ]);
   });
 
+  it.each(["sent", "not_sent", "unconfirmed"] as const)(
+    "answers whether the verification mail left ('%s'), and a mail that did not leave rolls nothing back",
+    async (outcome) => {
+      const run = makeService();
+      (run.svc as any).queueEmailVerification.mockResolvedValue(outcome);
+      const answer = await run.svc.registerRestaurant(REGISTRATION);
+      expect(answer.verificationMail).toBe(outcome);
+      expect(answer).toMatchObject({ accessToken: expect.any(String) });
+      expect(run.deletes).toEqual([]);
+      expect(run.restaurantRows()).toHaveLength(1);
+    },
+  );
+
   it("says the loser of a same-email race plainly and leaves no rows (F2, F6)", async () => {
     const run = makeService({ single: { users: [{ error: EMAIL_TAKEN }] } });
     const exception = await refusal(run.svc.registerRestaurant(REGISTRATION));

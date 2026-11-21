@@ -16,6 +16,9 @@ export * from "./studio-invite.template";
 // Password reset
 export * from "./password-reset.template";
 
+// Email verification: a six-digit code and the link (onboarding OB-3)
+export * from "./verify-email.template";
+
 // Individual templates
 export * from "./low-stock-alert.template";
 export * from "./low-stock-digest.template";
