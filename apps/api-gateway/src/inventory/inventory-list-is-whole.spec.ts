@@ -20,10 +20,16 @@ type Row = Record<string, any>;
 
 function fakePostgrest(
   tables: Record<string, Row[]>,
-  opts: { cap?: number; failOnCall?: { table: string; call: number } } = {},
+  opts: {
+    cap?: number;
+    failOnCall?: { table: string; call: number };
+    /** Rows tied on every `order` column come back reversed on even calls: PostgREST promises no order among ties. */
+    tiesUnstable?: boolean;
+  } = {},
 ) {
   const cap = opts.cap ?? 1000;
   const calls: Record<string, number> = {};
+  const orderLog: Record<string, string[][]> = {};
   const client = {
     from(table: string) {
       const state: {
@@ -57,6 +63,7 @@ function fakePostgrest(
         },
         then(resolve: (v: any) => any, reject?: (e: any) => any) {
           calls[table] = (calls[table] ?? 0) + 1;
+          (orderLog[table] ??= []).push([...state.orders]);
           if (
             opts.failOnCall &&
             opts.failOnCall.table === table &&
@@ -80,6 +87,17 @@ function fakePostgrest(
               }
               return 0;
             });
+            if (opts.tiesUnstable && calls[table] % 2 === 0) {
+              // Reverse each run of rows tied on every order column.
+              const out: Row[] = [];
+              for (let i = 0; i < rows.length; ) {
+                let j = i + 1;
+                while (j < rows.length && key(rows[j]).join() === key(rows[i]).join()) j++;
+                out.push(...rows.slice(i, j).reverse());
+                i = j;
+              }
+              rows = out;
+            }
           }
           if (state.gt) {
             const [c, v] = state.gt;
@@ -101,7 +119,7 @@ function fakePostgrest(
       return q;
     },
   };
-  return { client, calls };
+  return { client, calls, orderLog };
 }
 
 const pad = (n: number) => String(n).padStart(5, "0");
@@ -269,5 +287,66 @@ describe("readViewWhole", () => {
         ["inventory_id"],
       ),
     ).rejects.toThrow(/reported no count/);
+  });
+});
+
+describe("the per-good views are paged by a total order (DD-r103-17)", () => {
+  // inventory_lot_rollup groups by (inventory_id, restaurant_id, master_wine_id)
+  // and has no `id` column, so the whole grouping key is its total order. The
+  // two tied rows below straddle the 1,000-row page edge.
+  const tied = [
+    ...Array.from({ length: 999 }, (_, i) => ({
+      inventory_id: `inv-${pad(i)}`,
+      master_wine_id: "mw-a",
+    })),
+    { inventory_id: "inv-00999", master_wine_id: "mw-a" },
+    { inventory_id: "inv-00999", master_wine_id: "mw-b" },
+  ];
+  const build = (client: any) => () =>
+    client.from("v").select("inventory_id", { count: "exact" }).eq("r", 1);
+
+  it("repeats a row and loses its twin when only the repeating column is named", async () => {
+    const { client } = fakePostgrest({ v: tied }, { tiesUnstable: true });
+    const rows = await readViewWhole("v", build(client), ["inventory_id"]);
+    const keys = rows.map((r: Row) => `${r.inventory_id}/${r.master_wine_id}`);
+    expect(new Set(keys).size).toBeLessThan(tied.length);
+  });
+
+  it("reads every tied row exactly once when the whole key is named", async () => {
+    const { client } = fakePostgrest({ v: tied }, { tiesUnstable: true });
+    const rows = await readViewWhole("v", build(client), [
+      "inventory_id",
+      "master_wine_id",
+    ]);
+    const keys = rows.map((r: Row) => `${r.inventory_id}/${r.master_wine_id}`);
+    expect(rows).toHaveLength(tied.length);
+    expect(new Set(keys).size).toBe(tied.length);
+  });
+
+  it("names the whole grouping key of each view /inventory reads", async () => {
+    const rollup = [{ inventory_id: "g1", master_wine_id: "mw-1", live_qty: 1 }];
+    const { client, orderLog } = fakePostgrest({
+      restaurant_inventory: [
+        { id: "g1", restaurant_id: "r1", master_wine_id: "mw-1", is_active: true },
+      ],
+      inventory_lot_rollup: rollup,
+      inventory_location_breakdown: [],
+      inventory_analytics: [{ inventory_id: "g1" }],
+    });
+    const db = new DatabaseService({} as any);
+    db.supabase = client as any;
+    await new InventoryService(db).getRestaurantInventory("r1");
+
+    expect(orderLog.inventory_lot_rollup[0]).toEqual([
+      "inventory_id",
+      "master_wine_id",
+    ]);
+    expect(orderLog.inventory_location_breakdown[0]).toEqual([
+      "inventory_id",
+      "location_id",
+      "master_wine_id",
+    ]);
+    // inventory_analytics is one row per restaurant_inventory.id.
+    expect(orderLog.inventory_analytics[0]).toEqual(["inventory_id"]);
   });
 });
