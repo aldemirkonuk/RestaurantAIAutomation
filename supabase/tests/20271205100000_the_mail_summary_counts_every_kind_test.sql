@@ -35,7 +35,8 @@ SELECT pg_temp.ok((SELECT in_today FROM public.mail_inbox_summary(p_restaurant_i
 SELECT pg_temp.ok((SELECT in_today FROM public.mail_inbox_summary('66666666-6666-4666-8666-666666666666', false, 'UTC')) = 1, 'another-house-counts-its-own');
 -- With no zone the day has no midnight: NULL, never a count.
 SELECT pg_temp.ok((SELECT in_today IS NULL AND out_today IS NULL FROM public.mail_inbox_summary('55555555-5555-4555-8555-555555555555', false, NULL)), 'no-zone-no-count');
--- What did not change: nobody non-vendor is waiting, and the 30-day figure is vendors'.
+-- What did not change: nobody non-vendor is waiting. The 30-day figure counted vendors only here; since
+-- 20271208100000 it counts every kind (vendor, guest today, team today, guest last week = 4).
 SELECT pg_temp.ok((SELECT waiting_people FROM public.mail_inbox_summary('55555555-5555-4555-8555-555555555555', false, 'UTC')) = 1, 'waiting-people-unchanged');
-SELECT pg_temp.ok((SELECT in_30d FROM public.mail_inbox_summary('55555555-5555-4555-8555-555555555555', false, 'UTC')) = 1, 'in-30d-unchanged');
+SELECT pg_temp.ok((SELECT in_30d FROM public.mail_inbox_summary('55555555-5555-4555-8555-555555555555', false, 'UTC')) = 4, 'in-30d-counts-every-kind');
 rollback;
