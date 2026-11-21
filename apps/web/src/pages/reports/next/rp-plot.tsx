@@ -55,9 +55,8 @@ import {
   YAxis,
   ZAxis,
 } from 'recharts';
-import { turn } from '@/lib/mudavym';
 import { tipMotion, useAfterPaint, useDrawIn } from './rp-draw';
-import { EM, MONO, failureLine, type Failure } from './rp-format';
+import { EM, MONO } from './rp-format';
 import { choose, planCombo, type ComboPick, type ComboPlan } from './rp-combo';
 import type { CatSeries, PointSeries } from './rp-view';
 

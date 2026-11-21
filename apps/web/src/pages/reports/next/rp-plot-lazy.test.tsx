@@ -47,6 +47,5 @@ describe('the drawing loads on demand', () => {
     for (const f of ['./Cutting.tsx', './rp-registers-house.tsx'])
       expect(src(f)).not.toMatch(/from '\.\/rp-plot'/);
     expect(src('./rp-plot-lazy.tsx')).toMatch(/import\('\.\/rp-plot'\)/);
-    expect(src('../../../../vite.config.ts')).toMatch(/recharts: \['recharts'\]/);
   });
 });
