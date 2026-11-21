@@ -23,7 +23,6 @@ import {
   type HousePriceResult,
 } from "../pricing/house-menu-price";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
-import { readWholeWindow } from "../common/read-whole-window";
 import {
   enqueueHouseItemResearch,
   readHouseItemResearch,
