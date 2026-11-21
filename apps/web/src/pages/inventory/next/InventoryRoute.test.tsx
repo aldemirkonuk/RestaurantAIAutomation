@@ -3,6 +3,8 @@
  * house whose `mudavym_design_inventory_next` is ON. OFF, unread or failed —
  * the command page every house runs today.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
@@ -72,10 +74,16 @@ describe('InventoryRoute', () => {
     expect(screen.queryByTestId('command')).toBeNull();
   });
 
-  it('keeps the command page, without waiting, where no house is chosen', () => {
+  it('keeps the command page, without waiting on the flag, where no house is chosen', async () => {
     window.localStorage.removeItem('activeRestaurantId');
     render(<InventoryRoute />);
-    expect(screen.getByTestId('command')).toBeTruthy();
+    expect(await screen.findByTestId('command')).toBeTruthy();
     expect(checkFeatureFlag).not.toHaveBeenCalled();
+  });
+
+  it('the command page is its own file, not a static import of the route', () => {
+    const src = readFileSync(resolve(__dirname, 'InventoryRoute.tsx'), 'utf8');
+    expect(src).not.toMatch(/import \{ InventoryCommandPage \} from/);
+    expect(src).toMatch(/import\('\.\.\/command\/InventoryCommandPage'\)/);
   });
 });
