@@ -7,8 +7,9 @@ const VER = '66666666-6666-4666-8666-666666666666';
 
 type Row = Record<string, any>;
 /** In-memory stand-ins for the tables the roll-up touches. `missing` lists tables that answer 42P01. */
-function fakeDb(t: Record<string, Row[]>, missing: string[] = [], failFirstInsert = false) {
+function fakeDb(t: Record<string, Row[]>, missing: string[] = [], failFirstInsert = false, failTasteReadAt = 0) {
   let fail = failFirstInsert;
+  let tasteReads = 0;
   const inserts: Row[] = [];
   const from = (table: string) => {
     const eqs: Array<[string, any]> = []; const nulls: string[] = [];
@@ -29,7 +30,9 @@ function fakeDb(t: Record<string, Row[]>, missing: string[] = [], failFirstInser
       is: (c: string, v: any) => { if (v === null) nulls.push(c); else eqs.push([c, v]); return api; },
       order: (c: string, o: { ascending: boolean }) => { if (o.ascending) asc = c; else desc = c; return api; },
       limit: (n: number) => { lim = n; return api; },
-      maybeSingle: async () => { const r = run(); return r.error ? r : { data: r.data![0] ?? null, error: null }; },
+      maybeSingle: async () => {
+        if (table === 'taste_profiles' && ++tasteReads === failTasteReadAt) return { data: null, error: { code: '57014', message: 'timeout' } };
+        const r = run(); return r.error ? r : { data: r.data![0] ?? null, error: null }; },
       insert: async (row: Row) => {
         if (fail) { fail = false; return { error: { code: '23505', message: 'dup' } }; }
         inserts.push(row); (t.taste_profiles ??= []).push({ created_at: '2026-11-19T10:00:00Z', ...row });
@@ -99,6 +102,13 @@ describe('TasteService.rollupSubject', () => {
     const f = fakeDb(recipe(sour), [], true);
     await new TasteService(f.db).rollupSubject(RID, 'cocktail', COCKTAIL);
     expect(f.inserts).toHaveLength(1);
+  });
+  it('does not write version 1 over a recipe layer when re-reading the latest version fails', async () => {
+    // Read 1 finds the last version, the insert collides, read 2 (the retry's
+    // version lookup) fails: the old code took 0 and wrote version 1 again.
+    const f = fakeDb(recipe(sour), [], true, 2);
+    await expect(new TasteService(f.db).rollupSubject(RID, 'cocktail', COCKTAIL)).rejects.toBeInstanceOf(InternalServerErrorException);
+    expect(f.inserts).toHaveLength(0);
   });
   it('refuses a good, a foreign cocktail and a recipe with no lines, each in a sentence', async () => {
     const s = (t: any) => new TasteService(fakeDb(t).db);

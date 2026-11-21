@@ -321,9 +321,14 @@ export class TasteService {
   }
 
   private async latestRecipeVersion(restaurantId: string, kind: SubjectKind, id: string): Promise<number> {
-    const { data } = await this.db.getClient().from('taste_profiles').select('version')
+    const { data, error } = await this.db.getClient().from('taste_profiles').select('version')
       .eq('restaurant_id', restaurantId).eq('subject_kind', kind).eq(SUBJECT_COLUMN[kind], id)
       .eq('source', 'recipe').is('stated_by', null).order('version', { ascending: false }).limit(1).maybeSingle();
+    // A failed read is not "no version yet": taking 0 would write version 1 over a layer that has later ones.
+    if (error) {
+      this.logger.error(`Could not find the latest recipe version: ${error.message}`);
+      throw new InternalServerErrorException('The taste could not be saved just now.');
+    }
     return (data as { version?: number } | null)?.version ?? 0;
   }
 }
