@@ -21,9 +21,16 @@ import {
 export const RECIPE_UNITS = ["ml", "cl", "l", "oz", "tsp", "tbsp", "dash", "barspoon", "g", "kg", "each"] as const;
 
 export class RecipeLineDto {
-  @ApiProperty({ enum: ["stocked", "untracked"] })
-  @IsIn(["stocked", "untracked"])
-  role!: "stocked" | "untracked";
+  @ApiProperty({ enum: ["stocked", "untracked", "made"] })
+  @IsIn(["stocked", "untracked", "made"])
+  role!: "stocked" | "untracked" | "made";
+
+  /** The house-made component a `made` line draws (a dish with a yield; ADR 0397). */
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsUUID()
+  componentId?: string | null;
 
   /** The house item; absent or null on a stocked line means "not linked yet". */
   @ApiPropertyOptional({ nullable: true })
