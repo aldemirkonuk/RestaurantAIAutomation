@@ -1284,7 +1284,7 @@ describe("MenusService — every menu read is kept as its own version", () => {
       menu_items: [],
     };
     (tables as any).__readFails = [{ menu_items: "connection reset" }];
-    await expect(makeService(tables).listVersions("rest-1")).rejects.toThrow(/connection reset/);
+    await expect(makeService(tables).listVersions("rest-1")).rejects.toThrow("The menus could not be read just now");
   });
 
   // Menu r21: dates in the house's time zone, never the viewing device's.
