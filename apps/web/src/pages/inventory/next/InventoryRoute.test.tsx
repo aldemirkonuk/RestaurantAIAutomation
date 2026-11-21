@@ -83,7 +83,7 @@ describe('InventoryRoute', () => {
 
   it('the command page is its own file, not a static import of the route', () => {
     const src = readFileSync(resolve(__dirname, 'InventoryRoute.tsx'), 'utf8');
-    expect(src).not.toMatch(/import \{ InventoryCommandPage \} from/);
+    expect(src).not.toMatch(/^import\s[^;]*command\/InventoryCommandPage'/m);
     expect(src).toMatch(/import\('\.\.\/command\/InventoryCommandPage'\)/);
   });
 });
