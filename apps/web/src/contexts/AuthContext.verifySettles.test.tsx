@@ -60,31 +60,6 @@ async function mount() {
   return () => ctx as unknown as AuthContextType;
 }
 
-function gatewayAnswers(verificationMail?: string) {
-  h.instance.post.mockResolvedValue({
-    data: {
-      accessToken: jwt({ sub: U, restaurantId: null }),
-      refreshToken: "r",
-      ...(verificationMail ? { verificationMail } : {}),
-    },
-  });
-  h.instance.get.mockImplementation(async (url: string) =>
-    url === "/api/v1/auth/me"
-      ? {
-          data: {
-            user: {
-              userId: U,
-              email: "new@house.test",
-              restaurantId: null,
-              role: null,
-              emailVerified: false,
-            },
-          },
-        }
-      : { data: [] },
-  );
-}
-
 
 describe("signInWithSession settles the verified person in place (r104)", () => {
   beforeEach(() => {
