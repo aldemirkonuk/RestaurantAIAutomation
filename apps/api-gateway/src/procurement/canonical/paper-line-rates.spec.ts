@@ -216,10 +216,11 @@ describe("landDelivery — each line's own rate reaches its lot", () => {
     expect(r.papers[0].taxSaid).toMatch(/Each line is at the rate printed beside it/);
   });
 
-  it("without the rates beside its lines, the same receipt is costed as printed, 11 and 12, unstamped", () => {
+  it("without the rates beside its lines, the same receipt is held: tax basis unknown (r103)", () => {
     const r = run({ tax: 30, total: 230 }, reclaims, [line(1, A, 11), line(2, B, 12)]);
-    expect(r.byItem.get(A)).toMatchObject({ unitCost: 11, costTaxBasis: null });
-    expect(r.byItem.get(B)).toMatchObject({ unitCost: 12, costTaxBasis: null });
+    expect(r.byItem.get(A)).toBeUndefined();
+    expect(r.held.get(A)).toContain("tax basis unknown");
+    expect(r.held.get(B)).toContain("tax basis unknown");
   });
 
   it("an invoice before tax, 10 × 60 at %20 + 10 × 40 at %1, costs a house that keeps its tax 72 and 40.40, stamped gross_cost", () => {
@@ -242,6 +243,7 @@ describe("landDelivery — each line's own rate reaches its lot", () => {
       houseCurrency: "TRY",
       houseTax: reclaims,
     });
-    expect(r.byItem.get(A)).toMatchObject({ unitCost: 11, costTaxBasis: null });
+    expect(r.byItem.get(A)).toBeUndefined();
+    expect(r.held.get(A)).toContain("tax basis unknown");
   });
 });
