@@ -46,16 +46,14 @@ import {
 } from 'lucide-react';
 import {
   BigFigure,
-  CatPlot,
-  ComboPlot,
   DataTable,
   FigureRow,
   HeatGrid,
   Nothing,
-  PointPlot,
   RegisterBody,
   Working,
-} from './rp-plot';
+} from './rp-plot-chrome';
+import { CatPlot, ComboPlot, PointPlot } from './rp-plot-lazy';
 import { CATALOGUE, graphOrDefault, type ViewCtx } from './rp-catalogue';
 import { DrawKey } from './rp-draw';
 import { readsRegister } from './rp-spec';

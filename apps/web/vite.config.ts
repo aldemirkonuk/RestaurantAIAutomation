@@ -48,6 +48,7 @@ export default defineConfig({
         manualChunks: {
           vendor: ['react', 'react-dom', 'react-router-dom'],
           ui: ['@tremor/react', 'framer-motion', 'lucide-react'],
+          recharts: ['recharts'],
         },
       },
     },
