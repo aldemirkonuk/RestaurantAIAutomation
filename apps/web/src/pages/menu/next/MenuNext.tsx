@@ -42,7 +42,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import { addMenuItem, discardMenuItem, getMenu, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
 import { housePriceNote } from './menu-price-note';
-import { MenuVersions } from './MenuVersions';
+import { MenuVersions, useKeptMenuName } from './MenuVersions';
 import { LockedPrices } from './LockedPrices';
 import { settingsApi } from '../../../services/api/settings';
 import { formatMoney } from '@/lib/currency';
@@ -140,6 +140,8 @@ function useActiveMenu(restaurantId: string | null) {
       queryClient.setQueryData(key, (old: ActiveMenu | undefined) =>
         old ? { ...old, items: old.items.filter((l) => l.id !== itemId) } : old,
       );
+      // The kept list counts this menu's lines too: it reads again, or it keeps saying the old count (r104 walk).
+      void queryClient.invalidateQueries({ queryKey: ['menu', 'versions'] });
       await queryClient.invalidateQueries({ queryKey: key });
     },
   });
@@ -351,6 +353,8 @@ export default function MenuNext() {
   }
   const fresh = seen.current?.fresh ?? null;
   const currency = useHouseCurrency(activeRestaurantId);
+  // The menu is named the way the kept list names it, not by the name the gateway stored (r104 menu-7, F4).
+  const kept = useKeptMenuName(q.data?.menuId ?? null);
   const [discardingId, setDiscardingId] = useState<string | null>(null);
 
   return (
@@ -403,7 +407,7 @@ export default function MenuNext() {
           <>
             <p className="cl-standing" style={{ fontSize: 15.5 }}>
               {q.data.items.length} {q.data.items.length === 1 ? 'line' : 'lines'} on{' '}
-              {q.data.name ?? 'the active menu'}.
+              {kept.name ?? (kept.pending ? 'the current menu' : (q.data.name ?? 'the current menu'))}.
             </p>
 
             <div style={{ marginTop: 16 }}>

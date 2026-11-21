@@ -1256,6 +1256,37 @@ describe("MenusService — every menu read is kept as its own version", () => {
     expect(r.versions.find((v) => v.menuId === "m4")!.source.kept).toBe(true);
   });
 
+  // r104 menu-6 (walk F6): "1 line" for a menu whose only line was discarded.
+  it("a kept menu's line count is what it holds now: discarded lines are not counted", async () => {
+    const tables: Record<string, Row[]> = {
+      restaurant_menus: [
+        { id: "m1", restaurant_id: "rest-1", status: "draft", lines_extracted: 1 },
+        { id: "m2", restaurant_id: "rest-1", status: "draft", lines_extracted: 2 },
+        { id: "m3", restaurant_id: "rest-1", status: "draft", lines_extracted: 3 },
+        { id: "m4", restaurant_id: "rest-1", status: "draft", lines_extracted: null },
+      ],
+      menu_items: [
+        { id: "i1", restaurant_id: "rest-1", menu_id: "m1", status: "discarded" },
+        { id: "i2", restaurant_id: "rest-1", menu_id: "m2", status: "discarded" },
+        { id: "i3", restaurant_id: "rest-1", menu_id: "m2", status: "draft" },
+        { id: "i4", restaurant_id: "rest-1", menu_id: "m3", status: "draft" },
+        { id: "i5", restaurant_id: "rest-2", menu_id: "m3", status: "discarded" },
+      ],
+    };
+    const r = await makeService(tables).listVersions("rest-1");
+    const n = (id: string) => r.versions.find((v) => v.menuId === id)!.linesExtracted;
+    expect([n("m1"), n("m2"), n("m3"), n("m4")]).toEqual([0, 1, 3, null]);
+  });
+
+  it("a kept menu's line count that cannot be read fails the list in words, never a stale count", async () => {
+    const tables: Record<string, Row[]> = {
+      restaurant_menus: [{ id: "m1", restaurant_id: "rest-1", status: "draft", lines_extracted: 1 }],
+      menu_items: [],
+    };
+    (tables as any).__readFails = [{ menu_items: "connection reset" }];
+    await expect(makeService(tables).listVersions("rest-1")).rejects.toThrow("The menus could not be read just now");
+  });
+
   // Menu r21: dates in the house's time zone, never the viewing device's.
   it("names the house's own time zone with the list, and only this house's", async () => {
     const tables: Record<string, Row[]> = {
