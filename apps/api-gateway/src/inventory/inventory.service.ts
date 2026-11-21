@@ -217,7 +217,10 @@ export class InventoryService {
     const map = new Map<string, any>();
     try {
       const client = this.dbService.getClient();
-      // Paged to the end (H-1): one unranged read stopped at 1,000 goods.
+      // Paged to the end (H-1): one unranged read stopped at 1,000 goods. The
+      // order is the view's whole grouping key (inventory_id, restaurant_id,
+      // master_wine_id; the restaurant is filtered), so a tie across a page
+      // edge cannot skip or repeat a row. The view has no `id` to order by.
       const data = await readViewWhole(
         "The lot rollup",
         () =>
@@ -228,7 +231,7 @@ export class InventoryService {
               { count: "exact" },
             )
             .eq("restaurant_id", restaurantId),
-        ["inventory_id"],
+        ["inventory_id", "master_wine_id"],
       );
       for (const r of data) map.set(r.inventory_id, r);
       return { ok: true, data: map };
