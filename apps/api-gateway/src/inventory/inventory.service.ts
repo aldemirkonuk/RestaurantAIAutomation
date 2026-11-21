@@ -1829,7 +1829,9 @@ export class InventoryService {
             new_stock_live: dto.stockLive,
             old_shadow_stock: oldItem?.shadow_stock ?? 0,
             new_shadow_stock: dto.shadowStock ?? oldItem?.shadow_stock ?? 0,
-            threshold_min: oldItem?.threshold_min ?? 6,
+            // r104 (ADR 0372): the old row can be unread; a made-up 6 here told
+            // the Buffer Manager a par nobody set. Unknown goes out as null.
+            threshold_min: oldItem?.threshold_min ?? null,
             source: "manual_override",
             timestamp: new Date().toISOString(),
           },
