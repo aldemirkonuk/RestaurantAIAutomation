@@ -42,6 +42,7 @@ import { CatalogIngestService } from "../../distributor-feed/catalog-ingest.serv
 import { OrganizationsService } from "../../organizations/organizations.service";
 import { isIso4217, notACurrencyBecause } from "../../common/iso-4217";
 import { documentMoneyState } from "./invoice-currency";
+import { filedAtSentence, rateProblem } from "./fx-convert";
 import { DeliveryService } from "../canonical/delivery.service";
 import { DeliveryStockService } from "../canonical/delivery-stock.service";
 import { LineMappingService } from "../canonical/line-mapping.service";
@@ -1932,11 +1933,18 @@ export class DocumentsController {
     summary:
       "Restate what currency this invoice's money is in, behind a redeemed seal",
     description:
-      "The house's deliberate change (founder, 2026-09-06). Managers and owners only; staff are refused in words. Takes a one-time seal in `X-Seal-Challenge`, minted by `POST :id/currency-seal-challenge` when the hold begins and redeemed exactly once here. Writes an append-only row naming who, when and the previous value, then re-files the document's money — including money rules 1 and 2 withheld — under the currency named, and returns a sentence saying what moved. NOTHING IS CONVERTED: there is no exchange rate in this system, so the vendor's own figures are restored and only their denomination changes.",
+      "The house's deliberate change (founder, 2026-09-06). Managers and owners only; staff are refused in words. Takes a one-time seal in `X-Seal-Challenge`, minted by `POST :id/currency-seal-challenge` when the hold begins and redeemed exactly once here. Writes an append-only row naming who, when and the previous value, then re-files the document's money — including money rules 1 and 2 withheld — under the currency named, and returns a sentence saying what moved. WITHOUT a rate NOTHING IS CONVERTED: the vendor's own figures are restored and only their denomination changes. WITH `fromCurrency`, `rate` and `rateDate` (all three, from the manager) every line and charge is converted to the currency named, to the cent, and the rate is stored on the audit row.",
   })
   async restateCurrency(
     @Param("id") id: string,
-    @Body() body: { currency?: string; reason?: string },
+    @Body()
+    body: {
+      currency?: string;
+      reason?: string;
+      fromCurrency?: string;
+      rate?: number;
+      rateDate?: string;
+    },
     @CurrentUser() user: AuthedUser,
     @Headers("x-seal-challenge") challenge?: string,
   ) {
@@ -1953,6 +1961,43 @@ export class DocumentsController {
         `${notACurrencyBecause(body?.currency)} Nothing was changed: this route re-files an invoice's money under the code it is given, and money cannot be denominated in something that is not a currency.`,
         HttpStatus.BAD_REQUEST,
       );
+
+    // A conversion carries three answers, all or none (r104 g1); a missing rate is never read as 1.
+    const asked =
+      body?.fromCurrency != null || body?.rate != null || body?.rateDate != null;
+    let fx: { rate: number; from: string; rateDate: string } | null = null;
+    if (asked) {
+      const from = String(body?.fromCurrency ?? "").trim().toUpperCase();
+      if (!isIso4217(from))
+        throw new HttpException(
+          `${notACurrencyBecause(body?.fromCurrency)} Nothing was changed: a conversion has to say which currency the paper's own figures are in.`,
+          HttpStatus.BAD_REQUEST,
+        );
+      if (from === next)
+        throw new HttpException(
+          `The paper's currency and the currency it is being filed in are both ${next}, so there is nothing to convert. Nothing was changed.`,
+          HttpStatus.BAD_REQUEST,
+        );
+      const rate = typeof body?.rate === "string" ? Number(body.rate) : body?.rate;
+      const bad = rateProblem(rate);
+      if (bad)
+        throw new HttpException(`${bad} Nothing was changed.`, HttpStatus.BAD_REQUEST);
+      const rateDate = String(body?.rateDate ?? "").trim();
+      const day = /^\d{4}-\d{2}-\d{2}$/.test(rateDate)
+        ? new Date(`${rateDate}T00:00:00Z`)
+        : null;
+      if (!day || Number.isNaN(day.getTime()) || day.toISOString().slice(0, 10) !== rateDate)
+        throw new HttpException(
+          "The day the exchange rate is from has to be a real date, written YYYY-MM-DD. Nothing was changed.",
+          HttpStatus.BAD_REQUEST,
+        );
+      if (day.getTime() > Date.now() + 24 * 3600 * 1000)
+        throw new HttpException(
+          "The exchange rate cannot be from a day that has not come yet. Nothing was changed.",
+          HttpStatus.BAD_REQUEST,
+        );
+      fx = { rate: rate as number, from, rateDate };
+    }
 
     /*
      * ROLE FIRST, THEN THE SEAL.
@@ -2025,7 +2070,13 @@ export class DocumentsController {
      * it is what the `previous === null` branch below produces.
      */
     const kind: "restated" | "confirmed" =
-      previous !== null && previous === next ? "confirmed" : "restated";
+      previous !== null && previous === next && !fx ? "confirmed" : "restated";
+    // `pdcc_kind_matches_the_codes` refuses a 'restated' row with equal codes.
+    if (fx && previous !== null && previous === next)
+      throw new HttpException(
+        `This paper is already filed in ${next}. To convert it from ${fx.from}, restate it as ${fx.from} first (no rate), then convert. Nothing was changed.`,
+        HttpStatus.CONFLICT,
+      );
 
     /*
      * WHAT THE RE-FILING WILL MOVE, computed but NOT written here.
@@ -2060,6 +2111,7 @@ export class DocumentsController {
       const planned = await this.intake.planRefileForCurrency(
         id,
         user.restaurantId,
+        fx,
       );
       preview = planned.plan;
       previousTotal = planned.previousTotal;
@@ -2122,6 +2174,10 @@ export class DocumentsController {
           source_said: preview?.sourceSaid ?? null,
         },
         reason: body?.reason?.trim() || null,
+        // The conversion's rate, kept so it can be re-checked; NULL on a relabel.
+        paper_currency: fx ? fx.from : null,
+        exchange_rate: fx ? fx.rate : null,
+        rate_date: fx ? fx.rateDate : null,
       });
     if (logError)
       throw new HttpException(
@@ -2166,6 +2222,7 @@ export class DocumentsController {
         id,
         user.restaurantId,
         next,
+        fx,
       );
     } catch (err: any) {
       const msg: string = err?.message ?? "unknown error";
@@ -2189,6 +2246,15 @@ export class DocumentsController {
       moneyRefiled: refile.snapshotReadable,
       linesRefiled: refile.linesRefiled,
       lineFailures: refile.lineFailures,
+      filedAt: fx
+        ? {
+            from: fx.from,
+            to: next,
+            rate: fx.rate,
+            rateDate: fx.rateDate,
+            sentence: filedAtSentence(fx.from, next, fx.rate, fx.rateDate),
+          }
+        : null,
     };
   }
 
