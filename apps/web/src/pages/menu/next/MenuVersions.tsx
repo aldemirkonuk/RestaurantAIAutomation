@@ -61,6 +61,9 @@ export function reasonOf(err: unknown): string {
   // request never got an answer, so say that.
   const sent = err as { code?: unknown; response?: unknown };
   if (sent?.code === 'ERR_NETWORK' && !sent.response) return 'Mudavym could not be reached just now.';
+  if (sent?.code === 'ECONNABORTED' && !sent.response) {
+    return 'Mudavym did not answer in time. The menu may have been kept: look in Menus kept before you send it again.';
+  }
   return e?.message || 'no reason was given';
 }
 

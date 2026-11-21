@@ -813,3 +813,12 @@ describe('the read box: a drop zone, with the optional fields behind "Add detail
     expect(document.getElementById('menu-read-details')?.getAttribute('data-open')).toBe('true');
   });
 });
+
+// r104 walk w-menu: a read sent slower than the 30 s wait said "timeout of 30000ms exceeded".
+describe('reasonOf — a request that got no answer in time', () => {
+  it('says so in the house\'s words, and that the menu may be kept already', async () => {
+    const { reasonOf } = await import('./MenuVersions');
+    const said = reasonOf(Object.assign(new Error('timeout of 30000ms exceeded'), { code: 'ECONNABORTED' }));
+    expect(said).toBe('Mudavym did not answer in time. The menu may have been kept: look in Menus kept before you send it again.');
+  });
+});
