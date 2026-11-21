@@ -649,6 +649,51 @@ function HowThisWorks() {
   );
 }
 
+/** The cause of a failed read of the kept menus: the gateway's `detail`, else what the browser knows. */
+export function detailOf(err: unknown): string {
+  const d = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+  return typeof d === 'string' && d ? d : reasonOf(err);
+}
+
+/**
+ * The kept menus could not be read (ADR 0020: said, never "none kept"). The
+ * sentence is plain; the cause folds under "Details" and Retry is a 48 px button
+ * (r72, critic round 3, item 10).
+ */
+function MenusUnread({ error, retrying, onRetry }: { error: unknown; retrying: boolean; onRetry: () => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ marginTop: 12 }} data-testid="menu-versions-error">
+      <p className="cl-said" role="alert">
+        The menus could not be read just now. Try again.
+      </p>
+      <button type="button" className="cl-btn mdv-retry" disabled={retrying} onClick={onRetry} data-testid="menu-versions-retry">
+        {retrying ? 'Trying again…' : 'Retry'}
+      </button>
+      <div className="mdv-fold">
+        <button
+          type="button"
+          className="mdv-link mdv-fold__cue"
+          aria-expanded={open}
+          aria-controls="menu-versions-error-details"
+          data-testid="menu-versions-details-cue"
+          onClick={() => setOpen((o) => !o)}
+        >
+          Details
+          <span className="mdv-fold__chev" aria-hidden />
+        </button>
+        <div id="menu-versions-error-details" className="mdv-fold__body" data-open={open ? 'true' : 'false'}>
+          <div className="mdv-fold__inner">
+            <p className="cl-note" data-testid="menu-versions-error-detail">
+              {detailOf(error)}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function MenuVersions({ canManage }: { canManage: boolean }) {
   const queryClient = useQueryClient();
   const [said, setSaid] = useState<string | null>(null);
@@ -690,9 +735,7 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
         </p>
       ) : q.isError ? (
         <>
-          <p className="cl-said" role="alert" style={{ marginTop: 12 }} data-testid="menu-versions-error">
-            The menus this house has kept could not be read ({reasonOf(q.error)}). This is not the same as having none.
-          </p>
+          <MenusUnread error={q.error} retrying={q.isFetching} onRetry={() => void q.refetch()} />
           {/* A choice made just before the list failed to read again is still said. */}
           {said ? (
             <p role="status" className="cl-said" style={{ marginTop: 10 }} data-testid="menu-list-choice-said">

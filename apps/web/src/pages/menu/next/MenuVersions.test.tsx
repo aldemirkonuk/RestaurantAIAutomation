@@ -4,6 +4,8 @@
  * read carries an optional cadence tag and date, and only an owner or manager
  * is offered the choice of the current menu.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -114,6 +116,8 @@ beforeEach(() => {
   mockPlan.mockReset();
   mockPlan.mockImplementation(async (id: string) => plan(id));
 });
+
+const css = readFileSync(resolve(__dirname, '../../../components/mudavym/drop-zone.css'), 'utf8');
 
 describe('the words the panel uses', () => {
   it('names a menu by its own date, its month, or when it was read, with its cadence', () => {
@@ -377,8 +381,37 @@ describe('MenuVersions', () => {
   it('a failed read of the kept menus says so -- not "none kept"', async () => {
     mockList.mockRejectedValue(new Error('timeout'));
     mount(true);
-    expect(await screen.findByTestId('menu-versions-error')).toHaveTextContent(/could not be read \(timeout\)/);
+    expect(await screen.findByTestId('menu-versions-error')).toHaveTextContent('The menus could not be read just now. Try again.');
     expect(screen.queryByText('No menu has been read yet.')).not.toBeInTheDocument();
+  });
+
+  it('a failed read keeps the database words out of the sentence, under Details, and Retry reads again', async () => {
+    mockList.mockRejectedValueOnce({
+      response: {
+        status: 500,
+        data: { message: 'The menus could not be read just now. Try again.', detail: "The house's menus could not be read: column restaurant_menus.read_warnings does not exist" },
+      },
+    });
+    mount(true);
+    const box = await screen.findByTestId('menu-versions-error');
+    expect(screen.getByRole('alert')).toHaveTextContent(/^The menus could not be read just now\. Try again\.$/);
+    expect(screen.getByRole('alert')).not.toHaveTextContent(/column|read_warnings/);
+    // The cause is in the page, folded closed, under "Details".
+    expect(screen.getByTestId('menu-versions-details-cue')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByTestId('menu-versions-error-detail')).toHaveTextContent('restaurant_menus.read_warnings does not exist');
+    expect(box.querySelector('[data-open="false"]')).not.toBeNull();
+    fireEvent.click(screen.getByTestId('menu-versions-details-cue'));
+    expect(screen.getByTestId('menu-versions-details-cue')).toHaveAttribute('aria-expanded', 'true');
+    // Retry asks again.
+    mockList.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(mockList).toHaveBeenCalledTimes(1));
+  });
+
+  it('Retry is a 48 px button and the fold motion stops under reduced motion', () => {
+    expect(css).toMatch(/\.cl-btn\.mdv-retry\s*\{[^}]*min-height: 48px/);
+    expect(css).not.toMatch(/transition:\s*all/);
+    expect(css.slice(css.lastIndexOf('@media (prefers-reduced-motion: reduce)'))).toMatch(/\.cl-btn\.mdv-retry,[^{]*\{\s*transition: none/);
   });
 
   it('a manager makes a kept menu current, and is told what it did', async () => {
