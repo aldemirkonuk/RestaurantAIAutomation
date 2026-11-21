@@ -94,6 +94,11 @@ export interface InventoryItem {
    * behaviour, never worse than it was).
    */
   analyticsReadable?: boolean;
+  /** The unit costs of the last two settled deliveries (a cost figure: it travels with `wac`). Absent = fewer than two settled. */
+  lastSettledCost?: number;
+  previousSettledCost?: number;
+  /** False = the settled-price read failed, so "no price move" is unknown, not none. Absent = from before this field. */
+  settledCostsReadable?: boolean;
   locations?: WineLocationBreakdown[];
 }
 
