@@ -42,6 +42,7 @@ vi.mock('./useCellarNextData', () => {
       loading: false,
       error: null,
     }),
+    useCocktailManages: () => true,
     useCocktailWrites: () => ({ create: mutation, amend: mutation, retire: mutation }),
   };
 });

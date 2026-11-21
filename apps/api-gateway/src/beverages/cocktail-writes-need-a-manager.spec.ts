@@ -189,7 +189,7 @@ async function call(
 }
 
 /** [label, method, path, body, the service method it reaches, success status] */
-const WRITES: Array<[string, string, string, unknown, string, number]> = [
+const WRITES: Array<[string, string, string, unknown, string | null, number]> = [
   [
     "record a cocktail (POST)",
     "POST",
@@ -219,8 +219,10 @@ const WRITES: Array<[string, string, string, unknown, string, number]> = [
     "PUT",
     `/cocktails/${HOUSE_A}/${COCKTAIL}/ingredients`,
     { lines: [{ freeText: "gin", quantity: 30, unit: "ml", sortOrder: 0 }] },
-    "setCocktailIngredients",
-    200,
+    // Retired (#1989): the old writer answers 410 to an owner and a manager and
+    // reaches no service; staff are still refused at the door (403), first.
+    null,
+    410,
   ],
 ];
 
@@ -255,12 +257,12 @@ describe("an owner or a manager of the house may", () => {
       ["owner", ...w] as const,
     ]),
   )(
-    "%s: %s reaches the service and answers 2xx",
+    "%s: %s reaches the service and answers 2xx (the retired PUT answers 410, writing nothing)",
     async (who, _label, method, path, body, reached, ok) => {
       const res = await call(method, path, tokenFor(who as Who), body);
       expect(res.status).toBe(ok);
-      expect(calls.map((c) => c[0])).toEqual([reached]);
-      expect(calls[0][1]).toBe(HOUSE_A);
+      expect(calls.map((c) => c[0])).toEqual(reached ? [reached] : []);
+      if (reached) expect(calls[0][1]).toBe(HOUSE_A);
     },
   );
 });
