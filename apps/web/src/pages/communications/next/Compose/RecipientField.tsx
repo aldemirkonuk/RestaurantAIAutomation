@@ -26,7 +26,8 @@ import { EM, MONO, SANS, looksLikeAddress } from './compose-format';
 const ICON = { size: 13, strokeWidth: 1.75 } as const;
 
 export interface Recipient {
-  providerId: string;
+  /** Null only on a reply to a team member or a guest, who have no vendor (ADR 0396). */
+  providerId: string | null;
   providerName: string;
   email: string;
 }
@@ -38,7 +39,13 @@ export function RecipientField({
   value,
   onChange,
   onBookChanged,
+  fixed,
 }: {
+  /**
+   * A reply to a team member or a guest (ADR 0396): the one address that wrote,
+   * shown as it is, with no book to search and nothing to type or change.
+   */
+  fixed?: { address: string; name: string | null };
   book: BookEntry[] | null;
   failed: boolean;
   error: string | null;
@@ -101,6 +108,39 @@ export function RecipientField({
         message: e instanceof Error ? e.message : 'unknown error',
       });
     }
+  }
+
+  if (fixed) {
+    return (
+      <div style={{ fontFamily: SANS }} data-testid="recipient-fixed">
+        <span
+          style={{
+            display: 'block',
+            fontFamily: MONO,
+            fontSize: 9,
+            fontWeight: 600,
+            letterSpacing: '0.14em',
+            textTransform: 'uppercase',
+            color: 'var(--ink-4, #665D50)',
+            marginBottom: 4,
+          }}
+        >
+          To
+        </span>
+        <div
+          className="flex flex-wrap items-center gap-2 rounded-lg px-3 py-2"
+          style={{ border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-1, #F3EFE6)' }}
+        >
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>{fixed.name || EM}</span>
+          <span style={{ fontFamily: MONO, fontSize: 11.5, color: 'var(--ink-2, #4F473C)', overflowWrap: 'anywhere' }}>
+            {fixed.address}
+          </span>
+        </div>
+        <p style={{ margin: '5px 0 0', fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
+          A reply goes to the address that wrote, on their thread, and to no other.
+        </p>
+      </div>
+    );
   }
 
   return (

@@ -664,6 +664,23 @@ describe('a reply opened from Mail (r28 gap 3)', () => {
     );
   });
 
+  it('a guest reply is fixed to the address that wrote, has no book, and sends no vendor (ADR 0396)', async () => {
+    mockData.current = { ...base, sender: HOUSE_MAILBOX };
+    sealThenQueue();
+    const person = { kind: 'guest' as const, address: 'jane@x.example', name: 'Jane Roe' };
+    render(<ComposeSheet open onClose={() => {}} prefill={{ subject: 'Re: A table', answers: 'g1', person }} />);
+    expect(screen.getByTestId('recipient-fixed')).toHaveTextContent('jane@x.example');
+    expect(screen.queryByText('Change')).toBeNull();
+    expect(screen.queryByText('Fikri Tarım Gıda')).toBeNull();
+    fireEvent.change(screen.getByLabelText('The letter'), { target: { value: 'Friday is fine.' } });
+    await waitFor(() => expect(screen.getByTestId('letter-send')).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId('letter-send'));
+    await waitFor(() => expect(mockPost).toHaveBeenCalledTimes(2));
+    const sent = mockPost.mock.calls[1][1];
+    expect(sent).toEqual(expect.objectContaining({ to: 'jane@x.example', answers: 'g1' }));
+    expect(sent.providerId).toBeUndefined();
+  });
+
   it('written to another vendor instead, it answers nothing', async () => {
     mockData.current = {
       ...base,
