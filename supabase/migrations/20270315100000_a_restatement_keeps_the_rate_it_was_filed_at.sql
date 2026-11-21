@@ -17,6 +17,3 @@ BEGIN
       );
   END IF;
 END $$;
-
-COMMENT ON COLUMN public.procurement_document_currency_changes.exchange_rate IS
-  'House units per ONE unit of paper_currency, as the manager gave it. NULL when the act only relabelled.';

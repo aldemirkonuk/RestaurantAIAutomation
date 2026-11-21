@@ -1933,7 +1933,7 @@ export class DocumentsController {
     summary:
       "Restate what currency this invoice's money is in, behind a redeemed seal",
     description:
-      "The house's deliberate change (founder, 2026-09-06). Managers and owners only; staff are refused in words. Takes a one-time seal in `X-Seal-Challenge`, minted by `POST :id/currency-seal-challenge` when the hold begins and redeemed exactly once here. Writes an append-only row naming who, when and the previous value, then re-files the document's money — including money rules 1 and 2 withheld — under the currency named, and returns a sentence saying what moved. WITHOUT a rate NOTHING IS CONVERTED: the vendor's own figures are restored and only their denomination changes. WITH `fromCurrency`, `rate` and `rateDate` (all three, from the manager) every line and charge is converted to the currency named, to the cent, and the rate is stored on the audit row.",
+      "The house's deliberate change (founder, 2026-09-06). Managers and owners only; staff are refused in words. Takes a one-time seal in `X-Seal-Challenge`, minted by `POST :id/currency-seal-challenge` when the hold begins and redeemed exactly once here. Writes an append-only row naming who, when and the previous value, then re-files the document's money — including money rules 1 and 2 withheld — under the currency named, and returns a sentence saying what moved. Without a rate nothing is converted and only the denomination changes. With `fromCurrency`, `rate` and `rateDate` (all three) every line and charge is converted, to the cent, and the rate is kept on the audit row.",
   })
   async restateCurrency(
     @Param("id") id: string,
