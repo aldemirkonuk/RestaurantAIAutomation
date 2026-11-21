@@ -1277,6 +1277,46 @@ describe('ReceiptsNext — a lane holds its place while it is read (r41 invoices
     expect(await screen.findByText(/INV-88/)).toBeTruthy();
   });
 
+  it('a lane that answers empty keeps its slot until the last read lands, then lets go once (r104 g5)', async () => {
+    let open!: () => void;
+    api.gate = new Promise<void>((r) => (open = r));
+    api.verifiedPending = true; // the verified book is the slow read
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await screen.findByText(/INV-88/); // the queue and the clean papers have landed (clean: empty)
+    expect(screen.getByTestId('lane-slot-clean')).toBeTruthy();
+    expect(screen.getByTestId('lane-slot-verified')).toBeTruthy();
+    await act(async () => {
+      open();
+    });
+    await waitFor(() => expect(outlines(container)).toBe(0));
+  });
+
+  it('an empty queue says nothing, and holds its slot, until every read has landed', async () => {
+    api.queue = [];
+    let open!: () => void;
+    api.gate = new Promise<void>((r) => (open = r));
+    api.verifiedPending = true;
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await waitFor(() => expect(screen.getByTestId('lane-slot-queue')).toBeTruthy());
+    expect(screen.getByTestId('lane-slot-queue').style.minHeight).toBe('156px');
+    expect(screen.queryByText(/the paper trail is caught up/)).toBeNull();
+    await act(async () => {
+      open();
+    });
+    expect(await screen.findByText(/the paper trail is caught up/)).toBeTruthy();
+    expect(screen.queryByTestId('lane-slot-queue')).toBeNull();
+    expect(outlines(container)).toBe(0);
+  });
+
+  it('a held slot has no animation or transition, so reduced motion collapses it with none (ADR 0112)', async () => {
+    api.gate = new Promise<void>(() => {});
+    api.verifiedPending = true;
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await screen.findByTestId('lane-slot-verified');
+    const html = container.querySelector('[data-lane-outline]')!.outerHTML;
+    expect(html).not.toMatch(/animation|transition/i);
+  });
+
   it('a lane whose read failed draws no outline, it says the failure', async () => {
     api.cleanFails = new Error('boom');
     api.verifiedFails = new Error('boom');
