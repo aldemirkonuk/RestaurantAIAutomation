@@ -1,5 +1,5 @@
 import { convertMoney, filedAtSentence, rateProblem, apportionCents } from "./fx-convert";
-import type { DocumentMoney, LineMoney } from "./invoice-currency";
+import { planRefile, type DocumentMoney, type LineMoney } from "./invoice-currency";
 
 function rng(seed: number) {
   return () => {
@@ -98,5 +98,23 @@ describe("apportionCents / filedAtSentence", () => {
   });
   it("says what was filed at", () => {
     expect(filedAtSentence("EUR", "USD", 1.084, "2026-11-20")).toBe("filed at 1 EUR = 1.0840 USD on 20 Nov");
+  });
+});
+
+describe("planRefile with a rate", () => {
+  const row = { subtotal: 100.1, freight: 10, total: 110.1, tax: null };
+  const lines = [
+    { line_no: 1, qty: 1, uom: "bottle", pack_size: 1, unit_price: 33.37, line_total: 33.37, allowance: null, deposit: null },
+    { line_no: 2, qty: 2, uom: "bottle", pack_size: 1, unit_price: 33.365, line_total: 66.73, allowance: null, deposit: null },
+  ];
+  it("files the converted figures and they still tie out", () => {
+    const plan = planRefile({ row, lines, extracted: null, fx: { rate: 1.084 } })!;
+    expect(plan.document.total).toBe(119.35);
+    expect(plan.document.ties_out).toBe(true);
+    expect(plan.lines[0].unit_price).toBe(36.17308);
+  });
+  it("without a rate the figures are exactly as they stood", () => {
+    const plan = planRefile({ row, lines, extracted: null })!;
+    expect(plan.document.total).toBe(110.1);
   });
 });
