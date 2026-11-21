@@ -124,6 +124,30 @@ describe("the sheet prices a made line through its component", () => {
     expect((await read(bare)).current.lines[0]).toMatchObject({ costPerServe: null, costBasis: "component_not_priced" });
   });
 
+  it("reads components three levels deep and no further: a fourth level leaves the drink not priced, never looping", async () => {
+    const chain = (levels: number) => {
+      const rows = withSyrup();
+      // X1 uses X2 ... uses X<levels>, which is made of flour; the tart takes X1.
+      for (let i = 1; i <= levels; i++) {
+        const id = `d0000000-0000-4000-8000-00000000d00${i}`;
+        const v = `e0000000-0000-4000-8000-00000000d00${i}`;
+        rows.dishes.push({ id, restaurant_id: HOUSE_A, name: `Level ${i}`, yield_qty_base: 1000, yield_base_unit: "ml10", deleted_at: null });
+        rows.recipe_current_dish.push({ dish_id: id, version_id: v, restaurant_id: HOUSE_A });
+        rows.recipe_versions.push({ id: v, restaurant_id: HOUSE_A, dish_id: id, owner_kind: "dish", version: 1, yield_serves: 1, created_at: "2026-11-02" });
+        rows.recipe_lines.push(
+          i < levels
+            ? line(`x${i}`, v, HOUSE_A, 1, "Inner", null, { role: "made", component_dish_id: `d0000000-0000-4000-8000-00000000d00${i + 1}`, qty_entered: 100, unit_code: "ml", qty_base: 1000, base_unit: "ml10" })
+            : line(`x${i}`, v, HOUSE_A, 1, "Flour", FLOUR, { qty_entered: 500, qty_base: 500_000 }),
+        );
+      }
+      for (const l of rows.recipe_lines) if (l.id === "t1") Object.assign(l, { component_dish_id: "d0000000-0000-4000-8000-00000000d001", qty_base: 1000 });
+      return rows;
+    };
+    // Three levels (X1 in X2 in X3, made of flour) are priced; a fourth is not read.
+    expect((await read(chain(3))).current.lines[0]).toMatchObject({ costBasis: "component" });
+    expect((await read(chain(4))).current.lines[0]).toMatchObject({ costPerServe: null, costBasis: "component_not_priced" });
+  });
+
   it("shows staff what it draws and no money", async () => {
     const out = await read(withSyrup(), "staff");
     expect(out.current.lines[0]).toMatchObject({ role: "made", componentId: SYRUP, componentName: null, costPerServe: null });
