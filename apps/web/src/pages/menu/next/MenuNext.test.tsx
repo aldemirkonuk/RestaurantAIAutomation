@@ -157,6 +157,28 @@ describe('MenuNext — reading', () => {
     expect(kept.textContent).not.toContain('Network Error');
   });
 
+  it('names the current menu the way the kept list names it, never by the gateway\'s stored name (r104 menu-7, F4)', async () => {
+    mockGetMenu.mockResolvedValue(menu({ menuId: 'm1', name: 'Menu from a spreadsheet, 2026-11' }));
+    mockVersions.mockResolvedValue({
+      current: null,
+      lastUsed: null,
+      timezone: 'UTC',
+      versions: [
+        {
+          menuId: 'm1', name: 'Menu from a spreadsheet, 2026-11', status: 'active', current: true,
+          cadence: 'monthly', menuDate: '2026-11', menuDatePrecision: 'month', sourceMethod: 'csv',
+          source: { kept: false, mime: null, bytes: null, failure: null }, linesExtracted: 1, readWarnings: null,
+          readState: 'done', readFailure: null, extractedAt: '2026-11-02T10:00:00Z', extractedBy: null,
+          madeCurrentAt: null, madeCurrentBy: null, retiredAt: null, retiredBy: null, createdAt: null,
+        },
+      ],
+    });
+    mount();
+    const standing = await screen.findByText(/on the 2026-11 menu \(monthly\)\./);
+    expect(standing).toBeInTheDocument();
+    expect(screen.queryByText(/Menu from a spreadsheet/)).not.toBeInTheDocument();
+  });
+
   it('says a failed read plainly, never as an empty menu', async () => {
     mockGetMenu.mockRejectedValue(new Error('ECONNREFUSED'));
     mount();

@@ -760,10 +760,8 @@ function readingNow(): MenuVersion {
   };
 }
 
-export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; retryAbove?: boolean }) {
-  const queryClient = useQueryClient();
-  const [said, setSaid] = useState<string | null>(null);
-  const [planFor, setPlanFor] = useState<string | null>(null);
+/** The kept menus of the active house; the one read the list and the page's header both stand on. */
+function useKeptMenus() {
   // The house is in the key: one house's versions never stand under
   // another's name (MENU-01).
   const house = useAuthStore((s) => s.activeRestaurantId) ?? null;
@@ -773,6 +771,29 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
     // A read in the background finishes on the server: look again until none is left reading.
     refetchInterval: (query) => versionsPollMs(query.state.data?.versions),
   });
+  return { house, q };
+}
+
+/**
+ * The name the kept list gives a menu (r104 menu-7, walk F4: the header said
+ * "Menu from a spreadsheet, 2026-11" for the menu the list called "the 2026-11
+ * menu (monthly)"). `pending` while the list is being read; `name` is null
+ * when the list could not say, and the caller then uses what it has.
+ */
+export function useKeptMenuName(menuId: string | null): { pending: boolean; name: string | null } {
+  const { q } = useKeptMenus();
+  if (!menuId) return { pending: false, name: null };
+  if (q.isLoading) return { pending: true, name: null };
+  const versions = q.data?.versions ?? [];
+  if (!versions.some((v) => v.menuId === menuId)) return { pending: false, name: null };
+  return { pending: false, name: versionLabels(versions, q.data?.timezone ?? null).get(menuId) ?? null };
+}
+
+export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; retryAbove?: boolean }) {
+  const queryClient = useQueryClient();
+  const [said, setSaid] = useState<string | null>(null);
+  const [planFor, setPlanFor] = useState<string | null>(null);
+  const { house, q } = useKeptMenus();
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu'] });
   const zone = q.data?.timezone ?? null;
   const labels = versionLabels(q.data?.versions ?? [], zone);
