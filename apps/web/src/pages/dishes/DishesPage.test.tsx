@@ -74,8 +74,8 @@ describe('DishesPage', () => {
     mount();
     const a = await screen.findByTestId(`dish-row-${A}`);
     expect(a).toHaveTextContent('Lamb shank');
-    expect(a).toHaveTextContent('₺900.00');
-    expect(a).toHaveTextContent('₺300.00');
+    expect(a).toHaveTextContent('₺900,00');
+    expect(a).toHaveTextContent('₺300,00');
     // The share in the house's form, as the drawer writes it: a lira house reads "%33,3".
     expect(a).toHaveTextContent('%33,3');
     expect(a.textContent).not.toContain('33.3%');
@@ -94,7 +94,7 @@ describe('DishesPage', () => {
     list = [row(A, 'Lamb shank', { cost: { ...full, partial: 1 } }), row(B, 'Mezze')];
     mount();
     const a = await screen.findByTestId(`dish-row-${A}`);
-    expect(a).toHaveTextContent('₺300.00');
+    expect(a).toHaveTextContent('₺300,00');
     expect(within(a).getByTestId(`dish-partly-${A}`)).toHaveTextContent('partly invoiced');
     expect(within(screen.getByTestId(`dish-row-${B}`)).queryByTestId(`dish-partly-${B}`)).toBeNull();
   });
