@@ -10,7 +10,10 @@
  * summary says something moved ({@link useMailListsFollowSummary}), and
  * otherwise every {@link MAIL_LIST_FALLBACK_MS}. Each list re-read fetches
  * every page already loaded, one after another, and a search re-runs over
- * every letter, so a quiet house no longer pays for them every 30 s. React
+ * every letter, so a quiet house no longer pays for them every 30 s. A change
+ * on the summary reads only page 1 of each open list and merges it into the
+ * pages held (r104 mail-gap g4, `mail-merge.ts`); the whole re-read is for the
+ * fallback and a manual refresh. React
  * Query already stops an interval in a hidden browser tab
  * (`refetchIntervalInBackground` is false).
  *
@@ -19,7 +22,7 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData, type QueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import { apiClient } from '../../../services/api/client';
 import { integrationsApi } from '../../../services/api/integrations';
@@ -36,6 +39,7 @@ import type {
   SeenMark,
 } from './mail-format';
 import { READ_ALL_ID } from './mail-format';
+import { mergePeopleHead, mergeThreadHead, mergeThreadsHead } from './mail-merge';
 
 export const MAIL_POLL_MS = 30_000;
 
@@ -71,6 +75,54 @@ export function useMailSummary(poll: boolean) {
     staleTime: 15_000,
     refetchInterval: poll ? MAIL_POLL_MS : false,
   });
+}
+
+async function fetchPeoplePage(waitingOnly: boolean, search: string, kind: MailKindFilter, after: string | null) {
+  const params: Record<string, string> = {};
+  if (waitingOnly) params.waiting = '1';
+  if (search) params.q = search;
+  // The kind is asked for, so a page holds that kind and the next page is the next of that kind (r103 mail-1).
+  if (kind !== 'all') params.kind = kind;
+  if (after) params.after = after;
+  return (await apiClient.get<MailPeoplePage>('/mail/people', { params })).data;
+}
+
+async function fetchThreadsPage(withKey: string, after: string | null) {
+  const params: Record<string, string> = { with: withKey };
+  if (after) params.after = after;
+  return (await apiClient.get<MailThreadsPage>('/mail/threads', { params })).data;
+}
+
+async function fetchThreadPage(key: string, withKey: string | null | undefined, before: string | null) {
+  const params: Record<string, string> = { key };
+  // A team or guest thread is read by its person; one key can also be two vendors' threads.
+  if (withKey) params.with = withKey;
+  if (before) params.before = before;
+  return (await apiClient.get<MailThreadPage>('/mail/thread', { params })).data;
+}
+
+/**
+ * Reads page 1 of one open list, once, and folds it into the pages held. A
+ * list nobody is looking at, one with nothing loaded, or a thread whose new
+ * letters leave a gap is marked stale and read whole when next shown, as before.
+ */
+async function refreshHead(qc: QueryClient, queryKey: readonly unknown[]): Promise<void> {
+  const [root, , a, b, c] = queryKey as [string, string, unknown, unknown, unknown];
+  const stale = () => void qc.invalidateQueries({ queryKey, exact: true });
+  const cur = qc.getQueryData<InfiniteData<unknown, string | null>>(queryKey);
+  if (!cur || cur.pages.length === 0) return stale();
+  if (root === 'mail-people') {
+    const fresh = await fetchPeoplePage(a as boolean, b as string, (c as MailKindFilter) ?? 'all', null);
+    qc.setQueryData<InfiniteData<MailPeoplePage, string | null>>(queryKey, (now) => (now ? mergePeopleHead(now, fresh) : now));
+  } else if (root === 'mail-threads') {
+    const fresh = await fetchThreadsPage(a as string, null);
+    qc.setQueryData<InfiniteData<MailThreadsPage, string | null>>(queryKey, (now) => (now ? mergeThreadsHead(now, fresh) : now));
+  } else {
+    const fresh = await fetchThreadPage(a as string, b as string | undefined, null);
+    const merged = mergeThreadHead(cur as InfiniteData<MailThreadPage, string | null>, fresh);
+    if (!merged) return stale();
+    qc.setQueryData<InfiniteData<MailThreadPage, string | null>>(queryKey, (now) => (now ? (mergeThreadHead(now, fresh) ?? now) : now));
+  }
 }
 
 /**
@@ -109,7 +161,15 @@ export function useMailListsFollowSummary(summary: MailSummary | null | undefine
     last.current = { house, mark };
     if (!before || before.house !== house || before.mark === mark) return;
     for (const root of ['mail-people', 'mail-threads', 'mail-thread']) {
-      void qc.invalidateQueries({ queryKey: [root, house] });
+      for (const query of qc.getQueryCache().findAll({ queryKey: [root, house] })) {
+        // A list on screen reads page 1 only; one nobody shows is marked stale. A failed
+        // head read is marked stale too, so the list says it failed the way it always did.
+        if (query.getObserversCount() === 0) {
+          void qc.invalidateQueries({ queryKey: query.queryKey, exact: true });
+        } else {
+          void refreshHead(qc, query.queryKey).catch(() => qc.invalidateQueries({ queryKey: query.queryKey, exact: true }));
+        }
+      }
     }
   }, [house, mark, qc]);
 }
@@ -126,15 +186,7 @@ export function useMailPeople(waitingOnly: boolean, search = '', kind: MailKindF
     queryKey: mailKeys.people(house, waitingOnly, search, kind),
     initialPageParam: null as string | null,
     placeholderData: (previous) => previous,
-    queryFn: async ({ pageParam }) => {
-      const params: Record<string, string> = {};
-      if (waitingOnly) params.waiting = '1';
-      if (search) params.q = search;
-      // The kind is asked for, so a page holds that kind and the next page is the next of that kind (r103 mail-1).
-      if (kind !== 'all') params.kind = kind;
-      if (pageParam) params.after = String(pageParam);
-      return (await apiClient.get<MailPeoplePage>('/mail/people', { params })).data;
-    },
+    queryFn: ({ pageParam }) => fetchPeoplePage(waitingOnly, search, kind, pageParam ? String(pageParam) : null),
     getNextPageParam: (last) => last.next ?? undefined,
     enabled: Boolean(house),
     staleTime: 15_000,
@@ -148,11 +200,7 @@ export function useMailThreads(withKey: string | null) {
   return useInfiniteQuery<MailThreadsPage>({
     queryKey: mailKeys.threads(house, withKey ?? ''),
     initialPageParam: null as string | null,
-    queryFn: async ({ pageParam }) => {
-      const params: Record<string, string> = { with: withKey ?? '' };
-      if (pageParam) params.after = String(pageParam);
-      return (await apiClient.get<MailThreadsPage>('/mail/threads', { params })).data;
-    },
+    queryFn: ({ pageParam }) => fetchThreadsPage(withKey ?? '', pageParam ? String(pageParam) : null),
     getNextPageParam: (last) => last.next ?? undefined,
     enabled: Boolean(house && withKey),
     staleTime: 15_000,
@@ -170,13 +218,7 @@ export function useMailThread(key: string | null, withKey?: string | null) {
   return useInfiniteQuery<MailThreadPage>({
     queryKey: mailKeys.thread(house, key ?? '', withKey),
     initialPageParam: null as string | null,
-    queryFn: async ({ pageParam }) => {
-      const params: Record<string, string> = { key: key ?? '' };
-      // A team or guest thread is read by its person; one key can also be two vendors' threads.
-      if (withKey) params.with = withKey;
-      if (pageParam) params.before = String(pageParam);
-      return (await apiClient.get<MailThreadPage>('/mail/thread', { params })).data;
-    },
+    queryFn: ({ pageParam }) => fetchThreadPage(key ?? '', withKey, pageParam ? String(pageParam) : null),
     getNextPageParam: (last) => last.before ?? undefined,
     enabled: Boolean(house && key),
     staleTime: 15_000,
