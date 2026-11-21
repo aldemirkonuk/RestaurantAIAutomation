@@ -606,3 +606,18 @@ export async function makeMenuCurrent(menuId: string, fingerprint: string): Prom
   const response = await apiClient.post<MakeCurrentResult>(`/menu-versions/${menuId}/make-current`, { fingerprint })
   return response.data
 }
+
+/**
+ * The current menu as a sheet (kind 'export'), or a blank one to fill ('sample'): the file
+ * the menu reader accepts (menu r104 g3). Owner or manager; a failed call throws with the gateway's words.
+ */
+export async function getMenuSheet(kind: 'export' | 'sample'): Promise<string> {
+  const restaurantId = getActiveRestaurantId()
+  const { data } = await apiClient.get<string>(`/menus/${restaurantId}/${kind}.csv`, {
+    responseType: 'text',
+    // The body is the file, not JSON: never let the client try to parse it.
+    transformResponse: [(raw: unknown) => raw],
+  })
+  if (typeof data !== 'string') throw new Error('the gateway answered without the file')
+  return data
+}
