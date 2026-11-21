@@ -11,7 +11,7 @@
  */
 
 import { Link } from 'react-router-dom';
-import { FigureRow } from './rp-plot';
+import { FigureRow } from './rp-plot-chrome';
 import { EM, MONO, countOf, figure, moneyIn, num, ratioPct, shortLabels } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
 
