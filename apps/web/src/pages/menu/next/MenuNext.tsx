@@ -140,6 +140,8 @@ function useActiveMenu(restaurantId: string | null) {
       queryClient.setQueryData(key, (old: ActiveMenu | undefined) =>
         old ? { ...old, items: old.items.filter((l) => l.id !== itemId) } : old,
       );
+      // The kept list counts this menu's lines too: it reads again, or it keeps saying the old count (r104 walk).
+      void queryClient.invalidateQueries({ queryKey: ['menu', 'versions'] });
       await queryClient.invalidateQueries({ queryKey: key });
     },
   });
