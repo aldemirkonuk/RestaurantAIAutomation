@@ -360,7 +360,10 @@ function CurrencyBlock({
             }}
           >
             <option value="">select a currency</option>
-            {CURRENCY_CODES.filter((c) => c !== filed).map((c) => (
+            {/* The code already filed stays on offer when it is not the house's: a paper
+                  filed in a foreign money is costed FROM that money, so it has to be
+                  nameable as the paper's own (r104 g1, walk finding). */}
+            {CURRENCY_CODES.filter((c) => c !== filed || (!!houseCode && filed !== houseCode)).map((c) => (
               <option key={c} value={c}>
                 {currencyLabel(c)}
               </option>
