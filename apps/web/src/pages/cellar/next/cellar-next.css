@@ -1134,3 +1134,18 @@ textarea.cl-field {
     min-height: 44px;
   }
 }
+
+/* The recipe card (r104 drinks need 4): hidden on screen; drawn alone on paper
+   while the button has set html[data-print-card]. No animation, no overlay. */
+.cl-rcp-print { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 6px 0 8px; }
+.cl-print-card { display: none; }
+@media print {
+  html[data-print-card] body > *:not(.cl-print-card) { display: none !important; }
+  html[data-print-card] .cl-print-card {
+    display: block; width: 100%; box-sizing: border-box;
+    padding: 24px; color: #000; background: #fff; font-size: 14px; line-height: 1.5;
+  }
+  .cl-print-card h1 { font-size: 26px; margin: 0 0 6px; }
+  .cl-print-card ol { padding-left: 18px; margin: 12px 0; }
+  .cl-print-card .cl-print-method { white-space: pre-wrap; }
+}
