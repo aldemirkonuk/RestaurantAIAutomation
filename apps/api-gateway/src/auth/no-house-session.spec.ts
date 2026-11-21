@@ -66,8 +66,6 @@ describe("a session in no house (ADR 0164, R4)", () => {
       "GET /auth/verify",
       "GET /organizations/branches",
       "PATCH /auth/me",
-      // r104 gap 2: an unverified account with no house can fix its address.
-      "POST /auth/change-unverified-email",
       // ADR 0229 fork 13 (item 82): a held joiner's session names no house.
       "POST /auth/held-memberships/accept",
       "POST /auth/invite/:code/accept",
