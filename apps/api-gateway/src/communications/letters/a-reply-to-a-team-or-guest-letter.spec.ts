@@ -1,5 +1,5 @@
 /**
- * r104 mail-gap g1 (ADR 0369): a team or guest letter can be answered from Mail.
+ * r104 mail-gap g1 (ADR 0396): a team or guest letter can be answered from Mail.
  *
  * The composer only wrote to the vendor book. A reply with no `providerId` is
  * allowed for exactly one address: the one that wrote the letter it answers,
