@@ -1485,8 +1485,9 @@ describe('CellarNext — the registers that are not wines', () => {
 
     fireEvent.click(screen.getByText('Negroni'));
     const leaf = screen.getByTestId('cocktail-leaf');
-    // The recipe is read, as anyone in the house may.
-    expect(within(leaf).getByText(/gin/)).toBeInTheDocument();
+    // The recipe is read, as anyone in the house may: on the chain it is the recipe sheet, which
+    // gates its own editing by `useCanEditRecipe` (the old textarea writer is retired, #1989).
+    expect(within(leaf).getByTestId('recipe-sheet-mounted')).toBeInTheDocument();
     expect(within(leaf).queryByRole('button', { name: /^Amend$/ })).toBeNull();
     expect(within(leaf).queryByRole('button', { name: /Take it off/ })).toBeNull();
     expect(within(leaf).queryByRole('button', { name: /Amend the recipe/ })).toBeNull();
@@ -1514,7 +1515,8 @@ describe('CellarNext — the registers that are not wines', () => {
     draw({ category: 'cocktails' });
     fireEvent.click(screen.getByText('Negroni'));
     const leaf = screen.getByTestId('cocktail-leaf');
-    expect(within(leaf).getByTestId('recipe-empty')).toBeInTheDocument();
+    // The recipe sheet is mounted (it gates its own editing); the register offers no writer of its own.
+    expect(within(leaf).getByTestId('recipe-sheet-mounted')).toBeInTheDocument();
     expect(within(leaf).queryByRole('button', { name: /Write the recipe/ })).toBeNull();
   });
 
@@ -1537,7 +1539,7 @@ describe('CellarNext — the registers that are not wines', () => {
     expect(screen.getByTestId('cocktails-empty')).not.toHaveTextContent(/Add one above/);
   });
 
-  it('an owner or manager is offered the recipe editor and the two acts, and sees no staff line', () => {
+  it('an owner or manager is offered the two acts and the recipe sheet, and sees no staff line', () => {
     mock.current = { ...base, registers: readout() };
     mock.register = { data: registerVM({ register: 'cocktails', rows: [], counts: { total: 0, houseRows: 0, matched: 0, matchedLoosely: 0, catalogueOnly: 0 } }), loading: false, error: null, refetch: () => {} };
     mock.recipe = {
@@ -1563,8 +1565,7 @@ describe('CellarNext — the registers that are not wines', () => {
     const leaf = screen.getByTestId('cocktail-leaf');
     expect(within(leaf).getByRole('button', { name: /^Amend$/ })).toBeEnabled();
     expect(within(leaf).getByRole('button', { name: /Take it off the list/ })).toBeEnabled();
-    fireEvent.click(within(leaf).getByRole('button', { name: /Amend the recipe/ }));
-    expect(within(leaf).getByLabelText('Recipe lines')).toBeInTheDocument();
+    expect(within(leaf).getByTestId('recipe-sheet-mounted')).toBeInTheDocument();
   });
 
   it('an unknown ?register value opens the overview rather than an invented register', () => {
