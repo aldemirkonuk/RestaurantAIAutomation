@@ -1055,21 +1055,7 @@ export function useCocktailWrites() {
     onSuccess: invalidate,
   });
 
-  const setRecipe = useMutation({
-    mutationFn: async (v: {
-      id: string;
-      lines: { freeText?: string; quantity?: number; unit?: string; sortOrder?: number }[];
-    }) => {
-      const r = await apiClient.put(
-        `/cocktails/${activeRestaurantId}/${v.id}/ingredients`,
-        { lines: v.lines },
-      );
-      return r.data;
-    },
-    onSuccess: invalidate,
-  });
-
-  return { create, amend, retire, setRecipe };
+  return { create, amend, retire };
 }
 
 /** One cocktail's recipe lines. Read only when the leaf for it is open. */

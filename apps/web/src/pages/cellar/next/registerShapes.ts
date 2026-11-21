@@ -32,8 +32,9 @@
  * renders the control disabled with the reason rather than hiding it.
  *
  * `cocktail_ingredients` is no longer "empty by design": it was empty because
- * the extraction pass never ran, and since this pass a bartender can write a
- * recipe into it (`PUT /cocktails/:rid/:id/ingredients`).
+ * the extraction pass never ran. Its writer (`PUT /cocktails/:rid/:id/ingredients`)
+ * is retired and answers 410: a recipe is saved as a version from the drink's
+ * recipe sheet, and these old rows are only read.
  */
 
 import type { RegisterId } from './cellar-format';
@@ -104,7 +105,7 @@ export const REGISTER_SOURCE: Record<RegisterId, RegisterSource> = {
   cocktails: {
     wired: true,
     served:
-      'GET /cocktails/:rid for this house’s own list, with POST/PATCH/DELETE and PUT …/ingredients; GET /beverages/:rid/registers/cocktails for what the menu and the till say',
+      'GET /cocktails/:rid for this house’s own list, with POST/PATCH/DELETE (the old ingredients writer is retired: 410); GET /beverages/:rid/registers/cocktails for what the menu and the till say',
     oneLine: 'The one register this house can write — and the only one with a recipe.',
     scopeNote:
       'Only cocktails this restaurant owns. Rows with no restaurant are unattributed reference data from the demo corpus and are counted apart, never listed as this house’s.',

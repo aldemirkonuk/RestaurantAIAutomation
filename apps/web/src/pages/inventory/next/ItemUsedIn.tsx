@@ -293,6 +293,9 @@ export function drinkGroups<C extends { cocktailId: string }, D extends { cockta
   return cards.lines.length > 0 ? { cards, recipes: null } : { cards: null, recipes };
 }
 
+/** Said on a drink only the old recipe box holds: it shows, and cannot be edited here (the box no longer saves). */
+export const OLD_RECIPE_BOX = 'old recipe box, read only';
+
 export const DRINK_RECIPES_SOURCE = 'Drinks whose current recipe has a line linked to this item.';
 
 export default function ItemUsedIn({
@@ -381,7 +384,7 @@ export default function ItemUsedIn({
             key: `${c.cocktailId}-${i}`,
             text: c.name,
             to: drinkHref(c.cocktailId),
-            side: c.quantity !== null ? `${fmtRecipeQty(c.quantity, currency.code)}${c.unit ? ` ${c.unit}` : ''}` : undefined,
+            side: `${c.quantity !== null ? `${fmtRecipeQty(c.quantity, currency.code)}${c.unit ? ` ${c.unit}` : ''} · ` : ''}${OLD_RECIPE_BOX}`,
           })}
         />
         ) : null}
