@@ -100,7 +100,7 @@ export function normalizeInventoryItem(
     wac: item.wac ?? undefined,
     costProvenance: item.costProvenance ?? undefined,
     lotLocationCount: item.lotLocationCount ?? undefined,
-    openMl: item.openMl ?? 0,
+    openMl: item.rollupReadable === false ? undefined : (item.openMl ?? 0),
     velocityPerDay: item.velocityPerDay ?? undefined,
     daysOfCover: item.daysOfCover ?? undefined,
     reorderPoint: item.reorderPoint ?? undefined,
@@ -113,7 +113,7 @@ export function normalizeInventoryItem(
     usageUntil: item.usageUntil ?? undefined,
     usageQty: typeof item.usageQty === 'number' ? item.usageQty : undefined,
     analyticsReadable: item.analyticsReadable ?? true,
-    locations: item.locations ?? [],
+    locations: item.locationsReadable === false ? undefined : (item.locations ?? []),
   } as InventoryItem;
 }
 
