@@ -11,6 +11,7 @@ import { getOnboardingProgress } from '../services/api/menus'
 import { apiClient, getErrorMessage } from '../services/api/client'
 import { storeSession } from '../lib/houseMemory'
 import { prefetchWhenIdle } from '../lib/stepPrefetch'
+import { WrongAddress } from '../components/auth/WrongAddress'
 
 /**
  * The two answers the verify route gives a click it will not honour (ADR 0229
@@ -31,7 +32,7 @@ export function VerifyEmail() {
   const publicDesign = usePublicDesign()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const { user, loading, logout } = useAuth()
+  const { user, loading, logout, signInWithSession } = useAuth()
   const [verifying, setVerifying] = useState(false)
   const [resending, setResending] = useState(false)
   const [verified, setVerified] = useState(false)
@@ -227,6 +228,12 @@ export function VerifyEmail() {
                       Sign in to resend
                     </Link>
                   )}
+                  {user && (
+                    <WrongAddress
+                      signInWithSession={signInWithSession}
+                      onChanged={() => setLastResent(new Date())}
+                    />
+                  )}
                   {lastResent && (
                     <p role="status" className="mdv-note">
                       Another verification email was requested at{' '}
@@ -353,6 +360,14 @@ export function VerifyEmail() {
                 'Resend Verification Email'
               )}
             </Button>
+            {user && (
+              <div className="text-center">
+                <WrongAddress
+                  signInWithSession={signInWithSession}
+                  onChanged={() => setLastResent(new Date())}
+                />
+              </div>
+            )}
             {lastResent && (
               <p className="text-xs text-center text-gray-400">
                 Resent at {lastResent.toLocaleTimeString()}. Wait 1 minute

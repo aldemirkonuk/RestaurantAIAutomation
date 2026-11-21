@@ -9,6 +9,8 @@ import {
   ServiceUnavailableException,
   InternalServerErrorException,
   Logger,
+  HttpException,
+  HttpStatus,
   Optional,
   forwardRef,
 } from "@nestjs/common";
@@ -3585,6 +3587,129 @@ export class AuthService {
 
     await this.queueEmailVerification(userId, email);
     return { sent: true };
+  }
+
+  /**
+   * Someone's own typo in the sign-up address (r104 onboarding gap 2): the
+   * mail went to a stranger or to nobody, and the check-your-email page offered
+   * only Resend to that same address. The owner of an UNVERIFIED account moves
+   * it to the address they meant.
+   *
+   * Never for a verified account (that address was proved; moving it is the
+   * profile's job, with its own proof). The address must be free, by the same
+   * lookup sign-up uses. At most 2 changes a minute per account. Every
+   * pending verification row is deleted FIRST, so a link mailed to the old
+   * address can never verify the new one; if that delete fails nothing else
+   * is written (503). The new address is written compare-and-set on the old
+   * address and `email_verified = false`; a unique clash answers 409 like the
+   * lookup does. A new session pair is returned because the session token
+   * carries the address. ADR 0390.
+   */
+  private readonly addressChanges = new Map<string, number[]>();
+  static readonly ADDRESS_CHANGES_PER_MINUTE = 2;
+
+  async changeUnverifiedEmail(
+    userId: string,
+    rawEmail: string,
+    sessionHouse: string | null = null,
+  ): Promise<TokenPair & { email: string }> {
+    const now = Date.now();
+    const recent = (this.addressChanges.get(userId) ?? []).filter(
+      (t) => now - t < 60_000,
+    );
+    if (recent.length >= AuthService.ADDRESS_CHANGES_PER_MINUTE) {
+      throw new HttpException(
+        {
+          message: "Please wait a minute before changing the address again",
+          code: "ADDRESS_CHANGE_RATE_LIMITED",
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    recent.push(now);
+    this.addressChanges.set(userId, recent);
+
+    const email = (rawEmail ?? "").toLowerCase().trim();
+    const { data: row, error: readErr } = await this.databaseService.supabase
+      .from("users")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (readErr || !row) {
+      this.logger.error(
+        `changeUnverifiedEmail could not read ${userId}: ${readErr?.message ?? "no row"}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not change the address right now. Please try again.",
+      );
+    }
+    if (row.email_verified === true) {
+      throw new ConflictException({
+        message: "This address is already verified and cannot be changed here",
+        code: "EMAIL_ALREADY_VERIFIED",
+      });
+    }
+    if (email === String(row.email ?? "").toLowerCase()) {
+      throw new BadRequestException("That is already this account's address");
+    }
+    if (await this.emailAlreadyRegistered(email)) {
+      throw new ConflictException({
+        message: "That address already has an account",
+        code: "EMAIL_TAKEN",
+      });
+    }
+
+    const { error: voidErr } = await this.databaseService.supabase
+      .from("email_verifications")
+      .delete()
+      .eq("user_id", userId)
+      .is("verified_at", null);
+    if (voidErr) {
+      this.logger.error(
+        `changeUnverifiedEmail could not void ${userId}'s old links: ${voidErr.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not change the address right now. Please try again.",
+      );
+    }
+
+    const { data: written, error: writeErr } =
+      await this.databaseService.supabase
+        .from("users")
+        .update({ email })
+        .eq("user_id", userId)
+        .eq("email", row.email)
+        .eq("email_verified", false)
+        .select("*")
+        .maybeSingle();
+    if (writeErr) {
+      if ((writeErr as { code?: string }).code === "23505") {
+        throw new ConflictException({
+          message: "That address already has an account",
+          code: "EMAIL_TAKEN",
+        });
+      }
+      this.logger.error(
+        `changeUnverifiedEmail could not write ${userId}: ${writeErr.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not change the address right now. Please try again.",
+      );
+    }
+    if (!written) {
+      throw new ConflictException({
+        message: "This account changed while you were doing that. Reload and try again.",
+        code: "ACCOUNT_MOVED",
+      });
+    }
+
+    await this.queueEmailVerification(userId, email);
+    const tokens = await this.generateTokens(
+      written,
+      false,
+      sessionHouse ?? written.restaurant_id ?? null,
+    );
+    return { ...tokens, email };
   }
 
   /**
