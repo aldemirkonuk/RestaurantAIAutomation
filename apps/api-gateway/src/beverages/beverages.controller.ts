@@ -25,7 +25,6 @@ import {
   ListCocktailsQueryDto,
   ReadRegisterQueryDto,
   ReadRowRecordQueryDto,
-  SetCocktailIngredientsDto,
   UpdateCocktailDto,
 } from "./dto/beverages.dto";
 
@@ -242,20 +241,23 @@ export class BeveragesController {
     );
   }
 
+  /**
+   * Retired. A recipe is the versioned one (PUT /recipes/:restaurantId/cocktails/:id,
+   * which saves a whole version in one call and is what cost, taste and the
+   * drawer read). This route deleted every old line and then inserted the new
+   * ones as two calls with no transaction, so a failed insert left the drink
+   * with no recipe at all, and it kept a second truth. The old rows stay
+   * readable (GET above); nothing writes them any more.
+   */
   @Put("cocktails/:restaurantId/:cocktailId/ingredients")
   @UseGuards(RolesGuard)
   @Roles("owner", "manager")
-  @ApiOperation({
-    summary:
-      "Replace one cocktail's recipe. The first writer cocktail_ingredients has ever had.",
-  })
-  async setIngredients(
-    @Param("restaurantId") restaurantId: string,
-    @Param("cocktailId", new ParseUUIDPipe()) cocktailId: string,
-    @Body() dto: SetCocktailIngredientsDto,
-  ) {
-    return this.guard(() =>
-      this.beverages.setCocktailIngredients(restaurantId, cocktailId, dto),
+  @ApiOperation({ summary: "Retired: save the recipe through PUT /recipes/:restaurantId/cocktails/:id" })
+  @ApiResponse({ status: 410, description: "This writer is retired." })
+  setIngredients(): never {
+    throw new HttpException(
+      "The old recipe box no longer saves. Save the recipe from the drink's recipe sheet, which saves through PUT /recipes/{restaurantId}/cocktails/{cocktailId}; nothing was written.",
+      HttpStatus.GONE,
     );
   }
 

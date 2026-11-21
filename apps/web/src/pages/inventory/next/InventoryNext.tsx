@@ -13,7 +13,7 @@
  * chrome is capped and the table sorts by severity (dossier E §1).
  *
  * FOUR STATES, NEVER BLURRED (ADRs 0020, 0067, 0149):
- *  - reading  — nothing for 400ms, then "Reading the cellar…", then after 12s
+ *  - reading  — nothing for 400ms, then "Reading the stock…" over the shape of the list, then after 12s
  *               "Still reading…" (the HousePageLoader ladder);
  *  - failed   — "The stock could not be read." and nothing else is claimed;
  *  - empty    — the read answered with no titles: the first-steps card;
@@ -21,7 +21,7 @@
  * A figure that is pending or failed is "—", never 0.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, Navigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTypedInventorySubscription } from '../../../contexts/RealtimeContext';
 import { getUnresolvedLines } from '../../../services/api/posHub';
@@ -30,13 +30,14 @@ import { Select } from '@/components/mudavym';
 import { DeliveriesToName } from '@/components/mudavym/DeliveriesToName';
 import { ContextualInsights } from '@/components/insights/ContextualInsights';
 import { NamingUnread } from './NameThisWine';
-import { readView, writeView, type IvView } from './iv-url';
+import { houseWordsFor } from './iv-house-words';
+import { IV_DEFAULT, KIND_CHIPS, readView, writeView, type GoodKind, type IvView } from './iv-url';
 import { StorageLocationManager } from '../../../components/inventory/StorageLocationManager';
 import { PosMappingPanel } from '../../../components/inventory/PosMappingPanel';
 import { ManualReceiptWorkspace } from '../../../components/inventory/ManualReceiptWorkspace';
 import { AutoLocatePreviewModal } from '../../../components/inventory/AutoLocatePreviewModal';
 import { computeAutoLocatePlan, type AutoLocateResult, type WineInput, type WineLocationScore } from '../../../lib/autoLocateEngine';
-import { createInventoryItem } from '../../../services/api/inventory';
+import { createInventoryItem, houseFieldsOf } from '../../../services/api/inventory';
 import { isUnconfirmedWrite } from '../../../services/api/client';
 import { AuctionLotStart } from '../command/AuctionLotStart';
 import { MenuScannerFlow } from '../../../components/scanner/MenuScannerFlow';
@@ -46,9 +47,13 @@ import { queryKeys } from '../../../lib/query-keys';
 import { CellarMapView } from '../command/CellarMapView';
 import type { InventoryItem as LegacyItem } from '../useInventoryPage';
 import InventoryTable from './InventoryTable';
+import ItemDrawer from './ItemDrawer';
+import { CountBar, PhoneFilter, activeFilterCount, nextToCount } from './PhoneBook';
+import { useIsPhone } from '../../../hooks/useIsPhone';
+import CarryThis from './CarryThis';
 import { removeBlocked, removeTarget } from './RowDropdown';
 import { RemoveFromInventoryModal } from '../../../components/inventory/RemoveFromInventoryModal';
-import { blank, daysSinceCountedCell, oneLine, runExport, today, valuationColumns } from './iv-export';
+import { blank, forHouse, costColumnsFor, daysSinceCountedCell, oneLine, runExport, today, valuationColumns } from './iv-export';
 import { COUNT_DUE_DAYS } from '../command/bits';
 import {
   CHIPS,
@@ -177,12 +182,32 @@ export default function InventoryNext() {
   // INV-W38: the view is the URL (iv-url.ts), so a reload, Back or a sent
   // link keeps it, and the links other pages send here land where they say.
   const [params, setParams] = useSearchParams();
-  const { chip, q: query, zone, type, sort, view, open: openParam } = useMemo(() => readView(params), [params]);
+  const { chip, q: query, zone, type, sort, view, kind, open: openParam } = useMemo(() => readView(params), [params]);
   const setV = useCallback(
     (patch: Partial<IvView>) => setParams((cur) => writeView(cur, { ...readView(cur), ...patch }), { replace: true }),
     [setParams],
   );
-  const [panel, setPanel] = useState<null | 'scanner' | 'locations' | 'pos' | 'receipt' | 'auction'>(null);
+  // A row opened here is a history step, so Back closes the drawer; one
+  // opened by a link closes in place, so Close never leaves the page.
+  const navigate = useNavigate();
+  const openedHere = useRef(false);
+  const openItem = (id: string) => {
+    openedHere.current = true;
+    setParams((cur) => writeView(cur, { ...readView(cur), open: id }));
+  };
+  const closeItem = () => {
+    if (openedHere.current) navigate(-1);
+    else setV({ open: null });
+    openedHere.current = false;
+    setCountFirst(false);
+  };
+  // The phone is a count mode for staff (critic c3 round 3, item 13); the Count bar opens the count itself.
+  const phone = useIsPhone();
+  const [countFirst, setCountFirst] = useState(false);
+  useEffect(() => {
+    if (openParam === null) openedHere.current = false;
+  }, [openParam]);
+  const [panel, setPanel] = useState<null | 'scanner' | 'locations' | 'pos' | 'receipt' | 'auction' | 'carry'>(null);
   const [autoLocate, setAutoLocate] = useState<AutoLocateResult | null>(null);
   const [includeAssigned, setIncludeAssigned] = useState(false);
   // The delivered-order bell links to ?name-delivery=<order>; the card opens for it.
@@ -265,17 +290,35 @@ export default function InventoryNext() {
     return opts;
   }, [rows, data.libraryAnswered]);
 
+  // A food or supply is a house item with its own kind (house-items, #862);
+  // every other row is a drink. The kind chips show once the house carries one.
+  const goodOf = useMemo(() => {
+    const k = new Map(data.rawItems.map((i) => [i.id, houseFieldsOf(i).kind]));
+    return (r: InvRow): GoodKind => {
+      const own = k.get(r.id) ?? r.kind;
+      return own === 'food' || own === 'supply' ? own : 'drink';
+    };
+  }, [data.rawItems]);
+  const words = useMemo(() => houseWordsFor((rows ?? []).map(goodOf)), [rows, goodOf]);
+  // The exported files head the name column the way the page does.
+  const nameHead = words.one === 'good' ? 'Good' : 'Title';
+  const carriesGoods = kind !== '' || (rows ?? []).some((r) => goodOf(r) !== 'drink');
   const visible = useMemo(() => {
     if (!rows) return [];
     const now = Date.now();
     const zn = (id: string | null) => (id === null ? 'Unassigned' : (locs.list.find((l) => l.id === id)?.name ?? null));
     return sortRows(
       rows.filter(
-        (r) => chipMatch(r, activeChip, now) && inZone(r, zone) && ofType(r, type) && matchesSearch(r, query, zn),
+        (r) =>
+          chipMatch(r, activeChip, now) &&
+          (kind === '' || goodOf(r) === kind) &&
+          inZone(r, zone) &&
+          ofType(r, type) &&
+          matchesSearch(r, query, zn),
       ),
       sort,
     );
-  }, [rows, activeChip, zone, type, query, sort, locs.list]);
+  }, [rows, activeChip, kind, goodOf, zone, type, query, sort, locs.list]);
 
   // ── Row selection, ported from the legacy page (NEW-064, InventoryCommandPage.tsx:507-531).
   // Keyed by restaurant_inventory id. A house switch or a filter change empties
@@ -369,7 +412,7 @@ export default function InventoryNext() {
   const selBlocked = selectedRows.filter((r) => removeBlocked(r) !== null).length;
   const copySelectedNames = async () => {
     // One line per name: a newline inside a name would split it into two on paste.
-    const names = selectedRows.map((r) => oneLine(r.name ?? 'Unnamed title')).join('\n');
+    const names = selectedRows.map((r) => oneLine(r.name ?? `Unnamed ${words.one}`)).join('\n');
     try {
       if (!navigator.clipboard) throw new Error('no clipboard');
       await navigator.clipboard.writeText(names);
@@ -416,7 +459,7 @@ export default function InventoryNext() {
       const saleType = sale.get(r.id);
       wines.push({
         id: r.wineId,
-        name: r.name ?? 'Unnamed title',
+        name: r.name ?? `Unnamed ${words.one}`,
         type: r.type ?? '',
         liveStock: r.stock,
         shadowStock: r.shadow,
@@ -518,7 +561,7 @@ export default function InventoryNext() {
   const exportCountSheet = () =>
     runExport<InvRow>(
       visible,
-      [
+      forHouse(words.one === 'good', [
         {
           header: 'Location',
           value: (r) => {
@@ -529,7 +572,7 @@ export default function InventoryNext() {
             return noZoneWord(r.stock) ?? '';
           },
         },
-        { header: 'Title', value: (r) => r.name ?? '' },
+        { header: nameHead, value: (r) => r.name ?? '' },
         { header: 'Producer', value: (r) => r.producer ?? '' },
         { header: 'Vintage', value: (r) => blank(r.vintage) },
         { header: 'Type', value: (r) => (r.type === null ? '' : typeLabel(r.type)) },
@@ -548,12 +591,12 @@ export default function InventoryNext() {
         { header: 'WAC', value: (r) => blank(r.wac) },
         { header: 'Value', value: (r) => (r.value === null ? '' : r.value.toFixed(2)) },
         { header: 'Observation', value: (r) => countObservation(r) },
-      ],
+      ]),
       `inventory-count-${today()}`,
       'Inventory count sheet',
     );
 
-  const valuation = valuationColumns(data.currency.code ?? null);
+  const valuation = valuationColumns(data.currency.code ?? null, nameHead);
 
   const exportValuation = () =>
     runExport(visible, valuation, `inventory-valuation-${today()}`, 'Inventory valuation');
@@ -569,11 +612,126 @@ export default function InventoryNext() {
   const verifyOrder = params.get('verify');
   if (verifyOrder) return <Navigate to={`/receiving?order=${encodeURIComponent(verifyOrder)}`} replace />;
 
+  const countMode = phone && !data.canManage;
+  const clearAll = () => setV({ chip: IV_DEFAULT.chip, kind: IV_DEFAULT.kind, zone: '', type: '', sort: IV_DEFAULT.sort, view: IV_DEFAULT.view });
+  const chipsEl = (
+    <div className="iv-chips" role="group" aria-label="Show only" data-testid="inventory-chips">
+      {CHIPS.map((c) =>
+        c.id === 'dead' && data.paceUnread ? (
+          <button
+            key={c.id}
+            type="button"
+            className="iv-chip"
+            disabled
+            title="Whether a title is dead stock could not be read: the selling pace did not answer"
+          >
+            {c.label} <span className="iv-num">{EM}</span>
+          </button>
+        ) : c.id === 'price' ? (
+          <button
+            key={c.id}
+            type="button"
+            className="iv-chip"
+            disabled
+            title="Price signals need a price feed, and none is read"
+          >
+            {c.label} <span className="iv-num">{EM}</span>
+          </button>
+        ) : (
+          <button
+            key={c.id}
+            type="button"
+            className="iv-chip iv-focus"
+            aria-pressed={activeChip === c.id}
+            data-on={activeChip === c.id}
+            onClick={() => setV({ chip: c.id })}
+          >
+            {c.label} <span className="iv-num">{chipCount(c.id)}</span>
+          </button>
+        ),
+      )}
+    </div>
+  );
+  const kindsEl = carriesGoods ? (
+    <div className="iv-chips" role="group" aria-label="Kind" data-testid="inventory-kinds">
+        {[{ id: '' as const, label: 'Every kind' }, ...KIND_CHIPS].map((k) => (
+          <button
+            key={k.id || 'all'}
+            type="button"
+            className="iv-chip iv-focus"
+            aria-pressed={kind === k.id}
+            data-on={kind === k.id}
+            onClick={() => setV({ kind: k.id })}
+          >
+            {k.label}
+          </button>
+        ))}
+      </div>
+  ) : null;
+  const searchEl = (
+    <label className="iv-search">
+      <span className="iv-sr">{words.search}</span>
+      <input
+        ref={searchRef}
+        type="search"
+        className="iv-field iv-focus"
+        placeholder={words.search}
+        value={query}
+        onChange={(e) => setV({ q: e.target.value })}
+      />
+      <span className="iv-hint">
+        accents ignored<span className="iv-key"> · /</span>
+      </span>
+    </label>
+  );
+  const controlsEl = (
+    <>
+      <Select
+        label="Zone"
+        value={zone}
+        onChange={(v) => setV({ zone: v })}
+        placeholder="All"
+        disabled={locs.unavailable || locs.loading}
+        options={[
+          ...locs.list.map((l) => ({ value: l.id, label: l.name })),
+          { value: 'none', label: 'Unassigned' },
+        ]}
+      />
+      <Select
+        label="Type"
+        value={type}
+        onChange={(v) => setV({ type: v })}
+        placeholder="All"
+        disabled={!data.libraryAnswered}
+        options={typeOptions}
+      />
+      <Select
+        label="Sort"
+        value={sort}
+        onChange={(v) => setV({ sort: (v || 'needs') as SortId })}
+        options={[
+          { value: 'needs', label: 'Needs you first' },
+          { value: 'name', label: 'Name' },
+          { value: 'value', label: 'Value at cost' },
+          { value: 'pace', label: 'Fastest moving' },
+        ]}
+      />
+      <span className="iv-toggle" role="group" aria-label="View">
+        <button type="button" className="iv-btn iv-focus" aria-pressed={view === 'table'} data-on={view === 'table'} onClick={() => setV({ view: 'table' })}>
+          Table
+        </button>
+        <button type="button" className="iv-btn iv-focus" aria-pressed={view === 'map'} data-on={view === 'map'} onClick={() => setV({ view: 'map' })}>
+          {words.map}
+        </button>
+      </span>
+    </>
+  );
+
   return (
     <div className="mudavym iv-page min-h-full" style={{ background: 'var(--paper-0)', color: 'var(--ink-1)', fontFamily: SANS }}>
       <div className="iv-wrap">
         <p className="iv-crumb">
-          The cellar · Inventory
+          {rows === null ? 'Inventory' : `The ${words.place} · Inventory`}
           {data.state === 'ready' && rows !== null
             ? crumb
               ? ` · last count ${fmtWhen(crumb)}`
@@ -585,9 +743,21 @@ export default function InventoryNext() {
         {data.state === 'reading' ? (
           <div role="status" aria-live="polite" data-testid="inventory-reading">
             {ladder === 'silent' ? null : (
-              <p className="iv-said" style={{ marginTop: 8 }}>
-                {ladder === 'slow' ? 'Still reading — this is taking longer than usual.' : 'Reading the cellar…'}
-              </p>
+              <>
+                <p className="iv-said" style={{ marginTop: 8 }}>
+                  {ladder === 'slow' ? 'Still reading — this is taking longer than usual.' : 'Reading the stock…'}
+                </p>
+                {/* The list's place is held with empty bars, so the page does not jump when it arrives. */}
+                <div className="iv-skel" aria-hidden="true" data-testid="inventory-reading-shape">
+                  {Array.from({ length: 8 }, (_, i) => (
+                    <div key={i} className="iv-skel-row">
+                      <span className="iv-skel-bar iv-skel-name" />
+                      <span className="iv-skel-bar iv-skel-mid" />
+                      <span className="iv-skel-bar iv-skel-short" />
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         ) : data.state === 'nohouse' ? (
@@ -599,7 +769,7 @@ export default function InventoryNext() {
           <div role="alert" data-testid="inventory-failed">
             <p className="iv-lead">The stock could not be read.</p>
             <p className="iv-said">
-              The stock list did not answer, so this page claims nothing: not zero titles, and not an empty cellar.
+              The stock list did not answer, so this page claims nothing: not a count of zero, and not an empty list.
             </p>
             <button type="button" className="iv-btn iv-focus" style={{ marginTop: 10 }} onClick={data.refetch}>
               Read again
@@ -675,9 +845,11 @@ export default function InventoryNext() {
         ) : rows !== null ? (
           /* ── the book ───────────────────────────────────────────────── */
           <>
-            <p className="iv-read" data-testid="inventory-read-sentence">
-              {readSentence(rows, data.currency, !locs.unavailable)}
-            </p>
+            {countMode ? null : (
+              <p className="iv-read" data-testid="inventory-read-sentence">
+                {readSentence(rows, data.currency, !locs.unavailable, words)}
+              </p>
+            )}
             {data.stale ? (
               <p className="iv-note" role="status">
                 The last re-read of the stock failed, so these figures are from the read before it.{' '}
@@ -687,96 +859,49 @@ export default function InventoryNext() {
               </p>
             ) : null}
 
-            <div className="iv-chips" role="group" aria-label="Show only" data-testid="inventory-chips">
-              {CHIPS.map((c) =>
-                c.id === 'dead' && data.paceUnread ? (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className="iv-chip"
-                    disabled
-                    title="Whether a title is dead stock could not be read: the selling pace did not answer"
-                  >
-                    {c.label} <span className="iv-num">{EM}</span>
-                  </button>
-                ) : c.id === 'price' ? (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className="iv-chip"
-                    disabled
-                    title="Price signals need a price feed, and none is read"
-                  >
-                    {c.label} <span className="iv-num">{EM}</span>
-                  </button>
-                ) : (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className="iv-chip iv-focus"
-                    aria-pressed={activeChip === c.id}
-                    data-on={activeChip === c.id}
-                    onClick={() => setV({ chip: c.id })}
-                  >
-                    {c.label} <span className="iv-num">{chipCount(c.id)}</span>
-                  </button>
-                ),
-              )}
-            </div>
+            {phone ? null : chipsEl}
 
+            {phone ? null : kindsEl}
+
+            {countMode ? (
+              <div className="iv-toolbar iv-toolbar--phone" data-solo="true" data-testid="inventory-toolbar">
+                {searchEl}
+              </div>
+            ) : phone ? (
+              <div className="iv-toolbar iv-toolbar--phone" data-testid="inventory-toolbar">
+                {searchEl}
+                <PhoneFilter active={activeFilterCount({ chip: activeChip, kind, zone, type, sort, view })} onClear={clearAll}>
+                  {(close) => (
+                  <>
+                  <div>
+                    <h3 className="iv-sec">Show only</h3>
+                    {chipsEl}
+                  </div>
+                  {kindsEl}
+                  {controlsEl}
+                  <div className="iv-row-controls">
+                    <button
+                      type="button"
+                      className="iv-btn iv-focus"
+                      onClick={() => {
+                        close();
+                        setTimeout(showTools, 0);
+                      }}
+                    >
+                      Tools
+                    </button>
+                    <Link to="/wines" className="iv-btn iv-focus" data-seal="true">
+                      Add a bottle
+                    </Link>
+                  </div>
+                  </>
+                  )}
+                </PhoneFilter>
+              </div>
+            ) : (
             <div className="iv-toolbar" data-testid="inventory-toolbar">
-              <label className="iv-search">
-                <span className="iv-sr">Search titles, producers, grapes</span>
-                <input
-                  ref={searchRef}
-                  type="search"
-                  className="iv-field iv-focus"
-                  placeholder="Search titles, producers, grapes"
-                  value={query}
-                  onChange={(e) => setV({ q: e.target.value })}
-                />
-                <span className="iv-hint">
-                  accents ignored<span className="iv-key"> · /</span>
-                </span>
-              </label>
-              <Select
-                label="Zone"
-                value={zone}
-                onChange={(v) => setV({ zone: v })}
-                placeholder="All"
-                disabled={locs.unavailable || locs.loading}
-                options={[
-                  ...locs.list.map((l) => ({ value: l.id, label: l.name })),
-                  { value: 'none', label: 'Unassigned' },
-                ]}
-              />
-              <Select
-                label="Type"
-                value={type}
-                onChange={(v) => setV({ type: v })}
-                placeholder="All"
-                disabled={!data.libraryAnswered}
-                options={typeOptions}
-              />
-              <Select
-                label="Sort"
-                value={sort}
-                onChange={(v) => setV({ sort: (v || 'needs') as SortId })}
-                options={[
-                  { value: 'needs', label: 'Needs you first' },
-                  { value: 'name', label: 'Name' },
-                  { value: 'value', label: 'Value at cost' },
-                  { value: 'pace', label: 'Fastest moving' },
-                ]}
-              />
-              <span className="iv-toggle" role="group" aria-label="View">
-                <button type="button" className="iv-btn iv-focus" aria-pressed={view === 'table'} data-on={view === 'table'} onClick={() => setV({ view: 'table' })}>
-                  Table
-                </button>
-                <button type="button" className="iv-btn iv-focus" aria-pressed={view === 'map'} data-on={view === 'map'} onClick={() => setV({ view: 'map' })}>
-                  Cellar map
-                </button>
-              </span>
+              {searchEl}
+              {controlsEl}
               <button type="button" className="iv-btn iv-focus" onClick={showTools}>
                 Tools
               </button>
@@ -784,6 +909,7 @@ export default function InventoryNext() {
                 Add a bottle
               </Link>
             </div>
+            )}
             {data.unread.length > 0 ? (
               <p className="iv-note" data-testid="inv-unread">
                 {data.unread.length === 1 ? 'One read did not answer: ' : 'Some reads did not answer: '}
@@ -794,6 +920,8 @@ export default function InventoryNext() {
               </p>
             ) : null}
 
+            {countMode ? null : (
+              <>
             <QuietLine {...data.waiting} naming={naming} onName={() => setNaming((v) => !v)} />
             {naming ? <DeliveriesToName items={nameable} /> : null}
             {posQueue.isError ? (
@@ -806,15 +934,21 @@ export default function InventoryNext() {
             ) : posOpen > 0 ? (
               <p className="iv-note" data-testid="inv-pos-queue">
                 {fmtCount(posOpen)} POS {posOpen === 1 ? 'line rang up and moved' : 'lines rang up and moved'} no stock.{' '}
-                <button type="button" className="iv-linkish iv-focus" onClick={() => setPanel('pos')}>
-                  Map them
-                </button>
+                {data.canManage ? (
+                  <button type="button" className="iv-linkish iv-focus" onClick={() => setPanel('pos')}>
+                    Map them
+                  </button>
+                ) : (
+                  'An owner or a manager maps them.'
+                )}
               </p>
             ) : null}
             {/* The insights rail: the legacy page's only mount
                 (InventoryCommandPage.tsx:1087), same props. Its one-tap acts
                 are live since #483. */}
-            <ContextualInsights host="inventory" defaultOpen={false} className="iv-insights" />
+            {phone ? null : <ContextualInsights host="inventory" defaultOpen={false} className="iv-insights" />}
+              </>
+            )}
 
             {view === 'map' ? (
               <div className="iv-map">
@@ -823,7 +957,7 @@ export default function InventoryNext() {
                     (r) =>
                       ({
                         inventoryId: r.id,
-                        name: r.name ?? 'Unnamed title',
+                        name: r.name ?? `Unnamed ${words.one}`,
                         liveStock: r.stock,
                         shadowStock: r.shadow,
                         threshold: r.par,
@@ -842,8 +976,8 @@ export default function InventoryNext() {
             ) : visible.length === 0 ? (
               <div className="iv-none" data-testid="inventory-none-match">
                 <p className="iv-said">
-                  No title matches {filtered ? 'this search and these filters' : 'here'}; {fmtCount(rows.length)}{' '}
-                  {rows.length === 1 ? 'title is' : 'titles are'} on the books.
+                  No {words.one} matches {filtered ? 'this search and these filters' : 'here'}; {fmtCount(rows.length)}{' '}
+                  {rows.length === 1 ? `${words.one} is` : `${words.many} are`} on the books.
                 </p>
                 {filtered ? (
                   <button type="button" className="iv-btn iv-focus" onClick={clearFilters}>
@@ -854,13 +988,13 @@ export default function InventoryNext() {
             ) : (
               <>
               {selected.size > 0 ? (
-                <div className="iv-selbar" role="group" aria-label="What to do with the selected titles" data-testid="inventory-selbar">
+                <div className="iv-selbar" role="group" aria-label={`What to do with the selected ${words.many}`} data-testid="inventory-selbar">
                   <span className="iv-selbar-n">{fmtCount(selectedRows.length)} selected</span>
                   <button
                     type="button"
                     className="iv-btn iv-focus"
                     onClick={() =>
-                      void runExport(selectedRows, valuation, `inventory-selected-${today()}`, 'Inventory selection')
+                      void runExport(selectedRows, costColumnsFor(valuation, data.canManage), `inventory-selected-${today()}`, 'Inventory selection')
                     }
                   >
                     Export selected
@@ -868,37 +1002,40 @@ export default function InventoryNext() {
                   <button type="button" className="iv-btn iv-focus" onClick={() => void copySelectedNames()}>
                     Copy names
                   </button>
-                  <button
-                    type="button"
-                    className="iv-btn iv-focus"
-                    disabled={selBlocked > 0}
-                    aria-describedby={selBlocked > 0 ? 'iv-selbar-why' : undefined}
-                    onClick={() => setRemoveSel(selectedRows)}
-                  >
-                    Remove selected
-                  </button>
+                  {data.canManage ? (
+                    <button
+                      type="button"
+                      className="iv-btn iv-focus"
+                      disabled={selBlocked > 0}
+                      aria-describedby={selBlocked > 0 ? 'iv-selbar-why' : undefined}
+                      onClick={() => setRemoveSel(selectedRows)}
+                    >
+                      Remove selected
+                    </button>
+                  ) : null}
                   <button type="button" className="iv-linkish iv-focus" onClick={clearSelect}>
                     Clear selection
                   </button>
-                  {selBlocked > 0 ? (
+                  {data.canManage && selBlocked > 0 ? (
                     <p className="iv-note" id="iv-selbar-why" data-testid="selbar-remove-blocked">
-                      Remove waits: {fmtCount(selBlocked)} selected {selBlocked === 1 ? 'title' : 'titles'} cannot be
+                      Remove waits: {fmtCount(selBlocked)} selected {selBlocked === 1 ? words.one : words.many} cannot be
                       zeroed first. Open {selBlocked === 1 ? 'it' : 'each'} and look under More to see why.
                     </p>
                   ) : null}
                 </div>
               ) : null}
               <InventoryTable
-                selected={selected}
-                onSelect={toggleSelect}
-                onSelectAll={selectAllVisible}
+                thing={words.one}
+                selected={countMode ? undefined : selected}
+                onSelect={countMode ? undefined : toggleSelect}
+                onSelectAll={countMode ? undefined : selectAllVisible}
                 rows={visible}
                 libraryUnread={!data.libraryAnswered}
                 grouped={sort === 'needs'}
                 sort={sort}
                 onSort={(next) => setV({ sort: next })}
                 openId={openId}
-                onToggle={(id) => setV({ open: openId === id ? null : id })}
+                onToggle={openItem}
                 canManage={data.canManage}
                 currency={data.currency}
                 zoneName={zoneName}
@@ -915,14 +1052,26 @@ export default function InventoryNext() {
               />
               </>
             )}
+            {countMode && rows !== null && view !== 'map' && visible.length > 0 ? (
+              <CountBar
+                next={nextToCount(visible)}
+                onCount={(r) => {
+                  setCountFirst(true);
+                  openItem(r.id);
+                }}
+              />
+            ) : null}
+            {phone && !countMode ? <ContextualInsights host="inventory" defaultOpen={false} className="iv-insights" /> : null}
             <NamingUnread />
             {zoneUnread > 0 ? (
               <p className="iv-note">
-                {zoneUnread} {zoneUnread === 1 ? 'title whose zones' : 'titles whose zones'} could not be read{' '}
+                {zoneUnread} {zoneUnread === 1 ? `${words.one} whose zones` : `${words.many} whose zones`} could not be read{' '}
                 {zoneUnread === 1 ? 'is' : 'are'} not shown under this zone.
               </p>
             ) : null}
 
+            {countMode ? null : (
+              <>
             {/* ── tools ──────────────────────────────────────────────── */}
             <section ref={toolsRef} id="iv-tools" className="iv-tools" aria-labelledby="iv-tools-h">
               <h2 id="iv-tools-h" className="iv-sec">
@@ -932,12 +1081,21 @@ export default function InventoryNext() {
                 <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('scanner')}>
                   Scan a menu
                 </button>
+                {data.canManage ? (
+                  <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('carry')}>
+                    Carry a food or supply
+                  </button>
+                ) : null}
                 <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('locations')}>
                   Storage locations
                 </button>
-                <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('pos')}>
-                  Map POS buttons
-                </button>
+                {/* A mapping decides what a sale takes off the shelf: a manager's,
+                    as the gateway now says too (inventory r28, gap 6). */}
+                {data.canManage ? (
+                  <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('pos')}>
+                    Map POS buttons
+                  </button>
+                ) : null}
                 <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('receipt')}>
                   A delivery without an order
                 </button>
@@ -955,14 +1113,14 @@ export default function InventoryNext() {
                     house every time. A cross-house export is gateway work (F-10). */}
               </div>
               <p className="iv-note">
-                Exports are CSV of the titles listed above. A figure that could not be read is left blank in the file,
+                Exports are CSV of the {words.many} listed above. A figure that could not be read is left blank in the file,
                 never written as 0.
               </p>
             </section>
 
             <p className="iv-footer" data-testid="inventory-footer">
-              {visible.length === rows.length ? `All ${fmtCount(rows.length)}` : fmtCount(visible.length)} of {fmtCount(rows.length)} titles are
-              listed{filterWords ? ` (${filterWords})` : ''}, {sortWords(sort, visible)}.
+              {visible.length === rows.length ? `All ${fmtCount(rows.length)}` : fmtCount(visible.length)} of {fmtCount(rows.length)} {words.many} are
+              listed{filterWords ? ` (${filterWords})` : ''}, {sortWords(sort, visible, words)}.
               {filtered && visible.length > 0 ? (
                 <>
                   {' '}
@@ -973,7 +1131,7 @@ export default function InventoryNext() {
                 </>
               ) : null}
               {data.currency.state === 'recorded' ? ` Money is shown in the house’s currency, ${data.currency.code}.` : ''}{' '}
-              Market reads — in every title's details because this page does not read a market price yet.
+              Market reads — in every {words.one}'s details because this page does not read a market price yet.
               {data.unread.length > 0 || data.stale
                 ? ' Not every read answered; each one that did not is named above the table.'
                 : data.pending.length > 0
@@ -987,6 +1145,8 @@ export default function InventoryNext() {
                 Dead stock tip: feature slow movers by the glass this weekend.
               </p>
             ) : null}
+              </>
+            )}
           </>
         ) : null}
       </div>
@@ -1009,7 +1169,7 @@ export default function InventoryNext() {
           onClose={() => setPanel(null)}
           inventoryItems={(rows ?? []).map((r) => ({
             id: r.id,
-            name: r.name ?? 'Unnamed title',
+            name: r.name ?? `Unnamed ${words.one}`,
             producer: r.producer ?? '',
             liveStock: r.stock ?? undefined,
             shadowStock: r.shadow ?? undefined,
@@ -1037,7 +1197,7 @@ export default function InventoryNext() {
           onConfirm={(selected) => void confirmAutoLocate(selected)}
         />
       ) : null}
-      {removeSel ? (
+      {removeSel && data.canManage ? (
         <RemoveFromInventoryModal
           isOpen
           items={removeSel.map(removeTarget)}
@@ -1053,10 +1213,22 @@ export default function InventoryNext() {
       {panel === 'receipt' ? (
         <ManualReceiptWorkspace isOpen onClose={() => setPanel(null)} onSaved={refreshStock} />
       ) : null}
+      {panel === 'carry' ? (
+        <CarryThis
+          restaurantId={data.rid}
+          onClose={() => setPanel(null)}
+          onCarried={(item) => {
+            setPanel(null);
+            refreshStock();
+            void queryClient.invalidateQueries({ queryKey: ['inventory-next'] });
+            toast.success(`${item.displayName} is carried. Nothing is on hand until a delivery or a count.`);
+          }}
+        />
+      ) : null}
       {panel === 'auction' ? (
         <AuctionLotStart open onClose={() => setPanel(null)} onCarry={carryAuctionLot} />
       ) : null}
-      {panel === 'pos' ? (
+      {panel === 'pos' && data.canManage ? (
         <PosMappingPanel
           isOpen
           onClose={() => setPanel(null)}
@@ -1068,6 +1240,23 @@ export default function InventoryNext() {
             pourSizeMl: r.pourMl,
           }))}
           onChanged={refreshStock}
+        />
+      ) : null}
+      {openId !== null && data.state === 'ready' && rows !== null ? (
+        <ItemDrawer
+          key={openId}
+          row={rows.find((r) => r.id === openId) ?? null}
+          house={houseFieldsOf(data.rawItems.find((i) => i.id === openId))}
+          canManage={data.canManage}
+          currency={data.currency}
+          zoneName={zoneName}
+          locations={locs.list}
+          locationsUnavailable={locs.unavailable}
+          providers={data.providers.list}
+          providersError={data.providers.error}
+          restaurantId={data.rid}
+          onClose={closeItem}
+          startWith={countFirst ? 'count' : undefined}
         />
       ) : null}
     </div>

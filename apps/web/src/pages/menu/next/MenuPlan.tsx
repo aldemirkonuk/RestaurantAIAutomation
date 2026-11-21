@@ -54,6 +54,10 @@ function reasonOf(err: unknown): string {
   const m = e?.response?.data?.message;
   if (typeof m === 'string' && m) return m;
   if (Array.isArray(m) && m.length) return String(m[0]);
+  // The transport's own words ("Network Error") say nothing to a person: the
+  // request never got an answer, so say that.
+  const sent = err as { code?: unknown; response?: unknown };
+  if (sent?.code === 'ERR_NETWORK' && !sent.response) return 'Mudavym could not be reached just now.';
   return e?.message || 'no reason was given';
 }
 

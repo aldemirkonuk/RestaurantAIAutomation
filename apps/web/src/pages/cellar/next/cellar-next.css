@@ -34,6 +34,12 @@
   overflow: hidden;
 }
 
+/* The signature waits, unseen, while a register settles (a list in flight, or a
+   drink a link named still opening): it holds its room and is not seen to move. */
+.mudavym:has([data-settling='true']) .cl-signature {
+  visibility: hidden;
+}
+
 /* ── sketch 121 (2026-09-19): the wine register's own record opens BESIDE a
    narrowed index, not above the full table — `.cl-stand` above is unchanged
    and still used by CatalogueRegister/CocktailRegister (MOTIONS.md's third
@@ -380,6 +386,12 @@
    raise contrast, never lower it, wherever `.cl-note` already appears. */
 .cl-note { margin: 10px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-4); }
 .cl-said { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); }
+/* The menu offers hold their line before the menu read lands: one line, and two at a phone where the
+   "no menu is current" sentence wraps. Not an inline height: that would beat this rule. */
+.cl-offer-room { min-height: 1lh; }
+@media (max-width: 640px) {
+  .cl-offer-room { min-height: 2lh; }
+}
 
 /* facts of record: a label above the figure, never a label beside it */
 .cl-facts {
@@ -859,4 +871,267 @@ textarea.cl-field {
 }
 .cl-unplaced-list > li:first-child {
   border-top: 0;
+}
+
+/* ── a recipe line and the shelf picker (pages/cellar/next/recipe/) ─────────
+   A people page: one column on a phone, one line per ingredient on a desk.
+   Tokens only from mudavym.css: --seal for linked and costed, --warn for not
+   linked and no price yet. */
+.cl-rcp-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.cl-rcp-line {
+  padding: 8px 10px;
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+  background: var(--paper-1);
+}
+.cl-rcp-line[data-role='untracked'] { background: var(--paper-0); }
+.cl-rcp-read { display: flex; gap: 10px; font-size: 12.5px; color: var(--ink-1); }
+.cl-rcp-amt { min-width: 64px; color: var(--ink-2); }
+.cl-rcp-edit {
+  display: grid;
+  grid-template-columns: 1fr 72px 92px;
+  grid-template-areas: 'what what what' 'qty unit unit' 'switch switch remove';
+  gap: 6px;
+  align-items: center;
+}
+.cl-rcp-what { grid-area: what; min-width: 0; }
+.cl-rcp-qty { grid-area: qty; width: 100%; text-align: right; }
+.cl-rcp-unit { grid-area: unit; width: 100%; }
+.cl-rcp-switch { grid-area: switch; justify-content: center; }
+.cl-rcp-remove { grid-area: remove; justify-self: end; }
+@media (min-width: 720px) {
+  .cl-rcp-edit {
+    grid-template-columns: minmax(0, 1fr) 72px 92px 170px 34px;
+    grid-template-areas: 'what qty unit switch remove';
+  }
+}
+.cl-rcp-qty[aria-invalid='true'],
+.cl-rcp-unit[aria-invalid='true'] { border-color: var(--warn); }
+.cl-rcp-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--ink-1);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.cl-rcp-link[data-linked='true'] svg { color: var(--seal); }
+.cl-rcp-link[data-linked='false'] { color: var(--warn); }
+.cl-rcp-flag { color: var(--warn); }
+.cl-rcp-kept { display: block; margin-top: 3px; font-size: 11.5px; opacity: 0.75; }
+.cl-rcp-undo { margin: 6px 0 0; font-size: 11.5px; color: var(--ink-2); animation: cl-rcp-undo-in 220ms cubic-bezier(0.34, 1.4, 0.64, 1); }
+.cl-rcp-undo[data-spent='true'] { visibility: hidden; animation: none; }
+.cl-rcp-undo-btn { background: none; border: 0; padding: 0 2px; font: inherit; text-decoration: underline; cursor: pointer; color: inherit; }
+@keyframes cl-rcp-undo-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .cl-rcp-undo { animation: none; } }
+/* A linked line leads to its good's drawer on /inventory. */
+.cl-rcp-good {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  font-size: 11.5px;
+  /* --ink-4, not --ink-3: the higher-contrast caption token (see .cl-note). */
+  color: var(--ink-4);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+.cl-rcp-good:hover { color: var(--ink-1); }
+.cl-rcp-read .cl-rcp-good { margin-left: auto; }
+.cl-rcp-note { margin: 6px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--ink-3); }
+.cl-rcp-note-warn {
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--warn-tint);
+  color: var(--ink-1);
+  border-left: 3px solid var(--warn);
+}
+/* The weight a line waits for (r28 gap 7): label, box, g and Keep wrap on a phone. */
+.cl-rcp-weigh { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; }
+.cl-rcp-weigh .cl-rcp-note { flex-basis: 100%; }
+/* Adding a good from a line that found none (r28 gap 8): one column on a phone. */
+.cl-rcp-add { display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); gap: 6px 8px; align-items: center; margin-top: 8px; font-size: 12px; }
+.cl-rcp-add > span, .cl-rcp-add > .cl-rcp-note { grid-column: 1 / -1; }
+@media (max-width: 480px) { .cl-rcp-add { grid-template-columns: minmax(0, 1fr); } }
+.cl-rcp-picker { margin-top: 8px; padding: 8px; border: 1px solid var(--paper-2); border-radius: 8px; background: var(--paper-0); }
+.cl-rcp-picks { list-style: none; margin: 6px 0 0; padding: 0; max-height: 220px; overflow-y: auto; }
+.cl-rcp-pick {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink-1);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.cl-rcp-pick:hover { background: var(--seal-tint); }
+.cl-rcp-pick-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── the drink's recipe sheet around its lines ──────────────────────────────
+   --seal-deep for a cost that is whole and a save that happened, --alarm only
+   for a save that did not happen or a newer version waiting. */
+.cl-rcp { margin-top: 12px; }
+.cl-rcp-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; margin-bottom: 8px; }
+.cl-rcp-facts { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; font-size: 12.5px; }
+.cl-rcp-facts div { display: flex; gap: 6px; }
+.cl-rcp-facts dt { color: var(--ink-4); }
+.cl-rcp-facts dd { margin: 0; color: var(--ink-1); }
+.cl-rcp-legacy { margin-top: 10px; }
+/* The opened drink's cards, then its nutrition card, above its lines. */
+.cl-rcp-kpis { margin-bottom: 10px; }
+.cl-rcp-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+.cl-rcp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+  background: var(--paper-0);
+}
+.cl-rcp-card-label { font-size: 11px; color: var(--ink-4); }
+/* .cl-num is nowrap; a figure such as "at least 110.5 kcal" wraps inside its card, never out of it. */
+.cl-rcp-card-fig { font-size: 18px; line-height: 1.25; color: var(--ink-1); white-space: normal; overflow-wrap: break-word; }
+.cl-rcp-card[data-known='false'] .cl-rcp-card-fig { color: var(--ink-4); font-size: 15px; }
+.cl-rcp-card[data-warn='true'] { border-color: var(--warn); }
+.cl-rcp-card-said { font-size: 11.5px; line-height: 1.4; color: var(--ink-4); }
+/* The card a figure opens shows where the focus landed, by key or by mouse:
+   a moved focus is not :focus-visible after a click (r39 walk). */
+.cl-rcp-target:focus {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+}
+.cl-rcp-nutrition {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+}
+@media (max-width: 480px) {
+  .cl-rcp-cards { grid-template-columns: 1fr 1fr; }
+}
+.cl-rcp-foot {
+  margin: 10px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--paper-2);
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.cl-rcp-foot[data-complete='true'] { color: var(--seal-deep); }
+.cl-rcp-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.cl-rcp-save { margin-left: auto; }
+.cl-rcp-said { margin: 8px 0 0; font-size: 12.5px; color: var(--seal-deep); }
+.cl-rcp-said-alarm { color: var(--alarm-deep); }
+.cl-rcp-versions { margin: 6px 0 0 18px; padding: 0; font-size: 12px; line-height: 1.7; color: var(--ink-2); }
+.cl-rcp-proposed,
+.cl-rcp-paste { margin-top: 10px; padding: 10px; border: 1px dashed var(--warn); border-radius: 8px; background: var(--paper-0); }
+.cl-rcp-paste { border-color: var(--paper-2); }
+.cl-rcp-proposed .cl-rcp-line { background: var(--warn-tint); border-color: transparent; }
+.cl-rcp-proposed .cl-rcp-lines { margin-bottom: 8px; }
+
+/* Round 17 D10: on a bar phone every control on the recipe sheet is a 44 px
+   target, and inputs use 16 px type so iOS does not zoom the page on focus. */
+.cl-rcp-meta { display: grid; grid-template-columns: 1fr; gap: 6px; margin-top: 10px; }
+.cl-rcp-meta label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--ink-3); }
+.cl-rcp-meta textarea.cl-field { height: auto; padding: 6px 8px; line-height: 1.45; }
+@media (min-width: 720px) {
+  .cl-rcp-meta { grid-template-columns: 120px 1fr 1fr; }
+  .cl-rcp-meta .cl-rcp-method { grid-column: 1 / -1; }
+}
+.cl-rcp-proposed .cl-rcp-read { align-items: center; }
+.cl-rcp-leave { margin-left: auto; }
+@media (max-width: 719px), (pointer: coarse) {
+  .cl-rcp .cl-field,
+  .cl-rcp .cl-btn,
+  .cl-rcp .cl-linkish,
+  .cl-rcp-link,
+  .cl-rcp-good,
+  .cl-rcp-pick { min-height: 44px; }
+  .cl-rcp .cl-field { font-size: 16px; }
+  .cl-rcp .cl-btn { font-size: 14px; }
+  .cl-rcp-edit { grid-template-columns: 1fr 88px 108px; }
+  .cl-rcp-remove { min-width: 44px; justify-content: center; }
+}
+
+/* ── How it tastes on a recipe sheet (RecipeTaste.tsx) ───────────────────────
+   The card is the inventory drawer's, which words itself in that page's `iv-*`
+   classes. This page does not load inventory-next.css, so inside the sheet they
+   take the cellar's own rules (same values as the inventory ones). */
+.cl-rcp .iv-note { margin: 10px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-4); }
+.cl-rcp .iv-said { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); }
+.cl-rcp .iv-said-alarm {
+  padding: 9px 12px;
+  border: 1px solid var(--paper-2);
+  border-left: 2px solid var(--ink-2);
+  border-radius: 10px;
+  background: var(--paper-1);
+  color: var(--ink-1);
+}
+.cl-rcp .iv-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--paper-2);
+  border-radius: 7px;
+  background: var(--paper-1);
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+.cl-rcp .iv-btn:hover:not(:disabled) { border-color: var(--seal-ring); color: var(--seal-deep); }
+.cl-rcp .iv-linkish {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--seal-deep);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.cl-rcp .iv-focus:focus-visible { outline: 2px solid var(--seal); outline-offset: 2px; }
+.cl-rcp-taste { margin: 18px 0 0; }
+.cl-rcp-taste-acts { margin: 10px 0 0; }
+.cl-rcp-taste-line { margin: 0 0 10px; }
+@media (max-width: 719px), (pointer: coarse) {
+  .cl-rcp .iv-btn,
+  .cl-rcp .iv-linkish,
+  .cl-rcp .tc-more { min-height: 44px; }
+  .cl-rcp .iv-btn { font-size: 14px; }
+}
+
+/* ── the dish register's controls are a thumb's size on a phone (r97 walk: Add
+   dish, Save changes, Take off the list and every box were 30 px at 375). One
+   scope class on the page, so the other registers' controls are not changed. ── */
+@media (max-width: 640px) {
+  .cl-touch .cl-btn,
+  .cl-touch .cl-field {
+    height: 44px;
+    min-height: 44px;
+  }
 }

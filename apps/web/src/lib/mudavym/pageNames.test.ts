@@ -45,6 +45,8 @@ describe('every rebuilt page has a name to print', () => {
    * route-aware branch is the reason `pageNameFor` exists at all.
    */
   it('lets the route name the cellar family', () => {
+    expect(pageNameFor('inventory', '/dishes')).toBe('Dishes');
+    expect(pageNameFor('inventory', '/inventory')).toBe('Inventory');
     expect(pageNameFor('cellar', '/cellar')).toBe('Cellar');
     expect(pageNameFor('cellar', '/wines')).toBe('Wines');
     expect(pageNameFor('cellar', '/soft-drinks')).toBe('Soft drinks');

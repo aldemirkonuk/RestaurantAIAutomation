@@ -156,15 +156,16 @@ export class CocktailFieldsDto {
 
   /**
    * The price the house charges. Optional, and absent means unpriced — never
-   * zero, which on this page would read as "free".
+   * zero, which on this page would read as "free". On an amend, null takes the
+   * price off (absent leaves it as it is).
    */
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ nullable: true })
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(0)
   @Max(100000)
-  price?: number;
+  price?: number | null;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -188,65 +189,4 @@ export class UpdateCocktailDto extends CocktailFieldsDto {
   @IsNotEmpty()
   @MaxLength(200)
   name?: string;
-}
-
-/**
- * One line of a recipe. The CHECK constraint
- * (`cocktail_ingredients_has_a_referent`) requires at least one of
- * beverage_id / wine_id / free_text, and this DTO does not restate that rule —
- * the database owns it, and a duplicate copy here would be a second home for
- * one invariant. A line with none of the three is refused by Postgres and the
- * error reaches the operator as words.
- */
-export class CocktailIngredientDto {
-  @ApiPropertyOptional({ description: "Free text: 'fresh lime juice', 'egg white'" })
-  @IsOptional()
-  @IsString()
-  @MaxLength(300)
-  freeText?: string;
-
-  @ApiPropertyOptional({ description: "A row of public.beverages, when the base spirit is catalogued" })
-  @IsOptional()
-  @IsUUID()
-  beverageId?: string;
-
-  @ApiPropertyOptional({ description: "A row of master_wine_library" })
-  @IsOptional()
-  @IsUUID()
-  wineId?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  quantity?: number;
-
-  @ApiPropertyOptional({ description: "oz, ml, dash, …" })
-  @IsOptional()
-  @IsString()
-  @MaxLength(30)
-  unit?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(0)
-  @Max(200)
-  sortOrder?: number;
-}
-
-export class SetCocktailIngredientsDto {
-  /**
-   * The whole recipe, replacing whatever was there. An empty array is a
-   * legitimate value and means "this recipe has no lines recorded" — which is
-   * how a recipe is un-recorded without deleting the cocktail.
-   */
-  @ApiProperty({ type: [CocktailIngredientDto] })
-  @IsArray()
-  @ArrayMaxSize(40)
-  @ValidateNested({ each: true })
-  @Type(() => CocktailIngredientDto)
-  lines!: CocktailIngredientDto[];
 }

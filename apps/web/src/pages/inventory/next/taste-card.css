@@ -1,0 +1,292 @@
+/* "How it tastes" (TasteCard.tsx, TasteForm.tsx). Tokens only (styles/mudavym.css). */
+.tc {
+  display: grid;
+  gap: 8px;
+}
+.tc-summary {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ink-1);
+}
+.tc-rows,
+.tc-layers {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tc-row {
+  display: grid;
+  grid-template-columns: minmax(84px, 1.1fr) minmax(0, 2fr) 5.5rem auto auto;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--paper-2);
+  font-size: 13px;
+}
+.tc-label {
+  color: var(--ink-2);
+}
+.tc-band {
+  font-style: italic;
+  color: var(--ink-1);
+}
+.tc-bar {
+  position: relative;
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--paper-2);
+  overflow: hidden;
+}
+.tc-bar-none {
+  background: transparent;
+}
+.tc-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--seal);
+  border-radius: 4px;
+  transform-origin: left center;
+}
+.tc-whisker {
+  position: absolute;
+  top: 3px;
+  height: 2px;
+  background: var(--ink-1);
+}
+.tc-marks {
+  display: inline-flex;
+  gap: 3px;
+  color: var(--ink-3);
+}
+.tc-mark[data-shape='hatched'] {
+  color: var(--warn);
+}
+.tc-more {
+  min-height: 28px;
+  padding: 0 8px;
+  background: none;
+  border: 0;
+  color: var(--ink-3);
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.tc-detail {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.tc-conflict {
+  display: block;
+  color: var(--warn);
+}
+.tc-layers {
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.tc-note {
+  display: block;
+  margin-top: 2px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tc-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tc-fill {
+    animation: tc-grow 150ms ease-out;
+  }
+}
+@keyframes tc-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+@media (max-width: 767px) {
+  .tc-row {
+    grid-template-columns: minmax(0, 1fr) 5rem auto auto;
+  }
+  .tc-row .tc-label {
+    grid-column: 1 / 2;
+  }
+  .tc-row .tc-bar {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+/* The form */
+.tf {
+  display: grid;
+  gap: 10px;
+}
+.tf-set {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.tf-set legend,
+.tf-set summary {
+  font-size: 12px;
+  color: var(--ink-3);
+  padding: 0;
+  margin-bottom: 4px;
+}
+.tf-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tf-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 12px;
+}
+.tf-level,
+.tf-note {
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.tf-level select,
+.tf-note textarea {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  box-sizing: border-box;
+}
+@media (max-width: 767px), (pointer: coarse) {
+  /* touch: a finger needs 44 px (the chips are already 44) */
+  .tc-more,
+  .tf-level select,
+  .tf-set summary {
+    min-height: 44px;
+  }
+  .tf-set summary {
+    display: flex;
+    align-items: center;
+  }
+}
+@media (max-width: 767px) {
+  .tf-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The drawer's first-screen taste line (TasteSummary.tsx). */
+.tc-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  margin: 10px 0 0;
+  font-size: 14px;
+}
+.tc-line-k {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.tc-line-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+}
+@media (max-width: 767px), (pointer: coarse) {
+  .tc-line-btn {
+    min-height: 44px;
+  }
+}
+/* On a phone the taste line sits under the header line, above the cards: the head copy shows and
+   the foot copy hides; above 640px it is the other way round (desktop is unchanged). A pending
+   read holds one 44 px line so the cards never move when it answers. */
+.tc-line--head {
+  display: none;
+}
+@media (max-width: 640px) {
+  .tc-line--head {
+    display: flex;
+    flex-wrap: nowrap;
+    margin: 0 0 8px;
+    min-height: 44px;
+    max-height: 44px;
+  }
+  /* One line only: a long sentence is cut with an ellipsis (the full words are in the card the
+     tap opens) so the answered line is exactly the 44 px that was held and the cards never move. */
+  .tc-line--head .tc-line-k {
+    flex: none;
+  }
+  .tc-line--head .tc-line-btn {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-height: 44px;
+  }
+  .tc-line--head .tc-line-btn > span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tc-line--head .tc-marks {
+    flex: none;
+  }
+  .tc-line--foot {
+    display: none;
+  }
+}
+
+/* The held slot of the taste line (TasteSummary.tsx): 23 px on the desktop foot, 44 px on the phone head. It is
+   kept for a good with no taste answer too: a stable sheet beats a reclaimed 44 px (r101). */
+.tc-line--foot.tc-line--hold {
+  min-height: 23px;
+  max-height: 23px;
+}
+.tc-line--hold {
+  overflow: hidden;
+}
+
+/* "More" on a taste row: the detail opens by height and opacity (r97 M8), closes quicker; its room is the
+   row's own, never the row under it. Reduced motion: no tween, the end state at once. */
+.tc-detail-wrap {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-rows: 0fr;
+  margin-top: -4px;
+  visibility: hidden;
+  transition: grid-template-rows 140ms ease-in, margin-top 140ms ease-in, visibility 0s linear 140ms;
+}
+.tc-detail-wrap[data-open='true'] {
+  grid-template-rows: 1fr;
+  margin-top: 0;
+  visibility: visible;
+  transition: grid-template-rows 200ms cubic-bezier(0.16, 1, 0.3, 1), margin-top 200ms cubic-bezier(0.16, 1, 0.3, 1), visibility 0s;
+}
+.tc-detail-clip {
+  min-height: 0;
+  overflow: hidden;
+}
+.tc-detail-wrap .tc-detail {
+  opacity: 0;
+  transition: opacity 80ms ease-in;
+}
+.tc-detail-wrap[data-open='true'] .tc-detail {
+  opacity: 1;
+  transition: opacity 160ms ease-out 40ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tc-detail-wrap,
+  .tc-detail-wrap .tc-detail {
+    transition: none;
+  }
+}
