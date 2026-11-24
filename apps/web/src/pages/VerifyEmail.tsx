@@ -1,6 +1,6 @@
 import { PublicShell } from '../components/mudavym/PublicShell'
 import { usePublicDesign } from '../lib/mudavym/publicDesign'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { Mail, CheckCircle, Loader2, AlertCircle } from 'lucide-react'
@@ -83,6 +83,16 @@ export function VerifyEmail() {
   // a failed read says it failed). The pair is kept for "Try again".
   const [sessionReadFailed, setSessionReadFailed] = useState(false)
   const verifiedPair = useRef<SessionPair | null>(null)
+  // The plate's height while the page still waits. The verified state is a
+  // single line and would shrink the column and let the shell re-centre it, a
+  // jump (CLS 0.13 at 375 px, reduced motion). Holding the waiting height as a
+  // floor keeps the layout still with nothing animated (ADR 0112).
+  const plateRef = useRef<HTMLDivElement>(null)
+  const waitingPlateHeight = useRef(0)
+  useLayoutEffect(() => {
+    if (!verified && plateRef.current)
+      waitingPlateHeight.current = plateRef.current.offsetHeight
+  })
 
   const token = searchParams.get('token')
   // Back to this very link after signing in (Login honours `redirect`).
@@ -445,7 +455,15 @@ export function VerifyEmail() {
           </Link>
         }
       >
-        <div className="mdv-pub__plate mdv-pub__stack">
+        <div
+          ref={plateRef}
+          className="mdv-pub__plate mdv-pub__stack"
+          style={
+            verified && waitingPlateHeight.current
+              ? { minHeight: waitingPlateHeight.current }
+              : undefined
+          }
+        >
           {verified ? (
             sessionReadFailed ? (
               <>
