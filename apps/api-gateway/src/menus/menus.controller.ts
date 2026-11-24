@@ -8,6 +8,7 @@ import {
   HttpException,
   HttpStatus,
   Param,
+  Query,
   ParseUUIDPipe,
   NotFoundException,
   Patch,
@@ -67,13 +68,15 @@ export class MenusController {
   async exportSheet(
     @Param("restaurantId") restaurantId: string,
     @CurrentUser() user: { userId?: string },
+    @Query("decimal") decimal?: string,
   ) {
     await this.assertSheetRole(user, restaurantId, "download the menu as a sheet");
     const menu = await this.menusService.getMenu(restaurantId, { rawLine: false });
     if (!menu.menuId) {
       throw new NotFoundException("There is no current menu to download yet. Make a menu current first.");
     }
-    return menuSheet(menu.items);
+    // ?decimal=comma: semicolons between cells and a comma in a price, as a tr-TR/de-DE Excel saves it.
+    return menuSheet(menu.items, { decimal: decimal === "comma" ? "," : "." });
   }
 
   @Get(":restaurantId/sample.csv")
