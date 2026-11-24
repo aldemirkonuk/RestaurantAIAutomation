@@ -21,7 +21,7 @@ export interface CostSeen {
 }
 
 export type PriceMove =
-  | { compared: false; reason: "no_previous" | "no_price" | "unit_differs" | "previous_is_zero" }
+  | { compared: false; reason: "no_previous" | "no_price" | "unit_differs" | "previous_is_zero" | "currency_differs" | "currency_unknown" }
   | {
       compared: true;
       /** Signed percent against the previous cost. */

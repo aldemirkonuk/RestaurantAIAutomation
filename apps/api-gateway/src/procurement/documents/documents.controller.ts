@@ -1469,6 +1469,44 @@ export class DocumentsController {
         ? parsed
         : DEFAULT_MOVE_THRESHOLD_PCT;
     const client = this.db.getClient();
+    // A paper that is not this house's is a 404 in words, never an empty list
+    // that reads as "nothing moved" (ADR 0020).
+    const { data: paper, error: paperErr } = await client
+      .from("procurement_documents")
+      .select("id, currency")
+      .eq("id", id)
+      .eq("restaurant_id", user.restaurantId)
+      .maybeSingle();
+    if (paperErr)
+      throw new HttpException(
+        `The paper could not be read, so no price was compared: ${paperErr.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    if (!paper)
+      throw new HttpException(
+        "This paper is not one of this house's, so no price was compared.",
+        HttpStatus.NOT_FOUND,
+      );
+    // A lot's cost is in the house's money. A paper priced in another money is
+    // not compared unconverted: 25 percent "up" between TRY and USD is no move.
+    const { data: house, error: houseErr } = await client
+      .from("restaurants")
+      .select("currency")
+      .eq("id", user.restaurantId)
+      .maybeSingle();
+    if (houseErr)
+      throw new HttpException(
+        `The house's own currency could not be read, so no price was compared: ${houseErr.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    const paperCurrency = ((paper as { currency?: string | null }).currency ?? "").trim().toUpperCase();
+    const houseCurrency = ((house as { currency?: string | null } | null)?.currency ?? "").trim().toUpperCase();
+    const currencyReason: "currency_differs" | "currency_unknown" | null =
+      !paperCurrency || !houseCurrency
+        ? "currency_unknown"
+        : paperCurrency !== houseCurrency
+          ? "currency_differs"
+          : null;
     const { data: lines, error } = await client
       .from("procurement_document_lines")
       .select("id, line_no, description, uom, unit_price, inventory_id")
@@ -1517,6 +1555,8 @@ export class DocumentsController {
         const price = l.unit_price == null ? null : Number(l.unit_price);
         // A lot's cost is per bottle. A line priced per case (or in a unit this
         // does not know) is not converted here: it is not compared.
+        if (currencyReason)
+          return { lineId: l.id, lineNo: l.line_no, description: l.description, compared: false as const, reason: currencyReason };
         const result = priceMove(
           prev == null ? null : { cost: prev, unit: "bottle" },
           { cost: price, unit: perBottle(l.uom) ? "bottle" : l.uom },

@@ -1,12 +1,15 @@
 import { DocumentsController } from "./documents.controller";
 
 /** A thenable fake db: one canned answer per table, every call chains. */
+const HOUSE = { procurement_documents: { data: { id: "d1", currency: "USD" }, error: null }, restaurants: { data: { currency: "USD" }, error: null } };
 function controllerWith(results: Record<string, { data: unknown; error: unknown }>) {
+  results = { ...HOUSE, ...results };
   const db = {
     getClient: () => ({
       from: (table: string) => {
         const b: any = {};
         for (const m of ["select", "eq", "order", "limit", "in", "not"]) b[m] = () => b;
+        b.maybeSingle = () => Promise.resolve(results[table]);
         b.then = (res: any, rej: any) => Promise.resolve(results[table]).then(res, rej);
         return b;
       },
@@ -72,5 +75,43 @@ describe("DocumentsController.priceMoves — a cost that jumped with no PO to ca
     });
     const out = await c.priceMoves("d1", user, "25");
     expect(out.lines[0]).toMatchObject({ compared: true, moved: false });
+  });
+
+  it("does not compare a TRY paper's price with a USD lot cost", async () => {
+    const c = controllerWith({
+      procurement_documents: { data: { id: "d1", currency: "TRY" }, error: null },
+      procurement_document_lines: { data: [line({ unit_price: 12.5 })], error: null },
+      inventory_lots: { data: [lot(10, "2026-11-01")], error: null },
+    });
+    const out = await c.priceMoves("d1", user);
+    expect(out.lines[0]).toEqual(expect.objectContaining({ compared: false, reason: "currency_differs" }));
+    expect((out.lines[0] as any).sentence).toBeUndefined();
+  });
+
+  it("compares nothing when a currency is unknown, and says so", async () => {
+    const c = controllerWith({
+      procurement_documents: { data: { id: "d1", currency: null }, error: null },
+      procurement_document_lines: { data: [line({})], error: null },
+      inventory_lots: { data: [lot(10, "2026-11-01")], error: null },
+    });
+    const out = await c.priceMoves("d1", user);
+    expect(out.lines[0]).toEqual(expect.objectContaining({ compared: false, reason: "currency_unknown" }));
+  });
+
+  it("answers 404 in words for a paper that is not this house's", async () => {
+    const c = controllerWith({
+      procurement_documents: { data: null, error: null },
+      procurement_document_lines: { data: [line({})], error: null },
+    });
+    await expect(c.priceMoves("foreign", user)).rejects.toMatchObject({ status: 404 });
+    await expect(c.priceMoves("foreign", user)).rejects.toThrow(/not one of this house's/);
+  });
+
+  it("a failed house-currency read says it failed", async () => {
+    const c = controllerWith({
+      restaurants: { data: null, error: { message: "boom" } },
+      procurement_document_lines: { data: [line({})], error: null },
+    });
+    await expect(c.priceMoves("d1", user)).rejects.toMatchObject({ status: 500 });
   });
 });
