@@ -141,3 +141,16 @@ export function filedAtSentence(
   const day = d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
   return `filed at 1 ${from} = ${rate.toFixed(4)} ${to} on ${day}`;
 }
+
+/**
+ * Said when the manager's "the paper's own figures are in X" is not the label the
+ * paper was filed under: the conversion starts from X, and the old label was
+ * wrong. Null when the two agree or the paper had no label (r105).
+ */
+export function labelCorrectedSentence(
+  filedAs: string | null,
+  from: string,
+): string | null {
+  if (!filedAs || filedAs === from) return null;
+  return `The paper had been filed as ${filedAs}; its own figures are in ${from}, so they were converted from ${from} and the ${filedAs} label was corrected.`;
+}

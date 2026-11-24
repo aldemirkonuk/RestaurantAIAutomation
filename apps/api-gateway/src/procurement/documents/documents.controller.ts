@@ -42,7 +42,7 @@ import { CatalogIngestService } from "../../distributor-feed/catalog-ingest.serv
 import { OrganizationsService } from "../../organizations/organizations.service";
 import { isIso4217, notACurrencyBecause } from "../../common/iso-4217";
 import { documentMoneyState } from "./invoice-currency";
-import { filedAtSentence, rateProblem } from "./fx-convert";
+import { filedAtSentence, labelCorrectedSentence, rateProblem } from "./fx-convert";
 import { DeliveryService } from "../canonical/delivery.service";
 import { DeliveryStockService } from "../canonical/delivery-stock.service";
 import { LineMappingService } from "../canonical/line-mapping.service";
@@ -1495,8 +1495,49 @@ export class DocumentsController {
       doc.storage_path ?? null,
     );
 
+    // The rate a manager filed this paper at, from the newest audit row that
+    // carries one, so the card still says "filed at ..." after a reload. A
+    // failed read says so; it is never read as "filed at no rate" (ADR 0020).
+    const { data: fxRows, error: fxError } = await this.db
+      .getClient()
+      .from("procurement_document_currency_changes")
+      .select("paper_currency, new_currency, exchange_rate, rate_date")
+      .eq("document_id", id)
+      .eq("restaurant_id", user.restaurantId)
+      .not("exchange_rate", "is", null)
+      .limit(1)
+      .order("changed_at", { ascending: false });
+    const fxFiled = ((fxRows ?? []) as {
+      paper_currency: string;
+      new_currency: string;
+      exchange_rate: number | string;
+      rate_date: string;
+    }[])[0] ?? null;
+    const filedAt = fxFiled
+      ? {
+          from: fxFiled.paper_currency,
+          to: fxFiled.new_currency,
+          rate: Number(fxFiled.exchange_rate),
+          rateDate: fxFiled.rate_date,
+          sentence: filedAtSentence(
+            fxFiled.paper_currency,
+            fxFiled.new_currency,
+            Number(fxFiled.exchange_rate),
+            fxFiled.rate_date,
+          ),
+        }
+      : null;
+
     return {
-      document: { ...doc, imageUrl, imageUrlReason },
+      document: {
+        ...doc,
+        imageUrl,
+        imageUrlReason,
+        filedAt,
+        filedAtReason: fxError
+          ? `The rate this paper was filed at could not be read (${fxError.message}).`
+          : null,
+      },
       lines: lines ?? [],
       links: links ?? [],
     };
@@ -1968,6 +2009,13 @@ export class DocumentsController {
     let fx: { rate: number; from: string; rateDate: string } | null = null;
     if (asked) {
       const from = String(body?.fromCurrency ?? "").trim().toUpperCase();
+      // Said as what it is: a rate or a day without the paper's own currency is
+      // a half-stated conversion, not "no currency was sent" when one was.
+      if (body?.fromCurrency == null || String(body.fromCurrency).trim() === "")
+        throw new HttpException(
+          "A conversion has to say which currency the paper's own figures are in (fromCurrency), together with the rate and the day it is from. Nothing was changed.",
+          HttpStatus.BAD_REQUEST,
+        );
       if (!isIso4217(from))
         throw new HttpException(
           `${notACurrencyBecause(body?.fromCurrency)} Nothing was changed: a conversion has to say which currency the paper's own figures are in.`,
@@ -1994,6 +2042,29 @@ export class DocumentsController {
       if (day.getTime() > Date.now() + 24 * 3600 * 1000)
         throw new HttpException(
           "The exchange rate cannot be from a day that has not come yet. Nothing was changed.",
+          HttpStatus.BAD_REQUEST,
+        );
+      // The money a paper is costed in is the house's own. The screen only
+      // offers that target; the gateway holds it too (r105).
+      const { data: houseRow, error: houseError } = await this.db
+        .getClient()
+        .from("restaurants")
+        .select("currency")
+        .eq("id", user.restaurantId)
+        .maybeSingle();
+      if (houseError)
+        throw new HttpException(
+          `The house's own currency could not be read, so nothing was converted and nothing was changed: ${houseError.message}`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      const houseCode = String(
+        (houseRow as { currency?: string | null } | null)?.currency ?? "",
+      )
+        .trim()
+        .toUpperCase();
+      if (houseCode && houseCode !== next)
+        throw new HttpException(
+          `A paper is costed in the house's own money, ${houseCode}, and ${next} is not that. Nothing was converted and nothing was changed.`,
           HttpStatus.BAD_REQUEST,
         );
       fx = { rate: rate as number, from, rateDate };
@@ -2242,7 +2313,7 @@ export class DocumentsController {
       sentence:
         kind === "confirmed"
           ? `Currency CONFIRMED as ${next}: it did not change, and a manager has now said it is right. That is what ends a hold — the receiving screen will accept a price on this document from here. ${refile.sentence}`
-          : `Currency restated ${previous ? `from ${previous}` : "from NOT RECORDED (its money was withheld)"} to ${next}. ${refile.sentence}`,
+          : `Currency restated ${previous ? `from ${previous}` : "from NOT RECORDED (its money was withheld)"} to ${next}. ${(fx && labelCorrectedSentence(previous, fx.from)) || ""}${fx && labelCorrectedSentence(previous, fx.from) ? " " : ""}${refile.sentence}`,
       moneyRefiled: refile.snapshotReadable,
       linesRefiled: refile.linesRefiled,
       lineFailures: refile.lineFailures,
