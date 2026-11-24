@@ -653,6 +653,17 @@ html .mudavym.mdv-endpaper .mdv-ep-leaf input.mdv-ep-code[class*='border-red'] {
   flex-direction: column;
   gap: 22px;
 }
+/* Two steps, one hairline: it fills as the page turns, on the turn's curve. */
+.mdv-spread-progress {
+  height: 2px;
+  background: var(--paper-2);
+}
+.mdv-spread-progress__fill {
+  display: block;
+  height: 100%;
+  background: var(--seal);
+  transition: width 320ms cubic-bezier(0.32, 0.72, 0, 1);
+}
 .mdv-spread-stack > p:not(.mdv-alert):not(.mdv-note) {
   margin: 0;
   font-size: 15px;
@@ -714,6 +725,9 @@ html .mudavym.mdv-endpaper .mdv-spread :is(input:not([type]), input[type='text']
   .mdv-spread > *,
   .mdv-spread-stack > * {
     animation: none;
+  }
+  .mdv-spread-progress__fill {
+    transition: none;
   }
   .mdv-spread .mdv-btn,
   .mdv-spread button[type='submit'] {

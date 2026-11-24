@@ -74,4 +74,16 @@ describe('GetStarted on the open book', () => {
     const alert = await screen.findByRole('alert')
     expect(plate.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
+
+  it('shows two steps as one 2 px hairline that fills on the turn curve and stands still when motion is reduced', async () => {
+    render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    const bar = await screen.findByRole('progressbar', { name: 'Set-up progress' })
+    expect(bar).toHaveAttribute('aria-valuenow', '1')
+    expect(bar).toHaveAttribute('aria-valuetext', 'Step 1 of 2')
+    expect(screen.getByTestId('gs-progress-fill')).toHaveStyle({ width: '50%' })
+    const css = readFileSync(resolve(process.cwd(), 'src/components/brand/endpaper.css'), 'utf8')
+    expect(css).toMatch(/\.mdv-spread-progress \{\s*height: 2px;/)
+    expect(css).toMatch(/transition: width 320ms cubic-bezier\(0\.32, 0\.72, 0, 1\)/)
+    expect(css).toMatch(/prefers-reduced-motion: reduce\) \{[\s\S]*?\.mdv-spread-progress__fill \{\s*transition: none;/)
+  })
 })
