@@ -150,6 +150,19 @@ describe('at a 375 px phone (r105)', () => {
     expect(await screen.findByText(/V-101/)).toBeTruthy();
   });
 
+  it('the search, Find and Older papers hold the 44px touch floor (walk r105 finding 4)', async () => {
+    window.innerWidth = 375;
+    render(<ReceiptsNext />, { wrapper });
+    await openLane();
+    await screen.findByText(/Showing the newest 100 verified papers/);
+    for (const el of [
+      screen.getByRole('button', { name: 'Older papers' }),
+      screen.getByLabelText('Search verified papers by vendor or number'),
+      screen.getByRole('button', { name: 'Find' }),
+    ])
+      expect(parseFloat((el as HTMLElement).style.minHeight)).toBeGreaterThanOrEqual(44);
+  });
+
   it('a search at 375 needs Find or Enter, and the field says so (walk g2 note)', async () => {
     window.innerWidth = 375;
     render(<ReceiptsNext />, { wrapper });

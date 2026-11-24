@@ -2008,9 +2008,9 @@ export default function ReceiptsNext() {
                         defaultValue={data.verifiedTerm}
                         aria-label="Search verified papers by vendor or number"
                         placeholder="Vendor or number"
-                        style={{ flex: 1, minWidth: 0, fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--line-control, #8F8674)', background: 'var(--paper-0, #FBF8F1)' }}
+                        style={{ flex: 1, minWidth: 0, minHeight: 44, fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--line-control, #8F8674)', background: 'var(--paper-0, #FBF8F1)' }}
                       />
-                      <button type="submit" className="rc-ink" style={{ fontSize: 12, fontWeight: 600, border: 'none', background: 'transparent', color: 'var(--seal-deep, #14515C)', cursor: 'pointer' }}>
+                      <button type="submit" className="rc-ink" style={{ minHeight: 44, minWidth: 44, fontSize: 12, fontWeight: 600, border: 'none', background: 'transparent', color: 'var(--seal-deep, #14515C)', cursor: 'pointer' }}>
                         Find
                       </button>
                     </form>
@@ -2049,7 +2049,7 @@ export default function ReceiptsNext() {
                           onClick={data.loadOlderVerified}
                           disabled={data.olderBusy}
                           className="rc-ink"
-                          style={{ marginLeft: 6, fontSize: 12, fontWeight: 600, border: 'none', background: 'transparent', color: 'var(--seal-deep, #14515C)', textDecoration: 'underline', cursor: 'pointer' }}
+                          style={{ marginLeft: 6, minHeight: 44, minWidth: 44, display: 'inline-flex', alignItems: 'center', fontSize: 12, fontWeight: 600, border: 'none', background: 'transparent', color: 'var(--seal-deep, #14515C)', textDecoration: 'underline', cursor: 'pointer' }}
                         >
                           {data.olderBusy ? 'Reading older papers' : 'Older papers'}
                         </button>
