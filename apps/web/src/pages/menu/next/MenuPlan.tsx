@@ -36,13 +36,21 @@ import {
 import { lockPrice, releasePriceLock } from '../../../services/api/pricing';
 import { countByKind, oneNounFor } from './menu-line-kind';
 import { deviceClockNote, houseDay } from './menu-clock';
+import { formatMoney } from '../../../lib/currency';
+import { useHouseCurrencyCode } from '../../../hooks/queries/useHouseCurrencyCode';
 // Drawn with the cellar's classes wherever it is shown (/menu and onboarding).
 import '../../cellar/next/cellar-next.css';
 
 const EM = '—';
 
-function money(n: number | null | undefined): string {
-  return n === null || n === undefined ? EM : n.toFixed(2);
+/**
+ * A price in the house's own money (lib/currency formatMoney): "₺80,00" in a
+ * lira house, never the bare "80.00" the r23 walk read beside "₺80,00" on the
+ * same page. No code yet (still reading, or none recorded) prints the number
+ * with "(currency not recorded)", as /menu's rows do.
+ */
+function money(n: number | null | undefined, currency: string | null): string {
+  return n === null || n === undefined ? EM : formatMoney(n, currency);
 }
 
 /**
@@ -118,7 +126,7 @@ export function lineOutcome(line: PlanLine): LineOutcome {
  * lock on one kind of a wine the menu otherwise changes is a single price, and
  * is counted in prices.
  */
-export function planSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'current' | 'lines'>): string {
+export function planSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'current' | 'lines' | 'kitchenLines' | 'notOnThisFile'>): string {
   if (plan.current) return 'This is already the current menu. Choosing it again changes nothing.';
   const c = plan.counts;
   const parts: string[] = [];
@@ -165,6 +173,17 @@ export function planSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'curre
   const unmatched = unmatchedLines.length;
   if (unmatched > 0)
     more.push(`${plural(unmatched, 'line is', 'lines are')} not matched to a ${oneNounFor(unmatchedLines)[0]}, so no price`);
+  const kitchen = plan.kitchenLines ?? [];
+  if (kitchen.length > 0)
+    more.push(
+      `${plural(kitchen.length, 'kitchen line stays', 'kitchen lines stay')} on the menu and ${kitchen.length === 1 ? 'is' : 'are'} not carried (${kitchen.map((k) => k.name).join(', ')})`,
+    );
+  const gone = plan.notOnThisFile ?? [];
+  if (gone.length > 0)
+    more.push(
+      // A kitchen line is never in this list (computePlan keeps drinks only), and a drink is not always a wine.
+      `${plural(gone.length, 'drink on the current menu is', 'drinks on the current menu are')} not on this file and ${gone.length === 1 ? 'keeps its' : 'keep their'} price`,
+    );
   if (plan.dormantLocks.length > 0)
     more.push(
       `${plural(plan.dormantLocks.length, 'locked price is', 'locked prices are')} not on this menu and ${plan.dormantLocks.length === 1 ? 'stays' : 'stay'} locked`,
@@ -201,6 +220,19 @@ export function largestMove(plan: Pick<Plan, 'lines' | 'counts'>): {
   return { moved, kept: plan.counts.held_by_lock ?? 0, name: best?.name ?? '', kind: best?.kind ?? 'bottle', from: best?.from ?? 0, to: best?.to ?? 0 };
 }
 
+/** One drink that is not on this file, in a line: what it is and what the house keeps. */
+export function notOnFileWords(n: NonNullable<Plan['notOnThisFile']>[number], currency: string | null = null): string {
+  const name = [n.name, n.vintage].filter(Boolean).join(' ');
+  if (!n.inventoryId) return `${name}: not on the house's list, so nothing is kept for it`;
+  const kept = [
+    n.bottle !== null ? `bottle ${money(n.bottle, currency)}` : null,
+    n.glass !== null ? `glass ${money(n.glass, currency)}` : null,
+  ].filter(Boolean);
+  const locked = n.locked.length ? `, ${n.locked.join(' and ')} locked` : '';
+  const gone = n.active === false ? 'the house no longer sells it; its row ' : '';
+  return `${name}: ${gone}keeps ${kept.length ? kept.join(', ') : 'no price (it had none)'}${locked}`;
+}
+
 /** Who set the price that would be replaced, in words. */
 function setWords(k: PlanKind, zone?: string | null): string {
   if (!k.lastSet) return '';
@@ -222,22 +254,22 @@ export function orderedRows(lines: PlanLine[]): Row[] {
 }
 
 /** One kind of one line, in the words of what choosing the menu does to it. */
-export function kindWords(line: PlanLine, k: PlanKind): string {
+export function kindWords(line: PlanLine, k: PlanKind, currency: string | null = null): string {
   switch (k.result) {
     case 'change':
-      return `becomes ${money(k.menuPrice)} (now ${money(k.housePrice)})`;
+      return `becomes ${money(k.menuPrice, currency)} (now ${money(k.housePrice, currency)})`;
     case 'unchanged':
-      return `already ${money(k.housePrice)}`;
+      return `already ${money(k.housePrice, currency)}`;
     case 'held_by_lock':
-      return `stays ${money(k.lock?.lockedPrice ?? k.housePrice)}, locked`;
+      return `stays ${money(k.lock?.lockedPrice ?? k.housePrice, currency)}, locked`;
     case 'blank_kept':
-      return `blank on the menu; the house keeps ${money(k.housePrice)} (noted on the line)`;
+      return `blank on the menu; the house keeps ${money(k.housePrice, currency)} (noted on the line)`;
     case 'blank_never_priced':
       return line.flag === 'blank_no_house_price' ? 'no price on the menu or at the house (noted on the line)' : EM;
     case 'not_linked':
       return 'not matched to a wine, so no price';
     case 'new_wine':
-      return k.menuPrice === null ? EM : `new to the house at ${money(k.menuPrice)}`;
+      return k.menuPrice === null ? EM : `new to the house at ${money(k.menuPrice, currency)}`;
     default:
       // A result this page does not know is still shown, never dropped.
       return String(k.result).replace(/_/g, ' ');
@@ -350,6 +382,7 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
   const [said, setSaid] = useState<string | null>(null);
   const [moved, setMoved] = useState(false);
   const q = useQuery({ queryKey: ['menu', 'plan', menuId], queryFn: () => getMenuPlan(menuId) });
+  const currency = useHouseCurrencyCode();
   const ready = !!q.data;
   useEffect(() => {
     if (!ready || focused.current || !heading.current) return;
@@ -452,12 +485,12 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
                   >
                     <td>{r.line.name}</td>
                     <td className="cl-dim">{r.k.kind}</td>
-                    <td>{money(r.k.housePrice)}</td>
-                    <td>{money(r.k.menuPrice)}</td>
+                    <td>{money(r.k.housePrice, currency)}</td>
+                    <td>{money(r.k.menuPrice, currency)}</td>
                     <td className="cl-dim">
                       {r.k.result === 'held_by_lock' && r.k.lock
-                        ? `Stays ${money(r.k.lock.lockedPrice)}: locked by ${r.k.lock.lockedBy.name ?? 'someone whose name is not on record'} on ${day(r.k.lock.lockedAt, plan.timezone)}`
-                        : `Becomes ${money(r.k.menuPrice)}${setWords(r.k, plan.timezone) ? `; it was ${setWords(r.k, plan.timezone)}` : ''}`}
+                        ? `Stays ${money(r.k.lock.lockedPrice, currency)}: locked by ${r.k.lock.lockedBy.name ?? 'someone whose name is not on record'} on ${day(r.k.lock.lockedAt, plan.timezone)}`
+                        : `Becomes ${money(r.k.menuPrice, currency)}${setWords(r.k, plan.timezone) ? `; it was ${setWords(r.k, plan.timezone)}` : ''}`}
                     </td>
                     <td>
                       <KeepSwitch
@@ -516,8 +549,8 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
                       {l.name}
                       {l.vintage ? ` ${l.vintage}` : ''}
                     </td>
-                    <td className="cl-dim">{kindWords(l, l.bottle)}</td>
-                    <td className="cl-dim">{kindWords(l, l.glass)}</td>
+                    <td className="cl-dim">{kindWords(l, l.bottle, currency)}</td>
+                    <td className="cl-dim">{kindWords(l, l.glass, currency)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -526,13 +559,30 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
         </details>
       ) : null}
 
+      {(plan.notOnThisFile ?? []).length > 0 ? (
+        <div style={{ marginTop: 12 }} data-testid="menu-plan-not-on-file">
+          <p className="cl-said">
+            Not on this file: what the current menu lists and this one does not. Choosing it leaves{' '}
+            {(plan.notOnThisFile ?? []).length === 1 ? 'it as it is' : 'them as they are'}: the price, the
+            house&apos;s row and any lock stay.
+          </p>
+          <ul className="cl-said" style={{ paddingLeft: 18, marginTop: 4 }}>
+            {(plan.notOnThisFile ?? []).map((n) => (
+              <li key={n.menuItemId} data-testid="menu-plan-not-on-file-line">
+                {notOnFileWords(n, currency)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       {plan.dormantLocks.length > 0 ? (
         <div style={{ marginTop: 12 }} data-testid="menu-plan-dormant">
           <p className="cl-said">Locked, and not on this menu. They stay locked and unchanged:</p>
           <ul className="cl-said" style={{ paddingLeft: 18, marginTop: 4 }}>
             {plan.dormantLocks.map((d) => (
               <li key={d.lockId}>
-                {d.wineName ?? 'A wine'} ({d.kind}) at {money(d.lockedPrice)}
+                {d.wineName ?? 'A wine'} ({d.kind}) at {money(d.lockedPrice, currency)}
                 {d.active === false ? ', removed from inventory' : ''}
               </li>
             ))}
@@ -550,7 +600,7 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
         <p className="cl-standing" style={{ marginTop: 12 }} data-testid="menu-plan-change-summary">
           {plural(move.moved, 'price moves', 'prices move')}.{' '}
           {move.name
-            ? `The largest is ${move.name}, ${move.kind}: ${money(move.from)} to ${money(move.to)}, ${money(Math.abs(move.to - move.from))} ${move.to >= move.from ? 'more' : 'less'}. `
+            ? `The largest is ${move.name}, ${move.kind}: ${money(move.from, currency)} to ${money(move.to, currency)}, ${money(Math.abs(move.to - move.from), currency)} ${move.to >= move.from ? 'more' : 'less'}. `
             : ''}
           {move.kept > 0 ? `${plural(move.kept, 'locked price stays', 'locked prices stay')} as ${move.kept === 1 ? 'it is' : 'they are'}.` : 'No locked price is in the way.'}
         </p>

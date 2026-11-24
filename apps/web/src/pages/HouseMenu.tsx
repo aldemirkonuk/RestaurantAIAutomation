@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BrandMark } from '../components/brand/BrandMark'
 import {
@@ -8,6 +8,9 @@ import {
   type MenuImportReviewItem,
 } from '../services/api/menus'
 import { isKitchenLine, lineNeedsPencil, lineSourceCrop, readProof } from '../lib/firstProof'
+import { settingsApi } from '../services/api/settings'
+import { formatMoney } from '../lib/currency'
+import { formatHouseNumber } from '../lib/house-number'
 
 const sectionOrder = [
   'wine',
@@ -41,12 +44,45 @@ function sectionName(value: string) {
   return names[value] ?? value.replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
-function price(item: MenuImportReviewItem) {
+/**
+ * The house's money, read once for the proof's prices. `read` is false until
+ * the answer is in, so a price is never said to have no currency while the
+ * currency is still being asked for.
+ */
+type HouseMoney = { read: boolean; code: string | null }
+
+/**
+ * A line's prices in the house's money: "glass ₺14,00 · bottle ₺1.250,00".
+ * It printed "1250 bottle" (r23 walk), a bare figure in a lira house. Before
+ * the answer is in, the figure stands alone; a house with no code says so.
+ */
+export function proofPrice(item: Pick<MenuImportReviewItem, 'byGlassPrice' | 'bottlePrice'>, money: HouseMoney) {
+  const say = (n: number) => (money.read ? formatMoney(n, money.code) : formatHouseNumber(n, null, { digits: 2 }))
   const parts = [
-    item.byGlassPrice != null ? `${item.byGlassPrice} glass` : null,
-    item.bottlePrice != null ? `${item.bottlePrice} bottle` : null,
+    item.byGlassPrice != null ? `glass ${say(item.byGlassPrice)}` : null,
+    item.bottlePrice != null ? `bottle ${say(item.bottlePrice)}` : null,
   ].filter(Boolean)
   return parts.join(' · ')
+}
+
+/**
+ * Read with a plain request, not react-query: the page's tests (here and in
+ * ArrivalFlow) mount it with no query client, and one read is all it needs.
+ * A failed read is "no code": the price says so, never a sign.
+ */
+function useHouseMoney(): HouseMoney {
+  const [money, setMoney] = useState<HouseMoney>({ read: false, code: null })
+  useEffect(() => {
+    let live = true
+    settingsApi
+      .houseCurrency()
+      .then((c) => live && setMoney({ read: true, code: c.readable ? (c.code ?? null) : null }))
+      .catch(() => live && setMoney({ read: true, code: null }))
+    return () => {
+      live = false
+    }
+  }, [])
+  return money
 }
 
 export default function HouseMenu() {
@@ -60,6 +96,7 @@ export default function HouseMenu() {
   const [addName, setAddName] = useState('')
   const [addSection, setAddSection] = useState('')
   const sourceImage = proof?.sourceImage ?? null
+  const money = useHouseMoney()
 
   const kitchen = items.filter(isKitchenLine)
   const drinkItems = items.filter((item) => !isKitchenLine(item))
@@ -217,7 +254,7 @@ export default function HouseMenu() {
                             <span className="mt-1 block text-xs italic text-[#6d685f]">Needs a place</span>
                           )}
                         </span>
-                        <span className="font-mono text-sm">{price(item)}</span>
+                        <span className="font-mono text-sm">{proofPrice(item, money)}</span>
                       </button>
                       {expanded && (
                         <div className="mb-5 ml-9 grid gap-5 border-l border-dashed border-[#1a5e6b] bg-white p-5 sm:grid-cols-2">
