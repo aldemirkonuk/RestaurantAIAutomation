@@ -41,7 +41,11 @@ import { createAnchorScanner, type AnchorScanner } from './anchors.scan'
 const WEB = join(__dirname, '..', '..', '..')
 
 /** `<tour id> <selector>` → why the scan cannot check it. Empty today. */
-const CANNOT_CHECK: Record<string, string> = {}
+const CANNOT_CHECK: Record<string, string> = {
+  // The strip loads as code when asked for (`lazy(() => loaders.whoIsWriting().then(...))`),
+  // a shape the scan cannot follow into WhoIsWriting.tsx; the section's own spec pins the label.
+  'communications section[aria-label="Who is writing"]': 'WhoIsWriting is a lazy chunk named by a loader the scan cannot follow',
+}
 
 /** Tours a person can still reach from a page or from Help. */
 const LIVE = (Object.keys(PAGE_TOUR_ROUTES) as PageTourId[]).filter((id) => TOUR_REGISTRY[id])
