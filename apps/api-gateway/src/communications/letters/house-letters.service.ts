@@ -1150,7 +1150,22 @@ export class HouseLettersService {
           "A reply goes to the address that wrote the letter it answers, and to no other. Write to someone else from the vendor book. Nothing was queued and nothing was sent.",
         );
       }
-      person = { kind: row.kind, address: row.from_address };
+      // The recipient is the stored sender of this thread's newest inbound letter
+      // that a person wrote (ADR 0396), not whichever letter happened to be
+      // answered: a bounce or auto-reply is no one to write back to, and a
+      // thread that has only those has no one at all.
+      const writer = await this.newestPersonWriter(restaurantId, row);
+      if (!writer) {
+        throw new UnprocessableEntityException(
+          "That thread has no letter a person wrote, only automatic mail, so there is no one to answer. Nothing was queued and nothing was sent.",
+        );
+      }
+      if (!sameAddress(writer.address, personTo)) {
+        throw new UnprocessableEntityException(
+          "A reply goes to the address that wrote the newest letter a person sent on that thread, and to no other. Nothing was queued and nothing was sent.",
+        );
+      }
+      person = writer;
     } else if (row.provider_id !== providerId) {
       throw new UnprocessableEntityException(
         "The letter this answers is from a different vendor. A reply goes to the vendor of that letter; write a new letter to write to someone else. Nothing was queued and nothing was sent.",
@@ -1189,6 +1204,56 @@ export class HouseLettersService {
       inReplyTo: own,
       references: chain.length ? chain.join(" ") : null,
     };
+  }
+
+  /**
+   * The stored sender of the newest inbound letter on a team or guest thread
+   * that a person wrote (ADR 0396): automatic mail (auto-submitted, or from a
+   * mailer-daemon or postmaster) never counts, in the same sense the Mail
+   * list's SQL flags it. A thread with no thread key is the one letter. Null
+   * when no such letter exists, or the newest one is not a team or guest's.
+   */
+  private async newestPersonWriter(
+    restaurantId: string,
+    answered: Record<string, any>,
+  ): Promise<{ kind: "team" | "guest"; address: string } | null> {
+    let rows: Record<string, any>[] = [answered];
+    if (typeof answered.thread_key === "string" && answered.thread_key.trim()) {
+      const { data, error } = await this.db.client
+        .from("procurement_conversations")
+        .select("id, restaurant_id, provider_id, kind, from_address, direction, email_headers")
+        .eq("restaurant_id", restaurantId)
+        .eq("thread_key", answered.thread_key)
+        .eq("direction", "inbound")
+        .order("received_at", { ascending: false })
+        .limit(50);
+      if (error) {
+        throw new BadRequestException(
+          `The thread this answers could not be read (${error.message}). Nothing was queued and nothing was sent.`,
+        );
+      }
+      rows = ((data as Record<string, any>[] | null) ?? []).filter(
+        (r) => r.restaurant_id === restaurantId,
+      );
+    }
+    const fromHeader = (r: Record<string, any>) => String(r.email_headers?.from ?? "");
+    const automatic = (r: Record<string, any>) =>
+      r.email_headers?.transport?.autoSubmitted === "true" ||
+      /(^|[<\s"'])(mailer-daemon|postmaster)@/i.test(fromHeader(r)) ||
+      /^(mailer-daemon|postmaster)@/i.test(String(r.from_address ?? ""));
+    const newest = rows.find(
+      (r) => String(r.direction).toLowerCase() === "inbound" && !automatic(r),
+    );
+    if (
+      !newest ||
+      newest.provider_id ||
+      (newest.kind !== "team" && newest.kind !== "guest") ||
+      typeof newest.from_address !== "string" ||
+      !newest.from_address
+    ) {
+      return null;
+    }
+    return { kind: newest.kind, address: newest.from_address };
   }
 
   private async vendorNameOf(restaurantId: string, providerId: string | null): Promise<string | null> {

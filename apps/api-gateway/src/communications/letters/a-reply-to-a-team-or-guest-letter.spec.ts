@@ -41,13 +41,19 @@ const GATES = [
   { redeem, issue: async () => ({}) },
 ] as [any, any];
 
-function stub(rows: Record<string, unknown[]>) {
+function stub(rows: Record<string, unknown[]>, threadRows?: unknown[]) {
   const inserts: Record<string, any>[] = [];
-  const chain = (data: unknown[]) => {
+  const chain = (table: string, all: unknown[]) => {
+    let data = all;
     const self: any = {};
+    // The thread read (eq thread_key) is the one place the table answers with
+    // the thread's newest-first letters rather than the single letter asked for.
+    self.eq = (col: string) => {
+      if (col === "thread_key" && threadRows && table === "procurement_conversations") data = threadRows;
+      return self;
+    };
     for (const m of [
       "select",
-      "eq",
       "in",
       "is",
       "or",
@@ -67,7 +73,7 @@ function stub(rows: Record<string, unknown[]>) {
     return self;
   };
   return {
-    db: { client: { from: (t: string) => chain(rows[t] ?? []) } } as any,
+    db: { client: { from: (t: string) => chain(t, rows[t] ?? []) } } as any,
     inserts,
   };
 }
@@ -103,15 +109,19 @@ function run(
     to?: string;
     role?: string | null;
     dto?: Record<string, unknown>;
+    thread?: unknown[];
   } = {},
 ) {
-  const { db, inserts } = stub({
-    providers: [],
-    provider_contacts: [],
-    analytics_insights: [],
-    integration_oauth_connections: [GRANT],
-    procurement_conversations: answered,
-  });
+  const { db, inserts } = stub(
+    {
+      providers: [],
+      provider_contacts: [],
+      analytics_insights: [],
+      integration_oauth_connections: [GRANT],
+      procurement_conversations: answered,
+    },
+    over.thread,
+  );
   const sender = new HouseSenderService(db, { get: () => undefined } as any);
   const oauth = {
     getAccessToken: jest.fn().mockResolvedValue("ya29.token"),
@@ -285,5 +295,58 @@ describe("what it may not do, refused before anything is queued", () => {
         dto: { to: GUEST, subject: "s", body: "b", answers: ANSWERED } as any,
       }),
     ).rejects.toBeInstanceOf(UnprocessableEntityException);
+  });
+
+  // ADR 0396 / DD-r104-23: the exception is for the stored sender of the
+  // thread's newest inbound letter that a person wrote, never an automatic one.
+  it("a thread with only automatic mail on it (auto-submitted, or from a mailer-daemon)", async () => {
+    const bounce = theirLetter({
+      from_address: "mailer-daemon@x.example",
+      email_headers: { from: "Mail Delivery Subsystem <mailer-daemon@x.example>" },
+    });
+    await refused([bounce], UnprocessableEntityException, /only automatic mail/, {
+      to: "mailer-daemon@x.example",
+      thread: [bounce],
+    });
+    const auto = theirLetter({ email_headers: { transport: { autoSubmitted: "true" } } });
+    await refused([auto], UnprocessableEntityException, /only automatic mail/, {
+      thread: [auto],
+    });
+  });
+
+  it("an address that wrote an older letter, once another person wrote the newest", () =>
+    refused(
+      [theirLetter()],
+      UnprocessableEntityException,
+      /newest letter a person sent/,
+      {
+        thread: [
+          theirLetter({ id: "newer-1", from_address: "bob@y.example" }),
+          theirLetter(),
+        ],
+      },
+    ));
+
+  it("a newest person-written letter that is another house's", () =>
+    refused(
+      [theirLetter()],
+      UnprocessableEntityException,
+      /only automatic mail/,
+      {
+        thread: [
+          theirLetter({ restaurant_id: "bbbbbbbb-0000-4000-8000-bbbbbbbbbbbb" }),
+        ],
+      },
+    ));
+
+  it("is allowed at the sender of the newest person-written letter, skipping an automatic one after it", async () => {
+    const { p, inserts } = run([theirLetter()], {
+      thread: [
+        theirLetter({ id: "auto-1", from_address: "mailer-daemon@x.example" }),
+        theirLetter(),
+      ],
+    });
+    await p;
+    expect(inserts.length).toBeGreaterThan(0);
   });
 });
