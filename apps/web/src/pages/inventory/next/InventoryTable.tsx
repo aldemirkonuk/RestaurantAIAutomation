@@ -56,7 +56,7 @@ export const GROUP_PX = 30;
 const COLUMNS = ['Title', 'Type', 'Zone', 'Live / shadow · par', 'Vel/day', 'Runway', 'Your price', 'Value', 'Used in', 'Status'];
 
 /** The headers that sort, and the sort each one sets. */
-const HEADER_SORT: Partial<Record<string, SortId>> = { Title: 'name', 'Vel/day': 'pace', Value: 'value' };
+const HEADER_SORT: Partial<Record<string, SortId>> = { Title: 'name', 'Vel/day': 'pace', Value: 'value', 'Used in': 'used' };
 
 function ParBar({ row }: { row: InvRow }) {
   if (row.stock === null || row.par === null || row.par <= 0) return null;

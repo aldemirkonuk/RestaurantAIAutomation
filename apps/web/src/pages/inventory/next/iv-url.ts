@@ -39,7 +39,7 @@ export interface IvView {
   open: string | null;
 }
 
-const SORTS: readonly SortId[] = ['needs', 'name', 'value', 'pace'];
+const SORTS: readonly SortId[] = ['needs', 'name', 'value', 'pace', 'used'];
 
 export const IV_DEFAULT: IvView = { chip: 'all', q: '', zone: '', type: '', sort: 'needs', view: 'table', kind: '', open: null };
 
