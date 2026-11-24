@@ -17,6 +17,8 @@
  * on a heading.
  */
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -115,4 +117,15 @@ describe('the composer keeps the 11 px type floor the Mail tab has', () => {
       expect(sizes.filter((s) => s.px < 11)).toEqual([]);
     });
   }
+});
+
+describe('the drafted-letters list beside the composer keeps the same floor (r106)', () => {
+  // HouseDrafts is not part of the open sheet, so the render scan above cannot see it:
+  // its header sat at 9 px (HouseDrafts.tsx:102) when the sheet's labels were raised.
+  it('sets no font size below 11 px', () => {
+    const src = readFileSync(join(__dirname, 'HouseDrafts.tsx'), 'utf8');
+    const sizes = [...src.matchAll(/fontSize:\s*([\d.]+)/g)].map((m) => Number(m[1]));
+    expect(sizes.length).toBeGreaterThan(3);
+    expect(sizes.filter((px) => px < 11)).toEqual([]);
+  });
 });
