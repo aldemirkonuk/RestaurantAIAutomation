@@ -41,7 +41,6 @@ import type { LetterFacts } from './MailThread';
 const MailThread = lazy(() => import('./MailThread').then((m) => ({ default: m.MailThread })));
 import {
   MAIL_KIND_FILTERS,
-  READS_ALL_LINE,
   READS_ALL_SWITCH_OFF_WORDS,
   READ_ALL_OFFER,
   READ_ALL_OFFER_WORDS,
