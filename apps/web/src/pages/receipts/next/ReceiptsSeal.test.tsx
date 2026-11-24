@@ -330,6 +330,22 @@ describe('the seal is minted when the gesture begins, not by the write', () => {
     expect(await screen.findByText(/could not be read \(boom\)/)).toBeTruthy();
   });
 
+  it("offers the paper's own filed money as the one to convert from when it is not the house's", async () => {
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    openCurrencyChanger();
+    const picker = screen.getByLabelText('Currency this invoice is denominated in') as HTMLSelectElement;
+    await screen.findByLabelText('Currency this invoice is denominated in');
+    await waitFor(() => expect([...picker.options].map((o) => o.value)).toContain('EUR'));
+    fireEvent.change(picker, { target: { value: 'EUR' } });
+    fireEvent.change(await screen.findByLabelText('How many USD one EUR is worth'), {
+      target: { value: '1.08' },
+    });
+    holdToApprove(/Hold to file this invoice in USD at 1 EUR = 1.08 USD/);
+    await waitFor(() => expect(api.restateCurrency).toHaveBeenCalled());
+    expect(api.restateCurrency.mock.calls[0][4]).toMatchObject({ fromCurrency: 'EUR', rate: 1.08 });
+  });
+
   it('without a rate it only relabels, as before', async () => {
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
