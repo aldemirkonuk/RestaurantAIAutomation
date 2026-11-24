@@ -82,6 +82,11 @@ import {
 // for one tab; it now renders `ReceiptsCredits`, and nothing on a live route
 // imports the legacy page (its only importer is App.tsx's `legacy` slot, which
 // `receipts` being in LIVE_PAGES never reaches outside a QA override).
+/** 'filed at 1 TRY = ...' reads 'Costed at 1 TRY = ...' (r106: never 'Costed filed at'). */
+function costedAt(sentence: string): string {
+  return `Costed at ${sentence.replace(/^filed at /, '')}`;
+}
+
 const ReceiptsCredits = lazy(() =>
   import('./ReceiptsCredits').then((m) => ({ default: m.ReceiptsCredits })),
 );
@@ -279,7 +284,7 @@ function CurrencyBlock({
         style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: 0 }}
       >
         This invoice&rsquo;s money is filed in {moneyName(filed)}.
-        {doc.filedAt?.sentence ? ` Costed ${doc.filedAt.sentence}.` : ''}{' '}
+        {doc.filedAt?.sentence ? ` ${costedAt(doc.filedAt.sentence)}.` : ''}{' '}
         <button
           ref={changeRef}
           type="button"
@@ -325,7 +330,7 @@ function CurrencyBlock({
 
       {doc.filedAt?.sentence && (
         <p data-testid="filed-at" style={{ fontSize: 11.5, color: 'var(--ink-1, #211C16)', margin: '6px 0 0' }}>
-          {`Costed ${doc.filedAt.sentence}.`}
+          {`${costedAt(doc.filedAt.sentence)}.`}
         </p>
       )}
       {doc.filedAtReason && (

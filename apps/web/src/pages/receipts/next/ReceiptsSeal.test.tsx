@@ -316,7 +316,8 @@ describe('the seal is minted when the gesture begins, not by the write', () => {
     };
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
-    expect(await screen.findByText(/Costed filed at 1 TRY = 0\.0295 USD on 20 Nov\./)).toBeTruthy();
+    expect(await screen.findByText(/Costed at 1 TRY = 0\.0295 USD on 20 Nov\./)).toBeTruthy();
+    expect(screen.queryByText(/Costed filed/)).toBeNull();
   });
 
   it('a rate that could not be read is said, not left out', async () => {
