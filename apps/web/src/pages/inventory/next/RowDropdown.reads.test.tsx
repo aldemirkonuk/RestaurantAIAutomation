@@ -117,6 +117,8 @@ function row(over: Partial<InvRow> = {}): InvRow {
     costProvenance: 'invoice',
     value: 120,
     lastCountedAt: '2026-09-30T10:00:00Z',
+    rollupReadable: true,
+    locationsReadable: true,
     openMl: 0,
     zones: [{ locationId: 'z1', qty: 3 }],
     providerId: 'p1',
