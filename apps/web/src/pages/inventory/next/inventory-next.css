@@ -1162,8 +1162,8 @@ html .mdv-ovl .iv-sheet-body .mdv-select__control {
   border-bottom: 1px solid var(--paper-2);
   background: var(--paper-0);
   /* Only transform and opacity move. */
-  animation: ivc-in 320ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
-  animation-delay: calc(var(--i, 0) * 28ms);
+  animation: ivc-in 200ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: calc(var(--i, 0) * 18ms);
   transition: transform 90ms ease-out;
 }
 .ivc-card[data-still='true'] {
