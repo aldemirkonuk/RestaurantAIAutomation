@@ -32,13 +32,15 @@ import { Mail, MessageCircle } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { EM, MONO, SANS, failedReadWords, fmtWhen, managesHouse } from './cm-format';
 import { IntakeHealthSheet } from './IntakeHealthSheet';
-import { MailSetup } from './MailSetup';
 import { FadeAway, MailMotionStyles, enterDelay, useEnteringKeys } from './mail-motion';
 import type { LetterFacts } from './MailThread';
+import { CODE_HOLD_PANEL_PX, CodeHold, loaders, warmMailSetup, warmMailThread } from './mail-code';
 
 // The letters are read only once a thread is opened, so their code is fetched then;
 // the tab says it is opening them while it arrives.
-const MailThread = lazy(() => import('./MailThread').then((m) => ({ default: m.MailThread })));
+const MailThread = lazy(() => loaders.thread().then((m) => ({ default: m.MailThread })));
+// The setup page is read only after its entry is clicked, so its code is too.
+const MailSetup = lazy(() => loaders.setup().then((m) => ({ default: m.MailSetup })));
 import {
   MAIL_KIND_FILTERS,
   READS_ALL_LINE,
@@ -269,6 +271,8 @@ function PersonRow({
         type="button"
         data-testid="mail-person"
         onClick={onOpen}
+        onPointerEnter={warmMailThread}
+        onFocus={warmMailThread}
         className="cm-row grid w-full gap-0.5 px-1 py-2.5 text-left"
         style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: SANS, minHeight: PERSON_ROW_MIN }}
       >
@@ -366,6 +370,8 @@ function PersonThreads({
                   type="button"
                   data-testid="mail-thread-row"
                   onClick={() => onOpenThread(t.key)}
+                  onPointerEnter={warmMailThread}
+                  onFocus={warmMailThread}
                   className="cm-row grid w-full gap-0.5 px-1 py-2.5 text-left"
                   style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: SANS }}
                 >
@@ -499,7 +505,7 @@ function People({
         <p data-testid="people-empty" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', maxWidth: '68ch' }}>
           {emptyListWords(reader, summary, { waitingOnly, on, reading })}{' '}
           {!waitingOnly && (
-            <button type="button" data-testid="empty-setup" onClick={onSetup} style={LINK_BUTTON}>
+            <button type="button" data-testid="empty-setup" onClick={onSetup} onPointerEnter={warmMailSetup} onFocus={warmMailSetup} style={LINK_BUTTON}>
               {setupWords}
             </button>
           )}
@@ -812,7 +818,7 @@ export function MailTab({
             How mail reaches the house
           </button>
           {!setup && (
-            <button type="button" data-testid="setup-link" onClick={openSetup} style={{ ...LINK_BUTTON, fontWeight: 500 }}>
+            <button type="button" data-testid="setup-link" onClick={openSetup} onPointerEnter={warmMailSetup} onFocus={warmMailSetup} style={{ ...LINK_BUTTON, fontWeight: 500 }}>
               Mail setup
             </button>
           )}
@@ -822,6 +828,8 @@ export function MailTab({
             type="button"
             data-testid="status-setup"
             onClick={openSetup}
+            onPointerEnter={warmMailSetup}
+            onFocus={warmMailSetup}
             style={{
               justifySelf: 'start',
               marginTop: 4,
@@ -865,23 +873,19 @@ export function MailTab({
       </header>
 
       {setup ? (
-        <MailSetup
-          status={status}
-          sender={senderQ.data ?? null}
-          senderFailed={senderQ.isError}
-          conversationWords={senderQ.data?.conversation?.words ?? null}
-          mailboxSwitchedOff={mailboxDoor.state === 'switched_off'}
-          readerGranted={readerFailed || !reader ? 'unknown' : reader.granted}
-          onBack={() => back({ setup: null })}
-        />
+        <Suspense fallback={<CodeHold testId="setup-opening" height={CODE_HOLD_PANEL_PX}>Opening the setup…</CodeHold>}>
+          <MailSetup
+            status={status}
+            sender={senderQ.data ?? null}
+            senderFailed={senderQ.isError}
+            conversationWords={senderQ.data?.conversation?.words ?? null}
+            mailboxSwitchedOff={mailboxDoor.state === 'switched_off'}
+            readerGranted={readerFailed || !reader ? 'unknown' : reader.granted}
+            onBack={() => back({ setup: null })}
+          />
+        </Suspense>
       ) : threadKey ? (
-        <Suspense
-          fallback={
-            <p role="status" data-testid="letters-opening" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
-              Opening the letters…
-            </p>
-          }
-        >
+        <Suspense fallback={<CodeHold testId="letters-opening" height={CODE_HOLD_PANEL_PX}>Opening the letters…</CodeHold>}>
         <MailThread
           threadKey={threadKey}
           withKey={withKey}
