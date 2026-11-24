@@ -350,7 +350,7 @@ describe("cost at sale (P9, D4)", () => {
     );
     const k = snapshotLineCost(src(30), "volume", 150, 750, 1);
     expect(k).toMatchObject({
-      cost_basis: "invoice_lot_wac",
+      cost_basis: "pour_lot_wac",
       cost_source_lot_id: "lot-1",
       cost_source_order_id: "ord-1",
     });
@@ -409,7 +409,10 @@ describe("cost at sale (P9, D4)", () => {
     ).toMatchObject({
       unitCost: 99,
       basis: "last_purchase_price",
-      lotId: null,
+      // r102: the lot a pour draws from first is named under this basis too,
+      // so the invoice that verifies its delivery can restate the line.
+      lotId: "old",
+      orderId: "o1",
     });
     expect(
       pickSaleCostSource({ last_purchase_price: 0 }, null, lots),
