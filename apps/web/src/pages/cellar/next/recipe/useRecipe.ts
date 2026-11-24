@@ -13,6 +13,7 @@
  * (gap G8) instead of waiting for a page reload.
  */
 import { useEffect, useState } from 'react';
+import { invalidateItemReads } from '../../../inventory/next/item-queries';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { draftId, draftKey, dropDraft } from './drafts';
@@ -206,7 +207,11 @@ export function useRemoveDish(dishId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => dishesApi.remove(activeRestaurantId as string, dishId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: dishesKey(activeRestaurantId) }),
+    onSuccess: () => {
+      // A removed dish stops using its goods: their "Used in" must not stay warm.
+      invalidateItemReads(qc, activeRestaurantId);
+      return qc.invalidateQueries({ queryKey: dishesKey(activeRestaurantId) });
+    },
   });
 }
 
@@ -324,6 +329,8 @@ export function useSaveRecipe(cocktailId: string | RecipeOwner) {
     // must still clear its draft, or the leave warning fires for saved work.
     onSuccess: () => {
       dropDraft(storeKey);
+      // The goods this recipe names (and those it no longer names) change their "Used in".
+      invalidateItemReads(qc, activeRestaurantId);
       // A dish's save moves its list row too (has a recipe, its cost).
       if (ownerOf(cocktailId).kind === 'dish') void qc.invalidateQueries({ queryKey: dishesKey(activeRestaurantId) });
       // A drink's save moves its cost on the cocktail list.
