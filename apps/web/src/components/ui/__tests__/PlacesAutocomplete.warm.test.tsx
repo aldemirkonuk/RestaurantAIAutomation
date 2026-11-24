@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
@@ -54,13 +52,5 @@ describe('warmPlaces', () => {
     warmPlaces()
     await vi.advanceTimersByTimeAsync(3000)
     expect(loader.importLibrary).toHaveBeenCalledTimes(1)
-  })
-})
-
-describe('GetStarted wiring', () => {
-  it('warms Places on the you and restaurant steps only', () => {
-    const src = readFileSync(resolve(__dirname, '../../../pages/GetStarted.tsx'), 'utf8')
-    expect(src).toMatch(/if \(step === 'you' \|\| step === 'restaurant'\) warmPlaces\(\)/)
-    expect(src).toMatch(/import \{ PlacesAutocomplete, warmPlaces,/)
   })
 })

@@ -26,7 +26,7 @@ vi.mock('../../services/api/client', async (importOriginal) => ({
 vi.mock('../../services/api/menus', () => ({ importMenu }))
 vi.mock('../../components/brand/BrandMark', () => ({ BrandMark: () => <span>Mudavym</span> }))
 vi.mock('../../lib/googleMaps', () => ({ isMapsConfigured: () => true }))
-vi.mock('../../components/ui/PlacesAutocomplete', () => ({ PlacesAutocomplete: () => null }))
+vi.mock('../../components/ui/PlacesAutocomplete', () => ({ warmPlaces: vi.fn(), PlacesAutocomplete: () => null }))
 vi.mock('../../components/ui/CountryCombobox', () => ({
   CountryCombobox: ({ onChange }: { onChange: (value: string) => void }) => (
     <button type="button" onClick={() => onChange('Türkiye')}>Choose Türkiye</button>

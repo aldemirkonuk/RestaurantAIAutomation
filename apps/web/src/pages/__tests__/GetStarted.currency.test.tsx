@@ -44,6 +44,7 @@ vi.mock('../../lib/browserTimezone', () => ({ getBrowserTimezone: () => browserZ
 vi.mock('../../components/brand/BrandMark', () => ({ BrandMark: () => <span>Mudavym</span> }))
 vi.mock('../../lib/googleMaps', () => ({ isMapsConfigured: () => maps.on }))
 vi.mock('../../components/ui/PlacesAutocomplete', () => ({
+  warmPlaces: vi.fn(),
   PlacesAutocomplete: (props: { onPlaceSelect: (place: unknown) => void }) => {
     placeProps.current = props as unknown as Record<string, unknown>
     return (

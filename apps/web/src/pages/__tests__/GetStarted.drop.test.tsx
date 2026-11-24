@@ -26,7 +26,7 @@ vi.mock('../../services/api/settings', () => ({
 }))
 vi.mock('../../components/brand/BrandMark', () => ({ BrandMark: () => <span>Mudavym</span> }))
 vi.mock('../../lib/googleMaps', () => ({ isMapsConfigured: () => false }))
-vi.mock('../../components/ui/PlacesAutocomplete', () => ({ PlacesAutocomplete: () => null }))
+vi.mock('../../components/ui/PlacesAutocomplete', () => ({ warmPlaces: vi.fn(), PlacesAutocomplete: () => null }))
 vi.mock('../../components/onboarding/MenuCsvUpload', () => ({
   MenuCsvUpload: ({ droppedFiles }: { droppedFiles?: File[] | null }) => (
     <div data-testid="file-box">{(droppedFiles ?? []).map((f) => f.name).join(' + ') || 'empty'}</div>
