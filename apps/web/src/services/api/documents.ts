@@ -185,6 +185,35 @@ export const documentsApi = {
   },
 
   /**
+   * Lines whose cost moved against the good's last invoiced cost (r104 g4).
+   * Information only: it never blocks a verification and never changes a cost.
+   */
+  async priceMoves(id: string): Promise<{
+    thresholdPct: number
+    paperCurrency?: string | null
+    houseCurrency?: string | null
+    lines: Array<
+      | { lineId: string; lineNo: number; description: string | null; compared: false; reason: string }
+      | {
+          lineId: string
+          lineNo: number
+          description: string | null
+          compared: true
+          moved: boolean
+          pct: number
+          sentence: string | null
+        }
+    >
+  }> {
+    try {
+      const { data } = await apiClient.get(`/procurement/documents/${id}/price-moves`)
+      return data
+    } catch (error) {
+      return rethrowSpoken(error)
+    }
+  },
+
+  /**
    * Mint the one-time seal a VERIFICATION has to carry back — at the moment the
    * confirm gesture BEGINS.
    *
