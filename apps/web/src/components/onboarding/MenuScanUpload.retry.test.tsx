@@ -7,7 +7,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { importMenu } = vi.hoisted(() => ({ importMenu: vi.fn() }))
-vi.mock('../../services/api/menus', () => ({ importMenu }))
+vi.mock('../../services/api/menus', () => ({ importMenu, readRefusalWords: (_e: unknown, fallback: string) => fallback }))
 vi.mock('../scanner/CameraCapture', () => ({
   CameraCapture: ({ onCapture }: { onCapture: (image: string) => void }) => (
     <button type="button" onClick={() => onCapture('data:image/jpeg;base64,AAAA')}>
