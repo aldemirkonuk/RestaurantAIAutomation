@@ -107,4 +107,3 @@ describe('sorting slides the rows', () => {
     }
   });
 });
-});
