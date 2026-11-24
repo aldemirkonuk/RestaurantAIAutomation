@@ -28,6 +28,23 @@ interface Card {
   /** False when the figure is not known: the card reads as a gap, not a number. */
   known: boolean;
   warn?: boolean;
+  /** The card answers a tap by taking the reader to the nutrition card below (the same figure, in full). */
+  toNutrition?: boolean;
+}
+
+/** The nutrition card's own id (WhatIsInAServe), so a KPI card can take the reader to it. */
+export const NUTRITION_ID = 'recipe-whatisin';
+
+/**
+ * Take the reader to the nutrition card: scroll it into view with no animation (so there is no
+ * motion to reduce) and move focus to it, so a keyboard or screen reader lands on it too. The card
+ * is never collapsed, so allergens, its first row, are what is there.
+ */
+function goToNutrition() {
+  const el = document.getElementById(NUTRITION_ID);
+  if (!el) return;
+  el.scrollIntoView({ block: 'start', behavior: 'auto' });
+  el.focus({ preventScroll: true });
 }
 
 function count(n: number, one: string, many: string) {
@@ -220,6 +237,7 @@ export default function DrinkCards({
     ...nutritionCards(data),
   ]
     .filter((c): c is Card => c !== null)
+    .map((c) => (c.id === 'energy' || c.id === 'alcohol' ? { ...c, toNutrition: true } : c))
     .filter((c) => !isDish || c.id !== 'alcohol')
     .map((c) => (isDish && DISH_LABELS[c.id] ? { ...c, label: DISH_LABELS[c.id] } : c));
   return (
@@ -242,9 +260,19 @@ export default function DrinkCards({
             data-known={c.known ? 'true' : 'false'}
             data-warn={c.warn ? 'true' : 'false'}
           >
-            <span className="cl-rcp-card-label">{c.label}</span>
-            <span className="cl-rcp-card-fig cl-num">{c.figure}</span>
-            <span className="cl-rcp-card-said">{c.said}</span>
+            {c.toNutrition ? (
+              <button type="button" className="cl-rcp-card-btn" aria-controls={NUTRITION_ID} onClick={goToNutrition}>
+                <span className="cl-rcp-card-label">{c.label}</span>
+                <span className="cl-rcp-card-fig cl-num">{c.figure}</span>
+                <span className="cl-rcp-card-said">{c.said}</span>
+              </button>
+            ) : (
+              <>
+                <span className="cl-rcp-card-label">{c.label}</span>
+                <span className="cl-rcp-card-fig cl-num">{c.figure}</span>
+                <span className="cl-rcp-card-said">{c.said}</span>
+              </>
+            )}
           </li>
         ))}
       </ul>
