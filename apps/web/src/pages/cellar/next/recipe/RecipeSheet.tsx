@@ -131,6 +131,7 @@ function fromServer(l: RecipeLine): DraftRow {
     key: l.id || nextKey(),
     role: l.role,
     inventoryId: l.inventoryId,
+    ...(l.role === 'made' ? { componentId: l.componentId ?? null, componentName: l.componentName ?? null } : {}),
     itemName: l.itemName,
     itemKind: l.itemKind,
     itemUom: l.itemUom ?? null,
@@ -394,6 +395,8 @@ export function costPreviewBody(rows: DraftRow[], serves: number): { body: Previ
   if (rows.length > MAX_LINES) return null;
   const lines: PreviewCostBody['lines'] = [];
   const labels: string[] = [];
+  // The preview prices stocked and untracked lines only: a draft with a made line keeps its saved figures.
+  if (rows.some((r) => r.role === 'made')) return null;
   for (const r of rows) {
     const q = rowQty(r);
     const whole = q !== null && q <= MAX_LINE_QTY && r.unit !== '';
@@ -678,6 +681,7 @@ function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
       lines: lines.map((r) => ({
         role: r.role,
         inventoryId: r.role === 'stocked' ? r.inventoryId : null,
+        ...(r.role === 'made' ? { componentId: r.componentId ?? null } : {}),
         label: rowName(r),
         qty: rowQty(r) as number,
         unit: r.unit as string,
