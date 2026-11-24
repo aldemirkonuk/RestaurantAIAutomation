@@ -2207,11 +2207,12 @@ describe('ReportsNext — bars and a line on one cutting', () => {
     expect(types('Spend pacing')).not.toContain('combo');
   });
 
-  it('says in words which measure is the bars, which the line, and which scale', () => {
+  it('says in words which measure is the bars, which the line, and which scale', async () => {
     hook.current = weekAsCombo();
     paint();
     const week = screen.getByRole('region', { name: 'The week’s shape' });
-    expect(within(week).getByText(/Bars: Mean per day/)).toBeInTheDocument();
+    // The drawing module loads on demand (r104 g4).
+    expect(await within(week).findByText(/Bars: Mean per day/)).toBeInTheDocument();
     expect(within(week).getByLabelText('Bars show')).toBeInTheDocument();
   });
 

@@ -134,7 +134,7 @@ describe('a cutting laid flat', () => {
     }
   });
 
-  it('(b) opens a titled dialog with the drawing; its Draw as never writes the sheet', () => {
+  it('(b) opens a titled dialog with the drawing; its Draw as never writes the sheet', async () => {
     const onGraph = vi.fn();
     paint(<Harness id="till" register={answered(TILL)} initialGraph="area" onGraph={onGraph} />);
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -142,7 +142,8 @@ describe('a cutting laid flat', () => {
     fireEvent.click(opener('Through the till'));
     const dialog = screen.getByRole('dialog', { name: 'Through the till' });
     expect(dialog).toHaveAttribute('aria-modal', 'true');
-    expect(dialog.querySelector('.rp-plot')).not.toBeNull();
+    // The drawing module loads on demand (r104 g4).
+    await waitFor(() => expect(dialog.querySelector('.rp-plot')).not.toBeNull());
     expect(within(dialog).getByText(/^This view is not saved to your sheet\./)).toBeInTheDocument();
 
     const drawAs = within(dialog).getByRole('combobox', { name: 'Draw Through the till as' });
