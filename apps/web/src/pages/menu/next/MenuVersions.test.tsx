@@ -23,6 +23,7 @@ import {
   listMenuVersions,
   makeMenuCurrent,
   readWarningSentence,
+  removeFailedRead,
   type MenuPlan,
   type MenuVersion,
 } from '../../../services/api/menus';
@@ -48,6 +49,7 @@ vi.mock('../../../services/api/menus', async () => {
     importMenu: vi.fn(),
     getMenuSourceUrl: vi.fn(),
     getMenuPlan: vi.fn(),
+    removeFailedRead: vi.fn(),
   };
 });
 
@@ -71,6 +73,7 @@ const mockPlan = vi.mocked(getMenuPlan);
 const mockList = vi.mocked(listMenuVersions);
 const mockMake = vi.mocked(makeMenuCurrent);
 const mockImport = vi.mocked(importMenu);
+const mockRemove = vi.mocked(removeFailedRead);
 
 /** A moment on this device's clock, as an ISO string: the page shows local days, so fixtures are local too. */
 function local(y: number, m: number, d: number, h: number, mi: number, sec = 0, ms = 0): string {
@@ -113,6 +116,7 @@ beforeEach(() => {
   mockList.mockReset();
   mockMake.mockReset();
   mockImport.mockReset();
+  mockRemove.mockReset();
   mockPlan.mockReset();
   mockPlan.mockImplementation(async (id: string) => plan(id));
 });
@@ -284,6 +288,40 @@ describe('the sentence for each part of a file that was not read (ADR 0213 #17)'
 });
 
 describe('MenuVersions', () => {
+  it('a failed read can be taken off the list by an owner or a manager, and is gone when the list is read again (r105 menu-6)', async () => {
+    const failed = version({ menuId: 'm-bad', readState: 'failed', readFailure: 'No line could be read from this file.' });
+    mockList.mockResolvedValueOnce({ versions: [failed], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+    mockList.mockResolvedValue({ versions: [], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+    mockRemove.mockResolvedValue({ menuId: 'm-bad', removed: true });
+    mount(true);
+    fireEvent.click(await screen.findByTestId('menu-version-remove'));
+    await waitFor(() => expect(mockRemove).toHaveBeenCalledWith('m-bad'));
+    await waitFor(() => expect(screen.queryByTestId('menu-version-row')).not.toBeInTheDocument());
+  });
+
+  it('staff are not offered it, and a read that did not fail is not either', async () => {
+    const failed = version({ menuId: 'm-bad', readState: 'failed', readFailure: 'x' });
+    const fine = version({ menuId: 'm-ok' });
+    mockList.mockResolvedValue({ versions: [failed, fine], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+    const a = mount(false);
+    await screen.findAllByTestId('menu-version-row');
+    expect(screen.queryByTestId('menu-version-remove')).not.toBeInTheDocument();
+    a.unmount();
+    mount(true);
+    await screen.findAllByTestId('menu-version-row');
+    expect(screen.getAllByTestId('menu-version-remove')).toHaveLength(1);
+  });
+
+  it('a refusal says the gateway\'s words beside the read, and the read stays', async () => {
+    const failed = version({ menuId: 'm-bad', readState: 'failed', readFailure: 'x' });
+    mockList.mockResolvedValue({ versions: [failed], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+    mockRemove.mockRejectedValue({ response: { data: { message: 'Only an owner or a manager can do this.' } } });
+    mount(true);
+    fireEvent.click(await screen.findByTestId('menu-version-remove'));
+    expect(await screen.findByTestId('menu-version-remove-error')).toHaveTextContent('Only an owner or a manager can do this.');
+    expect(screen.getByTestId('menu-version-row')).toBeInTheDocument();
+  });
+
   it('a kept menu says which of its pages were not read; one read before warnings were kept says nothing', async () => {
     mockList.mockResolvedValue({
       current: null,

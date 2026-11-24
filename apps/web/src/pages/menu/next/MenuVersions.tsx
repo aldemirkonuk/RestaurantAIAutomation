@@ -29,6 +29,7 @@ import {
   getMenuSourceUrl,
   importMenu,
   listMenuVersions,
+  removeFailedRead,
   readWarningSentence,
   type MakeCurrentResult,
   type MenuCadence,
@@ -577,7 +578,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
   );
 }
 
-function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan, zone }: {
+function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan, onRemoved, zone }: {
   v: MenuVersion
   zone: string | null
   /** Its name among the house's kept menus (versionLabels): no two alike. */
@@ -586,8 +587,24 @@ function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan, zone }:
   lastUsedId: string | null
   planning: boolean
   onPlan: (menuId: string) => void
+  /** A failed read was taken off the list: read the list again. */
+  onRemoved: () => void
 }) {
   const [linkError, setLinkError] = useState<string | null>(null);
+  const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const remove = async () => {
+    setRemoveError(null);
+    setRemoving(true);
+    try {
+      await removeFailedRead(v.menuId);
+      onRemoved();
+    } catch (err) {
+      setRemoveError(reasonOf(err));
+    } finally {
+      setRemoving(false);
+    }
+  };
   const openSource = async () => {
     setLinkError(null);
     try {
@@ -641,6 +658,25 @@ function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan, zone }:
           >
             {planning ? 'See below' : 'Make current'}
           </button>
+        ) : null}
+        {readState === 'failed' && canManage ? (
+          <>
+            <button
+              type="button"
+              className="cl-btn cl-focus"
+              disabled={removing}
+              onClick={() => void remove()}
+              aria-label={`Take ${label} off the list`}
+              data-testid="menu-version-remove"
+            >
+              {removing ? 'Taking off…' : 'Take off the list'}
+            </button>
+            {removeError ? (
+              <span role="alert" className="cl-note" style={{ display: 'block' }} data-testid="menu-version-remove-error">
+                {removeError}
+              </span>
+            ) : null}
+          </>
         ) : null}
       </td>
     </tr>
@@ -917,6 +953,7 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
                       lastUsedId={q.data?.lastUsed?.menuId ?? null}
                       zone={zone}
                       planning={planFor === v.menuId}
+                      onRemoved={refresh}
                       onPlan={(id) => {
                         setSaid(null);
                         setPlanFor(id);

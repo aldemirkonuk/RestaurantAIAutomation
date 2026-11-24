@@ -2077,3 +2077,56 @@ describe("MenusService — a failed read of the kept menus is said in plain word
     expect(err.getResponse().message).toBe("The menus could not be read just now. Try again.");
   });
 });
+
+describe("a failed read is taken off the kept list, retired and never deleted (r105 menu-6)", () => {
+  const house = (): Record<string, Row[]> => ({
+    restaurant_menus: [
+      { id: "m-active", restaurant_id: "rest-1", status: "active", read_state: "done", made_current_at: "2026-09-21T12:00:00Z" },
+      { id: "m-failed", restaurant_id: "rest-1", status: "draft", read_state: "failed", read_failure: "No line could be read.", source_path: "rest-1/x.pdf" },
+      { id: "m-reading", restaurant_id: "rest-1", status: "draft", read_state: "reading" },
+      { id: "m-draft", restaurant_id: "rest-1", status: "draft", read_state: "done" },
+      { id: "m-other", restaurant_id: "rest-2", status: "draft", read_state: "failed" },
+    ],
+    users: [{ user_id: "user-1", name: "Aylin" }],
+    restaurants: [{ id: "rest-1", timezone: "UTC" }],
+    menu_items: [],
+  });
+
+  it("retires a failed read: archived with who and when, the file kept, and the list leaves it out", async () => {
+    const tables = house();
+    const service = makeService(tables);
+    expect((await service.listVersions("rest-1")).versions.map((v) => v.menuId)).toContain("m-failed");
+    await expect(service.removeFailedRead("rest-1", "m-failed", "user-1")).resolves.toEqual({ menuId: "m-failed", removed: true });
+    const row = tables.restaurant_menus.find((m) => m.id === "m-failed")!;
+    expect(row).toMatchObject({ status: "archived", retired_by: "user-1", read_state: "failed", source_path: "rest-1/x.pdf" });
+    expect(row.retired_at).toBeTruthy();
+    const after = await service.listVersions("rest-1");
+    expect(after.versions.map((v) => v.menuId)).not.toContain("m-failed");
+    // A removed failed read is not "the last menu used".
+    expect(after.lastUsed).toBeNull();
+    expect(tables.restaurant_menus).toHaveLength(5);
+  });
+
+  it("takes only a failed read: current, finished and still-reading menus answer 409 and are not touched", async () => {
+    const tables = house();
+    const service = makeService(tables);
+    for (const id of ["m-active", "m-draft", "m-reading"]) {
+      await expect(service.removeFailedRead("rest-1", id, "user-1")).rejects.toBeInstanceOf(ConflictException);
+    }
+    expect(tables.restaurant_menus.filter((m) => m.status === "archived")).toHaveLength(0);
+  });
+
+  it("another house's failed read is a 404 and stays as it was", async () => {
+    const tables = house();
+    const service = makeService(tables);
+    await expect(service.removeFailedRead("rest-1", "m-other", "user-1")).rejects.toBeInstanceOf(NotFoundException);
+    expect(tables.restaurant_menus.find((m) => m.id === "m-other")!.status).toBe("draft");
+  });
+
+  it("a read already taken off is a 404, not a second removal", async () => {
+    const tables = house();
+    const service = makeService(tables);
+    await service.removeFailedRead("rest-1", "m-failed", "user-1");
+    await expect(service.removeFailedRead("rest-1", "m-failed", "user-1")).rejects.toBeInstanceOf(NotFoundException);
+  });
+});

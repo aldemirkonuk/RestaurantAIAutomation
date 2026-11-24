@@ -253,6 +253,11 @@ function assertReadFinished(row: Record<string, unknown>): void {
   }
 }
 
+/** A failed read that was taken off the list: archived, and never current. The list leaves it out. */
+function isRemovedFailedRead(row: Record<string, unknown>): boolean {
+  return row.status === "archived" && row.read_state === "failed" && !row.made_current_at;
+}
+
 /** When a kept menu was read: `extracted_at`, or, for a menu read before menus were kept, when its row was made. */
 function readMomentOf(row: Record<string, unknown>): string | null {
   const at = row.extracted_at ?? row.created_at ?? null;
@@ -1708,7 +1713,7 @@ export class MenusService {
     due: MenuDue | null;
   }> {
     await this.sweepStaleReads(restaurantId);
-    const rows: Array<Record<string, any>> = [];
+    const all: Array<Record<string, any>> = [];
     let after: string | null = null;
     for (;;) {
       const { data, error } = await this.withVersionColumns((cols) => {
@@ -1718,10 +1723,12 @@ export class MenusService {
       });
       if (error) throw menusUnreadable(error);
       const page = (data ?? []) as Array<Record<string, any>>;
-      rows.push(...page);
+      all.push(...page);
       if (page.length < PAGE_ROWS) break;
       after = String(page[page.length - 1].id);
     }
+    // A failed read that was taken off the list is retired, not shown.
+    const rows = all.filter((r) => !isRemovedFailedRead(r));
     const { names, error: namesError } = await this.namesOf(
       rows.flatMap((r) => [r.extracted_by, r.made_current_by, r.retired_by]),
     );
@@ -2273,6 +2280,37 @@ export class MenusService {
       const h = house.get(String(l.wine_library_id));
       return !h || differs(l.bottle_price, h.bottle) || differs(l.by_glass_price, h.glass);
     });
+  }
+
+  /**
+   * Takes a failed read off the kept list (r105 menu-6, F3: a read that failed
+   * had no way out and sat on the list for good). RETIRED, never deleted: the
+   * row is archived with who and when, so the file and the failure stay on
+   * record; the list leaves it out because it was never current. Only a read
+   * whose state is `failed` can go; a read that is under way, finished or
+   * current is not touched (409, nothing changed). The role is the caller's
+   * (owner or manager); the house comes from the token, so another house's
+   * menu id is a 404.
+   */
+  async removeFailedRead(restaurantId: string, menuId: string, userId: string): Promise<{ menuId: string; removed: true }> {
+    const row = await this.readVersionRow(restaurantId, menuId);
+    if (isRemovedFailedRead(row)) throw new NotFoundException("No menu of this restaurant by that id.");
+    if ((row.read_state as string | undefined) !== "failed") {
+      throw new ConflictException("Only a read that failed can be taken off the list. This menu is not a failed read; nothing was changed.");
+    }
+    const { data, error } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .update({ status: "archived", retired_at: new Date().toISOString(), retired_by: userId })
+      .eq("id", menuId)
+      .eq("restaurant_id", restaurantId)
+      .eq("read_state", "failed")
+      .eq("status", "draft")
+      .select("id");
+    if (error) throw new InternalServerErrorException(`The failed read was not taken off the list: ${error.message}. Nothing was changed.`);
+    if (!data || data.length === 0) {
+      throw new ConflictException("This read is no longer a failed draft, so it was not taken off the list. Nothing was changed.");
+    }
+    return { menuId, removed: true };
   }
 
   /** Runs a read of a menu's row; if only `read_warnings` is missing, reads again without it. */
