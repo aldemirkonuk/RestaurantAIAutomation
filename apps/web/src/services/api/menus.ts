@@ -76,6 +76,23 @@ export interface MenuImportResult {
   sourceImage?: string | null
   /** Whether the source file (photo, PDF, CSV) was kept, and why not when it was not. */
   source?: { kept: boolean; failure: string | null }
+  /** A file read's rows it could not take whole, and why (csv-parser.service.ts `CsvRowIssue`). */
+  notes?: MenuReadNote[]
+}
+
+/** One row a CSV/XLSX read could not take whole. `row` is 1-based; the header is row 1. */
+export interface MenuReadNote {
+  row: number
+  reason:
+    | 'no_name'
+    | 'no_name_column'
+    | 'price_column_not_read'
+    | 'cell_error'
+    | 'no_number'
+    | 'two_readings'
+    | 'unreadable'
+  field?: string
+  raw?: string
 }
 
 export const MENU_CADENCES = ['weekly', 'monthly', 'quarterly', 'yearly', 'none'] as const
