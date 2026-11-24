@@ -3,14 +3,13 @@ import { AuthService } from "./auth.service";
 import type { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
 
 /**
- * DD-r102-7, the premise (r103). `POST /auth/register/restaurant` is @Public
- * and opens an organization, a restaurant and an owner on an address nobody
- * has proved (`users.email_verified = false`), while `createFirstHouse`
- * refuses the same account until it is verified. Two doors into one house,
- * two rules. This pins the gap as it stands today; the day registerRestaurant
- * follows createFirstHouse's rules (verified only, one transaction, the
- * onboarding row inside it) the first test flips and is rewritten, not
- * deleted.
+ * DD-r102-7 premise, flipped (DD-r104-6 PR 2, r105). `POST /auth/register/
+ * restaurant` is @Public. It used to open an organization, a restaurant and an
+ * owner on an address nobody had proved (`users.email_verified = false`) while
+ * `createFirstHouse` refused the same account until it was verified: two doors
+ * into one house, two rules. Now both follow one rule: verified only, and the
+ * house is written by `createFirstHouse` (org, restaurant, onboarding row in
+ * one compensating unit). The first test is the old one, turned over.
  */
 type Insert = { table: string; payload: Record<string, unknown> };
 
@@ -72,15 +71,29 @@ const DTO: RegisterRestaurantDto = {
   country: "United States",
 };
 
-describe("two doors into one house (DD-r102-7 premise)", () => {
-  it("registerRestaurant opens an org, a restaurant and an owner on an unverified address", async () => {
-    const { svc, inserts } = makeService();
+describe("two doors into one house, one rule (DD-r104-6 PR 2)", () => {
+  it("registerRestaurant refuses an unverified address and writes nothing", async () => {
+    const { svc, inserts } = makeService({ email_verified: false });
+    (svc as any).validateUser = jest
+      .fn()
+      .mockResolvedValue({ user_id: "user-1", email_verified: false });
+    await expect(svc.registerRestaurant(DTO)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(inserts).toEqual([]);
+  });
+
+  it("registerRestaurant never creates an account, even for a verified address", async () => {
+    const { svc, inserts } = makeService({ email_verified: true, restaurant_id: null });
+    (svc as any).validateUser = jest
+      .fn()
+      .mockResolvedValue({ user_id: "user-1", email_verified: true });
     await svc.registerRestaurant(DTO);
     const tables = inserts.map((i) => i.table);
-    expect(tables).toEqual(expect.arrayContaining(["organizations", "restaurants", "users"]));
-    const user = inserts.find((i) => i.table === "users")!.payload;
-    expect(user.email_verified).toBe(false);
-    expect(user.role).toBe("owner");
+    expect(tables).toEqual(
+      expect.arrayContaining(["organizations", "restaurants", "user_onboarding_progress"]),
+    );
+    expect(tables).not.toContain("users");
   });
 
   it("createFirstHouse refuses the same unverified account and writes nothing", async () => {
