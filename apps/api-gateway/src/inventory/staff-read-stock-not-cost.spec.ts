@@ -56,6 +56,9 @@ const STAFF_MAY_READ = new Set([
   "menu_price_glass",
   "menu_price_current",
   "retailPriceAvg",
+  // A yes/no about whether a read answered, never a figure (costReadable's kin).
+  "settledCostsReadable",
+  "settledCostsCapped",
 ]);
 
 /** Every key path holding a non-null value whose name says money. */
@@ -134,6 +137,43 @@ describe("staff read stock, not cost (inventory and inventory-ledger)", () => {
 
   it("every withheld name is a money name the guard knows", () => {
     for (const k of COST_FIELDS) expect(MONEY_NAME.test(k)).toBe(true);
+  });
+});
+
+describe("the price-signal costs (r104 g3, #2059) are withheld from staff, kept for the owner", () => {
+  // getRestaurantInventory maps the row with the settled move, then adds the flags.
+  function signalRow(): Record<string, unknown> {
+    const svc = new InventoryService({} as never);
+    const mapped = (svc as any).mapInventoryItem(
+      { id: "i1", master_wine_id: "w1", stock_live: 3 },
+      undefined,
+      undefined,
+      undefined,
+      { rollup: true, locations: true },
+      { last: 11.2, previous: 10 },
+    );
+    return { ...mapped, settledCostsReadable: true, settledCostsCapped: false };
+  }
+
+  it("the row really carries both settled costs, so the guard has something to find", () => {
+    expect(moneyLeft(signalRow())).toEqual(expect.arrayContaining(["lastSettledCost", "previousSettledCost"]));
+  });
+
+  it("staff read neither settled cost, and still read whether the read answered", () => {
+    const [row] = inventoryForRole([signalRow()], "staff");
+    expect(row.lastSettledCost).toBeNull();
+    expect(row.previousSettledCost).toBeNull();
+    expect(row.settledCostsReadable).toBe(true);
+    expect(row.settledCostsCapped).toBe(false);
+    expect(moneyLeft(row)).toEqual([]);
+  });
+
+  it("the owner and a manager keep both settled costs", () => {
+    for (const role of ["owner", "manager"]) {
+      const [row] = inventoryForRole([signalRow()], role);
+      expect(row.lastSettledCost).toBe(11.2);
+      expect(row.previousSettledCost).toBe(10);
+    }
   });
 });
 
