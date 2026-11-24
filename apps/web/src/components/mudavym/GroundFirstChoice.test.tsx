@@ -15,7 +15,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useNavigate } from 'react-router-dom';
 import { GroundFirstChoice } from './GroundFirstChoice';
 import { DataTermsSignInGate } from '../settings/DataTermsSignInGate';
 import {
@@ -62,12 +62,23 @@ function readout(over: Partial<DataTermsReadout> = {}): DataTermsReadout {
   } as DataTermsReadout;
 }
 
+/** A stand-in for the drawer's close: it drops the link's `?open=`. */
+function CloseDrawer() {
+  const go = useNavigate();
+  return (
+    <button type="button" onClick={() => go('/inventory')}>
+      close drawer
+    </button>
+  );
+}
+
 let client: QueryClient;
-function mount() {
+function mount(entry = '/') {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[entry]}>
+        <CloseDrawer />
         <DataTermsSignInGate />
         <GroundFirstChoice />
       </MemoryRouter>
@@ -172,6 +183,43 @@ describe('when it asks', () => {
     mount();
     expect(ask()).toBeNull();
     act(() => applyAccountGround(undefined));
+    expect(ask()).toBeInTheDocument();
+  });
+});
+
+describe('never under a good\'s drawer (/inventory?open=)', () => {
+  it('a staff deep link to a good waits: the theme sheet is not up under the drawer', () => {
+    roleMock.current = 'staff';
+    neverChose();
+    mount('/inventory?open=item-1');
+    expect(ask()).toBeNull();
+  });
+
+  it('asks once the drawer has closed', async () => {
+    roleMock.current = 'staff';
+    neverChose();
+    mount('/inventory?open=item-1');
+    expect(ask()).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'close drawer' }));
+    await waitFor(() => expect(ask()).toBeInTheDocument());
+  });
+
+  it('a highlight link opens the same drawer, so it waits too', () => {
+    roleMock.current = 'staff';
+    neverChose();
+    mount('/inventory?highlight=item-1');
+    expect(ask()).toBeNull();
+  });
+
+  it('an open= on another page is not a drawer, and asks as usual', () => {
+    neverChose();
+    mount('/orders?open=o1');
+    expect(ask()).toBeInTheDocument();
+  });
+
+  it('the inventory page with no drawer asks as usual', () => {
+    neverChose();
+    mount('/inventory');
     expect(ask()).toBeInTheDocument();
   });
 });
