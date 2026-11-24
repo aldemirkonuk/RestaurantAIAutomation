@@ -118,3 +118,46 @@ describe('the verified lane past its first window', () => {
     expect(screen.queryByRole('button', { name: 'Older papers' })).toBeNull();
   });
 });
+
+describe('at a 375 px phone (r105)', () => {
+  const before = window.innerWidth;
+  afterEach(() => {
+    window.innerWidth = before;
+  });
+
+  // jsdom has no layout, so this pins what a phone can actually reach: the
+  // controls exist, are named, and no ancestor hides them below a breakpoint.
+  const hiddenBelowBreakpoint = (el: Element | null) => {
+    for (let n = el; n; n = n.parentElement)
+      if (/(^|\s)hidden(\s|$)/.test(n.getAttribute('class') ?? '')) return true;
+    return false;
+  };
+
+  it('the window sentence, the search and Older papers are all reachable and say what they do', async () => {
+    window.innerWidth = 375;
+    window.dispatchEvent(new Event('resize'));
+    render(<ReceiptsNext />, { wrapper });
+    await openLane();
+    expect(await screen.findByText(/Showing the newest 100 verified papers/)).toBeTruthy();
+    for (const el of [
+      screen.getByRole('button', { name: 'Older papers' }),
+      screen.getByLabelText('Search verified papers by vendor or number'),
+      screen.getByRole('button', { name: 'Find' }),
+    ])
+      expect(hiddenBelowBreakpoint(el)).toBe(false);
+    // And at 375 it still pages: the older paper arrives.
+    fireEvent.click(screen.getByRole('button', { name: 'Older papers' }));
+    expect(await screen.findByText(/V-101/)).toBeTruthy();
+  });
+
+  it('a search at 375 needs Find or Enter, and the field says so (walk g2 note)', async () => {
+    window.innerWidth = 375;
+    render(<ReceiptsNext />, { wrapper });
+    await openLane();
+    const box = await screen.findByLabelText('Search verified papers by vendor or number');
+    fireEvent.change(box, { target: { value: 'acme' } });
+    expect(api.list).not.toHaveBeenCalledWith(expect.objectContaining({ q: 'acme' }));
+    fireEvent.submit(box.closest('form') ?? box);
+    expect(await screen.findByText(/V-150/)).toBeTruthy();
+  });
+});
