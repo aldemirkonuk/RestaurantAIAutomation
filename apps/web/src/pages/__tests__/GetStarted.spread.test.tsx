@@ -18,7 +18,7 @@ vi.mock('../../services/api/client', async (importOriginal) => ({
 }))
 vi.mock('../../services/api/menus', () => ({ importMenu: vi.fn() }))
 vi.mock('../../lib/googleMaps', () => ({ isMapsConfigured: () => true }))
-vi.mock('../../components/ui/PlacesAutocomplete', () => ({ PlacesAutocomplete: () => null }))
+vi.mock('../../components/ui/PlacesAutocomplete', () => ({ warmPlaces: vi.fn(), PlacesAutocomplete: () => null }))
 vi.mock('../../components/ui/CountryCombobox', () => ({ CountryCombobox: () => null }))
 vi.mock('../../components/onboarding/MenuCsvUpload', () => ({ MenuCsvUpload: () => null }))
 vi.mock('../../components/onboarding/MenuScanUpload', () => ({ MenuScanUpload: () => null }))

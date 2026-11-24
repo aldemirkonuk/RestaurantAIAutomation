@@ -249,7 +249,7 @@ export default function GetStarted() {
   // Warm the Maps library once the person is past the door, so the restaurant
   // step's first suggestion does not wait on the script (r105 onboarding g3).
   useEffect(() => {
-    if (step === 'you' || step === 'restaurant') warmPlaces()
+    if (step === 'restaurant') warmPlaces()
   }, [step])
 
   const changeCountry = (next: string) => {
