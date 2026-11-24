@@ -197,6 +197,17 @@ export class UpdateDishDto {
   description?: string | null;
 }
 
+/** What one batch of a house-made component makes (ADR 0397): an amount and a unit, stored in the unit's base. */
+export class SetYieldDto {
+  @ApiProperty({ example: 700 })
+  @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 3 })
+  amount!: number;
+
+  @ApiProperty({ enum: RECIPE_UNITS })
+  @IsIn(RECIPE_UNITS)
+  unit!: string;
+}
+
 /** The dishes whose price should become the current menu's price (the ids the manager confirmed). */
 export class TakeMenuPricesDto {
   @ApiProperty({ type: [String] })
