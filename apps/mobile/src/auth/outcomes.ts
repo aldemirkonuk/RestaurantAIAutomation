@@ -114,9 +114,12 @@ export function authErrorMessage(error: unknown): string {
  * sending someone who has not onboarded to an empty dashboard is a worse
  * failure than showing the guide to someone who no longer needs it.
  */
-export function routeAfterVerification(progress: {
-  menu_uploaded?: boolean | null;
-} | null): string {
+export function routeAfterVerification(
+  progress: { menu_uploaded?: boolean | null } | null,
+  hasHouse = true,
+): string {
+  // A verified account with no house yet opens one first (verify, then create).
+  if (!hasHouse) return "/open-house";
   return progress?.menu_uploaded ? "/" : "/get-started";
 }
 
