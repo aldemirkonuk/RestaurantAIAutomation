@@ -194,7 +194,8 @@ export default function LineRow({
   const qty = rowQty(row);
   // Only a line that points at a good still on the shelf can open it. Only
   // house managers get this editable row; staff read `LineRowRead`, which
-  // has no link, so the drawer a staff role cannot open is never offered.
+  // has no link, so a recipe line never offers staff the drawer. (Staff CAN open it
+  // by `?open=`; the drawer withholds cost from them. Only the offer is gated.)
   const openHref = stocked && row.inventoryId && !row.itemGone ? inventoryHref(row.inventoryId) : null;
 
   const pick = (item: ShelfItem) => {
