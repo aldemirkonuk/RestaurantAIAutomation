@@ -131,6 +131,32 @@ beforeEach(() => {
 });
 
 describe('the check card on a cost that moved', () => {
+  it('a paper in another money says why no price was compared (r106)', async () => {
+    api.moves.mockResolvedValue({
+      thresholdPct: 10,
+      paperCurrency: 'TRY',
+      houseCurrency: 'USD',
+      lines: [{ lineId: 'l1', lineNo: 1, description: 'x', compared: false as const, reason: 'currency_differs' }],
+    });
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(
+      await screen.findByText('Prices are in TRY and the house costs in USD, so none were compared against earlier costs.'),
+    ).toBeTruthy();
+  });
+
+  it('an unrelated not-compared reason stays silent (r106)', async () => {
+    api.moves.mockResolvedValue({
+      thresholdPct: 10,
+      paperCurrency: 'TRY',
+      houseCurrency: 'USD',
+      lines: [{ lineId: 'l1', lineNo: 1, description: 'x', compared: false as const, reason: 'no_previous' }],
+    });
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(screen.queryByText(/none were compared against earlier costs/)).toBeNull();
+  });
+
   it('says what moved, in words, against the last invoiced cost', async () => {
     api.moves.mockResolvedValue({ thresholdPct: 10, lines: [moved] });
     render(<ReceiptsNext />, { wrapper });

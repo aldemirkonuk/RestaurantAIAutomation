@@ -190,6 +190,8 @@ export const documentsApi = {
    */
   async priceMoves(id: string): Promise<{
     thresholdPct: number
+    paperCurrency?: string | null
+    houseCurrency?: string | null
     lines: Array<
       | { lineId: string; lineNo: number; description: string | null; compared: false; reason: string }
       | {

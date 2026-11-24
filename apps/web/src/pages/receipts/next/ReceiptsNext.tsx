@@ -819,7 +819,21 @@ function PriceMovesNote({ docId }: { docId: string }) {
         The goods&rsquo; earlier costs could not be read, so no price was compared with them.
       </p>
     );
-  const moved = (q.data?.lines ?? []).flatMap((l) => (l.compared && l.moved && l.sentence ? [l] : []));
+  const all = q.data?.lines ?? [];
+  // r106: a paper in another money is not compared, and silence read as "nothing
+  // moved". When every line was held back for currency, say so, with both codes.
+  if (
+    all.length > 0 &&
+    all.every((l) => !l.compared && l.reason === 'currency_differs') &&
+    q.data?.paperCurrency &&
+    q.data?.houseCurrency
+  )
+    return (
+      <p role="status" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>
+        Prices are in {q.data.paperCurrency} and the house costs in {q.data.houseCurrency}, so none were compared against earlier costs.
+      </p>
+    );
+  const moved = all.flatMap((l) => (l.compared && l.moved && l.sentence ? [l] : []));
   if (!moved.length) return null;
   return (
     <ul aria-label="Costs that moved" style={{ margin: '8px 0 0', paddingLeft: 16, fontSize: 11.5, color: 'var(--ink-1, #211C16)' }}>

@@ -1550,6 +1550,10 @@ export class DocumentsController {
     const perBottle = (uom: string | null) => /^(bottle|btl|bt)$/i.test((uom ?? "").trim());
     return {
       thresholdPct: threshold,
+      // Carried so the page can say WHY nothing was compared (r106): the two
+      // codes are the whole reason when the reason is currency_differs.
+      paperCurrency: paperCurrency || null,
+      houseCurrency: houseCurrency || null,
       lines: rows.map((l) => {
         const prev = l.inventory_id ? last.get(l.inventory_id) : undefined;
         const price = l.unit_price == null ? null : Number(l.unit_price);
