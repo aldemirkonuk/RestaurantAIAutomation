@@ -8,7 +8,10 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import type { ReactNode } from 'react';
-import { fmtMoney } from '../../receipts/next/rc2-format';
+import { formatMoney } from '../../../lib/currency';
+import { houseNumberLocale } from '../../../lib/house-number';
+/** What the page prints: money in the house's own number form (r104). */
+const fmtMoney = (n: number, c: string) => formatMoney(n, c, { locale: houseNumberLocale(c) });
 
 const RID = '11111111-1111-4111-8111-111111111111';
 const GT = '22222222-2222-4222-8222-222222222221';

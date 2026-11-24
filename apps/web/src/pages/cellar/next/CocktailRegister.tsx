@@ -42,7 +42,7 @@ import RecipeSheet from './recipe/RecipeSheet';
 import MenuDrinksOffer from './MenuDrinksOffer';
 import { readingRowCount } from './readingRows';
 import { PRICE_UNREAD, priceText, readPrice } from './recipe/price-text';
-import { ShareFigure, marginPerServe, pourCostShare } from './recipe/DrinkCards';
+import { ShareBasisCaption, ShareFigure, marginPerServe, pourCostShare } from './recipe/DrinkCards';
 import { ExportMenu } from '../../../components/ui/ExportMenu';
 import { exportTable, type TableExportFormat } from '../../../lib/tableExport';
 import { FIRST_DIR, drinkNumbers, exportColumns, sortDrinks, stripFor, type SortDir, type SortKey } from './registerFigures';
@@ -629,6 +629,7 @@ export default function CocktailRegister({
                 </tbody>
               </table>
             </div>
+            {seesCost ? <ShareBasisCaption tax={tax} /> : null}
             </>
           )}
 

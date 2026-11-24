@@ -342,18 +342,18 @@ describe('RecipeSheet', () => {
   it('the cards say a complete cost, the price, and what a serve holds; a line under a cent is not free', async () => {
     serve(negroni({ cost: { perServe: 0, perServeExact: 0.004, priced: 3, of: 3, complete: true } }));
     mount();
-    expect(await screen.findByTestId('drink-card-cost')).toHaveTextContent('Under ₺0.01');
-    expect(screen.getByTestId('drink-card-price')).toHaveTextContent('₺450.00A serve, as your list has it.');
+    expect(await screen.findByTestId('drink-card-cost')).toHaveTextContent('Under ₺0,01');
+    expect(screen.getByTestId('drink-card-price')).toHaveTextContent('₺450,00A serve, as your list has it.');
     // No whatIsIn from this gateway: said as not read on both cards, never 0.
     expect(screen.getByTestId('drink-card-energy')).toHaveTextContent('Not read');
     expect(screen.getByTestId('drink-card-alcohol')).toHaveTextContent('Not read');
   });
 
-  it('3. a complete Negroni costs ₺57.00 a serve at today’s prices', async () => {
+  it('3. a complete Negroni costs ₺57,00 a serve at today’s prices', async () => {
     serve(negroni());
     mount();
     const card = await screen.findByTestId('drink-card-cost');
-    expect(card).toHaveTextContent("₺57.00At today's prices, all 3 ingredients priced.");
+    expect(card).toHaveTextContent("₺57,00At today's prices, all 3 ingredients priced.");
     expect(card.textContent).not.toMatch(/%/);
     expect(screen.queryByTestId('recipe-footer')).toBeNull();
   });
@@ -647,8 +647,8 @@ describe('RecipeSheet', () => {
   it('a manager sees the price and each line’s cost; staff see neither', async () => {
     serve(negroni());
     const { unmount } = mount();
-    await waitFor(() => expect(screen.getByTestId('drink-card-price')).toHaveTextContent('₺450.00'));
-    expect(screen.getByText('₺30.00 a serve')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('drink-card-price')).toHaveTextContent('₺450,00'));
+    expect(screen.getByText('₺30,00 a serve')).toBeInTheDocument();
     unmount();
     h.auth = { activeRestaurantId: RID, activeRole: 'staff', user: { role: 'manager' } };
     const { container } = mount();
@@ -1136,7 +1136,7 @@ describe('RecipeSheet', () => {
     fireEvent.click(within(list).getByRole('button', { name: /Version 4/ }));
     const opened = await screen.findByTestId('recipe-past-version');
     expect(within(opened).getAllByTestId('recipe-line')).toHaveLength(3);
-    expect(opened).toHaveTextContent("Would cost ₺57.00 a serve at today's prices.");
+    expect(opened).toHaveTextContent("Would cost ₺57,00 a serve at today's prices.");
     expect(within(opened).queryByLabelText('Amount')).toBeNull();
 
     fireEvent.click(within(opened).getByRole('button', { name: 'Start from version 4' }));
@@ -1198,7 +1198,7 @@ describe('RecipeSheet', () => {
     serve(negroni({ cost: { perServe: 57, priced: 3, of: 3, complete: true, partial: 1 } }));
     mount();
     expect(await screen.findByTestId('drink-card-cost')).toHaveTextContent(
-      "₺57.00At today's prices; 1 ingredient is priced from the bottles with an invoice only.",
+      "₺57,00At today's prices; 1 ingredient is priced from the bottles with an invoice only.",
     );
   });
 
@@ -1227,7 +1227,7 @@ describe('RecipeSheet', () => {
     // The cost shown is still the saved recipe's, and says so.
     const cards = screen.getByTestId('drink-cards');
     expect(cards).toHaveTextContent("These are the saved recipe’s figures. Save to count your changes.");
-    expect(within(cards).getByTestId('drink-card-cost')).toHaveTextContent('₺57.00');
+    expect(within(cards).getByTestId('drink-card-cost')).toHaveTextContent('₺57,00');
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
     await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
     const body = h.put.mock.calls[0][1];
@@ -1603,6 +1603,6 @@ describe('the sheet’s cards open what is in a serve (r36 recipes audit, gap 9)
     mount();
     fireEvent.click(await screen.findByTestId('drink-card-energy-open'));
     expect(document.activeElement).toBe(screen.getByTestId('recipe-whatisin-unread'));
-    expect(screen.getByTestId('drink-card-margin')).toHaveTextContent('₺393.00');
+    expect(screen.getByTestId('drink-card-margin')).toHaveTextContent('₺393,00');
   });
 });

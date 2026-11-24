@@ -1319,7 +1319,6 @@ describe('CellarNext — the registers that are not wines', () => {
       create: { mutateAsync: vi.fn(), isPending: false },
       amend: { mutateAsync: vi.fn(), isPending: false },
       retire: { mutateAsync: vi.fn(), isPending: false },
-      setRecipe: { mutateAsync: vi.fn(), isPending: false },
     };
     mock.cocktails = {
       loading: false, error: null,
@@ -1351,7 +1350,6 @@ describe('CellarNext — the registers that are not wines', () => {
       create: { mutateAsync: vi.fn(), isPending: false },
       amend: { mutateAsync: vi.fn(), isPending: false },
       retire: { mutateAsync: vi.fn(), isPending: false },
-      setRecipe: { mutateAsync: vi.fn(), isPending: false },
     };
     mock.cocktails = {
       loading: false, error: null,
@@ -1377,7 +1375,6 @@ describe('CellarNext — the registers that are not wines', () => {
       create: { mutateAsync: vi.fn(), isPending: false },
       amend: { mutateAsync: vi.fn(), isPending: false },
       retire: { mutateAsync: vi.fn(), isPending: false },
-      setRecipe: { mutateAsync: vi.fn(), isPending: false },
     };
     const drink = (id: string, name: string) => ({
       id, name, display_name: null, menu_section: 'Aperitivo', method: 'stirred', glass: 'rocks', garnish: null, price: 18, description: null,
@@ -1415,7 +1412,6 @@ describe('CellarNext — the registers that are not wines', () => {
       create: { mutateAsync: vi.fn(), isPending: false },
       amend: { mutateAsync: vi.fn(), isPending: false },
       retire: { mutateAsync: retire, isPending: false },
-      setRecipe: { mutateAsync: vi.fn(), isPending: false },
     };
     mock.cocktails = {
       loading: false, error: null,
@@ -2306,7 +2302,6 @@ describe('CellarNext — first paint is the loaded layout (r90)', () => {
     create: { mutateAsync: vi.fn(), isPending: false },
     amend: { mutateAsync: vi.fn(), isPending: false },
     retire: { mutateAsync: vi.fn(), isPending: false },
-    setRecipe: { mutateAsync: vi.fn(), isPending: false },
   };
 
   it('while the cocktail list is read it holds the table: head and one empty row (nothing is known of the list), hidden from a screen reader', () => {

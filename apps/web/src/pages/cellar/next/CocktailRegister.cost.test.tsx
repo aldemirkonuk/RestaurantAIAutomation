@@ -10,7 +10,10 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import type { ReactNode } from 'react';
-import { fmtMoney } from '../../receipts/next/rc2-format';
+import { formatMoney } from '../../../lib/currency';
+import { houseNumberLocale } from '../../../lib/house-number';
+/** What the page prints: money in the house's own number form (r104). */
+const fmtMoney = (n: number, c: string) => formatMoney(n, c, { locale: houseNumberLocale(c) });
 
 const RID = '11111111-1111-4111-8111-111111111111';
 const GT = '22222222-2222-4222-8222-222222222221';
@@ -114,12 +117,14 @@ describe('the cocktail list cost columns', () => {
     await waitFor(() => expect(text(`drink-share-${GT}`)).toBe('12.5%'));
   });
 
-  it('with the house basis unset the pour cost is in the warn tone with its sentence under it (r103 need 2)', async () => {
+  it('with the house basis unset the pour cost is in the warn tone its sentence said once under the table (r103 need 2, r104 need 2)', async () => {
     tax.basis = 'unset';
     try {
       mount();
       await waitFor(() => expect(text(`drink-share-${GT}`)).toContain('%12,5'));
-      expect(text(`drink-share-${GT}`)).toContain('whether that price includes tax is not recorded');
+      // The sentence is said once, under the table, not under each figure (r104 need 2).
+      expect(text(`drink-share-${GT}`)).not.toContain('whether that price includes tax');
+      expect(screen.getByTestId('share-basis-caption')).toHaveTextContent('whether that price includes tax is not recorded');
       expect(screen.getByTestId(`drink-share-${GT}`).querySelector('[data-warn="true"]')).not.toBeNull();
     } finally {
       tax.basis = 'prices_exclude_tax';

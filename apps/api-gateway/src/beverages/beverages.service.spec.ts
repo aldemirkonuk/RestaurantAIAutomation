@@ -364,61 +364,6 @@ describe("BeveragesService cocktail writes", () => {
     expect(patches[0]).toHaveProperty("deleted_at");
   });
 
-  it("checks ownership before writing a recipe line", async () => {
-    // `cocktail_ingredients` has no restaurant_id of its own, so this lookup IS
-    // the tenancy boundary for the write.
-    const { service } = await richService({
-      tables: { cocktails: [{ data: null }] },
-    });
-    await expect(
-      service.setCocktailIngredients(RID, COCKTAIL_ID, {
-        lines: [{ freeText: "fresh lime juice" }],
-      }),
-    ).rejects.toThrow(/No recipe line was written/);
-  });
-
-  it("writes the recipe lines a bartender typed — the table's first writer", async () => {
-    const inserted: unknown[] = [];
-    const db = {
-      getClient: () => ({
-        from: (table: string) => {
-          const self: Record<string, unknown> = {};
-          for (const m of ["select", "eq", "is", "order", "delete"]) {
-            self[m] = jest.fn(() => self);
-          }
-          self.insert = jest.fn((rows: unknown) => {
-            inserted.push(rows);
-            return self;
-          });
-          self.maybeSingle = jest.fn(() =>
-            Promise.resolve({ data: { id: COCKTAIL_ID }, error: null }),
-          );
-          self.then = (resolve: (v: unknown) => unknown) =>
-            Promise.resolve({
-              data: table === "cocktail_ingredients" ? [{ id: "i1" }, { id: "i2" }] : [],
-              error: null,
-            }).then(resolve);
-          return self;
-        },
-      }),
-    };
-    const moduleRef = await Test.createTestingModule({
-      providers: [BeveragesService, { provide: DatabaseService, useValue: db }],
-    }).compile();
-    const out = await moduleRef
-      .get(BeveragesService)
-      .setCocktailIngredients(RID, COCKTAIL_ID, {
-        lines: [
-          { beverageId: "b-1", quantity: 30, unit: "ml" },
-          { freeText: "fresh lime juice", quantity: 20, unit: "ml", sortOrder: 5 },
-        ],
-      });
-
-    expect(out).toEqual({ cocktailId: COCKTAIL_ID, lines: 2, recipesAvailable: true });
-    const rows = inserted[0] as Record<string, unknown>[];
-    expect(rows[0]).toMatchObject({ cocktail_id: COCKTAIL_ID, beverage_id: "b-1", sort_order: 0 });
-    expect(rows[1]).toMatchObject({ free_text: "fresh lime juice", sort_order: 5 });
-  });
 });
 
 /* ── the till book: the till's own record, every line (ADR 0301 §1) ──────────

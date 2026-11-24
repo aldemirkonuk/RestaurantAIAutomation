@@ -108,12 +108,32 @@ describe('the five states, in words', () => {
   });
 });
 
+describe('a worked-out layer says how many counted lines it did not weigh (r103 need 5)', () => {
+  const basisLayer = (basis: object) => ({ ...layer(null, 'recipe'), method: 'computed', basis });
+  const base = { notKnown: [], lineSources: [], unknownNames: [] };
+  it.each([
+    [1, '1 counted ingredient is not weighed, so it adds nothing to the taste.'],
+    [3, '3 counted ingredients are not weighed, so they add nothing to the taste.'],
+  ])('%i counted line(s)', async (n, said) => {
+    api.get.mockResolvedValue(ready({ axes: { bitter: ax(4) } }, [basisLayer({ ...base, unweighed: n }) as never]));
+    mount();
+    expect((await screen.findByTestId('taste-not-weighed')).textContent).toBe(said);
+  });
+  it('says nothing when every counted line was weighed', async () => {
+    api.get.mockResolvedValue(ready({ axes: { bitter: ax(4) } }, [basisLayer({ ...base, unweighed: 0 }) as never]));
+    mount();
+    await screen.findByTestId('taste-card');
+    expect(screen.queryByTestId('taste-not-weighed')).toBeNull();
+  });
+});
+
 describe('a worked-out layer says what it rests on', () => {
   const basisLayer = (basis: object) => ({ ...layer(null, 'recipe'), method: 'computed', basis });
   const basis = {
     notKnown: ['sweet', 'sour', 'salty'],
     lineSources: [{ name: 'Gin', from: 'good' }, { name: 'Lime juice', from: 'class_prior' }, { name: 'House shrub 7', from: 'unknown' }],
     unknownNames: ['House shrub 7'],
+    unweighed: 0,
   };
   it('axes not known are rows of words with no bar and never the band none; the sources and unknown lines are named', async () => {
     api.get.mockResolvedValue(ready({ axes: { bitter: ax(4) } }, [basisLayer(basis) as never]));
