@@ -11,6 +11,9 @@ import {
 } from "../analytics/inventory-cost";
 
 export type BaseUnit = "ml10" | "mg" | "each_milli";
+
+/** What a base unit is called to a person: never the stored token (ml10, mg, each_milli). */
+export const BASE_UNIT_WORDS: Record<BaseUnit, string> = { ml10: "millilitres", mg: "grams", each_milli: "pieces" };
 export type LineStatus = "linked" | "not_linked" | "untracked";
 /**
  * Why a linked line has no price, beside the cost bases (round 17, D6):

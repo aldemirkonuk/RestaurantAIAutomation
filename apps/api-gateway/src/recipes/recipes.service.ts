@@ -10,7 +10,7 @@ import {
 import { DatabaseService } from "../database/database.service";
 import { seesHouseAmounts } from "../dashboard/amounts-for-role";
 import { mergeAgreedLotCost, mergeInvoiceLotCost } from "../analytics/inventory-cost";
-import { BaseUnit, CostItem, componentPerBase, recipeCost } from "./recipe-cost";
+import { BaseUnit, BASE_UNIT_WORDS, CostItem, componentPerBase, recipeCost } from "./recipe-cost";
 import { PreviewCostDto, SaveRecipeDto, StateWeightsDto } from "./dto/recipes.dto";
 import { FIGURE_KEYS, ItemFigures, ServeNutrition, serveNutrition } from "./recipe-nutrition";
 import { shelfSearchPattern } from "./name-fold";
@@ -62,6 +62,19 @@ export type WhatIsIn = ({ readable: true } & ServeNutrition) | { readable: false
  */
 export const MAX_LINE_QTY = 100_000;
 export const MAX_YIELD_SERVES = 1_000;
+
+/**
+ * The database's unit-mismatch refusal names the stored base units ("measured in
+ * mg, but the component is made in ml10"). Say grams, millilitres or pieces
+ * instead; the refusal itself is unchanged (a volume is never turned into a
+ * weight).
+ */
+export function sayBaseUnits(message: string): string {
+  return message.replace(
+    /is measured in (ml10|mg|each_milli), but the component is made in (ml10|mg|each_milli)/,
+    (_m, a: BaseUnit, b: BaseUnit) => `is measured in ${BASE_UNIT_WORDS[a]}, but the component is made in ${BASE_UNIT_WORDS[b]}`,
+  );
+}
 
 /**
  * The most a stated weight may be (r28 gap 7): one piece up to 50 kg (a whole
@@ -836,7 +849,7 @@ export class RecipesService {
   private saved(data: unknown, error: { code?: string; message: string } | null) {
     if (error) {
       if (error.code === "RCP09") throw new ConflictException(STALE_SAVE);
-      if (error.code === "RCP00") throw new BadRequestException(error.message);
+      if (error.code === "RCP00") throw new BadRequestException(sayBaseUnits(error.message));
       this.logger.error(`recipes: save failed: ${error.message}`);
       throw new InternalServerErrorException(SAVE_FAILED);
     }
