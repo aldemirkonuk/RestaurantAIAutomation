@@ -674,13 +674,31 @@ export class RawMailRetentionService {
     }
 
     const found = rows ?? [];
-    const ids = found.map((r) => String(r.id));
+    let ids = found.map((r) => String(r.id));
     // The house comes from the grant when it has one, and otherwise from the
     // rows themselves — a grant recorded before a tenant was on the token still
     // mirrored mail into some restaurant's book, and that mail must still go.
     const restaurantId =
       params.restaurantId ||
       ((found[0]?.restaurant_id as string | null) ?? null);
+
+    // THE HOUSE'S OWN SENT REPLIES TO A TEAM MEMBER OR A GUEST GO WITH THE
+    // WIDE READING (r106, DD-r105-7). A reply the house wrote is filed under
+    // the person it answered (kind team|guest) but was never mirrored, so it
+    // carries no `mirrored_by_grant_id` and the scope above never finds it:
+    // the consent page said "deletes every team and guest message this
+    // connection filed", and the half of a conversation the house wrote stayed.
+    // Chosen over stamping the reply with a grant at send time: a stamp would
+    // have to name one grant when a house holds two, and `mirrored_by_grant_id`
+    // would then say "this grant read it" of a letter nothing read. A vendor's
+    // reply is never touched here (kind vendor), and while another wide grant
+    // of the house is live the replies stay, as they belong to its reading.
+    let repliesError: string | null = null;
+    if (params.integrationId === "gmail_read_all" && restaurantId) {
+      const own = await this.ownRepliesToPeople(restaurantId);
+      repliesError = own.error;
+      ids = [...new Set([...ids, ...own.ids])];
+    }
 
     // ONE LAST EXPORT, AND THE DELETION HAPPENS EITHER WAY.
     //
@@ -782,9 +800,44 @@ export class RawMailRetentionService {
       notice,
       archiveMode,
       heldForExport: null,
-      error: [outcome.error, restampError].filter(Boolean).join(" ") || null,
+      error: [outcome.error, restampError, repliesError].filter(Boolean).join(" ") || null,
       says: `The grant was disconnected. ${ids.length} mirrored repl${ids.length === 1 ? "y" : "ies"} still held raw mail; ${outcome.deleted} had their body, headers and attachment bytes deleted immediately.${outcome.vendorKept ? ` ${outcome.vendorKept} vendor repl${outcome.vendorKept === 1 ? "y was" : "ies were"} kept, because this house still has the vendor-only reading connected and it would have stored them anyway.` : ""}${restampError ? ` ${restampError}` : ""}${archiveSays} Every order fact those replies produced stays on this restaurant's own record.`,
     });
+  }
+
+  /**
+   * The house's own sent replies to team members and guests, unless another
+   * wide grant is still live. A failed read of either is said, not skipped
+   * (ADR 0020); an unreadable standing errs toward deleting, like the vendor
+   * rows above.
+   */
+  private async ownRepliesToPeople(
+    restaurantId: string,
+  ): Promise<{ ids: string[]; error: string | null }> {
+    const { data: wide, error: wideError } = await this.db.supabase
+      .from("integration_oauth_connections")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .eq("integration_id", "gmail_read_all")
+      .is("revoked_at", null)
+      .limit(1);
+    if (!wideError && (wide ?? []).length > 0) return { ids: [], error: null };
+    const { data, error } = await this.db.supabase
+      .from("procurement_conversations")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .in("kind", ["team", "guest"])
+      .eq("direction", "outbound")
+      .eq("status", "SENT")
+      .is("raw_deleted_at", null)
+      .is("mirrored_by_grant_id", null);
+    if (error) {
+      return {
+        ids: [],
+        error: `The house's sent replies to team members and guests could NOT be read (${error.message}), so they were not deleted. They are still in the book.`,
+      };
+    }
+    return { ids: (data ?? []).map((r) => String(r.id)), error: null };
   }
 
   // =========================================================================
