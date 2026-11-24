@@ -32,6 +32,7 @@
  * and that fails like `missing` unless the step is listed in CANNOT_CHECK with
  * a reason. A listed step fails when it becomes checkable or leaves its tour.
  */
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { TOUR_REGISTRY } from './registry'
@@ -45,6 +46,19 @@ const CANNOT_CHECK: Record<string, string> = {
   // The strip loads as code when asked for (`lazy(() => loaders.whoIsWriting().then(...))`),
   // a shape the scan cannot follow into WhoIsWriting.tsx; the section's own spec pins the label.
   'communications section[aria-label="Who is writing"]': 'WhoIsWriting is a lazy chunk named by a loader the scan cannot follow',
+}
+
+/**
+ * A CANNOT_CHECK step is allowed only for a lazy chunk, and only while the loader still
+ * names that chunk and the chunk still draws the anchor (r106): without this, a listed
+ * step is a step nobody checks, and a renamed section would ring nothing for good.
+ */
+const LAZY_CHUNK: Record<string, { loader: string; chunk: string; draws: string }> = {
+  'communications section[aria-label="Who is writing"]': {
+    loader: 'src/pages/communications/next/mail-code.tsx',
+    chunk: 'src/pages/communications/next/WhoIsWriting.tsx',
+    draws: '<section aria-label="Who is writing"',
+  },
 }
 
 /** Tours a person can still reach from a page or from Help. */
@@ -76,6 +90,15 @@ describe('live tours ring something their page still draws', () => {
       })
     }
   }
+
+  it('allows CANNOT_CHECK only for a lazy chunk that still draws the anchor', () => {
+    expect(Object.keys(CANNOT_CHECK).filter((k) => !(k in LAZY_CHUNK)), 'a cannot-check step with no chunk named').toEqual([])
+    for (const [key, { loader, chunk, draws }] of Object.entries(LAZY_CHUNK)) {
+      const base = chunk.split('/').pop()!.replace(/\.tsx$/, '')
+      expect(readFileSync(join(WEB, loader), 'utf8'), `${key}: the loader no longer imports ${base}`).toContain(`import('./${base}')`)
+      expect(readFileSync(join(WEB, chunk), 'utf8'), `${key}: ${base} no longer draws it`).toContain(draws)
+    }
+  })
 
   it('lists in CANNOT_CHECK only steps a live tour still has', () => {
     const live = new Set(LIVE.flatMap((id) => TOUR_REGISTRY[id].steps.map((s) => `${id} ${s.element}`)))
