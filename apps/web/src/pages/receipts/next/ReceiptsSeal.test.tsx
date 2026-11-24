@@ -298,6 +298,38 @@ describe('the seal is minted when the gesture begins, not by the write', () => {
     expect(await screen.findByText(/filed at 1 TRY = 0\.0295 USD on 20 Nov/)).toBeTruthy();
   });
 
+  it('after a reload the card still says what rate the paper was filed at', async () => {
+    api.detail = {
+      document: {
+        ...DOC,
+        currency: 'USD',
+        filedAt: {
+          from: 'TRY',
+          to: 'USD',
+          rate: 0.0295,
+          rateDate: '2026-11-20',
+          sentence: 'filed at 1 TRY = 0.0295 USD on 20 Nov',
+        },
+      },
+      lines: [LINE],
+      links: [],
+    };
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(await screen.findByText(/Costed filed at 1 TRY = 0\.0295 USD on 20 Nov\./)).toBeTruthy();
+  });
+
+  it('a rate that could not be read is said, not left out', async () => {
+    api.detail = {
+      document: { ...DOC, filedAtReason: 'The rate this paper was filed at could not be read (boom).' },
+      lines: [LINE],
+      links: [],
+    };
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(await screen.findByText(/could not be read \(boom\)/)).toBeTruthy();
+  });
+
   it('without a rate it only relabels, as before', async () => {
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();

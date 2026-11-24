@@ -270,14 +270,16 @@ function CurrencyBlock({
    * "Change the currency" button, which every role sees, so the act is never
    * hidden. A hold, a result or an error always opens it.
    */
-  const settled = !!filed && held.length === 0 && !moved && !error && !restate.isPending;
+  const settled =
+    !!filed && held.length === 0 && !moved && !error && !restate.isPending && !doc.filedAtReason;
   if (settled && !open)
     return (
       <p
         aria-label="What money this invoice is in"
         style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: 0 }}
       >
-        This invoice&rsquo;s money is filed in {moneyName(filed)}.{' '}
+        This invoice&rsquo;s money is filed in {moneyName(filed)}.
+        {doc.filedAt?.sentence ? ` Costed ${doc.filedAt.sentence}.` : ''}{' '}
         <button
           ref={changeRef}
           type="button"
@@ -320,6 +322,17 @@ function CurrencyBlock({
           ? `Filed in ${moneyName(filed)}.`
           : `${CURRENCY_NOT_RECORDED} — nothing on this document is priced.`}
       </p>
+
+      {doc.filedAt?.sentence && (
+        <p data-testid="filed-at" style={{ fontSize: 11.5, color: 'var(--ink-1, #211C16)', margin: '6px 0 0' }}>
+          {`Costed ${doc.filedAt.sentence}.`}
+        </p>
+      )}
+      {doc.filedAtReason && (
+        <p role="alert" style={{ fontSize: 11.5, color: 'var(--ink-1, #211C16)', margin: '6px 0 0' }}>
+          {doc.filedAtReason}
+        </p>
+      )}
 
       {held.map((sentence, i) => (
         <p
