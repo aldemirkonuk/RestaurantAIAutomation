@@ -267,3 +267,21 @@ describe('the signature waits with the register', () => {
     expect(cellarNext).not.toMatch(/visibility:[^,\n]*'visible'/);
   });
 });
+
+describe('the cocktail rows hold their height from first paint (r106, walk r105 FAIL 14)', () => {
+  const css = readFileSync(resolve(__dirname, 'cellar-next.css'), 'utf8');
+
+  it('the reading rows and the loaded rows are the same table class, with one held row height and no motion', async () => {
+    let release: (v: unknown) => void = () => {};
+    figuresAnswer = () => new Promise((r) => { release = r; });
+    h.list = { data: loaded, loading: false, error: null };
+    const { container } = mount();
+    const tables = () => Array.from(container.querySelectorAll('table.cl-table--drinks'));
+    expect(tables().length).toBeGreaterThan(0);
+    await act(async () => { release({ data: { costsUnread: false, drinks: [] } }); });
+    expect(tables().length).toBeGreaterThan(0);
+    const rule = css.match(/\.cl-table--drinks tbody tr \{[^}]*\}/)?.[0] ?? '';
+    expect(rule).toMatch(/height: 53px;/);
+    expect(rule).not.toMatch(/transition|animation|opacity/);
+  });
+});

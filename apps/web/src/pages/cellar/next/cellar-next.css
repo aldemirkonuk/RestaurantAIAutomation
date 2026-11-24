@@ -208,6 +208,10 @@
 .cl-table tbody tr {
   cursor: pointer;
 }
+/* The cocktail list's rows are 53 px from first paint: a row is 35 px with its figures unread and 53 px once a
+   cost cell carries its second line, so the rows moved by 18 px each when the figures landed (r105 walk, FAIL 14).
+   The height is a floor, so a taller row still grows. No transition, and none under reduced motion (ADR 0112). */
+.cl-table--drinks tbody tr { height: 53px; }
 .cl-table tbody tr:hover td {
   background: var(--paper-1);
 }
