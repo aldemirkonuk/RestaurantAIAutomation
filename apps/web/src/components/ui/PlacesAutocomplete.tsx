@@ -97,6 +97,29 @@ async function ensurePlaces(): Promise<NewPlacesLib> {
   return placesLib!;
 }
 
+let warmScheduled = false;
+
+/**
+ * Starts loading the Places library before anyone types, so the first
+ * suggestion waits one request, not the script plus one request (r105
+ * onboarding g3). Idle-time, once, errors swallowed (a failed load surfaces
+ * where a search needs it, as before), and a no-op when no key is set.
+ */
+export function warmPlaces(): void {
+  if (!MAPS_API_KEY || warmScheduled) return;
+  warmScheduled = true;
+  const run = () => {
+    ensurePlaces().catch(() => {});
+  };
+  const idle = (
+    window as unknown as {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+    }
+  ).requestIdleCallback;
+  if (idle) idle.call(window, run, { timeout: 2000 });
+  else window.setTimeout(run, 200);
+}
+
 function parseAddressComponents(
   components: google.maps.places.AddressComponent[],
 ): PlaceResult {
