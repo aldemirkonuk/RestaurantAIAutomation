@@ -198,6 +198,21 @@ describe('the touch rules', () => {
     expect(cards).toMatch(/@keyframes ivc-in \{\s*from \{\s*opacity: 0;\s*transform: translateY\(6px\);/);
   });
 
+  it('the card stagger ends inside 400 ms: duration + (cap - 1) steps', () => {
+    const dur = Number(/animation: ivc-in (\d+)ms/.exec(css)![1]);
+    const step = Number(/animation-delay: calc\(var\(--i, 0\) \* (\d+)ms\)/.exec(css)![1]);
+    const cap = Number(/const STAGGER_CARDS = (\d+);/.exec(here('PhoneRows.tsx'))![1]);
+    expect(dur + (cap - 1) * step).toBeLessThanOrEqual(400);
+  });
+
+  it("what replaces a 'Reading' note arrives on a fade, and reduced motion has none", () => {
+    const drawer = here('item-drawer.css');
+    expect(drawer).toMatch(/\.ivd-arrive \{\s*[^}]*animation: ivd-ev-in 160ms/);
+    expect(drawer).toMatch(/prefers-reduced-motion: reduce\) \{\s*\.ivd-arrive \{\s*animation: none;/);
+    expect(here('NutritionCard.tsx').match(/ivn ivd-arrive/g)?.length).toBe(2);
+    expect(here('ItemUsedIn.tsx').match(/className="ivd-arrive"/g)?.length).toBe(2);
+  });
+
   it('lets the drawer be a bottom sheet at 639 px and below', () => {
     const drawer = here('item-drawer.css');
     expect(drawer).toMatch(/@media \(min-width: 640px\) and \(max-width: 767px\) \{\s*\.mdv-ovl\.mdv-ovl--sheet/);

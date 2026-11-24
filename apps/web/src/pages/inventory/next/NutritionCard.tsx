@@ -74,7 +74,7 @@ export default function NutritionCard({ row, restaurantId, canManage }: WhatIsIn
 
   if (q.isError) {
     return (
-      <div className="ivn" data-testid="ivn">
+      <div className="ivn ivd-arrive" data-testid="ivn">
         <p role="alert" className="iv-said iv-said-alarm" data-testid="ivn-unread">
           What is in this item could not be read: {failureReason(q.error)}. Nothing is shown as known.
         </p>
@@ -104,7 +104,7 @@ export default function NutritionCard({ row, restaurantId, canManage }: WhatIsIn
     );
   }
   return (
-    <div className="ivn" data-testid="ivn">
+    <div className="ivn ivd-arrive" data-testid="ivn">
       {data.figures ? (
         <Figures f={data.figures} />
       ) : (

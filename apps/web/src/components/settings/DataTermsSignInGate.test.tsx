@@ -6,7 +6,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { DataTermsSignInGate } from './DataTermsSignInGate';
 import type { DataTermsReadout } from '../../services/api/dataTerms';
@@ -46,9 +46,9 @@ function readout(over: Partial<DataTermsReadout> = {}): DataTermsReadout {
   };
 }
 
-function mount() {
+function mount(entry = '/') {
   render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[entry]}>
       <DataTermsSignInGate />
     </MemoryRouter>,
   );
@@ -146,6 +146,23 @@ describe('when the sheet shows, and when it never does', () => {
       acceptance: { version: 1, acceptedAt: '2026-09-01T00:00:00Z', acceptedBy: { userId: 'u', name: 'Aldemir' } },
     });
     mount();
+    expect(screen.getByRole('button', { name: /hold to accept/i })).toBeInTheDocument();
+  });
+});
+
+describe("never above a good's drawer (/inventory?open=)", () => {
+  it('an owner with unaccepted terms waits while a link has the good open, and is met on the plain page', () => {
+    dataTermsMock.data = readout();
+    mount('/inventory?open=item-1');
+    expect(screen.queryByRole('button', { name: /hold to accept/i })).toBeNull();
+    cleanup();
+    mount('/inventory');
+    expect(screen.getByRole('button', { name: /hold to accept/i })).toBeInTheDocument();
+  });
+
+  it('an open= on another page is not a drawer', () => {
+    dataTermsMock.data = readout();
+    mount('/orders?open=o1');
     expect(screen.getByRole('button', { name: /hold to accept/i })).toBeInTheDocument();
   });
 });

@@ -44,6 +44,7 @@
 import { useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Panel } from './Sheet';
+import { opensItemDrawer } from '../../lib/opensItemDrawer';
 import { useDataTermsSignInBusy } from '../../hooks/queries/useDataTerms';
 import {
   GROUND_OPTIONS,
@@ -76,12 +77,7 @@ function FirstChoiceAsk({ ground }: { ground: GroundState }) {
   // like it waits for the terms: the drawer closes, the question comes. No new
   // motion; it arrives on `Panel`'s own `settle`.
   const { pathname, search } = useLocation();
-  const itemDrawerOpen =
-    pathname.startsWith('/inventory') &&
-    (() => {
-      const p = new URLSearchParams(search);
-      return Boolean(p.get('open') || p.get('highlight'));
-    })();
+  const itemDrawerOpen = opensItemDrawer(pathname, search);
   const [phase, setPhase] = useState<Phase>('ask');
   const [picked, setPicked] = useState<GroundSetting>('paper');
   const firstRef = useRef<HTMLInputElement>(null);
