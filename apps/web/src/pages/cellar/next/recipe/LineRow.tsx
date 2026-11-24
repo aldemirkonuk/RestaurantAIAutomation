@@ -8,7 +8,9 @@
  * The amount and unit rules live in `units.ts`.
  */
 import { useId, useState } from 'react';
+import { Link, useInRouterContext } from 'react-router-dom';
 import { Link2, Trash2 } from 'lucide-react';
+import { inventoryHref } from '../../../../services/api/itemDishes';
 import type { RecipeLineRole, RecipeLineStatus, ShelfItem } from '../../../../services/api/recipes';
 import { RECIPE_UNITS, amountWithUnit, qtyText, readQty, unitWord, type RecipeUnit } from './units';
 import ShelfPicker, { kindWords } from './ShelfPicker';
@@ -187,8 +189,13 @@ export default function LineRow({
 }) {
   const id = useId();
   const [picking, setPicking] = useState(false);
+  const routed = useInRouterContext();
   const stocked = row.role === 'stocked';
   const qty = rowQty(row);
+  // Only a line that points at a good still on the shelf can open it. Only
+  // house managers get this editable row; staff read `LineRowRead`, which
+  // has no link, so the drawer a staff role cannot open is never offered.
+  const openHref = stocked && row.inventoryId && !row.itemGone ? inventoryHref(row.inventoryId) : null;
 
   const pick = (item: ShelfItem) => {
     onChange({
@@ -241,6 +248,13 @@ export default function LineRow({
               />
             </>
           )}
+          {openHref ? (
+            routed ? (
+              <Link to={openHref} className="cl-rcp-open cl-focus">Open in Inventory</Link>
+            ) : (
+              <a href={openHref} className="cl-rcp-open cl-focus">Open in Inventory</a>
+            )
+          ) : null}
         </div>
 
         <label htmlFor={`${id}-qty`} className="cl-sr">Amount</label>

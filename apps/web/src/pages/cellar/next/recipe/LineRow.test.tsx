@@ -19,6 +19,7 @@ vi.mock('../../../../services/api/client', () => ({ apiClient: { get: h.get } })
 vi.mock('../../../../contexts/AuthContext', () => ({ useAuth: () => ({ activeRestaurantId: h.rid }) }));
 
 import LineRow, { LineRowRead, rowQty, type DraftRow } from './LineRow';
+import { inventoryHref } from '../../../../services/api/itemDishes';
 import { amountWithUnit, qtyText, readQty, unitWord } from './units';
 import { useShelf } from './useRecipe';
 
@@ -71,6 +72,38 @@ describe('LineRow', () => {
     fireEvent.click(screen.getByRole('switch'));
     expect(last).toMatchObject({ role: 'untracked', inventoryId: null, itemName: null });
     expect(screen.getByRole('switch')).toHaveTextContent('Not counted');
+  });
+
+  it('r105 gap1: a linked line opens its good in Inventory, and the chip still toggles the picker', () => {
+    mount(<Harness start={{ ...blank, inventoryId: GIN, itemName: 'Tanqueray gin', itemKind: 'spirit', label: 'gin' }} />);
+    const open = screen.getByRole('link', { name: 'Open in Inventory' });
+    expect(open).toHaveAttribute('href', `/inventory?open=${GIN}`);
+    expect(open).toHaveAttribute('href', inventoryHref(GIN));
+    const chip = screen.getByRole('button', { name: /Tanqueray gin/ });
+    expect(chip).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(chip);
+    expect(chip).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(chip);
+    expect(chip).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('r105 gap1: an unlinked, archived, deleted or not-counted line offers no link; the id is encoded', () => {
+    const { unmount } = mount(<Harness start={{ ...blank, label: 'vermouth' }} />);
+    expect(screen.queryByRole('link', { name: 'Open in Inventory' })).toBeNull();
+    unmount();
+    for (const gone of ['archived', 'deleted'] as const) {
+      const r = mount(<Harness start={{ ...blank, inventoryId: GIN, itemName: 'gin', label: 'gin', itemGone: gone }} />);
+      expect(screen.queryByRole('link', { name: 'Open in Inventory' })).toBeNull();
+      r.unmount();
+    }
+    mount(<Harness start={{ ...blank, role: 'untracked', label: 'ice' }} />);
+    expect(screen.queryByRole('link', { name: 'Open in Inventory' })).toBeNull();
+    expect(inventoryHref('a b&c')).toBe('/inventory?open=a%20b%26c');
+  });
+
+  it('r105 gap1: staff read a linked line with no link to the drawer', () => {
+    mount(<ol><LineRowRead row={{ ...blank, inventoryId: GIN, itemName: 'gin', label: 'gin' }} /></ol>);
+    expect(screen.queryByRole('link', { name: 'Open in Inventory' })).toBeNull();
   });
 
   it('a linked line with no price says why, and a priced one says its cost', () => {
