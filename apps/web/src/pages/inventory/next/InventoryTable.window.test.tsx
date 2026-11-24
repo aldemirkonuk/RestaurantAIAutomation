@@ -6,7 +6,6 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import InventoryTable, { GROUP_PX, ROW_PX, type InventoryTableProps } from './InventoryTable';
 import { type InvRow } from './useInventoryNextData';
 
@@ -86,11 +85,7 @@ const base: Omit<InventoryTableProps, 'rows'> = {
   grouped: false,
 };
 const draw = (rows: InvRow[], over: Partial<InventoryTableProps> = {}) =>
-  render(
-    <QueryClientProvider client={new QueryClient()}>
-      <InventoryTable {...base} rows={rows} {...over} />
-    </QueryClientProvider>,
-  );
+  render(<InventoryTable {...base} rows={rows} {...over} />);
 
 /** Put the list's top `y` px above the screen's top, as a scrolled page does. */
 function scrollTo(selector: string, y: number) {

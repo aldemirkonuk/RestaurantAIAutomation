@@ -23,9 +23,18 @@ function saveData(): boolean {
   }
 }
 
+/** A list mounted without a cache (a bare test mount) has nothing to warm; it must not throw. */
+function useOptionalQueryClient() {
+  try {
+    return useQueryClient();
+  } catch {
+    return null;
+  }
+}
+
 /** `kindOf` says what a good is, so a supply (no nutrition to state) is not asked for any. */
 export function useItemPrefetch(restaurantId: string | null | undefined, kindOf: (id: string) => string | null | undefined) {
-  const qc = useQueryClient();
+  const qc = useOptionalQueryClient();
   const timer = useRef<number | null>(null);
   const pending = useRef<string | null>(null);
   const inflight = useRef(new Set<string>());
@@ -40,7 +49,7 @@ export function useItemPrefetch(restaurantId: string | null | undefined, kindOf:
 
   const fetchFor = useCallback(
     (id: string) => {
-      if (!restaurantId || inflight.current.has(id) || saveData()) return;
+      if (!qc || !restaurantId || inflight.current.has(id) || saveData()) return;
       inflight.current.add(id);
       const jobs = [qc.prefetchQuery(figuresQuery(restaurantId, id)), qc.prefetchQuery(usedInQuery(restaurantId, id))];
       if (kindOf(id) !== 'supply') jobs.push(qc.prefetchQuery(nutritionQuery(restaurantId, id)));
