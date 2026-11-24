@@ -1,0 +1,23 @@
+import { afterEach, expect, it, vi } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+
+vi.mock('../../services/api/menus', () => ({
+  importMenu: vi.fn(),
+  readRefusalWords: (_e: unknown, fallback: string) => fallback,
+}))
+import { MenuCsvUpload } from './MenuCsvUpload'
+
+afterEach(cleanup)
+
+// r105 g4: a PDF dropped on the first-menu step opened this panel and the file
+// was lost. The panel now takes the dropped files as if chosen here.
+it('takes the files dropped on the menu step as if they were chosen here', async () => {
+  const pdf = new File([new Uint8Array(10)], 'menu.pdf', { type: 'application/pdf' })
+  render(<MenuCsvUpload onSuccess={vi.fn()} initialFiles={[pdf]} />)
+  expect(await screen.findByText(/menu\.pdf/)).toBeInTheDocument()
+})
+
+it('shows no file when nothing was dropped', () => {
+  render(<MenuCsvUpload onSuccess={vi.fn()} />)
+  expect(screen.queryByText(/menu\.pdf/)).not.toBeInTheDocument()
+})
