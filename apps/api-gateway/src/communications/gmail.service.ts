@@ -49,6 +49,8 @@ import {
   getSeverityLabel,
 } from "./email-templates";
 
+import { mixedBody, type OutboundAttachment } from "./mime-attachments";
+
 export interface EmailOptions {
   to: string[];
   subject: string;
@@ -74,6 +76,15 @@ export interface EmailOptions {
    * is emitted; anything else is dropped rather than half-written.
    */
   listUnsubscribe?: { url: string; oneClick?: boolean };
+  /**
+   * Files the person uploaded (g6a, r106): at most 3, 5 MB together, bytes only.
+   * Present means the message is multipart/mixed with the text/html alternative
+   * as its first part; absent keeps the multipart/alternative every caller had.
+   * The role gate (owner or manager) is asked where the request enters, via
+   * mime-attachments.ts `assertMayAttach`; the limits are asked again here, so
+   * no caller can hand this builder a fourth file.
+   */
+  attachments?: OutboundAttachment[];
 }
 
 /** The display name, made safe to sit inside a quoted From header. */
@@ -755,7 +766,9 @@ This is an automated alert from Mudavym.
         ([name, value]) => `${name}: ${value}`,
       ),
       "MIME-Version: 1.0",
-      `Content-Type: multipart/alternative; boundary="${boundary}"`,
+      ...(options.attachments?.length
+        ? []
+        : [`Content-Type: multipart/alternative; boundary="${boundary}"`]),
     ]
       .filter(Boolean)
       .join("\r\n");
@@ -780,6 +793,15 @@ This is an automated alert from Mudavym.
       base64Body(options.html),
       `--${boundary}--`,
     ].join("\r\n");
+
+    if (options.attachments?.length) {
+      const mixed = mixedBody(
+        `Content-Type: multipart/alternative; boundary="${boundary}"`,
+        body,
+        options.attachments,
+      );
+      return `${headers}\r\n${mixed.contentTypeHeader}\r\n\r\n${mixed.body}`;
+    }
 
     return `${headers}\r\n\r\n${body}`;
   }
