@@ -12,6 +12,9 @@ export const figuresQuery = (restaurantId: string, id: string) => ({
   queryFn: () => getItemFigures(id, restaurantId || undefined),
   staleTime: 30_000,
   retry: false as const,
+  // The app default is 'always', which refetches a cache the hover just filled. `true` honours staleTime;
+  // a count or write-off invalidates the ['inventory'] prefix, so a write still rereads these.
+  refetchOnMount: true as const,
 });
 
 export const nutritionQuery = (restaurantId: string, id: string) => ({
@@ -19,6 +22,9 @@ export const nutritionQuery = (restaurantId: string, id: string) => ({
   queryFn: () => getItemNutrition(id, restaurantId || undefined),
   staleTime: 60_000,
   retry: false as const,
+  // The app default is 'always', which refetches a cache the hover just filled. `true` honours staleTime;
+  // a count or write-off invalidates the ['inventory'] prefix, so a write still rereads these.
+  refetchOnMount: true as const,
 });
 
 export const usedInQuery = (restaurantId: string, id: string) => ({
@@ -26,4 +32,7 @@ export const usedInQuery = (restaurantId: string, id: string) => ({
   queryFn: () => getItemUsedIn(id, restaurantId || undefined),
   staleTime: 60_000,
   retry: false as const,
+  // The app default is 'always', which refetches a cache the hover just filled. `true` honours staleTime;
+  // a count or write-off invalidates the ['inventory'] prefix, so a write still rereads these.
+  refetchOnMount: true as const,
 });
