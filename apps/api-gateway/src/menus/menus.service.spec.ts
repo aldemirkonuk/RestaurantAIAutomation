@@ -1287,6 +1287,19 @@ describe("MenusService — every menu read is kept as its own version", () => {
     await expect(makeService(tables).listVersions("rest-1")).rejects.toThrow("The menus could not be read just now");
   });
 
+  // Menu r104 g1: the current menu's cadence says when a newer read is due.
+  it("says the current menu is due when it has been current a cadence or more, and nothing without a cadence", async () => {
+    const ago = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString();
+    const rows = (cadence: string | null, d: number): Row[] => [
+      { id: "m1", restaurant_id: "rest-1", status: "active", extracted_at: ago(d), made_current_at: ago(d), cadence },
+    ];
+    expect((await makeService({ restaurant_menus: rows("monthly", 35) }).listVersions("rest-1")).due).toMatchObject({ state: "due", cadence: "monthly" });
+    expect((await makeService({ restaurant_menus: rows("monthly", 60) }).listVersions("rest-1")).due).toMatchObject({ state: "overdue" });
+    expect((await makeService({ restaurant_menus: rows("monthly", 5) }).listVersions("rest-1")).due).toMatchObject({ state: "ok" });
+    expect((await makeService({ restaurant_menus: rows(null, 400) }).listVersions("rest-1")).due).toBeNull();
+    expect((await makeService({ restaurant_menus: [] }).listVersions("rest-1")).due).toBeNull();
+  });
+
   // Menu r21: dates in the house's time zone, never the viewing device's.
   it("names the house's own time zone with the list, and only this house's", async () => {
     const tables: Record<string, Row[]> = {
