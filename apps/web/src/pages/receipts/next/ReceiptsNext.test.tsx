@@ -1308,6 +1308,40 @@ describe('ReceiptsNext — a lane holds its place while it is read (r41 invoices
     expect(outlines(container)).toBe(0);
   });
 
+  it('a warm reload draws each lane at the rows it held last time, so the lists that land do not push (r105)', async () => {
+    window.localStorage.setItem('receipts.laneRows.rest-A', JSON.stringify({ queue: 7, clean: 4, verified: 6 }));
+    api.gate = new Promise<void>(() => {});
+    api.queuePending = true;
+    api.verifiedPending = true;
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await screen.findByText(/Reading the queue/);
+    const rows = (slot: string) =>
+      screen.getByTestId(`lane-slot-${slot}`).querySelectorAll('[style*="height: 52px"]').length;
+    expect([rows('queue'), rows('clean'), rows('verified')]).toEqual([7, 4, 6]);
+    expect(screen.getByTestId('detail-placeholder').getAttribute('style')).toContain('min-height: 41px');
+    expect(container.querySelectorAll('[data-lane-outline]').length).toBe(3);
+  });
+
+  it('with nothing remembered, or storage that throws, the outlines keep their old guess', async () => {
+    window.localStorage.removeItem('receipts.laneRows.rest-A');
+    api.gate = new Promise<void>(() => {});
+    api.queuePending = true;
+    api.verifiedPending = true;
+    render(<ReceiptsNext />, { wrapper });
+    await screen.findByText(/Reading the queue/);
+    const rows = (slot: string) =>
+      screen.getByTestId(`lane-slot-${slot}`).querySelectorAll('[style*="height: 52px"]').length;
+    expect([rows('queue'), rows('clean'), rows('verified')]).toEqual([3, 1, 0]);
+  });
+
+  it('remembers what the lanes held once all three have landed', async () => {
+    window.localStorage.removeItem('receipts.laneRows.rest-A');
+    render(<ReceiptsNext />, { wrapper });
+    await screen.findByText(/INV-88/);
+    await waitFor(() => expect(window.localStorage.getItem('receipts.laneRows.rest-A')).not.toBeNull());
+    expect(JSON.parse(window.localStorage.getItem('receipts.laneRows.rest-A') as string).queue).toBeGreaterThan(0);
+  });
+
   it('a held slot has no animation or transition, so reduced motion collapses it with none (ADR 0112)', async () => {
     api.gate = new Promise<void>(() => {});
     api.verifiedPending = true;

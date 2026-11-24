@@ -70,6 +70,7 @@ import {
 } from './rc2-format';
 import { DOC_TYPE_LABELS, nameCarriesYear } from '../../../components/documents/canonical-format';
 import { SwipeToConfirm } from './SwipeToConfirm';
+import { readLaneRows, writeLaneRows } from './laneMemory';
 import {
   RECEIPTS_SERVER_WINDOWS,
   useActiveRestaurantId,
@@ -1613,6 +1614,23 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
 
 export default function ReceiptsNext() {
   const data = useReceiptsNextData();
+  const laneRid = useActiveRestaurantId();
+  // What each lane held last time, so the outlines of a warm reload are as tall
+  // as the lists that land (r105). Read once per house; written when all three
+  // reads have landed.
+  const remembered = useMemo(() => readLaneRows(laneRid), [laneRid]);
+  const allLanesKnown = data.queueKnown && data.cleanKnown && data.verifiedKnown;
+  const rememberedQueue = data.queue.length;
+  const rememberedClean = data.clean.length;
+  const rememberedVerified = data.verified.length;
+  useEffect(() => {
+    if (!allLanesKnown || data.isError) return;
+    writeLaneRows(laneRid, {
+      queue: rememberedQueue,
+      clean: rememberedClean,
+      verified: rememberedVerified,
+    });
+  }, [allLanesKnown, data.isError, laneRid, rememberedQueue, rememberedClean, rememberedVerified]);
   const [searchParams, setSearchParams] = useSearchParams();
   const { activeRole, user } = useAuth();
   const creditsOffered = canSeeCreditLedger(activeRole, user?.role);
@@ -1958,7 +1976,7 @@ export default function ReceiptsNext() {
                 // While any read is on its way the empty queue keeps the height its
                 // outline held and says it is still reading; it settles once, when
                 // the last read lands (r104 g5).
-                style={{ minHeight: data.lanesSettling ? 156 : undefined }}
+                style={{ minHeight: data.lanesSettling ? Math.max(156, (remembered?.queue ?? 0) * 52) : undefined }}
               >
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
                 {/* Not "caught up" while clean papers still wait for a swipe (W44),
@@ -1978,7 +1996,7 @@ export default function ReceiptsNext() {
             ) : (
               <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
                 {data.queue.map(queueRow)}
-                {data.queueReading && <LaneOutline rows={3} slot="queue" />}
+                {data.queueReading && <LaneOutline rows={remembered?.queue || 3} slot="queue" />}
               </div>
             )}
 
@@ -1987,7 +2005,7 @@ export default function ReceiptsNext() {
                 under it (r41 invoices gap P8). A failed read draws none. */}
             {(data.cleanReading || (data.lanesSettling && data.cleanKnown && data.clean.length === 0)) && (
               <div style={{ marginTop: 16 }}>
-                <LaneOutline rows={1} heading slot="clean" />
+                <LaneOutline rows={remembered?.clean || 1} heading slot="clean" />
               </div>
             )}
 
@@ -2021,7 +2039,7 @@ export default function ReceiptsNext() {
 
             {(data.verifiedReading || (data.lanesSettling && data.verifiedKnown && data.verified.length === 0)) && (
               <div style={{ marginTop: 16 }}>
-                <LaneOutline rows={0} heading slot="verified" />
+                <LaneOutline rows={remembered?.verified ?? 0} heading slot="verified" />
               </div>
             )}
 
@@ -2080,7 +2098,13 @@ export default function ReceiptsNext() {
           </section>
 
           {/* the selected document */}
-          <section aria-label="Document detail">
+          <section
+            aria-label="Document detail"
+            data-testid="detail-placeholder"
+            // With nothing open the section keeps its line, so the grid does not
+            // lose it when the lanes beside it land (r105).
+            style={selected ? undefined : { minHeight: 41 }}
+          >
             {selected ? (
               <>
                 <button
