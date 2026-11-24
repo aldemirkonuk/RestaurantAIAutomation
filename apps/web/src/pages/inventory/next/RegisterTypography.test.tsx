@@ -45,7 +45,7 @@ afterEach(() => {
 describe('which columns say nothing', () => {
   it('names every column that is a dash for every row', () => {
     expect([...emptyColumns({ rows: [row(), row({ id: 'i2' })], ...input })].sort()).toEqual(
-      ['Runway', 'Type', 'Value', 'Vel/day', 'Your price', 'Zone'].sort(),
+      ['Runway', 'Type', 'Used in', 'Value', 'Vel/day', 'Your price', 'Zone'].sort(),
     );
   });
   it('one row with a figure keeps its column', () => {
@@ -78,9 +78,19 @@ describe('the register', () => {
     expect(screen.getByTestId('inv-columns').textContent).toBe('Hide empty columns');
   });
   it('draws no control and no hiding when every column has something', () => {
-    draw([row({ type: 'red', zones: [{ locationId: 'z', qty: 3 }], velocity: 1, runway: 4, bottle: 9, value: 5 })]);
+    draw([row({ type: 'red', zones: [{ locationId: 'z', qty: 3 }], velocity: 1, runway: 4, bottle: 9, value: 5, usedIn: 2 })]);
     expect(screen.queryByTestId('inv-columns')).toBeNull();
     expect(heads()).toContain('Vel/day');
+  });
+  it('r105 g5: the Used in count opens the good, an unread count says unread and never 0', () => {
+    const onUsedIn = vi.fn();
+    const onToggle = vi.fn();
+    draw([row({ id: 'u1', usedIn: 3 }), row({ id: 'u2', usedIn: null })], { onUsedIn, onToggle });
+    expect(heads()).toContain('Used in');
+    fireEvent.click(screen.getByRole('button', { name: /Used in 3 recipes/ }));
+    expect(onUsedIn).toHaveBeenCalledWith('u1');
+    expect(onToggle).not.toHaveBeenCalled();
+    expect(screen.getByTestId('inv-usedin-u2').textContent).toBe('unread');
   });
   it('a row with no producer or vintage draws no bare dash line', () => {
     draw([row()]);

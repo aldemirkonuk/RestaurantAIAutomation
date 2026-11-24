@@ -38,7 +38,7 @@ import { failureReason } from './iv-failure';
 import { settingsApi } from '../../../services/api/settings';
 import { documentsApi, type ProcurementDocument } from '../../../services/api/documents';
 import { fetchDeliveriesToName } from '../../../services/api/orders';
-import { fetchAuctionLotRecords, type AuctionLotRecord } from '../../../services/api/inventory';
+import { fetchAuctionLotRecords, getUseCounts, inventoryUseCountsKey, type AuctionLotRecord } from '../../../services/api/inventory';
 import { getPriceAdvice } from '../../../services/api/pricing';
 import type { InventoryItem as ApiItem, Wine as ApiWine } from '../../../services/api/types';
 import type { Provider } from '../../../services/api/providers';
@@ -121,6 +121,8 @@ export interface InvRow {
   previousSettledCost?: number | null;
   /** False when the settled-price read failed: a price move is then unknown, not none. */
   settledCostsReadable?: boolean;
+  /** How many current recipes use this good. Null: the read failed (never 0). Absent: not read yet. */
+  usedIn?: number | null;
   velocity: number | null;
   /** Days of cover. Null at zero velocity: a title nobody buys has no runway. */
   runway: number | null;
@@ -460,7 +462,7 @@ export function matchesSearch(row: InvRow, query: string, zoneName: (id: string 
 
 /* ── chips ───────────────────────────────────────────────────────────────── */
 
-export type ChipId = 'all' | 'out' | 'below' | 'reconcile' | 'count' | 'dead' | 'price';
+export type ChipId = 'all' | 'out' | 'below' | 'reconcile' | 'count' | 'dead' | 'price' | 'unused';
 
 export const CHIPS: { id: ChipId; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -470,6 +472,7 @@ export const CHIPS: { id: ChipId; label: string }[] = [
   { id: 'count', label: 'Count due' },
   { id: 'dead', label: 'Dead stock' },
   { id: 'price', label: 'Price signals' },
+  { id: 'unused', label: 'Unused' },
 ];
 
 export function countDue(row: InvRow, now = Date.now()): boolean {
@@ -485,6 +488,9 @@ export function countDue(row: InvRow, now = Date.now()): boolean {
  * set its own; until then it is said in words on the chip (r104 g3).
  */
 export const PRICE_SIGNAL_PCT = 10;
+
+/** What the Unused chip says it holds. */
+export const UNUSED_WORDS = 'A good no current drink or dish recipe uses. Not the same as unsold: a bottle sold as it is has no recipe.';
 
 /** What the chip says it holds, in words (the default is stated, not hidden). */
 export const PRICE_SIGNAL_WORDS = `A good whose last settled delivery cost per unit moved by more than ${PRICE_SIGNAL_PCT} percent from the delivery before`;
@@ -525,6 +531,9 @@ export function chipMatch(row: InvRow, chip: ChipId, now = Date.now()): boolean 
       return countDue(row, now);
     case 'dead':
       return row.deadStock;
+    case 'unused':
+      // Only a read zero: an unread or not-yet-read count is never "no recipe uses it".
+      return row.usedIn === 0;
     case 'price': {
       const pct = priceMovePct(row);
       return pct !== null && Math.abs(pct) > PRICE_SIGNAL_PCT;
@@ -757,9 +766,27 @@ export function useInventoryNextData() {
     return m;
   }, [wines.data]);
 
-  const rows = useMemo<InvRow[] | null>(
+  const baseRows = useMemo<InvRow[] | null>(
     () => (items === null ? null : items.map((i) => toRow(i, i.wineId ? winesById.get(i.wineId) : null))),
     [items, winesById],
+  );
+  // How many recipes use each good (r105 g5). A failed read is `null` on every row: unread, never 0.
+  const useCountsQ = useQuery({
+    queryKey: inventoryUseCountsKey(rid ?? ''),
+    queryFn: () => getUseCounts(rid ?? undefined),
+    enabled: rid !== null,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const rows = useMemo<InvRow[] | null>(
+    () =>
+      baseRows === null
+        ? null
+        : baseRows.map((r) => ({
+            ...r,
+            usedIn: useCountsQ.isError ? null : useCountsQ.data ? (useCountsQ.data.counts[r.id] ?? 0) : undefined,
+          })),
+    [baseRows, useCountsQ.isError, useCountsQ.data],
   );
 
   const currencyQ = useQuery({
@@ -911,6 +938,8 @@ export function useInventoryNextData() {
     libraryAnswered,
     /** The selling-pace join failed for this read: pace, runway and dead stock are unread, not zero (INV-W29). */
     paceUnread,
+    /** Whether the recipe use counts answered: the Unused chip and the Used in column read it. */
+    useCountsRead: (useCountsQ.isError ? 'unread' : useCountsQ.data ? 'ready' : 'reading') as 'reading' | 'unread' | 'ready',
     currency,
     locations: {
       list: storage.locations as StorageLocation[],
