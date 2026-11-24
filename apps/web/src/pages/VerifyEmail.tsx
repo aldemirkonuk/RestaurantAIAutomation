@@ -28,6 +28,7 @@ import {
 } from '../lib/verificationMail'
 
 type SessionPair = { accessToken: string; refreshToken: string }
+import { WrongAddress } from '../components/auth/WrongAddress'
 
 /**
  * The two answers the verify route gives a click it will not honour (ADR 0229
@@ -511,6 +512,12 @@ export function VerifyEmail() {
                       Sign in to resend
                     </Link>
                   )}
+                  {user && (
+                    <WrongAddress
+                      signInWithSession={signInWithSession}
+                      onChanged={() => setLastResent(new Date())}
+                    />
+                  )}
                   {lastResent && (
                     <p role="status" className="mdv-note">
                       Another verification email was sent at{' '}
@@ -691,6 +698,14 @@ export function VerifyEmail() {
                 'Resend Verification Email'
               )}
             </Button>
+            {user && (
+              <div className="text-center">
+                <WrongAddress
+                  signInWithSession={signInWithSession}
+                  onChanged={() => setLastResent(new Date())}
+                />
+              </div>
+            )}
             {lastResent && (
               <p className="text-xs text-center text-gray-400">
                 Sent at {lastResent.toLocaleTimeString()}. Wait 1 minute
