@@ -38,6 +38,7 @@ vi.mock('../../../contexts/AuthContext', () => ({
 vi.mock('./recipe/RecipeSheet', () => ({ default: () => <div data-testid="sheet" /> }));
 vi.mock('./useCellarNextData', () => ({
   useCocktailRegister: () => h.list,
+  useCocktailManages: () => true,
   useCocktailWrites: () => ({
     create: { mutateAsync: vi.fn(), isPending: false },
     amend: { mutateAsync: vi.fn(), isPending: false },
