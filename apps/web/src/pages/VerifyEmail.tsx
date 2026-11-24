@@ -31,6 +31,10 @@ type SessionPair = { accessToken: string; refreshToken: string }
 import { WrongAddress } from '../components/auth/WrongAddress'
 
 const POLL_FIRST_MS = 5_000
+/** Reads in a row that may fail before the waiting tab says so (ADR 0020). */
+const POLL_TROUBLE_AFTER = 3
+const POLL_TROUBLE_SENTENCE =
+  'We cannot check just now whether this address was verified. This page keeps trying; you can also reload it.'
 const POLL_SLOWEST_MS = 30_000
 const POLL_GIVE_UP_MS = 10 * 60_000
 
@@ -162,19 +166,26 @@ export function VerifyEmail() {
   // first after 5 s, then slower (x1.5, never past 30 s), and it gives up the
   // timer after 10 minutes. A hidden tab asks nothing. No motion is added.
   const waiting = !token && !loading && Boolean(user) && user?.emailVerified !== true && !verified
+  const [pollTrouble, setPollTrouble] = useState(false)
   useEffect(() => {
     if (!waiting) return
     let live = true
     const began = Date.now()
     let delay = POLL_FIRST_MS
     let timer: number | undefined
+    let failures = 0
     const ask = async () => {
       if (!live || document.visibilityState === 'hidden') return
       try {
         const read = await apiClient.get<{ user?: { emailVerified?: boolean } }>('/auth/me')
+        failures = 0
+        if (live) setPollTrouble(false)
         if (live && read?.data?.user?.emailVerified === true) moveOnWithThisSession()
       } catch {
-        // Not read just now: the tab keeps waiting, and says nothing new.
+        // Not read just now (a 429 reads the same): the tab keeps waiting. A
+        // run of failures is said in words, never left as a silent wait.
+        failures += 1
+        if (live && failures >= POLL_TROUBLE_AFTER) setPollTrouble(true)
       }
     }
     const tick = () => {
@@ -493,6 +504,11 @@ export function VerifyEmail() {
                   {mailSentence}
                 </p>
               )}
+              {pollTrouble && waiting && (
+                <p className="mdv-note" role="status" data-testid="verify-poll-trouble">
+                  {POLL_TROUBLE_SENTENCE}
+                </p>
+              )}
               {token ? (
                 linkGate ?? (
                   <>
@@ -646,6 +662,12 @@ export function VerifyEmail() {
             }
           >
             {mailSentence}
+          </p>
+        )}
+
+        {pollTrouble && waiting && (
+          <p role="status" className="mb-4 text-sm text-gray-600 text-center" data-testid="verify-poll-trouble">
+            {POLL_TROUBLE_SENTENCE}
           </p>
         )}
 
