@@ -22,6 +22,7 @@ import {
   checkMarginFromRows,
   pickSaleCostSource,
   snapshotLineCost,
+  type SaleLedgerRow,
 } from "./sale-cost";
 import {
   PROVIDER_BY_KEY,
@@ -1919,12 +1920,34 @@ export class PosHubService {
       // logged and nothing else noticed. The honest shape is a plain INSERT
       // with the partial unique index as the backstop: a replay raises 23505,
       // which is the idempotent no-op the upsert was meant to be.
+      // r105: a whole-bottle line reads the row apply_stock_movement just
+      // wrote under this key, so the line costs what the lots it drew cost.
+      // A pour has no such row (record_glass_pour writes no draws) and stays
+      // on the recorded WAC. A failed read says so and falls back to the WAC
+      // the line was costed at before; it is never silently a different cost.
+      let ledgerRow: SaleLedgerRow | null = null;
+      if (resolved.mode === "whole_bottle" && costSource) {
+        const { data, error: ledgerError } = await db
+          .from("inventory_transactions")
+          .select("quantity_change, unit_cost, cost_total, unpriced_qty")
+          .eq("restaurant_id", restaurantId)
+          .eq("idempotency_key", idempotencyKey)
+          .maybeSingle();
+        if (ledgerError) {
+          this.logger.warn(
+            `Sale ledger row unreadable for ${item.name} (key=${idempotencyKey}): ${ledgerError.message}; the line is costed at the recorded cost instead.`,
+          );
+        } else {
+          ledgerRow = (data as SaleLedgerRow | null) ?? null;
+        }
+      }
       const snapshot: CostSnapshot = snapshotLineCost(
         costSource,
         resolved.mode,
         volumeMl,
         inv?.bottleMl ?? null,
         qty,
+        ledgerRow,
       );
       const { error } = await db.from("wine_consumption_log").insert({
         restaurant_id: restaurantId,

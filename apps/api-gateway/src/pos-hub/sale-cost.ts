@@ -14,7 +14,10 @@ import { glassCostFrom } from "../pricing/margin-to-target";
 export type SaleCostBasis =
   | "invoice_lot_wac"
   | "invoice_lot_wac_partial"
-  | "last_purchase_price";
+  | "last_purchase_price"
+  /** A pour's share of a bottle costed at the recorded WAC: no ledger row prices a pour (r105). */
+  | "pour_lot_wac"
+  | "pour_lot_wac_partial";
 
 /** Written only by restate_sale_cost, when a verified invoice moves a sale's cost. */
 export const RESTATED_BASIS = "invoice_restated";
@@ -48,6 +51,12 @@ export const NO_COST_SNAPSHOT: CostSnapshot = {
 };
 
 const round4 = (n: number) => Math.round(n * 10000) / 10000;
+
+const num = (v: unknown): number | null => {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
 
 interface LotRow {
   id?: unknown;
@@ -98,12 +107,50 @@ export function pickSaleCostSource(
   return { unitCost, basis: costBasis, lotId, orderId };
 }
 
+/** The depletion row a whole-bottle sale wrote (inventory_transactions), as read back by its key. */
+export interface SaleLedgerRow {
+  quantity_change?: unknown;
+  unit_cost?: unknown;
+  cost_total?: unknown;
+  unpriced_qty?: unknown;
+}
+
+/**
+ * What the ledger row of a whole-bottle sale says each bottle cost: the
+ * quantity-weighted cost of the lots it drew (cost_total / bottles). Null
+ * unless every bottle left priced; with any bottle unpriced the weighted cost
+ * of the whole line is unknown, and a lower number from the priced part is
+ * never offered (ADR 0067).
+ */
+export function ledgerUnitCost(
+  row: SaleLedgerRow | null | undefined,
+  qty: number,
+): { unitCost: number; total: number } | null {
+  if (!row) return null;
+  const total = num(row.cost_total);
+  const unpriced = num(row.unpriced_qty);
+  const moved = num(row.quantity_change);
+  if (total === null || unpriced !== 0 || moved === null || moved >= 0) {
+    return null;
+  }
+  if (-moved !== qty) return null;
+  return { unitCost: round4(total / qty), total };
+}
+
+const POUR_BASIS: Partial<Record<SaleCostBasis, SaleCostBasis>> = {
+  invoice_lot_wac: "pour_lot_wac",
+  invoice_lot_wac_partial: "pour_lot_wac_partial",
+};
+
 /**
  * The cost snapshot of one line. A whole-bottle line costs one bottle per unit
- * sold. A pour costs its share of the bottle: bottle cost x ml / bottle ml
- * (`glassCostFrom`), so a bottle's worth of pours costs the bottle. A line
- * with no recorded cost, or a pour from a bottle of unknown size, keeps no
- * cost: null, never 0.
+ * sold, and when its ledger row priced every bottle the line IS that row's
+ * cost_total (the lots it really drew, r105), so the two figures cannot
+ * disagree. A pour costs its share of the bottle: bottle cost x ml / bottle ml
+ * (`glassCostFrom`), so a bottle's worth of pours costs the bottle; no ledger
+ * row prices a pour (record_glass_pour writes none), so a pour stays on the
+ * recorded WAC under its own basis word. A line with no recorded cost, or a
+ * pour from a bottle of unknown size, keeps no cost: null, never 0.
  */
 export function snapshotLineCost(
   source: SaleCostSource | null,
@@ -111,19 +158,23 @@ export function snapshotLineCost(
   volumeMl: number,
   bottleMl: number | null,
   qty: number,
+  ledgerRow?: SaleLedgerRow | null,
 ): CostSnapshot {
   if (!source) return NO_COST_SNAPSHOT;
+  const drawn = mode === "whole_bottle" ? ledgerUnitCost(ledgerRow, qty) : null;
   const cost =
     mode === "whole_bottle"
-      ? Number.isFinite(qty) && qty >= 0
-        ? source.unitCost * qty
-        : null
+      ? drawn
+        ? drawn.total
+        : Number.isFinite(qty) && qty >= 0
+          ? source.unitCost * qty
+          : null
       : glassCostFrom(source.unitCost, volumeMl, bottleMl);
   if (cost === null || !Number.isFinite(cost)) return NO_COST_SNAPSHOT;
   return {
     cost_at_sale: round4(cost),
-    cost_basis: source.basis,
-    cost_unit_at_sale: source.unitCost,
+    cost_basis: mode === "volume" ? (POUR_BASIS[source.basis] ?? source.basis) : source.basis,
+    cost_unit_at_sale: drawn ? drawn.unitCost : source.unitCost,
     cost_source_lot_id: source.lotId,
     cost_source_order_id: source.orderId,
   };
@@ -170,12 +221,6 @@ export interface CheckMargin {
   /** What the owner reads; says outright when part of the check is unknown. */
   sentence: string;
 }
-
-const num = (v: unknown): number | null => {
-  if (v === null || v === undefined || v === "") return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-};
 
 /**
  * COGS and margin of a check from what each line cost when it sold. A row
