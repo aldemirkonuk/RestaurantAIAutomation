@@ -41,6 +41,19 @@ function List() {
   );
 }
 
+// The real table: `data-row-id` sits on the title button only; the other cells of the row are bare.
+function TableList() {
+  const p = useItemPrefetch(RID, (id) => kinds[id]);
+  return (
+    <table onPointerOver={p.onPointerOver} onPointerOut={p.onPointerOut}>
+      <tbody>
+        <tr data-testid="tr-a"><td><button data-row-id="a">Title a</button></td><td data-testid="cell-a">12 / 14</td><td data-testid="cell-a2">US$30</td></tr>
+        <tr><td><button data-row-id="b">Title b</button></td><td data-testid="cell-b">3 / 4</td></tr>
+      </tbody>
+    </table>
+  );
+}
+
 let qc: QueryClient;
 const mount = () => render(<QueryClientProvider client={qc}><List /></QueryClientProvider>);
 const cached = (id: string) =>
@@ -163,5 +176,17 @@ describe('hover-intent prefetch of a good', () => {
     );
     await settle();
     expect([api.figures.mock.calls.length, api.nutrition.mock.calls.length, api.usedIn.mock.calls.length]).toEqual([1, 1, 1]);
+  });
+
+  it('resting on any cell of a table row warms that row, and moving between its cells keeps the wait', async () => {
+    render(<QueryClientProvider client={qc}><TableList /></QueryClientProvider>);
+    fireEvent.pointerOver(screen.getByTestId('cell-a'), { pointerType: 'mouse' });
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+    fireEvent.pointerOut(screen.getByTestId('cell-a'), { pointerType: 'mouse', relatedTarget: screen.getByTestId('cell-a2') });
+    fireEvent.pointerOver(screen.getByTestId('cell-a2'), { pointerType: 'mouse' });
+    await act(async () => { await vi.advanceTimersByTimeAsync(60); });
+    await settle();
+    expect(cached('a')).toEqual([true, true, true]);
+    expect(api.figures).toHaveBeenCalledTimes(1);
   });
 });

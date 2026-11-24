@@ -12,8 +12,13 @@ import { figuresQuery, nutritionQuery, usedInQuery } from './item-queries';
 
 export const PREFETCH_INTENT_MS = 150;
 
-const rowIdOf = (el: EventTarget | null): string | null =>
-  (el as HTMLElement | null)?.closest?.('[data-row-id]')?.getAttribute('data-row-id') ?? null;
+// The list's table rows carry `data-row-id` on the title button only, so a
+// pointer resting on any other cell of the row reads the row's button too.
+const rowIdOf = (el: EventTarget | null): string | null => {
+  const node = el as HTMLElement | null;
+  const own = node?.closest?.('[data-row-id]') ?? node?.closest?.('tr')?.querySelector('[data-row-id]');
+  return own?.getAttribute('data-row-id') ?? null;
+};
 
 function saveData(): boolean {
   try {
