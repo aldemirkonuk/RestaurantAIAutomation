@@ -1,5 +1,5 @@
 -- DD-r104-16: wine_consumption_log.cost_basis accepts agreed_lot_wac, keeps the
--- other three, and still refuses a basis nobody named. Self-asserting; run on a
+-- others (restated and pour words too), and still refuses a basis nobody named. Self-asserting; run on a
 -- database built from supabase/migrations; synthetic fixtures, rolled back.
 
 begin;
@@ -27,6 +27,15 @@ begin
   end loop;
   assert (select count(*) from public.wine_consumption_log where inventory_id = it and cost_basis = 'agreed_lot_wac') = 1,
     'A3: agreed_lot_wac was not kept on the sale row';
+
+  -- A4b: the words the restate and pour PRs add survive this CHECK (it sorts after theirs).
+  foreach b in array array['invoice_restated', 'pour_lot_wac', 'pour_lot_wac_partial'] loop
+    n := n + 1;
+    insert into public.wine_consumption_log
+      (id, restaurant_id, inventory_id, wine_name, consumption_type, quantity, volume_ml, source, cost_at_sale, cost_basis)
+    values (('a0100000-0000-4000-8000-0000000003' || lpad(n::text, 2, '0'))::uuid, h, it,
+            'SYNTHETIC AW', 'glass', 1, 150, 'pos', 20, b);
+  end loop;
 
   -- A5: a null basis (cost not kept) is still fine.
   insert into public.wine_consumption_log
