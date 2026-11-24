@@ -5,7 +5,7 @@
 import { perBottleLotCost } from "./lot-unit-cost";
 import { landDelivery, paidBottles, PaperHeaderRow, PaperLine, PaperLineRow } from "./paper-landed-cost";
 import { paperTaxFacts, PaperTaxLine } from "./paper-tax-facts";
-import { HouseTax } from "../landed-cost";
+import { HouseTax, LandedCostLineInput, landedCost } from "../landed-cost";
 
 let seed = 20261119;
 const rnd = () => ((seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296);
@@ -290,5 +290,63 @@ describe("lines plus tax, charges included, equal the paper's total to the cent 
       holds(Math.abs(value - total) <= 0.01 * (costed.length + 1), { i, truth: t, F, tax, total, value, held: [...res.held.entries()] });
     }
     expect(checked).toBeGreaterThan(100);
+  });
+});
+
+describe("charges taxed at another rate than the lines (r105, DD-r103-10)", () => {
+  // A house that keeps its tax books lines + their tax + freight + the FREIGHT'S
+  // OWN tax, which is at a different rate than the lines. landedCost is driven
+  // directly: through a paper the charges take the paper's one rate, so a second
+  // rate can only be stated here, on the header.
+  const KEEPS: HouseTax = { tax_basis: "prices_include_tax", reclaims_input_tax: false };
+  const header = (freight: number, basis: "includes_tax" | "excludes_tax", chargeRate: number, tax: number) => ({
+    subtotal: null,
+    discount_total: null,
+    freight,
+    fuel_surcharge: null,
+    split_case_fee: null,
+    delivery_fee: null,
+    other_charges: null,
+    deposit_total: null,
+    tax,
+    charges_tax_basis: basis,
+    charges_vat_rate_percent: chargeRate,
+  });
+
+  it("books the printed total to the cent, 400 papers whose freight rate differs from the line rate", () => {
+    let checked = 0;
+    for (let i = 0; i < 2000 && checked < 400; i++) {
+      const basis = rnd() < 0.5 ? "includes_tax" : "excludes_tax";
+      const lineRate = pick(RATES.filter((r) => r > 0));
+      const chargeRate = pick(RATES.filter((r) => r > 0 && r !== lineRate));
+      const qty = 1 + Math.floor(rnd() * 24);
+      const unit = cents(3, 90);
+      const printedLine = r2(qty * unit);
+      const F = cents(2, 60);
+      const lineTax = basis === "excludes_tax" ? r2(printedLine * (lineRate / 100)) : r2(printedLine - printedLine / (1 + lineRate / 100));
+      const freightTax = basis === "excludes_tax" ? r2(F * (chargeRate / 100)) : r2(F - F / (1 + chargeRate / 100));
+      const paidTotal = r2(printedLine + F + (basis === "excludes_tax" ? lineTax + freightTax : 0));
+      const l: LandedCostLineInput = {
+        line_no: 1,
+        qty,
+        uom: "bottle",
+        pack_size: 1,
+        price_base_qty: null,
+        unit_price: unit,
+        line_total: printedLine,
+        allowance: null,
+        deposit: null,
+        price_tax_basis: basis,
+        vat_rate_percent: lineRate,
+        listed_bottles: qty,
+        accepted_bottles: qty,
+      };
+      const res = landedCost({ header: header(F, basis, chargeRate, r2(lineTax + freightTax)), lines: [l], house: KEEPS });
+      const row = res.lines[0] as { status: string; landed_value?: number };
+      if (row.status !== "costed") continue; // a lot that cannot be proven is held, never costed wrong
+      checked++;
+      holds(Math.abs((row.landed_value as number) - paidTotal) <= 0.02, { i, basis, lineRate, chargeRate, qty, unit, F, paidTotal, got: row.landed_value, said: res.tax_said });
+    }
+    expect(checked).toBeGreaterThan(200);
   });
 });
