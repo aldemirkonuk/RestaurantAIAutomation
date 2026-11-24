@@ -45,7 +45,7 @@ import {
   READS_ALL_SWITCH_OFF_WORDS,
   READ_ALL_OFFER,
   READ_ALL_OFFER_WORDS,
-  VENDOR_ONLY_LINE,
+  readScopeLine,
   kindEmptyWords,
   kindPartialWords,
   mailKindOf,
@@ -424,6 +424,7 @@ function People({
   onOpenPerson,
   onSetup,
   setupWords,
+  onStoredKinds,
 }: {
   /** Who a waiting vendor waits on, in this reader's words (r36 mail gap 14). */
   on: WaitingOn;
@@ -443,6 +444,8 @@ function People({
   onSetup: () => void;
   /** setupLinkWords(canReply): staff are not told to set up what they cannot change. */
   setupWords: string;
+  /** Which kinds the house holds stored mail from, so the scope line can speak for the rows. */
+  onStoredKinds: (kinds: string[] | null) => void;
 }) {
   const q = useMailPeople(waitingOnly, search, kind);
   const pages = q.data?.pages ?? [];
@@ -459,6 +462,10 @@ function People({
   const shown = useRef(listIdentity);
   if (ready) shown.current = listIdentity;
   const storedKinds = pages[0]?.storedKinds ?? null;
+  const storedKey = storedKinds ? storedKinds.join(',') : null;
+  useEffect(() => {
+    onStoredKinds(storedKey === null ? null : storedKey.split(',').filter(Boolean));
+  }, [storedKey, onStoredKinds]);
   const house = useHouse();
   // Remember the unfiltered first-page count so the next cold load draws that many bars.
   const settled = Boolean(q.data) && !waitingOnly && !search;
@@ -578,7 +585,7 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
  * house reading; agreeing is done on the consent screen, the gateway's own
  * words in full, and this tab learns of it by reading the house's grants back.
  */
-function ReadScope({ canAnswer, inboxSwitchedOff }: { canAnswer: boolean; inboxSwitchedOff: boolean }) {
+function ReadScope({ canAnswer, inboxSwitchedOff, storedKinds }: { canAnswer: boolean; inboxSwitchedOff: boolean; storedKinds: string[] | null }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const grants = useReadAllGrants(canAnswer);
@@ -597,7 +604,7 @@ function ReadScope({ canAnswer, inboxSwitchedOff }: { canAnswer: boolean; inboxS
   return (
     <div className="grid gap-1.5" data-testid="read-scope" data-state={all ? 'all' : 'vendors'}>
       <p style={{ ...QUIET, margin: 0 }}>
-        {all ? READS_ALL_LINE : VENDOR_ONLY_LINE}{' '}
+        {readScopeLine(all, storedKinds)}{' '}
         {canAnswer && all && (
           <button
             type="button"
@@ -707,6 +714,7 @@ export function MailTab({
   const on = waitingOn(canReply);
   const [params, setParams] = useSearchParams();
   const [waitingOnly, setWaitingOnly] = useState(false);
+  const [storedKinds, setStoredKinds] = useState<string[] | null>(null);
   const [kind, setKind] = useState<MailKindFilter>('all');
   const readAll = useReadAllGrants(canReply);
   // r28 mail gap 16: what is typed, and the term sent 300 ms after typing stops.
@@ -949,7 +957,7 @@ export function MailTab({
               </Chip>
             ))}
           </div>
-          <ReadScope canAnswer={canReply} inboxSwitchedOff={mailboxDoor.state === 'switched_off'} />
+          <ReadScope canAnswer={canReply} inboxSwitchedOff={mailboxDoor.state === 'switched_off'} storedKinds={storedKinds} />
           <People
             on={on}
             waitingOnly={waitingOnly}
@@ -963,6 +971,7 @@ export function MailTab({
             onOpenPerson={(key) => go({ with: key })}
             onSetup={openSetup}
             setupWords={setupLinkWords(canReply)}
+            onStoredKinds={setStoredKinds}
           />
           {whoIsWriting}
         </>

@@ -36,7 +36,7 @@ vi.mock('./MailThread', async (importOriginal) => {
 });
 
 import { MailTab } from './MailTab';
-import { ARRIVED_ONLY, READ_ALL_OFFER_WORDS, addressLine, answerFor, kindEmptyWords, mailKindOf } from './mail-format';
+import { ARRIVED_ONLY, READ_ALL_OFFER_WORDS, addressLine, answerFor, kindEmptyWords, mailKindOf, readScopeLine } from './mail-format';
 
 const SUMMARY = {
   waitingPeople: 0,
@@ -74,6 +74,7 @@ let peopleFor: (p: Record<string, string>) => unknown[];
 /** Whether /mail/people says another page follows, and whether the thread's second letter is an auto-reply. */
 let peopleNext: string | null = null;
 let autoB = false;
+let stored: string[] = ['vendor'];
 
 const letter = (extra: Record<string, unknown>) => ({
   id: 'm1',
@@ -113,6 +114,7 @@ beforeEach(() => {
   peopleFor = () => MIXED;
   peopleNext = null;
   autoB = false;
+  stored = ['vendor'];
   api.get.mockReset();
   api.post.mockReset();
   api.delete.mockReset();
@@ -123,7 +125,7 @@ beforeEach(() => {
     if (url === '/integrations/oauth/house-grants') return { data: { success: true, grants, unattributed: 0 } };
     if (url === '/integrations/oauth/catalog')
       return { data: { success: true, integrations: [{ id: 'gmail_read_all', available: offered }, { id: 'gmail_read', available: true }] } };
-    if (url === '/mail/people') return { data: { people: peopleFor(cfg?.params ?? {}), next: peopleNext, storedKinds: ['vendor'] } };
+    if (url === '/mail/people') return { data: { people: peopleFor(cfg?.params ?? {}), next: peopleNext, storedKinds: stored } };
     if (url === '/mail/thread')
       return {
         data: {
@@ -270,6 +272,24 @@ describe('reading every conversation', () => {
     expect(scope.getAttribute('data-state')).toBe('vendors');
     expect(await screen.findByRole('button', { name: 'Read every conversation, not only vendors' })).toBeInTheDocument();
     expect(screen.queryByTestId('read-all-consent')).toBeNull();
+  });
+
+  it('with no wider reading but team and guest letters kept, the tab does not claim vendor mail only (r105 mail-7)', async () => {
+    stored = ['vendor', 'team', 'guest'];
+    mount();
+    await screen.findByText('Deniz Kaya');
+    await waitFor(() => expect(screen.getByTestId('read-scope')).toHaveTextContent('Letters already kept with your team and guests are listed here too.'));
+    const scope = screen.getByTestId('read-scope');
+    expect(scope).not.toHaveTextContent('vendor mail only');
+    expect(scope).toHaveTextContent('Mudavym reads only vendors');
+    // It never widens the reader: the offer to read more is still the house's to take.
+    expect(scope.getAttribute('data-state')).toBe('vendors');
+    expect(await screen.findByTestId('read-all-offer')).toBeInTheDocument();
+    expect(readScopeLine(false, ['vendor', 'guest'])).toContain('kept with guests');
+    expect(readScopeLine(false, ['vendor', 'team'])).toContain('kept with your team');
+    expect(readScopeLine(false, ['vendor'])).toBe('This tab shows vendor mail only.');
+    expect(readScopeLine(false, null)).toBe('This tab shows vendor mail only.');
+    expect(readScopeLine(true, ['vendor', 'guest'])).toContain('vendors, team and guests');
   });
 
   it('the offer sends the person to the consent screen for gmail_read_all and sends nothing itself', async () => {
