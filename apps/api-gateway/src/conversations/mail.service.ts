@@ -153,7 +153,52 @@ export class MailService {
       ...(kind ? { p_kind: kind } : {}),
     });
     if (error) this.failed("people", error);
-    const rows = (data ?? []) as any[];
+    let rows = (data ?? []) as any[];
+    // A search also finds a team member or a guest by the name the row shows
+    // (r105 mail-4). SQL matches an address or a letter's words; the names are
+    // read here, so a name that matches is found by its address in one more
+    // read each. Only a caller who may read team and guest people ever asks.
+    if (
+      query &&
+      opts.waitingOnly !== true &&
+      kind !== "vendor" &&
+      !withholdsHouseLetters(callerRole)
+    ) {
+      const named = await this.peopleNamed(houseId, query, kind);
+      const found = await Promise.all(
+        named.map(async (n) => {
+          const res = await this.db.rpc("list_mail_people", {
+            p_restaurant_id: houseId,
+            p_withhold_house_letters: false,
+            p_waiting_only: false,
+            p_after_at: after?.at ?? null,
+            p_after_key: after?.key ?? null,
+            p_limit: 1,
+            p_query: n.address,
+            p_kind: n.kind,
+          });
+          if (res.error) this.failed("people", res.error);
+          const want = `${n.kind}:${n.address}`;
+          return ((res.data ?? []) as any[]).filter(
+            (r) => String(r.key).toLowerCase() === want,
+          );
+        }),
+      );
+      const seen = new Set(rows.map((r) => String(r.key).toLowerCase()));
+      for (const r of found.flat()) {
+        if (seen.has(String(r.key).toLowerCase())) continue;
+        seen.add(String(r.key).toLowerCase());
+        rows.push(r);
+      }
+      // The list's own order: newest first, the key breaking a tie.
+      rows = rows
+        .sort(
+          (a, b) =>
+            Date.parse(b.last_at) - Date.parse(a.last_at) ||
+            (a.key < b.key ? -1 : a.key > b.key ? 1 : 0),
+        )
+        .slice(0, limit + 1);
+    }
     const page = rows.slice(0, limit);
     const last = page[page.length - 1];
     // Staff read vendors only, so no roster or guest header is read for them.
@@ -225,49 +270,8 @@ export class MailService {
       ),
     ];
     if (team.length) {
-      const access = await this.db
-        .from("user_restaurant_access")
-        .select("user_id, role")
-        .eq("restaurant_id", houseId)
-        .eq("is_active", true);
-      if (access.error) this.failed("staff", access.error);
-      const accessRole = new Map<string, string>();
-      for (const a of (access.data ?? []) as any[]) {
-        if (a.user_id && a.role) accessRole.set(a.user_id, String(a.role));
-      }
-      const ids = [...accessRole.keys()];
-      // The legacy roster (users.restaurant_id) and the people this house's
-      // access rows name: both are this house's, neither reads another's.
-      const [legacy, granted] = await Promise.all([
-        this.db
-          .from("users")
-          .select("user_id, email, name, role")
-          .eq("restaurant_id", houseId),
-        ids.length
-          ? this.db
-              .from("users")
-              .select("user_id, email, name, role")
-              .in("user_id", ids)
-          : Promise.resolve({ data: [], error: null }),
-      ]);
-      if (legacy.error) this.failed("staff", legacy.error);
-      if (granted.error) this.failed("staff", granted.error);
-      const staff = {
-        data: [
-          ...((legacy.data ?? []) as any[]),
-          ...((granted.data ?? []) as any[]),
-        ],
-      };
-      for (const u of (staff.data ?? []) as any[]) {
-        const email =
-          typeof u.email === "string" ? u.email.trim().toLowerCase() : "";
-        const name = typeof u.name === "string" ? u.name.trim() : "";
-        if (!email || !name || !team.includes(email)) continue;
-        const role = (accessRole.get(u.user_id) ?? u.role ?? "")
-          .toString()
-          .trim()
-          .toLowerCase();
-        names.set(`team:${email}`, role ? `${name} (${role})` : name);
+      for (const [email, display] of await this.rosterDisplay(houseId)) {
+        if (team.includes(email)) names.set(`team:${email}`, display);
       }
     }
     if (guests.length) {
@@ -292,6 +296,107 @@ export class MailService {
       }
     }
     return names;
+  }
+
+  /**
+   * This house's staff by lower-cased email, as the row shows them ("Name
+   * (role)"): the access rows' role first, then the account's. Read for this
+   * house only; a failed read is a 503.
+   */
+  private async rosterDisplay(houseId: string): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    const access = await this.db
+      .from("user_restaurant_access")
+      .select("user_id, role")
+      .eq("restaurant_id", houseId)
+      .eq("is_active", true);
+    if (access.error) this.failed("staff", access.error);
+    const accessRole = new Map<string, string>();
+    for (const a of (access.data ?? []) as any[]) {
+      if (a.user_id && a.role) accessRole.set(a.user_id, String(a.role));
+    }
+    const ids = [...accessRole.keys()];
+    // The legacy roster (users.restaurant_id) and the people this house's
+    // access rows name: both are this house's, neither reads another's.
+    const [legacy, granted] = await Promise.all([
+      this.db
+        .from("users")
+        .select("user_id, email, name, role")
+        .eq("restaurant_id", houseId),
+      ids.length
+        ? this.db
+            .from("users")
+            .select("user_id, email, name, role")
+            .in("user_id", ids)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+    if (legacy.error) this.failed("staff", legacy.error);
+    if (granted.error) this.failed("staff", granted.error);
+    const staff = {
+      data: [
+        ...((legacy.data ?? []) as any[]),
+        ...((granted.data ?? []) as any[]),
+      ],
+    };
+    for (const u of (staff.data ?? []) as any[]) {
+      const email =
+        typeof u.email === "string" ? u.email.trim().toLowerCase() : "";
+      const name = typeof u.name === "string" ? u.name.trim() : "";
+      if (!email || !name) continue;
+      const role = (accessRole.get(u.user_id) ?? u.role ?? "")
+        .toString()
+        .trim()
+        .toLowerCase();
+      out.set(email, role ? `${name} (${role})` : name);
+    }
+    return out;
+  }
+
+  /**
+   * The team members and guests a search names (r105 mail-4): the roster's
+   * "Name (role)" and a guest's From display name, matched case- and
+   * accent-blind. At most five, so one search is a bounded number of reads.
+   * Never called for a caller who may not read these people.
+   */
+  private async peopleNamed(
+    houseId: string,
+    query: string,
+    kind: MailPersonKind | null,
+  ): Promise<Array<{ kind: "team" | "guest"; address: string }>> {
+    const fold = (v: string) =>
+      v
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/ı/g, "i")
+        .toLowerCase();
+    const want = fold(query);
+    const out: Array<{ kind: "team" | "guest"; address: string }> = [];
+    if (kind === null || kind === "team") {
+      for (const [email, display] of await this.rosterDisplay(houseId)) {
+        if (fold(display).includes(want)) out.push({ kind: "team", address: email });
+      }
+    }
+    if (kind === null || kind === "guest") {
+      const like = query.replace(/[\\%_]/g, (c) => `\\${c}`);
+      const res = await this.db
+        .from("procurement_conversations")
+        .select("from_address, from_header:email_headers->>from")
+        .eq("restaurant_id", houseId)
+        .eq("kind", "guest")
+        .ilike("email_headers->>from", `%${like}%`)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (res.error) this.failed("names", res.error);
+      for (const r of (res.data ?? []) as any[]) {
+        const address =
+          typeof r.from_address === "string" ? r.from_address.toLowerCase() : "";
+        const name = address ? fromDisplayName(r.from_header, address) : null;
+        if (name && fold(name).includes(want) && !out.some((o) => o.kind === "guest" && o.address === address)) {
+          out.push({ kind: "guest", address });
+        }
+      }
+    }
+    return out.slice(0, 5);
   }
 
   /** Vendors always; team and guest only when stored and the caller may read them. */
