@@ -842,3 +842,15 @@ describe('reasonOf — a request that got no answer in time', () => {
     expect(said).toBe('Mudavym did not answer in time. The menu may have been kept: look in Menus kept before you send it again.');
   });
 });
+
+describe('MenuVersions — a narrow screen gets cards (r106 menu-3)', () => {
+  it('the kept menus are a card table whose Make current sits in an action cell', async () => {
+    mockList.mockResolvedValue({ versions: [version({ menuId: 'm-ok', current: false })], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+    mount(true);
+    const row = await screen.findByTestId('menu-version-row');
+    expect(row.closest('table')).toHaveClass('mdv-cards');
+    const acts = row.querySelectorAll('td.mdv-acts');
+    expect(acts.length).toBeGreaterThan(0);
+    expect(Array.from(acts).some((c) => /Make current/.test(c.textContent ?? ''))).toBe(true);
+  });
+});

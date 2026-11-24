@@ -14,6 +14,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MenuNext from './MenuNext';
@@ -880,5 +881,28 @@ describe('MenuNext — a price changes on its line', () => {
     mount();
     await screen.findAllByTestId('menu-row');
     expect(screen.queryByTestId('menu-price-edit')).not.toBeInTheDocument();
+  });
+});
+
+// r106 menu-3 (walk r105 finding 2): at 375 px the lines table was 703 wide in a 341 box, with
+// Change price and Discard off-screen. Below 600 px each line is a stacked card, its actions 44 px.
+describe('MenuNext — a narrow screen gets cards, not a table to scroll (r106 menu-3)', () => {
+  it('marks the lines table and its action cell as cards, with the actions in one cell', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ name: 'Raki' })] }));
+    mount();
+    const row = (await screen.findAllByTestId('menu-row'))[0];
+    expect(row.closest('table')).toHaveClass('mdv-cards');
+    const acts = row.querySelector('td.mdv-acts');
+    expect(acts).not.toBeNull();
+    expect(within(acts as HTMLElement).getByRole('button', { name: 'Discard Raki' })).toBeInTheDocument();
+    expect(row.querySelector('td[data-label="Bottle"]')).not.toBeNull();
+  });
+
+  it('the narrow rule gives every action 44 px and adds no animation or transition', async () => {
+    const css = readFileSync('src/pages/menu/next/menu-rows.css', 'utf8');
+    const narrow = css.slice(css.indexOf('@media (max-width: 599px)'));
+    expect(narrow).toContain('min-height: 44px');
+    expect(narrow).toContain('.mdv-cards .mdv-acts');
+    expect(narrow).not.toMatch(/animation|transition/);
   });
 });

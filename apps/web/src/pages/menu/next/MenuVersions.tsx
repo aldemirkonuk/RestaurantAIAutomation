@@ -621,7 +621,7 @@ function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan, zone }:
         {v.extractedBy?.name ? `, read by ${v.extractedBy.name}` : ''}
         <ReadWarnings warnings={v.readWarnings} testId="menu-version-warnings" />
       </td>
-      <td className="cl-dim">
+      <td className="cl-dim mdv-acts">
         {v.source.kept && canManage ? (
           <button type="button" className="cl-btn cl-focus" onClick={() => void openSource()}>
             Open {v.source.mime === 'application/pdf' ? 'PDF' : v.source.mime?.startsWith('image/') ? 'photo' : 'file'}
@@ -635,7 +635,7 @@ function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan, zone }:
           </span>
         ) : null}
       </td>
-      <td>
+      <td className="mdv-acts">
         {!v.current && canManage && readState === 'done' ? (
           <button
             type="button"
@@ -903,7 +903,7 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
           {q.data && q.data.versions.length > 0 ? (
             <>
             <div style={{ overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10, marginTop: 10 }}>
-              <table className="cl-table" style={{ width: '100%' }}>
+              <table className="cl-table mdv-cards" style={{ width: '100%' }}>
                 <thead>
                   <tr>
                     <th>Menu</th>
