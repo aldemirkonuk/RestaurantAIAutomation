@@ -725,3 +725,34 @@ describe("the contract carries what the paper prints (findings 3, 4, 6, 7)", () 
     expect(doc.tiesOut).toBe(true);
   });
 });
+
+describe("DocumentExtractorService.extract — a long paper is held with a word, never half-booked (r106 g1)", () => {
+  const mk = (payload: any) =>
+    new DocumentExtractorService(
+      { get: (k: string) => (k === "ANTHROPIC_API_KEY" ? "k" : undefined) } as unknown as ConfigService,
+      { call: jest.fn().mockResolvedValue(payload) } as any,
+      { record: jest.fn(), recordVerdict: jest.fn() } as any,
+    );
+  const PNG = Buffer.from("89504e470d0a1a0a00000000", "hex").toString("base64");
+  const whole = { docType: "invoice", currency: "USD", total: 10, lines: [] };
+
+  it("a reply cut at max_tokens comes back unknown, empty, and names the cut", async () => {
+    const doc = await mk({
+      stop_reason: "max_tokens",
+      content: [{ type: "text", text: JSON.stringify(whole) }],
+    }).extract(PNG, "image/png", null);
+    expect(doc.docType).toBe("unknown");
+    expect(doc.lines).toEqual([]);
+    expect(doc.total).toBeNull();
+    expect(doc.warnings.join(" ")).toMatch(/too long to read in one pass/);
+  });
+
+  it("a finished reply (end_turn) is read as before", async () => {
+    const doc = await mk({
+      stop_reason: "end_turn",
+      content: [{ type: "text", text: JSON.stringify(whole) }],
+    }).extract(PNG, "image/png", null);
+    expect(doc.docType).toBe("invoice");
+    expect(doc.total).toBe(10);
+  });
+});

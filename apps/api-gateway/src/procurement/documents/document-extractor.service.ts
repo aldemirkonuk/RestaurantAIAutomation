@@ -250,7 +250,15 @@ export class DocumentExtractorService {
     const text =
       (payload.content || []).find((b: any) => b.type === "text")?.text ?? "{}";
 
-    const doc = this.normalize(text, this.model());
+    // r106 g1: a reply cut off at the token budget is a paper read in part.
+    // The model client already reports it (`stop_reason`, model-client.service
+    // .ts:508); a clipped JSON that happens to parse would book the lines it
+    // reached and silently lose the rest. Hold the whole paper with a sentence
+    // that names the cut. No second payload parser, no continuation call.
+    const truncated = payload?.stop_reason === "max_tokens";
+    const doc = truncated
+      ? this.heldForLength()
+      : this.normalize(text, this.model());
 
     // The tie-out is already computed by `normalize`; this only carries it into
     // the footprint as a task-level verdict. `null` means this grader has no
@@ -272,6 +280,15 @@ export class DocumentExtractorService {
     // costs gradability; a hung request costs the delivery.
     doc.eventId = await settledEventId(eventRef);
 
+    return doc;
+  }
+
+  /** The paper ran past what one read can hold: unknown, nothing kept, said so. */
+  private heldForLength(): ParsedDocument {
+    const doc = this.normalize("", this.model());
+    doc.warnings = [
+      "This paper is too long to read in one pass, so the reading was cut off and nothing from it was kept. Split it into shorter pages or key it in by hand.",
+    ];
     return doc;
   }
 
