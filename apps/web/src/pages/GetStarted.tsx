@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MapPin, PenLine } from 'lucide-react'
 import { BrandMark } from '../components/brand/BrandMark'
-import { PlacesAutocomplete, type PlaceResult } from '../components/ui/PlacesAutocomplete'
+import { PlacesAutocomplete, warmPlaces, type PlaceResult } from '../components/ui/PlacesAutocomplete'
 import { CountryCombobox } from '../components/ui/CountryCombobox'
 import { MenuCsvUpload } from '../components/onboarding/MenuCsvUpload'
 import { MenuScanUpload } from '../components/onboarding/MenuScanUpload'
@@ -85,6 +85,12 @@ export default function GetStarted() {
   // 2026-09-27) — never a made-up default. `createHouse` sends exactly this;
   // omitted, the gateway stores NULL rather than inventing a clock.
   const timezone = useMemo(() => getBrowserTimezone(), [])
+
+  // Warm the Maps library once the person is past the door, so the restaurant
+  // step's first suggestion does not wait on the script (r105 onboarding g3).
+  useEffect(() => {
+    if (step === 'you' || step === 'restaurant') warmPlaces()
+  }, [step])
 
   useEffect(() => {
     if (step !== 'reading' || !pendingResult) return
