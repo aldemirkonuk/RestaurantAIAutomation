@@ -299,3 +299,40 @@ describe('Price signals: chipMatch reads the last two settled delivery costs (r1
     expect(priceSignalsReadable([{ ...two(11, 10), settledCostsReadable: false }])).toBe(false);
   });
 });
+
+// G15: the normaliser fills 0 and [], so only the flags tell failed from empty.
+describe('useInventoryNextData — open bottles and zones that could not be read (G15)', () => {
+  const normalised = { id: 'i1', restaurantId: 'r1', wineId: 'w1', wineName: 'Barolo', stockLive: 2, openMl: 0, locations: [] };
+
+  it('a failed rollup read is no open-ml figure, never 0', () => {
+    const r = toRow({ ...normalised, rollupReadable: false } as never);
+    expect(r.rollupReadable).toBe(false);
+    expect(r.openMl).toBeNull();
+  });
+
+  it('a failed location read is no zone list, never an empty one', () => {
+    const r = toRow({ ...normalised, locationsReadable: false } as never);
+    expect(r.locationsReadable).toBe(false);
+    expect(r.zones).toBeNull();
+  });
+
+  it('read and empty is 0 ml and no zones; no flags (older gateway) reads as read', () => {
+    const read = toRow({ ...normalised, rollupReadable: true, locationsReadable: true } as never);
+    expect(read.openMl).toBe(0);
+    expect(read.zones).toEqual([]);
+    const older = toRow(normalised as never);
+    expect(older.rollupReadable).toBe(true);
+    expect(older.locationsReadable).toBe(true);
+    expect(older.openMl).toBe(0);
+  });
+
+  it('names both unread reads and reads the stock again for them', async () => {
+    m.items = [{ ...normalised, rollupReadable: false, locationsReadable: false }];
+    const { result } = mount();
+    await waitFor(() => expect(result.current.advice.status).toBe('ready'));
+    expect(result.current.unread).toContain('the open bottles, so open ml says it could not be read');
+    expect(result.current.unread).toContain('where each title sits, so its zones say they could not be read');
+    act(() => result.current.rereadUnread());
+    expect(m.listRefetch).toHaveBeenCalledTimes(1);
+  });
+});

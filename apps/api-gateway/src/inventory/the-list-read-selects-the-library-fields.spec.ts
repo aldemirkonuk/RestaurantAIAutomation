@@ -16,7 +16,10 @@ describe("the stock list read selects what the row carries", () => {
         return chain;
       },
       eq: () => chain,
-      then: (res: any) => res({ data: [], error: null }),
+      order: () => chain,
+      gt: () => chain,
+      limit: () => chain,
+      then: (res: any) => res({ data: [], error: null, count: 0 }),
     };
     const db = new DatabaseService({ get: () => undefined } as any);
     db.supabase = { from: () => chain } as any;

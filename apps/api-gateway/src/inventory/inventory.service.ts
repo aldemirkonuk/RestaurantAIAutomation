@@ -9,6 +9,7 @@ import {
   forwardRef,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { readViewWhole } from "./read-view-whole";
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
 import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
 import { WineSubmissionsService } from "../wines/wine-submissions.service";
@@ -94,8 +95,12 @@ export class InventoryService {
     rollup?: Record<string, any>,
     locations?: any[],
     analytics?: Record<string, any>,
+    // G15: omitted = never read; false = read failed, so not 0 or [].
+    reads?: { rollup?: boolean; locations?: boolean },
     settled?: SettledMove,
   ): Record<string, any> {
+    const rollupFailed = reads?.rollup === false;
+    const locationsFailed = reads?.locations === false;
     const wineBottleMl = row.master_wine_library?.bottle_size_ml ?? 750;
     const defaultPourMl = row.restaurants?.default_pour_ml ?? 150;
     const effectiveBottleSizeMl = row.bottle_size_ml ?? wineBottleMl;
@@ -187,7 +192,7 @@ export class InventoryService {
       lotLiveQty: rollup?.live_qty ?? undefined,
       lotLocationCount: rollup?.live_location_count ?? undefined,
       // Phase 2 (2c) by-the-glass: total open-bottle ml across live lots.
-      openMl: rollup?.open_ml ?? 0,
+      openMl: rollupFailed ? undefined : (rollup?.open_ml ?? 0),
       // Phase 2 (2d/2e): velocity / days-of-cover / reorder / ABC / dead-stock.
       velocityPerDay: analytics?.velocity_per_day ?? undefined,
       daysOfCover: analytics?.days_of_cover ?? undefined,
@@ -214,7 +219,11 @@ export class InventoryService {
       lastSettledCost: settled?.last ?? undefined,
       previousSettledCost: settled?.previous ?? undefined,
       // Phase 2 multi-location: per-location live quantities ([{locationId, qty, wac}]).
-      locations: locations ?? [],
+      locations: locationsFailed ? undefined : (locations ?? []),
+      ...(reads?.rollup !== undefined ? { rollupReadable: reads.rollup } : {}),
+      ...(reads?.locations !== undefined
+        ? { locationsReadable: reads.locations }
+        : {}),
     };
   }
 
@@ -252,47 +261,64 @@ export class InventoryService {
     }
   }
 
-  /** Phase 2: per-inventory WAC / on-hand / location spread derived from inventory_lots. */
+  /** Phase 2: per-inventory WAC / on-hand / location spread. `ok: false` = failed read (G15). */
   private async fetchLotRollup(
     restaurantId: string,
-  ): Promise<Map<string, any>> {
+  ): Promise<{ ok: boolean; data: Map<string, any> }> {
     const map = new Map<string, any>();
     try {
       const client = this.dbService.getClient();
-      const { data } = await client
-        .from("inventory_lot_rollup")
-        .select(
-          "inventory_id, live_qty, shadow_qty, wac, has_invoice_cost, live_location_count, open_ml",
-        )
-        .eq("restaurant_id", restaurantId);
-      for (const r of data || []) map.set(r.inventory_id, r);
+      // Paged to the end (H-1): one unranged read stopped at 1,000 goods.
+      const data = await readViewWhole(
+        "The lot rollup",
+        () =>
+          client
+            .from("inventory_lot_rollup")
+            .select(
+              "inventory_id, live_qty, shadow_qty, wac, has_invoice_cost, live_location_count, open_ml",
+              { count: "exact" },
+            )
+            .eq("restaurant_id", restaurantId),
+        ["inventory_id"],
+      );
+      for (const r of data) map.set(r.inventory_id, r);
+      return { ok: true, data: map };
     } catch (err: any) {
       this.logger.warn(`fetchLotRollup failed: ${err?.message}`);
+      return { ok: false, data: new Map() };
     }
-    return map;
   }
 
   /** Phase 2 multi-location: per-inventory live lot quantities by location. */
   private async fetchLocationBreakdown(
     restaurantId: string,
-  ): Promise<Map<string, any[]>> {
+  ): Promise<{ ok: boolean; data: Map<string, any[]> }> {
     const map = new Map<string, any[]>();
     try {
       const client = this.dbService.getClient();
-      const { data } = await client
-        .from("inventory_location_breakdown")
-        .select("inventory_id, location_id, qty, wac")
-        .eq("restaurant_id", restaurantId)
-        .eq("stock_state", "live");
-      for (const r of data || []) {
+      // Paged to the end (H-1): one row per good per place, so one unranged
+      // read stopped at about 333 goods held in three places. The order is
+      // the view's whole grouping key, so every offset lands on the same row.
+      const data = await readViewWhole(
+        "The stock-by-place breakdown",
+        () =>
+          client
+            .from("inventory_location_breakdown")
+            .select("inventory_id, location_id, qty, wac", { count: "exact" })
+            .eq("restaurant_id", restaurantId)
+            .eq("stock_state", "live"),
+        ["inventory_id", "location_id", "master_wine_id"],
+      );
+      for (const r of data) {
         const arr = map.get(r.inventory_id) ?? [];
         arr.push({ locationId: r.location_id, qty: r.qty, wac: r.wac });
         map.set(r.inventory_id, arr);
       }
+      return { ok: true, data: map };
     } catch (err: any) {
       this.logger.warn(`fetchLocationBreakdown failed: ${err?.message}`);
+      return { ok: false, data: new Map() };
     }
-    return map;
   }
 
   /**
@@ -314,14 +340,21 @@ export class InventoryService {
     const map = new Map<string, any>();
     try {
       const client = this.dbService.getClient();
-      const { data, error } = await client
-        .from("inventory_analytics")
-        .select(
-          "inventory_id, velocity_per_day, days_of_cover, reorder_point, reorder_suggested, abc_class, dead_stock, days_since_sale, usage_source, usage_since, usage_until, usage_qty",
-        )
-        .eq("restaurant_id", restaurantId);
-      if (error) throw error;
-      for (const r of data || []) map.set(r.inventory_id, r);
+      // Paged to the end (H-1); a read that cannot be made whole throws into
+      // the catch below and says `ok: false`, never a part read as the whole.
+      const data = await readViewWhole(
+        "The sales pace read",
+        () =>
+          client
+            .from("inventory_analytics")
+            .select(
+              "inventory_id, velocity_per_day, days_of_cover, reorder_point, reorder_suggested, abc_class, dead_stock, days_since_sale, usage_source, usage_since, usage_until, usage_qty",
+              { count: "exact" },
+            )
+            .eq("restaurant_id", restaurantId),
+        ["inventory_id"],
+      );
+      for (const r of data) map.set(r.inventory_id, r);
       return { map, ok: true };
     } catch (err: any) {
       this.logger.warn(`fetchAnalytics failed: ${err?.message}`);
@@ -341,9 +374,10 @@ export class InventoryService {
     return (data || []).map((row) => ({
       ...this.mapInventoryItem(
         row,
-        rollup.get(row.id),
-        locations.get(row.id),
+        rollup.data.get(row.id),
+        locations.data.get(row.id),
         analytics.map.get(row.id),
+        { rollup: rollup.ok, locations: locations.ok },
         settled.map.get(row.id),
       ),
       // Additive: every existing reader that does not know this field simply
@@ -418,8 +452,10 @@ export class InventoryService {
     return row.data
       ? this.mapInventoryItem(
           row.data,
-          rollup.get(inventoryId),
-          locations.get(inventoryId),
+          rollup.data.get(inventoryId),
+          locations.data.get(inventoryId),
+          undefined,
+          { rollup: rollup.ok, locations: locations.ok },
         )
       : null;
   }
@@ -520,8 +556,10 @@ export class InventoryService {
       item: row.data
         ? this.mapInventoryItem(
             row.data,
-            rollup.get(inventoryId),
-            locations.get(inventoryId),
+            rollup.data.get(inventoryId),
+            locations.data.get(inventoryId),
+            undefined,
+            { rollup: rollup.ok, locations: locations.ok },
           )
         : null,
     };
@@ -699,8 +737,10 @@ export class InventoryService {
       item: row.data
         ? this.mapInventoryItem(
             row.data,
-            rollup.get(inventoryId),
-            locations.get(inventoryId),
+            rollup.data.get(inventoryId),
+            locations.data.get(inventoryId),
+            undefined,
+            { rollup: rollup.ok, locations: locations.ok },
           )
         : null,
       // ADR 0078: the count itself, including the case that used to be invisible
@@ -1114,7 +1154,10 @@ export class InventoryService {
         const reactRollup = await this.fetchLotRollup(restaurantId);
         const reactMapped = this.mapInventoryItem(
           freshReact ?? reactivated,
-          reactRollup.get(existing.id),
+          reactRollup.data.get(existing.id),
+          undefined,
+          undefined,
+          { rollup: reactRollup.ok },
         );
         return reactPrice ? { ...reactMapped, priceChange: reactPrice } : reactMapped;
       }
@@ -1135,8 +1178,11 @@ export class InventoryService {
       master_wine_id: dto.wineId,
       provider_id: dto.providerId || null,
       stock_live: 0, // initial stock applied as a lot via apply_stock_movement below (lots = source of truth)
-      threshold_min: dto.thresholdMin || 6,
-      threshold_max: dto.thresholdMax || 24,
+      // `??`, not `||`: a par of 0 is the house saying "do not stock this"
+      // (a garnish, a wine being run down), and `|| 6` turned it into 6 (QA
+      // round 2, U-3). Only a par the caller left out gets the default.
+      threshold_min: dto.thresholdMin ?? 6,
+      threshold_max: dto.thresholdMax ?? 24,
       toast_item_guid: dto.toastItemGuid || null,
       is_active: true,
       wine_name: masterWineName,
@@ -1215,7 +1261,13 @@ export class InventoryService {
       .eq("id", data.id)
       .single();
     const rollup = await this.fetchLotRollup(restaurantId);
-    const mapped = this.mapInventoryItem(fresh ?? data, rollup.get(data.id));
+    const mapped = this.mapInventoryItem(
+      fresh ?? data,
+      rollup.data.get(data.id),
+      undefined,
+      undefined,
+      { rollup: rollup.ok },
+    );
     return price ? { ...mapped, priceChange: price } : mapped;
   }
 
@@ -1922,7 +1974,13 @@ export class InventoryService {
     }
 
     const rollup = await this.fetchLotRollup(restaurantId);
-    const mapped = this.mapInventoryItem(data, rollup.get(itemId));
+    const mapped = this.mapInventoryItem(
+      data,
+      rollup.data.get(itemId),
+      undefined,
+      undefined,
+      { rollup: rollup.ok },
+    );
     // Said, not implied: "unchanged" and "stale" are different answers from
     // "changed", and the page tells the manager which one happened.
     return priceChange ? { ...mapped, priceChange } : mapped;
