@@ -26,6 +26,8 @@ import {
   type VerificationMail,
   type VerificationResendAnswer,
 } from '../lib/verificationMail'
+import { inboxLinkFor } from '../lib/mailProvider'
+import { RESEND_WAIT_SECONDS, retryAfterSeconds, useResendCooldown } from '../lib/useResendCooldown'
 
 type SessionPair = { accessToken: string; refreshToken: string }
 import { WrongAddress } from '../components/auth/WrongAddress'
@@ -348,15 +350,15 @@ export function VerifyEmail() {
   // pointer that was aiming at "Verify with this code". The press landed
   // 18 ms after the code verified and mailed a new code to a verified
   // address. No resend while a code or link is being checked, or after.
-  const resendLocked = resending || codeBusy || verifying || verified
+  const { secondsLeft, start: startCooldown } = useResendCooldown()
+  const cooling = secondsLeft > 0
+  const resendLocked = resending || codeBusy || verifying || verified || cooling
 
   const handleResend = async () => {
     if (codeInFlight.current || verifyInFlight.current || verified) return
-    // Rate limit: 1 per 60 seconds (T-26-05-03)
-    if (lastResent && Date.now() - lastResent.getTime() < 60000) {
-      toast.error('Please wait 1 minute before resending')
-      return
-    }
+    // Backstop for the disabled button (T-26-05-03): the wait is shown on the
+    // button itself, so a press inside it is dropped, not scolded.
+    if (cooling) return
     setResending(true)
     setError(null)
     try {
@@ -375,8 +377,14 @@ export function VerifyEmail() {
         return
       }
       setLastResent(new Date())
+      startCooldown(RESEND_WAIT_SECONDS)
       toast.success(verificationMailSentence('sent', user?.email))
     } catch (err: unknown) {
+      // The server's own wait seeds the same countdown (never a toast).
+      if ((err as { response?: { status?: number } })?.response?.status === 429) {
+        startCooldown(retryAfterSeconds(err) ?? RESEND_WAIT_SECONDS)
+        return
+      }
       // Inline only (both renderings already show `error`) — a toast here
       // duplicated the same failure as a second, dismissable surface.
       setError(getErrorMessage(err))
@@ -388,6 +396,7 @@ export function VerifyEmail() {
   // The code box: signed in, no link in the URL, not yet verified (F3). A
   // signed-out person keeps today's sign-in path and sees no box.
   const canTypeCode = !token && !loading && Boolean(user) && user?.emailVerified !== true
+  const inbox = inboxLinkFor(user?.email)
   const mailTrouble = mailState === 'not_sent' || mailState === 'unconfirmed'
 
   const codeBox = canTypeCode ? (
@@ -570,13 +579,30 @@ export function VerifyEmail() {
                     </p>
                   )}
                   {codeBox}
+                  {inbox && (
+                    <a
+                      className="mdv-btn mdv-btn--seal"
+                      style={{ minHeight: 44 }}
+                      href={inbox.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-testid="verify-open-inbox"
+                    >
+                      {inbox.label}
+                    </a>
+                  )}
                   {user ? (
                     <button
-                      className="mdv-btn mdv-btn--seal"
+                      className={inbox ? 'mdv-btn' : 'mdv-btn mdv-btn--seal'}
+                      style={{ fontVariantNumeric: 'tabular-nums', minWidth: '17rem' }}
                       onClick={handleResend}
                       disabled={resendLocked}
                     >
-                      {resending ? 'Requesting…' : 'Resend verification email'}
+                      {resending
+                        ? 'Requesting…'
+                        : cooling
+                          ? `Resend in ${secondsLeft} s`
+                          : 'Resend verification email'}
                     </button>
                   ) : (
                     <>
@@ -601,8 +627,7 @@ export function VerifyEmail() {
                   {lastResent && (
                     <p role="status" className="mdv-note">
                       Another verification email was sent at{' '}
-                      {lastResent.toLocaleTimeString()}. Wait one minute before
-                      requesting again.
+                      {lastResent.toLocaleTimeString()}.
                     </p>
                   )}
                 </>
