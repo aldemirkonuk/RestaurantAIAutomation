@@ -17,6 +17,8 @@ export type HouseRole = NonNullable<AuthContextType['activeRole']>;
 export interface ViewCtx {
   /** The till window the reader picked. Only `till` takes one. */
   days: number;
+  /** True when the reader asked to lay the window beside the same-length one just before it (`?compare=prior`). Only `till` takes it. */
+  compare?: boolean;
   /**
    * The house's ISO 4217 code from `GET /settings/currency`; null or absent
    * when it was never stated, is not read yet, or could not be read. Money
