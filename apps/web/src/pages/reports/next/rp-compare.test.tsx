@@ -9,7 +9,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { CatPlot } from './rp-plot';
 import { TillWindowPicker } from './Cutting';
-import { daysBetween, till } from './rp-registers-trade';
+import { compareOffered, daysBetween, splitTill, till } from './rp-registers-trade';
 import type { CatSeries } from './rp-view';
 
 vi.mock('recharts', async () => {
@@ -21,27 +21,33 @@ vi.mock('recharts', async () => {
   };
 });
 
-/** A 30-day window 2026-09-02..2026-10-01 and the 30 days before it. */
+/**
+ * ONE read of 60 house days, 2026-08-03..2026-10-01 (DD-r104-22: web only, the
+ * gateway's compare parameter is not used). The last 30 days are the window,
+ * the 30 before are the prior. Prior day 5 rang nothing (absent), the window's
+ * day 1 rang 130, every other window day 130 too; every other prior day 100.
+ */
 const FROM = '2026-09-02';
 const TO = '2026-10-01';
 const P_FROM = '2026-08-03';
 const P_TO = '2026-09-01';
 
 function payload(over: Record<string, unknown> = {}) {
-  const priorDays = daysBetween(P_FROM, P_TO);
-  // Every prior day rang 100, except the 5th, which rang nothing (absent).
-  const priorSeries = priorDays.filter((_, i) => i !== 4).map((date) => ({ date, revenue: 100 }));
+  const priorSeries = daysBetween(P_FROM, P_TO)
+    .filter((_, i) => i !== 4)
+    .map((date) => ({ date, revenue: 100, checks: 2 }));
+  const windowSeries = daysBetween(FROM, TO).map((date) => ({ date, revenue: 130, checks: 3 }));
+  const dailySeries = [...priorSeries, ...windowSeries];
   return {
     posConnected: true,
-    revenue: 3900,
-    checkCount: 60,
-    from: FROM,
+    revenue: dailySeries.reduce((a, d) => a + d.revenue, 0),
+    checkCount: dailySeries.reduce((a, d) => a + d.checks, 0),
+    from: P_FROM,
     to: TO,
-    days: 30,
+    days: 60,
     timezone: 'America/Los_Angeles',
     zoneUnset: false,
-    dailySeries: [{ date: FROM, revenue: 130, checks: 2 }],
-    prior: { from: P_FROM, to: P_TO, revenue: priorSeries.length * 100, checkCount: 58, dailySeries: priorSeries },
+    dailySeries,
     ...over,
   };
 }
@@ -50,18 +56,41 @@ const view = (raw: unknown, compare: boolean) =>
   till.view(till.select(raw), { days: 30, compare, currency: 'USD' });
 
 describe('till: compare to the previous period', () => {
-  it('asks the gateway for compare=prior only when the reader did', () => {
-    expect(till.path!('r1', { days: 30, compare: true })).toBe('/analytics/pos-revenue/r1?days=30&compare=prior');
+  it('asks days=2N and no compare parameter; off, it asks days=N', () => {
+    expect(till.path!('r1', { days: 30, compare: true })).toBe('/analytics/pos-revenue/r1?days=60');
+    expect(till.path!('r1', { days: 7, compare: true })).toBe('/analytics/pos-revenue/r1?days=14');
     expect(till.path!('r1', { days: 30 })).toBe('/analytics/pos-revenue/r1?days=30');
+    expect(till.path!('r1', { days: 30, compare: true })).not.toMatch(/compare/);
   });
 
-  it('the prior series sums to the API prior revenue, and a null day stays a gap', () => {
+  it('365 days offers no compare: the read stays 365, nothing is split, and the picker says so in words', () => {
+    expect(compareOffered(365)).toBe(false);
+    expect(compareOffered(90)).toBe(true);
+    expect(till.path!('r1', { days: 365, compare: true })).toBe('/analytics/pos-revenue/r1?days=365');
+    const onCompare = vi.fn();
+    render(<TillWindowPicker days={365} onChange={() => {}} compare onCompare={onCompare} />);
+    expect(screen.queryByRole('button', { name: /Against the prior/ })).toBeNull();
+    expect(screen.getByRole('note').textContent).toMatch(/no compare is offered at 365 days/);
+  });
+
+  it('[REVERT-FAILS] splits at the house day: the window is the last 30 days, the prior the 30 before', () => {
+    const raw = payload();
+    const w = splitTill(till.select(raw) as never, 30);
+    expect(w.days).toBe(30);
+    expect([w.from, w.to]).toEqual([FROM, TO]);
+    expect([w.prior!.from, w.prior!.to]).toEqual([P_FROM, P_TO]);
+    expect(w.revenue).toBe(30 * 130);
+    expect(w.checkCount).toBe(30 * 3);
+    expect(w.dailySeries).toHaveLength(30);
+  });
+
+  it('[REVERT-FAILS] the prior series sums to the 30 days before (API days 31-60), and a null day stays a gap', () => {
     const raw = payload();
     const cats = view(raw, true).cats!;
     expect(cats.data).toHaveLength(30);
     const prior = cats.data.map((d) => d.prior);
-    // 29 known days of 100 = the API's prior revenue.
-    expect(prior.reduce<number>((a, v) => a + (v ?? 0), 0)).toBe((raw.prior as { revenue: number }).revenue);
+    // 29 known days of 100 = what the API says for days 31-60.
+    expect(prior.reduce<number>((a, v) => a + (v ?? 0), 0)).toBe(29 * 100);
     expect(prior[4]).toBeNull();
     expect(prior.filter((v) => v === 0)).toHaveLength(0);
     expect(cats.priorLabel).toBe('the prior 30 days');
@@ -70,14 +99,24 @@ describe('till: compare to the previous period', () => {
   it('says the change in One figure, and a dash when there is nothing before to measure against', () => {
     const fig = (raw: unknown) => view(raw, true).figures.find((f) => f.label === 'Against the prior window')!;
     expect(fig(payload()).value).toBe('+34.5%');
-    const none = payload({ prior: { from: P_FROM, to: P_TO, revenue: 0, dailySeries: [] } });
-    expect(fig(none).value).toBe('—');
+    const bare = payload();
+    const noPrior = payload({ dailySeries: bare.dailySeries.filter((d) => d.date >= FROM) });
+    expect(fig(noPrior).value).toBe('—');
   });
 
-  it('draws nothing of the prior when compare is off, or the gateway sent none', () => {
+  it('draws nothing of the prior when compare is off, or the read was too short to hold one', () => {
     expect(view(payload(), false).cats!.data.every((d) => d.prior === undefined)).toBe(true);
     expect(view(payload(), false).figures.some((f) => f.label.startsWith('Prior'))).toBe(false);
-    expect(view(payload({ prior: undefined }), true).cats!.data.every((d) => d.prior === undefined)).toBe(true);
+    const short = payload({ from: FROM, dailySeries: payload().dailySeries.filter((d) => d.date >= FROM) });
+    expect(view(short, true).cats!.data.every((d) => d.prior === undefined)).toBe(true);
+  });
+
+  it('[REVERT-FAILS] a staff reader whose till is withheld gets no window, no prior and no money from the larger read', () => {
+    const withheld = { posConnected: true, salesWithheld: true, revenue: null, checkCount: null, from: P_FROM, to: TO, days: 60, dailySeries: null };
+    const v = view(withheld, true);
+    expect(v.cats?.data.some((d) => d.prior != null || d.value != null) ?? false).toBe(false);
+    expect(v.figures.some((f) => f.label.startsWith('Prior'))).toBe(false);
+    expect(splitTill(till.select(withheld) as never, 30).prior).toBeNull();
   });
 });
 

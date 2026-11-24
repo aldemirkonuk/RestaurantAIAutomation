@@ -59,6 +59,7 @@ import {
 import { CATALOGUE, graphOrDefault, type ViewCtx } from './rp-catalogue';
 import { DrawKey } from './rp-draw';
 import { readsRegister } from './rp-spec';
+import { compareOffered } from './rp-registers-trade';
 import { cannotDraw } from './rp-strip';
 import { naturalPx } from './rp-fit';
 import { Grip, PlacingBar } from './Placing';
@@ -151,7 +152,12 @@ export function TillWindowPicker({
         </button>
       ))}
     </div>
-    {onCompare && (
+    {onCompare && !compareOffered(days) && (
+      <span className="rp-note rp-no-drag" role="note">
+        A year has no year before it to read against, so no compare is offered at {days} days.
+      </span>
+    )}
+    {onCompare && compareOffered(days) && (
       <button
         type="button"
         className="rp-mini rp-ink rp-focus rp-no-drag"
