@@ -11,6 +11,7 @@ import { useItemPrefetch } from './use-item-prefetch';
 import ItemDrawer from './ItemDrawer';
 import type { InvRow } from './useInventoryNextData';
 import { inventoryItemKeys } from '../../../services/api/inventory';
+import { invalidateItemReads } from './item-queries';
 
 const api = vi.hoisted(() => ({ figures: vi.fn(), usedIn: vi.fn(), nutrition: vi.fn(), dishes: vi.fn(), drinks: vi.fn(), taste: vi.fn() }));
 vi.mock('../../../services/api/taste', async (orig) => ({ ...(await orig<Record<string, unknown>>()), getTaste: api.taste }));
@@ -188,5 +189,63 @@ describe('hover-intent prefetch of a good', () => {
     await settle();
     expect(cached('a')).toEqual([true, true, true]);
     expect(api.figures).toHaveBeenCalledTimes(1);
+  });
+});
+
+// The app's own client (App.tsx: refetchOnMount 'always', staleTime 5 s), not a bare one: the headline
+// "Used in N dishes, M drinks" waits for dishes and drinks as well as used-in, so all five are warmed once.
+describe('hover then open under the app QueryClient defaults (r106 g2)', () => {
+  const drawerRow = {
+    id: 'a', wineId: 'w1', name: 'A', libraryName: null, producer: 'P', type: 'red', kind: 'wine', vintage: 2016, grape: null,
+    bottleSizeMl: 750, stock: 12, shadow: 0, par: 6, reorderPoint: null, analyticsReadable: true, velocity: 1, runway: 12,
+    daysSinceSale: 1, deadStock: false, usageSource: null, usageSince: null, usageUntil: null, usageQty: null, bottle: 92,
+    glass: 18, pourMl: 150, wac: 40, costProvenance: 'invoice', value: 480, lastCountedAt: '2026-09-30T10:00:00Z', openMl: null,
+    zones: [{ locationId: 'z1', qty: 12 }], providerId: null, providerName: null, standing: 'above', active: true,
+  } as unknown as InvRow;
+  const five = () => [api.figures, api.nutrition, api.usedIn, api.dishes, api.drinks].map((f) => f.mock.calls.length);
+  const openDrawer = () =>
+    render(
+      <QueryClientProvider client={qc}>
+        <ItemDrawer row={drawerRow} house={{ kind: null, uom: null, displayName: null }} canManage currency={{ state: 'recorded', code: 'EUR' }}
+          zoneName={() => 'Cave'} locations={[]} locationsUnavailable={false} providers={[]} providersError={null} restaurantId={RID} onClose={vi.fn()} />
+      </QueryClientProvider>,
+    );
+
+  beforeEach(() => {
+    qc = new QueryClient({ defaultOptions: { queries: { staleTime: 5_000, refetchOnWindowFocus: true, refetchOnMount: 'always', retry: 1 } } });
+    api.dishes.mockReset().mockResolvedValue({ dishes: [] });
+    api.drinks.mockReset().mockResolvedValue({ drinks: [] });
+  });
+
+  it('a hover asks for all five reads once, and opening the drawer asks for none of them again', async () => {
+    mount();
+    fireEvent.pointerOver(screen.getByTestId('row-a'), { pointerType: 'mouse' });
+    await act(async () => { await vi.advanceTimersByTimeAsync(150); });
+    await settle();
+    expect(five()).toEqual([1, 1, 1, 1, 1]);
+    cleanup();
+    vi.setSystemTime(Date.now() + 6_000); // past the app's 5 s, inside the queries' own 30/60 s
+    openDrawer();
+    await settle();
+    expect(five()).toEqual([1, 1, 1, 1, 1]);
+  });
+
+  it('a recipe write marks used-in, its dishes and drinks, figures and the use counts stale; nutrition stays', async () => {
+    const counts = ['inventory', 'use-counts', RID];
+    mount();
+    fireEvent.pointerOver(screen.getByTestId('row-a'), { pointerType: 'mouse' });
+    await act(async () => { await vi.advanceTimersByTimeAsync(150); });
+    await settle();
+    qc.setQueryData(counts, { readable: true });
+    const other = ['inventory', 'item', 'r2', 'a', 'used-in'];
+    qc.setQueryData(other, { x: 1 });
+    invalidateItemReads(qc, RID);
+    const stale = (k: readonly unknown[]) => qc.getQueryState(k)?.isInvalidated === true;
+    expect([
+      stale(inventoryItemKeys.usedIn(RID, 'a')), stale([...inventoryItemKeys.usedIn(RID, 'a'), 'dishes']),
+      stale([...inventoryItemKeys.usedIn(RID, 'a'), 'drinks']), stale(inventoryItemKeys.figures(RID, 'a')), stale(counts),
+    ]).toEqual([true, true, true, true, true]);
+    expect(stale(inventoryItemKeys.nutrition(RID, 'a'))).toBe(false);
+    expect(stale(other)).toBe(false); // another house's key is left alone
   });
 });

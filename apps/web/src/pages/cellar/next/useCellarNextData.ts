@@ -33,6 +33,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { invalidateItemReads } from '../../inventory/next/item-queries';
 import { useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useInventory } from '../../../hooks/queries/useInventoryQueries';
@@ -1027,6 +1028,11 @@ export function useCocktailWrites() {
     void queryClient.invalidateQueries({ queryKey: ['cellar', 'cocktails', activeRestaurantId] });
     void queryClient.invalidateQueries({ queryKey: ['cellar', 'register', activeRestaurantId] });
   };
+  // A card retired or its lines replaced changes which goods are used in a drink.
+  const invalidateUse = () => {
+    invalidate();
+    invalidateItemReads(queryClient, activeRestaurantId);
+  };
 
   const create = useMutation({
     mutationFn: async (input: CocktailInput) => {
@@ -1052,7 +1058,7 @@ export function useCocktailWrites() {
       const r = await apiClient.delete(`/cocktails/${activeRestaurantId}/${id}`);
       return r.data;
     },
-    onSuccess: invalidate,
+    onSuccess: invalidateUse,
   });
 
   const setRecipe = useMutation({
@@ -1066,7 +1072,7 @@ export function useCocktailWrites() {
       );
       return r.data;
     },
-    onSuccess: invalidate,
+    onSuccess: invalidateUse,
   });
 
   return { create, amend, retire, setRecipe };
