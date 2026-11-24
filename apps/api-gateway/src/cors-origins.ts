@@ -16,6 +16,14 @@ export const PRODUCTION_ORIGINS = [
   "https://www.mudavym.com",
 ] as const;
 
+/**
+ * Response headers a page may read across origins. `Retry-After` is on the
+ * list so a rate-limited page can wait the gateway's real window and recover
+ * in place; without it the browser hides the header and the page can only
+ * guess.
+ */
+export const CORS_EXPOSED_HEADERS = ["Retry-After"];
+
 export function buildCorsOrigins(env: NodeJS.ProcessEnv = process.env) {
   return [
     // Additional origins may be added by env var, but the production domain

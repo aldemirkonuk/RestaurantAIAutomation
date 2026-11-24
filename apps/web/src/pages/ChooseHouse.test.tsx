@@ -385,6 +385,21 @@ describe("ChooseHouse", () => {
       expect(setActiveRestaurantId).not.toHaveBeenCalled();
     });
 
+    it("an accepted house that would not open says the person is in it and to try again", async () => {
+      housesAnswer([], { held: [HELD], accessEnded: false });
+      vi.mocked(apiClient.post).mockResolvedValue({ data: { success: true } } as any);
+      setActiveRestaurantId.mockResolvedValue(false);
+      renderAt();
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Join Evil <b>House</b>" }),
+      );
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "You joined Evil <b>House</b>, but we couldn't open it. Try again.",
+      );
+      expect(screen.queryByTestId("where")).toBeNull();
+    });
+
     it("with nothing waiting and no house, it still leaves for /get-started", async () => {
       housesAnswer([], { held: [], accessEnded: false });
       renderAt();
@@ -392,5 +407,23 @@ describe("ChooseHouse", () => {
         "/get-started",
       );
     });
+  });
+
+  // r65 F2: a kept sign-in whose person was not read (a busy gateway) is not a
+  // signed-out visitor; sending it to /login made the loop.
+  it("keeps a kept sign-in here, with a calm note, when the person was not read", () => {
+    localStorage.setItem("accessToken", "kept");
+    authAs({ user: null });
+    renderAt();
+    expect(screen.queryByTestId("where")).toBeNull();
+    expect(screen.getByRole("status").textContent).toMatch(/still signed in/i);
+    expect(screen.getByRole("button", { name: /try again/i })).toBeTruthy();
+    expect(vi.mocked(apiClient.get)).not.toHaveBeenCalled();
+  });
+
+  it("sends a signed-out visitor to /login", () => {
+    authAs({ user: null });
+    renderAt();
+    expect(screen.getByTestId("where").textContent).toBe("/login");
   });
 });

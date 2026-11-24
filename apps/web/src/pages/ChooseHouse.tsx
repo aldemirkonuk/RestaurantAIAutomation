@@ -32,6 +32,18 @@ import {
  * same paper and seal when that switch is on (sketch 118).
  */
 
+/** A sign-in is still kept on this device (the tokens were not cleared). */
+function hasKeptSession(): boolean {
+  try {
+    return !!(
+      window.localStorage.getItem("accessToken") ||
+      window.localStorage.getItem("refreshToken")
+    );
+  } catch {
+    return false;
+  }
+}
+
 const ROW_TRANSITION = `transform ${ink.ms}ms ${ink.easing}, background-color ${ink.ms}ms ${ink.easing}, border-color ${ink.ms}ms ${ink.easing}`;
 
 /**
@@ -136,7 +148,13 @@ export function ChooseHouse() {
     );
   }, [ordered, query]);
 
-  if (!loading && !user) return <Navigate to="/login" replace />;
+  // Signed out is signed out. A token still kept with no person read behind it
+  // is a read that did not come back (a busy gateway answers 429), not a
+  // signed-out visitor: sending that person to /login put them in a loop
+  // between the sign-in and the first-house page (r65 F2). They wait here.
+  const sessionNotRead = !loading && !user && hasKeptSession();
+  if (!loading && !user && !sessionNotRead)
+    return <Navigate to="/login" replace />;
   if (user?.emailVerified === false)
     return <Navigate to="/verify-email" replace />;
   // No house (ADR 0164, brackets 2026-09-25; the founder, round 4, item 16,
@@ -196,6 +214,11 @@ export function ChooseHouse() {
       navigate(destination, { replace: true });
       return;
     }
+    // The join was made; only the opening failed. Saying nothing left the
+    // person on a list with no word of why they were not let in.
+    setRefused(
+      `You joined ${house.name}, but we couldn't open it. Try again.`,
+    );
     void fetchHouses();
   };
 
@@ -224,7 +247,30 @@ export function ChooseHouse() {
           </p>
         )}
 
-        {load.state === "loading" && (
+        {sessionNotRead && (
+          <div className="space-y-3">
+            <p
+              role="status"
+              className={`text-sm ${on ? "!text-inkm-2" : "text-gray-700"}`}
+            >
+              We couldn't reach your account just now. You are still signed in;
+              give it a moment.
+            </p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className={
+                on
+                  ? "text-sm font-medium text-seal underline underline-offset-4"
+                  : "text-sm font-medium text-wine-600 underline underline-offset-4"
+              }
+            >
+              Try again
+            </button>
+          </div>
+        )}
+
+        {!sessionNotRead && load.state === "loading" && (
           <p className={`text-sm ${ink3}`} aria-live="polite">
             Opening your houses…
           </p>
