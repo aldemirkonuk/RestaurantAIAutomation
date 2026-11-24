@@ -875,8 +875,21 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
   const queryClient = useQueryClient();
   const [said, setSaid] = useState<string | null>(null);
   const [planFor, setPlanFor] = useState<string | null>(null);
+  // A failed read taken off the list leaves no row to say so: this sentence stands in its
+  // place for four seconds (a timer, no motion), then is gone. The file is kept.
+  const [taken, setTaken] = useState(false);
+  useEffect(() => {
+    if (!taken) return;
+    const t = window.setTimeout(() => setTaken(false), 4000);
+    return () => window.clearTimeout(t);
+  }, [taken]);
   const { house, q } = useKeptMenus();
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu'] });
+  const takenSaid = taken ? (
+    <p role="status" className="cl-said" style={{ marginTop: 10 }} data-testid="menu-removed-said">
+      Taken off the list.
+    </p>
+  ) : null;
   const zone = q.data?.timezone ?? null;
   const labels = versionLabels(q.data?.versions ?? [], zone);
   const nameOf = (v: MenuVersion) => labels.get(v.menuId) ?? versionLabel(v, false, zone);
@@ -953,7 +966,10 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
                       lastUsedId={q.data?.lastUsed?.menuId ?? null}
                       zone={zone}
                       planning={planFor === v.menuId}
-                      onRemoved={refresh}
+                      onRemoved={() => {
+                        setTaken(true);
+                        refresh();
+                      }}
                       onPlan={(id) => {
                         setSaid(null);
                         setPlanFor(id);
@@ -998,11 +1014,15 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
                 {said}
               </p>
             ) : null}
+            {takenSaid}
             </>
           ) : (
+            <>
+            {takenSaid}
             <p className="cl-said" style={{ marginTop: 10 }}>
               No menu has been read yet.
             </p>
+            </>
           )}
         </>
       )}

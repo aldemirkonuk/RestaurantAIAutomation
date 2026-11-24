@@ -297,6 +297,29 @@ describe('MenuVersions', () => {
     fireEvent.click(await screen.findByTestId('menu-version-remove'));
     await waitFor(() => expect(mockRemove).toHaveBeenCalledWith('m-bad'));
     await waitFor(() => expect(screen.queryByTestId('menu-version-row')).not.toBeInTheDocument());
+    // The row is gone with no motion; a polite status says where it went, and goes after 4 s (r106 menu-4).
+    expect(await screen.findByTestId('menu-removed-said')).toHaveTextContent('Taken off the list.');
+    expect(screen.getByTestId('menu-removed-said')).toHaveAttribute('role', 'status');
+  });
+
+  it('the taken-off sentence is gone after four seconds, by a timer and not an animation', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const failed = version({ menuId: 'm-bad', readState: 'failed', readFailure: 'No line could be read from this file.' });
+      mockList.mockResolvedValueOnce({ versions: [failed], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+      mockList.mockResolvedValue({ versions: [], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+      mockRemove.mockResolvedValue({ menuId: 'm-bad', removed: true });
+      mount(true);
+      fireEvent.click(await screen.findByTestId('menu-version-remove'));
+      const said = await screen.findByTestId('menu-removed-said');
+      expect(said.getAnimations?.() ?? []).toHaveLength(0);
+      await act(async () => {
+        vi.advanceTimersByTime(4100);
+      });
+      expect(screen.queryByTestId('menu-removed-said')).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('staff are not offered it, and a read that did not fail is not either', async () => {
