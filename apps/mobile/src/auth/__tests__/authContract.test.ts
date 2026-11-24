@@ -224,6 +224,15 @@ describe("verify, then create (r104)", () => {
   });
 });
 
+describe("a houseless session has a way back to /open-house (r106)", () => {
+  const noAccess = read(path.resolve(__dirname, "../../../app/no-access.tsx"));
+
+  it("the no-access screen offers the open-house route, and that route exists", () => {
+    expect(noAccess).toContain('router.push("/open-house"');
+    expect(fs.existsSync(path.resolve(__dirname, "../../../app/open-house.tsx"))).toBe(true);
+  });
+});
+
 describe("the emailed links still point where the parser expects", () => {
   const service = read(AUTH_SERVICE);
 
