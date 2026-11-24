@@ -1916,8 +1916,13 @@ export default function ReceiptsNext() {
             An unanswered uncounted-deliveries query used to render exactly like
             a caught-up door: `[]`. It is now `null` until it answers, and the
             unknown says so instead of hiding behind the absent strip.
+
+            r106 (walk r105 finding 1): only a FAILED read draws the line. While
+            the read is merely PENDING it drew 36 px above the grid at ~110 ms
+            and shoved the whole page down (CLS 0.16-0.31 at 1440); the queue's
+            own "Reading…" already refuses to claim "caught up" meanwhile.
         */}
-        {data.deliveriesWithoutPaper === null && !data.noRestaurant && (
+        {data.deliveriesWithoutPaper === null && data.deliveriesFailed && !data.noRestaurant && (
           <p
             className="mb-4"
             style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)' }}

@@ -113,6 +113,8 @@ export interface ReceiptsNextData {
   verifiedCapped: boolean;
   /** null until the uncounted list answers — `[]` would read as "all clear". */
   deliveriesWithoutPaper: UnverifiedDelivery[] | null;
+  /** The door read FAILED (not merely pending); a pending read must not draw a line above the grid. */
+  deliveriesFailed: boolean;
   deliveriesKnown: boolean;
   isError: boolean;
   /** One sentence per query that failed, so a dead endpoint is never silent. */
@@ -256,6 +258,7 @@ export function useReceiptsNextData(): ReceiptsNextData {
     verifiedCapped: verified.length >= RECEIPTS_SERVER_WINDOWS.VERIFIED_ITEMS,
     deliveriesWithoutPaper: unverifiedQ.data === undefined ? null : unverifiedQ.data.items ?? [],
     deliveriesKnown: unverifiedQ.data !== undefined,
+    deliveriesFailed: unverifiedQ.isError,
     isError: failures.length > 0,
     failures,
     errorMessage: failures.join('; ') || 'unknown error',

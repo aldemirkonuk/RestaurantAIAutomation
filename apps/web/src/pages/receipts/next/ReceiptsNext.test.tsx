@@ -859,11 +859,41 @@ describe('ReceiptsNext — papers that read cleanly reach a swipe (W44)', () => 
     api.clean = [];
     api.doorPending = true;
     const { container } = render(<ReceiptsNext />, { wrapper });
-    expect(await screen.findByText(/Deliveries counted at the door: unknown/)).toBeTruthy();
     expect(await screen.findByText('Reading…')).toBeTruthy();
+    // r106: a pending read draws nothing above the grid (CLS); only a failed one says unknown.
+    expect(screen.queryByText(/Deliveries counted at the door: unknown/)).toBeNull();
     // The door's own line says "not claiming the door is caught up"; the
     // queue's sentence must not claim the paper trail is.
     expect(container.textContent).not.toMatch(/paper trail is caught up/);
+  });
+
+  it('a FAILED door read still says unknown (ADR 0020); a pending one draws no line above the grid (r106 CLS)', async () => {
+    api.queue = [];
+    api.clean = [];
+    api.unverifiedFails = new Error('receiving endpoint 500');
+    render(<ReceiptsNext />, { wrapper });
+    expect(await screen.findByText(/Deliveries counted at the door: unknown/)).toBeTruthy();
+  });
+
+  it('pending then an empty answer: the same nodes sit above the grid, so its top never moves (r106 CLS)', async () => {
+    api.queue = [];
+    api.clean = [];
+    const above = (container: HTMLElement) => {
+      const g = container.querySelector('.grid.grid-cols-1');
+      let n = 0;
+      for (let e = g?.previousElementSibling; e; e = e.previousElementSibling) n++;
+      return n;
+    };
+    api.doorPending = true;
+    const pending = render(<ReceiptsNext />, { wrapper });
+    await screen.findByText('Reading…');
+    const whilePending = above(pending.container);
+    pending.unmount();
+    api.doorPending = false;
+    api.unverified = { items: [] };
+    const answered = render(<ReceiptsNext />, { wrapper });
+    await waitFor(() => expect(screen.queryByText('Reading…')).toBeNull());
+    expect(above(answered.container)).toBe(whilePending);
   });
 
   it('says "caught up" once the clean read lands empty (W48)', async () => {
