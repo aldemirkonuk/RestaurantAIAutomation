@@ -38,12 +38,18 @@ export default function NoAccessScreen() {
           Signed in as {user?.email ?? "this account"}.
         </AppText>
         <AppText variant="footnote">
-          An owner or manager has to send you an invite link. Open it on this
-          phone, or type the code on the join screen.
+          Opening your own restaurant? Start below, once your address is
+          verified. Joining one? An owner or manager has to send you an invite
+          link. Open it on this phone, or type the code on the join screen.
         </AppText>
       </AuthNotice>
 
       <AuthButton
+        label="I am opening a restaurant of my own"
+        onPress={() => router.push("/open-house" as never)}
+      />
+
+      <AuthLink
         label="I have an invite code"
         onPress={() => router.push("/register?type=join" as never)}
       />
