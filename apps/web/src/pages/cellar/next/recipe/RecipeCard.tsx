@@ -18,6 +18,7 @@ import type { CocktailRecipe } from '../../../../services/api/recipes';
 import { marginPerServe, pourCostShare } from './DrinkCards';
 import type { ListTax } from './listTax';
 import type { SayPercent } from './useHousePercent';
+import { useHouseDate } from './useHouseDate';
 import { amountWithUnit } from './units';
 import type { RecipeWords } from './recipeWords';
 
@@ -51,6 +52,7 @@ export default function RecipeCard({
   tax: ListTax;
 }) {
   const boxId = useId();
+  const sayDate = useHouseDate();
   const [withCost, setWithCost] = useState(false);
   const v = data.current;
   const isDish = data.kind === 'dish';
@@ -71,8 +73,7 @@ export default function RecipeCard({
   const share = pourCostShare(data.cost, price, tax);
   const margin = marginPerServe(data.cost, price, tax);
   const per = data.cost?.complete ? data.cost.perServe : null;
-  const made = new Date(v.createdAt);
-  const dated = Number.isFinite(made.getTime()) ? made.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : null;
+  const dated = sayDate(v.createdAt);
   const glass = v.glass ?? data.cocktail.glass;
   const garnish = v.garnish ?? data.cocktail.garnish;
   const method = v.method ?? data.cocktail.method;

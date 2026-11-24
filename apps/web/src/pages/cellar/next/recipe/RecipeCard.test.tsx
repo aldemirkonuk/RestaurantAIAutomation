@@ -58,12 +58,13 @@ function mount() {
   return render(<RecipeSheet cocktailId={CID} />, { wrapper: wrap });
 }
 
+const house = vi.hoisted(() => ({ code: 'GBP', createdAt: '2026-11-07T12:00:00Z' }));
 const card = () => screen.getByTestId('recipe-card');
 
 beforeEach(() => {
   h.get.mockReset().mockImplementation(async (url: string) => {
-    if (url === '/settings/currency') return { data: { restaurantId: RID, code: 'GBP', country: null, readable: true, reason: null, statedAt: null } };
-    if (url === `/recipes/${RID}/cocktails/${CID}`) return { data: negroni };
+    if (url === '/settings/currency') return { data: { restaurantId: RID, code: house.code, country: null, readable: true, reason: null, statedAt: null } };
+    if (url === `/recipes/${RID}/cocktails/${CID}`) return { data: { ...negroni, current: { ...negroni.current!, createdAt: house.createdAt } } };
     if (url === `/recipes/${RID}/shelf`) return { data: [] };
     throw new Error(`unexpected GET ${url}`);
   });
@@ -72,7 +73,10 @@ beforeEach(() => {
   forgetDrafts();
   window.print = vi.fn();
 });
-afterEach(() => document.documentElement.removeAttribute('data-print-card'));
+afterEach(() => {
+  document.documentElement.removeAttribute('data-print-card');
+  house.code = 'GBP';
+});
 
 describe('the printable recipe card', () => {
   it('carries the name, serves, glass, build, method, garnish, allergens and version date, with no money by default', async () => {
@@ -118,6 +122,26 @@ describe('the printable recipe card', () => {
     expect(document.documentElement).toHaveAttribute('data-print-card');
     window.dispatchEvent(new Event('afterprint'));
     await waitFor(() => expect(document.documentElement).not.toHaveAttribute('data-print-card'));
+  });
+
+  it('writes the version date in the house\'s locale, not the browser\'s: a lira house reads "7 Kas 2026", a pound house "7 Nov 2026"', async () => {
+    house.code = 'TRY';
+    const lira = mount();
+    await screen.findByTestId('recipe-print');
+    await waitFor(() => expect(card()).toHaveTextContent('version 4, 7 Kas 2026'));
+    lira.unmount();
+    house.code = 'GBP';
+    mount();
+    await waitFor(() => expect(card()).toHaveTextContent('version 4, 7 Nov 2026'));
+  });
+
+  it('says no date for a version whose date cannot be read', async () => {
+    house.createdAt = 'not a date';
+    mount();
+    await screen.findByTestId('recipe-print');
+    expect(card()).toHaveTextContent('version 4');
+    expect(card().textContent).not.toMatch(/Invalid|NaN/);
+    house.createdAt = '2026-11-07T12:00:00Z';
   });
 
   it('draws only on paper, on one page, without animation', () => {
