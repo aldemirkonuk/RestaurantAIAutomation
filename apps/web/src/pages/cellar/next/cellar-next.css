@@ -1136,6 +1136,12 @@ textarea.cl-field {
   }
 }
 
+/* The "N drinks have no recipe yet" line over the cocktail list: it lands with the figures, so its
+   room is held from first paint. The line's own 12px top margin is inside the room (flow-root), and
+   one line wide holds 1lh, two at a phone. No transition, and none under reduced motion (ADR 0112). */
+.cl-norecipe-room { display: flow-root; min-height: calc(12px + 1lh); }
+@media (max-width: 640px) { .cl-norecipe-room { min-height: calc(12px + 2lh); } }
+
 /* The figures line over the cocktail list (r104 drinks need 3): its room is the
    same loading and loaded, so the table under it does not move when the list lands. */
 .cl-strip { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; min-height: 36px; }

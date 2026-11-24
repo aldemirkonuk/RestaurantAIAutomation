@@ -533,7 +533,11 @@ export default function CocktailRegister({
           {data.rows.length > 0 ? (
             <>
               {seesCost ? (
-                <NoRecipeYet bare={bareIds.length} of={data.rows.length} noun="drinks" only={onlyBare} onOnly={setOnlyBare} />
+                // The line lands when the figures do (about 225 ms in), so its room is held from the first paint:
+                // empty while they load and for a house where every drink has a recipe, never given back (r104 FAIL 14).
+                <div className="cl-said cl-norecipe-room" data-testid="no-recipe-room">
+                  <NoRecipeYet bare={bareIds.length} of={data.rows.length} noun="drinks" only={onlyBare} onOnly={setOnlyBare} />
+                </div>
               ) : null}
               <AllergenCheck value={allergen} onChange={setAllergen} hidden={searched.length - byAllergen.length} noun="drinks" />
             </>
