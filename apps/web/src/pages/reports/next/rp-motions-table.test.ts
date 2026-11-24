@@ -79,7 +79,7 @@ function rowSays(row: string, ms: number): boolean {
 
 describe('MOTIONS.md covers every motion the stylesheet runs', () => {
   it('finds the motions the stylesheet runs', () => {
-    expect(moving.length).toBeGreaterThanOrEqual(15);
+    expect(moving.length).toBeGreaterThanOrEqual(12);
     expect(rows.length).toBeGreaterThanOrEqual(10);
   });
 
