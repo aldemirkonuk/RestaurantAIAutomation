@@ -50,6 +50,14 @@ describe("DocumentsController.priceMoves — a cost that jumped with no PO to ca
     expect(out.lines[0]).toEqual(expect.objectContaining({ compared: false, reason: "no_previous" }));
     expect((out.lines[0] as any).sentence).toBeUndefined();
   });
+  it("carries both currency codes so the page can say why nothing was compared (r106)", async () => {
+    const c = controllerWith({
+      procurement_documents: { data: { id: "d1", currency: "TRY" }, error: null },
+      procurement_document_lines: { data: [line({})], error: null },
+      inventory_lots: { data: [], error: null },
+    });
+    expect(await c.priceMoves("d1", user)).toMatchObject({ paperCurrency: "TRY", houseCurrency: "USD" });
+  });
 
   it("does not compare a line priced per case against a bottle cost", async () => {
     const c = controllerWith({
