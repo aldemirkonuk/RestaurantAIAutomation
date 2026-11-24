@@ -22,6 +22,9 @@ export interface DraftRow {
   key: string;
   role: RecipeLineRole;
   inventoryId: string | null;
+  /** A made line: the house-made component it draws, kept so a save sends it back. */
+  componentId?: string | null;
+  componentName?: string | null;
   itemName: string | null;
   itemKind: string | null;
   /** How the shelf counts the linked item; used to say why a line has no price. */
@@ -133,6 +136,13 @@ export function rowNote(
   say: ((n: number) => string) | null,
   words: RecipeWords = recipeWords('cocktail'),
 ): { tone: 'warn' | 'ink'; text: string } | null {
+  if (row.role === 'made') {
+    const mix = row.componentName ?? rowName(row);
+    if (!say || !row.saved) return null;
+    return row.saved.costPerServe != null
+      ? { tone: 'ink', text: `${costWords(row.saved, say)} a ${words.unit}, from ${mix}.` }
+      : { tone: 'warn', text: `No price yet: ${mix} is not fully priced, so this line is not either.` };
+  }
   if (row.role !== 'stocked') return null;
   if (!row.inventoryId) {
     return {
@@ -255,6 +265,7 @@ export function LineRowRead({ row }: { row: DraftRow }) {
             <span className="cl-dim"> · {row.label}</span>
           ) : null}
           {row.role === 'untracked' ? <span className="cl-dim"> · not counted</span> : null}
+          {row.role === 'made' ? <span className="cl-dim"> · made in the house</span> : null}
         </span>
         <GoodLink row={row} />
       </div>
@@ -353,6 +364,8 @@ export default function LineRow({
   }, [undo]);
   const [reweighing, setReweighing] = useState(false);
   const stocked = row.role === 'stocked';
+  // A made line draws a house-made mix: its amount and unit are edited here, what it is made from is not.
+  const made = row.role === 'made';
   const qty = rowQty(row);
 
   const [added, setAdded] = useState<string | null>(null);
@@ -396,7 +409,11 @@ export default function LineRow({
               )}
             </button>
           ) : null}
-          {stocked ? <GoodLink row={row} /> : (
+          {made ? (
+            <span className="cl-dim" data-testid="made-from">
+              Made in the house: {row.componentName ?? row.label}
+            </span>
+          ) : stocked ? <GoodLink row={row} /> : (
             <>
               <label htmlFor={`${id}-label`} className="cl-sr">What it is</label>
               <input
@@ -444,7 +461,8 @@ export default function LineRow({
         <button
           type="button"
           role="switch"
-          aria-checked={stocked}
+          aria-checked={stocked || made}
+          disabled={made}
           className="cl-btn cl-focus cl-rcp-switch"
           data-on={stocked}
           onClick={() => {
@@ -457,7 +475,7 @@ export default function LineRow({
             }
           }}
         >
-          {stocked ? 'Counted from the shelf' : 'Not counted'}
+          {made ? 'Counted from the mix' : stocked ? 'Counted from the shelf' : 'Not counted'}
         </button>
 
         <button
