@@ -178,13 +178,6 @@ type MenuImportData =
   | { fileBase64: string; imageBase64?: never; csvContent?: never; items?: never }
 
 /**
- * A menu read is one billed call that can run for minutes (a PDF is read in
- * chunks, up to 3 min each). The shared client gives up at 30 s while the
- * gateway keeps reading and billing, so a retry paid twice (r102 menu-func-1).
- */
-export const MENU_READ_TIMEOUT_MS = 10 * 60 * 1000
-
-/**
  * A refused or failed read in words: the gateway's sentence, then one sentence
  * per page it could not read (QA round 7a: the wizard said only the first).
  */
@@ -310,7 +303,6 @@ export async function importMenu(
     ...(labels.menuDate ? { menuDate: labels.menuDate } : {}),
     ...(labels.readAgain ? { readAgain: true } : {}),
   }, {
-    timeout: MENU_READ_TIMEOUT_MS,
     ...(labels.onUploadProgress
       ? {
           onUploadProgress: (e: { loaded: number; total?: number }) =>
