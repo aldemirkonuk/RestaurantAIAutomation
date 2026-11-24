@@ -283,5 +283,7 @@ describe('the cocktail list: drinks with no recipe yet (r40)', () => {
     await waitFor(() => expect(qc.isFetching()).toBe(0));
     expect(qc.getQueryCache().findAll().some((q) => JSON.stringify(q.state.data ?? '').includes('cocktailId'))).toBe(true);
     expect(screen.queryByTestId('no-recipe-yet')).toBeNull();
+    // Nothing is said to them, so no room is held for it either.
+    expect(screen.queryByTestId('no-recipe-room')).toBeNull();
   });
 });
