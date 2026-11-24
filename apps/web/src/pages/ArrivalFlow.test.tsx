@@ -41,6 +41,7 @@ vi.mock('../lib/googleMaps', () => ({
   isMapsConfigured: () => true,
 }))
 vi.mock('../components/ui/PlacesAutocomplete', () => ({
+  warmPlaces: vi.fn(),
   PlacesAutocomplete: ({
     onPlaceSelect,
     locationBias,
