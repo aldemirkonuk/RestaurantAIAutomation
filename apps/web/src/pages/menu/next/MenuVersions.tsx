@@ -40,6 +40,8 @@ import {
 import { oneNounFor, type KindNoun } from './menu-line-kind';
 import { useAuthStore } from '../../../stores';
 import { MenuPlan } from './MenuPlan';
+import { formatMoney } from '../../../lib/currency';
+import { useHouseCurrencyCode } from '../../../hooks/queries/useHouseCurrencyCode';
 import { MenuReviewScreen } from '../../../components/onboarding/MenuReviewScreen';
 import { DropZone } from '../../../components/mudavym/DropZone';
 import { deviceClockNote, houseDay, houseMoment } from './menu-clock';
@@ -185,6 +187,8 @@ const OUTCOME_WORDS: Record<string, (n: number, noun: KindNoun) => string> = {
   no_price: (n) => `${n} line${n === 1 ? '' : 's'} with no price on the menu`,
   not_linked: (n, k) =>
     `${n} line${n === 1 ? '' : 's'} not matched to ${k[0] === 'line' ? "anything on the house's list" : `a ${k[0]}`}, so no price`,
+  // The page's own words for a dish (MenuNext "From the kitchen": on the menu, and carried nowhere).
+  kitchen_line: (n) => `${n} kitchen line${n === 1 ? '' : 's'}, on the menu and carried nowhere`,
   failed: () => '',
 };
 
@@ -194,7 +198,7 @@ const OUTCOME_WORDS: Record<string, (n: number, noun: KindNoun) => string> = {
  * sentence says which menu it is about (menu walk 2026-11-12: a choice made
  * from the list was said as "This is now the current menu" with no name).
  */
-export function makeCurrentSentence(r: MakeCurrentResult, name?: string, lines?: PlanLine[]): string {
+export function makeCurrentSentence(r: MakeCurrentResult, name?: string, lines?: PlanLine[], currency: string | null = null): string {
   if (r.outcome === 'already_current' && r.lines === 0) return 'That menu was already the current one. Nothing changed.';
   // A carry that was cut off is finished by choosing the menu again (r102 menu-func-2).
   if (r.outcome === 'already_current') {
@@ -209,7 +213,7 @@ export function makeCurrentSentence(r: MakeCurrentResult, name?: string, lines?:
   const parts = [`${r.lines} line${r.lines === 1 ? '' : 's'}`];
   const keys = Object.keys(r.priceSync);
   if (!keys.includes('changed')) parts.push(OUTCOME_WORDS.changed(0, noun));
-  for (const k of ['changed', 'unchanged', 'stale', 'locked', 'no_price', 'not_linked']) {
+  for (const k of ['changed', 'unchanged', 'stale', 'locked', 'no_price', 'not_linked', 'kitchen_line']) {
     const n = r.priceSync[k] ?? 0;
     if (n > 0) parts.push(OUTCOME_WORDS[k](n, noun));
   }
@@ -227,7 +231,7 @@ export function makeCurrentSentence(r: MakeCurrentResult, name?: string, lines?:
     );
   const held = r.held?.length
     ? ` Held by a lock, not changed: ${r.held
-        .map((h) => `${h.name} (${h.kind}${h.lockedPrice === null ? '' : `, locked at ${h.lockedPrice.toFixed(2)}`})`)
+        .map((h) => `${h.name} (${h.kind}${h.lockedPrice === null ? '' : `, locked at ${formatMoney(h.lockedPrice, currency)}`})`)
         .join('; ')}.`
     : '';
   const returned = r.returned?.length
@@ -331,6 +335,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
   const [readingId, setReadingId] = useState<string | null>(null);
   // The share of the file the server has received; never goes back (r102 menu-motion-2).
   const [sent, setSent] = useState(0);
+  const currency = useHouseCurrencyCode();
   const dateRead = readMenuDate(date);
   const shape = uploadShapeOf(files);
   // The optional fields stay behind "Add details", and open by themselves when
@@ -545,7 +550,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
               onCancel={() => setPlanning(false)}
               onDone={(r, lines) => {
                 setPlanning(false);
-                setChosen(makeCurrentSentence(r, undefined, lines));
+                setChosen(makeCurrentSentence(r, undefined, lines, currency));
                 // The read's own line said "not the current menu" and offered the
                 // choice again under "This is now the current menu" (browser walk
                 // 2026-11-12). Once it is chosen, the read says so.
@@ -729,6 +734,7 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
     // A read in the background finishes on the server: look again until none is left reading.
     refetchInterval: (query) => versionsPollMs(query.state.data?.versions),
   });
+  const currency = useHouseCurrencyCode();
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu'] });
   const zone = q.data?.timezone ?? null;
   const labels = versionLabels(q.data?.versions ?? [], zone);
@@ -824,7 +830,7 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
                 onDone={(r, lines) => {
                   const chosenOne = q.data?.versions.find((v) => v.menuId === r.menuId);
                   setPlanFor(null);
-                  setSaid(makeCurrentSentence(r, chosenOne ? nameOf(chosenOne) : undefined, lines));
+                  setSaid(makeCurrentSentence(r, chosenOne ? nameOf(chosenOne) : undefined, lines, currency));
                   refresh();
                 }}
               />

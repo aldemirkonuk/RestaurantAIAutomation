@@ -18,7 +18,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MenuNext from './MenuNext';
 import { housePriceNote } from './menu-price-note';
-import { getMenu, discardMenuItem, addMenuItem, listMenuVersions, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
+import { getMenu, discardMenuItem, addMenuItem, listMenuVersions, reviewMenuItem, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
 import { settingsApi, type HouseCurrency } from '../../../services/api/settings';
 
 // ADR 0358 D2: discarding a line is an owner's or a manager's, so the page
@@ -37,6 +37,7 @@ vi.mock('../../../services/api/menus', async () => {
     getMenu: vi.fn(),
     discardMenuItem: vi.fn(),
     addMenuItem: vi.fn(),
+    reviewMenuItem: vi.fn(),
     // The kept-menus panel (MenuVersions.tsx, its own test file) reads on
     // mount; here it answers "none kept" so this file tests the current menu.
     listMenuVersions: vi.fn().mockResolvedValue({ current: null, lastUsed: null, versions: [] }),
@@ -79,6 +80,7 @@ const mockGetMenu = vi.mocked(getMenu);
 const mockVersions = vi.mocked(listMenuVersions);
 const mockDiscard = vi.mocked(discardMenuItem);
 const mockAdd = vi.mocked(addMenuItem);
+const mockReview = vi.mocked(reviewMenuItem);
 const mockCurrency = vi.mocked(settingsApi.houseCurrency);
 
 function line(over: Partial<MenuLine> = {}): MenuLine {
@@ -131,6 +133,8 @@ beforeEach(() => {
   mockGetMenu.mockReset();
   mockDiscard.mockReset();
   mockAdd.mockReset();
+  mockReview.mockReset();
+  role = 'manager';
   mockCurrency.mockReset();
   mockCurrency.mockResolvedValue(currency());
 });
@@ -197,6 +201,67 @@ describe('MenuNext — reading', () => {
     mount();
     expect(await screen.findByTestId('menu-no-active')).toBeInTheDocument();
     expect(screen.queryByTestId('menu-add-form')).not.toBeInTheDocument();
+  });
+});
+
+describe('MenuNext — a dish is not listed among the drinks (menu walk 2026-11-11)', () => {
+  it('sets a kitchen line apart under "From the kitchen", and never names the menu "Wine List"', async () => {
+    mockGetMenu.mockResolvedValue(
+      menu({
+        name: 'Wine List',
+        items: [
+          line({ id: 'w1', name: 'Chianti', category: 'red', bottle_price: 48, kitchen_line: false }),
+          line({ id: 'k1', name: 'Tiramisu', category: 'dessert', bottle_price: 9, kitchen_line: true }),
+        ],
+      }),
+    );
+    mount();
+    const drinks = await screen.findAllByTestId('menu-row');
+    expect(drinks.map((r) => r.textContent)).toEqual([expect.stringContaining('Chianti')]);
+    const kitchen = screen.getByTestId('menu-kitchen');
+    expect(kitchen).toHaveTextContent('From the kitchen');
+    expect(kitchen).toHaveTextContent('carried nowhere');
+    expect(screen.getAllByTestId('menu-kitchen-row').map((r) => r.textContent)).toEqual([
+      expect.stringContaining('Tiramisu'),
+    ]);
+    const standing = screen.getByTestId('menu-standing');
+    expect(standing).toHaveTextContent('1 drink on the current menu, and 1 line from the kitchen, set apart below.');
+    expect(standing).not.toHaveTextContent('Wine List');
+  });
+
+  it('works the split out itself when an older gateway sends no kitchen_line', async () => {
+    mockGetMenu.mockResolvedValue(
+      menu({
+        items: [
+          line({ id: 'k1', name: 'Tiramisu', category: 'dessert', bottle_price: 9 }),
+          line({ id: 'w2', name: 'Sauternes', category: 'dessert', vintage: '2015', bottle_price: 80 }),
+        ],
+      }),
+    );
+    mount();
+    expect((await screen.findAllByTestId('menu-row')).map((r) => r.textContent)).toEqual([
+      expect.stringContaining('Sauternes'),
+    ]);
+    expect(screen.getAllByTestId('menu-kitchen-row')).toHaveLength(1);
+  });
+
+  it('a line whose section the owner chose on the first proof reads "set by hand: its section", never "flagged" (walk 2026-11-12)', async () => {
+    mockGetMenu.mockResolvedValue(
+      menu({ items: [line({ name: 'Soave', category: 'white', status: 'flagged', flag_reason: 'corrected', flag_field: 'category' })] }),
+    );
+    mount();
+    const chip = await screen.findByTestId('menu-line-status');
+    expect(chip).toHaveTextContent('set by hand: its section');
+    expect(chip).toHaveAttribute('title', 'A manager set its section after the menu was read. Nothing more is needed.');
+    expect(screen.getByTestId('menu-row')).not.toHaveTextContent(/flagged/i);
+  });
+
+  it('a menu of drinks only shows no kitchen group', async () => {
+    mockGetMenu.mockResolvedValue(menu());
+    mount();
+    await screen.findAllByTestId('menu-row');
+    expect(screen.queryByTestId('menu-kitchen')).not.toBeInTheDocument();
+    expect(screen.getByTestId('menu-standing')).toHaveTextContent('1 drink on the current menu.');
   });
 });
 
@@ -398,5 +463,231 @@ describe('MenuNext — rows move, they do not jump (r102 menu-motion-4)', () => 
     expect(code).toMatch(/mdv-row-ink 160ms/);
     expect(code).not.toMatch(/mdv-row-enter|mdv-row-wash|seal-tint|240ms|600ms|data-state='leaving'/);
     expect(code).toMatch(/prefers-reduced-motion: reduce\)\s*\{[\s\S]*animation: none/);
+  });
+});
+
+// Menu r21: the page could add and discard a line, never change its price.
+describe('MenuNext — a price changes on its line', () => {
+  const chianti = () => line({ id: 'w1', name: 'Chianti', category: 'red', by_glass_price: 12, bottle_price: 48, inventory_item_id: 'inv-1', kitchen_line: false });
+
+  async function openEditor(name: string) {
+    fireEvent.click(await screen.findByRole('button', { name: `Change the price of ${name}` }));
+  }
+
+  it('a manager changes the bottle price; the menu is read again and the answer names the house price', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [chianti()] }));
+    mockReview.mockResolvedValue({ menuItemId: 'w1', fieldName: 'bottle_price', newValue: '45.5', priceSync: 'changed', priceSyncError: null, priceHeld: [] });
+    mount();
+    await openEditor('Chianti');
+    fireEvent.change(screen.getByLabelText('Bottle price of Chianti'), { target: { value: '45,50' } });
+    fireEvent.click(screen.getByTestId('menu-price-save'));
+    const note = await screen.findByTestId('menu-price-note');
+    expect(mockReview).toHaveBeenCalledTimes(1);
+    expect(mockReview).toHaveBeenCalledWith('w1', 'bottle_price', '45,50');
+    expect(note).toHaveAttribute('role', 'status');
+    expect(note.textContent).toMatch(/^Chianti: the bottle price is now .*45\.50 on the menu, and the house's own bottle price is .*45\.50 too\.$/);
+    await waitFor(() => expect(mockGetMenu).toHaveBeenCalledTimes(2));
+    expect(screen.queryByTestId('menu-price-save')).not.toBeInTheDocument();
+  });
+
+  it('the boxes open in the house form: a lira house reads "48,00", never "48" or "48.5" (r23 walk)', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [{ ...chianti(), by_glass_price: 12.5 }] }));
+    mount();
+    await screen.findAllByTestId('menu-row');
+    // The row prints the lira first, so the house's money is read before the box opens.
+    await waitFor(() => expect(screen.getAllByTestId('menu-row')[0].textContent).toMatch(/TRY|₺/));
+    await openEditor('Chianti');
+    expect(screen.getByLabelText('Bottle price of Chianti')).toHaveValue('48,00');
+    expect(screen.getByLabelText('Glass price of Chianti')).toHaveValue('12,50');
+    // Opened and saved untouched, the house form is the price it had: nothing is sent.
+    fireEvent.click(screen.getByTestId('menu-price-save'));
+    expect(await screen.findByTestId('menu-price-note')).toHaveTextContent('Chianti: no price was changed.');
+    expect(mockReview).not.toHaveBeenCalled();
+  });
+
+  it('a pound house opens its boxes the English way', async () => {
+    mockCurrency.mockResolvedValue(currency({ code: 'GBP', country: 'United Kingdom' }));
+    mockGetMenu.mockResolvedValue(menu({ items: [chianti()] }));
+    mount();
+    await screen.findAllByTestId('menu-row');
+    await waitFor(() => expect(screen.getAllByTestId('menu-row')[0].textContent).toMatch(/£/));
+    await openEditor('Chianti');
+    expect(screen.getByLabelText('Bottle price of Chianti')).toHaveValue('48.00');
+  });
+
+  it('an empty box or an unchanged one sends nothing for that price', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [chianti()] }));
+    mount();
+    await openEditor('Chianti');
+    fireEvent.change(screen.getByLabelText('Glass price of Chianti'), { target: { value: '' } });
+    fireEvent.click(screen.getByTestId('menu-price-save'));
+    expect(await screen.findByTestId('menu-price-note')).toHaveTextContent('Chianti: no price was changed.');
+    expect(mockReview).not.toHaveBeenCalled();
+  });
+
+  it('a locked price is said as locked, never as changed', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [chianti()] }));
+    mockReview.mockResolvedValue({
+      menuItemId: 'w1', fieldName: 'by_glass_price', newValue: '14', priceSync: 'locked', priceSyncError: null,
+      priceHeld: [{ kind: 'glass', lockId: 'L1', lockedPrice: 12, lockedBy: 'u1', lockedAt: '2026-11-01T10:00:00Z' }],
+    });
+    mount();
+    await openEditor('Chianti');
+    fireEvent.change(screen.getByLabelText('Glass price of Chianti'), { target: { value: '14' } });
+    fireEvent.click(screen.getByTestId('menu-price-save'));
+    const note = await screen.findByTestId('menu-price-note');
+    expect(note.textContent).toMatch(/the glass price is now .*14\.00 on the menu, but the house's glass price is locked at .*12\.00, so it was not changed/);
+    expect(note.textContent).not.toMatch(/too\./);
+  });
+
+  it('a refused price keeps the boxes open and says the gateway\'s reason', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [chianti()] }));
+    mockReview.mockRejectedValue({ response: { status: 400, data: { message: '"1,250" is not a price: it could be 1250 or 1.25; write it as 1250 or 1.25. Nothing was changed.' } } });
+    mount();
+    await openEditor('Chianti');
+    fireEvent.change(screen.getByLabelText('Bottle price of Chianti'), { target: { value: '1,250' } });
+    fireEvent.click(screen.getByTestId('menu-price-save'));
+    const note = await screen.findByTestId('menu-price-note');
+    expect(note).toHaveAttribute('role', 'alert');
+    expect(note).toHaveTextContent('the bottle price was not changed ("1,250" is not a price: it could be 1250 or 1.25');
+    expect(screen.getByTestId('menu-price-save')).toBeInTheDocument();
+    expect(mockGetMenu).toHaveBeenCalledTimes(1);
+  });
+
+  it('a dish says it has no house price', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'k1', name: 'Tiramisu', category: 'dessert', by_glass_price: null, bottle_price: 9, kitchen_line: true })] }));
+    mockReview.mockResolvedValue({ menuItemId: 'k1', fieldName: 'bottle_price', newValue: '11', priceSync: 'kitchen_line', priceSyncError: null, priceHeld: [] });
+    mount();
+    await openEditor('Tiramisu');
+    fireEvent.change(screen.getByLabelText('Bottle price of Tiramisu'), { target: { value: '11' } });
+    fireEvent.click(screen.getByTestId('menu-price-save'));
+    const note = await screen.findByTestId('menu-price-note');
+    expect(note.textContent).toMatch(/^Tiramisu: the price is now .*11\.00 on the menu\. A dish has no house price and no stock, so nothing else changed\.$/);
+  });
+
+  // r26 (r24 walk): Enter in a price box did not save; the boxes are in two
+  // table cells, not a form. Enter saves, Escape puts back and closes.
+  it('Enter in a price box saves what the boxes hold, as the Save button does', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [chianti()] }));
+    mockReview.mockResolvedValue({ menuItemId: 'w1', fieldName: 'bottle_price', newValue: '45.5', priceSync: 'changed', priceSyncError: null, priceHeld: [] });
+    mount();
+    await openEditor('Chianti');
+    const box = screen.getByLabelText('Bottle price of Chianti');
+    fireEvent.change(box, { target: { value: '45,50' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await screen.findByTestId('menu-price-note');
+    expect(mockReview).toHaveBeenCalledTimes(1);
+    expect(mockReview).toHaveBeenCalledWith('w1', 'bottle_price', '45,50');
+  });
+
+  it('a second Enter while the first is saving sends nothing more', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [chianti()] }));
+    let settle: (v: Awaited<ReturnType<typeof mockReview>>) => void = () => {};
+    mockReview.mockReturnValue(new Promise((r) => { settle = r; }));
+    mount();
+    await openEditor('Chianti');
+    const box = screen.getByLabelText('Bottle price of Chianti');
+    fireEvent.change(box, { target: { value: '50' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => expect(screen.getByTestId('menu-price-save')).toBeDisabled());
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(mockReview).toHaveBeenCalledTimes(1);
+    settle({ menuItemId: 'w1', fieldName: 'bottle_price', newValue: '50', priceSync: 'changed', priceSyncError: null, priceHeld: [] });
+    await screen.findByTestId('menu-price-note');
+  });
+
+  it('Enter while an input method is still composing is the method\'s, not a save', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [chianti()] }));
+    mount();
+    await openEditor('Chianti');
+    const box = screen.getByLabelText('Bottle price of Chianti');
+    fireEvent.change(box, { target: { value: '50' } });
+    fireEvent.keyDown(box, { key: 'Enter', isComposing: true });
+    expect(mockReview).not.toHaveBeenCalled();
+    expect(screen.getByTestId('menu-price-save')).toBeInTheDocument();
+  });
+
+  it('Escape closes the boxes, sends nothing, and the next open starts from the stored price', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [chianti()] }));
+    mount();
+    await openEditor('Chianti');
+    const box = screen.getByLabelText('Bottle price of Chianti');
+    fireEvent.change(box, { target: { value: '99' } });
+    fireEvent.keyDown(box, { key: 'Escape' });
+    expect(screen.queryByTestId('menu-price-save')).not.toBeInTheDocument();
+    expect(mockReview).not.toHaveBeenCalled();
+    await openEditor('Chianti');
+    expect(screen.getByLabelText('Bottle price of Chianti')).not.toHaveValue('99');
+  });
+
+  it('opening puts the cursor in the first box; Escape gives it back to "Change price"', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [chianti()] }));
+    mount();
+    await openEditor('Chianti');
+    const glass = screen.getByLabelText('Glass price of Chianti');
+    expect(glass).toHaveFocus();
+    fireEvent.keyDown(glass, { key: 'Escape' });
+    expect(screen.getByRole('button', { name: 'Change the price of Chianti' })).toHaveFocus();
+  });
+
+  // r21 production-build walk: staff were handed Glass/Bottle boxes on the
+  // add form, and a priced add came back "Request failed with status code 403".
+  it('staff add a line with no price boxes, and are told it stands unpriced', async () => {
+    role = 'staff';
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    mockAdd.mockResolvedValue({} as never);
+    mount();
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Raki' } });
+    expect(screen.queryByLabelText('Glass')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Bottle')).not.toBeInTheDocument();
+    expect(screen.getByTestId('menu-add-unpriced').textContent).toMatch(/no price; an owner or a manager sets it/);
+    fireEvent.click(screen.getByRole('button', { name: /Add to menu/ }));
+    await waitFor(() => expect(mockAdd).toHaveBeenCalled());
+    const sent = mockAdd.mock.calls[0][1] as { by_glass_price?: number; bottle_price?: number };
+    expect(sent.by_glass_price).toBeUndefined();
+    expect(sent.bottle_price).toBeUndefined();
+  });
+
+  it('a price typed before the role became staff is not sent', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    mockAdd.mockResolvedValue({} as never);
+    const view = mount();
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Raki' } });
+    fireEvent.change(screen.getByLabelText('Bottle'), { target: { value: '30' } });
+    role = 'staff';
+    view.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <MenuNext />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /Add to menu/ }));
+    await waitFor(() => expect(mockAdd).toHaveBeenCalled());
+    expect((mockAdd.mock.calls[0][1] as { bottle_price?: number }).bottle_price).toBeUndefined();
+  });
+
+  it('a manager keeps the price boxes', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    mount();
+    await screen.findByLabelText('Name');
+    expect(screen.getByLabelText('Glass')).toBeInTheDocument();
+    expect(screen.queryByTestId('menu-add-unpriced')).not.toBeInTheDocument();
+  });
+
+  it('a refused add says the gateway\'s words, not the status', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    const said = 'Only managers and owners can put a price on the current menu: it sets the house\'s own price. Nothing was added.';
+    mockAdd.mockRejectedValue(Object.assign(new Error('Request failed with status code 403'), { response: { status: 403, data: { message: said } } }));
+    mount();
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Raki' } });
+    fireEvent.click(screen.getByRole('button', { name: /Add to menu/ }));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(said));
+  });
+
+  it('staff are offered no price change', async () => {
+    role = 'staff';
+    mockGetMenu.mockResolvedValue(menu({ items: [chianti()] }));
+    mount();
+    await screen.findAllByTestId('menu-row');
+    expect(screen.queryByTestId('menu-price-edit')).not.toBeInTheDocument();
   });
 });

@@ -12,6 +12,7 @@ import {
 } from '../../services/api/menus'
 import { makeCurrentSentence } from '../../pages/menu/next/MenuVersions'
 import { MenuPlan } from '../../pages/menu/next/MenuPlan'
+import { useHouseCurrencyCode } from '../../hooks/queries/useHouseCurrencyCode'
 
 interface MenuReviewScreenProps {
   result: MenuImportResult
@@ -101,10 +102,11 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
   // shows -- what the menu would change, a Keep switch on each price -- and
   // names the plan's fingerprint. Nothing is chosen blind.
   const [planning, setPlanning] = useState(false)
+  const currency = useHouseCurrencyCode()
   const madeCurrent = (made: MakeCurrentResult, lines: PlanLine[]) => {
     setPlanning(false)
     if (made.failed.length > 0 || made.flagged > 0 || (made.held?.length ?? 0) > 0) {
-      setMadeNote(makeCurrentSentence(made, undefined, lines))
+      setMadeNote(makeCurrentSentence(made, undefined, lines, currency))
       return
     }
     onConfirm(true)
