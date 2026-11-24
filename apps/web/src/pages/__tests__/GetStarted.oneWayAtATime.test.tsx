@@ -28,7 +28,7 @@ vi.mock('../../services/api/settings', () => ({
 }))
 vi.mock('../../components/brand/BrandMark', () => ({ BrandMark: () => <span>Mudavym</span> }))
 vi.mock('../../lib/googleMaps', () => ({ isMapsConfigured: () => false }))
-vi.mock('../../components/ui/PlacesAutocomplete', () => ({ PlacesAutocomplete: () => null }))
+vi.mock('../../components/ui/PlacesAutocomplete', () => ({ warmPlaces: vi.fn(), PlacesAutocomplete: () => null }))
 // The file box says its own refusal for a kind it does not take, as the real one does.
 vi.mock('../../components/onboarding/MenuCsvUpload', () => ({
   MenuCsvUpload: ({ droppedFiles }: { droppedFiles?: File[] | null }) => (
