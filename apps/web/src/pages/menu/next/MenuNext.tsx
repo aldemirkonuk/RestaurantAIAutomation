@@ -427,8 +427,8 @@ function MenuRow({ line, currency, onDiscard, discarding, isNew = false, testId 
       <td>{line.name}</td>
       <td className="cl-dim">{line.category ?? EM}</td>
       <td className="cl-dim">{[line.producer, line.region].filter(Boolean).join(', ') || EM}</td>
-      <td className="cl-num">{editing ? box('glass') : money(line.by_glass_price, currency)}</td>
-      <td className="cl-num">{editing ? box('bottle') : money(line.bottle_price, currency)}</td>
+      <td className="cl-num" data-label="Glass">{editing ? box('glass') : money(line.by_glass_price, currency)}</td>
+      <td className="cl-num" data-label="Bottle">{editing ? box('bottle') : money(line.bottle_price, currency)}</td>
       <td>
         {(() => {
           const s = lineStatusWords(line);
@@ -451,7 +451,7 @@ function MenuRow({ line, currency, onDiscard, discarding, isNew = false, testId 
           </span>
         ) : null}
       </td>
-      <td style={{ whiteSpace: 'nowrap' }}>
+      <td className="mdv-acts" style={{ whiteSpace: 'nowrap' }}>
         {edit && editing ? (
           <>
             <button
@@ -731,7 +731,7 @@ export default function MenuNext() {
             </div>
 
             <div style={{ overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10, marginTop: 16 }}>
-              <table className="cl-table" style={{ width: '100%' }} aria-label="Drinks on the current menu">
+              <table className="cl-table mdv-cards" style={{ width: '100%' }} aria-label="Drinks on the current menu">
                 {head}
                 <tbody>
                   {drinks.length === 0 ? (
@@ -757,7 +757,7 @@ export default function MenuNext() {
                   On the menu, and carried nowhere: no wine, no house price, no stock.
                 </p>
                 <div style={{ overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10, marginTop: 8 }}>
-                  <table className="cl-table" style={{ width: '100%' }} aria-label="Kitchen lines on the current menu">
+                  <table className="cl-table mdv-cards" style={{ width: '100%' }} aria-label="Kitchen lines on the current menu">
                     {head}
                     <tbody>{kitchen.map((line) => row(line, 'menu-kitchen-row'))}</tbody>
                   </table>

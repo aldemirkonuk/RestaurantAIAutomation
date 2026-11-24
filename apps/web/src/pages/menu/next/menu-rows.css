@@ -43,3 +43,60 @@
     min-height: var(--mdv-reserve, 0px);
   }
 }
+
+/* Below 600 px a table of 5-7 columns is wider than the page: its actions (Change
+   price, Discard, Make current) sat past the edge of a scroller. Each line and each
+   kept menu is a stacked card instead, its actions 44 px high. Layout only: no
+   animation or transition is added (reduced motion changes nothing here). */
+@media (max-width: 599px) {
+  .mdv-cards,
+  .mdv-cards tbody,
+  .mdv-cards tr,
+  .mdv-cards td {
+    display: block;
+    width: auto;
+  }
+
+  /* The column heads are said once by the row's own words; kept for assistive tech. */
+  .mdv-cards thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .mdv-cards tr {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--paper-2);
+  }
+
+  .mdv-cards td {
+    padding: 2px 0;
+    border: 0;
+    text-align: left;
+  }
+
+  .mdv-cards td:empty {
+    display: none;
+  }
+
+  .mdv-cards td[data-label]::before {
+    content: attr(data-label) ': ';
+    opacity: 0.7;
+  }
+
+  .mdv-cards .mdv-acts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+    white-space: normal !important;
+  }
+
+  .mdv-cards .cl-btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
