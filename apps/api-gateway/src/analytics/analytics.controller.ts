@@ -1204,11 +1204,32 @@ export class AnalyticsController {
     @Param("restaurantId") restaurantId: string,
     @Query("days") days?: string,
     @Query("compare") compare?: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     const parsed = Number.parseInt(days ?? "", 10);
     const span = Number.isFinite(parsed)
       ? Math.min(Math.max(parsed, 1), 365)
       : 30;
+    // ADR 0348 / ADR 0298 decision 9: the till is money, and money is an
+    // owner's or a manager's. Staff are answered before anything is read, so
+    // no figure, series, prior window or breakdown exists to leak; the route
+    // stays open and says the figures are withheld, not that there are none.
+    if (!salesGateFor(user).withSales) {
+      return {
+        restaurantId,
+        from: null,
+        to: null,
+        days: span,
+        timezone: null,
+        zoneUnset: false,
+        posConnected: true,
+        salesWithheld: true,
+        revenue: null,
+        checkCount: null,
+        dailySeries: null,
+        consumption: null,
+      };
+    }
     try {
       const window =
         compare === "prior"
