@@ -246,3 +246,36 @@ button.ivd-card:active {
   text-underline-offset: 3px;
   cursor: pointer;
 }
+
+/* A read that has not answered holds the height of what it becomes (HeldReading.tsx): one used-in row,
+   one dishes row, the nutrition card's first screen. Heights are estimates from the rows' own CSS
+   (13 px line, 4 px padding, 1 px rule = 26 px a row); the next walk measures CLS. */
+.ivd-hold {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  margin-top: 10px;
+}
+.ivd-hold[data-hold='used'],
+.ivd-hold[data-hold='dishes'] {
+  min-height: 52px;
+}
+.ivd-hold[data-hold='nutrition'] {
+  min-height: 156px;
+}
+.ivd-hold .iv-skel-bar {
+  animation: iv-skel-pulse 1.4s ease-in-out infinite;
+}
+.ivd-hold-say {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ivd-hold .iv-skel-bar {
+    animation: none;
+  }
+}
