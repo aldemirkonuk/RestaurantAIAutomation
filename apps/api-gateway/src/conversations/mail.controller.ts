@@ -87,6 +87,11 @@ export class MailController {
     description:
       "Only the people whose name, a thread subject or order number, or a letter the caller may read holds this (accents folded, at most 100 characters)",
   })
+  @ApiQuery({
+    name: "kind",
+    required: false,
+    description: "Only this kind of person: vendor, team or guest",
+  })
   people(
     @CurrentUser() user: AuthUser,
     @CurrentUser("role") role: string | null,
@@ -94,12 +99,14 @@ export class MailController {
     @Query("after") after?: string,
     @Query("limit") limit?: string,
     @Query("q") q?: unknown,
+    @Query("kind") kind?: unknown,
   ): Promise<MailPeoplePage> {
     return this.mail.listPeople(houseOf(user), role, {
       waitingOnly: waiting === "1" || waiting === "true",
       after,
       limit,
       query: q,
+      kind,
     });
   }
 

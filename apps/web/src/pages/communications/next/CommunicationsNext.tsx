@@ -373,11 +373,15 @@ export default function CommunicationsNext() {
               failed={data.failed.history}
               at={data.historyAt}
             />
+            {/* VENDOR letters only (r104 mail-3): mail_inbox_summary.in_30d answers
+                orders, while the Mail header's Today also counts team and guest
+                letters for an owner. The label says so, so the month is never
+                read as smaller than the day. */}
             {/* Counted by the server with Mail's own rule (D6): a bounce, an
                 auto-reply or a second copy of one letter is not a reply, so the
                 two tabs give the same number for the same mail. Exact, no floor. */}
             <GlanceFigure
-              label="Replies · 30 days"
+              label="Vendor replies · 30 days"
               value={data.glance.repliesLast30}
               failed={data.failed.mail}
               at={data.mailAt}

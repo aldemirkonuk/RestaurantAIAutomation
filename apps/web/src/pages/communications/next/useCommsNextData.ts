@@ -12,7 +12,7 @@
  * "Approve"): its only use was a "Threads" figure counting a list this page
  * never shows.
  *
- * "Replies · 30 days" is counted by the server, from the same rows and the
+ * "Vendor replies · 30 days" is counted by the server, from the same rows and the
  * same flag as the Mail tab (`GET /mail/summary`, migration
  * the_mail_list_is_read_by_person, `in_30d`) — D6, mail-receipts lane
  * 2026-11-11. It used to be counted here over the book's newest 100 rows,
@@ -99,7 +99,7 @@ export interface CommsGlance {
 export interface CommsFailures {
   history: boolean;
   drafts: boolean;
-  /** GET /mail/summary, the source of "Replies · 30 days". */
+  /** GET /mail/summary, the source of "Vendor replies · 30 days". */
   mail: boolean;
 }
 
@@ -142,7 +142,7 @@ export function useCommsNextData() {
   // deriving "drafts waiting" from it was a structurally guaranteed false
   // zero (communications-audit.md, BLOCKER 2).
   const activeQ = useActiveConversations();
-  // "Replies · 30 days" (D6). The same query the tab label reads, so it is one
+  // "Vendor replies · 30 days" (D6). The same query the tab label reads, so it is one
   // fetch however many places read it; it polls only while Mail is shown.
   const mailQ = useMailSummary(false);
   const drafts = useMemo(() => newestDraftPerOrder(activeQ.data ?? []), [activeQ.data]);
