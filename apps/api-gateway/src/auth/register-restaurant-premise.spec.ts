@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { ForbiddenException } from "@nestjs/common";
 import { AuthService } from "./auth.service";
 import type { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
@@ -102,5 +104,13 @@ describe("two doors into one house, one rule (DD-r104-6 PR 2)", () => {
       svc.createFirstHouse("user-1", { restaurantName: "Sim Meyhouse" } as any),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(inserts).toEqual([]);
+  });
+
+  it("the controller's note on the answer names restaurantId, not a verification mail", () => {
+    const src = readFileSync(join(__dirname, "auth.controller.ts"), "utf8");
+    const door = src.slice(src.indexOf('@Post("register/restaurant")'));
+    const body = door.slice(0, door.indexOf("message:"));
+    expect(body).toContain("`restaurantId`");
+    expect(body).not.toMatch(/carries `verificationMail`/);
   });
 });
