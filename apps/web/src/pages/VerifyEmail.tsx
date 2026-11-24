@@ -30,6 +30,10 @@ import {
 type SessionPair = { accessToken: string; refreshToken: string }
 import { WrongAddress } from '../components/auth/WrongAddress'
 
+const POLL_FIRST_MS = 5_000
+const POLL_SLOWEST_MS = 30_000
+const POLL_GIVE_UP_MS = 10 * 60_000
+
 /**
  * The two answers the verify route gives a click it will not honour (ADR 0229
  * fork 12; the founder, 2026-09-28, item 81, "Link needs sign-in
@@ -144,11 +148,16 @@ export function VerifyEmail() {
   }, [verifiedElsewhere])
 
   // While this tab waits (signed in, no link, not verified), it asks again
-  // when it is looked at, and every 30 s while it is shown.
+  // when it is looked at, when another tab stores a session, and on a timer:
+  // first after 5 s, then slower (x1.5, never past 30 s), and it gives up the
+  // timer after 10 minutes. A hidden tab asks nothing. No motion is added.
   const waiting = !token && !loading && Boolean(user) && user?.emailVerified !== true && !verified
   useEffect(() => {
     if (!waiting) return
     let live = true
+    const began = Date.now()
+    let delay = POLL_FIRST_MS
+    let timer: number | undefined
     const ask = async () => {
       if (!live || document.visibilityState === 'hidden') return
       try {
@@ -158,15 +167,29 @@ export function VerifyEmail() {
         // Not read just now: the tab keeps waiting, and says nothing new.
       }
     }
+    const tick = () => {
+      void ask()
+      delay = Math.min(delay * 1.5, POLL_SLOWEST_MS)
+      schedule()
+    }
+    const schedule = () => {
+      if (Date.now() - began + delay > POLL_GIVE_UP_MS) return
+      timer = window.setTimeout(tick, delay)
+    }
     const onShown = () => void ask()
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'accessToken' || e.key === 'refreshToken') void ask()
+    }
     window.addEventListener('focus', onShown)
+    window.addEventListener('storage', onStorage)
     document.addEventListener('visibilitychange', onShown)
-    const timer = window.setInterval(onShown, 30_000)
+    schedule()
     return () => {
       live = false
       window.removeEventListener('focus', onShown)
+      window.removeEventListener('storage', onStorage)
       document.removeEventListener('visibilitychange', onShown)
-      window.clearInterval(timer)
+      window.clearTimeout(timer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [waiting])
