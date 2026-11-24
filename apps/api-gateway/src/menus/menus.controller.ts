@@ -3,11 +3,13 @@ import {
   Controller,
   ForbiddenException,
   Get,
+  Header,
   HttpCode,
   HttpException,
   HttpStatus,
   Param,
   ParseUUIDPipe,
+  NotFoundException,
   Patch,
   Post,
   UseGuards,
@@ -19,6 +21,7 @@ import { TenantGuard } from "../common/tenant/tenant.guard";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { MenusService } from "./menus.service";
 import { seesRawLine } from "./menu-line-view";
+import { blankMenuSheet, menuSheet } from "./menu-sheet";
 import { withheldRawText } from "./import-reply-view";
 import { ImportMenuDto } from "./dto/import-menu.dto";
 import { AddMenuItemDto } from "./dto/add-menu-item.dto";
@@ -51,6 +54,47 @@ export class MenusController {
   })
   async getMenu(@Param("restaurantId") restaurantId: string) {
     return this.menusService.getMenu(restaurantId, { rawLine: false });
+  }
+
+  @Get(":restaurantId/export.csv")
+  @Header("Content-Type", "text/csv; charset=utf-8")
+  @Header("Content-Disposition", 'attachment; filename="menu.csv"')
+  @ApiOperation({
+    summary: "The current menu as the sheet the menu reader accepts (owner or manager)",
+    description:
+      "Written with the reader's own column words, so the same sheet read back with no edits is the same menu. A cell that starts with = + - or @ is written as plain text. 404 with its sentence when no menu is current.",
+  })
+  async exportSheet(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user: { userId?: string },
+  ) {
+    await this.assertSheetRole(user, restaurantId, "download the menu as a sheet");
+    const menu = await this.menusService.getMenu(restaurantId, { rawLine: false });
+    if (!menu.menuId) {
+      throw new NotFoundException("There is no current menu to download yet. Make a menu current first.");
+    }
+    return menuSheet(menu.items);
+  }
+
+  @Get(":restaurantId/sample.csv")
+  @Header("Content-Type", "text/csv; charset=utf-8")
+  @Header("Content-Disposition", 'attachment; filename="menu-sample.csv"')
+  @ApiOperation({
+    summary: "A blank menu sheet in the shape the menu reader accepts (owner or manager)",
+  })
+  async sampleSheet(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user: { userId?: string },
+  ) {
+    await this.assertSheetRole(user, restaurantId, "download the sample menu sheet");
+    return blankMenuSheet();
+  }
+
+  private async assertSheetRole(user: { userId?: string }, restaurantId: string, what: string) {
+    if (!user?.userId) {
+      throw new ForbiddenException(`To ${what} this session must name a person, and it names nobody. Nothing was sent.`);
+    }
+    await this.organizations.assertCanManageRestaurant(user.userId, restaurantId, what);
   }
 
   @Post("import")

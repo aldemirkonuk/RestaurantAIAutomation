@@ -18,7 +18,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MenuNext from './MenuNext';
 import { housePriceNote } from './menu-price-note';
-import { getMenu, discardMenuItem, addMenuItem, listMenuVersions, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
+import { getMenu, discardMenuItem, addMenuItem, getMenuSheet, listMenuVersions, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
 import { settingsApi, type HouseCurrency } from '../../../services/api/settings';
 
 // ADR 0358 D2: discarding a line is an owner's or a manager's, so the page
@@ -37,6 +37,7 @@ vi.mock('../../../services/api/menus', async () => {
     getMenu: vi.fn(),
     discardMenuItem: vi.fn(),
     addMenuItem: vi.fn(),
+    getMenuSheet: vi.fn(),
     // The kept-menus panel (MenuVersions.tsx, its own test file) reads on
     // mount; here it answers "none kept" so this file tests the current menu.
     listMenuVersions: vi.fn().mockResolvedValue({ current: null, lastUsed: null, versions: [] }),
@@ -550,5 +551,43 @@ describe('MenuNext — a newer menu is due (menu r104 g1)', () => {
     mount();
     await screen.findByTestId('menu-versions-standing');
     expect(screen.queryByTestId('menu-due')).not.toBeInTheDocument();
+  });
+});
+
+describe('MenuNext — the menu as a sheet (menu r104 g3)', () => {
+  afterEach(() => {
+    role = 'manager';
+  });
+
+  it('offers an owner or a manager the sheet, and saves what the gateway sends', async () => {
+    mockGetMenu.mockResolvedValue(menu());
+    vi.mocked(getMenuSheet).mockResolvedValue('name\r\nRaki\r\n');
+    const create = vi.fn(() => 'blob:x');
+    Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Download this menu as a sheet' }));
+    await waitFor(() => expect(click).toHaveBeenCalled());
+    expect(getMenuSheet).toHaveBeenCalledWith('export');
+    expect(create).toHaveBeenCalled();
+    expect(screen.getByTestId('menu-sample')).toHaveTextContent('Sample sheet');
+    click.mockRestore();
+  });
+
+  it('offers staff neither the sheet nor the sample', async () => {
+    role = 'staff';
+    mockGetMenu.mockResolvedValue(menu());
+    mount();
+    await screen.findByTestId('menu-versions-standing');
+    expect(screen.queryByRole('button', { name: 'Download this menu as a sheet' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('menu-sample')).not.toBeInTheDocument();
+  });
+
+  it('says so when the sheet could not be had, with the gateway\'s words', async () => {
+    mockGetMenu.mockResolvedValue(menu());
+    vi.mocked(getMenuSheet).mockRejectedValue({ response: { data: { message: 'There is no current menu to download yet.' } } });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Download this menu as a sheet' }));
+    expect(await screen.findByTestId('menu-export-error')).toHaveTextContent('There is no current menu to download yet.');
   });
 });
