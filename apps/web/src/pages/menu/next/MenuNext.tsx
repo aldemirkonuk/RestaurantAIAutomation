@@ -37,10 +37,10 @@
  * shown an empty add form that would 404 on submit.
  */
 
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
-import { addMenuItem, discardMenuItem, getMenu, type MenuLine } from '../../../services/api/menus';
+import { addMenuItem, discardMenuItem, getMenu, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
 import { housePriceNote } from './menu-price-note';
 import { MenuVersions } from './MenuVersions';
 import { LockedPrices } from './LockedPrices';
@@ -48,6 +48,7 @@ import { settingsApi } from '../../../services/api/settings';
 import { formatMoney } from '@/lib/currency';
 import { Wordmark } from '@/components/mudavym';
 import '../../cellar/next/cellar-next.css';
+import './menu-rows.css';
 
 const EM = '—';
 
@@ -92,9 +93,17 @@ function useActiveMenu(restaurantId: string | null) {
     queryFn: () => getMenu(restaurantId as string),
   });
 
+  // A discarded line leaves at once: on success the page's own copy drops it
+  // (no wait on the refetch, no exit hold), then the read confirms. While the
+  // discard is pending the row is dimmed; a failure puts it back (DD-r103-7).
   const discard = useMutation({
     mutationFn: (itemId: string) => discardMenuItem(restaurantId as string, itemId),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: key }),
+    onSuccess: async (_done, itemId) => {
+      queryClient.setQueryData(key, (old: ActiveMenu | undefined) =>
+        old ? { ...old, items: old.items.filter((l) => l.id !== itemId) } : old,
+      );
+      await queryClient.invalidateQueries({ queryKey: key });
+    },
   });
 
   const add = useMutation({
@@ -217,14 +226,23 @@ function AddItemForm({ onAdd, adding, error }: {
   );
 }
 
-function MenuRow({ line, currency, onDiscard, discarding }: {
+function MenuRow({ line, currency, onDiscard, discarding, isNew }: {
   line: MenuLine
+  /** The line was discarded and is fading out before it is removed. */
+  /** The line arrived after the list was first shown: it inks in (160 ms, no wash). */
+  isNew: boolean
   currency: string | null
-  onDiscard: () => void
+  /** Absent for a member who may not discard (ADR 0358 D2: owner or manager only). */
+  onDiscard?: () => void
   discarding: boolean
 }) {
   return (
-    <tr data-testid="menu-row">
+    <tr
+      data-testid="menu-row"
+      className="mdv-row"
+      data-state={discarding ? 'pending' : undefined}
+      data-new={isNew ? 'true' : undefined}
+    >
       <td>{line.name}</td>
       <td className="cl-dim">{line.category ?? EM}</td>
       <td className="cl-dim">{[line.producer, line.region].filter(Boolean).join(', ') || EM}</td>
@@ -241,6 +259,7 @@ function MenuRow({ line, currency, onDiscard, discarding }: {
         ) : null}
       </td>
       <td>
+        {onDiscard ? (
         <button
           type="button"
           className="cl-btn cl-focus"
@@ -251,6 +270,7 @@ function MenuRow({ line, currency, onDiscard, discarding }: {
         >
           {discarding ? 'Discarding…' : 'Discard'}
         </button>
+        ) : null}
       </td>
     </tr>
   );
@@ -263,6 +283,23 @@ export default function MenuNext() {
   const role = (activeRole ?? user?.role ?? null) as string | null;
   const canManage = role === 'owner' || role === 'manager';
   const { q, discard, add } = useActiveMenu(activeRestaurantId);
+  // Lines already shown. A line that turns up later is new: it enters and
+  // inks in, and stays marked so a later render does not cancel the animation.
+  // The first list, and a change of house, animate nothing.
+  const seen = useRef<{ house: string | null; ids: Set<string>; fresh: Set<string> } | null>(null);
+  if (q.data) {
+    if (!seen.current || seen.current.house !== activeRestaurantId) {
+      seen.current = { house: activeRestaurantId, ids: new Set(q.data.items.map((l) => l.id)), fresh: new Set() };
+    } else {
+      for (const l of q.data.items) {
+        if (!seen.current.ids.has(l.id)) {
+          seen.current.ids.add(l.id);
+          seen.current.fresh.add(l.id);
+        }
+      }
+    }
+  }
+  const fresh = seen.current?.fresh ?? null;
   const currency = useHouseCurrency(activeRestaurantId);
   const [discardingId, setDiscardingId] = useState<string | null>(null);
 
@@ -353,7 +390,8 @@ export default function MenuNext() {
                         line={line}
                         currency={currency}
                         discarding={discard.isPending && discardingId === line.id}
-                        onDiscard={() => {
+                        isNew={fresh?.has(line.id) ?? false}
+                        onDiscard={!canManage ? undefined : () => {
                           setDiscardingId(line.id);
                           discard.mutate(line.id, { onSettled: () => setDiscardingId(null) });
                         }}
