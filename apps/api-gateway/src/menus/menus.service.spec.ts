@@ -1526,6 +1526,79 @@ describe("MenusService — every menu read is kept as its own version", () => {
         expect(calls.filter(([fn]) => fn === "set_house_menu_price")).toHaveLength(2);
       });
 
+      it("r28 G1: choosing the current menu again finishes its carry, dated by the first choice", async () => {
+        const calls: RpcCall[] = [];
+        const tables: Record<string, Row[]> = base();
+        (tables as any).__batchWriter = () => ({ data: null, error: { message: "connection reset" } });
+        const { service, menuId } = await readMenu(tables, [{ name: "Barolo", bottle_price: 80 }], calls);
+        const first = await service.makeCurrent("rest-1", menuId, "user-2", await fingerprintOf(service, menuId));
+        expect(first.priceSync).toEqual({ failed: 1 });
+        // The menu is current; the make_menu_current fake now answers
+        // already_current WITH the moment of the choice, as the SQL does.
+        const menu = tables.restaurant_menus.find((m) => m.id === menuId)!;
+        expect(menu.status).toBe("active");
+        delete (tables as any).__batchWriter;
+        calls.length = 0;
+        const again = await service.makeCurrent("rest-1", menuId, "user-2", await fingerprintOf(service, menuId));
+        expect(again.outcome).toBe("already_current");
+        expect(again.lines).toBe(1);
+        expect(again.priceSync).toEqual({ changed: 1 });
+        const batch = calls.find(([fn]) => fn === "set_house_menu_prices")![1];
+        expect(batch.p_effective_from).toBe("2026-09-21T12:00:00Z");
+      });
+
+      it("r28 G1: a later round reads the house's rows again, never reusing the first read", async () => {
+        const tables: Record<string, Row[]> = base();
+        // A writer that REPLACES the row (as a database read would return a
+        // new one), so a stale first read cannot pass for the price just set.
+        const rpc = (fn: string, args: Row) => {
+          if (fn === "set_house_menu_price") {
+            const at = tables.restaurant_inventory.findIndex((i) => i.id === args.p_inventory_id);
+            const inv = { ...tables.restaurant_inventory[at] };
+            if (args.p_set_bottle) inv.menu_price_current = args.p_bottle_price;
+            if (args.p_set_glass) inv.menu_price_glass = args.p_glass_price;
+            tables.restaurant_inventory[at] = inv;
+            return { data: { outcome: "changed", held: [] }, error: null };
+          }
+          return pricing(tables)(fn, args);
+        };
+        const service = makeService(tables, {
+          wineSubmissions: {
+            ...wineSubmissions,
+            resolveLibraryWinesBatch: async (items: unknown[]) =>
+              items.map(() => ({ masterWineId: "mw-1", matched: true, libraryTier: 1, confidence: 99 })),
+          },
+          rpc,
+          scanParser: {
+            parseWithWarnings: async () => ({
+              items: [{ name: "Opus One", bottle_price: 64 }, { name: "Opus One by the glass", by_glass_price: 15 }],
+              warnings: [],
+            }),
+          },
+        });
+        const read = await service.importMenu(
+          { method: "scan", data: { imageBase64: Buffer.from("%PDF").toString("base64") }, restaurantId: "rest-1" } as any,
+          "user-1",
+        );
+        await (service as any).whenRead?.(read.menuId);
+        await service.makeCurrent("rest-1", read.menuId, "user-2", await fingerprintOf(service, read.menuId));
+        const second = tables.menu_items.find((m) => m.name === "Opus One by the glass")!;
+        expect(second.price_flag_note).toMatch(/kept the bottle price 64\.00/);
+      });
+
+      it("r28 G1: a refusal after the switch says the menu IS current, never that nothing changed", async () => {
+        const tables: Record<string, Row[]> = base();
+        const { service, menuId } = await readMenu(tables, [{ name: "Barolo", bottle_price: 80 }]);
+        jest.spyOn(service as any, "addToInventory").mockRejectedValueOnce(new Error("pool closed"));
+        const err: any = await service
+          .makeCurrent("rest-1", menuId, "user-2", await fingerprintOf(service, menuId))
+          .catch((e: unknown) => e);
+        expect(err?.getStatus?.()).toBe(500);
+        expect(err.message).toMatch(/^This menu is now the current one, but its prices did not reach the house \(pool closed\)/);
+        expect(err.message).not.toMatch(/[Nn]othing (was|has) changed/);
+        expect(tables.restaurant_menus.find((m) => m.id === menuId)!.status).toBe("active");
+      });
+
       it("two lines of one wine: the second sees the price the first just set, as the per-line read did", async () => {
         const tables: Record<string, Row[]> = base();
         const twice = {
