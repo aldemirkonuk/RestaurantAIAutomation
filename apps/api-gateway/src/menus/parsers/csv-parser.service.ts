@@ -29,35 +29,99 @@ const HEADER_MAP: Record<string, keyof WineExtractItem> = {
   bottle_price: "bottle_price",
 };
 
+const DELIMITERS = [",", ";", "\t"] as const;
+
 const PRICE_FIELDS = new Set<keyof WineExtractItem>([
   "by_glass_price",
   "bottle_price",
 ]);
+
+type Rec = { cells: string[]; raw: string; row: number };
+
+/** RFC 4180 records (quoted delimiter, line break, `""`), each with its source text and first row. */
+function readRecords(text: string, delimiter: string): Rec[] {
+  const records: Rec[] = [];
+  let cells: string[] = [];
+  let cell = "";
+  let inQuotes = false;
+  let start = 0;
+  let row = 1;
+  let startRow = 1;
+
+  const endRecord = (end: number) => {
+    cells.push(cell);
+    records.push({ cells, raw: text.slice(start, end), row: startRow });
+    cells = [];
+    cell = "";
+  };
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          cell += '"';
+          i++;
+        } else inQuotes = false;
+      } else {
+        if (ch === "\n" || (ch === "\r" && text[i + 1] !== "\n")) row++;
+        cell += ch;
+      }
+    } else if (ch === '"' && cell.trim() === "") {
+      cell = "";
+      inQuotes = true;
+    } else if (ch === delimiter) {
+      cells.push(cell);
+      cell = "";
+    } else if (ch === "\r" || ch === "\n") {
+      endRecord(i);
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      row++;
+      start = i + 1;
+      startRow = row;
+    } else {
+      cell += ch;
+    }
+  }
+  if (start < text.length || cells.length > 0 || cell !== "")
+    endRecord(text.length);
+  return records;
+}
+
+/** The delimiter the header line uses most outside quotes; else a comma. */
+function sniffDelimiter(text: string): string {
+  const header = text.split(/\r?\n|\r/)[0].replace(/"[^"]*"/g, "");
+  const n = (d: string) => header.split(d).length;
+  return DELIMITERS.reduce((best, d) => (n(d) > n(best) ? d : best), ",");
+}
 
 @Injectable()
 export class CsvParserService {
   private readonly logger = new Logger(CsvParserService.name);
 
   parse(csvContent: string): WineExtractItem[] {
-    const lines = csvContent.split(/\r?\n/).filter((l) => l.trim().length > 0);
-    if (lines.length < 2) return [];
+    // A string by type, not by trust: the body is user-supplied.
+    const text = (
+      typeof csvContent === "string" ? csvContent : String(csvContent ?? "")
+    ).replace(/^\uFEFF/, "");
+    const records = readRecords(text, sniffDelimiter(text)).filter((r) =>
+      r.cells.some((c) => c.trim().length > 0),
+    );
+    if (records.length < 2) return [];
 
-    const headers = this.parseLine(lines[0]).map((h) => h.toLowerCase().trim());
+    const headers = records[0].cells.map((h) => h.toLowerCase().trim());
     const fieldMap: Array<keyof WineExtractItem | null> = headers.map(
       (h) => HEADER_MAP[h] ?? null,
     );
 
     const items: WineExtractItem[] = [];
-
-    for (let i = 1; i < lines.length; i++) {
-      const cols = this.parseLine(lines[i]);
-      const item = this.buildItem(fieldMap, cols);
+    for (const record of records.slice(1)) {
+      const item = this.buildItem(fieldMap, record.cells);
       if (item) {
-        item.raw_text = lines[i].trim();
+        item.raw_text = record.raw.trim();
         items.push(item);
       }
     }
-
     return items;
   }
 
@@ -139,25 +203,5 @@ export class CsvParserService {
 
     if (!item.name) return null;
     return item as WineExtractItem;
-  }
-
-  // Respects double-quoted fields that may contain commas
-  private parseLine(line: string): string[] {
-    const results: string[] = [];
-    let current = "";
-    let inQuotes = false;
-
-    for (const char of line) {
-      if (char === '"') {
-        inQuotes = !inQuotes;
-      } else if (char === "," && !inQuotes) {
-        results.push(current);
-        current = "";
-      } else {
-        current += char;
-      }
-    }
-    results.push(current);
-    return results;
   }
 }

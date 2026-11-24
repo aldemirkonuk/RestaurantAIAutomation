@@ -24,3 +24,26 @@ describe("CsvParserService price cells", () => {
     expect(item.bottle_price).toBeUndefined();
   });
 });
+
+describe("CsvParserService quoting (RFC 4180)", () => {
+  it("keeps a doubled quote in a name as one quote", () => {
+    const [item] = parse('Name,Bottle\n"Chateau ""Le Pin""",120\n');
+    expect(item.name).toBe('Chateau "Le Pin"');
+    expect(item.bottle_price).toBe(120);
+  });
+
+  it("keeps a delimiter and a line break inside a quoted cell", () => {
+    const items = parse(
+      'Name,Producer,Bottle\r\n"Pomerol, 1er","Ets.\r\nBordeaux",65\r\nSancerre,Vacheron,40\r\n',
+    );
+    expect(items).toHaveLength(2);
+    expect(items[0].name).toBe("Pomerol, 1er");
+    expect(items[0].producer).toBe("Ets.\r\nBordeaux");
+    expect(items[1]).toMatchObject({ name: "Sancerre", bottle_price: 40 });
+  });
+
+  it("reads a semicolon file (Excel in a decimal-comma locale)", () => {
+    const [item] = parse("Name;Bottle\nKalecik;62,50\n");
+    expect(item).toMatchObject({ name: "Kalecik", bottle_price: 62.5 });
+  });
+});
