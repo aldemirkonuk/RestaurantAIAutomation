@@ -58,9 +58,9 @@ describe('warmPlaces', () => {
 })
 
 describe('GetStarted wiring', () => {
-  it('warms Places on the you and restaurant steps only', () => {
+  it('warms Places on the restaurant step only', () => {
     const src = readFileSync(resolve(__dirname, '../../../pages/GetStarted.tsx'), 'utf8')
-    expect(src).toMatch(/if \(step === 'you' \|\| step === 'restaurant'\) warmPlaces\(\)/)
+    expect(src).toMatch(/if \(step === 'restaurant'\) warmPlaces\(\)/)
     expect(src).toMatch(/import \{ PlacesAutocomplete, warmPlaces,/)
   })
 })
