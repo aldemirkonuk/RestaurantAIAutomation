@@ -144,28 +144,32 @@ describe('the check-your-email tab waits for a verify done elsewhere', () => {
 describe('a poll that cannot read says so (ADR 0020, r105)', () => {
   const tooMany = { response: { status: 429 } }
 
-  it('three refused reads in a row (429) put one calm sentence on the page', async () => {
+  it('a 429 on the first read puts one calm sentence on the page', async () => {
     h.get.mockRejectedValue(tooMany)
     mount()
     expect(screen.queryByTestId('verify-poll-trouble')).not.toBeInTheDocument()
     await advance(5_000)
-    await advance(8_000)
-    expect(screen.queryByTestId('verify-poll-trouble')).not.toBeInTheDocument()
-    await advance(12_000)
     expect(screen.getByTestId('verify-poll-trouble')).toHaveTextContent(
       'We cannot check just now whether this address was verified.',
     )
   })
 
+  it('a refusal that is not a 429 is said on the second read, not the first', async () => {
+    h.get.mockRejectedValue(new Error('offline'))
+    mount()
+    await advance(5_000)
+    expect(screen.queryByTestId('verify-poll-trouble')).not.toBeInTheDocument()
+    await advance(8_000)
+    expect(screen.getByTestId('verify-poll-trouble')).toBeInTheDocument()
+  })
+
   it('the sentence goes when a read comes back', async () => {
-    h.get.mockRejectedValueOnce(tooMany).mockRejectedValueOnce(tooMany).mockRejectedValueOnce(tooMany)
+    h.get.mockRejectedValueOnce(tooMany)
     h.get.mockResolvedValue(said(false))
     mount()
     await advance(5_000)
-    await advance(8_000)
-    await advance(12_000)
     expect(screen.getByTestId('verify-poll-trouble')).toBeInTheDocument()
-    await advance(20_000)
+    await advance(12_000)
     expect(screen.queryByTestId('verify-poll-trouble')).not.toBeInTheDocument()
   })
 })

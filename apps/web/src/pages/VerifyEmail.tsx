@@ -31,11 +31,31 @@ type SessionPair = { accessToken: string; refreshToken: string }
 import { WrongAddress } from '../components/auth/WrongAddress'
 
 const POLL_FIRST_MS = 5_000
-/** Reads in a row that may fail before the waiting tab says so (ADR 0020). */
-const POLL_TROUBLE_AFTER = 3
+/**
+ * Reads in a row that may fail before the waiting tab says so (ADR 0020). A
+ * 429 is said on the first one: the sentence already says the page keeps trying.
+ */
+const POLL_TROUBLE_AFTER = 2
 const POLL_TROUBLE_SENTENCE =
   'We cannot check just now whether this address was verified. This page keeps trying; you can also reload it.'
-const POLL_SLOWEST_MS = 30_000
+
+/**
+ * The poll's line, with its room held from the first paint. The live region is
+ * always there and the words are put into it in place; a hidden copy of the
+ * sentence sets the height, so nothing below moves when it is said (r106).
+ */
+function PollSlot({ trouble, className }: { trouble: boolean; className: string }) {
+  return (
+    <div data-testid="verify-poll-slot" style={{ display: 'grid' }}>
+      <p aria-hidden="true" className={className} style={{ gridArea: '1 / 1', visibility: 'hidden' }}>
+        {POLL_TROUBLE_SENTENCE}
+      </p>
+      <p role="status" className={className} style={{ gridArea: '1 / 1' }}>
+        {trouble ? <span data-testid="verify-poll-trouble">{POLL_TROUBLE_SENTENCE}</span> : null}
+      </p>
+    </div>
+  )
+}const POLL_SLOWEST_MS = 30_000
 const POLL_GIVE_UP_MS = 10 * 60_000
 
 /**
@@ -181,11 +201,12 @@ export function VerifyEmail() {
         failures = 0
         if (live) setPollTrouble(false)
         if (live && read?.data?.user?.emailVerified === true) moveOnWithThisSession()
-      } catch {
+      } catch (err) {
         // Not read just now (a 429 reads the same): the tab keeps waiting. A
         // run of failures is said in words, never left as a silent wait.
         failures += 1
-        if (live && failures >= POLL_TROUBLE_AFTER) setPollTrouble(true)
+        const status = (err as { response?: { status?: number } } | null)?.response?.status
+        if (live && (status === 429 || failures >= POLL_TROUBLE_AFTER)) setPollTrouble(true)
       }
     }
     const tick = () => {
@@ -504,11 +525,7 @@ export function VerifyEmail() {
                   {mailSentence}
                 </p>
               )}
-              {pollTrouble && waiting && (
-                <p className="mdv-note" role="status" data-testid="verify-poll-trouble">
-                  {POLL_TROUBLE_SENTENCE}
-                </p>
-              )}
+              {waiting && <PollSlot trouble={pollTrouble} className="mdv-note" />}
               {token ? (
                 linkGate ?? (
                   <>
@@ -562,12 +579,18 @@ export function VerifyEmail() {
                       {resending ? 'Requesting…' : 'Resend verification email'}
                     </button>
                   ) : (
-                    <Link
-                      className="mdv-btn mdv-btn--seal"
-                      to="/login?redirect=%2Fverify-email"
-                    >
-                      Sign in to resend
-                    </Link>
+                    <>
+                      <Link
+                        className="mdv-btn mdv-btn--seal"
+                        to="/login?redirect=%2Fverify-email"
+                      >
+                        Sign in to resend
+                      </Link>
+                      <p className="mdv-note">After you verify, sign in to continue.</p>
+                      <Link className="mdv-link" to="/login">
+                        I verified it, sign in
+                      </Link>
+                    </>
                   )}
                   {user && (
                     <WrongAddress
@@ -665,11 +688,7 @@ export function VerifyEmail() {
           </p>
         )}
 
-        {pollTrouble && waiting && (
-          <p role="status" className="mb-4 text-sm text-gray-600 text-center" data-testid="verify-poll-trouble">
-            {POLL_TROUBLE_SENTENCE}
-          </p>
-        )}
+        {waiting && <PollSlot trouble={pollTrouble} className="mb-4 text-sm text-gray-600 text-center" />}
 
         <div className="space-y-3 my-6">
           {(mailState === 'not_sent' ? [] : [

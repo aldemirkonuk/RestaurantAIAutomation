@@ -59,7 +59,7 @@ it('the verified plate holds the height the waiting plate had', async () => {
   fireEvent.change(screen.getByLabelText('Code from the email'), {
     target: { value: '123456' },
   })
-  const status = await screen.findByRole('status')
+  const status = await screen.findByText('Your address is verified. Opening your workspace…')
   const plate = status.closest('.mdv-pub__plate') as HTMLElement
   expect(plate.style.minHeight).toBe('622px')
 })
