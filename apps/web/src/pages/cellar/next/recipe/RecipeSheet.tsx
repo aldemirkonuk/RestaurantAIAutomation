@@ -87,6 +87,7 @@ import { useHousePercent } from './useHousePercent';
 import { useListTax } from './useListTax';
 import { useSayGrams } from './WeighBox';
 import WhatIsInAServe from './WhatIsInAServe';
+import YieldForm from './YieldForm';
 import RecipeTaste, { RecipeTasteLine } from './RecipeTaste';
 import { UNREACHABLE_WORDS } from '../../../../lib/unreachable';
 import { SHEET_HOLD_ROOM } from './holdRoom';
@@ -800,6 +801,8 @@ function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
           {repeated.map(([name, n]) => `${name} is on ${n} lines; a ${words.unit} takes all of them.`).join(' ')}
         </p>
       ) : null}
+
+      {canEdit && isDish ? <YieldForm dishId={owner.id} current={data.yield} /> : null}
 
       {canEdit && (lines.length > 0 || data.current) ? (
         <div className="cl-rcp-meta" data-testid="recipe-meta">

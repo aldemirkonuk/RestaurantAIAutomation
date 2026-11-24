@@ -214,3 +214,53 @@ describe("the kind of unit is not changed silently", () => {
     expect(yieldOf(rows)).toMatchObject({ yield_qty_base: 7000, yield_base_unit: "ml10" });
   });
 });
+
+describe("the cycle and depth re-check through the API (r106 drinks-3)", () => {
+  /** X1 draws X2 ... draws X<levels>, which is flour; the tart draws X1. Each level makes 1 l. */
+  const chain = (levels: number) => {
+    const rows = house();
+    const id = (i: number) => `d0000000-0000-4000-8000-00000000e00${i}`;
+    for (let i = 1; i <= levels; i++) {
+      const v = `e0000000-0000-4000-8000-00000000e00${i}`;
+      rows.dishes.push({ id: id(i), restaurant_id: HOUSE_A, name: `Level ${i}`, yield_qty_base: 10_000, yield_base_unit: "ml10", deleted_at: null });
+      rows.recipe_current_dish.push({ dish_id: id(i), version_id: v, restaurant_id: HOUSE_A });
+      rows.recipe_versions.push({ id: v, restaurant_id: HOUSE_A, dish_id: id(i), owner_kind: "dish", version: 1, yield_serves: 1, created_at: "2026-11-02" });
+      rows.recipe_lines.push(
+        i < levels
+          ? line(`x${i}`, v, HOUSE_A, 1, "Inner", null, { role: "made", component_dish_id: id(i + 1), qty_entered: 100, unit_code: "ml", qty_base: 1000, base_unit: "ml10" })
+          : line(`x${i}`, v, HOUSE_A, 1, "Flour", FLOUR, { qty_entered: 500, qty_base: 500_000 }),
+      );
+    }
+    for (const l of rows.recipe_lines) if (l.id === "t1") Object.assign(l, { component_dish_id: id(1), qty_base: 1000 });
+    return { rows, last: id(levels) };
+  };
+
+  it("a yield set on the deepest of three levels prices the tart from the new figure", async () => {
+    const { rows, last } = chain(3);
+    expect(await tartCost(rows)).toMatchObject({ costBasis: "component", costPerServeExact: 0.001 });
+    await services(rows).dishes.setYield(HOUSE_A, last, { amount: 500, unit: "ml" });
+    // The flour (1.00) now makes 500 ml and not a litre, so a ml is twice what it was: 0.001 becomes 0.002.
+    expect(await tartCost(rows)).toMatchObject({ costBasis: "component", costPerServeExact: 0.002 });
+  });
+
+  it("a fourth level is not priced however its yield is set, and the read does not loop", async () => {
+    const { rows, last } = chain(4);
+    await services(rows).dishes.setYield(HOUSE_A, last, { amount: 500, unit: "ml" });
+    expect(await tartCost(rows)).toMatchObject({ costPerServe: null, costBasis: "component_not_priced" });
+  });
+
+  it("a component that draws itself (a cycle the database refuses, here forced into the rows) reads as not priced and ends", async () => {
+    const rows = house();
+    rows.recipe_lines.push(line("loop", V_SYRUP, HOUSE_A, 3, "Itself", null, { role: "made", component_dish_id: SYRUP, qty_entered: 10, unit_code: "ml", qty_base: 100, base_unit: "ml10" }));
+    await services(rows).dishes.setYield(HOUSE_A, SYRUP, { amount: 700, unit: "ml" });
+    expect(await tartCost(rows)).toMatchObject({ costPerServe: null, costBasis: "component_not_priced" });
+  });
+
+  it("the dish's own read says what a batch makes, for every role, and null before the house says", async () => {
+    const rows = house();
+    const read = async (dish: string, role: string) => ((await services(rows).recipes.getDishRecipe(HOUSE_A, dish, role)) as any).yield;
+    expect(await read(SYRUP, "owner")).toEqual({ qtyBase: 7000, baseUnit: "ml10" });
+    expect(await read(SYRUP, "staff")).toEqual({ qtyBase: 7000, baseUnit: "ml10" });
+    expect(await read(TART, "owner")).toBeNull();
+  });
+});
