@@ -498,9 +498,18 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
     format,
     unit,
   )}`;
-  const caption = `${titled(yLabel, unit)} · by ${xLabel}${
+  const captionText = `${titled(yLabel, unit)} · by ${xLabel}${
     thinned ? ` · ${data.length} of ${all.length}, the highest of each stretch; the table has every one` : ''
   }`;
+  // The dashed drawing is named beside a swatch of itself: "Taken · by day, dashed: prior 30 days".
+  const caption = hasPrior ? (
+    <>
+      {captionText}, dashed: <span className="rp-plot-key" data-kind={kind} aria-hidden="true" />
+      {(priorLabel ?? 'the prior window').replace(/^the /, '')}
+    </>
+  ) : (
+    captionText
+  );
   const gutter = gutterFor(
     tickLabels(
       [...all.map((d) => d.value), ...all.map((d) => d.projected), ...all.map((d) => d.prior), ...(refs ?? []).map((r) => r.y)],
