@@ -1070,6 +1070,34 @@ export class MenusService {
     return out.map((row) => lineForViewer(row, view));
   }
 
+  /**
+   * The `wine_library_id` of every live line of one menu, keyset-paged on id.
+   * The plan asks the menu being replaced one question only (which wines were
+   * on it), so it reads two columns, not `LINE_SELECT` with the whole CSV row.
+   * Same filters as `readLines` (this house, this menu, not discarded); a
+   * failed page is an error, never a shorter menu.
+   */
+  private async readWineLibraryIds(menuId: string, restaurantId: string): Promise<string[]> {
+    const out: string[] = [];
+    let after: string | null = null;
+    for (;;) {
+      let q = this.dbService.supabase
+        .from("menu_items")
+        .select("id, wine_library_id")
+        .eq("menu_id", menuId)
+        .eq("restaurant_id", restaurantId)
+        .neq("status", "discarded");
+      if (after) q = q.gt("id", after);
+      const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
+      if (error) throw new Error(`Failed to load menu items: ${error.message}`);
+      const rows = (data ?? []) as Array<{ id: string; wine_library_id: string | null }>;
+      for (const r of rows) if (r.wine_library_id) out.push(String(r.wine_library_id));
+      if (rows.length < PAGE_ROWS) break;
+      after = String(rows[rows.length - 1].id);
+    }
+    return out;
+  }
+
   // ── Menu versions (ADR 0193; founder 2026-09-21, answer 7) ────────────────
 
   /**
@@ -1304,9 +1332,7 @@ export class MenusService {
       for (const m of (actives ?? []) as Array<{ id: string }>) {
         if (m.id === menuId) continue;
         replacing = true;
-        for (const line of await this.readLines(m.id, restaurantId)) {
-          if (line.wine_library_id) onReplaced.add(String(line.wine_library_id));
-        }
+        for (const wineId of await this.readWineLibraryIds(m.id, restaurantId)) onReplaced.add(wineId);
       }
     }
 
