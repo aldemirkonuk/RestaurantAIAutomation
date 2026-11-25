@@ -28,6 +28,13 @@ import {
   tokenHouse,
 } from "../lib/houseMemory";
 import { doRefresh } from "../lib/sessionRefresh";
+import { clearSignUpMail, noteSignUpMail } from "../lib/verificationMail";
+import {
+  BUSY_RETRY_TRIES,
+  busyRetrySeconds,
+  isHouseBusy,
+  shareMeRead,
+} from "../lib/authMe";
 import { syncManager } from "../lib/sync-manager";
 import { flushDoorOutbox } from "../lib/doorOutbox";
 import { flushSpotCountOutbox } from "../lib/spotCountOutbox";
@@ -208,9 +215,26 @@ export interface HouseOpened {
   detailsLoaded: boolean;
 }
 
+/**
+ * An account that was created. `detailsLoaded` is false when the account and
+ * its tokens are in place but the `/auth/me` read after them failed.
+ */
+export interface AccountCreated {
+  detailsLoaded: boolean;
+}
+
+/**
+ * The session read is waiting out a busy gateway (429 or no answer): the
+ * route stays, the person is not signed out, and a calm line says so.
+ * `retryAt` is when the next retry fires; `gaveUp` is after the last retry failed too.
+ */
+export type MeBusy = { retryAt: number } | { gaveUp: true };
+
 export interface AuthContextType {
   user: User | null;
   loading: boolean;
+  /** Set while `loading` waits on a busy gateway; null otherwise. */
+  meBusy?: MeBusy | null;
   error: string | null;
   clearError: () => void;
   activeRestaurantId: string | null;
@@ -226,8 +250,8 @@ export interface AuthContextType {
   setActiveRestaurantId: (restaurantId: string) => Promise<boolean>;
   login: (email: string, password: string) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
-  registerAccount: (data: RegisterAccountData) => Promise<void>;
-  registerAccountWithGoogle: (token: string) => Promise<void>;
+  registerAccount: (data: RegisterAccountData) => Promise<AccountCreated>;
+  registerAccountWithGoogle: (token: string) => Promise<AccountCreated>;
   createFirstHouse: (data: CreateFirstHouseData) => Promise<HouseOpened>;
   registerRestaurant: (data: RegisterRestaurantData) => Promise<void>;
   joinViaInvite: (data: JoinViaInviteData) => Promise<void>;
@@ -361,6 +385,7 @@ function userFrom(
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [meBusy, setMeBusy] = useState<MeBusy | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeRestaurantId, setActiveRestaurantIdState] = useState<
     string | null
@@ -407,6 +432,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Load user from token on mount
   useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const loadUser = async () => {
       const token = localStorage.getItem("accessToken");
       if (!token) {
@@ -421,66 +448,103 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      try {
-        const response = await api.get("/api/v1/auth/me");
-        // Studio roles come from the JWT itself (app_metadata.roles), and the
-        // session's house from the token when /auth/me names none.
-        setUser(
-          userFrom(response.data.user, localStorage.getItem("accessToken")),
-        );
-      } catch (err) {
-        console.error("Failed to load user:", err);
-        // Only a 401 means the token is invalid (POS lens, absence-as-health 9).
-        //
-        // This used to delete BOTH tokens on ANY error from GET /auth/me. A 429
-        // after ordinary use — measured live on the lens run — therefore sent
-        // five page loads to /login and destroyed the refresh token, so the
-        // session could not be recovered even once the limit cleared. A rate
-        // limit, a 500, and a dropped connection all say "ask again later";
-        // none of them says "you are not who you said you were".
-        //
-        // 403 is deliberately NOT included: a token that authenticates but is
-        // not allowed here is still a valid token, and throwing it away turns
-        // a permissions problem into a login problem.
-        const status = (err as { response?: { status?: number } })?.response
-          ?.status;
-        if (status === 401) {
-          // ADR 0164, item 2/3 (round 2, 2026-09-19): by the time this catch
-          // runs, the response interceptor above has ALREADY awaited
-          // `doRefresh()` for this exact 401 — it sits between the request
-          // and this catch in the same promise chain, on this same `api`
-          // instance. `doRefresh` removes the stored refresh token only on a
-          // genuine sign-out (the refresh token itself was rejected); a
-          // `houseAccessEnded` refresh stores a fresh, no-house pair and
-          // sends the person to the chooser, and a 503 or a dropped
-          // connection while refreshing leaves the original pair untouched —
-          // both keep a session on disk. This used to delete both tokens
-          // whenever the ORIGINAL request 401'd, with no such check, which
-          // silently discarded whichever of those two `doRefresh` had just
-          // decided to keep — the ordinary way anyone reloads a page after
-          // their house access ended, not just the tab-stayed-open case.
-          if (!localStorage.getItem("refreshToken")) {
-            localStorage.removeItem("accessToken");
-            localStorage.removeItem("refreshToken");
+      // One `/auth/me` per page load: the auth store asks the same question
+      // as it is imported, and `shareMeRead` hands both the one answer.
+      let retries = 0;
+      for (;;) {
+        try {
+          const response = await shareMeRead(
+            () => api.get("/api/v1/auth/me"),
+            "context",
+          );
+          if (cancelled) return;
+          // Studio roles come from the JWT itself (app_metadata.roles), and the
+          // session's house from the token when /auth/me names none.
+          setUser(
+            userFrom(response.data.user, localStorage.getItem("accessToken")),
+          );
+          setMeBusy(null);
+          setLoading(false);
+          return;
+        } catch (err) {
+          if (cancelled) return;
+          // A busy gateway (429) or no answer at all says "ask again", never
+          // "sign in again": keep the route and the tokens, say so, and ask
+          // again after the gateway's own Retry-After (else 3 s), up to three times. Only a
+          // 401 that the refresh could not mend ends the session.
+          if (isHouseBusy(err)) {
+            console.warn("/auth/me is busy; keeping the session.", err);
+            if (retries >= BUSY_RETRY_TRIES) {
+              setMeBusy({ gaveUp: true });
+              return; // `loading` stays true: the guards keep the route.
+            }
+            retries += 1;
+            const wait = busyRetrySeconds(err);
+            setMeBusy({ retryAt: Date.now() + wait * 1000 });
+            await new Promise<void>((resolve) => {
+              timer = setTimeout(resolve, wait * 1000);
+            });
+            if (cancelled) return;
+            continue;
+          }
+          console.error("Failed to load user:", err);
+          // Only a 401 means the token is invalid (POS lens, absence-as-health 9).
+          //
+          // This used to delete BOTH tokens on ANY error from GET /auth/me. A 429
+          // after ordinary use — measured live on the lens run — therefore sent
+          // five page loads to /login and destroyed the refresh token, so the
+          // session could not be recovered even once the limit cleared. A rate
+          // limit, a 500, and a dropped connection all say "ask again later";
+          // none of them says "you are not who you said you were".
+          //
+          // 403 is deliberately NOT included: a token that authenticates but is
+          // not allowed here is still a valid token, and throwing it away turns
+          // a permissions problem into a login problem.
+          const status = (err as { response?: { status?: number } })?.response
+            ?.status;
+          if (status === 401) {
+            // ADR 0164, item 2/3 (round 2, 2026-09-19): by the time this catch
+            // runs, the response interceptor above has ALREADY awaited
+            // `doRefresh()` for this exact 401 — it sits between the request
+            // and this catch in the same promise chain, on this same `api`
+            // instance. `doRefresh` removes the stored refresh token only on a
+            // genuine sign-out (the refresh token itself was rejected); a
+            // `houseAccessEnded` refresh stores a fresh, no-house pair and
+            // sends the person to the chooser, and a 503 or a dropped
+            // connection while refreshing leaves the original pair untouched —
+            // both keep a session on disk. This used to delete both tokens
+            // whenever the ORIGINAL request 401'd, with no such check, which
+            // silently discarded whichever of those two `doRefresh` had just
+            // decided to keep — the ordinary way anyone reloads a page after
+            // their house access ended, not just the tab-stayed-open case.
+            if (!localStorage.getItem("refreshToken")) {
+              localStorage.removeItem("accessToken");
+              localStorage.removeItem("refreshToken");
+            } else {
+              console.warn(
+                "Keeping the session: the shared refresh kept a session on " +
+                  "disk (houseAccessEnded, or a transient refresh failure), " +
+                  "not a sign-out.",
+              );
+            }
           } else {
             console.warn(
-              "Keeping the session: the shared refresh kept a session on " +
-                "disk (houseAccessEnded, or a transient refresh failure), " +
-                "not a sign-out.",
+              `Keeping the session: /auth/me failed with ${status}, ` +
+                "which is not an authentication failure.",
             );
           }
-        } else {
-          console.warn(
-            `Keeping the session: /auth/me failed with ${status ?? "no status (network)"}, ` +
-              "which is not an authentication failure.",
-          );
+          setMeBusy(null);
+          setLoading(false);
+          return;
         }
-      } finally {
-        setLoading(false);
       }
     };
 
-    loadUser();
+    void loadUser();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, []);
 
   // Centralized branch fetch — reused by initial load and refreshBranches()
@@ -601,8 +665,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  // Keyed on the person's id, not the `user` object: creating a house swaps
+  // the object (same person) in the same breath as the active house changes,
+  // and each swap re-ran this read (two `/auth/me/role` per new house).
+  const signedInUserId = user?.userId ?? null;
   useEffect(() => {
-    if (!user) {
+    if (!signedInUserId) {
       setActiveRole(null);
       return;
     }
@@ -630,7 +698,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [user, activeRestaurantId]);
+  }, [signedInUserId, activeRestaurantId]);
 
   // Public refresh — can be called after chain/location changes to update the branch switcher
   const refreshBranches = useCallback(async () => {
@@ -842,6 +910,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         const { accessToken, refreshToken: refresh } = response.data;
         storeSession(accessToken, refresh);
+        // What became of the verification mail, kept for /verify-email, where
+        // Register.tsx sends the owner next: a send that did not leave is said
+        // there in words, never as "check your inbox" (as registerAccount).
+        noteSignUpMail(response.data?.verificationMail, data.email);
         api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
         const userResponse = await api.get("/api/v1/auth/me");
         setUser(userFrom(userResponse.data.user, accessToken));
@@ -863,8 +935,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // on this device left in `activeRestaurantId`.
     storeSession(accessToken, refresh);
     api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
-    const userResponse = await api.get("/api/v1/auth/me");
-    setUser(userFrom(userResponse.data.user, accessToken));
+    // The account exists and its tokens are stored once the POST answered, so
+    // a failed session read (429, network) must not read as a failed sign-up:
+    // the page would stay on /register and the next press would meet the new
+    // row as "already registered". /verify-email reads /auth/me again.
+    try {
+      const userResponse = await api.get("/api/v1/auth/me");
+      setUser(userFrom(userResponse.data.user, accessToken));
+      return { detailsLoaded: true };
+    } catch {
+      return { detailsLoaded: false };
+    }
   }, []);
 
   const registerAccount = useCallback(
@@ -872,9 +953,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         setError(null);
         setLoading(true);
-        await establishSession(
-          await api.post("/api/v1/auth/register/account", data),
-        );
+        const response = await api.post("/api/v1/auth/register/account", data);
+        // What became of the verification mail (onboarding OB-6), kept for
+        // /verify-email, where Register.tsx sends the new account next: a
+        // send that did not leave, or did not confirm, is said there in words
+        // and never as "check your inbox".
+        noteSignUpMail(response.data?.verificationMail, data.email);
+        return await establishSession(response);
       } catch (err: any) {
         const message = err.response?.data?.message || "Registration failed";
         setError(message);
@@ -891,7 +976,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         setError(null);
         setLoading(true);
-        await establishSession(
+        return await establishSession(
           await api.post("/api/v1/auth/register/google", { token }),
         );
       } catch (err: any) {
@@ -963,6 +1048,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await api.post("/api/v1/auth/join", data);
       const { accessToken, refreshToken: refresh } = response.data;
       storeSession(accessToken, refresh);
+      // Present only when this join mailed a verification link.
+      noteSignUpMail(response.data?.verificationMail, data.email);
       api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
       const userResponse = await api.get("/api/v1/auth/me");
       setUser(userFrom(userResponse.data.user, accessToken));
@@ -1081,6 +1168,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // only ids and times, and it is what lets this person go straight back
       // into their house tomorrow.
       clearHouseEnded();
+      // The sign-up's mail note (OB-6) was this account's: on a shared device
+      // the next person's /verify-email must not say a send of theirs failed.
+      clearSignUpMail();
       // The read cache was this session's: the next person on a shared device
       // must not see it. Cache only — unsent work is ADR 0241's to decide.
       // Bounded: IndexedDB's open has no timeout and has hung on WebKit, and a
@@ -1192,6 +1282,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshToken: refreshTokenFn,
     refreshBranches,
     isAuthenticated: !!user,
+    meBusy,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

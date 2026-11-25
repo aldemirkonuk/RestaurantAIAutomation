@@ -117,6 +117,11 @@ describe("statusOf / messageOf", () => {
 });
 
 describe("routeAfterVerification", () => {
+  it("a verified account with no house opens one first (verify, then create)", () => {
+    expect(routeAfterVerification(null, false)).toBe("/open-house");
+    expect(routeAfterVerification({ menu_uploaded: true }, false)).toBe("/open-house");
+  });
+
   it("skips the guide when a menu already exists", () => {
     // Mirrors VerifyEmail.tsx:41-43 — `progress?.menu_uploaded ? '/' : '/get-started'`.
     expect(routeAfterVerification({ menu_uploaded: true })).toBe("/");

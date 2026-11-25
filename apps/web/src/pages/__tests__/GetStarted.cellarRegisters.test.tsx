@@ -30,7 +30,7 @@ describe('GetStarted — cellar registers left onboarding (ADR 0213)', () => {
         <GetStarted />
       </MemoryRouter>,
     )
-    expect(screen.getByRole('heading', { name: /Welcome, Selin/ })).toBeInTheDocument()
+    expect(screen.getByText(/Welcome, Selin\./)).toBeInTheDocument()
     expect(screen.queryByTestId('onboarding-cellar-registers')).toBeNull()
     expect(screen.queryByTestId('activate-cellar-registers')).toBeNull()
     expect(screen.queryByLabelText('Wines register')).toBeNull()

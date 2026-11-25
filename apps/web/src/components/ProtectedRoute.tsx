@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { ShieldAlert, ArrowLeft } from 'lucide-react'
+import { HouseBusyNotice } from './HouseBusyNotice'
 
 type HouseRole = 'owner' | 'manager' | 'staff'
 
@@ -22,8 +23,18 @@ export function ProtectedRoute({
   requiredStudioRole,
   redirectTo = '/login',
 }: ProtectedRouteProps) {
-  const { user, loading, isAuthenticated } = useAuth()
+  const { user, loading, isAuthenticated, meBusy } = useAuth()
   const location = useLocation()
+
+  // The gateway is busy and the session is being read again: stay on this
+  // route and say so; never send the person to sign in for it.
+  if (loading && meBusy) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <HouseBusyNotice busy={meBusy} />
+      </div>
+    )
+  }
 
   // Loading State
   if (loading) {

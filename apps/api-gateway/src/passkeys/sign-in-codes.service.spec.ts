@@ -321,6 +321,51 @@ describe("SignInCodesService — checking", () => {
     );
   });
 
+  // Onboarding OB-3 (founder /goal 2026-11-07): the verification mail's code.
+  it("verify_email: stored as a keyed hash for the account, mailed by nobody here", async () => {
+    const { db, mail, svc } = setup();
+    const code = await svc.issueForEmailVerification(
+      USER,
+      " Mira@Example.com ",
+    );
+    await flush();
+    expect(code).toMatch(/^\d{6}$/);
+    expect(mail.sendEmail).not.toHaveBeenCalled();
+    expect(db.tables.sign_in_codes).toHaveLength(1);
+    const row = db.tables.sign_in_codes[0];
+    expect(row).toMatchObject({
+      email: EMAIL,
+      user_id: USER,
+      purpose: "verify_email",
+      attempts: 0,
+    });
+    expect(row.code_hash).not.toContain(code);
+    expect(Date.parse(row.expires_at) - Date.parse(row.created_at)).toBe(
+      CODE_TTL_MS,
+    );
+    await expect(svc.verifyEmailCode(USER, code)).resolves.toBe(EMAIL);
+    await expect(svc.verifyEmailCode(USER, code)).rejects.toThrow(CODE_REFUSAL);
+  });
+
+  it("verify_email: purposes stay apart both ways, and it counts toward the address's hourly cap", async () => {
+    const { svc, lastCode } = setup();
+    const verifyCode = await svc.issueForEmailVerification(USER, EMAIL);
+    await expect(svc.verify("sign_in", EMAIL, verifyCode)).rejects.toThrow(
+      CODE_REFUSAL,
+    );
+    await svc.issueForSignIn(EMAIL, null);
+    await flush();
+    await expect(svc.verifyEmailCode(USER, lastCode())).rejects.toThrow(
+      CODE_REFUSAL,
+    );
+    for (let i = 2; i < MAX_CODES_PER_EMAIL_PER_HOUR; i++) {
+      await svc.issueForEmailVerification(USER, EMAIL);
+    }
+    expect(await statusOf(svc.issueForEmailVerification(USER, EMAIL))).toBe(
+      `429 ${ADDRESS_BUSY}`,
+    );
+  });
+
   it("a step-up code proves only its own account", async () => {
     const { db, svc, lastCode } = setup();
     const OTHER = "22222222-2222-4222-8222-222222222222";

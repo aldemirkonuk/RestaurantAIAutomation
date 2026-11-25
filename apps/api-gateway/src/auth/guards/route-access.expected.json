@@ -151,6 +151,7 @@
   "POST /auth/join (AuthController.joinViaInvite)": "open",
   "POST /auth/verify-email (AuthController.verifyEmail)": "open",
   "POST /auth/resend-verification (AuthController.resendVerification)": "open",
+  "POST /auth/change-unverified-email (AuthController.changeUnverifiedEmail)": "open",
   "POST /auth/switch-restaurant (AuthController.switchRestaurant)": "open",
   "GET /auth/houses (AuthController.houses)": "open",
   "POST /auth/held-memberships/accept (AuthController.acceptHeldMembership)": "open",

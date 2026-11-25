@@ -1,4 +1,10 @@
-import { isOriginAllowed, PRODUCTION_ORIGINS } from "./cors-origins";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  CORS_EXPOSED_HEADERS,
+  isOriginAllowed,
+  PRODUCTION_ORIGINS,
+} from "./cors-origins";
 
 /**
  * 2026-09-01: `mudavym.com` became the production domain and matched no entry
@@ -63,5 +69,17 @@ describe("CORS allow-list", () => {
         NODE_ENV: "development",
       } as NodeJS.ProcessEnv),
     ).toBe(true);
+  });
+});
+
+describe("CORS exposed headers", () => {
+  it("lets the page read Retry-After on a 429", () => {
+    expect(CORS_EXPOSED_HEADERS).toContain("Retry-After");
+  });
+
+  it("main.ts hands the list to Nest's cors options", () => {
+    // The constant is only worth anything if the bootstrap uses it.
+    const main = readFileSync(join(__dirname, "main.ts"), "utf8");
+    expect(main).toMatch(/exposedHeaders:\s*CORS_EXPOSED_HEADERS/);
   });
 });

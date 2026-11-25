@@ -79,8 +79,11 @@ export default function VerifyEmailScreen() {
         if (outcome === "superseded") return;
         if (outcome === "noTokens") await refreshUser();
         haptic.confirm();
-        const progress = await fetchOnboardingProgress().catch(() => null);
-        router.replace(routeAfterVerification(progress) as never);
+        const hasHouse = Boolean(useSession.getState().user?.restaurantId);
+        const progress = hasHouse
+          ? await fetchOnboardingProgress().catch(() => null)
+          : null;
+        router.replace(routeAfterVerification(progress, hasHouse) as never);
       } catch (e) {
         // ADR 0229 fork 12 (the founder, 2026-09-28, item 81, "Link needs
         // sign-in (Recommended)"): the link verifies only for someone signed

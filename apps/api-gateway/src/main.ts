@@ -4,7 +4,7 @@ import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 import { NestExpressApplication } from "@nestjs/platform-express";
 import * as fs from "fs";
 import { AppModule } from "./app.module";
-import { buildCorsOrigins } from "./cors-origins";
+import { buildCorsOrigins, CORS_EXPOSED_HEADERS } from "./cors-origins";
 import { maybeExportOpenApi } from "./openapi-export";
 
 async function bootstrap() {
@@ -20,6 +20,7 @@ async function bootstrap() {
     cors: {
       origin: buildCorsOrigins(),
       credentials: true,
+      exposedHeaders: CORS_EXPOSED_HEADERS,
     },
   });
 
