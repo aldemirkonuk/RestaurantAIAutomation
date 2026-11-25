@@ -12,7 +12,7 @@
  * "Approve"): its only use was a "Threads" figure counting a list this page
  * never shows.
  *
- * "Replies · 30 days" is counted by the server, from the same rows and the
+ * "Vendor replies · 30 days" is counted by the server, from the same rows and the
  * same flag as the Mail tab (`GET /mail/summary`, migration
  * the_mail_list_is_read_by_person, `in_30d`) — D6, mail-receipts lane
  * 2026-11-11. It used to be counted here over the book's newest 100 rows,
@@ -56,6 +56,7 @@ import {
 } from '../../../hooks/queries/useConversationQueries';
 import { useActiveConversations } from '../../../hooks/queries/useDraftEmailQueries';
 import { failedReadWords, sendState } from './cm-format';
+import { lettersLast30 } from './mail-format';
 import { useMailSummary } from './useMailData';
 
 /**
@@ -98,7 +99,7 @@ export interface CommsGlance {
 export interface CommsFailures {
   history: boolean;
   drafts: boolean;
-  /** GET /mail/summary, the source of "Replies · 30 days". */
+  /** GET /mail/summary, the source of "Vendor replies · 30 days". */
   mail: boolean;
 }
 
@@ -141,7 +142,7 @@ export function useCommsNextData() {
   // deriving "drafts waiting" from it was a structurally guaranteed false
   // zero (communications-audit.md, BLOCKER 2).
   const activeQ = useActiveConversations();
-  // "Replies · 30 days" (D6). The same query the tab label reads, so it is one
+  // "Vendor replies · 30 days" (D6). The same query the tab label reads, so it is one
   // fetch however many places read it; it polls only while Mail is shown.
   const mailQ = useMailSummary(false);
   const drafts = useMemo(() => newestDraftPerOrder(activeQ.data ?? []), [activeQ.data]);
@@ -164,7 +165,7 @@ export function useCommsNextData() {
           : historyQ.data.filter((i) => i.direction !== 'INBOUND' && sendState(i.status) === 'sent' && within30(i))
               .length,
       // A server older than D6 sends no inLast30: unknown, never 0.
-      repliesLast30: mailQ.data?.inLast30 ?? null,
+      repliesLast30: lettersLast30(mailQ.data),
       // The history endpoint serves at most COMMS_SERVER_WINDOWS.HISTORY_ROWS;
       // when the window is full the sent figure is a floor, and the strip says
       // so with GE. The replies figure is counted by the server and is exact.

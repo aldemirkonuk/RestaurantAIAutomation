@@ -11,6 +11,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import type { ProcurementHistoryItem } from '../../../hooks/queries/useConversationQueries';
 
+const mockAuth = vi.hoisted(() => ({ current: { user: { role: 'staff' }, activeRole: 'staff' } as Record<string, unknown> }));
+vi.mock('../../../contexts/AuthContext', () => ({ useAuth: () => mockAuth.current }));
 const mockData = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 
 // Only the HOOK is replaced. `COMMS_SERVER_WINDOWS` passes through from the real
@@ -228,6 +230,7 @@ const base = {
 };
 
 beforeEach(() => {
+  mockAuth.current = { user: { role: 'staff' }, activeRole: 'staff' };
   mockData.current = { ...base };
   mockLetters.current = { data: { requests: [] }, isError: false, dataUpdatedAt: 0, refetch: () => {} };
   mockDrafts.current = { drafts: [], failed: false, error: null, refetch: () => {} };
@@ -240,7 +243,11 @@ describe('CommunicationsNext', () => {
       glance: { draftsPending: 1, sentLast30: null, repliesLast30: null },
     };
     render(<CommunicationsNext />);
-    expect(screen.getByText('Replies · 30 days')).toBeInTheDocument();
+    expect(screen.getByText('Vendor replies · 30 days')).toBeInTheDocument();
+    // r104 mail-3: the 30-day figure counts vendor letters only, while the Mail
+    // header's "Today" counts every kind an owner may read, so the strip says
+    // whose letters it counts rather than showing a month smaller than a day.
+    expect(screen.queryByText('Replies · 30 days')).toBeNull();
     // COMMS-W3: no figure counts a list the page does not show
     expect(screen.queryByText('Threads')).toBeNull();
     // two unanswered figures render as em dashes, never zeros
@@ -264,6 +271,19 @@ describe('CommunicationsNext', () => {
     expect(screen.getByText('3')).toBeInTheDocument();
   });
 
+  it('labels the 30-day figure by who reads it: owners and managers see every kind, staff vendor replies only (r105 mail-1)', () => {
+    mockData.current = { ...base, glance: { draftsPending: 1, sentLast30: null, repliesLast30: 90 } };
+    mockAuth.current = { user: { role: 'staff' }, activeRole: 'owner' };
+    const { unmount } = render(<CommunicationsNext />);
+    expect(screen.getByText('Letters in · 30 days')).toBeInTheDocument();
+    expect(screen.queryByText('Vendor replies · 30 days')).toBeNull();
+    unmount();
+    mockAuth.current = { user: { role: 'owner' }, activeRole: 'staff' };
+    render(<CommunicationsNext />);
+    expect(screen.getByText('Vendor replies · 30 days')).toBeInTheDocument();
+    expect(screen.queryByText('Letters in · 30 days')).toBeNull();
+  });
+
   it('a failed count of letters in fails the replies figure alone (D6)', () => {
     mockData.current = {
       ...base,
@@ -272,7 +292,7 @@ describe('CommunicationsNext', () => {
       failedSources: ['the count of letters in'],
     };
     render(<CommunicationsNext />);
-    expect(screen.getByLabelText('Replies · 30 days: could not be read')).toBeInTheDocument();
+    expect(screen.getByLabelText('Vendor replies · 30 days: could not be read')).toBeInTheDocument();
     expect(screen.queryByLabelText(/Sent · 30 days: could not be/i)).toBeNull();
   });
 
@@ -1082,7 +1102,7 @@ describe('Mail and Letters', () => {
     expect(screen.getByTestId('mail-tab-stub')).toBeInTheDocument();
     expect(tabs()[0]).toHaveAttribute('aria-current', 'page');
     // Letters' own figures and lists stand with Letters.
-    expect(screen.queryByText('Replies · 30 days')).toBeNull();
+    expect(screen.queryByText('Vendor replies · 30 days')).toBeNull();
     expect(screen.queryByRole('region', { name: 'To send' })).toBeNull();
   });
 
@@ -1143,7 +1163,7 @@ describe('Mail and Letters', () => {
     at('/communications?tab=mail&with=vendor%3Ap1&thread=gm%3Aabc&setup=1&senders=open');
     fireEvent.click(tabs()[1]);
     expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications$/);
-    expect(screen.getByText('Replies · 30 days')).toBeInTheDocument();
+    expect(screen.getByText('Vendor replies · 30 days')).toBeInTheDocument();
   });
 
   it("hands Mail the orders that have a drafted reply, and Mail's reply act opens it", () => {

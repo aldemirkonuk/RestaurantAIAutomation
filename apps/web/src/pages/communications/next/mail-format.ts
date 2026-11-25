@@ -925,6 +925,19 @@ export function personWords(name: string | null | undefined, kind: MailKind = 'v
 }
 
 /**
+ * The 30-day letter count the strip shows (r104 mail-gap g5). A 30-day window
+ * holds today, so a count below today's is a server that counted two ways (an
+ * older one counted vendor letters only in the 30 days and every kind today);
+ * the strip never shows it. Null when the server sent none: unknown, never 0.
+ */
+export function lettersLast30(
+  summary: { inLast30?: number | null; inToday?: number | null } | null | undefined,
+): number | null {
+  if (typeof summary?.inLast30 !== 'number') return null;
+  return typeof summary.inToday === 'number' ? Math.max(summary.inLast30, summary.inToday) : summary.inLast30;
+}
+
+/**
  * "3 letters" on a thread row: the letters sent or received, never a draft
  * or a queued one (r28 mail gap 14). Null when there are none to count.
  */

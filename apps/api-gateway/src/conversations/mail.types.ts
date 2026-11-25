@@ -221,7 +221,7 @@ export interface MailSummary {
   /**
    * Letters in over the last 30 days, counted like inToday: a bounce, an
    * auto-reply or a second copy of one letter is not a letter. The Letters
-   * strip's "Replies · 30 days" (D6).
+   * strip's "Vendor replies · 30 days" (D6).
    */
   inLast30: number;
   /**
