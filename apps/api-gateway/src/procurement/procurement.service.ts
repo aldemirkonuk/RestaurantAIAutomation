@@ -473,6 +473,24 @@ interface ProcurementOrderRow {
 }
 
 /**
+ * How much of a letter's body the Letters list carries per row (perf p4 s6).
+ * The rest is read with `getConversationLetter` when the row opens.
+ */
+export const HISTORY_LIST_CLIP_CHARS = 240;
+
+function isClipped(text: string | null): boolean {
+  return text !== null && text.length > HISTORY_LIST_CLIP_CHARS;
+}
+
+function clipForList(text: string | null): string | null {
+  if (!isClipped(text)) return text;
+  let end = HISTORY_LIST_CLIP_CHARS;
+  const last = (text as string).charCodeAt(end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) end -= 1; // never split a surrogate pair
+  return (text as string).slice(0, end);
+}
+
+/**
  * Flatten a `provider:provider_id(name)` embed to a name or an explicit null.
  *
  * PostgREST returns a to-one embed as an object, `null` when the parent's FK is
@@ -10360,9 +10378,16 @@ export class ProcurementService {
       // for this exchange" about ten messages whose bodies were recorded.
       // `getActiveConversations` and `getOrderConversations` have always read
       // the pair; this method was the odd one out.
-      draftContent: row.content ?? row.message_text ?? null,
+      // The list ships a CLIPPED body and summary (perf p4 s6): 100 letters
+      // with whole bodies was the heaviest part of this read, and the page only
+      // prints a body when a row is opened. `bodyClipped` says a clip happened;
+      // the whole text is read by `getConversationLetter` when the row opens.
+      draftContent: clipForList(row.content ?? row.message_text ?? null),
+      bodyClipped:
+        isClipped(row.content ?? row.message_text ?? null) ||
+        isClipped(row.rolling_summary ?? null),
       constraintFlags: row.constraint_flags,
-      rollingSummary: row.rolling_summary,
+      rollingSummary: clipForList(row.rolling_summary ?? null),
       // The relay gateway's own sentence for a RELAY_REFUSED row (ADR 0099,
       // founder 2026-09-21). Null for every other status — the column is
       // scoped to that status by
@@ -10374,6 +10399,48 @@ export class ProcurementService {
       wineName: row.procurement_orders?.inventory?.wine_name ?? null,
       providerName: row.providers?.name ?? null,
     }));
+  }
+
+  /**
+   * The whole words of ONE letter in the book (perf p4 s6): what the list
+   * clips, read when its row opens. Same exclusions as `getConversationHistory`
+   * (a HOUSE_DRAFT / HOUSE_CANCELLED letter must not read through this route
+   * either, ADR 0167), same tenant scope. A failed read throws; an unknown or
+   * hidden id is a 404, never an empty letter.
+   */
+  async getConversationLetter(
+    restaurantId: string,
+    id: string,
+  ): Promise<{
+    id: string;
+    draftContent: string | null;
+    rollingSummary: string | null;
+  }> {
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_conversations")
+      .select("id, content, message_text, rolling_summary")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", id)
+      .or("status.is.null,status.neq.PENDING_APPROVAL")
+      .or("status.is.null,status.neq.DRAFT,direction.eq.inbound")
+      .or("status.is.null,status.neq.HOUSE_DRAFT")
+      .or("status.is.null,status.neq.HOUSE_CANCELLED")
+      .maybeSingle();
+
+    if (error) {
+      this.logger.error("getConversationLetter failed", {
+        restaurantId,
+        error: error.message,
+      });
+      throw error;
+    }
+    if (!data) throw new NotFoundException("That letter is not in the book.");
+    const row = data as any;
+    return {
+      id: row.id,
+      draftContent: row.content ?? row.message_text ?? null,
+      rollingSummary: row.rolling_summary ?? null,
+    };
   }
 
   async getOrderConversations(

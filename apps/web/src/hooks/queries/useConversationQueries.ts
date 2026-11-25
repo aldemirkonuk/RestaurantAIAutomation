@@ -281,8 +281,14 @@ export interface ProcurementHistoryItem {
   roundCount: number
   createdAt: string
   sentAt: string
-  /** `content ?? message_text ?? null` — the gateway may genuinely have none. */
+  /**
+   * `content ?? message_text ?? null` — the gateway may genuinely have none.
+   * CLIPPED to 240 characters in this list when `bodyClipped` is true; the whole
+   * letter is read with `useProcurementLetter` when its row opens.
+   */
   draftContent: string | null
+  /** True when `draftContent` or `rollingSummary` was cut short in this list. */
+  bodyClipped?: boolean
   constraintFlags: {
     hard: string[]
     annotating: string[]
@@ -345,3 +351,26 @@ export function useProcurementConversationHistory() {
     staleTime: 30_000,
   })
 }
+
+/**
+ * The whole words of ONE letter in the book. The list clips bodies (perf p4 s6),
+ * so a row that was clipped reads the rest when it opens. `GET
+ * /api/v1/procurement/conversations/history/:id`, scoped from the JWT like the
+ * list, and keyed by the house for the same reason the list is.
+ */
+export function useProcurementLetter(id: string, enabled: boolean) {
+  const { user, activeRestaurantId } = useAuth()
+  const restaurantId = activeRestaurantId ?? user?.restaurantId ?? ''
+  return useQuery({
+    queryKey: [...procurementHistoryKeys.forRestaurant(restaurantId), 'letter', id] as const,
+    queryFn: () =>
+      api
+        .get<{ id: string; draftContent: string | null; rollingSummary: string | null }>(
+          `/api/v1/procurement/conversations/history/${id}`,
+        )
+        .then((r) => r.data),
+    enabled,
+    staleTime: 300_000,
+  })
+}
+
