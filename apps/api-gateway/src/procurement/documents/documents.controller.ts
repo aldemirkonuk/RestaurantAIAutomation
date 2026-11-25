@@ -1464,19 +1464,24 @@ export class DocumentsController {
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
     if (!doc) throw new HttpException("Not found", HttpStatus.NOT_FOUND);
 
-    const [{ data: lines }, { data: links }] = await Promise.all([
-      this.db
-        .getClient()
-        .from("procurement_document_lines")
-        .select("*")
-        .eq("document_id", id)
-        .order("line_no"),
-      this.db
-        .getClient()
-        .from("procurement_document_links")
-        .select("*")
-        .eq("document_id", id),
-    ]);
+    // The signing needs only the document's own storage_path, so it runs in
+    // the same wave as the lines and links reads — one storage round trip off
+    // every receipt open. signOriginal never throws (it returns the reason).
+    const [{ data: lines }, { data: links }, signedOriginal] =
+      await Promise.all([
+        this.db
+          .getClient()
+          .from("procurement_document_lines")
+          .select("*")
+          .eq("document_id", id)
+          .order("line_no"),
+        this.db
+          .getClient()
+          .from("procurement_document_links")
+          .select("*")
+          .eq("document_id", id),
+        this.signOriginal(doc.storage_path ?? null),
+      ]);
 
     // Decision E48 — the receipts page renders the stored photo/PDF beside
     // the extracted lines. storage_path is a private-bucket object path, not
@@ -1490,9 +1495,7 @@ export class DocumentsController {
     // there and signing failed" and "the bucket is unreachable" all reached the
     // screen as the same `null` — the canonical route has carried the reason
     // since slice 2 and this one had not (ADR 0067).
-    const { imageUrl, reason: imageUrlReason } = await this.signOriginal(
-      doc.storage_path ?? null,
-    );
+    const { imageUrl, reason: imageUrlReason } = signedOriginal;
 
     return {
       document: { ...doc, imageUrl, imageUrlReason },
