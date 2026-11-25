@@ -461,6 +461,8 @@ export interface MenuImportReply {
   items: MenuImportReviewItem[];
   source: { kept: boolean; failure: string | null };
   warnings: MenuReadWarning[];
+  /** Rows a file read could not take whole, and why (a price left blank, a line with no name). */
+  notes?: CsvRowIssue[];
 }
 
 /** The sentence a failed background read is kept with. A refusal keeps its own words. */
