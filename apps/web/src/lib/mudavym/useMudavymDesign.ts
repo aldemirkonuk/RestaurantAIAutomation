@@ -335,7 +335,8 @@ export function useMudavymDesign(page: MudavymPage): boolean {
 export function useMudavymDesignVerdict(page: MudavymPage): boolean | null {
   const override = typeof window === 'undefined' ? null : readOverride(page);
   const live = LIVE_PAGES.has(page);
-  const activeRestaurantId = useContext(AuthContext)?.activeRestaurantId ?? null;
+  const auth = useContext(AuthContext);
+  const activeRestaurantId = auth?.activeRestaurantId ?? null;
   let restaurantId: string | null = activeRestaurantId;
   if (!restaurantId && typeof window !== 'undefined') {
     try {
@@ -344,6 +345,11 @@ export function useMudavymDesignVerdict(page: MudavymPage): boolean | null {
       restaurantId = null;
     }
   }
+  // A session whose token already names its house (ADR 0164) has one before
+  // the branch list lands and sets `activeRestaurantId`. Reading "no house" in
+  // that gap drew the command page for a moment on a fresh load: its eight
+  // reads went out, were dropped, and InventoryNext asked for them again.
+  if (!restaurantId) restaurantId = auth?.user?.restaurantId || null;
   const asked = override === null && !live && restaurantId ? `${restaurantId}:${page}` : null;
   const [answer, setAnswer] = useState<{ asked: string; enabled: boolean } | null>(null);
 
@@ -360,6 +366,6 @@ export function useMudavymDesignVerdict(page: MudavymPage): boolean | null {
 
   if (override !== null) return override;
   if (live) return true;
-  if (!asked) return false;
+  if (!asked) return auth?.loading ? null : false;
   return answer && answer.asked === asked ? answer.enabled : null;
 }
