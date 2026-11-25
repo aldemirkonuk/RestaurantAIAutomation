@@ -155,6 +155,17 @@ describe('the printable recipe card', () => {
     expect(print).not.toMatch(/animation|transition/);
   });
 
+  it('an en-GB (pound) house reads a day that could be a month day-first, "7 Nov 2026"; a dollar house reads it "Nov 7, 2026"', async () => {
+    house.createdAt = '2026-11-07T12:00:00Z';
+    mount();
+    await waitFor(() => expect(card()).toHaveTextContent('version 4, 7 Nov 2026'));
+    cleanup();
+    house.code = 'USD';
+    mount();
+    await waitFor(() => expect(card()).toHaveTextContent('version 4, Nov 7, 2026'));
+    expect(card().textContent).not.toMatch(/, 7 Nov/);
+  });
+
   it('a pound house reads a day past the 12th day first, "21 Nov 2026", never "Nov 21, 2026"', async () => {
     house.createdAt = '2026-11-21T12:00:00Z';
     mount();
