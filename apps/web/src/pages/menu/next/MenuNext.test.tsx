@@ -141,6 +141,20 @@ describe('MenuNext — reading', () => {
     expect(await screen.findAllByTestId('menu-row')).toHaveLength(1);
   });
 
+  it('Locked prices, Menus kept and the footer are not in the DOM while the menu read is pending', async () => {
+    let settle: (m: ActiveMenu) => void = () => {};
+    mockGetMenu.mockReturnValue(new Promise<ActiveMenu>((r) => (settle = r)));
+    mount();
+    expect(screen.getByText('Reading the menu…')).toBeInTheDocument();
+    expect(screen.queryByText('Locked prices')).not.toBeInTheDocument();
+    expect(screen.queryByText('Menus kept')).not.toBeInTheDocument();
+    expect(screen.queryByText(/nothing here is a delete/)).not.toBeInTheDocument();
+    settle(menu());
+    expect(await screen.findByText('Locked prices')).toBeInTheDocument();
+    expect(screen.getByText('Menus kept')).toBeInTheDocument();
+    expect(screen.getByText(/nothing here is a delete/)).toBeInTheDocument();
+  });
+
   it('says a failed read plainly, never as an empty menu', async () => {
     mockGetMenu.mockRejectedValue(new Error('ECONNREFUSED'));
     mount();
