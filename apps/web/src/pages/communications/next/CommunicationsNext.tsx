@@ -32,7 +32,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { PenLine, Library } from 'lucide-react';
 import { Stub, Wordmark } from '@/components/mudavym';
-import type { ProcurementHistoryItem } from '../../../hooks/queries/useConversationQueries';
+import { useProcurementLetter, type ProcurementHistoryItem } from '../../../hooks/queries/useConversationQueries';
 import { ink, settle } from '../../../lib/mudavym/motion';
 import {
   EM,
@@ -264,6 +264,11 @@ function StateChip({
 
 function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
   const [open, setOpen] = useState(false);
+  // The list clips long bodies (perf p4 s6); a clipped row reads the whole
+  // letter once, when it is opened. A failed read says so (ADR 0020).
+  const whole = useProcurementLetter(item.id, open && item.bodyClipped === true);
+  const summary = whole.data ? whole.data.rollingSummary : item.rollingSummary;
+  const body = whole.data ? whole.data.draftContent : item.draftContent;
   return (
     <div style={{ borderBottom: '1px solid var(--paper-2, #EAE4D8)' }}>
       <button
@@ -302,9 +307,9 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
             animation: `cm-settle ${settle.ms}ms ${settle.easing} both`,
           }}
         >
-          {item.rollingSummary && (
+          {summary && (
             <p style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)', maxWidth: '68ch', margin: '0 0 8px' }}>
-              {item.rollingSummary}
+              {summary}
             </p>
           )}
           <p
@@ -330,8 +335,14 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
                   : '1px solid var(--paper-2, #EAE4D8)',
             }}
           >
-            {item.draftContent || 'No message body was recorded for this exchange.'}
+            {body || 'No message body was recorded for this exchange.'}
+            {item.bodyClipped && !whole.data && !whole.isError ? '…' : ''}
           </p>
+          {item.bodyClipped && whole.isError && (
+            <p role="alert" style={{ fontSize: 11, color: 'var(--alarm-deep, #8C3322)', margin: '6px 0 0' }}>
+              The whole letter could not be read, so only its first words are shown.
+            </p>
+          )}
           {item.direction !== 'INBOUND' && item.status === 'RELAY_REFUSED' && (
             // ADR 0099, founder 2026-09-21: the draft closed, not retried, and
             // the manager sees why — the gateway's own sentence, verbatim.

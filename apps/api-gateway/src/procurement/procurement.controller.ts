@@ -1371,4 +1371,28 @@ export class ProcurementController {
       );
     }
   }
+
+  @Get("conversations/history/:id")
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: "Read the whole words of one letter in the conversation book",
+  })
+  @ApiResponse({ status: 200 })
+  async getConversationLetter(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+    @Param("id", new ParseUUIDPipe()) id: string,
+  ) {
+    try {
+      return await this.procurementService.getConversationLetter(
+        user.restaurantId,
+        id,
+      );
+    } catch (error: any) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        error.message || "Failed to fetch the letter",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
 }

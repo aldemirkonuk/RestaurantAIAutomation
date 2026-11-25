@@ -21,6 +21,20 @@ vi.mock('./useCommsNextData', async (importOriginal) => ({
   useCommsNextData: () => mockData.current,
 }));
 
+// The one-letter read (perf p4 s6) is a hook of its own; a test sets what it
+// answers and sees what the row asks for.
+const mockLetter = vi.hoisted(() => ({
+  current: { data: undefined, isError: false } as { data?: unknown; isError: boolean },
+  asked: [] as { id: string; enabled: boolean }[],
+}));
+vi.mock('../../../hooks/queries/useConversationQueries', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../hooks/queries/useConversationQueries')>()),
+  useProcurementLetter: (id: string, enabled: boolean) => {
+    mockLetter.asked.push({ id, enabled });
+    return mockLetter.current;
+  },
+}));
+
 // ADR 0118 — the two legacy builders are no longer mounted from this page, so
 // there is nothing to stub for them. What the page owns now is the composer and
 // the house library; both are proved in their own files, and here they are
@@ -1104,3 +1118,47 @@ describe('the tour finds every step (COMMS-W38)', () => {
     expect(container.querySelector('[data-tour="comms-write"]')?.textContent).toMatch(/Write a letter/);
   });
 });
+
+describe('the Letters list clips long bodies; an opened row reads the whole letter (perf p4 s6)', () => {
+  const CLIPPED = item({ id: 'long-1', draftContent: 'Dear Bodega, first words', bodyClipped: true });
+
+  beforeEach(() => {
+    mockLetter.current = { data: undefined, isError: false };
+    mockLetter.asked = [];
+  });
+
+  it('asks for the whole letter only once a clipped row is open', () => {
+    mockData.current = { ...base, rows: [CLIPPED] };
+    render(<CommunicationsNext />);
+    expect(mockLetter.asked.every((a) => a.id === 'long-1' && a.enabled === false)).toBe(true);
+    fireEvent.click(screen.getByText('Bodega Álvaro'));
+    expect(mockLetter.asked.some((a) => a.id === 'long-1' && a.enabled === true)).toBe(true);
+  });
+
+  it('prints the whole letter in place of the clipped words', () => {
+    mockLetter.current = {
+      data: { id: 'long-1', draftContent: 'Dear Bodega, first words and then the rest of the letter.', rollingSummary: null },
+      isError: false,
+    };
+    mockData.current = { ...base, rows: [CLIPPED] };
+    render(<CommunicationsNext />);
+    fireEvent.click(screen.getByText('Bodega Álvaro'));
+    expect(screen.getByText(/and then the rest of the letter/)).toBeInTheDocument();
+  });
+
+  it('says so when the whole letter could not be read', () => {
+    mockLetter.current = { data: undefined, isError: true };
+    mockData.current = { ...base, rows: [CLIPPED] };
+    render(<CommunicationsNext />);
+    fireEvent.click(screen.getByText('Bodega Álvaro'));
+    expect(screen.getByRole('alert')).toHaveTextContent(/whole letter could not be read/);
+  });
+
+  it('a short row never asks', () => {
+    mockData.current = { ...base, rows: [item({ id: 'short-1' })] };
+    render(<CommunicationsNext />);
+    fireEvent.click(screen.getByText('Bodega Álvaro'));
+    expect(mockLetter.asked.some((a) => a.enabled)).toBe(false);
+  });
+});
+

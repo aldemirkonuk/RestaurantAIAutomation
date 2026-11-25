@@ -201,6 +201,10 @@ function makeClient(rows: Row[]) {
       },
       order: () => self,
       limit: () => self,
+      maybeSingle() {
+        const hit = rows.filter((r) => preds.every((p) => p(r)))[0] ?? null;
+        return Promise.resolve({ data: hit, error: null });
+      },
       then(resolve: any, reject: any) {
         let out = rows.filter((r) => preds.every((p) => p(r)));
 
@@ -543,5 +547,81 @@ describe("a relay refusal carries its reason to both panels (ADR 0099)", () => {
     const refused = out.find((r) => r.id === "refused-0");
     expect(refused).toBeDefined();
     expect(refused!.relayRefusalReason).toBe(SENTENCE);
+  });
+});
+
+describe("the Letters list clips bodies; one letter opens whole (perf p4 s6)", () => {
+  const LONG = "Dear Bodega, ".padEnd(900, "x");
+  const longRows = (): Row[] => [
+    {
+      id: "long-1",
+      restaurant_id: REST,
+      order_id: null,
+      provider_id: "prov-0",
+      direction: "inbound",
+      status: "DRAFT",
+      content: null,
+      message_text: LONG,
+      rolling_summary: LONG,
+      created_at: new Date(2026, 7, 2).toISOString(),
+      outbound_email_type: null,
+      round_count: 0,
+    },
+    {
+      id: "short-1",
+      restaurant_id: REST,
+      order_id: null,
+      provider_id: "prov-0",
+      direction: "outbound",
+      status: "SENT",
+      content: "Short one",
+      message_text: "Short one",
+      rolling_summary: null,
+      created_at: new Date(2026, 7, 3).toISOString(),
+      outbound_email_type: "PRICE_INQUIRY",
+      round_count: 1,
+    },
+    {
+      id: "hd-1",
+      restaurant_id: REST,
+      order_id: null,
+      provider_id: "prov-0",
+      direction: "outbound",
+      status: "HOUSE_DRAFT",
+      content: LONG,
+      message_text: LONG,
+      created_at: new Date(2026, 7, 4).toISOString(),
+      outbound_email_type: "HOUSE_LETTER",
+      round_count: 0,
+    },
+  ];
+
+  it("the list carries at most 240 characters of a body and a summary, and says it clipped", async () => {
+    const { service } = serviceOver(longRows());
+    const out = await service.getConversationHistory(REST);
+    const long = out.find((r) => r.id === "long-1");
+    const short = out.find((r) => r.id === "short-1");
+    expect(long.draftContent).toHaveLength(240);
+    expect(long.rollingSummary).toHaveLength(240);
+    expect(long.bodyClipped).toBe(true);
+    expect(short.draftContent).toBe("Short one");
+    expect(short.bodyClipped).toBe(false);
+  });
+
+  it("one letter reads whole by id, scoped to the house", async () => {
+    const { service } = serviceOver(longRows());
+    const letter = await service.getConversationLetter(REST, "long-1");
+    expect(letter.draftContent).toBe(LONG);
+    expect(letter.rollingSummary).toBe(LONG);
+    await expect(
+      service.getConversationLetter(OTHER, "long-1"),
+    ).rejects.toThrow(/not in the book/);
+  });
+
+  it("a house draft does not read through the single-letter route either", async () => {
+    const { service } = serviceOver(longRows());
+    await expect(service.getConversationLetter(REST, "hd-1")).rejects.toThrow(
+      /not in the book/,
+    );
   });
 });
