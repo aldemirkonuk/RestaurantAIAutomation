@@ -64,7 +64,6 @@ vi.mock('../../../services/api/orders', () => ({
 }));
 
 import ReceiptsNext from './ReceiptsNext';
-import { SwipeToConfirm } from './SwipeToConfirm';
 
 const DOC: ProcurementDocument = {
   id: 'd1',
