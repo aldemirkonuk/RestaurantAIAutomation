@@ -512,6 +512,7 @@ export function Register() {
             <User className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="join-name"
+              autoComplete="name" enterKeyHint="next"
               type="text"
               value={joinName}
               onChange={(e) => setJoinName(e.target.value)}
@@ -528,6 +529,7 @@ export function Register() {
             <Mail className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="join-email"
+              autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false} enterKeyHint="next"
               type="email"
               value={joinEmail}
               onChange={(e) => {
@@ -599,6 +601,7 @@ export function Register() {
             <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="join-password"
+              autoComplete="new-password" enterKeyHint="next"
               type="password"
               value={joinPassword}
               onChange={(e) => setJoinPassword(e.target.value)}
@@ -616,6 +619,7 @@ export function Register() {
             <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="join-confirm-password"
+              autoComplete="new-password" enterKeyHint="done"
               type="password"
               value={joinConfirm}
               onChange={(e) => setJoinConfirm(e.target.value)}
@@ -699,6 +703,7 @@ export function Register() {
             <User className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="create-name"
+              autoComplete="name" enterKeyHint="next"
               type="text"
               value={createName}
               onChange={(e) => setCreateName(e.target.value)}
@@ -715,6 +720,7 @@ export function Register() {
             <Mail className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="create-email"
+              autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false} enterKeyHint="next"
               type="email"
               value={createEmail}
               onChange={(e) => {
@@ -786,6 +792,7 @@ export function Register() {
             <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="create-password"
+              autoComplete="new-password" enterKeyHint="next"
               type="password"
               value={createPassword}
               onChange={(e) => setCreatePassword(e.target.value)}
@@ -803,6 +810,7 @@ export function Register() {
             <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="create-confirm-password"
+              autoComplete="new-password" enterKeyHint="done"
               type="password"
               value={createConfirm}
               onChange={(e) => setCreateConfirm(e.target.value)}
@@ -1092,6 +1100,7 @@ export function Register() {
                   <Building2 className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
                   <input
                     id="restaurant-name"
+                    autoComplete="organization" enterKeyHint="next"
                     type="text"
                     value={restaurantName}
                     onChange={(e) => setRestaurantName(e.target.value)}
@@ -1202,6 +1211,7 @@ export function Register() {
                   <label htmlFor="restaurant-city" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>City <span className={on ? 'text-seal' : 'text-wine-600'}>*</span></label>
                   <input
                     id="restaurant-city"
+                    autoComplete="address-level2" enterKeyHint="next"
                     type="text"
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
@@ -1213,6 +1223,7 @@ export function Register() {
                   <label htmlFor="restaurant-state" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>{countryLocale.stateLabel}</label>
                   <input
                     id="restaurant-state"
+                    autoComplete="address-level1" enterKeyHint="next"
                     type="text"
                     value={stateProvince}
                     onChange={(e) => setStateProvince(e.target.value)}
@@ -1228,6 +1239,7 @@ export function Register() {
                   <label htmlFor="restaurant-postal-code" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>{countryLocale.postalLabel}</label>
                   <input
                     id="restaurant-postal-code"
+                    autoComplete="postal-code" enterKeyHint="next"
                     type="text"
                     value={postalCode}
                     onChange={(e) => setPostalCode(e.target.value)}

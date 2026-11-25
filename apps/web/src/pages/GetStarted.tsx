@@ -217,7 +217,7 @@ export default function GetStarted() {
           <label className="block border-b border-[#211f1b]/25 pb-2">
             <span className="text-xs uppercase tracking-wider">Your name · required</span>
             <input
-              aria-label="Your name"
+              aria-label="Your name" autoComplete="name" enterKeyHint="next"
               value={name}
               onChange={(event) => setName(event.target.value)}
               className="mt-2 block w-full bg-transparent font-serif text-2xl outline-none"
@@ -226,7 +226,7 @@ export default function GetStarted() {
           <label className="block border-b border-[#211f1b]/25 pb-2">
             <span className="text-xs uppercase tracking-wider">Mobile · optional</span>
             <input
-              aria-label="Mobile"
+              aria-label="Mobile" autoComplete="tel" inputMode="tel" enterKeyHint="done"
               value={mobile}
               onChange={(event) => setMobile(event.target.value)}
               placeholder="For urgent stock alerts. Never marketing."
@@ -304,19 +304,19 @@ export default function GetStarted() {
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="border-b border-[#211f1b]/25 pb-2">
               <span className="text-xs uppercase tracking-wider">Restaurant name · required</span>
-              <input aria-label="Restaurant name" value={restaurantName} onChange={(e) => setRestaurantName(e.target.value)} className="mt-2 w-full bg-transparent text-lg outline-none" />
+              <input aria-label="Restaurant name" autoComplete="organization" enterKeyHint="next" value={restaurantName} onChange={(e) => setRestaurantName(e.target.value)} className="mt-2 w-full bg-transparent text-lg outline-none" />
             </label>
             <label className="border-b border-[#211f1b]/25 pb-2">
               <span className="text-xs uppercase tracking-wider">Address · required</span>
-              <input aria-label="Address" value={address} onChange={(e) => { setAddress(e.target.value); setPlacePoint(null) }} className="mt-2 w-full bg-transparent text-lg outline-none" />
+              <input aria-label="Address" autoComplete="address-line1" enterKeyHint="next" value={address} onChange={(e) => { setAddress(e.target.value); setPlacePoint(null) }} className="mt-2 w-full bg-transparent text-lg outline-none" />
             </label>
             <label className="border-b border-[#211f1b]/25 pb-2">
               <span className="text-xs uppercase tracking-wider">Restaurant phone · optional</span>
-              <input aria-label="Restaurant phone" value={restaurantPhone} onChange={(e) => setRestaurantPhone(e.target.value)} className="mt-2 w-full bg-transparent text-lg outline-none" />
+              <input aria-label="Restaurant phone" autoComplete="tel" inputMode="tel" enterKeyHint="next" value={restaurantPhone} onChange={(e) => setRestaurantPhone(e.target.value)} className="mt-2 w-full bg-transparent text-lg outline-none" />
             </label>
             <label className="border-b border-[#211f1b]/25 pb-2">
               <span className="text-xs uppercase tracking-wider">City · required</span>
-              <input aria-label="City" value={city} onChange={(e) => setCity(e.target.value)} className="mt-2 w-full bg-transparent text-lg outline-none" />
+              <input aria-label="City" autoComplete="address-level2" enterKeyHint="next" value={city} onChange={(e) => setCity(e.target.value)} className="mt-2 w-full bg-transparent text-lg outline-none" />
             </label>
             <div>
               <span className="text-xs uppercase tracking-wider">Country · required</span>
