@@ -241,6 +241,14 @@ export default function ItemDrawer(props: ItemDrawerProps) {
     dishes.status === 'ready' && drinks.status === 'ready' && cardsRead && nDishes + nDrinks > 0
       ? `Used in ${[nDishes > 0 ? `${nDishes} ${nDishes === 1 ? 'dish' : 'dishes'}` : '', nDrinks > 0 ? `${nDrinks} ${nDrinks === 1 ? 'drink' : 'drinks'}` : ''].filter(Boolean).join(', ')}`
       : null;
+  // The list already counted this good's uses (row.usedIn) before the drawer's three reads answer. Until they
+  // do, hold the chip's 44 px so the cards do not drop when it arrives (r107 walk: a ?open= deep link shifted
+  // 0.116 at 1440 when that drop and the Used in block landed in one frame).
+  const usedChipHeld =
+    usedChip === null &&
+    typeof row.usedIn === 'number' &&
+    row.usedIn > 0 &&
+    (dishes.status === 'reading' || drinks.status === 'reading' || usedIn.status === 'reading');
 
   const name = row.name ?? house.displayName ?? 'Unnamed item';
   const held = row.zones?.filter((z) => z.qty > 0) ?? null;
@@ -272,6 +280,7 @@ export default function ItemDrawer(props: ItemDrawerProps) {
       <p className="ivd-head" data-testid="ivd-head">
         {head}
       </p>
+      {usedChipHeld ? <span className="ivd-usedchip ivd-usedchip--held" aria-hidden="true" data-testid="ivd-used-chip-held" /> : null}
       {usedChip ? (
         <button
           type="button"

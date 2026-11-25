@@ -392,6 +392,33 @@ describe('the item drawer', () => {
     expect(screen.queryByTestId('ivd-used-chip')).toBeNull();
   });
 
+  it('holds the Used in chip place while the reads are pending when the list already counted uses, then swaps it (r107 deep-link CLS)', async () => {
+    const used = { section: null, price: 10, hasRecipe: true, yieldServes: 1, lineCount: 1, cost: null, uses: [{ label: 'Flour', qtyEntered: 5, unitCode: 'g' }] };
+    let release: (v: unknown) => void = () => {};
+    api.dishes.mockReturnValue(new Promise((r) => { release = r; }));
+    api.drinks.mockResolvedValue({ drinks: [] });
+    api.usedIn.mockResolvedValue({
+      item: { id: 'i1', kind: 'spirit', displayName: 'x' },
+      soldAs: { readable: true, lines: [], source: 's' },
+      inCocktails: { readable: true, lines: [], source: 's' },
+      inDrinkRecipes: { readable: true, lines: [], source: 's' },
+      namedNotLinked: { readable: true, lines: [], source: 's' },
+    });
+    open(row({ usedIn: 2 }));
+    const held = await screen.findByTestId('ivd-used-chip-held');
+    expect(held.getAttribute('aria-hidden')).toBe('true');
+    expect(screen.queryByTestId('ivd-used-chip')).toBeNull();
+    release({ dishes: ['d1', 'd2'].map((dishId) => ({ ...used, dishId, name: dishId })) });
+    await screen.findByTestId('ivd-used-chip');
+    expect(screen.queryByTestId('ivd-used-chip-held')).toBeNull();
+    // A good the list counted as unused holds nothing: no blank band for the 1,100 that have no uses.
+    cleanup();
+    api.dishes.mockReturnValue(new Promise(() => {}));
+    open(row({ usedIn: 0 }));
+    await screen.findByTestId('ivd-head');
+    expect(screen.queryByTestId('ivd-used-chip-held')).toBeNull();
+  });
+
   it('the detail card sits in a wrapper that stays mounted: data-open flips, the content mounts and goes at once (r102 motion-1)', () => {
     open(row());
     const wrap = screen.getByTestId('ivd-evwrap');
