@@ -33,7 +33,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { EM, MONO, SANS, failedReadWords, fmtWhen, managesHouse } from './cm-format';
 import { IntakeHealthSheet } from './IntakeHealthSheet';
 import { MailSetup } from './MailSetup';
-import { FadeAway, MailMotionStyles, enterDelay, useEnteringKeys } from './mail-motion';
+import { FadeAway, MailMotionStyles, enterDelay, useArriveFocus, useEnteringKeys, useViewPlace } from './mail-motion';
 import type { LetterFacts } from './MailThread';
 
 // The letters are read only once a thread is opened, so their code is fetched then;
@@ -269,6 +269,7 @@ function PersonRow({
       <button
         type="button"
         data-testid="mail-person"
+        data-mail-key={p.key}
         onClick={onOpen}
         className="cm-row grid w-full gap-0.5 px-1 py-2.5 text-left"
         style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: SANS, minHeight: PERSON_ROW_MIN }}
@@ -340,8 +341,9 @@ function PersonThreads({
   const pages = q.data?.pages ?? [];
   const person = pages[0]?.person ?? null;
   const threads = pages.flatMap((p) => p.threads);
-  const headingRef = useRef<HTMLHeadingElement>(null);
+  const headingRef = useRef<HTMLHeadingElement | null>(null);
   const again = useReadAgain(q, headingRef);
+  const arrive = useArriveFocus();
   return (
     <section aria-label="Threads" className="grid gap-3" style={{ fontFamily: SANS }}>
       <button type="button" onClick={onBack} style={{ ...LINK_BUTTON, justifySelf: 'start' }}>
@@ -360,7 +362,12 @@ function PersonThreads({
         </p>
       ) : (
         <>
-          <h2 ref={headingRef} tabIndex={-1} style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--ink-1, #211C16)', overflowWrap: 'anywhere', outline: 'none' }}>
+          <h2
+            ref={(el) => {
+              headingRef.current = el;
+              arrive(el);
+            }}
+            tabIndex={-1} style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--ink-1, #211C16)', overflowWrap: 'anywhere', outline: 'none' }}>
             {person.name ?? 'A vendor with no name on file'} <span style={QUIET}>{KIND_WORD[mailKindOf(person)]}</span>
           </h2>
           <ul style={{ listStyle: 'none', margin: 0, padding: 0, borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
@@ -369,6 +376,7 @@ function PersonThreads({
                 <button
                   type="button"
                   data-testid="mail-thread-row"
+                  data-mail-key={t.key}
                   onClick={() => onOpenThread(t.key)}
                   className="cm-row grid w-full gap-0.5 px-1 py-2.5 text-left"
                   style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: SANS }}
@@ -790,10 +798,14 @@ export function MailTab({
   };
 
   const openSetup = () => go({ setup: '1', with: null, thread: null });
+  // One name per view, so a view change keeps the place (g2): deeper = further from the list.
+  const view = setup ? 'setup' : threadKey ? `thread:${threadKey}` : withKey ? `with:${withKey}` : 'list';
+  const place = useViewPlace(view, setup || threadKey ? 2 : withKey ? 1 : 0);
   const tone = status.tone === 'warn' ? 'var(--warn, #96601A)' : status.tone === 'alarm' ? 'var(--alarm, #A33A2B)' : 'var(--ink-2, #4F473C)';
 
   return (
-    <div className="grid gap-4" data-testid="mail-tab" style={{ fontFamily: SANS }}>
+    <div ref={place.root} className="grid gap-4" data-testid="mail-tab" style={{ fontFamily: SANS }}>
+      <MailMotionStyles />
       <header className={`grid gap-1 content-start ${MAIL_HEADER_RESERVE}`} data-testid="mail-header-block">
         <p data-testid="mail-header" style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
           {headerSentence(summary, {
@@ -871,6 +883,7 @@ export function MailTab({
         )}
       </header>
 
+      <div key={view} className={`grid gap-4 ${place.fade ?? ''}`.trim()}>
       {setup ? (
         <MailSetup
           status={status}
@@ -907,7 +920,10 @@ export function MailTab({
           on={on}
           withKey={withKey}
           onBack={() => back({ with: null })}
-          onOpenThread={(key) => go({ thread: key })}
+          onOpenThread={(key) => {
+            place.remember(key);
+            go({ thread: key });
+          }}
         />
       ) : (
         <>
@@ -967,13 +983,17 @@ export function MailTab({
             reader={reader}
             summary={summary}
             reading={{ reader: senderQ.isPending, summary: summaryQ.isPending }}
-            onOpenPerson={(key) => go({ with: key })}
+            onOpenPerson={(key) => {
+              place.remember(key);
+              go({ with: key });
+            }}
             onSetup={openSetup}
             setupWords={setupLinkWords(canReply)}
           />
           {whoIsWriting}
         </>
       )}
+      </div>
 
       <IntakeHealthSheet
         open={sheet}

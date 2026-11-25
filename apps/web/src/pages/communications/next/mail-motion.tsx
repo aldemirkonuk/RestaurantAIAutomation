@@ -1,5 +1,5 @@
 /** The Mail tab's few motions (MOTIONS.md, ADR 0112): opacity and one colour step only; reduced motion draws end states. */
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
 const INK_MS = 160;
 const SETTLE_MS = 320;
@@ -87,4 +87,60 @@ export function FadeAway({ show, block, children }: { show: boolean; block?: boo
       {last.current}
     </span>
   );
+}
+
+/**
+ * Keeping the reader's place across the Mail tab's views (r107 mail-gap g2).
+ * Going deeper (list, a person, a thread) puts the page at its top at once, no
+ * smooth scroll; going back puts the page where it was and focuses the row
+ * that was opened. `remember` is called with the row's key as it is opened.
+ * `fade` is the one-step opacity-in class for the view that just arrived (none
+ * on first draw; the stylesheet zeroes it under prefers-reduced-motion).
+ */
+export function useViewPlace(view: string, depth: number) {
+  const root = useRef<HTMLDivElement>(null);
+  const places = useRef(new Map<string, { y: number; key: string | null }>());
+  const prev = useRef({ view, depth });
+  const changed = useRef(false);
+  if (prev.current.view !== view) changed.current = true;
+  useLayoutEffect(() => {
+    const was = prev.current;
+    if (was.view === view) return;
+    prev.current = { view, depth };
+    const saved = places.current.get(view);
+    if (depth < was.depth && saved) {
+      window.scrollTo({ top: saved.y, behavior: 'auto' });
+      if (saved.key !== null) {
+        const row = Array.from(root.current?.querySelectorAll<HTMLElement>('[data-mail-key]') ?? []).find(
+          (el) => el.getAttribute('data-mail-key') === saved.key,
+        );
+        row?.focus({ preventScroll: true });
+      }
+    } else {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+  }, [view, depth]);
+  const remember = useCallback(
+    (key: string) => {
+      places.current.set(view, { y: window.scrollY, key });
+    },
+    [view],
+  );
+  return { root, remember, fade: changed.current ? 'mail-fade-in' : undefined };
+}
+
+/**
+ * A ref callback for a view's heading: the first time it mounts it takes focus,
+ * unless focus is already on something else outside the view (a reader who has
+ * moved on is not pulled back). tabIndex -1 on the heading, no outline.
+ */
+export function useArriveFocus(): (el: HTMLElement | null) => void {
+  const done = useRef(false);
+  return useCallback((el: HTMLElement | null) => {
+    if (!el || done.current) return;
+    const a = document.activeElement;
+    if (a && a !== document.body && !el.closest('section')?.contains(a)) return;
+    done.current = true;
+    el.focus({ preventScroll: true });
+  }, []);
 }
