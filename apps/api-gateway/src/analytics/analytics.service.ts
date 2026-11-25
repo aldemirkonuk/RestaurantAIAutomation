@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { readWholeWindow } from "../common/read-whole-window";
+import { readConsumptionRows } from "./consumption-read-shared";
 import * as E from "./engine";
 import { METRIC_REGISTRY, MetricDefinition, Persona } from "./metric-registry";
 import {
@@ -224,8 +225,6 @@ export class AnalyticsService {
   }
 
   private async loadConsumption(restaurantId: string, sinceDays = 90) {
-    const client = this.dbService.getClient();
-    const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
     // wine_consumption_log keys on inventory_id — it has no master_wine_id
     // column, so selecting one 42703s the whole query and silently yields an
     // empty demand series (zero velocity, zero forecast, no reorder points).
@@ -240,17 +239,11 @@ export class AnalyticsService {
     // nothing had been poured. The founder, 2026-10-06 (ADR 0292 fork 3):
     // "Say 'could not be read' (Recommended)". Each of those lenses now
     // refuses whole, as menu engineering and seasonality already did.
-    const data = await readWholeWindow<any>(
-      "The consumption lines in this window",
-      () =>
-        client
-          .from("wine_consumption_log")
-          .select(
-            "id, inventory_id, consumption_type, quantity, volume_ml, created_at, restaurant_inventory(master_wine_id, bottle_size_ml)",
-            { count: "exact" },
-          )
-          .eq("restaurant_id", restaurantId)
-          .gte("created_at", since),
+    // One shared read per (house, window): see consumption-read-shared.ts.
+    const data = await readConsumptionRows(
+      this.dbService.getClient(),
+      restaurantId,
+      sinceDays,
     );
     // `quantity` counts servings in the line's own mode (ADR 0011), so the
     // demand figure `qty` is BOTTLES (ADR 0297): null when the line carries no
