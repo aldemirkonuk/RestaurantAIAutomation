@@ -47,7 +47,7 @@ import { useListTax } from './recipe/useListTax';
 import type { ListTax } from './recipe/listTax';
 import { useCanEditRecipe, useDrinkFigures, useHouseMoney, useMenuPrices } from './recipe/useRecipe';
 import { AllergenCell, AllergenCheck, keptFor } from './recipe/ListAllergens';
-import { CostWaits, NoRecipeYet } from './recipe/ListCostWaits';
+import { CostWaits, NoCostYet, NoRecipeYet, costNotKnown } from './recipe/ListCostWaits';
 import { MENU_PRICES_UNREAD, MenuPriceCell } from './recipe/MenuPriceCell';
 import UseMenuPrice from './recipe/UseMenuPrice';
 import { useHousePercent, type SayPercent } from './recipe/useHousePercent';
@@ -236,6 +236,7 @@ export default function CocktailRegister({
   const [query, setQuery] = useState('');
   const [allergen, setAllergen] = useState('');
   const [onlyBare, setOnlyBare] = useState(false);
+  const [onlyUncosted, setOnlyUncosted] = useState(false);
 
   // A link to a drink this house's list does not hold is said, not ignored.
   const linkedRow = openParam ? (data?.rows ?? []).find((c) => c.id === openParam) ?? null : null;
@@ -250,7 +251,21 @@ export default function CocktailRegister({
   const byAllergen = searched.filter((c) => keptFor(figures.byId?.get(c.id)?.allergens, allergen));
   // Which drinks have no recipe: known only once the figures are read.
   const bareIds = figures.byId ? (data?.rows ?? []).filter((c) => !figures.byId?.get(c.id)?.hasRecipe).map((c) => c.id) : [];
-  const rows = seesCost && onlyBare ? byAllergen.filter((c) => bareIds.includes(c.id)) : byAllergen;
+  // Drinks with a recipe whose cost is not known (a line has no price). Said only once the figures are read.
+  const uncostedIds =
+    figures.byId && !figures.costsUnread
+      ? (data?.rows ?? []).filter((c) => {
+          const f = figures.byId?.get(c.id);
+          return Boolean(f?.hasRecipe) && costNotKnown(f?.cost);
+        }).map((c) => c.id)
+      : [];
+  const rows = !seesCost
+    ? byAllergen
+    : onlyBare
+      ? byAllergen.filter((c) => bareIds.includes(c.id))
+      : onlyUncosted
+        ? byAllergen.filter((c) => uncostedIds.includes(c.id))
+        : byAllergen;
   const openShown = Boolean(openId && rows.some((x) => x.id === openId));
   // A drink a link named opens only once the table under it has laid out: the
   // stand first draws closed, then (after a forced style flush, so the change is
@@ -500,7 +515,10 @@ export default function CocktailRegister({
           {data.rows.length > 0 ? (
             <>
               {seesCost ? (
-                <NoRecipeYet bare={bareIds.length} of={data.rows.length} noun="drinks" only={onlyBare} onOnly={setOnlyBare} />
+                <NoRecipeYet bare={bareIds.length} of={data.rows.length} noun="drinks" only={onlyBare} onOnly={(v) => { setOnlyBare(v); if (v) setOnlyUncosted(false); }} />
+              ) : null}
+              {seesCost ? (
+                <NoCostYet unknown={uncostedIds.length} of={data.rows.length} noun="drinks" only={onlyUncosted} onOnly={(v) => { setOnlyUncosted(v); if (v) setOnlyBare(false); }} />
               ) : null}
               <AllergenCheck value={allergen} onChange={setAllergen} hidden={searched.length - byAllergen.length} noun="drinks" />
             </>
