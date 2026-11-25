@@ -275,6 +275,8 @@ const PENDING_APPROVAL_STATUSES = new Set<string>([
  * judged over a different one would make that number a different question.
  */
 const APPROVAL_GATE_WINDOW_DAYS = 365;
+/** How many pending orders have their rule facts read at once (perf p2 s1). */
+const PENDING_FACTS_CONCURRENCY = 8;
 
 /**
  * The facts handed to `decideApproval` when the house has no rule switched on:
@@ -4715,17 +4717,17 @@ export class ProcurementService {
       final_price: string | number | null;
     },
   ): Promise<{ test: OrderUnderTest; priceUnread: boolean }> {
-    const isFirstOrderToVendor = await this.isFirstOrderToVendor(
-      restaurantId,
-      orderId,
-      row.provider_id,
-    );
-    const premium = await this.readPricePremium(
-      restaurantId,
-      orderId,
-      row.inventory_id,
-      toFiniteNumber(row.final_price),
-    );
+    // Two independent reads, each of which answers `null`/`unread` rather than
+    // throwing, so they run together: one round trip of wait, not two.
+    const [isFirstOrderToVendor, premium] = await Promise.all([
+      this.isFirstOrderToVendor(restaurantId, orderId, row.provider_id),
+      this.readPricePremium(
+        restaurantId,
+        orderId,
+        row.inventory_id,
+        toFiniteNumber(row.final_price),
+      ),
+    ]);
     return {
       test: {
         total: toFiniteNumber(row.total_cost),
@@ -7185,10 +7187,25 @@ export class ProcurementService {
     // With no rule switched on there is nothing for the facts to decide, so
     // the per-order reads are skipped; `decideApproval` fires nothing either way.
     const anyRuleOn = Boolean(policy?.some((p) => p.enabled));
-    for (const row of rows) {
-      const facts = anyRuleOn
-        ? await this.orderUnderTest(restaurantId, row.id, row)
-        : { test: NO_RULE_FACTS, priceUnread: false };
+    // The per-order facts are independent reads, so they are taken a few at a
+    // time (bounded, so a long queue cannot open an unbounded burst) and the
+    // rows are then built in their read order.
+    const factsByRow: Array<{ test: OrderUnderTest; priceUnread: boolean }> =
+      [];
+    for (let i = 0; i < rows.length; i += PENDING_FACTS_CONCURRENCY) {
+      const wave = rows.slice(i, i + PENDING_FACTS_CONCURRENCY);
+      factsByRow.push(
+        ...(await Promise.all(
+          wave.map((row) =>
+            anyRuleOn
+              ? this.orderUnderTest(restaurantId, row.id, row)
+              : { test: NO_RULE_FACTS, priceUnread: false },
+          ),
+        )),
+      );
+    }
+    for (const [index, row] of rows.entries()) {
+      const facts = factsByRow[index];
       const inventory = Array.isArray(row.inventory)
         ? row.inventory[0]
         : row.inventory;
