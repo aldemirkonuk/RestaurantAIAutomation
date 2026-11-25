@@ -145,6 +145,26 @@ const INVENTORY_SELECT =
 
 const ROLLUP_SELECT = "inventory_id, live_qty, wac, has_invoice_cost, wac_qty";
 
+/** PostgREST answers at most this many rows to one read; past it the rest are dropped without a word. */
+const READ_PAGE = 1000;
+
+/**
+ * Every row of one read, a page at a time in a fixed order. A failed page
+ * is the failure of the whole read (ADR 0020): half a house is never advice.
+ */
+async function readEvery(
+  page: (from: number, to: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+): Promise<{ data: Array<Record<string, unknown>>; error: { message: string } | null }> {
+  const rows: Array<Record<string, unknown>> = [];
+  for (let from = 0; ; from += READ_PAGE) {
+    const r = await page(from, from + READ_PAGE - 1);
+    if (r.error) return { data: [], error: r.error };
+    const got = (r.data ?? []) as Array<Record<string, unknown>>;
+    rows.push(...got);
+    if (got.length < READ_PAGE) return { data: rows, error: null };
+  }
+}
+
 function n(v: unknown): number | null {
   if (v === null || v === undefined) return null;
   const x = typeof v === "number" ? v : Number(v);
@@ -174,12 +194,23 @@ export class MarginAdviceService {
     const client = this.databaseService.client;
     const [targets, inv, rollup, lockRead] = await Promise.all([
       readHouseTargetMargin(client, restaurantId),
-      client
-        .from("restaurant_inventory")
-        .select(INVENTORY_SELECT)
-        .eq("restaurant_id", restaurantId)
-        .eq("is_active", true),
-      client.from("inventory_lot_rollup").select(ROLLUP_SELECT).eq("restaurant_id", restaurantId),
+      readEvery((a, b) =>
+        client
+          .from("restaurant_inventory")
+          .select(INVENTORY_SELECT)
+          .eq("restaurant_id", restaurantId)
+          .eq("is_active", true)
+          .order("id", { ascending: true })
+          .range(a, b),
+      ),
+      readEvery((a, b) =>
+        client
+          .from("inventory_lot_rollup")
+          .select(ROLLUP_SELECT)
+          .eq("restaurant_id", restaurantId)
+          .order("inventory_id", { ascending: true })
+          .range(a, b),
+      ),
       readOpenLocks(client, restaurantId),
     ]);
     if (targets.error !== null) {
