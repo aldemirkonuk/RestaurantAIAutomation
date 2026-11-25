@@ -150,7 +150,7 @@ export class InventoryController {
   @ApiResponse({ status: 200, description: "Returns all inventory items" })
   async getRestaurantInventory(@Param("restaurantId") restaurantId: string) {
     try {
-      return await this.inventoryService.getRestaurantInventory(restaurantId);
+      return await this.inventoryService.listRestaurantInventory(restaurantId);
     } catch (error) {
       const msg =
         error?.message || String(error) || "Failed to fetch inventory";

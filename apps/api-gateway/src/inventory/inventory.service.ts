@@ -49,6 +49,52 @@ function roundOz(ml: number): number {
 // a different pour answer alike, so the reply never says which.
 const POUR_KEY_ALREADY_USED =
   "This request's key was already used, so nothing new was poured. Read the item again before pouring.";
+/**
+ * `restaurant_inventory` columns that no web, mobile or ui reader of the list
+ * touches (audited 2026-11-25 by name, snake and camel, across apps/web/src,
+ * apps/mobile and packages/ui/src). The list read drops them from each row: a
+ * 330-good house was 762 KB with every column on every row. The full row still
+ * reaches the single-item reads, the MCP reader and the server-side callers.
+ */
+export const INVENTORY_LIST_UNREAD_COLUMNS: readonly string[] = [
+  "alert_count",
+  "beverage_id",
+  "buffer_window_minutes",
+  "clover_item_id",
+  "current_volume_ml",
+  "custom_price",
+  "deleted_at",
+  "identity_provenance",
+  "in_transit_quantity",
+  "internal_sku",
+  "inventory_state",
+  "is_generic_bucket",
+  "is_optional_tracking",
+  "last_alert_level",
+  "last_delivery_date",
+  "last_manual_edit_at",
+  "last_manual_edit_by",
+  "last_purchase_price",
+  "manual_edit_reason",
+  "margin_percentage",
+  "markup_classification",
+  "menu_position",
+  "pos_sku",
+  "pour_size_confirmed_at",
+  "pour_size_confirmed_by",
+  "sales_velocity_30d",
+  "sales_velocity_7d",
+  "shelf_life_basis",
+  "shelf_life_days",
+  "shelf_life_days_set_at",
+  "shelf_life_days_set_by",
+  "sku_aliases",
+  "square_item_id",
+  "toast_menu_item_id",
+  "validation_max",
+  "velocity_weight",
+];
+
 @Injectable()
 export class InventoryService {
   private readonly logger = new Logger(InventoryService.name);
@@ -271,6 +317,20 @@ export class InventoryService {
       // read for this batch — not that this row has no analytics row.
       analyticsReadable: analytics.ok,
     }));
+  }
+
+  /**
+   * The list the Inventory page and the phone read. Same rows as
+   * `getRestaurantInventory`, minus the columns nothing on the list reads
+   * (INVENTORY_LIST_UNREAD_COLUMNS). The MCP reader keeps the full rows.
+   */
+  async listRestaurantInventory(restaurantId: string) {
+    const rows = await this.getRestaurantInventory(restaurantId);
+    return rows.map((row: Record<string, any>) => {
+      const out = { ...row };
+      for (const column of INVENTORY_LIST_UNREAD_COLUMNS) delete out[column];
+      return out;
+    });
   }
 
   /**

@@ -910,4 +910,149 @@ describe("InventoryService", () => {
       expect(mockRpc).not.toHaveBeenCalled();
     });
   });
+  describe("listRestaurantInventory — the list row carries only what the list reads", () => {
+    // Every restaurant_inventory column (baseline + later migrations).
+    const ALL_COLUMNS = [
+      "alert_count",
+      "beverage_id",
+      "bottle_size_ml",
+      "buffer_window_minutes",
+      "clover_item_id",
+      "created_at",
+      "current_volume_ml",
+      "custom_price",
+      "deleted_at",
+      "display_name",
+      "expected_delivery_date",
+      "expected_stock",
+      "glasses_per_bottle_override",
+      "id",
+      "identity_id",
+      "identity_provenance",
+      "in_transit_quantity",
+      "internal_sku",
+      "inventory_state",
+      "is_active",
+      "is_generic_bucket",
+      "is_optional_tracking",
+      "kind",
+      "last_alert_level",
+      "last_alerted_at",
+      "last_counted_at",
+      "last_delivery_date",
+      "last_manual_edit_at",
+      "last_manual_edit_by",
+      "last_purchase_price",
+      "last_sold_at",
+      "manual_edit_reason",
+      "margin_percentage",
+      "markup_classification",
+      "markup_ratio",
+      "master_wine_id",
+      "max_price",
+      "menu_position",
+      "menu_price_current",
+      "menu_price_glass",
+      "menu_section",
+      "negotiated_price",
+      "physical_stock",
+      "pos_sku",
+      "pour_size_confirmed_at",
+      "pour_size_confirmed_by",
+      "pour_size_ml",
+      "provider_id",
+      "restaurant_id",
+      "sale_type",
+      "sales_velocity_30d",
+      "sales_velocity_7d",
+      "shadow_stock",
+      "shelf_life_basis",
+      "shelf_life_days",
+      "shelf_life_days_set_at",
+      "shelf_life_days_set_by",
+      "sku",
+      "sku_aliases",
+      "square_item_id",
+      "stock_live",
+      "storage_location_id",
+      "target_price",
+      "threshold_max",
+      "threshold_min",
+      "times_ordered_count",
+      "toast_item_guid",
+      "toast_menu_item_id",
+      "total_revenue",
+      "unit_type",
+      "uom",
+      "updated_at",
+      "validation_max",
+      "velocity_weight",
+      "version",
+      "wine_name",
+    ];
+    // The audited set the list still carries: columns some web, mobile or ui
+    // reader touches. Adding a column here is the act of auditing a new reader.
+    const READ_COLUMNS = [
+      "bottle_size_ml",
+      "created_at",
+      "display_name",
+      "expected_delivery_date",
+      "expected_stock",
+      "glasses_per_bottle_override",
+      "id",
+      "identity_id",
+      "is_active",
+      "kind",
+      "last_alerted_at",
+      "last_counted_at",
+      "last_sold_at",
+      "markup_ratio",
+      "master_wine_id",
+      "max_price",
+      "menu_price_current",
+      "menu_price_glass",
+      "menu_section",
+      "negotiated_price",
+      "physical_stock",
+      "pour_size_ml",
+      "provider_id",
+      "restaurant_id",
+      "sale_type",
+      "shadow_stock",
+      "sku",
+      "stock_live",
+      "storage_location_id",
+      "target_price",
+      "threshold_max",
+      "threshold_min",
+      "times_ordered_count",
+      "toast_item_guid",
+      "total_revenue",
+      "unit_type",
+      "uom",
+      "updated_at",
+      "version",
+      "wine_name",
+    ];
+
+    const fullRow = () =>
+      Object.fromEntries(ALL_COLUMNS.map((c) => [c, `v-${c}`]));
+
+    it("drops the unread columns and keeps every read one", async () => {
+      mockDatabaseService.getRestaurantInventory.mockResolvedValueOnce([
+        { ...fullRow(), master_wine_library: null },
+      ]);
+      const rows = await service.listRestaurantInventory("rest-1");
+      const kept = ALL_COLUMNS.filter((c) => c in rows[0]).sort();
+      expect(kept).toEqual([...READ_COLUMNS].sort());
+    });
+
+    it("the full reader still carries every column (MCP and server callers)", async () => {
+      mockDatabaseService.getRestaurantInventory.mockResolvedValueOnce([
+        { ...fullRow(), master_wine_library: null },
+      ]);
+      const rows = await service.getRestaurantInventory("rest-1");
+      for (const c of ALL_COLUMNS) expect(rows[0]).toHaveProperty(c);
+    });
+  });
 });
