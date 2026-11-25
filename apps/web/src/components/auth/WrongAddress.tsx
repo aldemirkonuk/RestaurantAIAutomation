@@ -37,7 +37,13 @@ export function WrongAddress({
 
   if (!open) {
     return (
-      <button type="button" className="mdv-link" onClick={() => setOpen(true)}>
+      <button
+        type="button"
+        className="mdv-link"
+        // A text link is 22 px tall; this is a thumb target (r106).
+        style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center' }}
+        onClick={() => setOpen(true)}
+      >
         Wrong address? Change it
       </button>
     )

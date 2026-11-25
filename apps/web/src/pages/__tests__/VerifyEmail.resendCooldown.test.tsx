@@ -92,4 +92,28 @@ describe('VerifyEmail resend cooldown', () => {
   it('keeps the label width fixed with tabular numerals', () => {
     expect(resendButton().style.fontVariantNumeric).toBe('tabular-nums')
   })
+
+  it('a resend the mailer did not send is answered with the time of the try, and the button stays usable', async () => {
+    h.post.mockResolvedValue({ data: { success: true, sent: false, verificationMail: 'not_sent' } })
+    await pressResend()
+    const tried = screen.getByTestId('verify-resend-tried')
+    const first = tried.textContent
+    expect(tried).toHaveTextContent(/^Tried again at .+\. Still not sent\.$/)
+    expect(resendButton()).toBeEnabled()
+    await tick(2)
+    await pressResend()
+    expect(h.post).toHaveBeenCalledTimes(2)
+    expect(screen.getByTestId('verify-resend-tried').textContent).not.toBe(first)
+  })
+
+  it('a send that did leave starts the wait and shows no "still not sent"', async () => {
+    h.post.mockResolvedValueOnce({ data: { success: true, sent: false, verificationMail: 'not_sent' } })
+    await pressResend()
+    expect(screen.getByTestId('verify-resend-tried')).toBeInTheDocument()
+    await tick(1)
+    h.post.mockResolvedValueOnce(SENT)
+    await pressResend()
+    expect(screen.queryByTestId('verify-resend-tried')).toBeNull()
+    expect(resendButton()).toBeDisabled()
+  })
 })

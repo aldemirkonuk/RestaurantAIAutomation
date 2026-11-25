@@ -149,7 +149,9 @@ describe("the sign-up's mail outcome", () => {
     await screen.findByRole('alert')
     expect(screen.getAllByRole('alert')).toHaveLength(1)
     expect(screen.queryByText(/may still arrive/)).not.toBeInTheDocument()
-    expect(notSlot(screen.queryAllByRole('status'))).toHaveLength(0)
+    expect(notSlot(screen.queryAllByRole('status')).map((e) => e.textContent)).toEqual([
+      expect.stringMatching(/^Tried again at .+ Still not sent\.$/),
+    ])
     expect(
       screen.queryByText(/Open the verification link in your inbox/),
     ).not.toBeInTheDocument()
