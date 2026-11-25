@@ -89,6 +89,7 @@ import {
   useMailThreads,
 } from './useMailData';
 import { useMailSetup } from './useMailSetup';
+import { RetryRead, useReadAgain } from './MailRetry';
 
 const SR_ONLY = { position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' } as const;
 const QUIET = { fontSize: 11.5, color: 'var(--ink-4, #665D50)' } as const;
@@ -339,14 +340,17 @@ function PersonThreads({
   const pages = q.data?.pages ?? [];
   const person = pages[0]?.person ?? null;
   const threads = pages.flatMap((p) => p.threads);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const again = useReadAgain(q, headingRef);
   return (
     <section aria-label="Threads" className="grid gap-3" style={{ fontFamily: SANS }}>
       <button type="button" onClick={onBack} style={{ ...LINK_BUTTON, justifySelf: 'start' }}>
         ← Everyone
       </button>
-      {q.isError && !q.data ? (
+      {again.failed ? (
         <p role="alert" data-testid="threads-unread" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
-          These threads could not be read ({failedReadWords(q.error)}). That does not mean there are none.
+          These threads could not be read ({failedReadWords(again.error)}). That does not mean there are none.{' '}
+          <RetryRead testId="threads-read-again" busy={again.busy} onClick={again.onPress} onRetry={() => void q.refetch()} />
         </p>
       ) : !q.data ? (
         <p style={{ margin: 0, ...QUIET }}>Reading the threads…</p>
@@ -356,7 +360,7 @@ function PersonThreads({
         </p>
       ) : (
         <>
-          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--ink-1, #211C16)', overflowWrap: 'anywhere' }}>
+          <h2 ref={headingRef} tabIndex={-1} style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--ink-1, #211C16)', overflowWrap: 'anywhere', outline: 'none' }}>
             {person.name ?? 'A vendor with no name on file'} <span style={QUIET}>{KIND_WORD[mailKindOf(person)]}</span>
           </h2>
           <ul style={{ listStyle: 'none', margin: 0, padding: 0, borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
@@ -466,16 +470,19 @@ function People({
   useEffect(() => {
     if (settled) rememberRowCount(house, firstPageCount);
   }, [settled, house, firstPageCount]);
+  const listRef = useRef<HTMLElement>(null);
+  const again = useReadAgain(q, listRef);
   return (
-    <section aria-label="People" className="grid gap-2" style={{ fontFamily: SANS }}>
+    <section ref={listRef} tabIndex={-1} aria-label="People" className="grid gap-2" style={{ fontFamily: SANS, outline: 'none' }}>
       <MailMotionStyles />
       <p data-testid="stored-kinds" style={{ ...QUIET, margin: 0 }}>
         {storedKindsLine(storedKinds)}
       </p>
-      {q.isError && !q.data ? (
+      {again.failed ? (
         <p role="alert" data-testid="people-unread" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
-          The people this house has mail with could not be read ({failedReadWords(q.error)}). That does not mean there
-          are none.
+          The people this house has mail with could not be read ({failedReadWords(again.error)}). That does not mean there
+          are none.{' '}
+          <RetryRead testId="people-read-again" busy={again.busy} onClick={again.onPress} onRetry={() => void q.refetch()} />
         </p>
       ) : !q.data ? (
         <PeoplePlaceholder rows={readLastRowCount(house)} />
