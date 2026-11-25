@@ -805,7 +805,7 @@ describe("MenusService.reviewMenuItem — tenant isolation and the house price (
       newValue: "1.250",
     } as any);
     await expect(write).rejects.toBeInstanceOf(BadRequestException);
-    await expect(write).rejects.toThrow(/two ways/);
+    await expect(write).rejects.toThrow(/could be 1250 or 1\.25/);
     expect(tables.menu_items[0].bottle_price).toBe(60);
     expect(tables.menu_items[0].status).toBe("approved");
     expect(calls).toHaveLength(0);
