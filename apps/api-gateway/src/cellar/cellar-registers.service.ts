@@ -21,6 +21,11 @@ import {
 } from "./cellar-registers";
 import type { SetCellarRegistersDto } from "./dto/cellar-registers.dto";
 
+/** The `beverage_kind` values that map to a register; the database counts each. */
+const LIBRARY_KINDS = ["wine", "beer", "spirit", "cocktail", "non_alcoholic"] as const;
+/** Under PostgREST's max_rows (supabase/config.toml), so a page is never clipped. */
+const BEVERAGE_PAGE = 1000;
+
 /**
  * Which registers a house carries — read, inferred, and written.
  *
@@ -573,18 +578,48 @@ export class CellarRegistersService {
     unmapped: Record<string, number>;
   }> {
     const client = this.dbService.getClient();
-    const [library, beverages] = await Promise.all([
-      client.from("master_wine_library").select("beverage_kind"),
-      client.from("beverages").select("beverage_type").is("superseded_by", null).is("deleted_at", null),
+    // The library is the large one (a global catalogue), so the database counts
+    // it: one head count per kind the registers know, plus the total. No row
+    // crosses the wire, and PostgREST's max_rows cannot clip a count.
+    const kinds = LIBRARY_KINDS;
+    const [libraryTotal, ...libraryKinds] = await Promise.all([
+      client.from("master_wine_library").select("beverage_kind", { count: "exact", head: true }),
+      ...kinds.map((k) =>
+        client
+          .from("master_wine_library")
+          .select("beverage_kind", { count: "exact", head: true })
+          .eq("beverage_kind", k),
+      ),
     ]);
+    // `public.beverages` has no CHECK on its type, so the unmapped ones are
+    // reported by name and must be read; the column is one short string and is
+    // read in pages so a table past max_rows is never silently clipped.
+    const beverageRows: { beverage_type: string | null }[] = [];
+    let beverageError: { message: string } | null = null;
+    for (let from = 0; ; from += BEVERAGE_PAGE) {
+      const page = await client
+        .from("beverages")
+        .select("beverage_type")
+        .is("superseded_by", null)
+        .is("deleted_at", null)
+        .range(from, from + BEVERAGE_PAGE - 1);
+      if (page.error) {
+        beverageError = page.error;
+        break;
+      }
+      const got = (page.data ?? []) as { beverage_type: string | null }[];
+      beverageRows.push(...got);
+      if (got.length < BEVERAGE_PAGE) break;
+    }
 
-    if (library.error || beverages.error) {
+    const libraryError = [libraryTotal, ...libraryKinds].find((r) => r.error)?.error ?? null;
+    if (libraryError || beverageError) {
       return {
         status: {
           readable: false,
           reason:
-            library.error?.message ??
-            beverages.error?.message ??
+            libraryError?.message ??
+            beverageError?.message ??
             "unknown catalogue read failure",
           rows: null,
         },
@@ -596,11 +631,12 @@ export class CellarRegistersService {
     const counts = new Map<RegisterId, number>();
     const unmapped: Record<string, number> = {};
 
-    for (const row of (library.data ?? []) as { beverage_kind: string | null }[]) {
-      const id = registerForKind(row.beverage_kind);
-      if (id) counts.set(id, (counts.get(id) ?? 0) + 1);
-    }
-    for (const row of (beverages.data ?? []) as { beverage_type: string | null }[]) {
+    kinds.forEach((k, i) => {
+      const id = registerForKind(k);
+      const n = libraryKinds[i].count ?? 0;
+      if (id && n > 0) counts.set(id, (counts.get(id) ?? 0) + n);
+    });
+    for (const row of beverageRows) {
       const ids = registersForBeverageType(row.beverage_type);
       if (ids.length === 0) {
         const key = row.beverage_type ?? "(null)";
@@ -614,7 +650,7 @@ export class CellarRegistersService {
       status: {
         readable: true,
         reason: null,
-        rows: (library.data ?? []).length + (beverages.data ?? []).length,
+        rows: (libraryTotal.count ?? 0) + beverageRows.length,
       },
       counts,
       unmapped,
