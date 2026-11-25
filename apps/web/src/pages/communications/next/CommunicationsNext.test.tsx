@@ -983,7 +983,7 @@ describe('the outline and the title’s ink (COMMS-W36)', () => {
     expect(screen.getByRole('heading', { level: 3, name: 'The house has written · 2 waiting' }).style.lineHeight).toBe('2rem');
     expect(screen.queryByRole('heading', { level: 2, name: /The house has written/ })).toBeNull();
     const tabs = screen.getByRole('navigation', { name: 'Mail and letters' });
-    expect(within(tabs).getAllByRole('button').map((b) => b.textContent)).toEqual(['Mail · —', 'Letters']);
+    expect(within(tabs).getAllByRole('tab').map((b) => b.textContent)).toEqual(['Mail · —', 'Letters']);
   });
 });
 
@@ -1057,7 +1057,7 @@ describe('Mail and Letters', () => {
         </QueryClientProvider>
       </MemoryRouter>,
     );
-  const tabs = () => within(screen.getByRole('navigation', { name: 'Mail and letters' })).getAllByRole('button');
+  const tabs = () => within(screen.getByRole('navigation', { name: 'Mail and letters' })).getAllByRole('tab');
   beforeEach(() => {
     mockData.current = { ...base };
     mockDrafts.current = { drafts: [], failed: false, error: null, refetch: () => {} };
@@ -1066,7 +1066,7 @@ describe('Mail and Letters', () => {
 
   it('opens on Letters, with the one line that points to Mail where the book was', () => {
     at('/communications');
-    expect(tabs()[1]).toHaveAttribute('aria-current', 'page');
+    expect(tabs()[1]).toHaveAttribute('aria-selected', 'true');
     expect(screen.queryByTestId('mail-tab-stub')).toBeNull();
     expect(screen.getByRole('region', { name: 'Every letter' })).toHaveTextContent(
       'Every letter in and out, by vendor and by thread, is under Mail.',
@@ -1079,10 +1079,33 @@ describe('Mail and Letters', () => {
   it.each([['?tab=mail'], ['?with=vendor%3Ap1'], ['?thread=gm%3Aabc'], ['?setup=1'], ['?senders=open']])('%s opens on Mail', (q) => {
     at(`/communications${q}`);
     expect(screen.getByTestId('mail-tab-stub')).toBeInTheDocument();
-    expect(tabs()[0]).toHaveAttribute('aria-current', 'page');
+    expect(tabs()[0]).toHaveAttribute('aria-selected', 'true');
     // Letters' own figures and lists stand with Letters.
     expect(screen.queryByText('Replies · 30 days')).toBeNull();
     expect(screen.queryByRole('region', { name: 'To send' })).toBeNull();
+  });
+
+  // r107 mail-gap g3: the two places are a tablist; the arrows move and select as a click does.
+  it('is a tablist with one Tab stop; ArrowRight/ArrowLeft/Home/End switch tab and the address, like a click', () => {
+    at('/communications?tab=mail');
+    expect(tabs().map((t) => t.getAttribute('tabindex'))).toEqual(['0', '-1']);
+    expect(tabs().map((t) => t.getAttribute('aria-selected'))).toEqual(['true', 'false']);
+    const list = screen.getByRole('tablist', { name: 'Mail and letters' });
+    tabs()[0].focus();
+    fireEvent.keyDown(tabs()[0], { key: 'ArrowRight' });
+    expect(tabs()[1]).toHaveAttribute('aria-selected', 'true');
+    expect(tabs().map((t) => t.getAttribute('tabindex'))).toEqual(['-1', '0']);
+    expect(document.activeElement).toBe(tabs()[1]);
+    expect(screen.getByTestId('where')).not.toHaveTextContent('tab=mail');
+    fireEvent.keyDown(list, { key: 'ArrowLeft' });
+    expect(tabs()[0]).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('where')).toHaveTextContent('/communications?tab=mail');
+    expect(document.activeElement).toBe(tabs()[0]);
+    fireEvent.keyDown(list, { key: 'End' });
+    expect(tabs()[1]).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(list, { key: 'Home' });
+    expect(tabs()[0]).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', tabs()[0].id);
   });
 
   // Spec (h): the counter's and the credit's links still land where they did.
@@ -1090,7 +1113,7 @@ describe('Mail and Letters', () => {
     mockData.current = { ...base, drafts: [waiting] };
     at('/communications?reply=o1');
     expect(screen.queryByTestId('mail-tab-stub')).toBeNull();
-    expect(tabs()[1]).toHaveAttribute('aria-current', 'page');
+    expect(tabs()[1]).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByText("The house's reply, drafted")).toBeInTheDocument();
   });
 

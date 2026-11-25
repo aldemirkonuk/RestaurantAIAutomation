@@ -90,6 +90,7 @@ import {
 } from './useMailData';
 import { useMailSetup } from './useMailSetup';
 import { RetryRead, useReadAgain } from './MailRetry';
+import { hasModifier, inOverlay, isTypingTarget, listMove } from './mail-keys';
 
 const SR_ONLY = { position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' } as const;
 const QUIET = { fontSize: 11.5, color: 'var(--ink-4, #665D50)' } as const;
@@ -254,11 +255,14 @@ function PersonRow({
   on,
   onOpen,
   enterPlace,
+  tabStop = true,
 }: {
   p: MailPersonRow;
   on: WaitingOn;
   onOpen: () => void;
   enterPlace?: number;
+  /** The one row in the Tab order; the arrows reach the rest (roving tabindex). */
+  tabStop?: boolean;
 }) {
   return (
     <li
@@ -270,6 +274,7 @@ function PersonRow({
         type="button"
         data-testid="mail-person"
         data-mail-key={p.key}
+        tabIndex={tabStop ? 0 : -1}
         onClick={onOpen}
         className="cm-row grid w-full gap-0.5 px-1 py-2.5 text-left"
         style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: SANS, minHeight: PERSON_ROW_MIN }}
@@ -478,6 +483,9 @@ function People({
   useEffect(() => {
     if (settled) rememberRowCount(house, firstPageCount);
   }, [settled, house, firstPageCount]);
+  // Roving tabindex: the row last focused (else the first) is the list's one Tab stop.
+  const [roving, setRoving] = useState<string | null>(null);
+  const tabStopKey = people.some((p) => p.key === roving) ? roving : (people[0]?.key ?? null);
   const listRef = useRef<HTMLElement>(null);
   const again = useReadAgain(q, listRef);
   return (
@@ -526,9 +534,28 @@ function People({
           key={shown.current}
           className="mail-fade-in"
           style={{ listStyle: 'none', margin: 0, padding: 0, borderTop: '1px solid var(--paper-2, #EAE4D8)' }}
+          onFocus={(e) => {
+            const k = (e.target as HTMLElement).getAttribute?.('data-mail-key');
+            if (k) setRoving(k);
+          }}
+          onKeyDown={(e) => {
+            if (hasModifier(e) || e.shiftKey) return;
+            const rows = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[data-testid="mail-person"]'));
+            const to = listMove(e.key, rows.indexOf(e.target as HTMLElement), rows.length);
+            if (to === null || !rows.includes(e.target as HTMLElement)) return;
+            e.preventDefault();
+            rows[to].focus();
+          }}
         >
           {people.map((p) => (
-            <PersonRow key={p.key} p={p} on={on} onOpen={() => onOpenPerson(p.key)} enterPlace={entering.get(p.key)} />
+            <PersonRow
+              key={p.key}
+              p={p}
+              on={on}
+              onOpen={() => onOpenPerson(p.key)}
+              enterPlace={entering.get(p.key)}
+              tabStop={p.key === tabStopKey}
+            />
           ))}
         </ul>
       )}
@@ -738,6 +765,7 @@ export function MailTab({
     setSearch('');
   };
   const [sheet, setSheet] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
   const summaryQ = useMailSummary(true);
@@ -801,6 +829,25 @@ export function MailTab({
   // One name per view, so a view change keeps the place (g2): deeper = further from the list.
   const view = setup ? 'setup' : threadKey ? `thread:${threadKey}` : withKey ? `with:${withKey}` : 'list';
   const place = useViewPlace(view, setup || threadKey ? 2 : withKey ? 1 : 0);
+  // Keys that are the page's, not the reader's typing: `/` finds, Escape goes back (g3).
+  const keyAct = useRef<(e: KeyboardEvent) => void>(() => {});
+  keyAct.current = (e) => {
+    if (e.defaultPrevented || hasModifier(e) || isTypingTarget(e.target) || inOverlay(e.target) || sheet || setup) return;
+    if (e.key === '/' && view === 'list') {
+      if (!searchRef.current) return;
+      e.preventDefault();
+      searchRef.current.focus();
+    } else if (e.key === 'Escape' && view !== 'list') {
+      e.preventDefault();
+      if (threadKey) back({ thread: null });
+      else back({ with: null });
+    }
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => keyAct.current(e);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const tone = status.tone === 'warn' ? 'var(--warn, #96601A)' : status.tone === 'alarm' ? 'var(--alarm, #A33A2B)' : 'var(--ink-2, #4F473C)';
 
   return (
@@ -931,6 +978,7 @@ export function MailTab({
             <input
               type="search"
               data-testid="mail-search"
+              ref={searchRef}
               aria-label="Search mail"
               placeholder="Find a vendor, subject, order number or word"
               value={typed}

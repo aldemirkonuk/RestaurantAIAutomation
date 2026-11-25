@@ -55,6 +55,7 @@ import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
 import { MailTab } from './MailTab';
 import WhoIsWriting from './WhoIsWriting';
 import { mailTabLabel, type MailAnswer } from './mail-format';
+import { tabMove } from './mail-keys';
 import { useMailSummary } from './useMailData';
 
 function GlanceFigure({
@@ -386,13 +387,44 @@ export default function CommunicationsNext() {
           )}
         </header>
 
-        {/* Mail and Letters. A tab is a place in the address, not a toggle. */}
-        <nav aria-label="Mail and letters" data-tour="comms-tabs" className="mb-5 flex gap-1" style={{ fontFamily: SANS, borderBottom: '1px solid var(--paper-2, #EAE4D8)' }}>
+        {/* Mail and Letters. A tab is a place in the address, not a toggle.
+            A tablist: one Tab stop, Left/Right/Home/End move and select (as a
+            click does, so Back undoes it); the underline changes by a colour
+            step only, none under reduced motion (r107 mail-gap g3). */}
+        <style>{`
+          .comms-tab { transition: border-bottom-color 160ms ease-out, color 160ms ease-out }
+          @media (prefers-reduced-motion: reduce) { .comms-tab { transition: none } }
+        `}</style>
+        <nav
+          aria-label="Mail and letters"
+          data-tour="comms-tabs"
+          className="mb-5"
+          style={{ fontFamily: SANS, borderBottom: '1px solid var(--paper-2, #EAE4D8)' }}
+        >
+        <div
+          role="tablist"
+          aria-label="Mail and letters"
+          className="flex gap-1"
+          onKeyDown={(e) => {
+            if (e.metaKey || e.ctrlKey || e.altKey) return;
+            const order = ['mail', 'letters'] as const;
+            const to = tabMove(e.key, order.indexOf(tab), order.length);
+            if (to === null) return;
+            e.preventDefault();
+            showTab(order[to]);
+            document.getElementById(`comms-tab-${order[to]}`)?.focus();
+          }}
+        >
           {(['mail', 'letters'] as const).map((t) => (
             <button
               key={t}
+              id={`comms-tab-${t}`}
               type="button"
-              aria-current={tab === t ? 'page' : undefined}
+              role="tab"
+              className="comms-tab"
+              aria-selected={tab === t}
+              aria-controls="comms-panel"
+              tabIndex={tab === t ? 0 : -1}
               onClick={() => showTab(t)}
               style={{
                 fontSize: 13,
@@ -409,8 +441,10 @@ export default function CommunicationsNext() {
               {t === 'mail' ? mailTabLabel(mailSummary.data ?? null) : 'Letters'}
             </button>
           ))}
+        </div>
         </nav>
 
+        <div role="tabpanel" id="comms-panel" aria-labelledby={`comms-tab-${tab}`}>
         {tab === 'mail' ? (
           <MailTab
             draftedOrderIds={draftedOrderIds}
@@ -798,6 +832,7 @@ export default function CommunicationsNext() {
             the page still mounts it, as MailTab's whoIsWriting. */}
         </>
         )}
+        </div>
       </div>
 
       <ComposeSheet
