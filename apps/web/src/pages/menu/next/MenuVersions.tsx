@@ -324,6 +324,13 @@ function VersionRow({ v, canManage, lastUsedId, planning, onPlan }: {
   );
 }
 
+/**
+ * The room the standing line and the table take once the read lands (375 px:
+ * the section grew 324 to 383). Held while reading so the sections under it do
+ * not move; no animation.
+ */
+const VERSIONS_READING_HOLD = 84;
+
 export function MenuVersions({ canManage }: { canManage: boolean }) {
   const queryClient = useQueryClient();
   const [said, setSaid] = useState<string | null>(null);
@@ -350,7 +357,12 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
         </p>
       ) : null}
       {q.isLoading ? (
-        <p className="cl-said" role="status" style={{ marginTop: 12 }}>
+        <p
+          className="cl-said"
+          role="status"
+          style={{ marginTop: 12, minHeight: VERSIONS_READING_HOLD }}
+          data-testid="menu-versions-reading"
+        >
           Reading the menus this house has kept…
         </p>
       ) : q.isError ? (

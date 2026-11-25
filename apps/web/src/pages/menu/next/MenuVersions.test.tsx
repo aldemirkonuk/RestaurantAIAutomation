@@ -278,3 +278,11 @@ describe('MenuVersions', () => {
     expect(await screen.findByTestId('menu-read-error')).toHaveTextContent(/the menu read is waiting: nothing was sent/);
   });
 });
+
+describe('MenuVersions holds its room while reading (p2 s4)', () => {
+  it('the reading line holds the height the standing line and table take', () => {
+    mockList.mockReturnValue(new Promise(() => {}));
+    mount(true);
+    expect(screen.getByTestId('menu-versions-reading').style.minHeight).toBe('84px');
+  });
+});
