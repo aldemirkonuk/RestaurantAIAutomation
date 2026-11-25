@@ -35,6 +35,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
+import { recipesApi } from '../../../services/api/recipes';
+import { copyFields, copyRecipeBody, type CopySource } from './recipe/copyDrink';
 import { useInventory } from '../../../hooks/queries/useInventoryQueries';
 import { useProviders } from '../../../hooks/queries/useProviderQueries';
 import { useWineSubscription } from '../../../contexts/RealtimeContext';
@@ -1069,7 +1071,32 @@ export function useCocktailWrites() {
     onSuccess: invalidate,
   });
 
-  return { create, amend, retire, setRecipe };
+  /**
+   * Copy a drink: read its recipe, make the new drink, write the recipe onto it.
+   * `recipe_failed`: the drink exists and its recipe write was refused (it is kept).
+   * `cannot`: a line cannot be carried, nothing was written.
+   */
+  const copy = useMutation({
+    mutationFn: async (src: CopySource): Promise<{ state: 'copied' | 'recipe_failed'; id: string } | { state: 'cannot'; id: null }> => {
+      const body = copyRecipeBody(await recipesApi.get(activeRestaurantId as string, src.id));
+      if (body === 'cannot') return { state: 'cannot', id: null };
+      const made = (await apiClient.post(`/cocktails/${activeRestaurantId}`, copyFields(src))).data as { id: string };
+      if (!body) return { state: 'copied', id: made.id };
+      try {
+        await recipesApi.save(activeRestaurantId as string, made.id, body);
+      } catch {
+        return { state: 'recipe_failed', id: made.id };
+      }
+      return { state: 'copied', id: made.id };
+    },
+    onSuccess: () => {
+      invalidate();
+      void queryClient.invalidateQueries({ queryKey: ['recipes', activeRestaurantId ?? null] });
+      void queryClient.invalidateQueries({ queryKey: ['cellar', 'cocktails', activeRestaurantId ?? null, 'figures'] });
+    },
+  });
+
+  return { create, amend, retire, setRecipe, copy };
 }
 
 /** One cocktail's recipe lines. Read only when the leaf for it is open. */

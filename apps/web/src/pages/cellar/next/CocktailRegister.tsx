@@ -29,7 +29,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { AlertTriangle, Check, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Check, Copy, Pencil, Plus, Trash2, X } from 'lucide-react';
 import {
   BOOK_LABEL,
   BOOK_ORDER,
@@ -39,6 +39,7 @@ import {
   type HouseBookId,
 } from './cellar-format';
 import RecipeSheet from './recipe/RecipeSheet';
+import { COPY_CANNOT_CARRY, COPY_RECIPE_FAILED, copyFields } from './recipe/copyDrink';
 import MenuDrinksOffer from './MenuDrinksOffer';
 import { readingRowCount } from './readingRows';
 import { PRICE_UNREAD, priceText, readPrice } from './recipe/price-text';
@@ -181,7 +182,7 @@ export default function CocktailRegister({
   registerLoading: boolean;
 }) {
   const { data, loading, error } = useCocktailRegister(true);
-  const { create, amend, retire } = useCocktailWrites();
+  const { create, amend, retire, copy } = useCocktailWrites();
   // The house's money, as the drink's own cards print it: the cellar's
   // `money()` wrote $ for every house, so a lira list read "$14.00" beside
   // cards that read "₺14.00" (r7 browser check, 2026-11-12).
@@ -306,6 +307,23 @@ export default function CocktailRegister({
       setSaid(
         `Nothing was written${e instanceof Error ? ` — ${e.message}` : ''}. The list is unchanged.`,
       );
+    }
+  };
+
+  // Copy: a new drink (own id) with the source's section, glass, method, garnish
+  // and recipe lines; the form then opens on the new drink so its name is edited.
+  const doCopy = async (c: (typeof rows)[number]) => {
+    const label = c.display_name ?? c.name;
+    try {
+      const out = await copy.mutateAsync(c);
+      if (out.state === 'cannot') return setSaid(COPY_CANNOT_CARRY);
+      if (out.state === 'recipe_failed') setSaid(COPY_RECIPE_FAILED);
+      else setSaid(`“${label}” was copied. Give the copy its name.`);
+      setEditId(out.id);
+      setDraft({ ...copyFields(c), priceText: '' });
+      setOpenId(out.id);
+    } catch (e) {
+      setSaid(`Nothing was copied${e instanceof Error ? ` — ${e.message}` : ''}. The list is unchanged.`);
     }
   };
 
@@ -619,6 +637,18 @@ export default function CocktailRegister({
                               <Pencil size={13} aria-hidden />
                               Amend
                             </button>
+                            {seesCost ? (
+                              <button
+                                type="button"
+                                className="cl-btn cl-focus"
+                                data-testid="cocktail-copy"
+                                disabled={copy?.isPending}
+                                onClick={() => void doCopy(c)}
+                              >
+                                <Copy size={13} aria-hidden />
+                                Copy
+                              </button>
+                            ) : null}
                             {/* Two-step, not a seal: the house ceremony is
                                 rationed to the one act that spends money. */}
                             <button
