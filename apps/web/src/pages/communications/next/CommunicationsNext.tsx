@@ -132,7 +132,28 @@ function GlanceFigure({
 }
 
 export default function CommunicationsNext() {
-  const data = useCommsNextData();
+  const [params, setParams] = useSearchParams();
+  const tabParam = params.get('tab');
+  // r107 mail-gap g4: a bare /communications opens Mail (the founder's goal: a Mail
+  // tab inside /communications), so the sidebar, the palette and a one-tap notice land
+  // where every conversation is. Only an address that names Letters opens Letters: the
+  // tab itself, or the drafted letter (`?draft=`) or the drafted reply (`?reply=`) that
+  // live there. A person, thread, setup or senders link is Mail whatever else it carries.
+  const mailLink = params.has('with') || params.has('thread') || params.has('setup') || params.has('senders');
+  const tab: 'mail' | 'letters' =
+    tabParam === 'letters'
+      ? 'letters'
+      : tabParam === 'mail' || mailLink
+        ? 'mail'
+        : params.has('draft') || params.has('reply')
+          ? 'letters'
+          : 'mail';
+  // r107 mail-gap g6: the book and the drafts are Letters' own reads. Mail's list needs
+  // neither, so a cold ?tab=mail asks for neither; a thread (its facts and its drafted
+  // reply), a person, a draft or a reply asks for them, once.
+  const data = useCommsNextData({
+    enabled: tab === 'letters' || params.has('thread') || params.has('with') || params.has('draft') || params.has('reply'),
+  });
   // Letters staff asked a manager to send (founder answer 3, 2026-09-21).
   const letterStanding = useLetterSenderStanding();
   const [compose, setCompose] = useState(false);
@@ -144,7 +165,6 @@ export default function CommunicationsNext() {
   // Drafts Mudavym wrote (ADR 0230). `?draft=<id>` is the credit claim's link
   // to its letter; it opens that draft once the drafts list has answered.
   const houseDrafts = useHouseDrafts();
-  const [params, setParams] = useSearchParams();
   const [draft, setDraft] = useState<HouseDraft | null>(null);
   // COMMS-W34: words a person left a sheet with stay on a stub where it was
   // opened — "new" for Write a letter, a drafted letter by its id, "t" for the
@@ -294,21 +314,6 @@ export default function CommunicationsNext() {
      `/communications` (r107 g4); `?tab=letters`, `?draft=` and `?reply=` open
      Letters. Switching tabs is a
      step Back can undo, so it pushes; opening inside Mail replaces. */
-  const tabParam = params.get('tab');
-  // r107 mail-gap g4: a bare /communications opens Mail (the founder's goal: a Mail
-  // tab inside /communications), so the sidebar, the palette and a one-tap notice land
-  // where every conversation is. Only an address that names Letters opens Letters: the
-  // tab itself, or the drafted letter (`?draft=`) or the drafted reply (`?reply=`) that
-  // live there. A person, thread, setup or senders link is Mail whatever else it carries.
-  const mailLink = params.has('with') || params.has('thread') || params.has('setup') || params.has('senders');
-  const tab: 'mail' | 'letters' =
-    tabParam === 'letters'
-      ? 'letters'
-      : tabParam === 'mail' || mailLink
-        ? 'mail'
-        : params.has('draft') || params.has('reply')
-          ? 'letters'
-          : 'mail';
   // The label's waiting count: read once on Letters, polled only on Mail.
   const mailSummary = useMailSummary(tab === 'mail');
   const showTab = (next: 'mail' | 'letters') => {

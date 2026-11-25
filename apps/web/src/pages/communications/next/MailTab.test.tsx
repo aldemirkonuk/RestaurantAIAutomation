@@ -191,8 +191,36 @@ describe('the list', () => {
     mount();
     await screen.findAllByTestId('mail-person');
     const people = screen.getByRole('region', { name: 'People' });
-    const who = screen.getByTestId('who-is-writing');
+    const who = await screen.findByTestId('who-is-writing');
     expect(people.compareDocumentPosition(who) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  // r107 mail-gap g6: its two reads wait for the people list, then an idle moment.
+  it('"Who is writing" is not mounted before the people list has answered, and is after', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    routes['/mail/people'] = () => gate.then(() => ({ people: [person(1)], next: null, storedKinds: ['vendor'] })) as never;
+    api.get.mockImplementation(async (url: string, cfg?: { params?: Record<string, string> }) => {
+      const h = routes[url];
+      if (!h) throw new Error(`unexpected GET ${url}`);
+      return { data: await h(cfg?.params ?? {}) };
+    });
+    mount();
+    await screen.findByTestId('mail-header');
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 300));
+    });
+    expect(screen.queryByTestId('who-is-writing')).toBeNull();
+    release();
+    await screen.findAllByTestId('mail-person');
+    expect(await screen.findByTestId('who-is-writing')).toBeInTheDocument();
+  });
+
+  it('"Who is writing" still mounts when the people list could not be read', async () => {
+    routes['/mail/people'] = fail503;
+    mount();
+    await screen.findByTestId('people-unread');
+    expect(await screen.findByTestId('who-is-writing')).toBeInTheDocument();
   });
 
   it.each([['with=vendor%3Ap1'], ['thread=gm%3Aabc'], ['setup=1']])('no "Who is writing" at ?%s', (q) => {
@@ -355,6 +383,7 @@ describe('the tour on the Mail tab', () => {
   it('the list draws three steps of its own', async () => {
     mount();
     await screen.findAllByTestId('mail-person');
+    await screen.findByTestId('who-is-writing');
     expect(drawn()).toEqual([
       '[data-tour="mail-status"]',
       'section[aria-label="People"]',

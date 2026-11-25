@@ -231,7 +231,7 @@ export async function issueConfirmDealChallenge(input: {
   return data?.challenge ?? null;
 }
 
-export function useActiveConversations() {
+export function useActiveConversations(options: { enabled?: boolean } = {}) {
   const { user, activeRestaurantId, isAuthenticated } = useAuth();
   // Prefer the runtime-updated activeRestaurantId over the JWT-origin user.restaurantId.
   // user.restaurantId becomes stale after a restaurant switch; activeRestaurantId always
@@ -243,7 +243,7 @@ export function useActiveConversations() {
       apiClient
         .get("/procurement/conversations/active")
         .then((r) => r.data as ActiveConversationDto[]),
-    enabled: !!restaurantId && isAuthenticated,
+    enabled: !!restaurantId && isAuthenticated && (options.enabled ?? true),
     staleTime: 15_000,
     refetchInterval: 30_000,
   });
