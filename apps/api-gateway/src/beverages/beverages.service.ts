@@ -338,7 +338,17 @@ export class BeveragesService {
 
     if (opts.search) q = q.ilike("name", `%${opts.search}%`);
 
-    const { data, error } = await q;
+    // The unattributed-reference count does not depend on the list, so both
+    // reads go out together. A list failure still throws first, as before.
+    const [{ data, error }, { count, error: refError }] = await Promise.all([
+      q,
+      this.dbService
+        .getClient()
+        .from("cocktails")
+        .select("id", { count: "exact", head: true })
+        .is("restaurant_id", null)
+        .is("deleted_at", null),
+    ]);
     if (error) {
       this.logger.error(`Failed to list cocktails: ${error.message}`);
       throw this.explain(error, "cocktails");
@@ -347,14 +357,7 @@ export class BeveragesService {
     // Unattributed reference rows, counted separately. A failure here leaves
     // the figure null; it must never fall back to 0, which would read as "there
     // is no reference data" when the truth is "we could not ask".
-    let referenceRows: number | null = null;
-    const { count, error: refError } = await this.dbService
-      .getClient()
-      .from("cocktails")
-      .select("id", { count: "exact", head: true })
-      .is("restaurant_id", null)
-      .is("deleted_at", null);
-    if (!refError) referenceRows = count ?? 0;
+    const referenceRows: number | null = refError ? null : (count ?? 0);
 
     const rows = data ?? [];
     return {

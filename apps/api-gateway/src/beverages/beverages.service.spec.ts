@@ -128,6 +128,64 @@ describe("BeveragesService.listCocktails", () => {
     expect(out.referenceRows).toBeNull();
     expect(out.count).toBe(0);
   });
+
+  it("asks for the reference count while the list is still in flight", async () => {
+    // Both reads are held open; the count must already be awaited when the
+    // list has not answered. Serial code would never touch the second `then`
+    // until the first resolved.
+    const started: string[] = [];
+    const releases: Array<() => void> = [];
+    const heldChain = (label: string, result: TableResult) => {
+      const self: Record<string, unknown> = {};
+      for (const m of ["select", "eq", "is", "ilike", "order", "limit"]) {
+        self[m] = jest.fn(() => self);
+      }
+      self.then = (resolve: (v: unknown) => unknown) => {
+        started.push(label);
+        return new Promise((go) => releases.push(() => go(undefined)))
+          .then(() => ({
+            data: result.data ?? null,
+            error: result.error ?? null,
+            count: result.count ?? null,
+          }))
+          .then(resolve);
+      };
+      return self;
+    };
+    let calls = 0;
+    const db = {
+      getClient: () => ({
+        from: () =>
+          calls++ === 0
+            ? heldChain("list", { data: [{ id: "c1", name: "Negroni" }] })
+            : heldChain("count", { count: 7 }),
+      }),
+    };
+    const moduleRef = await Test.createTestingModule({
+      providers: [BeveragesService, { provide: DatabaseService, useValue: db }],
+    }).compile();
+    const service = moduleRef.get(BeveragesService);
+
+    const pending = service.listCocktails(RID, { limit: 200 });
+    await new Promise((r) => setImmediate(r));
+    expect(started).toEqual(["list", "count"]);
+    releases.forEach((go) => go());
+    const out = await pending;
+    expect(out.count).toBe(1);
+    expect(out.referenceRows).toBe(7);
+  });
+
+  it("still throws the list's own failure, and not a half answer, when both reads fail", async () => {
+    const service = await serviceWith({
+      cocktails: [
+        { error: { code: "42P01", message: "does not exist" } },
+        { error: { message: "boom" } },
+      ],
+    });
+    await expect(service.listCocktails(RID, { limit: 200 })).rejects.toThrow(
+      /cocktails/,
+    );
+  });
 });
 
 /* ── the house's own record, and the one register a house can write ─────────
