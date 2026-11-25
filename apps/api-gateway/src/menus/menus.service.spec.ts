@@ -1758,6 +1758,45 @@ describe("MenusService — every menu read is kept as its own version", () => {
         expect(tables.restaurant_menus.find((m) => m.id === menuId)!.status).toBe("active");
       });
 
+      // menu-r107-2: #2117 finished a cut-off carry on "already_current" itself; the walk's merge
+      // took the gap's linesStillToCarry path instead and no spec said the batch writer still
+      // finishes it in ONE call. This one does, on the merged tree.
+      it("r107: a carry cut off after its first row is finished by choosing the menu again, in ONE batch call for the rest only", async () => {
+        const calls: RpcCall[] = [];
+        const tables: Record<string, Row[]> = base();
+        const apply = pricing(tables);
+        // The connection drops after the first row of the batch is written.
+        (tables as any).__batchWriter = (args: Row) => {
+          const e = (args.p_rows as Row[])[0];
+          apply("set_house_menu_price", { p_inventory_id: e.inventory_id, p_set_bottle: "bottle" in e, p_bottle_price: e.bottle, p_set_glass: false });
+          return { data: null, error: { message: "connection reset" } };
+        };
+        const { service, menuId } = await readMenu(tables, [
+          { name: "Barolo", bottle_price: 80 },
+          { name: "Etna", bottle_price: 82 },
+          { name: "Chablis", bottle_price: 90 },
+        ], calls);
+        const first = await service.makeCurrent("rest-1", menuId, "user-2", await fingerprintOf(service, menuId));
+        expect(first.priceSync).toEqual({ failed: 3 });
+        const held = (name: string) => tables.restaurant_inventory.find((i) => i.wine_name === name)?.menu_price_current ?? null;
+        expect([held("Barolo"), held("Etna"), held("Chablis")]).toEqual([80, null, null]);
+
+        delete (tables as any).__batchWriter;
+        calls.length = 0;
+        const again = await service.makeCurrent("rest-1", menuId, "user-2", await fingerprintOf(service, menuId));
+        const batches = calls.filter(([fn]) => fn === "set_house_menu_prices").map(([, a]) => a);
+        expect(again).toMatchObject({ outcome: "already_current", lines: 2, priceSync: { changed: 2 } });
+        expect(batches).toHaveLength(1);
+        expect((batches[0].p_rows as Row[]).map((r) => r.bottle).sort()).toEqual([82, 90]);
+        expect(batches[0].p_effective_from).toBe("2026-09-21T12:00:00Z");
+        expect([held("Barolo"), held("Etna"), held("Chablis")]).toEqual([80, 82, 90]);
+
+        // Finished: choosing again sends no batch at all.
+        calls.length = 0;
+        expect(await service.makeCurrent("rest-1", menuId, "user-2", await fingerprintOf(service, menuId))).toMatchObject({ lines: 0, priceSync: {} });
+        expect(calls.filter(([fn]) => fn === "set_house_menu_prices")).toHaveLength(0);
+      });
+
       it("two lines of one wine: the second sees the price the first just set, as the per-line read did", async () => {
         const tables: Record<string, Row[]> = base();
         const twice = {
