@@ -341,7 +341,7 @@ function PersonThreads({
   const pages = q.data?.pages ?? [];
   const person = pages[0]?.person ?? null;
   const threads = pages.flatMap((p) => p.threads);
-  const headingRef = useRef<HTMLHeadingElement>(null);
+  const headingRef = useRef<HTMLHeadingElement | null>(null);
   const again = useReadAgain(q, headingRef);
   const arrive = useArriveFocus();
   return (

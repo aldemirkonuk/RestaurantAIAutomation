@@ -225,7 +225,7 @@ export function MailThread({
   bookFacts?: ReadonlyMap<string, LetterFacts>;
 }) {
   const q = useMailThread(threadKey, withKey);
-  const headingRef = useRef<HTMLHeadingElement>(null);
+  const headingRef = useRef<HTMLHeadingElement | null>(null);
   const again = useReadAgain(q, headingRef);
   const arrive = useArriveFocus();
   const pages = q.data?.pages ?? [];
