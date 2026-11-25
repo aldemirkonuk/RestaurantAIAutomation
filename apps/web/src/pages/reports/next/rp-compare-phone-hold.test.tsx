@@ -28,7 +28,7 @@ import { CatPlot } from './rp-plot';
 import { COMPARE_ANSWER_PX } from './rp-fit';
 import { slotHeightPx } from './rp-sheet';
 import { daysBetween, tillAnswersCompare, till } from './rp-registers-trade';
-import type { AnalysisId, Cutting } from './rp-sheet';
+import type { AnalysisId } from './rp-sheet';
 import type { CatSeries } from './rp-view';
 
 const css = readFileSync(join(__dirname, 'reports-next.css'), 'utf8');
