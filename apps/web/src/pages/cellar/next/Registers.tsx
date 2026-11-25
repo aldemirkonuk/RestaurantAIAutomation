@@ -410,6 +410,13 @@ export default function Registers({ data }: { data: CellarData }) {
         ) : null}
       </section>
 
+      {/* Everything below the registers waits for the registers' readout. While
+          it is read the section above is a held frame of a guessed height, and
+          whatever sat under it was pushed down when the real cards arrived
+          (CLS 0.254 at 375, perf-p4-4: the tiles moved 762 -> 0, the footer
+          268 -> 0). Mounted after, they are new, not moved. No fade (ADR 0112). */}
+      {data.registersLoading ? null : (
+        <>
       <section style={{ marginTop: 26 }}>
         <h2 className="cl-sec">In the building tonight</h2>
         {settings.loading ? (
@@ -473,6 +480,8 @@ export default function Registers({ data }: { data: CellarData }) {
         carried={unread || unknown ? null : shown.filter((r) => r !== 'wines')}
         defaultOpen={parentView(unread ? null : registers).whole}
       />
+        </>
+      )}
     </>
   );
 }

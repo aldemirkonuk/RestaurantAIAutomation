@@ -1792,6 +1792,20 @@ describe('what this house’s book is called', () => {
     expect(screen.getByTestId('registers-grid')).toBeInTheDocument();
   });
 
+  it('mounts the lower sections only after the registers read settles (CLS)', () => {
+    mock.current = { ...base, registers: null, registersLoading: true };
+    draw();
+    expect(screen.queryByText('In the building tonight')).toBeNull();
+    expect(screen.queryByText(/Every figure here was read/)).toBeNull();
+  });
+
+  it('mounts the lower sections once the readout is in', () => {
+    mock.current = { ...base, registers: readout(), registersLoading: false };
+    draw();
+    expect(screen.getByText('In the building tonight')).toBeInTheDocument();
+    expect(screen.getByText(/Every figure here was read/)).toBeInTheDocument();
+  });
+
   it('draws no held frame once the readout is in', () => {
     mock.current = { ...base, registers: readout(), registersLoading: false };
     draw();
