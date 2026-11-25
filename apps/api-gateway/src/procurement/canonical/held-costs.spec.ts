@@ -85,7 +85,9 @@ describe("DeliveryStockService.heldCostsOfDocument", () => {
 
   it("scopes the document read to the asking house, and another house's id is a 404", async () => {
     const res = await service.heldCostsOfDocument(OTHER, DOC);
-    expect(eqs).toContainEqual(["procurement_documents", "restaurant_id", OTHER]);
+    // The FIRST filter on the document read is the house; later reads of the
+    // same table (the invoice heads) are not the guard.
+    expect(eqs.find(([t]) => t === "procurement_documents")).toEqual(["procurement_documents", "restaurant_id", OTHER]);
     // The double has no tenancy of its own: no row for that house = not found.
     db.answers.procurement_documents = { data: [], error: null };
     const foreign = await service.heldCostsOfDocument(OTHER, DOC);
