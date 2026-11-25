@@ -669,6 +669,16 @@ export async function makeMenuCurrent(menuId: string, fingerprint: string): Prom
 }
 
 /**
+ * Take a failed read off the kept list (r105 menu-6). Owner or manager; the
+ * gateway retires the read (the file is kept), refuses anyone else (403) and
+ * any read that did not fail (409).
+ */
+export async function removeFailedRead(menuId: string): Promise<{ menuId: string; removed: true }> {
+  const response = await apiClient.post<{ menuId: string; removed: true }>(`/menu-versions/${menuId}/remove`)
+  return response.data
+}
+
+/**
  * The current menu as a sheet (kind 'export'), or a blank one to fill ('sample'): the file
  * the menu reader accepts (menu r104 g3). Owner or manager; a failed call throws with the gateway's words.
  */
