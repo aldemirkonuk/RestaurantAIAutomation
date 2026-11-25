@@ -83,6 +83,8 @@ export interface MenuImportResult {
   source?: { kept: boolean; failure: string | null }
   /** The parts of the file a scan could not read (ADR 0213 #17). */
   warnings?: MenuReadWarning[]
+  /** A file read's rows it could not take whole, and why (csv-parser.service.ts `CsvRowIssue`). */
+  notes?: MenuReadNote[]
 }
 
 /**
@@ -121,6 +123,21 @@ export function readWarningSentence(w: MenuReadWarning): string {
     default:
       return 'Part of this file may not have been read; send it again.'
   }
+}
+
+/** One row a CSV/XLSX read could not take whole. `row` is 1-based; the header is row 1. */
+export interface MenuReadNote {
+  row: number
+  reason:
+    | 'no_name'
+    | 'no_name_column'
+    | 'price_column_not_read'
+    | 'cell_error'
+    | 'no_number'
+    | 'two_readings'
+    | 'unreadable'
+  field?: string
+  raw?: string
 }
 
 export const MENU_CADENCES = ['weekly', 'monthly', 'quarterly', 'yearly', 'none'] as const

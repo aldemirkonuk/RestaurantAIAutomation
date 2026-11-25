@@ -50,6 +50,7 @@ import { deviceClockNote, houseDay, houseMoment } from './menu-clock';
 import { versionsPollMs } from './menu-read-poll';
 import { isPhoto, pagesProblem, photoToJpegBase64, photosToPages } from '../../../lib/menuPhotos';
 import './menu-settle.css';
+import { MenuReadNotes } from '../../../components/onboarding/MenuReadNotes';
 
 const EM = '—';
 
@@ -502,6 +503,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
                 : 'It is not the current menu, and no price has changed.'}
           </p>
           <ReadWarnings warnings={result.warnings} testId="menu-read-warnings" />
+          <MenuReadNotes notes={result.notes} className="cl-note" />
           {result.reopened ? (
             <button
               type="button"

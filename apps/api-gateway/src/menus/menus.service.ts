@@ -13,7 +13,10 @@ import {
   UnprocessableEntityException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
-import { CsvParserService } from "./parsers/csv-parser.service";
+import {
+  CsvParserService,
+  type CsvRowIssue,
+} from "./parsers/csv-parser.service";
 import { ScanParserService } from "./parsers/scan-parser.service";
 import { pagesToOneFile } from "./parsers/pages-to-pdf";
 import { WineSubmissionsService } from "../wines/wine-submissions.service";
@@ -514,7 +517,7 @@ function menusUnreadable(error: { message?: string }): InternalServerErrorExcept
  * `lineForViewer` (menu-line-view.ts) can say `kitchen_line`; it leaves this
  * read only when the caller's view allows it (`MenuVersionsController.one`,
  * for a role that sees money and suppliers). A CSV line is the whole row
- * (csv-parser.service.ts:55), cost and supplier cells included, and no header
+ * (csv-parser.service.ts, `raw_text`), cost and supplier cells included, and no header
  * is kept to tell them apart. Other paths still carry the same text: the
  * import's reply and the kept source file (tech-debt.d, this branch's entries).
  */
@@ -803,15 +806,18 @@ export class MenusService {
     // 1. Parse input → WineExtractItem[].
     let items: WineExtractItem[];
     const warnings: MenuReadWarning[] = [];
+    let notes: CsvRowIssue[] = [];
     let sourceBytes: Buffer | null = null;
     let sourceMime: { mime: string; ext: string } | null = null;
     if (dto.method === "csv") {
       if (dto.data.fileBase64) {
-        items = await this.csvParser.parseExcel(dto.data.fileBase64);
+        ({ items, issues: notes } = await this.csvParser.readExcel(
+          dto.data.fileBase64,
+        ));
         sourceBytes = Buffer.from(dto.data.fileBase64, "base64");
         sourceMime = sniffMime(sourceBytes);
       } else {
-        items = this.csvParser.parse(dto.data.csvContent!);
+        ({ items, issues: notes } = this.csvParser.read(dto.data.csvContent!));
         sourceBytes = Buffer.from(dto.data.csvContent!, "utf8");
         sourceMime = { mime: "text/csv", ext: "csv" };
       }
@@ -871,6 +877,7 @@ export class MenusService {
       items: reviewItems,
       source: { kept: !!kept?.path, failure: kept?.failure ?? null },
       warnings,
+      notes,
     };
   }
 
