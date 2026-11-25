@@ -98,7 +98,7 @@ export default function WhatIsInAServe({ data, unsaved }: { data: CocktailRecipe
   const w = data.whatIsIn;
   if (w === undefined || w === null || !w.readable) {
     return (
-      <p className="cl-note" role="status" data-testid="recipe-whatisin-unread">
+      <p className="cl-note" role="status" id="recipe-whatisin" tabIndex={-1} data-testid="recipe-whatisin-unread">
         {w && !w.readable ? w.sentence : `What is in a ${unit} was not read here, so nothing about it is shown as known.`}
       </p>
     );
@@ -107,7 +107,7 @@ export default function WhatIsInAServe({ data, unsaved }: { data: CocktailRecipe
   // "unknown for flour" on every plate would be noise.
   const alcohol = dish && !(w.figures.alcoholMl && (w.figures.alcoholMl.value ?? 0) > 0) ? undefined : w.figures.alcoholMl;
   return (
-    <section className="cl-rcp-nutrition" data-testid="recipe-whatisin" aria-label={`What is in a ${unit}`}>
+    <section className="cl-rcp-nutrition" id="recipe-whatisin" tabIndex={-1} data-testid="recipe-whatisin" aria-label={`What is in a ${unit}`}>
       <h5 className="cl-sec" style={{ margin: '0 0 4px' }}>What is in a {unit}</h5>
       {unsaved ? <p className="cl-note">This is the saved recipe. Save to count your changes.</p> : null}
       <Allergens w={w} />
