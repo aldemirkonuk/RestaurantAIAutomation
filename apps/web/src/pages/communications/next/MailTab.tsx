@@ -209,14 +209,41 @@ export function rememberRowCount(house: string, count: number): void {
   }
 }
 
+/** The first-page list is a different height on a phone (long snippets wrap), so the height is kept per width class. */
+function listHeightKey(house: string): string {
+  const narrow = typeof window !== 'undefined' && window.innerWidth < 640;
+  return `mail-people-height:${house}:${narrow ? 'narrow' : 'wide'}`;
+}
+
+/** The height the settled first-page list measured last time in this tab, or null when unknown. Storage may throw. */
+export function readLastListHeight(house: string): number | null {
+  try {
+    const raw = house ? window.sessionStorage.getItem(listHeightKey(house)) : null;
+    const n = raw === null ? NaN : Number(raw);
+    return Number.isFinite(n) && n >= 1 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+export function rememberListHeight(house: string, px: number): void {
+  if (!house || !Number.isFinite(px) || px < 1) return;
+  try {
+    window.sessionStorage.setItem(listHeightKey(house), String(Math.round(px)));
+  } catch {
+    /* storage blocked: the bars hold their own height instead */
+  }
+}
+
 /**
  * The status line is placed over the bars, not above them, so it adds no height:
  * the list is exactly as tall as the rows that will replace it. role="status" is
  * a polite live region, so the words are still read aloud.
  */
-function PeoplePlaceholder({ rows }: { rows: number }) {
+function PeoplePlaceholder({ rows, heldHeight }: { rows: number; heldHeight: number | null }) {
   return (
-    <div data-testid="people-placeholder" style={{ position: 'relative' }}>
+    // heldHeight is what the settled list measured last time: bars of one fixed height cannot match rows that wrap.
+    <div data-testid="people-placeholder" style={{ position: 'relative', minHeight: heldHeight ?? undefined }}>
       <p
         role="status"
         aria-live="polite"
@@ -486,6 +513,10 @@ function People({
   useEffect(() => {
     if (settled) rememberRowCount(house, firstPageCount);
   }, [settled, house, firstPageCount]);
+  const peopleListRef = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    if (settled && peopleListRef.current) rememberListHeight(house, peopleListRef.current.getBoundingClientRect().height);
+  }, [settled, house, firstPageCount]);
   const settledNow = Boolean(q.data) || q.isError;
   useEffect(() => {
     if (settledNow) onSettled?.();
@@ -508,7 +539,7 @@ function People({
           <RetryRead testId="people-read-again" busy={again.busy} onClick={again.onPress} onRetry={() => void q.refetch()} />
         </p>
       ) : !q.data ? (
-        <PeoplePlaceholder rows={readLastRowCount(house)} />
+        <PeoplePlaceholder rows={readLastRowCount(house)} heldHeight={readLastListHeight(house)} />
       ) : people.length === 0 && search ? (
         <p data-testid="search-empty" role="status" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', maxWidth: '68ch', overflowWrap: 'anywhere' }}>
           {searchEmptyWords(search, { waitingOnly, on })}{' '}
@@ -539,6 +570,7 @@ function People({
           // A new search, filter or kind is a different list: it crossfades in as a whole. More of the same list
           // adds only the new rows, each fading in; the rows already there never move (r102 mail-motion-4).
           key={shown.current}
+          ref={peopleListRef}
           className="mail-fade-in"
           style={{ listStyle: 'none', margin: 0, padding: 0, borderTop: '1px solid var(--paper-2, #EAE4D8)' }}
           onFocus={(e) => {
