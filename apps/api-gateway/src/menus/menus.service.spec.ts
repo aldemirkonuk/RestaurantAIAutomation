@@ -2258,7 +2258,7 @@ describe("MenusService — the plan before a menu is chosen, and the locks it re
         { id: "lock-old", restaurant_id: "rest-1", inventory_id: "inv-2", kind: "bottle", locked_price: 45, locked_by: "user-1", locked_at: "2026-07-01T09:00:00Z", released_at: "2026-08-01T09:00:00Z" },
       ],
       menu_price_versions: [
-        { id: "v-2", restaurant_id: "rest-1", inventory_id: "inv-2", changed_by: "user-3", effective_from: "2026-09-10T08:00:00Z", change_source: "manual", effective_to: null },
+        { id: "v-2", restaurant_id: "rest-1", inventory_id: "inv-2", changed_by: "user-3", bottle_price: 50, glass_price: null, effective_from: "2026-09-10T08:00:00Z", change_source: "manual", effective_to: null },
       ],
       users: [
         { user_id: "user-1", name: "Aylin" },
@@ -2336,12 +2336,37 @@ describe("MenusService — the plan before a menu is chosen, and the locks it re
     expect(tables.restaurant_menus.find((m) => m.id === "menu-new")!.status).toBe("draft");
   });
 
+  it("r107 DD-r106-19: a price is named only for a kind the open history row priced; a blank one says no price was set", async () => {
+    const { tables, service } = setup();
+    tables.restaurant_inventory.push(
+      // Created by a menu with no price: an open history row exists, and it holds no price.
+      { id: "inv-5", restaurant_id: "rest-1", master_wine_id: "mw-5", wine_name: "Vermentino", menu_price_current: null, menu_price_glass: null, is_active: true },
+      // Priced by the bottle only, by a person; the glass was never priced.
+      { id: "inv-6", restaurant_id: "rest-1", master_wine_id: "mw-6", wine_name: "Verdicchio", menu_price_current: 70, menu_price_glass: null, is_active: true },
+    );
+    tables.menu_price_versions.push(
+      { id: "v-5", restaurant_id: "rest-1", inventory_id: "inv-5", changed_by: "user-1", bottle_price: null, glass_price: null, effective_from: "2026-09-01T08:00:00Z", change_source: "import", effective_to: null },
+      { id: "v-6", restaurant_id: "rest-1", inventory_id: "inv-6", changed_by: "user-3", bottle_price: 70, glass_price: null, effective_from: "2026-09-03T08:00:00Z", change_source: "manual", effective_to: null },
+    );
+    tables.menu_items.push(
+      { id: "n-6", menu_id: "menu-new", restaurant_id: "rest-1", name: "Vermentino", wine_library_id: "mw-5", bottle_price: 35, status: "approved" },
+      { id: "n-7", menu_id: "menu-new", restaurant_id: "rest-1", name: "Verdicchio", wine_library_id: "mw-6", bottle_price: 75, by_glass_price: 12, status: "approved" },
+    );
+    const plan = await service.planFor("rest-1", "menu-new");
+    const by = Object.fromEntries(plan.lines.map((l) => [l.menuItemId, l]));
+    // No price was ever set: nobody is named for one.
+    expect(by["n-6"].bottle).toMatchObject({ result: "change", housePrice: null, lastSet: null });
+    // A priced kind names who set it; the kind the row never priced does not borrow its name.
+    expect(by["n-7"].bottle).toMatchObject({ result: "change", housePrice: 70, lastSet: { by: { userId: "user-3", name: "Deniz" }, source: "manual" } });
+    expect(by["n-7"].glass).toMatchObject({ result: "change", housePrice: null, lastSet: null });
+  });
+
   it("L11, as the founder confirmed it (\"The menu sets it, locks keep\"): a price a PERSON set after this menu was read is marked setAfterRead; a menu's own, or one set before the read, is not", async () => {
     const { tables, service } = setup();
     const menu = tables.restaurant_menus.find((m) => m.id === "menu-new")!;
     menu.extracted_at = "2026-09-05T10:00:00Z";
     // inv-1's price was last set by ANOTHER menu's choice after the read: not a person's.
-    tables.menu_price_versions.push({ id: "v-1", restaurant_id: "rest-1", inventory_id: "inv-1", changed_by: "user-1", effective_from: "2026-09-12T08:00:00Z", change_source: "import", effective_to: null });
+    tables.menu_price_versions.push({ id: "v-1", restaurant_id: "rest-1", inventory_id: "inv-1", changed_by: "user-1", bottle_price: 60, glass_price: 14, effective_from: "2026-09-12T08:00:00Z", change_source: "import", effective_to: null });
     const lineOf = async (id: string) => (await service.planFor("rest-1", "menu-new")).lines.find((l) => l.menuItemId === id)!;
 
     const plan = await service.planFor("rest-1", "menu-new");

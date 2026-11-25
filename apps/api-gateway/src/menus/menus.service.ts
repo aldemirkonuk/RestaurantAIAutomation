@@ -2097,13 +2097,18 @@ export class MenusService {
     const lockedWines = new Set(lockRead.locks.map((l) => l.inventoryId));
 
     // Who set each price now in effect (the open version row).
-    const lastSet = new Map<string, { by: string | null; at: string | null; source: string | null }>();
+    // A history row names a person only for a price it holds: a row made when a
+    // line created the house's wine with no price at all prices nothing (r107, DD-r106-19).
+    const lastSet = new Map<
+      string,
+      { by: string | null; at: string | null; source: string | null; bottle: unknown; glass: unknown }
+    >();
     {
       let after: string | null = null;
       for (;;) {
         let q = client
           .from("menu_price_versions")
-          .select("id, inventory_id, changed_by, effective_from, change_source")
+          .select("id, inventory_id, changed_by, effective_from, change_source, bottle_price, glass_price")
           .eq("restaurant_id", restaurantId)
           .is("effective_to", null);
         if (after) q = q.gt("id", after);
@@ -2115,6 +2120,8 @@ export class MenusService {
             by: r.changed_by ?? null,
             at: r.effective_from ?? null,
             source: r.change_source ?? null,
+            bottle: r.bottle_price ?? null,
+            glass: r.glass_price ?? null,
           });
         }
         if (rows.length < PAGE_ROWS) break;
@@ -2173,7 +2180,9 @@ export class MenusService {
         else if (housePrice !== null && Math.abs(menuPrice - housePrice) < 0.005) result = "unchanged";
         else result = "change";
         counts[result] += 1;
-        const set = row && result === "change" ? (lastSet.get(String(row.id)) ?? null) : null;
+        const held = row && result === "change" ? (lastSet.get(String(row.id)) ?? null) : null;
+        // Named only when that row priced THIS kind: a blank price was set by no one.
+        const set = held && (kind === "bottle" ? held.bottle : held.glass) !== null ? held : null;
         return {
           kind,
           menuPrice,

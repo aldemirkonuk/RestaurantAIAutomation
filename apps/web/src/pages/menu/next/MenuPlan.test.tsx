@@ -215,6 +215,21 @@ describe('2d: not on this file -- shown, never acted on (L12)', () => {
   });
 });
 
+describe('MenuPlan -- a line whose price was never set (r107, DD-r106-19)', () => {
+  it('says no price has been set yet, and names no one, when the house had no price to replace', async () => {
+    const blank = line({
+      menuItemId: 'n9',
+      name: 'Vermentino',
+      bottle: { kind: 'bottle', menuPrice: 35, housePrice: null, result: 'change', lastSet: null, lock: null },
+    });
+    mockPlan.mockResolvedValue(plan({ lines: [blank] }));
+    mount(true);
+    const rows = await screen.findAllByTestId('menu-plan-row');
+    expect(rows[0]).toHaveTextContent(shown(`Becomes ${m(35)}; no price has been set yet`));
+    expect(rows[0]).not.toHaveTextContent('it was set');
+  });
+});
+
 describe('MenuPlan -- the section before the choice (L13)', () => {
   it('shows each price it would change with who set it, each held price with its lock, the returned wine, the vintage to check, and the dormant locks', async () => {
     mockPlan.mockResolvedValue(plan());

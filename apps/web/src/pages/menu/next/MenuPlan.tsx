@@ -490,7 +490,7 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
                     <td className="cl-dim">
                       {r.k.result === 'held_by_lock' && r.k.lock
                         ? `Stays ${money(r.k.lock.lockedPrice, currency)}: locked by ${r.k.lock.lockedBy.name ?? 'someone whose name is not on record'} on ${day(r.k.lock.lockedAt, plan.timezone)}`
-                        : `Becomes ${money(r.k.menuPrice, currency)}${setWords(r.k, plan.timezone) ? `; it was ${setWords(r.k, plan.timezone)}` : ''}`}
+                        : `Becomes ${money(r.k.menuPrice, currency)}${setWords(r.k, plan.timezone) ? `; it was ${setWords(r.k, plan.timezone)}` : r.k.housePrice === null ? '; no price has been set yet' : ''}`}
                     </td>
                     <td>
                       <KeepSwitch
