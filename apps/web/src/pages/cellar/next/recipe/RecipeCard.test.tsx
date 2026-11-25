@@ -4,7 +4,7 @@
  * draft never reaches the paper.
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -72,6 +72,7 @@ beforeEach(() => {
   h.auth = { activeRestaurantId: RID, activeRole: 'manager', user: { userId: 'u1', role: 'manager' } };
   forgetDrafts();
   window.print = vi.fn();
+  window.localStorage.clear();
 });
 afterEach(() => {
   document.documentElement.removeAttribute('data-print-card');
@@ -152,5 +153,78 @@ describe('the printable recipe card', () => {
     expect(print).toMatch(/html\[data-print-card\] body > \*:not\(\.cl-print-card\) \{ display: none !important; \}/);
     expect(print).toMatch(/html\[data-print-card\] \.cl-print-card \{\s*display: block;/);
     expect(print).not.toMatch(/animation|transition/);
+  });
+
+  it('an en-GB (pound) house reads a day that could be a month day-first, "7 Nov 2026"; a dollar house reads it "Nov 7, 2026"', async () => {
+    house.createdAt = '2026-11-07T12:00:00Z';
+    mount();
+    await waitFor(() => expect(card()).toHaveTextContent('version 4, 7 Nov 2026'));
+    cleanup();
+    house.code = 'USD';
+    mount();
+    await waitFor(() => expect(card()).toHaveTextContent('version 4, Nov 7, 2026'));
+    expect(card().textContent).not.toMatch(/, 7 Nov/);
+  });
+
+  it('a pound house reads a day past the 12th day first, "21 Nov 2026", never "Nov 21, 2026"', async () => {
+    house.createdAt = '2026-11-21T12:00:00Z';
+    mount();
+    await waitFor(() => expect(card()).toHaveTextContent('version 4, 21 Nov 2026'));
+    expect(card().textContent).not.toMatch(/Nov 21/);
+    house.createdAt = '2026-11-07T12:00:00Z';
+  });
+
+  describe('the Include cost box is remembered between cards (r106 drinks-7)', () => {
+    const box = () => screen.getByLabelText('Include cost') as HTMLInputElement;
+
+    it('stays ticked on the next card of the same person and house, and the cost line is drawn', async () => {
+      const first = mount();
+      await screen.findByTestId('recipe-print');
+      expect(box().checked).toBe(false);
+      fireEvent.click(box());
+      first.unmount();
+      mount();
+      await screen.findByTestId('recipe-print');
+      expect(box().checked).toBe(true);
+      expect(screen.getByTestId('recipe-card-cost')).toBeInTheDocument();
+    });
+
+    it('is unticked again once unticked, and never carries to another person', async () => {
+      const first = mount();
+      await screen.findByTestId('recipe-print');
+      fireEvent.click(box());
+      fireEvent.click(box());
+      first.unmount();
+      mount();
+      await screen.findByTestId('recipe-print');
+      expect(box().checked).toBe(false);
+      fireEvent.click(box());
+      cleanup();
+      h.auth = { activeRestaurantId: RID, activeRole: 'manager', user: { userId: 'u2', role: 'manager' } };
+      mount();
+      await screen.findByTestId('recipe-print');
+      expect(box().checked).toBe(false);
+    });
+
+    it('staff still see no box and no money, whatever a browser holds', async () => {
+      window.localStorage.setItem(`mudavym.recipeCard.includeCost.v1:u1:${RID}`, '1');
+      h.auth = { activeRestaurantId: RID, activeRole: 'staff', user: { userId: 'u1', role: 'staff' } };
+      mount();
+      await screen.findByTestId('recipe-print');
+      expect(screen.queryByLabelText('Include cost')).toBeNull();
+      expect(screen.queryByTestId('recipe-card-cost')).toBeNull();
+    });
+
+    it('a browser that will not store it opens the box unticked and still prints', async () => {
+      const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
+      const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
+      mount();
+      await screen.findByTestId('recipe-print');
+      expect(box().checked).toBe(false);
+      fireEvent.click(box());
+      expect(box().checked).toBe(true);
+      get.mockRestore();
+      set.mockRestore();
+    });
   });
 });

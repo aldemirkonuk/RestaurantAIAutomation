@@ -18,11 +18,34 @@ import type { CocktailRecipe } from '../../../../services/api/recipes';
 import { marginPerServe, pourCostShare } from './DrinkCards';
 import type { ListTax } from './listTax';
 import type { SayPercent } from './useHousePercent';
+import { useAuth } from '../../../../contexts/AuthContext';
 import { useHouseDate } from './useHouseDate';
 import { amountWithUnit } from './units';
 import type { RecipeWords } from './recipeWords';
 
 const FLAG = 'data-print-card';
+
+/**
+ * Whether this person ticked "Include cost" last time, kept in this browser per person and per house: a
+ * convenience, never state. A browser that will not store it opens the box unticked. Staff never see the box,
+ * and a stored tick is never read as leave to print money (showCost needs canSeeCost).
+ */
+const boxKey = (userId: string | null | undefined, houseId: string | null | undefined) => `mudavym.recipeCard.includeCost.v1:${userId ?? '-'}:${houseId ?? '-'}`;
+function boxWas(key: string): boolean {
+  try {
+    return window.localStorage.getItem(key) === '1';
+  } catch {
+    return false;
+  }
+}
+function keepBox(key: string, on: boolean): void {
+  try {
+    if (on) window.localStorage.setItem(key, '1');
+    else window.localStorage.removeItem(key);
+  } catch {
+    /* not stored: the box opens unticked next time */
+  }
+}
 
 /** What the card says of allergens, from what the gateway stated for the saved version. */
 export function cardAllergens(w: CocktailRecipe['whatIsIn']): string {
@@ -53,7 +76,9 @@ export default function RecipeCard({
 }) {
   const boxId = useId();
   const sayDate = useHouseDate();
-  const [withCost, setWithCost] = useState(false);
+  const { user, activeRestaurantId } = useAuth();
+  const storeKey = boxKey(user?.userId, activeRestaurantId);
+  const [withCost, setWithCost] = useState(() => boxWas(storeKey));
   const v = data.current;
   const isDish = data.kind === 'dish';
   const showCost = canSeeCost && withCost;
@@ -87,7 +112,10 @@ export default function RecipeCard({
         </button>
         {canSeeCost ? (
           <label htmlFor={boxId} className="cl-note" style={{ margin: 0, display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-            <input id={boxId} type="checkbox" checked={withCost} onChange={(e) => setWithCost(e.target.checked)} />
+            <input id={boxId} type="checkbox" checked={withCost} onChange={(e) => {
+                setWithCost(e.target.checked);
+                keepBox(storeKey, e.target.checked);
+              }} />
             Include cost
           </label>
         ) : null}
