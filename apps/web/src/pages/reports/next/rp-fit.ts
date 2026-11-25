@@ -53,3 +53,10 @@ export function controlRows(px: number | undefined): number {
   if (px === undefined || !Number.isFinite(px) || px <= 0) return 0;
   return Math.ceil(px / (SHEET_ROW_HEIGHT + SHEET_MARGIN[1]));
 }
+
+/**
+ * The height the till's compare answer row ("Against the prior window") takes on a phone,
+ * as measured at 375 (r106 walk M-a): the one-column card holds this much more while compare
+ * is on, so "Show the working" stays inside the card instead of 66 px below it.
+ */
+export const COMPARE_ANSWER_PX = 66;

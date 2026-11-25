@@ -2666,3 +2666,34 @@ describe('r61 c2 — the opening, the strips and the till window', () => {
     expect(full).toBe(36 * 12);
   });
 });
+
+describe('ReportsNext — the phone till card holds the compare answer (r107 g5)', () => {
+  const TWO_N = {
+    posConnected: true, revenue: 5000, checkCount: 90, from: '2026-08-03', to: '2026-10-01', days: 60,
+    dailySeries: [
+      ...Array.from({ length: 29 }, (_, i) => ({ date: `2026-08-${String(i + 3).padStart(2, '0')}`, revenue: 100 })),
+      { date: '2026-09-01', revenue: 100 },
+      ...Array.from({ length: 29 }, (_, i) => ({ date: `2026-09-${String(i + 2).padStart(2, '0')}`, revenue: 130 })),
+      { date: '2026-10-01', revenue: 130 },
+    ],
+  };
+  const w0 = window.innerWidth;
+  afterEach(() => Object.defineProperty(window, 'innerWidth', { value: w0, configurable: true }));
+  const tillHeight = (at: string) => {
+    Object.defineProperty(window, 'innerWidth', { value: 375, configurable: true });
+    const spy = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(343);
+    hook.current = withRegister('till', ok(CATALOGUE.till.select(TWO_N)));
+    paint(at);
+    const item = screen.getByRole('region', { name: 'Through the till' }).closest('.rp-stack__item') as HTMLElement;
+    const h = Number.parseFloat(item.style.height);
+    spy.mockRestore();
+    return h;
+  };
+
+  it('[REVERT-FAILS] compare on adds the answer row’s 66 px to the till slot at 375; off does not', () => {
+    const off = tillHeight('/reports');
+    cleanup();
+    const on = tillHeight('/reports?compare=prior');
+    expect(on - off).toBe(66);
+  });
+});

@@ -1173,6 +1173,30 @@ html[data-mudavym-ground='charcoal'] .rp-tip {
 .rp-sheet[data-layout='stack']::before {
   display: none;
 }
+/* r107 g5: the till card on a phone settles to the compare answer's room, never snaps (160 ms, `ink`). */
+.rp-stack__item[data-holds] {
+  transition: height 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+/* The prior's dashed line draws left to right once, when compare is switched on (a refetch keeps it). */
+.rp-prior {
+  animation: rp-prior-draw 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes rp-prior-draw {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rp-stack__item {
+    transition: none;
+  }
+  .rp-prior {
+    animation: none;
+  }
+}
 @media (max-width: 767px) {
   .rp-page__inner {
     overflow-x: clip;

@@ -274,6 +274,12 @@ export function priorSlots(w: TillWindow, shown: string[]): Array<number | null>
   return span.map((date) => byDate.get(date) ?? null);
 }
 
+/** True when the till's card is drawing the compare answer ("Against the prior window") for this read. */
+export function tillAnswersCompare(data: unknown, ctx: { days: number; compare?: boolean }): boolean {
+  if (!ctx.compare || data === undefined || data === null) return false;
+  return till.view(data as TillWindow, ctx).figures.some((f) => f.label === 'Against the prior window');
+}
+
 const till = analysis<TillWindow>({
   title: 'Through the till',
   register: 'till register',
