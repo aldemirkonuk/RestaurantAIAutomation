@@ -124,6 +124,9 @@ export interface ExternalExtractionResult {
   vendor?: VendorResolution;
 }
 
+/** How many link writes the pairing check keeps in flight at once. */
+const LINK_WRITE_GROUP = 8;
+
 @Injectable()
 export class DocumentIntakeService {
   private readonly logger = new Logger(DocumentIntakeService.name);
@@ -1729,34 +1732,48 @@ export class DocumentIntakeService {
     // A pairing whose save failed was NOT written. Reporting it as written told
     // the person the record held a link it did not; it goes back to them as a
     // pairing still waiting for their confirmation.
+    //
+    // The writes go out in bounded groups, not one after another: the scan's
+    // answer waited for every link in turn. Each group settles before the next
+    // starts, and the outcomes are read back in the matcher's order, so the
+    // saved list and the failure sentences come out as they did one at a time.
     const saved: LineMatch[] = [];
-    for (const m of result.applied) {
-      const { error } = await this.db
-        .getClient()
-        .from("procurement_document_lines")
-        .update({
-          order_line_id: m.orderLineId,
-          match_confidence: m.confidence,
-          match_method: m.method,
-          // ADR 0059. The same two numbers, written a second time into columns
-          // nothing else may touch. match_confidence/match_method are LIVE
-          // STATE and a human confirmation legitimately overwrites them; these
-          // are the proposal, and the proposal is what used to be destroyed at
-          // the exact instant the pair became a label.
-          proposed_confidence: m.confidence,
-          proposed_method: m.method,
-        })
-        .eq("id", m.documentLineId)
-        .eq("restaurant_id", restaurantId);
-      if (error) {
-        this.logger.warn(
-          `failed to link document line ${m.documentLineId}: ${error.message}`,
-        );
-        result.suggested.push({
-          ...m,
-          reason: `${m.reason} It could not be saved just now; confirm it to try again.`,
-        });
-      } else saved.push(m);
+    for (let at = 0; at < result.applied.length; at += LINK_WRITE_GROUP) {
+      const group = result.applied.slice(at, at + LINK_WRITE_GROUP);
+      const outcomes = await Promise.all(
+        group.map(async (m) => {
+          const { error } = await this.db
+            .getClient()
+            .from("procurement_document_lines")
+            .update({
+              order_line_id: m.orderLineId,
+              match_confidence: m.confidence,
+              match_method: m.method,
+              // ADR 0059. The same two numbers, written a second time into columns
+              // nothing else may touch. match_confidence/match_method are LIVE
+              // STATE and a human confirmation legitimately overwrites them; these
+              // are the proposal, and the proposal is what used to be destroyed at
+              // the exact instant the pair became a label.
+              proposed_confidence: m.confidence,
+              proposed_method: m.method,
+            })
+            .eq("id", m.documentLineId)
+            .eq("restaurant_id", restaurantId);
+          return error;
+        }),
+      );
+      group.forEach((m, i) => {
+        const error = outcomes[i];
+        if (error) {
+          this.logger.warn(
+            `failed to link document line ${m.documentLineId}: ${error.message}`,
+          );
+          result.suggested.push({
+            ...m,
+            reason: `${m.reason} It could not be saved just now; confirm it to try again.`,
+          });
+        } else saved.push(m);
+      });
     }
     result.applied = saved;
 
