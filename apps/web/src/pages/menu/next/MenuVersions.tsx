@@ -324,6 +324,14 @@ function VersionRow({ v, canManage, lastUsedId, planning, onPlan }: {
   );
 }
 
+/**
+ * The loading line's height: its own line plus the 59 px the settled block adds at 375 (perf p1-6).
+ * Held only below 600 px wide: at 1440 the settled block is shorter than 82 px of hold, so
+ * holding there made the section shrink (CLS 0.019 -> 0.031 measured). The clamp is 82 px
+ * under 600 px and 0 above, with no script and no motion.
+ */
+const SETTLED_ROOM = 'clamp(0px, calc((600px - 100vw) * 1000), 82px)';
+
 export function MenuVersions({ canManage }: { canManage: boolean }) {
   const queryClient = useQueryClient();
   const [said, setSaid] = useState<string | null>(null);
@@ -350,7 +358,9 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
         </p>
       ) : null}
       {q.isLoading ? (
-        <p className="cl-said" role="status" style={{ marginTop: 12 }}>
+        // Room for the settled block (p1 measured 324 -> 383 px at 375 wide)
+        // so the sections below do not jump when the read answers.
+        <p className="cl-said" role="status" style={{ marginTop: 12, minHeight: SETTLED_ROOM }} data-testid="menu-versions-loading">
           Reading the menus this house has kept…
         </p>
       ) : q.isError ? (

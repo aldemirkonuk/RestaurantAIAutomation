@@ -208,6 +208,9 @@ function LockRow({ l, canManage, onSaid }: { l: PriceLock; canManage: boolean; o
   );
 }
 
+/** The loading line's height plus the 19 px the settled block adds at 375 (perf p1-6); held only below 600 px wide, as in MenuVersions. */
+const SETTLED_ROOM = 'clamp(0px, calc((600px - 100vw) * 1000), 42px)';
+
 export function LockedPrices({ canManage }: { canManage: boolean }) {
   const [said, setSaid] = useState<string | null>(null);
   const house = useAuthStore((s) => s.activeRestaurantId) ?? null;
@@ -216,7 +219,7 @@ export function LockedPrices({ canManage }: { canManage: boolean }) {
   let body: ReactNode;
   if (q.isLoading) {
     body = (
-      <p className="cl-said" role="status">
+      <p className="cl-said" role="status" style={{ minHeight: SETTLED_ROOM }} data-testid="locked-prices-loading">
         Reading the locked prices…
       </p>
     );
