@@ -207,6 +207,8 @@ export default function CommunicationsNext() {
     setDraft(null);
     houseDrafts.refetch();
     if (linked) {
+      // The link was what put the page on Letters; the tab is named before it goes (g4).
+      params.set('tab', 'letters');
       params.delete('draft');
       setParams(params, { replace: true });
     }
@@ -229,6 +231,7 @@ export default function CommunicationsNext() {
   }, [replyLinked, replyHit]);
   const dropReply = () => {
     if (!params.has('reply')) return;
+    params.set('tab', 'letters');
     params.delete('reply');
     setParams(params, { replace: true });
   };
@@ -287,29 +290,36 @@ export default function CommunicationsNext() {
 
   /* Mail and Letters (founder /goal 2026-11-07). The tab is in the address so
      a refresh, a shared link and Back keep it: `?tab=mail`, or a person
-     (`?with=`) or thread (`?thread=`) link, opens Mail; `?draft=` and
-     `?reply=` keep opening on Letters exactly as before. Switching tabs is a
+     (`?with=`) or thread (`?thread=`) link, opens Mail, and so does a bare
+     `/communications` (r107 g4); `?tab=letters`, `?draft=` and `?reply=` open
+     Letters. Switching tabs is a
      step Back can undo, so it pushes; opening inside Mail replaces. */
   const tabParam = params.get('tab');
+  // r107 mail-gap g4: a bare /communications opens Mail (the founder's goal: a Mail
+  // tab inside /communications), so the sidebar, the palette and a one-tap notice land
+  // where every conversation is. Only an address that names Letters opens Letters: the
+  // tab itself, or the drafted letter (`?draft=`) or the drafted reply (`?reply=`) that
+  // live there. A person, thread, setup or senders link is Mail whatever else it carries.
+  const mailLink = params.has('with') || params.has('thread') || params.has('setup') || params.has('senders');
   const tab: 'mail' | 'letters' =
     tabParam === 'letters'
       ? 'letters'
-      : tabParam === 'mail' ||
-          params.has('with') ||
-          params.has('thread') ||
-          params.has('setup') ||
-          // "Who is writing" lives in Mail (r21): a notice's
-          // `?senders=open` link lands on it, register open.
-          params.has('senders')
+      : tabParam === 'mail' || mailLink
         ? 'mail'
-        : 'letters';
+        : params.has('draft') || params.has('reply')
+          ? 'letters'
+          : 'mail';
   // The label's waiting count: read once on Letters, polled only on Mail.
   const mailSummary = useMailSummary(tab === 'mail');
   const showTab = (next: 'mail' | 'letters') => {
     if (next === tab) return;
     const p = new URLSearchParams(params);
     if (next === 'mail') p.set('tab', 'mail');
-    else for (const k of ['tab', 'with', 'thread', 'setup', 'senders']) p.delete(k);
+    else {
+      for (const k of ['with', 'thread', 'setup', 'senders']) p.delete(k);
+      // A bare address is Mail now, so Letters is named (g4).
+      p.set('tab', 'letters');
+    }
     setParams(p);
   };
   const draftedOrderIds = new Set(data.drafts.map((d) => d.orderId));
