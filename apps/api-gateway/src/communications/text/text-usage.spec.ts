@@ -670,3 +670,68 @@ describe("purchaseForSeal — the recovery read", () => {
     expect(out.found).toBe(false);
   });
 });
+
+describe("readout — the four reads after the house row go out together", () => {
+  it("starts the counted, uncounted, allowance and credit reads before any of them answers", async () => {
+    const s = svc(seed()) as any;
+    const started: string[] = [];
+    const releases: Array<() => void> = [];
+    const held = <T>(label: string, value: T) => () => {
+      started.push(label);
+      return new Promise<T>((go) => releases.push(() => go(value)));
+    };
+    let meterCalls = 0;
+    jest
+      .spyOn(s, "countMeter")
+      .mockImplementation(((..._a: unknown[]) =>
+        meterCalls++ === 0
+          ? held("used", 1)()
+          : held("free", 2)()) as any);
+    jest.spyOn(s, "allowanceForHouse").mockImplementation(
+      held("allowance", {
+        readable: true,
+        value: null,
+        source: null,
+        scope: null,
+      }) as any,
+    );
+    jest.spyOn(s, "creditBalance").mockImplementation(
+      held("credits", {
+        readable: true,
+        minor: 0,
+        currency: null,
+        mixed: false,
+      }) as any,
+    );
+
+    const pending = s.readout(RID, NOW);
+    await new Promise((r) => setImmediate(r));
+    expect(started).toEqual(["used", "free", "allowance", "credits"]);
+    releases.forEach((go) => go());
+    const out = await pending;
+    expect(out.usedThisMonth).toBe(1);
+    expect(out.freeThisMonth).toBe(2);
+  });
+
+  it("names every failed read in the old order: counted, uncounted, allowance, credit ledger", async () => {
+    const db = seed(
+      {},
+      {
+        "house_message_meter:select": { message: "boom" },
+        "house_message_allowances:select": { message: "boom" },
+        "house_message_credits:select": { message: "boom" },
+      },
+    );
+    const out = await svc(db).readout(RID, NOW);
+    expect(out.readable).toBe(false);
+    const r = out.reason as string;
+    const at = [
+      "counted messages",
+      "uncounted messages",
+      "this house's allowance",
+      "the credit ledger",
+    ].map((w) => r.indexOf(w));
+    expect(at.every((i) => i >= 0)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+  });
+});
