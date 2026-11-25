@@ -31,12 +31,14 @@ describe('room is held while the reads are pending', () => {
   it('Menus kept holds at least 80 px for its settled block', () => {
     mount(<MenuVersions canManage />);
     const loading = screen.getByTestId('menu-versions-loading');
-    expect(parseInt(loading.style.minHeight, 10)).toBeGreaterThanOrEqual(80);
+    expect(loading.style.minHeight).toMatch(/82px\)$/);
+    expect(loading.style.minHeight).toContain('600px');
   });
 
   it('Locked prices holds at least 40 px for its settled block', () => {
     mount(<LockedPrices canManage />);
     const loading = screen.getByTestId('locked-prices-loading');
-    expect(parseInt(loading.style.minHeight, 10)).toBeGreaterThanOrEqual(40);
+    expect(loading.style.minHeight).toMatch(/42px\)$/);
+    expect(loading.style.minHeight).toContain('600px');
   });
 });
