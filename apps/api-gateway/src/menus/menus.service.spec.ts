@@ -3211,6 +3211,5 @@ describe("a decimal-comma sheet, exported and read back, moves no price (r106 me
     expect(kinds).not.toContain("change");
     const prices = Object.fromEntries(plan.lines.map((l) => [l.name, [l.bottle.menuPrice, l.glass.menuPrice]]));
     expect(prices).toEqual({ Barolo: [1250.75, 62.5], Chianti: [1250, null], Rose: [0.5, 7.05] });
->>>>>>> origin/fix/r106-menu-export-comma-decimal
   });
 });
