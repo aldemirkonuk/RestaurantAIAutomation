@@ -148,7 +148,8 @@ describe('the printable recipe card', () => {
   it('draws only on paper, on one page, without animation', () => {
     const css = readFileSync(join(__dirname, '../cellar-next.css'), 'utf8');
     expect(css).toMatch(/\.cl-print-card \{ display: none; \}/);
-    const print = css.slice(css.lastIndexOf('@media print {'));
+    // only the print block: CSS written after it (another register's sentence about motion) must not be read as print rules
+    const print = css.slice(css.lastIndexOf('@media print {')).split('\n}\n')[0];
     expect(print).toMatch(/html\[data-print-card\] body > \*:not\(\.cl-print-card\) \{ display: none !important; \}/);
     expect(print).toMatch(/html\[data-print-card\] \.cl-print-card \{\s*display: block;/);
     expect(print).not.toMatch(/animation|transition/);
