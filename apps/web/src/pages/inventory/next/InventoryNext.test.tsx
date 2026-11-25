@@ -1773,6 +1773,13 @@ describe('the legacy velocity sort and column-header sort (round 4)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Title' }));
     expect(screen.getByTestId('inventory-footer').textContent).toContain('sorted Needs you first');
   });
+
+  it('the Used in header says ascending, because the list leads with the fewest recipes (r106 walk)', () => {
+    mock.data = data({ rows: [row({ id: 'a', name: 'Beta', usedIn: 4 }), row({ id: 'b', name: 'Alpha', usedIn: 0 })] });
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Used in' }));
+    expect(screen.getByRole('columnheader', { name: 'Used in' }).getAttribute('aria-sort')).toBe('ascending');
+  });
 });
 
 // r43 w2 F2 residual: a house whose book holds only food and supplies has no

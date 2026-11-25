@@ -379,13 +379,14 @@ export function needsYouFirst(a: InvRow, b: InvRow): number {
   return (a.name ?? '').localeCompare(b.name ?? '');
 }
 
-export type SortId = 'needs' | 'name' | 'value' | 'pace';
+export type SortId = 'needs' | 'name' | 'value' | 'pace' | 'used';
 
 export const SORT_LABEL: Record<SortId, string> = {
   needs: 'Needs you first',
   name: 'Name',
   value: 'Value at cost',
   pace: 'Fastest moving',
+  used: 'Fewest recipes first',
 };
 
 /**
@@ -400,6 +401,9 @@ export function sortWords(sort: SortId, rows: InvRow[], words: HouseWords = DRIN
   if (sort === 'pace' && rows.length > 0 && rows.every((r) => r.velocity === null)) {
     return `sorted Fastest moving, though no pace was read for any ${words.one} listed, so they stay in Needs you first order`;
   }
+  if (sort === 'used' && rows.length > 0 && rows.every((r) => typeof r.usedIn !== 'number')) {
+    return `sorted Fewest recipes first, though no recipe count was read for any ${words.one} listed, so they stay in name order`;
+  }
   return `sorted ${SORT_LABEL[sort]}`;
 }
 
@@ -407,6 +411,15 @@ export function sortRows(rows: InvRow[], sort: SortId): InvRow[] {
   const out = [...rows];
   if (sort === 'needs') return out.sort(needsYouFirst);
   if (sort === 'name') return out.sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
+  // Fewest recipes first, so dead stock leads. A count that was not read (failed or still
+  // loading) sorts after every read one, never as 0; ties by name, then id, so the order is total.
+  if (sort === 'used')
+    return out.sort((a, b) => {
+      const ua = typeof a.usedIn === 'number' ? a.usedIn : Number.POSITIVE_INFINITY;
+      const ub = typeof b.usedIn === 'number' ? b.usedIn : Number.POSITIVE_INFINITY;
+      if (ua !== ub) return ua < ub ? -1 : 1;
+      return (a.name ?? '').localeCompare(b.name ?? '') || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    });
   // The legacy velocity sort (InventoryCommandPage.tsx:96), fastest first; an
   // unread pace sorts after every read one, never as 0.
   if (sort === 'pace')

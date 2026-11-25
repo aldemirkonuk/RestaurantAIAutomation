@@ -56,7 +56,7 @@ export const GROUP_PX = 30;
 const COLUMNS = ['Title', 'Type', 'Zone', 'Live / shadow · par', 'Vel/day', 'Runway', 'Your price', 'Value', 'Used in', 'Status'];
 
 /** The headers that sort, and the sort each one sets. */
-const HEADER_SORT: Partial<Record<string, SortId>> = { Title: 'name', 'Vel/day': 'pace', Value: 'value' };
+const HEADER_SORT: Partial<Record<string, SortId>> = { Title: 'name', 'Vel/day': 'pace', Value: 'value', 'Used in': 'used' };
 
 function ParBar({ row }: { row: InvRow }) {
   if (row.stock === null || row.par === null || row.par <= 0) return null;
@@ -208,7 +208,8 @@ export default function InventoryTable(props: InventoryTableProps) {
               <th
                 key={c}
                 className={c === 'Title' || c === 'Type' || c === 'Zone' || c === 'Status' ? undefined : 'iv-r'}
-                aria-sort={on ? (key === 'name' ? 'ascending' : 'descending') : undefined}
+                // Name A to Z and Used in fewest first run up; Value and Vel/day, biggest first, run down.
+                aria-sort={on ? (key === 'name' || key === 'used' ? 'ascending' : 'descending') : undefined}
               >
                 {key !== undefined && props.onSort ? (
                   <button
