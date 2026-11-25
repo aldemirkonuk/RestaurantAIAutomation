@@ -308,7 +308,8 @@ describe('DrinkCards: a KPI card opens its nutrition card (r106)', () => {
     mountBoth();
     fireEvent.click(screen.getByRole('button', { name: /Energy a serve/ }));
     const card = screen.getByTestId('recipe-whatisin');
-    expect(scroll).toHaveBeenCalledWith({ block: 'start', behavior: 'auto' });
+    // 'auto' would follow html { scroll-smooth } in globals.css and glide, reduced motion or not.
+    expect(scroll).toHaveBeenCalledWith({ block: 'start', behavior: 'instant' });
     expect(document.activeElement).toBe(card);
     expect(card.textContent).toMatch(/What is in a serveNo allergen can be/); // allergens are the card's first line, not folded away
     expect(card.querySelector('details')).toBeNull();

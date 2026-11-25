@@ -38,12 +38,14 @@ export const NUTRITION_ID = 'recipe-whatisin';
 /**
  * Take the reader to the nutrition card: scroll it into view with no animation (so there is no
  * motion to reduce) and move focus to it, so a keyboard or screen reader lands on it too. The card
- * is never collapsed, so allergens, its first row, are what is there.
+ * is never collapsed, so allergens, its first row, are what is there. The behaviour is 'instant',
+ * not 'auto': styles/globals.css sets scroll-smooth on html, and 'auto' defers to it, so the page
+ * would glide for 450 to 1,150 ms (measured r106), under reduced motion too.
  */
 function goToNutrition() {
   const el = document.getElementById(NUTRITION_ID);
   if (!el) return;
-  el.scrollIntoView({ block: 'start', behavior: 'auto' });
+  el.scrollIntoView({ block: 'start', behavior: 'instant' });
   el.focus({ preventScroll: true });
 }
 
