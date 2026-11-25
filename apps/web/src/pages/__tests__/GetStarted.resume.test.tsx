@@ -4,7 +4,7 @@
  * that step survives a reload: sessionStorage, 30 minutes, the person's own,
  * gone once the house is opened.
  */
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -96,6 +96,7 @@ describe('GetStarted: resumes where the person left', () => {
   it('opening the house clears the draft, and leaving the page does not bring it back', async () => {
     const a = render(page())
     typeHouse()
+    await waitFor(() => expect(sessionStorage.getItem(KEY)).toContain('Meyhane'))
     fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
     await screen.findByRole('heading', { name: 'Your menu' })
     expect(sessionStorage.getItem(KEY)).toBeNull()
