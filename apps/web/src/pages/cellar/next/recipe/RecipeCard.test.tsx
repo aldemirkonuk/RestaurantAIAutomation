@@ -227,4 +227,73 @@ describe('the printable recipe card', () => {
       set.mockRestore();
     });
   });
+
+  describe('Make N scales the printed lines and nothing stored (r107 drinks-g4)', () => {
+    const make = () => screen.getByLabelText('Make') as HTMLInputElement;
+    const serveAt2_11 = () => {
+      const base = h.get.getMockImplementation()!;
+      h.get.mockImplementation(async (url: string) =>
+        url === `/recipes/${RID}/cocktails/${CID}` ? { data: { ...negroni, cost: { perServe: 2.11, priced: 1, of: 1, complete: true } } } : base(url));
+    };
+
+    it('N = 1 prints the card as it was, with no Make line', async () => {
+      mount();
+      await screen.findByTestId('recipe-print');
+      expect(make().value).toBe('1');
+      expect(card()).toHaveTextContent('50 ml Plymouth gin');
+      expect(screen.queryByTestId('recipe-card-make')).toBeNull();
+      expect(screen.queryByTestId('recipe-make-preview')).toBeNull();
+    });
+
+    it('N = 12 prints 600 ml on the card, says it beside the box, and leaves the sheet\'s own amount alone', async () => {
+      mount();
+      await screen.findByTestId('recipe-print');
+      fireEvent.change(make(), { target: { value: '12' } });
+      expect(card()).toHaveTextContent('Make 12');
+      expect(card()).toHaveTextContent('600 ml Plymouth gin');
+      expect(screen.getByTestId('recipe-make-preview')).toHaveTextContent('Make 12: 600 ml Plymouth gin');
+      expect((await screen.findAllByLabelText('Amount'))[0]).toHaveValue('50');
+    });
+
+    it('an owner\'s cost line gains the cost to make N, N x the serve to the cent', async () => {
+      serveAt2_11();
+      mount();
+      fireEvent.click(await screen.findByLabelText('Include cost'));
+      fireEvent.change(make(), { target: { value: '12' } });
+      expect(screen.getByTestId('recipe-card-cost')).toHaveTextContent('Cost to make 12 £25.32 · Cost per serve £2.11');
+    });
+
+    it('staff get scaled lines and still no money', async () => {
+      h.auth = { activeRestaurantId: RID, activeRole: 'staff', user: { userId: 'u2', role: 'staff' } };
+      mount();
+      await screen.findByTestId('recipe-print');
+      fireEvent.change(make(), { target: { value: '12' } });
+      expect(card()).toHaveTextContent('600 ml Plymouth gin');
+      expect(card().textContent).not.toMatch(/£|Cost|Price|Pour cost|Margin/);
+    });
+
+    it('a count that is not a whole number from 1 to 200 is said and the card stays at 1', async () => {
+      mount();
+      await screen.findByTestId('recipe-print');
+      for (const bad of ['0', '201', '1.5', '']) {
+        fireEvent.change(make(), { target: { value: bad } });
+        expect(screen.getByTestId('recipe-make-said')).toHaveTextContent('Make takes a whole number from 1 to 200.');
+        expect(card()).toHaveTextContent('50 ml Plymouth gin');
+      }
+      fireEvent.change(make(), { target: { value: '3' } });
+      expect(screen.queryByTestId('recipe-make-said')).toBeNull();
+    });
+
+    it('is remembered for this card, not for another', async () => {
+      const first = mount();
+      await screen.findByTestId('recipe-print');
+      fireEvent.change(make(), { target: { value: '12' } });
+      first.unmount();
+      mount();
+      await screen.findByTestId('recipe-print');
+      expect(make().value).toBe('12');
+      expect(window.localStorage.getItem(`mudavym.recipeCard.make.v1:u1:${RID}:${CID}`)).toBe('12');
+      expect(window.localStorage.getItem(`mudavym.recipeCard.make.v1:u1:${RID}:other`)).toBeNull();
+    });
+  });
 });
