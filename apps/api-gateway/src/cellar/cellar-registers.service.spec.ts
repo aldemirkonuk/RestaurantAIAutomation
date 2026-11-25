@@ -530,7 +530,7 @@ function filteringDb(tables: Record<string, { rows?: FakeRow[]; error?: unknown;
               return self;
             });
           };
-          for (const m of ["select", "is", "order", "or", "ilike", "not"]) on(m);
+          for (const m of ["select", "is", "order", "or", "ilike", "not", "range"]) on(m);
           on("eq", (c: string, v: unknown) => keep.push((r) => !(c in r) || r[c] === v));
           on("neq", (c: string, v: unknown) => keep.push((r) => r[c] !== v));
           on("in", (c: string, vs: unknown[]) => keep.push((r) => vs.includes(r[c])));
