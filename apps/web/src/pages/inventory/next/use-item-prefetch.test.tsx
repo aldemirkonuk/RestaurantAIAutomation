@@ -38,10 +38,12 @@ function List() {
 const reads = () => api.figures.mock.calls.length + api.usedIn.mock.calls.length + api.nutrition.mock.calls.length;
 const wait = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
 
+let qc: QueryClient;
 beforeEach(() => {
   vi.useFakeTimers();
+  qc = new QueryClient();
   for (const f of Object.values(api)) f.mockReset().mockResolvedValue({});
-  render(<QueryClientProvider client={new QueryClient()}><List /></QueryClientProvider>);
+  render(<QueryClientProvider client={qc}><List /></QueryClientProvider>);
 });
 afterEach(() => {
   cleanup();
@@ -94,12 +96,14 @@ describe('touch warms the drawer reads', () => {
     const down = () => fireEvent.pointerDown(screen.getByTestId('row-a'), { pointerType: 'touch', clientX: 5, clientY: 5 });
     down();
     await wait(60);
-    api.figures.mockClear(); api.usedIn.mockClear(); api.nutrition.mockClear();
+    // The cache is emptied each time, so only the 5 s rule can hold a second warm back.
+    qc.clear(); api.figures.mockClear(); api.usedIn.mockClear(); api.nutrition.mockClear();
     await wait(1000);
     down();
     await wait(60);
     expect(reads()).toBe(0);
     await wait(5000);
+    qc.clear();
     down();
     await wait(60);
     expect(reads()).toBe(3);
