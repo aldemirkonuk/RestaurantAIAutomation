@@ -88,6 +88,18 @@ describe('the verified lane past its first window', () => {
     await waitFor(() => expect(screen.queryByText(/Showing the newest/)).toBeNull());
   });
 
+  it('puts Older papers in the lane header, beside the toggle and above the list (r107)', async () => {
+    render(<ReceiptsNext />, { wrapper });
+    await openLane();
+    const toggle = screen.getByRole('button', { name: /Verified · / });
+    const older = await screen.findByRole('button', { name: 'Older papers' });
+    expect(older.parentElement).toBe(toggle.parentElement);
+    const firstPaper = await screen.findByText(/V-1\b/);
+    // Reachable without scrolling past the 100 rows: it comes before the first one.
+    expect(older.compareDocumentPosition(firstPaper) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(older.style.minHeight).toBe('44px');
+  });
+
   it('finds a paper by vendor or number', async () => {
     render(<ReceiptsNext />, { wrapper });
     await openLane();

@@ -81,6 +81,7 @@ import { AuthContext } from '@/contexts/AuthContext'
 import { canonicalApi } from '../../../services/api/canonical'
 import { getInventory } from '../../../services/api/inventory'
 import { deliveriesApi, type ProposalBody } from '../../../services/api/deliveries'
+import { documentsApi } from '../../../services/api/documents'
 import './canonical-document.css'
 
 type Tab = 'sheet' | 'door'
@@ -164,6 +165,29 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
    * (ReceiptsNext `refreshSheet`), and a paper naming a good the shared list
    * does not have reads it again once (`namesAGoodTheListLacks` below).
    */
+  /**
+   * A paper in another money than the house costs in is held back from the
+   * price comparison, and that is the CAUSE of "not compared", so the verdict
+   * says it instead of stacking a second negative on it (r106 walk, finding 3).
+   * Same key as the receipts page's own note, so it is one request. Read only
+   * where that note sits (embedded); a failed read leaves the verdict as it was.
+   */
+  const heldQ = useQuery({
+    queryKey: ['receipts-next', 'price-moves', id],
+    queryFn: () => documentsApi.priceMoves(id as string),
+    enabled: !!id && embedded,
+    staleTime: 60_000,
+    retry: false,
+  })
+  const held = heldQ.data
+  const foreignMoney =
+    held?.paperCurrency &&
+    held?.houseCurrency &&
+    held.lines.length > 0 &&
+    held.lines.every((l) => !l.compared && l.reason === 'currency_differs')
+      ? `Prices are in ${held.paperCurrency} and the house costs in ${held.houseCurrency}, so none were compared against earlier costs.`
+      : null
+
   const itemsQ = useQuery({
     queryKey: ['canonical-document-items', rid],
     queryFn: () => getInventory(),
@@ -565,7 +589,7 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
       )}
 
       {/* B on top — the verdict, before anything else. */}
-      <VerdictBlock doc={doc} states={states} />
+      <VerdictBlock doc={doc} states={states} foreignMoney={foreignMoney} />
 
       {/* C's spine — collapsed at ≤ 2 documents, absent at none. */}
       <div style={{ marginTop: 10 }}>

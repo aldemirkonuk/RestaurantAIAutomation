@@ -14,6 +14,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const documentMock = vi.fn()
+const priceMovesMock = vi.fn()
 const correctMock = vi.fn()
 const verifyMock = vi.fn()
 const mintCorrectMock = vi.fn()
@@ -41,6 +42,10 @@ vi.mock('../../../services/api/canonical', () => ({
       return mintVerifyMock(id, path)
     },
   },
+}))
+
+vi.mock('../../../services/api/documents', () => ({
+  documentsApi: { priceMoves: (id: string) => priceMovesMock(id) },
 }))
 
 import { AuthContext } from '@/contexts/AuthContext'
@@ -179,6 +184,8 @@ function mount() {
 describe('CanonicalDocumentPage', () => {
   beforeEach(() => {
     documentMock.mockReset()
+    priceMovesMock.mockReset()
+    priceMovesMock.mockRejectedValue(new Error('not read'))
     correctMock.mockReset()
     verifyMock.mockReset()
     mintCorrectMock.mockReset()
@@ -202,6 +209,33 @@ describe('CanonicalDocumentPage', () => {
     expect(documentMock).toHaveBeenCalledWith('doc-syn')
     expect(screen.queryByText(/Back to the documents/)).toBeNull()
     expect(container.querySelector('.cd-page')?.getAttribute('data-embedded')).toBe('true')
+  })
+
+  it('an embedded paper held back for its money says that one sentence, not also "no order or door count" (r107)', async () => {
+    const r = response()
+    r.canonical.layer3.lines = []
+    r.canonical.layer1.lines = r.canonical.layer1.lines.length ? r.canonical.layer1.lines : []
+    documentMock.mockResolvedValue(r)
+    priceMovesMock.mockResolvedValue({
+      thresholdPct: 10,
+      paperCurrency: 'TRY',
+      houseCurrency: 'USD',
+      lines: [{ lineId: 'l1', lineNo: 1, description: 'x', compared: false, reason: 'currency_differs' }],
+    })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { container } = render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/orders']}>
+          <CanonicalDocumentPage documentId="doc-syn" embedded />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    const verdict = await waitFor(() => {
+      const v = container.querySelector('.cd-verdict')
+      expect(v?.textContent).toMatch(/Prices are in TRY and the house costs in USD/)
+      return v as Element
+    })
+    expect(verdict.textContent).not.toMatch(/no order or door count/)
   })
 
   it('keys every read by the house, so a house switch reads afresh (ADR 0051, RECEIPTS-W47)', async () => {

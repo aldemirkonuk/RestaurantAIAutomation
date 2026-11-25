@@ -555,6 +555,14 @@ describe('VerdictBlock — not compared is not a difference (finding 1, ADR 0103
     expect(container.textContent?.match(/not compared/gi)).toHaveLength(1)
   })
 
+  it('says only the foreign-money sentence when that is why nothing was compared (r107)', () => {
+    const sentence = 'Prices are in TRY and the house costs in USD, so none were compared against earlier costs.'
+    const { container, queryByTestId } = render(<VerdictBlock doc={uncompared()} foreignMoney={sentence} />)
+    expect(container.textContent).toContain(sentence)
+    expect(container.textContent).not.toMatch(/no order or door count/)
+    expect(queryByTestId('not-compared-note')).toBeNull()
+  })
+
   it('claims no amount, and does not print a zero at risk', () => {
     const { getByTestId, queryByTestId, container } = render(<VerdictBlock doc={uncompared()} />)
     // The note says it once; the money line no longer repeats it (W26).
