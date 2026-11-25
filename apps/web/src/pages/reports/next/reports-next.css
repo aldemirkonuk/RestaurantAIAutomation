@@ -1190,7 +1190,8 @@ html[data-mudavym-ground='charcoal'] .rp-tip {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .rp-stack__item {
+  /* Same selector as the rule it switches off: a bare .rp-stack__item loses to [data-holds] on specificity. */
+  .rp-stack__item[data-holds] {
     transition: none;
   }
   .rp-prior {

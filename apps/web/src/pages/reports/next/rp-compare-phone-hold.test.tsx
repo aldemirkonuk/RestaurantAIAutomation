@@ -75,7 +75,8 @@ describe('the phone till card holds the compare answer', () => {
   it('[REVERT-FAILS] settles over 160 ms on the house curve, and not at all when motion is reduced', () => {
     expect(css).toMatch(/\.rp-stack__item\[data-holds\]\s*\{[^}]*transition:\s*height 160ms cubic-bezier\(0\.16, 1, 0\.3, 1\)/);
     const reduced = css.split('@media (prefers-reduced-motion: reduce)').slice(1).join('\n');
-    expect(reduced).toMatch(/\.rp-stack__item\s*\{\s*transition:\s*none/);
+    // the reduced rule must be as specific as the rule it switches off ([data-holds]), or it never wins (walk r107)
+    expect(reduced).toMatch(/\.rp-stack__item\[data-holds\]\s*\{\s*transition:\s*none/);
   });
 
   it('answers compare only when the read draws the prior and its change', () => {
