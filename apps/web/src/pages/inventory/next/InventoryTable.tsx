@@ -138,6 +138,7 @@ export default function InventoryTable(props: InventoryTableProps) {
         selected={props.selected}
         onSelect={props.onSelect}
         onSelectAll={props.onSelectAll}
+        onUsedIn={props.onUsedIn}
       />
     );
   }

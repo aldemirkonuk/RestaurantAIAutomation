@@ -1183,6 +1183,31 @@ html .mdv-ovl .iv-sheet-body .mdv-select__control {
   justify-content: center;
   width: 44px;
 }
+/* The Used in count on a card (r107 g2): its own line under the stock, a 44 px
+   target when it opens the sheet. */
+.ivc-used {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 4px 0 2px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.ivc-used--tap {
+  color: var(--seal);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.ivc-used--dim {
+  color: var(--ink-3);
+}
 .ivc-main {
   grid-column: 2;
   grid-row: 1;
