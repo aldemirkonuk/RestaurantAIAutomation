@@ -56,9 +56,11 @@ import {
   encodeMailCursor,
   mailDirectionOf as direction,
   mailDoorOf,
+  mailKindFilterOf,
   mailKindOf,
   mailSearchOf,
   otherPersonOf,
+  fromDisplayName,
   otherPersonRef,
   personRef,
   stripSubjectLine,
@@ -127,11 +129,14 @@ export class MailService {
       limit?: string | number;
       /** r28 mail gap 16: a name, subject, order number or a letter's words. */
       query?: unknown;
+      /** r103 mail-1: only this kind of person (vendor, team, guest). */
+      kind?: unknown;
     },
   ): Promise<MailPeoplePage> {
     const limit = clampMailLimit(opts.limit);
     const after = opts.after ? decodeMailCursor(opts.after) : null;
     const query = mailSearchOf(opts.query);
+    const kind = mailKindFilterOf(opts.kind);
     const { data, error } = await this.db.rpc("list_mail_people", {
       p_restaurant_id: houseId,
       p_withhold_house_letters: withholdsHouseLetters(callerRole),
@@ -143,18 +148,33 @@ export class MailService {
       // Named only when there is a search, so a list with none is the same
       // call as before the search existed.
       ...(query ? { p_query: query } : {}),
+      // Asked for in SQL, so a page holds that kind and the next page is
+      // the next of that kind, never "none" for a kind on a later page.
+      ...(kind ? { p_kind: kind } : {}),
     });
     if (error) this.failed("people", error);
     const rows = (data ?? []) as any[];
     const page = rows.slice(0, limit);
     const last = page[page.length - 1];
+    // Staff read vendors only, so no roster or guest header is read for them.
+    const names = await this.namesOf(
+      houseId,
+      withholdsHouseLetters(callerRole)
+        ? []
+        : page
+            .filter((r) => r.kind === "team" || r.kind === "guest")
+            .map((r) => ({
+              kind: r.kind as "team" | "guest",
+              address: String(r.key).slice(String(r.kind).length + 1),
+            })),
+    );
     return {
       people: page.map(
         (r): MailPersonRow => ({
           key: r.key,
           kind: mailKindOf(r.kind),
           providerId: r.provider_id ?? null,
-          name: r.name ?? null,
+          name: names.get(String(r.key).toLowerCase()) ?? r.name ?? null,
           lastAt: r.last_at,
           lastLine: r.last_line ?? null,
           lastDirection: direction(r.last_direction),
@@ -177,6 +197,101 @@ export class MailService {
         withholdsHouseLetters(callerRole),
       ),
     };
+  }
+
+  /**
+   * Names for team and guest people (r104 mail-gap g3), display only; the key
+   * stays kind:address. A team address is named from the house's staff roster
+   * (name and role), a guest from the newest From display name it wrote with.
+   * An address with no name is shown by the address. A failed read is a 503.
+   */
+  private async namesOf(
+    houseId: string,
+    others: Array<{ kind: "team" | "guest"; address: string }>,
+  ): Promise<Map<string, string>> {
+    const names = new Map<string, string>();
+    const team = [
+      ...new Set(
+        others
+          .filter((o) => o.kind === "team")
+          .map((o) => o.address.toLowerCase()),
+      ),
+    ];
+    const guests = [
+      ...new Set(
+        others
+          .filter((o) => o.kind === "guest")
+          .map((o) => o.address.toLowerCase()),
+      ),
+    ];
+    if (team.length) {
+      const access = await this.db
+        .from("user_restaurant_access")
+        .select("user_id, role")
+        .eq("restaurant_id", houseId)
+        .eq("is_active", true);
+      if (access.error) this.failed("staff", access.error);
+      const accessRole = new Map<string, string>();
+      for (const a of (access.data ?? []) as any[]) {
+        if (a.user_id && a.role) accessRole.set(a.user_id, String(a.role));
+      }
+      const ids = [...accessRole.keys()];
+      // The legacy roster (users.restaurant_id) and the people this house's
+      // access rows name: both are this house's, neither reads another's.
+      const [legacy, granted] = await Promise.all([
+        this.db
+          .from("users")
+          .select("user_id, email, name, role")
+          .eq("restaurant_id", houseId),
+        ids.length
+          ? this.db
+              .from("users")
+              .select("user_id, email, name, role")
+              .in("user_id", ids)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (legacy.error) this.failed("staff", legacy.error);
+      if (granted.error) this.failed("staff", granted.error);
+      const staff = {
+        data: [
+          ...((legacy.data ?? []) as any[]),
+          ...((granted.data ?? []) as any[]),
+        ],
+      };
+      for (const u of (staff.data ?? []) as any[]) {
+        const email =
+          typeof u.email === "string" ? u.email.trim().toLowerCase() : "";
+        const name = typeof u.name === "string" ? u.name.trim() : "";
+        if (!email || !name || !team.includes(email)) continue;
+        const role = (accessRole.get(u.user_id) ?? u.role ?? "")
+          .toString()
+          .trim()
+          .toLowerCase();
+        names.set(`team:${email}`, role ? `${name} (${role})` : name);
+      }
+    }
+    if (guests.length) {
+      const res = await this.db
+        .from("procurement_conversations")
+        .select("from_address, from_header:email_headers->>from")
+        .eq("restaurant_id", houseId)
+        .eq("kind", "guest")
+        .in("from_address", guests)
+        .order("created_at", { ascending: false })
+        .limit(Math.min(guests.length * 5, 250));
+      if (res.error) this.failed("names", res.error);
+      for (const r of (res.data ?? []) as any[]) {
+        const address =
+          typeof r.from_address === "string"
+            ? r.from_address.toLowerCase()
+            : "";
+        const key = `guest:${address}`;
+        if (!address || names.has(key)) continue;
+        const name = fromDisplayName(r.from_header, address);
+        if (name) names.set(key, name);
+      }
+    }
+    return names;
   }
 
   /** Vendors always; team and guest only when stored and the caller may read them. */
@@ -266,7 +381,12 @@ export class MailService {
     const last = page[page.length - 1];
     return {
       person: other
-        ? otherPersonRef(other)
+        ? otherPersonRef(
+            other,
+            (await this.namesOf(houseId, [other])).get(
+              `${other.kind}:${other.address}`,
+            ),
+          )
         : personRef(providerId!, provider?.name),
       threads: page.map(
         (t): MailThreadRow => ({
@@ -392,6 +512,11 @@ export class MailService {
         }
       : null;
 
+    const otherName = other
+      ? (await this.namesOf(houseId, [other])).get(
+          `${other.kind}:${other.address}`,
+        )
+      : null;
     const kept = rows.slice(0, MAIL_THREAD_PAGE);
     const oldest = kept[kept.length - 1];
     const files = await this.readAttachments(kept.map((m) => m.id));
@@ -406,7 +531,7 @@ export class MailService {
           ? head.thread_subject.trim()
           : null,
       person: other
-        ? otherPersonRef(other)
+        ? otherPersonRef(other, otherName)
         : head.provider_id
           ? personRef(head.provider_id, head.provider_name)
           : null,

@@ -38,9 +38,13 @@ export class InsertedInsightDto {
 }
 
 export class QueueLetterDto {
-  @ApiProperty({ description: "The provider this letter is addressed to." })
+  @ApiPropertyOptional({
+    description:
+      "The provider this letter is addressed to. Absent only on a reply to a team or guest letter (then `answers` names that letter and `to` must be the address it came from).",
+  })
+  @IsOptional()
   @IsUUID()
-  providerId: string;
+  providerId?: string;
 
   @ApiProperty({
     description:

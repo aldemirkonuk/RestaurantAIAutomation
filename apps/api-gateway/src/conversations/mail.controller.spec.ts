@@ -243,6 +243,15 @@ describe("errors are said in words", () => {
     expect(reads).toHaveLength(0);
   });
 
+  it("?kind= reaches the people read, and an unknown kind is a 400 with no read (r103 mail-1)", async () => {
+    expect((await get("/people?kind=guest")).status).toBe(200);
+    expect(reads.find((r) => r.name === "list_mail_people")?.payload.p_kind).toBe("guest");
+    reads = [];
+    const bad = await get("/people?kind=robot");
+    expect(bad.status).toBe(400);
+    expect(reads).toHaveLength(0);
+  });
+
   it("a page size that is not a whole number is a 400", async () => {
     const res = await get("/people?limit=ten");
     expect(res.status).toBe(400);
