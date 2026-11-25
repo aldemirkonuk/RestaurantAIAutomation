@@ -30,7 +30,7 @@
  * tuck on early release); row settle for the doc open; ink micro-states.
  */
 
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -1721,6 +1721,41 @@ export default function ReceiptsNext() {
     null;
 
   /*
+   * THE NEXT PAPER, NOT THE EMPTY PAGE (r107, DD-r106-25). A seal used to send
+   * the reader back to nothing, so a reviewer of forty papers re-found their
+   * place forty times. After a seal the next paper in the review lanes opens;
+   * the last one falls back to the empty state. j and k move through the review
+   * lanes, Enter opens the one in focus (a button's own Enter), and only one row
+   * is a Tab stop. No scroll animation, no fade: focus lands where it lands.
+   */
+  const reviewRows = [...data.queue, ...data.clean];
+  const nextAfter = (id: string) => {
+    const at = reviewRows.findIndex((d) => d.id === id);
+    return at >= 0 ? (reviewRows[at + 1]?.id ?? null) : null;
+  };
+  const [rovingId, setRovingId] = useState<string | null>(null);
+  const rovingRowId = reviewRows.some((d) => d.id === rovingId)
+    ? rovingId
+    : reviewRows.some((d) => d.id === selectedId)
+      ? selectedId
+      : (reviewRows[0]?.id ?? null);
+  // A seal being held (pointer down on the detail) must not have the paper
+  // swapped under it by a stray key.
+  const sealHeld = useRef(false);
+  const onReviewKey = (e: KeyboardEvent<HTMLElement>) => {
+    if (e.key !== 'j' && e.key !== 'k') return;
+    if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || sealHeld.current) return;
+    const t = e.target as HTMLElement;
+    if (t.closest('input, textarea, select, [contenteditable="true"]')) return;
+    const from = reviewRows.findIndex((d) => d.id === rovingRowId);
+    const to = reviewRows[from + (e.key === 'j' ? 1 : -1)];
+    if (!to) return;
+    e.preventDefault();
+    setRovingId(to.id);
+    (e.currentTarget.closest('section')?.querySelector(`[data-rc-id="${to.id}"]`) as HTMLElement | null)?.focus();
+  };
+
+  /*
    * ONE ROW, TWO GROUPS (walk-through RECEIPTS-W44, 2026-10-01). The papers
    * that need a look and the papers that read cleanly are drawn by the same
    * row, so the two groups differ only by the heading between them.
@@ -1729,6 +1764,9 @@ export default function ReceiptsNext() {
     <button
       key={d.id}
       type="button"
+      data-rc-id={d.id}
+      tabIndex={rovingRowId === d.id ? 0 : -1}
+      onFocus={() => setRovingId(d.id)}
       onClick={() => select(d.id)}
       aria-pressed={selectedId === d.id}
       className="rc-row block w-full text-left"
@@ -2047,7 +2085,7 @@ export default function ReceiptsNext() {
               </p>
               </div>
             ) : (
-              <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+              <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }} onKeyDown={onReviewKey}>
                 {data.queue.map(queueRow)}
                 {data.queueReading && <LaneOutline rows={remembered?.queue || 3} slot="queue" />}
               </div>
@@ -2084,7 +2122,7 @@ export default function ReceiptsNext() {
                   Read cleanly · not yet confirmed · {data.cleanCapped ? GE : ''}
                   {data.clean.length}
                 </h3>
-                <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+                <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }} onKeyDown={onReviewKey}>
                   {data.clean.map(queueRow)}
                 </div>
               </div>
@@ -2204,6 +2242,9 @@ export default function ReceiptsNext() {
           <section
             aria-label="Document detail"
             data-testid="detail-placeholder"
+            onPointerDownCapture={() => { sealHeld.current = true; }}
+            onPointerUpCapture={() => { sealHeld.current = false; }}
+            onPointerCancelCapture={() => { sealHeld.current = false; }}
             // With nothing open the section keeps its line, so the grid does not
             // lose it when the lanes beside it land (r105).
             style={selected ? undefined : { minHeight: 41 }}
@@ -2252,7 +2293,7 @@ export default function ReceiptsNext() {
                     <CanonicalDocumentPage documentId={selected.id} embedded />
                   </Suspense>
                 </div>
-                <DocView key={selected.id} doc={selected} onVerified={() => select(null)} />
+                <DocView key={selected.id} doc={selected} onVerified={() => select(nextAfter(selected.id))} />
               </>
             ) : selectedId && data.queueKnown && data.cleanKnown && data.verifiedKnown ? (
               /*
