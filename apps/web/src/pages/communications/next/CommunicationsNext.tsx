@@ -163,6 +163,8 @@ export default function CommunicationsNext() {
   // "Write a reply" in a Mail thread (r28 gap 3): the composer opens on an
   // answer to that thread's newest letter.
   const [answerFrom, setAnswerFrom] = useState<MailAnswer | null>(null);
+  // A new letter to a vendor, opened from the vendor's person page in Mail (r107 DD-r106-8).
+  const [writeTo, setWriteTo] = useState<{ providerId: string } | null>(null);
   const [templateFrom, setTemplateFrom] = useState<HeldTemplate | null>(null);
   // Resume takes its own stub away, and the button with it. Focus moves to the
   // row's own opener first, so the sheet hands focus back there when it closes
@@ -184,16 +186,26 @@ export default function CommunicationsNext() {
   const openCompose = () => {
     // The composer stays mounted, so a held letter is still in it. A reply
     // opened from Mail and left unwritten is not a new letter: a fresh sheet.
-    if (answerFrom && !letters.words('new')) {
+    if ((answerFrom || writeTo) && !letters.words('new')) {
       setAnswerFrom(null);
+      setWriteTo(null);
       setComposeKey((k) => k + 1);
     }
     letters.drop('new');
     setCompose(true);
   };
+  const openWriteTo = (providerId: string) => {
+    // A fresh sheet for the new letter: a letter held from before is left held.
+    setComposeFrom(null);
+    setAnswerFrom(null);
+    setWriteTo({ providerId });
+    setComposeKey((k) => k + 1);
+    setCompose(true);
+  };
   const openAnswer = (a: MailAnswer) => {
     // A fresh sheet for the reply: a letter held from before is left held.
     setComposeFrom(null);
+    setWriteTo(null);
     setAnswerFrom(a);
     setComposeKey((k) => k + 1);
     setCompose(true);
@@ -429,6 +441,7 @@ export default function CommunicationsNext() {
             draftedOrderIds={draftedOrderIds}
             onOpenReply={openReply}
             onAnswer={openAnswer}
+            onWriteTo={openWriteTo}
             bookFacts={bookFacts}
             // ADR 0160 §113, Open item 3 (founder, 2026-09-18): senders and
             // strangers are mail, not money. Drawn in the Mail tab since r21
@@ -841,7 +854,9 @@ export default function CommunicationsNext() {
                   answers: answerFrom.answers,
                   person: answerFrom.person,
                 }
-              : null
+              : writeTo
+                ? { providerId: writeTo.providerId, writeToVendor: true }
+                : null
         }
       />
       {draft && (

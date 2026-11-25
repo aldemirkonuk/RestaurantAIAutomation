@@ -130,6 +130,12 @@ export interface ComposeSheetProps {
      */
     answers?: string;
     /**
+     * A new letter to this vendor from its person page in Mail (r107 DD-r106-8):
+     * the vendor's own address in the book is chosen, as a reply chooses it. The
+     * server's recipient rule is unchanged.
+     */
+    writeToVendor?: boolean;
+    /**
      * A reply to a team member or a guest who wrote to the house (ADR 0396): the
      * one address that wrote, fixed. There is no vendor and no book to choose from.
      */
@@ -163,7 +169,7 @@ export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: Co
   // own address in the book first, else its first contact. Chosen once, so
   // "Change" leaves the recipient free to choose.
   const answers = prefill?.answers;
-  const replyVendor = answers && !prefill?.to ? prefill?.providerId ?? null : null;
+  const replyVendor = (answers || prefill?.writeToVendor) && !prefill?.to ? prefill?.providerId ?? null : null;
   const replyChosen = useRef(false);
   useEffect(() => {
     if (replyChosen.current || to || !replyVendor || !data.book) return;
