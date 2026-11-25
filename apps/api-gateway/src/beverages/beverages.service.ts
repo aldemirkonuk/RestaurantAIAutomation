@@ -724,23 +724,30 @@ export class BeveragesService {
   /** One cocktail's recipe lines, in the order the house recorded them. */
   async readCocktailIngredients(restaurantId: string, cocktailId: string) {
     const client = this.dbService.getClient();
-    const { data: owner, error: ownerError } = await client
-      .from("cocktails")
-      .select("id")
-      .eq("id", cocktailId)
-      .eq("restaurant_id", restaurantId)
-      .is("deleted_at", null)
-      .maybeSingle();
+    // One wave, not two. The lines table carries no restaurant_id, so the lines
+    // are only ever RETURNED if the owner row (a live cocktail of this house)
+    // came back; when it did not, the lines read is dropped unread.
+    const [
+      { data: owner, error: ownerError },
+      { data, error },
+    ] = await Promise.all([
+      client
+        .from("cocktails")
+        .select("id")
+        .eq("id", cocktailId)
+        .eq("restaurant_id", restaurantId)
+        .is("deleted_at", null)
+        .maybeSingle(),
+      client
+        .from("cocktail_ingredients")
+        .select("id, free_text, beverage_id, wine_id, quantity, unit, sort_order")
+        .eq("cocktail_id", cocktailId)
+        .order("sort_order", { ascending: true }),
+    ]);
     if (ownerError) throw this.explain(ownerError, "cocktails");
     if (!owner) {
       throw new Error("No live cocktail of this house has that id.");
     }
-
-    const { data, error } = await client
-      .from("cocktail_ingredients")
-      .select("id, free_text, beverage_id, wine_id, quantity, unit, sort_order")
-      .eq("cocktail_id", cocktailId)
-      .order("sort_order", { ascending: true });
     if (error) throw this.explain(error, "cocktail_ingredients");
 
     const rows = data ?? [];
