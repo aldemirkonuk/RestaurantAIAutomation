@@ -569,6 +569,71 @@ describe("the flag and the approve gate read the same facts", () => {
   });
 });
 
+describe("the per-order facts are read together, and bounded", () => {
+  /** Counts how many fact reads are awaiting an answer at once. */
+  function withInFlight(db: DatabaseService) {
+    const seen = { cur: 0, max: 0, total: 0 };
+    const sb: any = (db as any).supabase;
+    const from = sb.from.bind(sb);
+    sb.from = (table: string) => {
+      const q: any = from(table);
+      let cols = "";
+      let head = false;
+      const select = q.select;
+      q.select = (c?: string, o?: { head?: boolean }) => {
+        cols = c ?? "";
+        head = Boolean(o?.head);
+        return select(c, o);
+      };
+      const then = q.then;
+      q.then = (res: any, rej: any) => {
+        if (!(head || cols.startsWith("final_price"))) return then(res, rej);
+        seen.cur += 1;
+        seen.total += 1;
+        seen.max = Math.max(seen.max, seen.cur);
+        return new Promise((r) => setTimeout(r, 5)).then(() => {
+          seen.cur -= 1;
+          return then(res, rej);
+        });
+      };
+      return q;
+    };
+    return seen;
+  }
+
+  const rules = [rule("price_jump"), rule("new_vendor")];
+  const many = (n: number) =>
+    Array.from({ length: n }, (_, i) =>
+      row(`o${String(i).padStart(2, "0")}`, 1 + (i % 25)),
+    );
+
+  it("reads every pending order's two facts at once, not one after another", async () => {
+    const { db } = makeDb({ pending: many(3), priorPrice: 100 });
+    const seen = withInFlight(db);
+    const out = await service(db, thresholds(rules)).listPendingOrders(REST);
+    expect(seen.total).toBe(6);
+    expect(seen.max).toBe(6);
+    expect(out).toHaveLength(3);
+  });
+
+  it("keeps the burst bounded on a long queue and still reads every order", async () => {
+    const { db } = makeDb({ pending: many(20), priorPrice: 100 });
+    const seen = withInFlight(db);
+    const out = await service(db, thresholds(rules)).listPendingOrders(REST);
+    expect(seen.total).toBe(40);
+    expect(seen.max).toBeLessThanOrEqual(16);
+    expect(seen.max).toBeGreaterThan(2);
+    expect(out).toHaveLength(20);
+  });
+
+  it("reads nothing per order when no rule is on", async () => {
+    const { db } = makeDb({ pending: many(3), priorPrice: 100 });
+    const seen = withInFlight(db);
+    await service(db, thresholds([])).listPendingOrders(REST);
+    expect(seen.total).toBe(0);
+  });
+});
+
 describe("the pure pieces", () => {
   it("flaggedFirst is stable within each group", () => {
     const f = { flagged: true, reasons: [], unknown: [] };
