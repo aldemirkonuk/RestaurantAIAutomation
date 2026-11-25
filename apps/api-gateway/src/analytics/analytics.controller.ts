@@ -478,7 +478,7 @@ export class AnalyticsController {
       // Staff read the sentences of the classes they see: never the till, a
       // spend, a margin or a named server (ADR 0348). Said only when
       // something was withheld, so a holder's answer is the one it was.
-      let answer: typeof raw = raw;
+      let answer: unknown = raw;
       if (Array.isArray((raw as { insights?: unknown }).insights)) {
         const held = insightsForRole(
           (raw as { insights: unknown[] }).insights,
@@ -489,9 +489,13 @@ export class AnalyticsController {
             ...raw,
             insights: held.kept,
             withheldForRole: held.withheldForRole,
-          } as typeof raw;
+          };
       }
-      return await this.forViewer(restaurantId, user, answer);
+      return await this.forViewer(
+        restaurantId,
+        user,
+        answer as { insights?: unknown },
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to fetch insights",
