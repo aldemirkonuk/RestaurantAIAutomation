@@ -1387,3 +1387,98 @@ describe("MenusService — the plan before a menu is chosen, and the locks it re
     expect(list.namesReason).toMatch(/timeout/);
   });
 });
+
+/**
+ * Seeding the house from a menu was a select, maybe an insert, a price write
+ * and a flag write for EACH line. It is now one read, one insert for the
+ * missing wines, and the price writes in groups -- with the same answers.
+ */
+describe("MenusService.addToInventory — N lines are O(1) reads, not O(N) (p3 s1)", () => {
+  const line = (i: number, wine: string, bottle: number | null, id = `mi-${i}`) => ({
+    id,
+    wine_library_id: wine,
+    name: `Wine ${wine}`,
+    bottle_price: bottle,
+    by_glass_price: null,
+    created_at: "2026-11-01T00:00:00Z",
+  });
+  const run = async (tables: Record<string, Row[]>, lines: any[], rpc?: (fn: string, a: Row) => any) => {
+    const calls: RpcCall[] = [];
+    const service = makeService(tables, {
+      rpcCalls: calls,
+      rpc: rpc ?? (() => ({ data: { outcome: "changed", bottle_price: 1, glass_price: null }, error: null })),
+    });
+    const sb: any = (service as any).dbService.supabase;
+    const real = sb.from;
+    const hits: Record<string, number> = {};
+    sb.from = (t: string) => {
+      hits[t] = (hits[t] ?? 0) + 1;
+      return real(t);
+    };
+    const out = await (service as any).addToInventory(lines, "rest-1", "user-1", { effectiveFrom: null, menuId: "m-1" });
+    return { out, calls, hits, tables };
+  };
+
+  it("60 lines (20 wines already in the house, 40 new) read and seed the house in 2 calls to restaurant_inventory", async () => {
+    const tables: Record<string, Row[]> = {
+      restaurants: [{ id: "rest-1", default_threshold_min: 3 }],
+      restaurant_inventory: Array.from({ length: 20 }, (_, i) => ({
+        id: `inv-old-${i}`,
+        restaurant_id: "rest-1",
+        master_wine_id: `w${i}`,
+        menu_price_current: 40,
+      })),
+      menu_items: Array.from({ length: 60 }, (_, i) => ({ id: `mi-${i}`, price_flag: null })),
+    };
+    const lines = Array.from({ length: 60 }, (_, i) => line(i, `w${i}`, 50 + i));
+    const { out, calls, hits } = await run(tables, lines);
+    expect(hits.restaurant_inventory).toBe(2); // one read, one batch insert
+    expect(tables.restaurant_inventory).toHaveLength(60);
+    expect(calls.filter(([fn]) => fn === "set_house_menu_price")).toHaveLength(60);
+    expect(out.inventoryMap.size).toBe(60);
+    expect(out.inventoryMap.created.size).toBe(40);
+    expect([...out.priceSync.values()].every((e: any) => e.outcome === "changed")).toBe(true);
+  });
+
+  it("a wine on two lines is seeded once, keeps the lines in menu order, and the last price stands", async () => {
+    const tables: Record<string, Row[]> = {
+      restaurants: [{ id: "rest-1", default_threshold_min: 3 }],
+      restaurant_inventory: [],
+      menu_items: [{ id: "mi-0" }, { id: "mi-1" }, { id: "mi-2" }],
+    };
+    const lines = [line(0, "wA", 50), line(1, "wB", 70), line(2, "wA", 60)];
+    const { out, calls } = await run(tables, lines);
+    expect(tables.restaurant_inventory).toHaveLength(2);
+    const a = out.inventoryMap.get("mi-0");
+    expect(out.inventoryMap.get("mi-2")).toBe(a);
+    expect(out.inventoryMap.created.has("mi-0")).toBe(true);
+    expect(out.inventoryMap.created.has("mi-2")).toBe(false);
+    const aPrices = calls.filter(([, args]) => args.p_inventory_id === a).map(([, args]) => args.p_bottle_price);
+    expect(aPrices).toEqual([50, 60]);
+  });
+
+  it("a failed read of the house's rows is said on every line and nothing is inserted or priced", async () => {
+    const tables: Record<string, Row[]> = {
+      restaurants: [{ id: "rest-1", default_threshold_min: 3 }],
+      restaurant_inventory: [],
+      menu_items: [],
+      __readFails: [{ restaurant_inventory: "connection reset" }] as any,
+    };
+    const { out, calls } = await run(tables, [line(0, "wA", 50), line(1, "wB", 70)]);
+    expect(tables.restaurant_inventory).toHaveLength(0);
+    expect(calls).toHaveLength(0);
+    expect(out.priceSync.get("mi-0")).toMatchObject({ outcome: "failed", error: expect.stringMatching(/could not be read.*connection reset/) });
+    expect(out.priceSync.get("mi-1")).toMatchObject({ outcome: "failed" });
+  });
+
+  it("a blank line over a priced house wine is flagged as before", async () => {
+    const tables: Record<string, Row[]> = {
+      restaurants: [{ id: "rest-1", default_threshold_min: 3 }],
+      restaurant_inventory: [{ id: "inv-1", restaurant_id: "rest-1", master_wine_id: "wA", menu_price_current: 40 }],
+      menu_items: [{ id: "mi-0", price_flag: null }],
+    };
+    const { out } = await run(tables, [line(0, "wA", null)]);
+    expect(out.priceSync.get("mi-0")).toMatchObject({ outcome: "no_price", flag: "blank_kept_last_known" });
+    expect(tables.menu_items[0].price_flag).toBe("blank_kept_last_known");
+  });
+});

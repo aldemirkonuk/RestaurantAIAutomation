@@ -1912,69 +1912,137 @@ export class MenusService {
     if (validItems.length === 0) return { inventoryMap: result, priceSync };
 
     const thresholdMin = await this.getDefaultThresholdMin(restaurantId);
+    const db = this.dbService.supabase;
+    const wineIds = [...new Set(validItems.map((i) => i.wine_library_id as string))];
+    const chunks = <T,>(xs: T[], size: number): T[][] => {
+      const out: T[][] = [];
+      for (let i = 0; i < xs.length; i += size) out.push(xs.slice(i, i + size));
+      return out;
+    };
 
-    for (const item of validItems) {
-      const { data: existing, error: existingErr } = await this.dbService.supabase
+    // The house's own rows for every wine on the menu, in one read per 200
+    // wines (it was one read per line). A failed read is not "no row"
+    // (last-call review, 2026-09-21). Read as one, it tried a duplicate
+    // INSERT (refused by the house+wine UNIQUE), skipped the line in silence
+    // -- counted "not_linked" -- and decided the blank-price flag (founder
+    // answer 3) from a price it never saw.
+    const house = new Map<string, { id: string; bottle: number | string | null; glass: number | string | null }>();
+    for (const ids of chunks(wineIds, 200)) {
+      const { data, error } = await db
         .from("restaurant_inventory")
-        .select("id, menu_price_current, menu_price_glass")
+        .select("id, master_wine_id, menu_price_current, menu_price_glass")
         .eq("restaurant_id", restaurantId)
-        .eq("master_wine_id", item.wine_library_id)
-        .maybeSingle();
-
-      // A failed read is not "no row" (last-call review, 2026-09-21). Read as
-      // one, it tried a duplicate INSERT (refused by the house+wine UNIQUE),
-      // skipped the line in silence -- counted "not_linked" -- and decided the
-      // blank-price flag (founder answer 3) from a price it never saw.
-      if (existingErr) {
-        const message = `the house's own row for this wine could not be read, so neither its price nor a blank-price flag was decided: ${existingErr.message}`;
-        this.logger.error(`menu line ${item.id} ("${item.name}"): ${message}`);
-        priceSync.set(item.id, { outcome: "failed", error: message, flag: null, flagNote: null, held: [] });
-        continue;
+        .in("master_wine_id", ids);
+      if (error) {
+        const message = `the house's own row for this wine could not be read, so neither its price nor a blank-price flag was decided: ${error.message}`;
+        this.logger.error(`menu import: the house's rows could not be read: ${error.message}`);
+        for (const item of validItems) {
+          priceSync.set(item.id, { outcome: "failed", error: message, flag: null, flagNote: null, held: [] });
+        }
+        return { inventoryMap: result, priceSync };
       }
+      for (const r of data ?? []) {
+        house.set(String(r.master_wine_id), {
+          id: r.id,
+          bottle: r.menu_price_current ?? null,
+          glass: r.menu_price_glass ?? null,
+        });
+      }
+    }
+    const existedAtStart = new Set(house.keys());
 
-      let inventoryId: string | null = existing?.id ?? null;
-      if (!inventoryId) {
-        // Inserted WITHOUT a price on purpose: the price goes through
-        // set_house_menu_price below, so its version row says 'import' and
-        // names the person, instead of the trigger's "no person named".
-        const { data: created, error } = await this.dbService.supabase
-          .from("restaurant_inventory")
-          .insert({
-            restaurant_id: restaurantId,
-            master_wine_id: item.wine_library_id,
-            wine_name: item.name,
-            threshold_min: thresholdMin,
-            is_active: true,
-          })
-          .select("id")
-          .single();
-
-        if (error) {
+    // The wines the house lacks, inserted together. Inserted WITHOUT a price
+    // on purpose: the price goes through set_house_menu_price below, so its
+    // version row says 'import' and names the person, instead of the
+    // trigger's "no person named". A batch the database refuses falls back
+    // to one insert per wine, so one bad row costs only its own line.
+    const seedFailed = new Map<string, string>();
+    const firstLine = new Map<string, InsertedMenuItem>();
+    for (const item of validItems) {
+      const w = item.wine_library_id as string;
+      if (!firstLine.has(w)) firstLine.set(w, item);
+    }
+    const missing = wineIds.filter((w) => !house.has(w));
+    const rowFor = (w: string) => ({
+      restaurant_id: restaurantId,
+      master_wine_id: w,
+      wine_name: firstLine.get(w)!.name,
+      threshold_min: thresholdMin,
+      is_active: true,
+    });
+    for (const ids of chunks(missing, 100)) {
+      const { data, error } = await db
+        .from("restaurant_inventory")
+        .insert(ids.map(rowFor))
+        .select("id, master_wine_id");
+      if (!error && Array.isArray(data)) {
+        for (const r of data) house.set(String(r.master_wine_id), { id: r.id, bottle: null, glass: null });
+      }
+      for (const w of ids) {
+        if (house.has(w)) continue;
+        const one = await db.from("restaurant_inventory").insert(rowFor(w)).select("id").single();
+        if (one.error || !one.data?.id) {
+          const why = one.error?.message ?? error?.message ?? "no row came back";
           // Still non-fatal for the menu, but said on the line: "not_linked"
           // means the menu matched no wine, never that the house's row failed.
-          const message = `the wine could not be added to the house's inventory, so no price was set: ${error.message}`;
-          this.logger.warn(`inventory seeding failed for "${item.name}" (non-fatal): ${error.message}`);
-          priceSync.set(item.id, { outcome: "failed", error: message, flag: null, flagNote: null, held: [] });
-          continue;
+          this.logger.warn(`inventory seeding failed for "${firstLine.get(w)!.name}" (non-fatal): ${why}`);
+          seedFailed.set(w, `the wine could not be added to the house's inventory, so no price was set: ${why}`);
+        } else {
+          house.set(w, { id: one.data.id, bottle: null, glass: null });
         }
-        inventoryId = created?.id ?? null;
       }
-      if (!inventoryId) continue;
-      result.set(item.id, inventoryId);
-      if (!existing) result.created.add(item.id);
-      const entry = await this.carryMenuPrice(
-        item,
-        restaurantId,
-        inventoryId,
-        userId,
-        {
-          bottle: existing?.menu_price_current ?? null,
-          glass: existing?.menu_price_glass ?? null,
-        },
-        dating,
-      );
-      priceSync.set(item.id, entry);
-      await this.writeLineFlag(item.id, entry);
+    }
+
+    // Prices carried in bounded groups. A wine that stands on two lines keeps
+    // its lines in menu order (the last price stands); different wines run
+    // side by side, FIVE at a time.
+    const byWine = new Map<string, InsertedMenuItem[]>();
+    for (const item of validItems) {
+      const w = item.wine_library_id as string;
+      if (seedFailed.has(w)) continue;
+      byWine.set(w, [...(byWine.get(w) ?? []), item]);
+    }
+    const entries = new Map<string, PriceSyncEntry>();
+    const carryWine = async (w: string, lines: InsertedMenuItem[]) => {
+      const row = house.get(w)!;
+      for (const item of lines) {
+        const entry = await this.carryMenuPrice(
+          item,
+          restaurantId,
+          row.id,
+          userId,
+          { bottle: row.bottle, glass: row.glass },
+          dating,
+        );
+        // The next line of the same wine sees what this one left, as a fresh
+        // read of the row would have shown it.
+        if (entry.outcome === "changed") {
+          if (item.bottle_price !== null && item.bottle_price !== undefined) row.bottle = item.bottle_price;
+          if (item.by_glass_price !== null && item.by_glass_price !== undefined) row.glass = item.by_glass_price;
+        }
+        entries.set(item.id, entry);
+        await this.writeLineFlag(item.id, entry);
+      }
+    };
+    const queue = [...byWine.entries()];
+    await Promise.all(
+      Array.from({ length: Math.min(5, queue.length) }, async () => {
+        for (let next = queue.shift(); next; next = queue.shift()) await carryWine(next[0], next[1]);
+      }),
+    );
+
+    // Said back in menu order, as the line-at-a-time loop did.
+    const seen = new Set<string>();
+    for (const item of validItems) {
+      const w = item.wine_library_id as string;
+      if (seedFailed.has(w)) {
+        priceSync.set(item.id, { outcome: "failed", error: seedFailed.get(w)!, flag: null, flagNote: null, held: [] });
+        continue;
+      }
+      result.set(item.id, house.get(w)!.id);
+      if (!existedAtStart.has(w) && !seen.has(w)) result.created.add(item.id);
+      seen.add(w);
+      priceSync.set(item.id, entries.get(item.id)!);
     }
 
     return { inventoryMap: result, priceSync };
