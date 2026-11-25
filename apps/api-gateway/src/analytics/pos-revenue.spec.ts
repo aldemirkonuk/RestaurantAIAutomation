@@ -1127,6 +1127,7 @@ describe("AnalyticsService.getPosConsumptionBreakdown", () => {
   });
 });
 
+// A holder reads the till: staff are answered withheld (pos-revenue-withheld-from-staff.spec.ts).
 describe("GET /analytics/pos-revenue/:restaurantId", () => {
   let controller: AnalyticsController;
   const goals = { getPosRevenueWindow: jest.fn() };
@@ -1190,7 +1191,7 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       dailySeries: [],
     });
 
-    const body = await controller.getPosRevenue("r1", "30");
+    const body = await controller.getPosRevenue("r1", "30", undefined, { role: "manager" });
 
     expect(body.posConnected).toBe(false);
     expect(body.revenue).toBeNull();
@@ -1214,7 +1215,7 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       { wineName: "Malbec", bottlesSold: 2 },
     ]);
 
-    const body = await controller.getPosRevenue("r1", undefined);
+    const body = await controller.getPosRevenue("r1", undefined, undefined, { role: "manager" });
 
     expect(body.revenue).toBe(4200);
     expect(body.consumption).toHaveLength(1);
@@ -1239,7 +1240,7 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       dailySeries: [],
     });
 
-    const body = await controller.getPosRevenue("r1", "30");
+    const body = await controller.getPosRevenue("r1", "30", undefined, { role: "manager" });
 
     expect(body.zoneUnset).toBe(true);
     expect(body.consumption).toBeNull();
@@ -1256,9 +1257,9 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       checkCount: null,
       dailySeries: [],
     });
-    await controller.getPosRevenue("r1", "30", "prior");
+    await controller.getPosRevenue("r1", "30", "prior", { role: "manager" });
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 30, "prior");
-    await controller.getPosRevenue("r1", "30", "year");
+    await controller.getPosRevenue("r1", "30", "year", { role: "manager" });
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 30);
   });
 
@@ -1273,15 +1274,15 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       dailySeries: [],
     });
 
-    await controller.getPosRevenue("r1", "99999");
+    await controller.getPosRevenue("r1", "99999", undefined, { role: "manager" });
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 365);
 
-    await controller.getPosRevenue("r1", "banana");
+    await controller.getPosRevenue("r1", "banana", undefined, { role: "manager" });
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 30);
 
     // A parseable-but-tiny window clamps to the floor rather than snapping back
     // to the default — `?days=0` asking for today is a coherent request.
-    await controller.getPosRevenue("r1", "0");
+    await controller.getPosRevenue("r1", "0", undefined, { role: "manager" });
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 1);
   });
 });
