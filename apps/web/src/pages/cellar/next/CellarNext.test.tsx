@@ -1785,6 +1785,19 @@ describe('what this house’s book is called', () => {
     );
   });
 
+  it('holds the registers section frame while the readout is read (CLS)', () => {
+    mock.current = { ...base, registers: null, registersLoading: true };
+    draw();
+    expect(screen.getAllByTestId('register-held')).toHaveLength(2);
+    expect(screen.getByTestId('registers-grid')).toBeInTheDocument();
+  });
+
+  it('draws no held frame once the readout is in', () => {
+    mock.current = { ...base, registers: readout(), registersLoading: false };
+    draw();
+    expect(screen.queryAllByTestId('register-held')).toHaveLength(0);
+  });
+
   it('an unestablished house keeps the route’s own name and claims nothing', () => {
     mock.current = { ...base, registers: null, registersLoading: true };
     draw();

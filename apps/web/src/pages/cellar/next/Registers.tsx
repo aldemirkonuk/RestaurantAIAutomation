@@ -289,7 +289,32 @@ export default function Registers({ data }: { data: CellarData }) {
           </p>
         )}
 
-        <div className="cl-grid" style={{ marginTop: 12 }}>
+        <div className="cl-grid" style={{ marginTop: 12 }} data-testid="registers-grid">
+          {/* While the readout is on its way the grid is empty, and the
+              cards arriving moved the page below them by two cards' height
+              (CLS 0.709 at 375, perf-p1-4). Two static frames hold that room:
+              the wine card (three figure rows) and one catalogue card (two).
+              No shimmer, no fade (ADR 0112). */}
+          {data.registersLoading && shown.length === 0
+            ? [3, 2].map((rows) => (
+                <div
+                  key={rows}
+                  className="cl-register"
+                  aria-hidden="true"
+                  data-held="true"
+                  data-testid="register-held"
+                >
+                  <span style={{ display: 'block', fontSize: 21, lineHeight: '26px' }}>&nbsp;</span>
+                  <span style={{ display: 'block', marginTop: 12 }}>
+                    {Array.from({ length: rows }, (_, i) => (
+                      <span key={i} style={{ display: 'block', fontSize: 13, lineHeight: '18px' }}>
+                        &nbsp;
+                      </span>
+                    ))}
+                  </span>
+                </div>
+              ))
+            : null}
           {shown.map((id) => (
             <RegisterCard
               key={id}
