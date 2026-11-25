@@ -34,6 +34,7 @@ function fakeClient(o: FakeOpts) {
   const inserts: Array<[string, Row]> = [];
   const rpcs: Array<[string, Row]> = [];
   const from = (table: string) => {
+    let win: [number, number] | null = null;
     const filters: Array<[string, unknown]> = [];
     const extra: Array<(r: Row) => boolean> = [];
     let insertRow: Row | null = null;
@@ -89,6 +90,10 @@ function fakeClient(o: FakeOpts) {
       order() {
         return api;
       },
+      range(a: number, b: number) {
+        win = [a, b];
+        return api;
+      },
       limit() {
         return api;
       },
@@ -107,7 +112,10 @@ function fakeClient(o: FakeOpts) {
         return { data: Array.isArray(r.data) ? r.data[0] : r.data, error: r.error };
       },
       then(resolve: any) {
-        resolve(rows());
+        const r = rows();
+        // A read with no window is cut at 1000, as PostgREST cuts it.
+        const [a, b] = win ?? [0, 999];
+        resolve(Array.isArray(r.data) ? { ...r, data: r.data.slice(a, b + 1) } : r);
       },
     };
     return api;
@@ -229,6 +237,33 @@ describe("MarginAdviceService.adviseHouse", () => {
     expect(out.wines[0].bottle!.state).toBe("no_target");
     expect(out.wines[0].glass!.state).toBe("no_target");
     expect(out.counts.raise + out.counts.lower).toBe(0);
+  });
+
+  it("a house of 2,350 wines is advised whole: every page is read, none dropped past 1,000", async () => {
+    const many = Array.from({ length: 2350 }, (_, i) => ({ ...WINE_A, id: `inv-${i}` }));
+    const { svc } = service({ house: HOUSE_SET, inventory: many, rollup: [] });
+    const r = await svc.adviseHouse("rest-1");
+    expect(r.wines).toHaveLength(2350);
+  });
+
+  it("a page that fails mid-read is an error, not the first 1,000 wines", async () => {
+    const many = Array.from({ length: 1500 }, (_, i) => ({ ...WINE_A, id: `inv-${i}` }));
+    const f = service({ house: HOUSE_SET, inventory: many, rollup: [] });
+    const real = f.client.from;
+    let calls = 0;
+    f.client.from = (t: string) => {
+      const api = real(t);
+      if (t === "restaurant_inventory") {
+        const r = api.range.bind(api);
+        api.range = (a: number, b: number) => {
+          r(a, b);
+          if (++calls === 2) return { then: (res: any) => res({ data: null, error: { message: "page 2 down" } }) };
+          return api;
+        };
+      }
+      return api;
+    };
+    await expect(f.svc.adviseHouse("rest-1")).rejects.toBeInstanceOf(InternalServerErrorException);
   });
 
   it("a failed wine read is an error, never an empty list", async () => {
