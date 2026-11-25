@@ -611,6 +611,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setActiveRole(null);
       return;
     }
+    // `/auth/me` already says the role in the token's house (ADR 0164). When
+    // the active house is that house, take it from there and skip the second
+    // call; ask only for a house the token is not in.
+    const meRole = user.role as string | null | undefined;
+    if (
+      user.restaurantId === tid &&
+      meRole &&
+      ["owner", "manager", "staff"].includes(meRole)
+    ) {
+      setActiveRole(meRole as "owner" | "manager" | "staff");
+      return;
+    }
     let cancelled = false;
     void (async () => {
       try {
