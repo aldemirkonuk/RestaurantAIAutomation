@@ -324,6 +324,9 @@ function VersionRow({ v, canManage, lastUsedId, planning, onPlan }: {
   );
 }
 
+/** The loading line's height: its own line plus the 59 px the settled block adds at 375 (perf p1-6). */
+const SETTLED_ROOM_PX = 82;
+
 export function MenuVersions({ canManage }: { canManage: boolean }) {
   const queryClient = useQueryClient();
   const [said, setSaid] = useState<string | null>(null);
@@ -350,7 +353,9 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
         </p>
       ) : null}
       {q.isLoading ? (
-        <p className="cl-said" role="status" style={{ marginTop: 12 }}>
+        // Room for the settled block (p1 measured 324 -> 383 px at 375 wide)
+        // so the sections below do not jump when the read answers.
+        <p className="cl-said" role="status" style={{ marginTop: 12, minHeight: SETTLED_ROOM_PX }} data-testid="menu-versions-loading">
           Reading the menus this house has kept…
         </p>
       ) : q.isError ? (
