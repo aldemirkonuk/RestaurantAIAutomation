@@ -272,3 +272,11 @@ describe('the add-a-line note names a held kind (L5)', () => {
     expect(housePriceNote({ priceSync: 'changed', priceHeld: [] })?.text).toBe("This wine's own price on Inventory now matches the line.");
   });
 });
+
+describe('LockedPrices holds its room while reading (p2 s4)', () => {
+  it('the reading line holds the height the standing line takes', () => {
+    mockList.mockReturnValue(new Promise(() => {}));
+    mount(true);
+    expect(screen.getByTestId('locked-prices-reading').style.minHeight).toBe('44px');
+  });
+});

@@ -208,6 +208,9 @@ function LockRow({ l, canManage, onSaid }: { l: PriceLock; canManage: boolean; o
   );
 }
 
+/** The room the standing line takes once the read lands (375 px: 106 to 125). Held while reading; no animation. */
+const LOCKS_READING_HOLD = 44;
+
 export function LockedPrices({ canManage }: { canManage: boolean }) {
   const [said, setSaid] = useState<string | null>(null);
   const house = useAuthStore((s) => s.activeRestaurantId) ?? null;
@@ -216,7 +219,7 @@ export function LockedPrices({ canManage }: { canManage: boolean }) {
   let body: ReactNode;
   if (q.isLoading) {
     body = (
-      <p className="cl-said" role="status">
+      <p className="cl-said" role="status" style={{ minHeight: LOCKS_READING_HOLD }} data-testid="locked-prices-reading">
         Reading the locked prices…
       </p>
     );
