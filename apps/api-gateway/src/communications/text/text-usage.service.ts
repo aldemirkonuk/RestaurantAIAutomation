@@ -191,9 +191,17 @@ export class TextUsageService {
       now,
     );
 
-    const used = await this.countMeter(restaurantId, monthKey, true);
+    // The four reads need only the house row (month key, plan code), so they
+    // go out together: two round trips instead of five. The failures are
+    // pushed afterwards in the old order (counted, uncounted, allowance,
+    // credits) so the reason sentence reads exactly as it did.
+    const [used, free, allowance, credits] = await Promise.all([
+      this.countMeter(restaurantId, monthKey, true),
+      this.countMeter(restaurantId, monthKey, false),
+      this.allowanceForHouse(restaurantId, planCode),
+      this.creditBalance(restaurantId),
+    ]);
     if (used === null) failures.push("this month's counted messages");
-    const free = await this.countMeter(restaurantId, monthKey, false);
     if (free === null) failures.push("this month's uncounted messages");
 
     // THE HOUSE'S OWN ROW WINS, and the reason is the founder's answer to
@@ -202,10 +210,8 @@ export class TextUsageService {
     // `subscription_tier`, and that column carries DEFAULT 'pilot' on houses
     // that never chose it — so plan-first would make "one house, deliberately"
     // impossible to express. Which row answered is itself reported.
-    const allowance = await this.allowanceForHouse(restaurantId, planCode);
     if (!allowance.readable) failures.push("this house's allowance");
 
-    const credits = await this.creditBalance(restaurantId);
     if (!credits.readable) failures.push("the credit ledger");
 
     return {
