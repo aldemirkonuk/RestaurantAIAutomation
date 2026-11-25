@@ -20,6 +20,9 @@ export function yieldWords(y: DishYield | null | undefined): string | null {
   return y && s ? `${qtyText(y.qtyBase / s.per)} ${s.unit}` : null;
 }
 
+/** The gateway's own sentence for a batch that makes nothing (dishes.service YIELD_NEEDS_AMOUNT). */
+export const YIELD_NEEDS_AMOUNT = 'A batch makes an amount above zero.';
+
 function refusal(e: unknown): string {
   const m = (e as { response?: { data?: { message?: unknown } } } | null)?.response?.data?.message;
   return typeof m === 'string' && m.trim() ? m.trim() : 'Could not be saved just now. Nothing was changed.';
@@ -33,7 +36,10 @@ export default function YieldForm({ dishId, current }: { dishId: string; current
   const [unit, setUnit] = useState<RecipeUnit>(shown?.unit ?? 'ml');
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState<{ ok: boolean; text: string } | null>(null);
+  // Said only once the field has been edited, so an untouched form is not scolded.
+  const [edited, setEdited] = useState(false);
   const amount = readQty(text, unit);
+  const needsAmount = edited && amount === null;
 
   const save = async () => {
     if (amount === null || busy || !activeRestaurantId) return;
@@ -61,12 +67,20 @@ export default function YieldForm({ dishId, current }: { dishId: string; current
           value={text}
           placeholder="700"
           aria-invalid={text !== '' && amount === null}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            // what was said above belonged to the figure before this edit
+            setSaid(null);
+            setEdited(true);
+            setText(e.target.value);
+          }}
         />
       </label>
       <label>
         Unit
-        <select className="cl-field cl-focus" value={unit} onChange={(e) => setUnit(e.target.value as RecipeUnit)}>
+        <select className="cl-field cl-focus" value={unit} onChange={(e) => {
+            setSaid(null);
+            setUnit(e.target.value as RecipeUnit);
+          }}>
           {RECIPE_UNITS.map((u) => (
             <option key={u} value={u}>{UNIT_LABEL[u]}</option>
           ))}
@@ -75,6 +89,11 @@ export default function YieldForm({ dishId, current }: { dishId: string; current
       <button type="button" className="cl-btn cl-focus" disabled={amount === null || busy} onClick={() => void save()}>
         {busy ? 'Saving…' : 'Save what a batch makes'}
       </button>
+      {needsAmount ? (
+        <p className="cl-rcp-note cl-rcp-note-warn" role="status" data-testid="yield-needs-amount">
+          {YIELD_NEEDS_AMOUNT}
+        </p>
+      ) : null}
       {said ? (
         <p className={said.ok ? 'cl-note' : 'cl-rcp-note cl-rcp-note-warn'} role={said.ok ? 'status' : 'alert'} data-testid="yield-said">
           {said.text}

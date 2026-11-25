@@ -59,6 +59,42 @@ describe('YieldForm', () => {
     expect(h.patch).not.toHaveBeenCalled();
   });
 
+  describe('a figure that makes nothing says why, and drops the earlier line', () => {
+    const field = () => screen.getByLabelText(/one batch makes/i);
+    const priced = async () => {
+      h.patch.mockResolvedValue({ data: { id: ID, name: 'House Sour Mix', yield: { amount: 1500, unit: 'ml', qtyBase: 15000, baseUnit: 'ml10' } } });
+      render(<YieldForm dishId={ID} current={null} />, { wrapper: wrap });
+      fireEvent.change(field(), { target: { value: '1500' } });
+      fireEvent.click(button());
+      expect(await screen.findByTestId('yield-said')).toHaveTextContent('One batch makes 1500 ml.');
+    };
+
+    it.each([['0', '0'], ['-5', '-5'], ['an emptied field', '']])('%s: Save is off, the sentence stands beside it, the old line is gone', async (_n, value) => {
+      await priced();
+      fireEvent.change(field(), { target: { value } });
+      expect(button()).toBeDisabled();
+      expect(screen.queryByTestId('yield-said')).toBeNull();
+      expect(screen.getByTestId('yield-needs-amount')).toHaveTextContent('A batch makes an amount above zero.');
+    });
+
+    it('a good figure again takes the sentence away, and the unit change drops a stale line too', async () => {
+      await priced();
+      fireEvent.change(field(), { target: { value: '0' } });
+      fireEvent.change(field(), { target: { value: '900' } });
+      expect(screen.queryByTestId('yield-needs-amount')).toBeNull();
+      fireEvent.click(button());
+      expect(await screen.findByTestId('yield-said')).toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText(/^unit$/i), { target: { value: 'cl' } });
+      expect(screen.queryByTestId('yield-said')).toBeNull();
+    });
+
+    it('an untouched empty form does not scold', () => {
+      render(<YieldForm dishId={ID} current={null} />, { wrapper: wrap });
+      expect(button()).toBeDisabled();
+      expect(screen.queryByTestId('yield-needs-amount')).toBeNull();
+    });
+  });
+
   it('shows the gateway\'s refusal in its own words and keeps what was typed', async () => {
     const sentence = 'This is made in millilitres, and a recipe in use draws it in millilitres. Take it out of those recipes before changing what kind of unit it is made in. Nothing was changed.';
     h.patch.mockRejectedValue(Object.assign(new Error('Request failed'), { response: { status: 400, data: { message: sentence } } }));
