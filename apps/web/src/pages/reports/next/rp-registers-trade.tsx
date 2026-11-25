@@ -105,6 +105,8 @@ const reading = analysis<ReadingRow[]>({
 
 export interface TillWindow {
   posConnected: boolean;
+  /** True when the gateway kept the takings from this reader (staff): a withheld read is not an empty one (ADR 0020). */
+  salesWithheld?: boolean;
   /** null — never 0 — when no POS has ever landed a check. */
   revenue: number | null;
   checkCount: number | null;
@@ -281,6 +283,7 @@ const till = analysis<TillWindow>({
     const d = obj(raw);
     return {
       posConnected: d.posConnected === true,
+      salesWithheld: d.salesWithheld === true,
       revenue: num(d.revenue),
       checkCount: num(d.checkCount),
       from: str(d.from),
@@ -300,6 +303,17 @@ const till = analysis<TillWindow>({
   view: (read, ctx) => {
     const w = ctx.compare ? splitTill(read, ctx.days) : read;
     const money = moneyIn(ctx.currency);
+    // Takings kept to the owner and managers: say so, and draw, count and
+    // cite nothing, so a staff reader is never told the till rang nothing.
+    // `?compare=prior` is ignored here, and the card offers no compare.
+    if (w.salesWithheld)
+      return {
+        say: 'Takings are kept to the owner and managers.',
+        withheld: true,
+        figures: [],
+        notes: [],
+        basis: [],
+      };
     if (!w.posConnected)
       return {
         say: (
