@@ -243,7 +243,7 @@ describe('j and k in the review lane', () => {
     expect(document.activeElement).toBe(rowBtn('INV-89'));
   });
 
-  it('does nothing while a seal is being held or a field has the keys', async () => {
+  it('does nothing while a seal is being held, or on key repeat', async () => {
     render(<ReceiptsNext />, { wrapper });
     await paperRow('INV-88');
     rowBtn('INV-88').focus();
