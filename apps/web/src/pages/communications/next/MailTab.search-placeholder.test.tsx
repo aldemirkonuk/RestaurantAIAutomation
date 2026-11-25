@@ -27,9 +27,11 @@ const SUMMARY = {
   address: { configured: false, address: null },
 };
 let grants: Array<Record<string, unknown>>;
+let storedKinds: string[];
 
 beforeEach(() => {
   grants = [];
+  storedKinds = ['vendor'];
   api.get.mockReset();
   api.get.mockImplementation(async (url: string) => {
     if (url === '/mail/summary') return { data: SUMMARY };
@@ -37,7 +39,7 @@ beforeEach(() => {
       return { data: { address: null, words: null, reader: { granted: true, enabled: true, lastReadAt: null, lastError: null } } };
     if (url === '/integrations/oauth/house-grants') return { data: { success: true, grants, unattributed: 0 } };
     if (url === '/integrations/oauth/catalog') return { data: { success: true, integrations: [{ id: 'gmail_read_all', available: true }] } };
-    if (url === '/mail/people') return { data: { people: [], next: null, storedKinds: ['vendor'] } };
+    if (url === '/mail/people') return { data: { people: [], next: null, storedKinds } };
     throw new Error(`unexpected GET ${url}`);
   });
 });
@@ -62,6 +64,17 @@ describe('the Mail search hint', () => {
 
   it('a house that reads every conversation is told it finds someone by name', async () => {
     grants = [{ connectionId: 'c1', integrationId: 'gmail_read_all', houseAccess: { revoked: false } }];
+    mount();
+    await waitFor(() =>
+      expect(screen.getByTestId('mail-search')).toHaveAttribute(
+        'placeholder',
+        'Find someone by name, address, subject, order number or word',
+      ),
+    );
+  });
+
+  it('a house with stored team or guest rows and no wide grant is told it finds someone by name', async () => {
+    storedKinds = ['vendor', 'team', 'guest'];
     mount();
     await waitFor(() =>
       expect(screen.getByTestId('mail-search')).toHaveAttribute(
