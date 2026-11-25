@@ -39,6 +39,7 @@ import { trackGuidance } from '../../guidance/analytics'
 import { useUnreadCount } from '../../hooks/queries/useNotificationQueries'
 import { usePendingOrdersCount } from '../../hooks/queries/useOrderQueries'
 import { useLowStockItems } from '../../hooks/queries/useInventoryQueries'
+import { SIDEBAR_WAITING_ON, useMailWaiting } from '../../pages/communications/next/useMailWaiting'
 import { useUIStore } from '../../stores/uiStore'
 import { useMudavymDesign } from '../../lib/mudavym/useMudavymDesign'
 import { useMudavymShell } from '../../lib/mudavym/shellGround'
@@ -51,6 +52,8 @@ interface NavItem {
   /** Shown in the hover tooltip so users know where a link goes before clicking. */
   description: string
   badge?: number
+  /** What the badge counts, said after the number in the link's name (default: pending). */
+  badgeNoun?: string
   children?: { name: string; href: string }[]
   /**
    * Lowest role that may SEE this entry. Absent means everyone, which is every
@@ -150,7 +153,9 @@ const secondaryNavItems: NavItem[] = [
     name: 'Communications',
     href: '/communications',
     icon: MessageSquare,
-    description: 'Vendor email threads, classified and ready to reply.',
+    description: 'Mail with vendors, your team and guests, and the letters you send.',
+    // The sidebar is every role's: it says who waits, never "on you" (r36 mail gap 14).
+    badgeNoun: `waiting on ${SIDEBAR_WAITING_ON}`,
   },
   {
     name: 'Documents & Reports',
@@ -348,7 +353,7 @@ function SidebarNavItem({
           ? 'border border-wine-100 bg-wine-50 text-wine-700'
           : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
       )}
-      aria-label={badgeLabel ? `${item.name}, ${badgeCount} pending` : item.name}
+      aria-label={badgeLabel ? `${item.name}, ${badgeCount} ${item.badgeNoun ?? 'pending'}` : item.name}
       aria-current={isActive ? 'page' : undefined}
     >
       <span className="relative flex shrink-0 items-center justify-center">
@@ -476,6 +481,7 @@ export function Sidebar() {
   const unread = useUnreadCount(user?.userId ?? '')
   const pendingOrders = usePendingOrdersCount()
   const lowStock = useLowStockItems()
+  const mailWaiting = useMailWaiting()
   const num = (v: unknown): number =>
     typeof v === 'number'
       ? v
@@ -488,6 +494,7 @@ export function Sidebar() {
     '/orders': num(pendingOrders.data),
     '/notifications': num(unread.data),
     '/inventory': num(lowStock.data),
+    '/communications': mailWaiting,
   }
 
   const completedCount = progress
