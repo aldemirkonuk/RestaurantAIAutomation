@@ -188,6 +188,8 @@ export class GetTransactionsQueryDto {
   page?: number;
 
   @ApiPropertyOptional({ default: 50 })
+  // A query string arrives as text; without this a `limit=3` is refused.
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(500)
