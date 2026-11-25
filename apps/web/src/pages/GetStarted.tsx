@@ -22,6 +22,7 @@ import { fitPhotoForReading } from '../lib/fitPhoto'
 import { readHouseMenuStanding, type HouseMenuStanding } from '../lib/houseMenuStanding'
 import { isMapsConfigured } from '../lib/googleMaps'
 import { houseNotOpened, HOUSE_OPEN_DETAILS_LATER } from '../lib/houseOpeningWords'
+import { clearGetStartedDraft, readGetStartedDraft, writeGetStartedDraft } from '../lib/getStartedDraft'
 
 /**
  * Two steps (OB-7, proposal F6, the session's call under the 2026-11-07
@@ -189,13 +190,39 @@ export default function GetStarted() {
   const [rerouting, setRerouting] = useState(false)
   const [houseNotLoaded, setHouseNotLoaded] = useState(false)
   const [changingName, setChangingName] = useState(false)
-  const [restaurantName, setRestaurantName] = useState('')
-  const [address, setAddress] = useState('')
-  const [city, setCity] = useState('')
-  const [country, setCountry] = useState('')
-  const [stateProvince, setStateProvince] = useState('')
-  const [postalCode, setPostalCode] = useState('')
-  const [restaurantPhone, setRestaurantPhone] = useState('')
+  // What was typed before a reload comes back before the first paint, so
+  // restoring replays nothing and moves nothing (r107 g4).
+  const [draft] = useState(() => readGetStartedDraft(user?.userId))
+  const draftDone = useRef(false)
+  const [restaurantName, setRestaurantName] = useState(draft?.restaurantName ?? '')
+  const [address, setAddress] = useState(draft?.address ?? '')
+  const [city, setCity] = useState(draft?.city ?? '')
+  const [country, setCountry] = useState(draft?.country ?? '')
+  const [stateProvince, setStateProvince] = useState(draft?.stateProvince ?? '')
+  const [postalCode, setPostalCode] = useState(draft?.postalCode ?? '')
+  const [restaurantPhone, setRestaurantPhone] = useState(draft?.restaurantPhone ?? '')
+  const typed = { restaurantName, address, city, country, stateProvince, postalCode, restaurantPhone }
+  const typedRef = useRef(typed)
+  typedRef.current = typed
+  const userIdRef = useRef(user?.userId)
+  userIdRef.current = user?.userId
+  const typedKey = JSON.stringify(typed)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (!draftDone.current) writeGetStartedDraft(userIdRef.current, typedRef.current)
+    }, 400)
+    return () => clearTimeout(t)
+  }, [typedKey, user?.userId])
+  useEffect(() => {
+    const flush = () => {
+      if (!draftDone.current) writeGetStartedDraft(userIdRef.current, typedRef.current)
+    }
+    window.addEventListener('pagehide', flush)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      flush()
+    }
+  }, [])
   // What the picked place said about itself (OB-7): its country code and its
   // UTC offset now. Cleared when the address is typed over, or when the
   // country is changed to another one (fix round, #1055): the clock then
@@ -444,10 +471,14 @@ export default function GetStarted() {
         googlePlaceId: placePoint?.googlePlaceId,
       })
       openedHere.current = true
+      draftDone.current = true
+      clearGetStartedDraft()
       setNotice(opened.detailsLoaded ? null : HOUSE_OPEN_DETAILS_LATER)
       setStep('menu')
     } catch (cause) {
       if (getErrorStatus(cause) === 409) {
+        draftDone.current = true
+        clearGetStartedDraft()
         // An earlier press (or another tab) opened it: re-read the session
         // and route by the entry rule (F8, ADR 0265 OPEN-2).
         await stepIntoTheHouse()
