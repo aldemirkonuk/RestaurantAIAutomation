@@ -30,6 +30,7 @@ import {
   importMenu,
   listMenuVersions,
   removeFailedRead,
+  restoreFailedRead,
   readWarningSentence,
   type MakeCurrentResult,
   type MenuCadence,
@@ -893,18 +894,49 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
   const [planFor, setPlanFor] = useState<string | null>(null);
   // A failed read taken off the list leaves no row to say so: this sentence stands in its
   // place for four seconds (a timer, no motion), then is gone. The file is kept.
-  const [taken, setTaken] = useState(false);
+  // It carries the menu's id, so the sentence can offer the way back (r107 menu-4).
+  const [taken, setTaken] = useState<string | null>(null);
+  const [backSaid, setBackSaid] = useState<string | null>(null);
+  const [putting, setPutting] = useState(false);
   useEffect(() => {
     if (!taken) return;
-    const t = window.setTimeout(() => setTaken(false), 4000);
+    const t = window.setTimeout(() => setTaken(null), 4000);
     return () => window.clearTimeout(t);
   }, [taken]);
+  useEffect(() => {
+    if (!backSaid) return;
+    const t = window.setTimeout(() => setBackSaid(null), 4000);
+    return () => window.clearTimeout(t);
+  }, [backSaid]);
+  const putBack = async (menuId: string) => {
+    setPutting(true);
+    try {
+      await restoreFailedRead(menuId);
+      setTaken(null);
+      setBackSaid('Back on the list.');
+      refresh();
+    } catch (err) {
+      setTaken(null);
+      setBackSaid(reasonOf(err));
+    } finally {
+      setPutting(false);
+    }
+  };
   const { house, q } = useKeptMenus();
   const currency = useHouseCurrencyCode();
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu'] });
   const takenSaid = taken ? (
     <p role="status" className="cl-said" style={{ marginTop: 10 }} data-testid="menu-removed-said">
-      Taken off the list.
+      Taken off the list.{' '}
+      {canManage ? (
+        <button type="button" className="cl-btn cl-focus" data-testid="menu-removed-restore" disabled={putting} onClick={() => void putBack(taken)}>
+          {putting ? 'Putting back…' : 'Put it back'}
+        </button>
+      ) : null}
+    </p>
+  ) : backSaid ? (
+    <p role="status" className="cl-said" style={{ marginTop: 10 }} data-testid="menu-restored-said">
+      {backSaid}
     </p>
   ) : null;
   const zone = q.data?.timezone ?? null;
@@ -984,7 +1016,8 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
                       zone={zone}
                       planning={planFor === v.menuId}
                       onRemoved={() => {
-                        setTaken(true);
+                        setBackSaid(null);
+                        setTaken(v.menuId);
                         refresh();
                       }}
                       onPlan={(id) => {

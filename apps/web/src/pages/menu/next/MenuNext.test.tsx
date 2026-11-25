@@ -19,7 +19,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MenuNext from './MenuNext';
 import { housePriceNote } from './menu-price-note';
-import { getMenu, discardMenuItem, addMenuItem, getMenuSheet, listMenuVersions, reviewMenuItem, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
+import { getMenu, discardMenuItem, restoreMenuItem, addMenuItem, getMenuSheet, listMenuVersions, reviewMenuItem, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
 import { settingsApi, type HouseCurrency } from '../../../services/api/settings';
 
 // ADR 0358 D2: discarding a line is an owner's or a manager's, so the page
@@ -37,6 +37,7 @@ vi.mock('../../../services/api/menus', async () => {
     ...actual,
     getMenu: vi.fn(),
     discardMenuItem: vi.fn(),
+    restoreMenuItem: vi.fn(),
     addMenuItem: vi.fn(),
     getMenuSheet: vi.fn(),
     reviewMenuItem: vi.fn(),
@@ -81,6 +82,7 @@ vi.mock('../../../services/api/settings', async () => {
 const mockGetMenu = vi.mocked(getMenu);
 const mockVersions = vi.mocked(listMenuVersions);
 const mockDiscard = vi.mocked(discardMenuItem);
+const mockRestoreLine = vi.mocked(restoreMenuItem);
 const mockAdd = vi.mocked(addMenuItem);
 const mockReview = vi.mocked(reviewMenuItem);
 const mockCurrency = vi.mocked(settingsApi.houseCurrency);
@@ -134,6 +136,7 @@ function mount() {
 beforeEach(() => {
   mockGetMenu.mockReset();
   mockDiscard.mockReset();
+  mockRestoreLine.mockReset();
   mockAdd.mockReset();
   mockReview.mockReset();
   role = 'manager';
@@ -405,6 +408,36 @@ describe('MenuNext — discard', () => {
     fireEvent.click(discardRaki);
     await waitFor(() => expect(mockDiscard).toHaveBeenCalledWith('r1', 'l9'));
     await waitFor(() => expect(mockVersions).toHaveBeenCalledTimes(2));
+  });
+
+  // r107 menu-4 (DD-r106-18): a wrong tap had no way back.
+  it('says the line was taken off and puts it back on a click, in words that never touch its sale state', async () => {
+    mockGetMenu.mockResolvedValueOnce(menu({ items: [line({ id: 'l9', name: 'Raki' }), line({ id: 'l8', name: 'Efes' })] }));
+    mockGetMenu.mockResolvedValueOnce(menu({ items: [line({ id: 'l8', name: 'Efes' })] }));
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'l9', name: 'Raki' }), line({ id: 'l8', name: 'Efes' })] }));
+    mockDiscard.mockResolvedValue({ menuItemId: 'l9', status: 'discarded' });
+    mockRestoreLine.mockResolvedValue({ menuItemId: 'l9', status: 'approved' });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
+    const said = await screen.findByTestId('menu-off-list-said');
+    expect(said).toHaveTextContent('Taken off the list.');
+    expect(said).toHaveAttribute('role', 'status');
+    fireEvent.click(screen.getByRole('button', { name: 'Put Raki back' }));
+    await waitFor(() => expect(mockRestoreLine).toHaveBeenCalledWith('r1', 'l9'));
+    expect(await screen.findByTestId('menu-off-list-said')).toHaveTextContent('Raki is back on the menu.');
+    expect(screen.getByTestId('menu-off-list-said')).not.toHaveTextContent(/sale/i);
+    expect(await screen.findByText('Raki')).toBeInTheDocument();
+  });
+
+  it('says the gateway\'s words when the line cannot be put back (the menu is no longer current)', async () => {
+    const said = 'The menu this line was on is no longer the current one, so it cannot be put back on the menu. Nothing was changed.';
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'l9', name: 'Raki' })] }));
+    mockDiscard.mockResolvedValue({ menuItemId: 'l9', status: 'discarded' });
+    mockRestoreLine.mockRejectedValue({ response: { status: 409, data: { statusCode: 409, message: said } } });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Put Raki back' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(said);
   });
 
   it('discards on click, and reports a failure without pretending the line is gone', async () => {
