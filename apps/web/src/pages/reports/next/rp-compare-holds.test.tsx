@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cloneElement, type ReactElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import Cutting from './Cutting';
 import { CATALOGUE } from './rp-catalogue';
@@ -110,10 +110,14 @@ function sheet(register: Register<unknown>, compare: boolean) {
 }
 
 describe('toggling compare keeps the plot', () => {
-  it('[REVERT-FAILS] the plot is the same element across the read: no skeleton, no second draw', () => {
+  it('[REVERT-FAILS] the plot is the same element across the read: no skeleton, no second draw', async () => {
     const { rerender, container } = render(sheet(reg(TILL_30), false));
-    const plot = container.querySelector('.rp-plot');
-    expect(plot).not.toBeNull();
+    // the drawing may be lazy-loaded (#2041): wait for the first one, then hold it across the read
+    const plot = await waitFor(() => {
+      const p = container.querySelector('.rp-plot');
+      expect(p).not.toBeNull();
+      return p;
+    });
     rerender(sheet(reg(undefined, true), true));
     expect(container.querySelector('.rp-plot')).toBe(plot);
     expect(container.querySelector('.rp-standin')).toHaveAttribute('data-stale');
@@ -131,9 +135,13 @@ describe('toggling compare keeps the plot', () => {
     expect(container.querySelector('.rp-plot')).toBeNull();
   });
 
-  it('turning compare off keeps the plot too, and says the days before are still beside it', () => {
+  it('turning compare off keeps the plot too, and says the days before are still beside it', async () => {
     const { rerender, container } = render(sheet(reg(CATALOGUE.till.select(raw(60))), true));
-    const plot = container.querySelector('.rp-plot');
+    const plot = await waitFor(() => {
+      const p = container.querySelector('.rp-plot');
+      expect(p).not.toBeNull();
+      return p;
+    });
     rerender(sheet(reg(undefined, true), false));
     expect(container.querySelector('.rp-plot')).toBe(plot);
     expect(screen.getByRole('status').textContent).toMatch(/still has the days before beside it/);
