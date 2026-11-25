@@ -338,11 +338,14 @@ function PersonThreads({
   withKey,
   onBack,
   onOpenThread,
+  onWriteTo,
 }: {
   on: WaitingOn;
   withKey: string;
   onBack: () => void;
   onOpenThread: (key: string) => void;
+  /** Present only for an owner or a manager; a vendor person page then offers "Write to". */
+  onWriteTo?: (providerId: string) => void;
 }) {
   const q = useMailThreads(withKey);
   const pages = q.data?.pages ?? [];
@@ -368,6 +371,16 @@ function PersonThreads({
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--ink-1, #211C16)', overflowWrap: 'anywhere' }}>
             {person.name ?? 'A vendor with no name on file'} <span style={QUIET}>{KIND_WORD[mailKindOf(person)]}</span>
           </h2>
+          {onWriteTo && mailKindOf(person) === 'vendor' && person.providerId ? (
+            <button
+              type="button"
+              data-testid="mail-write-to"
+              onClick={() => onWriteTo(person.providerId as string)}
+              style={{ ...LINK_BUTTON, justifySelf: 'start' }}
+            >
+              Write to {person.name ?? 'this vendor'}
+            </button>
+          ) : null}
           <ul style={{ listStyle: 'none', margin: 0, padding: 0, borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
             {threads.map((t) => (
               <li key={t.key} style={{ borderBottom: '1px solid var(--paper-2, #EAE4D8)' }}>
@@ -698,6 +711,7 @@ export function MailTab({
   draftedOrderIds,
   onOpenReply,
   onAnswer,
+  onWriteTo,
   bookFacts,
   whoIsWriting = null,
 }: {
@@ -707,6 +721,12 @@ export function MailTab({
   onOpenReply: (orderId: string) => void;
   /** The page's composer, opened on a reply to a thread's newest letter (gap 3). */
   onAnswer?: (answer: MailAnswer) => void;
+  /**
+   * The page's composer, opened on a new letter to a vendor from the vendor's
+   * person page (r107 DD-r106-8). The recipient is the vendor-book address, which
+   * the composer resolves from the provider; the server's recipient rule is unchanged.
+   */
+  onWriteTo?: (providerId: string) => void;
   /** Why a recent letter was held or refused, by letter id, from the book (see MailThread). */
   bookFacts?: ReadonlyMap<string, LetterFacts>;
   /**
@@ -918,6 +938,7 @@ export function MailTab({
           withKey={withKey}
           onBack={() => back({ with: null })}
           onOpenThread={(key) => go({ thread: key })}
+          onWriteTo={canReply ? onWriteTo : undefined}
         />
       ) : (
         <>
