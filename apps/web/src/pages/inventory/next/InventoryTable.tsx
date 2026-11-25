@@ -15,7 +15,7 @@
  * managers (it is where a price is changed, ADR 0193); everyone else reads
  * the two figures in the house's currency.
  */
-import { Fragment } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { HousePriceCell, type AdviceLoad } from '../command/HousePriceCell';
 import RowDropdown, { type RowDropdownProps } from './RowDropdown';
 import { cellMoney, EM, fmtCount, fmtPace, noZoneWord, SEVERITY_GROUP, severity, typeLabel, type InvRow, type SortId } from './useInventoryNextData';
@@ -80,6 +80,166 @@ function zoneCell(row: InvRow, zoneName: (id: string | null) => string, unavaila
   return held.map((z) => zoneName(z.locationId)).join(' · ');
 }
 
+/**
+ * What a row draws is a function of the row, whether it is open or selected,
+ * the currency, the group it heads and the few reads below. The callbacks that
+ * change identity each render of the page ride in `fns`, a ref whose object
+ * never changes, so a toggle redraws the two rows it touches and not all 330.
+ */
+interface TableRowProps {
+  row: InvRow;
+  open: boolean;
+  selecting: boolean;
+  selected: boolean;
+  span: number;
+  /** The severity this row heads, or null when it heads nothing. */
+  groupSev: 0 | 1 | 2 | null;
+  groupCount: number;
+  currency: InventoryTableProps['currency'];
+  canManage: boolean;
+  advice: AdviceLoad;
+  libraryUnread: boolean;
+  locations: InventoryTableProps['locations'];
+  locationsUnavailable: boolean;
+  providers: InventoryTableProps['providers'];
+  providersError: string | null;
+  restaurantId: string | null;
+  toggle: (id: string) => void;
+  fns: { current: RowFns };
+}
+interface RowFns {
+  zoneName: (id: string | null) => string;
+  onPriceChanged: () => void;
+  onSelect?: (id: string) => void;
+}
+
+const TableRow = memo(function TableRow(p: TableRowProps) {
+  const { row, open, selecting, selected, span, groupSev, groupCount, currency, canManage, advice, libraryUnread, locations, locationsUnavailable, providers, providersError, restaurantId, toggle, fns } = p;
+  return (
+    <>
+                {groupSev !== null ? (
+                  <tr className="iv-group">
+                    <td colSpan={span}>
+                      {SEVERITY_GROUP[groupSev!]}
+                      {groupSev! < 2 ? <span className="iv-num"> {fmtCount(groupCount)}</span> : null}
+                    </td>
+                  </tr>
+                ) : null}
+                <tr
+                  id={`iv-row-${row.id}`}
+                  className="iv-row"
+                  data-testid={`inv-row-${row.id}`}
+                  data-standing={row.standing}
+                  aria-selected={open}
+                  onClick={() => toggle(row.id)}
+                >
+                  {selecting ? (
+                    <td data-label="Select" className="iv-sel" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        className="iv-focus"
+                        aria-label={`Select ${row.name ?? 'this title'}`}
+                        checked={selected}
+                        onChange={() => fns.current.onSelect?.(row.id)}
+                      />
+                    </td>
+                  ) : null}
+                  <td data-label="Title" className="iv-title">
+                    <button
+                      type="button"
+                      className="iv-titlebtn iv-focus"
+                      data-row-id={row.id}
+                      aria-expanded={open}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggle(row.id);
+                      }}
+                    >
+                      <span className="iv-name">
+                        {row.name ?? 'Unnamed title'}
+                        {row.abc ? (
+                          <span className="iv-abc" data-testid="inv-abc" title={`ABC class ${row.abc}`}>
+                            {row.abc}
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="iv-producer">
+                        {[row.producer, row.vintage === null ? null : String(row.vintage)].filter(Boolean).join(' · ') || EM}
+                      </span>
+                    </button>
+                    <NameHint inventoryId={row.id} />
+                  </td>
+                  <td data-label="Type" className={row.type && row.type !== 'unclassified' ? undefined : 'iv-dim'}>
+                    {row.type ? typeLabel(row.type) : libraryUnread ? EM : 'not recorded'}
+                  </td>
+                  <td data-label="Zone">{zoneCell(row, fns.current.zoneName, locationsUnavailable)}</td>
+                  <td data-label="Live / shadow · par" className="iv-r iv-num">
+                    <span>
+                      {row.stock === null ? EM : fmtCount(row.stock)}
+                      <span className="iv-dim"> / {row.shadow === null ? EM : fmtCount(row.shadow)}</span>
+                      {' · '}
+                      {row.par === null ? EM : fmtCount(row.par)}
+                    </span>
+                    <ParBar row={row} />
+                  </td>
+                  <td data-label="Vel/day" className="iv-r iv-num">
+                    {row.velocity === null ? EM : fmtPace(row.velocity)}
+                  </td>
+                  <td data-label="Runway" className="iv-r iv-num">
+                    {row.runway === null ? EM : `${fmtCount(Math.round(row.runway))}d`}
+                  </td>
+                  <td data-label="Your price" className="iv-r iv-num" onClick={(e) => e.stopPropagation()}>
+                    {canManage ? (
+                      <HousePriceCell
+                        inventoryId={row.id}
+                        wineName={row.name ?? 'this title'}
+                        bottle={row.bottle}
+                        glass={row.glass}
+                        advice={advice}
+                        canEdit
+                        onChanged={() => fns.current.onPriceChanged()}
+                        money={(n) => cellMoney(n, currency)}
+                      />
+                    ) : (
+                      <>
+                        {cellMoney(row.bottle, currency)}
+                        <span className="iv-dim"> · </span>
+                        {cellMoney(row.glass, currency)}
+                      </>
+                    )}
+                  </td>
+                  <td data-label="Value at cost" className="iv-r iv-num">
+                    {cellMoney(row.value, currency)}
+                  </td>
+                  <td data-label="Status" className="iv-status" data-standing={row.standing}>
+                    {statusWord(row)}
+                  </td>
+                </tr>
+                {open ? (
+                  <tr className="iv-openrow">
+                    <td colSpan={span}>
+                      <RowDropdown
+                        row={row}
+                        canManage={canManage}
+                        currency={currency}
+                        zoneName={fns.current.zoneName}
+                        locations={locations}
+                        locationsUnavailable={locationsUnavailable}
+                        providers={providers}
+                        providersError={providersError}
+                        restaurantId={restaurantId}
+                      />
+                    </td>
+                  </tr>
+                ) : null}
+              </>
+  );
+});
+
+/** Rows drawn on the first pass; the rest follow in slices after the first paint. */
+const FIRST_ROWS = 60;
+const SLICE_ROWS = 90;
+
 export default function InventoryTable(props: InventoryTableProps) {
   const { rows, grouped, openId, onToggle, currency, canManage, advice, onPriceChanged, zoneName } = props;
   const counts = [0, 0, 0];
@@ -88,6 +248,33 @@ export default function InventoryTable(props: InventoryTableProps) {
   const span = COLUMNS.length + (selecting ? 1 : 0);
   const allSelected = selecting && rows.length > 0 && rows.every((r) => props.selected!.has(r.id));
   const someSelected = selecting && !allSelected && rows.some((r) => props.selected!.has(r.id));
+
+  // The page hands new function objects every render; rows read the latest
+  // through this ref and take a toggle whose identity never changes.
+  const fns = useRef<RowFns>({ zoneName, onPriceChanged, onSelect: props.onSelect });
+  fns.current = { zoneName, onPriceChanged, onSelect: props.onSelect };
+  const onToggleRef = useRef(onToggle);
+  onToggleRef.current = onToggle;
+  const toggle = useCallback((id: string) => onToggleRef.current(id), []);
+
+  // 330 rows laid out at once was 250 ms of one task. The first rows draw now,
+  // the rest in slices after the paint, always from the top, so nothing in view
+  // moves. The open row is never left out: a link to a late title still finds it.
+  const [shown, setShown] = useState(FIRST_ROWS);
+  useEffect(() => {
+    if (shown >= rows.length) return;
+    let timer = 0;
+    const frame = requestAnimationFrame(() => {
+      timer = window.setTimeout(() => setShown((n) => n + SLICE_ROWS), 0);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [shown, rows.length]);
+  const openAt = openId === null ? -1 : rows.findIndex((r) => r.id === openId);
+  const upTo = Math.max(shown, openAt + 1);
+  const drawn = upTo >= rows.length ? rows : rows.slice(0, upTo);
 
   return (
     <div className="iv-tablewrap">
@@ -161,128 +348,31 @@ export default function InventoryTable(props: InventoryTableProps) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, i) => {
+          {drawn.map((row, i) => {
             const sev = severity(row);
             const startsGroup = grouped && (i === 0 || severity(rows[i - 1]) !== sev);
-            const open = openId === row.id;
             return (
-              <Fragment key={row.id}>
-                {startsGroup ? (
-                  <tr className="iv-group">
-                    <td colSpan={span}>
-                      {SEVERITY_GROUP[sev]}
-                      {sev < 2 ? <span className="iv-num"> {fmtCount(counts[sev])}</span> : null}
-                    </td>
-                  </tr>
-                ) : null}
-                <tr
-                  id={`iv-row-${row.id}`}
-                  className="iv-row"
-                  data-testid={`inv-row-${row.id}`}
-                  data-standing={row.standing}
-                  aria-selected={open}
-                  onClick={() => onToggle(row.id)}
-                >
-                  {selecting ? (
-                    <td data-label="Select" className="iv-sel" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        className="iv-focus"
-                        aria-label={`Select ${row.name ?? 'this title'}`}
-                        checked={props.selected!.has(row.id)}
-                        onChange={() => props.onSelect!(row.id)}
-                      />
-                    </td>
-                  ) : null}
-                  <td data-label="Title" className="iv-title">
-                    <button
-                      type="button"
-                      className="iv-titlebtn iv-focus"
-                      data-row-id={row.id}
-                      aria-expanded={open}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onToggle(row.id);
-                      }}
-                    >
-                      <span className="iv-name">
-                        {row.name ?? 'Unnamed title'}
-                        {row.abc ? (
-                          <span className="iv-abc" data-testid="inv-abc" title={`ABC class ${row.abc}`}>
-                            {row.abc}
-                          </span>
-                        ) : null}
-                      </span>
-                      <span className="iv-producer">
-                        {[row.producer, row.vintage === null ? null : String(row.vintage)].filter(Boolean).join(' · ') || EM}
-                      </span>
-                    </button>
-                    <NameHint inventoryId={row.id} />
-                  </td>
-                  <td data-label="Type" className={row.type && row.type !== 'unclassified' ? undefined : 'iv-dim'}>
-                    {row.type ? typeLabel(row.type) : props.libraryUnread ? EM : 'not recorded'}
-                  </td>
-                  <td data-label="Zone">{zoneCell(row, zoneName, props.locationsUnavailable)}</td>
-                  <td data-label="Live / shadow · par" className="iv-r iv-num">
-                    <span>
-                      {row.stock === null ? EM : fmtCount(row.stock)}
-                      <span className="iv-dim"> / {row.shadow === null ? EM : fmtCount(row.shadow)}</span>
-                      {' · '}
-                      {row.par === null ? EM : fmtCount(row.par)}
-                    </span>
-                    <ParBar row={row} />
-                  </td>
-                  <td data-label="Vel/day" className="iv-r iv-num">
-                    {row.velocity === null ? EM : fmtPace(row.velocity)}
-                  </td>
-                  <td data-label="Runway" className="iv-r iv-num">
-                    {row.runway === null ? EM : `${fmtCount(Math.round(row.runway))}d`}
-                  </td>
-                  <td data-label="Your price" className="iv-r iv-num" onClick={(e) => e.stopPropagation()}>
-                    {canManage ? (
-                      <HousePriceCell
-                        inventoryId={row.id}
-                        wineName={row.name ?? 'this title'}
-                        bottle={row.bottle}
-                        glass={row.glass}
-                        advice={advice}
-                        canEdit
-                        onChanged={onPriceChanged}
-                        money={(n) => cellMoney(n, currency)}
-                      />
-                    ) : (
-                      <>
-                        {cellMoney(row.bottle, currency)}
-                        <span className="iv-dim"> · </span>
-                        {cellMoney(row.glass, currency)}
-                      </>
-                    )}
-                  </td>
-                  <td data-label="Value at cost" className="iv-r iv-num">
-                    {cellMoney(row.value, currency)}
-                  </td>
-                  <td data-label="Status" className="iv-status" data-standing={row.standing}>
-                    {statusWord(row)}
-                  </td>
-                </tr>
-                {open ? (
-                  <tr className="iv-openrow">
-                    <td colSpan={span}>
-                      <RowDropdown
-                        row={row}
-                        canManage={canManage}
-                        currency={currency}
-                        zoneName={zoneName}
-                        locations={props.locations}
-                        locationsUnavailable={props.locationsUnavailable}
-                        providers={props.providers}
-                        providersError={props.providersError}
-                        restaurantId={props.restaurantId}
-                      />
-                    </td>
-                  </tr>
-                ) : null}
-              </Fragment>
+              <TableRow
+                key={row.id}
+                row={row}
+                open={openId === row.id}
+                selecting={selecting}
+                selected={selecting && props.selected!.has(row.id)}
+                span={span}
+                groupSev={startsGroup ? sev : null}
+                groupCount={startsGroup ? counts[sev] : 0}
+                currency={currency}
+                canManage={canManage}
+                advice={advice}
+                libraryUnread={props.libraryUnread === true}
+                locations={props.locations}
+                locationsUnavailable={props.locationsUnavailable}
+                providers={props.providers}
+                providersError={props.providersError}
+                restaurantId={props.restaurantId}
+                toggle={toggle}
+                fns={fns}
+              />
             );
           })}
         </tbody>

@@ -7,13 +7,13 @@
  * their own tests, and none of them is under test here.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { InvRow } from './useInventoryNextData';
 import { fmtPace, MAP_WORDS, mapTone, sold30 } from './useInventoryNextData';
 
-const mock = vi.hoisted(() => ({ data: {} as Record<string, unknown>, mapProps: null as Record<string, unknown> | null }));
+const mock = vi.hoisted(() => ({ data: {} as Record<string, unknown>, mapProps: null as Record<string, unknown> | null, priceRenders: new Map<string, number>() }));
 const exportSpy = vi.hoisted(() => vi.fn(async (_opts: unknown) => undefined));
 vi.mock('../../../lib/tableExport', () => ({ exportTable: exportSpy }));
 
@@ -28,8 +28,14 @@ vi.mock('../command/CellarMapView', () => ({
   },
 }));
 vi.mock('../command/HousePriceCell', () => ({
-  HousePriceCell: ({ bottle, money }: { bottle: number | null; money?: (n: number | null) => string }) => (
-    <span data-testid="house-price">{money ? money(bottle) : String(bottle)}</span>
+  HousePriceCell: ({ bottle, money, inventoryId }: { bottle: number | null; money?: (n: number | null) => string; inventoryId?: string }) => (
+    <span
+      data-testid="house-price"
+      ref={() => {
+        /* counted per render below */
+      }}
+      data-count={(mock.priceRenders.set(String(inventoryId), (mock.priceRenders.get(String(inventoryId)) ?? 0) + 1), '')}
+    >{money ? money(bottle) : String(bottle)}</span>
   ),
 }));
 vi.mock('../../../components/inventory/PosMappingPanel', () => ({ PosMappingPanel: () => null, default: () => null }));
@@ -1484,5 +1490,61 @@ describe('the legacy velocity sort and column-header sort (round 4)', () => {
     expect(screen.getByTestId('inventory-footer').textContent).toContain('sorted Name');
     fireEvent.click(screen.getByRole('button', { name: 'Title' }));
     expect(screen.getByTestId('inventory-footer').textContent).toContain('sorted Needs you first');
+  });
+});
+
+
+describe('a long book draws in slices and redraws only the rows a toggle touches', () => {
+  const many = (n: number) => Array.from({ length: n }, (_, i) => row({ id: `g${String(i).padStart(3, '0')}`, name: `Good ${String(i).padStart(3, '0')}`, standing: 'above' }));
+  function renderAt(url: string) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={[url]}>
+          <InventoryNext />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+  const drawn = () => screen.getByTestId('inventory-table').querySelectorAll('tr[data-testid^="inv-row-"]').length;
+
+  it('draws the first 60 rows now and the rest after the paint, in order', async () => {
+    mock.data = data({ rows: many(330) });
+    mock.priceRenders.clear();
+    renderAt('/inventory?sort=name');
+    expect(drawn()).toBe(60);
+    await waitFor(() => expect(drawn()).toBe(330));
+    const ids = [...screen.getByTestId('inventory-table').querySelectorAll('tr[data-testid^="inv-row-"]')].map((tr) => tr.getAttribute('data-testid'));
+    expect(ids).toEqual(many(330).map((r) => `inv-row-${r.id}`));
+  });
+
+  it('toggling one row draws that row and its dropdown and no other row again', async () => {
+    mock.data = data({ rows: many(120) });
+    mock.priceRenders.clear();
+    renderAt('/inventory?sort=name');
+    await waitFor(() => expect(drawn()).toBe(120));
+    const before = new Map(mock.priceRenders);
+    fireEvent.click(screen.getByTestId('inv-row-g005'));
+    expect(screen.getAllByTestId('row-dropdown')).toHaveLength(1);
+    const redrawn = [...mock.priceRenders].filter(([id, n]) => n !== before.get(id)).map(([id]) => id);
+    expect(redrawn).toEqual(['g005']);
+    fireEvent.click(screen.getByTestId('inv-row-g005'));
+    expect(screen.queryByTestId('row-dropdown')).toBeNull();
+  });
+
+  it('mounts a linked row that lies past the first slice, and scrolls to it', () => {
+    mock.data = data({ rows: many(330) });
+    const scroll = vi.fn();
+    const orig = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scroll;
+    try {
+      renderAt('/inventory?sort=name&open=g300');
+      expect(screen.getByTestId('inv-row-g300')).toBeTruthy();
+      expect(screen.getAllByTestId('row-dropdown')).toHaveLength(1);
+      expect(scroll).toHaveBeenCalledTimes(1);
+      expect((scroll.mock.contexts[0] as HTMLElement).id).toBe('iv-row-g300');
+    } finally {
+      Element.prototype.scrollIntoView = orig;
+    }
   });
 });
