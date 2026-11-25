@@ -7,9 +7,9 @@
     "login-no-method-greyed-unrenderable": "6da93ff5a81db07806f5fb1b6ec812de7041b32034e4c06cee82d3125b732bfa",
     "login-nothing-works": "3a1a46a45d581cf627141c32c8e87698b684863ac28d55bf7f6157dfd05ff68e",
     "login-password-and-google": "5ba5e504d0f98d14f46ef38681ce2a4815da2e687353c1052a33c0e0c73082e9",
-    "register-create-account-taken": "2a2da637309b5801e22d181fc44623b2f5d93f988378e9e2ee0843d9ba959bde",
-    "register-join-account-available-with-error": "84d3447701338522039058a0721b9b8f5563d22fb66bff601955b06ababa201a",
-    "register-join-account-taken": "1ffd70e859f75cd7cf129f7d0293fbe81d4b2ea4c86581fc2ebce40350af8828",
+    "register-create-account-taken": "fe15b821d5345fa5fcd83125607044920e714030f4846ea440501c9d5f45c56f",
+    "register-join-account-available-with-error": "d5ce1b1bf1d70a4eae77ce6b92106ecf4947b16f9e349ede9bdd4f4cacf62042",
+    "register-join-account-taken": "7c6fa458043c57be4bb374737925d3497cb969dad9fde6412a2100cdea202c41",
     "register-join-code-invalid": "734825e8d08f71301898aa77265ad0d134c3c5e92b10aad7f139f4fb2ca5d8e1",
     "register-join-code-valid": "72b9572c370333dde72c668f19f22c2eabb3a98fcaaa6bc5beb04d9c90a65aee"
   }
