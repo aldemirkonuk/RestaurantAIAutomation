@@ -28,7 +28,7 @@
  * those nulls, and the cuttings render them as em dashes.
  */
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
@@ -286,6 +286,9 @@ export function useReportsNextData(
     }),
   });
 
+  const kept = useRef<
+    Partial<Record<AnalysisId, { reg: Register<unknown>; data: unknown; loading: boolean; error: unknown }>>
+  >({});
   const registers = useMemo(() => {
     const map: Partial<Record<AnalysisId, Register<unknown>>> = {};
     active.forEach((id, i) => {
@@ -302,12 +305,21 @@ export function useReportsNextData(
         };
         return;
       }
-      map[id] = {
+      // The same object again while nothing it says has changed, so a card that
+      // is memoised on its register does not redraw for another card's read.
+      const prev = kept.current[id];
+      if (prev && prev.data === q.data && prev.loading === q.isPending && prev.error === q.error) {
+        map[id] = prev.reg;
+        return;
+      }
+      const reg: Register<unknown> = {
         data: q.data,
         loading: q.isPending,
         failure: q.isError ? failureOf(q.error) : null,
         refetch: () => void q.refetch(),
       };
+      kept.current[id] = { reg, data: q.data, loading: q.isPending, error: q.error };
+      map[id] = reg;
     });
     return map;
     // `results` is a fresh array each render; the ids and their states are what

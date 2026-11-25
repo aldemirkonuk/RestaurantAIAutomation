@@ -58,6 +58,7 @@ import Cutting from './Cutting';
 import { ArrangeAnnouncer, ArrangeHelp } from './Placing';
 import { useArrange } from './rp-arrange';
 import { CATALOGUE, defaultGraph } from './rp-catalogue';
+import type { ViewCtx } from './rp-spec';
 import { failureLine } from './rp-format';
 import {
   ANALYSIS_IDS,
@@ -104,6 +105,9 @@ function Action({
     </button>
   );
 }
+
+/** What a cutting that reads neither the till window nor the goals desk is given. */
+const FROZEN_CTX: ViewCtx = { days: 30 };
 
 export default function ReportsNext({ ground }: ReportsNextProps) {
   const [tillDays, setTillDays] = useState(30);
@@ -309,9 +313,33 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   );
   placeRef.current = placeProposed;
 
-  const ctx = useMemo(
-    () => ({ days: tillDays, goals: data.goalsDesk }),
-    [data.goalsDesk, tillDays],
+  // Each cutting is handed only what it reads, so a till-window click redraws
+  // the till and not the other cards (perf-p4-5). `days` matters to the one
+  // register that takes a window (ViewCtx says so); the goals desk matters to
+  // the goals cutting alone. Everyone else gets a context that never changes.
+  const windowCtx = useMemo(() => ({ days: tillDays }), [tillDays]);
+  const goalsCtx = useMemo(
+    () => ({ days: FROZEN_CTX.days, goals: data.goalsDesk }),
+    [data.goalsDesk],
+  );
+  // The handlers close over an id only, so they are made once per id and stay
+  // the same function until the sheet's own editors change.
+  const handlers = useMemo(
+    () =>
+      Object.fromEntries(
+        ANALYSIS_IDS.map((id) => [
+          id,
+          {
+            onGraph: (g: GraphType) => onGraph(id, g),
+            onSwap: (to: AnalysisId) => onSwap(id, to),
+            onRemove: () => onRemove(id),
+          },
+        ]),
+      ) as Record<
+        AnalysisId,
+        { onGraph: (g: GraphType) => void; onSwap: (to: AnalysisId) => void; onRemove: () => void }
+      >,
+    [onGraph, onSwap, onRemove],
   );
 
   const cuttings: SheetCutting[] = view.cuttings.map((c) => ({
@@ -322,13 +350,13 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         id={c.id}
         graph={c.graph}
         register={data.registers[c.id]}
-        ctx={ctx}
+        ctx={CATALOGUE[c.id].takesWindow ? windowCtx : c.id === 'goals' ? goalsCtx : FROZEN_CTX}
         arranging={arranging}
         swapOptions={swapOptions}
         arrange={arrange}
-        onGraph={(g) => onGraph(c.id, g)}
-        onSwap={(to) => onSwap(c.id, to)}
-        onRemove={() => onRemove(c.id)}
+        onGraph={handlers[c.id].onGraph}
+        onSwap={handlers[c.id].onSwap}
+        onRemove={handlers[c.id].onRemove}
         onDays={setTillDays}
       />
     ),
