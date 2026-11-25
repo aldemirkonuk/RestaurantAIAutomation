@@ -2816,7 +2816,6 @@ describe("MenusService — a failed read of the kept menus is said in plain word
   });
 });
 
-<<<<<<< HEAD
 describe("parseMenuPrice -- a typed price is read, never guessed (menu r21)", () => {
   const value = (raw: string) => {
     const r = parseMenuPrice(raw);
@@ -3104,7 +3103,9 @@ describe("a menu line finds the house's own good before the library (r21 D1)", (
     expect(price).toHaveLength(1);
     expect(price[0][1]).toMatchObject({ p_inventory_id: "inv-gin", p_bottle_price: 40 });
     expect(tables.restaurant_inventory).toHaveLength(1);
-=======
+  });
+});
+
 describe("the current menu, exported and read back, moves no price (r105 menu-4)", () => {
   const byName: Record<string, string> = { Barolo: "mw-1", Chianti: "mw-2", Rose: "mw-3" };
   const wineSubmissions = {
