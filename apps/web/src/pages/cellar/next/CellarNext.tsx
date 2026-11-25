@@ -216,7 +216,10 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
           )}
         </div>
 
-        {/* ── the signature ─────────────────────────────────────────────── */}
+        {/* ── the signature ───────────────────────────────────────────────
+            Held back with the sections above it while the parent view's
+            registers are read, so it is mounted, not pushed (perf-p4-4). */}
+        {open === null && data.registersLoading ? null : (
         <footer
           style={{
             marginTop: 40,
@@ -235,6 +238,7 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
             default.
           </p>
         </footer>
+        )}
       </div>
     </div>
   );
