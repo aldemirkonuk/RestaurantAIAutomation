@@ -133,3 +133,30 @@ describe('useReportsNextData — registers a role is not sent (ADR 0348)', () =>
     expect(result.current.reading.failure).toBeNull();
   });
 });
+
+describe('useReportsNextData — a window switch leaves the other registers the same objects (perf-p4-5)', () => {
+  it('seats keeps its register identity while till reads the new window', async () => {
+    auth.role = 'owner';
+    api.get.mockReset();
+    api.get.mockImplementation(async (path: string) => {
+      if (path === READING) return { data: { insights: [] } };
+      if (path === SEATS) return { data: { tables: [] } };
+      if (path.startsWith('/analytics/pos-revenue/r1')) return { data: { posConnected: true } };
+      throw new Error(`unexpected GET ${path}`);
+    });
+    const { result, rerender } = renderHook(
+      ({ days }: { days: number }) => useReportsNextData(days, () => {}, ['seats', 'till']),
+      { wrapper: wrapper(), initialProps: { days: 30 } },
+    );
+    await waitFor(() => expect(result.current.registers.till?.loading).toBe(false));
+    await waitFor(() => expect(result.current.registers.seats?.loading).toBe(false));
+    const seats = result.current.registers.seats;
+    const till = result.current.registers.till;
+
+    rerender({ days: 90 });
+    await waitFor(() => expect(paths()).toContain('/analytics/pos-revenue/r1?days=90'));
+
+    expect(result.current.registers.seats).toBe(seats);
+    expect(result.current.registers.till).not.toBe(till);
+  });
+});

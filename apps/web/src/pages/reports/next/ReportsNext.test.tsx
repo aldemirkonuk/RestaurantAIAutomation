@@ -31,7 +31,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { decodeSheet, defaultSheet, encodeSheet } from './useReportsNextData';
 import { CATALOGUE } from './rp-catalogue';
-import { DEFAULT_SLOTS } from './rp-sheet';
+import { DEFAULT_ON, DEFAULT_SLOTS } from './rp-sheet';
 import { heldBackFailure } from './rp-format';
 
 /**
@@ -1754,5 +1754,24 @@ describe('ReportsNext — a register this role is not sent (ADR 0348)', () => {
     const room = screen.getByRole('region', { name: 'The room' });
     expect(within(room).getByText(/Your role cannot read the table register/)).toBeInTheDocument();
     expect(within(room).queryByText(/written for owners and managers/)).not.toBeInTheDocument();
+  });
+});
+
+describe('a till-window click redraws the till and not the other cuttings (perf-p4-5)', () => {
+  it('draws every other card once, however the window is switched', () => {
+    const others = DEFAULT_ON.filter((id) => id !== 'till' && CATALOGUE[id].path !== null);
+    const spies = others.map((id) => vi.spyOn(CATALOGUE[id], 'view'));
+    const till = vi.spyOn(CATALOGUE.till, 'view');
+    hook.current = base();
+    paint();
+    const drawnBefore = spies.map((s) => s.mock.calls.length);
+    expect(drawnBefore.some((n) => n > 0)).toBe(true);
+    const tillBefore = till.mock.calls.length;
+
+    fireEvent.click(screen.getByRole('button', { name: '90d' }));
+
+    expect(till.mock.calls.length).toBeGreaterThan(tillBefore);
+    expect(spies.map((s) => s.mock.calls.length)).toEqual(drawnBefore);
+    [...spies, till].forEach((s) => s.mockRestore());
   });
 });

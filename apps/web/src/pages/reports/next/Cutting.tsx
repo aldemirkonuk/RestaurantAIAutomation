@@ -28,7 +28,7 @@
  * whatever type is selected.
  */
 
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import {
   ChartArea,
   ChartColumn,
@@ -204,7 +204,7 @@ export interface CuttingProps {
   onDays: (d: number) => void;
 }
 
-export default function Cutting({
+function Cutting({
   id,
   graph,
   register,
@@ -313,3 +313,6 @@ export default function Cutting({
     </section>
   );
 }
+
+/** Memoised: the page hands each cutting only what it reads (perf-p4-5). */
+export default memo(Cutting);
