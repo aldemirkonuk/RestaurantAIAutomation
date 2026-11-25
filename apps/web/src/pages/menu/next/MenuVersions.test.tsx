@@ -941,7 +941,11 @@ describe('MenuVersions — a narrow screen gets cards (r106 menu-3)', () => {
 describe('MenuVersions — the source file opens on the click (r106 menu-7, DD-r105-16)', () => {
   const listOne = () =>
     mockList.mockResolvedValue({ versions: [version({ menuId: 'm-src' })], current: null, lastUsed: null } as never);
-  afterEach(() => vi.restoreAllMocks());
+  // Only window.open is put back: restoreAllMocks would also clear the setup's matchMedia stub (DropZone reads it).
+  afterEach(() => {
+    vi.mocked(window.open).mockRestore?.();
+    vi.mocked(getMenuSourceUrl).mockReset();
+  });
 
   it('opens the tab synchronously on the click, then points it at the link once the link is had', async () => {
     listOne();
