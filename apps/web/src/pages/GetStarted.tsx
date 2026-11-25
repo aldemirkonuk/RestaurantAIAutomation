@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { MapPin, PenLine } from 'lucide-react'
 import { AuthSpread } from '../components/brand/AuthSpread'
@@ -206,6 +206,25 @@ export default function GetStarted() {
   typedRef.current = typed
   const userIdRef = useRef(user?.userId)
   userIdRef.current = user?.userId
+  // On a hard reload the session is read after the first paint, so `user` is
+  // not there when the state above is made. When the person's id arrives, the
+  // draft is put back, but only into fields still empty: nothing typed is
+  // overwritten. Until then nothing is written, so the stored draft stays.
+  const restoredFor = useRef<string | null>(draft ? (user?.userId ?? null) : null)
+  useLayoutEffect(() => {
+    const id = user?.userId
+    if (!id || restoredFor.current === id) return
+    restoredFor.current = id
+    const late = readGetStartedDraft(id)
+    if (!late || Object.values(typedRef.current).some((v) => v.trim() !== '')) return
+    setRestaurantName(late.restaurantName)
+    setAddress(late.address)
+    setCity(late.city)
+    setCountry(late.country)
+    setStateProvince(late.stateProvince)
+    setPostalCode(late.postalCode)
+    setRestaurantPhone(late.restaurantPhone)
+  }, [user?.userId])
   const typedKey = JSON.stringify(typed)
   useEffect(() => {
     const t = setTimeout(() => {

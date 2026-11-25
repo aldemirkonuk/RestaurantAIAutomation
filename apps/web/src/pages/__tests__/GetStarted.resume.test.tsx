@@ -12,7 +12,7 @@ const { navigate, createFirstHouse, patch, who } = vi.hoisted(() => ({
   navigate: vi.fn(),
   createFirstHouse: vi.fn(),
   patch: vi.fn(),
-  who: { name: 'Selin Kaya', userId: 'u1' },
+  who: { name: 'Selin Kaya', userId: 'u1' as string | undefined },
 }))
 
 vi.mock('react-router-dom', async () => {
@@ -114,5 +114,36 @@ describe('GetStarted: resumes where the person left', () => {
     sessionStorage.setItem(KEY, JSON.stringify({ restaurantName: 'Theirs', u: 'u2', at: Date.now() }))
     render(page())
     expect(val('Restaurant name')).toBe('')
+  })
+
+  it('a hard reload: the session arrives after the first paint, and the draft is put back and kept', async () => {
+    sessionStorage.setItem(
+      KEY,
+      JSON.stringify({ restaurantName: 'Meyhane', address: '1 House Street', city: 'Istanbul', country: 'Türkiye', stateProvince: '', postalCode: '', restaurantPhone: '', u: 'u1', at: Date.now() }),
+    )
+    who.userId = undefined
+    const view = render(page())
+    expect(val('Restaurant name')).toBe('')
+    who.userId = 'u1'
+    view.rerender(page())
+    await waitFor(() => expect(val('Restaurant name')).toBe('Meyhane'))
+    expect(val('City')).toBe('Istanbul')
+    await new Promise((r) => setTimeout(r, 600))
+    expect(JSON.parse(sessionStorage.getItem(KEY) as string).restaurantName).toBe('Meyhane')
+  })
+
+  it('a late session does not overwrite what the person already typed', async () => {
+    sessionStorage.setItem(
+      KEY,
+      JSON.stringify({ restaurantName: 'Old', address: 'Old street', city: 'Old city', country: '', stateProvince: '', postalCode: '', restaurantPhone: '', u: 'u1', at: Date.now() }),
+    )
+    who.userId = undefined
+    const view = render(page())
+    fireEvent.change(screen.getByLabelText('Restaurant name'), { target: { value: 'New' } })
+    who.userId = 'u1'
+    view.rerender(page())
+    await new Promise((r) => setTimeout(r, 50))
+    expect(val('Restaurant name')).toBe('New')
+    expect(val('Address')).toBe('')
   })
 })
