@@ -12,13 +12,18 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import type { ProcurementHistoryItem } from '../../../hooks/queries/useConversationQueries';
 
 const mockData = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
+// What the page asked of the hook (r107 mail-gap g6).
+const mockAsked = vi.hoisted(() => ({ last: undefined as { enabled?: boolean } | undefined }));
 
 // Only the HOOK is replaced. `COMMS_SERVER_WINDOWS` passes through from the real
 // module so the strip's floor note reads the same register the guard checks —
 // a mock that restated the cap would be a second, silently-drifting copy of it.
 vi.mock('./useCommsNextData', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./useCommsNextData')>()),
-  useCommsNextData: () => mockData.current,
+  useCommsNextData: (o?: { enabled?: boolean }) => {
+    mockAsked.last = o;
+    return mockData.current;
+  },
 }));
 
 // ADR 0118 — the two legacy builders are no longer mounted from this page, so
@@ -1083,6 +1088,21 @@ describe('Mail and Letters', () => {
     fireEvent.click(within(screen.getByRole('region', { name: 'Every letter' })).getByRole('button', { name: 'Mail' }));
     expect(screen.getByTestId('mail-tab-stub')).toBeInTheDocument();
     expect(screen.getByTestId('where')).toHaveTextContent('/communications?tab=mail');
+  });
+
+  // r107 mail-gap g6: Mail's list reads neither the book nor the drafts.
+  it.each([
+    ['/communications', false],
+    ['/communications?tab=mail', false],
+    ['/communications?tab=mail&setup=1', false],
+    ['/communications?tab=mail&thread=gm%3Aabc', true],
+    ['/communications?tab=mail&with=vendor%3Ap1', true],
+    ['/communications?tab=letters', true],
+    ['/communications?draft=D1', true],
+    ['/communications?reply=o1', true],
+  ])('%s asks the data hook with enabled=%s', (url, enabled) => {
+    at(url);
+    expect(mockAsked.last).toEqual({ enabled });
   });
 
   it('from a bare address, Letters is named in the address, so a refresh keeps it', () => {

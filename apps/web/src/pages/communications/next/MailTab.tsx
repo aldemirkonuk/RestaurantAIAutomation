@@ -441,7 +441,10 @@ function People({
   onOpenPerson,
   onSetup,
   setupWords,
+  onSettled,
 }: {
+  /** The list has answered, with people or with a failure (r107 g6: "Who is writing" waits for it). */
+  onSettled?: () => void;
   /** Who a waiting vendor waits on, in this reader's words (r36 mail gap 14). */
   on: WaitingOn;
   waitingOnly: boolean;
@@ -483,6 +486,10 @@ function People({
   useEffect(() => {
     if (settled) rememberRowCount(house, firstPageCount);
   }, [settled, house, firstPageCount]);
+  const settledNow = Boolean(q.data) || q.isError;
+  useEffect(() => {
+    if (settledNow) onSettled?.();
+  }, [settledNow]); // eslint-disable-line react-hooks/exhaustive-deps
   // Roving tabindex: the row last focused (else the first) is the list's one Tab stop.
   const [roving, setRoving] = useState<string | null>(null);
   const tabStopKey = people.some((p) => p.key === roving) ? roving : (people[0]?.key ?? null);
@@ -765,6 +772,21 @@ export function MailTab({
     setSearch('');
   };
   const [sheet, setSheet] = useState(false);
+  // r107 mail-gap g6: "Who is writing" reads its own two lists when it mounts. It mounts once the
+  // people list has answered, in an idle moment (a 200 ms timer where there is no idle callback),
+  // so the list is not queued behind it. It is the last thing in the flow: nothing below it moves.
+  const [peopleSettled, setPeopleSettled] = useState(false);
+  const [whoOn, setWhoOn] = useState(false);
+  useEffect(() => {
+    if (!peopleSettled || whoOn) return;
+    const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void };
+    if (typeof w.requestIdleCallback === 'function') {
+      const id = w.requestIdleCallback(() => setWhoOn(true), { timeout: 1000 });
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const t = setTimeout(() => setWhoOn(true), 200);
+    return () => clearTimeout(t);
+  }, [peopleSettled, whoOn]);
   const searchRef = useRef<HTMLInputElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
@@ -1037,8 +1059,9 @@ export function MailTab({
             }}
             onSetup={openSetup}
             setupWords={setupLinkWords(canReply)}
+            onSettled={() => setPeopleSettled(true)}
           />
-          {whoIsWriting}
+          {whoOn ? whoIsWriting : null}
         </>
       )}
       </div>

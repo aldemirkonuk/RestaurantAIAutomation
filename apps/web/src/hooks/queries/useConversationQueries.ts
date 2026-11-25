@@ -330,7 +330,7 @@ export const procurementHistoryKeys = {
  * the new tenant's name, with no banner. The key literal is the only thing
  * separating the two.
  */
-export function useProcurementConversationHistory() {
+export function useProcurementConversationHistory(options: { enabled?: boolean } = {}) {
   const { user, activeRestaurantId } = useAuth()
   // Prefer the runtime-updated activeRestaurantId: user.restaurantId comes
   // from the JWT and is stale for the whole window between a switch and a
@@ -343,5 +343,7 @@ export function useProcurementConversationHistory() {
         .get<ProcurementHistoryItem[]>('/api/v1/procurement/conversations/history')
         .then((r) => r.data),
     staleTime: 30_000,
+    // r107 mail-gap g6: a page that does not draw the book yet does not read it.
+    enabled: options.enabled ?? true,
   })
 }
