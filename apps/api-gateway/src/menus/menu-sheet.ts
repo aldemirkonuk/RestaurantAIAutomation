@@ -33,16 +33,35 @@ export const SHEET_COLUMNS = [
 
 const FORMULA_START = /^[=+\-@\t\r]/;
 
-export function sheetCell(value: unknown): string {
+/**
+ * `decimal: ","` is the decimal-comma dialect (tr-TR, de-DE, ...): a semicolon
+ * between cells and a comma in a price ("62,5"), the way Excel saves a file in
+ * such a locale. The default stays comma-between and dot-in-price. The reader
+ * sniffs the delimiter and reads either price (menu-price.ts), so each dialect
+ * reads back to the same cent. No thousands mark is written in either.
+ */
+export interface SheetDialect {
+  decimal?: "." | ",";
+}
+
+const PRICE_COLUMNS = new Set<string>(["by_glass_price", "bottle_price"]);
+
+export function sheetCell(value: unknown, delimiter = ","): string {
   if (value === null || value === undefined) return "";
   let s = String(value).replace(/[\r\n]+/g, " ");
   if (FORMULA_START.test(s)) s = `'${s}`;
-  return /[",]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  return s.includes('"') || s.includes(delimiter) || s.includes(",")
+    ? `"${s.replace(/"/g, '""')}"`
+    : s;
 }
 
-export function menuSheet(items: Array<Record<string, unknown>>): string {
-  const rows = items.map((it) => SHEET_COLUMNS.map((c) => sheetCell(it[c])).join(","));
-  return [SHEET_COLUMNS.join(","), ...rows].join("\r\n") + "\r\n";
+export function menuSheet(items: Array<Record<string, unknown>>, dialect: SheetDialect = {}): string {
+  const comma = dialect.decimal === ",";
+  const d = comma ? ";" : ",";
+  const cell = (c: string, v: unknown) =>
+    comma && PRICE_COLUMNS.has(c) && typeof v === "number" ? String(v).replace(".", ",") : sheetCell(v, d);
+  const rows = items.map((it) => SHEET_COLUMNS.map((c) => cell(c, it[c])).join(d));
+  return [SHEET_COLUMNS.join(d), ...rows].join("\r\n") + "\r\n";
 }
 
 /** The blank sheet: the header and one example line to overwrite. */

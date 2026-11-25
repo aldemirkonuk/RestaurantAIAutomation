@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { LINE_SELECT, MenusService, SOURCE_NOT_TAKEN, houseZoneOf, parseMenuPrice } from "./menus.service";
 import { MEMBER_LINE_KEYS, seesRawLine } from "./menu-line-view";
+import { menuSheet } from "./menu-sheet";
 import { DatabaseService } from "../database/database.service";
 import { CsvParserService } from "./parsers/csv-parser.service";
 import { MenuReadWaitingException } from "./parsers/scan-parser.service";
@@ -2815,6 +2816,7 @@ describe("MenusService — a failed read of the kept menus is said in plain word
   });
 });
 
+<<<<<<< HEAD
 describe("parseMenuPrice -- a typed price is read, never guessed (menu r21)", () => {
   const value = (raw: string) => {
     const r = parseMenuPrice(raw);
@@ -3102,5 +3104,112 @@ describe("a menu line finds the house's own good before the library (r21 D1)", (
     expect(price).toHaveLength(1);
     expect(price[0][1]).toMatchObject({ p_inventory_id: "inv-gin", p_bottle_price: 40 });
     expect(tables.restaurant_inventory).toHaveLength(1);
+=======
+describe("the current menu, exported and read back, moves no price (r105 menu-4)", () => {
+  const byName: Record<string, string> = { Barolo: "mw-1", Chianti: "mw-2", Rose: "mw-3" };
+  const wineSubmissions = {
+    resolveLibraryWinesBatch: async (items: Array<{ name?: string }>) =>
+      items.map((i) => ({ masterWineId: byName[String(i.name)] ?? null, matched: !!byName[String(i.name)], libraryTier: 1, confidence: 99 })),
+    normalizeText: (t: string | null | undefined) => (t ? t.toLowerCase() : null),
+  };
+  const house = (): Record<string, Row[]> => ({
+    restaurants: [{ id: "rest-1", default_threshold_min: 3 }],
+    restaurant_menus: [{ id: "menu-cur", restaurant_id: "rest-1", status: "active", made_current_at: "2026-09-21T12:00:00Z" }],
+    restaurant_inventory: [
+      // Barolo: its bottle price is LOCKED at 60; the glass is free at 14.
+      { id: "inv-1", restaurant_id: "rest-1", master_wine_id: "mw-1", wine_name: "Barolo", menu_price_current: 60, menu_price_glass: 14, is_active: true },
+      { id: "inv-2", restaurant_id: "rest-1", master_wine_id: "mw-2", wine_name: "Chianti", menu_price_current: 50, menu_price_glass: null, is_active: true },
+      // Rose: no price on the menu and none at the house.
+      { id: "inv-3", restaurant_id: "rest-1", master_wine_id: "mw-3", wine_name: "Rose", menu_price_current: null, menu_price_glass: null, is_active: true },
+    ],
+    house_price_locks: [
+      { id: "lock-1", restaurant_id: "rest-1", inventory_id: "inv-1", kind: "bottle", locked_price: 60, locked_by: "user-1", locked_at: "2026-09-01T09:00:00Z", released_at: null },
+    ],
+    menu_price_versions: [],
+    users: [{ user_id: "user-1", name: "Aylin" }],
+    menu_items: [
+      { id: "c-1", menu_id: "menu-cur", restaurant_id: "rest-1", name: "Barolo", category: "Red", wine_library_id: "mw-1", inventory_item_id: "inv-1", bottle_price: 60, by_glass_price: 14, status: "approved" },
+      { id: "c-2", menu_id: "menu-cur", restaurant_id: "rest-1", name: "Chianti", category: "Red", wine_library_id: "mw-2", inventory_item_id: "inv-2", bottle_price: 50, status: "approved" },
+      { id: "c-3", menu_id: "menu-cur", restaurant_id: "rest-1", name: "Rose", category: "Rose", wine_library_id: "mw-3", inventory_item_id: "inv-3", status: "approved" },
+    ],
+    user_onboarding_progress: [],
+    master_wine_library_submissions: [],
+  });
+
+  it("reading the export of the current menu back makes a plan in which no price moves", async () => {
+    const tables = house();
+    const service = makeService(tables, { wineSubmissions, csvParser: new CsvParserService() });
+    const current = await service.getMenu("rest-1", { rawLine: false });
+    const sheet = menuSheet(current.items as unknown as Array<Record<string, unknown>>);
+    expect(sheet.split("\r\n").filter(Boolean)).toHaveLength(4);
+
+    const read: any = await service.importMenu(
+      { method: "csv", data: { csvContent: sheet }, restaurantId: "rest-1" } as any,
+      "user-1",
+    );
+    const plan = await service.planFor("rest-1", read.menuId);
+    expect(plan.lines).toHaveLength(3);
+    expect(plan.counts.change).toBe(0);
+    const kinds = plan.lines.flatMap((l) => [l.bottle.result, l.glass.result]);
+    expect(kinds).not.toContain("change");
+    expect(kinds).not.toContain("new_wine");
+    // The unpriced Rose stays unpriced; it is not turned into a move.
+    const rose = plan.lines.find((l) => l.name === "Rose")!;
+    expect(rose.bottle.menuPrice).toBeNull();
+    expect(rose.bottle.housePrice).toBeNull();
+  });
+});
+
+describe("a decimal-comma sheet, exported and read back, moves no price (r106 menu-2, tr-TR)", () => {
+  const byName: Record<string, string> = { Barolo: "mw-1", Chianti: "mw-2", Rose: "mw-3" };
+  const wineSubmissions = {
+    resolveLibraryWinesBatch: async (items: Array<{ name?: string }>) =>
+      items.map((i) => ({ masterWineId: byName[String(i.name)] ?? null, matched: !!byName[String(i.name)], libraryTier: 1, confidence: 99 })),
+    normalizeText: (t: string | null | undefined) => (t ? t.toLowerCase() : null),
+  };
+  // Every price has a fractional part, and one is over a thousand: the shapes a
+  // decimal-comma file reads a hundredfold (62,50 -> 6250) or two ways (1.250).
+  const house = (): Record<string, Row[]> => ({
+    restaurants: [{ id: "rest-1", default_threshold_min: 3 }],
+    restaurant_menus: [{ id: "menu-cur", restaurant_id: "rest-1", status: "active", made_current_at: "2026-09-21T12:00:00Z" }],
+    restaurant_inventory: [
+      { id: "inv-1", restaurant_id: "rest-1", master_wine_id: "mw-1", wine_name: "Barolo", menu_price_current: 1250.75, menu_price_glass: 62.5, is_active: true },
+      { id: "inv-2", restaurant_id: "rest-1", master_wine_id: "mw-2", wine_name: "Chianti", menu_price_current: 1250, menu_price_glass: null, is_active: true },
+      { id: "inv-3", restaurant_id: "rest-1", master_wine_id: "mw-3", wine_name: "Rose", menu_price_current: 0.5, menu_price_glass: 7.05, is_active: true },
+    ],
+    house_price_locks: [],
+    menu_price_versions: [],
+    users: [{ user_id: "user-1", name: "Aylin" }],
+    menu_items: [
+      { id: "c-1", menu_id: "menu-cur", restaurant_id: "rest-1", name: "Barolo", category: "Red", wine_library_id: "mw-1", inventory_item_id: "inv-1", bottle_price: 1250.75, by_glass_price: 62.5, status: "approved" },
+      { id: "c-2", menu_id: "menu-cur", restaurant_id: "rest-1", name: "Chianti", category: "Red", wine_library_id: "mw-2", inventory_item_id: "inv-2", bottle_price: 1250, status: "approved" },
+      { id: "c-3", menu_id: "menu-cur", restaurant_id: "rest-1", name: "Rose", category: "Rose", wine_library_id: "mw-3", inventory_item_id: "inv-3", bottle_price: 0.5, by_glass_price: 7.05, status: "approved" },
+    ],
+    user_onboarding_progress: [],
+    master_wine_library_submissions: [],
+  });
+
+  it("writes a semicolon sheet with comma decimals, and reading it back moves no price to the cent", async () => {
+    const tables = house();
+    const service = makeService(tables, { wineSubmissions, csvParser: new CsvParserService() });
+    const current = await service.getMenu("rest-1", { rawLine: false });
+    const sheet = menuSheet(current.items as unknown as Array<Record<string, unknown>>, { decimal: "," });
+    const lines = sheet.split("\r\n").filter(Boolean);
+    expect(lines).toHaveLength(4);
+    expect(lines[0]).toBe("name;producer;vintage;region;grape_variety;category;by_glass_price;bottle_price");
+    expect(lines[1]).toBe("Barolo;;;;;Red;62,5;1250,75");
+
+    const read: any = await service.importMenu(
+      { method: "csv", data: { csvContent: sheet }, restaurantId: "rest-1" } as any,
+      "user-1",
+    );
+    const plan = await service.planFor("rest-1", read.menuId);
+    expect(plan.lines).toHaveLength(3);
+    expect(plan.counts.change).toBe(0);
+    const kinds = plan.lines.flatMap((l) => [l.bottle.result, l.glass.result]);
+    expect(kinds).not.toContain("change");
+    const prices = Object.fromEntries(plan.lines.map((l) => [l.name, [l.bottle.menuPrice, l.glass.menuPrice]]));
+    expect(prices).toEqual({ Barolo: [1250.75, 62.5], Chianti: [1250, null], Rose: [0.5, 7.05] });
+>>>>>>> origin/fix/r106-menu-export-comma-decimal
   });
 });

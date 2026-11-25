@@ -75,6 +75,14 @@ describe("GET /menus/:restaurantId/export.csv and sample.csv", () => {
   };
   const menu = { menuId: "m1", items: [line({ name: "=HYPERLINK(1)", bottle_price: 50 }), line({ name: "Raki", by_glass_price: 12.5 })] };
 
+  it("?decimal=comma gives a semicolon sheet that reads back the same prices", async () => {
+    const { c } = make("owner", { menuId: "m1", items: [line({ name: "Rakı", bottle_price: 1250.75, by_glass_price: 62.5 })] });
+    const csv = await c.exportSheet("rest-1", USER, "comma");
+    expect(csv.split("\r\n")[1]).toBe("Rakı;;;;;;62,5;1250,75");
+    expect(new CsvParserService().parse(csv).map((b) => [b.by_glass_price, b.bottle_price])).toEqual([[62.5, 1250.75]]);
+    expect((await c.exportSheet("rest-1", USER)).split("\r\n")[1]).toBe("Rakı,,,,,,62.5,1250.75");
+  });
+
   it.each(["owner", "manager"])("a %s gets the current menu as a sheet that reads back the same", async (role) => {
     const { c } = make(role, menu);
     const csv = await c.exportSheet("rest-1", USER);
