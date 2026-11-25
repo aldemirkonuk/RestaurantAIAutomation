@@ -459,7 +459,7 @@ export default function CocktailRegister({
             data-testid="cocktails-reading-room"
             style={{ marginTop: 12, overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10 }}
           >
-            <table className="cl-table">
+            <table className="cl-table cl-table--drinks">
               <thead>
                 <tr>
                   <th scope="col">Cocktail</th>
@@ -564,7 +564,7 @@ export default function CocktailRegister({
               <ExportMenu variant="soft" size="sm" label="Export" count={rows.length} onExport={exportList} title="Export the drinks shown, in the order shown" />
             </div>
             <div style={{ marginTop: 12, overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10 }}>
-              <table className="cl-table">
+              <table className="cl-table cl-table--drinks">
                 <thead>
                   <tr>
                     <th scope="col">Cocktail</th>

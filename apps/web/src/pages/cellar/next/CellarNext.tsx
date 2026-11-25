@@ -151,7 +151,7 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
           <Link to="/cellar" className="cl-focus" style={{ textDecoration: 'none' }}>
             <Wordmark size={13} />
           </Link>
-          <nav aria-label="Cellar registers" style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginLeft: 'auto' }}>
+          <nav aria-label="Cellar registers" className="cl-spine-nav" style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginLeft: 'auto' }}>
             {spine.map((id) => {
               const href = registerHref(id);
               return (
