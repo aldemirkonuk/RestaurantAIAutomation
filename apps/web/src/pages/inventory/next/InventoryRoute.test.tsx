@@ -5,6 +5,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { AuthContext, type AuthContextType } from '../../../contexts/AuthContext';
 
 const checkFeatureFlag = vi.fn();
 vi.mock('../../../services/api/settings', () => ({
@@ -77,5 +78,48 @@ describe('InventoryRoute', () => {
     render(<InventoryRoute />);
     expect(screen.getByTestId('command')).toBeTruthy();
     expect(checkFeatureFlag).not.toHaveBeenCalled();
+  });
+
+  // A fresh load: the token names the house (`user.restaurantId`) before the
+  // branch list lands and sets `activeRestaurantId`. The command page used to
+  // draw in that gap and start eight reads InventoryNext then asked for again.
+  const withAuth = (value: Partial<AuthContextType>) =>
+    render(
+      <AuthContext.Provider value={value as AuthContextType}>
+        <InventoryRoute />
+      </AuthContext.Provider>,
+    );
+
+  it('a house the token names is enough: the command page never draws while the branches load', async () => {
+    window.localStorage.removeItem('activeRestaurantId');
+    checkFeatureFlag.mockResolvedValue({ active: true, enabled: true });
+    const seen: string[] = [];
+    const { container } = withAuth({
+      user: { restaurantId: 'r1' } as AuthContextType['user'],
+      activeRestaurantId: null,
+      loading: false,
+    });
+    const look = () => {
+      if (container.querySelector('[data-testid="command"]')) seen.push('command');
+    };
+    look();
+    new MutationObserver(look).observe(container, { childList: true, subtree: true });
+    expect(await screen.findByTestId('next')).toBeTruthy();
+    expect(checkFeatureFlag).toHaveBeenCalledWith('r1', 'mudavym_design_inventory_next');
+    expect(seen).toEqual([]);
+  });
+
+  it('while the session is still being read, neither page draws', () => {
+    window.localStorage.removeItem('activeRestaurantId');
+    withAuth({ user: null, activeRestaurantId: null, loading: true });
+    expect(screen.getByTestId('inventory-route-reading')).toBeTruthy();
+    expect(screen.queryByTestId('command')).toBeNull();
+    expect(checkFeatureFlag).not.toHaveBeenCalled();
+  });
+
+  it('a session read and found to name no house still gets the command page', () => {
+    window.localStorage.removeItem('activeRestaurantId');
+    withAuth({ user: null, activeRestaurantId: null, loading: false });
+    expect(screen.getByTestId('command')).toBeTruthy();
   });
 });
