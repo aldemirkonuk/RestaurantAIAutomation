@@ -80,7 +80,7 @@ describe('Write to a vendor from its person page', () => {
   });
 
   it.each(['team', 'guest'])('is absent on a %s person, whoever reads', async (kind) => {
-    person = { key: `${kind}:x@y.example`, kind, providerId: null, name: 'Someone' };
+    person = { key: `${kind}:x@y.example`, kind, providerId: 'p1', name: 'Someone' };
     mount();
     await settled();
     expect(screen.queryByTestId('mail-write-to')).toBeNull();
