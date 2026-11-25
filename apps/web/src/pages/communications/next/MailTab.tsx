@@ -70,6 +70,7 @@ import {
   searchEmptyWords,
   setupLinkWords,
   storedKindsLine,
+  storesNonVendor,
   threadCountWords,
   todayLine,
   unsentChipText,
@@ -434,6 +435,7 @@ function People({
   onOpenPerson,
   onSetup,
   setupWords,
+  onStoredKinds,
 }: {
   /** Who a waiting vendor waits on, in this reader's words (r36 mail gap 14). */
   on: WaitingOn;
@@ -453,6 +455,8 @@ function People({
   onSetup: () => void;
   /** setupLinkWords(canReply): staff are not told to set up what they cannot change. */
   setupWords: string;
+  /** What kinds the stored rows hold, handed up so the search hint can name them. */
+  onStoredKinds: (kinds: readonly string[] | null) => void;
 }) {
   const q = useMailPeople(waitingOnly, search, kind);
   const pages = q.data?.pages ?? [];
@@ -469,6 +473,10 @@ function People({
   const shown = useRef(listIdentity);
   if (ready) shown.current = listIdentity;
   const storedKinds = pages[0]?.storedKinds ?? null;
+  const storedKey = storedKinds ? storedKinds.join('|') : null;
+  useEffect(() => {
+    onStoredKinds(storedKey === null ? null : storedKey.split('|'));
+  }, [storedKey, onStoredKinds]);
   const house = useHouse();
   // Remember the unfiltered first-page count so the next cold load draws that many bars.
   const settled = Boolean(q.data) && !waitingOnly && !search;
@@ -721,6 +729,7 @@ export function MailTab({
   const readAll = useReadAllGrants(canReply);
   // r28 mail gap 16: what is typed, and the term sent 300 ms after typing stops.
   const [typed, setTyped] = useState('');
+  const [storedKinds, setStoredKinds] = useState<readonly string[] | null>(null);
   const [search, setSearch] = useState('');
   useEffect(() => {
     const term = mailSearchTerm(typed);
@@ -917,7 +926,7 @@ export function MailTab({
               type="search"
               data-testid="mail-search"
               aria-label="Search mail"
-              placeholder={readAll.reads ? SEARCH_PLACEHOLDER_ALL : SEARCH_PLACEHOLDER_VENDOR}
+              placeholder={readAll.reads || storesNonVendor(storedKinds) ? SEARCH_PLACEHOLDER_ALL : SEARCH_PLACEHOLDER_VENDOR}
               value={typed}
               maxLength={MAIL_SEARCH_MAX}
               onChange={(e) => setTyped(e.target.value)}
@@ -971,6 +980,7 @@ export function MailTab({
             onOpenPerson={(key) => go({ with: key })}
             onSetup={openSetup}
             setupWords={setupLinkWords(canReply)}
+            onStoredKinds={setStoredKinds}
           />
           {whoIsWriting}
         </>

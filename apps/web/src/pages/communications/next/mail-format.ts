@@ -835,9 +835,14 @@ export function letterAt(m: MailMessage): string {
 export const ARRIVED_ONLY =
   'Only letters that arrived are read for team and guests; replies sent from your own mailbox are not, so these threads show what came in, not the whole conversation.';
 
+/** Rows of team or guest mail are stored, whatever the house's grant now says (the scope line and the search hint both follow this). */
+export function storesNonVendor(storedKinds: readonly string[] | null): boolean {
+  return Boolean(storedKinds && storedKinds.some((k) => k !== 'vendor'));
+}
+
 export function storedKindsLine(storedKinds: readonly string[] | null): string {
-  if (storedKinds && storedKinds.some((k) => k !== 'vendor')) {
-    return `Mail that arrived from ${storedKinds.join(', ')} is listed by person and thread. ${ARRIVED_ONLY}`;
+  if (storesNonVendor(storedKinds)) {
+    return `Mail that arrived from ${storedKinds!.join(', ')} is listed by person and thread. ${ARRIVED_ONLY}`;
   }
   // r28 gap 6: a letter from an unknown sender is kept (as a prospect, under
   // Who is writing) only when it carries an attachment or reads as an offer;
