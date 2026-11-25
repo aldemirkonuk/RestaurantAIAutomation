@@ -19,7 +19,7 @@ Mail lists team and guest people (kind `team`, `guest`; `provider_id` NULL) and 
 
 ## Decision
 
-An address that has already written to the house can be answered, and only at that exact address (case aside), on the thread of the letter answered. The request names the letter (`answers`) and carries no `providerId`; the gateway reads that letter, requires its kind to be `team` or `guest`, and refuses any other `To`. It goes through the same guardrails, grant check, sender line, seal (the hold is over the answered letter), undo window and queue as a vendor letter. The sent copy is stored by the house under that person, so the thread shows it without reading Gmail's sent label. Only the house's owner or a manager may write it, the same people who may read these letters. A draft, request, order or inserted figure may not ride on it. The composer shows the fixed address and no book picker.
+An address that has already written to the house can be answered, and only at that exact address (case aside), on the thread of the letter answered. The request names the letter (`answers`) and carries no `providerId`; the gateway reads that letter, requires its kind to be `team` or `guest`, and refuses any other `To`. The address must also be the stored sender of that thread's newest inbound letter a person wrote: automatic mail (auto-submitted, or from a mailer-daemon or postmaster, as Mail's list flags it) never counts, so a thread with only automatic mail has no one to answer and an older writer is refused once someone else wrote newest (r105 mail-3). It goes through the same guardrails, grant check, sender line, seal (the hold is over the answered letter), undo window and queue as a vendor letter. The sent copy is stored by the house under that person, so the thread shows it without reading Gmail's sent label. Only the house's owner or a manager may write it, the same people who may read these letters. A draft, request, order or inserted figure may not ride on it. The composer shows the fixed address and no book picker.
 
 ## Consequences
 
@@ -30,3 +30,4 @@ An address that has already written to the house can be answered, and only at th
 ## Review trail
 
 - r104 mail-gap g1: gateway `a-reply-to-a-team-or-guest-letter.spec.ts` (off-thread address refused; mutation: dropping the equality check fails two cases).
+- r105 mail-3: the same spec file gains the automatic-only, older-writer and other-house cases; staff, other-house guest and typed-address refusals were already there. `house-letters.service.ts` `newestPersonWriter` enforces it (mutation: removing either check fails three cases). `claims.d/feat-r105-mail-3-g1-specs-adr-claims.jsonl` holds the checks.
