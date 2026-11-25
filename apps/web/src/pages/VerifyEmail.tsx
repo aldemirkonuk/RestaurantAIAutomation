@@ -3,13 +3,14 @@ import { usePublicDesign } from '../lib/mudavym/publicDesign'
 import { useState } from 'react'
 import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { Mail, CheckCircle, Loader2, AlertCircle } from 'lucide-react'
+import { Mail, CheckCircle, AlertCircle } from 'lucide-react'
 import { AuthShell, AuthCard } from '../components/brand/AuthShell'
 import { Button } from '../components/ui'
 import { toast } from 'sonner'
 import { getOnboardingProgress } from '../services/api/menus'
 import { apiClient, getErrorMessage } from '../services/api/client'
 import { storeSession } from '../lib/houseMemory'
+import { Pending } from '@/components/onboarding/Pending'
 
 /**
  * The two answers the verify route gives a click it will not honour (ADR 0229
@@ -314,11 +315,7 @@ export function VerifyEmail() {
             >
               {verifying ? (
                 <>
-                  <Loader2
-                    className="w-4 h-4 animate-spin mr-2"
-                    strokeWidth={1.75}
-                  />
-                  Verifying...
+                  <Pending label="Verifying..." />
                 </>
               ) : (
                 'Verify My Email'
@@ -340,11 +337,7 @@ export function VerifyEmail() {
             >
               {resending ? (
                 <>
-                  <Loader2
-                    className="w-4 h-4 animate-spin mr-2"
-                    strokeWidth={1.75}
-                  />
-                  Resending...
+                  <Pending label="Resending..." />
                 </>
               ) : (
                 'Resend Verification Email'

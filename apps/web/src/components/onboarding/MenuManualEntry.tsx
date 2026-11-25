@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Plus, Trash2, RotateCcw } from 'lucide-react'
 import { Button } from '../ui/button'
 import { importMenu, type WineExtractItem, type MenuImportSuccess } from '../../services/api/menus'
+import { Pending } from '@/components/onboarding/Pending'
 
 interface WineRow extends WineExtractItem {
   _id: number
@@ -190,10 +191,7 @@ export function MenuManualEntry({ onSuccess }: MenuManualEntryProps) {
           className="bg-[#1A5E6B] hover:bg-[#14515C] text-white"
         >
           {loading ? (
-            <span className="flex items-center gap-2">
-              <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-              Importing...
-            </span>
+            <Pending className="text-white" label="Importing..." />
           ) : (
             `Import ${validRows.length > 0 ? validRows.length : ''} wine${validRows.length !== 1 ? 's' : ''}`
           )}
