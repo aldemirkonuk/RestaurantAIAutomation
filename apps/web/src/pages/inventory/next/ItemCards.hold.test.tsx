@@ -8,7 +8,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import ItemCards from './ItemCards';
+import ItemUsedIn from './ItemUsedIn';
 import type { InvRow } from './useInventoryNextData';
 
 const row = (over: Partial<InvRow> = {}) =>
@@ -57,5 +59,40 @@ describe('the stylesheet holds the tallest settled height per breakpoint', () =>
   it('139 px on the one-column phone sheet, 153 px in the two-column sheet', () => {
     expect(css).toMatch(/\.ivd-card\[data-hold='tall'\] \{\s*min-height: 139px;/);
     expect(css).toMatch(/@media \(min-width: 768px\) \{\s*\.ivd-card\[data-hold='tall'\] \{\s*min-height: 153px;/);
+  });
+});
+
+describe('a hold ends when the reading settles (r107 g3)', () => {
+  const css = readFileSync(resolve(__dirname, 'item-drawer.css'), 'utf8');
+  const eur = { state: 'recorded', code: 'EUR' } as never;
+  const usedIn = { status: 'ready', data: { item: { id: 'i1', kind: 'spirit', displayName: null }, soldAs: { readable: true, lines: [], source: 's' }, inCocktails: { readable: true, lines: [], source: 's' }, namedNotLinked: { readable: true, lines: [], source: 's' } } } as never;
+  const dish = { dishId: 'd1', name: 'Plate', section: null, href: '/dishes?open=d1', yieldServes: 1, uses: [{ qtyEntered: 30, unitCode: 'g' }], cost: null, price: 12 };
+  const mount = (dishes: never) => {
+    cleanup();
+    return render(
+      <MemoryRouter>
+        <ItemUsedIn load={usedIn} dishes={dishes} canManage currency={eur} onRetry={() => {}} onRetryDishes={() => {}} />
+      </MemoryRouter>,
+    );
+  };
+
+  it('a pending read still holds 52 / 52 / 156 px; the stylesheet says so', () => {
+    expect(css).toMatch(/\.ivd-hold\[data-hold='used'\],\s*\.ivd-hold\[data-hold='dishes'\] \{\s*min-height: 52px;/);
+    expect(css).toMatch(/\.ivd-hold\[data-hold='nutrition'\] \{\s*min-height: 156px;/);
+    mount({ status: 'reading' } as never);
+    expect(document.querySelector('.ivd-hold[data-hold="dishes"]')).not.toBeNull();
+  });
+
+  it('once the read has landed no hold element is left', () => {
+    mount({ status: 'ready', data: { dishes: [] } } as never);
+    expect(document.querySelector('.ivd-hold')).toBeNull();
+  });
+
+  it('a card drawn from a landed read carries no floor: it is marked settled and the stylesheet gives it min-height 0 after the 94 px rule', () => {
+    mount({ status: 'ready', data: { dishes: [dish] } } as never);
+    const card = screen.getByTestId('ivd-dish-d1-price');
+    expect(card.getAttribute('data-settled')).toBe('true');
+    expect(css).toMatch(/\.ivd-card\[data-settled='true'\] \{\s*min-height: 0;/);
+    expect(css.indexOf("[data-settled='true']")).toBeGreaterThan(css.indexOf('min-height: 94px'));
   });
 });
