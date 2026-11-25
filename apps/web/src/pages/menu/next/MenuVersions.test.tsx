@@ -6,7 +6,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -25,6 +25,7 @@ const m = (n: number) => formatMoney(n, 'TRY');
 
 import {
   getMenuPlan,
+  getMenuSourceUrl,
   importMenu,
   listMenuVersions,
   makeMenuCurrent,
@@ -873,5 +874,48 @@ describe('MenuVersions — a narrow screen gets cards (r106 menu-3)', () => {
     const acts = row.querySelectorAll('td.mdv-acts');
     expect(acts.length).toBeGreaterThan(0);
     expect(Array.from(acts).some((c) => /Make current/.test(c.textContent ?? ''))).toBe(true);
+  });
+});
+
+describe('MenuVersions — the source file opens on the click (r106 menu-7, DD-r105-16)', () => {
+  const listOne = () =>
+    mockList.mockResolvedValue({ versions: [version({ menuId: 'm-src' })], current: null, lastUsed: null } as never);
+  afterEach(() => vi.restoreAllMocks());
+
+  it('opens the tab synchronously on the click, then points it at the link once the link is had', async () => {
+    listOne();
+    let resolveUrl: (v: { url: string }) => void = () => {};
+    vi.mocked(getMenuSourceUrl).mockReturnValue(new Promise((r) => (resolveUrl = r)) as never);
+    const tab = { opener: 'x', location: { href: '' }, close: vi.fn() };
+    const open = vi.spyOn(window, 'open').mockReturnValue(tab as never);
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Open PDF' }));
+    // Before the link has come back: the tab is already open, and has no address yet.
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(tab.location.href).toBe('');
+    expect(tab.opener).toBeNull();
+    resolveUrl({ url: 'https://files.example/m-src.pdf' });
+    await waitFor(() => expect(tab.location.href).toBe('https://files.example/m-src.pdf'));
+    expect(tab.close).not.toHaveBeenCalled();
+  });
+
+  it('closes the empty tab and says why when the link could not be had', async () => {
+    listOne();
+    vi.mocked(getMenuSourceUrl).mockRejectedValue({ response: { data: { message: 'The file is not there.' } } });
+    const tab = { opener: 'x', location: { href: '' }, close: vi.fn() };
+    vi.spyOn(window, 'open').mockReturnValue(tab as never);
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Open PDF' }));
+    await waitFor(() => expect(tab.close).toHaveBeenCalled());
+    expect(await screen.findByText(/The file is not there/)).toBeInTheDocument();
+  });
+
+  it('says so when the browser blocks the tab, and asks for no link', async () => {
+    listOne();
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Open PDF' }));
+    expect(await screen.findByText(/blocked the new tab/)).toBeInTheDocument();
+    expect(getMenuSourceUrl).not.toHaveBeenCalled();
   });
 });

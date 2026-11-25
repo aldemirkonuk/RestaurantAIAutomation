@@ -595,12 +595,21 @@ function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan, zone }:
   onPlan: (menuId: string) => void
 }) {
   const [linkError, setLinkError] = useState<string | null>(null);
+  // The tab opens on the click itself and is pointed at the file once the link is had:
+  // Safari and iOS refuse a window.open that comes after an await (r106 menu-7, DD-r105-16).
   const openSource = async () => {
     setLinkError(null);
+    const tab = window.open('', '_blank');
+    if (!tab) {
+      setLinkError('Your browser blocked the new tab. Allow pop-ups for this site and open the file again.');
+      return;
+    }
+    tab.opener = null;
     try {
       const { url } = await getMenuSourceUrl(v.menuId);
-      window.open(url, '_blank', 'noopener');
+      tab.location.href = url;
     } catch (err) {
+      tab.close();
       setLinkError(reasonOf(err));
     }
   };
