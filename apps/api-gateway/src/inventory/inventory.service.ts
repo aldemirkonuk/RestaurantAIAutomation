@@ -798,22 +798,40 @@ export class InventoryService {
     const since = new Date();
     since.setDate(since.getDate() - 28);
 
-    const { data, error } = await client
-      .from("inventory_transactions")
-      .select("*")
-      .eq("restaurant_id", restaurantId)
-      .eq("inventory_id", itemId)
-      .gte("created_at", since.toISOString())
-      .order("created_at", { ascending: true })
-      .limit(2000);
+    // Newest first, in pages, until the 28-day window is spent. One read capped
+    // at 2000 ascending rows silently dropped the NEWEST days of a pour-heavy
+    // good from the 14-day chart. Only the three columns the sums use travel.
+    const PAGE = 1000;
+    const MAX_PAGES = 50; // 50,000 movements in 28 days; past it the door says so.
+    const data: any[] = [];
+    let truncated = false;
+    for (let page = 0; ; page++) {
+      const { data: rows, error } = await client
+        .from("inventory_transactions")
+        .select("quantity_change, transaction_type, created_at")
+        .eq("restaurant_id", restaurantId)
+        .eq("inventory_id", itemId)
+        .gte("created_at", since.toISOString())
+        .order("created_at", { ascending: false })
+        .range(page * PAGE, page * PAGE + PAGE - 1);
 
-    // A FAILED READ IS NOT AN EMPTY LEDGER (ADR 0067). Returning zeroes here
-    // made an outage indistinguishable from a shelf nothing had moved on.
-    if (error) {
-      this.logger.error(`getItemActivity ledger query failed: ${error.message}`);
-      throw new Error(
-        `the movement history of item ${itemId} could not be read (${error.message}). Nothing is claimed about this shelf — an empty chart here would mean "nothing moved", which is not what we know.`,
-      );
+      // A FAILED READ IS NOT AN EMPTY LEDGER (ADR 0067). Returning zeroes here
+      // made an outage indistinguishable from a shelf nothing had moved on.
+      if (error) {
+        this.logger.error(
+          `getItemActivity ledger query failed: ${error.message}`,
+        );
+        throw new Error(
+          `the movement history of item ${itemId} could not be read (${error.message}). Nothing is claimed about this shelf — an empty chart here would mean "nothing moved", which is not what we know.`,
+        );
+      }
+      const got = (rows as any[]) || [];
+      data.push(...got);
+      if (got.length < PAGE) break;
+      if (page + 1 >= MAX_PAGES) {
+        truncated = true;
+        break;
+      }
     }
 
     const dayKey = (d: Date) => d.toISOString().slice(0, 10);
@@ -829,8 +847,8 @@ export class InventoryService {
     const fourteenDaysAgo = new Date();
     fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
 
-    for (const row of (data as any[]) || []) {
-      const qty = Number(row.quantity_change ?? row.quantity ?? 0);
+    for (const row of data) {
+      const qty = Number(row.quantity_change ?? 0);
       if (!Number.isFinite(qty) || qty === 0) continue;
       const type = String(row.transaction_type || "").toLowerCase();
       // Sign is the classifier. The type list stays only because some depletion
@@ -873,6 +891,9 @@ export class InventoryService {
       heat,
       totalOut28d: totalOut,
       totalIn28d: totalIn,
+      // True only past 50,000 movements in 28 days: the oldest ones are then
+      // missing from the totals, and the door says so rather than staying quiet.
+      truncated,
       // The door SAYS what it counted. A zeroed series means "these movements
       // did not happen", never "this kind of movement is not looked at".
       includes: {
