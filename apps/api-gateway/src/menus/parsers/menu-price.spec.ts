@@ -55,3 +55,15 @@ describe("readMenuPrice: an amount only when the string has one reading (ADR 002
     });
   });
 });
+
+describe("readMenuPrice: the edit route and a file read the same text the same way (r107 menu-1)", () => {
+  it.each([
+    ["62,50", 62.5],
+    ["45,50", 45.5],
+  ])("%s reads %s, as the edit route's box does", (raw, amount) => {
+    expect(readMenuPrice(raw).amount).toBe(amount);
+  });
+  it.each(["1.250", "1,250", "1.000"])("%s is two readings, never a guess", (raw) => {
+    expect(readMenuPrice(raw)).toEqual({ amount: null, raw, reason: "two_readings" });
+  });
+});

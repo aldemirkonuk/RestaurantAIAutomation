@@ -17,6 +17,7 @@ import {
   CsvParserService,
   type CsvRowIssue,
 } from "./parsers/csv-parser.service";
+import { readMenuPrice } from "./parsers/menu-price";
 import { ScanParserService } from "./parsers/scan-parser.service";
 import { pagesToOneFile } from "./parsers/pages-to-pdf";
 import { WineSubmissionsService } from "../wines/wine-submissions.service";
@@ -547,51 +548,38 @@ function sniffMime(bytes: Buffer): { mime: string; ext: string } {
 /**
  * A price a person typed for a menu line, as a number, or why it is not one.
  *
- * Menu r21 (2026-11-13): the correction route read a price by deleting every
- * character that was not a digit or a dot, so a house that writes a decimal
- * comma had "45,50" stored as 4550.00 and "1.250,00" as 1.25, and "-5" became
- * 5 -- and on the current menu that number became the house's own price. Now:
- *   - a currency mark at either end and spaces are dropped (45 TL, $70, ₺ 1 250);
- *   - one separator followed by one or two digits is the decimal ("45,5", "45.50");
- *   - with both marks, the last is the decimal and the other groups thousands
- *     in threes ("1.250,00", "1,250.00");
- *   - one mark followed by three digits ("1,250", "1.250") is refused: it is
- *     1250 in one house and 1.25 in another, and a price is never guessed;
- *   - anything else (a minus, letters, two decimals) is refused.
+ * ONE reader for every price a house gives us: menu-price.ts (`readMenuPrice`,
+ * ADR 0020), the one the CSV import uses. Menu r21 (2026-11-13) fixed the
+ * correction route reading "45,50" as 4550.00 with a reader of its own; r107
+ * (menu-r107-1) drops that second reader so the route and a file can never
+ * disagree about the same text. This adds only what a typed box needs on top:
+ *   - a currency mark at either end is dropped (45 TL, $70, ₺ 1 250);
+ *   - only digits and the two marks may remain, so a minus or a letter is
+ *     refused (`readMenuPrice` finds the digits in "-5" and would read 5);
+ *   - "1.250" / "1,250" read two ways and are refused with both readings
+ *     named: a price is never guessed.
  */
-export function parseMenuPrice(raw: string): { value: number } | { refused: string } {
+function typedMenuPrice(raw: string): { value: number } | { refused: string } {
   const typed = String(raw ?? "");
   const s = typed
-    .replace(/\s+/g, "")
+    .trim()
     .replace(/^(?:[₺$€£]|TL|TRY|USD|EUR|GBP)/i, "")
-    .replace(/(?:[₺$€£]|TL|TRY|USD|EUR|GBP)$/i, "");
+    .replace(/(?:[₺$€£]|TL|TRY|USD|EUR|GBP)$/i, "")
+    .trim();
   const not = (why: string) => ({ refused: `"${typed}" is not a price: ${why}. Nothing was changed.` });
   if (s === "") return not("there is no number in it");
-  if (!/^\d[\d.,]*$/.test(s)) return not("a price is written in digits, with no minus, no letters and at most one decimal mark");
-  const dot = s.lastIndexOf(".");
-  const comma = s.lastIndexOf(",");
-  const asNumber = (whole: string, frac: string) => ({ value: Number(`${whole}${frac ? `.${frac}` : ""}`) });
-  if (dot >= 0 && comma >= 0) {
-    const dec = dot > comma ? "." : ",";
-    const group = dec === "." ? "," : ".";
-    const at = s.lastIndexOf(dec);
-    const whole = s.slice(0, at);
-    const frac = s.slice(at + 1);
-    const grouped = new RegExp(`^\\d{1,3}(?:\\${group}\\d{3})*$`);
-    if (frac.length < 1 || frac.length > 2 || !grouped.test(whole)) return not("its marks do not read as one amount");
-    return asNumber(whole.split(group).join(""), frac);
-  }
-  const sep = dot >= 0 ? "." : comma >= 0 ? "," : null;
-  if (sep === null) return asNumber(s, "");
-  const parts = s.split(sep);
-  if (parts.length === 2 && parts[1].length >= 1 && parts[1].length <= 2 && parts[0] !== "") return asNumber(parts[0], parts[1]);
-  if (parts.length === 2 && parts[1].length === 3 && /^\d{1,3}$/.test(parts[0])) {
-    const whole = `${parts[0]}${parts[1]}`;
-    const small = String(Number(`${parts[0]}.${parts[1]}`));
-    return not(`it could be ${whole} or ${small}; write it as ${whole} or ${small}`);
-  }
-  if (parts.length > 2 && /^\d{1,3}$/.test(parts[0]) && parts.slice(1).every((p) => p.length === 3)) {
-    return asNumber(parts.join(""), "");
+  if (!/^\d[\d.,\s]*$/.test(s)) return not("a price is written in digits, with no minus, no letters and at most one decimal mark");
+  const read = readMenuPrice(s);
+  // Money has at most two decimals: "1.250,505" is not a price, whatever the file reader would make of it.
+  if (read.amount !== null) return /\.\d{3,}/.test(String(read.amount)) ? not("a price has at most two decimals") : { value: read.amount };
+  if (read.reason === "two_readings") {
+    const m = /^(\d{1,3})[.,](\d{3})$/.exec(s);
+    if (m) {
+      const whole = `${m[1]}${m[2]}`;
+      const small = String(Number(`${m[1]}.${m[2]}`));
+      return { refused: `"${typed}" reads two ways: it could be ${whole} or ${small}; write it as ${whole} or ${small}. Nothing was changed.` };
+    }
+    return { refused: `"${typed}" reads two ways. Write one price, as 1250 or 1,250.00. Nothing was changed.` };
   }
   return not("its marks do not read as one amount");
 }
@@ -1636,7 +1624,7 @@ export class MenusService {
     const isPrice = PRICE_FIELDS.has(dto.fieldName);
     let newValueTyped: string | number = dto.newValue;
     if (isPrice) {
-      const price = parseMenuPrice(dto.newValue);
+      const price = typedMenuPrice(dto.newValue);
       if ("refused" in price) throw new BadRequestException(price.refused);
       newValueTyped = price.value;
     }
