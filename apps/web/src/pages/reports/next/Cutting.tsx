@@ -356,18 +356,20 @@ export default function Cutting({
 
   /* While a newly picked till window is read, the last drawing stays, dimmed and
      labelled with its own days (ADR 0020); never for a first read or another house. */
-  const lastRead = useRef<{ data: unknown; days: number } | null>(null);
+  const lastRead = useRef<{ data: unknown; days: number; compare: boolean } | null>(null);
   if (spec.takesWindow && register && !register.loading && !register.failure && register.data !== undefined)
-    lastRead.current = { data: register.data, days: ctx.days };
+    lastRead.current = { data: register.data, days: ctx.days, compare: !!ctx.compare };
+  /* Laying the till beside the window before it is read again too (r107): the
+     plot is kept, so the sheen and the sparks do not run a second time. */
   const standIn =
     spec.takesWindow &&
     register?.loading &&
     !register.failure &&
     lastRead.current &&
-    lastRead.current.days !== ctx.days
+    (lastRead.current.days !== ctx.days || lastRead.current.compare !== !!ctx.compare)
       ? lastRead.current
       : null;
-  const viewCtx: ViewCtx = standIn ? { ...ctx, days: standIn.days } : ctx;
+  const viewCtx: ViewCtx = standIn ? { ...ctx, days: standIn.days, compare: standIn.compare } : ctx;
   const windowLine = spec.window(viewCtx);
 
   // A drawing the answer cannot carry (bars and a line without per-day checks) is not offered.
@@ -403,8 +405,11 @@ export default function Cutting({
         <>
         {standIn && (
           <p className="rp-cap" role="status">
-            Reading the last {ctx.days} days. Until they arrive, the figures shown are the last{' '}
-            {standIn.days} days.
+            {standIn.days === ctx.days
+              ? ctx.compare
+                ? `Reading the ${ctx.days} days before. Until they arrive, the last ${ctx.days} days are shown alone.`
+                : `Reading the last ${ctx.days} days again. Until they arrive, the drawing shown still has the days before beside it.`
+              : `Reading the last ${ctx.days} days. Until they arrive, the figures shown are the last ${standIn.days} days.`}
           </p>
         )}
         <RegisterBody

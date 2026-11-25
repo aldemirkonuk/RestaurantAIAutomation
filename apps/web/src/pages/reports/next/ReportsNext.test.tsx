@@ -2019,6 +2019,44 @@ describe('ReportsNext — the sheet keeps its places', () => {
     expect(container.querySelector('.rp-sparks')?.hasAttribute('data-pending')).toBe(true);
   });
 
+  it('[REVERT-FAILS] a till read again keeps its sparkline: the same element, no second draw (r107)', () => {
+    hook.current = base();
+    const page = paint();
+    const spark = page.container.querySelector('[data-testid="rp-spark-till"]');
+    expect(spark).not.toBeNull();
+    // The till is read again (compare laid beside it): it is pending, with nothing yet.
+    hook.current = { ...base(), registers: { ...base().registers, till: pending } };
+    page.rerender(
+      <MemoryRouter initialEntries={['/reports']}>
+        <ReportsNext />
+        <LinkProbe />
+      </MemoryRouter>,
+    );
+    expect(page.container.querySelector('[data-testid="rp-spark-till"]')).toBe(spark);
+    expect(page.container.querySelector('.rp-sparks[data-pending]')).toBeNull();
+  });
+
+  it('a first read has no sparkline to keep, so it holds the room instead (r107)', () => {
+    hook.current = { ...base(), registers: { ...base().registers, till: pending, week: pending } };
+    const { container } = paint();
+    expect(container.querySelector('[data-testid="rp-spark-till"]')).toBeNull();
+    expect(container.querySelector('.rp-sparks')?.hasAttribute('data-pending')).toBe(true);
+  });
+
+  it('another house is never shown the last house’s sparkline (r107)', () => {
+    hook.current = base();
+    const page = paint();
+    expect(page.container.querySelector('[data-testid="rp-spark-till"]')).not.toBeNull();
+    hook.current = { ...base(), restaurantId: 'r2', registers: { ...base().registers, till: pending, week: pending } };
+    page.rerender(
+      <MemoryRouter initialEntries={['/reports']}>
+        <ReportsNext />
+        <LinkProbe />
+      </MemoryRouter>,
+    );
+    expect(page.container.querySelector('[data-testid="rp-spark-till"]')).toBeNull();
+  });
+
   it('lets the room go once the reads have answered (r75)', () => {
     hook.current = base();
     const { container } = paint();

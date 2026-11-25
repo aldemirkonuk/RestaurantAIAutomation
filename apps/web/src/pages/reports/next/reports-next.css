@@ -276,6 +276,24 @@
   font-variant-numeric: tabular-nums;
   color: color-mix(in oklch, var(--ink-1) 60%, transparent);
 }
+/* The key to the dashed drawing, said in the caption above the plot: a short
+   dashed rule for a line or an area, a dashed outline for bars. Never animated. */
+.rp-plot-key {
+  display: inline-block;
+  vertical-align: middle;
+  width: 18px;
+  height: 0;
+  border-top: 1.5px dashed var(--ink-3);
+  margin: 0 4px 0 2px;
+}
+.rp-plot-key[data-kind='bars'] {
+  width: 10px;
+  height: 8px;
+  border: 1px dashed var(--seal-deep);
+  border-radius: 3px 3px 0 0;
+  margin-bottom: 2px;
+}
+
 
 /* ── the hover detail on a plot ────────────────────────────────────────────
    One tooltip shape for every drawing: what you are hovering, then the value
