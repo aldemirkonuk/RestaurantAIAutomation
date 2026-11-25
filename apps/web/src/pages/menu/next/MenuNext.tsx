@@ -265,6 +265,7 @@ export default function MenuNext() {
   const { q, discard, add } = useActiveMenu(activeRestaurantId);
   const currency = useHouseCurrency(activeRestaurantId);
   const [discardingId, setDiscardingId] = useState<string | null>(null);
+  const settled = !(authLoading || q.isLoading);
 
   return (
     <div
@@ -283,7 +284,7 @@ export default function MenuNext() {
           Menu.
         </h1>
 
-        {authLoading || q.isLoading ? (
+        {!settled ? (
           <p className="cl-said" role="status">
             Reading the menu…
           </p>
@@ -372,25 +373,35 @@ export default function MenuNext() {
           </>
         )}
 
-        {/* ADR 0193 round 3: every price this house holds, kept when its wine
-            leaves the menu (the founder, 2026-09-21: "add a section to that
-            where you can lock price, but wha f that menu item disappears?"). */}
-        {activeRestaurantId ? <LockedPrices canManage={canManage} /> : null}
+        {/* Everything below the menu waits for the current-menu read to settle
+            (perf p4 p4-1, measured CLS 1.028 at 375). Held room for it was
+            never the right size: the sections were laid out first and the
+            60 lines then landed ABOVE them, pushing them out of view. Absent
+            until the read answers, they have nothing to be pushed by. Static:
+            no fade, no motion (ADR 0112). */}
+        {settled ? (
+          <>
+            {/* ADR 0193 round 3: every price this house holds, kept when its wine
+                leaves the menu (the founder, 2026-09-21: "add a section to that
+                where you can lock price, but wha f that menu item disappears?"). */}
+            {activeRestaurantId ? <LockedPrices canManage={canManage} /> : null}
 
-        {activeRestaurantId ? <MenuVersions canManage={canManage} /> : null}
+            {activeRestaurantId ? <MenuVersions canManage={canManage} /> : null}
 
-        <footer
-          style={{
-            marginTop: 40,
-            paddingTop: 12,
-            borderTop: '1px solid var(--paper-2)',
-          }}
-        >
-          <p className="cl-note" style={{ margin: 0, fontSize: 11 }}>
-            Discard removes a line from what guests see. What it cost and who added it is kept —
-            nothing here is a delete.
-          </p>
-        </footer>
+            <footer
+              style={{
+                marginTop: 40,
+                paddingTop: 12,
+                borderTop: '1px solid var(--paper-2)',
+              }}
+            >
+              <p className="cl-note" style={{ margin: 0, fontSize: 11 }}>
+                Discard removes a line from what guests see. What it cost and who added it is kept —
+                nothing here is a delete.
+              </p>
+            </footer>
+          </>
+        ) : null}
       </div>
     </div>
   );
