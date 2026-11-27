@@ -917,7 +917,12 @@ export function Register() {
       </div>
       <GoogleSignInButton
         mode="register"
-        onSuccess={() => navigate('/get-started', { replace: true })}
+        onSuccess={() => {
+          // The sign-up went through: the typed name and email must not stay
+          // behind for the next person at this till (r107 g2).
+          finishDraft()
+          navigate('/get-started', { replace: true })
+        }}
         onError={setError}
       />
     </motion.div>

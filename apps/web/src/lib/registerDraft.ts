@@ -69,7 +69,16 @@ export function writeRegisterDraft(d: RegisterDraft, now: number = Date.now()): 
       s.removeItem(KEY)
       return
     }
-    s.setItem(KEY, JSON.stringify({ ...clean, at: now }))
+    // Re-writing what is already stored (every mount does) must not slide the
+    // 30 minutes: the clock runs from the last change, not the last visit.
+    let at = now
+    const prev = s.getItem(KEY)
+    if (prev) {
+      const old = JSON.parse(prev) as Partial<RegisterDraft> & { at?: number }
+      const same = old.mode === clean.mode && FIELDS.every((f) => old[f] === clean[f])
+      if (same && typeof old.at === 'number' && old.at <= now) at = old.at
+    }
+    s.setItem(KEY, JSON.stringify({ ...clean, at }))
   } catch {
     /* a full or blocked store loses the draft, never the sign-up */
   }
