@@ -302,7 +302,6 @@ export function drinkGroups<C extends { cocktailId: string }, D extends { cockta
 
 /** Said on a drink only the old recipe box holds: it shows, and cannot be edited here (the box no longer saves). */
 export const OLD_RECIPE_BOX = 'old recipe box, read only';
-/** Said on an old line whose drink's current recipe names this good without a link: the card is not history. */
 export const NAMED_NOT_LINKED = 'named on its recipe, not linked';
 
 export const DRINK_RECIPES_SOURCE = 'Drinks whose current recipe has a line linked to this item.';
@@ -363,7 +362,7 @@ export default function ItemUsedIn({
     // A figured drink stands in for a used-in line here only to be grouped; it is drawn by DrinkBlock.
     const groups = drinkGroups(load.data.inCocktails, recipeSource as UsedIn['inDrinkRecipes']);
     const inCocktails = groups.cards;
-    // Only the gateway can say a drink has no current recipe, and only when it read them; without its word no card is called old.
+    // Only the gateway's word that it read the current recipes can call a card old.
     const oldBoxKnown = load.data.inCocktails.withoutCurrentRecipe === true;
     const inDrinkRecipes = groups.recipes;
     const figuredRecipes = figured !== null && inDrinkRecipes !== null ? figured : null;

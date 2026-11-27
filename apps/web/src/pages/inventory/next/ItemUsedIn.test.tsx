@@ -68,30 +68,19 @@ describe('Used in', () => {
     expect(OLD_RECIPE_BOX).toBe('old recipe box, read only');
   });
 
-  it('a card is not called old unless the gateway said the drink has no current recipe, even when the recipe list is read (r103 finding 5)', () => {
-    render(
-      <MemoryRouter>
-        <ItemUsedIn dishes={NO_DISHES} onRetryDishes={vi.fn()} load={load({ inDrinkRecipes: ok([]) })} canManage currency={EUR} onRetry={vi.fn()} />
-      </MemoryRouter>,
-    );
-    expect(screen.getByTestId('ivd-used-cocktails').textContent).toContain('40 ml');
-    expect(screen.getByTestId('ivd-used-cocktails').textContent).not.toContain(OLD_RECIPE_BOX);
+  const cardsText = (over: Partial<UsedIn>) => {
+    render(<MemoryRouter><ItemUsedIn dishes={NO_DISHES} onRetryDishes={vi.fn()} load={load(over)} canManage currency={EUR} onRetry={vi.fn()} /></MemoryRouter>);
+    return screen.getByTestId('ivd-used-cocktails').textContent ?? '';
+  };
+
+  it('a card is not called old unless the gateway said so, even when the recipe list is read (r103 finding 5)', () => {
+    const text = cardsText({ inDrinkRecipes: ok([]) });
+    expect(text).toContain('40 ml');
+    expect(text).not.toContain(OLD_RECIPE_BOX);
   });
 
   it('a card whose current recipe names the good without a link says so, and is not called old', () => {
-    render(
-      <MemoryRouter>
-        <ItemUsedIn
-          dishes={NO_DISHES}
-          onRetryDishes={vi.fn()}
-          load={load({ inCocktails: oldBox([{ cocktailId: 'c1', name: 'Converted', quantity: 50, unit: 'ml', namedNotLinked: true as const }]) })}
-          canManage
-          currency={EUR}
-          onRetry={vi.fn()}
-        />
-      </MemoryRouter>,
-    );
-    const text = screen.getByTestId('ivd-used-cocktails').textContent ?? '';
+    const text = cardsText({ inCocktails: oldBox([{ cocktailId: 'c1', name: 'Converted', quantity: 50, unit: 'ml', namedNotLinked: true as const }]) });
     expect(text).toContain(`Converted50 ml · ${NAMED_NOT_LINKED}`);
     expect(text).not.toContain(OLD_RECIPE_BOX);
   });

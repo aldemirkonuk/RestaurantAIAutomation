@@ -628,10 +628,7 @@ export interface ItemMenuLine {
 export interface ItemUsedIn {
   item: { id: string; kind: string | null; displayName: string | null };
   soldAs: ItemUsedInGroup<ItemMenuLine>;
-  /**
-   * `withoutCurrentRecipe` is sent only when the gateway read each drink's current recipe: a line without
-   * `namedNotLinked` is then from a drink whose only recipe is the old box. Absent means it could not tell.
-   */
+  /** `withoutCurrentRecipe`: sent only when the gateway read each drink's current recipe. */
   inCocktails: ItemUsedInGroup<{ cocktailId: string; name: string; quantity: number | null; unit: string | null; namedNotLinked?: true }> & {
     withoutCurrentRecipe?: true;
   };
