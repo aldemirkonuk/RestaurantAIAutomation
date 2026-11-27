@@ -1,10 +1,8 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { BrandMark } from '../components/brand/BrandMark'
 import { addCustomProvider } from '../services/api/vendors'
-import { updateOnboardingProgress } from '../services/api/menus'
 import { pencilledCount, readProof } from '../lib/firstProof'
-import { readLastInvoiceLater, writeLastInvoiceLater } from '../lib/houseLater'
 
 export default function HouseContents() {
   const navigate = useNavigate()
@@ -14,16 +12,15 @@ export default function HouseContents() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [invoice, setInvoice] = useState(readLastInvoiceLater)
-  const [invoiceDropping, setInvoiceDropping] = useState(false)
 
   const saveSupplier = async () => {
     if (!supplier.trim()) return
     setSaving(true)
     setError(null)
     try {
+      // One request: creating the provider marks `vendor_added` on the
+      // house's onboarding row itself (providers.service.ts createProvider).
       await addCustomProvider({ name: supplier.trim() })
-      await updateOnboardingProgress({ vendor_added: true })
       setSaved(true)
     } catch (cause: any) {
       setError(cause?.response?.data?.message || cause?.message || 'We could not add that supplier yet.')
@@ -32,16 +29,12 @@ export default function HouseContents() {
     }
   }
 
-  const keepInvoice = (file?: File) => {
-    if (!file) return
-    writeLastInvoiceLater(file.name)
-    setInvoice({ name: file.name })
-  }
-
   return (
     <div className="min-h-screen bg-[#fbfaf7] text-[#211f1b]">
       <header className="h-14 border-b border-[#211f1b]/15 bg-white px-5 flex items-center justify-between">
-        <BrandMark size={24} alt="Mudavym" />
+        <Link to="/" aria-label="Mudavym, the desk">
+          <BrandMark size={24} alt="" />
+        </Link>
         <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#6d685f]">The house</span>
       </header>
       <main className="mx-auto max-w-2xl px-5 py-12 sm:py-16">
@@ -97,45 +90,17 @@ export default function HouseContents() {
             </form>
           )}
 
-          <label
-            className={`block py-6 font-serif text-2xl text-[#b7b2a8] ${
-              invoiceDropping ? 'bg-white' : ''
-            }`}
-          >
-            <span className="text-xs uppercase tracking-[0.12em]">Later · not required</span>
+          {/* H-1: nothing is kept here. Receipts is where an invoice is read. */}
+          <p className="py-6 font-serif text-2xl text-[#b7b2a8]">
+            <span className="block text-xs uppercase tracking-[0.12em]">Later · not required</span>
             <span className="mt-2 block">
-              {invoice
-                ? `Last invoice · kept for later — ${invoice.name}`
-                : 'Last invoice · later'}
+              Your last invoice can be read on{' '}
+              <Link to="/receipts" className="underline underline-offset-4">
+                Receipts
+              </Link>{' '}
+              whenever you want.
             </span>
-            <span className="mt-1 block font-sans text-sm">
-              Drop a file when you want. We will not read it yet.
-            </span>
-            <input
-              aria-label="Last invoice later"
-              type="file"
-              className="sr-only"
-              onChange={(event) => keepInvoice(event.target.files?.[0])}
-            />
-            <span
-              role="button"
-              tabIndex={0}
-              onDragEnter={() => setInvoiceDropping(true)}
-              onDragOver={(event) => {
-                event.preventDefault()
-                setInvoiceDropping(true)
-              }}
-              onDragLeave={() => setInvoiceDropping(false)}
-              onDrop={(event) => {
-                event.preventDefault()
-                setInvoiceDropping(false)
-                keepInvoice(event.dataTransfer.files?.[0])
-              }}
-              className="mt-3 block min-h-[72px] border border-dashed border-[#211f1b]/20 px-4 py-4 font-sans text-sm"
-            >
-              {invoiceDropping ? 'Drop it here' : 'Drop the last invoice here, or click to keep a file for later.'}
-            </span>
-          </label>
+          </p>
 
           <p className="py-6 font-serif text-2xl text-[#b7b2a8]">
             <span className="block text-xs uppercase tracking-[0.12em]">Later · not a first-run step</span>
@@ -149,6 +114,13 @@ export default function HouseContents() {
             </button>
           </p>
         </div>
+
+        <Link
+          to="/"
+          className="mt-10 inline-block bg-[#1a5e6b] px-5 py-2.5 text-white"
+        >
+          Go to the desk
+        </Link>
       </main>
     </div>
   )
