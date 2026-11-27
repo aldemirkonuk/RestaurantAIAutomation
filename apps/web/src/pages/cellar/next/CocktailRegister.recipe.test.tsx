@@ -9,6 +9,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import type { CocktailRecipe, RecipeLine } from '../../../services/api/recipes';
 
@@ -81,9 +82,13 @@ beforeEach(() => {
   h.put.mockResolvedValue({ data: { versionId: 'saved', version: 2, lines: [] } });
 });
 
-function mount() {
+function mount(route = '/cocktails') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  const wrap = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+  const wrap = ({ children }: { children: ReactNode }) => (
+    <MemoryRouter initialEntries={[route]}>
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    </MemoryRouter>
+  );
   return render(<CocktailRegister register={null} registerLoading={false} />, { wrapper: wrap });
 }
 
@@ -91,6 +96,27 @@ const open = (name: string) => fireEvent.click(within(screen.getByRole('table'))
 const amounts = () => screen.getAllByLabelText('Amount') as HTMLInputElement[];
 
 describe('CocktailRegister with the real recipe sheet', () => {
+  it('a link from the inventory drawer (/cocktails?open=<id>) opens that drink on its cards, then its nutrition card, then its lines', async () => {
+    h.recipes = { [CB]: recipe(CB, 'Margarita', VB, [line('tequila', 50, 't1')]) };
+    mount(`/cocktails?open=${CB}`);
+    const sheet = await screen.findByRole('region', { name: 'Recipe for Margarita' });
+    const cards = await within(sheet).findByTestId('drink-cards');
+    expect(within(cards).getByTestId('drink-card-cost')).toHaveTextContent('₺10.00');
+    expect(within(cards).getByTestId('drink-card-price')).toHaveTextContent('₺450.00');
+    // Order on the page: cards, then the nutrition card (here: said as not read), then the lines.
+    const order = [cards, within(sheet).getByTestId('recipe-whatisin-unread'), within(sheet).getAllByTestId('recipe-line')[0]];
+    for (let i = 1; i < order.length; i += 1) {
+      expect(order[i - 1].compareDocumentPosition(order[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+    expect(screen.queryByRole('region', { name: 'Recipe for Negroni' })).toBeNull();
+  });
+
+  it('a link to a drink this house does not list says so, and opens nothing', async () => {
+    mount('/cocktails?open=ffffffff-ffff-4fff-8fff-ffffffffffff');
+    expect(await screen.findByTestId('cocktails-link-missing')).toHaveTextContent('not on this house’s list');
+    expect(screen.queryByTestId('cocktail-leaf')).toBeNull();
+  });
+
   it('opening another drink with unsaved lines shows that drink, and Save sends its own lines to it', async () => {
     h.recipes = {
       [CA]: recipe(CA, 'Negroni', VA, [line('gin', 30, 'g1'), line('Campari', 30, 'c1'), line('vermouth', 30, 'v1')]),

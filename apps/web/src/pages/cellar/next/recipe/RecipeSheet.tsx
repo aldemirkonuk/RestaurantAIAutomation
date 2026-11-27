@@ -68,6 +68,7 @@ import LineRow, { LineRowRead, rowName, rowQty, type DraftRow } from './LineRow'
 import { draftKey, dropDraft, dropDraftsForDrink, keepDraft, takeDraft, type DraftMeta } from './drafts';
 import { parseLine, parseSpec, type ProposedLine } from './parseSpec';
 import { qtyText, readsAsThousandAmbiguous } from './units';
+import DrinkCards from './DrinkCards';
 import WhatIsInAServe from './WhatIsInAServe';
 import {
   useCanEditRecipe,
@@ -554,12 +555,14 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
           The recipe could not be read again just now ({recipe.error}). What is shown is the last read.
         </p>
       ) : null}
+      {/* The drink opens on its cards, then what is in a serve, then its lines
+          (founder ask: a drink shows its KPI cards, then a nutrition card). */}
+      <DrinkCards data={data} sayMoney={say} unsaved={canEdit && dirty} />
+      <WhatIsInAServe data={data} unsaved={canEdit && dirty} />
+
       <header className="cl-rcp-head">
         <h4 className="cl-sec" style={{ margin: 0 }}>Recipe</h4>
         <dl className="cl-rcp-facts">
-          {money && c.price != null ? (
-            <div><dt>Price</dt><dd className="cl-num">{sayMoney(c.price)} a serve</dd></div>
-          ) : null}
           {glass ? <div><dt>Glass</dt><dd>{glass}</dd></div> : null}
           {garnish ? <div><dt>Garnish</dt><dd>{garnish}</dd></div> : null}
         </dl>
@@ -629,8 +632,6 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
           {footer}
         </p>
       ) : null}
-
-      <WhatIsInAServe data={data} unsaved={canEdit && dirty} />
 
       {canEdit && proposed ? (
         <div className="cl-rcp-proposed" data-testid="recipe-proposed">

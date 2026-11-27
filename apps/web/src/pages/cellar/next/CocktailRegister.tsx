@@ -25,7 +25,8 @@
  * a two-step confirm, no wax (MOTIONS.md, "Deliberate non-motions").
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { AlertTriangle, Check, Pencil, Plus, Trash2, X } from 'lucide-react';
 import {
   BOOK_LABEL,
@@ -89,10 +90,29 @@ export default function CocktailRegister({
   const { create, amend, retire } = useCocktailWrites();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
-  const [openId, setOpenId] = useState<string | null>(null);
+  // /cocktails?open=<id> opens that drink: the inventory drawer's "used in"
+  // lines link here, so a good leads to the drink that uses it, and the drink
+  // opens on its cards and its nutrition card.
+  const [params] = useSearchParams();
+  const openParam = params.get('open');
+  const [openId, setOpenId] = useState<string | null>(openParam);
+  // A second link followed while already on /cocktails changes only the search:
+  // the page stays mounted, so the drink it names is opened here, not at mount alone.
+  useEffect(() => {
+    if (openParam) setOpenId(openParam);
+  }, [openParam]);
+  const leafRef = useRef<HTMLDivElement | null>(null);
   const [confirmRetire, setConfirmRetire] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+
+  // Opened from a link: bring the drink into view once the list has it. A
+  // link to a drink this house's list does not hold is said, not ignored.
+  const linkedRow = openParam ? (data?.rows ?? []).find((c) => c.id === openParam) ?? null : null;
+  const linkedMissing = Boolean(openParam && data && !linkedRow);
+  useEffect(() => {
+    if (linkedRow && openId === linkedRow.id) leafRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+  }, [linkedRow, openId]);
 
   const rows = (data?.rows ?? []).filter((c) => {
     const q = query.trim().toLowerCase();
@@ -100,6 +120,7 @@ export default function CocktailRegister({
     return [c.name, c.display_name, c.menu_section, c.method, c.glass]
       .filter(Boolean).join(' ').toLowerCase().includes(q);
   });
+  const openShown = Boolean(openId && rows.some((x) => x.id === openId));
 
   const submit = async () => {
     if (!draft?.name?.trim()) return;
@@ -233,6 +254,12 @@ export default function CocktailRegister({
               : `${count(data.referenceRows)} unattributed reference cocktails from the demo corpus exist and are deliberately not listed as this house’s.`}
           </p>
 
+          {linkedMissing ? (
+            <p className="cl-said" role="status" style={{ marginTop: 12 }} data-testid="cocktails-link-missing">
+              The drink that link names is not on this house’s list. It may have been taken off it.
+            </p>
+          ) : null}
+
           {rows.length === 0 ? (
             <p className="cl-said" style={{ marginTop: 12 }} data-testid="cocktails-empty">
               {data.rows.length === 0
@@ -288,10 +315,11 @@ export default function CocktailRegister({
           )}
 
           {/* the leaf: recipe + the two acts a house can take on its own row */}
-          <div className="cl-stand" data-open={openId ? 'true' : 'false'} style={{ marginTop: openId ? 14 : 0 }}>
+          {/* Only a drink the list shows opens: an id from a link or a filtered-out row leaves no empty panel. */}
+          <div className="cl-stand" data-open={openShown ? 'true' : 'false'} style={{ marginTop: openShown ? 14 : 0 }}>
             <div>
-              {openId ? (
-                <div className="cl-panel" data-testid="cocktail-leaf">
+              {openShown ? (
+                <div className="cl-panel" data-testid="cocktail-leaf" ref={leafRef}>
                   {(() => {
                     const c = rows.find((x) => x.id === openId);
                     if (!c) return null;
