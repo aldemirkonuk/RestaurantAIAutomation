@@ -3370,8 +3370,11 @@ export class AuthService {
       );
     }
 
+    // Second argument: the address an emailed CODE proved (the code path's, not
+    // a link's). The link's own address is the third.
     const user = await this.verifyEmailProvedByLink(
       verif.user_id,
+      null,
       typeof verif.email === "string" ? verif.email : null,
     );
 
@@ -3419,6 +3422,11 @@ export class AuthService {
    */
   private async verifyEmailProvedByLink(
     userId: string,
+    // Reserved: the address an emailed code proved (the code path passes it
+    // here; a link has none). Kept in this position so a link's address,
+    // which is the THIRD argument, can never be read as a proved address.
+    _provedEmail: string | null = null,
+    // The address the LINK was mailed to.
     linkEmail: string | null = null,
   ): Promise<any> {
     for (let attempt = 0; attempt < 3; attempt++) {

@@ -194,4 +194,17 @@ describe("changeUnverifiedEmail", () => {
     await service.verifyEmail("new-token", "u1");
     expect(users[0].email_verified).toBe(true);
   });
+
+  it("the link's address is the third argument; the second is the code path's proved address", async () => {
+    const { service, users } = setup();
+    const verify = (service as any).verifyEmailProvedByLink.bind(service);
+    // the account is still at selin@typo.test: a link mailed to another address proves nothing
+    await expect(verify("u1", null, "selin@house.test")).rejects.toMatchObject({
+      response: { code: "LINK_FOR_OLD_ADDRESS" },
+    });
+    expect(users[0].email_verified).toBe(false);
+    // a link mailed to the address the account has verifies it
+    await verify("u1", null, "selin@typo.test");
+    expect(users[0].email_verified).toBe(true);
+  });
 });
