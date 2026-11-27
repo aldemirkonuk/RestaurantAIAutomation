@@ -32,7 +32,7 @@ import Cutting from './Cutting';
 import { CATALOGUE } from './rp-catalogue';
 import { ANALYSIS_IDS } from './rp-sheet';
 import type { ArrangeApi } from './rp-arrange';
-import { CatPlot } from './rp-plot';
+import { CatPlot, THINNED_SAID } from './rp-plot';
 import { COMPARE_ANSWER_PX, COMPARE_GRID_ROWS } from './rp-fit';
 import { slotHeightPx } from './rp-sheet';
 import { daysBetween, tillAnswersCompare, till } from './rp-registers-trade';
@@ -147,14 +147,23 @@ describe('a thinned 365-day caption stays one line (r109)', () => {
     xLabel: 'day', yLabel: 'taken', unit: 'taken', format: String,
   });
 
-  it('[REVERT-FAILS] the caption names the thinning in a short clause; the long sentence moves to the label', () => {
+  it('[REVERT-FAILS] the caption is the count and nothing more; the sentence rides the title and the label', () => {
     const { container } = render(<MemoryRouter><CatPlot series={days365()} kind="bars" /></MemoryRouter>);
-    const cap = container.querySelector('.rp-plot-cap')?.textContent ?? '';
-    expect(cap).toMatch(/ of 365, highest per stretch$/);
-    // three lines at 343 px grew the card after the read; the whole caption is held to one line's worth
-    expect(cap.length).toBeLessThanOrEqual(56);
-    expect(cap).not.toMatch(/the table has every one/);
-    expect(container.querySelector('[role="img"]')?.getAttribute('aria-label') ?? '').toMatch(/the table has every one/);
+    const capEl = container.querySelector('.rp-plot-cap') as HTMLElement;
+    const cap = capEl.textContent ?? '';
+    expect(cap).toMatch(/ · \d+ of 365 days drawn$/);
+    // three lines at 343 px grew the card after the read; one line holds 44 characters of 11 px type
+    expect(cap.length).toBeLessThanOrEqual(44);
+    expect(cap).not.toMatch(/the table has every one|highest/);
+    expect(capEl.querySelector('[title]')?.getAttribute('title')).toBe(THINNED_SAID);
+    expect(container.querySelector('[role="img"]')?.getAttribute('aria-label') ?? '').toContain(THINNED_SAID);
+  });
+
+  it('an unthinned drawing says no count', () => {
+    const short: CatSeries = { ...days365(), data: days365().data.slice(0, 30) };
+    const { container } = render(<MemoryRouter><CatPlot series={short} kind="bars" /></MemoryRouter>);
+    expect(container.querySelector('.rp-plot-cap')?.textContent).toBe('Taken · by day');
+    expect(container.querySelector('.rp-plot-cap [title]')).toBeNull();
   });
 });
 

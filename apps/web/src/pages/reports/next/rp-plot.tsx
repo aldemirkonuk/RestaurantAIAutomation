@@ -480,6 +480,9 @@ export function thinCats<T extends { label: string; value?: number | null; proje
 /** More drawn points than this (a 365-day till: 124 bars) mount a frame after the tap, not in it. */
 export const HOLD_OVER = 100;
 
+/** What a thinned drawing leaves out, said where it does not cost a line: the label and the caption's title. */
+export const THINNED_SAID = 'the highest of each stretch; the table has every one';
+
 export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'area' | 'bars' }) {
   const { data: all, xLabel, yLabel, unit, format, refs, projectedLabel, priorLabel } = series;
   const data = thinCats(all, refs);
@@ -494,15 +497,21 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
   const label = `${KIND_WORDS[kind]} of ${yLabel} by ${xLabel}${
     hasProjection ? `, the ${projectedLabel ?? 'projected'} part dashed` : ''
   }${hasPrior ? `, ${priorLabel ?? 'the prior window'} dashed beside it` : ''}${
-    thinned ? `, ${data.length} of ${all.length} drawn, the highest of each stretch; the table has every one` : ''
+    thinned ? `, ${data.length} of ${all.length} drawn, ${THINNED_SAID}` : ''
   }${readingOf(
     all.map((d) => ({ label: d.full ?? d.label, v: d.value ?? d.projected })),
     format,
     unit,
   )}`;
   // One line on a 375 px card: a third line, landing after the read, grew the till card (r109 CLS 0.088).
-  // The longer sentence ("the table has every one") rides the drawing's label for a screen reader.
-  const caption = `${titled(yLabel, unit)} · by ${xLabel}${thinned ? ` · ${data.length} of ${all.length}, highest per stretch` : ''}`;
+  // The caption keeps only the count; "the highest of each stretch; the table has every one" rides the
+  // drawing's label for a screen reader and the caption's title for a pointer.
+  const drawn = `${data.length} of ${all.length}${xLabel === 'day' ? ' days' : ''} drawn`;
+  const caption = thinned ? (
+    <span title={THINNED_SAID}>{`${titled(yLabel, unit)} · by ${xLabel} · ${drawn}`}</span>
+  ) : (
+    `${titled(yLabel, unit)} · by ${xLabel}`
+  );
   const gutter = gutterFor(
     tickLabels(
       [...all.map((d) => d.value), ...all.map((d) => d.projected), ...all.map((d) => d.prior), ...(refs ?? []).map((r) => r.y)],
