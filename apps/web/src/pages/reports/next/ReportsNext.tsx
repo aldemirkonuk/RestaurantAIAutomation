@@ -668,7 +668,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
             {/* The keyboard sentence lives in ArrangeHelp and nowhere else: it is
                 what every grip's `aria-describedby` points at, so saying it twice
                 would read it twice to the reader who most needs it once. */}
-            <ArrangeHelp />
+            <ArrangeHelp stacked={arrange.cols === 1} />
             <p className="rp-row" style={{ margin: 0 }}>
               <span className="rp-eyebrow">Start from a house layout</span>
               {HOUSE_LAYOUT_IDS.map((id) => (

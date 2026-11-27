@@ -211,6 +211,17 @@ export const SHEET_MIN_H = 3;
 export const SHEET_BREAKPOINTS = { lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 };
 /** Below this box width the sheet is a plain one-column stack, not a grid (r74). */
 export const SHEET_STACK_BELOW = SHEET_BREAKPOINTS.sm;
+/**
+ * Whether the sheet is the one-column stack at this box width. A box that has
+ * not been measured (0) falls back to the window's width, which is known on
+ * the very first render. One predicate for the sheet, the keys and the words,
+ * so what is offered is only ever what is on screen.
+ */
+export function isStackedWidth(width: number): boolean {
+  const known = Number.isFinite(width) && width > 0;
+  const w = known ? width : typeof window === 'undefined' ? SHEET_STACK_BELOW : window.innerWidth;
+  return w < SHEET_STACK_BELOW;
+}
 export const SHEET_BREAKPOINT_COLS = {
   lg: SHEET_COLS,
   md: SHEET_COLS,

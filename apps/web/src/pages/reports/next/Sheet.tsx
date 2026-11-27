@@ -52,7 +52,7 @@ import {
   SHEET_BREAKPOINT_COLS,
   SHEET_MARGIN,
   SHEET_ROW_HEIGHT,
-  SHEET_STACK_BELOW,
+  isStackedWidth,
   slotHeightPx,
   type AnalysisId,
   type Slot,
@@ -120,9 +120,7 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
      grid (r74): `window.innerWidth` is known on the very first render, so a
      phone never waits on a measurement, and react-grid-layout is not mounted
      there at all. The measured box width takes over as soon as it exists. */
-  const stacked =
-    (width || (typeof window === 'undefined' ? SHEET_STACK_BELOW : window.innerWidth)) <
-    SHEET_STACK_BELOW;
+  const stacked = isStackedWidth(width);
 
   const layouts = useMemo(
     (): ResponsiveLayouts => sheetLayouts(cuttings, arranging),

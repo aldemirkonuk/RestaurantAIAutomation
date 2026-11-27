@@ -27,7 +27,7 @@
 import { useEffect, useRef } from 'react';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, Move, Undo2 } from 'lucide-react';
 import type { ArrangeApi } from './rp-arrange';
-import { ARRANGE_KEY_HELP } from './rp-arrange';
+import { ARRANGE_KEY_HELP, ARRANGE_STACK_KEY_HELP } from './rp-arrange';
 import type { AnalysisId } from './rp-sheet';
 
 /** The id of the one instructions node every grip points at. */
@@ -38,11 +38,11 @@ export const ARRANGE_HELP_ID = 'rp-arrange-help';
  * the whole sheet — repeating it per cutting would read the same paragraph
  * eleven times on the way down the page.
  */
-export function ArrangeHelp() {
+export function ArrangeHelp({ stacked = false }: { stacked?: boolean }) {
   return (
     <p id={ARRANGE_HELP_ID} className="rp-cap rp-arrange__help">
       Or reach a cutting with the keyboard: Tab to its Move grip, then Space to pick it up.{' '}
-      {ARRANGE_KEY_HELP} Every one of those is also a button, so nothing here needs a drag.
+      {stacked ? ARRANGE_STACK_KEY_HELP : ARRANGE_KEY_HELP} Every one of those is also a button, so nothing here needs a drag.
     </p>
   );
 }
@@ -123,32 +123,42 @@ export interface PlacingBarProps {
  * offering different things.
  */
 export function PlacingBar({ title, arrange }: PlacingBarProps) {
+  // One column on screen (the phone stack): no sideways step, no width step.
+  const stacked = arrange.cols === 1;
   return (
     <div className="rp-placing rp-no-drag" role="group" aria-label={`Placing ${title}`}>
       <div className="rp-placing__set" role="group" aria-label="Move">
         <span className="rp-eyebrow">Move</span>
-        <Step label={`Move ${title} left one column`} onClick={() => arrange.nudge(-1, 0)}>
-          <ArrowLeft size={13} strokeWidth={1.6} aria-hidden />
-        </Step>
+        {!stacked && (
+          <Step label={`Move ${title} left one column`} onClick={() => arrange.nudge(-1, 0)}>
+            <ArrowLeft size={13} strokeWidth={1.6} aria-hidden />
+          </Step>
+        )}
         <Step label={`Move ${title} down past the cutting below`} onClick={() => arrange.nudge(0, 1)}>
           <ArrowDown size={13} strokeWidth={1.6} aria-hidden />
         </Step>
         <Step label={`Move ${title} up past the cutting above`} onClick={() => arrange.nudge(0, -1)}>
           <ArrowUp size={13} strokeWidth={1.6} aria-hidden />
         </Step>
-        <Step label={`Move ${title} right one column`} onClick={() => arrange.nudge(1, 0)}>
-          <ArrowRight size={13} strokeWidth={1.6} aria-hidden />
-        </Step>
+        {!stacked && (
+          <Step label={`Move ${title} right one column`} onClick={() => arrange.nudge(1, 0)}>
+            <ArrowRight size={13} strokeWidth={1.6} aria-hidden />
+          </Step>
+        )}
       </div>
 
       <div className="rp-placing__set" role="group" aria-label="Size">
         <span className="rp-eyebrow">Size</span>
-        <Step label={`Make ${title} one column narrower`} onClick={() => arrange.resize(-1, 0)}>
-          Narrower
-        </Step>
-        <Step label={`Make ${title} one column wider`} onClick={() => arrange.resize(1, 0)}>
-          Wider
-        </Step>
+        {!stacked && (
+          <Step label={`Make ${title} one column narrower`} onClick={() => arrange.resize(-1, 0)}>
+            Narrower
+          </Step>
+        )}
+        {!stacked && (
+          <Step label={`Make ${title} one column wider`} onClick={() => arrange.resize(1, 0)}>
+            Wider
+          </Step>
+        )}
         <Step label={`Make ${title} one row shorter`} onClick={() => arrange.resize(0, -1)}>
           Shorter
         </Step>
