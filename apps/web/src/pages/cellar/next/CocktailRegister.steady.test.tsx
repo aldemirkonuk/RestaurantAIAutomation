@@ -80,12 +80,12 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-function mount(url = '/cocktails') {
+function mount(url = '/cocktails', registerLoading = false) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const ui = () => (
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[url]}>
-        <CocktailRegister register={null} registerLoading={false} />
+        <CocktailRegister register={null} registerLoading={registerLoading} />
       </MemoryRouter>
     </QueryClientProvider>
   );
@@ -283,5 +283,21 @@ describe('the cocktail rows hold their height from first paint (r106, walk r105 
     const rule = css.match(/\.cl-table--drinks tbody tr \{[^}]*\}/)?.[0] ?? '';
     expect(rule).toMatch(/height: 53px;/);
     expect(rule).not.toMatch(/transition|animation|opacity/);
+  });
+});
+
+describe('the books and the signature wait for the menu-and-till read too (perf-p8-4)', () => {
+  it('are unseen while only that read is pending, with the list already drawn', () => {
+    h.list = { data: loaded, loading: false, error: null };
+    mount('/cocktails', true);
+    expect(screen.getByTestId('cocktail-register')).toHaveAttribute('data-settling', 'true');
+    expect(ledger().style.visibility).toBe('hidden');
+  });
+
+  it('are shown once that read has landed', () => {
+    h.list = { data: loaded, loading: false, error: null };
+    mount('/cocktails', false);
+    expect(screen.getByTestId('cocktail-register')).not.toHaveAttribute('data-settling');
+    expect(ledger().style.visibility).toBe('');
   });
 });
