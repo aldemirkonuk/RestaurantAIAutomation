@@ -2696,4 +2696,22 @@ describe('ReportsNext — the phone till card holds the compare answer (r107 g5)
     const on = tillHeight('/reports?compare=prior');
     expect(on - off).toBe(66);
   });
+
+  it('[REVERT-FAILS] keeps the held row while a newly picked window is read and the card still draws the last read', () => {
+    Object.defineProperty(window, 'innerWidth', { value: 375, configurable: true });
+    const spy = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(343);
+    hook.current = withRegister('till', ok(CATALOGUE.till.select(TWO_N)));
+    paint('/reports?compare=prior');
+    const till = () => screen.getByRole('region', { name: 'Through the till' });
+    const height = () => Number.parseFloat((till().closest('.rp-stack__item') as HTMLElement).style.height);
+    const before = height();
+    hook.current = withRegister('till', pending);
+    fireEvent.click(within(till()).getByRole('button', { name: '90 days' }));
+    // the stand-in is on screen, with its answer row ...
+    expect(screen.getByText(/Reading the last 90 days/)).toBeInTheDocument();
+    expect(till().textContent).toContain('Against the prior window');
+    // ... so the card keeps the height that answer row needs (436 before, 436 during)
+    expect(height()).toBe(before);
+    spy.mockRestore();
+  });
 });
