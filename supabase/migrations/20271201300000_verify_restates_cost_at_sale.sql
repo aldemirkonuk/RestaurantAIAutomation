@@ -22,12 +22,18 @@ ALTER TABLE public.wine_consumption_log
 COMMENT ON COLUMN public.wine_consumption_log.cost_unit_at_sale IS
   'The cost of one whole bottle the line was costed at when it sold. Lets a verified invoice restate cost_at_sale exactly. Null = cost not kept.';
 
+-- The list is the whole set of seven words on purpose. Several open PRs each
+-- re-add this CHECK (agreed_lot_wac, invoice_restated, the pour words), a migration
+-- is numbered at merge, and the last one to run owns the list: a shorter list
+-- would take another PR's words back out and the database would refuse those
+-- sales. Guarded by pos-hub/cost-basis-check-lists-every-word.spec.ts.
 ALTER TABLE public.wine_consumption_log
   DROP CONSTRAINT IF EXISTS wine_consumption_log_cost_basis_check;
 ALTER TABLE public.wine_consumption_log
   ADD CONSTRAINT wine_consumption_log_cost_basis_check
   CHECK (cost_basis IS NULL OR cost_basis IN
-    ('invoice_lot_wac', 'invoice_lot_wac_partial', 'last_purchase_price', 'invoice_restated'));
+    ('invoice_lot_wac', 'invoice_lot_wac_partial', 'agreed_lot_wac', 'last_purchase_price',
+     'invoice_restated', 'pour_lot_wac', 'pour_lot_wac_partial'));
 
 CREATE TABLE IF NOT EXISTS public.wine_consumption_cost_restatements (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
