@@ -28,6 +28,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { useSortFlip } from './useSortFlip';
 import { useSearchParams } from 'react-router-dom';
 import { AlertTriangle, Check, Pencil, Plus, Trash2, X } from 'lucide-react';
 import {
@@ -259,12 +260,16 @@ export default function CocktailRegister({
   const figuresRead = Boolean(figures.byId) && !figures.costsUnread;
   const numbersOf = (c: (typeof rows)[number]) => drinkNumbers(c.price ?? null, figures.byId?.get(c.id), figuresRead, tax);
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir } | null>(null);
-  const pressSort = (key: SortKey) =>
+  const bodyRef = useRef<HTMLTableSectionElement | null>(null);
+  const flip = useSortFlip(bodyRef, `${sort?.key ?? ''}:${sort?.dir ?? ''}`);
+  const pressSort = (key: SortKey) => {
+    flip.before();
     setSort((cur) => {
       if (!cur || cur.key !== key) return { key, dir: FIRST_DIR[key] };
       if (cur.dir === FIRST_DIR[key]) return { key, dir: cur.dir === 'asc' ? 'desc' : 'asc' };
       return null;
     });
+  };
   const shown = sortDrinks(rows, sort?.key ?? null, sort?.dir ?? 'asc', numbersOf);
   const strip = stripFor(rows.map(numbersOf));
   const sortHead = (key: SortKey, label: string) => (
@@ -577,7 +582,7 @@ export default function CocktailRegister({
                     <th scope="col" style={{ textAlign: 'right' }}>Kept</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody ref={bodyRef}>
                   {shown.map((c) => {
                     const fc = seesCost
                       ? drinkCells(c.id, c.price ?? null, figures.byId?.get(c.id), figuresRead, money, sayPct, tax)
@@ -585,6 +590,7 @@ export default function CocktailRegister({
                     return (
                     <tr
                       key={c.id}
+                      data-row={c.id}
                       data-selected={c.id === openId}
                       tabIndex={0}
                       onClick={() => toggleOpen(c.id)}
