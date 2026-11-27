@@ -162,6 +162,16 @@ export function marginWords(m: PlanKindMargin | null | undefined): string | null
   return now === then && m.atHouseNow.marginPct === null ? now : `${now} / ${then}`;
 }
 
+/**
+ * DD-r109-25 F3 narrowing (founder 2026-10-12 F3: margins are pre-tax only
+ * when the cost is proven pre-tax). The plan's margin is the Inventory
+ * advice's, which does not yet know whether a cost includes tax, so the plan
+ * carries the same gap and says it, rather than fixing it alone and
+ * disagreeing with Inventory.
+ */
+export const MARGIN_TAX_GAP =
+  'Margins use the cost as recorded, as Inventory does. Whether that cost includes tax is not checked yet, so a margin may be off by the tax.';
+
 /** This menu's price would land below the house's target margin ("raise" at this menu's price). */
 export function landsBelowTarget(m: PlanKindMargin | null | undefined): boolean {
   return !!m && m.atThisMenu.state === 'raise' && m.targetPct !== null;
@@ -497,6 +507,7 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
         return clock ? <p className="cl-note" data-testid="menu-plan-clock">{clock}</p> : null;
       })()}
       {plan.marginReason ? <p className="cl-note" data-testid="menu-plan-margin-reason">{plan.marginReason}</p> : null}
+      {showMargin ? <p className="cl-note" data-testid="menu-plan-margin-tax">{MARGIN_TAX_GAP}</p> : null}
       {!plan.namesReadable ? (
         <p className="cl-note">Some names could not be read ({plan.namesReason}). The prices below are exact.</p>
       ) : null}

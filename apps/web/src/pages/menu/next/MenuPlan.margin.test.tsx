@@ -100,11 +100,19 @@ describe('the plan with margins', () => {
     expect(within(rows[1]).queryByTestId('menu-plan-below-target')).toBeNull();
   });
 
+  it('a manager is told the margin does not yet know whether a cost includes tax (DD-r109-25 F3)', async () => {
+    mount(plan([line('1', 'Chianti', margin(60, 58))]));
+    expect(await screen.findByTestId('menu-plan-margin-tax')).toHaveTextContent(
+      'Margins use the cost as recorded, as Inventory does. Whether that cost includes tax is not checked yet, so a margin may be off by the tax.',
+    );
+  });
+
   it('a staff plan (every margin null) has no margin column and no margin words', async () => {
     mount(plan([line('1', 'Chianti', null)]));
     await screen.findByTestId('menu-plan');
     expect(screen.queryByText('Margin now / at this menu')).toBeNull();
     expect(screen.queryByTestId('menu-plan-margin')).toBeNull();
     expect(screen.getByTestId('menu-plan-sentence')).not.toHaveTextContent('target margin');
+    expect(screen.queryByTestId('menu-plan-margin-tax')).toBeNull();
   });
 });
