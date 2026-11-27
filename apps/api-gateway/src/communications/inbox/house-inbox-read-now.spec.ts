@@ -37,7 +37,7 @@ interface Cursor {
 }
 
 /** The database: one cursor row with state, everything else static. */
-function house(opts: { claimFails?: boolean } = {}) {
+function house(opts: { claimFails?: boolean; noCursor?: boolean; insertConflict?: boolean } = {}) {
   const clock = { now: T0 };
   const cursor: Cursor = {
     connection_id: GRANT,
@@ -48,6 +48,10 @@ function house(opts: { claimFails?: boolean } = {}) {
     reading_until: null,
     reading_token: null,
   };
+  // `noCursor`: a grant never read. `insertConflict`: another first run wrote the cursor between
+  // this press's lease check and its insert, so the table's key refuses the insert (23505).
+  let present = !opts.noCursor;
+  const inserts: Array<Record<string, unknown>> = [];
   const claims: Array<{ floor: number; claimed: boolean }> = [];
   let tokens = 0;
   const statics: Record<string, unknown[]> = {
@@ -73,7 +77,12 @@ function house(opts: { claimFails?: boolean } = {}) {
     let patch: Record<string, unknown> | null = null;
     const self: Record<string, unknown> = {};
     const pass = () => self;
-    for (const k of ["select", "in", "is", "or", "lte", "gte", "order", "limit", "insert"]) self[k] = pass;
+    for (const k of ["select", "in", "is", "or", "lte", "gte", "order", "limit"]) self[k] = pass;
+    let inserting: Record<string, unknown> | null = null;
+    self.insert = (body: Record<string, unknown>) => {
+      inserting = body;
+      return self;
+    };
     self.eq = (col: string, v: unknown) => {
       filters[col] = v;
       return self;
@@ -84,9 +93,20 @@ function house(opts: { claimFails?: boolean } = {}) {
     };
     const settle = () => {
       if (table !== "house_inbox_cursors") return { data: statics[table] ?? [], error: null };
-      const hit = Object.entries(filters).every(
-        ([k, v]) => (cursor as unknown as Record<string, unknown>)[k] === v,
-      );
+      if (inserting) {
+        if (opts.insertConflict) {
+          return {
+            data: null,
+            error: { code: "23505", message: 'duplicate key value violates unique constraint "house_inbox_cursors_pkey"' },
+          };
+        }
+        inserts.push(inserting);
+        present = true;
+        return { data: [cursor], error: null };
+      }
+      const hit =
+        present &&
+        Object.entries(filters).every(([k, v]) => (cursor as unknown as Record<string, unknown>)[k] === v);
       if (patch && hit) Object.assign(cursor, patch);
       return { data: hit ? [cursor] : [], error: null };
     };
@@ -105,7 +125,7 @@ function house(opts: { claimFails?: boolean } = {}) {
     const now = clock.now;
     const floor = Number(a.p_floor_seconds);
     const lease = Number(a.p_lease_seconds);
-    if (a.p_connection_id !== cursor.connection_id || a.p_restaurant_id !== cursor.restaurant_id) {
+    if (!present || a.p_connection_id !== cursor.connection_id || a.p_restaurant_id !== cursor.restaurant_id) {
       return { data: { claimed: false, exists: false }, error: null };
     }
     const t = (s: string | null) => (s ? Date.parse(s) : -Infinity);
@@ -133,7 +153,7 @@ function house(opts: { claimFails?: boolean } = {}) {
   };
 
   const db = { client: { from: (table: string) => chain(table), rpc } } as unknown as DatabaseService;
-  return { db, cursor, clock, claims };
+  return { db, cursor, clock, claims, inserts };
 }
 
 function message(id: string, internalDate: number) {
@@ -291,5 +311,60 @@ describe("a press is taken at most once a minute, and the minute is in the datab
     const other = await service.readNow("bbbbbbbb-0000-4000-8000-bbbbbbbbbbbb", T0);
     expect(other.outcome).toBe("no_grant");
     expect(g.urls).toHaveLength(0);
+  });
+});
+
+describe("six presses on a first run: the losers are answered like a press inside the minute (r110 mail-r110-8)", () => {
+  it("a press that loses the first-cursor insert is told someone checked a moment ago, not that the cursor could not be written", async () => {
+    const { db, clock } = house({ noCursor: true, insertConflict: true });
+    const { service, publish } = serviceOver(db);
+    const g = gmail(["m1"]);
+    g.open();
+    service.fetchImpl = g.impl;
+    const r = await service.readNow(HOUSE, clock.now);
+    expect(r.outcome).toBe("too_soon");
+    expect(r.retryAfterSeconds).toBe(READ_NOW_FLOOR_SECONDS);
+    expect(r.says).toBe(`The mailbox was read less than a minute ago. Check again in ${READ_NOW_FLOOR_SECONDS} s.`);
+    expect(r.outcomes[0].says).toMatch(/Someone checked this mailbox a moment ago/);
+    expect(JSON.stringify(r)).not.toMatch(/could not be written/);
+    expect(g.urls).toHaveLength(0);
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("the winner of the first-cursor insert still seeds and reads nothing older", async () => {
+    const { db, clock, inserts } = house({ noCursor: true });
+    const { service } = serviceOver(db);
+    const g = gmail([]);
+    g.open();
+    service.fetchImpl = g.impl;
+    const r = await service.readNow(HOUSE, clock.now);
+    expect(r.outcome).toBe("read");
+    expect(inserts).toHaveLength(1);
+    expect(r.outcomes[0].outcome).toBe("seeded");
+    expect(g.urls).toHaveLength(0);
+  });
+
+  it("an insert that fails for any other reason still says the cursor could not be written", async () => {
+    const { db, clock } = house({ noCursor: true });
+    const base = db.client.from;
+    (db.client as unknown as { from: (t: string) => unknown }).from = (t: string) => {
+      const c = base(t) as Record<string, unknown>;
+      if (t === "house_inbox_cursors") {
+        const ins = c.insert as (b: unknown) => unknown;
+        c.insert = (b: unknown) => {
+          ins(b);
+          c.then = (res: (v: unknown) => unknown) => Promise.resolve({ data: null, error: { code: "08006", message: "connection failure" } }).then(res);
+          return c;
+        };
+      }
+      return c;
+    };
+    const { service } = serviceOver(db);
+    const g = gmail([]);
+    g.open();
+    service.fetchImpl = g.impl;
+    const r = await service.readNow(HOUSE, clock.now);
+    expect(r.outcome).toBe("error");
+    expect(r.says).toMatch(/cursor could not be written/);
   });
 });

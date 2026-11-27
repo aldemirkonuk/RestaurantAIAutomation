@@ -13,6 +13,10 @@
 --     press is refused only while the run holds the lease or inside 60 s of its
 --     last read, and wins after that; a press's stamp never holds off the run.
 --  D. the catalog: anon and authenticated cannot EXECUTE it; service_role can.
+--  E. (r110 mail-r110-8) the FIRST cursor insert, sent from two sessions at the same
+--     instant for a grant never read: exactly one wins, the other is refused with
+--     SQLSTATE 23505. The gateway reads that code (seedCursor) to answer the loser
+--     'someone checked a moment ago' instead of 'the cursor could not be written'.
 --
 -- Synthetic rows only. Run with p4-scratch/sim-run/fixes/db/pgtest.sh (CI does
 -- not run supabase/tests). Needs a superuser (dblink, session_replication_role).
@@ -141,8 +145,42 @@ BEGIN
   ASSERT NOT (SELECT prosecdef FROM pg_proc WHERE oid = f::regprocedure), 'D: it must stay SECURITY INVOKER';
 END $$;
 
+-- E. two first presses for one never-read grant: one insert wins, the other is a unique violation.
+SELECT dblink_exec('b', 'SET session_replication_role = replica');
+SELECT dblink_exec('c', 'SET session_replication_role = replica');
+DO $$
+DECLARE
+  i int; cid uuid; won int := 0; lost int := 0; ok_b boolean; ok_c boolean; st text;
+  sql text;
+BEGIN
+  FOR i IN 1..25 LOOP
+    cid := gen_random_uuid();
+    sql := format('INSERT INTO public.house_inbox_cursors (connection_id, restaurant_id, last_internal_date) VALUES (%L, %L, 1)',
+                  cid, 'a0000000-0000-4000-8000-0000000000a1');
+    PERFORM dblink_send_query('b', sql);
+    PERFORM dblink_send_query('c', sql);
+    ok_b := false; ok_c := false;
+    BEGIN
+      PERFORM * FROM dblink_get_result('b') AS t(r text); ok_b := true;
+    EXCEPTION WHEN unique_violation THEN st := SQLSTATE;
+    END;
+    BEGIN
+      PERFORM * FROM dblink_get_result('c') AS t(r text); ok_c := true;
+    EXCEPTION WHEN unique_violation THEN st := SQLSTATE;
+    END;
+    -- drain the connections' result queues
+    PERFORM * FROM dblink_get_result('b', false) AS t(r text);
+    PERFORM * FROM dblink_get_result('c', false) AS t(r text);
+    ASSERT ok_b::int + ok_c::int = 1, 'E: exactly one first insert must win, round ' || i || ': b=' || ok_b || ' c=' || ok_c;
+    ASSERT st = '23505', 'E: the loser must be refused with 23505, got ' || coalesce(st, 'nothing');
+    won := won + 1;
+    DELETE FROM public.house_inbox_cursors WHERE connection_id = cid;
+  END LOOP;
+  RAISE NOTICE 'E: 25 rounds, one winner and one 23505 loser each (%)', won;
+END $$;
+
 SELECT dblink_disconnect('b');
 SELECT dblink_disconnect('c');
 SELECT dblink_disconnect('w');
 DELETE FROM public.house_inbox_cursors WHERE connection_id = 'a0000000-0000-4000-8000-0000000000c1';
-\echo 'PASS check_now_two_sessions: A lock-wait loser, B 25/25 single winner, C run never starves a press, D grants'
+\echo 'PASS check_now_two_sessions: A lock-wait loser, B 25/25 single winner, C run never starves a press, D grants, E first-insert loser is 23505'
