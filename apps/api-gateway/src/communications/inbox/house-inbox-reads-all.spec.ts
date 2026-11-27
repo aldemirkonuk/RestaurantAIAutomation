@@ -213,7 +213,8 @@ describe("the wide grant files every conversation, marked by who it is from", ()
 
     expect(run.outcomes[0].outcome).toBe("read");
     expect(run.mirrored).toBe(3);
-    const q = new URL(urls.find((u) => u.includes("/messages?"))!).searchParams.get("q")!;
+    // The delivery-notice query (r109 g1) is its own bound; the wide read is the other one.
+    const q = new URL(urls.find((u) => u.includes("/messages?") && !u.includes("mailer-daemon"))!).searchParams.get("q")!;
     expect(q).toContain("after:");
     expect(q).toContain("-in:sent");
     expect(q).not.toContain("from:");
@@ -299,8 +300,10 @@ describe("the old grant is never widened", () => {
     const queries = urls
       .filter((u) => u.includes("/messages?"))
       .map((u) => new URL(u).searchParams.get("q")!);
+    // Each grant also asks for delivery notices, by that bound alone (r109 g1).
+    expect(queries.filter((q) => q.startsWith("from:(mailer-daemon OR postmaster) after:"))).toHaveLength(2);
     // Two vendor queries (the old grant's, and the wide grant's own beside its wide one) and one wide query.
-    expect(queries.filter((q) => q.includes("from:("))).toHaveLength(2);
+    expect(queries.filter((q) => q.includes("from:(") && !q.includes("mailer-daemon"))).toHaveLength(2);
     expect(queries.filter((q) => !q.includes("from:"))).toHaveLength(1);
     // The token for each grant is asked for under ITS OWN id.
     expect(getAccessToken.mock.calls.map((c) => c[2]).sort()).toEqual(["gmail_read", "gmail_read_all"]);

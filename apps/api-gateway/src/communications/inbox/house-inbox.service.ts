@@ -43,6 +43,11 @@
  * handoff to triage — so a house-mailbox reply IS a shared-mailbox reply, and
  * there is no second write path to drift.
  *
+ * One write is its own (r109 mail-gap g1): a delivery notice is never filed as
+ * a letter. It marks the house letter it is about, `email_headers.delivery`,
+ * and only when it passes the g8 sender check and names a letter this house
+ * sent (`house-inbox.dsn.ts`, `readNotices`).
+ *
  * A copy would have been easier and is the thing this build most needed to
  * avoid: two inserts that agree today, and a vendor reply that six months from
  * now is triaged on one mailbox and silently is not on the other.
@@ -116,6 +121,15 @@ import {
 } from "../gmail-mime";
 import { decodeEncodedWords } from "../inbound-headers";
 import { ingressAuthenticationResults } from "../sender-authentication";
+import {
+  deliveryMark,
+  noticeQuery,
+  noticeSenderChecked,
+  parseNotice,
+  replacesMark,
+  type DeliveryMark,
+  type NoticePart,
+} from "./house-inbox.dsn";
 
 /**
  * The scope, the integration id and the switch live in `house-inbox-flag.ts`,
@@ -933,6 +947,10 @@ export class HouseInboxService {
     };
 
     try {
+      // Delivery notices first (r109 mail-gap g1): a notice that cannot be
+      // recorded stops the run here, before any letter moves the cursor past it.
+      const notices = await this.readNotices(token, restaurantId, cursor);
+
       const listing = wide
         ? await this.listWide(token, cursor, addresses)
         : { ids: await this.listSince(token, addresses, cursor), horizonId: null };
@@ -1099,6 +1117,9 @@ export class HouseInboxService {
         if (internalDate > highWater) highWater = internalDate;
       }
 
+      // Every letter listed reached the book, so the cursor may pass the
+      // notices read too; a notice is read again only while this run fails.
+      if (notices.highest > highWater) highWater = notices.highest;
       await this.saveCursor(connectionId, restaurantId, highWater, nowMs, {
         listed,
         admitted,
@@ -1322,6 +1343,98 @@ export class HouseInboxService {
     // `readOneGrant`, because Gmail lists newest-first per query and this merges
     // several queries.
     return [...seen.values()];
+  }
+
+  /**
+   * The second bounded query (r109 mail-gap g1): delivery notices only. Each is
+   * kept only when it passes the g8 sender check and names a letter this house
+   * sent (house-inbox.dsn.ts); anything else is dropped unrecorded, and its
+   * body is never published, logged or stored. Returns the newest notice read,
+   * which the cursor passes only once the run's letters are all filed. A
+   * listing cut at the cap holds the NEWEST notices, so it never moves the cursor.
+   */
+  private async readNotices(
+    token: string,
+    restaurantId: string,
+    cursor: number,
+  ): Promise<{ kept: number; highest: number }> {
+    const seen = new Map<string, GmailListed>();
+    let pageToken: string | undefined;
+    let cut = false;
+    for (let page = 0; page < MAX_PAGES_PER_CHUNK; page += 1) {
+      const url = new URL(`${GMAIL_API}/users/me/messages`);
+      url.searchParams.set("q", noticeQuery(cursor));
+      url.searchParams.set("maxResults", "100");
+      if (pageToken) url.searchParams.set("pageToken", pageToken);
+      const body = await this.gmailGet<{ messages?: GmailListed[]; nextPageToken?: string }>(token, url.toString());
+      for (const m of body.messages ?? []) if (m?.id && !seen.has(m.id)) seen.set(m.id, m);
+      if (seen.size >= MAX_MESSAGES_PER_TICK) {
+        cut = true;
+        break;
+      }
+      if (!body.nextPageToken) break;
+      pageToken = body.nextPageToken;
+      if (page === MAX_PAGES_PER_CHUNK - 1) cut = true;
+    }
+    let kept = 0;
+    let highest = cursor;
+    for (const listed of seen.values()) {
+      const message = await this.getMessage(token, listed.id);
+      if (!message) continue;
+      const at = Number(message.internalDate ?? 0);
+      if (!Number.isFinite(at) || at <= cursor) continue;
+      if (at > highest) highest = at;
+      const headers = message.payload?.headers ?? [];
+      // (b) before anything else of it is read.
+      if (!noticeSenderChecked(headers)) continue;
+      const notice = parseNotice(message.payload as NoticePart, headers);
+      const mark = notice ? deliveryMark(notice, at) : null;
+      if (notice && mark && (await this.markLetter(restaurantId, notice.originalIds, mark, at))) kept += 1;
+    }
+    return { kept, highest: cut ? cursor : highest };
+  }
+
+  /**
+   * (c) Mark the house letter a notice is about: an outbound row of THIS
+   * restaurant whose stored message_id is the notice's original Message-ID.
+   * No row, no write. A failed read or write throws, so the run stops with the
+   * cursor where it was and the notice is read again.
+   */
+  private async markLetter(
+    restaurantId: string,
+    originalIds: string[],
+    mark: DeliveryMark,
+    atMs: number,
+  ): Promise<boolean> {
+    if (!originalIds.length) return false;
+    const forms = [...new Set(originalIds.flatMap((id) => [id, id.slice(1, -1)]))];
+    const { data, error } = await this.db.client
+      .from("procurement_conversations")
+      .select("id, message_id, sent_at, email_headers")
+      .eq("restaurant_id", restaurantId)
+      .in("direction", ["outbound", "OUTBOUND"])
+      .in("message_id", forms)
+      .limit(10);
+    if (error) throw new Error(`the letter a delivery notice is about could not be read (${error.message})`);
+    const rows = (data ?? []) as Array<{ id: string; message_id: unknown; sent_at: unknown; email_headers: unknown }>;
+    const bracket = (v: unknown) => {
+      const t = String(v ?? "").trim();
+      return t.startsWith("<") ? t : `<${t}>`;
+    };
+    const row = originalIds.map((id) => rows.find((r) => bracket(r.message_id) === id)).find(Boolean);
+    if (!row) return false;
+    // A notice cannot arrive before the letter it is about left.
+    const sent = typeof row.sent_at === "string" ? Date.parse(row.sent_at) : NaN;
+    if (Number.isFinite(sent) && atMs < sent) return false;
+    const headers = row.email_headers && typeof row.email_headers === "object" ? (row.email_headers as Record<string, unknown>) : {};
+    if (!replacesMark(headers.delivery, mark)) return true;
+    const { error: writeError } = await this.db.client
+      .from("procurement_conversations")
+      .update({ email_headers: { ...headers, delivery: mark } })
+      .eq("id", row.id)
+      .eq("restaurant_id", restaurantId);
+    if (writeError) throw new Error(`a delivery notice could not be written on its letter (${writeError.message})`);
+    return true;
   }
 
   private async getMessage(
