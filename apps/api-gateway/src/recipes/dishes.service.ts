@@ -7,6 +7,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
+import { photoUrlsOf } from "./drink-photo.service";
 import { DatabaseService } from "../database/database.service";
 import { seesHouseAmounts } from "../dashboard/amounts-for-role";
 import { BASE_UNIT_WORDS, BaseUnit, CostItem, recipeCost } from "./recipe-cost";
@@ -117,6 +118,8 @@ export interface DrinkCard {
   versionDate: string | null;
   lines: Array<{ label: string; qty: number; unit: string | null; name: string | null }>;
   allergens: RowAllergens;
+  /** The drink's photo, a 10-minute signed URL; null when it has none or the photo read failed (r110 drinks-g3). */
+  photoUrl: string | null;
 }
 
 type Read = PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>;
@@ -771,8 +774,12 @@ export class DishesService {
           name: ((l.inventory_id && goodName.get(l.inventory_id)) || (l.component_dish_id && madeName.get(l.component_dish_id)) || null) as string | null,
         })),
         allergens: rowAllergens(rows, yieldServes, stated),
+        photoUrl: null,
       });
     }
+    // The photos last, in one signed batch per 100 drinks; a failed photo read prints the book without them.
+    const photos = await photoUrlsOf(client, restaurantId, cards.map((c) => c.cocktailId));
+    for (const c of cards) c.photoUrl = photos.get(c.cocktailId) ?? null;
     return { drinks: cards };
   }
 
