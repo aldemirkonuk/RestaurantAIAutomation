@@ -752,8 +752,13 @@ export function computeMatch(input: MatchInput): MatchResult {
     (hasInvoice && (invoiceQty as number) > billableReceived);
 
   // Money owed back: units billed but not usably received, at the billed price.
+  // Never more than was billed: when the rejected units must have been the free
+  // ones (rejected > billableReceived) the paper still only billed invoiceQty.
   const unitsOwed = hasInvoice
-    ? Math.max(0, (invoiceQty as number) - (billableReceived - rejectedQty))
+    ? Math.min(
+        invoiceQty as number,
+        Math.max(0, (invoiceQty as number) - Math.max(0, billableReceived - rejectedQty)),
+      )
     : 0;
   const creditAmount =
     hasInvoice && invoiceUnitPrice != null && unitsOwed > 0
@@ -772,12 +777,10 @@ export function computeMatch(input: MatchInput): MatchResult {
     hasInvoice && invoiceUnitPrice != null ? unitsOwed * invoiceUnitPrice : 0;
   const effectiveUnitCost =
     hasInvoice && invoiceUnitPrice != null && acceptedQty > 0
-      ? Math.max(
-          0,
-          (invoiceQty as number) * invoiceUnitPrice +
-            allocatedCharges -
-            claimedBack,
-        ) / acceptedQty
+      ? ((invoiceQty as number) * invoiceUnitPrice +
+          allocatedCharges -
+          claimedBack) /
+        acceptedQty
       : null;
 
   return {

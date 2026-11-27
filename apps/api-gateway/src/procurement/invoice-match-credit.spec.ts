@@ -66,8 +66,20 @@ describe("a credit is not also a cost (r28 G6)", () => {
     // Two free bottles declared, one kept and one broken: the claim (11 units)
     // runs past the 10 billed, and the kept bottle is not given a negative cost.
     const r = computeMatch({ ...twelveAtTen, invoiceQty: 10, acceptedQty: 1, rejectedQty: 1, freeGoodsQty: 2 });
-    expect(r.creditAmount).toBe(110);
+    // The claim is the bill and no more: 10 billed at 10.00 is at most 100.00
+    // back, however many of the rejected units must have been the free ones.
+    expect(r.creditAmount).toBe(100);
     expect(r.effectiveUnitCost).toBe(0);
+  });
+
+  it("never claims back more than was billed, whatever the free/rejected mix", () => {
+    for (let accepted = 0; accepted <= 4; accepted++)
+      for (let rejected = 0; rejected <= 4; rejected++)
+        for (let free = 0; free <= 4; free++) {
+          const r = computeMatch({ ...twelveAtTen, invoiceQty: 10, acceptedQty: accepted, rejectedQty: rejected, freeGoodsQty: free });
+          if (r.creditAmount != null) expect(r.creditAmount).toBeLessThanOrEqual(100);
+        }
+    expect(computeMatch({ ...twelveAtTen, invoiceQty: 10, acceptedQty: 0, rejectedQty: 2, freeGoodsQty: 2 }).creditAmount).toBe(100);
   });
 
   describe("an unknown cost is never written as 0 (DD-r103-11)", () => {
