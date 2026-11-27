@@ -67,6 +67,11 @@ export function useInventory() {
     },
     enabled: !!activeRestaurantId && isAuthenticated,
     staleTime: 30_000,
+    // The app-wide default is `'always'`, which refetches on every mount and
+    // so overrides the 30 s above: moving Inventory -> Cellar re-downloaded the
+    // 745 KB list read a few seconds earlier. `true` refetches only when stale.
+    // A stock change still lands at once: `stock:updated` invalidates the list.
+    refetchOnMount: true,
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   })
