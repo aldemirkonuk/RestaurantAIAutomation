@@ -11,6 +11,7 @@ import { DatabaseService } from "../database/database.service";
 import { seesHouseAmounts } from "../dashboard/amounts-for-role";
 import { BASE_UNIT_WORDS, BaseUnit, CostItem, recipeCost } from "./recipe-cost";
 import { servesFromStock, type StockItem } from "./serves-from-stock";
+import { itemShareOfServe, type PricedLine } from "./item-share-of-serve";
 import { serveNutrition, type Allergen, type AllergenStatus } from "./recipe-nutrition";
 import { CreateDishDto, SetYieldDto, UpdateDishDto } from "./dto/recipes.dto";
 import { DISH_NOT_THIS_HOUSE, MAX_LINE_QTY, RecipesService } from "./recipes.service";
@@ -120,6 +121,8 @@ export interface DishFigures {
   } | null;
   /** Only when the caller asked for allergens. */
   allergens?: RowAllergens;
+  /** Each stocked line's exact cost per serve, for a role that sees money only; never sent as is. */
+  pricedLines?: PricedLine[];
 }
 
 /**
@@ -378,6 +381,7 @@ export class DishesService {
       const rows = [...(lines.get(p.versionId) ?? [])].sort((a, b) => a.position - b.position);
       const yieldServes = v.yieldServes;
       let cost: DishFigures["cost"] = null;
+      let pricedLines: PricedLine[] | null = null;
       if (priced) {
         const figured = recipeCost(
           rows.map((l) => ({
@@ -392,6 +396,9 @@ export class DishesService {
           })),
           yieldServes,
         );
+        pricedLines = rows.flatMap((l, i) =>
+          figured.lines[i].status === "untracked" ? [] : [{ inventoryId: l.inventory_id ?? null, exact: figured.lines[i].costPerServeExact }],
+        );
         cost = {
           perServe: figured.perServe,
           perServeExact: figured.perServeExact,
@@ -402,6 +409,7 @@ export class DishesService {
         };
       }
       const figures: DishFigures = { versionId: p.versionId, yieldServes, lineCount: rows.length, cost };
+      if (pricedLines) figures.pricedLines = pricedLines;
       if (opts.allergens) figures.allergens = rowAllergens(rows, yieldServes, allergenRows);
       out.set(p.ownerId, figures);
     }
@@ -553,6 +561,8 @@ export class DishesService {
             ...this.figureFields(f),
             uses: this.usesIn(used, f),
             ...this.servesIn(item, used, f),
+            // Money: owner and manager only (the figures carry no lines for staff).
+            goodShare: money && f?.pricedLines ? itemShareOfServe(f.pricedLines, itemId) : null,
           };
         })
         // A pointer that moved since the lines were read leaves a dish with no line of this item: not listed.
@@ -601,6 +611,8 @@ export class DishesService {
             ...this.figureFields(f),
             uses: this.usesIn(used, f),
             ...this.servesIn(item, used, f),
+            // Money: owner and manager only (the figures carry no lines for staff).
+            goodShare: money && f?.pricedLines ? itemShareOfServe(f.pricedLines, itemId) : null,
           };
         })
         .filter((d) => d.uses.length > 0)

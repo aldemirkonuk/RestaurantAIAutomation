@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import ItemUsedIn, {
+  goodShareWords,
   SERVES_WHY,
   servesFromStockWords,
   DRINKS_DO_NOT_DRAW,
@@ -407,6 +408,39 @@ describe('From stock (r108 g11): how many serves the stock on hand makes', () =>
 
   it('writes the count the way the house writes its numbers', () => {
     expect(servesFromStockWords({ servesFromStock: 1250, servesWhy: null }, 'drink', 'TRY').value).toBe('Enough for 1.250 serves');
+  });
+});
+
+describe('This good (r108 g17): its share of the serve cost', () => {
+  const sh = (over = {}) => ({ costPerServe: 1.55, pct: 62, ofPricedPart: false, priced: 3, of: 3, unpriced: false, ...over });
+
+  it('a manager reads the share of the cost', () => {
+    mount(ready(dish({ goodShare: sh() })));
+    expect(t('good-share')).toContain('This good');
+    expect(t('good-share')).toContain('62%');
+    expect(t('good-share')).toContain('of the cost');
+  });
+
+  it('an incomplete serve says it is a share of the priced part, with how many lines', () => {
+    mount(ready(dish({ goodShare: sh({ ofPricedPart: true, priced: 2, of: 3, pct: 100 }) })));
+    expect(t('good-share')).toContain('of the priced part (2 of 3 lines)');
+  });
+
+  it('an unpriced line of this good says Not priced, never 0%', () => {
+    mount(ready(dish({ goodShare: sh({ unpriced: true, pct: null, costPerServe: null }) })));
+    expect(t('good-share')).toContain('Not priced');
+    expect(t('good-share')).not.toContain('0%');
+  });
+
+  it('staff see no share, even if one were sent', () => {
+    mount(ready(dish({ price: null, cost: null, goodShare: sh() })), false);
+    expect(screen.queryByTestId('ivd-dish-d1-good-share')).toBeNull();
+  });
+
+  it('a drink gets the card too, written the house way', () => {
+    mountDrinks(drinksReady(drink({ goodShare: sh({ pct: 13 }) })), { code: 'TRY' });
+    expect(dt('good-share')).toContain('%13');
+    expect(goodShareWords(sh({ pct: null }), null).value).toBe('Not known');
   });
 });
 
