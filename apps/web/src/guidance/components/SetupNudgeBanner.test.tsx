@@ -37,6 +37,11 @@ import { SetupNudgeBanner } from './SetupNudgeBanner'
 
 const banner = () => render(<MemoryRouter initialEntries={['/']}><SetupNudgeBanner /></MemoryRouter>)
 
+// The primary button says the next step in the house's words (#1111: 'Read your
+// menu', 'Choose the current menu'); #848 first called it 'Finish setup'. Any of
+// them is the one button, so the spec holds on either side of that change.
+const PRIMARY = { name: /^(Finish setup|Read your menu|Choose the current menu)$/ }
+
 beforeEach(() => {
   vi.clearAllMocks()
   state.role = 'owner'
@@ -44,16 +49,20 @@ beforeEach(() => {
 })
 
 describe('SetupNudgeBanner', () => {
-  it('stays hidden once a menu is read, even though activated is still false', () => {
-    state.progress = { menu_uploaded: true, threshold_configured: false, activated: false }
+  // #848 hid the banner once a menu was read even while `activated` was false.
+  // #1214 later gates it on `activated` (a CURRENT menu), so a menu that is read
+  // but not yet current is offered "Choose the current menu". What both agree
+  // on, and what is pinned here, is that a read AND current menu hides it.
+  it('stays hidden once a menu is read and current', () => {
+    state.progress = { menu_uploaded: true, threshold_configured: false, activated: true }
     banner()
-    expect(screen.queryByRole('button', { name: 'Finish setup' })).toBeNull()
+    expect(screen.queryByRole('button', PRIMARY)).toBeNull()
   })
 
   it('shows while no menu is read, keeps snooze and dismiss, and asks in plain words', () => {
     state.progress = { menu_uploaded: false, threshold_configured: false, activated: false }
     banner()
-    fireEvent.click(screen.getByRole('button', { name: 'Finish setup' }))
+    fireEvent.click(screen.getByRole('button', PRIMARY))
     expect(navigate).toHaveBeenCalledWith('/get-started')
     fireEvent.click(screen.getByRole('button', { name: 'Later' }))
     expect(guidance.snoozeSetupNudge).toHaveBeenCalled()
@@ -68,7 +77,7 @@ describe('SetupNudgeBanner', () => {
     state.role = 'manager'
     state.progress = { menu_uploaded: false, threshold_configured: false, activated: false }
     banner()
-    fireEvent.click(screen.getByRole('button', { name: 'Finish setup' }))
+    fireEvent.click(screen.getByRole('button', PRIMARY))
     expect(navigate).toHaveBeenCalledWith('/menu')
   })
 
@@ -76,6 +85,6 @@ describe('SetupNudgeBanner', () => {
     state.role = 'staff'
     state.progress = { menu_uploaded: false, threshold_configured: false, activated: false }
     banner()
-    expect(screen.queryByRole('button', { name: 'Finish setup' })).toBeNull()
+    expect(screen.queryByRole('button', PRIMARY)).toBeNull()
   })
 })
