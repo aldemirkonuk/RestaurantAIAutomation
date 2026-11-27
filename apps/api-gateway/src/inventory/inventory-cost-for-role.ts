@@ -80,6 +80,11 @@ export const COST_FIELDS: ReadonlySet<string> = new Set([
   "exchangeRate",
   "houseUnitCost",
   "bookedUnitCost",
+  // r104 g3 (#2059): what the last two settled deliveries cost per unit, the
+  // "Price signals" chip. Their yes/no flags (settledCostsReadable, settledCostsCapped)
+  // are not figures and stay, as costReadable does.
+  "lastSettledCost",
+  "previousSettledCost",
 ]);
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
