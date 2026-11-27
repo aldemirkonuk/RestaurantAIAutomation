@@ -187,10 +187,11 @@ export function useReceiptsNextData(): ReceiptsNextData {
   const [verifiedTerm, setVerifiedTerm] = useState('');
   const [older, setOlder] = useState<{
     rows: ProcurementDocument[];
-    lastLen: number | null;
+    /** The server's answer after the last older page; null until one was read. */
+    hasMore: boolean | null;
     busy: boolean;
     error: string | null;
-  }>({ rows: [], lastLen: null, busy: false, error: null });
+  }>({ rows: [], hasMore: null, busy: false, error: null });
   const verifiedQ = useQuery<ProcurementDocument[]>({
     queryKey: ['receipts-next', 'verified', rid, verifiedTerm || null],
     queryFn: () =>
@@ -205,17 +206,18 @@ export function useReceiptsNextData(): ReceiptsNextData {
     // search read, and the whole lane, search form included, unmounted with it.
     placeholderData: keepPreviousData,
   });
-  // What the Older pages were read against: this house, this search, and THIS
-  // first window. A different house or search, or a first window that was read
-  // again (a verify shifts it by one, so the old last paper would sit in neither
-  // list), makes the pages held here wrong, and a read still in flight for the
-  // old window must not land in the new one (r105).
-  const windowKey = `${rid}|${verifiedTerm}|${verifiedQ.dataUpdatedAt}`;
-  const windowKeyRef = useRef(windowKey);
-  windowKeyRef.current = windowKey;
+  // Older pages belong to ONE (house, search, first window). Any change drops
+  // what was loaded and any read still in flight: an answer for the old scope
+  // would otherwise be drawn under the new one (another house's papers, papers
+  // unfiltered by the search), and a first window that moved (a paper sealed
+  // into it) would leave the paper it pushed out in neither list (r106).
+  const firstKey = (verifiedQ.data ?? []).map((d) => d.id).join(',');
+  const scope = `${rid ?? ''}\u0000${verifiedTerm}\u0000${firstKey}`;
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
   useEffect(() => {
-    setOlder({ rows: [], lastLen: null, busy: false, error: null });
-  }, [windowKey]);
+    setOlder({ rows: [], hasMore: null, busy: false, error: null });
+  }, [scope]);
   const cleanQ = useQuery<ProcurementDocument[]>({
     queryKey: ['receipts-next', 'clean', rid],
     queryFn: () =>
@@ -271,30 +273,32 @@ export function useReceiptsNextData(): ReceiptsNextData {
   const queue = queueQ.data ?? [];
   const firstWindow = verifiedQ.data ?? [];
   const verified = useMemo(() => [...firstWindow, ...older.rows], [firstWindow, older.rows]);
-  const lastPageLen = older.lastLen ?? firstWindow.length;
-  const verifiedHasOlder = lastPageLen >= RECEIPTS_SERVER_WINDOWS.VERIFIED_ITEMS;
+  // The first window carries no server flag, so a full window is the hint;
+  // every older page carries the server's own answer.
+  const verifiedHasOlder =
+    older.hasMore ?? firstWindow.length >= RECEIPTS_SERVER_WINDOWS.VERIFIED_ITEMS;
   const loadOlderVerified = useCallback(() => {
     const last = verified[verified.length - 1];
     if (!last?.created_at) return;
-    const asked = windowKey;
+    const asked = scopeRef.current;
     setOlder((o) => ({ ...o, busy: true, error: null }));
     documentsApi
-      .list({
+      .listPage({
         status: 'verified',
         limit: RECEIPTS_SERVER_WINDOWS.VERIFIED_ITEMS,
         q: verifiedTerm || undefined,
         before: last.created_at,
         beforeId: last.id,
       })
-      .then((rows) => {
-        if (windowKeyRef.current !== asked) return;
-        setOlder((o) => ({ rows: [...o.rows, ...rows], lastLen: rows.length, busy: false, error: null }));
+      .then((page) => {
+        if (scopeRef.current !== asked) return;
+        setOlder((o) => ({ rows: [...o.rows, ...page.items], hasMore: page.hasMore, busy: false, error: null }));
       })
       .catch((e) => {
-        if (windowKeyRef.current !== asked) return;
+        if (scopeRef.current !== asked) return;
         setOlder((o) => ({ ...o, busy: false, error: msg(e) }));
       });
-  }, [verified, verifiedTerm, windowKey]);
+  }, [verified, verifiedTerm]);
   // `direction` comes back from the list's `select("*")` but is not on the
   // shared client type, so it is read here rather than widened there (W44).
   const cleanRows = cleanQ.data ?? [];
