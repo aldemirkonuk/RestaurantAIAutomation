@@ -28,7 +28,25 @@ export interface ItemServes {
   servesWhy?: ServesWhy | null;
 }
 
+/**
+ * This good's share of the serve's cost (r108 g17), from the lines' exact
+ * costs, rounded once. Null for staff, and from an older gateway absent.
+ */
+export interface ItemGoodShare {
+  costPerServe: number | null;
+  /** Whole percent; null when this good is not priced or there is nothing to share. */
+  pct: number | null;
+  /** The serve has an unpriced line: the share is of the priced part. */
+  ofPricedPart: boolean;
+  priced: number;
+  of: number;
+  /** A line of this good has no price. */
+  unpriced: boolean;
+}
+
 export interface ItemDish extends ItemServes {
+  /** Null for staff. */
+  goodShare?: ItemGoodShare | null;
   dishId: string;
   name: string;
   section: string | null;
@@ -62,6 +80,8 @@ export async function getItemDishes(itemId: string, restaurantId?: string): Prom
  * figures a dish has. GET /recipes/:rid/items/:itemId/drinks.
  */
 export interface ItemDrink extends ItemServes {
+  /** Null for staff. */
+  goodShare?: ItemGoodShare | null;
   cocktailId: string;
   name: string;
   section: string | null;

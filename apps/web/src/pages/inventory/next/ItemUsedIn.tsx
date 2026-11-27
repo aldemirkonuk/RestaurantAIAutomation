@@ -37,6 +37,7 @@ import {
   type ItemDishes,
   type ItemDrink,
   type ItemDrinks,
+  type ItemGoodShare,
   type ItemServes,
   type ServesWhy,
 } from '../../../services/api/itemDishes';
@@ -150,6 +151,18 @@ export function servesFromStockWords(
   return { value: `Enough for ${formatHouseNumber(n, code, { digits: 0 })} ${n === 1 ? one : `${one}s`}` };
 }
 
+/**
+ * "This good": its share of the serve's cost (r108 g17), so the drawer says
+ * which recipes this good drives. A share of the priced part says so; an
+ * unpriced line of this good is "Not priced", never 0 %.
+ */
+export function goodShareWords(s: ItemGoodShare, code: string | null): { value: string; sub?: string } {
+  if (s.unpriced) return { value: 'Not priced', sub: 'this good has no price yet' };
+  if (s.pct === null) return { value: 'Not known' };
+  const value = formatHousePercent(s.pct, code, { digits: 0 });
+  return { value, sub: s.ofPricedPart ? `of the priced part (${s.priced} of ${s.of} lines)` : 'of the cost' };
+}
+
 /** One dish or drink that uses the good: its name as a link, then its cards. */
 function RecipeBlock({
   kind,
@@ -176,10 +189,11 @@ function RecipeBlock({
   price: number | null;
   canManage: boolean;
   currency: HouseCurrency;
-  serves: ItemServes;
+  serves: ItemServes & { goodShare?: ItemGoodShare | null };
 }) {
   const w = RECIPE_WORDS[kind];
   const fromStock = serves.servesFromStock === undefined ? null : servesFromStockWords(serves, kind, currency.code);
+  const goodShare = canManage && serves.goodShare ? goodShareWords(serves.goodShare, currency.code) : null;
   const t = `ivd-${kind}-${id}`;
   const known = y !== null && y > 0;
   const perServe = known ? uses.map((u) => `${fmtRecipeQty(u.qtyEntered / y)} ${u.unitCode}`).join(' + ') : '';
@@ -206,6 +220,7 @@ function RecipeBlock({
             sub={cost.complete ? undefined : `${cost.priced} of ${cost.of} lines priced`}
           />
         ) : null}
+        {goodShare ? <DishCard id={`${t}-good-share`} title="This good" value={goodShare.value} sub={goodShare.sub} /> : null}
         {canManage ? (
           <DishCard id={`${t}-price`} title="Price" value={price !== null ? cellMoney(price, currency) : w.noPrice} />
         ) : null}
