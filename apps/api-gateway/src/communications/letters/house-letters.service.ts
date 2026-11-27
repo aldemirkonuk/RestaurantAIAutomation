@@ -79,11 +79,7 @@ import type { IntegrationId } from "../../integrations/integrations-oauth.consta
 import { HouseSenderService } from "./house-sender.service";
 import { composeCreditLetter } from "./credit-letter";
 import {
-  addressListHeader,
   base64Body,
-  messageIdHeader,
-  threadingHeader,
-  unstructuredHeader,
   buildLetterHeaders,
   MimeHeaderError,
 } from "../mime-headers";

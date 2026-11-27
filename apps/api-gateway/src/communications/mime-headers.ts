@@ -372,6 +372,8 @@ export function buildLetterHeaders(options: {
   bcc?: string[];
   subject: string;
   replyTo?: string;
+  /** Our own Message-ID (r109 g1), so a delivery notice can name the letter. The preview has none. */
+  messageId?: string;
   inReplyTo?: string;
   references?: string;
 }): string[] {
@@ -386,6 +388,7 @@ export function buildLetterHeaders(options: {
     ...(options.bcc?.length ? [addressListHeader("Bcc", options.bcc)] : []),
     unstructuredHeader("Subject", options.subject),
     ...(options.replyTo ? [addressListHeader("Reply-To", [options.replyTo])] : []),
+    ...(options.messageId ? [messageIdHeader("Message-ID", options.messageId)] : []),
     ...(inReplyTo ? [inReplyTo] : []),
     ...(references ? [references] : []),
   ];
