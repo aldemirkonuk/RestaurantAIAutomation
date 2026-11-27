@@ -10,7 +10,7 @@ vi.mock('./client', () => ({
   getActiveRestaurantId: () => 'r-1',
 }));
 
-import { importMenu, MENU_READ_TIMEOUT_MS } from './menus';
+import { importMenu } from './menus';
 
 describe('importMenu — upload progress', () => {
   it('turns axios loaded/total into a share, and says nothing when the size is unknown', async () => {
@@ -27,7 +27,7 @@ describe('importMenu — upload progress', () => {
   it('adds no progress hook when the caller asked for none', async () => {
     post.mockResolvedValue({ data: { menuId: 'm-1', current: false, items: [] } });
     await importMenu('scan', { imageBase64: 'JVBERi0=' });
-    // Only the long read timeout (r102 menu-func-1) rides on the call, never a progress hook.
-    expect(post.mock.calls.at(-1)?.[2]).toEqual({ timeout: MENU_READ_TIMEOUT_MS });
+    // Neither a progress hook nor a read-length timeout rides on the call (r104 menu-4).
+    expect(post.mock.calls.at(-1)?.[2]).toEqual({});
   });
 });

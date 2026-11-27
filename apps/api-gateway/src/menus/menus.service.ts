@@ -1722,8 +1722,9 @@ export class MenusService {
     const { names, error: namesError } = await this.namesOf(
       rows.flatMap((r) => [r.extracted_by, r.made_current_by, r.retired_by]),
     );
+    const live = await this.liveLineCounts(restaurantId, rows);
     const versions = rows
-      .map((r) => this.toVersion(r, names))
+      .map((r) => this.toVersion(r, names, live))
       .sort((a, b) => String(b.extractedAt ?? b.createdAt ?? "").localeCompare(String(a.extractedAt ?? a.createdAt ?? "")));
     const current = versions.find((v) => v.current) ?? null;
     const lastUsed =
@@ -2291,7 +2292,39 @@ export class MenusService {
     return data as Record<string, any>;
   }
 
-  private toVersion(r: Record<string, any>, names: Map<string, string | null>): MenuVersion {
+  /**
+   * The lines a kept menu holds now (r104 menu-6, walk F6: a menu whose every
+   * line was discarded still said "1 line"; r104 fix: a menu with an ADDED line
+   * and no discard said the old count). `lines_extracted` is what the read found
+   * and never moves, so every listed menu that has one is counted again: one
+   * keyset-paged read of the live lines' menu_id per 200 menus, tallied here.
+   * A failed read fails the list in words, never a stale count (ADR 0020).
+   */
+  private async liveLineCounts(restaurantId: string, rows: Array<Record<string, any>>): Promise<Map<string, number>> {
+    const ids = rows.filter((r) => Number(r.lines_extracted) > 0).map((r) => String(r.id));
+    const out = new Map<string, number>(ids.map((id) => [id, 0]));
+    for (let i = 0; i < ids.length; i += 200) {
+      let after: string | null = null;
+      for (;;) {
+        let q = this.dbService.supabase
+          .from("menu_items")
+          .select("id, menu_id")
+          .eq("restaurant_id", restaurantId)
+          .neq("status", "discarded")
+          .in("menu_id", ids.slice(i, i + 200));
+        if (after) q = q.gt("id", after);
+        const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
+        if (error) throw menusUnreadable(error);
+        const page = (data ?? []) as Array<Record<string, any>>;
+        for (const l of page) out.set(String(l.menu_id), (out.get(String(l.menu_id)) ?? 0) + 1);
+        if (page.length < PAGE_ROWS) break;
+        after = String(page[page.length - 1].id);
+      }
+    }
+    return out;
+  }
+
+  private toVersion(r: Record<string, any>, names: Map<string, string | null>, live?: Map<string, number>): MenuVersion {
     const who = (id: string | null | undefined) => (id ? { userId: id, name: names.get(id) ?? null } : null);
     const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
     return {
@@ -2312,7 +2345,7 @@ export class MenusService {
         bytes: num(r.source_bytes),
         failure: r.source_failure ?? null,
       },
-      linesExtracted: num(r.lines_extracted),
+      linesExtracted: live?.has(String(r.id)) ? (live.get(String(r.id)) as number) : num(r.lines_extracted),
       readWarnings: Array.isArray(r.read_warnings) ? r.read_warnings.filter((w: unknown) => w && typeof w === "object") : null,
       readState: (r.read_state as MenuReadState | undefined) ?? "done",
       readFailure: r.read_failure ?? null,

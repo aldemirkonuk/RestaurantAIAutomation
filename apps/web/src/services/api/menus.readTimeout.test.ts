@@ -1,9 +1,11 @@
 /**
- * A menu read is one billed call that can take minutes; the shared client
- * gives up at 30 s while the gateway keeps reading, so a retry was billed
- * twice (r102 menu-func-1). The read names its own, longer, timeout.
+ * A scan is read in the background and the page polls for it (#1060-#1064), so
+ * the call that sends the file ends at once and carries no read-length timeout:
+ * the 10-minute stand-in (r102 menu-func-1) is gone (r104 menu-4). Putting it
+ * back would hide a read that is cut off behind a wait of ten minutes.
  */
 import { describe, expect, it, vi } from 'vitest';
+import * as menusModule from './menus';
 
 const post = vi.hoisted(() => vi.fn());
 vi.mock('./client', () => ({
@@ -11,15 +13,14 @@ vi.mock('./client', () => ({
   getActiveRestaurantId: () => 'r-1',
 }));
 
-import { importMenu, MENU_READ_TIMEOUT_MS } from './menus';
+import { importMenu } from './menus';
 
 describe('importMenu', () => {
-  it('outlasts the shared 30 s client timeout, since the gateway reads for minutes', async () => {
+  it('sends the file with no read-length timeout of its own, since the read goes on in the background', async () => {
     post.mockResolvedValue({ data: { menuId: 'm-1' } });
     await importMenu('scan', { imageBase64: 'JVBERi0=' });
-    expect(MENU_READ_TIMEOUT_MS).toBeGreaterThanOrEqual(5 * 60 * 1000);
-    expect(post).toHaveBeenCalledWith('/menus/import', expect.objectContaining({ method: 'scan' }), {
-      timeout: MENU_READ_TIMEOUT_MS,
-    });
+    const config = post.mock.calls.at(-1)?.[2] as Record<string, unknown>;
+    expect(config).not.toHaveProperty('timeout');
+    expect(menusModule).not.toHaveProperty('MENU_READ_TIMEOUT_MS');
   });
 });
