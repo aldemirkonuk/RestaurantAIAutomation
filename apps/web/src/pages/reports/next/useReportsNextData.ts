@@ -313,6 +313,12 @@ export interface ReportsNextData {
   /** The till window is the ONLY period control on the page — see the note. */
   tillDays: number;
   setTillDays: (days: number) => void;
+  /**
+   * Reads, ahead of the click, what a till window would show. Same query key
+   * and read as the cutting itself, so the click renders from cache. A window
+   * already held fresh is not read again.
+   */
+  warmTillWindow: (days: number) => void;
   sheet: SheetState;
   /**
    * Writes the sheet to the reader's preferences and settles when the gateway
@@ -479,16 +485,15 @@ export function useReportsNextData(
       staleTime: REGISTER_FRESH_MS,
     });
 
-  const results = useQueries({
-    queries: active.map((id) => {
+  /** One cutting's read for one till window — shared by the cutting and the warm-up (perf-p6-4). */
+  const readOf = useCallback(
+    (id: AnalysisId, days: number) => {
       const spec = CATALOGUE[id];
       return {
-        queryKey: [ROOT, id, rid, spec.takesWindow ? tillDays : null, spec.takesWindow && tillCompare ? 'prior' : null],
-        enabled: !!rid && !heldBack.has(id),
+        queryKey: [ROOT, id, rid, spec.takesWindow ? days : null, spec.takesWindow && tillCompare ? 'prior' : null],
         staleTime: REGISTER_FRESH_MS,
-        retry: 1,
         queryFn: async () => {
-          const ctx = { days: tillDays, compare: tillCompare };
+          const ctx = { days, compare: tillCompare };
           // The gateway withheld a lens for this reader's role, though the
           // page thought it could read it (a role changed since the session's
           // was read): never handed to `select`, which would read it as empty.
@@ -532,8 +537,29 @@ export function useReportsNextData(
           return spec.select(data);
         },
       };
-    }),
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- readRaw reads only `qc`
+    [rid, tillCompare, qc],
+  );
+
+  const results = useQueries({
+    queries: active.map((id) => ({
+      ...readOf(id, tillDays),
+      enabled: !!rid && !heldBack.has(id),
+      retry: 1,
+    })),
   });
+
+  const warmTillWindow = useCallback(
+    (days: number) => {
+      if (!rid || days === tillDays) return;
+      for (const id of active) {
+        if (!CATALOGUE[id].takesWindow || heldBack.has(id)) continue;
+        void qc.prefetchQuery({ ...readOf(id, days), retry: 1 });
+      }
+    },
+    [rid, tillDays, active, heldBack, qc, readOf],
+  );
 
   /**
    * The register handed out last time, per id, with what it was made from. A
@@ -660,6 +686,7 @@ export function useReportsNextData(
     reading,
     tillDays,
     setTillDays,
+    warmTillWindow,
     sheet,
     saveSheet,
     sheetKnown,

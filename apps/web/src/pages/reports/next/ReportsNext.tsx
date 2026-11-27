@@ -656,6 +656,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         onRemove={handlers[c.id].onRemove}
         onDays={setTillDays}
         onCompare={data.salesKept ? undefined : setTillCompare}
+        onWarmDays={data.warmTillWindow}
       />
     ),
     };

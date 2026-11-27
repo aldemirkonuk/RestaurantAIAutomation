@@ -124,11 +124,14 @@ export function TillWindowPicker({
   onChange,
   compare = false,
   onCompare,
+  onWarm,
 }: {
   days: number;
   onChange: (d: number) => void;
   compare?: boolean;
   onCompare?: (on: boolean) => void;
+  /** Called when a chip is hovered, focused or touched, before any click. */
+  onWarm?: (d: number) => void;
 }) {
   // A year is the window an owner reads a season against (audit G19); the
   // gateway already allows 1–365 house days (`analytics.controller.ts`).
@@ -153,6 +156,9 @@ export function TillWindowPicker({
           className="rp-seg__btn rp-ink rp-focus rp-no-drag"
           aria-pressed={days === d}
           onClick={() => onChange(d)}
+          onPointerEnter={onWarm && (() => onWarm(d))}
+          onFocus={onWarm && (() => onWarm(d))}
+          onTouchStart={onWarm && (() => onWarm(d))}
         >
           {d} days
         </button>
@@ -348,6 +354,8 @@ export interface CuttingProps {
   onControls?: (id: AnalysisId, px: number | null) => void;
   /** Folded to a 72 px strip: the register's honest answer is a sentence (`rp-strip.ts`). */
   strip?: boolean;
+  /** Warms a window's read ahead of the click (perf-p6-4). */
+  onWarmDays?: (d: number) => void;
 }
 
 /** What the router half hands the body: whether the link lays this card flat, and the two moves. */
@@ -376,6 +384,7 @@ function CuttingBody({
   strip = false,
   onFit,
   onControls,
+  onWarmDays,
   flat: flatAsked,
   onOpenFlat: openFlat,
   onCloseFlat: closeFlat,
@@ -537,7 +546,7 @@ function CuttingBody({
       renderBody={(g, combo) => bodyFor(g, true, combo)}
       windowControl={
         spec.takesWindow ? (
-          <TillWindowPicker days={ctx.days} onChange={onDays} compare={ctx.compare} onCompare={compareOn} />
+          <TillWindowPicker days={ctx.days} onChange={onDays} compare={ctx.compare} onCompare={compareOn} onWarm={onWarmDays} />
         ) : undefined
       }
       anchorRef={openerRef}
@@ -583,7 +592,7 @@ function CuttingBody({
         ) : spec.takesWindow || canLayFlat ? (
           <div className="rp-row" style={{ gap: 6 }}>
             {spec.takesWindow && (
-              <TillWindowPicker days={ctx.days} onChange={onDays} compare={ctx.compare} onCompare={compareOn} />
+              <TillWindowPicker days={ctx.days} onChange={onDays} compare={ctx.compare} onCompare={compareOn} onWarm={onWarmDays} />
             )}
             {canLayFlat && (
               <button
