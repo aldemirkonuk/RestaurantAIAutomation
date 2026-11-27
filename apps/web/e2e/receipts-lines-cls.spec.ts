@@ -51,7 +51,8 @@ for (const role of ['owner', 'manager']) {
       for (const n of [1, 3, 5]) {
         test(`${role} ${reduced ? 'reduced' : 'motion'} ${width} px, ${n} line(s)`, async ({ page }) => {
           test.setTimeout(60000)
-          await page.setViewportSize({ width, height: 900 })
+          // Tall on purpose: layout shift only counts what is on screen, and the seal sits below the lines.
+          await page.setViewportSize({ width, height: 2400 })
           await page.emulateMedia({ reducedMotion: reduced ? 'reduce' : 'no-preference' })
           await mockAuthState(page, ['developer'])
           await mock(page, n, role)
@@ -78,7 +79,7 @@ for (const role of ['owner', 'manager']) {
           await page.waitForTimeout(500)
           const arrival = (await clsNow()) - opening
           console.log(`CLS ${role} ${reduced ? 'reduced' : 'motion'} ${width} x${n}: opening ${opening.toFixed(4)} lines-arrive ${arrival.toFixed(4)}`)
-          if (n === 3) expect(arrival).toBeLessThan(0.01)
+          if (n === 3) expect(arrival).toBeLessThan(0.002)
         })
       }
     }
