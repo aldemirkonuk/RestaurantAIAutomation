@@ -46,6 +46,12 @@ describe('idle', () => {
     expect(screen.queryByRole('button', { name: /Take a photo/ })).toBeNull();
   });
 
+  it('keeps the visually hidden file input out of the tab order: the zone is the one tab stop', () => {
+    mount();
+    expect(screen.getByLabelText('Menu to read').getAttribute('tabindex')).toBe('-1');
+    expect(screen.getByRole('button', { name: /Drop a menu/ }).getAttribute('tabindex')).toBe('0');
+  });
+
   it('a picked file is handed over as a replacement', () => {
     const { onFiles } = mount();
     fireEvent.change(screen.getByLabelText('Menu to read'), { target: { files: [pdf] } });

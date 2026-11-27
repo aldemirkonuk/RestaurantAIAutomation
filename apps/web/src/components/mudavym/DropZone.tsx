@@ -134,6 +134,10 @@ export function DropZone({
         accept={accept}
         aria-label={inputLabel}
         disabled={disabled}
+        // The zone is the tab stop (role button, Enter and Space open the
+        // picker). Left in the tab order, this 1 px input was a second,
+        // invisible stop one Tab before the zone (walked 2026-11-18, r60).
+        tabIndex={-1}
         onChange={(e) => {
           const picked = Array.from(e.target.files ?? []);
           onFiles(picked, 'replace');
