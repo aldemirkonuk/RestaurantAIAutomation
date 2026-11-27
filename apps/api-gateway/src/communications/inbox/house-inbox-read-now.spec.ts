@@ -161,6 +161,10 @@ function gmail(ids: string[]) {
   const impl = (async (input: unknown) => {
     const url = String(input);
     urls.push(url);
+    // The delivery-notice question (#2432) finds no notices here; only the main listing is gated.
+    if (url.includes("/messages?") && decodeURIComponent(url).includes("mailer-daemon")) {
+      return { ok: true, status: 200, json: async () => ({ messages: [] }) };
+    }
     if (url.includes("/messages?")) {
       await gate;
       return { ok: true, status: 200, json: async () => ({ messages: ids.map((id) => ({ id, threadId: `thread-${id}` })) }) };
@@ -212,7 +216,7 @@ describe("Check now and the 5-minute run never read one grant at once", () => {
         expect((press as { outcome: string }).outcome).toBe("busy");
       }
       // Gmail was listed once, by the winner.
-      expect(g.urls.filter((u) => u.includes("/messages?"))).toHaveLength(1);
+      expect(g.urls.filter((u) => u.includes("/messages?") && !decodeURIComponent(u).includes("mailer-daemon"))).toHaveLength(1);
     }
   });
 

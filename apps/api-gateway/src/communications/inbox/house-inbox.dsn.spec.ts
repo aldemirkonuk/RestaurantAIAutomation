@@ -70,7 +70,13 @@ function build(rows: Record<string, Row[] | { error: { message: string } }>, fai
     self.then = (resolve: (v: unknown) => unknown) => Promise.resolve(result()).then(resolve);
     return self;
   };
-  const db = { client: { from: (t: string) => chain(t) } } as unknown as DatabaseService;
+  const db = {
+    client: {
+      from: (t: string) => chain(t),
+      // Every read takes its grant's lease first (#2232, DD-r108-47).
+      rpc: async () => ({ data: { claimed: true, token: "lease-1" }, error: null }),
+    },
+  } as unknown as DatabaseService;
   return { db, reads, updates, inserts };
 }
 
