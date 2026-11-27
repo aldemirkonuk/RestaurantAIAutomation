@@ -1,5 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { MenuReadWarning, WineExtractItem } from "../wine-extract-item.interface";
+import { WineExtractItem } from "../wine-extract-item.interface";
 
 // Maps lowercased CSV/Excel header aliases → WineExtractItem field names
 const HEADER_MAP: Record<string, keyof WineExtractItem> = {
@@ -33,33 +33,11 @@ const PRICE_FIELDS = new Set<keyof WineExtractItem>([
   "bottle_price",
 ]);
 
-/** A price cell: its number, `ambiguous` (a comma that may be a thousands mark or a decimal), or null (no number). */
-export function readPrice(raw: string): number | "ambiguous" | null {
-  let s = raw.replace(/[^0-9.,]/g, "");
-  if (s.includes(",") && s.includes(".")) {
-    // Both marks: the LAST one is the decimal mark ("1.250,75" and "1,250.75" are both 1250.75).
-    const dec = s.lastIndexOf(",") > s.lastIndexOf(".") ? "," : ".";
-    const group = dec === "," ? "." : ",";
-    s = s.split(group).join("").replace(dec, ".");
-  } else if (s.includes(",")) {
-    if (/^\d*,\d{1,2}$/.test(s)) s = s.replace(",", "."); // "62,50": a decimal comma
-    else if (/^\d{1,3},\d{3}$/.test(s)) return "ambiguous"; // "1,250": 1250 or 1.25, never a guess (ADR 0067)
-    else s = s.replace(/,/g, ""); // "1,250,000": thousands marks
-  } else if (/^\d{1,3}(\.\d{3}){2,}$/.test(s)) {
-    s = s.replace(/\./g, ""); // "1.250.000": thousands marks
-  }
-  const num = parseFloat(s);
-  return isNaN(num) ? null : num;
-}
-
-/** The apostrophe the menu sheet puts before a cell a spreadsheet would open as a formula. */
-const FORMULA_ESCAPE = /^'(?=[=+\-@\t\r])/;
-
 @Injectable()
 export class CsvParserService {
   private readonly logger = new Logger(CsvParserService.name);
 
-  parse(csvContent: string, warnings?: MenuReadWarning[]): WineExtractItem[] {
+  parse(csvContent: string): WineExtractItem[] {
     const lines = csvContent.split(/\r?\n/).filter((l) => l.trim().length > 0);
     if (lines.length < 2) return [];
 
@@ -72,7 +50,7 @@ export class CsvParserService {
 
     for (let i = 1; i < lines.length; i++) {
       const cols = this.parseLine(lines[i]);
-      const item = this.buildItem(fieldMap, cols, warnings);
+      const item = this.buildItem(fieldMap, cols);
       if (item) {
         item.raw_text = lines[i].trim();
         items.push(item);
@@ -89,7 +67,7 @@ export class CsvParserService {
    * the resulting garbage into the CSV line-splitter, silently producing
    * zero or nonsense items.
    */
-  async parseExcel(base64: string, warnings?: MenuReadWarning[]): Promise<WineExtractItem[]> {
+  async parseExcel(base64: string): Promise<WineExtractItem[]> {
     const ExcelJS = await import("exceljs");
     const buffer = Buffer.from(base64, "base64");
     const workbook = new ExcelJS.Workbook();
@@ -122,7 +100,7 @@ export class CsvParserService {
       row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
         cols[colNumber - 1] = this.cellToString(cell.value);
       });
-      const item = this.buildItem(fieldMap, cols, warnings);
+      const item = this.buildItem(fieldMap, cols);
       if (item) items.push(item);
     });
 
@@ -141,10 +119,8 @@ export class CsvParserService {
   private buildItem(
     fieldMap: Array<keyof WineExtractItem | null>,
     cols: string[],
-    warnings?: MenuReadWarning[],
   ): WineExtractItem | null {
     const item: Partial<WineExtractItem> = {};
-    let ambiguous = false;
 
     fieldMap.forEach((field, colIdx) => {
       if (!field) return;
@@ -152,19 +128,13 @@ export class CsvParserService {
       if (!raw) return;
 
       if (PRICE_FIELDS.has(field)) {
-        const num = readPrice(raw);
-        if (num === "ambiguous") ambiguous = true;
-        else if (num !== null) (item as any)[field] = num;
+        const num = parseFloat(raw.replace(/[^0-9.]/g, ""));
+        if (!isNaN(num)) (item as any)[field] = num;
       } else {
-        (item as any)[field] = raw.replace(FORMULA_ESCAPE, "").trim();
+        (item as any)[field] = raw;
       }
     });
 
-    // A price that could be read two ways is not guessed: the line is refused, once said per file.
-    if (ambiguous) {
-      if (warnings && !warnings.some((w) => w.kind === "ambiguous_price")) warnings.push({ kind: "ambiguous_price", pages: null });
-      return null;
-    }
     if (!item.name) return null;
     return item as WineExtractItem;
   }
@@ -175,16 +145,9 @@ export class CsvParserService {
     let current = "";
     let inQuotes = false;
 
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
+    for (const char of line) {
       if (char === '"') {
-        // "" inside a quoted field is one literal quote (RFC 4180), as the menu sheet writes it.
-        if (inQuotes && line[i + 1] === '"') {
-          current += '"';
-          i++;
-        } else {
-          inQuotes = !inQuotes;
-        }
+        inQuotes = !inQuotes;
       } else if (char === "," && !inQuotes) {
         results.push(current);
         current = "";

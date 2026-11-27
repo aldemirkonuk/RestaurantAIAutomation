@@ -90,7 +90,7 @@ export interface MenuImportResult {
  * `pages` is 1-based, or null when no narrower range is known.
  */
 export interface MenuReadWarning {
-  kind: 'truncated' | 'chunk_failed' | 'page_cap' | 'unreadable_reply' | 'ambiguous_price' | string
+  kind: 'truncated' | 'chunk_failed' | 'page_cap' | 'unreadable_reply' | string
   pages: { first: number; last: number } | null
 }
 
@@ -118,8 +118,6 @@ export function readWarningSentence(w: MenuReadWarning): string {
       return pages
         ? `${pages} came back in a form that could not be read; send ${them} again.`
         : 'The reading came back in a form that could not be read; send the file again.'
-    case 'ambiguous_price':
-      return 'A price like 1,250 could mean 1250 or 1.25, so that line was not read; write the price with a dot (1250 or 1.25) and send it again.'
     default:
       return 'Part of this file may not have been read; send it again.'
   }

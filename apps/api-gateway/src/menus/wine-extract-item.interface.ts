@@ -56,11 +56,10 @@ export interface WineExtractItem {
  * `chunk_failed`: a page range errored;
  * `page_cap`: pages past the 120-page cap were not sent (`pages` = the dropped range);
  * `unreadable_reply`: the model answered with something that is not a list of lines.
- * `ambiguous_price`: a sheet line whose price ("1,250") could be read two ways was refused, not guessed.
  * `pages` (1-based) is null when no narrower range is known. Stored on
  * `restaurant_menus.read_warnings`.
  */
 export interface MenuReadWarning {
-  kind: "truncated" | "chunk_failed" | "page_cap" | "unreadable_reply" | "ambiguous_price";
+  kind: "truncated" | "chunk_failed" | "page_cap" | "unreadable_reply";
   pages: { first: number; last: number } | null;
 }

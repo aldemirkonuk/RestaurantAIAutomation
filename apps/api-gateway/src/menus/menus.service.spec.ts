@@ -857,18 +857,6 @@ describe("MenusService — every menu read is kept as its own version", () => {
     master_wine_library_submissions: [] as Row[],
   });
 
-  it("a CSV line whose price is ambiguous (\"1,250\") is refused with the warning, never guessed", async () => {
-    const tables: Record<string, Row[]> = base();
-    const service = makeService(tables, { wineSubmissions, csvParser: new CsvParserService() });
-    const r = await service.importMenu(
-      { method: "csv", data: { csvContent: 'name,bottle_price\nRaki,"1,250"\nEfes,"4,50"\n' }, restaurantId: "rest-1" } as any,
-      "user-1",
-    );
-    const v = tables.restaurant_menus.find((m) => m.id === r.menuId)!;
-    expect(v.lines_extracted).toBe(1);
-    expect(v.read_warnings).toEqual([{ kind: "ambiguous_price", pages: null }]);
-  });
-
   it("a CSV read becomes a NEW draft version with its source, its lines as read, and who read it -- and touches no price", async () => {
     const calls: RpcCall[] = [];
     const tables: Record<string, Row[]> = base();

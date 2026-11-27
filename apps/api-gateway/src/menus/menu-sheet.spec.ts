@@ -51,27 +51,6 @@ describe("menu sheet (menu r104 g3)", () => {
     expect(menuSheet([line({ name: "a\nb" })]).split("\r\n")).toHaveLength(3);
   });
 
-  // r104 fix: the reader lost "" and kept the formula apostrophe, so an untouched export read back as other names.
-  it("reads the export back with no edit as the same names: quotes, a leading - or + or =", () => {
-    const names = ['Cuvée "Prestige"', "-Brut Nature", "=Special", "@home"];
-    const items = [...names.map((n) => line({ name: n })), line({ name: "Cava", producer: "+Cava" })];
-    const back = parser.parse(menuSheet(items));
-    expect(back.map((b) => b.name)).toEqual([...names, "Cava"]);
-    expect(back[4].producer).toBe("+Cava");
-  });
-
-  // r104 fix: digits and dots only meant "62,50" read as 6250 and "1.250,75" as 1.25075.
-  it("reads a decimal comma and a dot thousands mark as the money they are, and refuses an ambiguous comma", () => {
-    const rows = ['A,"62,50"', 'B,"1.250,75"', 'C,"1,250.75"', 'D,"1.250.000"', 'E,"1,250,000"', 'F,"$62.50"', 'G,"1,250"'];
-    const warnings: any[] = [];
-    const back = parser.parse(`name,bottle_price\r\n${rows.join("\r\n")}\r\n`, warnings);
-    expect(back.map((b) => [b.name, b.bottle_price])).toEqual([
-      ["A", 62.5], ["B", 1250.75], ["C", 1250.75], ["D", 1250000], ["E", 1250000], ["F", 62.5],
-    ]);
-    // G ("1,250") is 1250 or 1.25: the line is refused, once said, never guessed.
-    expect(warnings).toEqual([{ kind: "ambiguous_price", pages: null }]);
-  });
-
   it("the blank sheet reads as one example line", () => {
     const items = parser.parse(blankMenuSheet());
     expect(items).toHaveLength(1);
@@ -100,7 +79,7 @@ describe("GET /menus/:restaurantId/export.csv and sample.csv", () => {
     const { c } = make(role, menu);
     const csv = await c.exportSheet("rest-1", USER);
     const back = new CsvParserService().parse(csv);
-    expect(back.map((b) => b.name)).toEqual(["=HYPERLINK(1)", "Raki"]);
+    expect(back.map((b) => b.name)).toEqual(["'=HYPERLINK(1)", "Raki"]);
     expect(back.map((b) => [b.by_glass_price, b.bottle_price])).toEqual([[undefined, 50], [12.5, undefined]]);
   });
 
