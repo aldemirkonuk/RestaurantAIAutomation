@@ -50,6 +50,18 @@ describe('planBatch', () => {
     expect(p.spareMl).toBe(67);
   });
 
+  it('a tight bottle: halves floor, so 3 pours of 33 ml in 99 ml print 49 + 49, 1 ml spare (rounding would print 100)', () => {
+    const p = plan([ml('X', 16.5, 'ml', 165), ml('Y', 16.5, 'ml', 165)], 0, 99);
+    expect(p.serves).toBe(3);
+    expect(p.parts.map((x) => x.ml)).toEqual([49, 49]);
+    expect(p.spareMl).toBe(1);
+  });
+
+  it('the water floors too: 10 ml at 5% in 32 ml is 3 serves, 30 ml and 1 ml of water, 1 ml spare', () => {
+    const p = plan([ml('Z', 10)], 5, 32);
+    expect([p.serves, p.waterMl, p.spareMl]).toEqual([3, 1, 1]);
+  });
+
   it('says when nothing is batched by volume, and when one pour is more than the bottle', () => {
     expect(planBatch([ml('Soda', 100)], 1, new Set(['Soda']), 0, 700).kind).toBe('nothing');
     expect(planBatch([ml('Big', 800)], 1, none, 0, 700)).toMatchObject({ kind: 'too-big', pourMl: 800 });
