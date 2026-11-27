@@ -5,6 +5,7 @@
  * stays whole for everything that reads it (select-all, the counts).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useLayoutEffect } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import InventoryTable, { GROUP_PX, ROW_PX, type InventoryTableProps } from './InventoryTable';
 import { type InvRow } from './useInventoryNextData';
@@ -145,6 +146,32 @@ describe('the table draws only the rows near the screen', () => {
     }
   });
 
+  it('the scroll lands before the layout phase ends, so it is before the first paint (a passive effect fails this)', () => {
+    const log: string[] = [];
+    const was = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element) {
+      log.push(`scroll:${this.id}`);
+    };
+    function Probe() {
+      useLayoutEffect(() => {
+        log.push('layout-end');
+      }, []);
+      return null;
+    }
+    try {
+      render(
+        <>
+          <InventoryTable {...base} rows={many()} openId="i1100" />
+          <Probe />
+        </>,
+      );
+      expect(log.indexOf('scroll:iv-row-i1100')).toBeGreaterThanOrEqual(0);
+      expect(log.indexOf('scroll:iv-row-i1100')).toBeLessThan(log.indexOf('layout-end'));
+    } finally {
+      Element.prototype.scrollIntoView = was;
+    }
+  });
+
   it('a good opened from outside the window is brought in', async () => {
     const view = draw(many());
     expect(screen.queryByTestId('inv-row-i900')).toBeNull();
@@ -207,6 +234,31 @@ describe("the phone's cards draw only the cards near the screen", () => {
   it('a good opened by a link is drawn at the first paint', () => {
     draw(many(), { openId: 'i1150' });
     expect(screen.getByTestId('inv-row-i1150')).toBeTruthy();
+  });
+
+  it('a card opened by a link puts the page on it once, before the first paint, at once', () => {
+    const log: string[] = [];
+    const was = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element, o?: boolean | ScrollIntoViewOptions) {
+      log.push(`scroll:${this.getAttribute('data-testid')}:${JSON.stringify(o)}`);
+    };
+    function Probe() {
+      useLayoutEffect(() => {
+        log.push('layout-end');
+      }, []);
+      return null;
+    }
+    try {
+      render(
+        <>
+          <InventoryTable {...base} rows={many()} openId="i1100" />
+          <Probe />
+        </>,
+      );
+      expect(log).toEqual(['scroll:inv-row-i1100:{"block":"center","behavior":"instant"}', 'layout-end']);
+    } finally {
+      Element.prototype.scrollIntoView = was;
+    }
   });
 
   it('select-all still reads the whole list', () => {
