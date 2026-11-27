@@ -36,6 +36,7 @@ import {
   CostedLine,
   CostTaxBasis,
   HouseTax,
+  HouseTaxBasis,
   LandedCostHeader,
   LandedCostLineInput,
   LandedCostResult,
@@ -45,18 +46,39 @@ import {
 import { snapshotLineKinds } from "./from-document-rows";
 import { LotUnitCost } from "./lot-unit-cost";
 
+/** The two `restaurants` columns a lot cost reads (ADR 0359 C2). */
+export interface HouseTaxRow {
+  tax_basis?: string | null;
+  reclaims_input_tax?: boolean | null;
+}
+
+const HOUSE_TAX_BASES: readonly HouseTaxBasis[] = [
+  "unset",
+  "prices_include_tax",
+  "prices_exclude_tax",
+  "not_vat_charging",
+];
+
 /**
- * The house's tax answers for a lot cost, until they exist.
+ * The house's tax answers for a lot cost (ADR 0359 C2, lane 3.5a).
  *
- * ADR 0359 C2 (Proposed in #784) adds `restaurants.tax_basis` and
- * `restaurants.reclaims_input_tax`; cost-math proposal lane 3.5a builds them.
- * No migration on `main` has either column, and no invoice line carries its
- * price's tax basis or rate. So the house is `unset` and every lot is costed as
- * printed, stamped null, and says so. This is the ONE place to change when
- * lane 3.5a lands: read the two columns here.
+ * Read from `restaurants.tax_basis` and `restaurants.reclaims_input_tax`
+ * (migration 20271022140500). A house that has not answered, or a row this
+ * gateway cannot read as one of the four answers, is `unset`: every lot is
+ * then costed as printed, stamped null, and says so, exactly as before the
+ * columns existed. A reclaim answer is never read without a basis beside it
+ * (`houseReclaims`), and never `true` for a house that charges no VAT.
+ * A read that FAILED is not `unset`: the caller refuses on it (500).
  */
-export function houseTaxForLotCost(): HouseTax {
-  return { tax_basis: "unset", reclaims_input_tax: null };
+export function houseTaxForLotCost(row?: HouseTaxRow | null): HouseTax {
+  const basis = HOUSE_TAX_BASES.find((b) => b === row?.tax_basis) ?? "unset";
+  if (basis === "unset") return { tax_basis: "unset", reclaims_input_tax: null };
+  const reclaims =
+    typeof row?.reclaims_input_tax === "boolean" ? row.reclaims_input_tax : null;
+  return {
+    tax_basis: basis,
+    reclaims_input_tax: basis === "not_vat_charging" ? false : reclaims,
+  };
 }
 
 /** One `procurement_documents` row: its money columns and its line kinds. */
@@ -479,8 +501,10 @@ export function landDelivery(input: {
   booked: Map<string, number>;
   /** `restaurants.currency`; null when the house has not named it. */
   houseCurrency?: string | null;
+  /** `restaurants.tax_basis` / `reclaims_input_tax`; absent = unset. */
+  houseTax?: HouseTax;
 }): DeliveryLandedCost {
-  const house = houseTaxForLotCost();
+  const house = input.houseTax ?? houseTaxForLotCost();
   const foreign = new Set<string>();
   const moneyOf = new Map<string, Set<string>>();
   const byItem = new Map<string, LandedPrice>();
