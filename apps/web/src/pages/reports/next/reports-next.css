@@ -263,6 +263,14 @@
   width: 100%;
   overflow: hidden;
 }
+/* The same box while the drawing module loads: a held block the drawing replaces. Still, so reduced motion has nothing to stop. */
+.rp-plot-outline {
+  flex: 1 1 auto;
+  min-height: 130px;
+  width: 100%;
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+}
 .rp-plot > .recharts-responsive-container {
   position: absolute;
   inset: 0;
