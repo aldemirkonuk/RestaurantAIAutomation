@@ -8,9 +8,14 @@
  *
  * The package lands in serial parts; `.planning/STATE.md` records what has
  * landed and what follows. Exported so far: table freshness,
- * the waiter score, the reassignment proposal and coverage attribution.
+ * the waiter score, the reassignment proposal, coverage attribution,
+ * response time, the Food-up brief, table adjacency and the short-visit rules.
  */
 export * from "./freshness";
 export * from "./waiter-score";
 export * from "./reassignment";
 export * from "./attribution";
+export * from "./response-time";
+export * from "./meal-alert";
+export * from "./adjacency";
+export * from "./visit-leave";
