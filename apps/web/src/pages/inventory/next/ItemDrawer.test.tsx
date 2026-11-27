@@ -3,7 +3,7 @@
  * said as failed and never 0, no money for staff, a food in its own unit.
  * The page wiring (a row opens it, Back closes it) is in InventoryNext.test.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { InvRow } from './useInventoryNextData';
