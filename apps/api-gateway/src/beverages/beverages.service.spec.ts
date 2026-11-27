@@ -987,3 +987,57 @@ describe("BeveragesService.readRowRecord — the menu book reads the CURRENT men
     expect(menu?.reason).toMatch(/statement timeout/);
   });
 });
+
+describe("BeveragesService.readCocktailIngredients — owner row and lines in one wave", () => {
+  const LINES = [
+    { id: "l1", free_text: "lime", beverage_id: null, wine_id: null, quantity: 1, unit: "oz", sort_order: 0 },
+  ];
+
+  async function build(owner: unknown, ownerError: unknown = null) {
+    const reads: string[] = [];
+    let pending = 0;
+    let overlapped = false;
+    const db = {
+      getClient: () => ({
+        from: (table: string) => {
+          reads.push(table);
+          pending += 1;
+          if (pending > 1) overlapped = true;
+          const self: Record<string, unknown> = {};
+          for (const m of ["select", "eq", "is", "order"]) self[m] = jest.fn(() => self);
+          const settle = (value: unknown) =>
+            new Promise((resolve) => setTimeout(() => { pending -= 1; resolve(value); }, 0));
+          self.maybeSingle = jest.fn(() => settle({ data: owner, error: ownerError }));
+          self.then = (res: (v: unknown) => unknown) =>
+            settle({ data: LINES, error: null }).then(res);
+          return self;
+        },
+      }),
+    };
+    const moduleRef = await Test.createTestingModule({
+      providers: [BeveragesService, { provide: DatabaseService, useValue: db }],
+    }).compile();
+    return { service: moduleRef.get(BeveragesService), reads, wave: () => overlapped };
+  }
+
+  it("asks for the owner row and the lines in the same wave", async () => {
+    const { service, wave } = await build({ id: "c1" });
+    const out = await service.readCocktailIngredients(RID, "c1");
+    expect(wave()).toBe(true);
+    expect(out.rows).toEqual(LINES);
+  });
+
+  it("returns no lines and throws for a cocktail of another house or a deleted one", async () => {
+    const { service } = await build(null);
+    await expect(service.readCocktailIngredients(RID, "foreign")).rejects.toThrow(
+      "No live cocktail of this house has that id.",
+    );
+  });
+
+  it("reports a failed owner read as that read's own error, not as missing", async () => {
+    const { service } = await build(null, { message: "boom", code: "XX000" });
+    await expect(service.readCocktailIngredients(RID, "c1")).rejects.not.toThrow(
+      "No live cocktail of this house has that id.",
+    );
+  });
+});
