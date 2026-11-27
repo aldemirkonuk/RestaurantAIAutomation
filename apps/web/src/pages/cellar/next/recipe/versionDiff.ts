@@ -12,8 +12,9 @@
  *      a switch between counted and not counted, so a line that gained a good
  *      (or lost it) reads as changed, never as one removed and one added;
  *   3. a stocked line left over pairs with a stocked line left over on the
- *      other side, in position order: a good swapped for another reads as
- *      changed, never as one removed and one added.
+ *      other side of the same amount, in position order: a good swapped for
+ *      another reads as changed, never as one removed and one added. Leftovers
+ *      of different amounts are not a swap; they stay removed and added.
  * Whatever is still alone is added (only in the current) or taken out (only
  * in the earlier one). Serves, glass, garnish and method are said too.
  *
@@ -59,9 +60,16 @@ const amountOf = (l: Line) => amountWithUnit(Number(l.qtyEntered), l.unitCode as
 const usableOf = (l: Line) => (l.role === 'stocked' && l.usablePct != null && l.usablePct < 100 ? l.usablePct : null);
 const usableWords = (u: number | null) => (u == null ? 'all of it' : `${u}%`);
 
+/** A change of role in its own words: made in the house, from the shelf, not counted, or counted. */
+function roleWords(was: Line, now: Line): string {
+  if (now.role === 'untracked') return 'now not counted';
+  if (now.role === 'made') return 'now made in the house';
+  return was.role === 'untracked' ? 'now counted' : 'now from the shelf';
+}
+
 /** "Gin 50 ml, now 45 ml"; "Plymouth gin 50 ml, now Tanqueray gin"; null when nothing differs. */
 function changeWords(was: Line, now: Line): string | null {
-  // A change of role is said as "now counted" or "now not counted"; the name beside it is the line's own, not a swap.
+  // A change of role is said in its own words (roleWords); the name beside it is the line's own, not a swap.
   const swapped = was.role === now.role && (keyOf(was) !== keyOf(now) || foldName(nameOf(was)) !== foldName(nameOf(now)));
   const moved = amountOf(was) !== amountOf(now);
   const parts: string[] = [];
@@ -72,7 +80,7 @@ function changeWords(was: Line, now: Line): string | null {
   const u1 = usableOf(now);
   if (u0 !== u1) parts.push(`${parts.length ? '' : `${nameOf(now)}: `}usable share ${usableWords(u0)}, now ${usableWords(u1)}`);
   if (was.role !== now.role) {
-    parts.push(`${parts.length ? '' : `${nameOf(now)}: `}${now.role === 'untracked' ? 'now not counted' : 'now counted'}`);
+    parts.push(`${parts.length ? '' : `${nameOf(now)}: `}${roleWords(was, now)}`);
   }
   return parts.length ? parts.join('; ') : null;
 }
@@ -94,10 +102,11 @@ export function diffLines(was: Line[], now: Line[]): LineDiff[] {
     const j = b.findIndex((m, k) => !taken.has(k) && foldName(m.label) === foldName(l.label));
     if (j >= 0) (pairOf.set(i, j), taken.add(j));
   });
-  // 3. a stocked line left over meets one left over on the other side: a swap.
+  // 3. a stocked line left over meets one left over on the other side with the same amount: a swap keeps its amount.
+  //    A removal and an addition of different amounts stay a removal and an addition: no swap is said that did not happen.
   a.forEach((l, i) => {
     if (pairOf.has(i) || l.role !== 'stocked') return;
-    const j = b.findIndex((m, k) => !taken.has(k) && m.role === 'stocked');
+    const j = b.findIndex((m, k) => !taken.has(k) && m.role === 'stocked' && amountOf(m) === amountOf(l));
     if (j >= 0) (pairOf.set(i, j), taken.add(j));
   });
   const out: LineDiff[] = a.map((l, i) => {
@@ -136,9 +145,11 @@ export function costDifference(
   say: (n: number) => string,
   unit: 'serve' | 'plate',
 ): string {
-  const exact = (c: RecipeCost | null | undefined) => (c?.complete ? (c.perServeExact ?? c.perServe) : null);
-  const p = exact(was);
-  const q = exact(now);
+  // The figures beside this sentence are the rounded per-serve costs (the version's "Would cost" and the cost card),
+  // so the difference is theirs: taking the unrounded ones can print 0.11 between 2.55 and 2.67.
+  const shown = (c: RecipeCost | null | undefined) => (c?.complete ? c.perServe : null);
+  const p = shown(was);
+  const q = shown(now);
   if (p == null || q == null) return NO_COST_DIFFERENCE;
   const d = Math.round((p - q) * 100) / 100;
   if (d === 0) return `The same a ${unit} as the current, at today's prices.`;
