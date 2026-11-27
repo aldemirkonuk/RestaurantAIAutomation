@@ -168,6 +168,18 @@ describe("the price-signal costs (r104 g3, #2059) are withheld from staff, kept 
     expect(moneyLeft(row)).toEqual([]);
   });
 
+  it("the route interceptor withholds both settled costs from staff and keeps the flags (the flag choice of #2074 is pinned)", async () => {
+    const ctx = (role: string) => ({ switchToHttp: () => ({ getRequest: () => ({ user: { role } }) }) }) as never;
+    const answer = (role: string) =>
+      lastValueFrom(new WithholdCostFromStaffInterceptor().intercept(ctx(role), { handle: () => of([signalRow()]) }));
+    const [staff] = (await answer("staff")) as Array<Record<string, unknown>>;
+    expect(staff).toMatchObject({ lastSettledCost: null, previousSettledCost: null, settledCostsReadable: true, settledCostsCapped: false });
+    for (const role of ["owner", "manager"]) {
+      const [row] = (await answer(role)) as Array<Record<string, unknown>>;
+      expect(row).toMatchObject({ lastSettledCost: 11.2, previousSettledCost: 10, settledCostsReadable: true });
+    }
+  });
+
   it("the owner and a manager keep both settled costs", () => {
     for (const role of ["owner", "manager"]) {
       const [row] = inventoryForRole([signalRow()], role);
