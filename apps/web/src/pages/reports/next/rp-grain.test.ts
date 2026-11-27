@@ -46,6 +46,31 @@ describe('a week of the till', () => {
     expect(b.full).toBe('week of Nov 2');
   });
 
+  it('[REVERT-FAILS] a week with unpriced checks averages over the priced ones, as the day line does', () => {
+    const [b] = bucketTill(
+      week,
+      [
+        { date: '2026-11-02', revenue: 100, checks: 3, pricedChecks: 1 },
+        { date: '2026-11-05', revenue: 900, checks: 3, pricedChecks: 3 },
+      ],
+      'week',
+    );
+    expect(b.checks).toBe(6);
+    expect(b.avg).toBe(250); // 1000 over the 4 priced checks, not 1000 over all 6
+  });
+
+  it('an older gateway that does not say which were priced divides by every check', () => {
+    const [b] = bucketTill(
+      week,
+      [
+        { date: '2026-11-02', revenue: 100, checks: 3, pricedChecks: 1 },
+        { date: '2026-11-05', revenue: 900, checks: 3 },
+      ],
+      'week',
+    );
+    expect(b.avg).toBeCloseTo(1000 / 6);
+  });
+
   it('[REVERT-FAILS] a day the till could not state draws no bar, and says so', () => {
     const [b] = bucketTill(
       week,
