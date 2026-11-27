@@ -14,12 +14,14 @@ import {
   comparableUnits,
   isMass,
   isVolumeItemUnit,
+  isVolumeLineUnit,
   massFactor,
   normalizeUom,
   toBottles,
   Uom,
   UOMS,
   volumeFactor,
+  withStatedUnit,
 } from "../documents/document-types";
 
 /**
@@ -72,7 +74,7 @@ function asNumber(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-const words = (u: Uom) => u.replace("_", " ");
+const words = (u: Uom) => (u === "floz" ? "fl oz" : u.replace("_", " "));
 const refuse = (reason: string): LotUnitCost => ({ ok: false, kind: "refused", reason });
 function printedUnit(p: unknown, key: string): string | null {
   const v = p && typeof p === "object" ? (p as Record<string, unknown>)[key] : null;
@@ -90,14 +92,17 @@ export function perBottleLotCost(line: LotCostLine, item?: LotCostItem): LotUnit
   // Skipped before this existed, and still: not a price anybody agreed.
   if (price == null || price <= 0) return { ok: false, kind: "no_price" };
   // `printed` lets a re-verify spot a lot booked AT the printed price (QA 9a).
-  return { ...resolve(line, price, item), printed: toLotCostPrecision(price) } as LotUnitCost;
+  // R4: a line stored as `each` whose paper printed `LB` is costed per pound.
+  return { ...resolve(withStatedUnit(line), price, item), printed: toLotCostPrecision(price) } as LotUnitCost;
 }
 
 function resolve(line: LotCostLine, price: number, item?: LotCostItem): LotUnitCost {
   // r21: an item kept in ml/l is costed per one of it; litres book only there.
   if (item?.uom && isVolumeItemUnit(String(item.uom))) return byVolume(line, price, String(item.uom));
-  if (item?.uom && (line.uom === "liter" || line.price_base_uom === "liter"))
-    return refuse(`the invoice line is measured in liters, but the item it books into is kept in ${item.uom}s, and a liter is not a number of ${item.uom}s`);
+  if (item?.uom && (isVolumeLineUnit(line.uom) || isVolumeLineUnit(line.price_base_uom))) {
+    const v = words((isVolumeLineUnit(line.uom) ? line.uom : line.price_base_uom) as Uom);
+    return refuse(`the invoice line is measured in ${v}, but the item it books into is kept in ${item.uom}s, and a ${v} is not a number of ${item.uom}s`);
+  }
   return byContainer(line, price, item);
 }
 
@@ -113,18 +118,21 @@ function byVolume(line: LotCostLine, price: number, kept: string): LotUnitCost {
   const baseUom = line.price_base_uom == null || line.price_base_uom === "" ? uom : asUom(line.price_base_uom);
   if (isMass(uom) || isMass(baseUom))
     return refuse(`the invoice line is weighed in ${isMass(uom) ? uom : baseUom}, but the item it books into is kept in ${kept}, and a weight is not a volume`);
-  if (uom === "liter" || baseUom === "liter") {
-    if (uom !== "liter" || baseUom !== "liter")
-      return refuse(`the invoice line is counted in ${uom ? words(uom) : "an unknown unit"}s but priced per ${baseUom ? words(baseUom) : "an unknown unit"}, and a liter is not a number of bottles`);
+  // R4: a gallon or a fluid ounce is measured as a liter is, and any two of
+  // them convert (`64 floz @ 0.25 / floz`, `2 gal @ 18 / gal`).
+  if (isVolumeLineUnit(uom) || isVolumeLineUnit(baseUom)) {
+    if (!isVolumeLineUnit(uom) || !isVolumeLineUnit(baseUom))
+      return refuse(`the invoice line is counted in ${uom ? words(uom) : "an unknown unit"}s but priced per ${baseUom ? words(baseUom) : "an unknown unit"}, and a ${words((isVolumeLineUnit(uom) ? uom : baseUom) as Uom)} is not a number of bottles`);
     if (base == null || base <= 0)
-      return refuse(`the invoice line prints its price for ${JSON.stringify(rawBase)} liters, which cannot be divided by`);
-    const toItem = volumeFactor("liter", kept) as number;
+      return refuse(`the invoice line prints its price for ${JSON.stringify(rawBase)} ${words(baseUom)}s, which cannot be divided by`);
+    const toItem = volumeFactor(baseUom, kept) as number;
+    const countedToItem = volumeFactor(uom, kept) as number;
     const unitsPriced = base * toItem;
     const perUnit = price / unitsPriced;
     const counted = asNumber(line.qty_bottles);
-    const checked = check(line, perUnit, counted == null ? null : Math.abs(counted) * toItem, kept, `${counted} liter`);
+    const checked = check(line, perUnit, counted == null ? null : Math.abs(counted) * countedToItem, kept, `${counted} ${words(uom)}`);
     if (checked) return checked;
-    const priced = `${base === 1 ? "" : `${base} `}liter${base === 1 ? "" : "s"}`;
+    const priced = `${base === 1 ? "" : `${base} `}${words(baseUom)}${base === 1 || baseUom === "floz" ? "" : "s"}`;
     return inItem(price, priced, unitsPriced, perUnit, kept);
   }
 
@@ -213,7 +221,7 @@ function byContainer(line: LotCostLine, price: number, item?: LotCostItem): LotU
     return {
       ok: false,
       kind: "refused",
-      reason: `the invoice line is counted in ${words(uom)}s but priced per ${words(baseUom)}, and a ${words(uom === "keg" || uom === "liter" ? uom : baseUom)} is not a number of bottles`,
+      reason: `the invoice line is counted in ${words(uom)}s but priced per ${words(baseUom)}, and a ${words(uom === "keg" || isVolumeLineUnit(uom) ? uom : baseUom)} is not a number of bottles`,
     };
 
   // Only a price per a packed unit needs the pack.
@@ -260,7 +268,7 @@ function byContainer(line: LotCostLine, price: number, item?: LotCostItem): LotU
     return refuse(`the invoice line counts ${words(uom)}s that come ${pack} to a case and prints ${price} for one, with no line total that settles it, so whether ${price} is a bottle's price or a case's is not known`);
 
   const priced = MULTIPLYING.has(baseUom) ? `${per} of ${pack}` : per;
-  const unit = baseUom === "keg" || baseUom === "liter" ? baseUom : "bottle";
+  const unit = baseUom === "keg" || isVolumeLineUnit(baseUom) ? baseUom : "bottle";
   return { ok: true, perBottle, unitCost, basis: basisOf(price, priced, bottlesPriced, perBottle, unit), bottles: bottlesPriced, priced, per: unit };
 }
 

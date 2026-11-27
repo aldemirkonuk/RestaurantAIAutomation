@@ -189,6 +189,25 @@ const CHARGE_WORDS: Record<(typeof CHARGE_FIELDS)[number], string> = {
 };
 
 const m = (n: number): string => n.toFixed(2);
+/**
+ * A cost per ONE unit, said in words (r39 walk-w2 I1). Two places made a gram
+ * of flour read "0.01 a gram" and a millilitre of oil "0.00 a milliliter".
+ * The rule, for every per-unit sentence: at least two places, enough places
+ * for three significant figures, never more than the six a lot keeps
+ * (`unit_cost numeric(14,6)`), trailing zeros dropped down to two places. A
+ * bottle at 18.5 still reads "18.50"; 0.035 a gram reads "0.035". A cost the
+ * six places cannot hold reads "under 0.000001", never as nothing. Money
+ * totals stay at `m`.
+ */
+export function perUnitCost(n: number): string {
+  if (!Number.isFinite(n)) return String(n);
+  const a = Math.abs(n);
+  if (a === 0) return "0.00";
+  const places = Math.min(6, Math.max(2, 2 - Math.floor(Math.log10(a))));
+  const t = n.toFixed(places);
+  if (Number(t) === 0) return `${n < 0 ? "-" : ""}under 0.000001`;
+  return t.replace(/(\.\d\d\d*?)0+$/, "$1");
+}
 const isNum = (n: unknown): n is number =>
   typeof n === "number" && Number.isFinite(n);
 const plural = (n: number, word: string): string =>
@@ -214,6 +233,16 @@ export function unitNoun(unit: string | null | undefined): string {
       return "keg";
     case "liter":
       return "liter";
+    // A volume item is costed per one of ITS unit (r21), and a US volume
+    // line per gallon or fluid ounce (r36 R4); none of them is a bottle.
+    case "ml":
+      return "milliliter";
+    case "l":
+      return "liter";
+    case "gal":
+      return "gallon";
+    case "floz":
+      return "fluid ounce";
     default:
       return "bottle";
   }
@@ -707,7 +736,7 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
     said.push(
       perBottle == null
         ? `No ${u} was accepted, so there is no cost per ${u}.`
-        : `Landed cost ${m(perBottle)} a ${u}.`,
+        : `Landed cost ${perUnitCost(perBottle)} a ${u}.`,
     );
 
     return {
@@ -768,7 +797,7 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
       basis:
         perBottle == null
           ? `No ${u} of this item was accepted from this paper.`
-          : `${plural(bottles, u)} accepted across ${plural(costed.length, "line")}, landed at ${m(value)}: ${m(perBottle)} a ${u}.`,
+          : `${plural(bottles, u)} accepted across ${plural(costed.length, "line")}, landed at ${m(value)}: ${perUnitCost(perBottle)} a ${u}.`,
     };
   });
 
