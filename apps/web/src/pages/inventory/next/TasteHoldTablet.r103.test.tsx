@@ -2,7 +2,8 @@
  * r103: the held foot slot matches the answered foot line at every width it is shown. The answered
  * line's button is 44 px under `(max-width: 767px), (pointer: coarse)` (taste-card.css), so a 23 px
  * hold under-sized every tablet and the 641-767 px one-column drawer. jsdom has no layout: the rules
- * are read from the stylesheet, including their order (the collapsing rule must still come last).
+ * are read from the stylesheet, including their order. No assertion names a collapsing (give-back) rule:
+ * r100 holds the slot for good, so the give-back this test once ordered against does not exist there.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -16,8 +17,7 @@ describe('the foot hold is 44 px where the answered foot line is (r103)', () => 
     expect(t.split(q).length - 1).toBeGreaterThanOrEqual(2); // the button's block and the hold's block
     expect(t).toMatch(/\(pointer: coarse\) \{\s*\.tc-line--foot\.tc-line--hold \{\s*min-height: 44px;\s*max-height: 44px;/);
   });
-  it('the 44 px rule sits before the collapsing rule, so the give-back still wins', () => {
+  it('the 44 px rule sits before the base hold rule, so the narrow-width block does not lose to it', () => {
     expect(t.indexOf('min-height: 44px;\n    max-height: 44px;\n  }\n}\n.tc-line--hold {')).toBeGreaterThan(-1);
-    expect(t.indexOf("[data-collapsing='true']")).toBeGreaterThan(t.indexOf('.tc-line--foot.tc-line--hold {\n    min-height: 44px'));
   });
 });
