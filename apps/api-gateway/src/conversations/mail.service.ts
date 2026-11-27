@@ -49,9 +49,19 @@ import {
   mailDoorOf,
   personRef,
   stripSubjectLine,
-  subjectFromText,
   withholdsHouseLetters,
 } from "./mail.read-rules";
+
+function emptyThread(key: string): MailThreadPage {
+  return {
+    key,
+    subject: null,
+    person: null,
+    order: null,
+    messages: [],
+    before: null,
+  };
+}
 
 @Injectable()
 export class MailService {
@@ -196,112 +206,74 @@ export class MailService {
   async getThread(
     houseId: string,
     callerRole: string | null | undefined,
-    opts: { key?: string; before?: string },
+    opts: { key?: unknown; with?: unknown; before?: unknown },
   ): Promise<MailThreadPage> {
-    const key = (opts.key ?? "").trim();
+    // A repeated query parameter (`?with=a&with=b`) arrives as an array; it
+    // names no one thread or person, so it is read as a bad request in words.
+    const key = typeof opts.key === "string" ? opts.key.trim() : "";
     if (!key || key.length > 500) {
       throw new BadRequestException("Name the thread to open.");
+    }
+    if (opts.before !== undefined && typeof opts.before !== "string") {
+      throw new BadRequestException(BAD_CURSOR);
     }
     const before = opts.before ? decodeMailCursor(opts.before) : null;
     if (before && !UUID_RE.test(before.key)) {
       throw new BadRequestException(BAD_CURSOR);
     }
-    const withhold = withholdsHouseLetters(callerRole);
-    // Every read is this house's rows of this thread, with the same withholding.
-    // Each read names its columns as a literal, so check_read_columns_exist.py
-    // can check every one of them against the migrations.
-    const scope = (q: any) => {
-      const s = q.eq("restaurant_id", houseId).eq("thread_key", key);
-      return withhold
-        ? s.or(WITHHOLD_HOUSE_DRAFT).or(WITHHOLD_HOUSE_CANCELLED)
-        : s;
-    };
-
-    // The page's explicit columns: never email_headers, Gmail ids or message_id.
-    let pageQuery = scope(
-      this.db
-        .from("procurement_conversations")
-        .select(
-          "id, direction, channel, message_text, ai_generated, status, sent_at, received_at, created_at, raw_deleted_at, mirrored_by_grant_id",
-        ),
-    );
-    if (before) {
-      pageQuery = pageQuery.or(
-        `created_at.lt."${before.at}",and(created_at.eq."${before.at}",id.lt.${before.key})`,
-      );
+    // A thread is the pair (provider_id, thread_key) — one Gmail thread sent
+    // to two vendors (a `gm:` key) or one group mail (a `mid:` key) is two
+    // threads. `with` names the person; without it, mail_thread_letters gives
+    // the page to the vendor of the thread's first letter, so an old link with
+    // the key alone still opens one person's letters and never two (QA round
+    // 18, #895 T1.0). A `with` that names no stored person is an empty page,
+    // the same as /mail/threads (F11).
+    if (opts.with !== undefined && typeof opts.with !== "string") {
+      return emptyThread(key);
     }
-    const [headRes, orderRes, pageRes] = await Promise.all([
-      scope(
-        this.db
-          .from("procurement_conversations")
-          .select(
-            "provider_id, message_text, subject:email_headers->>subject, subject_cap:email_headers->>Subject, providers (id, name)",
-          ),
-      )
-        .order("created_at", { ascending: true })
-        .order("id", { ascending: true })
-        .limit(1),
-      scope(
-        this.db
-          .from("procurement_conversations")
-          .select(
-            "order_id, order_number_snapshot, procurement_orders (id, order_number, status)",
-          ),
-      )
-        .not("order_id", "is", null)
-        .order("created_at", { ascending: false })
-        .limit(1),
-      pageQuery
-        .order("created_at", { ascending: false })
-        .order("id", { ascending: false })
-        .limit(MAIL_THREAD_PAGE + 1),
-    ]);
-    if (headRes.error) this.failed("thread head", headRes.error);
-    if (orderRes.error) this.failed("thread order", orderRes.error);
-    if (pageRes.error) this.failed("thread", pageRes.error);
+    const withRaw = (opts.with ?? "").trim();
+    const providerId = withRaw
+      ? PERSON_KEY_RE.exec(withRaw)?.[1]?.toLowerCase()
+      : undefined;
+    if (withRaw && !providerId) return emptyThread(key);
 
-    const head = ((headRes.data ?? []) as any[])[0];
+    // One read: the page, newest first by each letter's own time (received
+    // for inbound, sent for outbound), keyset-paged on (at, id). The function
+    // returns explicit columns: never email_headers, Gmail ids or message_id.
+    const { data, error } = await this.db.rpc("mail_thread_letters", {
+      p_restaurant_id: houseId,
+      p_thread_key: key,
+      p_provider_id: providerId ?? null,
+      p_withhold_house_letters: withholdsHouseLetters(callerRole),
+      p_before_at: before?.at ?? null,
+      p_before_id: before?.key ?? null,
+      p_limit: MAIL_THREAD_PAGE + 1,
+    });
+    if (error) this.failed("thread", error);
+    const rows = (data ?? []) as any[];
+    const head = rows[0];
     if (!head) {
       // Another house's key, or one that names nothing: empty, never theirs (F11).
-      return {
-        key,
-        subject: null,
-        person: null,
-        order: null,
-        messages: [],
-        before: null,
-      };
+      return emptyThread(key);
     }
-    const provider = Array.isArray(head.providers)
-      ? head.providers[0]
-      : head.providers;
-    const subject =
-      (typeof head.subject === "string" && head.subject.trim()) ||
-      (typeof head.subject_cap === "string" && head.subject_cap.trim()) ||
-      subjectFromText(head.message_text);
-
-    const orderRow = ((orderRes.data ?? []) as any[])[0];
-    const po = orderRow
-      ? Array.isArray(orderRow.procurement_orders)
-        ? orderRow.procurement_orders[0]
-        : orderRow.procurement_orders
-      : null;
-    const order: MailOrderRef | null = orderRow
+    const order: MailOrderRef | null = head.order_id
       ? {
-          id: orderRow.order_id,
-          number: po?.order_number ?? orderRow.order_number_snapshot ?? null,
-          status: po?.status ?? null,
+          id: head.order_id,
+          number: head.order_number ?? null,
+          status: head.order_status ?? null,
         }
       : null;
 
-    const rows = (pageRes.data ?? []) as any[];
     const kept = rows.slice(0, MAIL_THREAD_PAGE);
     const oldest = kept[kept.length - 1];
     return {
       key,
-      subject: subject || null,
+      subject:
+        typeof head.thread_subject === "string" && head.thread_subject.trim()
+          ? head.thread_subject.trim()
+          : null,
       person: head.provider_id
-        ? personRef(head.provider_id, provider?.name)
+        ? personRef(head.provider_id, head.provider_name)
         : null,
       order,
       messages: kept
@@ -324,7 +296,7 @@ export class MailService {
         ),
       before:
         rows.length > MAIL_THREAD_PAGE && oldest
-          ? encodeMailCursor(oldest.created_at, oldest.id)
+          ? encodeMailCursor(oldest.at, oldest.id)
           : null,
     };
   }

@@ -218,20 +218,29 @@ describe("listThreads", () => {
 });
 
 function letter(i: number) {
-  // Newest first, as the page query orders them.
+  // Newest first, as mail_thread_letters returns them. `at` is the letter's
+  // own time (received for inbound, sent for outbound); created_at runs the
+  // other way on purpose, as a mailbox backfill stores old letters last.
   return {
     id: `d0000000-0000-4000-8000-${String(1000 - i).padStart(12, "0")}`,
-    direction: i % 2 ? "outbound" : "INBOUND",
+    provider_id: VENDOR,
+    provider_name: "Ali",
+    direction: i % 2 ? "outbound" : "inbound",
     channel: "email",
     message_text: `Subject: Order 12\nLetter ${i}`,
     ai_generated: false,
     status: "SENT",
     sent_at: null,
     received_at: null,
-    created_at: `2026-11-07 10:${String(59 - (i % 60)).padStart(2, "0")}:00.000001+00`,
+    at: `2026-11-07 10:${String(59 - (i % 60)).padStart(2, "0")}:00.000001+00`,
+    created_at: `2026-11-08 10:${String(i % 60).padStart(2, "0")}:00.000001+00`,
     raw_deleted_at: null,
     mirrored_by_grant_id: null,
-    // A store that grew these columns must still not leak them.
+    thread_subject: "Order 12",
+    order_id: null,
+    order_number: null,
+    order_status: null,
+    // A function that grew these columns must still not leak them.
     email_headers: { "message-id": "<x@y>" },
     gmail_message_id: "g-1",
     message_id: "<x@y>",
@@ -239,31 +248,31 @@ function letter(i: number) {
 }
 
 function threadResolver(pageRows: unknown[]): (q: Query) => Result {
-  return (q) => {
-    const select = String(
-      q.calls.find((c) => c.method === "select")?.args[0] ?? "",
-    );
-    if (select.includes("providers (")) {
-      return {
-        data: [
-          {
-            provider_id: VENDOR,
-            message_text: "Subject: Order 12\nHello",
-            subject: null,
-            subject_cap: null,
-            providers: { id: VENDOR, name: "Ali" },
-          },
-        ],
-        error: null,
-      };
-    }
-    if (select.includes("procurement_orders")) return { data: [], error: null };
-    return { data: pageRows, error: null };
-  };
+  return (q) =>
+    q.kind === "rpc" && q.name === "mail_thread_letters"
+      ? { data: pageRows, error: null }
+      : { data: null, error: { message: `unexpected read ${q.name}` } };
 }
 
 describe("getThread", () => {
-  it("holds at most 50 letters, oldest to newest, with a `before` cursor", async () => {
+  it("is one read of mail_thread_letters, never the table itself", async () => {
+    resolve = threadResolver([letter(0)]);
+    await service().getThread(HOUSE, "staff", { key: "t-1" });
+    expect(queries.map((q) => `${q.kind}:${q.name}`)).toEqual([
+      "rpc:mail_thread_letters",
+    ]);
+    expect(queries[0].payload).toEqual({
+      p_restaurant_id: HOUSE,
+      p_thread_key: "t-1",
+      p_provider_id: null,
+      p_withhold_house_letters: true,
+      p_before_at: null,
+      p_before_id: null,
+      p_limit: MAIL_THREAD_PAGE + 1,
+    });
+  });
+
+  it("holds at most 50 letters, oldest to newest, with a `before` cursor on the letter's own time", async () => {
     const rows = Array.from({ length: MAIL_THREAD_PAGE + 1 }, (_, i) =>
       letter(i),
     );
@@ -274,27 +283,44 @@ describe("getThread", () => {
     expect(page.messages[0].id).toBe(rows[49].id);
     expect(page.messages[49].id).toBe(rows[0].id);
     expect(page.before).not.toBeNull();
+    // The cursor is (at, id) — the order the page is read in — never
+    // created_at, which a backfill puts out of order (QA round 18, #895 T4).
     expect(decodeMailCursor(page.before!)).toEqual({
-      at: rows[49].created_at,
+      at: rows[49].at,
       key: rows[49].id,
     });
     expect(page.subject).toBe("Order 12");
     expect(page.person?.name).toBe("Ali");
-
-    const pageQuery = queries.find((q) =>
-      String(q.calls.find((c) => c.method === "select")?.args[0]).startsWith(
-        "id,",
-      ),
-    )!;
-    expect(pageQuery.calls).toContainEqual({ method: "limit", args: [51] });
-    expect(pageQuery.calls).toContainEqual({
-      method: "eq",
-      args: ["restaurant_id", HOUSE],
+    expect(queries[0].payload).toMatchObject({
+      p_withhold_house_letters: false,
     });
-    const columns = String(
-      pageQuery.calls.find((c) => c.method === "select")!.args[0],
-    );
-    expect(columns).not.toMatch(/email_headers|gmail|message_id/);
+  });
+
+  it("keeps the order the letters were written in, not the order they were stored", async () => {
+    // Two letters: the inbound one was received first but stored last.
+    const received = {
+      ...letter(0),
+      id: "d0000000-0000-4000-8000-00000000000a",
+      direction: "inbound",
+      received_at: "2026-11-07 09:00:00+00",
+      at: "2026-11-07 09:00:00+00",
+      created_at: "2026-11-07 12:00:00+00",
+      message_text: "first written",
+    };
+    const sent = {
+      ...letter(1),
+      id: "d0000000-0000-4000-8000-00000000000b",
+      sent_at: "2026-11-07 10:00:00+00",
+      at: "2026-11-07 10:00:00+00",
+      created_at: "2026-11-07 10:00:00+00",
+      message_text: "answered",
+    };
+    resolve = threadResolver([sent, received]);
+    const page = await service().getThread(HOUSE, "owner", { key: "t-1" });
+    expect(page.messages.map((m) => m.text)).toEqual([
+      "first written",
+      "answered",
+    ]);
   });
 
   it("never answers with email headers, Gmail ids or message ids", async () => {
@@ -316,6 +342,23 @@ describe("getThread", () => {
     expect(page.messages[0].direction).toBe("inbound");
   });
 
+  it("names the thread's order from the function's columns", async () => {
+    resolve = threadResolver([
+      {
+        ...letter(0),
+        order_id: "e0000000-0000-4000-8000-000000000001",
+        order_number: "PO-7",
+        order_status: "SENT",
+      },
+    ]);
+    const page = await service().getThread(HOUSE, "owner", { key: "t-1" });
+    expect(page.order).toEqual({
+      id: "e0000000-0000-4000-8000-000000000001",
+      number: "PO-7",
+      status: "SENT",
+    });
+  });
+
   it("reads the older page from the cursor, keyed on time then id", async () => {
     const before = encodeMailCursor(
       "2026-11-07 10:00:00.000001+00",
@@ -323,19 +366,10 @@ describe("getThread", () => {
     );
     resolve = threadResolver([]);
     await service().getThread(HOUSE, "staff", { key: "t-1", before });
-    const pageQuery = queries.find((q) =>
-      String(q.calls.find((c) => c.method === "select")?.args[0]).startsWith(
-        "id,",
-      ),
-    )!;
-    const ors = pageQuery.calls
-      .filter((c) => c.method === "or")
-      .map((c) => String(c.args[0]));
-    // Two withholding filters for staff, then the page boundary.
-    expect(ors).toHaveLength(3);
-    expect(ors[2]).toBe(
-      `created_at.lt."2026-11-07 10:00:00.000001+00",and(created_at.eq."2026-11-07 10:00:00.000001+00",id.lt.${letter(3).id})`,
-    );
+    expect(queries[0].payload).toMatchObject({
+      p_before_at: "2026-11-07 10:00:00.000001+00",
+      p_before_id: letter(3).id,
+    });
   });
 
   it("refuses a `before` cursor whose key is not a letter id", async () => {
@@ -352,6 +386,21 @@ describe("getThread", () => {
     ).rejects.toThrow(BadRequestException);
   });
 
+  it("a repeated parameter is a bad request or an empty page, never a crash", async () => {
+    await expect(
+      service().getThread(HOUSE, "owner", { key: ["a", "b"] }),
+    ).rejects.toThrow(BadRequestException);
+    await expect(
+      service().getThread(HOUSE, "owner", { key: "t-1", before: ["a", "b"] }),
+    ).rejects.toThrow(BAD_CURSOR_WORDS);
+    const page = await service().getThread(HOUSE, "owner", {
+      key: "t-1",
+      with: [`vendor:${VENDOR}`, "vendor:x"],
+    });
+    expect(page.messages).toEqual([]);
+    expect(queries).toHaveLength(0);
+  });
+
   it("another house's thread key is an empty page, never theirs", async () => {
     resolve = () => ({ data: [], error: null });
     const page = await service().getThread(HOUSE, "owner", { key: "t-other" });
@@ -363,6 +412,78 @@ describe("getThread", () => {
       messages: [],
       before: null,
     });
+  });
+});
+
+describe("getThread: one key, two vendors", () => {
+  // One Gmail thread from the house mailbox to two vendors (a `gm:` key) is
+  // two threads: (V1, gm:shared) and (V2, gm:shared). Which letters belong to
+  // which is decided in SQL (mail_thread_letters, proven on Postgres in
+  // supabase/tests/20270421143700_the_mail_list_is_read_by_person_test.sql);
+  // here the service must pass the person through and never widen the read.
+  const V1 = VENDOR;
+  const V2 = "c0000000-0000-4000-8000-000000000002";
+  const v2Letter = {
+    ...letter(0),
+    id: "d0000000-0000-4000-8000-000000000002",
+    provider_id: V2,
+    provider_name: "Vendor Two",
+    message_text: "Subject: Prices\nfrom v2",
+  };
+
+  it("`with` names the vendor to the database and the page is that vendor's", async () => {
+    resolve = threadResolver([v2Letter]);
+    const page = await service().getThread(HOUSE, "owner", {
+      key: "gm:shared",
+      with: `vendor:${V2.toUpperCase()}`,
+    });
+    expect(queries).toHaveLength(1);
+    expect(queries[0].payload).toMatchObject({
+      p_thread_key: "gm:shared",
+      p_provider_id: V2,
+    });
+    expect(page.person).toEqual({
+      key: `vendor:${V2}`,
+      kind: "vendor",
+      providerId: V2,
+      name: "Vendor Two",
+    });
+    expect(page.messages.map((m) => m.text)).toEqual(["from v2"]);
+  });
+
+  it("the key alone is still one read, and the page names the one vendor it holds", async () => {
+    // QA round 18 (#895 T1.0): the default route merged both vendors' letters
+    // under the first vendor's name. Now the database picks one vendor (the
+    // thread's first letter's) and the service shows exactly that.
+    resolve = threadResolver([
+      {
+        ...letter(0),
+        provider_id: V1,
+        provider_name: "Vendor One",
+        message_text: "from v1",
+      },
+    ]);
+    const page = await service().getThread(HOUSE, "owner", {
+      key: "gm:shared",
+    });
+    expect(queries.map((q) => q.name)).toEqual(["mail_thread_letters"]);
+    expect(queries[0].payload).toMatchObject({ p_provider_id: null });
+    expect(page.person?.providerId).toBe(V1);
+    expect(page.messages.map((m) => m.text)).toEqual(["from v1"]);
+  });
+
+  it("a `with` that names no stored person is an empty page and reads nothing", async () => {
+    resolve = threadResolver([v2Letter]);
+    for (const bad of ["x", "vendor:not-a-uuid", "staff:" + V1]) {
+      queries = [];
+      const page = await service().getThread(HOUSE, "owner", {
+        key: "gm:shared",
+        with: bad,
+      });
+      expect(page.messages).toEqual([]);
+      expect(page.person).toBeNull();
+      expect(queries).toHaveLength(0);
+    }
   });
 });
 
