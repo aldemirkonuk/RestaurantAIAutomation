@@ -1,5 +1,5 @@
 /** The Mail tab's few motions (MOTIONS.md, ADR 0112): opacity and one colour step only; reduced motion draws end states. */
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
 const INK_MS = 160;
 const SETTLE_MS = 320;
@@ -30,12 +30,21 @@ function prefersReducedMotion(): boolean {
   }
 }
 
-/** Keys that arrived after the first ready list (a new `resetKey` is a different list); value = place among the new. */
+/**
+ * Keys that arrived after the first ready list (a new `resetKey` is a different list); value = place among the new.
+ * A key stays only while its fade runs: a row still marked once the list reorders is re-inserted by React and would
+ * fade in again.
+ */
 export function useEnteringKeys(keys: string[], resetKey: string, ready: boolean): Map<string, number> {
   const seen = useRef<Set<string> | null>(null);
   const lastReset = useRef(resetKey);
   const [entering, setEntering] = useState<Map<string, number>>(() => new Map());
   const joined = keys.join('\u0000');
+  const timers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+  useEffect(() => {
+    const open = timers.current;
+    return () => open.forEach(clearTimeout);
+  }, []);
   useLayoutEffect(() => {
     if (lastReset.current !== resetKey) {
       lastReset.current = resetKey;
@@ -55,6 +64,16 @@ export function useEnteringKeys(keys: string[], resetKey: string, ready: boolean
       fresh.forEach((k, i) => next.set(k, i));
       return next;
     });
+    const t = setTimeout(() => {
+      timers.current.delete(t);
+      setEntering((m) => {
+        if (!fresh.some((k) => m.has(k))) return m;
+        const next = new Map(m);
+        fresh.forEach((k) => next.delete(k));
+        return next;
+      });
+    }, STAGGER_CAP * STAGGER_MS + INK_MS);
+    timers.current.add(t);
   }, [joined, resetKey, ready]);
   return entering;
 }
