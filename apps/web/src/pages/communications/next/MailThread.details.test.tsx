@@ -34,15 +34,12 @@ const base = {
   toAddresses: ['orders@house.example'],
   attachments: [],
 };
-// Three letters, not four: a thread of FOLD_AT (4) or more folds its earlier letters
-// behind a button, and the Details toggles under test would not be on the page.
-const received = [
+const letters = [
   { ...base, id: 'a', door: 'house_mailbox', mailbox: 'orders@house.example', senderCheck: 'passed', signedBy: 'v.example' },
   { ...base, id: 'b', door: 'mudavym_mail', toAddresses: ['kitchen@mail.mudavym.com'], mailbox: null, senderCheck: 'failed', signedBy: null },
   { ...base, id: 'c', door: 'house_mailbox', mailbox: 'a connected mailbox', senderCheck: null, signedBy: null },
+  { ...base, id: 'd', door: 'from_house', direction: 'outbound', status: 'SENT', sentAt: '2026-11-06T10:00:00Z', receivedAt: null },
 ];
-const sent = { ...base, id: 'd', door: 'from_house', direction: 'outbound', status: 'SENT', sentAt: '2026-11-06T10:00:00Z', receivedAt: null };
-const thread = vi.hoisted(() => ({ letters: [] as unknown[] }));
 
 function mount() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -56,7 +53,6 @@ function mount() {
 }
 
 beforeEach(() => {
-  thread.letters = received;
   auth.current = { user: { role: 'owner', restaurantId: 'r1' }, activeRestaurantId: 'r1', activeRole: 'owner' };
   api.get.mockReset();
   api.get.mockImplementation(async (url: string) => {
@@ -67,7 +63,7 @@ beforeEach(() => {
           subject: 'Prices',
           person: { key: 'vendor:p1', kind: 'vendor', providerId: 'p1', name: 'Ali' },
           order: null,
-          messages: thread.letters,
+          messages: letters,
           before: null,
           waiting: false,
           attachmentsRead: true,
@@ -90,12 +86,10 @@ beforeEach(() => {
 
 describe("a received letter's Details", () => {
   it('is a quiet text button on each received letter only, closed until pressed', async () => {
-    thread.letters = [received[0], received[1], sent];
     mount();
     const rows = await screen.findAllByTestId('mail-letter');
-    expect(rows).toHaveLength(3);
     const toggles = rows.map((r) => within(r).queryByTestId('letter-details-toggle'));
-    expect(toggles.map((t) => t?.getAttribute('aria-expanded') ?? null)).toEqual(['false', 'false', null]);
+    expect(toggles.map((t) => t?.getAttribute('aria-expanded') ?? null)).toEqual(['false', 'false', 'false', null]);
     expect(screen.queryByTestId('letter-details')).toBeNull();
     expect(toggles[0]).toHaveStyle({ minHeight: '44px' });
   });

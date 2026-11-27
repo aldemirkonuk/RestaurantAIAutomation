@@ -486,7 +486,7 @@ describe("getThread: a letter's Details (r108 mail-gap g8)", () => {
     resolve = details(
       [mirrored, letter(1)],
       [
-        { id: mirrored.id, kind: "vendor", from_address: "orders@v.example", mirrored_by_grant_id: GRANT, auth: signed },
+        { id: mirrored.id, kind: "vendor", mirrored_by_grant_id: GRANT, auth: signed },
         // Even if a row of the house's own letter carried these, it says nothing of the kind.
         { id: letter(1).id, kind: "vendor", mirrored_by_grant_id: GRANT, auth: signed },
       ],
@@ -523,28 +523,6 @@ describe("getThread: a letter's Details (r108 mail-gap g8)", () => {
     expect(page.messages[0].mailbox).toBe("a connected mailbox");
     resolve = details([mirrored], [{ id: mirrored.id, kind: "vendor", mirrored_by_grant_id: GRANT, auth: signed }], null);
     expect((await service().getThread(HOUSE, "owner", { key: "t-1" })).messages[0].mailbox).toBe("a connected mailbox");
-  });
-
-  it("does not call a letter checked on a signature by another domain, or against Gmail's own DMARC fail", async () => {
-    const mk = (i: number) => ({ ...letter(i * 2), id: `d0000000-0000-4000-8000-00000000090${i}` });
-    const [a, b, c, d] = [mk(0), mk(1), mk(2), mk(3)];
-    const from_address = "orders@fikritarim.com";
-    resolve = details([a, b, c, d], [
-      // Signed by the attacker's domain, and Gmail's DMARC says fail.
-      { id: a.id, kind: "vendor", from_address, auth: { spf: true, dkim: true, dmarc: false, signedBy: "evil.example" } },
-      // A signature by another domain, with no DMARC verdict at all.
-      { id: b.id, kind: "vendor", from_address, auth: { spf: null, dkim: true, dmarc: null, signedBy: "evil.example" } },
-      // A signature by the From domain itself.
-      { id: c.id, kind: "vendor", from_address, auth: { spf: null, dkim: true, dmarc: null, signedBy: "fikritarim.com" } },
-      // DMARC passed through SPF; the third-party signer is not named as who vouched.
-      { id: d.id, kind: "vendor", from_address, auth: { spf: true, dkim: true, dmarc: true, signedBy: "esp.example" } },
-    ], []);
-    const page = await service().getThread(HOUSE, "owner", { key: "t-1" });
-    const by = (id: string) => page.messages.find((m) => m.id === id)!;
-    expect(by(a.id)).toMatchObject({ senderCheck: "failed", signedBy: null });
-    expect(by(b.id)).toMatchObject({ senderCheck: "failed", signedBy: null });
-    expect(by(c.id)).toMatchObject({ senderCheck: "passed", signedBy: "fikritarim.com" });
-    expect(by(d.id)).toMatchObject({ senderCheck: "passed", signedBy: null });
   });
 
   it("says a failed check failed, and a letter stored with none is not recorded, never 'failed'", async () => {

@@ -133,32 +133,14 @@ export interface SenderAuth {
   signedBy: string | null;
 }
 
-/** The signing domain of every passing DKIM verdict (`header.d=`, else the domain of `header.i=`); null when a clause names none. */
-function dkimSigners(value: string): Array<string | null> {
-  const out: Array<string | null> = [];
-  for (const clause of value.toLowerCase().matchAll(/\bdkim=pass\b([^;]*)/g)) {
-    const d =
-      /\bheader\.d=([a-z0-9.-]+)/.exec(clause[1]) ??
-      /\bheader\.i=[^\s;@]*@([a-z0-9.-]+)/.exec(clause[1]);
-    out.push(d ? d[1].replace(/\.+$/, "") || null : null);
-  }
-  return out;
-}
-
-/**
- * Whether a DKIM signing domain speaks for the From address: the same domain,
- * or a parent of it. A signature by some other domain proves nothing about who
- * the letter says it is from.
- */
-export function signerSpeaksFor(
-  signer: string | null | undefined,
-  fromAddress: string | null | undefined,
-): boolean {
-  const s = (signer ?? "").trim().toLowerCase().replace(/\.+$/, "");
-  const at = (fromAddress ?? "").lastIndexOf("@");
-  if (!s || at < 0) return false;
-  const d = fromAddress!.slice(at + 1).trim().toLowerCase().replace(/\.+$/, "");
-  return d === s || d.endsWith(`.${s}`);
+/** The `header.d=` (else the domain of `header.i=`) of the first passing DKIM verdict. */
+function dkimSigner(value: string): string | null {
+  const clause = /\bdkim=pass\b([^;]*)/.exec(value.toLowerCase());
+  if (!clause) return null;
+  const d =
+    /\bheader\.d=([a-z0-9.-]+)/.exec(clause[1]) ??
+    /\bheader\.i=[^\s;@]*@([a-z0-9.-]+)/.exec(clause[1]);
+  return d ? d[1].replace(/\.+$/, "") || null : null;
 }
 
 /**
@@ -175,25 +157,15 @@ const TRUSTED_AUTHSERV_ID = "mx.google.com";
  * Authentication-Results, one some other server wrote, or one with no verdict.
  * Null reads as "not recorded", never as a failure.
  */
-export function senderAuthOf(
-  headers: HeaderMap | null | undefined,
-  fromHeader?: string | null,
-): SenderAuth | null {
+export function senderAuthOf(headers: HeaderMap | null | undefined): SenderAuth | null {
   const h = normalizeHeaders(headers);
   const auth = (h["authentication-results"] || "").trim();
   if (auth.split(";")[0].trim().toLowerCase() !== TRUSTED_AUTHSERV_ID) return null;
   const spf = readAuthMethod(auth, "spf");
-  const signers = dkimSigners(auth);
-  // Any passing signature counts as DKIM passing, not only the first clause.
-  const dkim = signers.length ? true : readAuthMethod(auth, "dkim");
+  const dkim = readAuthMethod(auth, "dkim");
   const dmarc = readAuthMethod(auth, "dmarc");
   if (spf === null && dkim === null && dmarc === null) return null;
-  // The signer named is the one that speaks for the From domain; failing that,
-  // the first, so the row still records who signed.
-  const from = extractEmailAddress(fromHeader ?? h["from"]);
-  const signedBy =
-    signers.find((d) => signerSpeaksFor(d, from)) ?? signers[0] ?? null;
-  return { spf, dkim, dmarc, signedBy };
+  return { spf, dkim, dmarc, signedBy: dkim === true ? dkimSigner(auth) : null };
 }
 
 /**
