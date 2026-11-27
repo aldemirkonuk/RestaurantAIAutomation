@@ -149,4 +149,16 @@ describe('a long window draws a bounded number of points', () => {
     const short = series(40).data;
     expect(thinCats(short)).toBe(short);
   });
+
+  it('[REVERT-FAILS] a till with closed days keeps the highest open row of each stretch, not the gap edges', () => {
+    // Mon and Thu closed (null), weekends 900, other days 300: 365 days.
+    const data = Array.from({ length: 365 }, (_, i) => ({
+      label: `D${i}`,
+      value: i % 7 === 0 || i % 7 === 3 ? null : i % 7 >= 5 ? 900 : 300,
+    }));
+    const kept = thinCats(data);
+    expect(kept.length).toBeLessThanOrEqual(MAX_DRAWN);
+    expect(kept.filter((d) => d.value === 900).length).toBeGreaterThanOrEqual(60);
+    expect(kept.filter((d) => d.value == null).length).toBeLessThanOrEqual(2);
+  });
 });
