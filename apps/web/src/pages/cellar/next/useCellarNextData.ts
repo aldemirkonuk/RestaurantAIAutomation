@@ -972,19 +972,27 @@ export interface RowRecordVM {
  * so a branch switch cannot show the previous house's ledger under the same
  * bottle — the exact failure the tenant-keying rule exists for.
  */
-export function useRowRecord(label: string | null) {
-  const { activeRestaurantId } = useAuth();
-  const q = useQuery({
-    queryKey: ['cellar', 'row-record', activeRestaurantId, label],
-    enabled: Boolean(activeRestaurantId) && label !== null && label.trim() !== '',
+export function rowRecordRead(restaurantId: string | null | undefined, label: string | null) {
+  return {
+    queryKey: ['cellar', 'row-record', restaurantId, label] as const,
+    enabled: Boolean(restaurantId) && label !== null && label.trim() !== '',
     queryFn: async (): Promise<RowRecordVM> => {
       const r = await apiClient.get(
-        `/beverages/${activeRestaurantId}/row-record`,
+        `/beverages/${restaurantId}/row-record`,
         { params: { label } },
       );
       return r.data as RowRecordVM;
     },
-  });
+    // A row warmed on intent (inventory, perf p8-3) is fresh when the row opens.
+    // App.tsx's `refetchOnMount: 'always'` would read it again regardless.
+    staleTime: 30_000,
+    refetchOnMount: true,
+  };
+}
+
+export function useRowRecord(label: string | null) {
+  const { activeRestaurantId } = useAuth();
+  const q = useQuery(rowRecordRead(activeRestaurantId, label));
   return {
     data: q.data ?? null,
     loading: q.isLoading || q.isFetching,

@@ -17,7 +17,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { HousePriceCell, type AdviceLoad } from '../command/HousePriceCell';
 import type { RowDropdownProps } from './RowDropdown';
-import { cellMoney, EM, statusWord, fmtCount, noZoneWord, SEVERITY_GROUP, severity, typeLabel, type InvRow, type SortId } from './useInventoryNextData';
+import { cellMoney, EM, statusWord, fmtCount, noZoneWord, SEVERITY_GROUP, severity, typeLabel, useWarmRow, type InvRow, type SortId } from './useInventoryNextData';
 import { NameHint } from './NameThisWine';
 import { listFigure, listPace, listUnitTail } from './ItemCards';
 import PhoneRows from './PhoneRows';
@@ -53,6 +53,9 @@ export interface InventoryTableProps extends Omit<RowDropdownProps, 'row'> {
 /** The table's row and group-head heights (inventory-next.css .iv-row, .iv-group td). */
 export const ROW_PX = 56;
 export const GROUP_PX = 30;
+
+/** How long the pointer rests on a row before its reads start: a sweep across the book reads nothing. */
+export const WARM_REST_MS = 120;
 
 const COLUMNS = ['Title', 'Type', 'Zone', 'Live / shadow · par', 'Vel/day', 'Runway', 'Your price', 'Value', 'Used in', 'Status'];
 
@@ -113,6 +116,10 @@ interface RowFns {
   onPriceChanged: () => void;
   onSelect?: (id: string) => void;
   onUsedIn?: (id: string) => void;
+  /** Reads the row's own reads ahead of the click: at once, or after the pointer has rested on it. */
+  warm: (row: InvRow, now: boolean) => void;
+  /** The pointer left, so a read that was waiting on a rest is dropped. */
+  cool: () => void;
 }
 
 const TableRow = memo(function TableRow(p: TableRowProps) {
@@ -137,6 +144,10 @@ const TableRow = memo(function TableRow(p: TableRowProps) {
                   data-standing={row.standing}
                   aria-selected={open}
                   onClick={() => toggle(row.id)}
+                  onPointerEnter={open ? undefined : () => fns.current.warm(row, false)}
+                  onPointerLeave={open ? undefined : () => fns.current.cool()}
+                  onFocus={open ? undefined : () => fns.current.warm(row, true)}
+                  onTouchStart={open ? undefined : () => fns.current.warm(row, true)}
                 >
                   {selecting ? (
                     <td data-label="Select" className="iv-sel" onClick={(e) => e.stopPropagation()}>
@@ -286,8 +297,18 @@ export default function InventoryTable(props: InventoryTableProps) {
   const stableHidden = useMemo(() => hidden, [hiddenKey]);
   // The page hands new function objects every render; rows read the latest
   // through this ref and take a toggle whose identity never changes.
-  const fns = useRef<RowFns>({ zoneName, onPriceChanged, onSelect: props.onSelect, onUsedIn: props.onUsedIn });
-  fns.current = { zoneName, onPriceChanged, onSelect: props.onSelect, onUsedIn: props.onUsedIn };
+  const warmRow = useWarmRow();
+  const resting = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const cool = useCallback(() => clearTimeout(resting.current), []);
+  useEffect(() => cool, [cool]);
+  const warm = (row: InvRow, now: boolean) => {
+    clearTimeout(resting.current);
+    const go = () => warmRow({ id: row.id, name: row.name });
+    if (now) go();
+    else resting.current = setTimeout(go, WARM_REST_MS);
+  };
+  const fns = useRef<RowFns>({ zoneName, onPriceChanged, onSelect: props.onSelect, onUsedIn: props.onUsedIn, warm, cool });
+  fns.current = { zoneName, onPriceChanged, onSelect: props.onSelect, onUsedIn: props.onUsedIn, warm, cool };
   const onToggleRef = useRef(onToggle);
   onToggleRef.current = onToggle;
   const toggle = useCallback((id: string) => onToggleRef.current(id), []);

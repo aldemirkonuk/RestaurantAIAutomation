@@ -26,7 +26,7 @@
  * Unknown is never zero (ADRs 0020, 0067, 0149): every figure here is
  * `number | null`, and a read that is pending or failed is `null`.
  */
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatHouseNumber, houseNumberLocale } from '../../../lib/house-number';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -49,6 +49,7 @@ import { queryKeys } from '../../../lib/query-keys';
 import { pendingSpotCountCount, watchSpotCountOutbox } from '../../../lib/spotCountOutbox';
 import { num, text } from '../../cellar/next/cellar-format';
 import { DRINK_WORDS, type HouseWords } from './iv-house-words';
+import { rowRecordRead } from '../../cellar/next/useCellarNextData';
 import type { MapTone } from '../command/CellarMapView';
 import type { InventoryItem as LegacyItem } from '../useInventoryPage';
 import { COUNT_DUE_DAYS } from '../command/bits';
@@ -1088,17 +1089,14 @@ export interface RowDetailNeed {
 const READ_ALL: RowDetailNeed = { purchases: true, paper: true, lots: true };
 
 /**
- * The opened row's own reads, made on the gesture rather than on the page:
- * the last purchases from the ledger (GET /inventory-ledger/transactions with
- * transactionType=purchase), each one's paper (GET /procurement/documents
- * ?orderId=), and the auction lots that carried the title in. Each is read
- * only when `need` asks for it; what is not asked for stays null, never "none".
+ * The two reads an opened row makes of its own, as options, so the page can
+ * make the same read on intent (`useWarmRow`) under the very key the open uses.
+ * `refetchOnMount: true` because App.tsx's 'always' would otherwise read a
+ * warmed key again the moment the row opens.
  */
-export function useRowDetail(inventoryId: string, need: RowDetailNeed = READ_ALL) {
-  const { activeRestaurantId } = useAuth();
-  const readPaper = need.paper && need.purchases;
-  const purchasesQ = useQuery({
-    queryKey: ['inventory-next', 'purchases', activeRestaurantId, inventoryId],
+function purchasesRead(restaurantId: string | null | undefined, inventoryId: string) {
+  return {
+    queryKey: ['inventory-next', 'purchases', restaurantId, inventoryId] as const,
     queryFn: async () => {
       // The page shows three, so it asks for three (newest first); the total
       // still counts every purchase.
@@ -1120,9 +1118,54 @@ export function useRowDetail(inventoryId: string, need: RowDetailNeed = READ_ALL
         total: num(body.total),
       };
     },
-    enabled: need.purchases && Boolean(activeRestaurantId) && inventoryId !== '',
+    enabled: Boolean(restaurantId) && inventoryId !== '',
     staleTime: 30_000,
-  });
+    refetchOnMount: true,
+  };
+}
+
+function lotsRead(restaurantId: string | null | undefined, inventoryId: string) {
+  return {
+    queryKey: ['inventory-next', 'auction-lots', restaurantId, inventoryId] as const,
+    queryFn: (): Promise<AuctionLotRecord[]> => fetchAuctionLotRecords(inventoryId),
+    enabled: Boolean(restaurantId) && inventoryId !== '',
+    staleTime: 60_000,
+    refetchOnMount: true,
+  };
+}
+
+/**
+ * Reads an opened row's three reads ahead of the click: the purchases, the
+ * auction lots and the till record. Same keys as the open, so the open renders
+ * from cache; a read still fresh is not made again. Keyed by the active house
+ * like the reads themselves.
+ */
+export function useWarmRow() {
+  const { activeRestaurantId } = useAuth();
+  const qc = useQueryClient();
+  return useCallback(
+    (row: { id: string; name: string | null }) => {
+      if (!activeRestaurantId || row.id === '') return;
+      void qc.prefetchQuery(purchasesRead(activeRestaurantId, row.id));
+      void qc.prefetchQuery(lotsRead(activeRestaurantId, row.id));
+      if (row.name !== null) void qc.prefetchQuery(rowRecordRead(activeRestaurantId, row.name));
+    },
+    [activeRestaurantId, qc],
+  );
+}
+
+/**
+ * The opened row's own reads, made on the gesture rather than on the page:
+ * the last purchases from the ledger (GET /inventory-ledger/transactions with
+ * transactionType=purchase), each one's paper (GET /procurement/documents
+ * ?orderId=), and the auction lots that carried the title in. Each is read
+ * only when `need` asks for it; what is not asked for stays null, never "none".
+ */
+export function useRowDetail(inventoryId: string, need: RowDetailNeed = READ_ALL) {
+  const { activeRestaurantId } = useAuth();
+  const readPaper = need.paper && need.purchases;
+  const purchases = purchasesRead(activeRestaurantId, inventoryId);
+  const purchasesQ = useQuery({ ...purchases, enabled: need.purchases && purchases.enabled });
 
   const orderIds = useMemo(
     () => [...new Set((purchasesQ.data?.lines ?? []).map((l) => l.orderId).filter((id): id is string => !!id))],
@@ -1144,12 +1187,8 @@ export function useRowDetail(inventoryId: string, need: RowDetailNeed = READ_ALL
     });
   });
 
-  const lotsQ = useQuery<AuctionLotRecord[]>({
-    queryKey: ['inventory-next', 'auction-lots', activeRestaurantId, inventoryId],
-    queryFn: () => fetchAuctionLotRecords(inventoryId),
-    enabled: need.lots && Boolean(activeRestaurantId) && inventoryId !== '',
-    staleTime: 60_000,
-  });
+  const lots = lotsRead(activeRestaurantId, inventoryId);
+  const lotsQ = useQuery({ ...lots, enabled: need.lots && lots.enabled });
 
   return {
     purchases: purchasesQ.data?.lines ?? null,
