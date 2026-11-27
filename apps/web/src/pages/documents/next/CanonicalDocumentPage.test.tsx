@@ -236,6 +236,8 @@ describe('CanonicalDocumentPage', () => {
       return v as Element
     })
     expect(verdict.textContent).not.toMatch(/no order or door count/)
+    // Said once on the page (r108): the receipts money card no longer repeats it.
+    expect(container.textContent?.match(/Prices are in TRY and the house costs in USD/g)).toHaveLength(1)
   })
 
   it('keys every read by the house, so a house switch reads afresh (ADR 0051, RECEIPTS-W47)', async () => {
