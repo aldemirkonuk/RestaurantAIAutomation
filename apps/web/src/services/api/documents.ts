@@ -248,7 +248,7 @@ export const documentsApi = {
   },
 
   /**
-   * Lines whose cost moved against the good's last invoiced cost (r104 g4).
+   * Lines whose price moved against the good's last other verified paper (r104 g4, r108 g15).
    * Information only: it never blocks a verification and never changes a cost.
    */
   async priceMoves(id: string): Promise<{

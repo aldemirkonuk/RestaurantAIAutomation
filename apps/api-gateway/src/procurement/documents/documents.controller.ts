@@ -1817,9 +1817,9 @@ export class DocumentsController {
 
   @Get(":id/price-moves")
   @ApiOperation({
-    summary: "Lines whose cost moved against the good's last invoiced cost",
+    summary: "Lines whose printed price per bottle moved against the good's last other verified paper",
     description:
-      "Information only: it never blocks a verification and never changes a cost. A line is compared only when it is mapped to a good, the good has an invoiced lot, and both are costed per bottle; every other line is listed as not compared, with the reason.",
+      "Information only: it never blocks a verification and never changes a cost. A line is compared only when it is mapped to a good, its printed total can be counted per bottle, and another verified paper of this house in the same currency priced that good per bottle (r108 g15); every other line is listed as not compared, with the reason.",
   })
   @ApiQuery({ name: "thresholdPct", required: false })
   async priceMoves(

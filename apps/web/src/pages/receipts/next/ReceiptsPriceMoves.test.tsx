@@ -174,11 +174,11 @@ describe('the check card on a cost that moved', () => {
     expect(screen.queryByText(/none were compared against earlier costs/)).toBeNull();
   });
 
-  it('says what moved, in words, against the last invoiced cost', async () => {
+  it('says what moved, in words, against the last paper', async () => {
     api.moves.mockResolvedValue({ thresholdPct: 10, lines: [moved] });
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
-    expect(await screen.findByText(/was 10\.00, now 11\.80, up 18 percent, against its last invoiced cost/)).toBeTruthy();
+    expect(await screen.findByText(/was 10\.00, now 11\.80, up 18 percent, against its last paper/)).toBeTruthy();
   });
 
   it('says nothing when there is no earlier cost to compare', async () => {
@@ -189,7 +189,7 @@ describe('the check card on a cost that moved', () => {
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
     await vi.waitFor(() => expect(api.moves).toHaveBeenCalled());
-    expect(screen.queryByText(/against its last invoiced cost/)).toBeNull();
+    expect(screen.queryByText(/against its last paper/)).toBeNull();
     expect(screen.queryByLabelText('Costs that moved')).toBeNull();
   });
 
@@ -199,7 +199,7 @@ describe('the check card on a cost that moved', () => {
     );
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
-    expect(await screen.findByText(/earlier costs could not be read, so no price was compared/)).toBeTruthy();
+    expect(await screen.findByText(/earlier papers could not be read, so no price was compared/)).toBeTruthy();
   });
 
   it('reads the prices again after the money is restated, so the note is not left on the old money (r105)', async () => {
