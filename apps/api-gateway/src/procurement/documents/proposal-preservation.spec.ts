@@ -773,3 +773,172 @@ describe("ADR 0059 L5/L6 — the document records which model read it", () => {
     expect(row.extraction_model).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// ADR 0020 — the matcher says what it did, and what it could not read or save
+// ---------------------------------------------------------------------------
+
+describe("ADR 0020 — a pairing check that could not read or save says so", () => {
+  const docLine = {
+    id: "dl-1",
+    vendor_sku: "SKU-A",
+    description: "Sancerre Les Monts Damnes",
+    vintage: 2022,
+    format_ml: 750,
+    qty_bottles: 12,
+    unit_price: 28,
+    order_line_id: null,
+  };
+  const orderLine = {
+    id: "ol-1",
+    vendor_sku: "SKU-A",
+    wine_name: "Sancerre Les Monts Damnes",
+    vintage: 2022,
+    total_bottles: 12,
+    final_unit_price: 28,
+  };
+
+  function fixture(opts: {
+    lines?: { data: any; error: any };
+    links?: { data: any; error: any };
+    orderItems?: { data: any; error: any };
+    linkUpdateError?: { message: string } | null;
+  }) {
+    return makeDb((call) => {
+      if (call.table === LINES_TABLE && call.verb === "select")
+        return opts.lines ?? { data: [docLine], error: null };
+      if (call.table === LINES_TABLE && call.verb === "update")
+        return { data: null, error: opts.linkUpdateError ?? null };
+      if (call.table === "procurement_document_links")
+        return opts.links ?? { data: [{ order_id: "ord-1" }], error: null };
+      if (call.table === "procurement_order_items")
+        return opts.orderItems ?? { data: [orderLine], error: null };
+      return { data: null, error: null };
+    });
+  }
+
+  const noExtractor = { available: () => false, extract: jest.fn() };
+
+  it("a failed read of the paper's lines is an error, not an empty result", async () => {
+    const service = await buildService(
+      fixture({ lines: { data: null, error: { message: "lines down" } } }),
+      noExtractor,
+    );
+    await expect(
+      service.matchDocumentLines("doc-1", "rest-1"),
+    ).rejects.toThrow(/lines down/);
+  });
+
+  it("a failed read of the order link is an error, not an empty result", async () => {
+    const service = await buildService(
+      fixture({ links: { data: null, error: { message: "links down" } } }),
+      noExtractor,
+    );
+    await expect(
+      service.matchDocumentLines("doc-1", "rest-1"),
+    ).rejects.toThrow(/links down/);
+  });
+
+  it("a failed read of the order's lines is an error, not an empty result", async () => {
+    const service = await buildService(
+      fixture({
+        orderItems: { data: null, error: { message: "items down" } },
+      }),
+      noExtractor,
+    );
+    await expect(
+      service.matchDocumentLines("doc-1", "rest-1"),
+    ).rejects.toThrow(/items down/);
+  });
+
+  it("a pairing that was saved is reported as saved", async () => {
+    const service = await buildService(fixture({}), noExtractor);
+    const result = await service.matchDocumentLines("doc-1", "rest-1");
+    expect(result.applied.map((m) => m.documentLineId)).toEqual(["dl-1"]);
+  });
+
+  it("a pairing whose save failed is not reported as saved; it waits for a confirmation", async () => {
+    const service = await buildService(
+      fixture({ linkUpdateError: { message: "write refused" } }),
+      noExtractor,
+    );
+    const result = await service.matchDocumentLines("doc-1", "rest-1");
+    expect(result.applied).toEqual([]);
+    expect(result.suggested).toHaveLength(1);
+    expect(result.suggested[0].documentLineId).toBe("dl-1");
+    expect(result.suggested[0].reason).toMatch(/could not be saved/i);
+  });
+
+  describe("the link writes run in bounded groups", () => {
+    const N = 20;
+    const lines = Array.from({ length: N }, (_, i) => ({
+      ...docLine,
+      id: `dl-${i}`,
+      vendor_sku: `SKU-${i}`,
+      description: `Wine number ${i}`,
+    }));
+    const orderLines = Array.from({ length: N }, (_, i) => ({
+      ...orderLine,
+      id: `ol-${i}`,
+      vendor_sku: `SKU-${i}`,
+      wine_name: `Wine number ${i}`,
+    }));
+
+    function slowDb(failId?: string) {
+      const flight = { now: 0, max: 0 };
+      const db = makeDb(((call: DbCall) => {
+        if (call.table === LINES_TABLE && call.verb === "select")
+          return { data: lines, error: null };
+        if (call.table === "procurement_document_links")
+          return { data: [{ order_id: "ord-1" }], error: null };
+        if (call.table === ORDER_ITEMS_TABLE)
+          return { data: orderLines, error: null };
+        if (call.table === LINES_TABLE && call.verb === "update") {
+          flight.now += 1;
+          flight.max = Math.max(flight.max, flight.now);
+          const id = call.filters.find(([, c]) => c === "id")?.[2];
+          return new Promise((r) =>
+            setImmediate(() => {
+              flight.now -= 1;
+              r({
+                data: null,
+                error: id === failId ? { message: "write refused" } : null,
+              });
+            }),
+          );
+        }
+        return { data: null, error: null };
+      }) as any);
+      return { db, flight };
+    }
+
+    it("keeps several writes in flight, never more than a group", async () => {
+      const { db, flight } = slowDb();
+      const service = await buildService(db, noExtractor);
+      const result = await service.matchDocumentLines("doc-1", "rest-1");
+      expect(result.applied).toHaveLength(N);
+      expect(flight.max).toBeGreaterThan(1);
+      expect(flight.max).toBeLessThanOrEqual(8);
+    });
+
+    it("returns the saved list in the matcher's order and names each failure", async () => {
+      const { db } = slowDb("dl-3");
+      const service = await buildService(db, noExtractor);
+      const result = await service.matchDocumentLines("doc-1", "rest-1");
+      const ids = result.applied.map((m) => m.documentLineId);
+      expect(ids).toHaveLength(N - 1);
+      expect(ids).not.toContain("dl-3");
+      // The writes were issued in the matcher's order, so the saved list
+      // must read the same way, minus the one that failed.
+      const issued = db.calls
+        .filter((c) => c.table === LINES_TABLE && c.verb === "update")
+        .map((c) => c.filters.find(([, col]) => col === "id")?.[2]);
+      expect(ids).toEqual(issued.filter((id) => id !== "dl-3"));
+      const failed = result.suggested.filter(
+        (m) => m.documentLineId === "dl-3",
+      );
+      expect(failed).toHaveLength(1);
+      expect(failed[0].reason).toMatch(/could not be saved/i);
+    });
+  });
+});
