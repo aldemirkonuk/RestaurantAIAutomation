@@ -57,7 +57,8 @@
      `data-stepped`, which lands still. Exit is instant. */
   animation: rp-flat-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-/* A step lays the neighbouring cutting's own layer flat: it is a new mount, so it is told to land still. */
+/* A step lays the next cutting flat as a new dialog: it does not replay the
+   arrival (MOTIONS.md: a subject change inside full screen is not animated). */
 .rp-flat[data-stepped='true'] {
   animation: none;
 }

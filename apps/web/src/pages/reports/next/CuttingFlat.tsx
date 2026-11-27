@@ -28,9 +28,9 @@
  *  5. **It steps through the sheet** (r108 g1). Previous and Next, and the Left
  *     and Right keys, lay the neighbouring cutting flat in sheet order; "3 of
  *     9" says where. Each cutting owns its `?flat=`, so a step is a replace of
- *     that one param (`Cutting.tsx`), and the dialog it lands on is a new one,
- *     so it arrives on the same settle as any opening; nothing slides between
- *     the two (MOTIONS.md: a subject change is not animated).
+ *     that one param (`Cutting.tsx`), and the dialog it lands on is a new one.
+ *     A step does not replay the arrival (`data-stepped`; MOTIONS.md: a
+ *     subject change is not animated).
  *  6. **The page's shortcuts stay behind it.** ⌘K / Ctrl-K is the page's
  *     window-level palette key (ReportsNext.tsx); while this view is up it is
  *     stopped at `document`, which the bubble reaches before `window`, so the
@@ -228,8 +228,8 @@ export default function CuttingFlat({
       ref={rootRef}
       className="mudavym rp-page rp-flat"
       data-ground={ground ?? undefined}
-      // A step mounts the neighbour's own layer (each cutting owns its `?flat=`), so the arrival settle
-      // would replay on every Previous / Next; a layer reached by a step lands still.
+      // Landed by a step: the arrival (`rp-flat-in`) is for opening full
+      // screen, not for a subject change inside it (MOTIONS.md).
       data-stepped={initialFocus ? 'true' : undefined}
       role="dialog"
       aria-modal="true"
