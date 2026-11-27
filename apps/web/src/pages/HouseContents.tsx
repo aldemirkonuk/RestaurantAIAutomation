@@ -1,7 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { BrandMark } from '../components/brand/BrandMark'
-import { addCustomProvider } from '../services/api/vendors'
+import {
+  addCustomProvider,
+  addProviderFromCatalogue,
+  matchVendorCatalogue,
+  type VendorMatchCandidate,
+} from '../services/api/vendors'
 import { getErrorStatus, isUnconfirmedWrite } from '../services/api/client'
 import { getOnboardingProgress } from '../services/api/menus'
 import { proofStanding, readProof, type ProofStanding } from '../lib/firstProof'
@@ -60,6 +65,47 @@ export default function HouseContents() {
   const email = vendorEmail(supplierEmail)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  // What the saved line says: the name kept and whether an email is on file for
+  // orders. A curated pick brings the catalogue's email; a typed vendor, the typed one.
+  const [savedAs, setSavedAs] = useState<{ name: string; email: string } | null>(null)
+  // g13: the supplier ask meets the curated catalogue as the name is typed.
+  // Curated rows only (the gateway's match never returns registry rows or
+  // another house's custom providers); a failed match resolves to [] and shows no list.
+  const [matches, setMatches] = useState<VendorMatchCandidate[]>([])
+  const [listOpen, setListOpen] = useState(false)
+  const countryRead = useRef<Promise<string | undefined> | null>(null)
+  useEffect(() => {
+    const typed = supplier.trim()
+    if (typed.length < 2) {
+      setMatches([])
+      return
+    }
+    let live = true
+    const timer = setTimeout(() => {
+      countryRead.current ??= (async () => {
+        try {
+          const money = await settingsApi.houseCurrency()
+          return money?.country ?? undefined
+        } catch {
+          return undefined
+        }
+      })()
+      void countryRead.current
+        .then((country) => matchVendorCatalogue(typed, undefined, country))
+        .then((rows) => {
+          if (!live) return
+          setMatches(Array.isArray(rows) ? rows.slice(0, 5) : [])
+          setListOpen(true)
+        })
+        .catch(() => {
+          if (live) setMatches([])
+        })
+    }, 250)
+    return () => {
+      live = false
+      clearTimeout(timer)
+    }
+  }, [supplier])
   const [error, setError] = useState<string | null>(null)
   // The supplier asked here is on the house's row (vendor_added), not in this
   // page's state: after a reload it asked "Who supplies you?" again (walk
@@ -127,9 +173,25 @@ export default function HouseContents() {
       // One request: creating the provider marks `vendor_added` on the
       // house's onboarding row itself (providers.service.ts createProvider).
       await addCustomProvider(email ? { name: supplier.trim(), email } : { name: supplier.trim() })
+      setSavedAs({ name: supplier.trim(), email: email ?? '' })
       setSaved(true)
     } catch (cause) {
       setError(vendorNotSaved(cause, supplier.trim()))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const pickRow = async (row: VendorMatchCandidate) => {
+    setListOpen(false)
+    setSaving(true)
+    setError(null)
+    try {
+      const provider = await addProviderFromCatalogue(row.id)
+      setSavedAs({ name: row.name, email: (provider?.email || row.email || '').trim() })
+      setSaved(true)
+    } catch (cause) {
+      setError(vendorNotSaved(cause, row.name))
     } finally {
       setSaving(false)
     }
@@ -220,8 +282,13 @@ export default function HouseContents() {
 
           {saved ? (
             <div className="py-6">
-              <p className="font-serif text-2xl">{supplier.trim()} is saved as your vendor.</p>
-              {!email && (
+              <p className="font-serif text-2xl">{savedAs?.name ?? supplier.trim()} is saved as your vendor.</p>
+              {savedAs?.email && (
+                <p className="mt-1 text-sm text-[#6d685f]" data-testid="house-vendor-email-on-file">
+                  Orders can go to {savedAs.email} by mail.
+                </p>
+              )}
+              {!savedAs?.email && (
                 <p className="mt-1 text-sm text-[#6d685f]">
                   With no email, orders cannot go to them by mail.{' '}
                   <Link to="/vendors" className="underline underline-offset-4">
@@ -250,17 +317,62 @@ export default function HouseContents() {
               }}
             >
               <p className="text-xs uppercase tracking-wider text-[#1a5e6b]">Optional</p>
-              <label className="mt-2 block">
-                {/* "Vendor", as the sidebar, the setup checklist and /vendors say it (r28 gap 13). */}
-                <span className="font-serif text-2xl">Who is your first vendor?</span>
-                <input
-                  aria-label="Vendor"
-                  value={supplier}
-                  onChange={(event) => setSupplier(event.target.value)}
-                  placeholder="Their name"
-                  className="mt-3 block w-full border-b border-[#211f1b]/25 bg-transparent pb-2 text-lg outline-none"
-                />
-              </label>
+              <div className="relative mt-2">
+                <label className="block">
+                  {/* "Vendor", as the sidebar, the setup checklist and /vendors say it (r28 gap 13). */}
+                  <span className="font-serif text-2xl">Who is your first vendor?</span>
+                  <input
+                    aria-label="Vendor"
+                    role="combobox"
+                    aria-expanded={listOpen && matches.length > 0}
+                    aria-controls="house-vendor-matches"
+                    aria-autocomplete="list"
+                    autoComplete="off"
+                    value={supplier}
+                    onChange={(event) => setSupplier(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Escape' && listOpen) {
+                        event.preventDefault()
+                        setListOpen(false)
+                      }
+                    }}
+                    placeholder="Their name"
+                    className="mt-3 block w-full border-b border-[#211f1b]/25 bg-transparent pb-2 text-lg outline-none"
+                  />
+                </label>
+                {/* An overlay, not an in-flow list: a list landing after the keystroke would shift the form (CLS).
+                    It fades in under motion, appears at once under reduced motion, and has no exit (ADR 0112). */}
+                {listOpen && matches.length > 0 && (
+                  <ul
+                    id="house-vendor-matches"
+                    role="listbox"
+                    aria-label="Vendors we already know"
+                    className="absolute left-0 right-0 top-full z-10 border border-[#211f1b]/15 bg-white shadow-sm motion-safe:animate-popover-in"
+                  >
+                    {matches.map((row) => (
+                      <li key={row.id} role="option" aria-selected={false}>
+                        <button
+                          type="button"
+                          onClick={() => void pickRow(row)}
+                          className="block min-h-11 w-full px-3 py-2 text-left"
+                        >
+                          <span className="block text-base">{row.name}</span>
+                          {row.city && <span className="block text-sm text-[#6d685f]">{row.city}</span>}
+                        </button>
+                      </li>
+                    ))}
+                    <li role="option" aria-selected={false}>
+                      <button
+                        type="button"
+                        onClick={() => setListOpen(false)}
+                        className="block min-h-11 w-full border-t border-[#211f1b]/10 px-3 py-2 text-left text-base text-[#1a5e6b]"
+                      >
+                        Add {supplier.trim()} as my own
+                      </button>
+                    </li>
+                  </ul>
+                )}
+              </div>
               <label className="mt-4 block">
                 <span className="text-sm text-[#6d685f]">Their email, if you have it: orders go there, and their replies come back here.</span>
                 <input
