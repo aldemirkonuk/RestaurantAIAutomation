@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { readWholeWindow } from "../common/read-whole-window";
 import { readConsumptionRows } from "./consumption-read-shared";
+import { readInventoryRows, readLotRollupRows, sharedLensRead } from "./lens-shared-reads";
 import * as E from "./engine";
 import { METRIC_REGISTRY, MetricDefinition, Persona } from "./metric-registry";
 import {
@@ -127,33 +128,10 @@ export class AnalyticsService {
 
   private async loadInventory(restaurantId: string) {
     const client = this.dbService.getClient();
+    // One shared read per house: see lens-shared-reads.ts.
     const [invRes, rollupRes] = await Promise.allSettled([
-      client
-        .from("restaurant_inventory")
-        // Column names must match the live schema exactly. PostgREST rejects
-        // the WHOLE query with 42703 on a single unknown column, and the
-        // allSettled + `data || []` below turns that rejection into an empty
-        // inventory rather than an error — so every metric downstream
-        // (inventory value, COGS ratio, turnover, GMROI, reorder science)
-        // silently reported 0/null for every restaurant. There is no
-        // wine_type/unit_price/unit_cost/reorder_point on this table: the
-        // menu price is `menu_price_current`, cost is `last_purchase_price`,
-        // the reorder trigger is `threshold_min`, and the varietal/type
-        // lives on master_wine_library.
-        .select(
-          "id, wine_name, stock_live, menu_price_current, last_purchase_price, threshold_min, master_wine_id, master_wine_library(primary_type)",
-        )
-        .eq("restaurant_id", restaurantId)
-        .eq("is_active", true),
-      client
-        .from("inventory_lot_rollup")
-        .select(
-          // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
-          // can tell a WAC that covers every on-hand bottle from one that
-          // covers a single invoiced bottle in twenty-one.
-          "inventory_id, live_qty, wac, has_invoice_cost, wac_qty",
-        )
-        .eq("restaurant_id", restaurantId),
+      readInventoryRows(client, restaurantId),
+      readLotRollupRows(client, restaurantId),
     ]);
 
     // allSettled makes a REJECTION invisible and `{ data, error }` makes a
@@ -204,14 +182,22 @@ export class AnalyticsService {
   private async loadDeliveredOrders(restaurantId: string, sinceDays = 365) {
     const client = this.dbService.getClient();
     const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
-    const { data, error } = await client
-      .from("procurement_orders")
-      .select(
-        "id, provider_id, total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
-      )
-      .eq("restaurant_id", restaurantId)
-      .in("status", ORDER_SPEND_STATUSES)
-      .gte("delivered_at", since);
+    // One shared read per (house, window): see lens-shared-reads.ts.
+    const { data, error } = await sharedLensRead(
+      client,
+      `procurement_orders|delivered|${restaurantId}|${sinceDays}`,
+      () =>
+        Promise.resolve(
+          client
+            .from("procurement_orders")
+            .select(
+              "id, provider_id, total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
+            )
+            .eq("restaurant_id", restaurantId)
+            .in("status", ORDER_SPEND_STATUSES)
+            .gte("delivered_at", since),
+        ) as Promise<{ data: any[] | null; error: any }>,
+    );
     // Every spend, COGS-ratio and vendor-concentration figure is built on this
     // list. Discarding the error made a failed read report a restaurant that
     // bought nothing all year — the exact shape ADR 0053 named for cost.

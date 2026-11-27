@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { readConsumptionRows } from "./consumption-read-shared";
+import { readInventoryRows, readLotRollupRows, sharedLensRead } from "./lens-shared-reads";
 import * as E from "./engine";
 import { AnalyticsService, SalesGate } from "./analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
@@ -62,26 +63,10 @@ export class AdvancedAnalyticsService {
 
   private async loadInventoryWithCost(restaurantId: string) {
     const client = this.dbService.getClient();
+    // One shared read per house: see lens-shared-reads.ts.
     const [invRes, rollupRes] = await Promise.allSettled([
-      client
-        .from("restaurant_inventory")
-        // Same schema-drift fix as AnalyticsService.loadInventory: a single
-        // unknown column 42703s the whole PostgREST query, and allSettled
-        // swallows it into an empty inventory.
-        .select(
-          "id, wine_name, stock_live, menu_price_current, last_purchase_price, master_wine_id, master_wine_library(primary_type)",
-        )
-        .eq("restaurant_id", restaurantId)
-        .eq("is_active", true),
-      client
-        .from("inventory_lot_rollup")
-        .select(
-          // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
-          // can tell a WAC that covers every on-hand bottle from one that
-          // covers a single invoiced bottle in twenty-one.
-          "inventory_id, live_qty, wac, has_invoice_cost, wac_qty",
-        )
-        .eq("restaurant_id", restaurantId),
+      readInventoryRows(client, restaurantId),
+      readLotRollupRows(client, restaurantId),
     ]);
     if (invRes.status === "fulfilled" && invRes.value.error)
       this.logQueryFailure("restaurant_inventory", invRes.value.error);
@@ -201,14 +186,22 @@ export class AdvancedAnalyticsService {
     // list, so getVendorScorecard and getCashflow returned zeroes for every
     // restaurant, forever. The vendor label comes from the FK embed instead;
     // wine_name was selected but never read, so it is simply gone.
-    const { data, error } = await this.dbService
-      .getClient()
-      .from("procurement_orders")
-      .select(
-        "id, provider_id, providers(name), total_cost, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status, cancel_reason_code, cancelled_from_status",
-      )
-      .eq("restaurant_id", restaurantId)
-      .gte("created_at", since);
+    const client = this.dbService.getClient();
+    // One shared read per (house, window): see lens-shared-reads.ts.
+    const { data, error } = await sharedLensRead(
+      client,
+      `procurement_orders|advanced|${restaurantId}|${sinceDays}`,
+      () =>
+        Promise.resolve(
+          client
+            .from("procurement_orders")
+            .select(
+              "id, provider_id, providers(name), total_cost, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status, cancel_reason_code, cancelled_from_status",
+            )
+            .eq("restaurant_id", restaurantId)
+            .gte("created_at", since),
+        ) as Promise<{ data: any[] | null; error: any }>,
+    );
     if (error) this.logQueryFailure("procurement_orders", error);
     return data || [];
   }
