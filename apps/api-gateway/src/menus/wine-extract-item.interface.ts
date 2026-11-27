@@ -48,6 +48,12 @@ export interface WineExtractItem {
   by_glass_price?: number;
   bottle_price?: number;
   raw_text?: string; // original text line from scan/csv
+  // r110 menu-g4: the page the reader says the line is printed on, 1-based
+  // within the document it was SENT (a chunk of a long PDF starts at 1).
+  page?: number;
+  // The line's page in the whole kept file, worked out by scan-parser
+  // placeOnPage; null when not known. CSV and typed lines never set it.
+  printed_page?: number | null;
 }
 
 /**

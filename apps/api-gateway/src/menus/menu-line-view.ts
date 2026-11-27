@@ -72,6 +72,8 @@ export const MEMBER_LINE_KEYS = [
   "status",
   "price_flag",
   "price_flag_note",
+  // r110 menu-g4: the page of the kept file the line is printed on.
+  "printed_page",
   "created_at",
 ] as const;
 

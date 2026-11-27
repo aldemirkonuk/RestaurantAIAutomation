@@ -328,7 +328,7 @@ describe("MenusService line reads — a line's raw line is a holder's (ADR 0145 
   const MEMBER_KEYS = [
     "id", "name", "producer", "category", "vintage", "region", "country", "grape_variety",
     "by_glass_price", "bottle_price", "wine_library_id", "inventory_item_id", "source", "status",
-    "price_flag", "price_flag_note", "created_at",
+    "price_flag", "price_flag_note", "created_at", "printed_page",
   ];
   const ROOT_KEYS = ["menuId", "name", "status", "items"];
 
@@ -339,6 +339,7 @@ describe("MenusService line reads — a line's raw line is a holder's (ADR 0145 
     const line = (over: Row): Row => ({
       menu_id: "menu-1",
       restaurant_id: "rest-1",
+      printed_page: null,
       producer: null,
       category: null,
       vintage: null,
@@ -1159,6 +1160,38 @@ describe("MenusService — every menu read is kept as its own version", () => {
     expect(version).toMatchObject({ status: "draft", read_state: "failed", lines_extracted: 0 });
     expect(version.read_failure).toMatch(/menu read is waiting/);
     expect(tables.menu_items).toHaveLength(0);
+  });
+
+  it("a scan writes each line's printed page and the review carries it; a CSV line has none (r110 menu-g4)", async () => {
+    const tables: Record<string, Row[]> = base();
+    const service = makeService(tables, {
+      wineSubmissions,
+      scanParser: {
+        parseWithWarnings: async () => ({
+          items: [
+            { name: "Opus One", bottle_price: 62, printed_page: 9 },
+            { name: "Soave", bottle_price: 40, printed_page: null },
+          ],
+          warnings: [],
+        }),
+      },
+    });
+    const r = await service.importMenu({ method: "scan", data: { imageBase64: "JVBERi0=" }, restaurantId: "rest-1" } as any, "user-1");
+    await service.whenRead(r.menuId);
+    expect(tables.menu_items.map((l) => [l.name, l.printed_page])).toEqual([
+      ["Opus One", 9],
+      ["Soave", null],
+    ]);
+    const version = tables.restaurant_menus.find((m) => m.id === r.menuId)!;
+    expect((version.read_reply as any).items.map((i: any) => [i.name, i.printedPage])).toEqual([
+      ["Opus One", 9],
+      ["Soave", null],
+    ]);
+
+    const csvTables: Record<string, Row[]> = base();
+    const csvService = makeService(csvTables, { wineSubmissions, csvParser: new CsvParserService() });
+    await csvService.importMenu({ method: "csv", data: { csvContent: "name,bottle_price\nOpus One,62\n" }, restaurantId: "rest-1" } as any, "user-1");
+    expect(csvTables.menu_items[0].printed_page).toBeNull();
   });
 
   it("a scan keeps its photo/PDF under the house, content-addressed, with the sniffed type", async () => {
