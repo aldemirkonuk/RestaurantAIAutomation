@@ -347,8 +347,8 @@ export class RecipesService {
     componentIds: string[],
     money: boolean,
     depth: number,
-  ): Promise<Map<string, { name: string; perBase: number | null }>> {
-    const out = new Map<string, { name: string; perBase: number | null }>();
+  ): Promise<Map<string, { name: string; perBase: number | null; partial?: boolean }>> {
+    const out = new Map<string, { name: string; perBase: number | null; partial?: boolean }>();
     if (!componentIds.length) return out;
     const client = this.db.getClient();
     const [dishes, pointers] = await Promise.all([
@@ -381,7 +381,7 @@ export class RecipesService {
     const [{ items, lots }, inner] = await Promise.all([
       this.readPricing(restaurantId, [...new Set(rows.map((l) => l.inventory_id).filter(Boolean))] as string[], money),
       depth >= 3
-        ? Promise.resolve(new Map<string, { name: string; perBase: number | null }>())
+        ? Promise.resolve(new Map<string, { name: string; perBase: number | null; partial?: boolean }>())
         : this.componentRates(restaurantId, [...new Set(rows.map((l) => l.component_dish_id).filter(Boolean))] as string[], money, depth + 1),
     ]);
     for (const d of (dishes.data ?? []) as any[]) {
@@ -399,7 +399,11 @@ export class RecipesService {
         })),
         1,
       );
-      out.set(d.id, { name: d.name, perBase: d.deleted_at || !lines.length ? null : componentPerBase(batch, d.yield_qty_base) });
+      out.set(d.id, {
+        name: d.name,
+        perBase: d.deleted_at || !lines.length ? null : componentPerBase(batch, d.yield_qty_base),
+        partial: batch.partial > 0,
+      });
     }
     return out;
   }

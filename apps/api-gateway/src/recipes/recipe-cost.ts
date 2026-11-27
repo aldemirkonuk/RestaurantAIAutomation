@@ -73,7 +73,7 @@ export interface CostLineInput {
    * of it costs, or null when that is not known. Absent on a made line is the
    * same as null: a line that cannot say what it draws is not priced.
    */
-  made?: { name: string; perBase: number | null } | null;
+  made?: { name: string; perBase: number | null; /** The component's own batch counted a partly invoiced price. */ partial?: boolean } | null;
 }
 
 export interface LineCost {
@@ -100,6 +100,8 @@ export interface LineCost {
   weighed?: StatedBridge;
   /** Set on a made line: the component it was priced through, or waits for. */
   throughComponent?: string;
+  /** Set on a made line whose component is priced from partly invoiced stock: the hedge a direct line carries. */
+  partial?: true;
 }
 
 /** A stated weight a line was priced through. */
@@ -265,12 +267,15 @@ export function recipeCost(lines: CostLineInput[], yieldServes: number): RecipeC
       if (!Number.isFinite(cost)) return unknown;
       exact[exact.length - 1] = cost;
       priced += 1;
+      // A component priced from partly invoiced stock keeps its hedge in the drink.
+      if (line.made?.partial) partial += 1;
       return {
         status: "linked",
         costPerServe: round2(round6(cost)),
         costPerServeExact: round6(cost),
         costBasis: "component",
         ...(name ? { throughComponent: name } : {}),
+        ...(line.made?.partial ? { partial: true as const } : {}),
       };
     }
     if (!line.inventoryId || !line.item) {
