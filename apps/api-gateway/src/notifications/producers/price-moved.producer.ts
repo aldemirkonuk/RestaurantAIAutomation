@@ -52,6 +52,9 @@ const PRODUCER = "price_moved";
 const NOT_A_PURCHASE_PRICE = new Set(["credit_memo", "purchase_order", "statement"]);
 const LISTED = 3;
 
+/** PostgREST's default row cap; a page is never longer. */
+const LINE_PAGE = 1000;
+
 interface Moved {
   name: string;
   pct: number;
@@ -139,19 +142,32 @@ export class PriceMovedProducer {
     }
     const houseCurrency = String(house?.currency ?? "").trim().toUpperCase();
 
-    const { data: lineRows, error: lineErr } = await client
-      .from("procurement_document_lines")
-      .select(
-        "document_id, line_no, description, inventory_id, line_total, qty, pack_size, qty_bottles, uom, format_ml",
-      )
-      .eq("restaurant_id", restaurantId)
-      .in("document_id", docs.map((d) => d.id))
-      .order("line_no", { ascending: true });
-    if (lineErr) {
-      throw new Error(`could not read procurement_document_lines: ${lineErr.message}`);
+    // Paged: the lines of up to CANDIDATE_CAP papers pass PostgREST's 1000-row
+    // cap (50 papers of 25 lines is 1250), and a capped read keeps only the
+    // first lines of every paper, so a move further down is never reported
+    // and the dedupe key then stops any later sweep from reporting it.
+    // document_id then line_no is a total order, so no page repeats or skips.
+    const lineRows: any[] = [];
+    const docIds = docs.map((d) => d.id);
+    for (let from = 0; ; from += LINE_PAGE) {
+      const { data: page, error: lineErr } = await client
+        .from("procurement_document_lines")
+        .select(
+          "document_id, line_no, description, inventory_id, line_total, qty, pack_size, qty_bottles, uom, format_ml",
+        )
+        .eq("restaurant_id", restaurantId)
+        .in("document_id", docIds)
+        .order("document_id", { ascending: true })
+        .order("line_no", { ascending: true })
+        .range(from, from + LINE_PAGE - 1);
+      if (lineErr) {
+        throw new Error(`could not read procurement_document_lines: ${lineErr.message}`);
+      }
+      lineRows.push(...((page ?? []) as any[]));
+      if ((page ?? []).length < LINE_PAGE) break;
     }
     const linesByDoc = new Map<string, any[]>();
-    for (const l of (lineRows ?? []) as any[]) {
+    for (const l of lineRows) {
       const list = linesByDoc.get(l.document_id) ?? [];
       list.push(l);
       linesByDoc.set(l.document_id, list);
