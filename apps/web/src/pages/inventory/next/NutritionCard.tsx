@@ -8,6 +8,9 @@
  * - a figure nobody stated reads "not known", never 0;
  * - every figure says per 100 g or per 100 ml;
  * - energy worked out from ABV says it is the alcohol alone;
+ * - energy reads in kJ and kcal; a house in a country that labels by EU
+ *   1169/2011 Annex XIII Part B also sees each figure's % RI per 100 g/ml,
+ *   with the statement the annex requires (nutrition-ri.ts);
  * - an allergen nobody stated is "not stated", and "free of" is only ever a
  *   person's statement;
  * - a failed read says so and shows nothing as known (ADR 0020).
@@ -23,6 +26,7 @@ import NutritionForm from './NutritionForm';
 import './nutrition-card.css';
 import { allergenLines, figureWords, PER, SOURCE_WORDS } from './nutrition-words';
 import { packNutrition, packSizeMl, type PackHouse, type PackSource } from './pack-nutrition';
+import { energyWords, referenceIntakes, RI_STATEMENT, type RiField } from './nutrition-ri';
 
 /** One whole container, under the per-100 table (DD-r108-37); nothing when no size is recorded. */
 function PackLine({ f, sizeMl, container }: { f: StoredNutrition; sizeMl: number | null; container: string }) {
@@ -38,7 +42,7 @@ function PackLine({ f, sizeMl, container }: { f: StoredNutrition; sizeMl: number
   }
   const p = pack.figures;
   const parts = [
-    `${figureWords(p.energyKcal, 'kcal')}${pack.energyFromAbv && p.energyKcal !== null ? ' (from the alcohol alone; the energy in any sugar is not added)' : ''}`,
+    `${energyWords(p.energyKcal)}${pack.energyFromAbv && p.energyKcal !== null ? ' (from the alcohol alone; the energy in any sugar is not added)' : ''}`,
     `protein ${figureWords(p.proteinG, 'g')}`,
     `fat ${figureWords(p.fatG, 'g')}`,
     `carbohydrate ${figureWords(p.carbohydrateG, 'g')}`,
@@ -52,30 +56,38 @@ function PackLine({ f, sizeMl, container }: { f: StoredNutrition; sizeMl: number
   );
 }
 
-function Figures({ f, sizeMl, container }: { f: StoredNutrition; sizeMl: number | null; container: string }) {
-  const rows: Array<[string, string, string?]> = [
-    ['Energy', figureWords(f.energyKcal, 'kcal'), f.energyFromAbv ? 'from the alcohol alone, at least: any sugar is not counted' : undefined],
-    ['Protein', figureWords(f.proteinG, 'g')],
-    ['Fat', figureWords(f.fatG, 'g')],
-    ['Carbohydrate', figureWords(f.carbohydrateG, 'g')],
-    ['Sugar', figureWords(f.sugarsG, 'g')],
-    ['Salt', figureWords(f.saltG, 'g')],
+function Figures({ f, sizeMl, container, country }: { f: StoredNutrition; sizeMl: number | null; container: string; country: string | null }) {
+  const ri = referenceIntakes(f, country);
+  const rows: Array<[string, string, string | undefined, RiField?]> = [
+    ['Energy', energyWords(f.energyKcal), f.energyFromAbv ? 'from the alcohol alone, at least: any sugar is not counted' : undefined, 'energyKcal'],
+    ['Protein', figureWords(f.proteinG, 'g'), undefined, 'proteinG'],
+    ['Fat', figureWords(f.fatG, 'g'), undefined, 'fatG'],
+    ['Carbohydrate', figureWords(f.carbohydrateG, 'g'), undefined, 'carbohydrateG'],
+    ['Sugar', figureWords(f.sugarsG, 'g'), undefined, 'sugarsG'],
+    ['Salt', figureWords(f.saltG, 'g'), undefined, 'saltG'],
   ];
-  if (f.abvPct !== null) rows.push(['Alcohol', figureWords(f.abvPct, '%')]);
+  if (f.abvPct !== null) rows.push(['Alcohol', figureWords(f.abvPct, '%'), undefined]);
+  const anyRi = ri !== null && Object.keys(ri).length > 0;
   return (
     <>
       <h4 className="ivd-used-h">{PER[f.basis]}</h4>
       <dl className="ivn-figs" data-testid="ivn-figures">
-        {rows.map(([k, v, note]) => (
+        {rows.map(([k, v, note, field]) => (
           <div key={k} className="ivn-fig">
             <dt>{k}</dt>
             <dd data-unknown={v === 'not known' ? 'true' : undefined}>
               {v}
+              {field && ri?.[field] ? <span className="ivn-ri"> {ri[field]} RI</span> : null}
               {note ? <span className="ivd-dim"> · {note}</span> : null}
             </dd>
           </div>
         ))}
       </dl>
+      {anyRi ? (
+        <p className="iv-note" data-testid="ivn-ri-statement">
+          {RI_STATEMENT}
+        </p>
+      ) : null}
       <PackLine f={f} sizeMl={sizeMl} container={container} />
       <p className="iv-note" data-testid="ivn-source">
         {SOURCE_WORDS[f.source](f.sourceRef)}, stated by {f.statedByName} {fmtWhen(f.statedAt)}.
@@ -90,9 +102,11 @@ export interface WhatIsInItProps {
   house?: PackHouse;
   restaurantId: string | null;
   canManage: boolean;
+  /** restaurants.country as written; absent or unknown gives no % RI. */
+  country?: string | null;
 }
 
-export default function NutritionCard({ row, house, restaurantId, canManage }: WhatIsInItProps) {
+export default function NutritionCard({ row, house, restaurantId, canManage, country = null }: WhatIsInItProps) {
   const itemId = row.id;
   const sizeMl = packSizeMl(row, house);
   const container = house?.uom === 'keg' ? 'keg' : 'bottle';
@@ -139,7 +153,7 @@ export default function NutritionCard({ row, house, restaurantId, canManage }: W
   return (
     <div className="ivn" data-testid="ivn">
       {data.figures ? (
-        <Figures f={data.figures} sizeMl={sizeMl} container={container} />
+        <Figures f={data.figures} sizeMl={sizeMl} container={container} country={country} />
       ) : (
         <p className="iv-note" data-testid="ivn-none">
           Nothing is recorded yet about what is in this item.

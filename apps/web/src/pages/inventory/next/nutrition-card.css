@@ -23,6 +23,11 @@
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+.ivn-ri {
+  margin-left: 8px;
+  color: var(--ink-3);
+  font-style: normal;
+}
 .ivn-fig dd[data-unknown='true'] {
   color: var(--ink-4);
   font-style: italic;

@@ -182,6 +182,18 @@ describe('useInventoryNextData — side reads that did not answer (INV-W28)', ()
     expect(result.current.pending).toEqual([]);
   });
 
+  it('carries the house country its currency read answered, and none when that read failed (r109 inventory-g5)', async () => {
+    m.currency.mockResolvedValue({ readable: true, code: null, country: 'Türkiye' });
+    const first = mount();
+    await waitFor(() => expect(first.result.current.currency.state).toBe('not_recorded'));
+    expect(first.result.current.currency.country).toBe('Türkiye');
+    first.unmount();
+    m.currency.mockResolvedValue({ readable: false, code: 'TRY', country: 'Türkiye' });
+    const second = mount();
+    await waitFor(() => expect(second.result.current.currency.state).toBe('unreadable'));
+    expect(second.result.current.currency.country).toBeUndefined();
+  });
+
   it('does not wait on a library with nothing to ask (no wine ids, so the query never runs)', async () => {
     m.winesPending = true; // a disabled query stays pending for ever
     const { result } = mount();

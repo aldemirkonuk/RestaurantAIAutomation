@@ -80,7 +80,7 @@ const CURRENCY = /€|EUR|\$|£|₺|TRY|USD/;
 
 function open(
   r: InvRow | null,
-  opts: { canManage?: boolean; house?: HouseFields; NutritionCard?: (p: NutritionCardProps) => JSX.Element; TasteCard?: (p: NutritionCardProps) => JSX.Element; code?: string } = {},
+  opts: { canManage?: boolean; house?: HouseFields; NutritionCard?: (p: NutritionCardProps) => JSX.Element; TasteCard?: (p: NutritionCardProps) => JSX.Element; code?: string; country?: string | null } = {},
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -89,7 +89,7 @@ function open(
         row={r}
         house={opts.house ?? NO_HOUSE}
         canManage={opts.canManage ?? true}
-        currency={{ state: 'recorded', code: opts.code ?? 'EUR' }}
+        currency={{ state: 'recorded', code: opts.code ?? 'EUR', country: opts.country }}
         zoneName={() => 'Cave'}
         locations={[]}
         locationsUnavailable={false}
@@ -472,7 +472,18 @@ describe('the item drawer', () => {
     fireEvent.click(screen.getByTestId('ivd-card-inside'));
     expect(screen.getAllByTestId('nutrition-card')).toHaveLength(1);
     expect(within(screen.getByTestId('ivd-nutrition-slot')).getByTestId('nutrition-card').textContent).toBe('Gravner Ribolla');
-    expect(seen.at(-1)).toMatchObject({ row: { id: 'i1' }, house: { kind: 'food' }, restaurantId: 'r1', canManage: true });
+    expect(seen.at(-1)).toMatchObject({ row: { id: 'i1' }, house: { kind: 'food' }, restaurantId: 'r1', canManage: true, country: null });
+  });
+
+  it('hands the NutritionCard the house country its currency read answered (r109 inventory-g5)', () => {
+    const seen: NutritionCardProps[] = [];
+    const Nutrition = (p: NutritionCardProps) => {
+      seen.push(p);
+      return <div data-testid="nutrition-card" />;
+    };
+    open(row(), { NutritionCard: Nutrition, country: 'Türkiye' });
+    fireEvent.click(screen.getByTestId('ivd-card-inside'));
+    expect(seen.at(-1)?.country).toBe('Türkiye');
   });
 
   it('says a count-gap read that failed could not be read, never "Never counted"', async () => {
