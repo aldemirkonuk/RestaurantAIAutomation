@@ -122,6 +122,81 @@ function readAuthMethod(
 }
 
 /**
+ * The sender check a letter came with (r108 mail-gap g8), kept on the row as
+ * `email_headers.auth`: SPF, DKIM and DMARC as pass (true), another verdict
+ * (false) or absent (null), and the domain that signed it when DKIM passed.
+ */
+export interface SenderAuth {
+  spf: boolean | null;
+  dkim: boolean | null;
+  dmarc: boolean | null;
+  signedBy: string | null;
+}
+
+/** The signing domain of every passing DKIM verdict (`header.d=`, else the domain of `header.i=`); null when a clause names none. */
+function dkimSigners(value: string): Array<string | null> {
+  const out: Array<string | null> = [];
+  for (const clause of value.toLowerCase().matchAll(/\bdkim=pass\b([^;]*)/g)) {
+    const d =
+      /\bheader\.d=([a-z0-9.-]+)/.exec(clause[1]) ??
+      /\bheader\.i=[^\s;@]*@([a-z0-9.-]+)/.exec(clause[1]);
+    out.push(d ? d[1].replace(/\.+$/, "") || null : null);
+  }
+  return out;
+}
+
+/**
+ * Whether a DKIM signing domain speaks for the From address: the same domain,
+ * or a parent of it. A signature by some other domain proves nothing about who
+ * the letter says it is from.
+ */
+export function signerSpeaksFor(
+  signer: string | null | undefined,
+  fromAddress: string | null | undefined,
+): boolean {
+  const s = (signer ?? "").trim().toLowerCase().replace(/\.+$/, "");
+  const at = (fromAddress ?? "").lastIndexOf("@");
+  if (!s || at < 0) return false;
+  const d = fromAddress!.slice(at + 1).trim().toLowerCase().replace(/\.+$/, "");
+  return d === s || d.endsWith(`.${s}`);
+}
+
+/**
+ * The receiving server whose verdict is believed. Gmail stamps its own
+ * Authentication-Results above everything the sender wrote, and the header map
+ * keeps that topmost one (`inboundHeaderMap`). ARC-Authentication-Results is
+ * never read: with no forwarder in between, the topmost one is whatever the
+ * sender wrote.
+ */
+const TRUSTED_AUTHSERV_ID = "mx.google.com";
+
+/**
+ * The sender check to keep, or null when there is none to believe: no
+ * Authentication-Results, one some other server wrote, or one with no verdict.
+ * Null reads as "not recorded", never as a failure.
+ */
+export function senderAuthOf(
+  headers: HeaderMap | null | undefined,
+  fromHeader?: string | null,
+): SenderAuth | null {
+  const h = normalizeHeaders(headers);
+  const auth = (h["authentication-results"] || "").trim();
+  if (auth.split(";")[0].trim().toLowerCase() !== TRUSTED_AUTHSERV_ID) return null;
+  const spf = readAuthMethod(auth, "spf");
+  const signers = dkimSigners(auth);
+  // Any passing signature counts as DKIM passing, not only the first clause.
+  const dkim = signers.length ? true : readAuthMethod(auth, "dkim");
+  const dmarc = readAuthMethod(auth, "dmarc");
+  if (spf === null && dkim === null && dmarc === null) return null;
+  // The signer named is the one that speaks for the From domain; failing that,
+  // the first, so the row still records who signed.
+  const from = extractEmailAddress(fromHeader ?? h["from"]);
+  const signedBy =
+    signers.find((d) => signerSpeaksFor(d, from)) ?? signers[0] ?? null;
+  return { spf, dkim, dmarc, signedBy };
+}
+
+/**
  * Derive transport/auth signals from a header map (as published by the inbound pipeline)
  * plus an optional explicit `From` value. Never throws.
  */
