@@ -1327,6 +1327,15 @@ export default function InventoryNext() {
           onClose={closeItem}
           startWith={countFirst ? 'count' : undefined}
           scrollToUsed={usedFirst}
+          // One overlay at a time: the drawer closes, then the house's mapping panel opens.
+          onMapTill={
+            data.canManage
+              ? () => {
+                  closeItem();
+                  setPanel('pos');
+                }
+              : undefined
+          }
         />
       ) : null}
     </div>

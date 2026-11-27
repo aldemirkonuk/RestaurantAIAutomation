@@ -552,3 +552,45 @@ describe('foodCostShare for a drink', () => {
     expect(foodCostShare(null, null, 'drink')).toEqual({ missing: ['the cost is not complete', 'the drink has no price'] });
   });
 });
+
+describe('At the till (r109 g3)', () => {
+  const till = (over: Partial<UsedIn> = {}) =>
+    load({
+      atTill: ok([
+        { id: 'b1', source: 'square', itemName: 'Gin & Tonic', category: 'Cocktails', saleUnit: 'glass' },
+        { id: 'b2', source: '*', itemName: 'Gin, bottle', category: null, saleUnit: null },
+      ]),
+      ...over,
+    });
+
+  it('lists each button as name · how it sells · which till, and says a recipe button is not listed', () => {
+    render(<ItemUsedIn dishes={NO_DISHES} onRetryDishes={vi.fn()} load={till()} canManage={false} currency={EUR} onRetry={vi.fn()} onMapTill={vi.fn()} />);
+    const g = screen.getByTestId('ivd-used-till');
+    expect(within(g).getByText('Gin & Tonic · by the glass · Square')).toBeTruthy();
+    expect(within(g).getByText('Gin, bottle · every till')).toBeTruthy();
+    expect(g.textContent).toContain('A button pointed at a recipe is not listed here');
+    // Staff see names only, and no way to change the mapping.
+    expect(within(g).queryByRole('button', { name: 'Change on Map POS buttons' })).toBeNull();
+  });
+
+  it('says no button draws the good, and for a food that a dish sale does not draw it yet', () => {
+    const food = till({ item: { id: 'i1', kind: 'food', displayName: 'Lime' }, atTill: ok([]) });
+    render(<ItemUsedIn dishes={NO_DISHES} onRetryDishes={vi.fn()} load={food} canManage currency={EUR} onRetry={vi.fn()} />);
+    const g = screen.getByTestId('ivd-used-till');
+    expect(g.textContent).toContain('No till button draws this good, so a till sale does not move it.');
+    expect(g.textContent).toContain('A dish sale does not draw its foods yet.');
+  });
+
+  it('an unread or absent group says so, never None', () => {
+    render(<ItemUsedIn dishes={NO_DISHES} onRetryDishes={vi.fn()} load={till({ atTill: { readable: false, lines: null, source: 'x' } })} canManage currency={EUR} onRetry={vi.fn()} />);
+    expect(screen.getByTestId('ivd-used-till').textContent).toContain('could not be read');
+    expect(screen.queryByTestId('ivd-used-till-none')).toBeNull();
+  });
+
+  it('a manager opens Map POS buttons from it', () => {
+    const onMapTill = vi.fn();
+    render(<ItemUsedIn dishes={NO_DISHES} onRetryDishes={vi.fn()} load={till()} canManage currency={EUR} onRetry={vi.fn()} onMapTill={onMapTill} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Change on Map POS buttons' }));
+    expect(onMapTill).toHaveBeenCalledTimes(1);
+  });
+});
