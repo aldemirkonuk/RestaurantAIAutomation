@@ -1,0 +1,230 @@
+/**
+ * r109 (DD-r108-20): a correction to a paper's money re-costs the lots it
+ * settled and restates the sales already made. Fixtures are SYNTHETIC.
+ *
+ * The database half (a replay writes no revaluation, a no-order delivery's
+ * lot is revalued) is pinned in
+ * supabase/tests/20271227100000_a_correction_revalues_its_lots_test.sql.
+ */
+import { DatabaseService } from "../../database/database.service";
+import { makeMockDb, MockDb } from "./delivery-mock";
+import { DeliveryStockService } from "./delivery-stock.service";
+import { movesCost, overlayCorrections } from "./correction-overlay";
+
+const REST = "11111111-1111-1111-1111-111111111111";
+const DEL = "dddddddd-dddd-dddd-dddd-dddddddddddd";
+const ORD = "abababab-abab-abab-abab-abababababab";
+const ITEM = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee";
+const DOC = "inv-1";
+const USER = "u1";
+
+const env = (value: unknown) => ({ value, source: "human_corrected", revision: 2 });
+const fix = (revision: number, field_path: string, value: unknown) => ({
+  document_id: DOC,
+  revision,
+  kind: "correction",
+  field_path,
+  after: env(value),
+});
+
+describe("DeliveryStockService.recostAfterCorrection (r109, DD-r108-20)", () => {
+  let db: MockDb;
+  let service: DeliveryStockService;
+
+  const line = (over: Record<string, unknown> = {}) => ({
+    document_id: DOC,
+    line_no: 1,
+    inventory_id: ITEM,
+    qty: 10,
+    qty_bottles: 10,
+    uom: "bottle",
+    pack_size: 1,
+    unit_price: 60,
+    line_total: 600,
+    ...over,
+  });
+  const given = (o: {
+    head?: Record<string, unknown>;
+    lines?: Record<string, unknown>[];
+    corrections?: Record<string, unknown>[];
+    booked?: number;
+    state?: string;
+    orderId?: string | null;
+  }) => {
+    db.answers.procurement_documents = { data: [{ id: DOC, doc_number: "A-1", ...(o.head ?? {}) }], error: null };
+    db.answers.procurement_document_lines = { data: o.lines ?? [line()], error: null };
+    db.answers.document_corrections = { data: o.corrections ?? [], error: null };
+    db.answers.inventory_transactions = { data: [{ inventory_id: ITEM, quantity_change: o.booked ?? 10 }], error: null };
+    db.answers.deliveries = { data: { id: DEL, state: o.state ?? "VERIFIED", order_id: o.orderId ?? null }, error: null };
+  };
+  const recost = (path = "lines[0].netPrice", revision = 3) =>
+    service.recostAfterCorrection(REST, DOC, revision, USER, path);
+  const posted = () => db.rpcCalls.filter((c) => c.fn === "finalise_delivery_cost");
+  const restated = () => db.rpcCalls.filter((c) => c.fn === "restate_sale_cost");
+
+  beforeEach(() => {
+    db = makeMockDb();
+    db.reset();
+    service = new DeliveryStockService(db.client as unknown as DatabaseService);
+    db.answers.document_deliveries = {
+      data: [{ document_id: DOC, delivery_id: DEL, role: "invoice" }],
+      error: null,
+    };
+    db.answers.delivery_proposals = { data: [], error: null };
+    db.answers.procurement_orders = { data: { inventory_id: ITEM }, error: null };
+    db.rpcAnswers.finalise_delivery_cost = {
+      data: { lots_matched: 1, lots_finalised: 1, bottles_matched: 4, bottles_finalised: 4 },
+      error: null,
+    };
+    db.rpcAnswers.restate_sale_cost = { data: { rows_restated: 2 }, error: null };
+  });
+
+  it("a corrected price and total re-cost the lots, with the reason naming the revision", async () => {
+    given({ corrections: [fix(2, "lines[0].netPrice", 55), fix(3, "lines[0].netAmount", 550)] });
+    const r = await recost("lines[0].netAmount", 3);
+    expect(posted().map((c) => c.args.p_unit_cost)).toEqual([55]);
+    expect(String(posted()[0].args.p_reason)).toMatch(/^correction revision 3 of document inv-1;/);
+    expect(r.ok && r.value.deliveries[0]).toMatchObject({ deliveryId: DEL, kept: [], drawnBefore: 6 });
+  });
+
+  it("verify itself costs the corrected paper (costing no longer reads the stored line alone)", async () => {
+    given({ state: "AGREED", corrections: [fix(2, "lines[0].netPrice", 55), fix(3, "lines[0].netAmount", 550)] });
+    await service.finaliseAtVerified(REST, DEL, USER);
+    expect(posted().map((c) => c.args.p_unit_cost)).toEqual([55]);
+  });
+
+  describe("the invariant |unit_cost x received - (corrected net + charges)| <= received x 5e-7", () => {
+    for (const freight of [0, 10]) {
+      it(`100.00 over 3 bottles, freight ${freight}`, async () => {
+        given({
+          head: { freight },
+          lines: [line({ qty: 3, qty_bottles: 3, unit_price: 30, line_total: 90 })],
+          corrections: [fix(2, "lines[0].netPrice", 33.33), fix(3, "lines[0].netAmount", 100)],
+          booked: 3,
+        });
+        await recost("lines[0].netAmount");
+        const u = Number(posted()[0].args.p_unit_cost);
+        expect(Math.abs(u * 3 - (100 + freight))).toBeLessThanOrEqual(3 * 5e-7);
+        // Kept to the sixth place, never rounded to the cent.
+        expect(u).toBe(freight ? 36.666667 : 33.333333);
+      });
+    }
+  });
+
+  it("a corrected quantity re-derives the bottles from the corrected count", async () => {
+    // The paper printed 2 cases of 6 at 60 a case (line 120); it was 3 cases.
+    given({
+      lines: [line({ qty: 2, qty_bottles: 12, uom: "case", pack_size: 6, unit_price: 60, line_total: 120, price_base_qty: 1, price_base_uom: "case" })],
+      corrections: [fix(2, "lines[0].quantity", 3), fix(3, "lines[0].netAmount", 180)],
+      booked: 18,
+    });
+    await recost("lines[0].netAmount");
+    expect(posted().map((c) => c.args.p_unit_cost)).toEqual([10]);
+  });
+
+  it("a replay of the same revision posts the same cost and reason (the database writes nothing new)", async () => {
+    given({ corrections: [fix(2, "lines[0].netPrice", 55), fix(3, "lines[0].netAmount", 550)] });
+    await recost("lines[0].netAmount", 3);
+    await recost("lines[0].netAmount", 3);
+    const [a, b] = posted().map((c) => c.args);
+    expect(b).toEqual(a);
+  });
+
+  it("an unmappable unit revalues nothing and says why", async () => {
+    given({ corrections: [fix(2, "lines[0].unit", "kg")] });
+    const r = await recost("lines[0].unit");
+    expect(posted()).toEqual([]);
+    expect(restated()).toEqual([]);
+    const kept = r.ok ? r.value.deliveries[0].kept : [];
+    expect(kept).toHaveLength(1);
+    expect(kept[0].reason).toMatch(/weigh|kg/);
+    expect(kept[0].reason).toMatch(/Its lots keep the cost they had; nothing was revalued\.$/);
+    expect(kept[0].reason).not.toMatch(/stays provisional/);
+  });
+
+  it("a price corrected without its total is kept: the paper now disagrees with itself", async () => {
+    given({ corrections: [fix(2, "lines[0].netPrice", 55)] });
+    const r = await recost();
+    expect(posted()).toEqual([]);
+    expect(r.ok && r.value.deliveries[0].kept[0].reason).toMatch(/nothing was revalued/);
+  });
+
+  it("restates the sales of an ordered delivery at the posted cost", async () => {
+    given({ orderId: ORD, corrections: [fix(2, "lines[0].netPrice", 55), fix(3, "lines[0].netAmount", 550)] });
+    const r = await recost("lines[0].netAmount");
+    expect(restated().map((c) => c.args)).toEqual([
+      { p_restaurant_id: REST, p_inventory_id: ITEM, p_source_order_id: ORD, p_unit_cost: 55, p_performed_by: USER },
+    ]);
+    expect(r.ok && r.value.deliveries[0].salesRestated).toBe(2);
+  });
+
+  it("a delivery with no order re-costs its lots and restates nothing", async () => {
+    given({ orderId: null, corrections: [fix(2, "lines[0].netPrice", 55), fix(3, "lines[0].netAmount", 550)] });
+    const r = await recost("lines[0].netAmount");
+    expect(posted()).toHaveLength(1);
+    expect(restated()).toEqual([]);
+    expect(r.ok && r.value.deliveries[0].salesRestated).toBe(0);
+  });
+
+  it("a delivery not yet verified is not posted: verify will cost the corrected paper", async () => {
+    given({ state: "DELIVERED", corrections: [fix(2, "lines[0].netPrice", 55)] });
+    const r = await recost();
+    expect(posted()).toEqual([]);
+    expect(r.ok && r.value.deliveries[0].note).toMatch(/not verified yet/);
+  });
+
+  it("a field that cannot move a cost reads nothing", async () => {
+    given({});
+    const r = await recost("lines[0].description");
+    expect(r).toEqual({ ok: true, value: { costField: false, deliveries: [] } });
+    expect(db.verbs).toEqual([]);
+  });
+
+  it("another house's paper is not found, and nothing is posted", async () => {
+    given({ corrections: [fix(2, "lines[0].netPrice", 55)] });
+    db.answers.procurement_documents = { data: null, error: null };
+    const r = await recost();
+    expect(r).toMatchObject({ ok: false, status: 404 });
+    expect(posted()).toEqual([]);
+  });
+
+  it("a failed read of the corrections posts nothing (ADR 0067)", async () => {
+    given({});
+    db.answers.document_corrections = { data: null, error: { message: "boom" } };
+    const r = await recost();
+    expect(r).toMatchObject({ ok: false, status: 500 });
+    expect(posted()).toEqual([]);
+  });
+});
+
+describe("overlayCorrections", () => {
+  const rows = [
+    { document_id: "d", line_no: 2, qty: 1, qty_bottles: 1, uom: "bottle", unit_price: 9, line_total: 9, pack_size: 1 },
+    { document_id: "d", line_no: 1, qty: 1, qty_bottles: 1, uom: "bottle", unit_price: 5, line_total: 5, pack_size: 1 },
+  ];
+
+  it("lines[n] is the n-th line by line_no, and an untouched line comes back as stored", () => {
+    const out = overlayCorrections({ id: "d" }, rows, [
+      { revision: 2, kind: "correction", field_path: "lines[1].netPrice", after: env(8) },
+    ]);
+    expect(out.lines[0]).toEqual({ ...rows[0], unit_price: 8 });
+    expect(out.lines[1]).toBe(rows[1]);
+    expect(out.touched).toBe(true);
+  });
+
+  it("a later revision wins, a tick changes nothing, a header total is laid over", () => {
+    const out = overlayCorrections({ id: "d", total: 14 }, rows, [
+      { revision: 3, kind: "correction", field_path: "lines[0].netPrice", after: env(4) },
+      { revision: 2, kind: "correction", field_path: "lines[0].netPrice", after: env(6) },
+      { revision: 4, kind: "verification", field_path: "lines[0].netPrice", after: env(99) },
+      { revision: 5, kind: "correction", field_path: "totals.taxInclusiveAmount", after: env(13) },
+    ]);
+    expect(out.lines[1]).toMatchObject({ unit_price: 4 });
+    expect(out.header).toMatchObject({ total: 13 });
+  });
+
+  it("movesCost names the money fields and nothing else", () => {
+    expect(["lines[0].netPrice", "lines[2].quantity", "lines[1].unit", "lines[0].priceBaseQuantity", "lines[0].priceBaseUnit", "currency"].every(movesCost)).toBe(true);
+    expect(["lines[0].description", "documentNumber", "lines[0].vintage", "nope"].some(movesCost)).toBe(false);
+  });
+});
