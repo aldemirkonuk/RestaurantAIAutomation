@@ -107,7 +107,11 @@ export function perBottlePrinted(line: PrintedLine): PerBottle | "no_price" | "u
   // qty_bottles is left at its 0 default on some papers: count qty x pack.
   if (!(bottles > 0) && BOTTLE_UNITS.test((line.uom ?? "").trim())) {
     const qty = Number(line.qty);
-    const pack = line.pack_size == null ? 1 : Number(line.pack_size);
+    // A case or pack with no pack size is not a count of bottles: counting it
+    // as one would price a whole case as a bottle ("up 1100 percent"). Only a
+    // bottle is 1.
+    const single = /^(bottle|btl|bt)$/i.test((line.uom ?? "").trim());
+    const pack = line.pack_size == null || line.pack_size === "" ? (single ? 1 : NaN) : Number(line.pack_size);
     bottles = Number.isFinite(qty) && Number.isFinite(pack) ? qty * pack : NaN;
   }
   if (!Number.isFinite(bottles) || bottles <= 0) return "unit_differs";
