@@ -275,7 +275,7 @@ export default function CommunicationsNext() {
   const tab: 'mail' | 'letters' =
     tabParam === 'letters'
       ? 'letters'
-      : tabParam === 'mail' || params.has('with') || params.has('thread')
+      : tabParam === 'mail' || params.has('with') || params.has('thread') || params.has('setup')
         ? 'mail'
         : 'letters';
   // The label's waiting count: read once on Letters, polled only on Mail.
@@ -284,7 +284,7 @@ export default function CommunicationsNext() {
     if (next === tab) return;
     const p = new URLSearchParams(params);
     if (next === 'mail') p.set('tab', 'mail');
-    else for (const k of ['tab', 'with', 'thread']) p.delete(k);
+    else for (const k of ['tab', 'with', 'thread', 'setup']) p.delete(k);
     setParams(p);
   };
   const draftedOrderIds = new Set(data.drafts.map((d) => d.orderId));
