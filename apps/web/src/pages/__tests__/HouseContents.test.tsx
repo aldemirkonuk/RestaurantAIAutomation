@@ -29,15 +29,14 @@ beforeEach(() => {
 const page = () => render(<MemoryRouter><HouseContents /></MemoryRouter>)
 
 describe('HouseContents', () => {
-  it('leads to the desk from the header mark and from "Go to the desk"', async () => {
+  it('leads to the desk from the header mark and from "Go to the desk"', () => {
     page()
     expect(screen.getByRole('link', { name: 'Mudavym, the desk' })).toHaveAttribute('href', '/')
-    expect(await screen.findByRole('link', { name: 'Go to the desk' })).toHaveAttribute('href', '/')
+    expect(screen.getByRole('link', { name: 'Go to the desk' })).toHaveAttribute('href', '/')
   })
 
-  it('never says an invoice is kept, and points to Receipts', async () => {
+  it('never says an invoice is kept, and points to Receipts', () => {
     page()
-    await screen.findByRole('link', { name: 'Receipts' })
     expect(document.body.textContent).not.toMatch(/kept for later/i)
     expect(screen.queryByLabelText('Last invoice later')).toBeNull()
     expect(screen.getByRole('link', { name: 'Receipts' })).toHaveAttribute('href', '/receipts')
@@ -218,9 +217,9 @@ describe('HouseContents: the vendor address and the invoice', () => {
     expect(addCustomProvider).not.toHaveBeenCalled()
   })
 
-  it('says the invoice leads to the costs, never "not required"', async () => {
+  it('says the invoice leads to the costs, never "not required"', () => {
     page()
-    expect(await screen.findByText('Next · for your costs')).toBeInTheDocument()
+    expect(screen.getByText('Next · for your costs')).toBeInTheDocument()
     expect(screen.getByText(/Costs come from the invoices you check\./)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Receipts' })).toHaveAttribute('href', '/receipts')
     const row = screen.getByText('Next · for your costs').closest('p')!

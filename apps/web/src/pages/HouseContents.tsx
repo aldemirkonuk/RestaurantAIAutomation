@@ -232,7 +232,7 @@ export default function HouseContents() {
             </div>
           ) : vendorRead === 'reading' ? (
             <p
-              className="py-6 font-serif text-2xl text-[#b7b2a8]"
+              className="min-h-[327px] py-6 font-serif text-2xl text-[#b7b2a8] sm:min-h-[303px]"
               role="status"
               data-testid="house-vendor-reading"
             >
@@ -297,11 +297,6 @@ export default function HouseContents() {
             </form>
           )}
 
-          {/* r108: the rows below wait for the vendor read. The slot above is one
-              line while it is out and 80 to 330 px after, by outcome; nothing is
-              reserved for a guess, so nothing under it can move. */}
-          {vendorRead !== 'reading' && (
-            <>
           {/* H-1: nothing is kept here. Receipts is where an invoice is read.
               r36 gap 8: the checklist calls the first invoice the way to the
               house's costs, so it is not said here as "not required". */}
@@ -336,18 +331,14 @@ export default function HouseContents() {
               Set it in Settings
             </button>
           </p>
-            </>
-          )}
         </div>
 
-        {vendorRead !== 'reading' && (
         <Link
           to="/"
           className="mt-10 inline-block bg-[#1a5e6b] px-5 py-2.5 text-white"
         >
           Go to the desk
         </Link>
-        )}
       </main>
     </div>
   )
