@@ -10,7 +10,8 @@
  *  L3 (D5) An absent price books the menu price for a bottle and no revenue
  *     for a pour, and the import counts it; a rung zero and a comp flag book
  *     nothing; neither is counted as unsent.
- *  L4 A voided fraction is not returned as a whole bottle; the line says so.
+ *  L4 (D1) A voided fraction returns its ml, not a whole bottle; a replay
+ *     returns nothing twice; a failed return is counted.
  */
 import { Logger } from "@nestjs/common";
 import { PosHubService } from "./pos-hub.service";
@@ -18,7 +19,7 @@ import { DatabaseService } from "../database/database.service";
 
 type Row = Record<string, any>;
 
-function makeDb(opts: { unit?: string; menu?: number } = {}) {
+function makeDb(opts: { unit?: string; menu?: number; failRpc?: string } = {}) {
   const consumption = new Map<string, Row>();
   const rpcs: Array<{ fn: string; args: Row }> = [];
   const seenKeys = new Set<string>();
@@ -78,6 +79,8 @@ function makeDb(opts: { unit?: string; menu?: number } = {}) {
       const fresh = !seenKeys.has(`${fn}:${key}`);
       seenKeys.add(`${fn}:${key}`);
       if (fresh) rpcs.push({ fn, args });
+      if (fn === opts.failRpc)
+        return { data: null, error: { message: "no live lot" } };
       return { data: "tx", error: null };
     },
   };
@@ -214,15 +217,52 @@ describe("absent price (L3, D5)", () => {
   });
 });
 
-describe("a voided fraction (L4)", () => {
-  it("is not returned as a whole bottle, and the line says so", async () => {
+describe("a voided fraction (L4, r57 D1)", () => {
+  it("returns the fraction's ml, not a whole bottle", async () => {
     const { db, rpcs } = makeDb({ unit: "bottle" });
     const res = await ingest(
       db,
       check([line({ qty: 0.5, price: 60 })], { voided: true }),
     );
     expect(rpcs.filter((r) => r.fn === "apply_stock_movement")).toHaveLength(0);
+    const back = rpcs.filter((r) => r.fn === "return_glass_pour");
+    expect(back).toHaveLength(1);
+    expect(back[0].args.p_pours).toBe(1);
+    // The database gives back the 375 ml the fraction booked under its key
+    // (sale-keyed return_glass_pour, r109); the void names that key.
+    expect(back[0].args.p_idempotency_key).toBe(`${back[0].args.p_sale_key}:void`);
+    expect(res.stock.failed).toBe(0);
+  });
+
+  it("a replayed void of a fraction returns nothing a second time (same key)", async () => {
+    const { db, rpcs } = makeDb({ unit: "bottle" });
+    const voided = check([line({ qty: 0.5, price: 60 })], { voided: true });
+    await ingest(db, voided);
+    await ingest(db, voided);
+    expect(rpcs.filter((r) => r.fn === "return_glass_pour")).toHaveLength(1);
+  });
+
+  it("a void of whole and fraction returns each under its own key", async () => {
+    const { db, rpcs } = makeDb({ unit: "bottle" });
+    await ingest(db, check([line({ qty: 1.5, price: 60 })], { voided: true }));
+    const keys = rpcs
+      .filter((r) => r.fn === "return_glass_pour")
+      .map((r) => r.args.p_idempotency_key);
+    expect(new Set(keys).size).toBe(keys.length);
+    // r109: the whole bottle and the half are each voided by the sale key
+    // they were booked under, so each gives back what it booked.
+    expect(keys.length).toBe(2);
+    const sales = rpcs.filter((r) => r.fn === "return_glass_pour").map((r) => r.args.p_sale_key);
+    expect(sales[1]).toBe(`${sales[0]}:frac`);
+    expect(rpcs.filter((r) => r.fn === "apply_stock_movement")).toHaveLength(0);
+  });
+
+  it("says so when the shelf could not take the fraction back", async () => {
+    const { db } = makeDb({ unit: "bottle", failRpc: "return_glass_pour" });
+    const res = await ingest(
+      db,
+      check([line({ qty: 0.5, price: 60 })], { voided: true }),
+    );
     expect(res.stock.failed).toBe(1);
-    expect(res.errors.join(" ")).toMatch(/fractional quantity/);
   });
 });

@@ -19,10 +19,19 @@
  *     pours costs the bottle), unknown stays null and is never 0, the source
  *     is the oldest live costed lot, and a check's margin sums only the cost
  *     each row kept: a row with none is counted, never costed afresh.
+ *  P10 (D1) Whatever a check draws off the shelf, its void gives back in ml:
+ *     the ml returned equal the ml drawn for any mix of glasses, bottles and
+ *     fractions, a void of a pour never moves whole bottles, and a replayed
+ *     void returns nothing twice.
  *  P5 The advised price carries the target margin to the cent, and the advice
  *     says raise only when the advised price is above today's.
  */
-import { resolveSaleVolume, inventoryVolumesFromRow } from "./pos-hub.service";
+import {
+  PosHubService,
+  resolveSaleVolume,
+  inventoryVolumesFromRow,
+} from "./pos-hub.service";
+import { DatabaseService } from "../database/database.service";
 import { saleLineKeys, splitQty, fractionMl } from "./sale-line";
 import {
   genericAdapter,
@@ -333,11 +342,15 @@ describe("cost at sale (P9, D4)", () => {
       cost_at_sale: null,
       cost_basis: null,
     });
-    expect(snapshotLineCost(src(30), "volume", 150, null, 1).cost_at_sale).toBeNull();
-    expect(snapshotLineCost(src(0), "volume", 150, 750, 1).cost_at_sale).toBe(0);
+    expect(
+      snapshotLineCost(src(30), "volume", 150, null, 1).cost_at_sale,
+    ).toBeNull();
+    expect(snapshotLineCost(src(0), "volume", 150, 750, 1).cost_at_sale).toBe(
+      0,
+    );
     const k = snapshotLineCost(src(30), "volume", 150, 750, 1);
     expect(k).toMatchObject({
-      cost_basis: "invoice_lot_wac",
+      cost_basis: "pour_lot_wac",
       cost_source_lot_id: "lot-1",
       cost_source_order_id: "ord-1",
     });
@@ -345,24 +358,65 @@ describe("cost at sale (P9, D4)", () => {
 
   it("the cost source is the invoiced WAC, else the last price; the lot is the oldest costed live one", () => {
     const lots = [
-      { id: "new", qty: 3, unit_cost: 40, cost_provenance: "invoice", source_order_id: "o2", received_at: "2026-09-02", stock_state: "live" },
-      { id: "sample", qty: 1, unit_cost: 0, cost_provenance: "sample", source_order_id: null, received_at: "2026-01-01", stock_state: "live" },
-      { id: "old", qty: 2, unit_cost: 30, cost_provenance: "invoice", source_order_id: "o1", received_at: "2026-08-01", stock_state: "live" },
-      { id: "spent", qty: 0, unit_cost: 10, cost_provenance: "invoice", source_order_id: "o0", received_at: "2026-02-01", stock_state: "live" },
+      {
+        id: "new",
+        qty: 3,
+        unit_cost: 40,
+        cost_provenance: "invoice",
+        source_order_id: "o2",
+        received_at: "2026-09-02",
+        stock_state: "live",
+      },
+      {
+        id: "sample",
+        qty: 1,
+        unit_cost: 0,
+        cost_provenance: "sample",
+        source_order_id: null,
+        received_at: "2026-01-01",
+        stock_state: "live",
+      },
+      {
+        id: "old",
+        qty: 2,
+        unit_cost: 30,
+        cost_provenance: "invoice",
+        source_order_id: "o1",
+        received_at: "2026-08-01",
+        stock_state: "live",
+      },
+      {
+        id: "spent",
+        qty: 0,
+        unit_cost: 10,
+        cost_provenance: "invoice",
+        source_order_id: "o0",
+        received_at: "2026-02-01",
+        stock_state: "live",
+      },
     ];
     const rollup = { has_invoice_cost: true, wac: 36, wac_qty: 5, live_qty: 5 };
-    expect(pickSaleCostSource({ last_purchase_price: 99 }, rollup, lots)).toEqual({
+    expect(
+      pickSaleCostSource({ last_purchase_price: 99 }, rollup, lots),
+    ).toEqual({
       unitCost: 36,
       basis: "invoice_lot_wac",
       lotId: "old",
       orderId: "o1",
     });
-    expect(pickSaleCostSource({ last_purchase_price: 99 }, null, lots)).toMatchObject({
+    expect(
+      pickSaleCostSource({ last_purchase_price: 99 }, null, lots),
+    ).toMatchObject({
       unitCost: 99,
       basis: "last_purchase_price",
-      lotId: null,
+      // r102: the lot a pour draws from first is named under this basis too,
+      // so the invoice that verifies its delivery can restate the line.
+      lotId: "old",
+      orderId: "o1",
     });
-    expect(pickSaleCostSource({ last_purchase_price: 0 }, null, lots)).toBeNull();
+    expect(
+      pickSaleCostSource({ last_purchase_price: 0 }, null, lots),
+    ).toBeNull();
     expect(pickSaleCostSource(null, null, null)).toBeNull();
   });
 
@@ -398,18 +452,142 @@ describe("cost at sale (P9, D4)", () => {
       if (missing < n) expect(m.margin).toBeCloseTo(rev - cost, 3);
       else expect(m.margin).toBeNull();
       if (missing > 0) expect(m.sentence).toMatch(/not kept/);
-      expect(m.lines.filter((l) => l.costNote === "cost not kept")).toHaveLength(missing);
+      expect(
+        m.lines.filter((l) => l.costNote === "cost not kept"),
+      ).toHaveLength(missing);
     }
   });
 
   it("a voided row is no line and no cost", () => {
     const m = checkMarginFromRows([
-      { wine_name: "a", quantity: 0, volume_ml: 0, total_revenue: 0, cost_at_sale: 0, cost_basis: "invoice_lot_wac" },
-      { wine_name: "b", quantity: 1, volume_ml: 150, total_revenue: 12, cost_at_sale: 4, cost_basis: "invoice_lot_wac" },
+      {
+        wine_name: "a",
+        quantity: 0,
+        volume_ml: 0,
+        total_revenue: 0,
+        cost_at_sale: 0,
+        cost_basis: "invoice_lot_wac",
+      },
+      {
+        wine_name: "b",
+        quantity: 1,
+        volume_ml: 150,
+        total_revenue: 12,
+        cost_at_sale: 4,
+        cost_basis: "invoice_lot_wac",
+      },
     ]);
     expect(m.voidedLines).toBe(1);
     expect(m.lines).toHaveLength(1);
     expect(m.margin).toBe(8);
     expect(m.marginPct).toBe(66.7);
+  });
+});
+
+describe("a void gives the poured ml back (P10, D1)", () => {
+  type Rpc = { fn: string; args: Record<string, any> };
+  function makeDb(unit: string) {
+    const rpcs: Rpc[] = [];
+    const seen = new Set<string>();
+    const client: any = {
+      from(table: string) {
+        const q: any = {
+          select: () => q,
+          eq: () => q,
+          upsert: async () => ({ error: null }),
+          update: () => q,
+          insert: async () => ({ error: null }),
+          then: (res: any, rej: any) =>
+            Promise.resolve({ error: null }).then(res, rej),
+        };
+        if (table === "pos_item_mappings")
+          q.in = async () => ({
+            data: [
+              {
+                external_item_id: "w",
+                item_name: "House Red",
+                is_wine: true,
+                inventory_id: "inv-1",
+                sale_unit: unit,
+              },
+            ],
+            error: null,
+          });
+        else if (table === "restaurant_inventory")
+          q.in = async () => ({
+            data: [
+              {
+                id: "inv-1",
+                bottle_size_ml: 750,
+                pour_size_ml: 150,
+                menu_price_current: 90,
+              },
+            ],
+            error: null,
+          });
+        else q.in = () => q;
+        if (table === "restaurant_tables")
+          q.eq = () => ({ eq: async () => ({ data: [], error: null }) });
+        return q;
+      },
+      rpc: async (fn: string, args: Record<string, any>) => {
+        const k = `${fn}:${args.p_idempotency_key}`;
+        if (!seen.has(k)) {
+          seen.add(k);
+          rpcs.push({ fn, args });
+        }
+        return { data: "tx", error: null };
+      },
+    };
+    return {
+      db: { getClient: () => client } as unknown as DatabaseService,
+      rpcs,
+    };
+  }
+  // r109 (DD-r108-21): a void names the sale part it gives back and the
+  // database returns what that part BOOKED (return_glass_pour, sale-keyed;
+  // ml for a pour, bottles for a bottle sale, at most once across voids:
+  // supabase/tests/20271230100000_one_void_of_a_pour_test.sql). So the
+  // property here is on keys and counts: every part the sale wrote is voided
+  // once, under its own key, for the same count.
+  const parts = (rpcs: Rpc[]) =>
+    rpcs
+      .filter((r) => r.fn === "record_glass_pour" || r.fn === "apply_stock_movement")
+      .map((r) => [String(r.args.p_idempotency_key), r.fn === "apply_stock_movement" ? -r.args.p_delta : r.args.p_pours])
+      .sort();
+  const voided = (rpcs: Rpc[]) =>
+    rpcs
+      .filter((r) => r.fn === "return_glass_pour")
+      .map((r) => {
+        expect(r.args.p_idempotency_key).toBe(`${r.args.p_sale_key}:void`);
+        return [String(r.args.p_sale_key), r.args.p_pours];
+      })
+      .sort();
+  const QTYS = [1, 2, 3, 5, 0.25, 0.5, 1.5, 2.75];
+  const check = (qty: number, voided: boolean) => ({
+    externalCheckId: "chk",
+    openedAt: "2026-09-02T18:00:00Z",
+    closedAt: "2026-09-02T19:00:00Z",
+    voided,
+    items: [{ name: "House Red", externalItemId: "w", qty, price: 40 }],
+  });
+
+  it("a void gives back every part its sale booked, once, under that part's key, for any quantity and either sale size", async () => {
+    const r = rng(77);
+    for (let i = 0; i < 60; i++) {
+      const unit = r() < 0.5 ? "glass" : "bottle";
+      const qty = QTYS[Math.floor(r() * QTYS.length)];
+      const sale = makeDb(unit);
+      await new PosHubService(sale.db).ingest("r1", "generic_webhook", [
+        check(qty, false),
+      ]);
+      const back = makeDb(unit);
+      const svc = new PosHubService(back.db);
+      await svc.ingest("r1", "generic_webhook", [check(qty, true)]);
+      await svc.ingest("r1", "generic_webhook", [check(qty, true)]);
+      expect({ unit, qty, voided: voided(back.rpcs) }).toEqual({ unit, qty, voided: parts(sale.rpcs) });
+      // A void never moves stock by a unit count of its own.
+      expect(back.rpcs.filter((x) => x.fn === "apply_stock_movement")).toHaveLength(0);
+    }
   });
 });

@@ -208,6 +208,9 @@ describe("PosHubService.ingest — stock effects", () => {
     expect(calls.rpc).toHaveLength(1);
     expect(calls.rpc[0].name).toBe("return_glass_pour");
     expect(calls.rpc[0].args.p_pours).toBe(2);
+    expect(String(calls.rpc[0].args.p_sale_key)).not.toMatch(/:void$/);
+    expect(calls.rpc[0].args.p_restaurant_id).toBe("r1");
+    expect(String(calls.rpc[0].args.p_idempotency_key)).toMatch(/:void$/);
   });
 
   it("queues an unmapped wine line in pos_unresolved_lines instead of dropping it (B20)", async () => {
@@ -451,8 +454,8 @@ describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
         restaurantId: "  ",
       }),
     ).toBe(false);
-    expect(
-      service.verifyWebhookSignature(body, good, undefined as any),
-    ).toBe(false);
+    expect(service.verifyWebhookSignature(body, good, undefined as any)).toBe(
+      false,
+    );
   });
 });

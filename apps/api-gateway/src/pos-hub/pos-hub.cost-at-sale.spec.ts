@@ -123,7 +123,7 @@ describe("cost at sale (C1-C5)", () => {
     // 2 glasses x 150ml of a 750ml bottle costing 30 = 12
     expect(consumption.get(KEY)).toMatchObject({
       cost_at_sale: 12,
-      cost_basis: "invoice_lot_wac",
+      cost_basis: "pour_lot_wac",
       cost_source_lot_id: "lot-1",
       cost_source_order_id: "ord-1",
     });
