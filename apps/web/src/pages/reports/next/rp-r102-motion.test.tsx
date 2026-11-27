@@ -181,4 +181,12 @@ describe('a heavy plot answers in the first frame and mounts its bars after (r10
     rerender(<CatPlot series={series(90)} kind="bars" />);
     expect(bars(container)).toBe(90);
   });
+
+  it.each(['area', 'line'] as const)('[REVERT-FAILS] 365 days as %s: no chart surface in the first commit, one a task later', (kind) => {
+    const { container } = render(<CatPlot series={series(365)} kind={kind} />);
+    expect(plot(container)).not.toBeNull();
+    expect(container.querySelectorAll('.recharts-surface')).toHaveLength(0);
+    flush();
+    expect(container.querySelectorAll('.recharts-surface').length).toBeGreaterThan(0);
+  });
 });
