@@ -11,6 +11,7 @@ import {
   readHouseZone,
   shiftHouseDay,
 } from "../common/house-day";
+import { readWholeWindow } from "../common/read-whole-window";
 import { readByIds } from "../common/read-by-ids";
 import { readConsumptionRows } from "./consumption-read-shared";
 import * as E from "./engine";

@@ -1016,6 +1016,7 @@ describe("the controller's doors, round 3", () => {
     };
     // A manager's token: the rows are a revenue and a spend sentence, which
     // a staff row does not see (ADR 0348 decision 3).
+    // A holder's role: this case is about the snoozes, not the role gate.
     const out = await self.getInsights(RID, undefined, undefined, undefined, undefined, {
       userId: "u-staff",
       role: "manager",
