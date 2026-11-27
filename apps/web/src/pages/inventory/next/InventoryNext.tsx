@@ -51,6 +51,7 @@ import ItemDrawer from './ItemDrawer';
 import { CountBar, PhoneFilter, activeFilterCount, nextToCount } from './PhoneBook';
 import { useIsPhone } from '../../../hooks/useIsPhone';
 import CarryThis from './CarryThis';
+import { LooseFoodsChip, LooseFoodsSheet, useLooseFoods } from './LooseFoods';
 import { removeBlocked, removeTarget } from './RowDropdown';
 import { RemoveFromInventoryModal } from '../../../components/inventory/RemoveFromInventoryModal';
 import { blank, forHouse, costColumnsFor, daysSinceCountedCell, oneLine, runExport, today, valuationColumns } from './iv-export';
@@ -207,7 +208,7 @@ export default function InventoryNext() {
   useEffect(() => {
     if (openParam === null) openedHere.current = false;
   }, [openParam]);
-  const [panel, setPanel] = useState<null | 'scanner' | 'locations' | 'pos' | 'receipt' | 'auction' | 'carry'>(null);
+  const [panel, setPanel] = useState<null | 'scanner' | 'locations' | 'pos' | 'receipt' | 'auction' | 'carry' | 'loosefoods'>(null);
   const [autoLocate, setAutoLocate] = useState<AutoLocateResult | null>(null);
   const [includeAssigned, setIncludeAssigned] = useState(false);
   // The delivered-order bell links to ?name-delivery=<order>; the card opens for it.
@@ -408,6 +409,8 @@ export default function InventoryNext() {
     retry: false,
   });
   const posOpen = posQueue.data?.summary?.open_lines ?? 0;
+  // Dish lines naming no good (r109 g4): read only for an owner or a manager.
+  const looseFoods = useLooseFoods(data.rid, data.canManage);
 
   const selBlocked = selectedRows.filter((r) => removeBlocked(r) !== null).length;
   const copySelectedNames = async () => {
@@ -650,6 +653,7 @@ export default function InventoryNext() {
           </button>
         ),
       )}
+      {data.canManage ? <LooseFoodsChip load={looseFoods} onOpen={() => setPanel('loosefoods')} /> : null}
     </div>
   );
   const kindsEl = carriesGoods ? (
@@ -1227,6 +1231,9 @@ export default function InventoryNext() {
       ) : null}
       {panel === 'auction' ? (
         <AuctionLotStart open onClose={() => setPanel(null)} onCarry={carryAuctionLot} />
+      ) : null}
+      {panel === 'loosefoods' && data.canManage && data.rid && looseFoods.data ? (
+        <LooseFoodsSheet rid={data.rid} answer={looseFoods.data} onClose={() => setPanel(null)} />
       ) : null}
       {panel === 'pos' && data.canManage ? (
         <PosMappingPanel

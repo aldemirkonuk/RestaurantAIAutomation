@@ -1473,3 +1473,8 @@ html .iv-page .iv-field {
   -webkit-mask: linear-gradient(#000, #000) center / 55% 3px no-repeat;
   mask: linear-gradient(#000, #000) center / 55% 3px no-repeat;
 }
+
+/* r109 g4: names in dish recipes not in the book */
+.iv-loose-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 14px; }
+.iv-loose-row { display: grid; gap: 6px; }
+.iv-loose-row .iv-btn { justify-self: start; min-height: 44px; }
