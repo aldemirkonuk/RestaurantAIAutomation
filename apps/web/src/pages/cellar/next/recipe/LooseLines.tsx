@@ -150,7 +150,7 @@ export default function LooseLines({ manages }: { manages: boolean }) {
   const a = q.data;
   return (
     <>
-      <p className="cl-said cl-offer-room" data-testid="loose-lines" style={{ marginTop: 12 }}>
+      <p className="cl-said cl-offer-room cl-loose-room" data-testid="loose-lines" style={{ marginTop: 12 }}>
         {q.isError ? (
           LOOSE_UNREAD
         ) : a && a.lineCount > 0 ? (

@@ -1,5 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LooseLines as Answer } from '../../../../services/api/recipes';
 import LooseLines from './LooseLines';
@@ -133,6 +135,14 @@ describe('the loose-lines queue (r108 drinks-g9)', () => {
     expect(screen.getByTestId('loose-lines')).toHaveTextContent('5 lines in 2 drinks are not linked to your shelf. Link them');
     expect(line).toHaveTextContent('Link them');
     expect(screen.getByTestId('loose-lines')).toHaveClass('cl-offer-room');
+  });
+
+  it('holds the room of the line with its button, so the page does not drop 11 px when the read lands (r108 walk)', async () => {
+    mount();
+    await screen.findByTestId('loose-open');
+    expect(screen.getByTestId('loose-lines')).toHaveClass('cl-loose-room');
+    const css = readFileSync(resolve(__dirname, '../cellar-next.css'), 'utf8');
+    expect(css).toMatch(/@media \(min-width: 641px\) \{\s*\.cl-loose-room \{ min-height: max\(1lh, 30px\); \}/);
   });
 
   it('staff get nothing and never ask', () => {
