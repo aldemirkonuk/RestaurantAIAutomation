@@ -143,7 +143,7 @@ describe("PosHubService.ingest — stock effects", () => {
     expect(calls.rpc[0].args.p_source).toBe("pos");
     // B15: idempotency key format.
     expect(calls.rpc[0].args.p_idempotency_key).toBe(
-      "pos:generic_webhook:chk-1:item-1:0",
+      "pos:generic_webhook:chk-1:item-1||24.0000:#0",
     );
   });
 

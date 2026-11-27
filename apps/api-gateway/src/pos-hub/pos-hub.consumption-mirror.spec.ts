@@ -102,7 +102,7 @@ describe("PosHubService — the consumption mirror against the real index (ADR 0
       consumption_type: "bottle",
       quantity: 2,
       source: "pos",
-      notes: "pos:generic_webhook:chk-mirror-1:item-1:0",
+      notes: "pos:generic_webhook:chk-mirror-1:item-1||90.0000:#0",
     });
     expect(errorSpy).not.toHaveBeenCalled();
   });
