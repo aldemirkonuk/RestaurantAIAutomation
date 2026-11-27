@@ -1224,6 +1224,11 @@ describe("the gmail_send grant, end to end", () => {
     const sentUpdate = rec.updates.find((u) => u.status === LETTER_STATUS.SENT);
     expect(sentUpdate).toBeDefined();
     expect(sentUpdate!.gmail_message_id).toBe("18f0c0ffee");
+    // Our own Message-ID left in the letter and is kept on its row, so a
+    // delivery notice about it finds it (r109 mail-gap g1).
+    const sentId = /^Message-ID: (<mudavym-[0-9a-f-]{36}@wineops\.ai>)\r$/m.exec(decoded)?.[1];
+    expect(sentId).toBeDefined();
+    expect(sentUpdate!.message_id).toBe(sentId);
     expect(sentUpdate!.delivery_status).toBe("sent");
     expect(sentUpdate!.scheduled_send_at).toBeNull();
   });
