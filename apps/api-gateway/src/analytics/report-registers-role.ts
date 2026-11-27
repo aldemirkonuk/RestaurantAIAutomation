@@ -9,7 +9,8 @@
  *                  suppliers (the cost is what the house paid a vendor).
  *   - `cashflow`   Spend pacing and the "Against ourselves" spend half: what
  *                  was bought and what is committed. Money and suppliers.
- *   - a goal whose metric is purchase spend (money and suppliers).
+ *   - a goal whose metric is purchase spend (money and suppliers), or one
+ *     read off the till (sales; money too where it is a currency).
  * A key this table does not know fails closed: only a role that sees every
  * class reads it. The till's own routes keep their `salesGateFor` gate; the
  * compare and plot paths are not here.
@@ -22,18 +23,20 @@ const REGISTER_CLASSES: Readonly<Record<string, readonly DataClass[]>> = {
 };
 
 /**
- * Goal metrics by the classes they carry. The five that read the till or a
- * day count carry none here: their withholding is the till's own ruling and
- * is not changed by this file. `purchase_spend` is the purchasing goal.
+ * Goal metrics by the classes they carry (the r108 ruling). A goal is the
+ * register it reads: `purchase_spend` reads the order book; the five below it
+ * read the till's checks and lines, which staff are not sent (#2096), so a
+ * goal on them would hand staff the till by another door ("Wine revenue,
+ * 4,210 of 9,000"). Days of stock reads the cellar, which staff see.
  */
 const GOAL_METRIC_CLASSES: Readonly<Record<string, readonly DataClass[]>> = {
   purchase_spend: ["money", "suppliers"],
-  wine_revenue: [],
-  bottles_sold: [],
-  checks: [],
-  avg_check: [],
-  wine_attach_rate: [],
-  days_of_inventory: [],
+  wine_revenue: ["money", "sales"],
+  avg_check: ["money", "sales"],
+  checks: ["sales"],
+  bottles_sold: ["sales"],
+  wine_attach_rate: ["sales"],
+  days_of_inventory: ["stock"],
 };
 
 export function readerSees(user?: { role?: string | null }): readonly DataClass[] {
