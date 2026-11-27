@@ -1738,13 +1738,21 @@ export default function ReceiptsNext() {
     const at = reviewRows.findIndex((d) => d.id === id);
     return at >= 0 ? (reviewRows[at + 1]?.id ?? null) : null;
   };
-  // r108: after a keyboard seal the next row takes focus, so j/k work without a Tab back.
+  // r108/r109: after a keyboard seal the next paper takes focus, so j/k work
+  // without a Tab back. Below 2xl an open paper hides the list (`hidden
+  // 2xl:block`), so a row there cannot hold focus: the opened paper's own pane
+  // takes it, and j/k walk from there. jsdom has no CSS and cannot see the
+  // difference; the Playwright check `receipts-seal-focus` does.
   const focusAfterSeal = useRef<string | null>(null);
+  const detailPane = useRef<HTMLElement>(null);
   useEffect(() => {
     const id = focusAfterSeal.current;
     if (!id || selectedId !== id) return;
     focusAfterSeal.current = null;
-    (document.querySelector(`[data-rc-id="${id}"]`) as HTMLElement | null)?.focus();
+    const row = document.querySelector(`[data-rc-id="${id}"]`) as HTMLElement | null;
+    const lane = row?.closest('section');
+    const listShown = !!row && !!lane && getComputedStyle(lane).display !== 'none';
+    (listShown ? row : detailPane.current)?.focus();
   }, [selectedId]);
   const [rovingId, setRovingId] = useState<string | null>(null);
   const rovingRowId = reviewRows.some((d) => d.id === rovingId)
@@ -1766,6 +1774,19 @@ export default function ReceiptsNext() {
     e.preventDefault();
     setRovingId(to.id);
     (e.currentTarget.closest('section')?.querySelector(`[data-rc-id="${to.id}"]`) as HTMLElement | null)?.focus();
+  };
+
+  // j / k from the open paper itself, for the layouts where the list is hidden.
+  const onDetailKey = (e: KeyboardEvent<HTMLElement>) => {
+    if (e.key !== 'j' && e.key !== 'k') return;
+    if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || sealHeld.current) return;
+    if ((e.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"]')) return;
+    const from = reviewRows.findIndex((d) => d.id === selectedId);
+    const to = from >= 0 ? reviewRows[from + (e.key === 'j' ? 1 : -1)] : undefined;
+    if (!to) return;
+    e.preventDefault();
+    focusAfterSeal.current = to.id;
+    select(to.id);
   };
 
   /*
@@ -2255,6 +2276,9 @@ export default function ReceiptsNext() {
           <section
             aria-label="Document detail"
             data-testid="detail-placeholder"
+            ref={detailPane}
+            tabIndex={-1}
+            onKeyDown={onDetailKey}
             onPointerDownCapture={() => { sealHeld.current = true; }}
             onPointerUpCapture={() => { sealHeld.current = false; }}
             onPointerCancelCapture={() => { sealHeld.current = false; }}
