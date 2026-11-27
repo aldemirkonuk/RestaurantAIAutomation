@@ -38,6 +38,9 @@ async function mock(page: Page, nLines: number, role: string) {
       await new Promise((r) => setTimeout(r, 1200))
       return json({ document: queue.find((q) => q.id === one[1]), lines: Array.from({ length: nLines }, (_, i) => line(i + 1)), links: [] })
     }
+    // The notes under the money: the shapes the page reads, answering nothing to say.
+    if (path.endsWith('/held-costs')) return json({ taxBasisKnown: true, held: [] })
+    if (path.endsWith('/price-moves')) return json({ thresholdPct: 10, paperCurrency: 'EUR', houseCurrency: 'EUR', lines: [] })
     // The formatted sheet is not under test and a refusal paints a note that moves the card:
     // leave its read pending, so the sheet holds its reading state for the whole test.
     if (path.endsWith('/canonical')) return new Promise<void>(() => {})
@@ -72,7 +75,7 @@ for (const role of ['owner', 'manager']) {
           })
           const clsNow = () => page.evaluate(() => (window as unknown as { __cls: number }).__cls)
           await row.click()
-          await page.getByText('Reading the lines').waitFor({ timeout: 10000 })
+          await page.getByTestId('lines-wait-row').first().waitFor({ timeout: 10000 })
           await page.waitForTimeout(400)
           const opening = await clsNow()
           await page.getByLabel('Quantity, line 1').waitFor({ timeout: 10000 })
