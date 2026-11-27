@@ -230,6 +230,21 @@ describe('MenuPlan -- a line whose price was never set (r107, DD-r106-19)', () =
   });
 });
 
+describe('MenuPlan -- a price somebody cleared (r107)', () => {
+  it('says who cleared it, and never says no price has been set', async () => {
+    const cleared = line({
+      menuItemId: 'n9',
+      name: 'Vermentino',
+      bottle: { kind: 'bottle', menuPrice: 35, housePrice: null, result: 'change', lastSet: { by: person('Aylin'), at: '2026-09-05T08:00:00Z', source: 'manual', cleared: true }, lock: null },
+    });
+    mockPlan.mockResolvedValue(plan({ lines: [cleared] }));
+    mount(true);
+    const rows = await screen.findAllByTestId('menu-plan-row');
+    expect(rows[0]).toHaveTextContent(shown(`Becomes ${m(35)}; it was cleared by Aylin on 2026-09-05`));
+    expect(rows[0]).not.toHaveTextContent('no price has been set yet');
+  });
+});
+
 describe('MenuPlan -- the section before the choice (L13)', () => {
   it('shows each price it would change with who set it, each held price with its lock, the returned wine, the vintage to check, and the dormant locks', async () => {
     mockPlan.mockResolvedValue(plan());

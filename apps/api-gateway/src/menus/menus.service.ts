@@ -51,6 +51,8 @@ const SOURCE_BUCKET = "vendor-attachments";
 const SOURCE_URL_SECONDS = 300;
 /** PostgREST's max_rows (supabase/config.toml): a page never holds more. */
 const PAGE_ROWS = 1000;
+/** Wines whose price history is read in one query. */
+const HISTORY_ID_CHUNK = 200;
 /**
  * Wine ids per `.in()` read of the house's rows (menu proposal 2e). Each id is
  * 36 characters in the query string, so 150 keep a request well under URL
@@ -160,8 +162,13 @@ export interface PlanKind {
   menuPrice: number | null;
   housePrice: number | null;
   result: PlanResult;
-  /** For a price this choice would replace: who set it, when, and from where. */
-  lastSet: { by: PlanPerson; at: string | null; source: string | null } | null;
+  /**
+   * For a price this choice would replace: who last CHANGED this kind, when, and
+   * from where. `cleared` is true when that change took the price away (the
+   * house holds none now because that person cleared it). Null only when no
+   * history row ever held a price for this kind.
+   */
+  lastSet: { by: PlanPerson; at: string | null; source: string | null; cleared: boolean } | null;
   /**
    * A person set this wine's price (by hand, or by accepting advice) AFTER this
    * menu was read. The founder, 2026-09-21, confirming L11 verbatim: "The menu
@@ -2096,38 +2103,72 @@ export class MenusService {
     const locks = new Map<string, OpenLock>(lockRead.locks.map((l) => [`${l.inventoryId}:${l.kind}`, l]));
     const lockedWines = new Set(lockRead.locks.map((l) => l.inventoryId));
 
-    // Who set each price now in effect (the open version row).
-    // A history row names a person only for a price it holds: a row made when a
-    // line created the house's wine with no price at all prices nothing (r107, DD-r106-19).
-    const lastSet = new Map<
-      string,
-      { by: string | null; at: string | null; source: string | null; bottle: unknown; glass: unknown }
-    >();
+    // Who last changed each kind of a price. The history trigger snapshots BOTH
+    // kinds on every change and writes no row for a wine created with no price,
+    // so a row says who changed a kind only where its value for that kind
+    // differs from the row before it. Closed rows are read too, for the wines
+    // on this plan only (chunked, and paged past the row cap).
+    const planWines = new Set<string>();
+    for (const line of lines) {
+      if (isKitchenItem(line)) continue;
+      const r = line.wine_library_id
+        ? house.get(line.wine_library_id)
+        : line.inventory_item_id
+          ? byInventory.get(String(line.inventory_item_id))
+          : null;
+      if (r) planWines.add(String(r.id));
+    }
+    type HistoryRow = { by: string | null; at: string | null; to: string | null; source: string | null; bottle: number | null; glass: number | null };
+    const history = new Map<string, HistoryRow[]>();
     {
-      let after: string | null = null;
-      for (;;) {
-        let q = client
-          .from("menu_price_versions")
-          .select("id, inventory_id, changed_by, effective_from, change_source, bottle_price, glass_price")
-          .eq("restaurant_id", restaurantId)
-          .is("effective_to", null);
-        if (after) q = q.gt("id", after);
-        const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
-        if (error) fail("who set the house's prices", error.message);
-        const rows = (data ?? []) as Array<Record<string, any>>;
-        for (const r of rows) {
-          lastSet.set(String(r.inventory_id), {
-            by: r.changed_by ?? null,
-            at: r.effective_from ?? null,
-            source: r.change_source ?? null,
-            bottle: r.bottle_price ?? null,
-            glass: r.glass_price ?? null,
-          });
+      const ids = [...planWines];
+      for (let at = 0; at < ids.length; at += HISTORY_ID_CHUNK) {
+        const chunk = ids.slice(at, at + HISTORY_ID_CHUNK);
+        let after: string | null = null;
+        for (;;) {
+          let q = client
+            .from("menu_price_versions")
+            .select("id, inventory_id, changed_by, effective_from, effective_to, change_source, bottle_price, glass_price")
+            .eq("restaurant_id", restaurantId)
+            .in("inventory_id", chunk);
+          if (after) q = q.gt("id", after);
+          const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
+          if (error) fail("who set the house's prices", error.message);
+          const rows = (data ?? []) as Array<Record<string, any>>;
+          for (const r of rows) {
+            const key = String(r.inventory_id);
+            const list = history.get(key) ?? [];
+            list.push({
+              by: r.changed_by ?? null,
+              at: r.effective_from ?? null,
+              to: r.effective_to ?? null,
+              source: r.change_source ?? null,
+              bottle: linePrice(r.bottle_price),
+              glass: linePrice(r.glass_price),
+            });
+            history.set(key, list);
+          }
+          if (rows.length < PAGE_ROWS) break;
+          after = String(rows[rows.length - 1].id);
         }
-        if (rows.length < PAGE_ROWS) break;
-        after = String(rows[rows.length - 1].id);
       }
     }
+    const lastChangeOf = (wineId: string, kind: "bottle" | "glass") => {
+      const rows = [...(history.get(wineId) ?? [])].sort(
+        (x, y) =>
+          Date.parse(x.at ?? "") - Date.parse(y.at ?? "") ||
+          (x.to === null ? 1 : 0) - (y.to === null ? 1 : 0),
+      );
+      let before: number | null = null;
+      let found: { by: string | null; at: string | null; source: string | null; cleared: boolean } | null = null;
+      for (const r of rows) {
+        const value = kind === "bottle" ? r.bottle : r.glass;
+        const same = value === null || before === null ? value === before : Math.abs(value - before) < 0.005;
+        if (!same) found = { by: r.by, at: r.at, source: r.source, cleared: value === null };
+        before = value;
+      }
+      return found;
+    };
 
     // The wines on the menu being REPLACED (every other active menu), for L18's "returned".
     const onReplaced = new Set<string>();
@@ -2180,15 +2221,14 @@ export class MenusService {
         else if (housePrice !== null && Math.abs(menuPrice - housePrice) < 0.005) result = "unchanged";
         else result = "change";
         counts[result] += 1;
-        const held = row && result === "change" ? (lastSet.get(String(row.id)) ?? null) : null;
-        // Named only when that row priced THIS kind: a blank price was set by no one.
-        const set = held && (kind === "bottle" ? held.bottle : held.glass) !== null ? held : null;
+        // The person who last changed THIS kind (or cleared it); nobody when no row ever held a price for it.
+        const set = row && result === "change" ? lastChangeOf(String(row.id), kind) : null;
         return {
           kind,
           menuPrice,
           housePrice,
           result,
-          lastSet: set ? { by: { userId: set.by, name: null }, at: set.at, source: set.source } : null,
+          lastSet: set ? { by: { userId: set.by, name: null }, at: set.at, source: set.source, cleared: set.cleared } : null,
           setAfterRead: !!set && setByAPersonAfter(set, readAt),
           lock: lock
             ? { lockId: lock.lockId, lockedPrice: lock.lockedPrice, lockedBy: { userId: lock.lockedBy, name: null }, lockedAt: lock.lockedAt }

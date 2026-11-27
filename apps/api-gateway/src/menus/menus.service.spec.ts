@@ -2336,29 +2336,50 @@ describe("MenusService — the plan before a menu is chosen, and the locks it re
     expect(tables.restaurant_menus.find((m) => m.id === "menu-new")!.status).toBe("draft");
   });
 
-  it("r107 DD-r106-19: a price is named only for a kind the open history row priced; a blank one says no price was set", async () => {
+  it("r107 DD-r106-19: a price is named for the person who last changed THAT kind; a cleared price says it was cleared; a never-priced one says no price was set", async () => {
     const { tables, service } = setup();
     tables.restaurant_inventory.push(
-      // Created by a menu with no price: an open history row exists, and it holds no price.
+      // A person priced the bottle, and a later person cleared it (PATCH menuPriceBottle: null).
       { id: "inv-5", restaurant_id: "rest-1", master_wine_id: "mw-5", wine_name: "Vermentino", menu_price_current: null, menu_price_glass: null, is_active: true },
       // Priced by the bottle only, by a person; the glass was never priced.
       { id: "inv-6", restaurant_id: "rest-1", master_wine_id: "mw-6", wine_name: "Verdicchio", menu_price_current: 70, menu_price_glass: null, is_active: true },
+      // Created with no price at all: the trigger writes no history row for it.
+      { id: "inv-7", restaurant_id: "rest-1", master_wine_id: "mw-7", wine_name: "Falanghina", menu_price_current: null, menu_price_glass: null, is_active: true },
     );
     tables.menu_price_versions.push(
-      { id: "v-5", restaurant_id: "rest-1", inventory_id: "inv-5", changed_by: "user-1", bottle_price: null, glass_price: null, effective_from: "2026-09-01T08:00:00Z", change_source: "import", effective_to: null },
+      { id: "v-5a", restaurant_id: "rest-1", inventory_id: "inv-5", changed_by: "user-3", bottle_price: 70, glass_price: null, effective_from: "2026-09-01T08:00:00Z", change_source: "manual", effective_to: "2026-09-05T08:00:00Z" },
+      { id: "v-5b", restaurant_id: "rest-1", inventory_id: "inv-5", changed_by: "user-1", bottle_price: null, glass_price: null, effective_from: "2026-09-05T08:00:00Z", change_source: "manual", effective_to: null },
       { id: "v-6", restaurant_id: "rest-1", inventory_id: "inv-6", changed_by: "user-3", bottle_price: 70, glass_price: null, effective_from: "2026-09-03T08:00:00Z", change_source: "manual", effective_to: null },
     );
     tables.menu_items.push(
       { id: "n-6", menu_id: "menu-new", restaurant_id: "rest-1", name: "Vermentino", wine_library_id: "mw-5", bottle_price: 35, status: "approved" },
       { id: "n-7", menu_id: "menu-new", restaurant_id: "rest-1", name: "Verdicchio", wine_library_id: "mw-6", bottle_price: 75, by_glass_price: 12, status: "approved" },
+      { id: "n-8", menu_id: "menu-new", restaurant_id: "rest-1", name: "Falanghina", wine_library_id: "mw-7", bottle_price: 30, status: "approved" },
     );
     const plan = await service.planFor("rest-1", "menu-new");
     const by = Object.fromEntries(plan.lines.map((l) => [l.menuItemId, l]));
-    // No price was ever set: nobody is named for one.
-    expect(by["n-6"].bottle).toMatchObject({ result: "change", housePrice: null, lastSet: null });
+    // A price somebody cleared names the person who cleared it, and says so.
+    expect(by["n-6"].bottle).toMatchObject({ result: "change", housePrice: null, lastSet: { by: { userId: "user-1", name: "Aylin" }, at: "2026-09-05T08:00:00Z", source: "manual", cleared: true } });
+    // No row ever held a price: nobody is named.
+    expect(by["n-8"].bottle).toMatchObject({ result: "change", housePrice: null, lastSet: null });
     // A priced kind names who set it; the kind the row never priced does not borrow its name.
-    expect(by["n-7"].bottle).toMatchObject({ result: "change", housePrice: 70, lastSet: { by: { userId: "user-3", name: "Deniz" }, source: "manual" } });
+    expect(by["n-7"].bottle).toMatchObject({ result: "change", housePrice: 70, lastSet: { by: { userId: "user-3", name: "Deniz" }, source: "manual", cleared: false } });
     expect(by["n-7"].glass).toMatchObject({ result: "change", housePrice: null, lastSet: null });
+  });
+
+  it("r107: a kind is credited to the person who last changed THAT kind, not to whoever changed the other one", async () => {
+    const { tables, service } = setup();
+    tables.restaurant_menus.find((m) => m.id === "menu-new")!.extracted_at = "2026-09-07T10:00:00Z";
+    tables.restaurant_inventory.push({ id: "inv-8", restaurant_id: "rest-1", master_wine_id: "mw-8", wine_name: "Greco", menu_price_current: 70, menu_price_glass: 12, is_active: true });
+    tables.menu_price_versions.push(
+      // Deniz set the bottle at 70 on 09-04; Aylin later set only the glass, which snapshots the bottle again.
+      { id: "v-8a", restaurant_id: "rest-1", inventory_id: "inv-8", changed_by: "user-3", bottle_price: 70, glass_price: null, effective_from: "2026-09-04T08:00:00Z", change_source: "manual", effective_to: "2026-09-10T08:00:00Z" },
+      { id: "v-8b", restaurant_id: "rest-1", inventory_id: "inv-8", changed_by: "user-1", bottle_price: 70, glass_price: 12, effective_from: "2026-09-10T08:00:00Z", change_source: "manual", effective_to: null },
+    );
+    tables.menu_items.push({ id: "n-9", menu_id: "menu-new", restaurant_id: "rest-1", name: "Greco", wine_library_id: "mw-8", bottle_price: 75, by_glass_price: 14, status: "approved" });
+    const line = (await service.planFor("rest-1", "menu-new")).lines.find((l) => l.menuItemId === "n-9")!;
+    expect(line.bottle).toMatchObject({ lastSet: { by: { userId: "user-3", name: "Deniz" }, at: "2026-09-04T08:00:00Z" }, setAfterRead: false });
+    expect(line.glass).toMatchObject({ lastSet: { by: { userId: "user-1", name: "Aylin" }, at: "2026-09-10T08:00:00Z" }, setAfterRead: true });
   });
 
   it("L11, as the founder confirmed it (\"The menu sets it, locks keep\"): a price a PERSON set after this menu was read is marked setAfterRead; a menu's own, or one set before the read, is not", async () => {
