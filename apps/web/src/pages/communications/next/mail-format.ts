@@ -100,7 +100,23 @@ export const READ_ALL_OFFER = 'Read every conversation, not only vendors';
  * pixel over so rounding never leaves a shift. The first estimates, 152 and 100,
  * were 3 and 11 px short and moved the list at 1440 by 0.046-0.054.
  */
-export const MAIL_HEADER_RESERVE = 'min-h-[156px] md:min-h-[112px]';
+export const MAIL_HEADER_RESERVE = 'min-h-[176px] md:min-h-[112px]';
+/**
+ * The same reserve with the height the last visit settled at (`--mail-held`) as a
+ * floor ON TOP of it: the block is never shorter than the reserve at this width,
+ * so a short one-line visit cannot shrink the next load below what a wrapped
+ * status sentence needs.
+ */
+export const MAIL_HEADER_RESERVE_HELD =
+  'min-h-[max(176px,var(--mail-held,0px))] md:min-h-[max(112px,var(--mail-held,0px))]';
+/**
+ * r108 mail-r108-6: below md a house with no time zone says a three-line "time
+ * zone isn't set" sentence that outgrew the 156 px reserve (CLS 0.061-0.097 in
+ * the r107 walk), so the phone reserve is 176 px. The headline holds two lines
+ * (a repeat load had it wrap from one line to two inside the block); at md and
+ * up it is one line.
+ */
+export const MAIL_HEADLINE_HOLD = 'min-h-[45px] md:min-h-0';
 /**
  * The read-scope placeholder, sized for the state it becomes: one block (the
  * line), or two (the line and the switch note) when the house's inbox switch
