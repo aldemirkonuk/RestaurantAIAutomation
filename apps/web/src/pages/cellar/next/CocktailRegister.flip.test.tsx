@@ -107,3 +107,33 @@ describe('sorting slides the rows', () => {
     }
   });
 });
+
+describe('a filter or the search slides the rows that stay (r108 DD-r108-33)', () => {
+  const search = () => screen.getByPlaceholderText(/Search cocktail/i);
+  const movedRows = () => animate.mock.instances.map((el) => (el as HTMLElement).dataset.row);
+
+  it('motion on: rows that stay slide, a row that left is gone, a row that enters appears in place', async () => {
+    await mount();
+    animate.mockClear();
+    fireEvent.change(search(), { target: { value: 'a' } }); // Bravo has no 'a'? it has: Bravo, Alpha, Charlie all contain 'a'
+    animate.mockClear();
+    fireEvent.change(search(), { target: { value: 'alp' } }); // only Alpha stays; it was second (80 px), now first (0)
+    expect(movedRows()).toEqual([id(2)]);
+    const [frames, opts] = animate.mock.calls[0];
+    expect(frames).toEqual([{ transform: 'translateY(40px)' }, { transform: 'translateY(0)' }]);
+    expect(opts).toMatchObject({ duration: 180, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' });
+    expect(screen.queryByTestId(`drink-cost-${id(1)}`)).toBeNull();
+    animate.mockClear();
+    fireEvent.change(search(), { target: { value: '' } }); // Bravo and Charlie enter; Alpha moves back down one row
+    expect(movedRows()).toEqual([id(2)]);
+  });
+
+  it('reduced motion: a filter makes no animation at all, not even a fade', async () => {
+    reduced = true;
+    await mount();
+    animate.mockClear();
+    fireEvent.change(search(), { target: { value: 'alp' } });
+    expect(screen.queryByTestId(`drink-cost-${id(1)}`)).toBeNull();
+    expect(animate).not.toHaveBeenCalled();
+  });
+});
