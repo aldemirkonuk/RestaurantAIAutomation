@@ -142,13 +142,17 @@ describe("team and guest mail from the wider reader", () => {
     expect(guest.inserts[0].body.email_headers.auth).toEqual({ spf: null, dkim: true, dmarc: true, signedBy: "diner.example" });
     const vendor = harness();
     await (vendor.bridge as any).handleInboundEmail(
-      event({ house_mail_kind: "vendor", from: "Fikri <fikri@fikritarim.com>", headers: { "authentication-results": "mx; dkim=fail" } }),
+      event({ house_mail_kind: "vendor", from: "Fikri <fikri@fikritarim.com>", headers: { "authentication-results": "mx.google.com; dkim=fail" } }),
     );
     const row = vendor.inserts.find((i) => i.table === "procurement_conversations")!;
     expect(row.body.email_headers.auth).toEqual({ spf: null, dkim: false, dmarc: null, signedBy: null });
     // A letter with no check recorded says so as unknown, never as failed.
     const none = harness();
     await (none.bridge as any).handleInboundEmail(event({ headers: undefined }));
-    expect(none.inserts[0].body.email_headers.auth).toEqual({ spf: null, dkim: null, dmarc: null, signedBy: null });
+    expect(none.inserts[0].body.email_headers.auth).toBeNull();
+    // The address webhook's headers carry no stamp of a server we trust: nothing is kept.
+    const hook = harness();
+    await (hook.bridge as any).handleInboundEmail(event({ source: "inbound-domain" }));
+    expect(hook.inserts[0].body.email_headers.auth).toBeNull();
   });
 });

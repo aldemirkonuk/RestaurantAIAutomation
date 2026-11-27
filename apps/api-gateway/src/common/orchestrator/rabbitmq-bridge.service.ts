@@ -654,7 +654,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     references: string;
     receivedAt: string;
     toAddresses: unknown;
-    auth: SenderAuth;
+    auth: SenderAuth | null;
   }): Promise<void> {
     if (!p.restaurantId || !p.mirroredByGrantId) {
       this.logger.warn(
@@ -748,7 +748,10 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         : {};
     const transportSignals = deriveTransportSignals(rawHeaders, from);
     // The sender check, kept so a letter's Details can say whether it was signed (r108 mail-gap g8).
-    const senderAuth = senderAuthOf(rawHeaders);
+    // Only Gmail's own verdict is believed: the address webhook carries no
+    // receiving-server stamp of ours, so its topmost header may be the sender's.
+    const senderAuth =
+      payload.source === "inbound-domain" ? null : senderAuthOf(rawHeaders);
 
     // The sender is the addr-spec a real RFC 5322 parser finds, never "the
     // first <...>" (QA round 6 N-1): `"Sales <sales@bigdist.com>"
