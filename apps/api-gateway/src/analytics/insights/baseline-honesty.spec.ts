@@ -100,8 +100,10 @@ function generatorFor(s: Scenario) {
   const checks = Array.from(s.revenue.entries()).map(([back, total]) =>
     check(dayBack(back), total),
   );
+  // A dollar house: the sentences below are in its money (version 17).
   const client = makeClient({
     pos_checks: checks,
+    restaurants: [{ currency: "USD" }],
     wine_consumption_log: [],
     procurement_orders: [],
     restaurant_inventory: [],

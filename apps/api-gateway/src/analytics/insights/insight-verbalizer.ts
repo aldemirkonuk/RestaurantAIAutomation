@@ -48,10 +48,57 @@ export interface InsightEvidence {
   goalReadOn?: string;
   surgeMinutes?: number;
   n?: number;
+  /**
+   * The money every amount is in: the house's ISO 4217 code, `null` when none
+   * is stated, absent when it could not be read (then a sentence with an
+   * amount is withheld). Stored with the row, so the stored read can refuse
+   * a sentence written in other money (`queryStored`). Was a fixed `$`: a
+   * lira house read "($181)" on /reports (r7 browser check, 2026-11-12).
+   */
+  currency?: string | null;
 }
 
-const fmtMoney = (v: number) =>
-  `$${Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + "k" : v.toFixed(0)}`;
+/** Said once, at the end, when a money sentence has no stated currency. */
+export const CURRENCY_NOT_RECORDED_SENTENCE =
+  "The house's currency is not recorded.";
+
+/** The amount alone: whole units, or thousands to one place ("10.8k"). */
+const fmtAmount = (v: number) =>
+  Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + "k" : v.toFixed(0);
+
+/**
+ * The mark for an ISO 4217 code: its narrow symbol where it has one ("₺", "$",
+ * "£"), otherwise the code itself ("CHF"). A code `Intl` does not know is
+ * printed as the code, never as another currency's symbol.
+ */
+function currencyMark(code: string): string {
+  try {
+    const mark = new Intl.NumberFormat("en-GB", {
+      style: "currency",
+      currency: code,
+      currencyDisplay: "narrowSymbol",
+    })
+      .formatToParts(0)
+      .find((p) => p.type === "currency")?.value;
+    return mark && mark !== "¤" ? mark : code;
+  } catch {
+    return code;
+  }
+}
+
+/**
+ * An amount in the house's money. A letter mark takes a space ("CHF 181"), a
+ * symbol does not ("₺181"). With no stated currency the amount is printed
+ * bare; `verbalize` then closes the sentence with
+ * `CURRENCY_NOT_RECORDED_SENTENCE`, once, rather than a caveat beside every
+ * figure.
+ */
+export function fmtMoney(v: number, currency: string | null): string {
+  const amount = fmtAmount(v);
+  if (currency === null || !/^[A-Z]{3}$/.test(currency)) return amount;
+  const mark = currencyMark(currency);
+  return /^[A-Za-z]/.test(mark) ? `${mark} ${amount}` : `${mark}${amount}`;
+}
 
 const fmtNum = (v: number) =>
   Math.abs(v) >= 100
@@ -60,10 +107,14 @@ const fmtNum = (v: number) =>
       ? v.toFixed(1)
       : v.toFixed(2);
 
-export function fmtValue(v: number, unit: InsightEvidence["unit"]): string {
+export function fmtValue(
+  v: number,
+  unit: InsightEvidence["unit"],
+  currency: string | null,
+): string {
   switch (unit) {
     case "currency":
-      return fmtMoney(v);
+      return fmtMoney(v, currency);
     case "percent":
       return `${(v * 100).toFixed(1)}%`;
     default:
@@ -97,8 +148,33 @@ export function tableAttributeReading(attribute: string, r: number): string {
 }
 
 /** Render an insight sentence for a template family. Returns null if the
- * evidence is insufficient for that family (caller should skip). */
+ * evidence is insufficient for that family (caller should skip).
+ *
+ * Every amount prints in `e.currency`. A sentence that would print an amount
+ * whose currency could not be read (`e.currency` absent) is withheld: there is
+ * no honest mark to put on it. The trend and forecast templates take a money
+ * measure but print only a percentage, so they need no currency at all. */
 export function verbalize(template: string, e: InsightEvidence): string | null {
+  const code = e.currency ?? null;
+  let printedMoney = false;
+  const sentence = render(template, e, (v, unit) => {
+    if (unit === "currency") printedMoney = true;
+    return fmtValue(v, unit, code);
+  });
+  if (sentence === null) return null;
+  if (printedMoney && e.currency === undefined) return null;
+  // Bare amounts are said to be bare, once, at the end.
+  const stated = code !== null && /^[A-Z]{3}$/.test(code);
+  return printedMoney && !stated
+    ? `${sentence} ${CURRENCY_NOT_RECORDED_SENTENCE}`
+    : sentence;
+}
+
+function render(
+  template: string,
+  e: InsightEvidence,
+  val: (v: number, unit: InsightEvidence["unit"]) => string,
+): string | null {
   const entity = e.entity ?? "Overall";
   switch (template) {
     case "baseline": {
@@ -110,7 +186,7 @@ export function verbalize(template: string, e: InsightEvidence): string | null {
       if (e.deltaPct == null || e.baseline == null || e.value == null)
         return null;
       if (e.direction === "in_line")
-        return `${entity} ${e.measureLabel} (${fmtValue(e.value, e.unit)}) is in line with the typical ${entity.toLowerCase()}.`;
+        return `${entity} ${e.measureLabel} (${val(e.value, e.unit)}) is in line with the typical ${entity.toLowerCase()}.`;
       const dir = e.deltaPct > 0 ? "higher" : "lower";
       // `date` on a baseline means the day compared was NOT the newest day in
       // the series — the generator skipped back past days with no records. The
@@ -120,7 +196,7 @@ export function verbalize(template: string, e: InsightEvidence): string | null {
       // Wednesday" is a different statement over four Wednesdays than over
       // three, and the reader is entitled to know which one they are reading.
       const support = e.n ? `, over ${e.n} past ${entity}s` : "";
-      return `${when}${e.measureLabel} came in ${fmtPct(e.deltaPct)} ${dir} than your average ${entity} (${fmtValue(e.value, e.unit)} vs ${fmtValue(e.baseline, e.unit)}${support}).`;
+      return `${when}${e.measureLabel} came in ${fmtPct(e.deltaPct)} ${dir} than your average ${entity} (${val(e.value, e.unit)} vs ${val(e.baseline, e.unit)}${support}).`;
     }
     case "period": {
       if (e.deltaPct == null || e.value == null || e.baseline == null)
@@ -128,7 +204,7 @@ export function verbalize(template: string, e: InsightEvidence): string | null {
       const verb =
         e.deltaPct > 0 ? "rose" : e.deltaPct < 0 ? "fell" : "held flat";
       const prefix = e.entity ? `${e.entity} ` : "";
-      return `${prefix}${e.measureLabel} ${verb} ${fmtPct(e.deltaPct)} vs the previous ${e.windowLabel ?? "period"} (${fmtValue(e.value, e.unit)} vs ${fmtValue(e.baseline, e.unit)}).`;
+      return `${prefix}${e.measureLabel} ${verb} ${fmtPct(e.deltaPct)} vs the previous ${e.windowLabel ?? "period"} (${val(e.value, e.unit)} vs ${val(e.baseline, e.unit)}).`;
     }
     case "trend": {
       if (e.trendPctPerWeek == null) return null;
@@ -139,14 +215,14 @@ export function verbalize(template: string, e: InsightEvidence): string | null {
     case "anomaly": {
       if (e.z == null || e.value == null || !e.date) return null;
       const dir = e.z > 0 ? "above" : "below";
-      return `${e.date} was unusual${e.entity ? ` for ${e.entity}` : ""}: ${e.measureLabel} of ${fmtValue(e.value, e.unit)} sits ${Math.abs(e.z).toFixed(1)}σ ${dir} typical.`;
+      return `${e.date} was unusual${e.entity ? ` for ${e.entity}` : ""}: ${e.measureLabel} of ${val(e.value, e.unit)} sits ${Math.abs(e.z).toFixed(1)}σ ${dir} typical.`;
     }
     case "peer": {
       if (e.rank == null || e.peerCount == null || e.value == null) return null;
       let s = `${entity} ranks #${e.rank} of ${e.peerCount} by ${e.measureLabel}`;
       if (e.deltaPct != null && Math.abs(e.deltaPct) >= 0.03)
         s += `, ${fmtPct(e.deltaPct)} ${e.deltaPct > 0 ? "above" : "below"} the group average`;
-      s += ` (${fmtValue(e.value, e.unit)}).`;
+      s += ` (${val(e.value, e.unit)}).`;
       if (e.attributeReading) s += ` ${e.attributeReading}`;
       return s;
     }
@@ -217,7 +293,7 @@ export function verbalize(template: string, e: InsightEvidence): string | null {
     }
     case "hot": {
       if (e.value == null || e.z == null) return null;
-      return `${entity} is surging right now: ${fmtValue(e.value, e.unit)}${e.surgeMinutes ? ` in ${e.surgeMinutes} min` : ""}, ${Math.abs(e.z).toFixed(1)}σ above its normal pace — worth a visit from the floor manager.`;
+      return `${entity} is surging right now: ${val(e.value, e.unit)}${e.surgeMinutes ? ` in ${e.surgeMinutes} min` : ""}, ${Math.abs(e.z).toFixed(1)}σ above its normal pace — worth a visit from the floor manager.`;
     }
     default:
       return null;
