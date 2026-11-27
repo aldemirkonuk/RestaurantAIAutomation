@@ -56,6 +56,7 @@ import { housePriceHint } from '@/lib/house-number';
 import { Wordmark } from '@/components/mudavym';
 import { isKitchenLine } from '../../../lib/firstProof';
 import { lineStatusWords } from './menu-line-status';
+import { CorrectBox, CorrectNote, correctDraftOf, planCorrection, type CorrectDraft } from './MenuLineCorrect';
 import '../../cellar/next/cellar-next.css';
 import './menu-rows.css';
 
@@ -348,7 +349,7 @@ interface PriceDraft {
   bottle: string
 }
 
-function MenuRow({ line, currency, onDiscard, discarding, isNew = false, testId = 'menu-row', edit }: {
+function MenuRow({ line, currency, onDiscard, discarding, isNew = false, testId = 'menu-row', edit, correct }: {
   line: MenuLine
   /** The line was discarded and is fading out before it is removed. */
   /** The line arrived after the list was first shown: it inks in (160 ms, no wash). */
@@ -366,9 +367,46 @@ function MenuRow({ line, currency, onDiscard, discarding, isNew = false, testId 
     onCancel: () => void
     onSave: (draft: PriceDraft) => void
   }
+  /** Absent for a member who may not correct a line (owner or manager only). Name and section, in the row. */
+  correct?: {
+    open: boolean
+    saving: boolean
+    onOpen: () => void
+    onCancel: () => void
+    onSave: (draft: CorrectDraft) => void
+  }
 }) {
   const [draft, setDraft] = useState<PriceDraft>({ glass: priceText(line.by_glass_price, currency), bottle: priceText(line.bottle_price, currency) });
   const editing = !!edit?.open;
+  const [cdraft, setCdraft] = useState<CorrectDraft>(correctDraftOf(line));
+  const correcting = !!correct?.open;
+  const firstCorrect = useRef<HTMLInputElement>(null);
+  const correctButton = useRef<HTMLButtonElement>(null);
+  const wasCorrecting = useRef(correcting);
+  // The same hand-back as the price boxes: the cursor goes in on open and returns to "Correct" on close.
+  useEffect(() => {
+    if (correcting && !wasCorrecting.current) firstCorrect.current?.focus();
+    if (!correcting && wasCorrecting.current) {
+      const lost = !document.activeElement || document.activeElement === document.body;
+      if (lost) correctButton.current?.focus();
+    }
+    wasCorrecting.current = correcting;
+  }, [correcting]);
+  const cancelCorrect = () => {
+    setCdraft(correctDraftOf(line));
+    correct?.onCancel();
+  };
+  const onCorrectKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.nativeEvent.isComposing) return;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (correct && !correct.saving) correct.onSave(cdraft);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      if (!correct?.saving) cancelCorrect();
+    }
+  };
+  const cplan = correcting ? planCorrection(line, cdraft, isKitchenMenuLine(line)) : null;
   const firstBox = useRef<HTMLInputElement>(null);
   const changeButton = useRef<HTMLButtonElement>(null);
   const wasEditing = useRef(editing);
@@ -424,8 +462,23 @@ function MenuRow({ line, currency, onDiscard, discarding, isNew = false, testId 
       data-state={discarding ? 'pending' : undefined}
       data-new={isNew ? 'true' : undefined}
     >
-      <td>{line.name}</td>
-      <td className="cl-dim">{line.category ?? EM}</td>
+      <td>
+        {correcting ? (
+          <>
+            <CorrectBox line={line} field="name" value={cdraft.name} onChange={(v) => setCdraft((d) => ({ ...d, name: v }))} onKeyDown={onCorrectKey} inputRef={firstCorrect} />
+            {cplan ? <CorrectNote plan={cplan} /> : null}
+          </>
+        ) : (
+          line.name
+        )}
+      </td>
+      <td className="cl-dim">
+        {correcting ? (
+          <CorrectBox line={line} field="category" value={cdraft.category} onChange={(v) => setCdraft((d) => ({ ...d, category: v }))} onKeyDown={onCorrectKey} />
+        ) : (
+          (line.category ?? EM)
+        )}
+      </td>
       <td className="cl-dim">{[line.producer, line.region].filter(Boolean).join(', ') || EM}</td>
       <td className="cl-num" data-label="Glass">{editing ? box('glass') : money(line.by_glass_price, currency)}</td>
       <td className="cl-num" data-label="Bottle">{editing ? box('bottle') : money(line.bottle_price, currency)}</td>
@@ -452,7 +505,22 @@ function MenuRow({ line, currency, onDiscard, discarding, isNew = false, testId 
         ) : null}
       </td>
       <td className="mdv-acts" style={{ whiteSpace: 'nowrap' }}>
-        {edit && editing ? (
+        {correct && correcting ? (
+          <>
+            <button
+              type="button"
+              className="cl-btn cl-focus"
+              disabled={correct.saving}
+              onClick={() => correct.onSave(cdraft)}
+              data-testid="menu-correct-save"
+            >
+              {correct.saving ? 'Saving…' : 'Save'}
+            </button>{' '}
+            <button type="button" className="cl-btn cl-focus" disabled={correct.saving} onClick={cancelCorrect}>
+              Cancel
+            </button>
+          </>
+        ) : edit && editing ? (
           <>
             <button
               type="button"
@@ -489,7 +557,24 @@ function MenuRow({ line, currency, onDiscard, discarding, isNew = false, testId 
             </button>{' '}
           </>
         ) : null}
-        {onDiscard && !editing ? (
+        {correct && !correcting && !editing ? (
+          <>
+            <button
+              ref={correctButton}
+              type="button"
+              className="cl-btn cl-focus"
+              onClick={() => {
+                setCdraft(correctDraftOf(line));
+                correct.onOpen();
+              }}
+              aria-label={`Correct the name or section of ${line.name}`}
+              data-testid="menu-correct-open"
+            >
+              Correct
+            </button>{' '}
+          </>
+        ) : null}
+        {onDiscard && !editing && !correcting ? (
         <button
           type="button"
           className="cl-btn cl-focus"
@@ -548,6 +633,8 @@ export default function MenuNext() {
   const kept = useKeptMenuName(q.data?.menuId ?? null);
   const [discardingId, setDiscardingId] = useState<string | null>(null);
   const [pricing, setPricing] = useState<{ id: string; saving: boolean } | null>(null);
+  const [correcting, setCorrecting] = useState<{ id: string; saving: boolean } | null>(null);
+  const [correctNote, setCorrectNote] = useState<{ lineId: string; tone: 'alert' | 'said'; text: string } | null>(null);
   const [priceNote, setPriceNote] = useState<{ lineId: string; tone: 'alert' | 'said'; text: string } | null>(null);
   const lines = q.data?.items ?? [];
   // One price changed at a time, field by field (the gateway corrects one field
@@ -581,6 +668,38 @@ export default function MenuNext() {
       await queryClient.invalidateQueries({ queryKey: ['menu', 'active', activeRestaurantId] });
     }
   };
+  // Name and section go through the same PATCH, one field per call, and the menu is read again after.
+  // A refusal stops the rest and says the gateway's own words; the row then shows what is stored.
+  const saveCorrection = async (line: MenuLine, draft: CorrectDraft) => {
+    const plan = planCorrection(line, draft, isKitchenMenuLine(line));
+    if (plan.refused) {
+      setCorrectNote({ lineId: line.id, tone: 'alert', text: plan.refused });
+      return;
+    }
+    if (plan.changes.length === 0) {
+      setCorrecting(null);
+      return;
+    }
+    setCorrecting({ id: line.id, saving: true });
+    let failed: string | null = null;
+    let saved = 0;
+    for (const c of plan.changes) {
+      try {
+        await reviewMenuItem(line.id, c.field, c.value);
+        saved += 1;
+      } catch (err) {
+        failed = addRefusal(err);
+        break;
+      }
+    }
+    setCorrecting(null);
+    setCorrectNote(
+      failed
+        ? { lineId: line.id, tone: 'alert', text: `${line.name}: not saved. ${failed}` }
+        : { lineId: line.id, tone: 'said', text: `${line.name} was corrected${plan.renamesGood ? ` (and renamed on Inventory)` : ''}.` },
+    );
+    if (saved > 0) await queryClient.invalidateQueries({ queryKey: ['menu', 'active', activeRestaurantId] });
+  };
   const drinks = lines.filter((l) => !isKitchenMenuLine(l));
   const kitchen = lines.filter(isKitchenMenuLine);
   // The answer to a price change sits right under its line, where the person clicked.
@@ -610,7 +729,38 @@ export default function MenuNext() {
               onSave: (draft) => void savePrices(line, draft),
             }
       }
+      correct={
+        !canManage
+          ? undefined
+          : {
+              open: correcting?.id === line.id,
+              saving: correcting?.id === line.id && correcting.saving,
+              onOpen: () => {
+                setCorrectNote(null);
+                setCorrecting({ id: line.id, saving: false });
+              },
+              onCancel: () => {
+                setCorrectNote(null);
+                setCorrecting(null);
+              },
+              onSave: (draft) => void saveCorrection(line, draft),
+            }
+      }
     />
+    {correctNote?.lineId === line.id ? (
+      <tr>
+        <td colSpan={7} style={{ paddingTop: 0 }}>
+          <p
+            role={correctNote.tone === 'alert' ? 'alert' : 'status'}
+            className="cl-said"
+            style={{ fontSize: 12, margin: 0 }}
+            data-testid="menu-correct-note"
+          >
+            {correctNote.text}
+          </p>
+        </td>
+      </tr>
+    ) : null}
     {priceNote?.lineId === line.id ? (
       <tr>
         <td colSpan={7} style={{ paddingTop: 0 }}>

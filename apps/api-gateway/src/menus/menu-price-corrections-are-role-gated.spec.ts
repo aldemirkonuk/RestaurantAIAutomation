@@ -17,9 +17,9 @@ function orgs(role: string | null) {
 }
 
 describe("PATCH /menus/items/:id — a PRICE correction is an owner's or a manager's", () => {
-  function controller(role: string | null) {
+  function controller(role: string | null, onCurrentMenu = false) {
     const review = jest.fn(async () => ({ menuItemId: "mi-1" }));
-    const c = new MenusController({ reviewMenuItem: review } as any, orgs(role));
+    const c = new MenusController({ reviewMenuItem: review, lineIsOnCurrentMenu: async () => onCurrentMenu } as any, orgs(role));
     return { c, review };
   }
   const USER = { userId: "u-1", restaurantId: "rest-1" };
@@ -50,8 +50,20 @@ describe("PATCH /menus/items/:id — a PRICE correction is an owner's or a manag
     expect(review).not.toHaveBeenCalled();
   });
 
-  it("a NAME correction by staff is unchanged by this gate", async () => {
-    const { c, review } = controller("staff");
+  it("a NAME correction by staff on a DRAFT menu's line is open (the onboarding review)", async () => {
+    const { c, review } = controller("staff", false);
+    await c.reviewMenuItem("mi-1", { fieldName: "name", newValue: "Opus" } as any, USER);
+    expect(review).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["name", "producer", "category", "vintage"])("staff are refused a %s correction on a CURRENT-menu line, nothing written", async (fieldName) => {
+    const { c, review } = controller("staff", true);
+    await expect(c.reviewMenuItem("mi-1", { fieldName, newValue: "Opus" } as any, USER)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(review).not.toHaveBeenCalled();
+  });
+
+  it.each(["owner", "manager"])("a %s may correct a name on the current menu", async (role) => {
+    const { c, review } = controller(role, true);
     await c.reviewMenuItem("mi-1", { fieldName: "name", newValue: "Opus" } as any, USER);
     expect(review).toHaveBeenCalledTimes(1);
   });
