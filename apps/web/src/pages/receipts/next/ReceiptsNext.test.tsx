@@ -859,11 +859,41 @@ describe('ReceiptsNext — papers that read cleanly reach a swipe (W44)', () => 
     api.clean = [];
     api.doorPending = true;
     const { container } = render(<ReceiptsNext />, { wrapper });
-    expect(await screen.findByText(/Deliveries counted at the door: unknown/)).toBeTruthy();
     expect(await screen.findByText('Reading…')).toBeTruthy();
+    // r106: a pending read draws nothing above the grid (CLS); only a failed one says unknown.
+    expect(screen.queryByText(/Deliveries counted at the door: unknown/)).toBeNull();
     // The door's own line says "not claiming the door is caught up"; the
     // queue's sentence must not claim the paper trail is.
     expect(container.textContent).not.toMatch(/paper trail is caught up/);
+  });
+
+  it('a FAILED door read still says unknown (ADR 0020); a pending one draws no line above the grid (r106 CLS)', async () => {
+    api.queue = [];
+    api.clean = [];
+    api.unverifiedFails = new Error('receiving endpoint 500');
+    render(<ReceiptsNext />, { wrapper });
+    expect(await screen.findByText(/Deliveries counted at the door: unknown/)).toBeTruthy();
+  });
+
+  it('pending then an empty answer: the same nodes sit above the grid, so its top never moves (r106 CLS)', async () => {
+    api.queue = [];
+    api.clean = [];
+    const above = (container: HTMLElement) => {
+      const g = container.querySelector('.grid.grid-cols-1');
+      let n = 0;
+      for (let e = g?.previousElementSibling; e; e = e.previousElementSibling) n++;
+      return n;
+    };
+    api.doorPending = true;
+    const pending = render(<ReceiptsNext />, { wrapper });
+    await screen.findByText('Reading…');
+    const whilePending = above(pending.container);
+    pending.unmount();
+    api.doorPending = false;
+    api.unverified = { items: [] };
+    const answered = render(<ReceiptsNext />, { wrapper });
+    await waitFor(() => expect(screen.queryByText('Reading…')).toBeNull());
+    expect(above(answered.container)).toBe(whilePending);
   });
 
   it('says "caught up" once the clean read lands empty (W48)', async () => {
@@ -1275,6 +1305,95 @@ describe('ReceiptsNext — a lane holds its place while it is read (r41 invoices
     });
     await waitFor(() => expect(outlines(container)).toBe(0));
     expect(await screen.findByText(/INV-88/)).toBeTruthy();
+  });
+
+  it('a lane that answers empty keeps its slot until the last read lands, then lets go once (r104 g5)', async () => {
+    let open!: () => void;
+    api.gate = new Promise<void>((r) => (open = r));
+    api.verifiedPending = true; // the verified book is the slow read
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await screen.findByText(/INV-88/); // the queue and the clean papers have landed (clean: empty)
+    expect(screen.getByTestId('lane-slot-clean')).toBeTruthy();
+    expect(screen.getByTestId('lane-slot-verified')).toBeTruthy();
+    await act(async () => {
+      open();
+    });
+    await waitFor(() => expect(outlines(container)).toBe(0));
+  });
+
+  it('an empty queue says it is still reading, and holds its height, until every read has landed', async () => {
+    api.queue = [];
+    let open!: () => void;
+    api.gate = new Promise<void>((r) => (open = r));
+    api.verifiedPending = true;
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await screen.findByText('Reading…'); // the queue answered empty; the verified book has not
+    expect(screen.getByTestId('lane-slot-queue').getAttribute('style')).toContain('min-height: 156px');
+    expect(screen.queryByText(/the paper trail is caught up/)).toBeNull();
+    await act(async () => {
+      open();
+    });
+    expect(await screen.findByText(/the paper trail is caught up/)).toBeTruthy();
+    expect(screen.queryByTestId('lane-slot-queue')).toBeNull();
+    expect(outlines(container)).toBe(0);
+  });
+
+  it('a warm reload draws each lane at the rows it held last time, so the lists that land do not push (r105)', async () => {
+    window.localStorage.setItem('receipts.laneRows.rest-A', JSON.stringify({ queue: 7, clean: 4, verified: 6 }));
+    api.gate = new Promise<void>(() => {});
+    api.queuePending = true;
+    api.verifiedPending = true;
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await screen.findByText(/Reading the queue/);
+    const rows = (slot: string) =>
+      screen.getByTestId(`lane-slot-${slot}`).querySelectorAll('[style*="height: 52px"]').length;
+    // The verified lane lands as ONE collapsed header line, so even a house that
+    // once stored 6 (or 12) verified rows draws the header only, never a tall
+    // outline that collapses and pushes everything below it.
+    expect([rows('queue'), rows('clean'), rows('verified')]).toEqual([7, 4, 0]);
+    expect(screen.getByTestId('detail-placeholder').getAttribute('style')).toContain('min-height: 41px');
+    expect(container.querySelectorAll('[data-lane-outline]').length).toBe(3);
+  });
+
+  it('with nothing remembered, or storage that throws, the outlines keep their old guess', async () => {
+    window.localStorage.removeItem('receipts.laneRows.rest-A');
+    api.gate = new Promise<void>(() => {});
+    api.queuePending = true;
+    api.verifiedPending = true;
+    render(<ReceiptsNext />, { wrapper });
+    await screen.findByText(/Reading the queue/);
+    const rows = (slot: string) =>
+      screen.getByTestId(`lane-slot-${slot}`).querySelectorAll('[style*="height: 52px"]').length;
+    expect([rows('queue'), rows('clean'), rows('verified')]).toEqual([3, 1, 0]);
+  });
+
+  it('remembers what the lanes held once all three have landed', async () => {
+    window.localStorage.removeItem('receipts.laneRows.rest-A');
+    render(<ReceiptsNext />, { wrapper });
+    await screen.findByText(/INV-88/);
+    await waitFor(() => expect(window.localStorage.getItem('receipts.laneRows.rest-A')).not.toBeNull());
+    expect(JSON.parse(window.localStorage.getItem('receipts.laneRows.rest-A') as string).queue).toBeGreaterThan(0);
+  });
+
+  it('remembers the verified lane as the header line it opens as, however many papers it holds', async () => {
+    window.localStorage.removeItem('receipts.laneRows.rest-A');
+    api.verified = Array.from({ length: 12 }, (_, i) =>
+      doc({ id: `v-${i}`, status: 'verified' as ProcurementDocument['status'] }),
+    );
+    render(<ReceiptsNext />, { wrapper });
+    await screen.findByText(/INV-88/);
+    await screen.findByText(/Verified ·/);
+    await waitFor(() => expect(window.localStorage.getItem('receipts.laneRows.rest-A')).not.toBeNull());
+    expect(JSON.parse(window.localStorage.getItem('receipts.laneRows.rest-A') as string).verified).toBe(0);
+  });
+
+  it('a held slot has no animation or transition, so reduced motion collapses it with none (ADR 0112)', async () => {
+    api.gate = new Promise<void>(() => {});
+    api.verifiedPending = true;
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await screen.findByTestId('lane-slot-verified');
+    const html = container.querySelector('[data-lane-outline]')!.outerHTML;
+    expect(html).not.toMatch(/animation|transition/i);
   });
 
   it('a lane whose read failed draws no outline, it says the failure', async () => {

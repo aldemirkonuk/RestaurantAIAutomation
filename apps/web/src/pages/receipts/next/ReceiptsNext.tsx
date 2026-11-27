@@ -70,6 +70,7 @@ import {
 } from './rc2-format';
 import { DOC_TYPE_LABELS, nameCarriesYear } from '../../../components/documents/canonical-format';
 import { SwipeToConfirm } from './SwipeToConfirm';
+import { readLaneRows, writeLaneRows } from './laneMemory';
 import {
   RECEIPTS_SERVER_WINDOWS,
   useActiveRestaurantId,
@@ -726,10 +727,10 @@ type EditableKey = (typeof EDITABLE_FIELDS)[number]['key'];
  * already says "Reading the queue…", and a read that failed draws none of this
  * (the failure sentence stands in its place).
  */
-function LaneOutline({ rows, heading = false }: { rows: number; heading?: boolean }) {
+function LaneOutline({ rows, heading = false, slot }: { rows: number; heading?: boolean; slot: string }) {
   const bar = { background: 'var(--paper-2, #EAE4D8)', borderRadius: 2 } as const;
   return (
-    <div aria-hidden="true" data-lane-outline="">
+    <div aria-hidden="true" data-lane-outline="" data-testid={`lane-slot-${slot}`}>
       {heading && <div style={{ ...bar, width: 120, height: 14, margin: '4px 0' }} />}
       {Array.from({ length: rows }, (_, i) => (
         <div
@@ -1613,6 +1614,27 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
 
 export default function ReceiptsNext() {
   const data = useReceiptsNextData();
+  const laneRid = useActiveRestaurantId();
+  // What each lane held last time, so the outlines of a warm reload are as tall
+  // as the lists that land (r105). Read once per house; written when all three
+  // reads have landed.
+  const remembered = useMemo(() => readLaneRows(laneRid), [laneRid]);
+  const allLanesKnown = data.queueKnown && data.cleanKnown && data.verifiedKnown;
+  const rememberedQueue = data.queue.length;
+  const rememberedClean = data.clean.length;
+  // The verified lane opens COLLAPSED to one header line (showVerified starts
+  // false), so what it held is not what it will draw: remembering its rows drew
+  // an outline ~600px tall that collapsed when the read landed and moved
+  // everything below it. Its slot is the header only.
+  const rememberedVerified = 0;
+  useEffect(() => {
+    if (!allLanesKnown || data.isError) return;
+    writeLaneRows(laneRid, {
+      queue: rememberedQueue,
+      clean: rememberedClean,
+      verified: rememberedVerified,
+    });
+  }, [allLanesKnown, data.isError, laneRid, rememberedQueue, rememberedClean, rememberedVerified]);
   const [searchParams, setSearchParams] = useSearchParams();
   const { activeRole, user } = useAuth();
   const creditsOffered = canSeeCreditLedger(activeRole, user?.role);
@@ -1898,8 +1920,13 @@ export default function ReceiptsNext() {
             An unanswered uncounted-deliveries query used to render exactly like
             a caught-up door: `[]`. It is now `null` until it answers, and the
             unknown says so instead of hiding behind the absent strip.
+
+            r106 (walk r105 finding 1): only a FAILED read draws the line. While
+            the read is merely PENDING it drew 36 px above the grid at ~110 ms
+            and shoved the whole page down (CLS 0.16-0.31 at 1440); the queue's
+            own "Reading…" already refuses to claim "caught up" meanwhile.
         */}
-        {data.deliveriesWithoutPaper === null && !data.noRestaurant && (
+        {data.deliveriesWithoutPaper === null && data.deliveriesFailed && !data.noRestaurant && (
           <p
             className="mb-4"
             style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)' }}
@@ -1953,13 +1980,20 @@ export default function ReceiptsNext() {
           {/* the queue */}
           <section aria-label="Awaiting review" className={selected ? 'hidden 2xl:block' : undefined}>
             {data.queueKnown && data.queue.length === 0 && !data.isError && !data.noRestaurant ? (
+              <div
+                data-testid={data.lanesSettling ? 'lane-slot-queue' : undefined}
+                // While any read is on its way the empty queue keeps the height its
+                // outline held and says it is still reading; it settles once, when
+                // the last read lands (r104 g5).
+                style={{ minHeight: data.lanesSettling ? Math.max(156, (remembered?.queue ?? 0) * 52) : undefined }}
+              >
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
                 {/* Not "caught up" while clean papers still wait for a swipe (W44),
                     nor before their read has landed: an unread lane is not an
                     empty one (audit of #586, walk-through RECEIPTS-W48). Nor
                     while the door's count is still being read, which its own
                     line calls unknown (RECEIPTS-W50b). */}
-                {!data.cleanKnown
+                {data.lanesSettling || !data.cleanKnown
                   ? 'Reading…'
                   : data.clean.length > 0
                     ? 'Nothing needs a look.'
@@ -1967,19 +2001,20 @@ export default function ReceiptsNext() {
                       ? 'Reading…'
                       : 'Nothing awaits review — the paper trail is caught up.'}
               </p>
+              </div>
             ) : (
               <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
                 {data.queue.map(queueRow)}
-                {data.queueReading && <LaneOutline rows={3} />}
+                {data.queueReading && <LaneOutline rows={remembered?.queue || 3} slot="queue" />}
               </div>
             )}
 
             {/* The lanes below the queue hold their place while their own reads
                 are on the way, so a lane landing late does not push the lane
                 under it (r41 invoices gap P8). A failed read draws none. */}
-            {data.cleanReading && (
+            {(data.cleanReading || (data.lanesSettling && data.cleanKnown && data.clean.length === 0)) && (
               <div style={{ marginTop: 16 }}>
-                <LaneOutline rows={1} heading />
+                <LaneOutline rows={remembered?.clean || 1} heading slot="clean" />
               </div>
             )}
 
@@ -2011,9 +2046,9 @@ export default function ReceiptsNext() {
               </div>
             )}
 
-            {data.verifiedReading && (
+            {(data.verifiedReading || (data.lanesSettling && data.verifiedKnown && data.verified.length === 0)) && (
               <div style={{ marginTop: 16 }}>
-                <LaneOutline rows={0} heading />
+                <LaneOutline rows={0} heading slot="verified" />
               </div>
             )}
 
@@ -2072,7 +2107,13 @@ export default function ReceiptsNext() {
           </section>
 
           {/* the selected document */}
-          <section aria-label="Document detail">
+          <section
+            aria-label="Document detail"
+            data-testid="detail-placeholder"
+            // With nothing open the section keeps its line, so the grid does not
+            // lose it when the lanes beside it land (r105).
+            style={selected ? undefined : { minHeight: 41 }}
+          >
             {selected ? (
               <>
                 <button

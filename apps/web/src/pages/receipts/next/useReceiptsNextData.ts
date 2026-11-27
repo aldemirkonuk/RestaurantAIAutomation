@@ -102,10 +102,19 @@ export interface ReceiptsNextData {
   queueReading: boolean;
   cleanReading: boolean;
   verifiedReading: boolean;
+  /**
+   * At least one of the three reads is still on its way. A lane that answered
+   * EMPTY keeps its outline while this is true and lets go of it once, when the
+   * last read lands: collapsing as each one answered moved the page on two of
+   * four 375px cold loads (r103 walk, CLS 0.709). Failed reads do not count.
+   */
+  lanesSettling: boolean;
   verifiedCount: number | null;
   verifiedCapped: boolean;
   /** null until the uncounted list answers — `[]` would read as "all clear". */
   deliveriesWithoutPaper: UnverifiedDelivery[] | null;
+  /** The door read FAILED (not merely pending); a pending read must not draw a line above the grid. */
+  deliveriesFailed: boolean;
   deliveriesKnown: boolean;
   isError: boolean;
   /** One sentence per query that failed, so a dead endpoint is never silent. */
@@ -239,6 +248,9 @@ export function useReceiptsNextData(): ReceiptsNextData {
     cleanCapped: cleanRows.length >= RECEIPTS_SERVER_WINDOWS.QUEUE_ITEMS,
     verified,
     verifiedKnown: verifiedQ.data !== undefined,
+    lanesSettling:
+      enabled &&
+      [queueQ, cleanQ, verifiedQ].some((q) => q.data === undefined && !q.isError),
     queueReading: enabled && queueQ.data === undefined && !queueQ.isError,
     cleanReading: enabled && cleanQ.data === undefined && !cleanQ.isError,
     verifiedReading: enabled && verifiedQ.data === undefined && !verifiedQ.isError,
@@ -246,6 +258,7 @@ export function useReceiptsNextData(): ReceiptsNextData {
     verifiedCapped: verified.length >= RECEIPTS_SERVER_WINDOWS.VERIFIED_ITEMS,
     deliveriesWithoutPaper: unverifiedQ.data === undefined ? null : unverifiedQ.data.items ?? [],
     deliveriesKnown: unverifiedQ.data !== undefined,
+    deliveriesFailed: unverifiedQ.isError,
     isError: failures.length > 0,
     failures,
     errorMessage: failures.join('; ') || 'unknown error',
