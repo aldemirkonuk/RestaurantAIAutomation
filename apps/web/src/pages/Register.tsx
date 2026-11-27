@@ -175,15 +175,12 @@ export function Register() {
     }
   }, [searchParams])
 
-  // Inline invite validation — debounced 400ms (D-08).
-  // The check follows the code in the box (r102 review): a code change drops
-  // the previous code's card at once, and an answer that belongs to an older
-  // code is ignored, so it can never put its house on the newer code.
+  // Inline invite validation — debounced 400ms (D-08)
   useEffect(() => {
-    let live = true
-    setInvitePreview(null)
-    setValidating(false)
-    if (inviteCode.length !== 8) return
+    if (inviteCode.length !== 8) {
+      setInvitePreview(null)
+      return
+    }
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(async () => {
       setValidating(true)
@@ -191,15 +188,14 @@ export function Register() {
         const { data } = await apiClient.get<InvitePreview>(
           `/auth/invite/${inviteCode.toUpperCase()}`,
         )
-        if (live) setInvitePreview(data)
+        setInvitePreview(data)
       } catch {
-        if (live) setInvitePreview({ valid: false, reason: 'not_found' })
+        setInvitePreview({ valid: false, reason: 'not_found' })
       } finally {
-        if (live) setValidating(false)
+        setValidating(false)
       }
     }, 400)
     return () => {
-      live = false
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
   }, [inviteCode])
