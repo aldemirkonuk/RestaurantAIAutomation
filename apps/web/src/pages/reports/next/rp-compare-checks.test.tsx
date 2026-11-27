@@ -85,6 +85,28 @@ describe('till compare keeps the shown window\u2019s checks', () => {
     expect(view.cats!.data.some((d) => d.prior != null)).toBe(true);
   });
 
+  it('[REVERT-FAILS] Checks and Average are a dash when the N read is not the split\u2019s window (three checks closed between the reads)', async () => {
+    const stale = { ...N_READ, revenue: N_READ.revenue - 390, checkCount: 173 }; // read before the three checks closed
+    api.get.mockReset();
+    api.get.mockImplementation(async (path: string) => {
+      if (path === TWO_N_URL) return { data: TWO_N_READ };
+      if (path === N_URL) return { data: stale };
+      return { data: { insights: [] } };
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+    const { result } = renderHook(() => useReportsNextData(30, () => {}, ['till'], undefined, true), { wrapper });
+    await waitFor(() => expect(result.current.registers.till?.data).toBeDefined());
+    const view = till.view(result.current.registers.till!.data as never, ctx(true));
+    expect(fig(view, 'Checks')).toBe('\u2014');
+    expect(fig(view, 'Average check')).toBe('\u2014');
+    expect(fig(view, 'Taken')).not.toBe('\u2014');
+    // a read for other days is no better than one for other takings
+    const shownChecks = (w: unknown, n: unknown) => (till.withShown!(w as never, n as never) as { shownChecks: number | null }).shownChecks;
+    expect(shownChecks(till.select(TWO_N_READ), till.select({ ...N_READ, to: '2026-09-30' }))).toBeNull();
+    expect(shownChecks(till.select(TWO_N_READ), till.select(N_READ))).toBe(176);
+  });
+
   it('[REVERT-FAILS] asks the N-day read only while comparing, never past what can be doubled', () => {
     expect(till.shownPath!('r1', ctx(true))).toBe(N_URL);
     expect(till.shownPath!('r1', ctx(false))).toBeNull();

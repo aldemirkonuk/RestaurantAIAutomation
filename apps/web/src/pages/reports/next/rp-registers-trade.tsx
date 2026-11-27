@@ -290,7 +290,21 @@ const till = analysis<TillWindow>({
   // when compare is off (same key, so cached), never from the doubled read's days.
   shownPath: (rid, ctx) =>
     ctx.compare && compareOffered(ctx.days) ? `/analytics/pos-revenue/${rid}?days=${ctx.days}` : null,
-  withShown: (w, shown) => ({ ...w, shownChecks: shown ? shown.checkCount : null }),
+  // Checks come from the N read only when it is the same read as the split's window: same
+  // dates and same takings (the two reads are cached apart, up to a minute old). Otherwise a
+  // dash, never a count for other days than the line's.
+  withShown: (w, shown) => {
+    const mine = shown ? splitTill(w, shown.days) : null;
+    const same =
+      shown != null &&
+      mine != null &&
+      mine.from === shown.from &&
+      mine.to === shown.to &&
+      mine.revenue != null &&
+      shown.revenue != null &&
+      Math.abs(mine.revenue - shown.revenue) < 0.005;
+    return { ...w, shownChecks: same ? shown.checkCount : null };
+  },
   takesWindow: true,
   select: (raw) => {
     const d = obj(raw);
