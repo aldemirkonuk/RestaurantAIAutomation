@@ -93,6 +93,49 @@ describe('GetStarted: resumes where the person left', () => {
     expect(val('Country')).toBe('Türkiye')
   })
 
+  const money = () => (screen.getByLabelText("The house's money") as HTMLSelectElement).value
+  it('a remount keeps the owner\'s own money pick, not the country\'s default', () => {
+    const a = render(page())
+    typeHouse()
+    expect(money()).toBe('TRY')
+    fireEvent.change(screen.getByLabelText("The house's money"), { target: { value: 'USD' } })
+    a.unmount()
+    render(page())
+    expect(val('Country')).toBe('Türkiye')
+    expect(money()).toBe('USD')
+  })
+
+  it('a remount keeps a deliberate "Not set yet"', () => {
+    const a = render(page())
+    typeHouse()
+    fireEvent.change(screen.getByLabelText("The house's money"), { target: { value: '' } })
+    a.unmount()
+    render(page())
+    expect(money()).toBe('')
+  })
+
+  it('a stored currency that is not a real code is ignored: the country decides', () => {
+    sessionStorage.setItem(
+      KEY,
+      JSON.stringify({ restaurantName: 'Meyhane', country: 'Türkiye', currencyChoice: 'ZZZ', u: 'u1', at: Date.now() }),
+    )
+    render(page())
+    expect(money()).toBe('TRY')
+  })
+
+  it('a hard reload also puts the money pick back once the session arrives', async () => {
+    sessionStorage.setItem(
+      KEY,
+      JSON.stringify({ restaurantName: 'Meyhane', country: 'Türkiye', currencyChoice: 'USD', u: 'u1', at: Date.now() }),
+    )
+    who.userId = undefined
+    const view = render(page())
+    who.userId = 'u1'
+    view.rerender(page())
+    await waitFor(() => expect(val('Restaurant name')).toBe('Meyhane'))
+    expect(money()).toBe('USD')
+  })
+
   it('opening the house clears the draft, and leaving the page does not bring it back', async () => {
     const a = render(page())
     typeHouse()

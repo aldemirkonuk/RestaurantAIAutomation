@@ -8,6 +8,8 @@
  * never inherits it. The coordinate a picked place carried is not kept: it
  * would no longer match an address typed over, and nothing can tell.
  */
+import { CURRENCY_CODES } from './currency'
+
 const KEY = 'mudavym:get-started-draft'
 const TTL_MS = 30 * 60 * 1000
 
@@ -19,9 +21,14 @@ export interface GetStartedDraft {
   stateProvince: string
   postalCode: string
   restaurantPhone: string
+  /** The owner's own money pick: null follows the country, '' is "Not set yet". */
+  currencyChoice: string | null
+  /** The clock the owner picked when the place names more than one. */
+  pickedZone: string
 }
 
 const FIELDS = ['restaurantName', 'address', 'city', 'country', 'stateProvince', 'postalCode', 'restaurantPhone'] as const
+type TextField = (typeof FIELDS)[number]
 
 function store(): Storage | null {
   try {
@@ -34,6 +41,11 @@ function store(): Storage | null {
 function pick(d: Partial<GetStartedDraft>): GetStartedDraft {
   const out = {} as GetStartedDraft
   for (const f of FIELDS) out[f] = typeof d[f] === 'string' ? (d[f] as string) : ''
+  // A stored value that is not null, '' or a real code is dropped: the money
+  // then follows the country, never a code nobody offered.
+  const c = d.currencyChoice
+  out.currencyChoice = c === null || c === '' || (typeof c === 'string' && CURRENCY_CODES.includes(c)) ? c : null
+  out.pickedZone = typeof d.pickedZone === 'string' ? d.pickedZone : ''
   return out
 }
 
@@ -60,7 +72,7 @@ export function writeGetStartedDraft(userId: string | null | undefined, d: GetSt
   if (!s || !userId) return
   try {
     const clean = pick(d)
-    if (FIELDS.every((f) => clean[f].trim() === '')) {
+    if ((FIELDS as readonly TextField[]).every((f) => clean[f].trim() === '')) {
       s.removeItem(KEY)
       return
     }

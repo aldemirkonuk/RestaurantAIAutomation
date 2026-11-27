@@ -201,9 +201,16 @@ export default function GetStarted() {
   const [stateProvince, setStateProvince] = useState(draft?.stateProvince ?? '')
   const [postalCode, setPostalCode] = useState(draft?.postalCode ?? '')
   const [restaurantPhone, setRestaurantPhone] = useState(draft?.restaurantPhone ?? '')
+  // The owner's money and clock picks are kept with the text (r107): a reload
+  // must not swap a deliberate USD, or "Not set yet", for the country's default.
+  const [pickedZone, setPickedZone] = useState(draft?.pickedZone ?? '')
+  const [currencyChoice, setCurrencyChoice] = useState<string | null>(draft?.currencyChoice ?? null)
   const typed = { restaurantName, address, city, country, stateProvince, postalCode, restaurantPhone }
+  const draftNow = { ...typed, currencyChoice, pickedZone }
   const typedRef = useRef(typed)
   typedRef.current = typed
+  const draftRef = useRef(draftNow)
+  draftRef.current = draftNow
   const userIdRef = useRef(user?.userId)
   userIdRef.current = user?.userId
   // On a hard reload the session is read after the first paint, so `user` is
@@ -224,17 +231,19 @@ export default function GetStarted() {
     setStateProvince(late.stateProvince)
     setPostalCode(late.postalCode)
     setRestaurantPhone(late.restaurantPhone)
+    setCurrencyChoice(late.currencyChoice)
+    setPickedZone(late.pickedZone)
   }, [user?.userId])
-  const typedKey = JSON.stringify(typed)
+  const typedKey = JSON.stringify(draftNow)
   useEffect(() => {
     const t = setTimeout(() => {
-      if (!draftDone.current) writeGetStartedDraft(userIdRef.current, typedRef.current)
+      if (!draftDone.current) writeGetStartedDraft(userIdRef.current, draftRef.current)
     }, 400)
     return () => clearTimeout(t)
   }, [typedKey, user?.userId])
   useEffect(() => {
     const flush = () => {
-      if (!draftDone.current) writeGetStartedDraft(userIdRef.current, typedRef.current)
+      if (!draftDone.current) writeGetStartedDraft(userIdRef.current, draftRef.current)
     }
     window.addEventListener('pagehide', flush)
     return () => {
@@ -248,7 +257,6 @@ export default function GetStarted() {
   // follows the country the page shows, never the earlier place's.
   const [placeCountryCode, setPlaceCountryCode] = useState<string | null>(null)
   const [placeOffset, setPlaceOffset] = useState<number | null>(null)
-  const [pickedZone, setPickedZone] = useState('')
   const [placePoint, setPlacePoint] = useState<{
     latitude: number
     longitude: number
@@ -281,7 +289,6 @@ export default function GetStarted() {
   // onboarding, set a default from location"). The country offers a default;
   // the owner can change it or leave it unset, and a pick is undone when the
   // country changes, as the clock's is. `null` follows the country.
-  const [currencyChoice, setCurrencyChoice] = useState<string | null>(null)
   const countryCurrency = useMemo(() => currencyForCountry(country), [country])
   const currency = currencyToRecord(currencyChoice, countryCurrency)
   // An owner sent back to the menu step (/house, the setup strip, the
