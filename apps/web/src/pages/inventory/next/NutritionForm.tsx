@@ -59,6 +59,17 @@ export function readFigure(s: string): number | null | 'bad' {
   return Number.isFinite(n) && n >= 0 ? n : 'bad';
 }
 
+const ALLERGEN_RANK: Record<AllergenStatus, number> = { contains: 3, may_contain: 2, free: 1, not_stated: 0 };
+
+/**
+ * What an allergen reads once a lookup has spoken: the stricter of what the
+ * house stated and what the lookup found, never the milder. A trace ("may
+ * contain") from Open Food Facts must not lower a house's "contains".
+ */
+export function stricterAllergen(house: AllergenStatus, found: AllergenStatus): AllergenStatus {
+  return (ALLERGEN_RANK[found] ?? 0) > (ALLERGEN_RANK[house] ?? 0) ? found : house;
+}
+
 const asText = (v: number | null) => (v === null ? '' : String(v));
 
 export interface NutritionFormProps {
@@ -97,7 +108,7 @@ export default function NutritionForm({ restaurantId, itemId, data, startWithLoo
   const [allergens, setAllergens] = useState<Record<Allergen, AllergenStatus>>(() => {
     const out = Object.fromEntries(data.allergens.map((a) => [a.allergen, a.status])) as Record<Allergen, AllergenStatus>;
     // A lookup adds "contains" or "may contain" only; it never states one free.
-    for (const a of seeded?.allergens ?? []) out[a.allergen] = a.status;
+    for (const a of seeded?.allergens ?? []) out[a.allergen] = stricterAllergen(out[a.allergen] ?? 'not_stated', a.status);
     return out;
   });
   const [draft, setDraft] = useState<NutritionDraft | null>(seeded);
@@ -114,7 +125,7 @@ export default function NutritionForm({ restaurantId, itemId, data, startWithLoo
     setSource({ source: d.source, ref: d.sourceRef });
     setAllergens((cur) => {
       const next = { ...cur };
-      for (const a of d.allergens) next[a.allergen] = a.status;
+      for (const a of d.allergens) next[a.allergen] = stricterAllergen(next[a.allergen] ?? 'not_stated', a.status);
       return next;
     });
     setLookupOpen(false);
