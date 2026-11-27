@@ -2099,7 +2099,7 @@ export default function ReceiptsNext() {
         .rc-skip { display: inline-block; margin-bottom: 8px; font-family: ${SANS}; font-size: 12px; font-weight: 600; color: var(--seal-deep, #14515C); text-decoration: underline }
         .rc-skip:not(:focus) { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap }
         .rc-row:focus-visible { outline: 2px solid var(--seal, #1A5E6B); outline-offset: -2px }
-        @media (prefers-reduced-motion: reduce) { .rc-row, [style*="rc-settle"] { animation: none !important; transition: none !important } }
+        @media (prefers-reduced-motion: reduce) { .rc-row, .rc-ink, [style*="rc-settle"] { animation: none !important; transition: none !important } }
         /* r109 g6: the lines' room, static in every mode (see LinesWait). */
         .rc-lines-wait { position: relative }
         .rc-lines-wait-head { height: ${LINES_WAIT_HEAD_PX}px }
