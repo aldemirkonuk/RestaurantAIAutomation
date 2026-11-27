@@ -103,8 +103,7 @@ function Allergens({ w }: { w: Extract<NonNullable<CocktailRecipe['whatIsIn']>, 
  * figures and allergens come from its component's recipe (r110 g2). A line
  * named otherwise than its component names the line too.
  */
-export function throughWords(through: Array<{ label: string; componentName: string }>): string | null {
-  if (through.length === 0) return null;
+export function throughWords(through: Array<{ label: string; componentName: string }>): string {
   const parts = [...new Set(through.map((t) => (t.label === t.componentName ? t.componentName : `${t.componentName} (for ${t.label})`)))];
   return `Counted through ${parts.join('; ')}, as the house makes ${parts.length === 1 ? 'it' : 'them'}.`;
 }
