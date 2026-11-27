@@ -309,3 +309,32 @@ describe('the loose-lines queue (r108 drinks-g9)', () => {
     expect(await screen.findByText('Which lines are not linked to your shelf could not be read just now.')).toBeInTheDocument();
   });
 });
+
+// r110 drinks-4: the hold's first window (the save itself in flight) and the room the held button keeps.
+describe('the Link button holds while a save is in flight, and keeps its words (r110 drinks-4)', () => {
+  it('the other Link buttons are off from the first click until the save answers, before any read is asked for', async () => {
+    await openSheet();
+    fireEvent.click(screen.getByTestId('loose-group-sweet vermouth').querySelector('button')!);
+    let release: (v: unknown) => void = () => {};
+    const held = new Promise((r) => (release = r));
+    h.put.mockReset().mockImplementation(async () => {
+      await held;
+      return { data: { versionId: 'new', version: 3, lines: [] } };
+    });
+    const vermouth = () => screen.getByTestId('loose-group-sweet vermouth').querySelector('[data-testid="loose-link"]') as HTMLButtonElement;
+    const words = vermouth().textContent;
+    const gets = h.get.mock.calls.length;
+    await act(linkCampari);
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
+    expect(h.get.mock.calls.length).toBe(gets);
+    expect(vermouth()).toBeDisabled();
+    expect(vermouth().textContent).toBe(words);
+    const puts = h.put.mock.calls.length;
+    fireEvent.click(vermouth());
+    expect(h.put.mock.calls.length).toBe(puts);
+    await act(async () => release(null));
+    await waitFor(() => expect(screen.queryByTestId('loose-group-campari')).toBeNull());
+    await waitFor(() => expect(vermouth()).not.toBeDisabled());
+    expect(vermouth().textContent).toBe(words);
+  });
+});
