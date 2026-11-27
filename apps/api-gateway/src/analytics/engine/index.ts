@@ -41,3 +41,4 @@ export * from "./comparisons";
 export * from "./pricing-agility";
 export * from "./cost-basis";
 export * from "./vendor-price-consensus";
+export * from "./weekday-extremes-basis";
