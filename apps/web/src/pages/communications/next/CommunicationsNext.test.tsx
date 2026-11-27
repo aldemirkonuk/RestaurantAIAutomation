@@ -173,14 +173,12 @@ vi.mock('./MailTab', () => ({
     onOpenReply,
     onAnswer,
     onWriteTo,
-    onAnswer,
     whoIsWriting,
   }: {
     draftedOrderIds: ReadonlySet<string>;
     onOpenReply: (id: string) => void;
     onAnswer?: (a: unknown, at?: { threadKey: string; personKey: string | null }) => void;
     onWriteTo: (providerId: string) => void;
-    onAnswer: (a: { providerId: string | null; subject: string; answers: string; person: unknown }) => void;
     whoIsWriting?: React.ReactNode;
   }) => (
     <section aria-label="Mail" data-testid="mail-tab-stub" data-drafted={[...draftedOrderIds].join(',')}>
@@ -196,7 +194,7 @@ vi.mock('./MailTab', () => ({
       <button type="button" onClick={() => onWriteTo('p1')}>
         stub write to vendor
       </button>
-      <button type="button" onClick={() => onAnswer({ providerId: 'p1', subject: 'Re: stock', answers: 'm1', person: null })}>
+      <button type="button" onClick={() => onAnswer?.({ providerId: 'p1', subject: 'Re: stock', answers: 'm1', person: null })}>
         stub answer
       </button>
       {whoIsWriting}
