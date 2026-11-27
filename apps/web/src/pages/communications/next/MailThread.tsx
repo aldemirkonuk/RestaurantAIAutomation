@@ -312,7 +312,8 @@ export function MailThread({
   // is open. Only the first page can gain one; "Show earlier letters" adds old letters, not arrivals.
   const headIds = (head?.messages ?? []).map((m) => m.id);
   const entering = useEnteringKeys(headIds, threadKey, Boolean(head));
-  const arrived = letters.filter((m) => m.direction === 'inbound' && entering.has(m.id));
+  // An auto-reply or a bounce is not waiting on anyone (the fold rule says the same), so it is no arrival.
+  const arrived = letters.filter((m) => m.direction === 'inbound' && m.automatic !== true && entering.has(m.id));
   const newestArrived = arrived.length ? arrived[arrived.length - 1]!.id : null;
   const [cleared, setCleared] = useState<{ key: string; ids: ReadonlySet<string> }>({ key: threadKey, ids: new Set() });
   const clearedIds = cleared.key === threadKey ? cleared.ids : new Set<string>();
@@ -492,7 +493,7 @@ export function MailThread({
             data-testid="new-letter-live"
             style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }}
           >
-            {below.length > 0 ? `A new letter from ${vendor}` : ''}
+            {below.length === 0 ? '' : below.length === 1 ? `A new letter from ${vendor}` : `${below.length} new letters from ${vendor}`}
           </div>
           {below.length > 0 && (
             // Zero height, so its arrival moves nothing; it sticks to the section's bottom edge while the letter is off screen.

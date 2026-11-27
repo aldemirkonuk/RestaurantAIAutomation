@@ -113,6 +113,26 @@ describe('a new letter below', () => {
     expect(await screen.findByTestId('new-letter-below')).toHaveTextContent('2 new letters below');
   });
 
+  it('says the count aloud when several arrive, and does not count an auto-reply or a bounce', async () => {
+    mount();
+    await screen.findAllByTestId('mail-letter');
+    await arrive([L(1), L(2), L(3), L(4)]);
+    await screen.findByTestId('new-letter-below');
+    expect(screen.getByTestId('new-letter-live')).toHaveTextContent('2 new letters from Bodega');
+    await arrive([L(1), L(2), L(3), L(4), L(5, { automatic: true })]);
+    await waitFor(() => expect(screen.getAllByTestId('mail-letter')).toHaveLength(5));
+    expect(screen.getByTestId('new-letter-below')).toHaveTextContent('2 new letters below');
+  });
+
+  it('is not told of an out-of-office or a bounce that lands alone', async () => {
+    mount();
+    await screen.findAllByTestId('mail-letter');
+    await arrive([L(1), L(2), L(3, { automatic: true })]);
+    await waitFor(() => expect(screen.getAllByTestId('mail-letter')).toHaveLength(3));
+    expect(screen.queryByTestId('new-letter-below')).toBeNull();
+    expect(screen.getByTestId('new-letter-live')).toHaveTextContent('');
+  });
+
   it('shows no pill for a letter already in view', async () => {
     mount();
     await screen.findAllByTestId('mail-letter');
