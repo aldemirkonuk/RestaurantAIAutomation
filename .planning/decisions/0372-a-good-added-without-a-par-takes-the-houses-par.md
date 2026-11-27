@@ -29,3 +29,4 @@ One house-wide low-stock par was written five ways: the `restaurant_inventory.th
 - `import_restaurant_data` still defaults 5.
 - ThresholdStep is still not mounted; with no screen writing the value, most houses are unstated and read 3.
 - Reach (r103 review): this reaches the API add and the scan/receipt bulk lines only. The Add-wine modal always sends its own par (`useState(10)`, and `wine.threshold || 10` turns a 0 into 10) and the auction carry sends 0, so a person adding through those still gets 10 or 0, not the house's par. Seeding the modal from the house par needs the web store to carry `default_threshold_min` and a way to state it (ThresholdStep); that is a product surface this change does not decide.
+- `seed_sim_restaurant` seeds a par of 5; that is a simulator default, not a house's stated par, and is left alone (r104). The `stock.manual_override` event no longer invents a 6 when the old row is unread; it sends null.
