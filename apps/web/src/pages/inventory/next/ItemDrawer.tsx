@@ -46,6 +46,7 @@ export const CARD_EVIDENCE: Record<CardId | 'all', ReadonlyArray<EvidenceSection
   value: ['cost', 'paper'],
   usage: ['pace'],
   cover: ['pace', 'where'],
+  onorder: ['orders', 'where'],
   cost: ['cost', 'paper'],
   waste: ['where'],
   gap: ['where'],
@@ -321,6 +322,7 @@ function DrawerBody(props: ItemDrawerProps & { row: InvRow }) {
         uom={house.uom}
         kind={house.kind ?? row.kind}
         sections={[]}
+        onOrder={figures.status === 'ready' ? figures.data.onOrder : figures.status}
         sheet={sheet}
         onSheet={setSheet}
       />
@@ -376,6 +378,7 @@ function DrawerBody(props: ItemDrawerProps & { row: InvRow }) {
               sections={CARD_EVIDENCE[evidence]}
               actions={false}
               settled={figures.status === 'ready' ? (figures.data.costTrend.points ?? null) : figures.status}
+              onOrder={figures.status === 'ready' ? figures.data.onOrder : figures.status}
               sheet={sheet}
               onSheet={setSheet}
             />

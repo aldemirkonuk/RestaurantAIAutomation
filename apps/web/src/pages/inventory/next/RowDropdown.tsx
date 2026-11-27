@@ -38,6 +38,7 @@ import { shortDate, volume } from '../../cellar/next/cellar-format';
 import { useRowRecord } from '../../cellar/next/useCellarNextData';
 import { velocity, whenItSells, type TillLine } from '../../cellar/next/rowSeries';
 import { CountSheet, OrderSheet, PourSheet, TransferSheet, WriteOffSheet } from './InventorySheets';
+import { OnOrderEvidence, openOrderCount, type OnOrderLoad } from './OnOrder';
 import { amountUnit, isPoured } from './iv-amount';
 import { fmtQty, NOT_DRAWN_BY_SALES, perUnit, usageWords as usageWordsOf } from './ItemCards';
 import { writeFailure } from './iv-failure';
@@ -117,12 +118,18 @@ export interface RowDropdownProps {
    * the costs could not be read (inventory r36, gap 9).
    */
   settled?: SettledProp;
+  /**
+   * What is already on order (the figures route's `onOrder`, or the figures
+   * read itself while it reads or after it failed). The drawer passes it; the
+   * list row does not, and draws no orders panel.
+   */
+  onOrder?: OnOrderLoad;
 }
 
 export type SettledProp = ReadonlyArray<{ receivedAt: string; unitCost: number }> | 'reading' | 'failed' | null;
 
 /** The panels the opened row draws: facts and naming, where, pace, cost, paperwork. */
-export type EvidenceSection = 'facts' | 'where' | 'pace' | 'cost' | 'paper';
+export type EvidenceSection = 'facts' | 'where' | 'pace' | 'cost' | 'paper' | 'orders';
 
 export type SheetId = 'count' | 'order' | 'writeoff' | 'transfer' | 'pour';
 
@@ -380,8 +387,9 @@ export default function RowDropdown(props: RowDropdownProps) {
 
       {has('facts') ? <NameThisWine inventoryId={row.id} currentName={row.name} restaurantId={props.restaurantId} /> : null}
 
-      {has('where') || has('pace') || has('cost') ? (
+      {has('where') || has('pace') || has('cost') || (has('orders') && 'onOrder' in props) ? (
         <div className="iv-drop-cols">
+          {has('orders') && 'onOrder' in props ? <OnOrderEvidence load={props.onOrder} /> : null}
           {has('where') ? <WhereTheCountComesFrom row={row} zoneName={zoneName} onCount={() => setSheet('count')} /> : null}
           {has('pace') ? <HowFastItPours row={row} uom={props.uom ?? null} kind={props.kind ?? null} /> : null}
           {has('cost') ? (
@@ -550,6 +558,7 @@ export default function RowDropdown(props: RowDropdownProps) {
           providersError={props.providersError}
           restaurantId={props.restaurantId}
           uom={props.uom}
+          alreadyOpen={openOrderCount(props.onOrder)}
         />
       ) : null}
       {acts && sheet === 'writeoff' && canManage ? <WriteOffSheet row={row} uom={props.uom} onClose={() => setSheet(null)} /> : null}

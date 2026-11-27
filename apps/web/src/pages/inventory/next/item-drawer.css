@@ -336,3 +336,10 @@ button.ivd-card:active {
     animation: none;
   }
 }
+
+/* What is on order (r109 g1): one line per open order. */
+.ivd-orders {
+  margin: 2px 0 0;
+  padding-left: 16px;
+  font-variant-numeric: tabular-nums;
+}

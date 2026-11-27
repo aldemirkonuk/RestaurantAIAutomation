@@ -609,7 +609,25 @@ export interface ItemFigures {
     source: string;
   };
   costTrend: { readable: boolean; points: Array<{ receivedAt: string; unitCost: number }> | null; changePct: number | null; source: string };
+  /** What is on order and not yet received: quantities only, never a price. Absent from an older gateway. */
+  onOrder?: ItemOnOrder;
 }
+
+/** One open order of a good, in its own unit; `inBookUnit` is null when that unit is not the book's. */
+export interface ItemOpenOrder {
+  id: string;
+  orderNumber: string | null;
+  status: string;
+  openQty: number;
+  unit: string | null;
+  expected: string | null;
+  inBookUnit: number | null;
+}
+
+/** Sent = confirmed, on its way or part received; `arrivingInBookUnit` sums only those, or is null. */
+export type ItemOnOrder =
+  | { readable: true; source: string; sent: ItemOpenOrder[]; unsent: ItemOpenOrder[]; arrivingInBookUnit: number | null }
+  | { readable: false; source: string; sent: null; unsent: null; arrivingInBookUnit: null };
 
 /** One group of "Used in": a failed read is `lines: null`, never [] (ADR 0067). */
 export interface ItemUsedInGroup<T> {
