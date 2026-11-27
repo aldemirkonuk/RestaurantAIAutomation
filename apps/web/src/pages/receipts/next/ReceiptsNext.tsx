@@ -146,6 +146,59 @@ function TieOutLine({ doc }: { doc: ProcurementDocument }) {
 }
 
 /**
+ * A paper whose cost is held because the house has not said how it treats tax
+ * says so (r107, DD-r106-23): the lots stay provisional and nothing else on the
+ * page told the reader why. Shown only to who may read it (the gateway refuses
+ * anyone else). A FAILED read says it could not read, never "nothing held".
+ */
+function HeldCostNote({ docId }: { docId: string }) {
+  const { activeRole, user } = useAuth();
+  const mayRead = canSeeCreditLedger(activeRole, user?.role);
+  const q = useQuery({
+    queryKey: ['receipts-next', 'held-costs', docId],
+    queryFn: () => documentsApi.heldCosts(docId),
+    enabled: mayRead,
+    staleTime: 60_000,
+    retry: false,
+  });
+  if (!mayRead) return null;
+  if (q.isError)
+    return (
+      <p role="status" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>
+        Whether this paper&rsquo;s cost is held could not be read.
+      </p>
+    );
+  if (!q.data || q.data.held.length === 0) return null;
+  // The tax sentence is for a hold that IS the tax basis (r108): a paper held
+  // for a missing exchange rate or an unreadable line says the server's own reason.
+  const taxHolds = q.data.held.filter((h) => h.cause === 'tax_basis');
+  const others = q.data.held.filter((h) => h.cause !== 'tax_basis');
+  const sentences: string[] = [];
+  if (taxHolds.length > 0 && !q.data.taxBasisKnown)
+    sentences.push(
+      `Tax basis unknown \u2014 ${
+        taxHolds.length === 1
+          ? 'one item on this paper keeps a provisional cost'
+          : `${taxHolds.length} items on this paper keep a provisional cost`
+      } until the house says how it treats the tax it pays.`,
+    );
+  if (others.length > 0) {
+    const why = others[0].why.replace(/\s*The lot stays provisional\.?$/, '').trim();
+    sentences.push(
+      `${why.charAt(0).toUpperCase()}${why.slice(1)}${/[.!?]$/.test(why) ? '' : '.'}${
+        others.length > 1 ? ` ${others.length - 1} more ${others.length - 1 === 1 ? 'item is' : 'items are'} held too.` : ''
+      }`,
+    );
+  }
+  if (sentences.length === 0) return null;
+  return (
+    <p role="status" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>
+      {sentences.join(' ')}
+    </p>
+  );
+}
+
+/**
  * RULE 3 — what money this invoice is in, and the house's deliberate change.
  *
  * Founder, 2026-09-06 (batch 63): *"take the houses own currency, but AI needs
@@ -1288,6 +1341,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
       {/* RULE 3 — the house's deliberate restatement of this invoice's money */}
       <CardPart label="The money">
         <CurrencyBlock doc={shownDoc} onChanged={() => void detailQ.refetch()} />
+        <HeldCostNote docId={doc.id} />
       </CardPart>
 
       {/*
@@ -1974,8 +2028,8 @@ export default function ReceiptsNext() {
             {/* the verified lane — the record, one click away, read-only
                 (opus-fidelity R-1: "everything from all of the orders" must
                 not shrink the verified book to a header integer) */}
-            {data.verifiedKnown && data.verified.length > 0 && (
-              <div style={{ marginTop: 16 }}>
+            {data.verifiedKnown && (data.verified.length > 0 || data.verifiedTerm !== '') && (
+              <div style={{ marginTop: 16 }} data-testid="verified-lane">
                 <button
                   type="button"
                   onClick={() => setShowVerified((v) => !v)}
@@ -1997,6 +2051,31 @@ export default function ReceiptsNext() {
                 </button>
                 {showVerified && (
                   <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+                    <form
+                      role="search"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        data.setVerifiedTerm(String(new FormData(e.currentTarget).get('q') ?? '').trim());
+                      }}
+                      style={{ display: 'flex', gap: 6, padding: '8px 0' }}
+                    >
+                      <input
+                        name="q"
+                        type="search"
+                        defaultValue={data.verifiedTerm}
+                        aria-label="Search verified papers by vendor or number"
+                        placeholder="Vendor or number"
+                        style={{ flex: 1, minWidth: 0, minHeight: 44, fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--line-control, #8F8674)', background: 'var(--paper-0, #FBF8F1)' }}
+                      />
+                      <button type="submit" className="rc-ink" style={{ minHeight: 44, minWidth: 44, fontSize: 12, fontWeight: 600, border: 'none', background: 'transparent', color: 'var(--seal-deep, #14515C)', cursor: 'pointer' }}>
+                        Find
+                      </button>
+                    </form>
+                    {data.verified.length === 0 && (
+                      <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '4px 0 8px' }}>
+                        No verified paper matches &ldquo;{data.verifiedTerm}&rdquo;.
+                      </p>
+                    )}
                     {data.verified.map((d) => (
                       <button
                         key={d.id}
@@ -2019,6 +2098,25 @@ export default function ReceiptsNext() {
                         </span>
                       </button>
                     ))}
+                    {data.verifiedHasOlder && (
+                      <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '8px 0 4px' }}>
+                        Showing the newest {data.verified.length} verified papers; older ones are not listed yet. Search by vendor or number, or
+                        <button
+                          type="button"
+                          onClick={data.loadOlderVerified}
+                          disabled={data.olderBusy}
+                          className="rc-ink"
+                          style={{ marginLeft: 6, minHeight: 44, minWidth: 44, display: 'inline-flex', alignItems: 'center', fontSize: 12, fontWeight: 600, border: 'none', background: 'transparent', color: 'var(--seal-deep, #14515C)', textDecoration: 'underline', cursor: 'pointer' }}
+                        >
+                          {data.olderBusy ? 'Reading older papers' : 'Older papers'}
+                        </button>
+                      </p>
+                    )}
+                    {data.olderError && (
+                      <p role="alert" style={{ fontSize: 12, color: 'var(--ink-1, #211C16)', margin: '4px 0' }}>
+                        Older papers could not be read: {data.olderError}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>

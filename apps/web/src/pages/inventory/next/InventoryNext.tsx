@@ -329,7 +329,9 @@ export default function InventoryNext() {
     };
   }, [data.rawItems]);
   const activeChip: ChipId =
-    (chip === 'dead' && data.paceUnread) || (chip === 'price' && priceRead !== 'ready') || (chip === 'unused' && data.useCountsRead !== 'ready') ||
+    (chip === 'dead' && data.paceUnread) ||
+    (chip === 'price' && priceRead !== 'ready') ||
+    (chip === 'unused' && data.useCountsRead !== 'ready') ||
     (chip === 'nutrition' && recorded === null)
       ? 'all'
       : chip;

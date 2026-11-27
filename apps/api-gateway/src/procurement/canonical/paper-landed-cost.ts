@@ -44,6 +44,7 @@ import {
   landedCost,
 } from "../landed-cost";
 import { snapshotLineKinds } from "./from-document-rows";
+import { paperTaxFacts, snapshotLineRates } from "./paper-tax-facts";
 import { LotUnitCost } from "./lot-unit-cost";
 
 /** The two `restaurants` columns a lot cost reads (ADR 0359 C2). */
@@ -94,9 +95,15 @@ export interface PaperHeaderRow {
   other_charges?: number | string | null;
   deposit_total?: number | string | null;
   tax?: number | string | null;
+  /** `procurement_documents.total`: what the paper says it comes to. */
+  total?: number | string | null;
+  /** `extracted->taxBreakdown`: the rates the paper prints (paper-tax-facts). */
+  tax_breakdown?: unknown;
+  /** `extracted->einvoice`: set when the paper was read from its e-invoice file. */
+  einvoice?: unknown;
   /** `procurement_documents.currency`: the vendor's money, as the paper says. */
   currency?: string | null;
-  /** `extracted->lines`: the intake snapshot, read only for each line's kind. */
+  /** `extracted->lines`: the intake snapshot, read for each line's kind and printed tax rate. */
   extracted_lines?: unknown;
 }
 
@@ -159,10 +166,15 @@ export interface PaperNote {
   taxSaid: string;
 }
 
+/** r108: the kind of reason an item's landed cost is held. */
+export type HeldCause = "tax_basis" | "currency" | "lines" | "other";
+
 export interface DeliveryLandedCost {
   byItem: Map<string, LandedPrice>;
   /** Items whose cost stays provisional, each with the whole sentence. */
   held: Map<string, string>;
+  /** Why each held item is held (r108); an item with no entry is `other`. */
+  heldCause: Map<string, HeldCause>;
   /** The gatekeeper's own refusal, by item (a re-verify names it). */
   refused: Map<string, string>;
   /** Held as not in the house's money (QA 15 (5)): no fallback price. */
@@ -234,7 +246,7 @@ function header(row: PaperHeaderRow): LandedCostHeader {
     other_charges: num(row.other_charges),
     deposit_total: num(row.deposit_total),
     tax: num(row.tax),
-    // No column says either yet (ADR 0359 C3, lane 3.5a).
+    // Filled per paper from what it proves (paper-tax-facts.ts).
     charges_tax_basis: null,
     charges_vat_rate_percent: null,
   };
@@ -512,8 +524,12 @@ export function landDelivery(input: {
   const refused = new Map<string, string>();
   const paired = new Map<string, string>();
   const papers: PaperNote[] = [];
-  const hold = (id: string, why: string) => {
-    if (!held.has(id)) held.set(id, why);
+  const heldCause = new Map<string, HeldCause>();
+  const hold = (id: string, why: string, cause: HeldCause = "lines") => {
+    if (!held.has(id)) {
+      held.set(id, why);
+      heldCause.set(id, cause);
+    }
   };
 
   const headerOf = new Map(input.papers.map((p) => [p.id, p]));
@@ -525,6 +541,12 @@ export function landDelivery(input: {
   );
   const kindOf = (r: PaperLineRow) =>
     kindsOf.get(r.document_id)?.get(Number(r.line_no ?? 0)) ?? null;
+  // r35: the tax rate the reader saw printed beside each line, by paper.
+  const ratesOf = new Map(
+    input.papers.map((p) => [p.id, snapshotLineRates({ lines: p.extracted_lines })]),
+  );
+  const printedRateOf = (r: PaperLineRow) =>
+    ratesOf.get(r.document_id)?.get(Number(r.line_no ?? 0)) ?? null;
 
   // #838's pairing, kept: ONE booked item, no line naming it, and ONE stock
   // line naming nothing → that line is the item's. Any other shape is not.
@@ -615,6 +637,7 @@ export function landDelivery(input: {
           hold(
             f.key,
             `the totals of the invoice it is on could not be found, so that paper's charges and discount are not known. The lot stays provisional.`,
+            "other",
           );
       continue;
     }
@@ -626,6 +649,7 @@ export function landDelivery(input: {
         if (f.key) {
           foreign.add(f.key);
           held.set(f.key, `${notHouse}. The lot stays provisional.`);
+          heldCause.set(f.key, "currency");
         }
       papers.push({
         documentId: docId,
@@ -638,11 +662,28 @@ export function landDelivery(input: {
     for (const f of mine)
       if (f.key && money)
         moneyOf.set(f.key, (moneyOf.get(f.key) ?? new Set<string>()).add(money));
+    // ADR 0359 C3: what this paper proves about its own tax, for every line.
+    const facts = paperTaxFacts(
+      row,
+      mine.map((f) => ({
+        kind: f.kind,
+        printedTotal: num(f.row.line_total),
+        input: f.input,
+        printedRatePercent: printedRateOf(f.row),
+      })),
+    );
     const result = landedCost({
-      header: header(row),
+      header: {
+        ...header(row),
+        charges_tax_basis: facts.basis,
+        charges_vat_rate_percent: facts.ratePercent,
+      },
       house,
-      lines: mine.map((f) => ({
+      lines: mine.map((f, i) => ({
         ...f.input,
+        price_tax_basis: facts.basis,
+        // r35: each line's own printed rate, when the paper proves them.
+        vat_rate_percent: facts.lineRates ? facts.lineRates[i] : facts.ratePercent,
         // The item's unit, so a free weighed line is said in it too.
         ...(f.key && perOf.has(f.key) ? { unit: perOf.get(f.key) } : {}),
         accepted_bottles: accepted.get(f) ?? 0,
@@ -662,14 +703,14 @@ export function landDelivery(input: {
       leftOut: own.length
         ? `${result.left_out} Also not cost: ${own.join("; ")}.`
         : result.left_out,
-      taxSaid: result.tax_said,
+      taxSaid: [facts.said, result.tax_said].filter(Boolean).join(" "),
     });
     result.lines.forEach((l) => {
       const key = l.item_key;
       if (!key) return;
       docsOf.set(key, (docsOf.get(key) ?? new Set<string>()).add(docId));
       if (l.status === "unresolved")
-        hold(key, `${l.unresolved} The lot stays provisional.`);
+        hold(key, `${l.unresolved} The lot stays provisional.`, l.cause === "tax_basis" ? "tax_basis" : "lines");
       if (l.status === "costed")
         linesOf.set(key, [...(linesOf.get(key) ?? []), l]);
     });
@@ -688,6 +729,7 @@ export function landDelivery(input: {
       hold(
         key,
         `its invoices are in ${monies.join(" and ")}, and costs in different currencies are never added together. The lot stays provisional.`,
+        "currency",
       );
       continue;
     }
@@ -767,5 +809,5 @@ export function landDelivery(input: {
     });
   }
 
-  return { byItem, held, refused, paired, papers, foreign };
+  return { byItem, held, heldCause, refused, paired, papers, foreign };
 }
