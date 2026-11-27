@@ -357,7 +357,7 @@ describe("GoalsService.getPosRevenueWindow", () => {
     expect(result.posConnected).toBe(true);
     expect(result.revenue).toBeCloseTo(200);
     expect(result.checkCount).toBe(2);
-    expect(result.dailySeries).toEqual([{ date: LA_TODAY, revenue: 200 }]);
+    expect(result.dailySeries).toEqual([{ date: LA_TODAY, revenue: 200, checks: 2 }]);
 
     // The void filter is not optional: a voided check never happened.
     const voidFilter = client.calls.find(
@@ -445,7 +445,27 @@ describe("GoalsService.getPosRevenueWindow", () => {
     expect(result.prior!.revenue).toBeCloseTo(100);
     expect(result.prior!.checkCount).toBe(2);
     // A day with no check is absent from the prior series, never a 0 row.
-    expect(result.prior!.dailySeries).toEqual([{ date: "2026-07-20", revenue: 100 }]);
+    expect(result.prior!.dailySeries).toEqual([{ date: "2026-07-20", revenue: 100, checks: 2 }]);
+  });
+
+  it("carries each day's check count, and the days sum to checkCount (the web's Checks and Average check need it)", async () => {
+    const d1 = `${LA_TODAY}T19:00:00Z`;
+    const d2 = "2026-07-20T19:00:00Z";
+    const { service } = makeGoals({
+      pos_checks: (call) =>
+        call === 0
+          ? [{ id: "c1" }]
+          : [
+              { total: 10, opened_at: d1, closed_at: d1, items: [] },
+              { total: 20, opened_at: d1, closed_at: d1, items: [] },
+              { total: 30, opened_at: d1, closed_at: d1, items: [] },
+              { total: 40, opened_at: d2, closed_at: d2, items: [] },
+            ],
+    });
+    const result = await service.getPosRevenueWindow("r1", 60);
+    expect(result.checkCount).toBe(4);
+    expect(result.dailySeries.reduce((a, d) => a + d.checks, 0)).toBe(result.checkCount);
+    expect(result.dailySeries.map((d) => d.checks)).toEqual([1, 3]);
   });
 
   it("without compare=prior, or with no POS or no zone, the payload carries no prior", async () => {

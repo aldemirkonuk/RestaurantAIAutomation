@@ -916,6 +916,8 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     dailySeries: number[];
     dailyDates: string[];
     rowCount: number;
+    /** pos_revenue only: checks filed on each of `dailyDates`, in order, so the days sum to `rowCount`. */
+    dailyChecks?: number[];
     /** Bottles sold only: the bottle basis of the window (ADR 0297). */
     units?: UnitsLabel;
   }> {
@@ -1001,6 +1003,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     const add = (date: string, v: number) => {
       daily.set(date, (daily.get(date) || 0) + v);
     };
+    const checksByDay = new Map<string, number>();
 
     try {
       if (metricKey === "purchase_spend") {
@@ -1100,7 +1103,10 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
           // The whole check total — the tender the restaurant actually booked,
           // which is the denominator a COGS ratio needs. `wine_revenue` below
           // deliberately sums only itemised wine lines and is NOT a substitute.
-          for (const { row: c, day } of checks) add(day, Number(c.total) || 0);
+          for (const { row: c, day } of checks) {
+            add(day, Number(c.total) || 0);
+            checksByDay.set(day, (checksByDay.get(day) || 0) + 1);
+          }
         } else if (metricKey === "checks") {
           for (const { day } of checks) add(day, 1);
         } else if (metricKey === "avg_check") {
@@ -1155,7 +1161,11 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     const dates = Array.from(daily.keys()).sort();
     const dailySeries = dates.map((d) => daily.get(d) || 0);
     const current = dailySeries.reduce((a, b) => a + b, 0);
-    return { current, dailySeries, dailyDates: dates, rowCount, units };
+    const dailyChecks =
+      metricKey === "pos_revenue"
+        ? dates.map((d) => checksByDay.get(d) ?? 0)
+        : undefined;
+    return { current, dailySeries, dailyDates: dates, rowCount, dailyChecks, units };
   }
 
   // ==========================================================================
@@ -1228,7 +1238,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     if (!connected) return { ...unread, posConnected: false };
     if (!zone || !from || !to) return { ...unread, posConnected: true };
 
-    const { current, dailySeries, dailyDates, rowCount } =
+    const { current, dailySeries, dailyDates, rowCount, dailyChecks } =
       await this.computeMetricWithSeries(
         restaurantId,
         "pos_revenue",
@@ -1250,6 +1260,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       dailySeries: dailyDates.map((date, i) => ({
         date,
         revenue: dailySeries[i] ?? 0,
+        checks: dailyChecks?.[i] ?? 0,
       })),
     };
     if (compare !== "prior") return window;
@@ -1276,6 +1287,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
         dailySeries: before.dailyDates.map((date, i) => ({
           date,
           revenue: before.dailySeries[i] ?? 0,
+          checks: before.dailyChecks?.[i] ?? 0,
         })),
       },
     };
@@ -1312,8 +1324,8 @@ export interface PosRevenueWindow {
   revenue: number | null;
   /** Non-voided checks filed in the window. `null` when `posConnected` is false or `zoneUnset`. */
   checkCount: number | null;
-  /** Sparse — only days that actually had revenue appear. */
-  dailySeries: Array<{ date: string; revenue: number }>;
+  /** Sparse — only days that actually had revenue appear. `checks` is that day's count; the days sum to `checkCount`. */
+  dailySeries: Array<{ date: string; revenue: number; checks: number }>;
   /**
    * Only with `compare=prior`: the same-length window just before this one.
    * Absent when not asked for, and when no window could be filed
@@ -1324,6 +1336,6 @@ export interface PosRevenueWindow {
     to: string;
     revenue: number | null;
     checkCount: number | null;
-    dailySeries: Array<{ date: string; revenue: number }>;
+    dailySeries: Array<{ date: string; revenue: number; checks: number }>;
   };
 }

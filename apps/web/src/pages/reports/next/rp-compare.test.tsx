@@ -111,6 +111,16 @@ describe('till: compare to the previous period', () => {
     expect(view(short, true).cats!.data.every((d) => d.prior === undefined)).toBe(true);
   });
 
+  it('a gateway that sends no per-day checks leaves Checks and Average check unstated when comparing, never the 2N count', () => {
+    const bare = payload();
+    const noChecks = payload({ dailySeries: bare.dailySeries.map((d) => ({ date: d.date, revenue: d.revenue })) });
+    const fig = (raw: unknown, compare: boolean, label: string) => view(raw, compare).figures.find((f) => f.label === label)!;
+    expect(fig(noChecks, true, 'Checks').value).toBe('—');
+    expect(fig(noChecks, true, 'Average check').value).toBe('—');
+    // With the per-day count the gateway now sends, the window's own checks are summed: 30 days x 3.
+    expect(fig(payload(), true, 'Checks').value).toBe('90');
+  });
+
   it('[REVERT-FAILS] a staff reader whose till is withheld gets no window, no prior and no money from the larger read', () => {
     const withheld = { posConnected: true, salesWithheld: true, revenue: null, checkCount: null, from: P_FROM, to: TO, days: 60, dailySeries: null };
     const v = view(withheld, true);
