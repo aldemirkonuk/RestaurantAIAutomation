@@ -720,6 +720,25 @@ describe('the first-screen taste line', () => {
     }
   });
 
+  it('a taste ask closed before its 200 ms open does not replay on the next card (r102 review)', async () => {
+    api.taste.mockResolvedValue(profile);
+    const spy = vi.fn();
+    const was = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = spy;
+    try {
+      open(row());
+      fireEvent.click(await screen.findByTestId('taste-line-open'));
+      fireEvent.click(screen.getByRole('button', { name: 'Hide the evidence' }));
+      await new Promise((r) => setTimeout(r, 300));
+      fireEvent.click(screen.getByTestId('ivd-card-onhand'));
+      await waitFor(() => expect(spy.mock.contexts).toContain(screen.getByTestId('ivd-evidence')));
+      await new Promise((r) => setTimeout(r, 300));
+      expect(spy.mock.contexts.some((el) => (el as HTMLElement).dataset?.testid === 'ivd-taste-slot')).toBe(false);
+    } finally {
+      Element.prototype.scrollIntoView = was;
+    }
+  });
+
   it('is above the evidence button, never inside the evidence', async () => {
     api.taste.mockResolvedValue(profile);
     open(row());
