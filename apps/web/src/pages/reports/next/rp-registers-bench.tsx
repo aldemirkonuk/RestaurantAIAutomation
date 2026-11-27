@@ -65,9 +65,10 @@ export interface BenchRegister {
   tie: boolean;
   weekdays: Array<{ day: string; mean: number | null; n: number | null }>;
   goals: BenchGoalRow[];
-  /** True when the whole cashflow lens failed inside the parallel call. */
+  /** True when that register's own read failed: a read that did not happen, never "nothing". */
   cashflowMissing: boolean;
   seasonalityMissing: boolean;
+  goalsMissing: boolean;
   /** The house has no time zone, so spend and weekdays are withheld (ADR 0296). */
   zoneUnset: boolean;
   basis: Array<string | null | undefined>;
@@ -75,11 +76,19 @@ export interface BenchRegister {
 
 export const bench = analysis<BenchRegister>({
   title: 'Against ourselves',
-  register: 'overview register',
+  register: 'comparison register',
   answers:
     'How this house stands against its own past — and, plainly, that no other house is in this comparison',
   window: () => '180 days of buying, 90 days of weekdays, each goal since it was set',
-  path: (rid) => `/analytics/overview/${rid}`,
+  // The three registers it compares, read directly and shared with "Spend
+  // pacing", "The week's shape" and the goals desk, rather than
+  // /analytics/overview, which ran eight lenses to return three (audit G9).
+  path: null,
+  sources: {
+    cashflow: (rid) => `/analytics/cashflow/${rid}`,
+    seasonality: (rid) => `/analytics/seasonality/${rid}`,
+    goals: (rid) => `/analytics/goals/${rid}?status=active`,
+  },
   graphs: ['bars', 'table', 'figure'],
   graphNote:
     'Bars draw the one pair that shares a unit — money paid to vendors this month against last. No line or area: two windows are not a sequence. No scatter and no heat map: there is no second axis and no second dimension to lay one out on.',
@@ -104,7 +113,7 @@ export const bench = analysis<BenchRegister>({
         mean: num(w.mean),
         n: num(w.n),
       })),
-      goals: arr(d.activeGoals).map((g) => ({
+      goals: arr(d.goals).map((g) => ({
         name: str(g.name) || 'Untitled goal',
         metricKey: str(g.metric_key),
         baseline: num(g.baseline_value),
@@ -112,11 +121,11 @@ export const bench = analysis<BenchRegister>({
         target: num(g.target_value),
         direction: str(g.direction) || 'at_least',
       })),
-      // `getOverview` runs its eight lenses through Promise.allSettled and
-      // returns `null` for any that threw. A null lens is a read that did not
-      // happen — never "this house bought nothing".
+      // A source whose read failed arrives as `null` (useReportsNextData):
+      // a read that did not happen, never "this house bought nothing".
       cashflowMissing: d.cashflow == null,
       seasonalityMissing: d.seasonality == null,
+      goalsMissing: d.goals == null,
       zoneUnset: cf.zoneUnset === true || se.zoneUnset === true,
       basis: [cfBasis.outflow, seBasis.weekday, seBasis.extremes] as Array<
         string | null | undefined
@@ -132,7 +141,7 @@ export const bench = analysis<BenchRegister>({
       {
         label: 'Bought, last 30 days',
         value: money(b.spendLast30d),
-        note: b.cashflowMissing ? 'the cashflow lens did not answer' : undefined,
+        note: b.cashflowMissing ? 'the cashflow register could not be read' : undefined,
       },
       { label: 'Bought, the 30 before', value: money(b.spendPrev30d) },
       {
@@ -148,12 +157,12 @@ export const bench = analysis<BenchRegister>({
         label: 'Trend per day, last 28 days',
         value: b.trendPerDayPct === null ? EM : pct(b.trendPerDayPct),
       },
-      { label: 'Goals running', value: figure(b.goals.length) },
+      { label: 'Goals running', value: b.goalsMissing ? EM : figure(b.goals.length) },
     ];
 
-    if (b.cashflowMissing && b.seasonalityMissing && b.goals.length === 0)
+    if (b.cashflowMissing && b.seasonalityMissing && b.goalsMissing)
       return {
-        say: `Nothing in the overview register answered — neither the buying lens nor the weekday lens returned, and no goal is running. ${noPeers}`,
+        say: `None of the three registers this compares could be read — buying, weekdays and goals. ${noPeers}`,
         figures,
         notes: [],
         basis: b.basis,
@@ -246,12 +255,14 @@ export const bench = analysis<BenchRegister>({
           ? 'This house’s time zone isn’t set, so spend and weekdays cannot be filed on the house’s day; those figures are em dashes until it is set in Settings, under Time zone.'
           : null,
         b.cashflowMissing
-          ? 'The buying lens did not answer inside the overview call, so its four figures are em dashes rather than zeros.'
+          ? 'The cashflow register could not be read, so its four figures are em dashes rather than zeros.'
           : null,
         b.seasonalityMissing
-          ? 'The weekday lens did not answer inside the overview call.'
+          ? 'The seasonality register could not be read, so the week’s extremes are em dashes.'
           : null,
-        b.goals.length === 0
+        b.goalsMissing
+          ? 'The goals list could not be read, so no goal is compared with its baseline — this is not the same as no goal running.'
+          : b.goals.length === 0
           ? 'No goal is running, so there is nothing to measure against a baseline. Set one on the goals desk and it appears here.'
           : null,
       ].filter((n): n is string => n !== null),

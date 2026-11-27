@@ -62,7 +62,7 @@ export const PAYLOADS: Record<ExportableCutting, unknown> = {
   bench: {
     cashflow: { spendLast30d: 1200, spendPrev30d: 900, paceDeltaPct: 0.3333, committedOpenOrders: 400, openOrderCount: 2, basis: { outflow: "delivered procurement_orders" } },
     seasonality: null,
-    activeGoals: [{ name: "Lift wine attach", metric_key: "wine_attach_rate", baseline_value: 0.2, current_value: 0.24, target_value: 0.3 }],
+    goals: [{ name: "Lift wine attach", metric_key: "wine_attach_rate", baseline_value: 0.2, current_value: 0.24, target_value: 0.3 }],
   },
   pacing: {
     spendLast30d: 1200,

@@ -11,6 +11,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import Cutting from './Cutting';
 import { Working } from './rp-plot';
 import { CATALOGUE } from './rp-catalogue';
+import { readsRegister } from './rp-spec';
 import { ANALYSIS_IDS, type AnalysisId, type GraphType } from './rp-sheet';
 import { failureLine, heldBackFailure } from './rp-format';
 import type { ArrangeApi } from './rp-arrange';
@@ -113,14 +114,14 @@ afterEach(() => {
 });
 
 describe('a cutting laid flat', () => {
-  it('(a) every register with a path offers it while reading; none while arranging or for the desk', () => {
+  it('(a) every register that reads one offers it while reading; none while arranging or for the desk', () => {
     for (const id of ANALYSIS_IDS) {
       const spec = CATALOGUE[id];
       const { unmount } = paint(
-        <Harness id={id} register={spec.path ? inFlight() : undefined} />,
+        <Harness id={id} register={readsRegister(spec) ? inFlight() : undefined} />,
       );
       const name = `Show ${spec.title} full screen`;
-      if (spec.path) {
+      if (readsRegister(spec)) {
         const button = screen.getByRole('button', { name });
         expect(button).toHaveAttribute('title', name);
         fireEvent.click(screen.getByText('toggle arranging'));

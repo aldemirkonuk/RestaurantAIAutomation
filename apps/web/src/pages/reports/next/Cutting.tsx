@@ -57,6 +57,7 @@ import {
   Working,
 } from './rp-plot';
 import { CATALOGUE, graphOrDefault, type ViewCtx } from './rp-catalogue';
+import { readsRegister } from './rp-spec';
 import { Grip, PlacingBar } from './Placing';
 import CuttingFlat, { FLAT_PARAM } from './CuttingFlat';
 import type { ArrangeApi } from './rp-arrange';
@@ -261,7 +262,7 @@ export default function Cutting({
   // its "Draw as" flips); the sheet passes the page's, keyed by cutting id.
   const sheetCombo: ComboControl = { pick: comboPick, onPick: onComboPick };
   const bodyFor = (g: GraphType, workingOpen = false, combo: ComboControl = sheetCombo) =>
-    spec.path ? (
+    readsRegister(spec) ? (
       <RegisterBody
         register={spec.register}
         loading={register?.loading ?? true}
@@ -300,7 +301,7 @@ export default function Cutting({
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const canLayFlat = spec.path !== null;
+  const canLayFlat = readsRegister(spec);
   const flat = canLayFlat && !arranging && params.get(FLAT_PARAM) === id;
   const openerRef = useRef<HTMLButtonElement | null>(null);
   const flatLabel = `Show ${spec.title} full screen`;
