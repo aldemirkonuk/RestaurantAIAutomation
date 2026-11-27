@@ -2165,7 +2165,7 @@ export class PosHubService {
       .getClient()
       .from("wine_consumption_log")
       .select(
-        "wine_name, quantity, volume_ml, total_revenue, cost_at_sale, cost_basis, notes",
+        "wine_name, quantity, volume_ml, total_revenue, cost_at_sale, cost_basis, cost_source_order_id, notes",
       )
       .eq("restaurant_id", restaurantId)
       .eq("source", "pos")

@@ -314,6 +314,7 @@ describe("cost at sale (P9, D4)", () => {
     basis: "invoice_lot_wac" as const,
     lotId: "lot-1",
     orderId: "ord-1",
+    lotQtyLeft: 1000,
   });
 
   it("a bottle's worth of pours costs the bottle, and a whole bottle costs one per unit", () => {
@@ -356,7 +357,7 @@ describe("cost at sale (P9, D4)", () => {
     });
   });
 
-  it("the cost source is the invoiced WAC, else the last price; the lot is the oldest costed live one", () => {
+  it("the cost source is the invoiced WAC, else the last price; the lot is named only when FIFO's first live lot is a costed one", () => {
     const lots = [
       {
         id: "new",
@@ -401,18 +402,20 @@ describe("cost at sale (P9, D4)", () => {
     ).toEqual({
       unitCost: 36,
       basis: "invoice_lot_wac",
-      lotId: "old",
-      orderId: "o1",
+      // r102 F2: FIFO draws the sample lot first (apply_stock_movement orders by
+      // received_at over every live lot with qty > 0), so no delivery is named.
+      lotId: null,
+      orderId: null,
+      lotQtyLeft: 0,
     });
     expect(
       pickSaleCostSource({ last_purchase_price: 99 }, null, lots),
     ).toMatchObject({
       unitCost: 99,
       basis: "last_purchase_price",
-      // r102: the lot a pour draws from first is named under this basis too,
-      // so the invoice that verifies its delivery can restate the line.
-      lotId: "old",
-      orderId: "o1",
+      // r102 F2: still unnamed under this basis; the sample lot is drawn first.
+      lotId: null,
+      orderId: null,
     });
     expect(
       pickSaleCostSource({ last_purchase_price: 0 }, null, lots),
