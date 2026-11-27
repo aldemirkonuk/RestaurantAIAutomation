@@ -170,6 +170,16 @@ describe("InventoryService.getRestaurantInventory lean list", () => {
       return svc as InventoryService;
     }
 
+    it("each key has one owner: the mapped-row drops never repeat a column the select already leaves out", () => {
+      const unread = new Set<string>(InventoryService.LIST_UNREAD_COLUMNS);
+      for (const k of [
+        ...InventoryService.LIST_DEAD_KEYS,
+        ...InventoryService.LIST_NULL_OMITTED_KEYS,
+      ]) {
+        expect(unread.has(k)).toBe(false);
+      }
+    });
+
     it("drops the four dead keys and null-valued audited keys, keeps filled ones", async () => {
       const out: any[] = await makeWith(populated).getRestaurantInventory("r1", {
         lean: true,
