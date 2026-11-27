@@ -28,6 +28,7 @@ import { GrantSuspendedProducer } from "./grant-suspended.producer";
 import { AddedToolProducer } from "./added-tool.producer";
 import { ExperimentEndedProducer } from "./experiment-ended.producer";
 import { MailGrantAbsentProducer } from "./mail-grant-absent.producer";
+import { MenuDueProducer } from "./menu-due.producer";
 
 /**
  * The ten notification producers, and the two crons that run them.
@@ -176,6 +177,9 @@ export class NotificationProducersService {
     // The tenth (0160 §111) — the house's own mail-reading declaration with
     // no live grant behind it. Narrows itself to owners/managers; see its header.
     private readonly mailGrantAbsent: MailGrantAbsentProducer,
+    // The eleventh (DD-r108-17): the current menu is due for a newer read by its own cadence.
+    // Owners/managers, once per (menu, state); see its header.
+    private readonly menuDue: MenuDueProducer,
     // Optional for the same reason the ledger's is: the spec constructs this
     // service positionally, and production keeps the wall clock.
     @Optional() @Inject(PRODUCER_CLOCK) clock?: ProducerClock,
@@ -355,6 +359,14 @@ export class NotificationProducersService {
       );
     }
 
+    // Due by the house's calendar day, claimed once per (menu, state): every hourly run may ask.
+    out[MenuDueProducer.PRODUCER] = await this.runOne(
+      tenant.id,
+      MenuDueProducer.PRODUCER,
+      now,
+      () => this.menuDue.sweepTenant(tenant.id, timeZone, audience, now),
+    );
+
     return out;
   }
 
@@ -514,6 +526,7 @@ export class NotificationProducersService {
       [ExperimentEndedProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
       [SaleRecordProducer.PRODUCER, DAILY_CRON, DAILY_INTERVAL_MINUTES],
       [MarketPriceProducer.PRODUCER, DAILY_CRON, DAILY_INTERVAL_MINUTES],
+      [MenuDueProducer.PRODUCER, DAILY_CRON, DAILY_INTERVAL_MINUTES],
     ];
 
     const armed = this.armed();
