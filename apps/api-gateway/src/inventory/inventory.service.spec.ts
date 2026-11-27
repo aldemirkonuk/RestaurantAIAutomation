@@ -106,7 +106,41 @@ describe("InventoryService", () => {
       expect(insertCall.threshold_max).toBe(0);
     });
 
-    it("gives the default only to a par the caller left out", async () => {
+    it("gives a par the caller left out the one the house stated", async () => {
+      queueNewWine();
+      mockMaybeSingle.mockResolvedValue({
+        data: { default_threshold_min: 12 },
+        error: null,
+      });
+      await service.createInventoryItem("rest-1", {
+        wineId: "mw-par-house",
+        stockLive: 0,
+        providerId: null,
+      } as any);
+
+      const insertCall = mockSupabaseChain.insert.mock.calls[0][0];
+      expect(insertCall.threshold_min).toBe(12);
+      expect(insertCall.threshold_max).toBe(24);
+    });
+
+    it("adds nothing when the house's par could not be read", async () => {
+      queueNewWine();
+      mockMaybeSingle.mockResolvedValue({
+        data: null,
+        error: { message: "timeout" },
+      });
+      mockSupabaseChain.insert.mockClear();
+      await expect(
+        service.createInventoryItem("rest-1", {
+          wineId: "mw-par-unread",
+          stockLive: 0,
+          providerId: null,
+        } as any),
+      ).rejects.toMatchObject({ status: 503 });
+      expect(mockSupabaseChain.insert).not.toHaveBeenCalled();
+    });
+
+    it("gives a house that stated none the same 3 the menu path gives, not 6", async () => {
       queueNewWine();
       await service.createInventoryItem("rest-1", {
         wineId: "mw-par-none",
@@ -115,8 +149,22 @@ describe("InventoryService", () => {
       } as any);
 
       const insertCall = mockSupabaseChain.insert.mock.calls[0][0];
-      expect(insertCall.threshold_min).toBe(6);
+      expect(insertCall.threshold_min).toBe(3);
       expect(insertCall.threshold_max).toBe(24);
+    });
+
+    it("does not ask the house when the caller typed a par, even 0", async () => {
+      queueNewWine();
+      mockMaybeSingle.mockClear();
+      await service.createInventoryItem("rest-1", {
+        wineId: "mw-par-typed",
+        stockLive: 0,
+        providerId: null,
+        thresholdMin: 0,
+      } as any);
+
+      expect(mockSupabaseChain.insert.mock.calls[0][0].threshold_min).toBe(0);
+      expect(mockMaybeSingle).not.toHaveBeenCalled();
     });
   });
 
@@ -375,6 +423,7 @@ describe("InventoryService", () => {
       // library row (resolveBulkLineWine), the house's existing row (none),
       // and the library name for the new row's label; the insert returns the id.
       mockMaybeSingle
+        .mockResolvedValueOnce({ data: { default_threshold_min: 3 }, error: null }) // the house's par, read once up front
         .mockResolvedValueOnce({ data: { id: "mw-9", name: "Rioja", library_tier: 1 }, error: null })
         .mockResolvedValueOnce({ data: null, error: null })
         .mockResolvedValueOnce({ data: { name: "Rioja" }, error: null });
@@ -396,6 +445,47 @@ describe("InventoryService", () => {
         p_change_source: "manual",
       });
       expect(out.results[0]).toMatchObject({ status: "created", priceSync: "changed" });
+    });
+
+    it("bulk: the house's par is read ONCE for the whole request, before any line resolves (r102 review)", async () => {
+      mockMaybeSingle
+        .mockResolvedValueOnce({ data: { default_threshold_min: 12 }, error: null })
+        .mockResolvedValueOnce({ data: { id: "mw-a", name: "A", library_tier: 1 }, error: null })
+        .mockResolvedValueOnce({ data: null, error: null })
+        .mockResolvedValueOnce({ data: { name: "A" }, error: null })
+        .mockResolvedValueOnce({ data: { id: "mw-b", name: "B", library_tier: 1 }, error: null })
+        .mockResolvedValueOnce({ data: null, error: null })
+        .mockResolvedValueOnce({ data: { name: "B" }, error: null });
+      mockSingle
+        .mockResolvedValueOnce({ data: { id: "inv-a" }, error: null })
+        .mockResolvedValueOnce({ data: { id: "inv-b" }, error: null });
+      const out: any = await service.bulkCreateInventoryItems(
+        "rest-1",
+        { items: [{ wineId: "mw-a" }, { wineId: "mw-b" }] } as any,
+        "user-8",
+      );
+      expect(out.created).toBe(2);
+      expect(mockSupabaseChain.from.mock.calls.filter((c: any[]) => c[0] === "restaurants")).toHaveLength(1);
+      expect(mockSupabaseChain.insert.mock.calls.map((c: any[]) => c[0].threshold_min)).toEqual([12, 12]);
+    });
+
+    it("bulk: a par that cannot be read refuses the whole request before any line resolves or is written (r102 review)", async () => {
+      mockMaybeSingle.mockResolvedValueOnce({ data: null, error: { message: "connection reset" } });
+      await expect(
+        service.bulkCreateInventoryItems("rest-1", { items: [{ wineId: "mw-a" }, { wineId: "mw-b" }] } as any, "user-8"),
+      ).rejects.toMatchObject({ status: 503 });
+      expect(mockSupabaseChain.from.mock.calls.filter((c: any[]) => c[0] === "master_wine_library")).toHaveLength(0);
+      expect(mockSupabaseChain.insert).not.toHaveBeenCalled();
+    });
+
+    it("bulk: lines that all state their own par never read the house's (r102 review)", async () => {
+      mockMaybeSingle
+        .mockResolvedValueOnce({ data: { id: "mw-a", name: "A", library_tier: 1 }, error: null })
+        .mockResolvedValueOnce({ data: null, error: null })
+        .mockResolvedValueOnce({ data: { name: "A" }, error: null });
+      mockSingle.mockResolvedValueOnce({ data: { id: "inv-a" }, error: null });
+      await service.bulkCreateInventoryItems("rest-1", { items: [{ wineId: "mw-a", thresholdMin: 0 }] } as any, "user-8");
+      expect(mockSupabaseChain.from.mock.calls.filter((c: any[]) => c[0] === "restaurants")).toHaveLength(0);
     });
 
     it("omits the bottle price from the INSERT when the caller never sent it -- never a silent 0", async () => {
