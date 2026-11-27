@@ -82,7 +82,7 @@ describe('the verified lane past its first window', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Older papers' }));
     expect(await screen.findByText(/V-101/)).toBeTruthy();
     expect(api.list).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'verified', before: newest[99].created_at }),
+      expect.objectContaining({ status: 'verified', before: newest[99].created_at, beforeId: newest[99].id }),
     );
     // One short page later nothing is older, and the sentence goes.
     await waitFor(() => expect(screen.queryByText(/Showing the newest/)).toBeNull());

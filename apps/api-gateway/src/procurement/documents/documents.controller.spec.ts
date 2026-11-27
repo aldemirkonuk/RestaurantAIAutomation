@@ -855,3 +855,57 @@ describe("DocumentsController.list — older papers and a search (r104 g2)", () 
     ).rejects.toMatchObject({ status: 500 });
   });
 });
+
+describe("DocumentsController.list — papers filed in one instant (r105)", () => {
+  /** An in-memory papers table that really orders, filters and limits like PostgREST. */
+  function pagedControllerWith(all: Array<{ id: string; created_at: string }>) {
+    const rows = all.map((r) => ({ restaurant_id: "rest-1", doc_type: "invoice", status: "verified", provider_id: null, extracted: null, ...r }));
+    const from = (table: string) => {
+      let out: any[] = table === "procurement_documents" ? [...rows] : [];
+      let lim = Infinity;
+      const orders: Array<[string, boolean]> = [];
+      const b: any = {};
+      b.select = () => b;
+      b.eq = () => b;
+      b.in = () => b;
+      b.range = () => b;
+      b.order = (col: string, o: { ascending: boolean }) => (orders.push([col, o.ascending]), b);
+      b.limit = (n: number) => ((lim = n), b);
+      b.lt = (col: string, v: string) => ((out = out.filter((r) => r[col] < v)), b);
+      b.or = (expr: string) => {
+        const m = /^created_at\.lt\.(.+),and\(created_at\.eq\.(.+),id\.lt\.(.+)\)$/.exec(expr)!;
+        out = out.filter((r) => r.created_at < m[1] || (r.created_at === m[2] && r.id < m[3]));
+        return b;
+      };
+      b.then = (res: any, rej: any) => {
+        const sorted = out.sort((a, c) => {
+          for (const [col, asc] of orders) if (a[col] !== c[col]) return (a[col] < c[col] ? -1 : 1) * (asc ? 1 : -1);
+          return 0;
+        });
+        return Promise.resolve({ data: sorted.slice(0, lim), error: null }).then(res, rej);
+      };
+      return b;
+    };
+    const controller = new DocumentsController({} as any, { getClient: () => ({ from }) } as any, ...(Array.from({ length: 9 }, () => ({})) as any[]));
+    return controller;
+  }
+  const user = { userId: "u1", restaurantId: "rest-1" } as any;
+
+  it("two pages of three over five papers filed at one time list five distinct papers", async () => {
+    const at = "2026-11-20T10:00:00.123456+00:00";
+    const c = pagedControllerWith(["a", "b", "c", "d", "e"].map((id) => ({ id: `0000000${id.charCodeAt(0) - 96}-0000-4000-8000-000000000000`, created_at: at })));
+    const p1: any = await c.list(user, "verified", undefined, undefined, "3");
+    expect(p1.hasMore).toBe(true);
+    const p2: any = await c.list(user, "verified", undefined, undefined, "3", undefined, p1.nextBefore, p1.nextBeforeId);
+    const ids = [...p1.items, ...p2.items].map((i: any) => i.id);
+    expect(new Set(ids).size).toBe(5);
+    expect(p2.hasMore).toBe(false);
+  });
+
+  it("refuses a cursor id without its time, or an id that is not one", async () => {
+    const c = pagedControllerWith([]);
+    await expect(c.list(user, "verified", undefined, undefined, undefined, undefined, undefined, "00000001-0000-4000-8000-000000000000")).rejects.toMatchObject({ status: 400 });
+    await expect(c.list(user, "verified", undefined, undefined, undefined, undefined, "2026-11-20T10:00:00Z", "x),or(id.gt.0")).rejects.toMatchObject({ status: 400 });
+  });
+});
+
