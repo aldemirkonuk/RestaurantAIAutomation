@@ -270,26 +270,35 @@ export class MailService {
         names.set(`team:${email}`, role ? `${name} (${role})` : name);
       }
     }
-    if (guests.length) {
+    // Newest From name per address. The read is shared, so a busy guest's rows (and the house's
+    // replies, which carry no From name) must not use up its limit: only rows that carry a From
+    // header are read, and an address the pass never reached is asked for again, without the
+    // addresses already seen, up to three passes.
+    let pending = guests;
+    for (let pass = 0; pass < 3 && pending.length; pass += 1) {
       const res = await this.db
         .from("procurement_conversations")
         .select("from_address, from_header:email_headers->>from")
         .eq("restaurant_id", houseId)
         .eq("kind", "guest")
-        .in("from_address", guests)
+        .in("from_address", pending)
+        .not("email_headers->>from", "is", null)
         .order("created_at", { ascending: false })
-        .limit(Math.min(guests.length * 5, 250));
+        .limit(Math.min(pending.length * 5, 250));
       if (res.error) this.failed("names", res.error);
+      const seen = new Set<string>();
       for (const r of (res.data ?? []) as any[]) {
         const address =
           typeof r.from_address === "string"
             ? r.from_address.toLowerCase()
             : "";
         const key = `guest:${address}`;
+        if (address) seen.add(address);
         if (!address || names.has(key)) continue;
         const name = fromDisplayName(r.from_header, address);
         if (name) names.set(key, name);
       }
+      pending = pending.filter((a) => !seen.has(a));
     }
     return names;
   }

@@ -251,6 +251,26 @@ describe("people are named, not listed by address (r104 mail-gap g3)", () => {
     expect(guests.calls).toContainEqual(["in", "from_address", ["j@x.example", "n@x.example"]]);
   });
 
+  it("asks again, without the guests already seen, when one busy guest used up the shared read", async () => {
+    let passes = 0;
+    resolve = (q) => {
+      const isNames = q.name === "procurement_conversations" && q.calls.some((c) => c[0] === "in" && c[1] === "from_address");
+      if (!isNames) return read(q);
+      passes += 1;
+      const asked = q.calls.find((c) => c[0] === "in" && c[1] === "from_address")![2] as string[];
+      return { data: asked.includes("j@x.example") ? [{ from_address: "j@x.example", from_header: "Jane Roe <j@x.example>" }] : [{ from_address: "n@x.example", from_header: "Nia Net <n@x.example>" }], error: null };
+    };
+    const page = await svc().listPeople(HOUSE, "owner", {});
+    const byKey = Object.fromEntries(page.people.map((p) => [p.key, p.name]));
+    expect(passes).toBe(2);
+    expect(byKey["guest:j@x.example"]).toBe("Jane Roe");
+    expect(byKey["guest:n@x.example"]).toBe("Nia Net");
+    const names = queries.filter((q) => q.name === "procurement_conversations" && q.calls.some((c) => c[0] === "in" && c[1] === "from_address"));
+    expect(names[1].calls).toContainEqual(["in", "from_address", ["n@x.example"]]);
+    // Only rows that carry a From header are read.
+    expect(names[0].calls).toContainEqual(["not", "email_headers->>from", "is", null]);
+  });
+
   it("names the person on a thread the same way", async () => {
     resolve = (q) => (q.kind === "rpc" ? { data: [{ thread_key: "gm:t1", subject: "Hi", message_count: 1, letter_count: 1, last_at: "2027-01-05 11:30:00+00" }], error: null } : read(q));
     const page = await svc().listThreads(HOUSE, "owner", { with: "guest:j@x.example" });
