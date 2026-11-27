@@ -18,6 +18,7 @@ import {
 } from "./insight-verbalizer";
 import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
 import { readWholeWindow } from "../../common/read-whole-window";
+import { UncostedOrdersError, orderCostOrNull } from "../order-cost";
 import {
   BottleHow,
   UnitsLabel,
@@ -260,8 +261,15 @@ export const BASKET_MIN_LIFT = 1.3;
  *       [2026-10-08, merge of `origin/main` at 8b22448dc: #626 (ADR 0297)
  *       landed 11 on `main` first, so this change is 12, one past every
  *       value on `main`; no row was ever written at 11 for this change.]
+ *  13 — 2026-11-12 (readers lane r4): an order with no recorded cost is
+ *       unknown, never $0. The purchasing family (spend trend, vendor share)
+ *       says nothing while any order in the bundle waits on a cost, and the
+ *       bundle reads its orders whole (ADR 0292). A row below 13 may hold a
+ *       spend sentence that counted an uncosted order as $0, or summed the
+ *       first 1,000 orders, so it is recomputed, not served. Re-checked at
+ *       merge: one past the version on `main` then.
  */
-export const INSIGHT_GENERATOR_VERSION = 12;
+export const INSIGHT_GENERATOR_VERSION = 13;
 
 /**
  * Each of the bundle's reads, in the words the house uses for it.
@@ -308,6 +316,57 @@ type BundleRead = keyof typeof BUNDLE_READ_WORDS;
  * into one name there.
  */
 const HOUSE_ZONE_WORD = "house time zone";
+
+/** Days of purchasing spend the trend reads: the 90 before today (`toDaily`). */
+const SPEND_TREND_DAYS = 90;
+
+/** What a purchasing insight holds back, and why. */
+interface SpendHeld {
+  uncostedOrders: number;
+  orders: number;
+  reason: string;
+}
+
+function heldOver(orders: Bundle["orders"]): SpendHeld | null {
+  const uncosted = orders.filter((o) => o.cost == null).length;
+  if (uncosted === 0) return null;
+  return {
+    uncostedOrders: uncosted,
+    orders: orders.length,
+    reason: new UncostedOrdersError(uncosted, orders.length).message,
+  };
+}
+
+/**
+ * Which purchasing insights an order with no recorded cost holds back, each
+ * judged over the orders that insight reads (readers lane r4 fix round). One
+ * uncosted order anywhere in the 180 days used to silence the whole family
+ * for up to six months, trend and vendor share alike, though the trend reads
+ * only the 90 days before today:
+ *
+ *   * `trend`: the 90 days of the daily series (`toDaily` drops today and
+ *     anything older). An uncosted order outside them is never on the series.
+ *   * `vendorShare`: every order in the bundle (180 days), which is what the
+ *     share and the HHI are summed over. Not judged per vendor: the top share
+ *     is one vendor's total over everyone's, so any vendor's unknown makes
+ *     the denominator unknown.
+ *
+ * Null when neither is held back.
+ */
+function spendWithheld(
+  bundle: Bundle,
+  now: number = Date.now(),
+): { trend: SpendHeld | null; vendorShare: SpendHeld | null } | null {
+  const day = (back: number) =>
+    new Date(now - back * 86400000).toISOString().substring(0, 10);
+  const first = day(SPEND_TREND_DAYS);
+  const last = day(1);
+  const trend = heldOver(
+    bundle.orders.filter((o) => !!o.date && o.date >= first && o.date <= last),
+  );
+  const vendorShare = heldOver(bundle.orders);
+  return trend || vendorShare ? { trend, vendorShare } : null;
+}
 
 /**
  * Whether this bundle read was refused or failed: its slice is `[]` because
@@ -543,6 +602,11 @@ export class InsightGeneratorService {
       // carry no bottle figure (ADR 0297). Each record built on them carries
       // its own count in `evidence.units`.
       units: this.unitsOf(bundle.consumption),
+      // Orders with no recorded cost, per purchasing insight, over the
+      // orders that insight reads: the trend (90 days) or the vendor share
+      // (the bundle's 180 days) says nothing while one stands in its window
+      // rather than count it as $0. Null when neither is held back.
+      spendWithheld: spendWithheld(bundle),
       // The bundle's reads that were refused or failed, in house words
       // (`BUNDLE_READ_WORDS`). Empty = every read answered, rows or none. A
       // name here means every insight that reads it said nothing because
@@ -882,19 +946,24 @@ export class InsightGeneratorService {
             .eq("restaurant_id", restaurantId)
             .gte("created_at", since90),
         ).then(whole),
-        client
-          .from("procurement_orders")
-          // NO provider_name column on procurement_orders (see
-          // supabase/migrations/20260805000000_baseline_from_production.sql:4514-4568)
-          // — naming it 42703s the whole query, `ok()` below turned that into
-          // an empty order list, and the entire purchasing insight family went
-          // permanently silent. The vendor label comes from the provider_id FK.
-          .select(
-            "provider_id, providers(name), total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
-          )
-          .eq("restaurant_id", restaurantId)
-          .in("status", ORDER_SPEND_STATUSES)
-          .gte("delivered_at", since180),
+        // Whole or refused, like the two above (ADR 0292): unranged, 180 days
+        // of orders past 1,000 summed their first thousand as the spend.
+        readWholeWindow("The insight bundle's delivered orders", () =>
+          client
+            .from("procurement_orders")
+            // NO provider_name column on procurement_orders (see
+            // supabase/migrations/20260805000000_baseline_from_production.sql:4514-4568)
+            // — naming it 42703s the whole query, `ok()` below turned that into
+            // an empty order list, and the entire purchasing insight family went
+            // permanently silent. The vendor label comes from the provider_id FK.
+            .select(
+              "id, provider_id, providers(name), total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
+              { count: "exact" },
+            )
+            .eq("restaurant_id", restaurantId)
+            .in("status", ORDER_SPEND_STATUSES)
+            .gte("delivered_at", since180),
+        ).then(whole),
         client
           .from("restaurant_inventory")
           .select(
@@ -989,7 +1058,9 @@ export class InsightGeneratorService {
       orders: ok<any>(ords).map((o: any) => ({
         vendorId: o.provider_id || "unknown",
         vendorName: o.providers?.name || o.provider_id || "unknown vendor",
-        cost: o.total_cost || o.final_price || 0,
+        // Unknown, never $0 (order-cost.ts): the spend insights withhold
+        // while any order in the bundle carries no recorded cost.
+        cost: orderCostOrNull(o),
         date: (o.delivered_at || o.created_at || "").substring(0, 10),
       })),
       inventory: ok<any>(inv),
@@ -1280,32 +1351,44 @@ export class InsightGeneratorService {
 
   private computeOrdersFamily(bundle: Bundle, push: Push) {
     if (!bundle.availability.has("orders")) return;
-    const rows = bundle.orders.map((o) => ({ date: o.date, value: o.cost }));
-    const { dates, values, observed } = this.toDaily(
-      rows,
-      90,
-      bundle.excludedDates,
-    );
+    // Every insight here is a sum of what was bought: the spend's trend and
+    // which vendor holds the most of it. An order with no recorded cost used
+    // to join both as $0, so a week holding one read as a drop in spend and
+    // its vendor as a smaller share than it is. Each insight now says nothing
+    // while an uncosted order stands in the window it reads, and `generate()`
+    // says why (`spendWithheld`).
+    const held = spendWithheld(bundle);
+    if (!held?.trend) {
+      const rows = bundle.orders
+        .filter((o) => o.cost != null)
+        .map((o) => ({ date: o.date, value: o.cost as number }));
+      const { dates, values, observed } = this.toDaily(
+        rows,
+        SPEND_TREND_DAYS,
+        bundle.excludedDates,
+      );
 
-    this.timeSeriesInsights({
-      push,
-      dates,
-      values,
-      observed,
-      measure: "purchase_spend",
-      measureLabel: "purchasing spend",
-      unit: "currency",
-      dimension: "overall",
-      category: "purchasing",
-      periodWindow: 30,
-      windowLabel: "30 days",
-    });
+      this.timeSeriesInsights({
+        push,
+        dates,
+        values,
+        observed,
+        measure: "purchase_spend",
+        measureLabel: "purchasing spend",
+        unit: "currency",
+        dimension: "overall",
+        category: "purchasing",
+        periodWindow: 30,
+        windowLabel: "30 days",
+      });
+    }
+    if (held?.vendorShare) return;
 
     // Vendor concentration + peer rank.
     const byVendor = new Map<string, { name: string; total: number }>();
     for (const o of bundle.orders) {
       const e = byVendor.get(o.vendorId) || { name: o.vendorName, total: 0 };
-      e.total += o.cost;
+      e.total += o.cost as number;
       byVendor.set(o.vendorId, e);
     }
     const weights = Array.from(byVendor.values()).map((v) => v.total);
@@ -2416,7 +2499,8 @@ interface Bundle {
   orders: Array<{
     vendorId: string;
     vendorName: string;
-    cost: number;
+    /** Null when the order carries no recorded cost (order-cost.ts). */
+    cost: number | null;
     date: string;
   }>;
   inventory: any[];
