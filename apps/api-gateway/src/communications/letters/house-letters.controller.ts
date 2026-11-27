@@ -22,6 +22,7 @@ import {
   Get,
   Headers,
   HttpCode,
+  HttpException,
   HttpStatus,
   Param,
   ParseUUIDPipe,
@@ -87,6 +88,29 @@ export class HouseLettersController {
       },
       categories: LETTER_CATEGORIES,
     };
+  }
+
+  @Post("reader/check")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({
+    summary:
+      "'Check now': read this house's connected mailbox once, sooner than the 5-minute run (DD-r106-9)",
+    description:
+      "Owner or manager only. At most once a minute per grant, held in house_inbox_cursors, never in process memory; a read already in progress is left alone, so a press that overlaps the 5-minute run files each message once. Same grants, same scope and the same vendor-book bound as the run. 429, with retryAfterSeconds in the body, when pressed inside the minute.",
+  })
+  async readNow(@CurrentUser() user: TokenUser) {
+    const { restaurantId } = houseActor(user);
+    const result = await this.inbox.readNow(restaurantId);
+    if (result.outcome === "too_soon") {
+      throw new HttpException(
+        { statusCode: HttpStatus.TOO_MANY_REQUESTS, message: result.says, retryAfterSeconds: result.retryAfterSeconds },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    // The per-grant outcomes stay on the server: they name connection ids.
+    return { outcome: result.outcome, mirrored: result.mirrored, says: result.says };
   }
 
   @Get("book")
