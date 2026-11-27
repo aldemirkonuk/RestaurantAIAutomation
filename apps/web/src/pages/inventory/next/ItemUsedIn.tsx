@@ -37,10 +37,13 @@ import {
   type ItemDishes,
   type ItemDrink,
   type ItemDrinks,
+  type ItemGoodShare,
+  type ItemServes,
+  type ServesWhy,
 } from '../../../services/api/itemDishes';
 import { cellMoney, type HouseCurrency } from './useInventoryNextData';
 // A share in the house's form, as its money is: "%13,1" beside "₺12,00" (r23 walk).
-import { formatHousePercent } from '../../../lib/house-number';
+import { formatHouseNumber, formatHousePercent } from '../../../lib/house-number';
 
 export type UsedInLoad = { status: 'reading' } | { status: 'failed'; reason: string } | { status: 'ready'; data: UsedIn };
 
@@ -121,6 +124,45 @@ const RECIPE_WORDS = {
   drink: { per: 'Used per serve', perId: 'per-serve', cost: 'Cost per serve', share: 'Pour cost', shareId: 'pour-cost', noPrice: 'Not on the drink' },
 } as const;
 
+/** Why the serves the stock makes are not known, in the house's words; never 0. */
+export const SERVES_WHY: Record<ServesWhy, string> = {
+  size_not_known: 'the bottle size is not recorded',
+  pack_size_not_known: 'what one pack holds is not recorded',
+  unit_mismatch: 'the recipe measures it another way than the shelf counts it',
+  no_yield: 'the recipe does not say how many it makes',
+  stock_unread: 'the stock on hand could not be read',
+};
+
+/**
+ * "From stock": how many serves (plates) the stock on hand makes, the
+ * theoretical use run in reverse (r108 g11). A quantity, not money, so every
+ * role sees it. Unknown is "Not known" with why, never 0; 0 is said only when
+ * the shelf holds less than one.
+ */
+export function servesFromStockWords(
+  s: ItemServes,
+  kind: 'dish' | 'drink',
+  code: string | null,
+): { value: string; sub?: string } {
+  const one = kind === 'dish' ? 'plate' : 'serve';
+  const n = s.servesFromStock;
+  if (n === null || n === undefined) return { value: 'Not known', sub: s.servesWhy ? SERVES_WHY[s.servesWhy] : undefined };
+  if (n === 0) return { value: `Not enough for one ${one}` };
+  return { value: `Enough for ${formatHouseNumber(n, code, { digits: 0 })} ${n === 1 ? one : `${one}s`}` };
+}
+
+/**
+ * "This good": its share of the serve's cost (r108 g17), so the drawer says
+ * which recipes this good drives. A share of the priced part says so; an
+ * unpriced line of this good is "Not priced", never 0 %.
+ */
+export function goodShareWords(s: ItemGoodShare, code: string | null): { value: string; sub?: string } {
+  if (s.unpriced) return { value: 'Not priced', sub: 'this good has no price yet' };
+  if (s.pct === null) return { value: 'Not known' };
+  const value = formatHousePercent(s.pct, code, { digits: 0 });
+  return { value, sub: s.ofPricedPart ? `of the priced part (${s.priced} of ${s.of} lines)` : 'of the cost' };
+}
+
 /** One dish or drink that uses the good: its name as a link, then its cards. */
 function RecipeBlock({
   kind,
@@ -134,6 +176,7 @@ function RecipeBlock({
   price,
   canManage,
   currency,
+  serves,
 }: {
   kind: 'dish' | 'drink';
   id: string;
@@ -146,8 +189,11 @@ function RecipeBlock({
   price: number | null;
   canManage: boolean;
   currency: HouseCurrency;
+  serves: ItemServes & { goodShare?: ItemGoodShare | null };
 }) {
   const w = RECIPE_WORDS[kind];
+  const fromStock = serves.servesFromStock === undefined ? null : servesFromStockWords(serves, kind, currency.code);
+  const goodShare = canManage && serves.goodShare ? goodShareWords(serves.goodShare, currency.code) : null;
   const t = `ivd-${kind}-${id}`;
   const known = y !== null && y > 0;
   const perServe = known ? uses.map((u) => `${fmtRecipeQty(u.qtyEntered / y)} ${u.unitCode}`).join(' + ') : '';
@@ -165,6 +211,7 @@ function RecipeBlock({
           value={known && perServe ? perServe : 'Not known'}
           sub={known && y > 1 ? `in a batch of ${y}` : undefined}
         />
+        {fromStock ? <DishCard id={`${t}-from-stock`} title="From stock" value={fromStock.value} sub={fromStock.sub} /> : null}
         {canManage && cost !== null ? (
           <DishCard
             id={`${t}-cost`}
@@ -173,6 +220,7 @@ function RecipeBlock({
             sub={cost.complete ? undefined : `${cost.priced} of ${cost.of} lines priced`}
           />
         ) : null}
+        {goodShare ? <DishCard id={`${t}-good-share`} title="This good" value={goodShare.value} sub={goodShare.sub} /> : null}
         {canManage ? (
           <DishCard id={`${t}-price`} title="Price" value={price !== null ? cellMoney(price, currency) : w.noPrice} />
         ) : null}
@@ -203,6 +251,7 @@ function DishBlock({ dish, canManage, currency }: { dish: ItemDish; canManage: b
       price={dish.price}
       canManage={canManage}
       currency={currency}
+      serves={dish}
     />
   );
 }
@@ -221,6 +270,7 @@ function DrinkBlock({ drink, canManage, currency }: { drink: ItemDrink; canManag
       price={drink.price}
       canManage={canManage}
       currency={currency}
+      serves={drink}
     />
   );
 }

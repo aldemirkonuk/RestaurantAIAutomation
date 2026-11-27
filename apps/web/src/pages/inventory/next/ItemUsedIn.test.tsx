@@ -6,6 +6,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import ItemUsedIn, {
+  goodShareWords,
+  SERVES_WHY,
+  servesFromStockWords,
   DRINKS_DO_NOT_DRAW,
   DRINK_RECIPES_UNREAD,
   drinkHref,
@@ -340,6 +343,76 @@ describe('In dish recipes', () => {
   it('an unknown yield is Not known, not a guess', () => {
     mount(ready(dish({ yieldServes: null })));
     expect(t('per-plate')).toContain('Not known');
+  });
+});
+
+describe('From stock (r108 g11): how many serves the stock on hand makes', () => {
+  it('says how many plates, to staff as well, since a quantity is not money', () => {
+    mount(ready(dish({ servesFromStock: 23, servesWhy: null })), false);
+    expect(t('from-stock')).toContain('From stock');
+    expect(t('from-stock')).toContain('Enough for 23 plates');
+  });
+
+  it('a drink says serves, and one is singular', () => {
+    mountDrinks(drinksReady(drink({ servesFromStock: 1, servesWhy: null })));
+    expect(dt('from-stock')).toContain('Enough for 1 serve');
+    expect(dt('from-stock')).not.toContain('serves');
+  });
+
+  it('not known says Not known and why in words, never 0', () => {
+    mount(ready(dish({ servesFromStock: null, servesWhy: 'pack_size_not_known' })));
+    expect(t('from-stock')).toContain('Not known');
+    expect(t('from-stock')).toContain('what one pack holds is not recorded');
+    expect(t('from-stock')).not.toMatch(/\b0\b/);
+  });
+
+  it('every reason has words', () => {
+    for (const why of ['size_not_known', 'pack_size_not_known', 'unit_mismatch', 'no_yield', 'stock_unread'] as const) {
+      expect(servesFromStockWords({ servesFromStock: null, servesWhy: why }, 'dish', null).sub).toBe(SERVES_WHY[why]);
+    }
+  });
+
+  it('an empty shelf says not enough for one, and an older gateway draws no card', () => {
+    expect(servesFromStockWords({ servesFromStock: 0, servesWhy: null }, 'dish', null).value).toBe('Not enough for one plate');
+    mount(ready(dish()));
+    expect(screen.queryByTestId('ivd-dish-d1-from-stock')).toBeNull();
+  });
+
+  it('writes the count the way the house writes its numbers', () => {
+    expect(servesFromStockWords({ servesFromStock: 1250, servesWhy: null }, 'drink', 'TRY').value).toBe('Enough for 1.250 serves');
+  });
+});
+
+describe('This good (r108 g17): its share of the serve cost', () => {
+  const sh = (over = {}) => ({ costPerServe: 1.55, pct: 62, ofPricedPart: false, priced: 3, of: 3, unpriced: false, ...over });
+
+  it('a manager reads the share of the cost', () => {
+    mount(ready(dish({ goodShare: sh() })));
+    expect(t('good-share')).toContain('This good');
+    expect(t('good-share')).toContain('62%');
+    expect(t('good-share')).toContain('of the cost');
+  });
+
+  it('an incomplete serve says it is a share of the priced part, with how many lines', () => {
+    mount(ready(dish({ goodShare: sh({ ofPricedPart: true, priced: 2, of: 3, pct: 100 }) })));
+    expect(t('good-share')).toContain('of the priced part (2 of 3 lines)');
+  });
+
+  it('an unpriced line of this good says Not priced, never 0%', () => {
+    mount(ready(dish({ goodShare: sh({ unpriced: true, pct: null, costPerServe: null }) })));
+    expect(t('good-share')).toContain('Not priced');
+    expect(t('good-share')).not.toContain('0%');
+  });
+
+  it('staff see no share, even if one were sent', () => {
+    mount(ready(dish({ price: null, cost: null, goodShare: sh() })), false);
+    expect(screen.queryByTestId('ivd-dish-d1-good-share')).toBeNull();
+  });
+
+  it('a drink gets the card too, written the house way', () => {
+    mountDrinks(drinksReady(drink({ goodShare: sh({ pct: 13 }) })), { code: 'TRY' });
+    expect(dt('good-share')).toContain('%13');
+    expect(goodShareWords(sh({ pct: null }), null).value).toBe('Not known');
   });
 });
 

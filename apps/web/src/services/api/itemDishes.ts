@@ -14,7 +14,39 @@ export interface ItemDishCost {
   partial: number;
 }
 
-export interface ItemDish {
+/**
+ * Why the serves the stock on hand makes are not known (r108 g11):
+ * the bottle size or pack size is not recorded, the recipe measures the good
+ * another way than the shelf counts it, the recipe makes no serve, or the
+ * stock could not be read.
+ */
+export type ServesWhy = 'size_not_known' | 'pack_size_not_known' | 'unit_mismatch' | 'no_yield' | 'stock_unread';
+
+/** How many serves the stock on hand makes; a quantity, so every role is sent it. Absent from an older gateway. */
+export interface ItemServes {
+  servesFromStock?: number | null;
+  servesWhy?: ServesWhy | null;
+}
+
+/**
+ * This good's share of the serve's cost (r108 g17), from the lines' exact
+ * costs, rounded once. Null for staff, and from an older gateway absent.
+ */
+export interface ItemGoodShare {
+  costPerServe: number | null;
+  /** Whole percent; null when this good is not priced or there is nothing to share. */
+  pct: number | null;
+  /** The serve has an unpriced line: the share is of the priced part. */
+  ofPricedPart: boolean;
+  priced: number;
+  of: number;
+  /** A line of this good has no price. */
+  unpriced: boolean;
+}
+
+export interface ItemDish extends ItemServes {
+  /** Null for staff. */
+  goodShare?: ItemGoodShare | null;
   dishId: string;
   name: string;
   section: string | null;
@@ -47,7 +79,9 @@ export async function getItemDishes(itemId: string, restaurantId?: string): Prom
  * The house's drinks whose current recipe uses one good, each with the same
  * figures a dish has. GET /recipes/:rid/items/:itemId/drinks.
  */
-export interface ItemDrink {
+export interface ItemDrink extends ItemServes {
+  /** Null for staff. */
+  goodShare?: ItemGoodShare | null;
   cocktailId: string;
   name: string;
   section: string | null;

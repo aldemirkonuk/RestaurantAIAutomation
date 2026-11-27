@@ -10,6 +10,8 @@ import {
 import { DatabaseService } from "../database/database.service";
 import { seesHouseAmounts } from "../dashboard/amounts-for-role";
 import { BaseUnit, CostItem, recipeCost } from "./recipe-cost";
+import { servesFromStock, type StockItem } from "./serves-from-stock";
+import { itemShareOfServe, type PricedLine } from "./item-share-of-serve";
 import { serveNutrition, type Allergen, type AllergenStatus } from "./recipe-nutrition";
 import { CreateDishDto, UpdateDishDto } from "./dto/recipes.dto";
 import { DISH_NOT_THIS_HOUSE, RecipesService } from "./recipes.service";
@@ -112,6 +114,8 @@ export interface DishFigures {
   } | null;
   /** Only when the caller asked for allergens. */
   allergens?: RowAllergens;
+  /** Each stocked line's exact cost per serve, for a role that sees money only; never sent as is. */
+  pricedLines?: PricedLine[];
 }
 
 /**
@@ -356,6 +360,7 @@ export class DishesService {
       const rows = [...(lines.get(p.versionId) ?? [])].sort((a, b) => a.position - b.position);
       const yieldServes = v.yieldServes;
       let cost: DishFigures["cost"] = null;
+      let pricedLines: PricedLine[] | null = null;
       if (priced) {
         const figured = recipeCost(
           rows.map((l) => ({
@@ -369,6 +374,9 @@ export class DishesService {
           })),
           yieldServes,
         );
+        pricedLines = rows.flatMap((l, i) =>
+          figured.lines[i].status === "untracked" ? [] : [{ inventoryId: l.inventory_id ?? null, exact: figured.lines[i].costPerServeExact }],
+        );
         cost = {
           perServe: figured.perServe,
           perServeExact: figured.perServeExact,
@@ -379,6 +387,7 @@ export class DishesService {
         };
       }
       const figures: DishFigures = { versionId: p.versionId, yieldServes, lineCount: rows.length, cost };
+      if (pricedLines) figures.pricedLines = pricedLines;
       if (opts.allergens) figures.allergens = rowAllergens(rows, yieldServes, allergenRows);
       out.set(p.ownerId, figures);
     }
@@ -428,7 +437,7 @@ export class DishesService {
     const client = this.db.getClient();
     const item = await client
       .from("restaurant_inventory")
-      .select("id")
+      .select("id, uom, bottle_size_ml, piece_grams, ml_grams, stock_live")
       .eq("id", itemId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
@@ -438,7 +447,7 @@ export class DishesService {
     const used = await this.all<any>("item line read", sentence, (from, to) =>
       client
         .from("recipe_lines")
-        .select("id, version_id, position, label, qty_entered, unit_code")
+        .select("id, version_id, position, label, qty_entered, unit_code, qty_base, base_unit, usable_pct")
         .eq("restaurant_id", restaurantId)
         .eq("inventory_id", itemId)
         .order("id", { ascending: true })
@@ -469,7 +478,19 @@ export class DishesService {
             );
       for (const r of rows) current.set(r.version_id, owner === "dish" ? r.dish_id : r.cocktail_id);
     }
-    return { used, ownerIds: [...new Set(current.values())] };
+    return { item: item.data as StockItem, used, ownerIds: [...new Set(current.values())] };
+  }
+
+  /**
+   * How many serves the stock on hand makes of one owner's current recipe
+   * (r108 g11), from this item's own lines in it. Not money: every role.
+   */
+  private servesIn(item: StockItem, used: any[], f: DishFigures | undefined) {
+    if (!f) return { servesFromStock: null, servesWhy: null };
+    const lines = used
+      .filter((l) => l.version_id === f.versionId)
+      .map((l) => ({ qtyBase: l.qty_base, baseUnit: l.base_unit as BaseUnit, usablePct: l.usable_pct ?? null }));
+    return servesFromStock(item, lines, f.yieldServes);
   }
 
   /** This item's own lines in one owner's current version, in recipe order. */
@@ -487,7 +508,7 @@ export class DishesService {
   async dishesUsingItem(restaurantId: string, itemId: string, role: string | null | undefined) {
     const money = seesHouseAmounts(role);
     const client = this.db.getClient();
-    const { used, ownerIds } = await this.currentUses(restaurantId, itemId, "dish", DISH_USE_UNREAD);
+    const { item, used, ownerIds } = await this.currentUses(restaurantId, itemId, "dish", DISH_USE_UNREAD);
     if (!ownerIds.length) return { dishes: [] };
 
     const dishes: any[] = [];
@@ -517,6 +538,9 @@ export class DishesService {
             price: money && d.price != null ? Number(d.price) : null,
             ...this.figureFields(f),
             uses: this.usesIn(used, f),
+            ...this.servesIn(item, used, f),
+            // Money: owner and manager only (the figures carry no lines for staff).
+            goodShare: money && f?.pricedLines ? itemShareOfServe(f.pricedLines, itemId) : null,
           };
         })
         // A pointer that moved since the lines were read leaves a dish with no line of this item: not listed.
@@ -534,7 +558,7 @@ export class DishesService {
   async drinksUsingItem(restaurantId: string, itemId: string, role: string | null | undefined) {
     const money = seesHouseAmounts(role);
     const client = this.db.getClient();
-    const { used, ownerIds } = await this.currentUses(restaurantId, itemId, "cocktail", DRINK_USE_UNREAD);
+    const { item, used, ownerIds } = await this.currentUses(restaurantId, itemId, "cocktail", DRINK_USE_UNREAD);
     if (!ownerIds.length) return { drinks: [] };
 
     const drinks: any[] = [];
@@ -564,6 +588,9 @@ export class DishesService {
             price: money && d.price != null ? Number(d.price) : null,
             ...this.figureFields(f),
             uses: this.usesIn(used, f),
+            ...this.servesIn(item, used, f),
+            // Money: owner and manager only (the figures carry no lines for staff).
+            goodShare: money && f?.pricedLines ? itemShareOfServe(f.pricedLines, itemId) : null,
           };
         })
         .filter((d) => d.uses.length > 0)
