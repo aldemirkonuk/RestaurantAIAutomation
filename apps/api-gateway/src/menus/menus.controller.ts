@@ -30,6 +30,7 @@ import { ReviewMenuItemDto } from "./dto/review-menu-item.dto";
 import { SetThresholdDto } from "./dto/set-threshold.dto";
 import { UpdateOnboardingProgressDto } from "./dto/update-onboarding-progress.dto";
 import { MakeMenuCurrentDto } from "./dto/make-menu-current.dto";
+import { RepriceMenuDto } from "./dto/reprice-menu.dto";
 import { InboundAddressService } from "../common/orchestrator/inbound-address.service";
 
 /** The two fields of a menu line that are prices (ADR 0193). */
@@ -348,6 +349,26 @@ export class MenuVersionsController {
       "choose the current menu",
     );
     return this.menusService.makeCurrent(house, menuId, userId, dto?.fingerprint ?? null);
+  }
+
+  @Post(":menuId/reprice")
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: "Move the current menu's prices by a percent into a NEW draft -- owner or manager only",
+    description:
+      "r108 menu-g9. Copies every live line of the house's current menu into a new draft named '<name>, prices +N%', each chosen section's prices moved by percent and rounded half up to roundTo in whole hundredths; a blank price stays blank, a line priced in another money is copied as it is. The current menu and the house's prices are not touched: they move only when the draft is made current through its plan. 404 for another house's menu, 409 for a menu that is not current, 403 for staff.",
+  })
+  @ApiResponse({ status: 403, description: "The caller is not an owner or manager of this restaurant." })
+  @ApiResponse({ status: 409, description: "The menu is not the current one. Nothing was made." })
+  async reprice(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+    @Param("menuId", new ParseUUIDPipe()) menuId: string,
+    @Body() dto: RepriceMenuDto,
+  ) {
+    const house = this.house(restaurantId);
+    await this.organizations.assertCanManageRestaurant(userId, house, "raise the menu's prices");
+    return this.menusService.repriceMenu(house, menuId, userId, dto);
   }
 }
 

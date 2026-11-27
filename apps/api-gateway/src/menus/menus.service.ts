@@ -28,6 +28,7 @@ import { MenuReadWarning, WineExtractItem } from "./wine-extract-item.interface"
 import { itemNeedsPencil } from "./pencil-rule";
 import { isKitchenLine, lineForViewer, type LineView } from "./menu-line-view";
 import { kindNoun, matchHouseGoods } from "./house-good-match";
+import { repriceIntoDraft, type RepriceReply } from "./menu-reprice";
 import {
   setHouseMenuPrice,
   setHouseMenuPrices,
@@ -2565,6 +2566,23 @@ export class MenusService {
    * (owner or manager); the house comes from the token, so another house's
    * menu id is a 404.
    */
+  /**
+   * r108 menu-g9: the current menu's prices moved by a percent, into a new
+   * draft (menu-reprice.ts). Nothing on the current menu is written.
+   */
+  async repriceMenu(
+    restaurantId: string,
+    menuId: string,
+    userId: string,
+    dto: { percent: number; roundTo: number; sections?: string[] | null },
+  ): Promise<RepriceReply> {
+    return repriceIntoDraft(
+      this.dbService.supabase,
+      { restaurantId, menuId, userId, percent: dto.percent, roundTo: dto.roundTo, sections: dto.sections ?? null },
+      this.logger,
+    );
+  }
+
   async removeFailedRead(restaurantId: string, menuId: string, userId: string): Promise<{ menuId: string; removed: true }> {
     const row = await this.readVersionRow(restaurantId, menuId);
     if (isRemovedFailedRead(row)) throw new NotFoundException("No menu of this restaurant by that id.");
