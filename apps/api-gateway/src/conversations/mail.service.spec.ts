@@ -451,6 +451,7 @@ describe("getThread", () => {
       order: null,
       messages: [],
       before: null,
+      waiting: false,
     });
   });
 });
