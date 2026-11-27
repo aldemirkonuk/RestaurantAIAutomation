@@ -203,6 +203,84 @@ describe("GET /procurement/documents/:id/changes — what sealing changed (r108 
   });
 });
 
+describe("GET :id/changes — the sales it settled, by table (r109 g3)", () => {
+  const sale = (i: number, over: Row = {}) => ({
+    id: `s${i}`, restaurant_id: R, wine_name: "House Red", quantity: 2, volume_ml: 300, consumption_type: "glass",
+    recorded_at: `2026-11-21T20:${String(i % 60).padStart(2, "0")}:00+00:00`, notes: `pos:square:chk${i}:L:1`, ...over,
+  });
+  const check = (i: number, over: Row = {}) => ({
+    id: `c${i}`, restaurant_id: R, source: "square", external_check_id: `chk${i}`, table_id: "t4", table_ref: "4", ...over,
+  });
+  const tables = [{ id: "t4", restaurant_id: R, label: "4" }, { id: "tb", restaurant_id: R, label: "Bar" }];
+
+  it("names every one of 1,200 restated sales, paging each read past 1000, newest first", async () => {
+    const n = 1200;
+    const c = controllerWith(
+      base({
+        wine_consumption_cost_restatements: Array.from({ length: n }, (_, i) => rest(i, "3.1000", "2.9000", { id: `r${i}` })),
+        wine_consumption_log: Array.from({ length: n }, (_, i) => sale(i)),
+        pos_checks: Array.from({ length: n }, (_, i) => check(i)),
+        restaurant_tables: tables,
+      }),
+    );
+    const out: any = await c.sealedChanges("d1", owner);
+    expect(n).toBeGreaterThan(CHANGES_PAGE);
+    expect(out.salesList).toHaveLength(n);
+    expect(out.salesUnnamed).toBe(0);
+    expect(out.salesList[0]).toMatchObject({ table: "Table 4", wine: "House Red", quantity: 2, before: "3.10", after: "2.90", voided: false });
+    const at = out.salesList.map((x: any) => x.at);
+    expect([...at].sort().reverse()).toEqual(at);
+    for (const t of ["wine_consumption_log", "pos_checks", "restaurant_tables"])
+      expect(c.reads.filter((r) => r.table === t).every((r) => r.f.some(([op, col, v]) => op === "eq" && col === "restaurant_id" && v === R))).toBe(true);
+  });
+
+  it("another house's check gives no table; the till's word and no word fall back in order", async () => {
+    const c = controllerWith(
+      base({
+        wine_consumption_cost_restatements: [1, 2, 3, 4].map((i) => rest(i, "3.1000", "2.9000", { id: `r${i}` })),
+        wine_consumption_log: [sale(1), sale(2), sale(3), sale(4)],
+        pos_checks: [
+          check(1, { restaurant_id: "rest-2", table_id: "tb" }),
+          check(2, { table_id: null, table_ref: "booth" }),
+          check(3, { table_id: null, table_ref: null }),
+          check(4, { table_id: "tb" }),
+        ],
+        restaurant_tables: tables,
+      }),
+    );
+    const out: any = await c.sealedChanges("d1", owner);
+    const by = Object.fromEntries(out.salesList.map((x: any) => [x.id, x.table]));
+    expect(by).toEqual({ s1: "no table", s2: "Table booth", s3: "no table", s4: "Bar" });
+  });
+
+  it("a sale restated twice shows its latest event; a voided sale says so; a missing row is counted, not named", async () => {
+    const c = controllerWith(
+      base({
+        wine_consumption_cost_restatements: [
+          rest(1, "3.1000", "3.0000", { id: "a", created_at: "2026-11-20T10:00:00+00:00" }),
+          rest(1, "3.0000", "2.9000", { id: "b", created_at: "2026-11-22T10:00:00+00:00" }),
+          rest(2, "1.5000", "1.4000", { id: "c" }),
+          rest(9, "1.0000", "0.9000", { id: "d" }),
+        ],
+        wine_consumption_log: [sale(1), sale(2, { quantity: 0, volume_ml: 0 }), sale(9, { restaurant_id: "rest-2" })],
+        pos_checks: [check(1), check(2)],
+        restaurant_tables: tables,
+      }),
+    );
+    const out: any = await c.sealedChanges("d1", owner);
+    expect(out.salesList.map((x: any) => x.id).sort()).toEqual(["s1", "s2"]);
+    expect(out.salesList.find((x: any) => x.id === "s1")).toMatchObject({ before: "3.00", after: "2.90" });
+    expect(out.salesList.find((x: any) => x.id === "s2")).toMatchObject({ voided: true });
+    expect(out.salesUnnamed).toBe(1);
+  });
+
+  it("staff read no sales at all", async () => {
+    const c = controllerWith(base({ wine_consumption_cost_restatements: [rest(1, "3.1", "2.9")], wine_consumption_log: [sale(1)] }));
+    await expect(c.sealedChanges("d1", { ...owner, role: "staff" })).rejects.toMatchObject({ status: 403 });
+    expect(c.reads.some((r) => r.table === "wine_consumption_log")).toBe(false);
+  });
+});
+
 describe("toMicro", () => {
   it("parses decimal text exactly past 2^53 and rounds at the 7th place", () => {
     expect(toMicro("123456789012.345678")).toBe(123456789012345678n);
