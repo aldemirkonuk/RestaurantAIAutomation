@@ -1134,3 +1134,10 @@ textarea.cl-field {
     min-height: 44px;
   }
 }
+
+/* The figures line over the cocktail list (r104 drinks need 3): its room is the
+   same loading and loaded, so the table under it does not move when the list lands. */
+.cl-strip { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; min-height: 36px; }
+@media (max-width: 640px) { .cl-strip { min-height: 84px; } }
+.cl-sort { background: none; border: 0; padding: 0; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; cursor: pointer; }
+.cl-sort-mark { display: inline-block; width: 1.1ch; text-align: left; margin-left: 3px; }

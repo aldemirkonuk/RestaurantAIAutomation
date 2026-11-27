@@ -42,7 +42,10 @@ import RecipeSheet from './recipe/RecipeSheet';
 import MenuDrinksOffer from './MenuDrinksOffer';
 import { readingRowCount } from './readingRows';
 import { PRICE_UNREAD, priceText, readPrice } from './recipe/price-text';
-import { ShareFigure, pourCostShare } from './recipe/DrinkCards';
+import { ShareFigure, marginPerServe, pourCostShare } from './recipe/DrinkCards';
+import { ExportMenu } from '../../../components/ui/ExportMenu';
+import { exportTable, type TableExportFormat } from '../../../lib/tableExport';
+import { FIRST_DIR, drinkNumbers, exportColumns, sortDrinks, stripFor, stripSaid, type SortDir, type SortKey } from './registerFigures';
 import { useListTax } from './recipe/useListTax';
 import type { ListTax } from './recipe/listTax';
 import { useCanEditRecipe, useDrinkFigures, useHouseMoney, useMenuPrices } from './recipe/useRecipe';
@@ -128,10 +131,11 @@ function drinkCells(
   tax: ListTax,
 ) {
   const dim = <span className="cl-dim">{EM}</span>;
-  if (!read || !f || !f.hasRecipe) return { cost: dim, share: dim };
+  if (!read || !f || !f.hasRecipe) return { cost: dim, share: dim, margin: dim };
   const per = f.cost?.complete ? f.cost.perServe : null;
   const part = f.cost?.partial ?? 0;
   const share = pourCostShare(f.cost, price, tax);
+  const m = marginPerServe(f.cost, price, tax);
   return {
     cost:
       per == null ? (
@@ -150,6 +154,7 @@ function drinkCells(
         say(per)
       ),
     share: 'pct' in share ? <ShareFigure text={sayPct(share.pct)} tax={tax} /> : 'Not known',
+    margin: 'margin' in m ? (m.margin < 0 ? `\u2212${say(-m.margin)}` : say(m.margin)) : 'Not known',
   };
 }
 
@@ -251,6 +256,33 @@ export default function CocktailRegister({
   // Which drinks have no recipe: known only once the figures are read.
   const bareIds = figures.byId ? (data?.rows ?? []).filter((c) => !figures.byId?.get(c.id)?.hasRecipe).map((c) => c.id) : [];
   const rows = seesCost && onlyBare ? byAllergen.filter((c) => bareIds.includes(c.id)) : byAllergen;
+  const figuresRead = Boolean(figures.byId) && !figures.costsUnread;
+  const numbersOf = (c: (typeof rows)[number]) => drinkNumbers(c.price ?? null, figures.byId?.get(c.id), figuresRead, tax);
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir } | null>(null);
+  const pressSort = (key: SortKey) =>
+    setSort((cur) => {
+      if (!cur || cur.key !== key) return { key, dir: FIRST_DIR[key] };
+      if (cur.dir === FIRST_DIR[key]) return { key, dir: cur.dir === 'asc' ? 'desc' : 'asc' };
+      return null;
+    });
+  const shown = sortDrinks(rows, sort?.key ?? null, sort?.dir ?? 'asc', numbersOf);
+  const strip = stripFor(rows.map(numbersOf), tax);
+  const sortHead = (key: SortKey, label: string) => (
+    <th scope="col" style={{ textAlign: 'right' }} aria-sort={sort?.key === key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <button type="button" className="cl-sort cl-focus" onClick={() => pressSort(key)} data-testid={`sort-${key}`}>
+        {label}
+        <span aria-hidden className="cl-sort-mark">{sort?.key === key ? (sort.dir === 'asc' ? '\u2191' : '\u2193') : ''}</span>
+      </button>
+    </th>
+  );
+  const exportList = (format: TableExportFormat) =>
+    exportTable({
+      format,
+      rows: shown.map((c) => ({ ...c, numbers: numbersOf(c) })),
+      columns: exportColumns(seesCost),
+      filename: 'cocktails',
+      title: 'Cocktails',
+    });
   const openShown = Boolean(openId && rows.some((x) => x.id === openId));
   // A drink a link named opens only once the table under it has laid out: the
   // stand first draws closed, then (after a forced style flush, so the change is
@@ -421,6 +453,7 @@ export default function CocktailRegister({
           <p className="cl-note" role="status" style={{ minHeight: '2lh' }}>
             Reading this house’s cocktails…
           </p>
+          <div aria-hidden="true" className="cl-strip" data-testid="cocktails-strip-room" />
           <div
             aria-hidden="true"
             data-testid="cocktails-reading-room"
@@ -513,6 +546,19 @@ export default function CocktailRegister({
                 : 'No cocktail matches this reading.'}
             </p>
           ) : (
+            <>
+            <div className="cl-strip" data-testid="cocktails-strip">
+              <p className="cl-note" style={{ margin: 0, flex: '1 1 240px' }}>
+                {seesCost ? (
+                  !figuresRead
+                    ? 'Pour cost: not read just now.'
+                    : stripSaid(strip, sayPct)
+                ) : (
+                  `${rows.length} ${rows.length === 1 ? 'drink' : 'drinks'}`
+                )}
+              </p>
+              <ExportMenu variant="soft" size="sm" label="Export" count={rows.length} onExport={exportList} title="Export the drinks shown, in the order shown" />
+            </div>
             <div style={{ marginTop: 12, overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10 }}>
               <table className="cl-table">
                 <thead>
@@ -522,18 +568,19 @@ export default function CocktailRegister({
                     <th scope="col">Method</th>
                     <th scope="col">Glass</th>
                     <th scope="col">Garnish</th>
-                    <th scope="col" style={{ textAlign: 'right' }}>Price</th>
+                    {sortHead('price', 'Price')}
                     {showMenu ? <th scope="col" style={{ textAlign: 'right' }}>Menu</th> : null}
-                    {seesCost ? <th scope="col" style={{ textAlign: 'right' }}>Cost per serve</th> : null}
-                    {seesCost ? <th scope="col" style={{ textAlign: 'right' }}>Pour cost</th> : null}
+                    {seesCost ? sortHead('cost', 'Cost per serve') : null}
+                    {seesCost ? sortHead('share', 'Pour cost') : null}
+                    {seesCost ? sortHead('margin', 'Margin') : null}
                     <th scope="col">Allergens</th>
                     <th scope="col" style={{ textAlign: 'right' }}>Kept</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((c) => {
+                  {shown.map((c) => {
                     const fc = seesCost
-                      ? drinkCells(c.id, c.price ?? null, figures.byId?.get(c.id), Boolean(figures.byId) && !figures.costsUnread, money, sayPct, tax)
+                      ? drinkCells(c.id, c.price ?? null, figures.byId?.get(c.id), figuresRead, money, sayPct, tax)
                       : null;
                     return (
                     <tr
@@ -569,6 +616,9 @@ export default function CocktailRegister({
                       {fc ? (
                         <td className="cl-num" style={{ textAlign: 'right' }} data-testid={`drink-share-${c.id}`}>{fc.share}</td>
                       ) : null}
+                      {fc ? (
+                        <td className="cl-num" style={{ textAlign: 'right' }} data-testid={`drink-margin-${c.id}`}>{fc.margin}</td>
+                      ) : null}
                       <AllergenCell id={c.id} a={figures.byId?.get(c.id)?.allergens} />
                       <td className="cl-num cl-dim" style={{ textAlign: 'right' }}>
                         {shortDate((c as { created_at?: string }).created_at)}
@@ -579,6 +629,7 @@ export default function CocktailRegister({
                 </tbody>
               </table>
             </div>
+            </>
           )}
 
           {/* the leaf: recipe + the two acts a house can take on its own row */}
