@@ -589,7 +589,9 @@ export interface WeekRegister {
   trendPerDayPct: number | null;
   /** True when the house has no time zone: no weekday can be named. */
   zoneUnset: boolean;
-  basis?: { weekday?: string; extremes?: string };
+  /** Lines are logged in the window but none carries a bottle figure: a known-unknown, not an absence. */
+  uncountedOnly?: boolean;
+  basis?: { weekday?: string; extremes?: string; units?: string };
 }
 
 const week = analysis<WeekRegister>({
@@ -616,6 +618,7 @@ const week = analysis<WeekRegister>({
       tie: typeof d.tie === 'boolean' ? d.tie : null,
       trendPerDayPct: num(d.trendPerDayPct),
       zoneUnset: d.zoneUnset === true,
+      uncountedOnly: d.uncountedOnly === true,
       basis: d.basis as WeekRegister['basis'],
     };
   },
@@ -631,6 +634,15 @@ const week = analysis<WeekRegister>({
         figures: [],
         notes: [],
         basis: [],
+      };
+    if (w.weekdayProfile.length === 0 && w.uncountedOnly)
+      return {
+        // Lines exist; none carries a bottle figure (ADR 0297). Not an absence, so not said as one.
+        say: 'Consumption is logged, but no line carries a bottle figure, so the week has no shape to draw.',
+        empty: 'No pours read this week',
+        figures: [],
+        notes: [],
+        basis: [...basis, w.basis?.units],
       };
     if (w.weekdayProfile.length === 0)
       return {

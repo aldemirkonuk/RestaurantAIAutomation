@@ -702,6 +702,12 @@ export class AdvancedAnalyticsService {
       worstDay: extremes.worst ? E.WEEKDAY_NAMES[extremes.worst.weekday] : null,
       /** True when an extreme is shared, so `bestDay`/`worstDay` are withheld. */
       tie: extremes.tie,
+      /**
+       * True when the log holds lines in the window but not one carries a
+       * bottle figure (ADR 0297): the empty profile is a known-unknown, not an
+       * absence, and the page must not say "no consumption is recorded".
+       */
+      uncountedOnly: recordedDays.size === 0 && unitsCoverage.uncountedLines > 0,
       basis: {
         weekday: `mean bottles per weekday over the last ${sinceDays} complete house days in ${zone} of wine_consumption_log; a weekday with no counted consumption line on any of its days is absent from weekdayProfile rather than reported as 0, and inside a weekday that has one a day with no line counts as 0${leftOutWords(measured.leftOut)}`,
         units: unitsBasisSentence(unitsCoverage, "series"),

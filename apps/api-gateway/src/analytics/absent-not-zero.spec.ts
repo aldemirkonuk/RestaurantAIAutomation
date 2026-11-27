@@ -361,6 +361,20 @@ describe("the week's shape leaves out a weekday the house never recorded", () =>
     expect(out.basis.weekday).not.toContain("not measured and left out");
   });
 
+  it("a log whose lines all lack a bottle figure is flagged uncountedOnly, not left looking empty (ADR 0297)", async () => {
+    const uncounted = week(SHAPE, () => ({ consumption_type: "glass", quantity: 1, volume_ml: null }));
+    const out: any = await advanced({ wine_consumption_log: uncounted }).getSeasonality(RESTAURANT);
+    expect(out.weekdayProfile).toEqual([]);
+    expect(out.uncountedOnly).toBe(true);
+    expect(out.basis.units).toContain("carry no bottle figure");
+    // A counted house, and a house with no log at all, are neither.
+    const counted: any = await advanced({ wine_consumption_log: week(SHAPE) }).getSeasonality(RESTAURANT);
+    expect(counted.uncountedOnly).toBe(false);
+    const empty: any = await advanced({ wine_consumption_log: [] }).getSeasonality(RESTAURANT);
+    expect(empty.weekdayProfile).toEqual([]);
+    expect(empty.uncountedOnly).toBe(false);
+  });
+
   it("a house that recorded only Saturdays has nothing to rank, and says so", async () => {
     const out: any = await advanced({
       wine_consumption_log: week([null, null, null, null, null, null, 8]),
