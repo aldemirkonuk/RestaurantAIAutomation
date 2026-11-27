@@ -1,7 +1,7 @@
 /** r109 drinks-g3: a shift's pull list. Summed exactly per (good, unit), rounded once and up; unlinked lines never summed. */
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import type { CardComponent, DrinkCard } from '../../../../services/api/recipes';
-import { makeWords, planPrep, pullWords, readServes } from './prepPlan';
+import { houseDay, keepPlan, makeWords, planKey, planPrep, planWas, pullWords, readPlan, readServes } from './prepPlan';
 
 type L = DrinkCard['lines'][number];
 const stocked = (label: string, inventoryId: string | null, qtyBase: number, extra: Partial<L> = {}): L => ({
@@ -61,5 +61,48 @@ describe('planPrep', () => {
   it('a drink planned at 0 adds nothing; serves read 0 to 999', () => {
     expect(planPrep([negroni], [syrup], { n: 0 }).pull).toEqual([]);
     expect([readServes(''), readServes('12'), readServes('1000'), readServes('1.5')]).toEqual([0, 12, null, null]);
+  });
+});
+
+describe('the house day (r110 drinks-g5)', () => {
+  it('23:30 UTC on the 27th is already the 28th in an Istanbul house, and still the 27th in New York', () => {
+    const at = new Date('2026-11-27T23:30:00Z');
+    expect(houseDay('Europe/Istanbul', at)).toBe('2026-11-28');
+    expect(houseDay('America/New_York', at)).toBe('2026-11-27');
+  });
+
+  it('with no zone, or one this device cannot resolve, it is the browser day, never none', () => {
+    const at = new Date('2026-11-27T12:00:00Z');
+    const local = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`;
+    expect(houseDay(undefined, at)).toBe(local);
+    expect(houseDay(null, at)).toBe(local);
+    expect(houseDay('Not/AZone', at)).toBe(local);
+  });
+});
+
+describe('a plan kept under the browser day (r110 drinks-g5)', () => {
+  const house = planKey('h1', '2026-11-28');
+  const browser = planKey('h1', '2026-11-27');
+  beforeEach(() => window.localStorage.clear());
+
+  it('is read once for the house day, then moved to it', () => {
+    keepPlan(browser, { n: '12' });
+    expect(readPlan(house, browser)).toEqual({ n: '12' });
+    expect(planWas(house)).toEqual({ n: '12' });
+    expect(planWas(browser)).toEqual({});
+    expect(window.localStorage.getItem(browser)).toBeNull();
+  });
+
+  it('never overwrites serves already kept for the house day', () => {
+    keepPlan(house, { n: '3' });
+    keepPlan(browser, { n: '12' });
+    expect(readPlan(house, browser)).toEqual({ n: '3' });
+    expect(planWas(browser)).toEqual({ n: '12' });
+  });
+
+  it('is left alone when the two days are one', () => {
+    keepPlan(browser, { n: '5' });
+    expect(readPlan(browser, browser)).toEqual({ n: '5' });
+    expect(planWas(browser)).toEqual({ n: '5' });
   });
 });

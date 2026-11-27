@@ -153,3 +153,31 @@ export function localDay(d: Date = new Date()): string {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
+
+/** The house's day as YYYY-MM-DD, cut in the house's zone; the browser's day while the zone is unread, unstated or unresolvable. */
+export function houseDay(zone: string | null | undefined, d: Date = new Date()): string {
+  if (zone) {
+    try {
+      const parts = new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(d);
+      const at = (t: string) => parts.find((x) => x.type === t)?.value;
+      if (at('year') && at('month') && at('day')) return `${at('year')}-${at('month')}-${at('day')}`;
+    } catch {
+      /* a zone this runtime cannot resolve: the browser's day, never none */
+    }
+  }
+  return localDay(d);
+}
+
+/**
+ * The serves kept for `key`; when there are none, a plan kept before the day was the house's (under the browser's day) is
+ * read once and moved to `key`.
+ */
+export function readPlan(key: string, browserKey: string): Record<string, string> {
+  const own = planWas(key);
+  if (Object.keys(own).length || browserKey === key) return own;
+  const old = planWas(browserKey);
+  if (!Object.keys(old).length) return own;
+  keepPlan(key, old);
+  keepPlan(browserKey, {});
+  return old;
+}
