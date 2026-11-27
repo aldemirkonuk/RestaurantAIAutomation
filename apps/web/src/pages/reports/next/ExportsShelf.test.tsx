@@ -31,7 +31,7 @@ const base: ReportExport = {
   id: 'e1',
   cutting: 'ledger',
   title: 'Figures of record',
-  windowLabel: '365 days of COGS; the cellar as it stands today',
+  windowLabel: '365 days of the till; the cellar as it stands today',
   windowDays: null,
   status: 'ready',
   failureReason: null,

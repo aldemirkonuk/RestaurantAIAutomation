@@ -102,7 +102,7 @@ describe("ReportExportsService — a report export is written, or says why not (
     expect(started.export).toMatchObject({
       cutting: "ledger",
       title: "Figures of record",
-      windowLabel: "365 days of COGS; the cellar as it stands today",
+      windowLabel: "365 days of the till; the cellar as it stands today",
       status: "queued",
       failureReason: null,
       attempts: 1,
@@ -121,7 +121,7 @@ describe("ReportExportsService — a report export is written, or says why not (
     expect(typeof row.html).toBe("string");
     expect(row.csv_bytes).toBe(Buffer.byteLength(row.csv as string, "utf8"));
     expect(row.html_bytes).toBe(Buffer.byteLength(row.html as string, "utf8"));
-    expect(row.withheld_count).toBe(8);
+    expect(row.withheld_count).toBe(10);
     expect(row.finished_at).not.toBeNull();
     expect(analytics.getFinancialSummary).toHaveBeenCalledWith(HOUSE_A, 0, { withSales: true });
   });
@@ -131,14 +131,12 @@ describe("ReportExportsService — a report export is written, or says why not (
     await (await service.requestExport(HOUSE_A, MANAGER_A, { cutting: "ledger" })).settled;
     const { csv, html } = exportsOf(mem)[0] as { csv: string; html: string };
 
-    const cogs = csv.split("\r\n").find((l) => l.startsWith("Cost of goods (365d),"));
-    expect(cogs).toBe(
-      "Cost of goods (365d),withheld,TRY,No delivered order came back for the window — which is either no buying or a read that failed",
-    );
-    expect(csv).not.toMatch(/^Cost of goods \(365d\),0,/m);
+    const cogs = csv.split("\r\n").find((l) => l.startsWith("What it cost (365d),"));
+    expect(cogs).toBe("What it cost (365d),withheld,TRY,Cost known for 2 of 3 items sold");
+    expect(csv).not.toMatch(/^What it cost \(365d\),0,/m);
     expect(csv).toContain("House,Meyhouse");
-    expect(html).toContain(`<dt>Cost of goods (365d)</dt><dd><span class="withheld">withheld</span>`);
-    expect(html).toContain("8 figures marked &quot;withheld&quot; are one the engine could not compute");
+    expect(html).toContain(`<dt>What it cost (365d)</dt><dd><span class="withheld">withheld</span>`);
+    expect(html).toContain("10 figures marked &quot;withheld&quot; are one the engine could not compute");
   });
 
   it("a house with no stated currency gets no invented one", async () => {
