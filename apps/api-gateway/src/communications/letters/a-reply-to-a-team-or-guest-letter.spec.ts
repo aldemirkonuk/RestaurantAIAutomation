@@ -135,10 +135,13 @@ function run(
 beforeEach(() => redeem.mockClear());
 
 describe("a reply to a guest or a team letter", () => {
-  it("takes the grant that mirrored the letter it answers, so revoking that grant takes it too", async () => {
+  // Revoking the wide reading deletes the house's replies by provenance (the reply keys of the
+  // letters it read, #2159/#2435), never by a grant stamped on the reply, so the reply carries none.
+  it("does not take the grant that mirrored the letter it answers", async () => {
     const { p, inserts } = run([theirLetter({ mirrored_by_grant_id: "wide-grant-1" })]);
     await p;
-    expect(inserts[0]).toMatchObject({ kind: "guest", from_address: GUEST, mirrored_by_grant_id: "wide-grant-1" });
+    expect(inserts[0]).toMatchObject({ kind: "guest", from_address: GUEST });
+    expect(inserts[0]).not.toHaveProperty("mirrored_by_grant_id");
   });
 
   it("goes to the address that wrote, on that thread, filed under that person", async () => {
