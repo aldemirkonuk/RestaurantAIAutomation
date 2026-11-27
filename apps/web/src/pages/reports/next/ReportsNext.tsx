@@ -63,6 +63,7 @@ import { readsRegister } from './rp-spec';
 import { isUndoKey, pushStep, undoLabel, undoneWords, type UndoStep } from './rp-undo';
 import { CATALOGUE, defaultGraph } from './rp-catalogue';
 import { failureLine } from './rp-format';
+import { warmWords } from './rp-warm';
 import {
   ANALYSIS_IDS,
   DEFAULT_SLOTS,
@@ -671,8 +672,12 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         <header ref={headRef} className="rp-head">
           <div className="rp-head__lead">
             <Wordmark size={13} />
-            <p className="rp-eyebrow" style={{ display: 'block', margin: '6px 0 0' }}>
+            <p className="rp-eyebrow rp-dateline" style={{ display: 'block', margin: '6px 0 0' }}>
               Reports · {today}
+              {/* A kept read on screen while the page reads again (r108 g8). On
+                  the date line, which never wraps, so it comes and goes without
+                  moving anything below it. */}
+              {data.warmAt != null && <span data-testid="rp-warm"> · {warmWords(data.warmAt)}</span>}
             </p>
             <h1 className="rp-title">
               What the books say<span>.</span>

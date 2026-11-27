@@ -14,6 +14,7 @@ process.env.TZ = 'America/New_York';
 import { expect, afterEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import * as matchers from '@testing-library/jest-dom/matchers';
+import { forgetWarm } from '../pages/reports/next/rp-warm';
 
 // Extend Vitest's expect with jest-dom matchers
 expect.extend(matchers);
@@ -21,6 +22,9 @@ expect.extend(matchers);
 // Cleanup after each test
 afterEach(() => {
   cleanup();
+  // The reports warm start (r108 g8) keeps reads in sessionStorage and in a
+  // module mirror; one test's read must never paint as the next test's.
+  forgetWarm();
 });
 
 // Guard all window-dependent setup so tests that run in the node environment
