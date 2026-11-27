@@ -33,6 +33,11 @@ import {
   actorOf,
 } from "./recommendation-actions.service";
 import { insightRowTarget } from "./insights/item-state";
+import {
+  feedSeesFor,
+  insightReadable,
+  insightsForRole,
+} from "./insights/insight-feed-role";
 import { TableAnalyticsService } from "./table-analytics.service";
 import { GoalsService } from "./goals.service";
 import { goalScenarioBook } from "./goal-scenarios";
@@ -455,17 +460,42 @@ export class AnalyticsController {
     @Query("categories") categoriesStr?: string,
     @Query("limit") limitStr?: string,
     @Query("candidateKey") candidateKey?: string,
-    @CurrentUser() user?: { userId?: string },
+    @CurrentUser() user?: { userId?: string; role?: string | null },
   ) {
+    const sees = feedSeesFor(user);
+    // A forced compute of a type the caller may not read is not run: the
+    // caller names the type, so its sentence would be theirs alone.
+    if (candidateKey?.trim() && !insightReadable(candidateKey.trim(), sees))
+      return { source: "withheld", insights: [], withheldForRole: 1 };
     try {
-      const answer = await this.readInsights(
+      const raw = await this.readInsights(
         restaurantId,
         refresh,
         categoriesStr,
         limitStr,
         candidateKey,
       );
-      return await this.forViewer(restaurantId, user, answer);
+      // Staff read the sentences of the classes they see: never the till, a
+      // spend, a margin or a named server (ADR 0348). Said only when
+      // something was withheld, so a holder's answer is the one it was.
+      let answer: unknown = raw;
+      if (Array.isArray((raw as { insights?: unknown }).insights)) {
+        const held = insightsForRole(
+          (raw as { insights: unknown[] }).insights,
+          sees,
+        );
+        if (held.withheldForRole > 0)
+          answer = {
+            ...raw,
+            insights: held.kept,
+            withheldForRole: held.withheldForRole,
+          };
+      }
+      return await this.forViewer(
+        restaurantId,
+        user,
+        answer as { insights?: unknown },
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to fetch insights",

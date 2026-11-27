@@ -128,7 +128,7 @@ const BENCH_SOURCES = {
 };
 
 const PAGE: Record<ExportableCutting, PageRead> = {
-  reading: { path: "`/analytics/insights/${rid}?limit=40`", call: (c) => c.getInsights(RID, undefined, undefined, "40") },
+  reading: { path: "`/analytics/insights/${rid}?limit=40`", call: (c) => c.getInsights(RID, undefined, undefined, "40", undefined, HOLDER) },
   // The page doubles the window to compare (DD-r104-22), but an export never
   // compares, so it reads the plain-window branch of the same path.
   till: {
@@ -310,7 +310,7 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
   it("reading: on a cold start both compute once, live, and persist — the same call", async () => {
     const page = build([]);
     const exp = build([]);
-    const fromPage = await page.controller.getInsights(RID, undefined, undefined, "40");
+    const fromPage = await page.controller.getInsights(RID, undefined, undefined, "40", undefined, HOLDER);
     const fromExport = await exp.reader.read(RID, "reading", null);
     expect(fromExport).toEqual(fromPage);
     expect(exp.insights.generate).toHaveBeenCalledWith(RID, { categories: undefined, persist: true });
@@ -327,7 +327,7 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
     });
     page.insights.readStored.mockImplementation(allWithheld);
     exp.insights.readStored.mockImplementation(allWithheld);
-    const fromPage = (await page.controller.getInsights(RID, undefined, undefined, "40")) as Record<string, unknown>;
+    const fromPage = (await page.controller.getInsights(RID, undefined, undefined, "40", undefined, HOLDER)) as Record<string, unknown>;
     const fromExport = await exp.reader.read(RID, "reading", null);
     const { hiddenForYou, personalSnoozesReadable, ...rest } = fromPage;
     expect(fromExport).toEqual(rest);
