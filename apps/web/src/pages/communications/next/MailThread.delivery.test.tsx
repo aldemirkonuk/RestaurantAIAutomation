@@ -93,7 +93,10 @@ describe('a house letter that did not arrive', () => {
     expect(again).toHaveStyle({ minHeight: '44px' });
     fireEvent.click(again);
     expect(onAnswer).toHaveBeenCalledTimes(1);
-    expect(onAnswer).toHaveBeenLastCalledWith({ providerId: 'p1', answers: 'o1', subject: 'Re: Friday order' });
+    expect(onAnswer).toHaveBeenLastCalledWith(
+      expect.objectContaining({ providerId: 'p1', answers: 'o1', subject: 'Re: Friday order' }),
+      { threadKey: 'gm:t1', personKey: 'vendor:p1' },
+    );
     fireEvent.click(screen.getByTestId('write-thread-reply'));
     expect(onAnswer.mock.calls[1]).toEqual(onAnswer.mock.calls[0]);
   });

@@ -61,7 +61,7 @@ async function allLetters() {
   for (const b of [...screen.queryAllByTestId('mail-letter-stack'), ...screen.queryAllByTestId('mail-letter-folded')]) {
     fireEvent.click(within(b).getByRole('button'));
   }
-  await waitFor(() => expect(screen.getAllByTestId('mail-letter')).toHaveLength(4));
+  await waitFor(() => expect(screen.getAllByTestId('mail-letter')).toHaveLength(thread.letters.length));
   return screen.getAllByTestId('mail-letter');
 }
 

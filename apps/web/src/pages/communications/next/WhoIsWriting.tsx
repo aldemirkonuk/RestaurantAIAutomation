@@ -481,9 +481,8 @@ export default function WhoIsWriting() {
   const held = settled ? null : readHeldHeight(house, open);
 
   return (
-    <section
+    <section aria-label="Who is writing"
       ref={sectionRef}
-      aria-label="Who is writing"
       data-testid="who-section"
       style={{ marginTop: 40, minHeight: held ?? undefined }}
     >

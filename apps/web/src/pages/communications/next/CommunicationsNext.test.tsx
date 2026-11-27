@@ -1132,7 +1132,7 @@ describe('Mail and Letters', () => {
     ['stub write to vendor', 'data-write-to'],
     ['stub answer', 'data-answers'],
   ])('a held letter survives %s opened from Mail and closed empty', (opener, flag) => {
-    at('/communications');
+    at('/communications?tab=letters');
     fireEvent.click(screen.getByText('Write a letter'));
     fireEvent.click(screen.getByText('Leave with words'));
     expect(screen.getByRole('group', { name: 'Held here · unwritten' })).toBeInTheDocument();

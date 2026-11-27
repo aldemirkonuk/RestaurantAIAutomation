@@ -123,6 +123,8 @@ describe('in a thread', () => {
     await openThread('First');
     fireEvent.keyDown(document.body, { key: 'r' });
     expect(onAnswer).toHaveBeenCalledTimes(1);
+    // Held on its thread like the button's reply (#2419 g2), not a loose sheet.
+    expect(onAnswer.mock.calls[0][1]).toEqual(expect.objectContaining({ threadKey: expect.any(String) }));
   });
 
   // ADR 0357 answer 3 (proposal F6): staff read mail, they do not write it.

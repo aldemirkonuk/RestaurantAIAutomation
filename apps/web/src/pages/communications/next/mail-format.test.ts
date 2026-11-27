@@ -812,7 +812,8 @@ describe('what "Write a reply" answers (r28 gap 3)', () => {
       m({ id: 'out-1', direction: 'outbound', sentAt: '2026-11-02T09:00:00Z', receivedAt: null }),
       m({ id: 'in-2', receivedAt: '2026-11-03T09:00:00Z' }),
     ]);
-    expect(got).toEqual({ providerId: 'p1', answers: 'in-2', subject: 'Re: Standing order' });
+    expect(got).toEqual(expect.objectContaining({ providerId: 'p1', answers: 'in-2', subject: 'Re: Standing order' }));
+    expect(got?.context?.at).toBeTruthy();
   });
 
   it('a sent letter of the house is answerable when it is the newest', () => {

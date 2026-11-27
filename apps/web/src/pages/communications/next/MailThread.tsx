@@ -381,7 +381,8 @@ export function MailThread({
     const act = threadKeyOf(e.key);
     if (act === 'reply' && answer && onAnswer) {
       e.preventDefault();
-      onAnswer(answer);
+      // The reply is written on this thread, so it is held on it too (#2419 g2).
+      onAnswer(answer, { threadKey, personKey: head?.person?.key ?? null });
     } else if (act === 'next' && withKey && onOpenThread) {
       const held = qc.getQueryData<InfiniteData<MailThreadsPage>>(mailKeys.threads(houseId, withKey));
       const next = nextWaiting(held?.pages.flatMap((p) => p.threads) ?? [], threadKey);
@@ -603,7 +604,7 @@ export function MailThread({
                   onTakeBack={r.m.id === undoId ? () => noReply.mutate({ id: r.m.id, marked: false }) : undefined}
                   takingBack={noReply.isPending && noReply.variables?.marked === false}
                   house={house}
-                  onWriteAgain={answer ? () => onAnswer?.(answer) : undefined}
+                  onWriteAgain={answer ? () => onAnswer?.(answer, at) : undefined}
                 />
               ) : r.kind === 'fold' ? (
                 <FoldedLetter key={r.m.id} m={r.m} vendor={vendor} onOpen={() => unfold([r.m.id])} />

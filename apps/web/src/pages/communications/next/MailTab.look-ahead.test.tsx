@@ -107,7 +107,7 @@ describe('looking ahead', () => {
     expect(calls('/mail/thread')).toHaveLength(0);
     fireEvent.touchStart(row);
     await vi.waitFor(() => expect(calls('/mail/thread')).toHaveLength(1));
-    expect(calls('/mail/thread')[0][1]).toEqual({ params: { key: 'th-1' } });
+    expect(calls('/mail/thread')[0][1]).toEqual({ params: { key: 'th-1', with: PERSON.key } });
     expect(api.post).not.toHaveBeenCalled();
   });
 });
