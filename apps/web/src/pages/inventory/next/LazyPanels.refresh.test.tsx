@@ -7,6 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { cleanup, render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const seam = vi.hoisted(() => ({ calls: 0 }));
@@ -59,7 +60,13 @@ describe('the lazy files go through the one refresh helper', () => {
   });
 
   it('a command page that cannot load says so in words, and the page does not throw', async () => {
-    render(<InventoryRoute />);
+    // InventoryRoute reads through react-query once #2455 lands, so the test gives it a client.
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <InventoryRoute />
+      </QueryClientProvider>,
+    );
     expect((await screen.findByRole('alert')).textContent).toBe(PAGE_LOAD_FAILED);
   });
 });
