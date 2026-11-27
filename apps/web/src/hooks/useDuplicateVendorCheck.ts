@@ -96,7 +96,8 @@ export function useDuplicateVendorCheck({
         matchRestaurantProviders(trimmedName, trimmedAddress || undefined, excludeProviderId),
       ]).then(([cat, prov]) => {
         if (cancelled) return
-        setCatalogueMatches(cat)
+        // A catalogue that could not be asked adds no suggestion here; the gateway still refuses a true duplicate.
+        setCatalogueMatches(cat ?? [])
         setProviderMatches(prov)
       })
     }, 450)
