@@ -141,18 +141,24 @@ BEGIN
       INTO v_parts, v_qty, v_cost, v_all_invoiced
       FROM jsonb_array_elements(v_row.cost_parts) WITH ORDINALITY AS t(e, ord);
 
-    -- The same paper at the same cost again changes nothing.
     CONTINUE WHEN v_parts = v_row.cost_parts;
     CONTINUE WHEN v_qty IS NULL OR v_qty <= 0;
     v_wac := v_cost / v_qty;
 
     -- What the sale was first booked at, so a second restatement scales the
-    -- original figure, not a rounded one (events use clock_timestamp()).
-    SELECT prior_cost_at_sale, prior_unit_cost
+    -- original figure. One act shares one created_at (#2248 groups on it), so
+    -- within a stamp the head of the chain is the event nothing restated into.
+    SELECT r.prior_cost_at_sale, r.prior_unit_cost
       INTO v_base_cost, v_base_unit
-      FROM public.wine_consumption_cost_restatements
-     WHERE consumption_id = v_row.id
-     ORDER BY created_at, id
+      FROM public.wine_consumption_cost_restatements r
+     WHERE r.consumption_id = v_row.id
+     ORDER BY r.created_at,
+              EXISTS (SELECT 1 FROM public.wine_consumption_cost_restatements q
+                       WHERE q.consumption_id = r.consumption_id AND q.id <> r.id
+                         AND q.created_at = r.created_at
+                         AND q.new_cost_at_sale = r.prior_cost_at_sale
+                         AND q.new_unit_cost = r.prior_unit_cost),
+              r.id
      LIMIT 1;
     IF NOT FOUND OR v_base_unit IS NULL OR v_base_unit <= 0 THEN
       v_base_cost := v_row.cost_at_sale;
@@ -169,11 +175,11 @@ BEGIN
     INSERT INTO public.wine_consumption_cost_restatements
       (restaurant_id, inventory_id, consumption_id, source_order_id,
        prior_cost_at_sale, prior_cost_basis, prior_unit_cost,
-       new_cost_at_sale, new_unit_cost, performed_by, created_at)
+       new_cost_at_sale, new_unit_cost, performed_by)
     VALUES
       (p_restaurant_id, p_inventory_id, v_row.id, p_source_order_id,
        v_row.cost_at_sale, v_row.cost_basis, v_row.cost_unit_at_sale,
-       v_new, round(v_wac, 6), p_performed_by, clock_timestamp());
+       v_new, round(v_wac, 6), p_performed_by);
     UPDATE public.wine_consumption_log
        SET cost_at_sale = v_new,
            cost_unit_at_sale = round(v_wac, 6),

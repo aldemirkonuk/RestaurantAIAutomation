@@ -1,10 +1,7 @@
--- r109 g1: a sale restates to the exact blend of the shelf it was costed on.
--- Two unchecked deliveries on hand (10 @ 8 and 12 @ 9), a pour sold, each
--- paper checked in either order: the sale ends at share x the blended paper
--- cost. Also: a part-checked (partial-basis) row is restated, a capped row is
--- never restated and is counted, a void stays 0, a row with no parts keeps
--- the single-order rule, and the same paper twice restates nothing.
--- Self-asserting; synthetic fixtures; one transaction, rolled back.
+-- r109 g1: two unchecked deliveries (10 @ 8, 12 @ 9), a pour sold, each paper
+-- checked in either order: the sale ends at share x the blended paper cost.
+-- Plus a partial-basis row, a capped row, a void, a no-parts row, a rerun.
+-- Self-asserting; synthetic; rolled back.
 
 begin;
 
@@ -33,8 +30,7 @@ begin
   insert into public.restaurant_inventory (id, restaurant_id, master_wine_id, bottle_size_ml, pour_size_ml)
   values (inv, h, 'a0109000-0000-4000-8000-000000000101', 750, 150);
 
-  -- No lots are inserted: a part keeps its own qty and cost, so a lot spent
-  -- and deleted before its paper still restates.
+  -- No lots exist: a part keeps its own qty and cost (a spent lot restates).
   shelf := jsonb_build_array(
     jsonb_build_object('order_id', oa::text, 'lot_id', 'lot-a', 'qty', 10, 'unit_cost', 8, 'invoiced', false),
     jsonb_build_object('order_id', ob::text, 'lot_id', 'lot-b', 'qty', 12, 'unit_cost', 9, 'invoiced', false));
@@ -96,8 +92,8 @@ begin
   -- The audit keeps every before and after; s1 has two events, the first
   -- keeping the figure it sold at.
   if (select count(*) from public.wine_consumption_cost_restatements where consumption_id = s1) <> 2
-     or (select prior_cost_at_sale from public.wine_consumption_cost_restatements
-          where consumption_id = s1 order by created_at, id limit 1) <> 1.8 then
+     or not exists (select 1 from public.wine_consumption_cost_restatements
+                     where consumption_id = s1 and prior_cost_at_sale = 1.8 and prior_unit_cost = 9) then
     raise exception 'SH9: the audit rows must keep the figure before';
   end if;
 

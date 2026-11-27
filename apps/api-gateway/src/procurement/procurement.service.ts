@@ -6199,8 +6199,7 @@ export class ProcurementService {
         );
       }
       const salesRestated = (restated as any)?.rows_restated ?? 0;
-      // r109 g1: a sale that had more than 20 lots on the shelf kept no parts
-      // and is never restated; say so rather than let it read as done.
+      // r109 g1: a sale with over 20 lots on the shelf is never restated.
       const salesCapped = (restated as any)?.rows_capped ?? 0;
       if (salesCapped > 0) {
         this.logger.warn(
