@@ -1,5 +1,6 @@
 import { menuDueState, type MenuDue } from "./menu-due-state";
 import { restoreArrivalEntry } from "../arrival/restore-entry";
+import { readHouseThresholdMin } from "../inventory/house-par";
 import * as crypto from "crypto";
 import {
   Injectable,
@@ -64,7 +65,6 @@ const PAGE_ROWS = 1000;
  * limits, and one row per house and wine keeps every chunk far below PAGE_ROWS.
  */
 const WINE_ID_CHUNK = 150;
-const DEFAULT_THRESHOLD_MIN_FALLBACK = 3;
 const PRICE_FIELDS = new Set(["by_glass_price", "bottle_price"]);
 
 interface ResolvedItem {
@@ -2412,6 +2412,11 @@ export class MenusService {
         "What choosing this menu would do has changed since it was shown (a price or a lock moved). Nothing was changed; look at the plan again.",
       );
     }
+    // The house's par is read BEFORE the switch too (r102 review): it is the
+    // one read addToInventory makes that can refuse, and read after the RPC a
+    // refusal said "nothing was added" about a menu that was already current,
+    // and the retry answered already_current with no lines.
+    const thresholdMin = await this.getDefaultThresholdMin(restaurantId);
     const { data, error } = await this.dbService.supabase.rpc("make_menu_current", {
       p_restaurant_id: restaurantId,
       p_menu_id: menuId,
@@ -2475,13 +2480,14 @@ export class MenusService {
 
     // addToInventory writes each line's house link and price flag back itself.
     // The switch is already committed: a refusal from here on must never
-    // reach the page as "nothing changed".
+    // reach the page as "nothing changed". The house par was read before the
+    // switch (#1996), so the par read can no longer refuse here.
     let priceSync: Map<string, PriceSyncEntry>;
     try {
       ({ priceSync } = await this.addToInventory(toCarry, restaurantId, userId, {
         effectiveFrom: madeCurrentAt,
         menuId,
-      }));
+      }, thresholdMin));
     } catch (err) {
       const why = err instanceof Error ? err.message : String(err);
       this.logger.error(`menu ${menuId} is current but its prices were not carried: ${why}`);
@@ -2746,6 +2752,11 @@ export class MenusService {
   ): Promise<MenuImportReviewItem[]> {
     if (items.length === 0) return [];
 
+    // The house's par is read before ANY write (library rows, menu_items): it
+    // is the one read on the add path that can refuse, and a refusal that
+    // says "nothing was added" must be true (r102 review).
+    const thresholdMin = current ? await this.getDefaultThresholdMin(restaurantId) : undefined;
+
     // Resolve every item against master_wine_library BEFORE inserting
     // menu_items — wine_library_id and restaurant_inventory.master_wine_id
     // are both FK targets and must point at a real row, not be populated
@@ -2924,7 +2935,7 @@ export class MenusService {
     // A line added to the CURRENT menu is dated now (the writer's default)
     // and names its menu (ADR 0193 round 3, L11).
     const { inventoryMap, priceSync } = current
-      ? await this.addToInventory(insertedMenuItems, restaurantId, userId, { effectiveFrom: null, menuId })
+      ? await this.addToInventory(insertedMenuItems, restaurantId, userId, { effectiveFrom: null, menuId }, thresholdMin)
       : {
           inventoryMap: Object.assign(new Map<string, string>(), {
             created: new Set<string>(),
@@ -3080,6 +3091,9 @@ export class MenusService {
     restaurantId: string,
     userId: string,
     dating: CarryDating,
+    // The house par, read by the caller BEFORE its first write. Absent only
+    // for a caller that has not written anything yet.
+    knownThresholdMin?: number,
   ): Promise<{
     inventoryMap: Map<string, string> & { created: Set<string> };
     priceSync: Map<string, PriceSyncEntry>;
@@ -3103,7 +3117,7 @@ export class MenusService {
       i.wine_library_id ? String(i.wine_library_id) : `good:${String(i.inventory_item_id)}`;
 
     const client = this.dbService.supabase;
-    const thresholdMin = await this.getDefaultThresholdMin(restaurantId);
+    const thresholdMin = knownThresholdMin ?? (await this.getDefaultThresholdMin(restaurantId));
 
     // BATCHED (menu proposal 2e, M15). This was one read, maybe one insert,
     // one flag write and one link write PER LINE -- about a third of a second
@@ -3434,12 +3448,7 @@ export class MenusService {
   }
 
   private async getDefaultThresholdMin(restaurantId: string): Promise<number> {
-    const { data } = await this.dbService.supabase
-      .from("restaurants")
-      .select("default_threshold_min")
-      .eq("id", restaurantId)
-      .maybeSingle();
-    return data?.default_threshold_min ?? DEFAULT_THRESHOLD_MIN_FALLBACK;
+    return readHouseThresholdMin(this.dbService.supabase, restaurantId);
   }
 
   private async markMenuUploaded(restaurantId: string): Promise<void> {

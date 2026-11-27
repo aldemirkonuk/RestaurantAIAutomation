@@ -1978,6 +1978,34 @@ describe("MenusService — every menu read is kept as its own version", () => {
       expect(tables.restaurant_menus.find((m) => m.id === read.menuId)!.status).toBe("draft");
     });
 
+    it("a failed read of the house's par changes NOTHING when choosing a menu: no switch, no price, and the retry can finish it (r102 review)", async () => {
+      const { calls, tables, service, read } = await readThenChoose([{ name: "Opus One", bottle_price: 64 }]);
+      const fp = (await service.planFor("rest-1", read.menuId)).fingerprint;
+      (tables as any).__readFails = [{ restaurants: "connection reset" }];
+      const err = await service.makeCurrent("rest-1", read.menuId, "user-2", fp).catch((e) => e);
+      expect(err?.status).toBe(503);
+      expect(calls.filter(([fn]) => fn === "make_menu_current")).toHaveLength(0);
+      expect(tables.restaurant_menus.find((m) => m.id === "menu-old")!.status).toBe("active");
+      expect(tables.restaurant_menus.find((m) => m.id === read.menuId)!.status).toBe("draft");
+      expect(calls.filter(([fn]) => fn === "set_house_menu_price")).toHaveLength(0);
+      (tables as any).__readFails = undefined;
+      const retry = await service.makeCurrent("rest-1", read.menuId, "user-2", fp);
+      expect(retry.outcome).toBe("made_current");
+      expect(retry.lines).toBe(1);
+    });
+
+    it("a failed read of the house's par refuses adding a line to the CURRENT menu before the line is written (r102 review)", async () => {
+      const tables: Record<string, Row[]> = base();
+      const service = makeService(tables, { rpc: makeCurrentRpc(tables) });
+      const before = tables.menu_items.length;
+      (tables as any).__readFails = [{ restaurants: "connection reset" }];
+      const err = await service
+        .addMenuItem({ menuId: "menu-old", name: "Opus One", bottle_price: 70 } as any, "user-2", "rest-1", true)
+        .catch((e) => e);
+      expect(err?.status).toBe(503);
+      expect(tables.menu_items).toHaveLength(before);
+    });
+
     it("a failed read of the house's own wine row is a FAILED line with the reason -- never 'not_linked', no price, no flag", async () => {
       const { calls, tables, service, read } = await readThenChoose([{ name: "Opus One", by_glass_price: 15 }]);
       const fp = (await service.planFor("rest-1", read.menuId)).fingerprint;
