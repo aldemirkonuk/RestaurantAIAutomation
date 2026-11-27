@@ -50,12 +50,12 @@ function phone() {
 }
 
 const SLOT = { x: 0, y: 0, w: 12, h: 6 };
-const sheet = (holdPx: number | undefined) =>
+const sheet = (holdPx: number | undefined, holdRows?: number) =>
   render(
     <Sheet
       arranging={false}
       onMove={() => {}}
-      cuttings={[{ id: 'till' as AnalysisId, slot: SLOT, holdPx, body: <div data-cut="till" /> }] as never}
+      cuttings={[{ id: 'till' as AnalysisId, slot: SLOT, holdPx, holdRows, body: <div data-cut="till" /> }] as never}
     />,
   );
 const item = (c: HTMLElement) => c.querySelector<HTMLElement>('.rp-stack__item')!;
@@ -128,7 +128,7 @@ describe('the 1440 till card holds the compare answer in rows', () => {
     expect(tillRows(COMPARE_GRID_ROWS, true)).toBe(SLOT.h);
     cleanup();
     phone();
-    const on = sheet(COMPARE_ANSWER_PX);
+    const on = sheet(COMPARE_ANSWER_PX, COMPARE_GRID_ROWS);
     expect(item(on.container).style.height).toBe(`${slotHeightPx(SLOT.h) + 66}px`);
   });
 
