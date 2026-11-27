@@ -3,10 +3,11 @@ import { usePublicDesign } from '../lib/mudavym/publicDesign'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { Mail, CheckCircle, Loader2, AlertCircle } from 'lucide-react'
+import { Mail, CheckCircle, AlertCircle } from 'lucide-react'
 import { AuthShell, AuthCard } from '../components/brand/AuthShell'
 import { Button } from '../components/ui'
 import { toast } from 'sonner'
+import { Pending } from '@/components/onboarding/Pending'
 import { getOnboardingProgress } from '../services/api/menus'
 import { apiClient, getErrorMessage } from '../services/api/client'
 import { prefetchWhenIdle } from '../lib/stepPrefetch'
@@ -760,11 +761,7 @@ export function VerifyEmail() {
             >
               {verifying ? (
                 <>
-                  <Loader2
-                    className="w-4 h-4 animate-spin mr-2"
-                    strokeWidth={1.75}
-                  />
-                  Verifying...
+                  <Pending label="Verifying..." />
                 </>
               ) : (
                 'Verify My Email'
@@ -805,11 +802,7 @@ export function VerifyEmail() {
             >
               {resending ? (
                 <>
-                  <Loader2
-                    className="w-4 h-4 animate-spin mr-2"
-                    strokeWidth={1.75}
-                  />
-                  Resending...
+                  <Pending label="Resending..." />
                 </>
               ) : (
                 'Resend Verification Email'

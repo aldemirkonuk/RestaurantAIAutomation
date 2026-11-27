@@ -3,6 +3,7 @@ import { RotateCcw } from 'lucide-react'
 import { CameraCapture } from '../scanner/CameraCapture'
 import { importMenu, type MenuImportSuccess } from '../../services/api/menus'
 import { fitPhotoForReading } from '../../lib/fitPhoto'
+import { Pending } from '@/components/onboarding/Pending'
 
 interface MenuScanUploadProps {
   onSuccess: MenuImportSuccess
@@ -36,8 +37,7 @@ export function MenuScanUpload({ onSuccess }: MenuScanUploadProps) {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-4">
-        <div className="w-12 h-12 rounded-full border-4 border-[#1A5E6B]/20 border-t-[#1A5E6B] animate-spin motion-reduce:animate-none" />
-        <p className="text-gray-600 font-medium">Reading your menu…</p>
+        <Pending size="lg" className="flex-col gap-4 text-[#1A5E6B] font-medium" label="Reading your menu…" />
         <p className="text-sm text-gray-400">This usually takes 10–20 seconds</p>
       </div>
     )
