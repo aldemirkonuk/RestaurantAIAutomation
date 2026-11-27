@@ -147,11 +147,31 @@ describe("GET /procurement/documents/:id/statement-tieout (r109 g5)", () => {
   });
 });
 
+describe("a printed hyphen is not a different number (r109 invoices walk)", () => {
+  it("INV-101 on file ties to INV 101 on the statement, and is not listed off it", async () => {
+    const c = controllerWith({
+      procurement_documents: [
+        statement([{ docNumber: "INV 101", docDate: "2026-11-04", amount: 20, kind: "invoice" }]),
+        paper({ id: "h101", doc_number: "INV-101", total: "20.00" }),
+      ],
+    });
+    const out: any = await c.statementTieout("st1", owner);
+    expect(out.rows[0]).toMatchObject({ verdict: "checked_same", paperId: "h101" });
+    expect(out.notOnStatement).toEqual([]);
+  });
+});
+
 describe("statement-tieout pure parts", () => {
   it("keeps leading zeros and drops case and inner spaces", () => {
     expect(normalDocNumber(" INV 00123 ")).toBe("inv00123");
     expect(normalDocNumber("0123")).not.toBe(normalDocNumber("123"));
     expect(normalDocNumber("  ")).toBeNull();
+  });
+  it("INV-101, INV 101 and inv.101 are one number, leading zeros still kept", () => {
+    expect(normalDocNumber("INV-101")).toBe(normalDocNumber("INV 101"));
+    expect(normalDocNumber("INV/101")).toBe(normalDocNumber("inv.101"));
+    expect(normalDocNumber("INV #101")).toBe("inv101");
+    expect(normalDocNumber("INV-0101")).not.toBe(normalDocNumber("INV-101"));
   });
   it("counts in exact cents", () => {
     expect(toCents(0.1 + 0.2)).toBe(30n);

@@ -1,8 +1,8 @@
 /**
  * A VENDOR STATEMENT AGAINST THE HOUSE'S PAPERS (r109 g5). For each invoice or
  * credit row the statement lists, find the house's paper from the same vendor
- * with the same document number (trimmed, case-folded, inner whitespace
- * dropped, leading zeros KEPT: "00123" and "123" are different papers), and
+ * with the same document number (trimmed, case-folded, inner whitespace,
+ * hyphens, slashes, dots and # dropped, leading zeros KEPT: "00123" and "123" are different papers), and
  * compare the amounts in integer cents in one currency. Never on amount alone:
  * two invoices of 312.40 would pair wrongly.
  *
@@ -48,9 +48,9 @@ export interface TieOut {
   paymentsIgnored: number;
 }
 
-/** "INV 00123 " and "inv00123" are one number; "123" is another. */
+/** "INV 00123 ", "inv-00123" and "inv00123" are one number (spaces, hyphens, slashes, dots and # dropped); "123" is another. */
 export function normalDocNumber(n: string | null | undefined): string | null {
-  const t = String(n ?? "").trim().toLowerCase().replace(/\s+/g, "");
+  const t = String(n ?? "").trim().toLowerCase().replace(/[\s\-/.#]+/g, "");
   return t ? t : null;
 }
 
