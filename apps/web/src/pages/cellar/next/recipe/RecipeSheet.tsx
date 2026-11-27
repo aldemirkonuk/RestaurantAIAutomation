@@ -52,6 +52,12 @@
  * an unsaved draft, and saving makes them a new current version. History is
  * never rewritten, and the save is still pinned to the version that was
  * current, so a colleague's save in between is a 409, not an overwrite.
+ *
+ * An editor sets the whole drink here, not only its lines: how many serves
+ * the recipe makes (a batch of 20 costs per serve), the glass, the garnish
+ * and the method. A proposed row can be left out one at a time, so a paste or
+ * an old recipe box past 40 lines is never stuck; text in the paste box is
+ * kept for the session like the lines.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ClipboardPaste, History, Plus, RotateCcw, Save } from 'lucide-react';
@@ -284,9 +290,15 @@ function refusal(e: unknown): string | null {
   return typeof m === 'string' && m.trim() ? m.trim() : null;
 }
 
+/** The most serves one recipe makes. Matches the gateway (recipes.service.ts MAX_YIELD_SERVES). */
+export const MAX_SERVES = 1000;
+
 /** Why Save is off, naming the first line that stops it. */
-export function whyBlocked(rows: DraftRow[]): string | null {
+export function whyBlocked(rows: DraftRow[], serves: number = 1): string | null {
   if (rows.length === 0) return 'Add at least one ingredient.';
+  if (!Number.isInteger(serves) || serves < 1 || serves > MAX_SERVES) {
+    return `Say how many serves it makes: a whole number from 1 to ${MAX_SERVES.toLocaleString('en-US')}.`;
+  }
   if (rows.length > MAX_LINES) return tooMany(rows.length);
   const named = (i: number) => {
     const n = rowName(rows[i]);
@@ -340,8 +352,8 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
   const [said, setSaid] = useState<Said | null>(null);
   const [showVersions, setShowVersions] = useState(false);
   const [proposed, setProposed] = useState<Proposed | null>(null);
-  const [pasteOpen, setPasteOpen] = useState(false);
-  const [pasteText, setPasteText] = useState('');
+  const [pasteOpen, setPasteOpen] = useState(Boolean(kept?.paste));
+  const [pasteText, setPasteText] = useState(kept?.paste ?? '');
   // The typed lines a "Load the saved recipe" replaced, kept until put back, thrown away or saved over.
   const [setAside, setSetAside] = useState<DraftRow[] | null>(kept?.setAside ?? null);
   const [restored, setRestored] = useState(Boolean(kept?.dirty));
@@ -353,9 +365,10 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
   // nothing typed is left unsaved.
   useEffect(() => {
     if (!canEdit) return;
-    if ((dirty && rows) || setAside) keepDraft(storeKey, { rows: rows ?? [], openedFrom, dirty, setAside, meta });
+    const paste = pasteText.trim() ? pasteText : undefined;
+    if ((dirty && rows) || setAside || paste) keepDraft(storeKey, { rows: rows ?? [], openedFrom, dirty, setAside, meta, paste });
     else dropDraft(storeKey);
-  }, [canEdit, storeKey, rows, openedFrom, dirty, setAside, meta]);
+  }, [canEdit, storeKey, rows, openedFrom, dirty, setAside, meta, pasteText]);
 
   // The drink is gone from this house: no draft of it, for anyone, can ever be
   // saved, so none may keep the leave-page warning alive.
@@ -389,7 +402,8 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
     seed(data);
   }, [data, versionId, dirty, seed]);
 
-  const blocked = useMemo(() => whyBlocked(rows ?? []), [rows]);
+  const shownMeta = meta ?? metaOf(data?.current);
+  const blocked = useMemo(() => whyBlocked(rows ?? [], shownMeta.yieldServes), [rows, shownMeta.yieldServes]);
 
   if (recipe.loading) return <p className="cl-note" role="status">Reading the recipe…</p>;
   if (!data) {
@@ -416,6 +430,10 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
   const edit = (next: (rs: DraftRow[]) => DraftRow[]) => {
     setDirty(true);
     setRows((rs) => next(rs ?? []));
+  };
+  const setField = (p: Partial<DraftMeta>) => {
+    setDirty(true);
+    setMeta((m) => ({ ...(m ?? metaOf(data.current)), ...p }));
   };
   const patch = (key: string, p: Partial<DraftRow>) =>
     edit((rs) => rs.map((r) => (r.key === key ? { ...r, ...p } : r)));
@@ -501,14 +519,28 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
       return canEdit ? 'No recipe yet. Add what goes in it, or paste a spec.' : 'No recipe yet.';
     }
     if (!money || !data.cost || !data.current) return null;
+    // While the draft differs, the cost is the saved recipe's, and says so.
+    const asSaved = canEdit && dirty ? 'As saved: ' : '';
     if (data.cost.complete && data.cost.perServe != null) {
       const part = data.cost.partial ?? 0;
-      return `Costs ${sayMoney(data.cost.perServe)} a serve at today's prices${
+      return `${asSaved}Costs ${sayMoney(data.cost.perServe)} a serve at today's prices${
         part > 0 ? ` · ${count(part, 'ingredient is', 'ingredients are')} priced from the bottles with an invoice only` : ''
       }`;
     }
-    if (data.cost.of === 0) return 'Nothing in it is counted from the shelf.';
-    return `${data.cost.priced} of ${count(data.cost.of, 'ingredient', 'ingredients')} priced`;
+    if (data.cost.of === 0) return `${asSaved}Nothing in it is counted from the shelf.`;
+    return `${asSaved}${data.cost.priced} of ${count(data.cost.of, 'ingredient', 'ingredients')} priced`;
+  })();
+
+  // The same good on more than one counted line: said, not merged; a split pour is real.
+  const repeated = (() => {
+    const byItem = new Map<string, { name: string; n: number }>();
+    for (const r of lines) {
+      if (r.role !== 'stocked' || !r.inventoryId) continue;
+      const e = byItem.get(r.inventoryId) ?? { name: r.itemName ?? rowName(r), n: 0 };
+      e.n += 1;
+      byItem.set(r.inventoryId, e);
+    }
+    return [...byItem.values()].filter((e) => e.n > 1).map((e) => [e.name, e.n] as const);
   })();
 
   const earlier = Math.max(0, data.versionCount - 1);
@@ -551,6 +583,45 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
         </ol>
       ) : null}
 
+      {canEdit && repeated.length > 0 ? (
+        <p className="cl-note" data-testid="recipe-repeated">
+          {repeated.map(([name, n]) => `${name} is on ${n} lines; a serve takes all of them.`).join(' ')}
+        </p>
+      ) : null}
+
+      {canEdit && (lines.length > 0 || data.current) ? (
+        <div className="cl-rcp-meta" data-testid="recipe-meta">
+          <label>
+            Makes (serves)
+            <input
+              className="cl-field cl-focus cl-num"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={MAX_SERVES}
+              step={1}
+              value={Number.isFinite(shownMeta.yieldServes) ? String(shownMeta.yieldServes) : ''}
+              aria-invalid={!Number.isInteger(shownMeta.yieldServes) || shownMeta.yieldServes < 1 || shownMeta.yieldServes > MAX_SERVES}
+              onChange={(e) => setField({ yieldServes: e.target.value.trim() === '' ? NaN : Number(e.target.value) })}
+            />
+          </label>
+          <label>
+            Glass
+            <input className="cl-field cl-focus" value={shownMeta.glass} maxLength={200} placeholder={c.glass ?? 'Rocks'} onChange={(e) => setField({ glass: e.target.value })} />
+          </label>
+          <label>
+            Garnish
+            <input className="cl-field cl-focus" value={shownMeta.garnish} maxLength={200} placeholder={c.garnish ?? 'Orange peel'} onChange={(e) => setField({ garnish: e.target.value })} />
+          </label>
+          <label className="cl-rcp-method">
+            Method
+            <textarea className="cl-field cl-focus" rows={2} value={shownMeta.method} maxLength={4000} placeholder="Stir with ice, strain over a large cube" onChange={(e) => setField({ method: e.target.value })} />
+          </label>
+        </div>
+      ) : !canEdit && data.current?.method ? (
+        <p className="cl-note" data-testid="recipe-method">{data.current.method}</p>
+      ) : null}
+
       {hasLegacy && !(canEdit && proposed?.from === 'legacy') ? <LegacyLines data={data} /> : null}
 
       {footer ? (
@@ -566,12 +637,12 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
           <p className="cl-note" style={{ marginTop: 0 }}>{proposed.note}</p>
           {lines.length + proposed.lines.length > MAX_LINES ? (
             <p className="cl-note" role="alert" data-testid="recipe-too-many">
-              {tooMany(lines.length + proposed.lines.length)} Shorten the paste first.
+              {tooMany(lines.length + proposed.lines.length)} Leave some out below, or change the paste.
             </p>
           ) : null}
           <ol className="cl-rcp-lines">
-            {proposed.lines.slice(0, MAX_LINES).map((p, i) => (
-              <li key={i} className="cl-rcp-line" data-role={p.role}>
+            {proposed.lines.map((p, i) => (
+              <li key={i} className="cl-rcp-line" data-role={p.role} data-testid="recipe-proposed-line">
                 <div className="cl-rcp-read">
                   <span className="cl-num cl-rcp-amt">{p.qty != null ? `${qtyText(p.qty)} ${p.unit ?? ''}`.trim() : ''}</span>
                   <span>
@@ -579,11 +650,24 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
                     {p.role === 'untracked' ? <span className="cl-dim"> · not counted</span> : null}
                     {p.flag ? <span className="cl-rcp-flag" data-testid="recipe-proposed-flag"> · {p.flag}</span> : null}
                   </span>
+                  <button
+                    type="button"
+                    className="cl-btn cl-focus cl-rcp-leave"
+                    aria-label={`Leave out ${p.label || `line ${i + 1}`}`}
+                    onClick={() =>
+                      setProposed((pr) => {
+                        if (!pr) return pr;
+                        const left = pr.lines.filter((_, j) => j !== i);
+                        return left.length ? { ...pr, lines: left } : null;
+                      })
+                    }
+                  >
+                    Leave out
+                  </button>
                 </div>
               </li>
             ))}
           </ol>
-          {proposed.lines.length > MAX_LINES ? <p className="cl-note">…and {proposed.lines.length - MAX_LINES} more not shown.</p> : null}
           <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
             <button
               type="button"
@@ -598,7 +682,22 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
             >
               Use these lines
             </button>
-            <button type="button" className="cl-btn cl-focus" onClick={() => setProposed(null)}>
+            {proposed.from === 'paste' ? (
+              <button type="button" className="cl-btn cl-focus" onClick={() => setProposed(null)}>
+                Change the paste
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="cl-btn cl-focus"
+              onClick={() => {
+                if (proposed.from === 'paste') {
+                  setPasteText('');
+                  setPasteOpen(false);
+                }
+                setProposed(null);
+              }}
+            >
               Discard
             </button>
           </span>

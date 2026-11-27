@@ -192,10 +192,30 @@ export function parseLine(line: string): ProposedLine | null {
   return { qty, unit, label, role: roleOf(text, label, qty), confirmed: false, flag: null };
 }
 
+/**
+ * A line whose ingredient already appeared earlier in the paste is flagged,
+ * not merged (round 17): a spec pasted twice and a pour split in two read the
+ * same, and adding them up would double the first. The person leaves one out
+ * or keeps both, having seen it.
+ */
+function flagRepeats(lines: ProposedLine[]): ProposedLine[] {
+  // No line number in the words: a row left out above would make it wrong.
+  const seen = new Set<string>();
+  return lines.map((l) => {
+    const key = l.label.toLowerCase().replace(/\s+/g, ' ').trim();
+    const again = key !== '' && seen.has(key);
+    if (key) seen.add(key);
+    if (!again || l.flag) return l;
+    return { ...l, flag: `"${l.label}" is pasted above too. Leave one out if it was pasted twice.` };
+  });
+}
+
 /** Pasted text → proposed rows, one per line or per slash before an amount. Nothing is saved. */
 export function parseSpec(pasted: string): ProposedLine[] {
-  return pasted
-    .split(SPLIT)
-    .map(parseLine)
-    .filter((l): l is ProposedLine => l !== null);
+  return flagRepeats(
+    pasted
+      .split(SPLIT)
+      .map(parseLine)
+      .filter((l): l is ProposedLine => l !== null),
+  );
 }

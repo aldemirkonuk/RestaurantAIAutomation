@@ -381,10 +381,10 @@ describe('RecipeSheet', () => {
     const box = screen.getByTestId('recipe-proposed');
     expect(box).toHaveTextContent('1.5 oz');
     expect(box).toHaveTextContent('Nothing is saved yet.');
-    fireEvent.click(within(box).getByRole('button', { name: 'Discard' }));
+    fireEvent.click(within(box).getByRole('button', { name: 'Change the paste' }));
     expect(screen.queryByTestId('recipe-proposed')).toBeNull();
     expect(screen.queryAllByTestId('recipe-line')).toHaveLength(0);
-    // Discarding the reading keeps the pasted text to correct and read again.
+    // Changing the paste keeps the pasted text to correct and read again.
     expect(screen.getByLabelText(/paste a spec/i)).toHaveValue('1½ oz gin / 2 dashes Angostura');
     fireEvent.click(screen.getByRole('button', { name: 'Read it' }));
     fireEvent.click(within(screen.getByTestId('recipe-proposed')).getByRole('button', { name: 'Use these lines' }));
@@ -621,8 +621,8 @@ describe('RecipeSheet', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Read it' }));
     const box = screen.getByTestId('recipe-proposed');
     expect(within(box).getByTestId('recipe-too-many')).toHaveTextContent('That is 48 lines; a recipe holds at most 40. Remove 8 before saving.');
-    expect(within(box).getAllByRole('listitem')).toHaveLength(40);
-    expect(box).toHaveTextContent('…and 5 more not shown.');
+    // Every proposed row is shown, so any of them can be left out.
+    expect(within(box).getAllByRole('listitem')).toHaveLength(45);
     expect(within(box).getByRole('button', { name: 'Use these lines' })).toBeDisabled();
     expect(screen.getAllByTestId('recipe-line')).toHaveLength(3);
   });
@@ -987,5 +987,90 @@ describe('RecipeSheet', () => {
     mount();
     expect(await screen.findByTestId('recipe-unread')).toBeInTheDocument();
     await waitFor(() => expect(leaveWarns()).toBe(false));
+  });
+  it('round 17: an editor sets the serves, glass, garnish and method, and the save carries them', async () => {
+    serve(negroni());
+    h.put.mockResolvedValue({ data: { versionId: 'v5', version: 5, lines: [] } });
+    mount();
+    const meta = await screen.findByTestId('recipe-meta');
+    const serves = within(meta).getByLabelText(/Makes/);
+    expect(serves).toHaveValue(1);
+    fireEvent.change(serves, { target: { value: '20' } });
+    fireEvent.change(within(meta).getByLabelText('Glass'), { target: { value: 'Coupe' } });
+    fireEvent.change(within(meta).getByLabelText('Garnish'), { target: { value: '' } });
+    fireEvent.change(within(meta).getByLabelText('Method'), { target: { value: 'Batch, then stir over ice' } });
+    // The cost shown is still the saved recipe's, and says so.
+    expect(screen.getByTestId('recipe-footer')).toHaveTextContent("As saved: Costs ₺57.00 a serve at today's prices");
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
+    const body = h.put.mock.calls[0][1];
+    expect(body).toMatchObject({ yieldServes: 20, glass: 'Coupe', method: 'Batch, then stir over ice' });
+    // An emptied garnish is not sent, so the new version has none.
+    expect(body).not.toHaveProperty('garnish');
+  });
+
+  it.each(['', '0', '2.5', '1001'])('serves of %j stop Save and say what is wanted', async (v) => {
+    serve(negroni());
+    mount();
+    fireEvent.change(within(await screen.findByTestId('recipe-meta')).getByLabelText(/Makes/), { target: { value: v } });
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
+    expect(screen.getByText('Say how many serves it makes: a whole number from 1 to 1,000.')).toBeInTheDocument();
+  });
+
+  it('staff read the method, with no fields', async () => {
+    h.auth = { activeRestaurantId: RID, activeRole: 'staff', user: { role: 'staff' } };
+    serve(negroni({ cost: null }));
+    mount();
+    expect(await screen.findByTestId('recipe-method')).toHaveTextContent('Stirred');
+    expect(screen.queryByTestId('recipe-meta')).toBeNull();
+  });
+
+  it('round 19: a 45-line old recipe box can be used by leaving rows out one at a time', async () => {
+    const legacyLines = Array.from({ length: 45 }, (_, i) => ({ label: `syrup ${i}`, quantity: 5, unit: 'ml' }));
+    serve({ ...EMPTY, legacyLines });
+    mount();
+    const box = await screen.findByTestId('recipe-proposed');
+    expect(within(box).getByRole('button', { name: 'Use these lines' })).toBeDisabled();
+    expect(within(box).getByTestId('recipe-too-many')).toHaveTextContent('Leave some out below');
+    for (let i = 0; i < 5; i++) fireEvent.click(within(box).getAllByRole('button', { name: /^Leave out/ })[0]);
+    expect(within(box).getAllByTestId('recipe-proposed-line')).toHaveLength(40);
+    fireEvent.click(within(box).getByRole('button', { name: 'Use these lines' }));
+    expect(screen.getAllByTestId('recipe-line')).toHaveLength(40);
+    expect(screen.getAllByLabelText('Amount').map((a) => (a as HTMLInputElement).value)[0]).toBe('5');
+  });
+
+  it('leaving out the last proposed row closes the proposal; Discard clears the paste box', async () => {
+    serve(EMPTY);
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /paste a spec/i }));
+    fireEvent.change(screen.getByLabelText(/paste a spec/i), { target: { value: '30 ml gin' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Read it' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Leave out gin' }));
+    expect(screen.queryByTestId('recipe-proposed')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Read it' }));
+    fireEvent.click(within(screen.getByTestId('recipe-proposed')).getByRole('button', { name: 'Discard' }));
+    expect(screen.queryByLabelText(/paste a spec/i)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /paste a spec/i }));
+    expect(screen.getByLabelText(/paste a spec/i)).toHaveValue('');
+  });
+
+  it('round 19: unused paste-box text is kept for the session, A -> B -> A, and leaving warns', async () => {
+    serve(negroni());
+    other = margarita();
+    const { rerender } = mountSwitchable(CID);
+    fireEvent.click(await screen.findByRole('button', { name: /paste a spec/i }));
+    fireEvent.change(screen.getByLabelText(/paste a spec/i), { target: { value: '30 ml mezcal' } });
+    expect(leaveWarns()).toBe(true);
+    rerender(<RecipeSheet cocktailId={CID2} />);
+    await screen.findByRole('region', { name: 'Recipe for Margarita' });
+    rerender(<RecipeSheet cocktailId={CID} />);
+    expect(await screen.findByLabelText(/paste a spec/i)).toHaveValue('30 ml mezcal');
+  });
+
+  it('the same good on two counted lines is said, not merged', async () => {
+    const n = negroni();
+    serve(negroni({ current: { ...n.current!, lines: [linked('gin', 30, GIN), { ...linked('gin', 15, GIN), id: 'gin-2' }] } }));
+    mount();
+    expect(await screen.findByTestId('recipe-repeated')).toHaveTextContent('gin is on 2 lines; a serve takes all of them.');
   });
 });

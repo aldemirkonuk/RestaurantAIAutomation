@@ -968,3 +968,26 @@ textarea.cl-field {
 .cl-rcp-paste { border-color: var(--paper-2); }
 .cl-rcp-proposed .cl-rcp-line { background: var(--warn-tint); border-color: transparent; }
 .cl-rcp-proposed .cl-rcp-lines { margin-bottom: 8px; }
+
+/* Round 17 D10: on a bar phone every control on the recipe sheet is a 44 px
+   target, and inputs use 16 px type so iOS does not zoom the page on focus. */
+.cl-rcp-meta { display: grid; grid-template-columns: 1fr; gap: 6px; margin-top: 10px; }
+.cl-rcp-meta label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--ink-3); }
+.cl-rcp-meta textarea.cl-field { height: auto; padding: 6px 8px; line-height: 1.45; }
+@media (min-width: 720px) {
+  .cl-rcp-meta { grid-template-columns: 120px 1fr 1fr; }
+  .cl-rcp-meta .cl-rcp-method { grid-column: 1 / -1; }
+}
+.cl-rcp-proposed .cl-rcp-read { align-items: center; }
+.cl-rcp-leave { margin-left: auto; }
+@media (max-width: 719px), (pointer: coarse) {
+  .cl-rcp .cl-field,
+  .cl-rcp .cl-btn,
+  .cl-rcp .cl-linkish,
+  .cl-rcp-link,
+  .cl-rcp-pick { min-height: 44px; }
+  .cl-rcp .cl-field { font-size: 16px; }
+  .cl-rcp .cl-btn { font-size: 14px; }
+  .cl-rcp-edit { grid-template-columns: 1fr 88px 108px; }
+  .cl-rcp-remove { min-width: 44px; justify-content: center; }
+}
