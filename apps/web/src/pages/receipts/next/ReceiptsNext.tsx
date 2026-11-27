@@ -903,7 +903,7 @@ function CardPart({ label, first = false, children }: { label: string; first?: b
   );
 }
 
-function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: () => void }) {
+function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (viaKeyboard: boolean) => void }) {
   const qc = useQueryClient();
   const rid = useActiveRestaurantId();
   const detailKey = ['receipts-next', 'doc', rid, doc.id];
@@ -1110,9 +1110,15 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
     mutationFn: (challenge?: string | null) => documentsApi.verify(doc.id, challenge),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['receipts-next'] });
-      onVerified();
+      onVerified(sealByKeyboard.current);
     },
   });
+  // r108: a keyboard seal hands its focus on (the swipe unmounts, and focus
+  // would fall to BODY). Taken when the gesture COMPLETES, while the control
+  // still holds focus; a pointer seal never moves focus.
+  const sealWrap = useRef<HTMLDivElement>(null);
+  const keyDown = useRef(false);
+  const sealByKeyboard = useRef(false);
 
   /**
    * ONE VERDICT ON ONE SCREEN (walk-through W6, 2026-10-01). The sheet above
@@ -1636,14 +1642,23 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                   : 'Confirm opens once the lines are read.'}
               </p>
             )}
+            <div
+              ref={sealWrap}
+              onKeyDownCapture={(e) => { if (e.key === ' ' || e.key === 'Enter') keyDown.current = true; }}
+              onPointerDownCapture={() => { keyDown.current = false; }}
+            >
             <SwipeToConfirm
               key={`swipe-${verify.failureCount}`}
               label="Swipe up to confirm"
               assertion="Confirms this transcription matches the paper. It does not accept charges or touch stock. A one-time seal is taken when the gesture starts."
               disabled={verify.isPending || lines === undefined}
               onChallenge={() => documentsApi.mintVerifySeal(doc.id)}
-              onConfirm={(challenge) => verify.mutate(challenge)}
+              onConfirm={(challenge) => {
+                sealByKeyboard.current = keyDown.current && !!sealWrap.current?.contains(document.activeElement);
+                verify.mutate(challenge);
+              }}
             />
+            </div>
             {verify.isError && (
               <p role="alert" style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--ink-1, #211C16)', margin: '6px 0 0' }}>
                 {sentence(serverMessage(verify.error, 'The confirmation did not go through.'))}{' '}
@@ -1730,6 +1745,14 @@ export default function ReceiptsNext() {
     const at = reviewRows.findIndex((d) => d.id === id);
     return at >= 0 ? (reviewRows[at + 1]?.id ?? null) : null;
   };
+  // r108: after a keyboard seal the next row takes focus, so j/k work without a Tab back.
+  const focusAfterSeal = useRef<string | null>(null);
+  useEffect(() => {
+    const id = focusAfterSeal.current;
+    if (!id || selectedId !== id) return;
+    focusAfterSeal.current = null;
+    (document.querySelector(`[data-rc-id="${id}"]`) as HTMLElement | null)?.focus();
+  }, [selectedId]);
   const [rovingId, setRovingId] = useState<string | null>(null);
   const rovingRowId = reviewRows.some((d) => d.id === rovingId)
     ? rovingId
@@ -2290,7 +2313,12 @@ export default function ReceiptsNext() {
                     <CanonicalDocumentPage documentId={selected.id} embedded />
                   </Suspense>
                 </div>
-                <DocView key={selected.id} doc={selected} onVerified={() => select(nextAfter(selected.id))} />
+                <DocView key={selected.id} doc={selected} onVerified={(viaKeyboard) => {
+                    const next = nextAfter(selected.id);
+                    if (viaKeyboard && next) focusAfterSeal.current = next;
+                    select(next);
+                  }}
+                />
               </>
             ) : selectedId && data.queueKnown && data.cleanKnown && data.verifiedKnown ? (
               /*
