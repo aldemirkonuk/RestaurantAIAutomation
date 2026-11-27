@@ -460,7 +460,11 @@ export function WebSocketProvider({
   useEffect(() => {
     console.log('🔌 Initializing WebSocket connection...')
     
-    if (!authToken || !resolvedUserId) {
+    // No house, no socket: the house's room is what a socket is for, and a
+    // session in no house (a first sign-in, before the first house exists) has
+    // nothing to listen to. Opening one anyway was refused at the gateway and
+    // re-opened on every reload (r65 F2). It opens when a house does.
+    if (!authToken || !resolvedUserId || !resolvedRestaurantId) {
       setConnectionState(ConnectionState.DISCONNECTED)
       return
     }
