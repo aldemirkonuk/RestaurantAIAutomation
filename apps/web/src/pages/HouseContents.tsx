@@ -231,7 +231,11 @@ export default function HouseContents() {
               )}
             </div>
           ) : vendorRead === 'reading' ? (
-            <p className="py-6 font-serif text-2xl text-[#b7b2a8]" role="status" data-testid="house-vendor-reading">
+            <p
+              className="min-h-[327px] py-6 font-serif text-2xl text-[#b7b2a8] sm:min-h-[303px]"
+              role="status"
+              data-testid="house-vendor-reading"
+            >
               Looking for your vendor…
             </p>
           ) : vendorRead === 'on-book' ? (

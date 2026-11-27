@@ -62,6 +62,15 @@ describe('/house waits for its setup read before asking for a vendor (gap 1)', (
     expect(screen.getByText('Looking at your menu…')).toBeInTheDocument()
   })
 
+  it('holds the height of the ask while the read is out, so a late read moves nothing', () => {
+    getOnboardingProgress.mockReturnValue(new Promise(() => undefined))
+    at(<HouseContents />)
+    // jsdom has no layout; the pin is the measured one (327 px at 375, 303 from 640).
+    const line = screen.getByTestId('house-vendor-reading')
+    expect(line.className).toContain('min-h-[327px]')
+    expect(line.className).toContain('sm:min-h-[303px]')
+  })
+
   it('a house with a vendor never shows the form, before or after the read', async () => {
     const read = pending<unknown>()
     getOnboardingProgress.mockReturnValue(read.promise)
