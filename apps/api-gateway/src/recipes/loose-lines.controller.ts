@@ -1,4 +1,4 @@
-import { Controller, Get, Param, ParseUUIDPipe, UseGuards } from "@nestjs/common";
+import { Controller, Get, Param, ParseUUIDPipe, Query, UseGuards } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
@@ -18,8 +18,12 @@ export class LooseLinesController {
 
   @Get(":restaurantId/drinks/loose-lines")
   @Roles("owner", "manager")
-  @ApiOperation({ summary: "Every counted line of a drink's current recipe with no shelf good, grouped by name (owner/manager); writes nothing" })
-  looseLines(@Param("restaurantId", ParseUUIDPipe) restaurantId: string) {
-    return this.loose.looseLines(restaurantId);
+  @ApiOperation({ summary: "Every counted line of a drink's current recipe with no shelf good, or with ?linkedTo= the lines of that good, grouped by name (owner/manager); writes nothing" })
+  looseLines(
+    @Param("restaurantId", ParseUUIDPipe) restaurantId: string,
+    /** Given, the lines that pour from this good instead (swap a good, r108 drinks-g10). */
+    @Query("linkedTo", new ParseUUIDPipe({ optional: true })) linkedTo?: string,
+  ) {
+    return this.loose.looseLines(restaurantId, linkedTo);
   }
 }

@@ -34,6 +34,11 @@ function fakeDb(tables: Tables) {
       in: (c: string, vs: unknown[]) => (filters.push((r) => vs.includes(r[c])), q),
       order: () => q,
       range: (a: number, b: number) => ((range = [a, b]), q),
+      maybeSingle: () => {
+        reads.push({ table, house });
+        const rows = (tables[table] ?? []).filter((r) => filters.every((f) => f(r)));
+        return Promise.resolve({ data: rows[0] ?? null, error: null });
+      },
       then: (ok: (v: unknown) => unknown) => {
         reads.push({ table, house });
         const rows = (tables[table] ?? []).filter((r) => filters.every((f) => f(r)));
@@ -62,6 +67,7 @@ const line = (over: Row): Row => ({
   qty_entered: "30",
   unit_code: "ml",
   usable_pct: null,
+  base_unit: "ml10",
   ...over,
 });
 
@@ -122,8 +128,8 @@ describe("loose lines: grouping", () => {
     expect(Object.keys(byKey).sort()).toEqual(["campari", "lime juice", "sweet vermouth"]);
     // Gimlet sorts before Negroni; each place is the line's index in the drink's ordered lines.
     expect(byKey.campari.lines).toEqual([
-      { cocktailId: "c-gim", index: 1 },
-      { cocktailId: "c-neg", index: 2 },
+      { cocktailId: "c-gim", index: 1, baseUnit: "ml10" },
+      { cocktailId: "c-neg", index: 2, baseUnit: "ml10" },
     ]);
     expect(byKey.campari.drinkCount).toBe(2);
     // One live good folds to "campari": proposed.
@@ -206,7 +212,65 @@ describe("loose lines: grouping", () => {
   it("a house with no loose line answers an empty queue", async () => {
     const t = house();
     t.recipe_lines = t.recipe_lines.filter((l) => l.inventory_id || l.role !== "stocked");
-    expect(await svc(t).looseLines(A)).toEqual({ lineCount: 0, drinkCount: 0, groups: [], drinks: [] });
+    expect(await svc(t).looseLines(A)).toEqual({ lineCount: 0, drinkCount: 0, dishCount: 0, groups: [], drinks: [] });
+  });
+});
+
+describe("loose lines: ?linkedTo= a good (r108 drinks-g10, swap a good)", () => {
+  function withDishes(): Tables {
+    const t = house();
+    t.restaurant_inventory.push({ id: "i-gin", restaurant_id: A, display_name: "Gin 700 ml", kind: "spirit", uom: "bottle", bottle_size_ml: 700, is_active: true, deleted_at: null });
+    t.recipe_lines.push(
+      line({ restaurant_id: A, version_id: "v-gim1", position: 2, label: "Gin", inventory_id: "i-gin", unit_code: "each", base_unit: "each_milli", qty_entered: "1" }),
+      line({ restaurant_id: A, version_id: "v-neg1", position: 0, label: "Gin", inventory_id: "i-gin" }),
+      line({ restaurant_id: A, version_id: "v-dish1", position: 0, label: "Gin", inventory_id: "i-gin" }),
+      line({ restaurant_id: A, version_id: "v-dish2", position: 0, label: "Gin", inventory_id: "i-gin" }),
+      line({ restaurant_id: A, version_id: "v-dish3", position: 0, label: "Gin", inventory_id: "i-gin" }),
+    );
+    t.recipe_current_dish = [
+      { restaurant_id: A, dish_id: "d-1", version_id: "v-dish1" },
+      { restaurant_id: A, dish_id: "d-2", version_id: "v-dish2" },
+      { restaurant_id: B, dish_id: "d-b", version_id: "v-dish3" },
+    ];
+    t.dishes = [
+      { id: "d-1", restaurant_id: A, deleted_at: null },
+      { id: "d-2", restaurant_id: A, deleted_at: "2026-02-02" },
+      { id: "d-b", restaurant_id: B, deleted_at: null },
+    ];
+    return t;
+  }
+
+  it("lists the lines that pour from the good in current drink versions, with each line's base unit", async () => {
+    const out = await svc(withDishes()).looseLines(A, "i-gin");
+    expect(out.lineCount).toBe(2);
+    expect(out.drinkCount).toBe(2);
+    expect(out.groups.flatMap((g) => g.lines)).toEqual([
+      { cocktailId: "c-gim", index: 2, baseUnit: "each_milli" },
+      { cocktailId: "c-neg", index: 0, baseUnit: "ml10" },
+    ]);
+    // The whole versions come back, in the PUT's shape, linked lines and all.
+    expect(out.drinks.map((d) => d.cocktailId)).toEqual(["c-gim", "c-neg"]);
+    expect(out.drinks[1].lines[0]).toEqual({ role: "stocked", componentId: null, inventoryId: "i-gin", label: "Gin", qty: 30, unit: "ml", usablePct: null });
+  });
+
+  it("counts the live dishes of this house that use it too, and changes none", async () => {
+    const out = await svc(withDishes()).looseLines(A, "i-gin");
+    expect(out.dishCount).toBe(1);
+    expect(out.drinks.map((d) => d.cocktailId)).not.toContain("d-1");
+  });
+
+  it("another house's good is not found, and every read names the house", async () => {
+    await expect(svc(withDishes()).looseLines(A, "i-verm-b")).rejects.toMatchObject({ status: 404 });
+    const { db, reads } = fakeDb(withDishes());
+    await new LooseLinesService(db, new DishesService(db, null as any)).looseLines(A, "i-gin");
+    expect(reads.map((r) => r.table)).toEqual(expect.arrayContaining(["restaurant_inventory", "recipe_current_dish", "dishes"]));
+    expect(reads.filter((r) => r.house !== A)).toEqual([]);
+  });
+
+  it("without linkedTo the queue is the loose lines only: a linked line is never in it", async () => {
+    const out = await svc(withDishes()).looseLines(A);
+    expect(out.groups.map((g) => g.key)).not.toContain("gin");
+    expect(out.dishCount).toBe(0);
   });
 });
 
@@ -214,11 +278,12 @@ describe("loose lines: who reads them", () => {
   let app: INestApplication;
   let base: string;
   const calls: string[] = [];
+  const linked: unknown[] = [];
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [LooseLinesController],
-      providers: [{ provide: LooseLinesService, useValue: { looseLines: async (r: string) => (calls.push(r), { lineCount: 0 }) } }],
+      providers: [{ provide: LooseLinesService, useValue: { looseLines: async (r: string, l?: string) => (calls.push(r), l && linked.push(l), { lineCount: 0 }) } }],
     })
       .overrideGuard(JwtAuthGuard)
       .useValue({
@@ -238,7 +303,15 @@ describe("loose lines: who reads them", () => {
   });
   afterAll(() => app.close());
 
-  const get = (role: string) => fetch(`${base}/recipes/${A}/drinks/loose-lines`, { headers: { "x-test-role": role } });
+  const get = (role: string, qs = "") => fetch(`${base}/recipes/${A}/drinks/loose-lines${qs}`, { headers: { "x-test-role": role } });
+
+  it("passes ?linkedTo= on, and refuses one that is not an id with 400", async () => {
+    calls.length = 0;
+    expect((await get("manager", "?linkedTo=not-an-id")).status).toBe(400);
+    expect(calls).toEqual([]);
+    expect((await get("manager", `?linkedTo=${B}`)).status).toBe(200);
+    expect(linked).toEqual([B]);
+  });
 
   it("refuses staff with 403 and never reaches the service", async () => {
     calls.length = 0;
