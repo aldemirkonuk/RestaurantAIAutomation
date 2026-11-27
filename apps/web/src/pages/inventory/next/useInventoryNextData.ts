@@ -105,6 +105,13 @@ export interface InvRow {
    */
   bottleSizeRecordedMl?: number | null;
   /**
+   * The house's own bottle size and nothing else. The library's size is
+   * `integer DEFAULT 750 NOT NULL`, so a library row that kept its default
+   * cannot be told from a recorded 750; the pack line on the nutrition card
+   * counts only this, so a 375 ml or 1.5 L wine is never read as 750 ml.
+   */
+  bottleSizeHouseMl?: number | null;
+  /**
    * The good's own unit (house item `uom`): 'g', 'ml', 'each', 'bottle', 'keg'.
    * Null = none recorded (a drink, so bottles). Absent on a row not built by
    * toRow: the list then says the plain count.
@@ -302,6 +309,7 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
     grape: text(fromRow(r.libraryGrape, w?.grapeVariety)),
     bottleSizeMl: num(r.bottleSizeMl) ?? num(w?.bottleSizeMl),
     bottleSizeRecordedMl: ('bottle_size_ml' in r ? num(r.bottle_size_ml) : num(r.bottleSizeMl)) ?? num(w?.bottleSizeMl),
+    bottleSizeHouseMl: 'bottle_size_ml' in r ? num(r.bottle_size_ml) : num(r.bottleSizeMl),
     uom: text(r.uom),
     stock,
     shadow: num(r.shadowStock),
