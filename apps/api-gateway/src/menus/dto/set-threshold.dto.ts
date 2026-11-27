@@ -1,9 +1,11 @@
 import { Type } from "class-transformer";
-import { IsInt, IsUUID, Max, Min } from "class-validator";
+import { IsInt, IsOptional, IsUUID, Max, Min } from "class-validator";
 
 export class SetThresholdDto {
+  /** Optional: the session's house is used. When sent it must be that house. */
+  @IsOptional()
   @IsUUID()
-  restaurantId: string;
+  restaurantId?: string;
 
   @Type(() => Number)
   @IsInt()
