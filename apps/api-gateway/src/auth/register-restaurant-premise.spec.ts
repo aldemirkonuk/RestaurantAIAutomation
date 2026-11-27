@@ -27,6 +27,8 @@ function makeService(userRow: Record<string, unknown> = {}) {
       },
       delete: () => c,
       eq: () => c,
+      or: () => c,
+      limit: () => c,
       maybeSingle: async () => ({ data: null, error: null }),
       single: async () => result,
       then: (resolve: (v: unknown) => unknown) =>
