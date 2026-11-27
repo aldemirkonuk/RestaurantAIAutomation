@@ -28,10 +28,11 @@ vi.mock('../../../services/api/inventory', async (orig) => ({
   getItemNutrition: api.nutrition,
 }));
 vi.mock('./RowDropdown', () => ({
-  default: (p: { sections?: string[]; actions?: boolean; uom?: string | null; kind?: string | null; settled?: unknown }) => (
+  default: (p: { sections?: string[]; actions?: boolean; uom?: string | null; kind?: string | null; settled?: unknown; onOrder?: unknown }) => (
     <div
       data-testid="row-dropdown"
       data-settled={p.settled === undefined ? 'absent' : JSON.stringify(p.settled)}
+      data-onorder={p.onOrder === undefined ? 'absent' : typeof p.onOrder === 'string' ? p.onOrder : 'read'}
       data-sections={p.sections === undefined ? 'all' : p.sections.join(',')}
       data-actions={String(p.actions !== false)}
       data-uom={p.uom ?? ''}
@@ -879,5 +880,19 @@ describe('the first-screen taste line', () => {
     await waitFor(() => expect(api.figures).toHaveBeenCalled());
     expect(screen.queryByTestId('taste-line')).toBeNull();
     expect(api.taste).not.toHaveBeenCalled();
+  });
+});
+
+describe('the drawer hands the acts what is on order (r110 g5)', () => {
+  it('an older gateway that sends no onOrder is handed on as unread, never as no orders at all', async () => {
+    open(row({ stock: 4, par: 10 }));
+    await waitFor(() => expect(screen.getByTestId('ivd-card-cost').textContent).toContain('Up 8% since August'));
+    expect(screen.getAllByTestId('row-dropdown')[0].getAttribute('data-onorder')).toBe('failed');
+  });
+
+  it('a gateway that sends onOrder hands it on as read', async () => {
+    api.figures.mockResolvedValue(figures({ onOrder: { readable: true, source: 'x', sent: [], unsent: [], arrivingInBookUnit: 0 } }));
+    open(row({ stock: 4, par: 10 }));
+    await waitFor(() => expect(screen.getAllByTestId('row-dropdown')[0].getAttribute('data-onorder')).toBe('read'));
   });
 });
