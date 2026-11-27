@@ -692,6 +692,30 @@ export async function repriceMenu(
   return response.data
 }
 
+/** What `POST /menu-versions/:menuId/draft` answers (r109 menu-g5). */
+export interface MenuDraftCopy {
+  /** The NEW draft: the current menu is not touched. */
+  menuId: string
+  name: string
+  lines: number
+  /** The copy moment; the draft's plan lists first every price a person set after it. */
+  copiedAt: string
+  /** The house's zone, for saying that moment on its clock; null when not recorded. */
+  timezone: string | null
+}
+
+/** Copy the current menu as it is into a new draft to edit (r109 menu-g5). Owner or manager. */
+export async function copyMenuIntoDraft(menuId: string): Promise<MenuDraftCopy> {
+  const response = await apiClient.post<MenuDraftCopy>(`/menu-versions/${menuId}/draft`)
+  return response.data
+}
+
+/** One kept menu and its lines (`GET /menu-versions/:menuId`). */
+export async function getKeptMenu(menuId: string): Promise<{ items: MenuLine[] }> {
+  const response = await apiClient.get<{ items: MenuLine[] }>(`/menu-versions/${menuId}`)
+  return response.data
+}
+
 /**
  * Take a failed read off the kept list (r105 menu-6). Owner or manager; the
  * gateway retires the read (the file is kept), refuses anyone else (403) and
