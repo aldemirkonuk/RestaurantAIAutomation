@@ -77,7 +77,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // fails-closed: no row, a read error or a thrown client all mean OFF
     // (communications/inbox/house-inbox.service.ts `isEnabled`).
     defaultValue: false,
-    readBy: "communications/inbox/house-inbox.service.ts:294",
+    readBy: "communications/inbox/house-inbox.service.ts#if (!(await this.isEnabled(restaurantId)))",
   },
   {
     key: "mudavym_design_arrival",
