@@ -32,6 +32,21 @@ describe("verified papers CSV: exact decimals (r106 g5)", () => {
     expect(csv).toContain("A-1,2026-11-01,invoice,Acme,USD,10.10,,0.30,10.40,not stated");
     expect(csv.match(/^Total,/gm)?.length).toBe(2);
   });
+  it("a column only some papers printed totals the ones that did and says how many did not", () => {
+    // 9 TRY papers print tax, 1 is tax-inclusive and prints none; every paper prints a total.
+    const papers = Array.from({ length: 10 }, (_, i) =>
+      row({ currency: "TRY", doc_number: `T-${i}`, subtotal: null, freight: null, tax: i === 9 ? null : "1.00", total: "10.00" }),
+    );
+    const total = verifiedCsv(papers).trim().split("\r\n").pop()!;
+    expect(total).toBe("Total,,,,TRY,,,9.00,100.00,1 of 10 papers prints no tax; not in this total");
+  });
+  it("an unread total is said too, and a column nobody or everybody printed needs no word", () => {
+    const papers = [row({ total: null }), row({ total: "5.00" }), row({ total: "6.00" })];
+    const total = verifiedCsv(papers).trim().split("\r\n").pop()!;
+    expect(total).toBe("Total,,,,USD,30.30,,0.90,11.00,1 of 3 papers prints no total; not in this total");
+    // freight printed by none: empty, no note for it
+    expect(total).not.toContain("freight");
+  });
   it("a vendor name cannot open as a formula", () => {
     expect(verifiedCsv([row({ vendor: "=HYPERLINK(1)" })])).toContain("'=HYPERLINK(1)");
   });
