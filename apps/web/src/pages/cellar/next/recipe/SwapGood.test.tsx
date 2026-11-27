@@ -320,6 +320,18 @@ describe('replace a good in dishes too, from the drawer (r110 inventory g4)', ()
     expect(h.put.mock.calls[0][1].lines[2]).toEqual({ role: 'made', inventoryId: null, label: 'Syrup', qty: 20, unit: 'ml', componentId: 'd-syrup', usablePct: null });
   });
 
+  it('the dishes are still offered when the drinks could not be read', async () => {
+    h.get.mockImplementation(async (url: string) => {
+      if (url === '/settings/currency') return { data: { restaurantId: RID, code: 'TRY', country: 'TR', readable: true, reason: null, statedAt: null } };
+      if (url.includes('loose-lines')) throw new Error('down');
+      if (url.endsWith('/dishes')) return { data: { dishes } };
+      return { data: dishRecipe['d-tart'] };
+    });
+    const plan = await to('Better gin');
+    expect(screen.getByRole('alert')).toHaveTextContent('Which drinks use House gin could not be read just now.');
+    expect(plan).toHaveTextContent('Gin tart:');
+  });
+
   it('a failed read of which dishes use it is said, never "none"', async () => {
     h.get.mockImplementation(async (url: string) => {
       if (url === '/settings/currency') return { data: { restaurantId: RID, code: 'TRY', country: 'TR', readable: true, reason: null, statedAt: null } };
