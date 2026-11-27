@@ -389,7 +389,7 @@ function paidLine(l: LineRow): LineRow {
 /**
  * Each invoice's lines with its corrections laid over them (r109); a door
  * count's lines as stored. A corrected line kind comes back on its paper's
- * `extracted_lines`, the only place costing reads it (r110, DD-r109-33).
+ * `extracted_lines`, the only place costing reads it (r110 invoices-8, D-r110-8b).
  */
 function overlaid(
   rows: LineRow[],

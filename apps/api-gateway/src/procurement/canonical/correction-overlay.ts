@@ -35,7 +35,7 @@ const COST_COLUMNS: Record<string, Copy> = {
 
 /**
  * What a line IS moves a cost too: goods are stocked, a deposit or a fee is a
- * charge spread over the goods (r110, DD-r109-33). Costing reads it from the
+ * charge spread over the goods (r110 invoices-8, D-r110-8b). Costing reads it from the
  * intake snapshot (`extracted_lines[].lineKind`, keyed on `lineNo`), so it is
  * laid over the header's `extracted_lines`, never over a line column.
  */
