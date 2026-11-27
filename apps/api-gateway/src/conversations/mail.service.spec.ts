@@ -197,7 +197,8 @@ describe("listPeople", () => {
   it("a search for the unanswered asks each named person's read for the unanswered too", async () => {
     resolve = (q) => ({
       data:
-        q.kind === "from" && q.calls.some((c) => c.method === "ilike")
+        // The guest names are read whole and folded in code since #2073's r105 review (no ILIKE).
+        q.kind === "from" && q.name === "procurement_conversations" && q.calls.some((c) => c.method === "order")
           ? [{ from_address: "ayse@g.example", from_header: "Ayşe <ayse@g.example>" }]
           : [],
       error: null,

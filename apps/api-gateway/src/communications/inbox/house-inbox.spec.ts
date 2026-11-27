@@ -426,8 +426,8 @@ describe("a reply from the book reaches the book, and nothing else does", () => 
     ).toHaveLength(0);
   });
 
-  // QA round 24, item 2: the header map keeps the sender's last line; the
-  // event carries Gmail's topmost one.
+  // QA round 24, item 2: the event carries Gmail's topmost line (#996), and
+  // since #2288 the header map keeps the first line too, so neither says FORGED.
   it("carries Gmail's own Authentication-Results, never a lower one the sender wrote", async () => {
     const GMAIL =
       "mx.google.com; spf=fail smtp.mailfrom=fikri@fikritarim.com; dmarc=fail header.from=fikritarim.com";
@@ -454,7 +454,7 @@ describe("a reply from the book reaches the book, and nothing else does", () => 
 
     const event = publish.mock.calls[0][2];
     expect(event.ingress_authentication_results).toBe(GMAIL);
-    expect(event.headers["authentication-results"]).toBe(FORGED);
+    expect(event.headers["authentication-results"]).toBe(GMAIL);
   });
 
   it("discards a message Gmail returned that the book does not hold", async () => {

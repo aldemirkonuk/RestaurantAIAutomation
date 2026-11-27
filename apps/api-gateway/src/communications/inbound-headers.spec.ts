@@ -102,7 +102,8 @@ describe("sender: the parsed addr-spec, never a display name", () => {
 
 describe("the provider lookup matches the sender exactly (audit follow-up, PR 951)", () => {
   it("a wildcard sender is parsed as written, then escaped for the lookup", () => {
-    expect(senderAddress("<%@%>")).toBe("%@%");
+    // #955: a From that two readings do not agree on names nobody, so `<%@%>` never reaches the lookup.
+    expect(senderAddress("<%@%>")).toBeNull();
     expect(ilikeExactly("%@%")).toBe("\\%@\\%");
     expect(ilikeExactly("a_b*c\\d@x.com")).toBe("a\\_b\\*c\\\\d@x.com");
     expect(likeMatches("sales@bigdist.com", ilikeExactly("%@%"))).toBe(false);
@@ -325,7 +326,8 @@ describe("RabbitMqBridgeService.handleInboundEmail attribution", () => {
       procurement_orders: [OPEN],
     });
     await svc.handleInboundEmail(
-      inbound({ from: "Ayse <ayse_k@bigdist.com>", gmail_message_id: "mU" }),
+      // The receiving house is named, as every inbound letter must be since #985.
+      inbound({ restaurant_id: "house-A", from: "Ayse <ayse_k@bigdist.com>", gmail_message_id: "mU" }),
     );
     const rows = inserts
       .filter((i) => i.table === "procurement_conversations")
