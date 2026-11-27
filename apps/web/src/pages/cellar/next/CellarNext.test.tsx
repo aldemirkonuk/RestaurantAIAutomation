@@ -84,6 +84,9 @@ vi.mock('./recipe/RecipeSheet', () => ({
     <div data-testid="recipe-sheet-mounted" data-hold-room={holdRoom ? 'true' : undefined}>{cocktailId}</div>
   ),
 }));
+// The spec book button reads the signed-in house; this page suite mounts no AuthProvider. Its own suite is
+// recipe/RecipeBook.test.tsx.
+vi.mock('./recipe/RecipeBook', () => ({ default: () => null }));
 // The cocktail list prints through the house's money (`useHouseMoney`), which
 // reads the signed-in house; this page suite mounts no AuthProvider, so the
 // house is a lira one here. Its own behaviour is CocktailRegister.recipe.test.
