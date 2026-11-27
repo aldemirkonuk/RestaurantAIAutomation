@@ -15,6 +15,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { InviteTeamDialog } from './InviteTeamDialog'
 import { apiClient } from '../../services/api/client'
+import { toast } from 'sonner'
 import { claimMudavymShell, resetMudavymShell } from '../../lib/mudavym/shellGround'
 
 vi.mock('../../services/api/client', () => ({
@@ -138,5 +139,59 @@ describe('with a Mudavym page on screen', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Generate Invite Link' })[0])
     await waitFor(() => expect(screen.getAllByText('AB12CD34').length).toBeGreaterThan(0))
     expect(screen.getAllByText(/It expires Sep 11, 2026\./).length).toBeGreaterThan(0)
+  })
+})
+
+describe('least privilege and an honest copy (QA round 4 H3)', () => {
+  const setClipboard = (writeText: unknown) =>
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: writeText === undefined ? undefined : { writeText } })
+
+  it('mints a staff invite when the picker is left alone, on both branches', async () => {
+    draw(true, { anchored: true })
+    fireEvent.click(screen.getByRole('button', { name: 'Generate Invite Link' }))
+    await waitFor(() => expect(vi.mocked(apiClient.post)).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(apiClient.post).mock.calls[0][1]).toMatchObject({ role: 'staff' })
+
+    resetMudavymShell()
+    draw(false)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Generate Invite Link' })[0])
+    await waitFor(() => expect(vi.mocked(apiClient.post)).toHaveBeenCalledTimes(2))
+    expect(vi.mocked(apiClient.post).mock.calls[1][1]).toMatchObject({ role: 'staff' })
+  })
+
+  it('a cancelled dialog opens again on Staff', async () => {
+    draw(true, { anchored: true })
+    fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'manager' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect((screen.getByLabelText('Role') as HTMLSelectElement).value).toBe('staff')
+  })
+
+  it('says copied only once the browser copied', async () => {
+    vi.mocked(toast.success).mockReset()
+    vi.mocked(toast.error).mockReset()
+    const writeText = vi.fn(async () => undefined)
+    setClipboard(writeText)
+    draw(true, { anchored: true })
+    fireEvent.click(screen.getByRole('button', { name: 'Generate Invite Link' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Copy/ }))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(writeText).toHaveBeenCalledWith(INVITE.inviteUrl)
+    expect(screen.getByRole('button', { name: /Copied!/ })).toBeInTheDocument()
+  })
+
+  it('a refused or missing clipboard says the link was not copied', async () => {
+    for (const clipboard of [vi.fn(async () => { throw new Error('denied') }), undefined]) {
+      resetMudavymShell()
+      vi.mocked(toast.success).mockReset()
+      vi.mocked(toast.error).mockReset()
+      setClipboard(clipboard)
+      const view = draw(true, { anchored: true })
+      fireEvent.click(screen.getByRole('button', { name: 'Generate Invite Link' }))
+      fireEvent.click(await screen.findByRole('button', { name: /Copy/ }))
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith('The link was not copied. Select it and copy it by hand.'))
+      expect(toast.success).not.toHaveBeenCalled()
+      expect(screen.queryByRole('button', { name: /Copied!/ })).toBeNull()
+      view.unmount()
+    }
   })
 })
