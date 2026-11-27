@@ -20,8 +20,8 @@ const LINE = {
   line_total: 220.8, order_line_id: null, allowance: null,
 }
 
-async function mockGateway(page: Page) {
-  let queue = [doc('d1', 'INV-88'), doc('d2', 'INV-89'), doc('d3', 'INV-90')]
+async function mockGateway(page: Page, only?: number) {
+  let queue = [doc('d1', 'INV-88'), doc('d2', 'INV-89'), doc('d3', 'INV-90')].slice(0, only ?? 3)
   await page.route('**/api/v1/**', (route) => {
     const req = route.request()
     const url = new URL(req.url())
@@ -92,5 +92,24 @@ for (const [name, width, landing] of [
       await expect(open()).toContainText('INV-90')
       await expect(pane).toBeFocused()
     }
+  })
+}
+
+// r109: the LAST paper has no next row. Focus goes to the lane it left, not BODY.
+for (const width of [1280, 1600]) {
+  test(`a keyboard seal of the last paper keeps focus on the review lane: ${width}`, async ({ page }) => {
+    test.setTimeout(60000)
+    await page.setViewportSize({ width, height: 900 })
+    await mockAuthState(page, ['developer'])
+    await mockGateway(page, 1)
+    await page.goto('/receipts')
+    await page.getByRole('button', { name: 'Not now' }).click({ timeout: 8000 }).catch(() => {})
+    await page.locator('button[data-rc-id]', { hasText: 'INV-88' }).click()
+    const swipe = page.getByRole('button', { name: /Swipe up to confirm/ })
+    await expect(swipe).toBeEnabled({ timeout: 15000 })
+    await swipe.focus()
+    await page.keyboard.down('Space')
+    await expect(page.getByRole('region', { name: 'Awaiting review' })).toBeFocused({ timeout: 10000 })
+    await page.keyboard.up('Space')
   })
 }
