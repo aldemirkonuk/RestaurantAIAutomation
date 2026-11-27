@@ -78,6 +78,8 @@ export interface NutritionCardProps {
   restaurantId: string | null;
   /** Owners and managers may change what is recorded; staff read it. */
   canManage: boolean;
+  /** restaurants.country, as the house's currency read answers it; absent when unread. */
+  country?: string | null;
 }
 
 export interface ItemDrawerProps {
@@ -370,7 +372,7 @@ export default function ItemDrawer(props: ItemDrawerProps) {
           {hasContents ? (
             <div className="ivd-nutrition" data-slot="NutritionCard" data-testid="ivd-nutrition-slot">
               {evidence !== 'inside' ? <h4 className="ivd-used-h">{CARD_TITLE.inside}</h4> : null}
-              <NutritionCard row={row} house={house} restaurantId={restaurantId} canManage={canManage} />
+              <NutritionCard row={row} house={house} restaurantId={restaurantId} canManage={canManage} country={currency.country ?? null} />
             </div>
           ) : null}
           {hasContents ? (
