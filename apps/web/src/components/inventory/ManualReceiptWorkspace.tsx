@@ -247,19 +247,21 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
   return createPortal(
     <>
       {/* The overlay returns null when closed, so it never stays mounted to
-          exit: no exit props (ADR 0112, no overlay exit animation). Entry
-          settles on the house token; under reduced motion it is an instant
-          swap. */}
+          exit: no exit props (ADR 0112, no overlay exit animation). No scrim
+          fade either (MOTIONS.md): the scrim is the panel's parent, so a
+          fading scrim would multiply the panel's own opacity. Only the panel
+          settles, 6px up with opacity on the house token; under reduced motion
+          it is an instant swap. */}
       <motion.div
-        initial={reduced ? false : { opacity: 0 }}
+        initial={false}
         animate={{ opacity: 1 }}
         transition={{ duration: settle.ms / 1000, ease: HOUSE_EASE }}
         className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-3"
         onClick={close}
       >
         <motion.div
-          initial={reduced ? false : { opacity: 0, scale: 0.97, y: 16 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
+          initial={reduced ? false : { opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
           transition={{ duration: settle.ms / 1000, ease: HOUSE_EASE }}
           onClick={(e) => e.stopPropagation()}
           className="bg-white rounded-3xl shadow-2xl w-full max-w-6xl h-[94vh] overflow-hidden flex flex-col"
