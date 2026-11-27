@@ -249,14 +249,19 @@ describe('useCommsNextData — sent is the book figure, replies are the Mail cou
   });
 });
 
+// Today is inside the 30 days, so a 30-day count below today's is a broken count. It is
+// unknown (ADR 0020), never today's figure standing in as the 30-day one: that states a
+// floor as the number. #2478 replaced #2055's substitution with null.
 describe('useCommsNextData — the 30-day figure is never below today (r104 mail-gap g5)', () => {
-  it('shows today when a server counted the 30 days narrower than the day', async () => {
+  it('says unknown when a server counted the 30 days narrower than the day', async () => {
     mockApiGet.mockImplementation((url: string) =>
       Promise.resolve({ data: url === '/mail/summary' ? { inLast30: 18, inToday: 8997 } : [] }),
     );
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { result } = renderHook(() => useCommsNextData(), { wrapper: wrapper(qc) });
-    await waitFor(() => expect(result.current.glance.repliesLast30).toBe(8997));
+    // The summary has landed (so null below is the verdict, not the loading state).
+    await waitFor(() => expect(qc.getQueryCache().findAll().some((q) => (q.state.data as { inToday?: number } | undefined)?.inToday === 8997)).toBe(true));
+    await waitFor(() => expect(result.current.glance.repliesLast30).toBeNull());
   });
 });
 
