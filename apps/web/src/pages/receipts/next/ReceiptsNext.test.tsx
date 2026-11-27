@@ -1347,7 +1347,10 @@ describe('ReceiptsNext — a lane holds its place while it is read (r41 invoices
     await screen.findByText(/Reading the queue/);
     const rows = (slot: string) =>
       screen.getByTestId(`lane-slot-${slot}`).querySelectorAll('[style*="height: 52px"]').length;
-    expect([rows('queue'), rows('clean'), rows('verified')]).toEqual([7, 4, 6]);
+    // The verified lane lands as ONE collapsed header line, so even a house that
+    // once stored 6 (or 12) verified rows draws the header only, never a tall
+    // outline that collapses and pushes everything below it.
+    expect([rows('queue'), rows('clean'), rows('verified')]).toEqual([7, 4, 0]);
     expect(screen.getByTestId('detail-placeholder').getAttribute('style')).toContain('min-height: 41px');
     expect(container.querySelectorAll('[data-lane-outline]').length).toBe(3);
   });
@@ -1370,6 +1373,18 @@ describe('ReceiptsNext — a lane holds its place while it is read (r41 invoices
     await screen.findByText(/INV-88/);
     await waitFor(() => expect(window.localStorage.getItem('receipts.laneRows.rest-A')).not.toBeNull());
     expect(JSON.parse(window.localStorage.getItem('receipts.laneRows.rest-A') as string).queue).toBeGreaterThan(0);
+  });
+
+  it('remembers the verified lane as the header line it opens as, however many papers it holds', async () => {
+    window.localStorage.removeItem('receipts.laneRows.rest-A');
+    api.verified = Array.from({ length: 12 }, (_, i) =>
+      doc({ id: `v-${i}`, status: 'verified' as ProcurementDocument['status'] }),
+    );
+    render(<ReceiptsNext />, { wrapper });
+    await screen.findByText(/INV-88/);
+    await screen.findByText(/Verified ·/);
+    await waitFor(() => expect(window.localStorage.getItem('receipts.laneRows.rest-A')).not.toBeNull());
+    expect(JSON.parse(window.localStorage.getItem('receipts.laneRows.rest-A') as string).verified).toBe(0);
   });
 
   it('a held slot has no animation or transition, so reduced motion collapses it with none (ADR 0112)', async () => {

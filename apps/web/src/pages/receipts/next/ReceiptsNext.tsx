@@ -1622,7 +1622,11 @@ export default function ReceiptsNext() {
   const allLanesKnown = data.queueKnown && data.cleanKnown && data.verifiedKnown;
   const rememberedQueue = data.queue.length;
   const rememberedClean = data.clean.length;
-  const rememberedVerified = data.verified.length;
+  // The verified lane opens COLLAPSED to one header line (showVerified starts
+  // false), so what it held is not what it will draw: remembering its rows drew
+  // an outline ~600px tall that collapsed when the read landed and moved
+  // everything below it. Its slot is the header only.
+  const rememberedVerified = 0;
   useEffect(() => {
     if (!allLanesKnown || data.isError) return;
     writeLaneRows(laneRid, {
@@ -2044,7 +2048,7 @@ export default function ReceiptsNext() {
 
             {(data.verifiedReading || (data.lanesSettling && data.verifiedKnown && data.verified.length === 0)) && (
               <div style={{ marginTop: 16 }}>
-                <LaneOutline rows={remembered?.verified ?? 0} heading slot="verified" />
+                <LaneOutline rows={0} heading slot="verified" />
               </div>
             )}
 
