@@ -212,6 +212,10 @@
    cost cell carries its second line, so the rows moved by 18 px each when the figures landed (r105 walk, FAIL 14).
    The height is a floor, so a taller row still grows. No transition, and none under reduced motion (ADR 0112). */
 .cl-table--drinks tbody tr { height: 53px; }
+/* The Allergens column is 170 px from the header's first paint. It was 125 px until its sentences landed and then
+   170, which shifted the columns beside it (r108 walk N2: staff at 1440, CLS 0.054 in 6 of 12 runs, over the 0.05 line).
+   A floor, so a longer sentence still wraps inside it. No transition, and none under reduced motion (ADR 0112). */
+.cl-table--drinks th.cl-col-allergens { width: 170px; min-width: 170px; }
 .cl-table tbody tr:hover td {
   background: var(--paper-1);
 }
@@ -1179,6 +1183,13 @@ textarea.cl-field {
    Its two-row room is held from first paint. No transition, and none under reduced motion (ADR 0112). */
 @media (max-width: 640px) {
   .cl-spine-nav { min-height: 64px; align-content: flex-start; }
+}
+/* Above 640 px the nav sits at the right of the header at its content's width. While the readout is unread it holds
+   one register (122 px), and when the readout lands it holds the house's set (473 px), so its left edge moved 351 px
+   (r108 walk N2: x 982 to 631). Its width is held from first paint and the buttons stay at its right edge, so a house with
+   fewer registers looks the same. The spine is shared shell (/wines carries it too). No transition, and none under reduced motion (ADR 0112). */
+@media (min-width: 641px) {
+  .cl-spine-nav { min-width: 480px; justify-content: flex-end; }
 }
 
 /* The spec book (r108 drinks-g7): every drink's card in one print, hidden on screen; drawn alone on paper while
