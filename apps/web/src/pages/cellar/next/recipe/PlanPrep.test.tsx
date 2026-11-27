@@ -1,6 +1,6 @@
 /** r109 drinks-g3: Plan prep on /cocktails, for any role. No money; only an editor gets the link to fix an unlinked line. */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { act, render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { DrinkCard } from '../../../../services/api/recipes';
 
@@ -68,5 +68,38 @@ describe('Plan prep', () => {
     mount('staff');
     fireEvent.click(screen.getByTestId('prep-open'));
     expect(await screen.findByTestId('prep-unread')).toHaveTextContent(PREP_UNREAD);
+  });
+
+  // r109 drinks fixer: a late answer for the house left behind is dropped, never shown under the house now open.
+  it('a late read for the house switched away from does not overwrite the house now open', async () => {
+    const RID_B = '22222222-2222-4222-8222-222222222222';
+    const named = (name: string) => ({ drinks: [{ ...cards.drinks[0], cocktailId: name, name }], components: [] });
+    let lateA!: (v: unknown) => void;
+    h.get.mockReset().mockImplementation((url: string) =>
+      url.includes(RID_B) ? Promise.resolve({ data: named('Gimlet B') }) : new Promise((r) => { lateA = r; }),
+    );
+    h.auth = { activeRestaurantId: RID, activeRole: 'staff', user: { userId: 'u', role: 'staff' } };
+    const view = render(<MemoryRouter><PlanPrep /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('prep-open'));
+    h.auth = { ...h.auth, activeRestaurantId: RID_B };
+    view.rerender(<MemoryRouter><PlanPrep /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('prep-open'));
+    expect(await screen.findByLabelText('Gimlet B')).toBeInTheDocument();
+    await act(async () => lateA({ data: named('Negroni A') }));
+    expect(screen.queryByLabelText('Negroni A')).toBeNull();
+    expect(screen.getByLabelText('Gimlet B')).toBeInTheDocument();
+  });
+
+  it('an answer that arrives after the house changed and nothing was asked again is dropped, not shown', async () => {
+    const RID_B = '22222222-2222-4222-8222-222222222222';
+    let lateA!: (v: unknown) => void;
+    h.get.mockReset().mockImplementation(() => new Promise((r) => { lateA = r; }));
+    h.auth = { activeRestaurantId: RID, activeRole: 'staff', user: { userId: 'u', role: 'staff' } };
+    const view = render(<MemoryRouter><PlanPrep /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('prep-open'));
+    h.auth = { ...h.auth, activeRestaurantId: RID_B };
+    view.rerender(<MemoryRouter><PlanPrep /></MemoryRouter>);
+    await act(async () => lateA({ data: cards }));
+    expect(screen.queryByLabelText('Negroni')).toBeNull();
   });
 });
