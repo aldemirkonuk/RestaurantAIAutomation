@@ -292,6 +292,12 @@ describe('Price signals: chipMatch reads the last two settled delivery costs (r1
     expect([bad.lastSettledCost, bad.previousSettledCost, bad.settledCostsReadable]).toEqual([null, null, false]);
   });
 
+  it('toRow carries that only the newest settled deliveries were read, and not when the read failed', () => {
+    expect(toRow({ id: 'i1', settledCostsReadable: true, settledCostsCapped: true } as never).settledCostsCapped).toBe(true);
+    expect(toRow({ id: 'i1', settledCostsReadable: true } as never).settledCostsCapped).toBe(false);
+    expect(toRow({ id: 'i1', settledCostsReadable: false, settledCostsCapped: true } as never).settledCostsCapped).toBe(false);
+  });
+
   it('the chip has a basis only when a good has two settled costs, and is readable only when no row failed', () => {
     expect(priceSignalsHaveBasis([two(11, 10), two(null, null)])).toBe(true);
     expect(priceSignalsHaveBasis([two(null, null)])).toBe(false);

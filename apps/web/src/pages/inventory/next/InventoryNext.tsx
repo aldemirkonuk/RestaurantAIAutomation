@@ -62,7 +62,9 @@ import { blank, forHouse, costColumnsFor, daysSinceCountedCell, oneLine, runExpo
 import { COUNT_DUE_DAYS } from '../command/bits';
 import {
   CHIPS,
+  PRICE_SIGNAL_CAPPED_WORDS,
   PRICE_SIGNAL_WORDS,
+  priceSignalsCapped,
   priceSignalsHaveBasis,
   priceSignalsReadable,
   chipMatch,
@@ -673,7 +675,13 @@ export default function InventoryNext() {
             className="iv-chip iv-focus"
             aria-pressed={activeChip === c.id}
             data-on={activeChip === c.id}
-            title={c.id === 'price' ? PRICE_SIGNAL_WORDS : undefined}
+            title={
+              c.id === 'price'
+                ? priceSignalsCapped(rows ?? [])
+                  ? `${PRICE_SIGNAL_WORDS}. ${PRICE_SIGNAL_CAPPED_WORDS}`
+                  : PRICE_SIGNAL_WORDS
+                : undefined
+            }
             onClick={() => setV({ chip: c.id })}
           >
             {c.label} <span className="iv-num">{chipCount(c.id)}</span>
