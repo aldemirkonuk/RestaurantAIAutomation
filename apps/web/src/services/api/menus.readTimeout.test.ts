@@ -13,7 +13,7 @@ vi.mock('./client', () => ({
   getActiveRestaurantId: () => 'r-1',
 }));
 
-import { importMenu } from './menus';
+import { importMenu, makeMenuCurrent, MAKE_CURRENT_TIMEOUT_MS } from './menus';
 
 describe('importMenu', () => {
   it('sends the file with no read-length timeout of its own, since the read goes on in the background', async () => {
@@ -22,5 +22,11 @@ describe('importMenu', () => {
     const config = post.mock.calls.at(-1)?.[2] as Record<string, unknown>;
     expect(config).not.toHaveProperty('timeout');
     expect(menusModule).not.toHaveProperty('MENU_READ_TIMEOUT_MS');
+  });
+
+  it('making a menu current names the long timeout too: the carry runs inside that call (r102 menu-func-2)', async () => {
+    post.mockResolvedValue({ data: { outcome: 'made_current' } });
+    await makeMenuCurrent('m-1', 'fp-1');
+    expect(post).toHaveBeenLastCalledWith('/menu-versions/m-1/make-current', { fingerprint: 'fp-1' }, { timeout: MAKE_CURRENT_TIMEOUT_MS });
   });
 });

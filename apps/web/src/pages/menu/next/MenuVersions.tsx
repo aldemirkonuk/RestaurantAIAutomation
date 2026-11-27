@@ -210,6 +210,19 @@ const OUTCOME_WORDS: Record<string, (n: number, noun: KindNoun) => string> = {
  */
 export function makeCurrentSentence(r: MakeCurrentResult, name?: string, lines?: PlanLine[], currency: string | null = null): string {
   if (r.outcome === 'already_current' && r.lines === 0) return 'That menu was already the current one. Nothing changed.';
+  const held = r.held?.length
+    ? ` Held by a lock, not changed: ${r.held
+        .map((h) => `${h.name} (${h.kind}${h.lockedPrice === null ? '' : `, locked at ${formatMoney(h.lockedPrice, currency)}`})`)
+        .join('; ')}.`
+    : '';
+  const returned = r.returned?.length
+    ? ` Back on the menu with its lock still holding: ${r.returned.map((x) => x.name).join('; ')}.`
+    : '';
+  // The count can arrive without the names (priceSync.failed), and is still said.
+  const failedCount = Math.max(r.failed.length, r.priceSync.failed ?? 0);
+  const failed = failedCount > 0
+    ? ` ${failedCount} could not be priced${r.failed.length ? `: ${r.failed.map((f) => `${f.name} (${f.error})`).join('; ')}` : ''}.`
+    : '';
   // A carry that was cut off is finished by choosing the menu again (r102 menu-func-2).
   if (r.outcome === 'already_current') {
     // Only a line the house's price took is "carried": one set by hand after the read or held by a lock stays (r102 walk).
@@ -217,7 +230,13 @@ export function makeCurrentSentence(r: MakeCurrentResult, name?: string, lines?:
     const kept = (r.priceSync.stale ?? 0) + (r.priceSync.locked ?? 0);
     const said = carried > 0 ? `${carried} line${carried === 1 ? '' : 's'} had not reached the house's prices and ${carried === 1 ? 'was' : 'were'} carried now.` : 'No line was carried.';
     const left = kept > 0 ? ` ${kept} line${kept === 1 ? '' : 's'} kept ${kept === 1 ? 'its' : 'their'} price, set by hand after this menu was chosen or held by a lock.` : '';
-    return `That menu was already the current one. ${said}${left}`;
+    // A carry that cut off again says what it could not do, in the words the made-current sentence uses (r103 review).
+    const open = [
+      ...(['no_price', 'not_linked'] as const).filter((k) => (r.priceSync[k] ?? 0) > 0).map((k) => OUTCOME_WORDS[k](r.priceSync[k])),
+      ...(r.flagged > 0 ? [`${r.flagged} flagged for a blank price`] : []),
+    ];
+    const still = open.length ? ` Also: ${open.join(', ')}.` : '';
+    return `That menu was already the current one. ${said}${left}${failed}${held}${returned}${still}`;
   }
   const noun = oneNounFor(lines);
   const parts = [`${r.lines} line${r.lines === 1 ? '' : 's'}`];
@@ -239,17 +258,6 @@ export function makeCurrentSentence(r: MakeCurrentResult, name?: string, lines?:
     parts.push(
       `${r.flagged} line${r.flagged === 1 ? '' : 's'} with a blank price, noted on the line so a manager can set ${r.flagged === 1 ? 'it' : 'them'} on Inventory`,
     );
-  const held = r.held?.length
-    ? ` Held by a lock, not changed: ${r.held
-        .map((h) => `${h.name} (${h.kind}${h.lockedPrice === null ? '' : `, locked at ${formatMoney(h.lockedPrice, currency)}`})`)
-        .join('; ')}.`
-    : '';
-  const returned = r.returned?.length
-    ? ` Back on the menu with its lock still holding: ${r.returned.map((x) => x.name).join('; ')}.`
-    : '';
-  const failed = r.failed.length
-    ? ` ${r.failed.length} could not be priced: ${r.failed.map((f) => `${f.name} (${f.error})`).join('; ')}.`
-    : '';
   const who = name ? `${name.charAt(0).toUpperCase()}${name.slice(1)} is` : 'This is';
   return `${who} now the current menu: ${parts.join(', ')}.${held}${returned}${failed}`;
 }

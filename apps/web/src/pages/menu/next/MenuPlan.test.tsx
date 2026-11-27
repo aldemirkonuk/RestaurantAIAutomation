@@ -123,7 +123,7 @@ describe('the plan in one sentence', () => {
     expect(
       planSentence(plan({ lines: [unmatched, unpriced], counts: { change: 0, unchanged: 0, held_by_lock: 0, blank_kept: 0, blank_never_priced: 3, not_linked: 2, new_wine: 0 }, dormantLocks: [] })),
     ).toBe('Choosing this menu changes no price. 1 line shows no price and the house has none either, so it stays unpriced, and the line carries a note saying so; 1 line is not matched to a wine, so no price.');
-    expect(planSentence(plan({ current: true }))).toBe('This is already the current menu. Choosing it again changes nothing.');
+    expect(planSentence(plan({ current: true, counts: { change: 0, unchanged: 2, held_by_lock: 0, blank_kept: 0, blank_never_priced: 0, not_linked: 0, new_wine: 0 } }))).toBe('This is already the current menu. Choosing it again changes nothing.');
   });
 
   // Menu walk 2026-11-12: "add 7 prices for wines new to the house" against the
@@ -289,6 +289,36 @@ describe('MenuPlan -- the section before the choice (L13)', () => {
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(result, expect.arrayContaining([expect.objectContaining({ menuItemId: expect.any(String) })])));
   });
 
+  it('a choice that got no answer is not reported as "Nothing has changed": it may have gone through, and the plan is read again (r102 menu-func-2)', async () => {
+    mockPlan.mockResolvedValue(plan());
+    mockMake.mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout of 30000ms exceeded' });
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
+    const said = await screen.findByRole('alert');
+    expect(said.textContent).toBe(
+      'Mudavym did not answer in time, so the menu may now be current. Look at the menu again before choosing it a second time.',
+    );
+    expect(said.textContent).not.toMatch(/Nothing has changed/);
+    await waitFor(() => expect(mockPlan).toHaveBeenCalledTimes(2));
+  });
+
+  it('a menu already current with prices still to carry offers to finish the carry, and says so (r102 menu-func-2)', async () => {
+    const pending = plan({ current: true, counts: { change: 2, unchanged: 0, held_by_lock: 0, blank_kept: 0, blank_never_priced: 0, not_linked: 0, new_wine: 1 } });
+    expect(planSentence(pending)).toBe('This is already the current menu, but 3 prices have not reached the house yet. Choosing it again carries them.');
+    mockPlan.mockResolvedValue(pending);
+    mockMake.mockResolvedValue({ outcome: 'already_current' as const, menuId: 'menu-new', previousMenuIds: [], lines: 3, priceSync: { changed: 3 }, flagged: 0, failed: [] });
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Finish carrying 3 prices' }));
+    await waitFor(() => expect(mockMake).toHaveBeenCalledWith('menu-new', 'fp-1'));
+  });
+
+  it('a current menu with nothing to carry offers no button', async () => {
+    mockPlan.mockResolvedValue(plan({ current: true, counts: { change: 0, unchanged: 3, held_by_lock: 0, blank_kept: 0, blank_never_priced: 0, not_linked: 0, new_wine: 0 } }));
+    mount(true);
+    await screen.findByTestId('menu-plan');
+    expect(screen.queryByRole('button', { name: /Make it current|Finish carrying/ })).not.toBeInTheDocument();
+  });
+
   it('a plan that moved (409) is said, nothing is changed, and it is read again', async () => {
     mockPlan.mockResolvedValue(plan());
     mockMake.mockRejectedValue({ response: { status: 409, data: { message: 'changed since it was shown' } } });
@@ -301,11 +331,11 @@ describe('MenuPlan -- the section before the choice (L13)', () => {
 
   it('a refusal that already says nothing was changed is not followed by a second "nothing" or a doubled stop', async () => {
     mockPlan.mockResolvedValue(plan());
-    mockMake.mockRejectedValue({ response: { status: 400, data: { message: 'This menu has no lines left. Nothing was changed.' } } });
+    mockMake.mockRejectedValue({ response: { status: 400, data: { message: 'A menu with no lines cannot be the current menu. Nothing was changed.' } } });
     mount(true);
     fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
     const said = await screen.findByRole('alert');
-    expect(said.textContent).toBe('It was not made current: This menu has no lines left. Nothing was changed.');
+    expect(said.textContent).toBe('It was not made current: A menu with no lines cannot be the current menu. Nothing was changed.');
   });
 
   it('a refusal that does not say it gets the one closing sentence', async () => {

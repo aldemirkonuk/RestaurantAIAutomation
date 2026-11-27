@@ -76,6 +76,18 @@ function reasonOf(err: unknown): string {
   return e?.message || 'no reason was given';
 }
 
+/** No answer came back (a timeout, a dropped connection): the choice may still have been made. */
+function noAnswer(err: unknown): boolean {
+  const e = err as { code?: unknown; response?: unknown; message?: unknown };
+  if (e?.response) return false;
+  return e?.code === 'ECONNABORTED' || e?.code === 'ETIMEDOUT' || e?.code === 'ERR_NETWORK' || /timeout/i.test(String(e?.message ?? ''));
+}
+
+/** Prices of a menu that are still to reach the house (a choice made, a carry cut off). */
+function toCarry(plan: Pick<Plan, 'counts'>): number {
+  return plan.counts.change + plan.counts.new_wine;
+}
+
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
@@ -127,7 +139,12 @@ export function lineOutcome(line: PlanLine): LineOutcome {
  * is counted in prices.
  */
 export function planSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'current' | 'lines' | 'kitchenLines' | 'notOnThisFile'>): string {
-  if (plan.current) return 'This is already the current menu. Choosing it again changes nothing.';
+  if (plan.current) {
+    const left = toCarry(plan);
+    return left > 0
+      ? `This is already the current menu, but ${plural(left, 'price has', 'prices have')} not reached the house yet. Choosing it again carries ${left === 1 ? 'it' : 'them'}.`
+      : 'This is already the current menu. Choosing it again changes nothing.';
+  }
   const c = plan.counts;
   const parts: string[] = [];
   if (plan.lines.length > 0) {
@@ -400,6 +417,11 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
       onDone(r, q.data?.lines ?? []);
     },
     onError: (e) => {
+      if (noAnswer(e)) {
+        // The switch commits before the carry runs: look again at what is true now.
+        void queryClient.invalidateQueries({ queryKey: ['menu'] });
+        return;
+      }
       const status = (e as { response?: { status?: number } })?.response?.status;
       if (status === 409) {
         setMoved(true);
@@ -608,14 +630,16 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
       ) : null}
 
       <div className="cl-row-controls" style={{ marginTop: 14 }}>
-        {canManage && !plan.current ? (
+        {canManage && (!plan.current || toCarry(plan) > 0) ? (
           <button
             type="button"
             className="cl-btn cl-ink cl-focus"
             disabled={choose.isPending}
             onClick={() => choose.mutate(plan.fingerprint)}
           >
-            {choose.isPending ? 'Making it current…' : 'Make it current'}
+            {plan.current
+              ? choose.isPending ? 'Carrying…' : `Finish carrying ${plural(toCarry(plan), 'price', 'prices')}`
+              : choose.isPending ? 'Making it current…' : 'Make it current'}
           </button>
         ) : null}
         {onCancel ? (
@@ -633,6 +657,8 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
         <p role="alert" className="cl-said" style={{ marginTop: 8 }}>
           {(() => {
             // The gateway's own sentence may already say nothing was changed.
+            if (noAnswer(choose.error))
+              return 'Mudavym did not answer in time, so the menu may now be current. Look at the menu again before choosing it a second time.';
             const why = reasonOf(choose.error).trim().replace(/\.+$/, '');
             return `It was not made current: ${why}.${/nothing (was|has) changed$/i.test(why) ? '' : ' Nothing has changed.'}`;
           })()}
