@@ -70,6 +70,17 @@ describe("composePages", () => {
     expect(sha(a)).toBe(sha(b));
   });
 
+  it("writes a plain xref table and the fixed producer, with no object streams", async () => {
+    const out = await composePages(three());
+    const text = out.toString("latin1");
+    expect(text).not.toContain("/ObjStm");
+    expect(text).toContain("xref");
+    const parsed = await PDFDocument.load(out, { updateMetadata: false });
+    expect(parsed.getProducer()).toBe("Mudavym");
+    expect(parsed.getCreationDate()?.toISOString()).toBe("2000-01-01T00:00:00.000Z");
+    expect(parsed.getModificationDate()?.toISOString()).toBe("2000-01-01T00:00:00.000Z");
+  });
+
   it("a different order gives a different hash", async () => {
     const [p1, p2, p3] = three();
     expect(sha(await composePages([p1, p2, p3]))).not.toBe(
