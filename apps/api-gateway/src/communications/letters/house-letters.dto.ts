@@ -111,6 +111,17 @@ export class QueueLetterDto {
   @IsOptional()
   @IsUUID()
   answers?: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      "Files uploaded with POST /communications/letters/files (g6b, DD-r107-11): at most 3, 5 MB together, owner or manager only. The seal holds each file's id, sha-256 and size, so a seal over other files does not queue this letter. There is no URL or path field.",
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(3)
+  @IsUUID("4", { each: true })
+  fileIds?: string[];
 }
 
 /** One file for a letter, as bytes (base64). No URL and no path field exists. */

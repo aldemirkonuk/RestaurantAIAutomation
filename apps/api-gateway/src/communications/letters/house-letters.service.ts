@@ -84,6 +84,7 @@ import {
   unstructuredHeader,
 } from "../mime-headers";
 import { plainLetterWithFiles, type OutboundAttachment } from "../mime-attachments";
+import { HouseLetterFilesService, type SealedFile } from "./house-letter-files.service";
 import type {
   InsertedInsightDto,
   QueueLetterDto,
@@ -98,16 +99,24 @@ import type {
  */
 export const HOUSE_LETTER_ACT = "queue_house_letter";
 
-/** What the hold was over: the recipient, the vendor, the subject and the words. */
-export function houseLetterSealArgs(dto: {
-  providerId?: string | null;
-  to: string;
-  subject: string;
-  body: string;
-  orderId?: string | null;
-  answers?: string | null;
-}): Record<string, unknown> {
+/**
+ * What the hold was over: the recipient, the vendor, the subject and the words,
+ * and (g6b, DD-r107-11) each attached file's id, sha-256 and size, read from
+ * the house's own rows. A letter with no files hashes exactly as before.
+ */
+export function houseLetterSealArgs(
+  dto: {
+    providerId?: string | null;
+    to: string;
+    subject: string;
+    body: string;
+    orderId?: string | null;
+    answers?: string | null;
+  },
+  files?: readonly SealedFile[],
+): Record<string, unknown> {
   return {
+    ...(files?.length ? { files: files.map((f) => ({ id: f.id, sha256: f.sha256, size: f.size })) } : {}),
     providerId: dto.providerId ?? null,
     // A reply to a team or guest letter has no vendor: the hold is over the
     // letter it answers too (r104 mail-gap g1).
@@ -217,7 +226,32 @@ export class HouseLettersService {
     // Staff ask a manager to send a letter (founder answer 3, 2026-09-21).
     // Supplied by VendorSendAuthorityModule; the ask route refuses without it.
     @Optional() private readonly requests?: VendorSendRequestsService,
+    // A letter's files (g6b, r109). Absent: a letter naming files is refused.
+    @Optional() private readonly files?: HouseLetterFilesService,
   ) {}
+
+  /**
+   * The files a letter names, for an owner or a manager only, read by id AND
+   * house (house-letter-files.service.ts). No `fileIds` is no files and no read.
+   */
+  private async lettersFiles(
+    restaurantId: string,
+    role: string | null | undefined,
+    fileIds: readonly string[] | undefined,
+  ): Promise<SealedFile[]> {
+    if (!fileIds?.length) return [];
+    if (!isOwnerOrManager(role)) {
+      throw new ForbiddenException(
+        "Only an owner or a manager can attach files to a letter. Nothing was queued and nothing was sent.",
+      );
+    }
+    if (!this.files) {
+      throw new InternalServerErrorException(
+        "The letter's files could not be checked (not wired into the composer), so nothing was queued and nothing was sent.",
+      );
+    }
+    return this.files.sealedFiles(restaurantId, fileIds);
+  }
 
   private requireGates(): { authority: VendorSendAuthorityService; seal: SealChallengeService } {
     if (!this.authority || !this.seal) {
@@ -268,6 +302,11 @@ export class HouseLettersService {
   }): Promise<{ requestId: string; requestedAt: string; told: number; says: string; notices: GuardrailHit[] }> {
     const { restaurantId, dto } = params;
     const userId = assertNamedActor(params.userId, "asked and nothing was sent");
+    if (dto.fileIds?.length) {
+      throw new UnprocessableEntityException(
+        "A request carries the words only: an owner or a manager attaches files when they write the letter. Nothing was asked and nothing was sent.",
+      );
+    }
     if (!dto.providerId) {
       throw new UnprocessableEntityException(
         "Only the house's owner or a manager can write to a team member or a guest, so there is nothing to ask a manager about. Nothing was asked and nothing was sent.",
@@ -455,17 +494,20 @@ export class HouseLettersService {
     restaurantId: string;
     userId: string;
     dto: QueueLetterDto;
+    /** The caller's role: files are owner/manager only (g6b). */
+    role?: string | null;
   }): Promise<{ challenge: string; expiresAt: string; act: string }> {
     const userId = assertNamedActor(params.userId, "sealed and nothing was sent");
     const { authority, seal } = this.requireGates();
     await authority.assertMaySend(userId, params.restaurantId, "send this letter", { canAsk: true });
+    const files = await this.lettersFiles(params.restaurantId, params.role, params.dto.fileIds);
     const issued = await seal.issue({
       restaurantId: params.restaurantId,
       actorUserId: userId,
       subjectKind: "house_letter",
       subjectId: params.dto.providerId ?? params.dto.answers ?? "",
       action: HOUSE_LETTER_ACT,
-      args: houseLetterSealArgs(params.dto),
+      args: houseLetterSealArgs(params.dto, files),
     });
     return { challenge: issued.challenge, expiresAt: issued.expiresAt, act: issued.action };
   }
@@ -662,6 +704,16 @@ export class HouseLettersService {
       }
     }
 
+    // ── 0d. its files (g6b): owner or manager, this house's, unused, in caps ─
+    // A release of a staff request carries the words the request holds; files
+    // go on a letter its writer attaches them to.
+    if (dto.fileIds?.length && dto.requestId) {
+      throw new UnprocessableEntityException(
+        "A released request sends the letter that was asked for, with no files. Attach files to a new letter. Nothing was queued and nothing was sent.",
+      );
+    }
+    const files = await this.lettersFiles(restaurantId, params.role, dto.fileIds);
+
     // ── 0a. a letter sent FROM a draft must still be that house's draft ────
     // Sending a draft is the approval (ADR 0230). It is refused when the row is
     // not a draft any more (already sent, discarded, or another tab sent it),
@@ -788,7 +840,7 @@ export class HouseLettersService {
       subjectKind: "house_letter",
       subjectId: dto.providerId ?? dto.answers ?? "",
       action: HOUSE_LETTER_ACT,
-      args: houseLetterSealArgs(dto),
+      args: houseLetterSealArgs(dto, files),
       challenge: params.challenge,
     });
     // A letter queued under a grant is on the security ledger before the row
@@ -848,6 +900,8 @@ export class HouseLettersService {
         // writer approved.
         sender_connection_id: identity.grant?.connectionId ?? null,
         written_by: userId,
+        // The files the seal held (g6b): release compares the bytes to these.
+        ...(files.length ? { files } : {}),
         template_id: dto.templateId ?? null,
         // The staff request this release took, by its id, on the letter
         // itself: a pull-back finds the request from here even when the
@@ -910,6 +964,26 @@ export class HouseLettersService {
       throw new BadRequestException(
         `The letter was NOT queued and NOT sent — it could not be saved (${error?.message ?? "no row returned"}).`,
       );
+    }
+
+    // The files are tied to the letter now that it exists. A file that could
+    // not be tied stops the letter before it leaves: release would refuse it
+    // anyway, and the writer is still looking (DD-r107-11, never a partial letter).
+    if (files.length && this.files) {
+      const letterId = String((data as Record<string, unknown>).id);
+      try {
+        await this.files.bind(restaurantId, letterId, files);
+      } catch (err) {
+        await this.db.client
+          .from("procurement_conversations")
+          .update({ status: LETTER_STATUS.FAILED })
+          .eq("id", letterId)
+          .eq("restaurant_id", restaurantId)
+          .eq("status", LETTER_STATUS.QUEUED);
+        throw new ConflictException(
+          `The files could not be tied to this letter (${err instanceof Error ? err.message : String(err)}), so it was stopped before it left. Nothing was sent; write it again.`,
+        );
+      }
     }
 
     if (claimed && dto.requestId && this.requests) {

@@ -190,16 +190,21 @@ export class HouseLettersController {
   @Post("seal-challenge")
   @ApiOperation({ summary: "Mint the one-time seal a composer letter's queue has to carry back" })
   @ApiResponse({ status: 403, description: "The caller is not an owner, a manager or a grantee" })
-  async issueQueueSeal(@CurrentUser() user: TokenUser, @Body() dto: QueueLetterDto) {
+  async issueQueueSeal(
+    @CurrentUser() user: TokenUser,
+    @Body() dto: QueueLetterDto,
+    // Last, like queue's: files are owner/manager only (g6b).
+    @CurrentUser("role") role?: string | null,
+  ) {
     const { userId, restaurantId } = houseActor(user);
-    return this.letters.issueQueueSeal({ restaurantId, userId, dto });
+    return this.letters.issueQueueSeal({ restaurantId, userId, dto, role });
   }
 
   /**
    * Files for a letter not yet written (g6b, DD-r107-11). Owner or manager;
    * bytes only. The server computes each file's sha-256 and size and stores it
    * at `<restaurant_id>/<uuid>` in the private bucket; the ids go back in
-   * `fileIds` on the seal and the queue (g6b step 1b).
+   * `fileIds` on the seal and the queue.
    */
   @Post("files")
   @UseGuards(RolesGuard)
