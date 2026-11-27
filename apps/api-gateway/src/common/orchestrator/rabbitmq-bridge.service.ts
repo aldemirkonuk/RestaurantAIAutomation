@@ -649,6 +649,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     references: string;
     receivedAt: string;
     toAddresses: unknown;
+    transport: unknown;
   }): Promise<void> {
     if (!p.restaurantId || !p.mirroredByGrantId) {
       this.logger.warn(
@@ -688,6 +689,9 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
             in_reply_to: p.inReplyTo,
             references: p.references,
             gmail_thread_id: p.gmailThreadId,
+            // The same stored shape a vendor row has (autoSubmitted is a boolean), so
+            // "automatic mail never counts" can see a team or guest auto-reply.
+            transport: p.transport,
           },
           mirrored_by_grant_id: p.mirroredByGrantId,
           kind: p.kind,
@@ -799,6 +803,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         references,
         receivedAt,
         toAddresses: payload.to_addresses,
+        transport: transportSignals,
       });
       return;
     }
