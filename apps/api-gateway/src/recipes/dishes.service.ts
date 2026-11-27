@@ -17,6 +17,7 @@ import { CreateDishDto, SetYieldDto, UpdateDishDto } from "./dto/recipes.dto";
 import { DISH_NOT_THIS_HOUSE, MAX_LINE_QTY, RecipesService } from "./recipes.service";
 import { foldName } from "./name-fold";
 import { readCurrentMenuLines } from "../menus/current-menu-lines";
+import { THROUGH_DEPTH, THROUGH_UNREAD, throughOf, type GraphLine, type ThroughComponent, type ThroughGraph } from "./used-in-through-a-component";
 import { menuIndex, menuPriceFor, type MenuLine } from "./menu-price-match";
 
 export const DISHES_UNREAD = "Your dishes could not be read just now. Nothing is shown rather than a wrong list.";
@@ -527,6 +528,159 @@ export class DishesService {
   }
 
   /**
+   * Every current recipe that draws this good through a house-made component
+   * (r110 inventory g1): the good's lines in a dish's current version, where
+   * that dish is drawn by another current version, then up that chain at most
+   * THROUGH_DEPTH levels with a visited set. Every read is this house's and
+   * paged; the amounts are `throughOf`'s.
+   */
+  async componentUsesOfItem(restaurantId: string, itemId: string): Promise<ThroughComponent[]> {
+    const client = this.db.getClient();
+    const S = THROUGH_UNREAD;
+    const good = await this.all<GraphLine & { id: string }>("through good line read", S, (from, to) =>
+      client
+        .from("recipe_lines")
+        .select("id, version_id, qty_base, base_unit")
+        .eq("restaurant_id", restaurantId)
+        .eq("inventory_id", itemId)
+        .order("id", { ascending: true })
+        .range(from, to),
+    );
+    const g: ThroughGraph = {
+      nodeVersion: new Map(),
+      goodLines: new Map(),
+      madeLines: new Map(),
+      ownerOf: new Map(),
+      levelOf: new Map(),
+      dishes: new Map(),
+      drinks: new Map(),
+      serves: new Map(),
+    };
+    for (const l of good) g.goodLines.set(l.version_id, [...(g.goodLines.get(l.version_id) ?? []), l]);
+    // Which of those versions is a dish's current one: the candidates for a component.
+    const owners = await this.currentOwners(restaurantId, [...g.goodLines.keys()], S, false);
+    for (const [version, o] of owners) if (o.kind === "dish") g.nodeVersion.set(o.id, version);
+
+    let frontier = [...g.nodeVersion.keys()];
+    const visited = new Set(frontier);
+    for (let level = 1; level <= THROUGH_DEPTH && frontier.length; level++) {
+      for (const c of frontier) g.levelOf.set(c, level);
+      const drawing = (
+        await inWaves(chunks(frontier), (ids) =>
+          this.all<GraphLine & { id: string }>("through drawing line read", S, (from, to) =>
+            client
+              .from("recipe_lines")
+              .select("id, version_id, component_dish_id, qty_base, base_unit")
+              .eq("restaurant_id", restaurantId)
+              .in("component_dish_id", ids)
+              .order("id", { ascending: true })
+              .range(from, to),
+          ),
+        )
+      ).flat();
+      const now = await this.currentOwners(restaurantId, [...new Set(drawing.map((l) => l.version_id))], S, true);
+      const next: string[] = [];
+      for (const l of drawing) {
+        const o = now.get(l.version_id);
+        if (!o) continue; // an older version: not what the house makes now
+        g.ownerOf.set(l.version_id, o);
+        g.madeLines.set(l.version_id, [...(g.madeLines.get(l.version_id) ?? []), l]);
+        if (o.kind === "dish" && !visited.has(o.id)) {
+          visited.add(o.id);
+          next.push(o.id);
+          g.nodeVersion.set(o.id, l.version_id);
+        }
+      }
+      frontier = next;
+    }
+    // Nothing current draws any of them: each is a plain dish, and there is no "through" (throughOf drops them too).
+    if (g.ownerOf.size === 0) return [];
+
+    const dishIds = [...new Set([...g.nodeVersion.keys(), ...[...g.ownerOf.values()].filter((o) => o.kind === "dish").map((o) => o.id)])];
+    const drinkIds = [...new Set([...g.ownerOf.values()].filter((o) => o.kind === "cocktail").map((o) => o.id))];
+    const [dishRows, drinkRows, versionRows] = await Promise.all([
+      inWaves(chunks(dishIds), (ids) =>
+        this.all<any>("through dish read", S, (from, to) =>
+          client
+            .from("dishes")
+            .select("id, name, yield_qty_base, yield_base_unit")
+            .eq("restaurant_id", restaurantId)
+            .is("deleted_at", null)
+            .in("id", ids)
+            .order("id", { ascending: true })
+            .range(from, to),
+        ),
+      ),
+      inWaves(chunks(drinkIds), (ids) =>
+        this.all<any>("through drink read", S, (from, to) =>
+          client
+            .from("cocktails")
+            .select("id, name, display_name")
+            .eq("restaurant_id", restaurantId)
+            .is("deleted_at", null)
+            .in("id", ids)
+            .order("id", { ascending: true })
+            .range(from, to),
+        ),
+      ),
+      inWaves(chunks([...g.ownerOf.keys()]), (ids) =>
+        this.all<any>("through version read", S, (from, to) =>
+          client
+            .from("recipe_versions")
+            .select("id, yield_serves")
+            .eq("restaurant_id", restaurantId)
+            .in("id", ids)
+            .order("id", { ascending: true })
+            .range(from, to),
+        ),
+      ),
+    ]);
+    for (const d of dishRows.flat()) {
+      g.dishes.set(d.id, {
+        name: d.name,
+        yieldQtyBase: d.yield_qty_base == null ? null : Number(d.yield_qty_base),
+        yieldBaseUnit: d.yield_base_unit ?? null,
+      });
+    }
+    for (const d of drinkRows.flat()) g.drinks.set(d.id, (d.display_name as string | null)?.trim() || d.name);
+    for (const v of versionRows.flat()) g.serves.set(v.id, v.yield_serves == null ? null : Number(v.yield_serves));
+    return throughOf(g);
+  }
+
+  /** Who owns each version now: a dish (recipe_current_dish), and with `drinks` a house drink (recipe_current). */
+  private async currentOwners(restaurantId: string, versionIds: string[], sentence: string, drinks: boolean) {
+    const client = this.db.getClient();
+    const out = new Map<string, { kind: "dish" | "cocktail"; id: string }>();
+    await inWaves(chunks(versionIds), async (ids) => {
+      const [dishPtrs, drinkPtrs] = await Promise.all([
+        this.all<any>("through dish pointer read", sentence, (from, to) =>
+          client
+            .from("recipe_current_dish")
+            .select("dish_id, version_id")
+            .eq("restaurant_id", restaurantId)
+            .in("version_id", ids)
+            .order("dish_id", { ascending: true })
+            .range(from, to),
+        ),
+        drinks
+          ? this.all<any>("through drink pointer read", sentence, (from, to) =>
+              client
+                .from("recipe_current")
+                .select("cocktail_id, version_id")
+                .eq("restaurant_id", restaurantId)
+                .in("version_id", ids)
+                .order("cocktail_id", { ascending: true })
+                .range(from, to),
+            )
+          : Promise.resolve([] as any[]),
+      ]);
+      for (const r of dishPtrs) out.set(r.version_id, { kind: "dish", id: r.dish_id });
+      for (const r of drinkPtrs) out.set(r.version_id, { kind: "cocktail", id: r.cocktail_id });
+    });
+    return out;
+  }
+
+  /**
    * The dishes whose CURRENT recipe links this item (ADR 0366 item 5), each
    * with its figures and the item's own lines in it.
    */
@@ -551,8 +705,16 @@ export class DishesService {
         )),
       );
     }
-    const figures = await this.figures(restaurantId, dishes.map((d) => d.id), money, DISH_USE_UNREAD);
+    // The recipes that draw it through a component it is in (r110 g1): a failed read is null, said, never "none".
+    const [figures, through] = await Promise.all([
+      this.figures(restaurantId, dishes.map((d) => d.id), money, DISH_USE_UNREAD),
+      this.componentUsesOfItem(restaurantId, itemId).catch((e) => {
+        if (e instanceof ServiceUnavailableException) return null;
+        throw e;
+      }),
+    ]);
     return {
+      through,
       dishes: dishes
         .map((d) => {
           const f = figures.get(d.id);
