@@ -93,6 +93,16 @@ describe("uploading a letter's files", () => {
     expect(JSON.stringify(errors)).toMatch(/property url should not exist/);
     expect(JSON.stringify(errors)).toMatch(/property path should not exist/);
   });
+
+  it("refuses a 4th file and an empty list in the house's words, never class-validator's", () => {
+    const one = { name: "a.pdf", contentType: "application/pdf", contentBase64: b64("x") };
+    const four = validateSync(plainToInstance(UploadLetterFilesDto, { files: [one, one, one, one] }));
+    expect(JSON.stringify(four)).toMatch(/A letter can carry 3 files at most\. Nothing was uploaded\./);
+    expect(JSON.stringify(four)).not.toMatch(/must contain no more than/);
+    const none = validateSync(plainToInstance(UploadLetterFilesDto, { files: [] }));
+    expect(JSON.stringify(none)).toMatch(/No file was sent\. Nothing was uploaded\./);
+    expect(JSON.stringify(none)).not.toMatch(/must contain at least/);
+  });
 });
 
 describe("the files a letter names, as the seal holds them", () => {

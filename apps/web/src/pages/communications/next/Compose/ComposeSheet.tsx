@@ -62,6 +62,7 @@ import { RecipientField, type Recipient } from './RecipientField';
 import { InsightPicker } from './InsightPicker';
 import { MailMotionStyles } from '../mail-motion';
 import { SenderLine } from './SenderLine';
+import { MailFilePicker, type LetterFile } from './MailFilePicker';
 
 const ICON = { size: 13, strokeWidth: 1.75 } as const;
 
@@ -217,6 +218,9 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
   const [chosen, setChosen] = useState<InsightSentence[]>(prefill?.insights ?? []);
   const [templateId, setTemplateId] = useState<string>(prefill?.templateId ?? '');
   const [send, setSend] = useState<SendState>({ kind: 'idle' });
+  // g6b step 3: the files this letter carries (uploaded, by id) and whether an upload is in flight.
+  const [files, setFiles] = useState<LetterFile[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [tick, setTick] = useState(0);
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
   const toRef = useRef<HTMLInputElement | null>(null);
@@ -247,6 +251,9 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
   // 2026-09-21). The composer stays a click (answer 7), so the ask is a click
   // too; the manager's release is one hold.
   const mayAsk = Boolean(standing?.readable && !standing.maySend && standing.mode === 'ask');
+  // Files are an owner's or a manager's (the gateway's files route and seal refuse anyone else),
+  // read from the gateway's own standing, never from a grant: a staff grantee sends words only.
+  const mayAttach = maySend && (standing?.basis === 'owner' || standing?.basis === 'manager');
   const canAsk =
     mayAsk &&
     to !== null &&
@@ -262,6 +269,8 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
     subject.trim().length > 0 &&
     body.trim().length > 0 &&
     send.kind !== 'queueing' &&
+    // Never while a file is still uploading: its id is not in the letter yet.
+    !uploading &&
     // A draft that has been queued or discarded is not sent again from here.
     !(draftId && (send.kind === 'queued' || send.kind === 'cancelled' || discarded !== null));
 
@@ -349,9 +358,11 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
               candidateKey: c.candidateKey,
               sentence: c.sentence,
             })),
+            // Inside the letter, so the seal is minted over the same ids the queue sends.
+            fileIds: mayAttach && files.length ? files.map((f) => f.id) : undefined,
           }
         : null,
-    [to, subject, body, draftId, templateId, chosen, answers, prefill?.providerId],
+    [to, subject, body, draftId, templateId, chosen, answers, prefill?.providerId, mayAttach, files],
   );
 
   // A preview is of THESE words: any change to the letter takes it down, so it
@@ -663,6 +674,15 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
             }}
           />
         </div>
+
+        {mayAttach && (
+          <MailFilePicker
+            files={files}
+            onChange={setFiles}
+            onBusy={setUploading}
+            disabled={send.kind === 'queueing' || send.kind === 'queued'}
+          />
+        )}
 
         <InsightPicker
           insights={data.insights}
