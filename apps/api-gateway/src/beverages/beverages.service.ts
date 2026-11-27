@@ -686,8 +686,9 @@ export class BeveragesService {
       count: rows.length,
       // The table is no longer empty BY DESIGN — it is empty for this cocktail
       // until somebody writes the recipe. Those are different sentences and the
-      // register renders them differently.
-      writable: true as const,
+      // register renders them differently. Its writer is retired (410, ADR
+      // 0360): this read says so, and a recipe is saved from the drink's sheet.
+      writable: false as const,
     };
   }
 

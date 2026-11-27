@@ -628,7 +628,10 @@ export interface ItemMenuLine {
 export interface ItemUsedIn {
   item: { id: string; kind: string | null; displayName: string | null };
   soldAs: ItemUsedInGroup<ItemMenuLine>;
-  inCocktails: ItemUsedInGroup<{ cocktailId: string; name: string; quantity: number | null; unit: string | null }>;
+  /** `withoutCurrentRecipe`: sent only when the gateway read each drink's current recipe. */
+  inCocktails: ItemUsedInGroup<{ cocktailId: string; name: string; quantity: number | null; unit: string | null; namedNotLinked?: true }> & {
+    withoutCurrentRecipe?: true;
+  };
   /** Optional: an older gateway does not send it. */
   inDrinkRecipes?: ItemUsedInGroup<{ cocktailId: string; name: string; label: string; qtyEntered: number; unitCode: string }>;
   namedNotLinked: ItemUsedInGroup<ItemMenuLine>;
