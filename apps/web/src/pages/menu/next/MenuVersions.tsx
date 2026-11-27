@@ -26,7 +26,6 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   MENU_CADENCES,
-  getMenuPlan,
   getMenuSourceUrl,
   getMenuPlan,
   importMenu,
@@ -241,7 +240,7 @@ export function makeCurrentSentence(r: MakeCurrentResult, name?: string, lines?:
     const left = kept > 0 ? ` ${kept} line${kept === 1 ? '' : 's'} kept ${kept === 1 ? 'its' : 'their'} price, set by hand after this menu was chosen or held by a lock.` : '';
     // A carry that cut off again says what it could not do, in the words the made-current sentence uses (r103 review).
     const open = [
-      ...(['no_price', 'not_linked'] as const).filter((k) => (r.priceSync[k] ?? 0) > 0).map((k) => OUTCOME_WORDS[k](r.priceSync[k])),
+      ...(['no_price', 'not_linked'] as const).filter((k) => (r.priceSync[k] ?? 0) > 0).map((k) => OUTCOME_WORDS[k](r.priceSync[k], oneNounFor(lines))),
       ...(r.flagged > 0 ? [`${r.flagged} flagged for a blank price`] : []),
     ];
     const still = open.length ? ` Also: ${open.join(', ')}.` : '';
@@ -1070,7 +1069,7 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
       setPutting(false);
     }
   };
-  const { house, q } = useKeptMenus();
+  const { q } = useKeptMenus();
   const currency = useHouseCurrencyCode();
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu'] });
   const takenSaid = taken ? (
