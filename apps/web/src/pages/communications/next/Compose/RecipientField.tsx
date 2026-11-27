@@ -17,7 +17,7 @@
  * the rule.
  */
 
-import { useMemo, useState, type RefObject } from 'react';
+import { useMemo, useState, type MutableRefObject } from 'react';
 import { BookUser, Plus } from 'lucide-react';
 import { apiClient } from '../../../../services/api/client';
 import type { BookEntry } from './useComposeData';
@@ -43,7 +43,7 @@ export function RecipientField({
   inputRef,
 }: {
   /** The search box, so the composer can open with the cursor in To (r109 mail-gap g3). */
-  inputRef?: RefObject<HTMLInputElement | null>;
+  inputRef?: MutableRefObject<HTMLInputElement | null>;
   /**
    * A reply to a team member or a guest (ADR 0396): the one address that wrote,
    * shown as it is, with no book to search and nothing to type or change.
