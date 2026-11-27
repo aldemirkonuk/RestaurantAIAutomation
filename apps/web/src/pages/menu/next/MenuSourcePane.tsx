@@ -43,7 +43,10 @@ export function MenuSourcePane({
     queryKey: ['menu', 'source-link', menuId],
     enabled: open && canManage,
     queryFn: () => getMenuSourceUrl(menuId),
-    staleTime: 60_000,
+    // Every call signs a fresh token, so a new link changes the src and reloads the file (a PDF back to page 1).
+    // Keep one until it is nearly out of date, and never refetch just because the window came back into focus.
+    staleTime: (q) => Math.max(0, (q.state.data?.expiresInSeconds ?? 300) - 30) * 1000,
+    refetchOnWindowFocus: false,
     retry: false,
   });
   if (!canManage) return null;
