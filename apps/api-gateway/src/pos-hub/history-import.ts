@@ -51,6 +51,9 @@ export interface HistoryReading {
   refused: string[];
   refusedCount: number;
   netDropped: boolean;
+  /** Rows whose net was written in another currency than the house's: the net was left out, the quantity kept. */
+  netForeign: string[];
+  netForeignCount: number;
   /** A refusal of the whole file, in words. When set, `sales` is empty. */
   fileRefused: string | null;
 }
@@ -108,11 +111,47 @@ function readDate(raw: string, order: "dmy" | "mdy" | null): string | null {
   return null;
 }
 
-/** "1,234.50", "$12", "12,50" (a decimal comma), or null. Never a guess on "1.234,5x". */
-export function readAmount(raw: string): number | null {
-  let v = raw.trim().replace(/[\s$€£₺¥]/g, "");
+export type AmountStyle = "us" | "eu";
+
+/** One separator and exactly three digits after it: "12.500" is 12.5 or 12,500 and the digits cannot say which. */
+const AMBIGUOUS = /^-?[1-9]\d{0,2}[.,]\d{3}$/;
+
+const cleanAmount = (raw: string) => raw.trim().replace(/[\s$€£₺¥]/g, "");
+
+/** True when `raw` is one separator and three digits, so only the file can say what it means. */
+export function amountIsAmbiguous(raw: string): boolean {
+  return AMBIGUOUS.test(cleanAmount(raw));
+}
+
+/**
+ * The file decides how it writes numbers, the way slashOrder decides dates:
+ * "1,234.50" or "12.5" is a decimal point; "1.234,50" or "12,5" is a decimal
+ * comma. Evidence of both, or of neither, and the file has no convention.
+ */
+export function amountStyle(raw: string[]): AmountStyle | null {
+  let us = false;
+  let eu = false;
+  for (const r of raw) {
+    const v = cleanAmount(r);
+    if (/^-?\d{1,3}(,\d{3})+\.\d+$/.test(v) || /^-?\d+\.\d{1,2}$/.test(v) || /^-?0\.\d{3}$/.test(v)) us = true;
+    if (/^-?\d{1,3}(\.\d{3})+,\d{1,2}$/.test(v) || /^-?\d+,\d{1,2}$/.test(v) || /^-?0,\d{3}$/.test(v)) eu = true;
+  }
+  return us === eu ? null : us ? "us" : "eu";
+}
+
+/**
+ * "1,234.50", "$12", "12,50" (a decimal comma), or null. Never a guess: a
+ * lone separator before exactly three digits ("12.500", "12,500") is read
+ * only when the file's own style says which separator is the thousands one.
+ */
+export function readAmount(raw: string, style: AmountStyle | null = null): number | null {
+  let v = cleanAmount(raw);
   if (v === "") return null;
-  if (/^-?\d+,\d{1,2}$/.test(v)) v = v.replace(",", ".");
+  if (AMBIGUOUS.test(v)) {
+    if (style === null) return null;
+    const thousands = style === "us" ? "," : ".";
+    v = v.split(thousands).join("").replace(",", ".");
+  } else if (/^-?\d+,\d{1,2}$/.test(v)) v = v.replace(",", ".");
   else if (/^-?\d{1,3}(\.\d{3})+,\d{1,2}$/.test(v)) v = v.replace(/\./g, "").replace(",", ".");
   else if (/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(v)) v = v.replace(/,/g, "");
   if (!/^-?\d+(\.\d+)?$/.test(v)) return null;
@@ -120,12 +159,29 @@ export function readAmount(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** The currency codes a printed symbol can stand for. */
+const SYMBOL_CODES: Record<string, string[]> = {
+  $: ["USD", "CAD", "AUD", "NZD", "MXN", "SGD", "HKD", "ARS", "CLP", "COP"],
+  "€": ["EUR"],
+  "£": ["GBP"],
+  "₺": ["TRY"],
+  "¥": ["JPY", "CNY"],
+};
+
+/** The symbol written on `raw` when it cannot be the house's money, else null. */
+function foreignSymbol(raw: string, currency: string | null | undefined): string | null {
+  if (!currency) return null;
+  const sym = /[$€£₺¥]/.exec(raw)?.[0];
+  if (!sym) return null;
+  return SYMBOL_CODES[sym].includes(currency.toUpperCase()) ? null : sym;
+}
+
 export function readHistoryCsv(
   text: string,
-  opts: { todayDay: string; moneySet: boolean },
+  opts: { todayDay: string; moneySet: boolean; currency?: string | null },
 ): HistoryReading {
   const empty = (fileRefused: string): HistoryReading => ({
-    sales: [], rowsRead: 0, days: 0, refused: [], refusedCount: 0, netDropped: false, fileRefused,
+    sales: [], rowsRead: 0, days: 0, refused: [], refusedCount: 0, netDropped: false, netForeign: [], netForeignCount: 0, fileRefused,
   });
   if (Buffer.byteLength(text, "utf8") > HISTORY_MAX_BYTES) {
     return empty("The file is over 5 MB. Export fewer days, or one report per month.");
@@ -149,6 +205,7 @@ export function readHistoryCsv(
   const today = t ? dayNumber(+t[1], +t[2], +t[3]) : null;
   if (today === null) return empty("The house's day could not be read.");
   const order = slashOrder(rows.map((r) => r[cDate] ?? ""));
+  const style = amountStyle(rows.flatMap((r) => [r[cQty] ?? "", cNet ? (r[cNet] ?? "") : ""]));
 
   const refused: string[] = [];
   let refusedCount = 0;
@@ -158,6 +215,10 @@ export function readHistoryCsv(
   };
   const byKey = new Map<string, HistorySale>();
   let netDropped = false;
+  const netForeign: string[] = [];
+  let netForeignCount = 0;
+  const unsure = (raw: string, what: string) =>
+    `${what} "${raw.trim()}" could be read two ways and nothing else in the file settles it (write it without a thousands separator)`;
 
   for (const row of rows) {
     const rawDate = row[cDate] ?? "";
@@ -172,9 +233,13 @@ export function readHistoryCsv(
       refuse(`${said}: not read, the row names no item`);
       continue;
     }
-    const qty = readAmount(row[cQty] ?? "");
+    const qty = readAmount(row[cQty] ?? "", style);
     if (qty === null) {
-      refuse(`${said}: not read, the quantity is not a number`);
+      refuse(
+        amountIsAmbiguous(row[cQty] ?? "")
+          ? `${said}: not read, ${unsure(row[cQty], "the quantity")}`
+          : `${said}: not read, the quantity is not a number`,
+      );
       continue;
     }
     if (qty <= 0) {
@@ -192,9 +257,13 @@ export function readHistoryCsv(
     }
     let net: number | null = null;
     if (cNet && (row[cNet] ?? "").trim() !== "") {
-      net = readAmount(row[cNet]);
+      net = readAmount(row[cNet], style);
       if (net === null) {
-        refuse(`${said}: not read, the net sales is not a number`);
+        refuse(
+          amountIsAmbiguous(row[cNet])
+            ? `${said}: not read, ${unsure(row[cNet], "the net sales")}`
+            : `${said}: not read, the net sales is not a number`,
+        );
         continue;
       }
       if (net < 0) {
@@ -204,6 +273,15 @@ export function readHistoryCsv(
       if (!opts.moneySet) {
         netDropped = true;
         net = null;
+      } else {
+        const sym = foreignSymbol(row[cNet], opts.currency);
+        if (sym) {
+          netForeignCount++;
+          if (netForeign.length < HISTORY_MAX_NAMED) {
+            netForeign.push(`${said}: the net sales is written in ${sym}, not the house's ${opts.currency}, so the money was left out and the quantity kept`);
+          }
+          net = null;
+        }
       }
     }
     const key = createHash("sha256").update(`${day}|${norm(name)}`).digest("hex");
@@ -229,6 +307,8 @@ export function readHistoryCsv(
     refused,
     refusedCount,
     netDropped,
+    netForeign,
+    netForeignCount,
     fileRefused: null,
   };
 }
