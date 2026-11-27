@@ -9,7 +9,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const css = readFileSync(resolve(__dirname, 'reports-next.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+const strip = (f: string) => readFileSync(resolve(__dirname, f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+const flatCss = strip('reports-flat.css');
+const css = `${strip('reports-next.css')}\n${flatCss}`;
 const md = readFileSync(resolve(__dirname, 'MOTIONS.md'), 'utf8');
 const rows = md.split('\n').filter((l) => l.startsWith('| `'));
 
@@ -121,5 +123,31 @@ describe('MOTIONS.md covers every motion the stylesheet runs', () => {
         .map(() => g.selector),
     );
     expect(live).toEqual([]);
+  });
+});
+
+describe('rp-flat-in: full screen arrives on the house settle', () => {
+  it('is listed, once, with the settle curve and 320ms', () => {
+    const row = rows.filter((r) => r.includes('`rp-flat-in`'));
+    expect(row).toHaveLength(1);
+    expect(row[0]).toContain('cubic-bezier(.16,1,.3,1)');
+    expect(row[0]).toContain('320ms');
+  });
+
+  it('runs opacity and transform only, on the settle curve, with no exit transition', () => {
+    const rule = rules.filter((r) => !r.reduced && r.selector === '.rp-flat');
+    const anim = rule.flatMap((r) => decls(r.body)).filter((d) => d.kind === 'animation');
+    expect(anim).toHaveLength(1);
+    expect(anim[0].value).toMatch(/rp-flat-in\s+320ms\s+cubic-bezier\(0?\.16,\s*1,\s*0?\.3,\s*1\)/);
+    expect(rule.flatMap((r) => decls(r.body)).filter((d) => d.kind === 'transition')).toEqual([]);
+    const kf = flatCss.match(/@keyframes rp-flat-in\s*\{([\s\S]*?\})\s*\}/);
+    const props = [...(kf?.[1] ?? '').matchAll(/([\w-]+)\s*:/g)].map((m) => m[1]);
+    expect(props.length).toBeGreaterThan(0);
+    expect(props.every((p) => p === 'opacity' || p === 'transform')).toBe(true);
+  });
+
+  it('is no animation at all under prefers-reduced-motion', () => {
+    const off = reducedRules.filter((r) => r.selector === '.rp-flat');
+    expect(off.flatMap((r) => decls(r.body, { live: false })).some((d) => d.kind === 'animation' && /^\s*none\b/.test(d.value))).toBe(true);
   });
 });

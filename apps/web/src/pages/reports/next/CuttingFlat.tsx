@@ -18,7 +18,13 @@
  *     It keeps the house overlay contract — modal, named by its title, focus in
  *     and back to the opener, Tab held, the counted scroll lock, and a place on
  *     the shared overlay stack (`openStack`) so Escape closes only the topmost
- *     overlay — and it does not move, so reduced motion has nothing to remove.
+ *     overlay — and it arrives on the house `settle`
+ *     (opacity + 6px, 320ms, `rp-flat-in` in MOTIONS.md) so a 1440 card does
+ *     not become a full-viewport layer in one frame with no cue. Exit is
+ *     instant (ADR 0112: no overlay exit but the dirty-sheet tear); reduced
+ *     motion is no animation, the fade included; input and focus are never
+ *     held back by it. Rejected: a View Transition card-to-flat morph (a
+ *     large-area zoom is a vestibular trigger and it cross-fades two charts).
  *  5. **The page's shortcuts stay behind it.** ⌘K / Ctrl-K is the page's
  *     window-level palette key (ReportsNext.tsx); while this view is up it is
  *     stopped at `document`, which the bubble reaches before `window`, so the
