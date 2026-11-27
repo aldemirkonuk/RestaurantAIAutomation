@@ -2074,9 +2074,49 @@ export class DocumentsController {
     // `pdcc_kind_matches_the_codes` refuses a 'restated' row with equal codes.
     if (fx && previous !== null && previous === next)
       throw new HttpException(
-        `This paper is already filed in ${next}. To convert it from ${fx.from}, restate it as ${fx.from} first (no rate), then convert. Nothing was changed.`,
+        `This paper is already filed in ${next}, so there is nothing to convert it into. Nothing was changed.`,
         HttpStatus.CONFLICT,
       );
+    // A CONVERSION MULTIPLIES WHATEVER FIGURES STAND ON THE ROWS (r104 reviewer).
+    // Naming a "from" other than the currency the paper is filed in would
+    // multiply figures that are not in that currency.
+    if (fx && previous !== null && fx.from !== previous)
+      throw new HttpException(
+        `This paper is filed in ${previous}, so it cannot be converted from ${fx.from}. Nothing was changed.`,
+        HttpStatus.CONFLICT,
+      );
+    // ... AND AFTER ONE CONVERSION THE ROWS HOLD CONVERTED FIGURES. Relabelling
+    // them back, or converting them again, would file USD figures under a TRY
+    // label and multiply them a second time (120.00 -> 3.60 -> 0.11). So a
+    // paper whose latest change is a conversion is not changed again here.
+    // A failed read says so (ADR 0020): it is never "no earlier conversion".
+    if (kind === "restated") {
+      const { data: lastChange, error: lastError } = await this.db
+        .getClient()
+        .from("procurement_document_currency_changes")
+        .select("paper_currency, exchange_rate, rate_date, new_currency")
+        .eq("document_id", id)
+        .eq("restaurant_id", user.restaurantId)
+        .order("changed_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (lastError)
+        throw new HttpException(
+          `This paper's earlier currency changes could not be read, so nothing was changed: ${lastError.message}`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      const last = lastChange as {
+        paper_currency?: string | null;
+        exchange_rate?: number | string | null;
+        rate_date?: string | null;
+        new_currency?: string | null;
+      } | null;
+      if (last && last.exchange_rate != null)
+        throw new HttpException(
+          `This paper's figures were already converted from ${last.paper_currency ?? "another currency"} to ${last.new_currency ?? previous ?? "its current currency"} at ${last.exchange_rate}${last.rate_date ? ` (rate of ${last.rate_date})` : ""}. Changing its currency again would treat converted figures as if they were the paper's own. Nothing was changed.`,
+          HttpStatus.CONFLICT,
+        );
+    }
 
     /*
      * WHAT THE RE-FILING WILL MOVE, computed but NOT written here.
