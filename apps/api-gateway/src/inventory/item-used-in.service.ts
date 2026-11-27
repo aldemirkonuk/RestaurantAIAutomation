@@ -50,6 +50,8 @@ export interface DrinkRecipeLine {
 
 const PAGE = 1000;
 const CHUNK = 100;
+/** House cocktail ids per ingredient read (a URL of uuids stays short). */
+const INGREDIENT_CHUNK = 200;
 const LINE_COLS =
   "id, menu_id, name, by_glass_price, bottle_price, inventory_item_id, wine_library_id";
 
@@ -264,8 +266,11 @@ export class ItemUsedInService {
         source: "A cocktail recipe names a catalogue drink, and this item is not one.",
       };
     }
-    // The house's own live cocktails first (a house is small), then only their ingredient rows: the
-    // catalogue's rows for a popular drink can pass PostgREST's 1000-row page and push the house's off it.
+    // The house's live cocktails first (a house's own few hundred), then only
+    // THEIR ingredient rows. Reading cocktail_ingredients by the drink alone
+    // scanned every house's and the whole catalogue's rows for it, unordered,
+    // and PostgREST stops at 1,000 rows: a house cocktail past the first 1,000
+    // was missing here while the list's count had it.
     const byId = new Map<string, Record<string, any>>();
     let after: string | null = null;
     for (;;) {
@@ -278,27 +283,29 @@ export class ItemUsedInService {
       if (after) q = q.gt("id", after);
       const { data, error } = await q.order("id", { ascending: true }).limit(PAGE);
       if (error) return failed("The cocktail recipes", error.message);
-      const page = (data ?? []) as Array<Record<string, any>>;
-      for (const c of page) byId.set(String(c.id), c);
-      if (page.length < PAGE) break;
-      after = String(page[page.length - 1].id);
+      const rows = (data ?? []) as Array<Record<string, any>>;
+      for (const c of rows) byId.set(String(c.id), c);
+      if (rows.length < PAGE) break;
+      after = String(rows[rows.length - 1].id);
     }
-    const ids = [...byId.keys()];
+    const houseIds = [...byId.keys()];
     const lines: CocktailLine[] = [];
-    for (let i = 0; i < ids.length; i += CHUNK) {
-      let ingAfter: string | null = null;
+    for (let i = 0; i < houseIds.length; i += INGREDIENT_CHUNK) {
+      const chunk = houseIds.slice(i, i + INGREDIENT_CHUNK);
+      let from: string | null = null;
       for (;;) {
         let q = client
           .from("cocktail_ingredients")
           .select("id, cocktail_id, quantity, unit")
-          .in("cocktail_id", ids.slice(i, i + CHUNK))
+          .in("cocktail_id", chunk)
           .or(keys.join(","));
-        if (ingAfter) q = q.gt("id", ingAfter);
+        if (from) q = q.gt("id", from);
         const { data, error } = await q.order("id", { ascending: true }).limit(PAGE);
         if (error) return failed("The cocktail recipes", error.message);
         const rows = (data ?? []) as Array<Record<string, any>>;
         for (const r of rows) {
-          const c = byId.get(String(r.cocktail_id))!;
+          const c = byId.get(String(r.cocktail_id));
+          if (!c) continue;
           lines.push({
             cocktailId: c.id,
             name: c.display_name || c.name,
@@ -307,7 +314,7 @@ export class ItemUsedInService {
           });
         }
         if (rows.length < PAGE) break;
-        ingAfter = String(rows[rows.length - 1].id);
+        from = String(rows[rows.length - 1].id);
       }
     }
     return { readable: true, lines, source };
