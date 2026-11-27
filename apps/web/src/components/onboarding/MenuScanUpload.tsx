@@ -28,6 +28,10 @@ export function MenuScanUpload({ onSuccess, onGoOn }: MenuScanUploadProps) {
   // Once the owner went on, the read's ending belongs to /house and the bell:
   // it must not pull them back to the proof, nor say a word here.
   const wentOn = useRef(false)
+  // The wait on the current read. It stops when the owner goes on or leaves the
+  // page, so no poll runs on for a person who is no longer looking.
+  const wait = useRef<AbortController | null>(null)
+  useEffect(() => () => wait.current?.abort(), [])
 
   // Keyed on whether a way on exists, not on the callback: a parent's new
   // arrow on each render must not restart the three seconds.
@@ -48,6 +52,9 @@ export function MenuScanUpload({ onSuccess, onGoOn }: MenuScanUploadProps) {
     setError(null)
     setReading(null)
     setOffer(false)
+    wait.current?.abort()
+    const mine = new AbortController()
+    wait.current = mine
     // The house the photo is sent for: importMenu posts this same id.
     const houseId = getActiveRestaurantId()
     try {
@@ -57,15 +64,15 @@ export function MenuScanUpload({ onSuccess, onGoOn }: MenuScanUploadProps) {
       const result = await importMenu(
         'scan',
         { imageBase64: photo.base64 },
-        { onReading: (menuId) => setReading(houseId ? { houseId, menuId } : null) },
+        { onReading: (menuId) => setReading(houseId ? { houseId, menuId } : null), signal: mine.signal },
       )
-      if (wentOn.current) return
+      if (wentOn.current || mine.signal.aborted) return
       onSuccess(result, { image: photo.dataUrl })
     } catch (e: any) {
-      if (wentOn.current) return
+      if (wentOn.current || mine.signal.aborted) return
       setError(readRefusalWords(e, 'The menu was not read. Please try again.'))
     } finally {
-      if (!wentOn.current) {
+      if (!wentOn.current && !mine.signal.aborted) {
         setLoading(false)
         setReading(null)
         setOffer(false)
@@ -76,6 +83,7 @@ export function MenuScanUpload({ onSuccess, onGoOn }: MenuScanUploadProps) {
   const goOn = () => {
     if (!reading || !onGoOn) return
     wentOn.current = true
+    wait.current?.abort()
     writeMenuReading({ ...reading, at: Date.now() })
     onGoOn()
   }
@@ -88,7 +96,7 @@ export function MenuScanUpload({ onSuccess, onGoOn }: MenuScanUploadProps) {
         {offer && reading ? (
           <>
             <p className="max-w-xs text-center text-sm text-gray-600">
-              This can take a minute. Go on to your house; we will ring when it is read.
+              This can take a minute. Go on to your house; it says there when the menu is read.
             </p>
             <button
               type="button"

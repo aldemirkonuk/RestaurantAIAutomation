@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   release: null as null | ((v: unknown) => void),
   fail: null as null | ((e: unknown) => void),
   onReading: null as null | ((menuId: string) => void),
+  signal: undefined as AbortSignal | undefined,
 }))
 vi.mock('../../services/api/menus', () => ({
   importMenu: h.importMenu,
@@ -29,7 +30,7 @@ vi.mock('../scanner/CameraCapture', () => ({
 import { GO_ON_AFTER_MS, MenuScanUpload } from './MenuScanUpload'
 import { MENU_READING_KEY } from '../../lib/houseMenuReading'
 
-const HELD = 'This can take a minute. Go on to your house; we will ring when it is read.'
+const HELD = 'This can take a minute. Go on to your house; it says there when the menu is read.'
 const onSuccess = vi.fn()
 const onGoOn = vi.fn()
 
@@ -39,8 +40,9 @@ beforeEach(() => {
   sessionStorage.clear()
   localStorage.setItem('activeRestaurantId', 'h1')
   h.importMenu.mockImplementation(
-    (_m: string, _d: unknown, labels: { onReading?: (id: string) => void }) =>
+    (_m: string, _d: unknown, labels: { onReading?: (id: string) => void; signal?: AbortSignal }) =>
       new Promise((resolve, reject) => {
+        h.signal = labels?.signal
         h.release = resolve
         h.fail = reject
         h.onReading = labels?.onReading ?? null
@@ -112,5 +114,39 @@ describe('MenuScanUpload: go on to the house while the menu is read', () => {
     act(() => h.onReading?.('m-1'))
     await act(async () => vi.advanceTimersByTime(GO_ON_AFTER_MS * 2))
     expect(screen.queryByText(HELD)).not.toBeInTheDocument()
+  })
+
+  // r110 g4: the offer's words are true without #2234 (the bell), so they promise no ring.
+  it('says where the end shows, and promises no bell', async () => {
+    await sendPhoto()
+    act(() => h.onReading?.('m-1'))
+    await act(async () => vi.advanceTimersByTime(GO_ON_AFTER_MS))
+    expect(screen.getByText(HELD)).toBeInTheDocument()
+    expect(HELD).not.toMatch(/ring|bell/i)
+  })
+
+  it('hands the read a signal that stays open while the person waits', async () => {
+    await sendPhoto()
+    expect(h.signal).toBeInstanceOf(AbortSignal)
+    expect(h.signal?.aborted).toBe(false)
+  })
+
+  it('going on stops the wait, so the poll does not run for someone who left', async () => {
+    await sendPhoto()
+    act(() => h.onReading?.('m-1'))
+    await act(async () => vi.advanceTimersByTime(GO_ON_AFTER_MS))
+    fireEvent.click(screen.getByRole('button', { name: 'Go on to the house' }))
+    expect(h.signal?.aborted).toBe(true)
+  })
+
+  it('leaving the page stops the wait and a late answer says nothing', async () => {
+    const view = render(<MenuScanUpload onSuccess={onSuccess} onGoOn={onGoOn} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Take the photo' }))
+    await act(async () => {})
+    expect(h.signal?.aborted).toBe(false)
+    view.unmount()
+    expect(h.signal?.aborted).toBe(true)
+    await act(async () => h.release?.({ menuId: 'm-1', items: [] }))
+    expect(onSuccess).not.toHaveBeenCalled()
   })
 })

@@ -154,6 +154,8 @@ export interface MenuReadLabels {
   onReading?: (menuId: string) => void
   /** The share of the file the server has received, 0 to 1 (null when the size is unknown). */
   onUploadProgress?: (share: number | null) => void
+  /** Stops the wait on a background read (the person went on, or left the page); the read itself goes on. */
+  signal?: AbortSignal
 }
 
 export type MenuImportSuccess = (
@@ -218,8 +220,11 @@ export interface MenuReadStatus {
   reply: MenuImportResult | null
 }
 
-export async function readMenuStatus(menuId: string): Promise<MenuReadStatus> {
-  const response = await apiClient.get<MenuReadStatus>(`/menu-versions/${menuId}/read`)
+export async function readMenuStatus(menuId: string, signal?: AbortSignal): Promise<MenuReadStatus> {
+  const response = await apiClient.get<MenuReadStatus>(
+    `/menu-versions/${menuId}/read`,
+    ...(signal ? [{ signal }] : []),
+  )
   return response.data
 }
 
@@ -257,20 +262,39 @@ function pollIsRefused(err: unknown): boolean {
 /** Wait on a background read until it is done or failed. Exported for tests. */
 export async function waitForRead(
   menuId: string,
-  opts: { sleep?: (ms: number) => Promise<void>; now?: () => number } = {},
+  opts: { sleep?: (ms: number) => Promise<void>; now?: () => number; signal?: AbortSignal } = {},
 ): Promise<MenuImportResult> {
-  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
+  const { signal } = opts
+  // An abort ends the wait, not the read: the server goes on, and /house asks after it.
+  const stopIfAborted = () => {
+    if (signal?.aborted) throw new DOMException('The wait on the read was stopped.', 'AbortError')
+  }
+  const sleep =
+    opts.sleep ??
+    ((ms: number) =>
+      new Promise<void>((resolve) => {
+        const done = () => {
+          clearTimeout(timer)
+          signal?.removeEventListener('abort', done)
+          resolve()
+        }
+        const timer = setTimeout(done, ms)
+        signal?.addEventListener('abort', done, { once: true })
+      }))
   const now = opts.now ?? Date.now
   const started = now()
   let missed = 0
   for (let i = 0; ; i++) {
     // Quick at first (a one-page photo takes seconds), then every few seconds.
+    stopIfAborted()
     await sleep(i < 10 ? 1500 : 4000)
+    stopIfAborted()
     let status: MenuReadStatus
     try {
-      status = await readMenuStatus(menuId)
+      status = await readMenuStatus(menuId, signal)
       missed = 0
     } catch (err) {
+      stopIfAborted()
       // A refusal is said at once (the caller shows the gateway's words).
       if (pollIsRefused(err)) throw err
       // A missed poll is not the read's failure, but many in a row end the wait.
@@ -285,6 +309,7 @@ export async function waitForRead(
       }
       continue
     }
+    stopIfAborted()
     if (status.state === 'done') {
       return status.reply ?? { menuId, itemsExtracted: 0, submissionsCreated: 0, items: [], warnings: status.warnings }
     }
@@ -332,7 +357,7 @@ export async function importMenu(
   // is cut off by the client's 30-second timeout.
   if (!response.data.reading) return response.data
   labels.onReading?.(response.data.menuId)
-  const done = await waitForRead(response.data.menuId)
+  const done = await waitForRead(response.data.menuId, { signal: labels.signal })
   return { ...done, pages: response.data.pages ?? done.pages }
 }
 
