@@ -190,7 +190,7 @@ describe('CocktailRegister with the real recipe sheet', () => {
     const [url, body] = h.put.mock.calls[0];
     expect(url).toBe(`/recipes/${RID}/cocktails/${CB}`);
     expect(body.expectedVersionId).toBe(VB);
-    expect(body.lines).toEqual([{ role: 'stocked', inventoryId: 't1', label: 'tequila', qty: 50, unit: 'ml' }]);
+    expect(body.lines).toEqual([{ role: 'stocked', inventoryId: 't1', label: 'tequila', qty: 50, unit: 'ml', usablePct: null }]);
   });
 
   it('two drinks with no recipe yet: lines typed for one never appear on the other', async () => {

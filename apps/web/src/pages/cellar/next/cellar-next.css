@@ -1263,3 +1263,9 @@ textarea.cl-field {
   .cl-strip { min-height: 92px; }
   .cl-loose-room { min-height: calc(1lh + 44px); }
 }
+
+/* Usable share (r109 drinks-g1); 44 px at <=719 via .cl-rcp .cl-field. */
+.cl-rcp-usable { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 6px; font-size: 12px; color: var(--ink-2); }
+.cl-rcp-usable-in { width: 72px; text-align: right; }
+.cl-rcp-usable-in[aria-invalid='true'] { border-color: var(--warn); }
+.cl-rcp-usable-bad { color: var(--warn); }

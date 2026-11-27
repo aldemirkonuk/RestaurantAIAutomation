@@ -33,6 +33,8 @@ export interface RecipeLine {
   unitCode: string;
   qtyBase: number;
   baseUnit: string;
+  /** The share of what is bought that the amount is, 1 to 100 (lime 45: 45 ml juice is 100 ml bought); null is all of it. Absent from an older gateway. */
+  usablePct?: number | null;
   status: RecipeLineStatus;
   /**
    * The line's own cost, rounded to the cent on its own: equal costs read the
@@ -250,6 +252,7 @@ export interface PreviewCostLine {
   inventoryId: string | null;
   qtyEntered: number;
   unitCode: string;
+  /** As on a saved line, so the draft is priced as it will be saved. */
   usablePct?: number | null;
 }
 
