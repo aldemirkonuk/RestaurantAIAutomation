@@ -210,7 +210,7 @@
   min-width: 44px;
   align-self: flex-end;
 }
-.rp-flat:fullscreen {
+:root:fullscreen .rp-flat {
   background: var(--paper-0);
   padding:
     max(12px, env(safe-area-inset-top))

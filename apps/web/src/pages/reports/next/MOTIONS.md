@@ -49,7 +49,7 @@ to those would put a moving cutting somewhere the announcement says it is not.
 ## Deliberate non-motions
 
 - **"Fill the screen" adds no motion.** The flat view's button asks the browser
-  for its own full screen (`.rp-flat:fullscreen`); the browser's switch is not
+  for its own full screen (`:root:fullscreen .rp-flat`); the browser's switch is not
   ours to animate, and no fade, rise or settle is added around it. The label
   and `aria-pressed` change at once; nothing is left to remove under reduced
   motion.

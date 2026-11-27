@@ -6,8 +6,8 @@
 
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import Cutting from './Cutting';
 import { Working } from './rp-plot';
 import { CATALOGUE } from './rp-catalogue';
@@ -106,6 +106,7 @@ function paint(node: React.ReactNode, entries: string[] = ['/reports']) {
 }
 
 const where = () => screen.getByTestId('where').textContent;
+const dialogOf = (name: string) => screen.getByRole('dialog', { name });
 const opener = (title: string) =>
   screen.getByRole('button', { name: `Show ${title} full screen` });
 
@@ -330,7 +331,8 @@ describe('Fill the screen (r109 g1)', () => {
     expect(fill).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(fill);
     expect(request).toHaveBeenCalledTimes(1);
-    expect(request.mock.instances[0]).toBe(dialog);
+    // The page element, which outlives any one cutting's dialog.
+    expect(request.mock.instances[0]).toBe(document.documentElement);
     expect(request).toHaveBeenCalledWith({ navigationUI: 'hide' });
     await waitFor(() =>
       expect(within(dialog).getByRole('button', { name: 'Leave full screen' })).toHaveAttribute('aria-pressed', 'true'),
@@ -341,6 +343,69 @@ describe('Fill the screen (r109 g1)', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(exit).toHaveBeenCalledTimes(1);
     expect(document.body.style.overflow).toBe('');
+  });
+
+  /** Two cuttings and a button that swaps the open one for the other, as a Previous / Next step does. */
+  function Pair() {
+    const navigate = useNavigate();
+    return (
+      <>
+        <button type="button" data-testid="step" onClick={() => navigate('/reports?flat=week', { replace: true })}>
+          step
+        </button>
+        {(['till', 'week'] as const).map((id) => (
+          <Cutting
+            key={id}
+            id={id}
+            graph={CATALOGUE[id].graphs[0] ?? 'table'}
+            register={id === 'till' ? answered(TILL) : inFlight()}
+            ctx={{ days: 30 }}
+            arranging={false}
+            swapOptions={swapOptions}
+            arrange={arrangeStub}
+            onGraph={vi.fn()}
+            onSwap={vi.fn()}
+            onRemove={vi.fn()}
+            onDays={vi.fn()}
+          />
+        ))}
+      </>
+    );
+  }
+
+  it('[REVERT-FAILS] a step keeps the filled screen and the landscape lock; only closing gives them back (r109)', async () => {
+    enable();
+    const lock = vi.fn(() => Promise.resolve());
+    const unlock = vi.fn();
+    Object.defineProperty(window.screen, 'orientation', { configurable: true, value: { lock, unlock } });
+    const mm = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ matches: true, media: q, addEventListener() {}, removeEventListener() {} })) as never;
+    try {
+      paint(<Pair />);
+      fireEvent.click(opener('Through the till'));
+      fireEvent.click(within(dialogOf('Through the till')).getByRole('button', { name: 'Fill the screen' }));
+      await waitFor(() => expect(lock).toHaveBeenCalledWith('landscape'));
+      expect(document.fullscreenElement).toBe(document.documentElement);
+
+      fireEvent.click(screen.getByTestId('step'));
+      const next = dialogOf(CATALOGUE.week.title);
+      await act(async () => {});
+      expect(screen.getAllByRole('dialog')).toHaveLength(1);
+      expect(document.fullscreenElement).toBe(document.documentElement);
+      expect(exit).not.toHaveBeenCalled();
+      expect(unlock).not.toHaveBeenCalled();
+      // The new dialog knows the screen is already filled: no second tap.
+      expect(within(next).getByRole('button', { name: 'Leave full screen' })).toHaveAttribute('aria-pressed', 'true');
+
+      fireEvent.click(within(next).getByRole('button', { name: 'Back to the sheet' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      await waitFor(() => expect(exit).toHaveBeenCalledTimes(1));
+      expect(unlock).toHaveBeenCalledTimes(1);
+      expect(document.fullscreenElement).toBeNull();
+    } finally {
+      window.matchMedia = mm;
+      delete (window.screen as unknown as Record<string, unknown>).orientation;
+    }
   });
 
   it("the browser's own Escape leaves its full screen and puts the label back; the flat stays open", async () => {

@@ -19,9 +19,11 @@
  *     and back to the opener, Tab held, the counted scroll lock, and a place on
  *     the shared overlay stack (`openStack`) so Escape closes only the topmost
  *     overlay — and it does not move, so reduced motion has nothing to remove.
- *  5. **"Fill the screen" is the browser's own full screen, asked of this
- *     dialog's root** (so the focus trap, the scroll lock and the held ⌘K stay
- *     exactly as they are). Shown only where `document.fullscreenEnabled` and
+ *  5. **"Fill the screen" is the browser's own full screen, asked of the page
+ *     element** (`document.documentElement`, which outlives any one cutting's
+ *     dialog, so a Previous / Next step keeps the screen and the lock; the fixed
+ *     `.rp-flat` layer already covers the viewport, and the focus trap, the
+ *     scroll lock and the held ⌘K stay exactly as they are). Shown only where `document.fullscreenEnabled` and
  *     `requestFullscreen` exist, so none on iPhone Safari. A phone held upright
  *     asks for landscape once it is in (`screen.orientation.lock`, silently
  *     declined where refused). The browser's first Escape leaves its full
@@ -53,6 +55,9 @@ import './reports-flat.css';
 
 /** The search parameter that lays a cutting flat: `/reports?flat=till`. */
 export const FLAT_PARAM = 'flat';
+
+/** The landscape lock is the window's, not a dialog's: a step hands it to the next cutting's dialog. */
+let landscapeHeld = false;
 
 /** True where the browser can give one element the whole screen (not iPhone Safari). */
 function canFillScreen(): boolean {
@@ -130,8 +135,8 @@ export default function CuttingFlat({
   const backRef = useRef<HTMLButtonElement | null>(null);
   const titleId = useId();
   const canFill = canFillScreen();
-  const [filled, setFilled] = useState(false);
-  const lockedRef = useRef(false);
+  // A step mounts the next cutting's dialog while the screen is already filled: start from what the browser says.
+  const [filled, setFilled] = useState(() => typeof document !== 'undefined' && document.fullscreenElement === document.documentElement);
   const closeRef = useRef(onClose);
   useEffect(() => {
     closeRef.current = onClose;
@@ -179,47 +184,51 @@ export default function CuttingFlat({
     };
   }, [titleId]);
 
-  /* The full screen is the dialog root's. `filled` follows the browser, so the
+  /* The full screen is the page element's. `filled` follows the browser, so the
      UA's own Escape (which leaves it) puts the label back. Leaving this view
-     by any road (Back, Escape, popstate) gives the screen and the lock back. */
+     for good (Back, Escape, popstate) gives the screen and the lock back; a
+     step swaps this dialog for the next cutting's in one commit, so the give-back
+     waits a microtask and is skipped while a flat dialog is still up. */
   useLayoutEffect(() => {
-    const root = rootRef.current;
-    const sync = () => setFilled(document.fullscreenElement === root);
+    const page = document.documentElement;
+    const sync = () => setFilled(document.fullscreenElement === page);
     document.addEventListener('fullscreenchange', sync);
     return () => {
       document.removeEventListener('fullscreenchange', sync);
-      if (document.fullscreenElement === root) {
-        try {
-          void Promise.resolve(document.exitFullscreen()).catch(() => {});
-        } catch {
-          /* already out */
+      queueMicrotask(() => {
+        if (document.querySelector('.rp-flat')) return;
+        if (document.fullscreenElement === page) {
+          try {
+            void Promise.resolve(document.exitFullscreen()).catch(() => {});
+          } catch {
+            /* already out */
+          }
         }
-      }
-      if (lockedRef.current) {
-        lockedRef.current = false;
-        try {
-          orientationOf().unlock?.();
-        } catch {
-          /* nothing was held */
+        if (landscapeHeld) {
+          landscapeHeld = false;
+          try {
+            orientationOf().unlock?.();
+          } catch {
+            /* nothing was held */
+          }
         }
-      }
+      });
     };
   }, []);
 
   const toggleFill = () => {
-    const root = rootRef.current;
-    if (!root) return;
-    if (document.fullscreenElement === root) {
+    const page = document.documentElement;
+    if (document.fullscreenElement === page) {
       void Promise.resolve(document.exitFullscreen()).catch(() => {});
       return;
     }
-    void Promise.resolve(root.requestFullscreen({ navigationUI: 'hide' }))
+    void Promise.resolve(page.requestFullscreen({ navigationUI: 'hide' }))
       .then(() => {
         if (!wantsLandscapeLock()) return;
         try {
           void Promise.resolve(orientationOf().lock?.('landscape'))
             .then(() => {
-              lockedRef.current = true;
+              landscapeHeld = true;
             })
             .catch(() => {});
         } catch {
