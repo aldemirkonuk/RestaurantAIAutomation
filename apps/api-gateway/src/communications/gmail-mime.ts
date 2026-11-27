@@ -208,6 +208,28 @@ export function addressesInHeader(value: string | null | undefined): string[] {
   return Array.from(new Set(found));
 }
 
+/**
+ * Gmail's `payload.headers` as the lower-cased map an inbound event carries.
+ * A repeated header keeps its last value, as before, except the sender check
+ * (r108 mail-gap g8): Gmail writes its own Authentication-Results at the top,
+ * and any further down came with the letter, so anyone could have written
+ * them. The first one is the receiving server's and is the one kept.
+ */
+const FIRST_WINS = new Set(["authentication-results", "arc-authentication-results"]);
+
+export function inboundHeaderMap(
+  headers: Array<{ name?: string | null; value?: string | null }> | null | undefined,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const h of headers ?? []) {
+    if (!h?.name || !h.value) continue;
+    const name = h.name.toLowerCase();
+    if (FIRST_WINS.has(name) && name in out) continue;
+    out[name] = h.value;
+  }
+  return out;
+}
+
 /** Case-insensitive header lookup over Gmail's `payload.headers` array. */
 export function headerValue(
   headers: Array<{ name?: string | null; value?: string | null }> | null | undefined,

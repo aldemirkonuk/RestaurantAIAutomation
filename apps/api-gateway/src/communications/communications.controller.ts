@@ -28,6 +28,7 @@ import {
   fromHeader,
   MAX_ATTACHMENTS_PER_MESSAGE,
   MAX_ATTACHMENT_B64_LEN,
+  inboundHeaderMap,
 } from "./gmail-mime";
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
 import { receivingHouse } from "./shared-mailbox-house";
@@ -1394,13 +1395,9 @@ export class CommunicationsController {
               in_reply_to: inReplyTo,
               references,
               received_at: new Date().toISOString(),
-              headers: Object.fromEntries(
-                headers
-                  .filter((h) => h.name && h.value)
-                  .map((h) => [h.name!.toLowerCase(), h.value]),
-              ),
-              // Gmail's own verdict, from the ordered list: the map above
-              // keeps the sender's last line (`sender-authentication.ts`).
+              headers: inboundHeaderMap(headers),
+              // Gmail's own verdict with its authserv-id checked (#996); the map
+              // above keeps the first Authentication-Results line (#2288).
               ingress_authentication_results:
                 ingressAuthenticationResults(headers),
             },
@@ -1548,13 +1545,9 @@ export class CommunicationsController {
               in_reply_to: inReplyTo,
               references,
               received_at: new Date().toISOString(),
-              headers: Object.fromEntries(
-                headers
-                  .filter((h) => h.name && h.value)
-                  .map((h) => [h.name!.toLowerCase(), h.value]),
-              ),
-              // Gmail's own verdict, from the ordered list: the map above
-              // keeps the sender's last line (`sender-authentication.ts`).
+              headers: inboundHeaderMap(headers),
+              // Gmail's own verdict with its authserv-id checked (#996); the map
+              // above keeps the first Authentication-Results line (#2288).
               ingress_authentication_results:
                 ingressAuthenticationResults(headers),
             },

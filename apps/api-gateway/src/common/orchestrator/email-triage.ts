@@ -153,6 +153,53 @@ function readAuthMethod(
 }
 
 /**
+ * The sender check a letter came with (r108 mail-gap g8), kept on the row as
+ * `email_headers.auth`: SPF, DKIM and DMARC as pass (true), another verdict
+ * (false) or absent (null), and the domain that signed it when DKIM passed.
+ */
+export interface SenderAuth {
+  spf: boolean | null;
+  dkim: boolean | null;
+  dmarc: boolean | null;
+  signedBy: string | null;
+}
+
+/** The `header.d=` (else the domain of `header.i=`) of the first passing DKIM verdict. */
+function dkimSigner(value: string): string | null {
+  const clause = /\bdkim=pass\b([^;]*)/.exec(value.toLowerCase());
+  if (!clause) return null;
+  const d =
+    /\bheader\.d=([a-z0-9.-]+)/.exec(clause[1]) ??
+    /\bheader\.i=[^\s;@]*@([a-z0-9.-]+)/.exec(clause[1]);
+  return d ? d[1].replace(/\.+$/, "") || null : null;
+}
+
+/**
+ * The receiving server whose verdict is believed. Gmail stamps its own
+ * Authentication-Results above everything the sender wrote, and the header map
+ * keeps that topmost one (`inboundHeaderMap`). ARC-Authentication-Results is
+ * never read: with no forwarder in between, the topmost one is whatever the
+ * sender wrote.
+ */
+const TRUSTED_AUTHSERV_ID = "mx.google.com";
+
+/**
+ * The sender check to keep, or null when there is none to believe: no
+ * Authentication-Results, one some other server wrote, or one with no verdict.
+ * Null reads as "not recorded", never as a failure.
+ */
+export function senderAuthOf(headers: HeaderMap | null | undefined): SenderAuth | null {
+  const h = normalizeHeaders(headers);
+  const auth = (h["authentication-results"] || "").trim();
+  if (auth.split(";")[0].trim().toLowerCase() !== TRUSTED_AUTHSERV_ID) return null;
+  const spf = readAuthMethod(auth, "spf");
+  const dkim = readAuthMethod(auth, "dkim");
+  const dmarc = readAuthMethod(auth, "dmarc");
+  if (spf === null && dkim === null && dmarc === null) return null;
+  return { spf, dkim, dmarc, signedBy: dkim === true ? dkimSigner(auth) : null };
+}
+
+/**
  * Derive transport/auth signals from a header map (as published by the inbound pipeline)
  * plus an optional explicit `From` value. Never throws.
  */

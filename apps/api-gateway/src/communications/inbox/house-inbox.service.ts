@@ -109,6 +109,7 @@ import {
   extractEmailContent,
   fromHeader,
   headerValue,
+  inboundHeaderMap,
   MAX_ATTACHMENTS_PER_MESSAGE,
   MAX_ATTACHMENT_B64_LEN,
   type GmailPayloadPart,
@@ -1015,13 +1016,9 @@ export class HouseInboxService {
             in_reply_to: headerValue(headers, "in-reply-to"),
             references: headerValue(headers, "references"),
             received_at: new Date(internalDate).toISOString(),
-            headers: Object.fromEntries(
-              headers
-                .filter((h) => h.name && h.value)
-                .map((h) => [h.name!.toLowerCase(), h.value]),
-            ),
-            // Gmail's own verdict, from the ordered list: the map above keeps
-            // the sender's last line (`sender-authentication.ts`).
+            headers: inboundHeaderMap(headers),
+            // Gmail's own verdict with its authserv-id checked (#996); the map
+            // above keeps the first Authentication-Results line (#2288).
             ingress_authentication_results:
               ingressAuthenticationResults(headers),
             source: "house-inbox",
