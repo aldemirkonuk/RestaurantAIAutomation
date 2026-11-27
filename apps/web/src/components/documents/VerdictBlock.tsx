@@ -152,9 +152,18 @@ export interface VerdictBlockProps {
   doc: CanonicalDocument
   /** The delivery states this document's event is in, for the clock chip. */
   states?: string[]
+  /**
+   * The sentence that says why prices were not compared against earlier costs
+   * when the paper is in another money than the house costs in. It is its own
+   * line under the heading and never replaces it: the heading's fact (no order
+   * or door count, or N lines differ) is a different fact from the money one,
+   * and a paper paired with an order still needs this line, or silence reads
+   * as "nothing moved".
+   */
+  foreignMoney?: string | null
 }
 
-export function VerdictBlock({ doc, states = [] }: VerdictBlockProps) {
+export function VerdictBlock({ doc, states = [], foreignMoney = null }: VerdictBlockProps) {
   const currency = doc.layer1.currency.value
   const exceptions = exceptionSentences(doc)
   const atRisk = exceptions.reduce((sum, e) => sum + (e.money ?? 0), 0)
@@ -229,6 +238,15 @@ export function VerdictBlock({ doc, states = [] }: VerdictBlockProps) {
           This is an <strong>unread</strong> document, not a clean one. No line
           on it has been checked against what was ordered, shipped, received or
           billed, and no amount is being claimed or ruled out.
+        </p>
+      )}
+
+      {foreignMoney && (
+        <p
+          data-testid="foreign-money-note"
+          style={{ margin: '3px 0 0', fontSize: 11.5, lineHeight: 1.35 }}
+        >
+          {foreignMoney}
         </p>
       )}
 

@@ -852,19 +852,16 @@ function PriceMovesNote({ docId }: { docId: string }) {
       </p>
     );
   const all = q.data?.lines ?? [];
-  // r106: a paper in another money is not compared, and silence read as "nothing
-  // moved". When every line was held back for currency, say so, with both codes.
+  // r106/r108: a paper in another money is not compared, and the verdict above
+  // already says so, with both codes (CanonicalDocumentPage). The money card does
+  // not say it a second time on the same paper.
   if (
     all.length > 0 &&
     all.every((l) => !l.compared && l.reason === 'currency_differs') &&
     q.data?.paperCurrency &&
     q.data?.houseCurrency
   )
-    return (
-      <p role="status" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>
-        Prices are in {q.data.paperCurrency} and the house costs in {q.data.houseCurrency}, so none were compared against earlier costs.
-      </p>
-    );
+    return null;
   const moved = all.flatMap((l) => (l.compared && l.moved && l.sentence ? [l] : []));
   if (!moved.length) return null;
   return (
@@ -2101,6 +2098,7 @@ export default function ReceiptsNext() {
                 not shrink the verified book to a header integer) */}
             {data.verifiedKnown && (data.verified.length > 0 || data.verifiedTerm !== '') && (
               <div style={{ marginTop: 16 }} data-testid="verified-lane">
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 16 }}>
                 <button
                   type="button"
                   onClick={() => setShowVerified((v) => !v)}
@@ -2115,11 +2113,25 @@ export default function ReceiptsNext() {
                     color: 'var(--ink-4, #665D50)',
                     border: 'none',
                     padding: '4px 0',
+                    minHeight: 44,
                     cursor: 'pointer',
                   }}
                 >
                   Verified · {data.verifiedCapped ? GE : ''}{data.verified.length} {showVerified ? '▾' : '▸'}
                 </button>
+                {showVerified && data.verifiedHasOlder && (
+                  <button
+                    type="button"
+                    onClick={data.loadOlderVerified}
+                    disabled={data.olderBusy}
+                    data-testid="older-papers"
+                    className="rc-ink"
+                    style={{ minHeight: 44, minWidth: 44, display: 'inline-flex', alignItems: 'center', fontSize: 12, fontWeight: 600, border: 'none', background: 'transparent', color: 'var(--seal-deep, #14515C)', textDecoration: 'underline', cursor: 'pointer' }}
+                  >
+                    {data.olderBusy ? 'Reading older papers' : 'Older papers'}
+                  </button>
+                )}
+                </div>
                 {showVerified && (
                   <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
                     <form
@@ -2171,16 +2183,7 @@ export default function ReceiptsNext() {
                     ))}
                     {data.verifiedHasOlder && (
                       <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '8px 0 4px' }}>
-                        Showing the newest {data.verified.length} verified papers; older ones are not listed yet. Search by vendor or number, or
-                        <button
-                          type="button"
-                          onClick={data.loadOlderVerified}
-                          disabled={data.olderBusy}
-                          className="rc-ink"
-                          style={{ marginLeft: 6, minHeight: 44, minWidth: 44, display: 'inline-flex', alignItems: 'center', fontSize: 12, fontWeight: 600, border: 'none', background: 'transparent', color: 'var(--seal-deep, #14515C)', textDecoration: 'underline', cursor: 'pointer' }}
-                        >
-                          {data.olderBusy ? 'Reading older papers' : 'Older papers'}
-                        </button>
+                        Showing the newest {data.verified.length} verified papers; older ones are not listed yet. Search by vendor or number, or use Older papers at the top of this lane.
                       </p>
                     )}
                     {data.olderError && (
