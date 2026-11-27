@@ -20,7 +20,8 @@ import { useCallback } from 'react'
 // Query: Inventory list
 // ---------------------------------------------------------------------------
 
-export function useInventory() {
+export function useInventory(options: { enabled?: boolean } = {}) {
+  const { enabled = true } = options
   const { activeRestaurantId, isAuthenticated } = useAuth()
   const queryClient = useQueryClient()
 
@@ -65,7 +66,7 @@ export function useInventory() {
       const items = await inventoryApi.getInventory(activeRestaurantId!)
       return items.map(normalizeInventoryItem)
     },
-    enabled: !!activeRestaurantId && isAuthenticated,
+    enabled: enabled && !!activeRestaurantId && isAuthenticated,
     staleTime: 30_000,
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,

@@ -82,7 +82,6 @@ export interface CellarNextProps {
 }
 
 export default function CellarNext({ ground, category }: CellarNextProps) {
-  const data = useCellarNextData();
   const { pathname } = useLocation();
   const [params] = useSearchParams();
 
@@ -94,6 +93,7 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
       ? (queried as RegisterId)
       : null;
   const open: RegisterId | null = category ?? fromQuery;
+  const data = useCellarNextData(open);
 
   // Only the registers this house carries appear in the spine. While the
   // readout is unread the spine holds the wine register alone — the one this

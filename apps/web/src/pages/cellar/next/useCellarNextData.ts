@@ -1304,7 +1304,14 @@ export function useCocktailRegister(enabled: boolean) {
   };
 }
 
-export function useCellarNextData() {
+/**
+ * `open` is the register the page has open (null = the parent overview). The
+ * cocktail register draws neither the wine book nor the inventory overlay, so
+ * a cold /cocktails does not read them (318 KB + 745 KB measured, p9-3). Every
+ * other register and the overview read both, as before.
+ */
+export function useCellarNextData(open: RegisterId | null = null) {
+  const readsBook = open !== 'cocktails';
   const { activeRestaurantId, loading: authLoading } = useAuth();
   const queryClient = useQueryClient();
   const registers = useCellarRegisters();
@@ -1325,6 +1332,7 @@ export function useCellarNextData() {
    */
   const winesQ = useInfiniteQuery({
     queryKey: [...queryKeys.wines.all, 'book', BOOK_READ_LIMIT] as const,
+    enabled: readsBook,
     initialPageParam: 0,
     queryFn: async ({ pageParam }): Promise<WireWine[]> => {
       const r = await apiClient.get('/wines', {
@@ -1340,7 +1348,7 @@ export function useCellarNextData() {
         ? undefined
         : allPages.reduce((sum, page) => sum + page.length, 0),
   });
-  const inventoryQ = useInventory();
+  const inventoryQ = useInventory({ enabled: readsBook });
   const providersQ = useProviders(activeRestaurantId ?? '');
 
   // Live catalogue edits arrive as a `wine_update` window event from the
@@ -1496,8 +1504,11 @@ export function useCellarNextData() {
     vendorsError: providersQ.isError ? errorOf(providersQ.error) : null,
 
     refetch: () => {
-      void winesQ.refetch();
-      void inventoryQ.refetch();
+      // A disabled query still fetches when refetch is called by hand.
+      if (readsBook) {
+        void winesQ.refetch();
+        void inventoryQ.refetch();
+      }
       void providersQ.refetch();
       registers.refetch();
     },

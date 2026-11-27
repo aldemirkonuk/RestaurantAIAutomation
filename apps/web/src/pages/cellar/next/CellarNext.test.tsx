@@ -45,6 +45,7 @@ import { HOUSE_SPINE } from './cellar-columns';
 
 const mock = vi.hoisted(() => ({
   current: {} as Record<string, unknown>,
+  openSeen: undefined as unknown,
   beverages: { data: null, loading: false, error: null } as Record<string, unknown>,
   cocktails: { data: null, loading: false, error: null } as Record<string, unknown>,
   register: { data: null, loading: false, error: null, refetch: () => {} } as Record<string, unknown>,
@@ -77,7 +78,10 @@ const mock = vi.hoisted(() => ({
 
 vi.mock('./useCellarNextData', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
-  useCellarNextData: () => mock.current,
+  useCellarNextData: (open?: unknown) => {
+    mock.openSeen = open;
+    return mock.current;
+  },
   useBeverageRegister: () => mock.beverages,
   useCocktailRegister: () => mock.cocktails,
   useRegister: () => mock.register,
@@ -757,6 +761,26 @@ function registerVM(over: Record<string, unknown> = {}) {
     ...over,
   };
 }
+
+describe('CellarNext — tells the data hook which register is open (p9-3)', () => {
+  it.each([
+    ['cocktails', { category: 'cocktails' as const }, '/cellar'],
+    ['beer', { category: 'beer' as const }, '/cellar'],
+    ['a queried register', {}, '/cellar?register=whiskey'],
+  ])('%s', (_name, props, route) => {
+    mock.current = { ...base, registers: readout() };
+    draw(props, route);
+    expect(mock.openSeen).toBe(
+      props.category ?? (route.includes('whiskey') ? 'whiskey' : null),
+    );
+  });
+
+  it('the overview opens none', () => {
+    mock.current = { ...base, registers: readout() };
+    draw();
+    expect(mock.openSeen).toBeNull();
+  });
+});
 
 describe('CellarNext — the registers that are not wines', () => {
   beforeEach(() => {
