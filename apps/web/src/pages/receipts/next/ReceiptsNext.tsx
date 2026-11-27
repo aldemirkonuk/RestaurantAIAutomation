@@ -1952,16 +1952,6 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (v
               failing on SYN-US-0112: the lines said "unknown, not empty" and
               the swipe under them still worked.
             */}
-            {lines === undefined && (
-              <p
-                data-testid="confirm-waits"
-                style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '0 0 8px' }}
-              >
-                {detailQ.isError
-                  ? 'Confirm waits for the lines. They could not be read, so there is nothing yet to check against the paper.'
-                  : 'Confirm opens once the lines are read.'}
-              </p>
-            )}
             <SwipeToConfirm
               key={`swipe-${verify.failureCount}`}
               label="Swipe up to confirm"
@@ -1973,6 +1963,22 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (v
                 verify.mutate(challenge);
               }}
             />
+            {/*
+              r110: BELOW the handle, not above it. Above, the sentence left when
+              the lines landed and pulled the handle up by its own height (26 px
+              at 375, wrapped to two lines): the reader aiming at the swipe saw it
+              move. Below, the handle stays and the sentence leaves under it.
+            */}
+            {lines === undefined && (
+              <p
+                data-testid="confirm-waits"
+                style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}
+              >
+                {detailQ.isError
+                  ? 'Confirm waits for the lines. They could not be read, so there is nothing yet to check against the paper.'
+                  : 'Confirm opens once the lines are read.'}
+              </p>
+            )}
             {verify.isError && (
               <p role="alert" style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--ink-1, #211C16)', margin: '6px 0 0' }}>
                 {sentence(serverMessage(verify.error, 'The confirmation did not go through.'))}{' '}
