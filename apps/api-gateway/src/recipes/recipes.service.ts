@@ -87,6 +87,16 @@ export const WEIGHT_NOT_THIS_HOUSE = "That good is not on this house's shelf.";
 export const WEIGHT_SAVE_FAILED = "We could not keep that weight just now. Nothing was changed.";
 
 /** A stated weight from the database (numeric arrives as a string), or null. */
+/** Ids sent in one `in()` for the component reads; the same 20 as dishes.service's ID_CHUNK (imported there, so not from there). */
+const COMPONENT_CHUNK = 20;
+/** PostgREST's row cap, which the component line read pages past. */
+const COMPONENT_PAGE = 1000;
+const chunked = <T>(xs: T[], n: number): T[][] => {
+  const out: T[][] = [];
+  for (let i = 0; i < xs.length; i += n) out.push(xs.slice(i, i + n));
+  return out;
+};
+
 function grams(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
@@ -353,44 +363,60 @@ export class RecipesService {
     const out = new Map<string, { name: string; perBase: number | null; partial?: boolean }>();
     if (!componentIds.length) return out;
     const client = this.db.getClient();
-    // Chunked, so no read is cut by the 1,000-row cap or a long URL: a chunk of
-    // 20 versions holds at most 800 lines, so a component never loses a line
-    // and is never priced over the lines that happened to come back.
-    const chunked = async <T>(ids: string[], n: number, read: (part: string[]) => PromiseLike<{ data: unknown; error: unknown }>, what: string) => {
-      const rows: T[] = [];
-      for (let i = 0; i < ids.length; i += n) {
-        const { data, error } = await read(ids.slice(i, i + n));
-        if (error) this.failed(what, error);
-        rows.push(...((data ?? []) as T[]));
-      }
-      return rows;
-    };
-    const [dishRows, pointerRows] = await Promise.all([
-      chunked<any>(componentIds, 50, (part) => client.from("dishes").select("id, name, yield_qty_base, deleted_at").eq("restaurant_id", restaurantId).in("id", part), "component read"),
-      chunked<any>(componentIds, 50, (part) => client.from("recipe_current_dish").select("dish_id, version_id").eq("restaurant_id", restaurantId).in("dish_id", part), "component recipe read"),
-    ]);
-    const versionOf = new Map(pointerRows.map((p) => [p.dish_id as string, p.version_id as string]));
-    const versionIds = [...new Set(versionOf.values())];
-    const lineRows = await chunked<any>(
-      versionIds,
-      20,
-      (part) =>
+    // PostgREST answers at most 1,000 rows a request, silently. A list of drinks
+    // sends every made component of every drink here at once, so the reads are
+    // chunked by id and the line read is paged (r106 review 1, ADR 0020): a cut
+    // answer would price a drink from part of its mix and call it complete.
+    const dishRows: any[] = [];
+    const versionOf = new Map<string, string>();
+    for (const part of chunked(componentIds, COMPONENT_CHUNK)) {
+      const [dishes, pointers] = await Promise.all([
         client
+          .from("dishes")
+          .select("id, name, yield_qty_base, deleted_at")
+          .eq("restaurant_id", restaurantId)
+          .in("id", part),
+        client
+          .from("recipe_current_dish")
+          .select("dish_id, version_id")
+          .eq("restaurant_id", restaurantId)
+          .in("dish_id", part),
+      ]);
+      if (dishes.error) this.failed("component read", dishes.error);
+      if (pointers.error) this.failed("component recipe read", pointers.error);
+      dishRows.push(...((dishes.data ?? []) as any[]));
+      for (const p of (pointers.data ?? []) as any[]) versionOf.set(p.dish_id as string, p.version_id as string);
+    }
+    const versionIds = [...new Set(versionOf.values())];
+    const linesOf = new Map<string, any[]>();
+    for (const part of chunked(versionIds, COMPONENT_CHUNK)) {
+      for (let from = 0; ; from += COMPONENT_PAGE) {
+        const lineRead = await client
           .from("recipe_lines")
           .select("version_id, role, inventory_id, component_dish_id, qty_base, base_unit, usable_pct")
           .eq("restaurant_id", restaurantId)
-          .in("version_id", part),
-      "component line read",
-    );
-    const linesOf = new Map<string, any[]>();
-    for (const l of lineRows) linesOf.set(l.version_id, [...(linesOf.get(l.version_id) ?? []), l]);
-    const rows = lineRows;
-    const [{ items, lots }, inner] = await Promise.all([
-      this.readPricing(restaurantId, [...new Set(rows.map((l) => l.inventory_id).filter(Boolean))] as string[], money),
+          .in("version_id", part)
+          .order("id", { ascending: true })
+          .range(from, from + COMPONENT_PAGE - 1);
+        if (lineRead.error) this.failed("component line read", lineRead.error);
+        const page = (lineRead.data ?? []) as any[];
+        for (const l of page) linesOf.set(l.version_id, [...(linesOf.get(l.version_id) ?? []), l]);
+        if (page.length < COMPONENT_PAGE) break;
+      }
+    }
+    const rows = [...linesOf.values()].flat();
+    const priceIds = [...new Set(rows.map((l) => l.inventory_id).filter(Boolean))] as string[];
+    const pricing = { items: new Map<string, any>(), lots: new Map<string, any>() };
+    for (const part of chunked(priceIds, 100)) {
+      const read = await this.readPricing(restaurantId, part, money);
+      read.items.forEach((v, k) => pricing.items.set(k, v));
+      read.lots.forEach((v, k) => pricing.lots.set(k, v));
+    }
+    const { items, lots } = pricing;
+    const inner =
       depth >= 3
-        ? Promise.resolve(new Map<string, { name: string; perBase: number | null; partial?: boolean }>())
-        : this.componentRates(restaurantId, [...new Set(rows.map((l) => l.component_dish_id).filter(Boolean))] as string[], money, depth + 1),
-    ]);
+        ? new Map<string, { name: string; perBase: number | null; partial?: boolean }>()
+        : await this.componentRates(restaurantId, [...new Set(rows.map((l) => l.component_dish_id).filter(Boolean))] as string[], money, depth + 1);
     for (const d of dishRows) {
       const lines = linesOf.get(versionOf.get(d.id) ?? "") ?? [];
       const batch = recipeCost(

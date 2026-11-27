@@ -67,3 +67,52 @@ describe("a drink with a made line: the list and the drawer name one cost", () =
     expect(drawer.cost).toBeNull();
   });
 });
+
+describe("at scale: many drinks drawing wide mixes (PostgREST's 1,000-row cap)", () => {
+  // 30 drinks, each drawing its own made mix of 39 lines: 1,170 component lines,
+  // more than one answer holds. The list must read every line, as the drawer does.
+  function many(n: number, linesPer: number): { rows: Record<string, Row[]>; ids: string[] } {
+    const rows = sourTest();
+    const ids: string[] = [];
+    const pad = (i: number, k: number) => `${k}0000000-0000-4000-8000-${String(i).padStart(12, "0")}`;
+    for (let i = 0; i < n; i++) {
+      const drink = pad(i + 1, "a");
+      const mix = pad(i + 1, "b");
+      const vd = pad(i + 1, "c");
+      const vm = pad(i + 1, "d");
+      ids.push(drink);
+      rows.cocktails.push({ id: drink, restaurant_id: HOUSE_A, name: `Drink ${i}`, display_name: null, price: 12, deleted_at: null });
+      rows.recipe_current.push({ cocktail_id: drink, version_id: vd, restaurant_id: HOUSE_A });
+      rows.dishes.push({ id: mix, restaurant_id: HOUSE_A, name: `Mix ${i}`, yield_qty_base: 10_000, yield_base_unit: "ml10", deleted_at: null });
+      rows.recipe_current_dish.push({ dish_id: mix, version_id: vm, restaurant_id: HOUSE_A });
+      rows.recipe_versions.push(
+        { id: vd, restaurant_id: HOUSE_A, cocktail_id: drink, owner_kind: "cocktail", version: 1, yield_serves: 1, created_at: "2026-11-02" },
+        { id: vm, restaurant_id: HOUSE_A, dish_id: mix, owner_kind: "dish", version: 1, yield_serves: 1, created_at: "2026-11-02" },
+      );
+      rows.recipe_lines.push(line(`d${i}`, vd, HOUSE_A, 1, "Mix", null, { role: "made", component_dish_id: mix, qty_entered: 30, unit_code: "ml", qty_base: 300, base_unit: "ml10" }));
+      for (let k = 0; k < linesPer; k++) rows.recipe_lines.push(line(`m${i}-${k}`, vm, HOUSE_A, k + 1, "Sugar", FLOUR, { qty_entered: 10, qty_base: 10_000 }));
+    }
+    return { rows, ids };
+  }
+
+  it("the list names the drawer's cost for every drink, none cut short", async () => {
+    const { rows, ids } = many(30, 39);
+    expect(rows.recipe_lines.filter((l) => l.id.startsWith("m")).length).toBeGreaterThan(1000);
+    const { db } = fakeDb(rows);
+    const recipes = new RecipesService(db);
+    const list = (await new DishesService(db, recipes).drinkFigures(HOUSE_A, "owner")).drinks;
+    for (const id of ids) {
+      const drawer = (await recipes.getRecipe(HOUSE_A, id, "owner")) as any;
+      const row = list.find((d) => d.cocktailId === id)!;
+      expect(row.cost).toMatchObject({ perServeExact: drawer.cost.perServeExact, priced: drawer.cost.priced, of: drawer.cost.of, complete: drawer.cost.complete });
+      expect(row.cost?.complete).toBe(true);
+    }
+  });
+
+  it("wider mixes (whole mixes past the cap) still read, never 'not known'", async () => {
+    const { rows, ids } = many(30, 60);
+    const { db } = fakeDb(rows);
+    const list = (await new DishesService(db, new RecipesService(db)).drinkFigures(HOUSE_A, "owner")).drinks;
+    for (const id of ids) expect(list.find((d) => d.cocktailId === id)!.cost).toMatchObject({ complete: true });
+  });
+});
