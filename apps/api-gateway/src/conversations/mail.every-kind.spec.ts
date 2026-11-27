@@ -65,7 +65,7 @@ describe("people", () => {
   ])("storedKinds follows what is stored: %p", async (kinds, expected) => {
     resolve = stored(kinds);
     expect((await svc().listPeople(HOUSE, "manager", {})).storedKinds).toEqual(expected);
-    expect(queries.filter((q) => q.kind === "from").every((q) => q.calls.some((c) => c[1] === "restaurant_id" && c[2] === HOUSE))).toBe(true);
+    expect(queries.filter((q) => q.kind === "from").every((q) => q.calls.some((c) => (c[1] === "restaurant_id" && c[2] === HOUSE) || (q.name === "users" && c[0] === "in" && c[1] === "user_id")))).toBe(true);
   });
 
   it("are vendors only to staff or a role-less token, and no table is read", async () => {
@@ -206,5 +206,62 @@ describe("the key rules", () => {
   });
   it("reads a stored kind as one of three, anything else as a vendor's", () => {
     expect([mailKindOf("team"), mailKindOf("guest"), mailKindOf("x"), mailKindOf(null)]).toEqual(["team", "guest", "vendor", "vendor"]);
+  });
+});
+
+describe("people are named, not listed by address (r104 mail-gap g3)", () => {
+  const TEAM = { ...person("team", "team:ayse@h.example", null), name: "ayse@h.example" };
+  const GUEST = { ...person("guest", "guest:j@x.example", null), name: "j@x.example" };
+  const NOBODY = { ...person("guest", "guest:n@x.example", null), name: "n@x.example" };
+  const read = (q: Q): R => {
+    if (q.kind === "rpc") return { data: [TEAM, GUEST, NOBODY], error: null };
+    if (q.name === "user_restaurant_access") return { data: [{ user_id: "u1", role: "manager" }], error: null };
+    if (q.name === "users") return { data: [{ user_id: "u1", email: "Ayse@H.Example", name: "Ayse", role: "staff" }], error: null };
+    if (q.calls.some((c) => c[1] === "kind" && c[2] === "guest" && c[0] === "eq") && q.calls.some((c) => c[0] === "select" && String(c[1]).includes("from_header"))) {
+      return { data: [
+        { from_address: "j@x.example", from_header: "Jane Roe <j@x.example>" },
+        { from_address: "j@x.example", from_header: "Old Name <j@x.example>" },
+        { from_address: "n@x.example", from_header: "n@x.example" },
+      ], error: null };
+    }
+    return { data: [{ id: "x" }], error: null };
+  };
+
+  it("names a staff member from the roster with their role, and a guest from the newest From name", async () => {
+    resolve = read;
+    const page = await svc().listPeople(HOUSE, "owner", {});
+    const byKey = Object.fromEntries(page.people.map((p) => [p.key, p.name]));
+    expect(byKey["team:ayse@h.example"]).toBe("Ayse (manager)");
+    expect(byKey["guest:j@x.example"]).toBe("Jane Roe");
+    // No display name: the address, and the key never changes.
+    expect(byKey["guest:n@x.example"]).toBe("n@x.example");
+    expect(page.people.map((p) => p.key)).toEqual(["team:ayse@h.example", "guest:j@x.example", "guest:n@x.example"]);
+  });
+
+  it("reads the roster of this house only, and the guest names of this house only", async () => {
+    resolve = read;
+    await svc().listPeople(HOUSE, "owner", {});
+    const access = queries.find((q) => q.name === "user_restaurant_access")!;
+    expect(access.calls).toContainEqual(["eq", "restaurant_id", HOUSE]);
+    const users = queries.filter((q) => q.name === "users");
+    expect(users.some((q) => q.calls.some((c) => c[0] === "eq" && c[1] === "restaurant_id" && c[2] === HOUSE))).toBe(true);
+    expect(users.some((q) => q.calls.some((c) => c[0] === "in" && c[1] === "user_id" && c[2][0] === "u1"))).toBe(true);
+    const guests = queries.find((q) => q.name === "procurement_conversations" && q.calls.some((c) => c[0] === "in" && c[1] === "from_address"))!;
+    expect(guests.calls).toContainEqual(["eq", "restaurant_id", HOUSE]);
+    expect(guests.calls).toContainEqual(["in", "from_address", ["j@x.example", "n@x.example"]]);
+  });
+
+  it("names the person on a thread the same way", async () => {
+    resolve = (q) => (q.kind === "rpc" ? { data: [{ thread_key: "gm:t1", subject: "Hi", message_count: 1, letter_count: 1, last_at: "2027-01-05 11:30:00+00" }], error: null } : read(q));
+    const page = await svc().listThreads(HOUSE, "owner", { with: "guest:j@x.example" });
+    expect(page.person).toEqual({ key: "guest:j@x.example", kind: "guest", providerId: null, name: "Jane Roe" });
+  });
+
+  it("reads no roster for vendors only, and a failed roster read is a 503", async () => {
+    resolve = (q) => (q.kind === "rpc" ? { data: [person("vendor", `vendor:${VENDOR}`, VENDOR)], error: null } : { data: [], error: null });
+    await svc().listPeople(HOUSE, "owner", {});
+    expect(queries.map((q) => q.name)).not.toContain("users");
+    resolve = (q) => (q.kind === "rpc" ? { data: [TEAM], error: null } : q.name === "users" ? { data: null, error: { message: "boom" } } : { data: [], error: null });
+    await expect(svc().listPeople(HOUSE, "owner", {})).rejects.toThrow(ServiceUnavailableException);
   });
 });
