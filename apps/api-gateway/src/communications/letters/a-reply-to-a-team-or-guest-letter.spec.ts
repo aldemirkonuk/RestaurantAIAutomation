@@ -135,6 +135,12 @@ function run(
 beforeEach(() => redeem.mockClear());
 
 describe("a reply to a guest or a team letter", () => {
+  it("takes the grant that mirrored the letter it answers, so revoking that grant takes it too", async () => {
+    const { p, inserts } = run([theirLetter({ mirrored_by_grant_id: "wide-grant-1" })]);
+    await p;
+    expect(inserts[0]).toMatchObject({ kind: "guest", from_address: GUEST, mirrored_by_grant_id: "wide-grant-1" });
+  });
+
   it("goes to the address that wrote, on that thread, filed under that person", async () => {
     const { p, inserts } = run([theirLetter()]);
     await p;

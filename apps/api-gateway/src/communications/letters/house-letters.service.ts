@@ -822,7 +822,16 @@ export class HouseLettersService {
       provider_id: dto.providerId ?? null,
       // A reply to a team member or a guest is filed under that person, the
       // way their letters are, so the thread shows it without Gmail's sent label.
-      ...(person && answered ? { kind: answered.kind, from_address: answered.address } : {}),
+      // The reply belongs to the person's conversation: it takes the grant that mirrored the
+      // letter it answers, so a revoked grant, the retention sweep and the category clean take
+      // it with the letters it answers (the schema's rule for team and guest rows).
+      ...(person && answered
+        ? {
+            kind: answered.kind,
+            from_address: answered.address,
+            mirrored_by_grant_id: answered.mirroredByGrantId,
+          }
+        : {}),
       direction: "outbound",
       channel: "email",
       content: dto.body,
@@ -1108,6 +1117,8 @@ export class HouseLettersService {
   ): Promise<{
     kind: "team" | "guest" | null;
     address: string | null;
+    /** The wide read grant that mirrored the answered letter; the reply belongs to it. */
+    mirroredByGrantId: string | null;
     id: string;
     threadKey: string | null;
     inReplyTo: string | null;
@@ -1116,7 +1127,7 @@ export class HouseLettersService {
     const { data, error } = await this.db.client
       .from("procurement_conversations")
       .select(
-        "id, restaurant_id, provider_id, kind, from_address, direction, channel, sent_at, message_id, thread_key, email_headers",
+        "id, restaurant_id, provider_id, kind, from_address, direction, channel, sent_at, message_id, thread_key, email_headers, mirrored_by_grant_id",
       )
       .eq("id", id)
       .eq("restaurant_id", restaurantId)
@@ -1181,6 +1192,10 @@ export class HouseLettersService {
     return {
       kind: person?.kind ?? null,
       address: person?.address ?? null,
+      mirroredByGrantId:
+        person && typeof row.mirrored_by_grant_id === "string" && row.mirrored_by_grant_id
+          ? row.mirrored_by_grant_id
+          : null,
       id: String(row.id),
       threadKey:
         typeof row.thread_key === "string" && row.thread_key.trim()
