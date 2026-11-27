@@ -2,13 +2,13 @@
  * Opening a good no longer waits on three cold reads. A pointer that rests on
  * a row or card for 150 ms, or keyboard focus that stays on one that long,
  * puts the drawer's first reads in the cache: figures, nutrition (only a good
- * that has contents) and used-in. A flyover shorter than that fetches
+ * that has contents), used-in and the dishes and drinks behind its headline. A flyover shorter than that fetches
  * nothing. Skipped for touch, when the browser asks to save data, and while a
  * prefetch for the same good is already running. No visual change.
  */
 import { useCallback, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { figuresQuery, nutritionQuery, usedInQuery } from './item-queries';
+import { dishesQuery, drinksQuery, figuresQuery, nutritionQuery, usedInQuery } from './item-queries';
 
 export const PREFETCH_INTENT_MS = 150;
 
@@ -56,7 +56,13 @@ export function useItemPrefetch(restaurantId: string | null | undefined, kindOf:
     (id: string) => {
       if (!qc || !restaurantId || inflight.current.has(id) || saveData()) return;
       inflight.current.add(id);
-      const jobs = [qc.prefetchQuery(figuresQuery(restaurantId, id)), qc.prefetchQuery(usedInQuery(restaurantId, id))];
+      const jobs = [
+        qc.prefetchQuery(figuresQuery(restaurantId, id)),
+        qc.prefetchQuery(usedInQuery(restaurantId, id)),
+        // The headline chip waits for dishes and drinks too, so they are warmed with used-in.
+        qc.prefetchQuery(dishesQuery(restaurantId, id)),
+        qc.prefetchQuery(drinksQuery(restaurantId, id)),
+      ];
       if (kindOf(id) !== 'supply') jobs.push(qc.prefetchQuery(nutritionQuery(restaurantId, id)));
       void Promise.allSettled(jobs).then(() => inflight.current.delete(id));
     },

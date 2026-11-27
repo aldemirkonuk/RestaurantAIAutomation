@@ -10,8 +10,7 @@
 import { useEffect, useRef, useState, type ComponentType } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Sheet } from '@/components/mudavym';
-import { inventoryItemKeys, type HouseFields } from '../../../services/api/inventory';
-import { getItemDishes, getItemDrinks } from '../../../services/api/itemDishes';
+import { type HouseFields } from '../../../services/api/inventory';
 import { fmtWhen } from '../../../lib/mudavym/format';
 import type { Provider } from '../../../services/api/providers';
 import type { StorageLocation } from '../../../hooks/useStorageLocations';
@@ -22,7 +21,7 @@ import HowItTastes from './TasteCard';
 import TasteSummary from './TasteSummary';
 import RowDropdown, { type EvidenceSection, type SheetId } from './RowDropdown';
 import { failureReason } from './iv-failure';
-import { figuresQuery, nutritionQuery, usedInQuery } from './item-queries';
+import { dishesQuery, drinksQuery, figuresQuery, nutritionQuery, usedInQuery } from './item-queries';
 import { noZoneWord, typeLabel, type HouseCurrency, type InvRow } from './useInventoryNextData';
 import './item-drawer.css';
 
@@ -158,21 +157,9 @@ export default function ItemDrawer(props: ItemDrawerProps) {
   // The same query the slot's card reads, so the KPI card and the card agree.
   const nutritionQ = useQuery({ ...nutritionQuery(restaurantId ?? '', id), enabled: enabled && hasContents });
   const usedInQ = useQuery({ ...usedInQuery(restaurantId ?? '', id), enabled });
-  const dishesQ = useQuery({
-    queryKey: [...inventoryItemKeys.usedIn(restaurantId ?? '', id), 'dishes'],
-    queryFn: () => getItemDishes(id, restaurantId ?? undefined),
-    enabled,
-    staleTime: 60_000,
-    retry: false,
-  });
+  const dishesQ = useQuery({ ...dishesQuery(restaurantId ?? '', id), enabled });
   // The drinks that use it, with the cards a dish has (founder /goal 2026-11-07).
-  const drinksQ = useQuery({
-    queryKey: [...inventoryItemKeys.usedIn(restaurantId ?? '', id), 'drinks'],
-    queryFn: () => getItemDrinks(id, restaurantId ?? undefined),
-    enabled,
-    staleTime: 60_000,
-    retry: false,
-  });
+  const drinksQ = useQuery({ ...drinksQuery(restaurantId ?? '', id), enabled });
 
   if (row === null) {
     return (
