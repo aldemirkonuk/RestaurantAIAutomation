@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { readShelfReceived } from "../procurement/shelf-received";
 
 /**
  * What of one good is already on order and not yet received (r109 g1).
@@ -8,6 +9,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * (`procurement_order_items.inventory_id`, many goods per order). When an
  * order has lines, its lines win and its header is not counted, so one order
  * is never counted twice (a header copies its first line's good).
+ *
+ * What a part-delivered order has received is the stock ledger's count for
+ * (the order, this good, live stock), from `shelf-received.ts` (ADR 0192): the
+ * retired `quantity_received` / `accepted_quantity` / `quantity_accepted`
+ * columns are not read (`scripts/check_no_quantity_received_column.py`).
  *
  * No price is read or returned: the card is a quantity, shown to everyone.
  */
@@ -95,10 +101,17 @@ const unitOf = (u: unknown): string | null => {
   return s === "bottles" ? "bottle" : s;
 };
 
-/** What is still to come: all of it, or for a part delivery the quantity less what was taken in. */
-function openOf(status: string, qty: number, accepted: number | null, received: number | null): number {
-  if (status !== "PARTIALLY_RECEIVED") return qty;
-  return Math.max(0, qty - (accepted ?? received ?? 0));
+/**
+ * What one order row asks for, in the book's own count (bottles, or each), or
+ * null when that is not known exactly: a bottle line is its bottles, an each
+ * line its count, a case line only when its bottle total is stated.
+ */
+function orderedCount(unit: string | null, qty: unknown, total: unknown, per: unknown): number | null {
+  const q = n(qty);
+  if (unit === "each") return q;
+  if (unit === "bottle") return n(total) ?? (q === null ? null : q * (n(per) ?? 1));
+  const t = n(total);
+  return t !== null && t > 0 ? t : null;
 }
 
 /**
@@ -128,8 +141,8 @@ export async function readOnOrder(
   if (book.error) return unread(book.error.message);
   const bookUom: string | null = (book.data as Row | null)?.uom ?? null;
 
-  const HEAD = "id, order_number, restaurant_id, inventory_id, status, quantity, unit_type, bottles_total, accepted_quantity, quantity_received, expected_delivery_date";
-  const LINE = "id, order_id, restaurant_id, inventory_id, quantity, unit_type, bottles_per_unit, total_bottles, quantity_accepted, quantity_received";
+  const HEAD = "id, order_number, restaurant_id, inventory_id, status, quantity, unit_type, bottles_total, expected_delivery_date";
+  const LINE = "id, order_id, restaurant_id, inventory_id, quantity, unit_type, bottles_per_unit, total_bottles";
 
   const [heads, lines] = await Promise.all([
     readAll(() =>
@@ -181,20 +194,64 @@ export async function readOnOrder(
     byOrder.set(k, [...(byOrder.get(k) ?? []), l]);
   }
 
+  // What a part-delivered order has taken in is the ledger's count for this good
+  // (ADR 0192), read once for those orders. A failed read fails the card closed.
+  const partial = open.filter(
+    (o) =>
+      up(o.status) === "PARTIALLY_RECEIVED" &&
+      (withLines.has(String(o.id)) ? (byOrder.get(String(o.id)) ?? []).length > 0 : true),
+  );
+  const shelf = partial.length
+    ? await readShelfReceived(
+        client,
+        restaurantId,
+        partial.map((o) => ({
+          id: String(o.id),
+          inventory_id: itemId,
+          unit_type: o.unit_type,
+          quantity: o.quantity,
+          bottles_total: o.bottles_total,
+        })),
+      )
+    : new Map();
+  for (const s of shelf.values()) if (!s.readable) return unread(s.why);
+  const bookIsCount = (bookUom ?? "bottle") === "bottle" || bookUom === "each";
+
   const result: OpenOrder[] = [];
   for (const o of open) {
     const status = up(o.status);
     const id = String(o.id);
     const base = { id, orderNumber: o.order_number ?? null, status, expected: o.expected_delivery_date ?? null };
-    if (withLines.has(id)) {
+    const hasLines = withLines.has(id);
+    const mine = byOrder.get(id) ?? [];
+    if (hasLines && mine.length === 0) continue; // its lines are other goods'
+
+    if (status === "PARTIALLY_RECEIVED") {
+      // One order, one ledger count for this good: it is taken off the order's
+      // exact bottles. If those are not known exactly, nothing is subtracted
+      // and nothing is summed (the order stays listed, its figure unknown).
+      const got = shelf.get(id);
+      const received = got && got.readable ? got.quantityInStockUom : 0;
+      const parts = hasLines ? mine.map((l) => orderedCount(unitOf(l.unit_type), l.quantity, l.total_bottles, l.bottles_per_unit)) : [orderedCount(unitOf(o.unit_type), o.quantity, o.bottles_total, null)];
+      const exact = bookIsCount && parts.every((x) => x !== null);
+      const ordered = exact ? (parts as number[]).reduce((a, x) => a + x, 0) : null;
+      if (ordered !== null) {
+        const left = Math.max(0, ordered - received);
+        if (left > 0) result.push({ ...base, openQty: left, unit: bookUom === "each" ? "each" : "bottle", inBookUnit: left });
+      } else {
+        const qty = hasLines ? mine.reduce((a, l) => a + Number(l.quantity ?? 0), 0) : Number(o.quantity ?? 0);
+        const unit = unitOf((hasLines ? mine[0] : o).unit_type);
+        if (qty > 0) result.push({ ...base, openQty: qty, unit, inBookUnit: null });
+      }
+      continue;
+    }
+
+    if (hasLines) {
       // Its lines win. Lines of one order in different units stay apart.
-      const mine = byOrder.get(id) ?? [];
       const units = new Map<string | null, { qty: number; book: number | null; bookKnown: boolean }>();
       for (const l of mine) {
         const unit = unitOf(l.unit_type);
-        const accepted = n(l.quantity_accepted);
-        const received = n(l.quantity_received);
-        const qty = openOf(status, Number(l.quantity ?? 0), accepted, received);
+        const qty = Number(l.quantity ?? 0);
         const per = n(l.bottles_per_unit) ?? 1;
         const bottles = unit === "bottle" ? qty * per : null;
         const b = inBook(unit, bookUom, qty, bottles);
@@ -210,14 +267,10 @@ export async function readOnOrder(
       }
     } else {
       const unit = unitOf(o.unit_type);
-      const accepted = n(o.accepted_quantity);
-      const received = n(o.quantity_received);
-      const qty = openOf(status, Number(o.quantity ?? 0), accepted, received);
+      const qty = Number(o.quantity ?? 0);
       if (qty <= 0) continue;
       const total = n(o.bottles_total);
-      const openBottles =
-        total === null ? null : status === "PARTIALLY_RECEIVED" ? Math.max(0, total - (accepted ?? received ?? 0)) : total;
-      result.push({ ...base, openQty: qty, unit, inBookUnit: inBook(unit, bookUom, qty, openBottles) });
+      result.push({ ...base, openQty: qty, unit, inBookUnit: inBook(unit, bookUom, qty, total) });
     }
   }
 
