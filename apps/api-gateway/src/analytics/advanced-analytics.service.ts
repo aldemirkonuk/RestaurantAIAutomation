@@ -13,6 +13,7 @@ import {
   shiftHouseDay,
 } from "../common/house-day";
 import * as E from "./engine";
+import { EXTREMES_TOO_FEW, leftOutWords, onRecordedWeekdays } from "./weekdays-recorded";
 import { AnalyticsService, SalesGate } from "./analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { GoalsService } from "./goals.service";
@@ -667,7 +668,17 @@ export class AdvancedAnalyticsService {
       zone,
     );
 
-    const weekday = E.dayOfWeekProfile(dates, values);
+    // A weekday with no counted line on any of its days is not measured: it is
+    // left out of the profile, not read as the quietest (weekdays-recorded.ts).
+    // The trend and the decomposition below still read every day.
+    const recordedDays = new Set<string>();
+    for (const c of consumption)
+      if (c.qty != null) {
+        const day = houseDayOf(c.at, zone);
+        if (day) recordedDays.add(day);
+      }
+    const measured = onRecordedWeekdays(dates, values, (d) => recordedDays.has(d));
+    const weekday = E.dayOfWeekProfile(measured.dates, measured.values);
     // `weekday.best`/`.worst` break an exact tie by weekday order, so a week
     // with no movement reported Sunday as both the busiest and the quietest
     // night. An extreme that is shared is not an extreme (ADR 0020).
@@ -692,11 +703,14 @@ export class AdvancedAnalyticsService {
       /** True when an extreme is shared, so `bestDay`/`worstDay` are withheld. */
       tie: extremes.tie,
       basis: {
-        weekday: `mean bottles per weekday over the last ${sinceDays} complete house days in ${zone} of wine_consumption_log; a weekday with no observation is absent from weekdayProfile rather than reported as 0`,
+        weekday: `mean bottles per weekday over the last ${sinceDays} complete house days in ${zone} of wine_consumption_log; a weekday with no counted consumption line on any of its days is absent from weekdayProfile rather than reported as 0, and inside a weekday that has one a day with no line counts as 0${leftOutWords(measured.leftOut)}`,
         units: unitsBasisSentence(unitsCoverage, "series"),
-        extremes: extremes.tie
-          ? "bestDay/worstDay are null: more than one weekday shares the extreme, and naming one of them would be an arbitrary tie-break, not a finding"
-          : "bestDay/worstDay are the single weekdays holding the highest and lowest mean",
+        extremes:
+          weekday.profiles.length < 2
+            ? EXTREMES_TOO_FEW
+            : extremes.tie
+              ? "bestDay/worstDay are null: more than one weekday shares the extreme, and naming one of them would be an arbitrary tie-break, not a finding"
+              : "bestDay/worstDay are the single weekdays holding the highest and lowest mean",
       },
       weeklySeasonalFactors: decomposition
         ? decomposition.seasonal.slice(0, 7)

@@ -107,19 +107,44 @@ function inUnit(v: number | null, unit: string, currency?: string | null): strin
  * 0296), never "no deadline" and never "not enough history".
  */
 export function paceCaption(g: GoalRow, currency?: string | null): string {
+  // A ceiling ("keep at most") is read in a ceiling's words (r109, re-deriving
+  // #1594). The gateway's `projectionHitsTarget` is false for a ceiling when
+  // the trend runs OVER it (`projected > target`, goals.service.ts), and this
+  // said " — short." for that: a goal heading over its limit read as one
+  // falling short of a target.
+  const ceiling = g.direction === 'at_most';
   const left = g.daysLeft !== null ? `, ${countOf(g.daysLeft, 'day', 'days')} left` : '';
   const pace =
     g.onTrack === null
       ? !g.deadline
         ? 'No deadline, so there is no schedule to be ahead or behind of.'
         : (g.paceUnread ?? 'The pace against this deadline was not computed.')
-      : g.onTrack
-        ? `On the pace this goal needs${left}.`
-        : `Behind the pace this goal needs${left}.`;
-  if (g.projected !== null)
-    return `${pace} The trend projects ${inUnit(g.projected, g.unit, currency)} by the deadline${
-      g.projectionHitsTarget === null ? '' : g.projectionHitsTarget ? ' — enough.' : ' — short.'
-    }`;
+      : ceiling
+        ? g.onTrack
+          ? `Within the schedule this limit allows${left}.`
+          : `Over the schedule this limit allows${left}.`
+        : g.onTrack
+          ? `On the pace this goal needs${left}.`
+          : `Behind the pace this goal needs${left}.`;
+  if (g.projected !== null) {
+    const verdict =
+      g.projectionHitsTarget === null
+        ? '.'
+        : ceiling
+          ? g.projectionHitsTarget
+            ? ' — within the limit.'
+            : ' — over the limit.'
+          : g.projectionHitsTarget
+            ? ' — enough.'
+            : ' — short.';
+    // The pace reads the straight schedule from the baseline; the projection
+    // reads the recent trend. When they disagree, the projection says so, so
+    // the two sentences do not read as a contradiction.
+    const disagree =
+      g.onTrack !== null && g.projectionHitsTarget !== null && g.onTrack !== g.projectionHitsTarget;
+    const trend = disagree ? 'The recent trend, read apart from the schedule, projects' : 'The trend projects';
+    return `${pace} ${trend} ${inUnit(g.projected, g.unit, currency)} by the deadline${verdict}`;
+  }
   return g.deadline && g.onTrack !== null
     ? `${pace} There is not enough history to project the deadline, so none is drawn.`
     : pace;

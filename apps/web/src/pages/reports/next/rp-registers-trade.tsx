@@ -654,20 +654,27 @@ const week = analysis<WeekRegister>({
     const best = sent ? w.bestDay : null;
     const worst = sent ? w.worstDay : null;
     const shared = w.tie === true || !sent;
+    // One measured weekday has nothing to rank against, and shares nothing:
+    // the gateway leaves a weekday with no counted line out of the profile
+    // (r109, re-deriving #1631), so a house that records only Saturdays gets
+    // here. Say that, not a tie.
+    const lone = w.weekdayProfile.length < 2;
     const figures = [
       {
         label: 'Busiest day',
         value: best ?? EM,
-        note: 'More than one weekday shares the highest mean',
+        note: lone ? 'Fewer than two weekdays have a reading' : 'More than one weekday shares the highest mean',
       },
       {
         label: 'Quietest day',
         value: worst ?? EM,
-        note: 'More than one weekday shares the lowest mean',
+        note: lone ? 'Fewer than two weekdays have a reading' : 'More than one weekday shares the lowest mean',
       },
       { label: '28-day trend, per day', value: pct(w.trendPerDayPct) },
     ];
-    const notes = !shared
+    const notes = lone
+      ? ['Busiest and quietest are left blank because fewer than two weekdays have a reading in this window, so there is nothing to rank.']
+      : !shared
       ? []
       : !best && !worst
         ? [

@@ -1,6 +1,7 @@
 import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { separableExtremes, type WeekdayProfile } from "./engine/comparisons";
+import { EXTREMES_TOO_FEW } from "./weekdays-recorded";
 
 /**
  * Regression guard — three places where analytics answered an ABSENCE with a
@@ -255,8 +256,11 @@ describe("seasonality withholds a day it cannot separate", () => {
     const out: any = await advanced({}).getSeasonality(RESTAURANT);
     expect(out.bestDay).toBeNull();
     expect(out.worstDay).toBeNull();
-    expect(out.tie).toBe(true);
-    expect(out.basis.extremes).toContain("arbitrary tie-break");
+    // r109 (re-deriving #1631): a weekday with no counted line is not
+    // measured, so a week with no line at all has no weekday to rank, rather
+    // than seven weekdays tied at 0.
+    expect(out.weekdayProfile).toEqual([]);
+    expect(out.basis.extremes).toBe(EXTREMES_TOO_FEW);
   });
 
   it("does not report the same day as both busiest and quietest", async () => {
@@ -277,5 +281,93 @@ describe("seasonality withholds a day it cannot separate", () => {
     expect(typeof out.worstDay).toBe("string");
     expect(out.bestDay).not.toBe(out.worstDay);
     expect(out.basis.extremes).toContain("single weekdays");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// r109 reports-r109-7 (re-deriving #1631): a weekday the house never recorded
+// is not measured. It is never a mean of 0 and never the quietest day.
+// ---------------------------------------------------------------------------
+
+/** Bottles a house sells on each UTC weekday (0 = Sunday); null = no line. */
+const SHAPE: Array<number | null> = [5, 7, 2, 3, 4, 6, 8];
+
+/** One line at noon UTC on each of the last 90 complete days, by weekday. */
+const week = (
+  shape: Array<number | null>,
+  line: (bottles: number) => Record<string, unknown> = (b) => ({ consumption_type: "bottle", quantity: b, volume_ml: null }),
+) => {
+  const today = new Date();
+  today.setUTCHours(12, 0, 0, 0);
+  const rows: any[] = [];
+  for (let d = 1; d <= 90; d++) {
+    const at = new Date(today.getTime() - d * 86400000);
+    const bottles = shape[at.getUTCDay()];
+    if (bottles === null) continue;
+    rows.push({
+      inventory_id: "inv-1",
+      ...line(bottles),
+      created_at: at.toISOString(),
+      restaurant_inventory: { master_wine_id: "mw-1" },
+    });
+  }
+  return rows;
+};
+
+describe("the week's shape leaves out a weekday the house never recorded", () => {
+  const days = (out: any) => out.weekdayProfile.map((p: any) => p.day);
+
+  it("a house closed on Mondays is not told Monday is its quietest day", async () => {
+    const shape = [...SHAPE];
+    shape[1] = null;
+    const out: any = await advanced({ wine_consumption_log: week(shape) }).getSeasonality(RESTAURANT);
+    expect(days(out)).not.toContain("Monday");
+    expect(days(out)).toHaveLength(6);
+    expect(out.worstDay).toBe("Tuesday");
+    expect(out.bestDay).toBe("Saturday");
+    expect(out.basis.weekday).toContain("Monday has no counted consumption line in the window");
+    // The measured weekdays keep their real means: never diluted by Monday.
+    expect(out.weekdayProfile.find((p: any) => p.day === "Tuesday").mean).toBe(2);
+  });
+
+  it("a house closed on Sundays and Mondays still has a quietest day", async () => {
+    const shape = [...SHAPE];
+    shape[0] = null;
+    shape[1] = null;
+    const out: any = await advanced({ wine_consumption_log: week(shape) }).getSeasonality(RESTAURANT);
+    expect(out.tie).toBe(false);
+    expect(out.worstDay).toBe("Tuesday");
+    expect(out.basis.weekday).toContain("Sunday and Monday have no counted consumption line");
+  });
+
+  it("a weekday known only through lines with no bottle figure is not measured as 0", async () => {
+    // Mondays carry glass lines with no millilitres (ADR 0297: uncounted).
+    const counted = week(SHAPE.map((b, w) => (w === 1 ? null : b)));
+    const uncounted = week(
+      SHAPE.map((b, w) => (w === 1 ? 1 : null)),
+      () => ({ consumption_type: "glass", quantity: 1, volume_ml: null }),
+    );
+    const out: any = await advanced({ wine_consumption_log: [...counted, ...uncounted] }).getSeasonality(RESTAURANT);
+    expect(days(out)).not.toContain("Monday");
+    expect(out.worstDay).toBe("Tuesday");
+  });
+
+  it("a Monday line that reads 0 bottles is recorded, so a quiet Monday is a finding", async () => {
+    const shape = [...SHAPE];
+    shape[1] = 0;
+    const out: any = await advanced({ wine_consumption_log: week(shape) }).getSeasonality(RESTAURANT);
+    expect(days(out)).toContain("Monday");
+    expect(out.worstDay).toBe("Monday");
+    expect(out.basis.weekday).not.toContain("not measured and left out");
+  });
+
+  it("a house that recorded only Saturdays has nothing to rank, and says so", async () => {
+    const out: any = await advanced({
+      wine_consumption_log: week([null, null, null, null, null, null, 8]),
+    }).getSeasonality(RESTAURANT);
+    expect(days(out)).toEqual(["Saturday"]);
+    expect(out.bestDay).toBeNull();
+    expect(out.worstDay).toBeNull();
+    expect(out.basis.extremes).toBe(EXTREMES_TOO_FEW);
   });
 });
