@@ -501,6 +501,11 @@ describe('ReceiptsNext', () => {
     await waitFor(() => expect(container.textContent).toContain('documents backend is down'));
     expect(screen.getByRole('button', { name: /Swipe up to confirm/ })).toBeDisabled();
     expect(screen.getByTestId('confirm-waits')).toHaveTextContent('They could not be read');
+    // r110: the sentence sits BELOW the handle, so it leaves without moving it.
+    expect(
+      screen.getByRole('button', { name: /Swipe up to confirm/ }).compareDocumentPosition(screen.getByTestId('confirm-waits')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it('a failed uncounted-deliveries query is surfaced, not read as a caught-up door', async () => {
