@@ -94,7 +94,8 @@ export function addressLine(m: Pick<MailMessage, 'fromAddress' | 'toAddresses'>)
 export interface MailPersonRow {
   key: string;
   kind: MailKind;
-  providerId: string;
+  /** Null for a team or guest person: no vendor stands behind them. */
+  providerId: string | null;
   name: string | null;
   lastAt: string;
   lastLine: string | null;
@@ -136,7 +137,7 @@ export interface MailPeoplePage {
 export interface MailPersonRef {
   key: string;
   kind: MailKind;
-  providerId: string;
+  providerId: string | null;
   name: string | null;
 }
 

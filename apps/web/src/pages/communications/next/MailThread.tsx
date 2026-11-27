@@ -36,6 +36,7 @@ import {
   letterAt,
   filedFromHeldWords,
   letterLook,
+  mailKindOf,
   noReplyFailWords,
   noReplyTarget,
   seenMarkFor,
@@ -291,7 +292,7 @@ export function MailThread({
               ) : (
                 <span>{EM}</span>
               )}
-              <span style={QUIET}>vendor</span>
+              <span data-testid="thread-kind" style={QUIET}>{mailKindOf(head.person)}</span>
               {order && (
                 <Link to={`/orders/${order.id}`} style={{ fontFamily: MONO, fontSize: 11, color: 'var(--seal-deep, #14515C)' }}>
                   order {order.number ?? EM}

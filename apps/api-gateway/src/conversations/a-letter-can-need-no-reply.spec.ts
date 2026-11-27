@@ -40,8 +40,11 @@ const db = {
       rpcs.push(r);
       return Promise.resolve(answer(r));
     },
+    // The thread page reads each letter's addresses by id: none here.
     from: () => {
-      throw new Error("no table is read by these routes");
+      const c: any = { then: (ok: (r: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(ok) };
+      for (const m of ["select", "eq", "in"]) c[m] = () => c;
+      return c;
     },
   },
 };

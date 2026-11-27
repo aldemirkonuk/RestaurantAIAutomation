@@ -11,8 +11,8 @@
  * between two letters in the same millisecond still holds.
  */
 
-/** Only vendor mail is stored today (procurement_conversations). */
-export type MailPersonKind = "vendor";
+/** As stored on procurement_conversations.kind; team and guest are for owners and managers only. */
+export type MailPersonKind = "vendor" | "team" | "guest";
 
 /**
  * Which door a letter came in by, or that the house sent it.
@@ -32,7 +32,8 @@ export interface MailPersonRow {
   /** `vendor:<provider uuid>` — the `with=` value of GET /mail/threads. */
   key: string;
   kind: MailPersonKind;
-  providerId: string;
+  /** Null for a team or guest person. */
+  providerId: string | null;
   name: string | null;
   /**
    * The newest letter that passed between the house and this person; for a
@@ -73,8 +74,8 @@ export interface MailPeoplePage {
   /** Pass as `after=` for the next page; null on the last page. */
   next: string | null;
   /**
-   * The kinds of person whose mail is stored. Team, guest and stranger mail
-   * is not stored yet, so the UI must not imply an empty list covers them.
+   * The kinds stored in this house that this caller may read: vendor always,
+   * team and guest only when stored and the caller is an owner or manager.
    */
   storedKinds: MailPersonKind[];
 }
@@ -82,7 +83,7 @@ export interface MailPeoplePage {
 export interface MailPersonRef {
   key: string;
   kind: MailPersonKind;
-  providerId: string;
+  providerId: string | null;
   name: string | null;
 }
 
@@ -133,6 +134,12 @@ export interface MailMessage {
   /** Set when the original was removed under the retention rule; facts stay. */
   rawDeletedAt: string | null;
   door: MailDoor;
+  /** Who the conversation is with, as stored on the letter. */
+  kind: MailPersonKind;
+  /** Null on a letter stored before the address was kept. */
+  fromAddress: string | null;
+  /** To and Cc; empty on a letter stored before they were kept. */
+  toAddresses: string[];
   /**
    * Mail a machine wrote — an auto-reply or a bounce. Shown on the thread,
    * never counted as a letter, never the reason anyone is waiting (M-5).

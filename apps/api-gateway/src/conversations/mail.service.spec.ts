@@ -146,7 +146,10 @@ describe("listPeople", () => {
   });
 
   it("asks for one row more than the page and turns it into `next`", async () => {
-    resolve = () => ({ data: [person(1), person(2), person(3)], error: null });
+    resolve = (q) => ({
+      data: q.kind === "rpc" ? [person(1), person(2), person(3)] : [],
+      error: null,
+    });
     const page = await service().listPeople(HOUSE, "owner", { limit: "2" });
     const rpc = queries[0];
     expect(rpc.name).toBe("list_mail_people");
@@ -279,11 +282,17 @@ function letter(i: number) {
   };
 }
 
-function threadResolver(pageRows: unknown[]): (q: Query) => Result {
+function threadResolver(
+  pageRows: unknown[],
+  who: unknown[] = [],
+): (q: Query) => Result {
   return (q) =>
-    q.kind === "rpc" && q.name === "mail_thread_letters"
+    q.kind === "rpc" &&
+    (q.name === "mail_thread_letters" || q.name === "mail_thread_letters_other")
       ? { data: pageRows, error: null }
-      : { data: null, error: { message: `unexpected read ${q.name}` } };
+      : q.kind === "from" && q.name === "procurement_conversations"
+        ? { data: who, error: null }
+        : { data: null, error: { message: `unexpected read ${q.name}` } };
 }
 
 describe("getThread", () => {

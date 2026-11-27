@@ -1,5 +1,5 @@
 import { BadRequestException } from "@nestjs/common";
-import type { MailDoor, MailPersonRef } from "./mail.types";
+import type { MailDoor, MailPersonKind, MailPersonRef } from "./mail.types";
 
 /**
  * The pure rules of the Mail read model (founder /goal 2026-11-07): who sees
@@ -37,6 +37,8 @@ const PG_TIME_RE =
   /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}(:?\d{2})?)$/;
 export const PERSON_KEY_RE =
   /^vendor:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+/** A team or guest person: the address is the rest of the key, lower-cased. */
+const OTHER_PERSON_KEY_RE = /^(team|guest):([^\s:@]+@[^\s:@]+)$/i;
 const SUBJECT_LINE_RE = /^\s*subject:[^\n]*(\r?\n|$)\s*/i;
 
 export const BAD_CURSOR =
@@ -196,4 +198,34 @@ export function newToYou(
   if (Number.isNaN(last)) return false;
   if (Number.isNaN(seen)) return true;
   return last > seen;
+}
+
+/** The team or guest person a `with=` names, or null when it names none. */
+export function otherPersonOf(
+  raw: unknown,
+): { kind: "team" | "guest"; address: string } | null {
+  const m = OTHER_PERSON_KEY_RE.exec(typeof raw === "string" ? raw.trim() : "");
+  if (!m || m[2].length > 320) return null;
+  return {
+    kind: m[1].toLowerCase() as "team" | "guest",
+    address: m[2].toLowerCase(),
+  };
+}
+
+/** A team or guest person as the list draws one: the address is the name. */
+export function otherPersonRef(person: {
+  kind: "team" | "guest";
+  address: string;
+}): MailPersonRef {
+  return {
+    key: `${person.kind}:${person.address}`,
+    kind: person.kind,
+    providerId: null,
+    name: person.address,
+  };
+}
+
+/** A stored kind, read as one of the three; anything else is a vendor's. */
+export function mailKindOf(raw: unknown): MailPersonKind {
+  return raw === "team" || raw === "guest" ? raw : "vendor";
 }
