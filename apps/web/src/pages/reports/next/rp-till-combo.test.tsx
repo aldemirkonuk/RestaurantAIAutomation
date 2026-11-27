@@ -136,6 +136,18 @@ describe('a check with no total is not in the average (r101 review)', () => {
     expect(till.view(read(all), { days: 1, currency: 'TRY' }).notes).toEqual([]);
   });
 
+  it("[REVERT-FAILS] the card's Average check figure is the line's number, not revenue over every check", () => {
+    const fig = till.view(read(PARTLY), { days: 1, currency: 'TRY' }).figures.find((f) => f.label === 'Average check')!;
+    const line = tillMeasures(read(PARTLY), ['2026-11-11'], moneyIn('TRY'))![1].values[0];
+    expect(line).toBe(50);
+    expect(fig.value).toBe(moneyIn('TRY')(50, 'table'));
+  });
+
+  it('an older gateway that sends no pricedChecks keeps the figure over every check too', () => {
+    const fig = till.view(read(COUNTED), ctx).figures.find((f) => f.label === 'Average check')!;
+    expect(fig.value).toBe(moneyIn('TRY')(100, 'table'));
+  });
+
   it('an older gateway that sends no pricedChecks keeps dividing by every check, with no note', () => {
     const m = tillMeasures(read(COUNTED), ['2026-11-11', '2026-11-12', '2026-11-13'], moneyIn('TRY'))!;
     expect(m[1].values).toEqual([120, null, 90]);

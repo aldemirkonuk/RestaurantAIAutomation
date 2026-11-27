@@ -165,6 +165,18 @@ export function tillMeasures(
 }
 
 /**
+ * The checks the window's revenue was taken over: the ones that carry a total. The card's Average check
+ * divides by this, as each day on the line does, so the figure and the line agree (ADR 0020). An older
+ * gateway that does not say which checks were priced falls back to every check.
+ */
+export function pricedTotal(w: TillWindow): number | null {
+  if (w.checkCount == null) return null;
+  if (w.dailySeries.length === 0 || w.dailySeries.some((d) => d.pricedChecks == null || d.checks == null))
+    return w.checkCount;
+  return w.dailySeries.reduce((n, d) => n + Math.min(d.pricedChecks as number, d.checks as number), 0);
+}
+
+/**
  * Said under the till when checks came with no total: each day's average check divides by the checks that
  * carry one (ADR 0020). Empty from a gateway that does not say, and when every check was priced.
  */
@@ -270,10 +282,8 @@ const till = analysis<TillWindow>({
         notes: [],
         basis: [],
       };
-    const avg =
-      w.revenue != null && w.checkCount != null && w.checkCount > 0
-        ? w.revenue / w.checkCount
-        : null;
+    const priced = pricedTotal(w);
+    const avg = w.revenue != null && priced != null && priced > 0 ? w.revenue / priced : null;
     const figures = [
       { label: 'Taken', value: money(w.revenue), note: 'No POS revenue recorded' },
       { label: 'Checks', value: figure(w.checkCount) },
