@@ -81,19 +81,32 @@ function useFinePointer(): boolean {
   return fine
 }
 
-/** Click-to-edit cell. Saves on blur/Enter; reverts on Escape. */
+/** The words a refused or failed save came back with: the gateway's own, else the error's. */
+function notSavedWords(e: unknown): string {
+  const err = e as { response?: { data?: { message?: unknown } }; message?: string } | null
+  const said = err?.response?.data?.message
+  const words = Array.isArray(said) ? said.join(' ') : typeof said === 'string' ? said : err?.message
+  return `Not saved: ${words || 'the change did not go through.'}`
+}
+
+/** Click-to-edit cell. Saves on blur/Enter; reverts on Escape. A save that fails says so under the cell. */
 function EditableCell({ value, placeholder, onSave }: EditableCellProps) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value ?? '')
   const [saving, setSaving] = useState(false)
   const reduce = useReducedMotion()
+  const [notSaved, setNotSaved] = useState<string | null>(null)
 
   const commit = async () => {
     setEditing(false)
     if (draft === (value ?? '')) return
     setSaving(true)
+    setNotSaved(null)
     try {
       await onSave(draft)
+    } catch (e) {
+      setDraft(value ?? '')
+      setNotSaved(notSavedWords(e))
     } finally {
       setSaving(false)
     }
@@ -119,20 +132,27 @@ function EditableCell({ value, placeholder, onSave }: EditableCellProps) {
   }
 
   return (
-    <button
-      type="button"
-      onClick={() => setEditing(true)}
-      disabled={saving}
-      className={`w-full text-left px-2 py-1 rounded-lg hover:bg-paper-1 text-sm ${reduce ? '' : 'transition-colors motion-reduce:transition-none'} disabled:opacity-50`}
-    >
-      {saving ? (
-        <Loader2 className={`w-3.5 h-3.5 ${reduce ? '' : 'animate-spin'} text-inkm-3`} />
-      ) : value ? (
-        <span className="text-inkm-1">{value}</span>
-      ) : (
-        <span className="text-inkm-3 italic">{placeholder}</span>
+    <div>
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        disabled={saving}
+        className={`w-full text-left px-2 py-1 rounded-lg hover:bg-paper-1 text-sm ${reduce ? '' : 'transition-colors motion-reduce:transition-none'} disabled:opacity-50`}
+      >
+        {saving ? (
+          <Loader2 className={`w-3.5 h-3.5 ${reduce ? '' : 'animate-spin'} text-inkm-3`} />
+        ) : value ? (
+          <span className="text-inkm-1">{value}</span>
+        ) : (
+          <span className="text-inkm-3 italic">{placeholder}</span>
+        )}
+      </button>
+      {notSaved && (
+        <p role="alert" className="px-2 text-xs text-red-600">
+          {notSaved}
+        </p>
       )}
-    </button>
+    </div>
   )
 }
 

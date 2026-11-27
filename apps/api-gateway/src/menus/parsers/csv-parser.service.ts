@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { WineExtractItem } from "../wine-extract-item.interface";
-import { MenuPriceReason, readMenuPrice } from "./menu-price";
+import { MenuPriceReason, priceDoesNotFit, readMenuPrice } from "./menu-price";
 import { looksLikeLegendMark, splitMarks } from "./printed-marks";
+import { cellMoneyMark, differentMoney, excelFormatMark, headerMoneyMark, oneMoneyOf } from "./price-mark";
 
 // Aliases by field, against `headerKey`: "Şişe Fiyatı (TL)" is `sise_fiyati`.
 const ALIASES: Array<[keyof WineExtractItem, string]> = [
@@ -18,7 +19,8 @@ const ALIASES: Array<[keyof WineExtractItem, string]> = [
     "by_glass_price",
     "by_glass glass glass_price by_glass_price kadeh kadeh_fiyati",
   ],
-  // No bare "price"/"fiyat": which price it is is not decided.
+  // A bare "price"/"fiyat" is not an alias: it is read as the bottle price
+  // only where no bottle column is named (fieldMap, r28 G8).
   ["bottle_price", "bottle bottle_price sise sise_fiyati"],
   // r108 menu-g10: the printed description, and an explicitly named marks column
   // read as the line's printed marks (split on , ; | /). A Notes/Not column is
@@ -46,13 +48,32 @@ export interface CsvRowIssue {
   reason:
     | "no_name"
     | "no_name_column"
-    /** A bare `Price` / `Fiyat` header: bottle or glass is not decided, so it is not read. */
+    /**
+     * A bare `Price` / `Fiyat` header that is NOT read: the file names a bottle
+     * column too, or an earlier bare price column was read.
+     */
     | "price_column_not_read"
+    /**
+     * A bare `Price` / `Fiyat` header read as each line's one price, in
+     * `bottle_price`: the price a dish line keeps (#1261) and a single-price
+     * drink is sold at. Said once, on the header, so a glass price can be
+     * renamed and read again (r28 G8).
+     */
+    | "price_column_read_as_bottle"
     /** A spreadsheet error value (`#N/A`, `#REF!`) where a value was expected. */
     | "cell_error"
+    /**
+     * Not a row: the file's bytes are the same as a menu the house already
+     * keeps (`raw` is that menu's status, `row` is 0). Said by the import.
+     */
+    | "same_file"
+    /** Not a row: whether the file was read before could not be looked up (`row` is 0). */
+    | "same_file_unchecked"
     | Exclude<MenuPriceReason, "empty">;
   field?: keyof WineExtractItem;
   raw?: string;
+  /** The worksheet the row is on, said only when the workbook has more than one visible sheet. */
+  sheet?: string;
 }
 
 type Cell = string | number;
@@ -166,9 +187,10 @@ export class CsvParserService {
         issues: [...issues, { row: records[0].row, reason: "no_name_column" }],
       };
 
+    const marks = records[0].cells.map((h) => headerMoneyMark(h));
     const items: WineExtractItem[] = [];
     for (const record of records.slice(1)) {
-      const item = this.buildItem(fieldMap, record.cells, record.row, issues);
+      const item = this.buildItem(fieldMap, record.cells, record.row, issues, marks);
       if (item) {
         item.raw_text = record.raw.trim();
         items.push(item);
@@ -204,8 +226,33 @@ export class CsvParserService {
       );
     }
 
-    const worksheet = workbook.worksheets[0];
-    if (!worksheet || worksheet.rowCount < 2) return { items: [], issues: [] };
+    // Every sheet the owner can see is read: a workbook with a Wines sheet and
+    // a Cocktails sheet is one menu. A workbook of hidden sheets only is still
+    // read (the file is what was sent).
+    const visible = workbook.worksheets.filter((w) => w.state === "visible");
+    const sheets = visible.length > 0 ? visible : workbook.worksheets;
+    const items: WineExtractItem[] = [];
+    const issues: CsvRowIssue[] = [];
+    for (const worksheet of sheets) {
+      const read = this.readSheet(worksheet);
+      items.push(...read.items);
+      // Line numbers restart on each sheet, so a note names its sheet when
+      // the workbook has more than one.
+      issues.push(
+        ...(sheets.length > 1
+          ? read.issues.map((i) => ({ ...i, sheet: worksheet.name }))
+          : read.issues),
+      );
+    }
+    return { items, issues };
+  }
+
+  /** One worksheet as lines: row 1 is the header. */
+  private readSheet(worksheet: import("exceljs").Worksheet): {
+    items: WineExtractItem[];
+    issues: CsvRowIssue[];
+  } {
+    if (worksheet.rowCount < 2) return { items: [], issues: [] };
 
     const headerRow = worksheet.getRow(1);
     const headers: string[] = [];
@@ -221,11 +268,17 @@ export class CsvParserService {
         issues: [...issues, { row: 1, reason: "no_name_column" }],
       };
 
+    const headerMarks = headers.map((h) => headerMoneyMark(h));
     const items: WineExtractItem[] = [];
     worksheet.eachRow((row, rowNumber) => {
       if (rowNumber === 1) return; // header row
       const cols: Cell[] = [];
+      // A stored number has no mark of its own: its cell's number format is
+      // what the owner sees ("₺1.250,00"), else the header's money (r40 N1).
+      const marks: Array<string | null> = [...headerMarks];
       row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+        const shown = excelFormatMark(cell.numFmt);
+        if (shown) marks[colNumber - 1] = shown;
         const v = this.cellValue(cell.value);
         if (typeof v !== "object") return void (cols[colNumber - 1] = v);
         // An error is left empty and said, for a column that is read.
@@ -239,7 +292,7 @@ export class CsvParserService {
             raw: v.error,
           });
       });
-      const item = this.buildItem(fieldMap, cols, rowNumber, issues);
+      const item = this.buildItem(fieldMap, cols, rowNumber, issues, marks);
       if (item) {
         item.raw_text = cols.join(",");
         items.push(item);
@@ -250,21 +303,42 @@ export class CsvParserService {
   }
 
   private fieldMap(headers: string[]): Array<keyof WineExtractItem | null> {
-    return Array.from(
+    const map = Array.from(
       headers,
       (h) => HEADER_MAP.get(headerKey(h ?? "")) ?? null,
     );
+    const bare = this.barePriceRead(headers);
+    if (bare !== null) map[bare] = "bottle_price";
+    return map;
   }
 
-  /** A bare price header names no field (bottle or glass), so it is said, not read. */
+  /**
+   * The column a bare Price / Fiyat header is read from, or null. A file with
+   * a single price column (the common menu sheet: name, price) was read with
+   * every line unpriced (r28 G8). The FIRST bare price column is read as the
+   * bottle price, and only when no column is already the bottle price; a glass
+   * column beside it stays the glass price.
+   */
+  private barePriceRead(headers: string[]): number | null {
+    const keys = Array.from(headers, (h) => headerKey(h ?? ""));
+    if (keys.some((k) => HEADER_MAP.get(k) === "bottle_price")) return null;
+    const at = keys.findIndex((k) => BARE_PRICE_HEADERS.has(k));
+    return at === -1 ? null : at;
+  }
+
+  /** Each bare price header, said: the one read as the bottle price, and any other, not read. */
   private headerIssues(headers: string[], row: number): CsvRowIssue[] {
-    return headers
-      .filter((h) => BARE_PRICE_HEADERS.has(headerKey(h ?? "")))
-      .map((h) => ({
+    const read = this.barePriceRead(headers);
+    const issues: CsvRowIssue[] = [];
+    Array.from(headers).forEach((h, i) => {
+      if (!BARE_PRICE_HEADERS.has(headerKey(h ?? ""))) return;
+      issues.push({
         row,
-        reason: "price_column_not_read" as const,
-        raw: h.trim(),
-      }));
+        reason: i === read ? "price_column_read_as_bottle" : "price_column_not_read",
+        raw: (h ?? "").trim(),
+      });
+    });
+    return issues;
   }
 
   /**
@@ -296,38 +370,79 @@ export class CsvParserService {
     return "";
   }
 
+  /**
+   * One row as a line. `marks` is each column's money as the file shows it
+   * without the cell's own text (the header's, or an Excel cell's format);
+   * a price cell's own mark ("€12") comes first (r40, r36 N1).
+   *
+   * The line's prices and the money they are in go together: the first money
+   * a read price names is the line's `currency`, and a price cell with no mark
+   * joins it. A price whose money is certainly another one (a "(EUR)" column
+   * beside a "(TL)" one, or a second bottle column in another money, which was
+   * never read before) is kept in `also_priced` under its own money. Nothing
+   * converts here or anywhere: `menu-money.ts` takes the column in the house's
+   * money, and holds a line printed only in another.
+   */
   private buildItem(
     fieldMap: Array<keyof WineExtractItem | null>,
     cols: Cell[],
     row: number,
     issues: CsvRowIssue[],
+    marks: ReadonlyArray<string | null> = [],
   ): WineExtractItem | null {
     const item: Partial<WineExtractItem> = {};
     const found: CsvRowIssue[] = [];
 
     fieldMap.forEach((field, colIdx) => {
-      if (!field || item[field] !== undefined) return;
+      if (!field) return;
       const value = cols[colIdx];
-      if (typeof value === "number") {
-        if (PRICE_FIELDS.has(field)) {
-          if (Number.isFinite(value) && value >= 0)
-            (item as any)[field] = value;
-        } else (item as any)[field] = String(value);
+      const isPrice = PRICE_FIELDS.has(field);
+      if (!isPrice && item[field] !== undefined) return;
+      if (!isPrice) {
+        // r108 menu-g10: a marks cell keeps only what reads as a printed legend mark.
+        if (field === "printed_marks") {
+          item.printed_marks = splitMarks(typeof value === "number" ? String(value) : (value ?? "").trim()).filter(looksLikeLegendMark);
+          return;
+        }
+        if (typeof value === "number") (item as any)[field] = String(value);
+        else if ((value ?? "").trim()) (item as any)[field] = (value ?? "").trim();
         return;
       }
-      const raw = (value ?? "").trim();
-      if (!raw) return;
+      const raw = typeof value === "number" ? "" : (value ?? "").trim();
+      const mark = (raw ? cellMoneyMark(raw) : null) ?? marks[colIdx] ?? null;
+      // A second column of a price the line already has is read only when it
+      // is certainly in another money; any other is passed over, as before.
+      const taken = item[field] !== undefined;
+      const elsewhere = differentMoney(mark, item.currency);
+      if (taken && !elsewhere) return;
 
-      if (PRICE_FIELDS.has(field)) {
+      let amount: number | null = null;
+      if (typeof value === "number") {
+        if (Number.isFinite(value) && value >= 0) {
+          const doesNot = priceDoesNotFit(value);
+          if (doesNot) found.push({ row, reason: doesNot, field, raw: String(value) });
+          else amount = value;
+        } else if (Number.isFinite(value))
+          found.push({ row, reason: "negative", field, raw: String(value) });
+      } else if (raw) {
         const price = readMenuPrice(raw);
-        if (price.amount !== null) (item as any)[field] = price.amount;
+        if (price.amount !== null) amount = price.amount;
         else if (price.reason && price.reason !== "empty")
           found.push({ row, reason: price.reason, field, raw });
-      } else if (field === "printed_marks") {
-        item.printed_marks = splitMarks(raw).filter(looksLikeLegendMark);
-      } else {
-        (item as any)[field] = raw;
       }
+      if (amount === null) return;
+
+      if (!elsewhere) {
+        (item as any)[field] = amount;
+        if (mark && !item.currency) item.currency = mark;
+        return;
+      }
+      const also = (item.also_priced ??= []);
+      // `mark` names one money here (differentMoney said so): the column in that money, or a new one.
+      let column = also.find((c) => oneMoneyOf(c.currency) === oneMoneyOf(mark));
+      if (!column) also.push((column = { currency: mark! }));
+      if (column[field as "bottle_price" | "by_glass_price"] === undefined)
+        column[field as "bottle_price" | "by_glass_price"] = amount;
     });
 
     if (!item.name) {

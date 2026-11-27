@@ -606,6 +606,8 @@ function typedMenuPrice(raw: string): { value: number } | { refused: string } {
     .trim();
   const not = (why: string) => ({ refused: `"${typed}" is not a price: ${why}. Nothing was changed.` });
   if (s === "") return not("there is no number in it");
+  // r55 (#1774): a minus in front is said as below zero, never read as its amount.
+  if (/^[-\u2212]/.test(s)) return not("it is below zero; a price is an amount of 0 or more");
   if (!/^\d[\d.,\s]*$/.test(s)) return not("a price is written in digits, with no minus, no letters and at most one decimal mark");
   // A space inside a price is not read (the r21 reader took "1 250" as 1250; the one reader names two readings,
   // which is not what a space is). Refuse with what is true, never guess.
@@ -622,6 +624,9 @@ function typedMenuPrice(raw: string): { value: number } | { refused: string } {
     }
     return { refused: `"${typed}" reads two ways. Write one price, as 1250 or 1,250.00. Nothing was changed.` };
   }
+  // r55 (#1774): a price the column cannot hold is said, never a database 500 or a silent rounding.
+  if (read.reason === "too_large") return not("it is too large for a price; the most a price can be is 99,999,999.99");
+  if (read.reason === "too_precise") return not("it has more than two decimal places; a price has at most two");
   return not("its marks do not read as one amount");
 }
 
@@ -881,6 +886,13 @@ export class MenusService {
       sourceBytes && sourceMime
         ? await this.keepSource(restaurantId, sourceBytes, sourceMime)
         : null;
+
+    // 2b. The same file as a menu already kept is said, not refused: a second
+    // read of it is a choice the house may mean (a fresh photo read, a re-run).
+    if (kept?.path) {
+      const again = await this.earlierReadOfFile(restaurantId, kept.sha256);
+      if (again) notes = [...notes, again];
+    }
 
     // 3. A new version, in draft: kept whether or not it is ever made current.
     const menu = await this.createVersion(
@@ -1471,6 +1483,22 @@ export class MenusService {
       .eq("status", "draft");
     const failure = lines.error?.message ?? menu.error?.message;
     if (failure) this.logger.error(`menu ${menuId}: the draft of a failed import could not be removed: ${failure}`);
+  }
+
+  /** A note when a menu the house keeps was read from these same bytes; one too when that could not be looked up. */
+  private async earlierReadOfFile(restaurantId: string, sha256: string): Promise<CsvRowIssue | null> {
+    const { data, error } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .select("id, status")
+      .eq("restaurant_id", restaurantId)
+      .eq("source_sha256", sha256)
+      .limit(20);
+    if (error) return { row: 0, reason: "same_file_unchecked", raw: error.message };
+    const rows = (data ?? []) as Array<{ id: string; status: string }>;
+    if (rows.length === 0) return null;
+    // The current menu is the one worth naming when it is among them.
+    const status = rows.some((r) => r.status === "active") ? "active" : rows[0].status;
+    return { row: 0, reason: "same_file", raw: status };
   }
 
   private async createVersion(

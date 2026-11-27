@@ -132,12 +132,22 @@ export interface MenuReadNote {
     | 'no_name'
     | 'no_name_column'
     | 'price_column_not_read'
+    | 'price_column_read_as_bottle'
     | 'cell_error'
+    /** Not a row (`row` is 0): these bytes are a menu the house already keeps; `raw` is its status. */
+    | 'same_file'
+    /** Not a row (`row` is 0): whether the file was read before could not be looked up. */
+    | 'same_file_unchecked'
     | 'no_number'
     | 'two_readings'
+    | 'negative'
+    | 'too_large'
+    | 'too_precise'
     | 'unreadable'
   field?: string
   raw?: string
+  /** The worksheet the row is on; said only when the workbook has more than one visible sheet. */
+  sheet?: string
 }
 
 export const MENU_CADENCES = ['weekly', 'monthly', 'quarterly', 'yearly', 'none'] as const

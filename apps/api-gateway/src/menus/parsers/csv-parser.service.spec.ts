@@ -19,6 +19,8 @@ describe("CsvParserService.parse: Turkish and EU spreadsheets", () => {
         grape_variety: "Kalecik Karası",
         by_glass_price: 145.5,
         bottle_price: 1250,
+        // The glass header names TL; the unmarked bottle cell is in the line's money (r40 N1).
+        currency: "TL",
         raw_text:
           "Kalecik Karası;Kavaklıdere;2021;Ankara;Kalecik Karası;145,50;1.250,00",
       },
@@ -70,6 +72,17 @@ describe("CsvParserService.parse: Turkish and EU spreadsheets", () => {
     ]);
   });
 
+  it("does not make a discount row's minus price a line: the row keeps no price and says why", () => {
+    const report = parser().read("Name;Bottle\nİndirim;-10\nBoğazkere;45,-\n");
+    expect(report.items).toEqual([
+      { name: "İndirim", raw_text: "İndirim;-10" },
+      { name: "Boğazkere", bottle_price: 45, raw_text: "Boğazkere;45,-" },
+    ]);
+    expect(report.issues).toEqual([
+      { row: 2, reason: "negative", field: "bottle_price", raw: "-10" },
+    ]);
+  });
+
   it("reads `₺450` as 450 and keeps the symbol in the raw row", () => {
     const [item] = parser().parse("Name,Bottle\nRakı,₺450\n");
     expect(item.bottle_price).toBe(450);
@@ -77,11 +90,11 @@ describe("CsvParserService.parse: Turkish and EU spreadsheets", () => {
   });
 
   it("returns row-level issues, counting rows across a quoted line break", () => {
-    // A bare Fiyat (price) column is not read: its field is not decided, and that is said.
+    // A bare Fiyat (price) column is read as the bottle price, and that is said (r28 G8).
     expect(parser().read('Name;Fiyat\n"Two\nlines";10\n;45\n')).toEqual({
-      items: [{ name: "Two\nlines", raw_text: '"Two\nlines";10' }],
+      items: [{ name: "Two\nlines", bottle_price: 10, raw_text: '"Two\nlines";10' }],
       issues: [
-        { row: 1, reason: "price_column_not_read", raw: "Fiyat" },
+        { row: 1, reason: "price_column_read_as_bottle", raw: "Fiyat" },
         { row: 4, reason: "no_name" },
       ],
     });
@@ -93,11 +106,51 @@ describe("CsvParserService.parse: Turkish and EU spreadsheets", () => {
 });
 
 describe("CsvParserService.read: notes", () => {
-  it("says a bare Price / Fiyat column is not read, and does not guess bottle or glass", () => {
-    const { items, issues } = parser().read("Ad;Fiyat (TL)\nNarince;450\n");
-    expect(items).toEqual([{ name: "Narince", raw_text: "Narince;450" }]);
+  // r28 G8: a menu sheet with one price column read every line unpriced.
+  it("reads a bare Price / Fiyat column as each line's one price (the bottle price), and says so once", () => {
+    const { items, issues } = parser().read("Ad;Fiyat (TL)\nNarince;450\nMercimek Çorbası;85,50\n");
+    expect(items).toEqual([
+      { name: "Narince", bottle_price: 450, currency: "TL", raw_text: "Narince;450" },
+      { name: "Mercimek Çorbası", bottle_price: 85.5, currency: "TL", raw_text: "Mercimek Çorbası;85,50" },
+    ]);
     expect(issues).toEqual([
-      { row: 1, reason: "price_column_not_read", raw: "Fiyat (TL)" },
+      { row: 1, reason: "price_column_read_as_bottle", raw: "Fiyat (TL)" },
+    ]);
+    expect(parser().read("Name,Price\nEfes,90\n").items).toEqual([{ name: "Efes", bottle_price: 90, raw_text: "Efes,90" }]);
+  });
+
+  it("keeps a glass column as the glass price beside a bare price column", () => {
+    const { items } = parser().read("Name;Glass;Price\nChianti;12;48\n");
+    expect(items).toEqual([{ name: "Chianti", by_glass_price: 12, bottle_price: 48, raw_text: "Chianti;12;48" }]);
+  });
+
+  it("never reads a bare price over a named bottle column, and says the bare one was not read", () => {
+    const { items, issues } = parser().read("Name;Price;Bottle\nChianti;12;48\nSoave;9;\n");
+    expect(items).toEqual([
+      { name: "Chianti", bottle_price: 48, raw_text: "Chianti;12;48" },
+      { name: "Soave", raw_text: "Soave;9;" },
+    ]);
+    expect(issues).toEqual([{ row: 1, reason: "price_column_not_read", raw: "Price" }]);
+  });
+
+  it("reads only the first of two bare price columns", () => {
+    const { items, issues } = parser().read("Name;Price;Fiyat\nRakı;;450\nEfes;90;80\n");
+    expect(items).toEqual([
+      { name: "Rakı", raw_text: "Rakı;;450" },
+      { name: "Efes", bottle_price: 90, raw_text: "Efes;90;80" },
+    ]);
+    expect(issues).toEqual([
+      { row: 1, reason: "price_column_read_as_bottle", raw: "Price" },
+      { row: 1, reason: "price_column_not_read", raw: "Fiyat" },
+    ]);
+  });
+
+  it("a bare price with two readings is left blank and said, like any price", () => {
+    const { items, issues } = parser().read("Name;Price\nRakı;1.250\n");
+    expect(items).toEqual([{ name: "Rakı", raw_text: "Rakı;1.250" }]);
+    expect(issues).toEqual([
+      { row: 1, reason: "price_column_read_as_bottle", raw: "Price" },
+      { row: 2, reason: "two_readings", field: "bottle_price", raw: "1.250" },
     ]);
   });
 });
@@ -110,6 +163,15 @@ describe("CsvParserService.parseExcel", () => {
     rows.forEach((r) => ws.addRow(r));
     return Buffer.from(await wb.xlsx.writeBuffer()).toString("base64");
   };
+
+  it("reads a workbook's bare Fiyat column as the bottle price, a stored number as it is (r28 G8)", async () => {
+    const { items, issues } = await parser().readExcel(await xlsx([["Ürün", "Fiyat"], ["Künefe", 140], ["Ayran", "35,50"]]));
+    expect(items.map((i) => [i.name, i.bottle_price])).toEqual([
+      ["Künefe", 140],
+      ["Ayran", 35.5],
+    ]);
+    expect(issues).toEqual([{ row: 1, reason: "price_column_read_as_bottle", raw: "Fiyat" }]);
+  });
 
   it("refuses an old .xls workbook in words, not with an empty read", async () => {
     const ole2 = Buffer.concat([
@@ -160,11 +222,41 @@ describe("CsvParserService.parseExcel", () => {
     ]);
   });
 
+  it("says a stored number below zero was left out, as it says a typed minus", async () => {
+    const report = await parser().readExcel(
+      await xlsx([
+        ["Name", "Bottle"],
+        ["İndirim", -10],
+        ["Narince", 120],
+      ]),
+    );
+    expect(report.items.map((i) => i.bottle_price)).toEqual([undefined, 120]);
+    expect(report.issues).toEqual([
+      { row: 2, reason: "negative", field: "bottle_price", raw: "-10" },
+    ]);
+  });
+
+  it("says a stored number too big or too fine for a price was left out, as it says a typed one", async () => {
+    const report = await parser().readExcel(
+      await xlsx([
+        ["Name", "Bottle"],
+        ["Huge", 100000000],
+        ["Fine", 45.5555],
+        ["Narince", 120],
+      ]),
+    );
+    expect(report.items.map((i) => i.bottle_price)).toEqual([undefined, undefined, 120]);
+    expect(report.issues).toEqual([
+      { row: 2, reason: "too_large", field: "bottle_price", raw: "100000000" },
+      { row: 3, reason: "too_precise", field: "bottle_price", raw: "45.5555" },
+    ]);
+  });
+
   it("maps Turkish headers, takes a stored number as is, reads a text price, and sets the raw row", async () => {
     const items = await parser().parseExcel(
       await xlsx([
         ["Şarap", "Üretici", "Şişe Fiyatı", "Kadeh Fiyatı"],
-        ["Narince", "Kayra", 1.125, "145,50"],
+        ["Narince", "Kayra", 1250, "145,50"],
         ["Emir", "Kocabağ", "1.250", 90],
       ]),
     );
@@ -172,9 +264,9 @@ describe("CsvParserService.parseExcel", () => {
       {
         name: "Narince",
         producer: "Kayra",
-        bottle_price: 1.125,
+        bottle_price: 1250,
         by_glass_price: 145.5,
-        raw_text: "Narince,Kayra,1.125,145,50",
+        raw_text: "Narince,Kayra,1250,145,50",
       },
       {
         name: "Emir",
@@ -183,5 +275,136 @@ describe("CsvParserService.parseExcel", () => {
         raw_text: "Emir,Kocabağ,1.250,90",
       },
     ]);
+  });
+});
+
+describe("CsvParserService: the money a file prices a line in (r40, r36 N1)", () => {
+  it("names a cell's own money on the line, and reads the number as before", () => {
+    const [chianti, soave] = parser().parse("Name,Bottle,Glass\nChianti,€48,€12\nSoave,40,\n");
+    expect(chianti).toEqual({ name: "Chianti", bottle_price: 48, by_glass_price: 12, currency: "€", raw_text: "Chianti,€48,€12" });
+    // A line that names no money carries no currency: it is the house's, as before.
+    expect(soave).toEqual({ name: "Soave", bottle_price: 40, raw_text: "Soave,40," });
+  });
+
+  it("names a header's money for every unmarked cell under it; a cell's own mark comes first", () => {
+    const items = parser().parse("Ad;Şişe Fiyatı (EUR)\nBarolo;64\nRakı;₺450\n");
+    expect(items.map((i) => [i.name, i.bottle_price, i.currency])).toEqual([
+      ["Barolo", 64, "EUR"],
+      ["Rakı", 450, "₺"],
+    ]);
+  });
+
+  it("keeps a price in another money in also_priced, never in the line's own prices", () => {
+    // Two bottle columns: before, the second was passed over without a word.
+    const [line] = parser().parse("Ad;Şişe (TL);Bottle (EUR)\nBrunello;3.250,00;95\n");
+    expect(line).toEqual({
+      name: "Brunello",
+      bottle_price: 3250,
+      currency: "TL",
+      also_priced: [{ currency: "EUR", bottle_price: 95 }],
+      raw_text: "Brunello;3.250,00;95",
+    });
+    // A glass in euros beside a bottle in lira: each keeps its own money.
+    const [mixed] = parser().parse("Ad;Kadeh (EUR);Şişe (TL)\nSoave;9;1.200,00\n");
+    expect(mixed).toEqual(
+      expect.objectContaining({ by_glass_price: 9, currency: "EUR", also_priced: [{ currency: "TL", bottle_price: 1200 }] }),
+    );
+    expect(mixed.bottle_price).toBeUndefined();
+    // A third bottle column in a money already kept aside: the first of that money stands.
+    const [three] = parser().parse("Ad;Şişe (TL);Bottle (EUR);Bottle (€)\nBrunello;3.250,00;95;99\n");
+    expect(three.also_priced).toEqual([{ currency: "EUR", bottle_price: 95 }]);
+    // Two name columns: the first is the line's name, as before.
+    expect(parser().parse("Name,Item,Bottle\nBarolo,Wine 7,64\n")[0].name).toBe("Barolo");
+    // Two columns in the same money: the second is passed over, as before.
+    const [same] = parser().parse("Ad;Şişe (TL);Şişe (₺)\nSoave;1.200,00;1.300,00\n");
+    expect(same).toEqual({ name: "Soave", bottle_price: 1200, currency: "TL", raw_text: "Soave;1.200,00;1.300,00" });
+  });
+
+  it("never splits a family mark from a code it may name", () => {
+    const [line] = parser().parse("Name,Bottle ($),Glass (USD)\nMerlot,40,9\n");
+    expect(line).toEqual({ name: "Merlot", bottle_price: 40, by_glass_price: 9, currency: "$", raw_text: "Merlot,40,9" });
+  });
+
+  it("says a second-money cell it cannot read, like any price", () => {
+    const { items, issues } = parser().read("Ad;Şişe (TL);Bottle (EUR)\nBrunello;3.250,00;12 / 15\n");
+    expect(items[0].also_priced).toBeUndefined();
+    expect(issues).toEqual([{ row: 2, reason: "two_readings", field: "bottle_price", raw: "12 / 15" }]);
+  });
+
+  it("reads an Excel cell's money from its number format, before the header's", async () => {
+    const ExcelJS = await import("exceljs");
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Menu");
+    ws.addRow(["Ürün", "Fiyat (TL)", "Kadeh"]);
+    ws.addRow(["Chianti", 48, 12]);
+    ws.addRow(["Narince", 1250, null]);
+    ws.getCell("B2").numFmt = "[$€-x-euro2] #,##0.00";
+    ws.getCell("C2").numFmt = "[$€-x-euro2] #,##0.00";
+    const { items } = await parser().readExcel(Buffer.from(await wb.xlsx.writeBuffer()).toString("base64"));
+    expect(items.map((i) => [i.name, i.bottle_price, i.by_glass_price, i.currency])).toEqual([
+      ["Chianti", 48, 12, "€"],
+      ["Narince", 1250, undefined, "TL"],
+    ]);
+  });
+
+  describe("a workbook of several sheets", () => {
+    const book = async (
+      sheets: Array<{ name: string; rows: unknown[][]; state?: "visible" | "hidden" }>,
+    ): Promise<string> => {
+      const ExcelJS = await import("exceljs");
+      const wb = new ExcelJS.Workbook();
+      for (const sh of sheets) {
+        const ws = wb.addWorksheet(sh.name);
+        sh.rows.forEach((r) => ws.addRow(r));
+        if (sh.state) ws.state = sh.state;
+      }
+      return Buffer.from(await wb.xlsx.writeBuffer()).toString("base64");
+    };
+
+    it("reads every visible sheet, in order, and names the sheet of a note", async () => {
+      const { items, issues } = await parser().readExcel(
+        await book([
+          { name: "Wines", rows: [["Name", "Bottle price"], ["Chianti", 48]] },
+          { name: "Cocktails", rows: [["Name", "Bottle price"], ["Negroni", "1.250"], ["Spritz", 12]] },
+        ]),
+      );
+      expect(items.map((i) => [i.name, i.bottle_price])).toEqual([
+        ["Chianti", 48],
+        ["Negroni", undefined],
+        ["Spritz", 12],
+      ]);
+      expect(issues).toEqual([
+        { row: 2, reason: "two_readings", field: "bottle_price", raw: "1.250", sheet: "Cocktails" },
+      ]);
+    });
+
+    it("says a sheet with no name column, by its sheet, and still reads the others", async () => {
+      const { items, issues } = await parser().readExcel(
+        await book([
+          { name: "Read me", rows: [["Notes", "More"], ["call us", "soon"]] },
+          { name: "Wines", rows: [["Name", "Bottle price"], ["Chianti", 48]] },
+        ]),
+      );
+      expect(items.map((i) => i.name)).toEqual(["Chianti"]);
+      expect(issues).toEqual([{ row: 1, reason: "no_name_column", sheet: "Read me" }]);
+    });
+
+    it("leaves a hidden sheet out, and names no sheet when only one is read", async () => {
+      const { items, issues } = await parser().readExcel(
+        await book([
+          { name: "Wines", rows: [["Name", "Price"], ["Chianti", 48]] },
+          { name: "Old", rows: [["Name", "Price"], ["Gone", 1]], state: "hidden" },
+        ]),
+      );
+      expect(items.map((i) => i.name)).toEqual(["Chianti"]);
+      expect(issues).toEqual([{ row: 1, reason: "price_column_read_as_bottle", raw: "Price" }]);
+    });
+
+    it("reads a workbook whose only sheet is hidden", async () => {
+      const { items } = await parser().readExcel(
+        await book([{ name: "Wines", rows: [["Name", "Bottle price"], ["Chianti", 48]], state: "hidden" }]),
+      );
+      expect(items.map((i) => i.name)).toEqual(["Chianti"]);
+    });
   });
 });
