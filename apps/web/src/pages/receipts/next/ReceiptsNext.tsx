@@ -1977,6 +1977,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (v
                 verify.mutate(challenge);
               }}
             />
+            </div>
             {verify.isError && (
               <p role="alert" style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--ink-1, #211C16)', margin: '6px 0 0' }}>
                 {sentence(serverMessage(verify.error, 'The confirmation did not go through.'))}{' '}

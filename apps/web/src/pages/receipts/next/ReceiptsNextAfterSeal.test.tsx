@@ -287,7 +287,7 @@ describe('where focus goes after a seal (r108)', () => {
     const swipe = screen.getByRole('button', { name: /Swipe up to confirm/ });
     swipe.focus();
     fireEvent.keyDown(swipe, { key: 'Enter' });
-    await waitFor(() => expect(swipe.disabled).toBe(true), { timeout: 3000 });
+    await waitFor(() => expect((swipe as HTMLButtonElement).disabled).toBe(true), { timeout: 3000 });
     // jsdom's blur() ignores a disabled button, so focus something else instead:
     // either way the focus is no longer inside the seal control.
     const elsewhere = document.body.appendChild(document.createElement('input'));

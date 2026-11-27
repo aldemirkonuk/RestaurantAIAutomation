@@ -116,6 +116,8 @@ describe('the verified lane past its first window', () => {
       await client.invalidateQueries({ queryKey: ['receipts-next', 'verified'] });
     });
     await waitFor(() => expect(screen.queryByText(/V-101/)).toBeNull());
+  });
+
   it('puts Older papers in the lane header, beside the toggle and above the list (r107)', async () => {
     render(<ReceiptsNext />, { wrapper });
     await openLane();
