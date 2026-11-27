@@ -186,6 +186,15 @@ describe('a poll that cannot read says so (ADR 0020, r105)', () => {
     expect(screen.getByTestId('verify-poll-stopped')).toHaveTextContent('This page has stopped checking.')
   })
 
+  it('after ten minutes of healthy reads the stopped line is said too (r106)', async () => {
+    mount()
+    await advance(60_000)
+    expect(screen.queryByTestId('verify-poll-stopped')).not.toBeInTheDocument()
+    await advance(11 * 60_000)
+    expect(screen.queryByTestId('verify-poll-trouble')).not.toBeInTheDocument()
+    expect(screen.getByTestId('verify-poll-stopped')).toHaveTextContent('This page has stopped checking.')
+  })
+
   it('a timer that is still running never says it has stopped', async () => {
     h.get.mockRejectedValue(tooMany)
     mount()

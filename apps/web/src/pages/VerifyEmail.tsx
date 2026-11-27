@@ -39,8 +39,9 @@ const POLL_TROUBLE_AFTER = 2
 const POLL_TROUBLE_SENTENCE =
   'We cannot check just now whether this address was verified. This page keeps trying; you can also reload it.'
 /**
- * Said instead, once the timer has stopped and the last reads failed (r107): never
- * "keeps trying" while it does not. Shorter than the sentence above, so the hidden
+ * Said instead, once the timer has stopped, whether or not the reads failed (r107:
+ * never "keeps trying" while it does not; r106: after ten healthy reads the tab
+ * still says "Check your email" for good if verified elsewhere with no focus). Shorter than the sentence above, so the hidden
  * copy of that one still holds the room.
  */
 const POLL_STOPPED_SENTENCE =
@@ -58,7 +59,7 @@ function PollSlot({ trouble, stopped, className }: { trouble: boolean; stopped: 
         {POLL_TROUBLE_SENTENCE}
       </p>
       <p role="status" className={className} style={{ gridArea: '1 / 1' }}>
-        {trouble && stopped ? (
+        {stopped ? (
           <span data-testid="verify-poll-stopped">{POLL_STOPPED_SENTENCE}</span>
         ) : trouble ? (
           <span data-testid="verify-poll-trouble">{POLL_TROUBLE_SENTENCE}</span>
