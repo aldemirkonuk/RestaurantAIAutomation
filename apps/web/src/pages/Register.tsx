@@ -8,9 +8,16 @@ import { BrandMark } from '../components/brand/BrandMark'
 import { EndpaperShell } from '../components/brand/EndpaperShell'
 import { Button } from '../components/ui'
 import { apiClient } from '../services/api/client'
+import { prefersReducedMotion } from '../lib/mudavym/motion'
 import { usePublicDesign } from '../lib/mudavym/publicDesign'
 import { GoogleSignInButton } from '../components/auth/GoogleSignInButton'
 import '../components/brand/auth-house.css'
+
+/** Height the valid-invite card takes (16 px gap included), measured in the r102 walk at 375 px. */
+const INVITE_CARD_ROOM_PX = 142
+
+/** ADR 0112 / DD-r102-3: reduced motion is no animation, opacity fades included. */
+const dur = (seconds: number) => (prefersReducedMotion() ? 0 : seconds)
 
 /*
  * THE HOUSE PATH (ADR 0133 §Decision 1). `usePublicDesign()` is the public
@@ -82,7 +89,9 @@ export function Register() {
   const [error, setError] = useState<string | null>(null)
 
   // Path A state
-  const [inviteCode, setInviteCode] = useState('')
+  // An invite link carries its code; read it before the first paint so the
+  // card's room is held from the first frame, not one commit later (r103).
+  const [inviteCode, setInviteCode] = useState(() => (searchParams.get('invite') ?? '').toUpperCase())
   const [invitePreview, setInvitePreview] = useState<InvitePreview | null>(null)
   const [validating, setValidating] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -193,13 +202,7 @@ export function Register() {
 
   // PATH A — Step 1: Invite code entry
   const pathAStep1 = () => (
-    <motion.div
-      key="pathA-1"
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -20 }}
-      transition={{ duration: 0.25 }}
-    >
+    <div key="pathA-1">
       {/* Back */}
       <button
         type="button"
@@ -258,7 +261,7 @@ export function Register() {
             className={[
               'block w-full py-4 px-[18px] pr-[50px]',
               'font-mono text-2xl font-bold tracking-[0.2em] uppercase text-center',
-              'border-2 rounded-xl outline-none transition-all',
+              'border-2 rounded-xl outline-none transition-all motion-reduce:transition-none',
               // House path: the status border stays (no status token), and
               // the three hand-drawn focus halos go — the seal outline comes
               // from auth-house.css.
@@ -284,7 +287,7 @@ export function Register() {
           {/* Status icon */}
           {validating && (
             <div className="absolute right-4 top-1/2 -translate-y-1/2">
-              <Loader2 className={on ? 'w-5 h-5 text-inkm-3 animate-spin' : 'w-5 h-5 text-gray-400 animate-spin'} />
+              <Loader2 className={on ? 'w-5 h-5 text-inkm-3 animate-spin motion-reduce:animate-none' : 'w-5 h-5 text-gray-400 animate-spin motion-reduce:animate-none'} />
             </div>
           )}
           {!validating && invitePreview?.valid === true && (
@@ -300,15 +303,24 @@ export function Register() {
         </div>
       </div>
 
+      {/* r103: the card that arrives after the preview read pushed Continue from
+          451 to 593 px (CLS 0.02 at 375). The card and the invalid note share
+          one slot that holds the card's room from the eighth character until
+          the next keystroke, so a used or unknown code (a note of about 48 px)
+          does not pull Continue up with no input. */}
+      <div
+        aria-hidden={invitePreview === null ? true : undefined}
+        data-testid="invite-card-room"
+        style={inviteCode.length === 8 ? { minHeight: INVITE_CARD_ROOM_PX } : undefined}
+      >
       {/* Trust card (valid) */}
       <AnimatePresence>
         {invitePreview?.valid === true && (
           <motion.div
             key="trust-card"
             initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+            animate={{ opacity: 1, y: 0, transition: { duration: dur(0.18), ease: 'easeOut' } }}
+            exit={{ opacity: 0, y: -6, transition: { duration: dur(0.13), ease: 'easeIn' } }}
             className={on ? 'mb-4 border border-paper-2 rounded-[3px] overflow-hidden' : 'mb-4 border border-green-200 rounded-xl overflow-hidden'}
           >
             {/* Green top — on the house path, a paper plate: the seal marks it good */}
@@ -355,6 +367,7 @@ export function Register() {
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: dur(0.2) }}
             className={on ? 'mdv-ep-note border-red-700' : 'mb-4 flex items-center gap-[9px] bg-red-50 border border-red-200 rounded-lg px-[14px] py-[11px]'}
           >
             {!on && <X className="w-[15px] h-[15px] text-red-600 flex-shrink-0" />}
@@ -368,16 +381,17 @@ export function Register() {
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
 
       <Button
-        className={on ? `w-full h-12 ${HOUSE_BUTTON}` : 'w-full h-12'}
+        className={on ? `w-full h-12 motion-reduce:transition-none ${HOUSE_BUTTON}` : 'w-full h-12 motion-reduce:transition-none'}
         disabled={!invitePreview?.valid || loading}
         type="button"
         onClick={() => setPathAStep(2)}
       >
         Continue <ArrowRight className="w-4 h-4 ml-1" />
       </Button>
-    </motion.div>
+    </div>
   )
 
   // PATH A — Step 2: Account fields + submit
@@ -409,13 +423,7 @@ export function Register() {
   }
 
   const pathAStep2 = () => (
-    <motion.div
-      key="pathA-2"
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -20 }}
-      transition={{ duration: 0.25 }}
-    >
+    <div key="pathA-2">
       <button
         type="button"
         onClick={() => setPathAStep(1)}
@@ -471,8 +479,8 @@ export function Register() {
               placeholder="jane@restaurant.com"
               className={[
                 on
-                  ? 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-paper-0 focus:outline-none transition-all'
-                  : 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-white/80 focus:ring-2 focus:outline-none transition-all',
+                  ? 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-paper-0 focus:outline-none transition-all motion-reduce:transition-none'
+                  : 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-white/80 focus:ring-2 focus:outline-none transition-all motion-reduce:transition-none',
                 joinEmailCheck.available === false
                   ? (on ? 'border-red-400' : 'border-red-400 focus:border-red-500 focus:ring-red-500/20')
                   : joinEmailCheck.available === true
@@ -483,7 +491,7 @@ export function Register() {
             {/* Status icon */}
             {joinEmailCheck.checking && (
               <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                <Loader2 className={on ? 'w-4 h-4 text-inkm-3 animate-spin' : 'w-4 h-4 text-gray-400 animate-spin'} />
+                <Loader2 className={on ? 'w-4 h-4 text-inkm-3 animate-spin motion-reduce:animate-none' : 'w-4 h-4 text-gray-400 animate-spin motion-reduce:animate-none'} />
               </div>
             )}
             {!joinEmailCheck.checking && joinEmailCheck.available === true && (
@@ -502,8 +510,8 @@ export function Register() {
             {joinEmailCheck.available === false && joinEmailCheck.error && (
               <motion.div
                 initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0, transition: { duration: dur(0.18), ease: 'easeOut' } }}
+                exit={{ opacity: 0, y: -4, transition: { duration: dur(0.13), ease: 'easeIn' } }}
                 className="mt-2 flex items-center gap-2 text-sm text-red-600"
               >
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -516,8 +524,8 @@ export function Register() {
             {joinEmailCheck.available === true && (
               <motion.p
                 initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0, transition: { duration: dur(0.18), ease: 'easeOut' } }}
+                exit={{ opacity: 0, y: -4, transition: { duration: dur(0.13), ease: 'easeIn' } }}
                 className={on ? 'mt-1 text-xs !text-seal' : 'mt-1 text-xs text-green-600'}
               >
                 Email is available
@@ -566,7 +574,7 @@ export function Register() {
         </div>
       )}
       <Button
-        className={on ? `w-full h-12 mt-5 ${HOUSE_BUTTON}` : 'w-full h-12 mt-5'}
+        className={on ? `w-full h-12 mt-5 motion-reduce:transition-none ${HOUSE_BUTTON}` : 'w-full h-12 mt-5 motion-reduce:transition-none'}
         disabled={loading || joinEmailCheck.checking || !joinName || !joinEmail || !joinPassword || !joinConfirm || joinEmailCheck.available === false}
         onClick={async () => {
           // If debounced check hasn't settled, run immediately before submitting
@@ -583,30 +591,24 @@ export function Register() {
       >
         {loading ? (
           <>
-            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+            <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none mr-2" />
             Joining...
           </>
         ) : joinEmailCheck.checking ? (
           <>
-            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+            <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none mr-2" />
             Checking email…
           </>
         ) : (
           'Join Restaurant'
         )}
       </Button>
-    </motion.div>
+    </div>
   )
 
   // PATH B — Step 1: Account fields — called as a function
   const pathBStep1 = () => (
-    <motion.div
-      key="pathB-1"
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -20 }}
-      transition={{ duration: 0.25 }}
-    >
+    <div key="pathB-1">
       <button
         type="button"
         onClick={() => navigate('/register')}
@@ -658,8 +660,8 @@ export function Register() {
               placeholder="john@myrestaurant.com"
               className={[
                 on
-                  ? 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-paper-0 focus:outline-none transition-all'
-                  : 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-white/80 focus:ring-2 focus:outline-none transition-all',
+                  ? 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-paper-0 focus:outline-none transition-all motion-reduce:transition-none'
+                  : 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-white/80 focus:ring-2 focus:outline-none transition-all motion-reduce:transition-none',
                 createEmailCheck.available === false
                   ? (on ? 'border-red-400' : 'border-red-400 focus:border-red-500 focus:ring-red-500/20')
                   : createEmailCheck.available === true
@@ -670,7 +672,7 @@ export function Register() {
             {/* Status icon */}
             {createEmailCheck.checking && (
               <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                <Loader2 className={on ? 'w-4 h-4 text-inkm-3 animate-spin' : 'w-4 h-4 text-gray-400 animate-spin'} />
+                <Loader2 className={on ? 'w-4 h-4 text-inkm-3 animate-spin motion-reduce:animate-none' : 'w-4 h-4 text-gray-400 animate-spin motion-reduce:animate-none'} />
               </div>
             )}
             {!createEmailCheck.checking && createEmailCheck.available === true && (
@@ -689,8 +691,8 @@ export function Register() {
             {createEmailCheck.available === false && createEmailCheck.error && (
               <motion.div
                 initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0, transition: { duration: dur(0.18), ease: 'easeOut' } }}
+                exit={{ opacity: 0, y: -4, transition: { duration: dur(0.13), ease: 'easeIn' } }}
                 className="mt-2 flex items-center gap-2 text-sm text-red-600"
               >
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -703,8 +705,8 @@ export function Register() {
             {createEmailCheck.available === true && (
               <motion.p
                 initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0, transition: { duration: dur(0.18), ease: 'easeOut' } }}
+                exit={{ opacity: 0, y: -4, transition: { duration: dur(0.13), ease: 'easeIn' } }}
                 className={on ? 'mt-1 text-xs !text-seal' : 'mt-1 text-xs text-green-600'}
               >
                 Email is available
@@ -748,7 +750,7 @@ export function Register() {
       </div>
       <Button
         type="button"
-        className={on ? `w-full h-12 mt-5 ${HOUSE_BUTTON}` : 'w-full h-12 mt-5'}
+        className={on ? `w-full h-12 mt-5 motion-reduce:transition-none ${HOUSE_BUTTON}` : 'w-full h-12 mt-5 motion-reduce:transition-none'}
         disabled={
           !createName ||
           !createEmail ||
@@ -792,7 +794,7 @@ export function Register() {
       >
         {createEmailCheck.checking ? (
           <>
-            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+            <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none mr-2" />
             Checking email…
           </>
         ) : (
@@ -809,7 +811,7 @@ export function Register() {
         onSuccess={() => navigate('/get-started', { replace: true })}
         onError={setError}
       />
-    </motion.div>
+    </div>
   )
 
   // Single step key — AnimatePresence fires ONLY when the user actually navigates between steps
@@ -881,14 +883,14 @@ export function Register() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
+        transition={{ duration: dur(0.5) }}
         className="relative w-full max-w-2xl"
       >
         <div className="text-center mb-8">
           <motion.div
             initial={{ scale: 0.5, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.1, type: 'spring' }}
+            transition={prefersReducedMotion() ? { duration: 0 } : { delay: 0.1, type: 'spring' }}
             className="inline-flex mb-5"
           >
             <BrandMark size={34} />
