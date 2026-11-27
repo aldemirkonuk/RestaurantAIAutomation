@@ -213,7 +213,10 @@ export default function CuttingFlat({
             {windowControl}
           </div>
         </div>
-        <p className="rp-cap">This view is not saved to your sheet.</p>
+        <p className="rp-cap">
+          This view is not saved to your sheet.
+          {windowControl ? ' The window you pick is kept in the page link, so a reload or a shared link opens on it.' : ''}
+        </p>
       </div>
       <div className="rp-flat__body">
         {renderBody(graph, { pick: comboPick, onPick: setComboPick })}

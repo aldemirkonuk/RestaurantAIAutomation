@@ -31,7 +31,7 @@
  * (`CuttingFlat.tsx`, `?flat=<id>`), drawn here over the same register.
  */
 
-import { useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ChartArea,
@@ -87,6 +87,22 @@ function GraphIcon({ graph }: { graph: GraphType }) {
   return <Icon size={13} strokeWidth={1.6} color="var(--ink-4)" aria-hidden />;
 }
 
+/**
+ * The till windows a reader can pick, in house days. The gateway allows any
+ * 1–365, but the page offers these four, so a window in the link that is not
+ * one of them reads as the default rather than as a picker with no chip held.
+ */
+export const TILL_WINDOWS = [7, 30, 90, 365] as const;
+export const DEFAULT_TILL_DAYS = 30;
+/** The page link's name for the till window: `/reports?days=90`. */
+export const DAYS_PARAM = 'days';
+
+/** The till window a link names, or the default when it names none we offer. */
+export function tillDaysOf(raw: string | null): number {
+  const n = Number(raw);
+  return (TILL_WINDOWS as readonly number[]).includes(n) ? n : DEFAULT_TILL_DAYS;
+}
+
 /** Window picker for the till — the only period control on the whole sheet. */
 export function TillWindowPicker({
   days,
@@ -97,7 +113,7 @@ export function TillWindowPicker({
 }) {
   // A year is the window an owner reads a season against (audit G19); the
   // gateway already allows 1–365 house days (`analytics.controller.ts`).
-  const options = useMemo(() => [7, 30, 90, 365], []);
+  const options = TILL_WINDOWS;
   return (
     <div role="group" aria-label="Till window" style={{ display: 'flex', gap: 3 }}>
       {options.map((d) => (
@@ -108,7 +124,7 @@ export function TillWindowPicker({
           aria-pressed={days === d}
           onClick={() => onChange(d)}
         >
-          {d}d
+          {d} days
         </button>
       ))}
     </div>
