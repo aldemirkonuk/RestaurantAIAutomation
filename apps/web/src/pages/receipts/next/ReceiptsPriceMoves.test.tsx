@@ -146,7 +146,7 @@ beforeEach(() => {
 });
 
 describe('the check card on a cost that moved', () => {
-  it('a paper in another money says why no price was compared (r106)', async () => {
+  it('a paper in another money is said once, in the verdict, not again on the money card (r108)', async () => {
     api.moves.mockResolvedValue({
       thresholdPct: 10,
       paperCurrency: 'TRY',
@@ -155,9 +155,9 @@ describe('the check card on a cost that moved', () => {
     });
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
-    expect(
-      await screen.findByText('Prices are in TRY and the house costs in USD, so none were compared against earlier costs.'),
-    ).toBeTruthy();
+    await waitFor(() => expect(api.moves).toHaveBeenCalled());
+    // The verdict is stubbed here (CanonicalDocumentPage), so the card alone must be silent.
+    expect(screen.queryAllByText(/Prices are in TRY and the house costs in USD/)).toHaveLength(0);
   });
 
   it('an unrelated not-compared reason stays silent (r106)', async () => {
