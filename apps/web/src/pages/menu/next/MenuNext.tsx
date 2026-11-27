@@ -555,21 +555,23 @@ function MenuRow({ line, currency, onDiscard, discarding, isNew = false, testId 
             >
               Change price
             </button>{' '}
-            {correct ? (
-              <button
-                ref={correctButton}
-                type="button"
-                className="cl-btn cl-focus"
-                onClick={() => {
-                  setCdraft(correctDraftOf(line));
-                  correct.onOpen();
-                }}
-                aria-label={`Correct the name or section of ${line.name}`}
-                data-testid="menu-correct-open"
-              >
-                Correct
-              </button>
-            ) : null}{' '}
+          </>
+        ) : null}
+        {correct && !correcting && !editing ? (
+          <>
+            <button
+              ref={correctButton}
+              type="button"
+              className="cl-btn cl-focus"
+              onClick={() => {
+                setCdraft(correctDraftOf(line));
+                correct.onOpen();
+              }}
+              aria-label={`Correct the name or section of ${line.name}`}
+              data-testid="menu-correct-open"
+            >
+              Correct
+            </button>{' '}
           </>
         ) : null}
         {onDiscard && !editing && !correcting ? (
