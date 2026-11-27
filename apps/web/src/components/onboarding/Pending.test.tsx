@@ -65,6 +65,19 @@ describe('Pending', () => {
   })
 })
 
+describe('a ring with no words', () => {
+  it('is a decoration: hidden from the page, no live region', () => {
+    setReduced(true)
+    const { container } = render(<Pending decorative />)
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(container.firstElementChild).toHaveAttribute('aria-hidden', 'true')
+  })
+  it('with words, it is the one status region', () => {
+    render(<Pending label="Checking…" />)
+    expect(screen.getAllByRole('status')).toHaveLength(1)
+  })
+})
+
 describe('the four menu waits under reduced motion', () => {
   beforeEach(() => setReduced(true))
 
