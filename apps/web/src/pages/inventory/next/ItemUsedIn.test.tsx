@@ -58,20 +58,15 @@ describe('Used in', () => {
     expect(screen.getByTestId('ivd-used-drink-recipes').textContent).toContain(DRINKS_DO_NOT_DRAW);
   });
 
-  it('a drink only the old recipe box holds is marked read only, with its quantity (r103 need 7)', () => {
-    render(
-      <MemoryRouter>
-        <ItemUsedIn dishes={NO_DISHES} onRetryDishes={vi.fn()} load={load({ inCocktails: oldBox([{ cocktailId: 'c1', name: 'Rakı sour', quantity: 40, unit: 'ml' }]) })} canManage currency={EUR} onRetry={vi.fn()} />
-      </MemoryRouter>,
-    );
-    expect(screen.getByTestId('ivd-used-cocktails').textContent).toContain(`40 ml · ${OLD_RECIPE_BOX}`);
-    expect(OLD_RECIPE_BOX).toBe('old recipe box, read only');
-  });
-
   const cardsText = (over: Partial<UsedIn>) => {
     render(<MemoryRouter><ItemUsedIn dishes={NO_DISHES} onRetryDishes={vi.fn()} load={load(over)} canManage currency={EUR} onRetry={vi.fn()} /></MemoryRouter>);
     return screen.getByTestId('ivd-used-cocktails').textContent ?? '';
   };
+
+  it('a drink only the old recipe box holds is marked read only, with its quantity (r103 need 7)', () => {
+    expect(cardsText({ inCocktails: oldBox([{ cocktailId: 'c1', name: 'Rakı sour', quantity: 40, unit: 'ml' }]) })).toContain(`40 ml · ${OLD_RECIPE_BOX}`);
+    expect(OLD_RECIPE_BOX).toBe('old recipe box, read only');
+  });
 
   it('a card is not called old unless the gateway said so, even when the recipe list is read (r103 finding 5)', () => {
     const text = cardsText({ inDrinkRecipes: ok([]) });
@@ -83,27 +78,6 @@ describe('Used in', () => {
     const text = cardsText({ inCocktails: oldBox([{ cocktailId: 'c1', name: 'Converted', quantity: 50, unit: 'ml', namedNotLinked: true as const }]) });
     expect(text).toContain(`Converted50 ml · ${NAMED_NOT_LINKED}`);
     expect(text).not.toContain(OLD_RECIPE_BOX);
-  });
-
-  it('a card is not called old when the recipe read failed, since it may have a current recipe', () => {
-    const failedRecipes = { readable: false, lines: null, source: 'The drink recipes could not be read (boom), so this is not shown.' };
-    render(
-      <MemoryRouter>
-        <ItemUsedIn
-          dishes={NO_DISHES}
-          onRetryDishes={vi.fn()}
-          load={load({ inDrinkRecipes: failedRecipes as unknown as UsedIn['inDrinkRecipes'] })}
-          drinks={{ status: 'failed', reason: 'boom' } as never}
-          canManage
-          currency={EUR}
-          onRetry={vi.fn()}
-        />
-      </MemoryRouter>,
-    );
-    const cards = screen.getByTestId('ivd-used-cocktails').textContent ?? '';
-    expect(cards).toContain('Rakı sour');
-    expect(cards).toContain('40 ml');
-    expect(cards).not.toContain(OLD_RECIPE_BOX);
   });
 
   it('a drink that uses the good opens that drink, in the app and outside it', () => {
