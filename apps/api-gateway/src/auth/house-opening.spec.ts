@@ -485,7 +485,8 @@ describe.each([
     for (const [field, max, sentence] of caps) {
       expect(await errorsFor(field, "a".repeat(max))).toBeUndefined();
       expect(await errorsFor(field, "a".repeat(max + 1))).toEqual({
-        maxLength: sentence,
+        // The person's name has its own single-purpose length rule, so its sentence is said once.
+        [field === "name" ? "nameFitsLength" : "maxLength"]: sentence,
       });
       // `city` and `country` are plain words too; the camelCase names are not.
       if (/[A-Z]/.test(field)) expect(sentence).not.toContain(field);
