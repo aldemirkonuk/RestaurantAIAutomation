@@ -4,6 +4,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsEmail,
+  IsIn,
   IsOptional,
   IsString,
   IsUUID,
@@ -13,6 +14,7 @@ import {
   ValidateNested,
 } from "class-validator";
 import { Type } from "class-transformer";
+import { SEND_AT_CHOICES, type SendAtChoice } from "./send-at";
 
 /**
  * One engine sentence, carried into the letter WHOLE.
@@ -122,6 +124,15 @@ export class QueueLetterDto {
   @ArrayMaxSize(3)
   @IsUUID("4", { each: true })
   fileIds?: string[];
+
+  @ApiPropertyOptional({
+    enum: SEND_AT_CHOICES,
+    description:
+      "A choice on the house's clock (r110 g1), never a client clock. Owners and managers only; not part of the seal.",
+  })
+  @IsOptional()
+  @IsIn(SEND_AT_CHOICES)
+  sendAt?: SendAtChoice;
 }
 
 /** One file for a letter, as bytes (base64). No URL and no path field exists. */
