@@ -31,7 +31,7 @@
  * (`CuttingFlat.tsx`, `?flat=<id>`), drawn here over the same register.
  */
 
-import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, type ReactNode, memo } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ChartArea,
@@ -350,7 +350,7 @@ export interface CuttingProps {
   strip?: boolean;
 }
 
-export default function Cutting({
+function Cutting({
   id,
   graph,
   register,
@@ -668,3 +668,6 @@ export default function Cutting({
     </section>
   );
 }
+
+/** Memoised: the page hands each cutting only what it reads (perf-p4-5). */
+export default memo(Cutting);
