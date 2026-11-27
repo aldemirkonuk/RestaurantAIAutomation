@@ -119,6 +119,7 @@ function ArrivalShell({
   eyebrow = 'Opening your house',
   title,
   voice,
+  holdHeading,
   onSignOut,
   children,
 }: {
@@ -128,6 +129,8 @@ function ArrivalShell({
   /** Omitted while the entry rule or the menu read has not decided: no heading yet. */
   title?: string
   voice?: React.ReactNode
+  /** Hold the heading's room, unseen, while a read decides whether to show it. */
+  holdHeading?: boolean
   /** The way out for a signed-in person on the wrong account; absent before entry. */
   onSignOut?: () => void
   children?: React.ReactNode
@@ -142,6 +145,7 @@ function ArrivalShell({
       pageKey={step ?? 'entering'}
       title={title}
       voice={voice}
+      holdHeading={holdHeading}
       footer={
         onSignOut ? (
           <button type="button" onClick={onSignOut} className="mdv-spread-textlink">
@@ -741,12 +745,15 @@ export default function GetStarted() {
         eyebrow="Next"
         title="Your menu"
         voice="A photo, a file, or a few typed lines. Mudavym sets it out as the house's own list, and you check it on the next page."
+        holdHeading
       >
         {/* r103: the menu step it gives way to stands 378 px tall and opens
             under its own heading; holding both keeps the page still when the
             read lands (CLS 0.30 at 375 px under reduced motion, r102 check 5;
             0.10 after the height alone, r103 walk: the heading arrived 124 px
-            higher than the line it replaced). */}
+            higher than the line it replaced). The heading and its upload line
+            are held unseen and aria-hidden: a current menu is moved on to
+            /house, and must not be told to upload one (r41 gap 9). */}
         <p
           role="status"
           data-testid="menu-standing-reading"

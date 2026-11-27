@@ -2,6 +2,8 @@ import { useId, type ReactNode } from 'react'
 import { EndpaperShell } from './EndpaperShell'
 import '../mudavym/sheet.css'
 
+const HELD = { 'aria-hidden': true, style: { visibility: 'hidden' } } as const
+
 export interface AuthSpreadProps {
   /**
    * The page's one H1, set in Fraunces. Left out only while a page is still
@@ -11,6 +13,12 @@ export interface AuthSpreadProps {
   title?: ReactNode
   /** One sentence of house voice under the title. */
   voice?: ReactNode
+  /**
+   * Keep the title and voice in the layout (same text, same box) but hide them
+   * from the eye and from assistive tech, for a page that is still reading
+   * where the person stands and may send them on without showing the step.
+   */
+  holdHeading?: boolean
   /** Small-caps line on the endpaper ("Account access"). */
   eyebrow: string
   /** The endpaper's own line. Defaults to the sign-in book's. */
@@ -41,6 +49,7 @@ export interface AuthSpreadProps {
 export function AuthSpread({
   title,
   voice,
+  holdHeading = false,
   eyebrow,
   houseLine = 'Kept, page by page.',
   tag = "Every house's book looks the same on the inside.",
@@ -61,8 +70,16 @@ export function AuthSpread({
       wide={wide}
     >
       <main id={mainId} tabIndex={-1} className="mdv-spread-main mdv-spread">
-        {title ? <h1 className="mdv-spread-title">{title}</h1> : null}
-        {voice ? <p className="mdv-spread-lede">{voice}</p> : <div style={{ height: 28 }} aria-hidden />}
+        {title ? (
+          <h1 className="mdv-spread-title" {...(holdHeading ? HELD : {})}>
+            {title}
+          </h1>
+        ) : null}
+        {voice ? (
+          <p className="mdv-spread-lede" {...(holdHeading ? HELD : {})}>
+            {voice}
+          </p>
+        ) : <div style={{ height: 28 }} aria-hidden />}
         {children}
         {footer ? <footer className="mdv-spread-foot">{footer}</footer> : null}
       </main>
