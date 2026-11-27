@@ -6,6 +6,7 @@ import * as fs from "fs";
 import { AppModule } from "./app.module";
 import { buildCorsOrigins } from "./cors-origins";
 import { maybeExportOpenApi } from "./openapi-export";
+import { compressionMiddleware } from "./common/compression.middleware";
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -47,6 +48,9 @@ async function bootstrap() {
   const bodyLimit = process.env.MAX_REQUEST_BODY_SIZE || "15mb";
   app.useBodyParser("json", { limit: bodyLimit });
   app.useBodyParser("urlencoded", { limit: bodyLimit, extended: true });
+
+  // Gzip the big JSON answers (an inventory read is ~760 KB, ~19 KB gzipped).
+  app.use(compressionMiddleware);
 
   // Global validation pipe
   app.useGlobalPipes(
