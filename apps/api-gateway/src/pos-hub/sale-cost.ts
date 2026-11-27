@@ -154,7 +154,10 @@ export function pickSaleCostSource(
     // WAC is read over the priced, non-sample ones only, so the parts are too:
     // an uncosted lot as a part would enter the restated average at 0.
     const priced = live.filter((l) => l.unit_cost != null && l.cost_provenance !== "sample");
-    if (priced.length > COST_PARTS_CAP) partsCapped = true;
+    // The lots read stops one past the cap (r101 #2533) over EVERY live lot, so
+    // more than the cap live means the priced ones may not all have been read:
+    // capped, never a short shelf.
+    if (live.length > COST_PARTS_CAP || priced.length > COST_PARTS_CAP) partsCapped = true;
     else if (priced.length > 0)
       parts = priced.map((l) => ({
         order_id: l.source_order_id ? String(l.source_order_id) : null,
