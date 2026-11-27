@@ -752,13 +752,20 @@ export function computeMatch(input: MatchInput): MatchResult {
     (hasInvoice && (invoiceQty as number) > billableReceived);
 
   // Money owed back: units billed but not usably received, at the billed price.
-  // Never more than was billed: when the rejected units must have been the free
-  // ones (rejected > billableReceived) the paper still only billed invoiceQty.
+  //
+  // NEVER MORE THAN WAS BILLED (r30, from the r28 G6 side finding). The billed
+  // units usably received are the kept bottles less the free ones: a free
+  // bottle is the vendor's gift, so it never stands in for a billed one, and a
+  // kept bottle is counted as free first. The old form subtracted the rejected
+  // bottles from `billableReceived` AFTER that had been clamped at zero, so
+  // with more free bottles declared than arrived it claimed past the bill:
+  // 10 billed, 1 kept, 1 broken, 2 free claimed 11 units. Now:
+  //   0 <= unitsOwed <= invoiceQty
+  // and so the credit is never more than the bill, and the good bottles' cost
+  // below never needs its floor at zero.
+  const usableBilled = Math.max(0, acceptedQty - freeGoodsQty);
   const unitsOwed = hasInvoice
-    ? Math.min(
-        invoiceQty as number,
-        Math.max(0, (invoiceQty as number) - Math.max(0, billableReceived - rejectedQty)),
-      )
+    ? Math.max(0, (invoiceQty as number) - usableBilled)
     : 0;
   const creditAmount =
     hasInvoice && invoiceUnitPrice != null && unitsOwed > 0

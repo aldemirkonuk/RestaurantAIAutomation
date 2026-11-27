@@ -72,6 +72,70 @@ describe("a credit is not also a cost (r28 G6)", () => {
     expect(r.effectiveUnitCost).toBe(0);
   });
 
+  describe("a credit never exceeds the bill (r30, the r28 G6 side finding)", () => {
+    it("two free declared, one kept, one broken, ten billed: all ten are claimed, not eleven", () => {
+      // The two bottles that came are the two free ones; none of the ten billed
+      // arrived. The kept bottle is a free one, so it costs nothing, and the
+      // books hold 0 x 1 + 100 = the bill.
+      const r = computeMatch({ ...twelveAtTen, invoiceQty: 10, acceptedQty: 1, rejectedQty: 1, freeGoodsQty: 2 });
+      expect(r.creditAmount).toBe(100);
+      expect(r.effectiveUnitCost).toBe(0);
+    });
+
+    it("more free declared than arrived, none broken: the bill, never more", () => {
+      const r = computeMatch({ ...twelveAtTen, invoiceQty: 10, acceptedQty: 2, rejectedQty: 0, freeGoodsQty: 3 });
+      expect(r.creditAmount).toBe(100);
+      expect(r.effectiveUnitCost).toBe(0);
+    });
+
+    it("free bottles kept on top of the billed ones claim nothing", () => {
+      const r = computeMatch({ ...twelveAtTen, invoiceQty: 10, acceptedQty: 12, freeGoodsQty: 2 });
+      expect(r.creditAmount).toBeNull();
+      expect(r.effectiveUnitCost).toBeCloseTo(100 / 12, 10);
+    });
+
+    it("one billed bottle short with a free one kept: one claimed", () => {
+      // 10 billed + 1 free; 10 arrive and are kept, so one billed bottle is missing.
+      const r = computeMatch({ ...twelveAtTen, invoiceQty: 10, acceptedQty: 10, freeGoodsQty: 1 });
+      expect(r.creditAmount).toBe(10);
+      expect(r.effectiveUnitCost).toBeCloseTo(9, 10);
+    });
+
+    const grid: [number, number, number, number, number][] = [];
+    for (const billed of [1, 6, 12])
+      for (const accepted of [0, 1, 2, billed, billed + 2])
+        for (const rejected of [0, 1, 4])
+          for (const free of [0, 1, 2, 5])
+            for (const charges of [0, 9.25]) grid.push([billed, accepted, rejected, free, charges]);
+
+    it.each(grid)(
+      "billed %d, kept %d, broken %d, free %d, charges %d: 0 <= credit <= bill, and the bill is held once",
+      (billed, accepted, rejected, free, charges) => {
+        const price = 13.37;
+        const r = computeMatch({
+          orderedQty: billed,
+          poUnitPrice: price,
+          invoiceQty: billed,
+          invoiceUnitPrice: price,
+          acceptedQty: accepted,
+          rejectedQty: rejected,
+          freeGoodsQty: free,
+          allocatedCharges: charges,
+        });
+        const credit = r.creditAmount ?? 0;
+        expect(credit).toBeGreaterThanOrEqual(0);
+        expect(credit).toBeLessThanOrEqual(Math.round(billed * price * 100) / 100);
+        if (accepted === 0) {
+          expect(r.effectiveUnitCost).toBeNull();
+          return;
+        }
+        const cost = r.effectiveUnitCost as number;
+        expect(cost).toBeGreaterThanOrEqual(charges / accepted - 1e-9);
+        expect(cost * accepted + credit).toBeCloseTo(billed * price + charges, 1);
+      },
+    );
+  });
+
   it("never claims back more than was billed, whatever the free/rejected mix", () => {
     for (let accepted = 0; accepted <= 4; accepted++)
       for (let rejected = 0; rejected <= 4; rejected++)
