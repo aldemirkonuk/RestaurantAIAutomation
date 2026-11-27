@@ -1063,7 +1063,9 @@ describe("InventoryService list reads say when they fail (G15)", () => {
             const [a, b] = range ?? [0, 999];
             if (a >= (answer.failFrom ?? Infinity)) return Promise.resolve(failed).then(resolve, reject);
             const data = Array.isArray(answer.data) ? answer.data.slice(a, Math.min(b, a + 999) + 1) : answer.data;
-            return Promise.resolve({ ...answer, data }).then(resolve, reject);
+            // readViewWhole asks for an exact count on every page.
+            const count = Array.isArray(answer.data) ? answer.data.length : null;
+            return Promise.resolve({ ...answer, data, count }).then(resolve, reject);
           },
         };
         return builder;
