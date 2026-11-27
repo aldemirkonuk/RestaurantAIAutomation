@@ -1392,7 +1392,17 @@ export class DocumentsController {
     if (status) query = query.eq("status", status);
     if (docType) query = query.eq("doc_type", docType);
     if (documentIds) query = query.in("id", documentIds);
-    if (beforeAt) query = query.lt("created_at", beforeAt.toISOString());
+    // The cursor is the row's own created_at string. Round-tripping it through a
+    // JS Date cut it to milliseconds, and rows between the cut and the stored
+    // microseconds fell out of the next page. A well-formed ISO time is passed
+    // through untouched; anything else is normalised.
+    if (beforeAt)
+      query = query.lt(
+        "created_at",
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:\d{2})$/.test(before as string)
+          ? (before as string)
+          : beforeAt.toISOString(),
+      );
     if (term) {
       // A vendor is named by the provider row or by what the paper itself
       // carried (`vendorNamesFor` reads both), so the search reads both.

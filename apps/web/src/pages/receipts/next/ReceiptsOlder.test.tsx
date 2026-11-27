@@ -7,7 +7,7 @@
  * removed.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { createContext, type ReactNode } from 'react';
@@ -50,8 +50,9 @@ const paper = (n: number) =>
 
 const newest = Array.from({ length: 100 }, (_, i) => paper(i + 1));
 
+let client: QueryClient;
 function wrapper({ children }: { children: ReactNode }) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const qc = (client = new QueryClient({ defaultOptions: { queries: { retry: false } } }));
   return (
     <MemoryRouter>
       <QueryClientProvider client={qc}>{children}</QueryClientProvider>
@@ -116,6 +117,58 @@ describe('the verified lane past its first window', () => {
     await screen.findByText(/V-1\b/);
     expect(screen.queryByText(/Showing the newest/)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Older papers' })).toBeNull();
+  });
+});
+
+describe('the search keeps its lane (r104 reviewer)', () => {
+  const box = () => screen.getByLabelText('Search verified papers by vendor or number') as HTMLInputElement;
+  const find = (term: string) => {
+    fireEvent.change(box(), { target: { value: term } });
+    fireEvent.click(screen.getByRole('button', { name: 'Find' }));
+  };
+
+  it('the search form stays mounted, and keeps its place, while a search reads', async () => {
+    render(<ReceiptsNext />, { wrapper });
+    await openLane();
+    await screen.findByLabelText('Search verified papers by vendor or number');
+    const before = box();
+    api.list.mockImplementation((o: { status?: string; q?: string }) =>
+      o.status === 'verified' && o.q ? new Promise(() => {}) : Promise.resolve(o.status === 'verified' ? newest : []),
+    );
+    find('acme');
+    await waitFor(() => expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ q: 'acme' })));
+    expect(screen.getByTestId('verified-lane')).toBeTruthy();
+    expect(box()).toBe(before);
+  });
+
+  it('a search that fails keeps the lane and the form, says so, and can be cleared', async () => {
+    render(<ReceiptsNext />, { wrapper });
+    await openLane();
+    await screen.findByLabelText('Search verified papers by vendor or number');
+    api.list.mockImplementation((o: { status?: string; q?: string }) =>
+      o.status === 'verified' && o.q
+        ? Promise.reject(Object.assign(new Error('x'), { response: { status: 500, data: { message: 'vendor search is down' } } }))
+        : Promise.resolve(o.status === 'verified' ? newest : []),
+    );
+    find('acme');
+    expect(await screen.findByText(/The verified papers could not be read: .*vendor search is down/)).toBeTruthy();
+    expect(screen.getByTestId('verified-lane')).toBeTruthy();
+    // A failed read is not "no paper matches".
+    expect(screen.queryByText(/No verified paper matches/)).toBeNull();
+    find('');
+    expect(await screen.findByText(/V-1\b/)).toBeTruthy();
+    expect(screen.queryByText(/could not be read: .*vendor search is down/)).toBeNull();
+  });
+
+  it('Older pages start over when the first window is read again (a verification invalidates it)', async () => {
+    render(<ReceiptsNext />, { wrapper });
+    await openLane();
+    fireEvent.click(await screen.findByRole('button', { name: 'Older papers' }));
+    expect(await screen.findByText(/V-101/)).toBeTruthy();
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ['receipts-next'] });
+    });
+    await waitFor(() => expect(screen.queryByText(/V-101/)).toBeNull());
   });
 });
 
