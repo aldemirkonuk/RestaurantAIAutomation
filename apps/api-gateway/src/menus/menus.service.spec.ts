@@ -2322,6 +2322,45 @@ describe("MenusService — the plan before a menu is chosen, and the locks it re
     expect(plan.lines.find((l) => l.menuItemId === "n-2")!.returned).toBe(false);
   });
 
+  it("L18: the menus being replaced are read whole (the gap needs their lines), and the plan is the same", async () => {
+    const { tables, service } = setup();
+    // A second active menu carries the Barolo, so it is no longer "returned";
+    // a discarded line stays out of the read, as it does in readLines.
+    tables.restaurant_menus.push({ id: "menu-old2", restaurant_id: "rest-1", status: "active" });
+    tables.menu_items.push(
+      { id: "old2-1", menu_id: "menu-old2", restaurant_id: "rest-1", name: "Barolo", wine_library_id: "mw-1", bottle_price: 60, raw_extracted_text: "a,b,c,9.99", status: "approved" },
+      { id: "old-9", menu_id: "menu-old", restaurant_id: "rest-1", name: "Soave", wine_library_id: "mw-4", status: "discarded" },
+    );
+    const selects: Array<{ menuId: string | null; columns: string }> = [];
+    const supabase = (service as any).dbService.supabase;
+    const from = supabase.from;
+    supabase.from = (table: string) => {
+      const api = from(table);
+      if (table !== "menu_items") return api;
+      const select = api.select;
+      const eq = api.eq;
+      let menuId: string | null = null;
+      let columns = "";
+      api.select = (c: string) => { columns = c; return select.call(api, c); };
+      api.eq = (col: string, v: unknown) => {
+        if (col === "menu_id") { menuId = String(v); selects.push({ menuId, columns }); }
+        return eq.call(api, col, v);
+      };
+      return api;
+    };
+    const plan = await service.planFor("rest-1", "menu-new");
+    const by = Object.fromEntries(plan.lines.map((l) => [l.menuItemId, l]));
+    expect(by["n-1"].returned).toBe(false); // on menu-old2
+    expect(by["n-4"].returned).toBe(false); // not locked, so never "returned"
+    // Both reads are full lines now.
+    const replaced = selects.filter((s) => s.menuId !== "menu-new");
+    expect(replaced.map((s) => s.menuId).sort()).toEqual(["menu-old", "menu-old2"]);
+    // The gap ("not on this file") needs each replaced line whole, so the read is the full line, not two columns.
+    for (const s of replaced) expect(s.columns).toContain("wine_library_id");
+    for (const s of replaced) expect(s.columns).toContain("inventory_item_id");
+    expect(selects.find((s) => s.menuId === "menu-new")!.columns).toContain("raw_extracted_text");
+  });
+
   it("L13: make-current without the plan's fingerprint is a 400, and nothing changes", async () => {
     const { calls, tables, service } = setup();
     await expect(service.makeCurrent("rest-1", "menu-new", "user-2")).rejects.toBeInstanceOf(BadRequestException);
