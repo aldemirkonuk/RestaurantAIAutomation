@@ -404,6 +404,9 @@ export default function Cutting({
     if (v.say) return spec.graphs;
     return spec.graphs.filter((g) => !(g === 'combo' && cannotDraw(v, 'combo')));
   })();
+  // A withheld till is not compared: there is no window to lay a prior beside.
+  const withheld = spec.takesWindow && (answer as { salesWithheld?: boolean } | undefined)?.salesWithheld === true;
+  const compareFor = withheld ? undefined : onCompare;
   const stored = graphOrDefault(id, graph);
   const drawn: GraphType = offered.includes(stored) ? stored : (offered[0] ?? 'table');
 
@@ -545,7 +548,7 @@ export default function Cutting({
       renderBody={(g, combo) => bodyFor(g, true, combo)}
       windowControl={
         spec.takesWindow ? (
-          <TillWindowPicker days={ctx.days} onChange={onDays} compare={ctx.compare} onCompare={onCompare} />
+          <TillWindowPicker days={ctx.days} onChange={onDays} compare={ctx.compare} onCompare={compareFor} />
         ) : undefined
       }
       anchorRef={openerRef}
@@ -591,7 +594,7 @@ export default function Cutting({
         ) : spec.takesWindow || canLayFlat ? (
           <div className="rp-row" style={{ gap: 6 }}>
             {spec.takesWindow && (
-              <TillWindowPicker days={ctx.days} onChange={onDays} compare={ctx.compare} onCompare={onCompare} />
+              <TillWindowPicker days={ctx.days} onChange={onDays} compare={ctx.compare} onCompare={compareFor} />
             )}
             {canLayFlat && (
               <button

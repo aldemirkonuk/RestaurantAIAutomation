@@ -347,6 +347,7 @@ const till = analysis<TillWindow>({
     const d = obj(raw);
     return {
       posConnected: d.posConnected === true,
+      salesWithheld: d.salesWithheld === true,
       revenue: num(d.revenue),
       checkCount: num(d.checkCount),
       from: str(d.from),
@@ -354,7 +355,6 @@ const till = analysis<TillWindow>({
       days: num(d.days) ?? 0,
       timezone: str(d.timezone) || null,
       zoneUnset: d.zoneUnset === true,
-      salesWithheld: d.salesWithheld === true,
       // A day the server sent with no figure stays unknown (null), never 0.
       dailySeries: arr(d.dailySeries).map((r) => ({
         date: str(r.date),

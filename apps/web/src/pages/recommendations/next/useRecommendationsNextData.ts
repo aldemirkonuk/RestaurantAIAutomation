@@ -992,6 +992,7 @@ export function useRecommendationsNextData(): RecommendationsData {
           from: typeof data?.from === 'string' ? data.from : '',
           to: typeof data?.to === 'string' ? data.to : '',
           byDay,
+          withheld: data?.salesWithheld === true,
         });
       })
       .catch((err) => {

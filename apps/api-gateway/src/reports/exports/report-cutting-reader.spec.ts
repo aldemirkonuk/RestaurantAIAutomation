@@ -130,7 +130,12 @@ const BENCH_SOURCES = {
 
 const PAGE: Record<ExportableCutting, PageRead> = {
   reading: { path: "`/analytics/insights/${rid}?limit=40`", call: (c) => c.getInsights(RID, undefined, undefined, "40", undefined, HOLDER) },
-  till: { path: "`/analytics/pos-revenue/${rid}?days=${ctx.days}`", call: (c, d) => c.getPosRevenue(RID, String(d), HOLDER) },
+  // The page doubles the window to compare (DD-r104-22), but an export never
+  // compares, so it reads the plain-window branch of the same path.
+  till: {
+    path: "`/analytics/pos-revenue/${rid}?days=${ctx.compare && compareOffered(ctx.days) ? ctx.days * 2 : ctx.days}`",
+    call: (c, d) => c.getPosRevenue(RID, String(d), HOLDER),
+  },
   goals: { path: "`/analytics/goals/${rid}/progress`", call: (c) => c.listGoalsWithProgress(RID, undefined, HOLDER) },
   bench: {
     sources: BENCH_SOURCES,
@@ -161,9 +166,11 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
         ),
       )
       .join("\n");
+    // The page's path may wrap across lines; compare it as one line of text.
+    const webOneLine = web.replace(/\s+/g, " ");
     for (const [id, p] of Object.entries(PAGE)) {
       if ("path" in p) {
-        expect([id, web.includes(`path: (rid${id === "till" ? ", ctx" : ""}) => ${p.path}`)]).toEqual([id, true]);
+        expect([id, webOneLine.includes(`path: (rid${id === "till" ? ", ctx" : ""}) => ${p.path}`)]).toEqual([id, true]);
         continue;
       }
       // A composed cutting: its own path is null, and its `sources` block names
