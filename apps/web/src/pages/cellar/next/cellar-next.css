@@ -938,3 +938,27 @@ textarea.cl-field {
 }
 .cl-rcp-pick:hover { background: var(--seal-tint); }
 .cl-rcp-pick-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── the drink's recipe sheet around its lines ──────────────────────────────
+   --seal-deep for a cost that is whole and a save that happened, --alarm only
+   for a save that did not happen or a newer version waiting. */
+.cl-rcp { margin-top: 12px; }
+.cl-rcp-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; margin-bottom: 8px; }
+.cl-rcp-facts { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; font-size: 12.5px; }
+.cl-rcp-facts div { display: flex; gap: 6px; }
+.cl-rcp-facts dt { color: var(--ink-4); }
+.cl-rcp-facts dd { margin: 0; color: var(--ink-1); }
+.cl-rcp-legacy { margin-top: 10px; }
+.cl-rcp-foot {
+  margin: 10px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--paper-2);
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.cl-rcp-foot[data-complete='true'] { color: var(--seal-deep); }
+.cl-rcp-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.cl-rcp-save { margin-left: auto; }
+.cl-rcp-said { margin: 8px 0 0; font-size: 12.5px; color: var(--seal-deep); }
+.cl-rcp-said-alarm { color: var(--alarm-deep); }
+.cl-rcp-versions { margin: 6px 0 0 18px; padding: 0; font-size: 12px; line-height: 1.7; color: var(--ink-2); }
