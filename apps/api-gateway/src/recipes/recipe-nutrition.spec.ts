@@ -102,4 +102,20 @@ describe("serveNutrition", () => {
     );
     expect(contains.allergens.milk).toBe("contains");
   });
+  it("names every line that leaves an allergen unstated, untracked and unlinked lines too", () => {
+    const allFree = ["gluten", "crustaceans", "eggs", "fish", "peanuts", "soy", "milk", "tree_nuts", "celery", "mustard", "sesame", "sulphites", "lupin", "molluscs"].map(
+      (allergen) => ({ allergen, status: "free" }),
+    );
+    const out = serveNutrition(
+      [
+        line("Gin", { allergens: allFree }),
+        line("Campari", { allergens: [{ allergen: "milk", status: "free" }] }),
+        line("Orange twist", { role: "untracked", inventoryId: null }),
+        line("Vermouth", { inventoryId: null }),
+      ],
+      1,
+    );
+    expect(out.allergensUnstatedBy).toEqual(["Campari", "Orange twist", "Vermouth"]);
+    expect(serveNutrition([line("Gin", { allergens: allFree })], 1).allergensUnstatedBy).toEqual([]);
+  });
 });

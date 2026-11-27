@@ -8,7 +8,10 @@
  * - a figure no counted line states is null; one some lines lack is atLeast;
  *   energy from ABV is the alcohol alone, so atLeast;
  * - per serve: divided by the yield, like the cost;
- * - an allergen is free only when every line, untracked too, states it free.
+ * - an allergen is free only when every line, untracked too, states it free;
+ * - the lines that leave any allergen unstated are named (allergensUnstatedBy),
+ *   so a sheet can say which ingredients stop "free of" being said, instead of
+ *   saying nothing and reading as allergen-free.
  */
 import type { BaseUnit } from "./recipe-cost";
 
@@ -51,6 +54,8 @@ export interface ServeNutrition {
   figures: Record<FigureKey, ServeFigure>;
   notCounted: Array<{ label: string; why: string }>;
   allergens: Record<Allergen, AllergenStatus>;
+  /** Labels of the lines that leave at least one allergen not stated, in recipe order. */
+  allergensUnstatedBy: string[];
   /** Lines counted in at least one figure, of all lines. */
   counted: number;
   of: number;
@@ -72,6 +77,14 @@ function amountOf(line: NutritionLineInput): { amount: number } | { why: string 
   }
   if (line.figures.basis !== "100g") return { why: "it is weighed, but its figures are per 100 ml" };
   return { amount: qty / 1000 };
+}
+
+function leavesAllergenUnstated(l: NutritionLineInput): boolean {
+  if (l.role === "untracked" || !l.inventoryId) return true;
+  return ALLERGENS.some((a) => {
+    const s = l.allergens.find((x) => x.allergen === a)?.status;
+    return s !== "contains" && s !== "may_contain" && s !== "free";
+  });
 }
 
 function allergenOf(lines: NutritionLineInput[], a: Allergen): AllergenStatus {
@@ -126,5 +139,6 @@ export function serveNutrition(lines: NutritionLineInput[], yieldServes: number)
     Allergen,
     AllergenStatus
   >;
-  return { figures, notCounted, allergens, counted: usedLines.size, of: lines.length };
+  const allergensUnstatedBy = [...new Set(lines.filter(leavesAllergenUnstated).map((l) => l.label))];
+  return { figures, notCounted, allergens, allergensUnstatedBy, counted: usedLines.size, of: lines.length };
 }
