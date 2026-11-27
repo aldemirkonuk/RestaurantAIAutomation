@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { WineExtractItem } from "../wine-extract-item.interface";
+import { readMenuPrice } from "./menu-price";
 
 // Maps lowercased CSV/Excel header aliases → WineExtractItem field names
 const HEADER_MAP: Record<string, keyof WineExtractItem> = {
@@ -128,8 +129,9 @@ export class CsvParserService {
       if (!raw) return;
 
       if (PRICE_FIELDS.has(field)) {
-        const num = parseFloat(raw.replace(/[^0-9.]/g, ""));
-        if (!isNaN(num)) (item as any)[field] = num;
+        // One reading or no amount (ADR 0020): "62,50" is 62.5, "1.250" is blank.
+        const { amount } = readMenuPrice(raw);
+        if (amount !== null) (item as any)[field] = amount;
       } else {
         (item as any)[field] = raw;
       }
