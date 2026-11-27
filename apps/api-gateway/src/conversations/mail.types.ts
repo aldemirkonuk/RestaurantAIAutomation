@@ -83,7 +83,14 @@ export interface MailThreadRow {
   /** The `key=` value of GET /mail/thread. */
   key: string;
   subject: string | null;
+  /** Every row on the thread that is not automatic mail, drafts included. */
   messageCount: number;
+  /**
+   * The letters that came or went: sent or received. A draft, a queued or a
+   * refused letter is on the thread but is not one of its letters (r28 mail
+   * gap 14).
+   */
+  letterCount: number;
   lastAt: string;
   lastDirection: "inbound" | "outbound" | null;
   waiting: boolean;
