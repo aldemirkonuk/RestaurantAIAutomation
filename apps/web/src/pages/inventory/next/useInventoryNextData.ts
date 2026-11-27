@@ -660,11 +660,15 @@ export function houseNumber(n: number, max: number): string {
   return formatHouseNumber(n, houseNumberCode, { max });
 }
 
-export type HouseCurrency =
+export type HouseCurrency = (
   | { state: 'reading'; code: null }
   | { state: 'recorded'; code: string }
   | { state: 'not_recorded'; code: null }
-  | { state: 'unreadable'; code: null };
+  | { state: 'unreadable'; code: null }
+) & {
+  /** restaurants.country as the same read (GET /settings/currency) answers it; absent when unread. */
+  country?: string | null;
+};
 
 /**
  * A money figure for a cell. The house's code when it is recorded; the dash
@@ -887,8 +891,8 @@ export function useInventoryNextData() {
     : currencyQ.isError || !currencyQ.data?.readable
       ? { state: 'unreadable', code: null }
       : currencyQ.data.code
-        ? { state: 'recorded', code: currencyQ.data.code }
-        : { state: 'not_recorded', code: null };
+        ? { state: 'recorded', code: currencyQ.data.code, country: currencyQ.data.country ?? null }
+        : { state: 'not_recorded', code: null, country: currencyQ.data.country ?? null };
   sayHouseNumbers(currency);
 
   const storage = useStorageLocations();

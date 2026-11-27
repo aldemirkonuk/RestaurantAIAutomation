@@ -48,11 +48,11 @@ const answer = (figures: StoredNutrition | null, stated: Partial<Record<string, 
 
 const httpError = (status: number) => Object.assign(new Error(`status ${status}`), { response: { status, data: {} } });
 
-function show(canManage = true, sizeMl?: number | null, house?: { kind: string | null; uom: string | null }) {
+function show(canManage = true, sizeMl?: number | null, house?: { kind: string | null; uom: string | null }, country?: string | null) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <NutritionCard row={{ id: 'i1', bottleSizeHouseMl: sizeMl }} house={house} restaurantId="r1" canManage={canManage} />
+      <NutritionCard row={{ id: 'i1', bottleSizeHouseMl: sizeMl }} house={house} restaurantId="r1" canManage={canManage} country={country} />
     </QueryClientProvider>,
   );
 }
@@ -144,12 +144,59 @@ describe('what is in it', () => {
     const { unmount } = show(true, 750, { kind: 'wine', uom: 'bottle' });
     const line = await screen.findByTestId('ivn-pack');
     expect(line.textContent).toBe(
-      'A 750 ml bottle: 1,725 kcal (from the alcohol alone; the energy in any sugar is not added), protein not known, fat 0 g, carbohydrate not known, sugar not known, salt not known.',
+      'A 750 ml bottle: 7,217 kJ / 1,725 kcal (from the alcohol alone; the energy in any sugar is not added), protein not known, fat 0 g, carbohydrate not known, sugar not known, salt not known.',
     );
     unmount();
     show(true, null, { kind: 'wine', uom: 'bottle' });
     await screen.findByTestId('ivn-figures');
     expect(screen.queryByTestId('ivn-pack')).toBeNull();
+  });
+
+  it('kJ and RI: energy in kJ and kcal, each figure\'s % RI per 100 g in Türkiye with the statement, none in the US', async () => {
+    api.read.mockResolvedValue(answer(stored({ energyKcal: 350, fatG: 4, proteinG: 22, carbohydrateG: null, sugarsG: 0.3, saltG: 0.2 })));
+    const { unmount } = show(true, undefined, undefined, 'Türkiye');
+    const figs = await screen.findByTestId('ivn-figures');
+    const row = (k: string) => within(figs).getByText(k).parentElement!.textContent;
+    expect(row('Energy')).toBe('Energy1,464 kJ / 350 kcal 18% RI');
+    expect(row('Fat')).toBe('Fat4 g 6% RI');
+    expect(row('Salt')).toBe('Salt0.2 g 3% RI');
+    expect(row('Sugar')).toBe('Sugar0.3 g <1% RI');
+    expect(row('Carbohydrate')).toBe('Carbohydratenot known');
+    expect(screen.getByTestId('ivn-ri-statement').textContent).toBe('Reference intake of an average adult (8 400 kJ / 2 000 kcal)');
+    unmount();
+    show(true, undefined, undefined, 'United States');
+    const us = await screen.findByTestId('ivn-figures');
+    expect(us.textContent).toContain('1,464 kJ / 350 kcal');
+    expect(us.textContent).not.toContain('RI');
+    expect(screen.queryByTestId('ivn-ri-statement')).toBeNull();
+  });
+
+  it('kJ and RI: energy from the ABV alone and an unknown kcal get no %, an unknown country gets none at all', async () => {
+    api.read.mockResolvedValue(answer(stored({ basis: '100ml', energyKcal: 220.9, fatG: 0, proteinG: null, abvPct: 40, energyFromAbv: true })));
+    const { unmount } = show(true, undefined, undefined, 'United Kingdom');
+    const figs = await screen.findByTestId('ivn-figures');
+    const energy = within(figs).getByText('Energy').parentElement!.textContent ?? '';
+    expect(energy).toContain('924 kJ / 221 kcal');
+    expect(energy).not.toContain('RI');
+    expect(within(figs).getByText('Fat').parentElement!.textContent).toBe('Fat0 g 0% RI');
+    unmount();
+    api.read.mockResolvedValue(answer(stored({ energyKcal: null })));
+    const second = show(true, undefined, undefined, 'Türkiye');
+    const nul = await screen.findByTestId('ivn-figures');
+    expect(within(nul).getByText('Energy').parentElement!.textContent).toBe('Energynot known');
+    second.unmount();
+    api.read.mockResolvedValue(answer(stored()));
+    show(true, undefined, undefined, 'Atlantis');
+    expect((await screen.findByTestId('ivn-figures')).textContent).not.toContain('RI');
+    expect(screen.queryByTestId('ivn-ri-statement')).toBeNull();
+  });
+
+  it('kJ and RI: the pack line carries kJ and no %', async () => {
+    api.read.mockResolvedValue(answer(stored({ basis: '100ml', energyKcal: 40, fatG: 0, proteinG: 1, abvPct: null, energyFromAbv: false })));
+    show(true, 330, { kind: 'beer', uom: 'bottle' }, 'Türkiye');
+    const line = (await screen.findByTestId('ivn-pack')).textContent ?? '';
+    expect(line).toContain('A 330 ml bottle: 552 kJ / 132 kcal, protein 3.3 g, fat 0 g');
+    expect(line).not.toContain('%');
   });
 
   it('a bottle whose figures are per 100 g says it needs a stated weight', async () => {
