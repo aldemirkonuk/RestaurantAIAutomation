@@ -850,10 +850,12 @@ export class ConversationsService {
         .select(
           "id, channel, direction, provider_id, detected_sentiment, created_at",
         )
-        .eq("restaurant_id", restaurantId)
         // These are the vendor negotiation's numbers; a team or guest message
         // (`gmail_read_all`) is not part of them and is not counted.
-        .or(WITHHOLD_NON_VENDOR);
+        .or(WITHHOLD_NON_VENDOR)
+        // The house filter closes the chain, so ADR-0171's claim reads it as
+        // the statement's last call; the filters AND either way.
+        .eq("restaurant_id", restaurantId);
 
       if (error) {
         throw new Error(error.message);
