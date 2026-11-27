@@ -18,7 +18,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { deleteInventoryItem, reconcileItem } from '../../services/api/inventory'
 import { ThemedSelect } from '../ui/ThemedSelect'
-import { fmtMoney } from '../../pages/inventory/command/bits'
+import { fmtMoney, paidPer } from '../../pages/inventory/command/bits'
 import type { InventoryItem } from '../../pages/inventory/useInventoryPage'
 
 const REMOVE_REASONS = [
@@ -58,12 +58,15 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved, sa
         const shadow = item.shadowStock ?? 0
         const openMl = item.openMl ?? 0
         const total = live + shadow
-        const value = (item.wac ?? item.price ?? 0) * total
+        const paid = paidPer(item)
+        const value = paid == null ? null : paid * total
         return { item, live, shadow, openMl, total, value }
       }),
     [items],
   )
-  const totalValue = rows.reduce((s, r) => s + r.value, 0)
+  const totalValue = rows.reduce((s, r) => s + (r.value ?? 0), 0)
+  // Goods holding stock with no cost on the books (or an unread one) are left out of the sum, and said.
+  const uncosted = rows.filter((r) => r.value == null && r.total > 0).length
   const anyStock = rows.some((r) => r.total > 0 || r.openMl > 0)
   // A row with no library title (ADR 0115: flour, napkins) is a good, not a
   // wine, and nothing of it stays in the Wine Library.
@@ -181,7 +184,7 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved, sa
                   <span className="font-mono text-gray-500 shrink-0">
                     {live + shadow > 0 ? `${say(live)} live / ${say(shadow)} shadow` : 'no stock'}
                     {openMl > 0 ? ` · ${openMl}ml open` : ''}
-                    {value > 0 && <b className="ml-2 text-gray-700">{fmtMoney(value)}</b>}
+                    {value != null && value > 0 && <b className="ml-2 text-gray-700">{fmtMoney(value)}</b>}
                   </span>
                 </div>
               ))}
@@ -194,6 +197,7 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved, sa
                   {totalValue > 0 ? (
                     <>This will write off <b>{fmtMoney(totalValue)}</b> in on-hand value. </>
                   ) : null}
+                  {uncosted > 0 ? <>{uncosted} without a cost on the books {uncosted === 1 ? 'is' : 'are'} not in that figure. </> : null}
                   Remaining stock is reconciled to zero and logged to the ledger with the reason below before removal —
                   nothing is deleted silently.
                 </p>
