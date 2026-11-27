@@ -212,6 +212,7 @@ export function IntakeHealthSheet({
                 <button
                   type="button"
                   data-testid="check-now"
+                  className="max-md:inline-flex max-md:min-h-[44px] max-md:items-center"
                   disabled={checkNow.isPending}
                   onClick={() => void runCheckNow()}
                   style={{

@@ -67,6 +67,11 @@ describe('the mailbox door says how often it is read', () => {
     expect(api.post).toHaveBeenCalledWith('/communications/letters/reader/check');
   });
 
+  it('keeps the 44 px touch floor on a phone, as the Mail tab\'s own buttons do', () => {
+    draw({ canCheck: true });
+    expect(screen.getByTestId('check-now').className).toContain('max-md:min-h-[44px]');
+  });
+
   it('offers no button to staff, and still says the cadence', () => {
     draw({ canCheck: false });
     expect(screen.getByTestId('read-cadence')).toBeInTheDocument();
