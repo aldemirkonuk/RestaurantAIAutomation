@@ -126,7 +126,7 @@ describe('the plot carries a one-sentence reading for a screen reader (N-03)', (
     const { container } = render(<CatPlot series={till} kind="bars" />);
     const label = container.querySelector('.rp-plot')?.getAttribute('aria-label') ?? '';
     expect(label).toContain('Highest Wed, ₺5.1K ₺ taken; lowest Tue, ₺3.9K ₺ taken');
-    expect(container.querySelector('.rp-plot')?.getAttribute('role')).toBe('img');
+    expect(container.querySelector('.rp-plot')?.getAttribute('role')).toBe('group');
   });
 
   it('says nothing about a high and a low when there is only one point, and says "every point" when flat', () => {
