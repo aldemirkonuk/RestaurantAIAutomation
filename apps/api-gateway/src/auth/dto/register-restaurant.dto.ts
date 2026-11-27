@@ -9,7 +9,7 @@ import {
   Max,
   MaxLength,
   Min,
-  ValidationArguments,
+  registerDecorator,
 } from "class-validator";
 import { Type } from "class-transformer";
 import { ISO_4217_CODES } from "../../common/iso-4217";
@@ -21,15 +21,34 @@ import {
 } from "../house-opening";
 
 const NAME_NEEDED = "Your name is needed, so nothing was recorded.";
-const nameLengthMessage = (a: ValidationArguments) =>
-  typeof a.value === "string" ? CAP.person.message : NAME_NEEDED;
+
+/**
+ * The 255-character rule for the name, for a string only. A missing or
+ * non-string name is the type rule's to say ("needed"); this rule used to fail
+ * on it too and say the same words a second time.
+ */
+function NameFitsLength(
+  target: object,
+  propertyName: string,
+): void {
+  registerDecorator({
+    name: "nameFitsLength",
+    target: target.constructor,
+    propertyName,
+    options: CAP.person,
+    validator: {
+      validate: (value: unknown): boolean =>
+        typeof value !== "string" || value.length <= 255,
+    },
+  });
+}
 
 export class RegisterRestaurantDto {
   // A missing name used to read "Your name is longer than 255 characters, so
   // nothing was recorded" beside the type message: the length rule also fails
   // on undefined. Each rule now says only what is true of the value it saw.
   @IsString({ message: NAME_NEEDED })
-  @MaxLength(255, { message: nameLengthMessage })
+  @NameFitsLength
   name: string;
   @IsEmail() email: string;
   @MinLength(8) password: string;
