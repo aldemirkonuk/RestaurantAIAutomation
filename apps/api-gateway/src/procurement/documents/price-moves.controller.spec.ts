@@ -1,14 +1,14 @@
 import { DocumentsController } from "./documents.controller";
 
 /** A thenable fake db: one canned answer per table, every call chains. */
-const HOUSE = { procurement_documents: { data: { id: "d1", currency: "USD" }, error: null }, restaurants: { data: { currency: "USD" }, error: null } };
+const HOUSE = { procurement_documents: { data: { id: "d1", currency: "USD" }, error: null }, restaurants: { data: { currency: "USD" }, error: null }, document_deliveries: { data: [], error: null } };
 function controllerWith(results: Record<string, { data: unknown; error: unknown }>) {
   results = { ...HOUSE, ...results };
   const db = {
     getClient: () => ({
       from: (table: string) => {
         const b: any = {};
-        for (const m of ["select", "eq", "order", "limit", "in", "not"]) b[m] = () => b;
+        for (const m of ["select", "eq", "order", "limit", "in", "not", "or"]) b[m] = () => b;
         b.maybeSingle = () => Promise.resolve(results[table]);
         b.then = (res: any, rej: any) => Promise.resolve(results[table]).then(res, rej);
         return b;
