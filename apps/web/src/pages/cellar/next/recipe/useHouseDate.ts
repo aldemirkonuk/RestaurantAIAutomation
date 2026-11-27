@@ -11,8 +11,8 @@ import { useAuth } from '../../../../contexts/AuthContext';
 import { settingsApi } from '../../../../services/api/settings';
 import { houseNumberLocale } from '../../../../lib/house-number';
 
-/** Writes an ISO timestamp as "7 Nov 2026"; null when it is not a date. */
-export type SayDate = (iso: string | null | undefined) => string | null;
+/** Writes an ISO timestamp as "7 Nov 2026" (with `withTime`, the hour and minute too); null when it is not a date. */
+export type SayDate = (iso: string | null | undefined, withTime?: boolean) => string | null;
 
 /**
  * "en-Latn-GB" is read by some runtimes as plain "en" and written "Nov 7, 2026"; the date wants language and
@@ -38,14 +38,15 @@ export function useHouseDate(): SayDate {
     refetchOnMount: true,
   });
   const locale = dateLocale(houseNumberLocale(q.data?.readable ? q.data.code : null));
-  return (iso) => {
+  return (iso, withTime) => {
     const made = new Date(iso ?? '');
     if (!Number.isFinite(made.getTime())) return null;
     const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' };
+    if (withTime) Object.assign(opts, { hour: '2-digit', minute: '2-digit' });
     try {
-      return made.toLocaleDateString(locale, opts);
+      return made.toLocaleString(locale, opts);
     } catch {
-      return made.toLocaleDateString(undefined, opts);
+      return made.toLocaleString(undefined, opts);
     }
   };
 }
