@@ -19,7 +19,7 @@
  *    new gateway route and the recomputed tie-out lands in the same response.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { documentsApi, type ProcurementDocument } from '../../../services/api/documents';
@@ -170,9 +170,6 @@ export function useReceiptsNextData(): ReceiptsNextData {
     busy: boolean;
     error: string | null;
   }>({ rows: [], lastLen: null, busy: false, error: null });
-  useEffect(() => {
-    setOlder({ rows: [], lastLen: null, busy: false, error: null });
-  }, [rid, verifiedTerm]);
   const verifiedQ = useQuery<ProcurementDocument[]>({
     queryKey: ['receipts-next', 'verified', rid, verifiedTerm || null],
     queryFn: () =>
@@ -184,6 +181,17 @@ export function useReceiptsNextData(): ReceiptsNextData {
     enabled,
     staleTime: 60_000,
   });
+  // What the Older pages were read against: this house, this search, and THIS
+  // first window. A different house or search, or a first window that was read
+  // again (a verify shifts it by one, so the old last paper would sit in neither
+  // list), makes the pages held here wrong, and a read still in flight for the
+  // old window must not land in the new one (r105).
+  const windowKey = `${rid}|${verifiedTerm}|${verifiedQ.dataUpdatedAt}`;
+  const windowKeyRef = useRef(windowKey);
+  windowKeyRef.current = windowKey;
+  useEffect(() => {
+    setOlder({ rows: [], lastLen: null, busy: false, error: null });
+  }, [windowKey]);
   const cleanQ = useQuery<ProcurementDocument[]>({
     queryKey: ['receipts-next', 'clean', rid],
     queryFn: () =>
@@ -244,6 +252,7 @@ export function useReceiptsNextData(): ReceiptsNextData {
   const loadOlderVerified = useCallback(() => {
     const last = verified[verified.length - 1];
     if (!last?.created_at) return;
+    const asked = windowKey;
     setOlder((o) => ({ ...o, busy: true, error: null }));
     documentsApi
       .list({
@@ -253,11 +262,15 @@ export function useReceiptsNextData(): ReceiptsNextData {
         before: last.created_at,
         beforeId: last.id,
       })
-      .then((rows) =>
-        setOlder((o) => ({ rows: [...o.rows, ...rows], lastLen: rows.length, busy: false, error: null })),
-      )
-      .catch((e) => setOlder((o) => ({ ...o, busy: false, error: msg(e) })));
-  }, [verified, verifiedTerm]);
+      .then((rows) => {
+        if (windowKeyRef.current !== asked) return;
+        setOlder((o) => ({ rows: [...o.rows, ...rows], lastLen: rows.length, busy: false, error: null }));
+      })
+      .catch((e) => {
+        if (windowKeyRef.current !== asked) return;
+        setOlder((o) => ({ ...o, busy: false, error: msg(e) }));
+      });
+  }, [verified, verifiedTerm, windowKey]);
   // `direction` comes back from the list's `select("*")` but is not on the
   // shared client type, so it is read here rather than widened there (W44).
   const cleanRows = cleanQ.data ?? [];
