@@ -529,7 +529,7 @@ function menusUnreadable(error: { message?: string }): InternalServerErrorExcept
  * import's reply and the kept source file (tech-debt.d, this branch's entries).
  */
 export const LINE_SELECT =
-  "id, name, producer, category, vintage, region, country, grape_variety, by_glass_price, bottle_price, wine_library_id, inventory_item_id, source, status, review_notes, price_flag, price_flag_note, raw_extracted_text, created_at";
+  "id, name, producer, category, vintage, region, country, grape_variety, by_glass_price, bottle_price, wine_library_id, inventory_item_id, source, status, review_notes, price_flag, price_flag_note, raw_extracted_text, created_at, printed_page";
 
 /** The kinds of file a menu read keeps, sniffed from the bytes, never trusted from a name. */
 function sniffMime(bytes: Buffer): { mime: string; ext: string } {
@@ -720,6 +720,8 @@ export interface MenuImportReviewItem {
   byGlassPrice: number | null;
   bottlePrice: number | null;
   rawText: string | null;
+  /** r110 menu-g4: the line's page in the kept file, or null when not known. */
+  printedPage?: number | null;
   matched: boolean;
   needsReview: boolean;
   /** ADR 0193: what this line did to the house's own price. */
@@ -1102,6 +1104,7 @@ export class MenusService {
         grapeVariety: line.grape_variety ?? null,
         byGlassPrice: money(line.by_glass_price),
         bottlePrice: money(line.bottle_price),
+        printedPage: line.printed_page ?? null,
         priceFlag: line.price_flag ?? null,
         priceFlagNote: line.price_flag_note ?? null,
       };
@@ -2972,6 +2975,8 @@ export class MenusService {
       by_glass_price: item.by_glass_price ?? null,
       bottle_price: item.bottle_price ?? null,
       raw_extracted_text: item.raw_text ?? null,
+      // r110 menu-g4: the page of the kept file; a CSV or typed line has none.
+      printed_page: item.printed_page ?? null,
       wine_library_id: masterWineId,
       ...(houseItemId ? { inventory_item_id: houseItemId } : {}),
       source: method,
@@ -3065,6 +3070,7 @@ export class MenusService {
         byGlassPrice: r.item.by_glass_price ?? null,
         bottlePrice: r.item.bottle_price ?? null,
         rawText: r.item.raw_text ?? null,
+        printedPage: r.item.printed_page ?? null,
         matched: r.matched,
         needsReview: itemNeedsPencil({
           matched: r.matched,

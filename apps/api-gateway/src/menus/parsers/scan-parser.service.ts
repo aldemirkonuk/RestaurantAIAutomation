@@ -23,6 +23,32 @@ import {
 
 type PageRange = { first: number; last: number };
 
+/** The highest page a line may name (the printed_page column's check). */
+export const MAX_PRINTED_PAGE = 200;
+
+/**
+ * Each line's page in the whole kept file (r110 menu-g4). The reader names a
+ * page within the document it was sent: a chunk of a long PDF starts again
+ * at 1, so a chunk covering pages 7-12 that says page 3 means page 9. A page
+ * outside the chunk, not a whole number, or past MAX_PRINTED_PAGE is a guess
+ * the review must not jump to, so it is null. `within`: a chunk's range,
+ * "document" for one read of the whole file, null when the range is unknown
+ * (a single photo, or a chunk whose range was not kept). Exported for the spec.
+ */
+export function placeOnPage(items: WineExtractItem[], within: PageRange | "document" | null): WineExtractItem[] {
+  return items.map((item) => {
+    const { page, ...rest } = item;
+    let placed: number | null = null;
+    if (within !== null && typeof page === "number" && Number.isInteger(page) && page >= 1) {
+      const abs = within === "document" ? page : page + within.first - 1;
+      const inside = within === "document" || abs <= within.last;
+      if (inside && abs <= MAX_PRINTED_PAGE) placed = abs;
+    }
+    // No key when not known: the import writes it as null.
+    return placed === null ? rest : { ...rest, printed_page: placed };
+  });
+}
+
 /**
  * The menu read is WAITING, not broken: the house's AI spend record could not
  * be read, so nothing was sent (founder, 2026-09-21, ADR 0163 Q22 re-answered:
@@ -77,14 +103,16 @@ const CATEGORY_VOCABULARY_CLAUSE =
   "above, never the heading as printed, and never a word outside the list. " +
   "Omit category only when the line gives no basis at all for choosing one. ";
 
-const WINE_EXTRACTION_PROMPT =
+export const WINE_EXTRACTION_PROMPT =
   "You are analyzing a restaurant beverage menu image. " +
   "Extract EVERY drink listed, not only the wines — beer, cider, sake, " +
   "spirits, whiskey, cocktails, soft drinks and non-alcoholic listings all " +
   "count, and a menu that prints them in their own sections still prints " +
   "them. For each item return JSON: " +
-  "{ name, producer, category, vintage, region, grape_variety, by_glass_price, bottle_price }. " +
+  "{ name, producer, category, vintage, region, grape_variety, by_glass_price, bottle_price, page }. " +
   CATEGORY_VOCABULARY_CLAUSE +
+  // r110 menu-g4: the review opens the kept file at this page.
+  "page is the 1-based page of this document the line is printed on (the first page sent is 1). " +
   "producer is the winery/estate/château name, or the brewery/distillery for " +
   "a beer or a spirit. " +
   "vintage, region and grape_variety describe wine — omit all three on a " +
@@ -215,13 +243,15 @@ export class ScanParserService {
       throw new ServiceUnavailableException(
         "The menu reading was cut short. Use a clearer or smaller image; no items were imported.",
       );
+    // One read of the whole file: a PDF's page is its own; a photo has none.
+    const firstItems = placeOnPage(first.items, isPdf ? "document" : null);
     if (!first.truncated) {
       if (first.unreadable) warnings.push({ kind: "unreadable_reply", pages: null });
-      return first.items;
+      return firstItems;
     }
     if (!isPdf) {
       warnings.push({ kind: "truncated", pages: null });
-      return first.items;
+      return firstItems;
     }
 
     const ranges: PageRange[] = [];
@@ -243,7 +273,7 @@ export class ScanParserService {
           `${first.items.length} partial item(s)`,
       );
       warnings.push({ kind: "truncated", pages: null });
-      return first.items;
+      return firstItems;
     }
 
     this.logger.log(
@@ -264,7 +294,7 @@ export class ScanParserService {
       return retried;
     }
     warnings.push({ kind: "truncated", pages: null });
-    return first.items;
+    return firstItems;
   }
 
   /**
@@ -297,13 +327,15 @@ export class ScanParserService {
     for (let i = 0; i < chunks.length; i++) {
       const pages = ranges[i] ?? null;
       try {
-        const { items, truncated, unreadable } = await this.parseOne(
+        const read = await this.parseOne(
           chunks[i],
           "application/pdf",
           true,
           restaurantId,
           arrival,
         );
+        const { truncated, unreadable } = read;
+        const items = placeOnPage(read.items, pages);
 
         if (truncated && depth < MAX_SPLIT_DEPTH) {
           const finerRanges: PageRange[] = [];
