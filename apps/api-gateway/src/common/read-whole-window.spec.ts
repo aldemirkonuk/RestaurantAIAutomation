@@ -825,12 +825,11 @@ describe("AnalyticsService — loadConsumption reads every line, or refuses (for
       () => controller.getForecast("r1"),
     ]) {
       const err: any = await route().catch((e) => e);
-      // The routes' own catch maps any throw to a 500 that carries the
-      // message; /reports prints "The … register could not be read (…)" for
-      // any failed status (rp-format.ts failureLine), as it does for the 503
-      // menu engineering answers.
+      // The refusal keeps its own 503 and sentence (audit G11): the routes'
+      // catch used to re-wrap it as a 500, so a window that could not be read
+      // whole looked like a crash. /reports prints the sentence itself.
       expect(err).toBeInstanceOf(HttpException);
-      expect(err.getStatus()).toBe(500);
+      expect(err.getStatus()).toBe(503);
       expect(err.message).toMatch(/could not be read whole/);
     }
   });

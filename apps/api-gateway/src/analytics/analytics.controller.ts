@@ -123,6 +123,21 @@ function refusedAct(error: ActRefused): HttpException {
   );
 }
 
+/**
+ * A lens refusal the service already worded keeps its status and sentence: a
+ * window that could not be read whole is a 503 (`WholeReadError`, ADR 0292)
+ * and a role refusal a 403. Re-wrapping them as 500 turned the gateway's own
+ * sentence into "Request failed with status code 500" on /reports (audit G11).
+ * Anything else is still a 500.
+ */
+function lensFailure(error: any, fallback: string): HttpException {
+  if (error instanceof HttpException) return error;
+  return new HttpException(
+    error?.message || fallback,
+    HttpStatus.INTERNAL_SERVER_ERROR,
+  );
+}
+
 @ApiTags("analytics")
 @Controller("analytics")
 // Every route here is tenant-scoped and several cost money: POST /consult/:id
@@ -197,10 +212,7 @@ export class AnalyticsController {
         salesGateFor(user),
       );
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to compute financial summary",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw lensFailure(error, "Failed to compute financial summary");
     }
   }
 
@@ -232,10 +244,7 @@ export class AnalyticsController {
         leadTimeDays: leadTimeStr ? parseFloat(leadTimeStr) : undefined,
       });
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to compute inventory science",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw lensFailure(error, "Failed to compute inventory science");
     }
   }
 
@@ -256,10 +265,7 @@ export class AnalyticsController {
         salesGateFor(user),
       );
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to compute risk profile",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw lensFailure(error, "Failed to compute risk profile");
     }
   }
 
@@ -291,10 +297,7 @@ export class AnalyticsController {
         horizon: parseHorizon(horizonStr),
       });
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to compute forecast",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw lensFailure(error, "Failed to compute forecast");
     }
   }
 
@@ -953,10 +956,7 @@ export class AnalyticsController {
         salesGateFor(user),
       );
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to compute goal progress",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw lensFailure(error, "Failed to compute goal progress");
     }
   }
 
@@ -1032,10 +1032,7 @@ export class AnalyticsController {
         salesGateFor(user),
       );
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to compute goal progress",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw lensFailure(error, "Failed to compute goal progress");
     }
   }
 
@@ -1231,10 +1228,7 @@ export class AnalyticsController {
       // Deliberately a 500 rather than an empty payload: "we could not load
       // this" and "you have no POS" are different sentences, and the UI shows
       // different things for each.
-      throw new HttpException(
-        error.message || "Failed to load POS revenue",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw lensFailure(error, "Failed to load POS revenue");
     }
   }
 

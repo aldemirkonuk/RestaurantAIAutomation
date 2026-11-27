@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { EM, money, moneyIn, pct } from './rp-format';
+import { EM, failureLine, failureOf, money, moneyIn, pct } from './rp-format';
 
 describe('pct — a 0–1 fraction, printed as a signed percentage', () => {
   it('multiplies by 100: the measured trend reads +20.7%, not +0.21%', () => {
@@ -54,5 +54,30 @@ describe('money — in the house’s currency, never an assumed $ (audit G5)', (
     expect(money(null, 'full', 'USD')).toBe(EM);
     expect(moneyIn('USD')(undefined)).toBe(EM);
     expect(moneyIn('USD')(310, 'compact')).toBe('$310');
+  });
+});
+
+describe('a refusal is said in the gateway’s words (audit G11)', () => {
+  const refusal = (message: unknown, status = 503) => ({
+    message: `Request failed with status code ${status}`,
+    response: { status, data: { statusCode: status, message } },
+  });
+
+  it('prints the whole-read sentence, without the log detail, instead of the status code', () => {
+    const f = failureOf(
+      refusal(
+        'The purchase orders in this window could not be read whole: the database refused one of its pages (page 1: 57014 canceling statement due to statement timeout). Nothing is reported from part of it.',
+      ),
+    )!;
+    expect(failureLine('cashflow register', f)).toBe(
+      'The cashflow register could not be read. The purchase orders in this window could not be read whole: the database refused one of its pages. Nothing is reported from part of it.',
+    );
+  });
+
+  it('a bare transport error still says what it can, and Nest’s generic words are not a sentence', () => {
+    expect(failureLine('cashflow register', failureOf(new Error('Network Error'))!)).toBe(
+      'The cashflow register could not be read (Network Error). Nothing below is claimed.',
+    );
+    expect(failureOf(refusal('Internal server error', 500))!.said).toBeUndefined();
   });
 });
