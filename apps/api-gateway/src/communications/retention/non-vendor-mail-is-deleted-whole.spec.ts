@@ -29,7 +29,7 @@ function build(
     let ids: string[] = [];
     let columns = "";
     const b: any = {};
-    for (const m of ["eq", "is", "not", "order", "limit"]) b[m] = () => b;
+    for (const m of ["eq", "is", "not", "order", "limit", "range"]) b[m] = () => b;
     b.select = (c: string) => {
       columns = c;
       return b;
@@ -188,6 +188,7 @@ describe("the consent page says exactly what the revoke does", () => {
     expect(kept).toMatch(/deletes every team and guest message this connection filed straight away/);
     expect(kept).toMatch(/Vendor replies stay while this house still has the vendor-only connection switched on/);
     expect(kept).toMatch(/when all mail reading is disconnected, the vendor raw mail is deleted straight away too/);
+    expect(kept).toMatch(/every reply this house sent to a team member or a guest/);
     expect(kept).not.toMatch(/vendor raw mail and team and guest messages alike/);
   });
 });
