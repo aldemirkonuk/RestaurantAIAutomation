@@ -89,8 +89,8 @@ describe("recipes: the path's house is the caller's (real guard, every route)", 
   afterEach(() => jest.restoreAllMocks());
   const routes = declaredRoutes();
 
-  it("declares the five routes the sheet calls, all under :restaurantId", () => {
-    expect(routes.map((r) => r.handler).sort()).toEqual(["getRecipe", "listVersions", "readVersion", "saveRecipe", "shelf"]);
+  it("declares the six routes the sheet calls, all under :restaurantId", () => {
+    expect(routes.map((r) => r.handler).sort()).toEqual(["getRecipe", "listVersions", "previewCost", "readVersion", "saveRecipe", "shelf"]);
     for (const r of routes) expect(r.path.split("/")[0]).toBe(":restaurantId");
   });
 
@@ -321,6 +321,37 @@ describe("recipes: house A never reads, versions or saves house B's recipe (real
 
   it("GET says a pointer to another house's version is unreadable rather than show it", async () => {
     expect(await statusOf(service().svc.getRecipe(HOUSE_A, DRINK_A_FOREIGN_VERSION, "owner"))).toBe(503);
+  });
+
+  describe("previewCost", () => {
+    const preview = () => {
+      const rows = twoHouses();
+      // recipe_qty_base for ml: tenths of a ml (migration 20270425100000:88).
+      const f = fakeDb(rows, (a) => ({ data: { qty_base: Math.round(Number(a.p_qty) * 10), base_unit: "ml10" } }));
+      return { svc: new RecipesService(f.db), rpcCalls: f.rpcCalls };
+    };
+    const line = (inventoryId: string) => ({ role: "stocked" as const, inventoryId, qtyEntered: 30, unitCode: "ml" });
+
+    it("prices its own item from its own lots, never house B's rollup of the same id", async () => {
+      const r = await preview().svc.previewCost(HOUSE_A, DRINK_A, { yieldServes: 1, lines: [line(ITEM_A)] });
+      expect(r).toMatchObject({ perServe: 30, complete: true });
+    });
+
+    it("leaves house B's item unpriced and names nothing of it", async () => {
+      const r = await preview().svc.previewCost(HOUSE_A, DRINK_A, { yieldServes: 1, lines: [line(ITEM_B)] });
+      expect(r).toMatchObject({ perServe: null, complete: false });
+      expect(r.lines[0]).toMatchObject({ status: "not_linked", costPerServe: null });
+      expect(JSON.stringify(r)).not.toMatch(/B-ONLY|99999|70000/);
+    });
+
+    it.each([
+      ["house B's drink", DRINK_B],
+      ["its own deleted drink", DRINK_A_GONE],
+    ])("refuses %s with 404 and prices nothing", async (_n, drink) => {
+      const p = preview();
+      expect(await statusOf(p.svc.previewCost(HOUSE_A, drink, { yieldServes: 1, lines: [line(ITEM_A)] }))).toBe(404);
+      expect(p.rpcCalls).toEqual([]);
+    });
   });
 
   it("versions: lists only its own rows for its own drink, with who saved each", async () => {

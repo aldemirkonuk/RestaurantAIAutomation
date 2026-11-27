@@ -73,3 +73,59 @@ describe("recipes: owner or manager saves, staff reads", () => {
     expect(res.status).toBe(200);
   });
 });
+
+describe("recipes: only an owner or manager may price a draft", () => {
+  let app: INestApplication;
+  let base: string;
+  const previews: string[] = [];
+  const draft = { yieldServes: 1, lines: [{ role: "stocked", inventoryId: DRINK, qtyEntered: 50, unitCode: "ml" }] };
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({
+      controllers: [RecipesController],
+      providers: [{ provide: RecipesService, useValue: { previewCost: async () => (previews.push("asked"), { perServe: 2 }) } }],
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({
+        canActivate: (ctx: any) => {
+          const req = ctx.switchToHttp().getRequest();
+          const role = req.headers["x-test-role"];
+          if (!role) return false;
+          req.user = { userId: `user-${role}`, restaurantId: HOUSE, role };
+          return true;
+        },
+      })
+      .compile();
+    app = moduleRef.createNestApplication();
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    await app.listen(0);
+    base = await app.getUrl();
+  });
+  afterAll(() => app.close());
+
+  const post = (role: string, payload: unknown = draft, drink = DRINK) =>
+    fetch(`${base}/recipes/${HOUSE}/cocktails/${drink}/cost-preview`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-test-role": role },
+      body: JSON.stringify(payload),
+    });
+
+  it("refuses staff with 403 and never reaches the service", async () => {
+    previews.length = 0;
+    expect((await post("staff")).status).toBe(403);
+    expect(previews).toEqual([]);
+  });
+
+  it.each(["owner", "manager"])("lets %s price a draft", async (role) => {
+    expect((await post(role)).status).toBe(201);
+  });
+
+  it("refuses a malformed draft before the service: a unit outside the list, too many lines, a drink id that is not a uuid", async () => {
+    previews.length = 0;
+    expect((await post("owner", { ...draft, lines: [{ ...draft.lines[0], unitCode: "pint" }] })).status).toBe(400);
+    expect((await post("owner", { yieldServes: 1, lines: Array(61).fill(draft.lines[0]) })).status).toBe(400);
+    expect((await post("owner", { ...draft, yieldServes: 0 })).status).toBe(400);
+    expect((await post("owner", draft, "not-a-uuid")).status).toBe(400);
+    expect(previews).toEqual([]);
+  });
+});
