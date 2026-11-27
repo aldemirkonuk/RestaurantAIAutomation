@@ -123,3 +123,24 @@ export function verifiedCsv(rows: ExportRow[]): string {
     );
   return lines.join("\r\n") + "\r\n";
 }
+
+/**
+ * Split `target` cents (either sign) over `weights` (cents, each > 0) pro
+ * rata, by largest remainder: floor shares of |target|, then one cent each to
+ * the largest remainders, ties to the earlier class. Σ shares = target.
+ */
+export function allocateSigned(weights: number[], target: number): number[] {
+  const w = weights.map((x) => BigInt(Math.max(0, Math.round(x))));
+  const W = w.reduce((a, b) => a + b, 0n);
+  if (W === 0n) return weights.map(() => 0);
+  const neg = target < 0;
+  const T = BigInt(Math.abs(Math.round(target)));
+  const q = w.map((x) => (T * x) / W);
+  const r = w.map((x, i) => T * x - q[i] * W);
+  let left = T - q.reduce((a, b) => a + b, 0n);
+  const order = r
+    .map((x, i) => ({ x, i }))
+    .sort((a, b) => (a.x === b.x ? a.i - b.i : a.x > b.x ? -1 : 1));
+  for (let k = 0; left > 0n; k++, left--) q[order[k].i] += 1n;
+  return q.map((x) => (neg ? 0 - Number(x) : Number(x)));
+}

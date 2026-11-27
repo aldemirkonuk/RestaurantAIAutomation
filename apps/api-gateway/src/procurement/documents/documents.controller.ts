@@ -24,6 +24,7 @@ import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import { DatabaseService } from "../../database/database.service";
 import { DocumentIntakeService } from "./document-intake.service";
 import { verifiedCsv, type ExportRow } from "./documents-export";
+import { readPurchasesByCategory } from "./purchases-by-category";
 import {
   ApplyExtractionDto,
   CorrectFieldDto,
@@ -1326,6 +1327,46 @@ export class DocumentsController {
    * `holdsHouseMoney` (the `money` row of ROLE_POLICY), and the web keeps no
    * role list of its own. The export itself still refuses on the same rule.
    */
+  @Get("purchases-by-category")
+  @ApiOperation({
+    summary:
+      "Verified purchases of a period by kind, one result per currency (owner/manager)",
+    description:
+      "Every verified paper dated in [from, to], its lines classed by the good each is linked to (Wine, Beer, Spirits, Cider/Sake, N/A drinks, Food, Other; unlinked = Not classed). Deposits stand apart. A paper's charges and paper-level tax are spread over its classes by line-net share, so classes plus deposits equal the papers' totals to the cent. Two currencies are never added.",
+  })
+  @ApiQuery({ name: "from", required: true, description: "YYYY-MM-DD" })
+  @ApiQuery({ name: "to", required: true, description: "YYYY-MM-DD" })
+  async purchasesByCategory(
+    @CurrentUser() user: AuthedUser,
+    @Query("from") from: string,
+    @Query("to") to: string,
+  ) {
+    if (!holdsHouseMoney(user.role ?? null))
+      throw new HttpException(
+        "What the house bought is the house's money, so an owner or a manager reads it.",
+        HttpStatus.FORBIDDEN,
+      );
+    const day = /^\d{4}-\d{2}-\d{2}$/;
+    if (!day.test(from ?? "") || !day.test(to ?? "") || from > to)
+      throw new HttpException(
+        "Say the period as two dates, from and to, as YYYY-MM-DD with from on or before to.",
+        HttpStatus.BAD_REQUEST,
+      );
+    try {
+      return await readPurchasesByCategory(
+        this.db.getClient(),
+        user.restaurantId,
+        from,
+        to,
+      );
+    } catch (e) {
+      throw new HttpException(
+        `${(e as Error).message}, so no purchases are shown.`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Get("export/verified.csv/allowed")
   @ApiOperation({
     summary: "Whether this session may take the verified-papers CSV",
