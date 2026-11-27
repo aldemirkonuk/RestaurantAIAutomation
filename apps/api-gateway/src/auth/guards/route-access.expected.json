@@ -248,6 +248,10 @@
   "POST /communications/letters (HouseLettersController.queue)": "open",
   "POST /communications/letters/:id/cancel (HouseLettersController.cancel)": "open",
   "POST /communications/letters/seal-challenge (HouseLettersController.issueQueueSeal)": "open",
+  "POST /communications/letters/files (HouseLettersController.uploadFiles)": [
+    "owner",
+    "manager"
+  ],
   "GET /communications/letters/requests (HouseLettersController.requests)": "open",
   "POST /communications/letters/requests (HouseLettersController.ask)": "open",
   "POST /communications/letters/requests/:id/decline (HouseLettersController.declineRequest)": "open",
