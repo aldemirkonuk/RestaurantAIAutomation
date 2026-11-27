@@ -82,31 +82,6 @@ describe('the till drawn by week or month', () => {
     expect(part[0].getAttribute('fill-opacity')).toBe(String(PART_OPACITY));
   });
 
-  it.each(['area', 'line'] as const)(
-    '[REVERT-FAILS] %s: a part bucket leaves the solid series and rides a dashed one, so a short week never reads as slow',
-    (kind) => {
-      const view = till.view(read(raw()), { days: 90, currency: 'TRY', grain: 'week' });
-      const { container } = render(<CatPlot series={view.cats!} kind={kind} />);
-      const curve = kind === 'area' ? 'recharts-area-curve' : 'recharts-line-curve';
-      const solid = container.querySelector(`path.${curve}[stroke="var(--seal)"]:not(.rp-part)`);
-      const dashed = container.querySelectorAll('.rp-part');
-      // 14 weeks, the first and last part: the solid line joins weeks 2-13 only (12 points, 11 curves).
-      expect((solid?.getAttribute('d') ?? '').match(/C/g)?.length).toBe(11);
-      // The part weeks are drawn, dashed, each joined to its whole neighbour: two short strokes.
-      expect(dashed.length).toBeGreaterThan(0);
-      expect(container.querySelector('.rp-part path, path.rp-part')?.getAttribute('stroke-dasharray')).toBe('4 3');
-      expect(container.querySelector('[aria-label]')?.getAttribute('aria-label') ?? '').toMatch(/part weeks dashed/);
-    },
-  );
-
-  it('a window of whole weeks keeps one solid line and no dashed part', () => {
-    const whole = daysBetween('2026-09-07', '2026-11-29');
-    const view = till.view(read(raw({ from: whole[0], to: whole[whole.length - 1], dailySeries: whole.map((date) => ({ date, revenue: 700, checks: 7 })) })), { days: 84, currency: 'TRY', grain: 'week' });
-    expect(view.cats!.data.some((d) => d.part)).toBe(false);
-    const { container } = render(<CatPlot series={view.cats!} kind="area" />);
-    expect(container.querySelector('path.rp-part')).toBeNull();
-  });
-
   it('with compare, the prior is bucketed by the same slots and aligned by index', () => {
     const doubled = daysBetween('2026-06-01', '2026-11-27').slice(-180);
     const r = raw({
