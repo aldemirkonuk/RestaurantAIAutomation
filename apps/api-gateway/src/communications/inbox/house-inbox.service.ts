@@ -1015,6 +1015,7 @@ export class HouseInboxService {
       .from("integration_oauth_connections")
       .select("id, user_id, scopes, account_email, connected_at")
       .eq("restaurant_id", restaurantId)
+      // Both reading grants speak for the house: the old vendor-only one and the wider one.
       .in("integration_id", [...READING_INTEGRATION_IDS])
       .is("revoked_at", null)
       // A fixed order (r36 mail audit, gap 3): two reads of the same house
