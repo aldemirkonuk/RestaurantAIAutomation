@@ -649,6 +649,8 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     references: string;
     receivedAt: string;
     toAddresses: unknown;
+    // Auto-Submitted and the like: the mail reads ask this to tell an out-of-office from a letter.
+    transport: Record<string, unknown>;
   }): Promise<void> {
     if (!p.restaurantId || !p.mirroredByGrantId) {
       this.logger.warn(
@@ -688,6 +690,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
             in_reply_to: p.inReplyTo,
             references: p.references,
             gmail_thread_id: p.gmailThreadId,
+            transport: p.transport,
           },
           mirrored_by_grant_id: p.mirroredByGrantId,
           kind: p.kind,
@@ -799,6 +802,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         references,
         receivedAt,
         toAddresses: payload.to_addresses,
+        transport: { ...transportSignals },
       });
       return;
     }
