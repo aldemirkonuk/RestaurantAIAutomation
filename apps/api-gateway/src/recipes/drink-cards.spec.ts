@@ -108,6 +108,32 @@ describe("the spec book (drinks/cards)", () => {
     expect(n.allergens).toEqual({ readable: false });
   });
 
+  // r109 drinks-2 (DD-r107-40): the house's database has no item_allergens yet (#2119, schema gap #922).
+  it("with no item_allergens table every card says its read failed, none free, and the book is still whole", async () => {
+    const fake = fakeDb(rows());
+    const real = (fake.db.getClient() as any).from;
+    (fake.db.getClient() as any).from = (t: string) => {
+      const q = real(t);
+      const gap = { data: null, error: { code: "PGRST205", message: "Could not find the table 'public.item_allergens' in the schema cache" } };
+      if (t === "item_allergens") q.then = (ok: (v: unknown) => unknown) => ok(gap);
+      return q;
+    };
+    const { drinks } = await new DishesService(fake.db, new RecipesService(fake.db)).drinkCards(HOUSE_A);
+    expect(drinks.map((d) => d.name).sort()).toEqual(["Negroni", "Whisky sour"]);
+    for (const d of drinks) expect(d.allergens).toEqual({ readable: false });
+    expect(drinks.find((d) => d.cocktailId === NEGRONI)!.lines).toHaveLength(2);
+  });
+
+  it("a drink whose lines name no good states nothing: every allergen not stated, its lines named, none free", async () => {
+    const r = rows();
+    r.recipe_lines = r.recipe_lines.filter((l) => l.version_id === V_SOUR);
+    r.recipe_current = r.recipe_current.filter((p) => p.cocktail_id === SOUR);
+    const { drinks } = await service(r).svc.drinkCards(HOUSE_A);
+    const a = drinks[0].allergens as any;
+    expect(a).toMatchObject({ readable: true, unstatedBy: ["Lemon juice"] });
+    expect(ALLERGENS.every((k) => a.status[k] === "not_stated")).toBe(true);
+  });
+
   it("reads only the house's own rows: another house's drink, line, good and version never appear", async () => {
     const r = rows();
     // A pointer of this house naming another house's version is not read as a recipe.
