@@ -118,6 +118,22 @@ describe('GetStarted: the menu from the house website', () => {
     expect(screen.queryByText('Internal server error')).toBeNull()
   })
 
+  it('a missing reader (404 "Cannot POST") says the plain sentence, never the router text', async () => {
+    importMenuFromUrl.mockRejectedValue({ response: { status: 404, data: { message: 'Cannot POST /api/v1/menus/import-url' } } })
+    await openTheMenuStep('https://meyhane.com.tr')
+    fireEvent.click(offer()!)
+    expect(await screen.findByText('We could not read that page. Send a photo or a PDF instead.')).toBeInTheDocument()
+    expect(screen.queryByText(/Cannot POST/)).toBeNull()
+  })
+
+  it('a bare domain typed by hand is submitted, not held by the browser’s URL check', async () => {
+    importMenuFromUrl.mockResolvedValue({ success: true, menuId: 'm-1', linesExtracted: 4, items: [] })
+    await openTheMenuStep(null)
+    fireEvent.change(screen.getByLabelText('Or the menu on your website'), { target: { value: 'meyhane.com.tr' } })
+    fireEvent.click(offer()!)
+    await waitFor(() => expect(importMenuFromUrl).toHaveBeenCalledWith('https://meyhane.com.tr/'))
+  })
+
   it('a read goes to /house/menu like a photo, asked as https', async () => {
     importMenuFromUrl.mockResolvedValue({ success: true, menuId: 'm-1', linesExtracted: 12, items: [] })
     await openTheMenuStep('http://meyhane.com.tr/menu')

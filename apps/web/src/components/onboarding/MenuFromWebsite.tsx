@@ -61,14 +61,18 @@ export function MenuFromWebsite({
       // A refusal's sentence (4xx: the 422 thin page, a refused address) is
       // said as the gateway wrote it; a fault or a silent refusal gets the
       // plain sentence, never "Internal server error".
-      setRefusal(status >= 400 && status < 500 && typeof said === 'string' && said.trim() ? said : NOT_READ)
+      // A 404 or 405 is the router's "Cannot POST ..." (no reader at that address), not a sentence.
+      const sayable = status >= 400 && status < 500 && status !== 404 && status !== 405
+      setRefusal(sayable && typeof said === 'string' && said.trim() ? said : NOT_READ)
     } finally {
       setReading(false)
     }
   }
 
   return (
-    <form onSubmit={read} data-testid="menu-website" className="mdv-spread-website">
+    // noValidate: the browser's own URL check refuses a bare domain ("meyhane.com.tr") in
+    // silence, and the offer above has just said it will read it; httpsAddress is the check.
+    <form onSubmit={read} noValidate data-testid="menu-website" className="mdv-spread-website">
       <label htmlFor={id} className="mdv-spread-drop-sub">
         Or the menu on your website
       </label>
