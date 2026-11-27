@@ -432,6 +432,8 @@ export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: Co
       onClose={leave}
       dirty={dirty}
       wide
+      // A reply knows its vendor and subject: the cursor goes where the person writes, not on the sheet's own buttons.
+      initialFocusRef={answers ? bodyRef : undefined}
       label={draftId ? 'A drafted letter from the house, not sent' : 'Write a letter from the house'}
       eyebrow={draftId ? 'Drafted · not sent' : 'The house writes'}
       title={draftId ? 'A drafted letter' : 'A letter from the house'}

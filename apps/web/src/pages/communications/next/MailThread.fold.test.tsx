@@ -81,7 +81,7 @@ describe('openLettersOf', () => {
 });
 
 describe('a long thread folds', () => {
-  it('opens the newest, folds the run into one stack that unfolds in place with focus on the first name', async () => {
+  it('opens the newest, folds the run into one stack that unfolds in place with focus on the first revealed letter', async () => {
     mount(SIX);
     expect(await screen.findAllByTestId('mail-letter')).toHaveLength(1); // m6 is newest and waits; m1 and m3 were answered
     expect(screen.getAllByTestId('mail-letter').map((e) => e.getAttribute('data-letter-id'))).toEqual(['m6']);
@@ -91,8 +91,8 @@ describe('a long thread folds', () => {
     fireEvent.click(within(stack).getByRole('button'));
     expect(screen.queryByTestId('mail-letter-stack')).toBeNull();
     expect(screen.getAllByTestId('mail-letter')).toHaveLength(6);
-    const first = document.querySelector('[data-letter-id="m1"] [data-letter-name]');
-    expect(document.activeElement).toBe(first);
+    // The letter itself, not its name span: a reader hears the whole letter that was revealed.
+    expect(document.activeElement).toBe(document.querySelector('[data-letter-id="m1"]'));
   });
 
   it('folds a run of two to single 44 px rows that say name, when and the first 90 characters', async () => {
