@@ -137,7 +137,9 @@ export default function Ribbon(props: RibbonProps) {
       ? 'Reading which days carry records…'
       : props.pos === null
         ? `The till window could not be read (${props.posProblem ?? 'no reason given'}), so no day below is marked as having no records. An unreadable window is not an empty one.`
-        : !props.pos.connected
+        : props.pos.withheld
+          ? 'Which days carry records is kept to the owner and managers.'
+          : !props.pos.connected
           ? 'No till is connected to this house, so nothing here knows which days carry records. No day is hatched — an absence of a POS is not an absence of trade.'
           : Object.keys(props.pos.byDay).length === 0
             ? `Not one day in this window carries a record. Either the house was shut throughout or the till read failed inside the gateway ${EM} the endpoint does not distinguish the two, so neither is claimed here.`
