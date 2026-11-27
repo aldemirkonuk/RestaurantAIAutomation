@@ -195,4 +195,24 @@ describe('the sign-up draft', () => {
     mount()
     expect(input('Full Name *').value).toBe('Fresh Name')
   })
+  // r108 g16: a restore says so, and can be cleared.
+  it('says "We kept what you typed." only after a restore, and Start over empties fields and storage', async () => {
+    mount()
+    expect(screen.queryByTestId('draft-kept-note')).toBeNull() // a fresh visit
+    cleanup()
+    window.sessionStorage.setItem(
+      KEY,
+      JSON.stringify({ mode: 'create', name: 'Fresh Name', email: 'f@house.test', at: Date.now() - 60_000 }),
+    )
+    mount()
+    expect(screen.getByText('We kept what you typed.')).toBeTruthy()
+    const start = screen.getByRole('button', { name: 'Start over' })
+    expect(start.className).toContain('min-h-11')
+    fireEvent.click(start)
+    expect(input('Full Name *').value).toBe('')
+    expect(input('Email *').value).toBe('')
+    expect(window.sessionStorage.getItem(KEY)).toBeNull()
+    expect(screen.queryByTestId('draft-kept-note')).toBeNull()
+    await waitFor(() => expect(document.activeElement).toBe(input('Full Name *')))
+  })
 })
