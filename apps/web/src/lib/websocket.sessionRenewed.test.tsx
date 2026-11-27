@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, act } from '@testing-library/react'
+import { render, act, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { io } from 'socket.io-client'
 import { WebSocketProvider } from './websocket'
@@ -41,7 +41,7 @@ beforeEach(() => {
 })
 
 describe('WebSocketProvider after a password change', () => {
-  it('opens a new socket with the renewed token', () => {
+  it('opens a new socket with the renewed token', async () => {
     localStorage.setItem('accessToken', 'old-access')
     render(
       <QueryClientProvider client={new QueryClient()}>
@@ -52,12 +52,12 @@ describe('WebSocketProvider after a password change', () => {
     )
     const tokens = () =>
       vi.mocked(io).mock.calls.map((c) => (c[1] as { auth: { token: string } }).auth.token)
-    expect(tokens()).toEqual(['old-access'])
+    await waitFor(() => expect(tokens()).toEqual(['old-access']))
 
     act(() => {
       storeRenewedSession({ accessToken: 'new-access', refreshToken: 'new-refresh' })
     })
 
-    expect(tokens()).toEqual(['old-access', 'new-access'])
+    await waitFor(() => expect(tokens()).toEqual(['old-access', 'new-access']))
   })
 })

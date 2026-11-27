@@ -84,6 +84,11 @@ describe('the entry chunk every page loads', () => {
     'exceljs',
     'jspdf',
     'html2canvas',
+    // The socket client loads only when a signed-in house opens a socket
+    // (lib/websocket.tsx imports it dynamically); a static import would put
+    // engine.io and socket.io into the entry every cold route downloads.
+    'socket.io-client',
+    'engine.io-client',
   ])('does not carry %s', (pkg) => {
     expect(packages.has(pkg)).toBe(false)
   })
