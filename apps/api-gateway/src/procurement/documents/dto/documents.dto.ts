@@ -1,11 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
   IsIn,
   IsOptional,
   IsString,
   IsUUID,
   MaxLength,
   MinLength,
+  ValidateIf,
 } from "class-validator";
 import { SOURCE_CHANNELS, SourceChannel } from "../document-types";
 
@@ -23,9 +27,26 @@ export class UploadDocumentDto {
     description:
       "Base64-encoded file bytes (PDF, image, or EDI text). Roughly 10MB decoded is the practical ceiling.",
   })
+  @ValidateIf((o: UploadDocumentDto) => o.pages === undefined)
   @IsString()
   @MaxLength(14_000_000)
-  contentBase64!: string;
+  contentBase64?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "ONE paper of 2 to 10 pages: base64 JPEG or PNG images, in page order, composed by the gateway into one PDF (r108 g13). Send this INSTEAD of contentBase64, never with it. WebP is refused.",
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray({ message: "pages must be a list of base64 images" })
+  @ArrayMinSize(2, { message: "A paper made of pages needs at least 2 pages." })
+  @ArrayMaxSize(10, {
+    message:
+      "A paper can have at most 10 pages. Send the first 10 as one paper, and the rest as another.",
+  })
+  @IsString({ each: true })
+  @MaxLength(14_000_000, { each: true })
+  pages?: string[];
 
   @ApiPropertyOptional({
     description: "Original filename, used to route EDI files",

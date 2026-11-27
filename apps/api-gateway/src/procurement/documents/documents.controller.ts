@@ -39,6 +39,7 @@ import {
 import { DeliverySpineService } from "../canonical/delivery-spine.service";
 import { DocumentCorrectionService } from "../canonical/document-correction.service";
 import { createHash } from "node:crypto";
+import { composePages, ComposePagesError } from "./compose-pages";
 import { looksLikeEdi832 } from "../../distributor-feed/parse-edi832";
 import { DISTRIBUTORS } from "../../distributor-feed/distributor-feed.registry";
 import { CatalogIngestService } from "../../distributor-feed/catalog-ingest.service";
@@ -1121,13 +1122,36 @@ export class DocumentsController {
     @CurrentUser() user: AuthedUser,
   ) {
     let buffer: Buffer;
-    try {
-      buffer = Buffer.from(body.contentBase64, "base64");
-    } catch {
-      throw new HttpException(
-        "contentBase64 is not valid base64",
-        HttpStatus.BAD_REQUEST,
-      );
+    let filename = body.filename ?? null;
+    let mimeType = body.mimeType ?? null;
+    if (body.pages !== undefined) {
+      // ONE PAPER, MANY PAGES (r108 g13): the pages become one PDF here, so the
+      // extractor and the dedup index see one paper, not one per photograph.
+      if (body.contentBase64 !== undefined)
+        throw new HttpException(
+          "Send either contentBase64 or pages, not both.",
+          HttpStatus.BAD_REQUEST,
+        );
+      try {
+        buffer = await composePages(
+          body.pages.map((p) => Buffer.from(p, "base64")),
+        );
+      } catch (e) {
+        if (e instanceof ComposePagesError)
+          throw new HttpException(e.message, HttpStatus.BAD_REQUEST);
+        throw e;
+      }
+      filename = filename ?? "paper.pdf";
+      mimeType = "application/pdf";
+    } else {
+      try {
+        buffer = Buffer.from(body.contentBase64 ?? "", "base64");
+      } catch {
+        throw new HttpException(
+          "contentBase64 is not valid base64",
+          HttpStatus.BAD_REQUEST,
+        );
+      }
     }
     if (!buffer.length)
       throw new HttpException("Document is empty", HttpStatus.BAD_REQUEST);
@@ -1136,10 +1160,10 @@ export class DocumentsController {
       restaurantId: user.restaurantId,
       providerId: body.providerId ?? null,
       orderId: body.orderId ?? null,
-      source: body.source ?? "upload",
+      source: body.source ?? (body.pages ? "photo" : "upload"),
       buffer,
-      filename: body.filename ?? null,
-      mimeType: body.mimeType ?? null,
+      filename,
+      mimeType,
       sourceRef: `user:${user.userId}`,
     });
 
