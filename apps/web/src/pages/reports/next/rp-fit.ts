@@ -47,3 +47,9 @@ export function naturalPx(root: HTMLElement): number | null {
   const px = rest + num(cs.paddingTop) + num(cs.paddingBottom) + blocks + gaps;
   return px > 0 ? Math.ceil(px) : null;
 }
+
+/** The rows that hold `px` of arrange controls above a card's body: the card grows by them (r101). */
+export function controlRows(px: number | undefined): number {
+  if (px === undefined || !Number.isFinite(px) || px <= 0) return 0;
+  return Math.ceil(px / (SHEET_ROW_HEIGHT + SHEET_MARGIN[1]));
+}

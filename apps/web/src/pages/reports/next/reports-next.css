@@ -1145,6 +1145,14 @@ html[data-mudavym-ground='charcoal'] .rp-tip {
 }
 .rp-stack__item {
   min-width: 0;
+  /* The slot is the least a card stands at; a card whose content is taller grows to it, so no last line is
+     clipped (r101). The card fills the slot when its content is shorter, as the chart's plot always did. */
+  display: flex;
+  flex-direction: column;
+}
+.rp-stack__item > .rp-cut {
+  flex: 1 1 auto;
+  height: auto;
 }
 .rp-sheet[data-layout='stack']::before {
   display: none;
@@ -1243,6 +1251,11 @@ html[data-mudavym-ground='charcoal'] .rp-tip {
   gap: 8px;
   min-width: 0;
 }
+/* The title never shrinks or wraps; the window beside it takes the ellipsis (r102). */
+.rp-cut[data-strip] .rp-cut__title {
+  flex: none;
+  white-space: nowrap;
+}
 .rp-cut[data-strip] .rp-cut__window {
   margin: 0;
   white-space: nowrap;
@@ -1302,6 +1315,14 @@ html[data-mudavym-ground='charcoal'] .rp-tip {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.rp-cut[data-strip] .rp-empty-strip,
+.rp-cut[data-strip] .rp-quiet {
+  flex: 0 0 auto;
+}
+/* A strip is its sentence: the figure rows would only squeeze it to nothing in 72 px (r102). */
+.rp-cut[data-strip] .rp-cut__body > :not(.rp-empty-strip):not(.rp-quiet) {
+  display: none;
 }
 .rp-cut[data-strip] .rp-empty-strip + .rp-quiet {
   -webkit-line-clamp: 1;
