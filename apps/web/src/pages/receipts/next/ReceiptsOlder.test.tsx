@@ -52,7 +52,8 @@ const newest = Array.from({ length: 100 }, (_, i) => paper(i + 1));
 
 let client: QueryClient;
 function wrapper({ children }: { children: ReactNode }) {
-  const qc = (client = new QueryClient({ defaultOptions: { queries: { retry: false } } }));
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client = qc;
   return (
     <MemoryRouter>
       <QueryClientProvider client={qc}>{children}</QueryClientProvider>
@@ -87,6 +88,33 @@ describe('the verified lane past its first window', () => {
     );
     // One short page later nothing is older, and the sentence goes.
     await waitFor(() => expect(screen.queryByText(/Showing the newest/)).toBeNull());
+  });
+
+  it('drops an Older page that comes back after a search changed the lane (r105)', async () => {
+    render(<ReceiptsNext />, { wrapper });
+    await openLane();
+    let release!: (rows: ProcurementDocument[]) => void;
+    api.list.mockImplementationOnce(() => new Promise<ProcurementDocument[]>((r) => (release = r)));
+    fireEvent.click(await screen.findByRole('button', { name: 'Older papers' }));
+    fireEvent.change(await screen.findByLabelText('Search verified papers by vendor or number'), {
+      target: { value: 'acme' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Find' }));
+    expect(await screen.findByText(/V-150/)).toBeTruthy();
+    release([paper(101)]);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByText(/V-101/)).toBeNull();
+  });
+
+  it('forgets the Older pages when the first window is read again, so no paper falls between the lists (r105)', async () => {
+    render(<ReceiptsNext />, { wrapper });
+    await openLane();
+    fireEvent.click(await screen.findByRole('button', { name: 'Older papers' }));
+    expect(await screen.findByText(/V-101/)).toBeTruthy();
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ['receipts-next', 'verified'] });
+    });
+    await waitFor(() => expect(screen.queryByText(/V-101/)).toBeNull());
   });
 
   it('finds a paper by vendor or number', async () => {
