@@ -31,6 +31,7 @@ import {
 } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
 import type { Cat, Cell, Measure } from './rp-view';
+import { TRAIL_DAYS, startsLate, trailingAverage, trendTip } from './rp-till-trend';
 
 /* ───────────────────────────────────────────────────── 1. the reading ──── */
 
@@ -138,40 +139,70 @@ export interface TillWindow {
 }
 
 /**
- * The day's checks and average check, beside the day's takings, for bars and
- * a line (founder /goal 2026-11-07: "bar graph and their combinations"). Only
- * when every day the gateway sent carries its count: a count missing on some
- * days would draw those days as having none. `null` otherwise, and the
+ * The measures the till offers beside its takings for bars and a line
+ * (founder /goal 2026-11-07: "bar graph and their combinations").
+ *
+ * Checks and Average check only when every day the gateway sent carries its
+ * count: a count missing on some days would draw those days as having none.
+ *
+ * "Average a trading day, last 7" (r109 g2) whenever the window is longer than
+ * its trail, counted or not: it needs only the takings. It is read from `read`,
+ * the whole read before any compare split, so with compare on the first shown
+ * days take their trail from the doubled read's earlier days (`rp-till-trend`).
+ * Its unit is the takings' own, so it shares their axis (rp-combo rule 1).
+ * A withheld read offers nothing. `undefined` when nothing is offered, and the
  * drawing says it cannot be drawn that way.
  */
 export function tillMeasures(
   w: TillWindow,
   shown: string[],
   money: ReturnType<typeof moneyIn>,
+  read?: TillWindow,
+  days?: number,
 ): Measure[] | undefined {
-  if (w.dailySeries.length === 0 || w.dailySeries.some((d) => d.checks == null)) return undefined;
-  const taken = new Map(w.dailySeries.map((d) => [d.date, d.revenue]));
-  const checks = new Map(w.dailySeries.map((d) => [d.date, d.checks as number]));
-  return [
-    {
-      key: 'checks',
-      label: 'Checks',
-      unit: 'checks',
-      format: (v) => figure(v),
-      values: shown.map((date) => checks.get(date) ?? null),
-    },
-    {
-      key: 'avg',
-      label: 'Average check',
-      unit: 'a check',
+  if (w.salesWithheld || w.dailySeries.length === 0) return undefined;
+  const out: Measure[] = [];
+  if (w.dailySeries.every((d) => d.checks != null)) {
+    const taken = new Map(w.dailySeries.map((d) => [d.date, d.revenue]));
+    const checks = new Map(w.dailySeries.map((d) => [d.date, d.checks as number]));
+    out.push(
+      {
+        key: 'checks',
+        label: 'Checks',
+        unit: 'checks',
+        format: (v) => figure(v),
+        values: shown.map((date) => checks.get(date) ?? null),
+      },
+      {
+        key: 'avg',
+        label: 'Average check',
+        unit: 'a check',
+        format: (v) => money(v, 'compact'),
+        values: shown.map((date) => {
+          const r = taken.get(date);
+          const c = checks.get(date);
+          return r != null && c != null && c > 0 ? r / c : null;
+        }),
+      },
+    );
+  }
+  if (read && !read.salesWithheld && days != null && days > TRAIL_DAYS) {
+    const points = trailingAverage(read.dailySeries, shown, read.from);
+    out.push({
+      key: 'trail7',
+      label: 'Average a trading day, last 7',
+      unit: 'taken',
       format: (v) => money(v, 'compact'),
-      values: shown.map((date) => {
-        const r = taken.get(date);
-        const c = checks.get(date);
-        return r != null && c != null && c > 0 ? r / c : null;
-      }),
-    },
-  ];
+      values: points.map((p) => p.value),
+      tips: points.map(trendTip),
+      ...(startsLate(points)
+        ? {
+            note: `The 7-day average starts on the ${TRAIL_DAYS}th day: the ${TRAIL_DAYS - 1} days before it have no 7 days behind them in this read.`,
+          }
+        : {}),
+    });
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 /** Week columns spanning [from, to] — so a week with no takings is a BLANK
@@ -291,7 +322,7 @@ const till = analysis<TillWindow>({
     `/analytics/pos-revenue/${rid}?days=${ctx.compare && compareOffered(ctx.days) ? ctx.days * 2 : ctx.days}`,
   graphs: ['area', 'line', 'bars', 'combo', 'heatmap', 'table', 'figure'],
   graphNote:
-    'This is the one register with a date on every row, so it is the one that can be a heat map: weekday against week. Bars and a line put each day’s takings beside its checks or its average check, each on its own axis. No scatter — a day’s checks and its takings move together by construction, so a scatter would only draw that.',
+    'This is the one register with a date on every row, so it is the one that can be a heat map: weekday against week. Bars and a line put each day’s takings beside its checks or its average check, each on its own axis, or beside the average trading day of the 7 days to it, on the takings’ own axis. No scatter — a day’s checks and its takings move together by construction, so a scatter would only draw that.',
   // With compare on, the card's Checks and Average come from the N-day read it shows
   // when compare is off (same key, so cached), never from the doubled read's days.
   shownPath: (rid, ctx) =>
@@ -431,7 +462,7 @@ const till = analysis<TillWindow>({
         unit: 'taken',
         format: (v) => money(v, 'compact'),
         measureLabel: 'Taken',
-        measures: tillMeasures(w, shown, money),
+        measures: tillMeasures(w, shown, money, read, ctx.days),
       },
       matrix: {
         rows: [...WEEKDAY_SHORT],

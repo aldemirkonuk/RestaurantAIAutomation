@@ -59,6 +59,10 @@ export interface Measure {
   unit: string;
   format: (v: number) => string;
   values: Array<number | null>;
+  /** Words a tooltip puts after `values[i]` ("over 5 trading days"); a gap's reason when it is null. */
+  tips?: Array<string | null>;
+  /** One sentence printed under the drawing while this measure is drawn. */
+  note?: string;
 }
 
 export interface CatSeries {

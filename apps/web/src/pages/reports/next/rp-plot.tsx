@@ -58,7 +58,7 @@ import {
 import { turn } from '@/lib/mudavym';
 import { tipMotion, useAfterPaint, useDrawIn } from './rp-draw';
 import { EM, MONO, failureLine, type Failure } from './rp-format';
-import { choose, planCombo, type ComboPick, type ComboPlan } from './rp-combo';
+import { choose, planCombo, type ComboPick, type ComboPlan, type ComboRow } from './rp-combo';
 import type { CatSeries, Fig, MatrixSeries, PointSeries, TableSpec } from './rp-view';
 
 /* ─────────────────────────────────────────────────── shared chrome ─────── */
@@ -840,6 +840,13 @@ export function ComboPlot({
         </ComposedChart>
       </Plot>
       <p className="rp-cap">{words}</p>
+      {[bars, line].map((m) =>
+        m.note ? (
+          <p key={m.key} className="rp-cap">
+            {m.note}
+          </p>
+        ) : null,
+      )}
     </>
   );
 }
@@ -851,21 +858,22 @@ function ComboTip({
   plan,
 }: {
   active?: boolean;
-  payload?: Array<{ payload?: { full?: string; bar: number | null; line: number | null } }>;
+  payload?: Array<{ payload?: ComboRow }>;
   plan: ComboPlan;
 }) {
   const row = active ? payload?.[0]?.payload : undefined;
   if (!row) return null;
-  const lines: Array<[string, number | null, ComboPlan['bars']]> = [
-    ['Bars', row.bar, plan.bars],
-    ['Line', row.line, plan.line],
+  const lines: Array<[string, number | null, ComboPlan['bars'], string | null | undefined]> = [
+    ['Bars', row.bar, plan.bars, row.barTip],
+    ['Line', row.line, plan.line, row.lineTip],
   ];
   return (
     <div className="rp-tip">
       <span className="rp-tip__head">{row.full}</span>
-      {lines.map(([side, v, m]) => (
+      {lines.map(([side, v, m, tip]) => (
         <span key={side} className="rp-tip__row">
           {m.label}: {v == null ? <b>{EM}</b> : <b>{m.format(v)}</b>} {v == null ? '' : m.unit}
+          {tip ? ` ${tip}` : ''}
         </span>
       ))}
     </div>
