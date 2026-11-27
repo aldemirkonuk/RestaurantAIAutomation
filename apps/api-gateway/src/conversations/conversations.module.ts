@@ -18,6 +18,8 @@ import { VendorSendAuthorityModule } from "../organizations/vendor-send-authorit
   // Mail tab (founder /goal 2026-11-07). Read-only; DatabaseModule is all it needs.
   controllers: [ConversationsController, MailController],
   providers: [ConversationsService, MailService],
-  exports: [ConversationsService],
+  // MailService is exported for the house counter's "Vendor replies waiting"
+  // register, which counts by Mail's own rule (r36 mail gap 7).
+  exports: [ConversationsService, MailService],
 })
 export class ConversationsModule {}

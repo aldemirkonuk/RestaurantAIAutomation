@@ -583,18 +583,18 @@ describe('the counter link to a waiting reply', () => {
   });
 
   // #567 audit note 2: the reader must match the link the counter builds, so
-  // this one renders roomForAct's own path, with an id that needs encoding.
-  it('opens the reply from the link the counter itself builds (roomForAct)', () => {
-    const orderId = 'o 1/é';
-    mockData.current = { ...base, drafts: [{ ...waiting, orderId }] };
+  // this one renders roomForAct's own path, with a key that needs encoding.
+  // Since r36 mail gap 7 the counter counts the vendors Mail says are waiting,
+  // and its link opens that vendor in Mail, not a drafted reply on Letters.
+  it('the counter\'s own link opens Mail on the vendor (roomForAct)', () => {
     const room = roomForAct('threads', {
-      id: 't1', vendor: null, orderNumber: null, channel: null, intent: null,
-      aiGenerated: true, createdAt: null, orderId,
+      id: 'vendor:p 1/é', vendor: null, orderNumber: null, channel: null,
+      waitingSince: null, orderId: 'o1',
     });
-    expect(room?.path).toBe(`/communications?reply=${encodeURIComponent(orderId)}`);
+    expect(room?.path).toBe(`/communications?tab=mail&with=${encodeURIComponent('vendor:p 1/é')}`);
     render(<CommunicationsNext />, room?.path ?? '');
-    expect(screen.getByText("The house's reply, drafted")).toBeInTheDocument();
-    expect(screen.queryByTestId('reply-link-missing')).toBeNull();
+    expect(screen.getByTestId('mail-tab-stub')).toBeInTheDocument();
+    expect(screen.queryByText("The house's reply, drafted")).toBeNull();
   });
 
   it('says so when that reply is no longer waiting, and the note can be put away', () => {

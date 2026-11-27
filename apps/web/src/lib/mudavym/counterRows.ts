@@ -93,11 +93,9 @@ function creditLine(c: CounterCreditRow): ActLine {
 function threadLine(t: CounterThreadRow): ActLine {
   return {
     id: t.id,
-    what: t.vendor ?? 'Vendor not named',
-    detail: `${t.orderNumber ? `order ${t.orderNumber} · ` : ''}${
-      t.aiGenerated ? 'a reply Mudavym drafted' : 'a reply'
-    } · not sent`,
-    at: shortWhen(t.createdAt),
+    what: t.vendor ?? 'A vendor with no name on file',
+    detail: `${t.orderNumber ? `order ${t.orderNumber} · ` : ''}waiting for the house's reply`,
+    at: shortWhen(t.waitingSince),
   };
 }
 

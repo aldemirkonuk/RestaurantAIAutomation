@@ -535,6 +535,47 @@ export class MailService {
     }
   }
 
+  /**
+   * The vendors waiting on the house, for the dashboard counter's "Vendor
+   * replies waiting" register (r36 mail gap 7).
+   *
+   * That register counted `procurement_conversations.delivery_status =
+   * 'pending'`, a value no writer sets, so it read 0 while Mail said "3
+   * vendors are waiting on you". It now reads the two things Mail itself
+   * reads: the count is `mail_inbox_summary.waiting_people` (the Mail header
+   * and the tab badge), and the rows are the first `rows` people of
+   * `list_mail_people` with `p_waiting_only`. Both come from
+   * `mail_thread_states`, so "waiting" means one thing everywhere, "No reply
+   * needed" marks included.
+   *
+   * No zone is passed: the waiting count does not depend on the house's day,
+   * and a house with no zone must still be counted. Either read failing fails
+   * the whole answer; the counter shows that register as not read, never 0.
+   */
+  async waitingVendors(
+    houseId: string,
+    callerRole: string | null | undefined,
+    rows: number,
+  ): Promise<{ count: number; people: MailPersonRow[] }> {
+    const [sumRes, page] = await Promise.all([
+      this.db.rpc("mail_inbox_summary", {
+        p_restaurant_id: houseId,
+        p_withhold_house_letters: withholdsHouseLetters(callerRole),
+        p_zone: null,
+      }),
+      this.listPeople(houseId, callerRole, { waitingOnly: true, limit: rows }),
+    ]);
+    if (sumRes.error) this.failed("waiting count", sumRes.error);
+    const s = (
+      Array.isArray(sumRes.data) ? sumRes.data[0] : sumRes.data
+    ) as any;
+    if (!s) this.failed("waiting count", { message: "no summary row" });
+    const count = Number(s.waiting_people ?? 0);
+    // The two reads are not one snapshot. A vendor who wrote between them is
+    // in the rows but not the count; the count is never fewer than the rows.
+    return { count: Math.max(count, page.people.length), people: page.people };
+  }
+
   async summary(
     houseId: string,
     callerRole: string | null | undefined,

@@ -6,9 +6,9 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { MailService } from "../conversations/mail.service";
 import { ProcurementService } from "../procurement/procurement.service";
 import { ReceivingService } from "../procurement/receiving.service";
-import { ConversationsService } from "../conversations/conversations.service";
 import { IdentityService } from "../vendor-intel/identity.service";
 import { MembersService } from "../restaurants/members.service";
 import { AskAiService } from "../ask-ai/ask-ai.service";
@@ -138,7 +138,7 @@ export class HouseCounterService {
     private readonly db: DatabaseService,
     private readonly procurement: ProcurementService,
     private readonly receiving: ReceivingService,
-    private readonly conversations: ConversationsService,
+    private readonly mail: MailService,
     private readonly identity: IdentityService,
     private readonly members: MembersService,
     private readonly askAi: AskAiService,
@@ -220,31 +220,33 @@ export class HouseCounterService {
         act: "yours",
         load: () => this.readPromisedCredits(house),
       },
-      // Reading is open to every member (the list route carries no @Roles);
-      // approving, editing or rejecting what a vendor is told is owner/manager
-      // (conversations.controller.ts). Rows carry no message text and no price.
+      // The vendors waiting on the house, by Mail's own rule (r36 mail gap 7):
+      // this register used to count `delivery_status = 'pending'`, which no
+      // writer sets, so it read 0 while Mail said vendors were waiting. Every
+      // member reads Mail (the mail routes carry no @Roles); staff read it
+      // without the house's own letters, exactly as Mail shows them. Replying
+      // is owner/manager (MailThread offers the reply only to them). Rows
+      // carry no letter text and no price.
       threads: {
         act: manager ? "yours" : "not_yours",
         load: async () => {
-          const all = await this.conversations.getPendingConversations(house);
+          const { count, people } = await this.mail.waitingVendors(
+            house,
+            role,
+            COUNTER_ROWS,
+          );
           return {
-            count: all.length,
+            count,
             complete: true,
-            rows: all.slice(0, COUNTER_ROWS).map((c: any) => ({
-              id: String(c.id),
-              vendor: c.providers?.name ?? null,
-              orderNumber:
-                c.procurement_orders?.order_number ??
-                c.order_number_snapshot ??
-                null,
-              channel: c.channel ?? null,
-              intent: c.detected_intent ?? null,
-              aiGenerated: Boolean(c.ai_generated),
-              createdAt: c.created_at ?? null,
-              // The key Communications opens a reply by (DASH-W16e). An id,
-              // not text: `order_id` is the row's own column, the embed's id
-              // is the same order (getPendingConversations selects both).
-              orderId: c.procurement_orders?.id ?? c.order_id ?? null,
+            rows: people.slice(0, COUNTER_ROWS).map((p) => ({
+              // Mail's key for the person (`vendor:<id>`): it opens their
+              // page in Mail.
+              id: p.key,
+              vendor: p.name ?? null,
+              orderNumber: p.newestOpenOrderNumber ?? null,
+              orderId: p.newestOpenOrderId ?? null,
+              channel: p.channels[0] ?? null,
+              waitingSince: p.waitingSince ?? null,
             })),
           };
         },

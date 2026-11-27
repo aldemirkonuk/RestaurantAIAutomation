@@ -7,10 +7,12 @@ import { describe, expect, it } from 'vitest';
 import {
   actsWaiting,
   counterHead,
+  REGISTER_ROOM,
   roomForAct,
   verbMark,
   type CounterRegister,
 } from './counterRead';
+import { actLine, shortWhen } from './counterRows';
 
 const T = '2026-09-21T14:02:11Z';
 
@@ -112,18 +114,38 @@ describe('the dot: something waits on YOU, or cannot say', () => {
 });
 
 describe('roomForAct — an act opens the record it names (DASH-W16e)', () => {
-  const thread = { id: 't-1', vendor: null, orderNumber: null, channel: null, intent: null, aiGenerated: false, createdAt: null };
+  const thread = { id: 'vendor:v-1', vendor: null, orderNumber: null, channel: null, waitingSince: null };
   it('deep-links every register that has a room, and none that has not', () => {
     expect(roomForAct('orders', { id: 'o-1' } as never)).toEqual({ name: 'Orders', path: '/orders?order=o-1' });
     expect(roomForAct('deliveries', { orderId: 'o-2' } as never)).toEqual({ name: 'Receiving', path: '/receiving?order=o-2' });
     expect(roomForAct('credits', { id: 'c-1' } as never)).toEqual({ name: 'Receipts & Credits', path: '/receipts?tab=credits&credit=c-1' });
-    expect(roomForAct('threads', { ...thread, orderId: 'o-3' })).toEqual({ name: 'Communications', path: '/communications?reply=o-3' });
-    expect(roomForAct('threads', { ...thread, orderId: null })).toEqual({ name: 'Communications', path: '/communications' });
+    // A vendor waiting opens their page in Mail, with or without an order
+    // (r36 mail gaps 7 and 8): bare /communications opens Letters.
+    expect(roomForAct('threads', { ...thread, orderId: 'o-3' })).toEqual({ name: 'Mail', path: '/communications?tab=mail&with=vendor%3Av-1' });
+    expect(roomForAct('threads', { ...thread, orderId: null })).toEqual({ name: 'Mail', path: '/communications?tab=mail&with=vendor%3Av-1' });
+    expect(REGISTER_ROOM.threads).toEqual({ name: 'Mail', path: '/communications?tab=mail' });
     expect(roomForAct('invitations', { id: 'i-1' } as never)).toEqual({ name: 'Team', path: '/team' });
     expect(roomForAct('identities', { id: 'x' } as never)).toBeNull();
     expect(roomForAct('proposals', { id: 'x' } as never)).toBeNull();
   });
   it('encodes the id', () => {
     expect(roomForAct('orders', { id: 'a&b=c d' } as never)?.path).toBe('/orders?order=a%26b%3Dc%20d');
+  });
+});
+
+describe('a vendor waiting reads as Mail says it (r36 mail gap 7)', () => {
+  const row = { id: 'vendor:v-1', vendor: 'Revel Wine', orderNumber: 'ORD-3', orderId: 'o-3', channel: 'email', waitingSince: '2026-09-21T07:00:00Z' };
+  it('names the vendor, the order, and that the house owes the reply', () => {
+    const line = actLine('threads', row, null);
+    expect(line.id).toBe('vendor:v-1');
+    expect(line.what).toBe('Revel Wine');
+    expect(line.detail).toBe("order ORD-3 · waiting for the house's reply");
+    expect(line.at).toBe(shortWhen('2026-09-21T07:00:00Z'));
+    expect(line.at).not.toBe(shortWhen(null));
+  });
+  it('a vendor with no order and no name still reads', () => {
+    const line = actLine('threads', { ...row, vendor: null, orderNumber: null, orderId: null }, null);
+    expect(line.what).toBe('A vendor with no name on file');
+    expect(line.detail).toBe("waiting for the house's reply");
   });
 });
