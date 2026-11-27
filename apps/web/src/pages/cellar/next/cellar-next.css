@@ -1180,6 +1180,12 @@ textarea.cl-field {
 @media (max-width: 640px) {
   .cl-spine-nav { min-height: 64px; align-content: flex-start; }
 }
+/* The nav takes its own row from first paint at a phone. While the registers read, the spine is Wines and
+   Menu, which fit beside the wordmark; when the rest land the nav wraps under it and drops the page 36 px
+   (walk r109: owner 375, CLS 0.2204, nav y 75 -> 111). On its own row it is where it will be. No motion. */
+@media (max-width: 640px) {
+  .cl-spine-nav { flex-basis: 100%; justify-content: flex-end; }
+}
 
 /* The spec book (r108 drinks-g7): every drink's card in one print, hidden on screen; drawn alone on paper while
    the button has set html[data-print-book]. A cover, then one card per page. No animation, no transition. */
