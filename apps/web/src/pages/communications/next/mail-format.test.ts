@@ -27,6 +27,7 @@ import {
   READING_WITHIN_MIN,
   spanWords,
   setupLinkWords,
+  ARRIVED_ONLY,
   storedKindsLine,
   todayLine,
   TODAY_ZONE_UNSET,
@@ -428,6 +429,14 @@ describe('the list around the people', () => {
     expect(storedKindsLine(['vendor'])).toBe(
       'Vendor mail is listed here by person and thread. A letter from someone Mudavym does not know is under Who is writing, below, only when it carries an attachment or reads as an offer; a plain one is not kept. A letter held because its sender could not be confirmed is there too. Mail from your team and guests is not read yet.',
     );
+  });
+
+  it('a house that reads team and guests says it reads what arrived, not the replies it sent (r102 func-1)', () => {
+    const line = storedKindsLine(['vendor', 'team', 'guest']);
+    expect(line).toContain('Mail that arrived from vendor, team, guest is listed by person and thread.');
+    expect(line).toContain(ARRIVED_ONLY);
+    expect(ARRIVED_ONLY).toMatch(/replies sent from your own mailbox are not/);
+    expect(line).not.toMatch(/reaches Mudavym/);
   });
 
   it('says a plain letter from someone unknown is not kept (r28 gap 6)', () => {

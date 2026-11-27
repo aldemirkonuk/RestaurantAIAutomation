@@ -36,6 +36,7 @@ import {
   letterAt,
   filedFromHeldWords,
   letterLook,
+  ARRIVED_ONLY,
   mailKindOf,
   noReplyFailWords,
   noReplyTarget,
@@ -302,6 +303,11 @@ export function MailThread({
               )}
             </p>
           </header>
+          {head.person && mailKindOf(head.person) !== 'vendor' && (
+            <p data-testid="thread-arrived-only" style={{ ...QUIET, margin: 0 }}>
+              {ARRIVED_ONLY}
+            </p>
+          )}
 
           {/* The cursor to the earlier page is on the oldest page read, the last one held. */}
           {q.hasNextPage && (
