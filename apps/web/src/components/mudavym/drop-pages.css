@@ -119,3 +119,73 @@
     transition: none;
   }
 }
+
+/* The advisory line under a page (r110 g2). Its room is reserved, so the
+   line arriving moves nothing (CLS 0). It rises in; it has no exit. */
+.mdv-qhint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-height: 3.9em;
+  width: 100%;
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--ink-2);
+  text-align: center;
+}
+
+.mdv-qhint[data-retake] {
+  min-height: calc(3.9em + 48px);
+}
+
+.mdv-qhint--wide {
+  align-items: flex-start;
+  min-height: 1.3em;
+  margin-top: 8px;
+  text-align: left;
+}
+
+.mdv-qhint--wide[data-retake] {
+  min-height: calc(1.3em + 48px);
+}
+
+.mdv-qhint__line {
+  margin: 0;
+  animation: mdv-qhint-in 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.mdv-qhint__btn {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+  background: var(--paper-0);
+  color: var(--ink-1);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.mdv-qhint__btn:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+}
+
+@keyframes mdv-qhint-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-qhint__line {
+    animation: none;
+  }
+}
