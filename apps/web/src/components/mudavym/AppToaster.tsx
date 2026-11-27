@@ -31,7 +31,7 @@ export function AppToaster() {
         toastOptions={{
           unstyled: true,
           classNames: {
-            toast: 'mdv-toast',
+            toast: 'mdv-toast mdv-glass',
             title: 'mdv-toast__title',
             description: 'mdv-toast__description',
             actionButton: 'mdv-toast__action',

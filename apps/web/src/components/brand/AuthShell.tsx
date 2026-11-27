@@ -144,11 +144,8 @@ export function AuthCard({ children, className, house = false }: AuthCardProps) 
     <div
       className={cn(
         house
-          ? 'rounded-2xl border border-seal-tint bg-paper-1 backdrop-blur-md p-8'
-          : 'rounded-2xl border border-wine-100/80 bg-white/80 backdrop-blur-md p-8',
-        house
-          ? 'shadow-[0_24px_64px_-24px_var(--seal-tint),0_8px_24px_-12px_var(--seal-tint)]'
-          : 'shadow-[0_24px_64px_-24px_rgba(26,94,107,0.18),0_8px_24px_-12px_rgba(15,23,42,0.08)]',
+          ? 'mdv-glass rounded-2xl p-8'
+          : 'rounded-2xl border border-wine-100/80 bg-white/80 backdrop-blur-md p-8 shadow-[0_24px_64px_-24px_rgba(26,94,107,0.18),0_8px_24px_-12px_rgba(15,23,42,0.08)]',
         className,
       )}
     >

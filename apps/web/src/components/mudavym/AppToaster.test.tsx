@@ -47,6 +47,6 @@ describe('shell on (the default: live in code since 2026-09-25, no override, no 
     expect(toasterProps.current?.visibleToasts).toBe(3);
     expect(toasterProps.current?.className).toContain('mudavym');
     const classNames = toasterProps.current?.toastOptions as { classNames?: Record<string, string> };
-    expect(classNames.classNames?.toast).toBe('mdv-toast');
+    expect(classNames.classNames?.toast).toBe('mdv-toast mdv-glass');
   });
 });
