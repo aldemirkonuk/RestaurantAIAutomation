@@ -6869,6 +6869,37 @@ export class ProcurementService {
       throw error;
     }
 
+    // A SECOND SWEEP OF THE SALES FROM THIS DELIVERY (r103). A till sale that
+    // read its cost before revalue_lot and inserted its row after the first
+    // restate keeps the delivery's estimate, and nothing would ever move it.
+    // Running the same idempotent restatement once more, now that the receipt
+    // is verified, catches a sale that landed in that window. It narrows the
+    // window to the few calls between here and the first pass; it does not
+    // close it (that needs the sale insert to read a verified order's cost).
+    // Best effort: the receipt is already verified, so a failure is logged and
+    // never undoes it.
+    if (
+      match &&
+      match.effectiveUnitCost != null &&
+      (orderRow as any).inventory_id
+    ) {
+      const { error: sweepError } = await this.databaseService.supabase.rpc(
+        "restate_sale_cost",
+        {
+          p_restaurant_id: restaurantId,
+          p_inventory_id: (orderRow as any).inventory_id,
+          p_source_order_id: orderId,
+          p_unit_cost: match.effectiveUnitCost,
+          p_performed_by: userId ?? null,
+        },
+      );
+      if (sweepError) {
+        this.logger.warn(
+          `verifyReceipt second restatement of sales failed on order ${orderId}: ${sweepError.message}`,
+        );
+      }
+    }
+
     // Resolve the pinned notification for every member.
     await this.databaseService.supabase
       .from("notifications")
