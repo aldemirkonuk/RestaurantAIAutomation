@@ -43,6 +43,16 @@ describe('the rail fetches /reports on intent', () => {
     expect(loadReports).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    ['pointerenter', fireEvent.pointerEnter],
+    ['focus', fireEvent.focus],
+    ['touchstart', fireEvent.touchStart],
+  ])('%s alone is enough', (_n, fire) => {
+    rail();
+    fire(screen.getByRole('link', { name: 'Reports' }));
+    expect(loadReports).toHaveBeenCalledTimes(1);
+  });
+
   it('a room with no loader asks for nothing', () => {
     rail();
     fireEvent.pointerEnter(screen.getByRole('link', { name: 'Settings' }));
