@@ -13,7 +13,7 @@
  *    present but unstated (revenue null) draws no bar: it says so instead.
  *    A bucket in which no day rang up a check is a gap, never a 0.
  *  - Checks are summed only when every trading day of the bucket carries them.
- *    Average check = Σ revenue ÷ Σ checks, never a mean of daily averages.
+ *    Average check = Σ revenue ÷ Σ priced checks, never a mean of daily averages.
  *  - An edge bucket that does not hold its whole week or month is flagged
  *    `whole: false` and named ("part week: 3 days"), so a short week never
  *    reads as a slow one. It is drawn, not dropped (the window's takings must
@@ -47,6 +47,8 @@ export interface DayRow {
   date: string;
   revenue: number | null;
   checks?: number | null;
+  /** The checks that carry a total (the day line's count). Absent from an older gateway. */
+  pricedChecks?: number | null;
 }
 
 export interface Bucket {
@@ -65,7 +67,7 @@ export interface Bucket {
   unstated: number;
   revenue: number | null;
   checks: number | null;
-  /** Σ revenue ÷ Σ checks, or null. */
+  /** Σ revenue ÷ Σ priced checks (every check from an older gateway), or null. */
   avg: number | null;
 }
 
@@ -106,6 +108,8 @@ export function bucketTill(span: readonly string[], series: readonly DayRow[], g
     let unstated = 0;
     let checks = 0;
     let counted = true;
+    let priced = 0;
+    let pricedKnown = true;
     for (const i of slots) {
       const row = byDate.get(span[i]);
       if (!row) continue;
@@ -115,11 +119,18 @@ export function bucketTill(span: readonly string[], series: readonly DayRow[], g
         traded += 1;
       }
       if (row.checks == null) counted = false;
-      else checks += row.checks;
+      else {
+        checks += row.checks;
+        if (row.pricedChecks == null) pricedKnown = false;
+        else priced += Math.min(row.pricedChecks, row.checks);
+      }
     }
     const present = traded + unstated;
     const revenue = unstated > 0 || traded === 0 ? null : sum;
     const checkSum = counted && present > 0 ? checks : null;
+    // The average divides by the checks that carry a total, as each day on the line does; one day that
+    // does not say which were priced sends the whole bucket back to every check (ADR 0020).
+    const avgOver = pricedKnown ? priced : checkSum;
     const label = grain === 'week' ? shortDay(key) : monthLabel(key);
     const head = grain === 'week' ? `week of ${label}` : label;
     const words = [head];
@@ -136,7 +147,7 @@ export function bucketTill(span: readonly string[], series: readonly DayRow[], g
       unstated,
       revenue,
       checks: checkSum,
-      avg: revenue != null && checkSum != null && checkSum > 0 ? revenue / checkSum : null,
+      avg: revenue != null && checkSum != null && avgOver != null && avgOver > 0 ? revenue / avgOver : null,
     };
   });
 }
