@@ -1529,23 +1529,73 @@ export class DocumentsController {
     const goods = [...new Set(rows.map((l) => l.inventory_id).filter((x): x is string => !!x))];
     const last = new Map<string, number>();
     if (goods.length) {
-      const { data: lots, error: lotErr } = await client
-        .from("inventory_lots")
-        .select("inventory_id, unit_cost, received_at")
-        .eq("restaurant_id", user.restaurantId)
-        .eq("cost_provenance", "invoice")
-        .in("inventory_id", goods)
-        .not("unit_cost", "is", null)
-        .order("received_at", { ascending: false })
-        .limit(1000);
-      if (lotErr)
+      // A VERIFIED PAPER'S OWN LOT IS NOT "THE LAST COST". At VERIFIED the door
+      // lot is finalised with this paper's own unit price and invoice
+      // provenance, so the newest invoiced lot of a good can be the paper itself
+      // (0 percent, nothing said), and for an older paper it is a LATER
+      // delivery (the direction inverted). Each good is compared only with lots
+      // received before this paper's own lot of it.
+      const { data: joins, error: joinErr } = await client
+        .from("document_deliveries")
+        .select("delivery_id")
+        .eq("document_id", id);
+      if (joinErr)
         throw new HttpException(
-          `The goods' last invoiced costs could not be read, so no price was compared: ${lotErr.message}`,
+          `The paper's deliveries could not be read, so no price was compared: ${joinErr.message}`,
           HttpStatus.INTERNAL_SERVER_ERROR,
         );
-      // Newest first: the first lot seen for a good is its last invoiced cost.
-      for (const lot of (lots ?? []) as { inventory_id: string; unit_cost: number | string }[])
-        if (!last.has(lot.inventory_id)) last.set(lot.inventory_id, Number(lot.unit_cost));
+      const deliveries = [
+        ...new Set(((joins ?? []) as { delivery_id: string | null }[]).map((j) => j.delivery_id).filter((x): x is string => !!x)),
+      ];
+      const before = new Map<string, string>();
+      if (deliveries.length) {
+        const { data: own, error: ownErr } = await client
+          .from("inventory_lots")
+          .select("inventory_id, received_at")
+          .eq("restaurant_id", user.restaurantId)
+          .in("delivery_id", deliveries)
+          .in("inventory_id", goods);
+        if (ownErr)
+          throw new HttpException(
+            `The paper's own lots could not be read, so no price was compared: ${ownErr.message}`,
+            HttpStatus.INTERNAL_SERVER_ERROR,
+          );
+        for (const o of (own ?? []) as { inventory_id: string; received_at: string | null }[]) {
+          if (!o.received_at) continue;
+          const seen = before.get(o.inventory_id);
+          if (!seen || o.received_at < seen) before.set(o.inventory_id, o.received_at);
+        }
+      }
+      // ONE NEWEST LOT PER GOOD. A single read capped across every good together
+      // (the old limit of 1000) let a good with many newer lots push another
+      // good's only lot out of the answer, and that good then read as "no
+      // earlier cost": absence reported as health (ADR 0020).
+      const reads = await Promise.all(
+        goods.map(async (good) => {
+          let q = client
+            .from("inventory_lots")
+            .select("inventory_id, unit_cost, received_at")
+            .eq("restaurant_id", user.restaurantId)
+            .eq("cost_provenance", "invoice")
+            .eq("inventory_id", good)
+            .not("unit_cost", "is", null);
+          const bound = before.get(good);
+          if (bound) q = q.lt("received_at", bound);
+          const { data, error: lotErr } = await q
+            .order("received_at", { ascending: false })
+            .limit(1);
+          return { good, data, lotErr };
+        }),
+      );
+      for (const { good, data, lotErr } of reads) {
+        if (lotErr)
+          throw new HttpException(
+            `The goods' last invoiced costs could not be read, so no price was compared: ${lotErr.message}`,
+            HttpStatus.INTERNAL_SERVER_ERROR,
+          );
+        const newest = ((data ?? []) as { unit_cost: number | string }[])[0];
+        if (newest) last.set(good, Number(newest.unit_cost));
+      }
     }
     const perBottle = (uom: string | null) => /^(bottle|btl|bt)$/i.test((uom ?? "").trim());
     return {
