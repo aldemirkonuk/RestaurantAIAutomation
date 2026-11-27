@@ -377,12 +377,15 @@ export default function CommunicationsNext() {
               failed={data.failed.history}
               at={data.historyAt}
             />
-            {/* Labelled by who reads (r105 mail-1). The server counts every kind
-                for an owner or manager (team and guest letters beside vendors',
-                minus automatic ones, as Mail's Today does), but only vendor
-                letters for staff, who are never told of the others. This
-                supersedes the r104 mail-3 label, right only while the SQL was
-                vendor-only. */}
+            {/* Labelled by who reads (r105 mail-1). The label says every kind
+                for an owner or manager, which is true only once #2042 (the
+                30-day count counts every kind: team and guest letters beside
+                vendors', minus automatic ones, as Mail's Today does) is on the
+                branch. On a base without #2042 the summary's in_30d counts
+                vendor letters only (20271206100000), so this PR must land after
+                #2042. Staff are never told of the other kinds, so their label
+                stays vendor-only. This supersedes the r104 mail-3 label, right
+                only while the SQL was vendor-only. */}
             {/* Counted by the server with Mail's own rule (D6): a bounce, an
                 auto-reply or a second copy of one letter is not a reply, so the
                 two tabs give the same number for the same mail. Exact, no floor. */}
