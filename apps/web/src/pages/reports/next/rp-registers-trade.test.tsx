@@ -54,6 +54,17 @@ describe('the till — a sale belongs to the house day (ADR 0296)', () => {
     });
   });
 
+  it('[REVERT-FAILS] marks a day the till rang no check, and only that day, for the tip', () => {
+    const view = till.view(read({ ...OLD_PAYLOAD, timezone: 'America/Los_Angeles', zoneUnset: false }), ctx);
+    const rows = view.cats!.data;
+    const withCheck = rows.filter((r) => r.value !== null);
+    const without = rows.filter((r) => r.value === null);
+    expect(withCheck.length).toBe(1);
+    expect(without.length).toBeGreaterThan(0);
+    expect(withCheck.every((r) => !r.noCheck)).toBe(true);
+    expect(without.every((r) => r.noCheck === true && /· no check$/.test(r.full ?? ''))).toBe(true);
+  });
+
   it('says a house with no zone has no days to file, links to the time-zone setting, and draws no figure', () => {
     const view = till.view(
       read({

@@ -424,6 +424,7 @@ const till = analysis<TillWindow>({
           value: byDate.get(date) ?? null,
           ...(prior ? { prior: prior[i] } : {}),
           full: byDate.has(date) ? shortDay(date) : `${shortDay(date)} · no check`,
+          noCheck: !byDate.has(date),
         })),
         ...(prior ? { priorLabel: `the prior ${w.days} days` } : {}),
         xLabel: 'day',

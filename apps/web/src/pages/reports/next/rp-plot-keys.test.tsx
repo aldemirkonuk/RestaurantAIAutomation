@@ -65,6 +65,22 @@ describe.each(['bars', 'area', 'line'] as const)('the %s drawing', (kind) => {
   });
 });
 
+describe.each(['bars', 'area', 'line'] as const)('the %s drawing, a day the till rang no check', (kind) => {
+  it('[REVERT-FAILS] says no check, once, and never also "not stated"', () => {
+    const series = till([310, null, 220]);
+    series.data[1] = { ...series.data[1], full: 'Day 2 · no check', noCheck: true };
+    const { container } = render(<CatPlot series={series} kind={kind} />);
+    fireEvent.focus(surface(container));
+    arrow(surface(container), 'ArrowRight');
+    expect(live().textContent).toBe('Day 2 · no check. no check');
+    expect(live().textContent).not.toMatch(/not stated/i);
+    const tip = container.querySelector('.rp-tip');
+    expect(tip?.textContent).toContain('No check');
+    expect(tip?.textContent).not.toMatch(/not stated/i);
+    expect(live().textContent).not.toMatch(/\$0|\b0\b/);
+  });
+});
+
 describe('Escape', () => {
   it('hides the tip and the spoken line, and stops there; the next arrow brings it back', () => {
     const { container } = render(<CatPlot series={till([310, 480, 220])} kind="bars" />);
