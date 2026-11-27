@@ -31,6 +31,7 @@ vi.mock('./useCellarNextData', () => ({
     loading: false,
     error: null,
   }),
+  useCocktailManages: () => true,
   useCocktailWrites: () => ({
     create: { mutateAsync: h.create, isPending: false },
     amend: { mutateAsync: h.amend, isPending: false },

@@ -10,6 +10,9 @@ import DrinkCards from './DrinkCards';
 import WhatIsInAServe from './WhatIsInAServe';
 import { rowNote, type DraftRow } from './LineRow';
 import { whyBlocked } from './RecipeSheet';
+import { recipeWords } from './recipeWords';
+
+const DISH = recipeWords('dish');
 
 const fig = (value: number | null, missing: string[] = [], atLeast = false) => ({ value, atLeast, missing });
 const say = (n: number) => `$${n.toFixed(2)}`;
@@ -50,23 +53,23 @@ const saved = (costBasis: string, costPerServe: number | null = null) =>
 
 describe('the line notes', () => {
   it('say dish and goods on a dish, and drink and bottle on a drink', () => {
-    expect(rowNote(row({}), null, true)?.text).toBe("This dish won't take stock until 'Flour' is linked to something on your shelf.");
+    expect(rowNote(row({}), null, DISH)?.text).toBe("This dish won't take stock until 'Flour' is linked to something on your shelf.");
     expect(rowNote(row({}), null)?.text).toBe("This drink won't take stock until 'Flour' is linked to something on your shelf.");
     const linked = { inventoryId: 'i', itemName: 'Flour 1 kg' };
-    const partial = rowNote(row({ ...linked, saved: saved('invoice_lot_wac_partial', 1.5) }), say, true)?.text;
+    const partial = rowNote(row({ ...linked, saved: saved('invoice_lot_wac_partial', 1.5) }), say, DISH)?.text;
     expect(partial).toBe('$1.50 a plate, from the goods that have an invoice; some on hand have none yet.');
-    expect(rowNote(row({ ...linked, saved: saved('invoice_lot_wac', 1.5) }), say, true)?.text).toBe('$1.50 a plate');
+    expect(rowNote(row({ ...linked, saved: saved('invoice_lot_wac', 1.5) }), say, DISH)?.text).toBe('$1.50 a plate');
     expect(rowNote(row({ ...linked, saved: saved('invoice_lot_wac', 1.5) }), say)?.text).toBe('$1.50 a serve');
   });
 
   it('say pack, not bottle, when a dish line has no size, and do not send a cook to pour', () => {
     const linked = { inventoryId: 'i', itemName: 'Flour' };
-    expect(rowNote(row({ ...linked, saved: saved('size_not_known') }), say, true)?.text).toContain('how much one pack of Flour holds');
+    expect(rowNote(row({ ...linked, saved: saved('size_not_known') }), say, DISH)?.text).toContain('how much one pack of Flour holds');
     expect(rowNote(row({ ...linked, saved: saved('size_not_known') }), say)?.text).toContain('how much one bottle of Flour holds');
-    const pack = rowNote(row({ ...linked, unit: 'ml', saved: saved('pack_size_not_known') }), say, true)?.text ?? '';
+    const pack = rowNote(row({ ...linked, unit: 'ml', saved: saved('pack_size_not_known') }), say, DISH)?.text ?? '';
     expect(pack).toContain('Link the line to the single pack you buy it in.');
     expect(pack).not.toMatch(/bottle|pour/);
-    const mismatch = rowNote(row({ ...linked, saved: saved('unit_mismatch') }), say, true)?.text ?? '';
+    const mismatch = rowNote(row({ ...linked, saved: saved('unit_mismatch') }), say, DISH)?.text ?? '';
     expect(mismatch).toContain('Change the unit, or link the item it is bought as.');
     expect(mismatch).not.toMatch(/pour/);
     expect(rowNote(row({ ...linked, unit: 'ml', saved: saved('pack_size_not_known') }), say)?.text).toContain('single bottle you pour from');
@@ -76,7 +79,7 @@ describe('the line notes', () => {
 describe('the save refusal', () => {
   it('asks how many plates a dish makes, and how many serves a drink', () => {
     const r = [row({ inventoryId: 'i' })];
-    expect(whyBlocked(r, 0, true)).toBe('Say how many plates it makes: a whole number from 1 to 1,000.');
+    expect(whyBlocked(r, 0, DISH)).toBe('Say how many plates it makes: a whole number from 1 to 1,000.');
     expect(whyBlocked(r, 0)).toBe('Say how many serves it makes: a whole number from 1 to 1,000.');
   });
 });

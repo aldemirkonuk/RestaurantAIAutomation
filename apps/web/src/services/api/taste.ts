@@ -67,6 +67,8 @@ export interface TasteBasis {
   lineSources: Array<{ name: string; from: LineFrom }>;
   /** Lines whose taste is not known at all (they add nothing). */
   unknownNames: string[];
+  /** Counted lines ("1 each") with no stated weight: left out of the roll-up, since a count has no weight of its own. */
+  unweighed: number;
 }
 
 export interface TasteLayer {
@@ -152,7 +154,8 @@ function parseBasis(raw: unknown): TasteBasis | null {
     .filter((l): l is Record<string, unknown> => isObj(l) && typeof l.name === 'string' && l.name.trim() !== '' && typeof l.from === 'string' && LINE_FROM.has(l.from))
     .map((l) => ({ name: l.name as string, from: l.from as LineFrom }));
   const unknownNames = (Array.isArray(raw.unknownNames) ? raw.unknownNames : []).filter((n): n is string => typeof n === 'string' && n.trim() !== '');
-  return { notKnown, lineSources, unknownNames };
+  const unweighed = typeof raw.unquantified === 'number' && Number.isInteger(raw.unquantified) && raw.unquantified > 0 ? raw.unquantified : 0;
+  return { notKnown, lineSources, unknownNames, unweighed };
 }
 
 /** A body this file can read, or null. `layers` must be a list; `effective` may be null. */

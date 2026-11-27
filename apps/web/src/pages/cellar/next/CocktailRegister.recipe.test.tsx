@@ -42,6 +42,7 @@ vi.mock('./useCellarNextData', () => {
       loading: false,
       error: null,
     }),
+    useCocktailManages: () => true,
     useCocktailWrites: () => ({ create: mutation, amend: mutation, retire: mutation }),
   };
 });
@@ -101,8 +102,8 @@ describe('CocktailRegister with the real recipe sheet', () => {
     mount(`/cocktails?open=${CB}`);
     const sheet = await screen.findByRole('region', { name: 'Recipe for Margarita' });
     const cards = await within(sheet).findByTestId('drink-cards');
-    expect(within(cards).getByTestId('drink-card-cost')).toHaveTextContent('₺10.00');
-    expect(within(cards).getByTestId('drink-card-price')).toHaveTextContent('₺450.00');
+    expect(within(cards).getByTestId('drink-card-cost')).toHaveTextContent('₺10,00');
+    expect(within(cards).getByTestId('drink-card-price')).toHaveTextContent('₺450,00');
     // Order on the page: cards, then the nutrition card (here: said as not read), then the lines.
     const order = [cards, within(sheet).getByTestId('recipe-whatisin-unread'), within(sheet).getAllByTestId('recipe-line')[0]];
     for (let i = 1; i < order.length; i += 1) {
@@ -232,7 +233,7 @@ describe('CocktailRegister with the real recipe sheet', () => {
 
 describe("the cocktail list prints the house's money", () => {
   // r7 browser check (2026-11-12): on a lira house the list read "$14.00"
-  // while the same drink's cards read "₺14.00". The list and the ledger now
+  // while the same drink's cards read "₺14,00". The list and the ledger now
   // print through the same `useHouseMoney` the cards use.
   it('a lira house reads lira on the list and on the ledger, never $', async () => {
     const register = {
@@ -256,10 +257,10 @@ describe("the cocktail list prints the house's money", () => {
       </MemoryRouter>,
     );
     const [list] = screen.getAllByRole('table');
-    expect(await within(list).findAllByText('₺450.00')).toHaveLength(2);
+    expect(await within(list).findAllByText('₺450,00')).toHaveLength(2);
     const ledger = screen.getByTestId('cocktail-ledger');
-    expect(within(ledger).getByText('₺14.00')).toBeInTheDocument();
-    expect(within(ledger).getByText('₺42.00')).toBeInTheDocument();
+    expect(within(ledger).getByText('₺14,00')).toBeInTheDocument();
+    expect(within(ledger).getByText('₺42,00')).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/\$\d/);
   });
 });

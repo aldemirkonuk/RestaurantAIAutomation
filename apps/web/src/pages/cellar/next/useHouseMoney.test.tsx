@@ -7,6 +7,7 @@ import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { cellMoney } from '../../inventory/next/useInventoryNextData';
 import { REFERENCE_CURRENCY_NOTE, sayReference, useHouseMoney } from './useHouseMoney';
 
 const house = vi.hoisted(() => ({
@@ -36,10 +37,17 @@ beforeEach(() => {
 });
 
 describe("useHouseMoney: the house's own money", () => {
-  it('a lira house reads lira, never $', async () => {
+  it('a lira house reads lira, never $, in the form a Turkish owner writes (r104: not 14.00)', async () => {
     const { result } = say();
-    await waitFor(() => expect(result.current(14)).toBe('₺14.00'));
-    expect(result.current(1234.5)).toBe('₺1,234.50');
+    await waitFor(() => expect(result.current(14)).toBe('₺14,00'));
+    expect(result.current(1234.5)).toBe('₺1.234,50');
+  });
+
+  it('the inventory drawer says money the same way: ₺2,55 in a lira house, £2.55 in a pound house (r104)', () => {
+    expect(cellMoney(2.55, { state: 'recorded', code: 'TRY' })).toBe('₺2,55');
+    expect(cellMoney(1234.5, { state: 'recorded', code: 'TRY' })).toBe('₺1.234,50');
+    expect(cellMoney(2.55, { state: 'recorded', code: 'GBP' })).toBe('£2.55');
+    expect(cellMoney(1234.5, { state: 'recorded', code: 'EUR' })).toBe('€1,234.50');
   });
 
   it('a dollar house still reads dollars', async () => {
@@ -56,10 +64,10 @@ describe("useHouseMoney: the house's own money", () => {
 
   it('an unknown amount is the dash; a numeric string is its number', async () => {
     const { result } = say();
-    await waitFor(() => expect(result.current(14)).toBe('₺14.00'));
+    await waitFor(() => expect(result.current(14)).toBe('₺14,00'));
     expect(result.current(null)).toBe('—');
     expect(result.current(Number.NaN)).toBe('—');
-    expect(result.current('14' as unknown as number)).toBe('₺14.00');
+    expect(result.current('14' as unknown as number)).toBe('₺14,00');
   });
 
   it('an unreadable currency says so beside the figure', async () => {

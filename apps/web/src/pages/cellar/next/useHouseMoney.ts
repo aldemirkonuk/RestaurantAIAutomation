@@ -35,6 +35,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import { settingsApi } from '../../../services/api/settings';
+import { formatMoney } from '../../../lib/currency';
+import { houseNumberLocale } from '../../../lib/house-number';
 import { fmtMoney } from '../../receipts/next/rc2-format';
 import { EM, num } from './cellar-format';
 
@@ -60,7 +62,10 @@ export function useHouseMoney(): SayMoney {
     if (n === null) return EM;
     if (q.isLoading) return '…';
     if (unread) return `${n.toFixed(2)} (the house's money could not be read)`;
-    return fmtMoney(n, code);
+    // A money one country owns is written as that country writes it (₺14,00,
+    // not ₺14.00): the same form its counts and shares take (r104, DD-r102-25).
+    const home = houseNumberLocale(code);
+    return home ? formatMoney(n, code, { locale: home }) : fmtMoney(n, code);
   };
 }
 

@@ -67,6 +67,11 @@ export const unknownLinesWords = (b: TasteBasis): string | null => {
   return names.length ? `Left out because its taste is not known: ${names.join(', ')}.` : null;
 };
 
+export const unweighedLinesWords = (b: TasteBasis): string | null =>
+  b.unweighed > 0
+    ? `${b.unweighed} counted ${b.unweighed === 1 ? 'ingredient is' : 'ingredients are'} not weighed, so ${b.unweighed === 1 ? 'it adds' : 'they add'} nothing to the taste.`
+    : null;
+
 export function Glyph({ shape }: { shape: MarkShape }) {
   const common = { width: 14, height: 14, viewBox: '0 0 14 14', 'aria-hidden': true, focusable: false } as const;
   if (shape === 'solid') {
@@ -250,6 +255,7 @@ export default function TasteCard({ row, house, restaurantId, subject = 'good', 
   const notKnown = (basis?.notKnown ?? []).filter((k) => !shown.has(k));
   const workedFrom = basis ? workedFromWords(basis) : null;
   const leftOut = basis ? unknownLinesWords(basis) : null;
+  const unweighed = basis ? unweighedLinesWords(basis) : null;
   const known = rows.length > 0 || conflicts.length > 0 || words.length > 0 || notKnown.length > 0;
   const summary = e ? summaryLine(e) : null;
   const done = (fresh: TasteData) => {
@@ -294,6 +300,11 @@ export default function TasteCard({ row, house, restaurantId, subject = 'good', 
           {leftOut ? (
             <p className="iv-note" data-testid="taste-left-out">
               {leftOut}
+            </p>
+          ) : null}
+          {unweighed ? (
+            <p className="iv-note" data-testid="taste-not-weighed">
+              {unweighed}
             </p>
           ) : null}
         </>

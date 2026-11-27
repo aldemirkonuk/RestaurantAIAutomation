@@ -238,12 +238,16 @@ export class TasteService {
     const raw = (rows.data ?? []) as Array<{ label: string; qty_base: number; base_unit: string; inventory_id?: string | null }>;
     // A line that names a good is worked from that good's own taste first; the label's class prior is the fallback.
     const own = await this.goodTastes(restaurantId, raw.map((r) => r.inventory_id ?? null));
+    const pieceG = await this.pieceGrams(restaurantId, raw.filter((r) => r.base_unit === 'each_milli').map((r) => r.inventory_id ?? null), readFail);
     const lines: RollupLine[] = raw.map((r) => {
       const o = r.inventory_id ? own.get(r.inventory_id) : undefined;
       const base = o ? { own: o } : {};
       // ml10 = tenths of a ml, mg = milligrams; a count ("1 each") has no known weight.
       if (r.base_unit === 'ml10') return { name: r.label, qty: Number(r.qty_base) / 10, unit: 'ml' as const, ...base };
       if (r.base_unit === 'mg') return { name: r.label, qty: Number(r.qty_base) / 1000, unit: 'g' as const, ...base };
+      // A count weighs what the house stated for that very good (as the cost does), and nothing else: no table of what an egg weighs.
+      const g = r.inventory_id ? pieceG.get(r.inventory_id) : undefined;
+      if (r.base_unit === 'each_milli' && g) return { name: r.label, qty: (Number(r.qty_base) / 1000) * g, unit: 'g' as const, ...base };
       return { name: r.label, qty: null, unit: 'g' as const, ...base };
     });
     if (lines.length === 0) {
@@ -293,6 +297,21 @@ export class TasteService {
    * never does. A good with no layer is simply absent. A failed read is said,
    * never read as "no goods have a taste".
    */
+  /** The grams one piece of each good weighs, where the house stated it. A failed read is a refusal, never "no weight". */
+  private async pieceGrams(restaurantId: string, ids: Array<string | null>, readFail: (e: { code?: string; message: string }) => Error): Promise<Map<string, number>> {
+    const want = [...new Set(ids.filter((x): x is string => !!x))];
+    const out = new Map<string, number>();
+    if (want.length === 0) return out;
+    const { data, error } = await this.db.getClient().from('restaurant_inventory').select('id, piece_grams')
+      .eq('restaurant_id', restaurantId).in('id', want);
+    if (error) throw readFail(error);
+    for (const r of (data ?? []) as Array<{ id: string; piece_grams: number | string | null }>) {
+      const g = Number(r.piece_grams);
+      if (r.piece_grams !== null && r.piece_grams !== '' && Number.isFinite(g) && g > 0) out.set(r.id, g);
+    }
+    return out;
+  }
+
   private async goodTastes(restaurantId: string, ids: Array<string | null>): Promise<Map<string, GoodTaste>> {
     const want = [...new Set(ids.filter((x): x is string => !!x))];
     const out = new Map<string, GoodTaste>();

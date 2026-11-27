@@ -15,6 +15,7 @@ import { fmtWhen } from '../../../lib/mudavym/format';
 import type { Provider } from '../../../services/api/providers';
 import type { StorageLocation } from '../../../hooks/useStorageLocations';
 import ItemCards, { CARD_TITLE, type CardId, type FiguresLoad, type InsideLoad } from './ItemCards';
+import { useListTaxFor } from '../../cellar/next/recipe/useListTax';
 import ItemUsedIn, { type DishesLoad, type DrinksLoad, type UsedInLoad } from './ItemUsedIn';
 import WhatIsInIt from './NutritionCard';
 import HowItTastes from './TasteCard';
@@ -169,6 +170,8 @@ function DrawerBody(props: ItemDrawerProps & { row: InvRow }) {
   const hasContents = (house.kind ?? row?.kind ?? null) !== 'supply';
 
   const enabled = row !== null && restaurantId !== null;
+  // The tax basis is read for owners and managers only: staff see no share.
+  const tax = useListTaxFor(restaurantId, canManage);
   const figuresQ = useQuery({ ...figuresQuery(restaurantId ?? '', id), enabled });
   // The same query the slot's card reads, so the KPI card and the card agree.
   const nutritionQ = useQuery({ ...nutritionQuery(restaurantId ?? '', id), enabled: enabled && hasContents });
@@ -381,6 +384,7 @@ function DrawerBody(props: ItemDrawerProps & { row: InvRow }) {
         drinks={drinks}
         canManage={canManage}
         currency={currency}
+        tax={tax}
         onRetry={() => void usedInQ.refetch()}
         onRetryDishes={() => void dishesQ.refetch()}
         onRetryDrinks={() => void drinksQ.refetch()}
@@ -431,16 +435,8 @@ export default function ItemDrawer(props: ItemDrawerProps) {
     if (restaurantId === null) return;
     for (const other of [prevId, nextId]) {
       if (other === null) continue;
-      void qc.prefetchQuery({
-        queryKey: inventoryItemKeys.figures(restaurantId, other),
-        queryFn: () => getItemFigures(other, restaurantId),
-        staleTime: 30_000,
-      });
-      void qc.prefetchQuery({
-        queryKey: inventoryItemKeys.usedIn(restaurantId, other),
-        queryFn: () => getItemUsedIn(other, restaurantId),
-        staleTime: 60_000,
-      });
+      void qc.prefetchQuery(figuresQuery(restaurantId, other));
+      void qc.prefetchQuery(usedInQuery(restaurantId, other));
     }
   }, [qc, restaurantId, prevId, nextId]);
 

@@ -124,7 +124,7 @@ describe('getTaste: unreachable and the roll-up basis', () => {
     const b = body();
     b.layers.push({
       source: 'recipe', version: 1, method: 'computed', statedByName: null, statedAt: '2026-11-19T10:00:00Z', hasNote: false, noteText: null,
-      basis: { notKnown: ['sour', 'nonsense', 4], lineSources: [{ name: 'Gin', from: 'good' }, { name: 'Lime', from: 'class_prior' }, { name: 'Tomato', from: 'class_prior_estimate' }, { name: 'Foo', from: 'unknown' }, { name: 'Bad', from: 'wat' }, { name: '', from: 'good' }], unknownNames: ['Foo', 7] },
+      basis: { notKnown: ['sour', 'nonsense', 4], lineSources: [{ name: 'Gin', from: 'good' }, { name: 'Lime', from: 'class_prior' }, { name: 'Tomato', from: 'class_prior_estimate' }, { name: 'Foo', from: 'unknown' }, { name: 'Bad', from: 'wat' }, { name: '', from: 'good' }], unknownNames: ['Foo', 7], unquantified: 2 },
     } as never);
     const r = await (async () => { http.get.mockResolvedValue({ data: b }); return getTaste('cocktail', 'c1', R); })();
     if (r.state !== 'ready') throw new Error('not ready');
@@ -133,6 +133,7 @@ describe('getTaste: unreachable and the roll-up basis', () => {
       notKnown: ['sour'],
       lineSources: [{ name: 'Gin', from: 'good' }, { name: 'Lime', from: 'class_prior' }, { name: 'Tomato', from: 'class_prior_estimate' }, { name: 'Foo', from: 'unknown' }],
       unknownNames: ['Foo'],
+      unweighed: 2,
     });
   });
 });

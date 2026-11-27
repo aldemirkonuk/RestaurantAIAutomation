@@ -14,7 +14,7 @@
  * bottles, cases, kegs, packs or items takes a whole number, as before.
  */
 import { fmtQty } from './ItemCards';
-import { fmtCount } from './useInventoryNextData';
+import { fmtCount, houseNumber } from './useInventoryNextData';
 
 export interface AmountUnit {
   /** The book's unit: 'g', 'ml', or a counted unit ('bottle' when none is recorded). */
@@ -52,7 +52,7 @@ const COUNTED: Record<string, string> = {
  * one-place "11.8 kg" the list rounds to, since this is what is about to be booked.
  */
 function exactMeasure(n: number, small: string, large: string): string {
-  const exact = (v: number) => v.toLocaleString('en-GB', { maximumFractionDigits: 3 });
+  const exact = (v: number) => houseNumber(v, 3);
   return Math.abs(n) >= 1000 ? `${exact(n / 1000)} ${large}` : `${exact(n)} ${small}`;
 }
 

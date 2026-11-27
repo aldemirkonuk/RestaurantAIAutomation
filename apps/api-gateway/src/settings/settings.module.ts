@@ -1,6 +1,8 @@
 import { Module } from "@nestjs/common";
 import { SettingsController } from "./settings.controller";
 import { HouseAskTrainingController } from "./house-ask-training.controller";
+import { HouseTaxBasisController } from "./house-tax-basis.controller";
+import { HouseTaxBasisService } from "./house-tax-basis.service";
 import { SettingsService } from "./settings.service";
 import { ApprovalThresholdsService } from "./approval-thresholds.service";
 import { HouseCurrencyService } from "./house-currency.service";
@@ -47,7 +49,7 @@ import { SealModule } from "../common/seal/seal.module";
     OrganizationsModule,
     SealModule,
   ],
-  controllers: [SettingsController, HouseAskTrainingController],
+  controllers: [SettingsController, HouseAskTrainingController, HouseTaxBasisController],
   providers: [
     SettingsService,
     ApprovalThresholdsService,
@@ -57,6 +59,7 @@ import { SealModule } from "../common/seal/seal.module";
     HouseToneScoringService,
     HouseDataTermsService,
     HouseAskTrainingService,
+    HouseTaxBasisService,
   ],
   exports: [
     SettingsService,

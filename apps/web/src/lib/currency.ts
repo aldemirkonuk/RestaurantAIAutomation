@@ -349,7 +349,7 @@ export const CURRENCY_NOT_RECORDED = 'currency not recorded'
 export function formatMoney(
   amount: number | null | undefined,
   currency: string | null | undefined,
-  opts: { maximumFractionDigits?: number } = {},
+  opts: { maximumFractionDigits?: number; locale?: string } = {},
 ): string {
   if (amount == null || !Number.isFinite(amount)) return '-'
   // The CURRENCY'S own decimal places, not two. Yen have no subunit and a
@@ -359,13 +359,13 @@ export function formatMoney(
   // code this product does not hold falls back to two rather than to nothing.
   const digits = opts.maximumFractionDigits ?? currencyMinorUnits(currency) ?? 2
   if (typeof currency !== 'string' || !/^[A-Z]{3}$/.test(currency)) {
-    return `${amount.toLocaleString(undefined, {
+    return `${amount.toLocaleString(opts.locale, {
       minimumFractionDigits: digits,
       maximumFractionDigits: digits,
     })} (${CURRENCY_NOT_RECORDED})`
   }
   try {
-    return new Intl.NumberFormat(undefined, {
+    return new Intl.NumberFormat(opts.locale, {
       style: 'currency',
       currency,
       minimumFractionDigits: digits,
@@ -374,7 +374,7 @@ export function formatMoney(
   } catch {
     // A well-formed code `Intl` does not know still names the money. Printing
     // the number beside the code is right; falling back to dollars is not.
-    return `${amount.toLocaleString(undefined, {
+    return `${amount.toLocaleString(opts.locale, {
       minimumFractionDigits: digits,
       maximumFractionDigits: digits,
     })} ${currency}`

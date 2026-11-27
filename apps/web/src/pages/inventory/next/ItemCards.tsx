@@ -13,7 +13,7 @@
 import type { ReactNode } from 'react';
 import type { ItemFigures, ItemNutrition } from '../../../services/api/inventory';
 import { figureWords, PER } from './nutrition-words';
-import { cellMoney, EM, fmtCount, fmtPace, type HouseCurrency, type InvRow } from './useInventoryNextData';
+import { cellMoney, EM, fmtCount, fmtPace, houseNumber, sayHouseNumbers, type HouseCurrency, type InvRow } from './useInventoryNextData';
 import { fmtWhen } from '../../../lib/mudavym/format';
 import { shortDate } from '../../cellar/next/cellar-format';
 import { formatHousePercent } from '../../../lib/house-number';
@@ -71,7 +71,7 @@ const UNIT_WORDS: Record<string, [string, string]> = {
  * right after the count sheet said "now reads 1.75 kg".
  */
 function fmtScaled(n: number): string {
-  return n.toLocaleString('en-GB', { maximumFractionDigits: 3 });
+  return houseNumber(n, 3);
 }
 
 /**
@@ -285,6 +285,7 @@ export function usageSaid(row: InvRow, uom: string | null): string | null {
 }
 
 export default function ItemCards({ row, uom, kind, canManage, currency, figures, inside, open, onOpen }: ItemCardsProps) {
+  sayHouseNumbers(currency);
   const pace = row.analyticsReadable;
   // Only a pace that was read can say "not drawn by sales": an unread one is
   // null too, and stays unread rather than read as a measured answer.

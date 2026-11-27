@@ -80,20 +80,22 @@ export function fmtMoney(
    * bare symbol: a currency mark is a claim about the amount.
    */
   currency: string | null | undefined,
+  /** The house's number form (`houseNumberLocale`); omitted = en-GB as before. */
+  locale: string = 'en-GB',
 ): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return EM;
   if (typeof currency !== 'string' || !/^[A-Z]{3}$/.test(currency)) {
-    return `${value.toLocaleString('en-GB')} (currency not recorded)`;
+    return `${value.toLocaleString(locale)} (currency not recorded)`;
   }
   try {
-    return new Intl.NumberFormat('en-GB', {
+    return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency,
       maximumFractionDigits: value % 1 === 0 ? 0 : 2,
     }).format(value);
   } catch {
     // A well-formed ISO code `Intl` does not know. The number is still true.
-    return `${value.toLocaleString('en-GB')} ${currency}`;
+    return `${value.toLocaleString(locale)} ${currency}`;
   }
 }
 
