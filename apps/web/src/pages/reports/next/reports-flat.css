@@ -218,3 +218,22 @@
     max(12px, env(safe-area-inset-bottom))
     max(16px, env(safe-area-inset-left));
 }
+
+/* "Copy link" (CuttingFlat.tsx): the confirmation is one polite line that keeps
+   its row whether or not it is saying anything (no shift when it appears or
+   goes); the fallback is a read-only, pre-selected field, never a dead end. */
+.rp-flat__said {
+  flex: 0 0 auto;
+  min-height: 1.4em;
+  margin: 0;
+}
+.rp-flat__manual {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 4px;
+  padding-top: 8px;
+}
+.rp-flat__manual input {
+  width: 100%;
+  min-height: 44px;
+}
