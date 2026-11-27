@@ -49,10 +49,21 @@ export function kindPartialWords(kind: MailKindFilter): string {
   return `Showing the people loaded so far, and none of them is ${who}. Show older people to look further.`;
 }
 
-/** What the list says when the chosen kind has nobody in it. */
-export function kindEmptyWords(kind: MailKindFilter, readsAll: boolean): string {
+/**
+ * What the list says when the chosen kind has nobody in it. The reason is the reader's own: staff are never shown
+ * team or guest mail (the gateway gives it to owners and managers only), and the Waiting filter is about vendors.
+ */
+export function kindEmptyWords(
+  kind: MailKindFilter,
+  readsAll: boolean,
+  reader: { canReply: boolean; waitingOnly: boolean } = { canReply: true, waitingOnly: false },
+): string {
   const who = kind === 'team' ? 'team members' : kind === 'guest' ? 'guests' : 'vendors';
   if (kind === 'all') return 'No one has written to this house yet.';
+  if (reader.waitingOnly && kind !== 'vendor') {
+    return `No ${kind === 'team' ? 'team member' : 'guest'} is waiting on the house: only vendors wait.`;
+  }
+  if (!reader.canReply && kind !== 'vendor') return 'Mail with team members and guests is shown to the owner and managers.';
   if (!readsAll && kind !== 'vendor') {
     return `Mail with ${who} is not read yet: the house reads vendor mail only, until an owner or manager says otherwise below.`;
   }

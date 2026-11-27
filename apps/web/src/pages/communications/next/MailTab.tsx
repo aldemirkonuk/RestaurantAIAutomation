@@ -416,6 +416,7 @@ function People({
   waitingOnly,
   kind,
   readsEverything,
+  canReply,
   search,
   onClearSearch,
   reader,
@@ -432,6 +433,8 @@ function People({
   kind: MailKindFilter;
   /** The house said yes to reading every conversation. */
   readsEverything: boolean;
+  /** Owners and managers; staff are shown vendor mail only. */
+  canReply: boolean;
   /** The trimmed search term, '' for none (r28 mail gap 16). */
   search: string;
   onClearSearch: () => void;
@@ -460,8 +463,8 @@ function People({
   if (ready) shown.current = listIdentity;
   const storedKinds = pages[0]?.storedKinds ?? null;
   const house = useHouse();
-  // Remember the unfiltered first-page count so the next cold load draws that many bars.
-  const settled = Boolean(q.data) && !waitingOnly && !search;
+  // Remember the unfiltered first-page count so the next cold load draws that many bars: a kind's page is shorter.
+  const settled = Boolean(q.data) && !q.isPlaceholderData && !waitingOnly && !search && kind === 'all';
   const firstPageCount = pages[0]?.people.length ?? 0;
   useEffect(() => {
     if (settled) rememberRowCount(house, firstPageCount);
@@ -493,7 +496,7 @@ function People({
         </p>
       ) : people.length === 0 && kind !== 'all' ? (
         <p data-testid="people-empty-kind" role="status" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', maxWidth: '68ch' }}>
-          {kindEmptyWords(kind, readsEverything)}
+          {kindEmptyWords(kind, readsEverything, { canReply, waitingOnly })}
         </p>
       ) : people.length === 0 ? (
         <p data-testid="people-empty" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', maxWidth: '68ch' }}>
@@ -955,6 +958,7 @@ export function MailTab({
             waitingOnly={waitingOnly}
             kind={kind}
             readsEverything={readAll.reads}
+            canReply={canReply}
             search={search}
             onClearSearch={clearSearch}
             reader={reader}

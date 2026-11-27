@@ -208,6 +208,71 @@ describe('the kind filter', () => {
   });
 });
 
+describe('the kind filter while the next kind is read (r103 fixer)', () => {
+  /** Hold the answer for one kind until the test lets it through. */
+  function holdKind(kind: string) {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const base = peopleFor;
+    peopleFor = (p) => base(p);
+    const inner = api.get.getMockImplementation()!;
+    api.get.mockImplementation(async (url: string, cfg?: { params?: Record<string, string> }) => {
+      if (url === '/mail/people' && cfg?.params?.kind === kind) await gate;
+      return inner(url, cfg);
+    });
+    return release;
+  }
+
+  it('while Team is read the list never claims there is nobody of that kind', async () => {
+    peopleFor = (p) => (p.kind === 'vendor' ? [MIXED[0]] : p.kind === 'team' ? [MIXED[1]] : MIXED);
+    mount();
+    await screen.findAllByTestId('mail-person');
+    fireEvent.click(screen.getByRole('button', { name: 'Vendors' }));
+    await waitFor(() => expect(screen.getAllByTestId('mail-person')).toHaveLength(1));
+    const release = holdKind('team');
+    fireEvent.click(screen.getByRole('button', { name: 'Team' }));
+    await waitFor(() => expect(peopleCalls().some((p) => p.kind === 'team')).toBe(true));
+    expect(screen.queryByTestId('people-empty-kind')).toBeNull();
+    expect(screen.queryByTestId('people-partial-kind')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Show older people' })).toBeNull();
+    release();
+    await waitFor(() => expect(screen.getByTestId('mail-person')).toHaveTextContent('Deniz Kaya'));
+  });
+
+  it('a short kind list does not overwrite the remembered first-page count', async () => {
+    window.sessionStorage.clear();
+    peopleFor = (p) => (p.kind === 'team' ? [MIXED[1]] : MIXED);
+    mount();
+    await screen.findAllByTestId('mail-person');
+    await waitFor(() => expect(window.sessionStorage.getItem('mail-people-rows:r1')).toBe('3'));
+    fireEvent.click(screen.getByRole('button', { name: 'Team' }));
+    await waitFor(() => expect(screen.getAllByTestId('mail-person')).toHaveLength(1));
+    expect(window.sessionStorage.getItem('mail-people-rows:r1')).toBe('3');
+  });
+
+  it('staff are not told the house reads vendor mail only; they are told who sees team and guest mail', async () => {
+    auth.current = { user: { role: 'staff', restaurantId: 'r1' }, activeRestaurantId: 'r1', activeRole: 'staff' };
+    grants = [{ connectionId: 'c1', integrationId: 'gmail_read_all', houseAccess: { revoked: false } }];
+    peopleFor = () => [MIXED[0]];
+    mount();
+    await screen.findAllByTestId('mail-person');
+    fireEvent.click(screen.getByRole('button', { name: 'Team' }));
+    const line = await screen.findByTestId('people-empty-kind');
+    expect(line).not.toHaveTextContent('vendor mail only');
+    expect(line).toHaveTextContent('Mail with team members and guests is shown to the owner and managers.');
+  });
+
+  it('an empty Team list under Waiting says only vendors wait, not that no conversation exists', () => {
+    expect(kindEmptyWords('team', true, { canReply: true, waitingOnly: true })).toBe(
+      'No team member is waiting on the house: only vendors wait.',
+    );
+    expect(kindEmptyWords('guest', true, { canReply: true, waitingOnly: true })).toContain('only vendors wait');
+    expect(kindEmptyWords('team', true, { canReply: true, waitingOnly: false })).toBe('No conversation with team members yet.');
+  });
+});
+
 describe('the letters', () => {
   it('shows a waiting state while the letters are fetched', async () => {
     mount('/communications?tab=mail&thread=gm%3Aabc');

@@ -125,7 +125,9 @@ export function useMailPeople(waitingOnly: boolean, search = '', kind: MailKindF
   return useInfiniteQuery<MailPeoplePage>({
     queryKey: mailKeys.people(house, waitingOnly, search, kind),
     initialPageParam: null as string | null,
-    placeholderData: (previous) => previous,
+    // The last list stands in only within one kind: another kind's pages narrowed to this kind leave nothing, and
+    // "nobody of this kind" (or a cursor that belongs to the other kind) would be claimed while this one is read.
+    placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[4] === kind ? previous : undefined),
     queryFn: async ({ pageParam }) => {
       const params: Record<string, string> = {};
       if (waitingOnly) params.waiting = '1';
