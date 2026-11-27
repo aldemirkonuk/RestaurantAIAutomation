@@ -45,7 +45,7 @@ let reduced = false;
 // A running slide: while it is not cancelled, its row is drawn RESIDUE px below where it is laid out.
 const RESIDUE = 20;
 const running = new Map<Element, number>();
-const animate = vi.fn(function (this: Element) {
+const animate = vi.fn(function (this: Element, _frames: unknown, _options: unknown) {
   running.set(this, RESIDUE);
   return { cancel: () => void running.delete(this) };
 });
