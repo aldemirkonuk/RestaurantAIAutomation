@@ -30,6 +30,7 @@
  * tuck on early release); row settle for the doc open; ink micro-states.
  */
 
+import { invalidateItemReads } from '../../inventory/next/item-queries';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign';
@@ -1032,6 +1033,8 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
     mutationFn: (challenge?: string | null) => documentsApi.verify(doc.id, challenge),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['receipts-next'] });
+      // A verified paper settles costs: a warm good's figures must not predate it.
+      invalidateItemReads(qc, rid);
       onVerified();
     },
   });
