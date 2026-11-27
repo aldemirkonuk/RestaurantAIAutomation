@@ -64,6 +64,19 @@ describe("GET /procurement/documents/:id/price-moves, who may read it (r109)", (
     expect(out.lines.map((l: any) => l.lineId)).toEqual(["l1"]);
   });
 
+  it("a role with stray spaces is read as the role it names", async () => {
+    const { c } = controller();
+    const out = await c.priceMoves("d1", as(" manager "));
+    expect(out.lines.map((l: any) => l.lineId)).toEqual(["l1"]);
+  });
+
+  it("a request with no user at all is refused in words, not with a crash", async () => {
+    const { c, reads } = controller();
+    const e = await refusal(c.priceMoves("d1", undefined as any));
+    expect(e.getStatus()).toBe(403);
+    expect(reads).toEqual([]);
+  });
+
   it.each(["staff", null])("%s is refused in words before anything is read (403)", async (role) => {
     const { c, reads } = controller();
     const e = await refusal(c.priceMoves("d1", as(role)));

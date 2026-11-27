@@ -1477,19 +1477,22 @@ export class DocumentsController {
     @CurrentUser() user: AuthedUser,
     @Query("thresholdPct") thresholdPct?: string,
   ) {
+    // r109 (DD-r109-8a): both prices and the percent are the house's money, so
+    // the same rule as another vendor's prices, before any read. Rejected:
+    // leaving the r104 behaviour open to staff. The first statement of the
+    // route, with the role trimmed, so it is THE gate: another change that
+    // guards this route lands on the same lines and is resolved to one gate
+    // rather than merging cleanly into a second one that can never speak.
+    if (!holdsHouseMoney(user?.role ? String(user.role).trim() : null))
+      throw new HttpException(
+        "A line's price moves are shown to the owner and managers of the house.",
+        HttpStatus.FORBIDDEN,
+      );
     const parsed = Number(thresholdPct);
     const threshold =
       thresholdPct != null && Number.isFinite(parsed) && parsed >= 0
         ? parsed
         : DEFAULT_MOVE_THRESHOLD_PCT;
-    // r109 (DD-r109-8a): both prices and the percent are the house's money, so
-    // the same rule as another vendor's prices, before any read. Rejected:
-    // leaving the r104 behaviour open to staff.
-    if (!holdsHouseMoney(user.role ?? null))
-      throw new HttpException(
-        "A line's price moves are shown to the owner and managers of the house.",
-        HttpStatus.FORBIDDEN,
-      );
     const client = this.db.getClient();
     // A paper that is not this house's is a 404 in words, never an empty list
     // that reads as "nothing moved" (ADR 0020).
