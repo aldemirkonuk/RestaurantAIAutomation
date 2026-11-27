@@ -596,9 +596,33 @@ export function houseFieldsOf(item: unknown): HouseFields {
   return { kind: str(r.kind), uom: str(r.uom), displayName: str(r.displayName) ?? str(r.display_name) };
 }
 
+/** One write-off ('waste') or give-away ('comp') on the figures route, in the good's own unit. */
+export interface WasteEntry {
+  at: string | null;
+  type: 'waste' | 'comp';
+  qty: number;
+  reason: string | null;
+  by: string | null;
+  value?: number | null;
+}
+
 /** GET /inventory/:rid/item/:id/figures. Money fields are null for anyone but an owner or manager. */
 export interface ItemFigures {
-  waste: { readable: boolean; qty30d: number | null; given30d: number | null; value30d: number | null; source: string };
+  waste: {
+    readable: boolean;
+    qty30d: number | null;
+    given30d: number | null;
+    value30d: number | null;
+    source: string;
+    /** The 20 newest write-offs and give-aways (r110 g3). `value` is an owner's or manager's only. Absent from an older gateway; null when unread. */
+    entries?: WasteEntry[] | null;
+    /** Totals by reason over every row of the 30 days, each type apart: they sum to qty30d and given30d. */
+    byReason?: Array<{ reason: string | null; type: 'waste' | 'comp'; qty: number }> | null;
+    /** How many rows the 30 days hold (the list shows the newest 20 of them). */
+    total?: number | null;
+    /** Who wrote them off could not be read. */
+    byUnread?: boolean;
+  };
   countGap: {
     readable: boolean;
     last: Array<{

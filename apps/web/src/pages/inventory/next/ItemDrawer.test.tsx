@@ -28,10 +28,11 @@ vi.mock('../../../services/api/inventory', async (orig) => ({
   getItemNutrition: api.nutrition,
 }));
 vi.mock('./RowDropdown', () => ({
-  default: (p: { sections?: string[]; actions?: boolean; uom?: string | null; kind?: string | null; settled?: unknown }) => (
+  default: (p: { sections?: string[]; actions?: boolean; uom?: string | null; kind?: string | null; settled?: unknown; wasted?: unknown }) => (
     <div
       data-testid="row-dropdown"
       data-settled={p.settled === undefined ? 'absent' : JSON.stringify(p.settled)}
+      data-wasted={p.wasted === undefined ? 'absent' : JSON.stringify(p.wasted)}
       data-sections={p.sections === undefined ? 'all' : p.sections.join(',')}
       data-actions={String(p.actions !== false)}
       data-uom={p.uom ?? ''}
@@ -236,6 +237,7 @@ describe('the item drawer', () => {
       return sections;
     };
     expect(opened('gap')).toBe('where');
+    expect(opened('waste')).toBe('wasted,where');
     expect(opened('usage')).toBe('pace');
     expect(opened('cost')).toBe('cost,paper');
     expect(opened('onhand')).toBe('where,facts');
@@ -243,6 +245,28 @@ describe('the item drawer', () => {
     expect(opened('inside')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'All the evidence' }));
     expect(within(screen.getByTestId('ivd-evidence')).getByTestId('row-dropdown').dataset.sections).toBe('facts,where,pace,cost,paper');
+  });
+
+  it('the Waste card opens what was written off, handed the figures read (r110 g3)', async () => {
+    const waste = {
+      readable: true, qty30d: 2, given30d: 1, value30d: 80, source: 's', total: 3,
+      entries: [{ at: '2026-11-03T10:00:00Z', type: 'waste' as const, qty: 2, reason: 'Spoiled', by: 'Ayşe', value: 80 }],
+      byReason: [{ reason: 'Spoiled', type: 'waste' as const, qty: 2 }, { reason: 'Staff', type: 'comp' as const, qty: 1 }],
+    };
+    api.figures.mockResolvedValue(figures({ waste }));
+    open(row());
+    await waitFor(() => expect(screen.getByTestId('ivd-card-waste').textContent).toContain('given away'));
+    fireEvent.click(screen.getByTestId('ivd-card-waste'));
+    const panel = within(screen.getByTestId('ivd-evidence')).getByTestId('row-dropdown');
+    expect(panel.dataset.sections).toBe('wasted,where');
+    expect(JSON.parse(panel.dataset.wasted!)).toEqual(waste);
+  });
+
+  it('the Waste evidence says the figures read failed, never an empty list (r110 g3)', async () => {
+    api.figures.mockRejectedValue(new Error('down'));
+    open(row());
+    fireEvent.click(screen.getByTestId('ivd-card-waste'));
+    await waitFor(() => expect(within(screen.getByTestId('ivd-evidence')).getByTestId('row-dropdown').dataset.wasted).toBe('"failed"'));
   });
 
   it('the cost evidence is handed the settled prices the figures read, and says it reads or failed rather than nothing (r36, gap 9)', async () => {
