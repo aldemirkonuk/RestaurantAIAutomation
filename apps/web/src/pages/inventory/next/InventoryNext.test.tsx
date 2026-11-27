@@ -506,12 +506,12 @@ describe('The Tools row offers only what this session can do (INV-W18)', () => {
 });
 
 describe('The Cellar map speaks the page\'s words (INV-W19)', () => {
-  it('hands the map the table\'s tint rule and the chips\' words', () => {
+  it('hands the map the table\'s tint rule and the chips\' words', async () => {
     mock.mapProps = null;
     mock.data = data({ rows: [row({ id: 'a', name: 'Barolo' })] });
     renderPage();
     fireEvent.click(screen.getByRole('button', { name: 'Cellar map' }));
-    expect(screen.getByTestId('cellar-map')).toBeTruthy();
+    expect(await screen.findByTestId('cellar-map')).toBeTruthy();
     // Re-read through the declared type: the `= null` above narrows it for tsc.
     const props = mock.mapProps as Record<string, unknown> | null;
     expect(props?.toneOf).toBe(mapTone);
@@ -1284,17 +1284,18 @@ describe('INV-W39 — the book has a name', () => {
 describe('the acts ported from the legacy page (founder 2026-10-31: port all 5, then flip)', () => {
   const cave = { id: 'z1', name: 'Cave', type: 'cellar', capacity: 100, currentCount: 0, temperature: '55°F', color: '#000' };
 
-  it('A delivery without an order opens the shared workspace from the empty house and from Tools, and refreshes the book when saved', () => {
+  it('A delivery without an order opens the shared workspace from the empty house and from Tools, and refreshes the book when saved', async () => {
     mock.data = data({ rows: [] });
     const first = renderPage();
     fireEvent.click(screen.getByRole('button', { name: 'A delivery without an order' }));
-    expect(screen.getByTestId('manual-receipt')).toBeTruthy();
+    expect(await screen.findByTestId('manual-receipt')).toBeTruthy();
     first.unmount();
 
     ported.receipt = null;
     mock.data = data({ rows: [row()] });
     renderPage();
     fireEvent.click(within(document.getElementById('iv-tools')!).getByRole('button', { name: 'A delivery without an order' }));
+    await screen.findByTestId('manual-receipt');
     expect(ported.receipt).not.toBeNull();
     expect(ported.receipt!.isOpen).toBe(true);
     expect(typeof ported.receipt!.onSaved).toBe('function');
@@ -1305,7 +1306,7 @@ describe('the acts ported from the legacy page (founder 2026-10-31: port all 5, 
     mock.data = data({ rows: [row()] });
     renderPage();
     fireEvent.click(within(document.getElementById('iv-tools')!).getByRole('button', { name: 'Start an auction lot' }));
-    expect(screen.getByTestId('auction-start')).toBeTruthy();
+    expect(await screen.findByTestId('auction-start')).toBeTruthy();
     const onCarry = ported.auction!.onCarry as (i: unknown) => Promise<{ inventoryId: string }>;
     const out = await onCarry({ wine: { id: 'w9' }, quantity: 6, costPerBottle: 42 });
     expect(ported.create).toHaveBeenCalledWith(
@@ -1315,11 +1316,11 @@ describe('the acts ported from the legacy page (founder 2026-10-31: port all 5, 
     expect(out).toEqual({ inventoryId: 'inv-new' });
   });
 
-  it('the auction start is reachable from the empty house too', () => {
+  it('the auction start is reachable from the empty house too', async () => {
     mock.data = data({ rows: [] });
     renderPage();
     fireEvent.click(screen.getByRole('button', { name: 'Start an auction lot' }));
-    expect(screen.getByTestId('auction-start')).toBeTruthy();
+    expect(await screen.findByTestId('auction-start')).toBeTruthy();
   });
 
   it('Auto-Locate is handed to Storage locations, plans by wine id, and assigns what the manager confirms', async () => {
@@ -1331,9 +1332,10 @@ describe('the acts ported from the legacy page (founder 2026-10-31: port all 5, 
     });
     renderPage();
     fireEvent.click(within(document.getElementById('iv-tools')!).getByRole('button', { name: 'Storage locations' }));
+    await screen.findByTestId('storage-manager');
     expect(typeof ported.slm!.onAutoLocate).toBe('function');
     act(() => (ported.slm!.onAutoLocate as () => void)());
-    expect(screen.getByTestId('auto-locate-preview')).toBeTruthy();
+    expect(await screen.findByTestId('auto-locate-preview')).toBeTruthy();
     const plan = ported.preview!.result as { assignments: { wineId: string; locationId: string; quantity: number }[] };
     expect(plan.assignments).toEqual([expect.objectContaining({ wineId: 'w1', locationId: 'z1', quantity: 3 })]);
     await act(async () => {
@@ -1344,7 +1346,7 @@ describe('the acts ported from the legacy page (founder 2026-10-31: port all 5, 
     ok.mockRestore();
   });
 
-  it('Auto-Locate waits, and says so, when what is already placed could not be read', () => {
+  it('Auto-Locate waits, and says so, when what is already placed could not be read', async () => {
     const said = vi.spyOn(toast, 'error').mockImplementation(() => '' as never);
     ported.preview = null;
     mock.data = data({
@@ -1353,13 +1355,14 @@ describe('the acts ported from the legacy page (founder 2026-10-31: port all 5, 
     });
     renderPage();
     fireEvent.click(within(document.getElementById('iv-tools')!).getByRole('button', { name: 'Storage locations' }));
+    await screen.findByTestId('storage-manager');
     act(() => (ported.slm!.onAutoLocate as () => void)());
     expect(screen.queryByTestId('auto-locate-preview')).toBeNull();
     expect(said.mock.calls[0][0]).toMatch(/^Auto-Locate waits/);
     said.mockRestore();
   });
 
-  it('Auto-Locate leaves out a title whose count was not read rather than planning it as one bottle', () => {
+  it('Auto-Locate leaves out a title whose count was not read rather than planning it as one bottle', async () => {
     const note = vi.spyOn(toast, 'message').mockImplementation(() => '' as never);
     mock.data = data({
       rows: [row({ id: 'a', wineId: 'w1', type: 'red', stock: 3, shadow: 0 }), row({ id: 'b', wineId: 'w2', stock: null })],
@@ -1367,7 +1370,9 @@ describe('the acts ported from the legacy page (founder 2026-10-31: port all 5, 
     });
     renderPage();
     fireEvent.click(within(document.getElementById('iv-tools')!).getByRole('button', { name: 'Storage locations' }));
+    await screen.findByTestId('storage-manager');
     act(() => (ported.slm!.onAutoLocate as () => void)());
+    await screen.findByTestId('auto-locate-preview');
     const plan = ported.preview!.result as { assignments: { wineId: string }[] };
     expect(plan.assignments.map((x) => x.wineId)).toEqual(['w1']);
     expect(note.mock.calls[0][0]).toMatch(/^1 title is left out of the plan/);

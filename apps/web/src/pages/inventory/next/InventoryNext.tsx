@@ -32,20 +32,25 @@ import { ContextualInsights } from '@/components/insights/ContextualInsights';
 import { NamingUnread } from './NameThisWine';
 import { houseWordsFor } from './iv-house-words';
 import { IV_DEFAULT, KIND_CHIPS, readView, writeView, type GoodKind, type IvView } from './iv-url';
-import { StorageLocationManager } from '../../../components/inventory/StorageLocationManager';
-import { PosMappingPanel } from '../../../components/inventory/PosMappingPanel';
-import { ManualReceiptWorkspace } from '../../../components/inventory/ManualReceiptWorkspace';
-import { AutoLocatePreviewModal } from '../../../components/inventory/AutoLocatePreviewModal';
 import { computeAutoLocatePlan, type AutoLocateResult, type WineInput, type WineLocationScore } from '../../../lib/autoLocateEngine';
 import { createInventoryItem, houseFieldsOf } from '../../../services/api/inventory';
 import { isUnconfirmedWrite } from '../../../services/api/client';
-import { AuctionLotStart } from '../command/AuctionLotStart';
-import { MenuScannerFlow } from '../../../components/scanner/MenuScannerFlow';
 import { summarizeMenuScanPersist } from '../../../lib/menuScannerPersistence';
 import { fmtWhen } from '../../../lib/mudavym/format';
 import { queryKeys } from '../../../lib/query-keys';
-import { CellarMapView } from '../command/CellarMapView';
 import type { InventoryItem as LegacyItem } from '../useInventoryPage';
+import {
+  AuctionLotStart,
+  AutoLocatePreviewModal,
+  CellarMapView,
+  ManualReceiptWorkspace,
+  MapSuspense,
+  MenuScannerFlow,
+  PANEL_LOAD_FAILED,
+  PanelSuspense,
+  PosMappingPanel,
+  StorageLocationManager,
+} from './LazyPanels';
 import InventoryTable from './InventoryTable';
 import ItemDrawer from './ItemDrawer';
 import { CountBar, PhoneFilter, activeFilterCount, nextToCount } from './PhoneBook';
@@ -209,6 +214,12 @@ export default function InventoryNext() {
   }, [openParam]);
   const [panel, setPanel] = useState<null | 'scanner' | 'locations' | 'pos' | 'receipt' | 'auction' | 'carry'>(null);
   const [autoLocate, setAutoLocate] = useState<AutoLocateResult | null>(null);
+  // A panel's file that could not load: say so, close it (ADR 0020).
+  const failPanel = useCallback(() => {
+    toast.error(PANEL_LOAD_FAILED);
+    setPanel(null);
+    setAutoLocate(null);
+  }, []);
   const [includeAssigned, setIncludeAssigned] = useState(false);
   // The delivered-order bell links to ?name-delivery=<order>; the card opens for it.
   const [naming, setNaming] = useState(() => params.has('name-delivery'));
@@ -952,26 +963,28 @@ export default function InventoryNext() {
 
             {view === 'map' ? (
               <div className="iv-map">
-                <CellarMapView
-                  items={visible.map(
-                    (r) =>
-                      ({
-                        inventoryId: r.id,
-                        name: r.name ?? `Unnamed ${words.one}`,
-                        liveStock: r.stock,
-                        shadowStock: r.shadow,
-                        threshold: r.par,
-                        locations: r.zones ?? [],
-                      }) as unknown as LegacyItem,
-                  )}
-                  locations={locs.list}
-                  locationsLoading={locs.loading}
-                  locationsUnavailable={locs.unavailable}
-                  onOpenInTable={(locationId) => setV({ zone: locationId, view: 'table' })}
-                  onManageLocations={() => setPanel('locations')}
-                  toneOf={mapTone}
-                  toneWords={MAP_WORDS}
-                />
+                <MapSuspense>
+                  <CellarMapView
+                    items={visible.map(
+                      (r) =>
+                        ({
+                          inventoryId: r.id,
+                          name: r.name ?? `Unnamed ${words.one}`,
+                          liveStock: r.stock,
+                          shadowStock: r.shadow,
+                          threshold: r.par,
+                          locations: r.zones ?? [],
+                        }) as unknown as LegacyItem,
+                    )}
+                    locations={locs.list}
+                    locationsLoading={locs.loading}
+                    locationsUnavailable={locs.unavailable}
+                    onOpenInTable={(locationId) => setV({ zone: locationId, view: 'table' })}
+                    onManageLocations={() => setPanel('locations')}
+                    toneOf={mapTone}
+                    toneWords={MAP_WORDS}
+                  />
+                </MapSuspense>
               </div>
             ) : visible.length === 0 ? (
               <div className="iv-none" data-testid="inventory-none-match">
@@ -1153,49 +1166,55 @@ export default function InventoryNext() {
 
       {/* ── panels reused from the legacy page ──────────────────────────── */}
       {panel === 'scanner' ? (
-        <MenuScannerFlow
-          isOpen
-          onClose={() => setPanel(null)}
-          restaurantId={data.rid ?? undefined}
-          onWinesAdded={(_wines, result) => {
-            if (result) toast.success(`Menu scan: ${summarizeMenuScanPersist(result)}`);
-            refreshStock();
-          }}
-        />
+        <PanelSuspense onFail={failPanel}>
+          <MenuScannerFlow
+            isOpen
+            onClose={() => setPanel(null)}
+            restaurantId={data.rid ?? undefined}
+            onWinesAdded={(_wines, result) => {
+              if (result) toast.success(`Menu scan: ${summarizeMenuScanPersist(result)}`);
+              refreshStock();
+            }}
+          />
+        </PanelSuspense>
       ) : null}
       {panel === 'locations' ? (
-        <StorageLocationManager
-          isOpen
-          onClose={() => setPanel(null)}
-          inventoryItems={(rows ?? []).map((r) => ({
-            id: r.id,
-            name: r.name ?? `Unnamed ${words.one}`,
-            producer: r.producer ?? '',
-            liveStock: r.stock ?? undefined,
-            shadowStock: r.shadow ?? undefined,
-          }))}
-          onSelectLocation={(location) => {
-            setV({ zone: location.id, view: 'table' });
-            setPanel(null);
-          }}
-          onLocationsChange={(updated) => locs.setLocations(updated)}
-          onAutoLocate={handleAutoLocate}
-        />
+        <PanelSuspense onFail={failPanel}>
+          <StorageLocationManager
+            isOpen
+            onClose={() => setPanel(null)}
+            inventoryItems={(rows ?? []).map((r) => ({
+              id: r.id,
+              name: r.name ?? `Unnamed ${words.one}`,
+              producer: r.producer ?? '',
+              liveStock: r.stock ?? undefined,
+              shadowStock: r.shadow ?? undefined,
+            }))}
+            onSelectLocation={(location) => {
+              setV({ zone: location.id, view: 'table' });
+              setPanel(null);
+            }}
+            onLocationsChange={(updated) => locs.setLocations(updated)}
+            onAutoLocate={handleAutoLocate}
+          />
+        </PanelSuspense>
       ) : null}
       {autoLocate ? (
-        <AutoLocatePreviewModal
-          isOpen
-          onClose={() => setAutoLocate(null)}
-          result={autoLocate}
-          allLocations={locs.list}
-          includeAssigned={includeAssigned}
-          onToggleIncludeAssigned={(val) => {
-            setIncludeAssigned(val);
-            const plan = planAutoLocate(val);
-            if (plan) setAutoLocate(plan);
-          }}
-          onConfirm={(selected) => void confirmAutoLocate(selected)}
-        />
+        <PanelSuspense onFail={failPanel}>
+          <AutoLocatePreviewModal
+            isOpen
+            onClose={() => setAutoLocate(null)}
+            result={autoLocate}
+            allLocations={locs.list}
+            includeAssigned={includeAssigned}
+            onToggleIncludeAssigned={(val) => {
+              setIncludeAssigned(val);
+              const plan = planAutoLocate(val);
+              if (plan) setAutoLocate(plan);
+            }}
+            onConfirm={(selected) => void confirmAutoLocate(selected)}
+          />
+        </PanelSuspense>
       ) : null}
       {removeSel && data.canManage ? (
         <RemoveFromInventoryModal
@@ -1211,7 +1230,9 @@ export default function InventoryNext() {
         />
       ) : null}
       {panel === 'receipt' ? (
-        <ManualReceiptWorkspace isOpen onClose={() => setPanel(null)} onSaved={refreshStock} />
+        <PanelSuspense onFail={failPanel}>
+          <ManualReceiptWorkspace isOpen onClose={() => setPanel(null)} onSaved={refreshStock} />
+        </PanelSuspense>
       ) : null}
       {panel === 'carry' ? (
         <CarryThis
@@ -1226,21 +1247,25 @@ export default function InventoryNext() {
         />
       ) : null}
       {panel === 'auction' ? (
-        <AuctionLotStart open onClose={() => setPanel(null)} onCarry={carryAuctionLot} />
+        <PanelSuspense onFail={failPanel}>
+          <AuctionLotStart open onClose={() => setPanel(null)} onCarry={carryAuctionLot} />
+        </PanelSuspense>
       ) : null}
       {panel === 'pos' && data.canManage ? (
-        <PosMappingPanel
-          isOpen
-          onClose={() => setPanel(null)}
-          restaurantId={data.rid ?? undefined}
-          inventory={(rows ?? []).map((r) => ({
-            id: r.id,
-            wineName: r.name ?? undefined,
-            bottleSizeMl: r.bottleSizeMl,
-            pourSizeMl: r.pourMl,
-          }))}
-          onChanged={refreshStock}
-        />
+        <PanelSuspense onFail={failPanel}>
+          <PosMappingPanel
+            isOpen
+            onClose={() => setPanel(null)}
+            restaurantId={data.rid ?? undefined}
+            inventory={(rows ?? []).map((r) => ({
+              id: r.id,
+              wineName: r.name ?? undefined,
+              bottleSizeMl: r.bottleSizeMl,
+              pourSizeMl: r.pourMl,
+            }))}
+            onChanged={refreshStock}
+          />
+        </PanelSuspense>
       ) : null}
       {openId !== null && data.state === 'ready' && rows !== null ? (
         <ItemDrawer

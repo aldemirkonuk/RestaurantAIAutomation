@@ -13,19 +13,38 @@
  * InventoryNext replaced it (#677 gate plan, 2026-10-31).
  */
 import { useMudavymDesignVerdict } from '../../../lib/mudavym/useMudavymDesign';
-import { InventoryCommandPage } from '../command/InventoryCommandPage';
+import { Suspense, lazy } from 'react';
 import InventoryNext from './InventoryNext';
+
+// The command page is the OFF / failed-read side. It is its own file, so a
+// house on InventoryNext does not download it, nor the panels only it draws
+// (r104 g1: a static import here kept both pages and every shared panel in
+// the one route file).
+const InventoryCommandPage = lazy(() =>
+  import('../command/InventoryCommandPage').then((m) => ({ default: m.InventoryCommandPage })),
+);
+
+/** The place held while a file or the flag is read: no picture, no motion. */
+function Reading() {
+  return (
+    <main aria-busy="true" data-testid="inventory-route-reading">
+      <p className="sr-only">Reading this house’s inventory…</p>
+    </main>
+  );
+}
 
 export function InventoryRoute() {
   const verdict = useMudavymDesignVerdict('inventory_next');
   if (verdict === null) {
-    return (
-      <main aria-busy="true" data-testid="inventory-route-reading">
-        <p className="sr-only">Reading this house’s inventory…</p>
-      </main>
-    );
+    return <Reading />;
   }
-  return verdict ? <InventoryNext /> : <InventoryCommandPage />;
+  return verdict ? (
+    <InventoryNext />
+  ) : (
+    <Suspense fallback={<Reading />}>
+      <InventoryCommandPage />
+    </Suspense>
+  );
 }
 
 export default InventoryRoute;
