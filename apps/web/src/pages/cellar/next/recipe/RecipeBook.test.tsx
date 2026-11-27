@@ -66,15 +66,18 @@ describe('the spec book', () => {
     ]);
   });
 
-  it('prints a cover with the house name and day in the house locale, then one card per drink in section order', async () => {
+  it('puts the title block on the first drink\'s page (no cover sheet), then one card per drink in section order', async () => {
     mount();
     fireEvent.click(screen.getByTestId('book-print-button'));
-    const cover = await screen.findByTestId('book-cover');
+    const cover = await screen.findByTestId('book-title');
+    expect(screen.queryByTestId('book-cover')).toBeNull();
     await waitFor(() => expect(cover).toHaveTextContent(/Meyhouse: spec book/));
     // A pound house reads the day first ("7 Nov 2026"), a dollar house month first; the cover carries the count.
     expect(cover).toHaveTextContent(/\d{1,2} [A-Z][a-z]{2} 20\d\d · 4 drinks/);
     const pages = screen.getAllByTestId('book-card');
-    expect(pages.map((p) => within(p).getByRole('heading', { hidden: true }).textContent)).toEqual(['Negroni', 'Spritz', 'Old fashioned', 'Whisky sour']);
+    expect(pages[0]).toContainElement(cover);
+    expect(screen.getAllByTestId('book-title')).toHaveLength(1);
+    expect(pages.map((p) => within(p).getByRole('heading', { name: /Negroni|Spritz|Old fashioned|Whisky sour/, hidden: true }).textContent)).toEqual(['Negroni', 'Spritz', 'Old fashioned', 'Whisky sour']);
     expect(pages[0]).toHaveTextContent('Makes 1 serve · Rocks · version 4, 7 Nov 2026');
     expect(pages[0]).toHaveTextContent('50 ml Plymouth gin');
     expect(pages[0]).toHaveTextContent('Garnish: Orange peel');
