@@ -120,6 +120,35 @@ describe("DocumentsController.detail — signed image URL (decision E48)", () =>
 
     expect((result.document as any).imageUrl).toBeNull();
   });
+
+  it("starts signing while the lines read is still in flight (one wave, not two)", async () => {
+    mockMaybeSingle.mockResolvedValueOnce({
+      data: { id: "doc-4", storage_path: "rest-1/documents/w/wave.pdf" },
+      error: null,
+    });
+    let releaseLines!: (v: unknown) => void;
+    mockOrder.mockReturnValueOnce(
+      new Promise((resolve) => {
+        releaseLines = resolve;
+      }),
+    );
+    mockCreateSignedUrl.mockResolvedValueOnce({
+      data: { signedUrl: "https://signed.example/wave.pdf" },
+      error: null,
+    });
+
+    const pending = controller.detail("doc-4", user);
+    // Let the document read settle; the lines read is still held open.
+    await new Promise((r) => setImmediate(r));
+    expect(mockCreateSignedUrl).toHaveBeenCalledTimes(1);
+
+    releaseLines({ data: [{ id: "l1" }] });
+    const result = await pending;
+    expect((result.document as any).imageUrl).toBe(
+      "https://signed.example/wave.pdf",
+    );
+    expect(result.lines).toEqual([{ id: "l1" }]);
+  });
 });
 
 /**
