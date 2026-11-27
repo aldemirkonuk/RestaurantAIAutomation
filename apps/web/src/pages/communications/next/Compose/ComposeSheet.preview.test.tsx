@@ -210,6 +210,27 @@ describe('See it as it leaves', () => {
     await waitFor(() => expect(screen.queryByTestId('letter-as-it-leaves')).toBeNull());
   });
 
+  it('an edit made while the preview is in flight is never shown the old letter, nor its refusal', async () => {
+    let resolve!: (v: unknown) => void;
+    let reject!: (e: unknown) => void;
+    mockPost.mockImplementationOnce(() => new Promise((r) => { resolve = r; }));
+    open();
+    pickRecipient();
+    fireEvent.click(screen.getByTestId('letter-see'));
+    fireEvent.change(screen.getByLabelText('The letter'), { target: { value: 'Merhaba, iptal ediyoruz.' } });
+    resolve({ data: SHOWN });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByTestId('letter-as-it-leaves')).toBeNull();
+    // A refusal for the old words is dropped the same way, and the button is live again.
+    mockPost.mockImplementationOnce(() => new Promise((_r, j) => { reject = j; }));
+    fireEvent.click(screen.getByTestId('letter-see'));
+    fireEvent.change(screen.getByLabelText('The letter'), { target: { value: 'Merhaba, Cuma.' } });
+    reject(new Error('refused for the old words'));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByText(/refused for the old words/)).toBeNull();
+    expect(screen.getByTestId('letter-see')).not.toBeDisabled();
+  });
+
   it('fades in over 160 ms, nothing under reduced motion, no exit animation', async () => {
     mockPost.mockResolvedValue({ data: SHOWN });
     open();

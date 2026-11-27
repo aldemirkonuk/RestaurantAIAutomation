@@ -334,18 +334,25 @@ export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: Co
   useEffect(() => {
     setSee((prev) => (prev.kind === 'idle' ? prev : { kind: 'idle' }));
   }, [letterKey]);
+  // The letter now in the box, read by a request that finishes later: an answer
+  // for words the writer has since changed is dropped, never shown as this letter.
+  const currentLetterKey = useRef(letterKey);
+  currentLetterKey.current = letterKey;
 
   /** Ask the gateway for the header block and body the send would write. Queues nothing. */
   const seeIt = useCallback(async () => {
     if (!letter) return;
+    const askedFor = letterKey;
     setSee({ kind: 'loading' });
     try {
       const { data: shown } = await apiClient.post<AsItLeaves>('/communications/letters/preview', letter);
+      if (currentLetterKey.current !== askedFor) return;
       setSee({ kind: 'shown', letter: shown });
     } catch (e) {
+      if (currentLetterKey.current !== askedFor) return;
       setSee({ kind: 'failed', message: errText(e) });
     }
-  }, [letter]);
+  }, [letter, letterKey]);
 
   /**
    * Mint the seal over the letter (ADR 0175 D9, sealed 2026-09-21). On the seal
