@@ -62,9 +62,16 @@ export function canDraw(): boolean {
 export function useDrawIn() {
   const ref = useRef<HTMLDivElement>(null);
   const key = useContext(DrawKey);
-  const [state, setState] = useState<DrawState>(() =>
-    key != null && risen.has(key) ? 'settled' : canDraw() ? 'pending' : 'still',
-  );
+  const startOf = (k: string | null): DrawState =>
+    k != null && risen.has(k) ? 'settled' : canDraw() ? 'pending' : 'still';
+  const [state, setState] = useState<DrawState>(() => startOf(key));
+  // Draw as Area -> Bars keeps this same plot mounted (one tree position), so
+  // a new key is read here, not only on mount: a drawing never seen rises.
+  const [seenKey, setSeenKey] = useState(key);
+  if (seenKey !== key) {
+    setSeenKey(key);
+    setState(startOf(key));
+  }
   useEffect(() => {
     if (state !== 'drawn') return;
     if (key != null) risen.add(key);
