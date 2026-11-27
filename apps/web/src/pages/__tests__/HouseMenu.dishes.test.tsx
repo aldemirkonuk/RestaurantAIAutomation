@@ -10,6 +10,8 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../services/api/menus', () => ({ reviewMenuItem: vi.fn(), addMenuItem: vi.fn() }))
+// HouseMenu mounts InviteYourPeople (r107 g3), which reads the signed-in role; with none it shows nothing.
+vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ activeRole: null, user: null }) }))
 vi.mock('../../components/brand/BrandMark', () => ({ BrandMark: () => <span>Mudavym</span> }))
 
 import HouseMenu, { dishPrice } from '../HouseMenu'
