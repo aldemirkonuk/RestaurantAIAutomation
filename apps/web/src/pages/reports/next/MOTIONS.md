@@ -45,6 +45,7 @@ to those would put a moving cutting somewhere the announcement says it is not.
 | `rp-seg-thumb` | `settle` | `cubic-bezier(.16,1,.3,1)` · 260ms | the window pill's thumb (`.rp-seg__thumb`) sliding to the picked window; transform only |
 | `rp-prior-draw` | `settle` | `cubic-bezier(.16,1,.3,1)` · 360ms | the compare's prior line (`.rp-prior`, dashed) drawing left to right once when compare is switched on, `clip-path: inset(0 100% 0 0)` to `inset(0)`. A refetch or a window re-read keeps the line in place and does not replay it; shown at once under reduced motion |
 | `rp-stack__item` | `ink` | `cubic-bezier(.16,1,.3,1)` · 160ms | the phone till card's height settling to hold the compare answer's 66px row when compare is switched on or off (`.rp-stack__item[data-holds]`, `height` only); none under reduced motion |
+| `rp-flat-in` | `settle` | `cubic-bezier(.16,1,.3,1)` · 320ms | full screen (`.rp-flat`, `CuttingFlat.tsx`) arriving over the sheet; opacity + 6px rise, transform and opacity only, once on mount (a step lands on a `data-stepped` dialog, which skips it). Never blocks input; focus is placed at once. Exit is instant (ADR 0112); none under reduced motion, the fade included. Rejected: a View Transition card-to-flat morph (large-area zoom, two charts cross-fading) |
 
 ## Deliberate non-motions
 
@@ -58,8 +59,8 @@ to those would put a moving cutting somewhere the announcement says it is not.
   already made.
 - **Nothing animates when full screen steps to the next cutting.** Previous, Next
   and the Left and Right keys lay the neighbouring cutting flat in sheet order;
-  the dialog it lands on appears as any full-screen opening does, and the one
-  it leaves is gone. No slide, no cross-fade, no count on the marker. It is a
+  the dialog it lands on carries `data-stepped` and skips `rp-flat-in` (it is a
+  new dialog, and only the first opening arrives), and the one it leaves is gone. No slide, no cross-fade, no count on the marker. It is a
   subject change, and the reader pressed the button that named the subject.
 - **Figures of record do not count up.** No `tally` on this page. A figure of
   record is read, not watched — and half the figures in "Figures of record" are

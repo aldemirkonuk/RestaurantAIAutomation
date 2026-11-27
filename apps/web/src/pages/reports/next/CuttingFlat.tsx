@@ -18,12 +18,19 @@
  *     It keeps the house overlay contract — modal, named by its title, focus in
  *     and back to the opener, Tab held, the counted scroll lock, and a place on
  *     the shared overlay stack (`openStack`) so Escape closes only the topmost
- *     overlay — and it does not move, so reduced motion has nothing to remove.
+ *     overlay — and it arrives on the house `settle`
+ *     (opacity + 6px, 320ms, `rp-flat-in` in MOTIONS.md) so a 1440 card does
+ *     not become a full-viewport layer in one frame with no cue. Exit is
+ *     instant (ADR 0112: no overlay exit but the dirty-sheet tear); reduced
+ *     motion is no animation, the fade included; input and focus are never
+ *     held back by it. Rejected: a View Transition card-to-flat morph (a
+ *     large-area zoom is a vestibular trigger and it cross-fades two charts).
  *  5. **It steps through the sheet** (r108 g1). Previous and Next, and the Left
  *     and Right keys, lay the neighbouring cutting flat in sheet order; "3 of
  *     9" says where. Each cutting owns its `?flat=`, so a step is a replace of
  *     that one param (`Cutting.tsx`), and the dialog it lands on is a new one.
- *     Nothing animates (MOTIONS.md: a subject change is not animated).
+ *     Nothing animates on a step (MOTIONS.md: a subject change is not
+ *     animated): a stepped opening carries `data-stepped` and skips `rp-flat-in`.
  *  6. **The page's shortcuts stay behind it.** ⌘K / Ctrl-K is the page's
  *     window-level palette key (ReportsNext.tsx); while this view is up it is
  *     stopped at `document`, which the bubble reaches before `window`, so the
@@ -221,6 +228,8 @@ export default function CuttingFlat({
       ref={rootRef}
       className="mudavym rp-page rp-flat"
       data-ground={ground ?? undefined}
+      // A step lands on a new dialog (each cutting owns its `?flat=`); it must not replay the arrival fade.
+      data-stepped={initialFocus ? '' : undefined}
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
