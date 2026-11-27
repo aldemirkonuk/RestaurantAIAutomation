@@ -68,6 +68,9 @@ function matches(row: Row, filters: Filter[]): boolean {
         return actual <= f.value;
       case "gt":
         return actual > f.value;
+      case "or":
+        // PostgREST `.or("a.eq.1,b.not.is.null")`: one term must hold.
+        return (f.value as Filter[]).some((term) => matches(row, [term]));
       case "ilike":
         return (
           typeof actual === "string" &&
@@ -211,6 +214,21 @@ class Builder implements PromiseLike<any> {
     if (operator !== "is")
       throw new Error(`supabase-stub: unhandled .not(${operator})`);
     this.filters.push({ kind: "notis", column, value });
+    return this;
+  }
+  or(expression: string) {
+    const parse = (raw: string): any =>
+      raw === "null" ? null : raw === "true" ? true : raw === "false" ? false : raw;
+    const terms: Filter[] = expression.split(",").map((term) => {
+      const [column, ...rest] = term.trim().split(".");
+      const value = parse(rest[rest.length - 1]);
+      const op = rest.slice(0, -1).join(".");
+      if (op === "eq") return { kind: "eq", column, value } as Filter;
+      if (op === "is") return { kind: "is", column, value } as Filter;
+      if (op === "not.is") return { kind: "notis", column, value } as Filter;
+      throw new Error(`supabase-stub: unhandled .or(${term})`);
+    });
+    this.filters.push({ kind: "or", column: "", value: terms });
     return this;
   }
   gte(column: string, value: any) {
