@@ -38,7 +38,7 @@ interface Props {
    * `onChallenge` supplied one; callers that do not seal keep the `() => void`
    * shape and get `null`.
    */
-  onConfirm: (challenge?: string | null) => void;
+  onConfirm: (challenge?: string | null, how?: { viaKeyboard: boolean }) => void;
   /** Mint the proof, at the moment the gesture BEGINS. See the header. */
   onChallenge?: () => Promise<string | null>;
 }
@@ -74,14 +74,20 @@ export function SwipeToConfirm({
       .catch(() => null);
   }, [onChallenge]);
 
-  const complete = useCallback(() => {
+  /*
+   * `how` is read here, at the moment of completion, never from
+   * document.activeElement later: completing disables the handle, and Chromium
+   * blurs a disabled focused button before the (async) challenge resolves.
+   */
+  const complete = useCallback((how: 'keyboard' | 'pointer' = 'pointer') => {
     if (doneRef.current) return;
     doneRef.current = true;
     setProgress(1);
+    const info = { viaKeyboard: how === 'keyboard' };
 
     // No proof was asked for: the original behaviour, unchanged.
     if (!challengeRef.current) {
-      onConfirm(null);
+      onConfirm(null, info);
       return;
     }
 
@@ -90,7 +96,7 @@ export function SwipeToConfirm({
     void pending
       .then((token) => {
         if (!token) throw new Error('no seal');
-        onConfirm(token);
+        onConfirm(token, info);
       })
       .catch(() => {
         // Not sealed, and said so. The gesture completed and the confirmation
@@ -156,7 +162,7 @@ export function SwipeToConfirm({
       setProgress(p);
       if (p >= 1) {
         holdTimer.current = null;
-        complete();
+        complete('keyboard');
         return;
       }
       holdTimer.current = window.requestAnimationFrame(tick);

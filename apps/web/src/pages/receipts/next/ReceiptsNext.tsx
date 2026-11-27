@@ -30,7 +30,7 @@
  * tuck on early release); row settle for the doc open; ink micro-states.
  */
 
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -903,7 +903,7 @@ function CardPart({ label, first = false, children }: { label: string; first?: b
   );
 }
 
-function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: () => void }) {
+function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (viaKeyboard: boolean) => void }) {
   const qc = useQueryClient();
   const rid = useActiveRestaurantId();
   const detailKey = ['receipts-next', 'doc', rid, doc.id];
@@ -1110,9 +1110,13 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
     mutationFn: (challenge?: string | null) => documentsApi.verify(doc.id, challenge),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['receipts-next'] });
-      onVerified();
+      onVerified(sealByKeyboard.current);
     },
   });
+  // r108: a keyboard seal hands its focus on (the swipe unmounts, and focus
+  // would fall to BODY). Taken when the gesture COMPLETES, while the control
+  // still holds focus; a pointer seal never moves focus.
+  const sealByKeyboard = useRef(false);
 
   /**
    * ONE VERDICT ON ONE SCREEN (walk-through W6, 2026-10-01). The sheet above
@@ -1636,14 +1640,19 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                   : 'Confirm opens once the lines are read.'}
               </p>
             )}
+            <div>
             <SwipeToConfirm
               key={`swipe-${verify.failureCount}`}
               label="Swipe up to confirm"
               assertion="Confirms this transcription matches the paper. It does not accept charges or touch stock. A one-time seal is taken when the gesture starts."
               disabled={verify.isPending || lines === undefined}
               onChallenge={() => documentsApi.mintVerifySeal(doc.id)}
-              onConfirm={(challenge) => verify.mutate(challenge)}
+              onConfirm={(challenge, how) => {
+                sealByKeyboard.current = !!how?.viaKeyboard;
+                verify.mutate(challenge);
+              }}
             />
+            </div>
             {verify.isError && (
               <p role="alert" style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--ink-1, #211C16)', margin: '6px 0 0' }}>
                 {sentence(serverMessage(verify.error, 'The confirmation did not go through.'))}{' '}
@@ -1718,6 +1727,59 @@ export default function ReceiptsNext() {
     null;
 
   /*
+   * THE NEXT PAPER, NOT THE EMPTY PAGE (r107, DD-r106-25). A seal used to send
+   * the reader back to nothing, so a reviewer of forty papers re-found their
+   * place forty times. After a seal the next paper in the review lanes opens;
+   * the last one falls back to the empty state. j and k move through the review
+   * lanes, Enter opens the one in focus (a button's own Enter), and only one row
+   * is a Tab stop. No scroll animation, no fade: focus lands where it lands.
+   */
+  const reviewRows = [...data.queue, ...data.clean];
+  const nextAfter = (id: string) => {
+    const at = reviewRows.findIndex((d) => d.id === id);
+    return at >= 0 ? (reviewRows[at + 1]?.id ?? null) : null;
+  };
+  // r108: after a keyboard seal the next row takes focus, so j/k work without a Tab back.
+  const focusAfterSeal = useRef<string | null>(null);
+  useEffect(() => {
+    const id = focusAfterSeal.current;
+    if (!id || selectedId !== id) return;
+    focusAfterSeal.current = null;
+    // Under the 2xl width the lanes are display:none while a paper is open, and
+    // .focus() on a hidden row does nothing, leaving focus on BODY. Judge by where
+    // focus actually went, not by whether the call was made, and fall back to the
+    // open paper's own controls (the back control, then the review card heading).
+    const row = document.querySelector(`[data-rc-id="${id}"]`) as HTMLElement | null;
+    row?.focus();
+    if (row && document.activeElement === row) return;
+    for (const el of [document.querySelector('[data-rc-back]'), document.getElementById('rc-check')]) {
+      (el as HTMLElement | null)?.focus();
+      if (el && document.activeElement === el) return;
+    }
+  }, [selectedId]);
+  const [rovingId, setRovingId] = useState<string | null>(null);
+  const rovingRowId = reviewRows.some((d) => d.id === rovingId)
+    ? rovingId
+    : reviewRows.some((d) => d.id === selectedId)
+      ? selectedId
+      : (reviewRows[0]?.id ?? null);
+  // A seal being held (pointer down on the detail) must not have the paper
+  // swapped under it by a stray key.
+  const sealHeld = useRef(false);
+  const onReviewKey = (e: KeyboardEvent<HTMLElement>) => {
+    if (e.key !== 'j' && e.key !== 'k') return;
+    if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || sealHeld.current) return;
+    const t = e.target as HTMLElement;
+    if (t.closest('input, textarea, select, [contenteditable="true"]')) return;
+    const from = reviewRows.findIndex((d) => d.id === rovingRowId);
+    const to = reviewRows[from + (e.key === 'j' ? 1 : -1)];
+    if (!to) return;
+    e.preventDefault();
+    setRovingId(to.id);
+    (e.currentTarget.closest('section')?.querySelector(`[data-rc-id="${to.id}"]`) as HTMLElement | null)?.focus();
+  };
+
+  /*
    * ONE ROW, TWO GROUPS (walk-through RECEIPTS-W44, 2026-10-01). The papers
    * that need a look and the papers that read cleanly are drawn by the same
    * row, so the two groups differ only by the heading between them.
@@ -1726,6 +1788,9 @@ export default function ReceiptsNext() {
     <button
       key={d.id}
       type="button"
+      data-rc-id={d.id}
+      tabIndex={rovingRowId === d.id ? 0 : -1}
+      onFocus={() => setRovingId(d.id)}
       onClick={() => select(d.id)}
       aria-pressed={selectedId === d.id}
       className="rc-row block w-full text-left"
@@ -2044,7 +2109,7 @@ export default function ReceiptsNext() {
               </p>
               </div>
             ) : (
-              <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+              <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }} onKeyDown={onReviewKey}>
                 {data.queue.map(queueRow)}
                 {data.queueReading && <LaneOutline rows={remembered?.queue || 3} slot="queue" />}
               </div>
@@ -2081,7 +2146,7 @@ export default function ReceiptsNext() {
                   Read cleanly · not yet confirmed · {data.cleanCapped ? GE : ''}
                   {data.clean.length}
                 </h3>
-                <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+                <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }} onKeyDown={onReviewKey}>
                   {data.clean.map(queueRow)}
                 </div>
               </div>
@@ -2201,6 +2266,9 @@ export default function ReceiptsNext() {
           <section
             aria-label="Document detail"
             data-testid="detail-placeholder"
+            onPointerDownCapture={() => { sealHeld.current = true; }}
+            onPointerUpCapture={() => { sealHeld.current = false; }}
+            onPointerCancelCapture={() => { sealHeld.current = false; }}
             // With nothing open the section keeps its line, so the grid does not
             // lose it when the lanes beside it land (r105).
             style={selected ? undefined : { minHeight: 41 }}
@@ -2210,6 +2278,7 @@ export default function ReceiptsNext() {
                 <button
                   type="button"
                   onClick={() => select(null)}
+                  data-rc-back=""
                   className="rc-ink mb-3 2xl:hidden"
                   style={{
                     fontFamily: SANS,
@@ -2249,7 +2318,12 @@ export default function ReceiptsNext() {
                     <CanonicalDocumentPage documentId={selected.id} embedded />
                   </Suspense>
                 </div>
-                <DocView key={selected.id} doc={selected} onVerified={() => select(null)} />
+                <DocView key={selected.id} doc={selected} onVerified={(viaKeyboard) => {
+                    const next = nextAfter(selected.id);
+                    if (viaKeyboard && next) focusAfterSeal.current = next;
+                    select(next);
+                  }}
+                />
               </>
             ) : selectedId && data.queueKnown && data.cleanKnown && data.verifiedKnown ? (
               /*
