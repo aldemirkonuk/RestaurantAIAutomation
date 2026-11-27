@@ -19,6 +19,7 @@ vi.mock('../../services/api/vendors', () => ({ addCustomProvider, addProviderFro
 vi.mock('../../services/api/menus', () => ({ updateOnboardingProgress: vi.fn(), getOnboardingProgress }))
 vi.mock('../../services/api/settings', () => ({ settingsApi: { houseCurrency } }))
 vi.mock('../../components/brand/BrandMark', () => ({ BrandMark: () => <span>Mudavym</span> }))
+vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ user: { role: 'owner' } }) }))
 
 import HouseContents from '../HouseContents'
 
