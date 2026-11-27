@@ -1338,8 +1338,9 @@ export class DocumentsController {
     name: "before",
     required: false,
     description:
-      "ISO time: only papers created before it. Pass the last row's `nextBefore` to read the next older page.",
+      "ISO time: only papers created before it. Pass the last row's `nextBefore` (and `beforeId`) to read the next older page.",
   })
+  @ApiQuery({ name: "beforeId", required: false, description: "The id of the last row read, to break a tie on `before`." })
   async list(
     @CurrentUser() user: AuthedUser,
     @Query("status") status?: string,
@@ -1348,6 +1349,7 @@ export class DocumentsController {
     @Query("limit") limit?: string,
     @Query("q") q?: string,
     @Query("before") before?: string,
+    @Query("beforeId") beforeId?: string,
   ) {
     const n = Math.min(200, Math.max(1, parseInt(limit ?? "50", 10) || 50));
     const beforeAt = before ? new Date(before) : null;
@@ -1356,6 +1358,16 @@ export class DocumentsController {
         "`before` has to be a date and time, such as 2026-11-01T00:00:00Z.",
         HttpStatus.BAD_REQUEST,
       );
+    if (beforeId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(beforeId))
+      throw new HttpException("`beforeId` has to be a paper id.", HttpStatus.BAD_REQUEST);
+    // The cursor goes through as the raw timestamptz string the database gave:
+    // a JS Date keeps milliseconds, so papers sharing the boundary's millisecond
+    // were skipped by "Older papers" (r106). Only a strictly shaped string is
+    // used raw (it is placed in a filter); anything else falls back to the Date.
+    const beforeRaw =
+      before && /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}(:?\d{2})?)?$/.test(before.trim())
+        ? before.trim()
+        : (beforeAt?.toISOString() ?? null);
     // Letters, digits, space and . - # / only: the rest would break the filter
     // grammar below, and no paper is found by a comma.
     const term = (q ?? "").replace(/[^\p{L}\p{N} .\-#/]/gu, "").trim().slice(0, 60);
@@ -1388,11 +1400,15 @@ export class DocumentsController {
       .select("*")
       .eq("restaurant_id", user.restaurantId)
       .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
       .limit(n + 1);
     if (status) query = query.eq("status", status);
     if (docType) query = query.eq("doc_type", docType);
     if (documentIds) query = query.in("id", documentIds);
-    if (beforeAt) query = query.lt("created_at", beforeAt.toISOString());
+    if (beforeRaw)
+      query = beforeId
+        ? query.or(`created_at.lt."${beforeRaw}",and(created_at.eq."${beforeRaw}",id.lt."${beforeId}")`)
+        : query.lt("created_at", beforeRaw);
     if (term) {
       // A vendor is named by the provider row or by what the paper itself
       // carried (`vendorNamesFor` reads both), so the search reads both.
@@ -1464,7 +1480,10 @@ export class DocumentsController {
       ),
     }));
 
-    if (!orderId) return { items, hasMore, nextBefore };
+    const nextBeforeId = hasMore
+      ? ((data[data.length - 1] as { id?: string } | undefined)?.id ?? null)
+      : null;
+    if (!orderId) return { items, hasMore, nextBefore, nextBeforeId };
 
     const { data: order, error: orderError } = await this.db
       .getClient()
