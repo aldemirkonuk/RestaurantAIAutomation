@@ -592,6 +592,32 @@ describe('the drawer share follows the house tax basis (r103 need 2, DD-r102-32)
     );
   const food = () => screen.getByTestId('ivd-dish-d1-food-cost');
 
+  it('[REVERT-FAILS] one dish card carries From stock, This good and the tax-basis share together (r110 inventory-6 merge)', () => {
+    render(
+      <MemoryRouter>
+        <ItemUsedIn
+          dishes={ready(
+            dish({
+              servesFromStock: 23,
+              servesWhy: null,
+              goodShare: { costPerServe: 1.55, pct: 62, ofPricedPart: false, priced: 3, of: 3, unpriced: false },
+            }),
+          )}
+          onRetryDishes={vi.fn()}
+          load={load()}
+          canManage
+          currency={EUR}
+          tax={include(20)}
+          onRetry={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId('ivd-dish-d1-from-stock').textContent).toContain('Enough for 23 plates');
+    expect(screen.getByTestId('ivd-dish-d1-good-share').textContent).toContain('62%');
+    expect(food().textContent).toContain('30.0%');
+    expect(food().textContent).toContain('of the price before tax');
+  });
+
   it('a tax-inclusive house reads its food cost over the price before tax, and says so, in the plain tone', () => {
     withTax(include(20));
     // 10 on the list is 8.33 before 20 % tax: 2.5 / 8.333 = 30.0 %.

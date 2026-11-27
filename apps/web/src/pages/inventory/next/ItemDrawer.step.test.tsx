@@ -32,7 +32,7 @@ import ItemDrawer from './ItemDrawer';
 const mk = (id: string, name: string) =>
   ({
     id, wineId: null, name, libraryName: null, producer: null, type: 'red', kind: 'wine', vintage: null, grape: null, bottleSizeMl: 750,
-    stock: 3, shadow: 0, par: 1, reorderPoint: null, analyticsReadable: true, velocity: 1, runway: 3, daysSinceSale: 1, deadStock: false,
+    stock: 3, shadow: 0, par: 1, reorderPoint: null, analyticsReadable: true, rollupReadable: true, locationsReadable: true, velocity: 1, runway: 3, daysSinceSale: 1, deadStock: false,
     usageSource: null, usageSince: null, usageUntil: null, usageQty: null, bottle: 50, glass: 10, pourMl: 150, wac: 20, costProvenance: 'invoice',
     value: 60, lastCountedAt: null, openMl: null, zones: [], providerId: null, providerName: null, standing: 'above', active: true,
   }) as InvRow;

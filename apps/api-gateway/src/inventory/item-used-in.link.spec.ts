@@ -63,6 +63,17 @@ describe("ItemUsedInService.link (r109 g2)", () => {
     expect(db.tables.menu_items!.find((l) => l.id === "l-1")!.inventory_item_id).toBeNull();
   });
 
+  it("[REVERT-FAILS] a link writes only the caller's house: another house's row under the same id is untouched (r110 inventory-6)", async () => {
+    const { db, svc } = seed();
+    // Ids are unique in the database; the twin row here stands in for "any row of another house",
+    // so the write's own restaurant_id filter is what keeps it out.
+    db.tables.menu_items!.push({ id: "l-1", menu_id: "menu-now", restaurant_id: "house-2", name: "RAKI YENİ", inventory_item_id: null, status: "approved" });
+    await svc.link(H, I, "l-1");
+    const rows = db.tables.menu_items!.filter((l) => l.id === "l-1");
+    expect(rows.find((l) => l.restaurant_id === H)!.inventory_item_id).toBe(I);
+    expect(rows.find((l) => l.restaurant_id === "house-2")!.inventory_item_id).toBeNull();
+  });
+
   it("refuses a line of another house with 404", async () => {
     const { db, svc } = seed();
     db.tables.menu_items!.push({ id: "l-x", menu_id: "menu-x", restaurant_id: "house-2", name: "Rakı Yeni", inventory_item_id: null, status: "approved" });
