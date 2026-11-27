@@ -135,6 +135,8 @@ export class MailService {
     callerRole: string | null | undefined,
     opts: {
       waitingOnly?: boolean;
+      /** r108 mail-gap g7: only the people the house wrote to who have not answered in 72 h. */
+      awaiting?: boolean;
       after?: string;
       limit?: string | number;
       /** r28 mail gap 16: a name, subject, order number or a letter's words. */
@@ -166,6 +168,8 @@ export class MailService {
       // Asked for in SQL, so a page holds that kind and the next page is
       // the next of that kind, never "none" for a kind on a later page.
       ...(kind ? { p_kind: kind } : {}),
+      // Named only when asked, as the search is.
+      ...(opts.awaiting === true ? { p_awaiting: true } : {}),
     });
     if (error) this.failed("people", error);
     let rows = (data ?? []) as any[];
@@ -191,6 +195,7 @@ export class MailService {
             p_limit: 1,
             p_query: n.address,
             p_kind: n.kind,
+            ...(opts.awaiting === true ? { p_awaiting: true } : {}),
           });
           if (res.error) this.failed("people", res.error);
           const want = `${n.kind}:${n.address}`;
@@ -259,6 +264,8 @@ export class MailService {
           ),
           unsentStatus:
             typeof r.unsent_status === "string" ? r.unsent_status : null,
+          awaitingSince:
+            typeof r.awaiting_since === "string" ? r.awaiting_since : null,
         }),
       ),
       next:

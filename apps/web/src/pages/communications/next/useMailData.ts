@@ -58,8 +58,8 @@ export function useHouse(): string {
 
 export const mailKeys = {
   summary: (house: string) => ['mail-summary', house] as const,
-  people: (house: string, waitingOnly: boolean, search = '', kind: MailKindFilter = 'all') =>
-    ['mail-people', house, waitingOnly, search, kind] as const,
+  people: (house: string, waitingOnly: boolean, search = '', kind: MailKindFilter = 'all', awaiting = false) =>
+    ['mail-people', house, waitingOnly, search, kind, awaiting] as const,
   threads: (house: string, withKey: string) => ['mail-threads', house, withKey] as const,
   thread: (house: string, key: string, withKey: string) => ['mail-thread', house, key, withKey] as const,
 };
@@ -76,9 +76,11 @@ export function useMailSummary(poll: boolean) {
   });
 }
 
-async function fetchPeoplePage(waitingOnly: boolean, search: string, kind: MailKindFilter, after: string | null) {
+async function fetchPeoplePage(waitingOnly: boolean, search: string, kind: MailKindFilter, after: string | null, awaiting = false) {
   const params: Record<string, string> = {};
   if (waitingOnly) params.waiting = '1';
+  // r108 mail-gap g7: the people the house wrote to who have not answered.
+  if (awaiting) params.awaiting = '1';
   if (search) params.q = search;
   // The kind is asked for, so a page holds that kind and the next page is the next of that kind (r103 mail-1).
   if (kind !== 'all') params.kind = kind;
@@ -106,12 +108,13 @@ async function fetchThreadPage(key: string, withKey: string | null | undefined, 
  * letters leave a gap is marked stale and read whole when next shown, as before.
  */
 async function refreshHead(qc: QueryClient, queryKey: readonly unknown[]): Promise<void> {
-  const [root, , a, b, c] = queryKey as [string, string, unknown, unknown, unknown];
+  const [root, , a, b, c, d] = queryKey as [string, string, unknown, unknown, unknown, unknown];
   const stale = () => void qc.invalidateQueries({ queryKey, exact: true });
   const cur = qc.getQueryData<InfiniteData<unknown, string | null>>(queryKey);
   if (!cur || cur.pages.length === 0) return stale();
   if (root === 'mail-people') {
-    const fresh = await fetchPeoplePage(a as boolean, b as string, (c as MailKindFilter) ?? 'all', null);
+    // Page 1 of the same list: the key's `awaiting` (r108 g7) is part of which list it is.
+    const fresh = await fetchPeoplePage(a as boolean, b as string, (c as MailKindFilter) ?? 'all', null, d === true);
     qc.setQueryData<InfiniteData<MailPeoplePage, string | null>>(queryKey, (now) => (now ? mergePeopleHead(now, fresh) : now));
   } else if (root === 'mail-threads') {
     const fresh = await fetchThreadsPage(a as string, null);
@@ -179,15 +182,16 @@ export function useMailListsFollowSummary(summary: MailSummary | null | undefine
  * searches, so a person past the first page is found too. While a new term
  * is read, the last list stays on screen instead of "Reading the mail…".
  */
-export function useMailPeople(waitingOnly: boolean, search = '', kind: MailKindFilter = 'all') {
+export function useMailPeople(waitingOnly: boolean, search = '', kind: MailKindFilter = 'all', awaiting = false) {
   const house = useHouse();
   return useInfiniteQuery<MailPeoplePage>({
-    queryKey: mailKeys.people(house, waitingOnly, search, kind),
+    queryKey: mailKeys.people(house, waitingOnly, search, kind, awaiting),
     initialPageParam: null as string | null,
-    // The last list stands in only within one kind: another kind's pages narrowed to this kind leave nothing, and
-    // "nobody of this kind" (or a cursor that belongs to the other kind) would be claimed while this one is read.
-    placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[4] === kind ? previous : undefined),
-    queryFn: ({ pageParam }) => fetchPeoplePage(waitingOnly, search, kind, pageParam ? String(pageParam) : null),
+    // The last list stands in only within one kind and one show (r108 g7): another kind's pages narrowed to this kind
+    // leave nothing, and everyone's list standing in under "No answer yet" would say all of them owe the house a reply.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[4] === kind && previousQuery?.queryKey[5] === awaiting ? previous : undefined,
+    queryFn: ({ pageParam }) => fetchPeoplePage(waitingOnly, search, kind, pageParam ? String(pageParam) : null, awaiting),
     getNextPageParam: (last) => last.next ?? undefined,
     enabled: Boolean(house),
     staleTime: 15_000,

@@ -74,6 +74,12 @@ export class MailController {
     description: "1 = only people waiting on the house",
   })
   @ApiQuery({
+    name: "awaiting",
+    required: false,
+    description:
+      "1 = only people the house wrote to who have not answered in 72 hours (none for staff)",
+  })
+  @ApiQuery({
     name: "after",
     required: false,
     description: "The `next` cursor of the previous page",
@@ -102,9 +108,11 @@ export class MailController {
     @Query("limit") limit?: string,
     @Query("q") q?: unknown,
     @Query("kind") kind?: unknown,
+    @Query("awaiting") awaiting?: string,
   ): Promise<MailPeoplePage> {
     return this.mail.listPeople(houseOf(user), role, {
       waitingOnly: waiting === "1" || waiting === "true",
+      awaiting: awaiting === "1" || awaiting === "true",
       after,
       limit,
       query: q,
