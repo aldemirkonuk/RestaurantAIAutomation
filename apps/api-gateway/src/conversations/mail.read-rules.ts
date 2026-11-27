@@ -114,6 +114,16 @@ export function mailSearchOf(raw: unknown): string | null {
   return q;
 }
 
+/**
+ * `?kind=` on the people list: one of vendor, team, guest, or nothing (every kind). Anything else is a 400,
+ * never an unfiltered list that reads as the kind being empty.
+ */
+export function mailKindFilterOf(raw: unknown): MailPersonKind | null {
+  if (raw === undefined || raw === null || raw === "") return null;
+  if (raw === "vendor" || raw === "team" || raw === "guest") return raw;
+  throw new BadRequestException("Kind is vendor, team or guest.");
+}
+
 /** Default 50, clamped to 1..100. Anything that is not a whole number is a 400. */
 export function clampMailLimit(
   raw: string | number | undefined | null,
