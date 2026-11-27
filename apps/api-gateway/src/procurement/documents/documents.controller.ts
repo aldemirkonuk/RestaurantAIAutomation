@@ -1749,7 +1749,7 @@ export class DocumentsController {
   @ApiOperation({
     summary: "A vendor's statement against this house's papers",
     description:
-      "Owner and manager only. Each invoice or credit row the statement lists is matched to this house's paper from the same vendor by document number, never by amount alone, and compared in cents in one money: checked_same, on_file_not_checked, amount_differs (differsBy), never_received, or not_compared (with a reason). notOnStatement lists the vendor's papers dated inside the statement's span that it does not list. Payments are ignored and nothing is marked paid (r109 g5).",
+      "Owner and manager only. Each invoice or credit row the statement lists is matched to this house's paper from the same vendor by document number, never by amount alone, and compared in cents in one money: checked_same, on_file_not_checked, amount_differs (differsBy), never_received, or not_compared (with a reason). notOnStatement lists the vendor's papers dated inside the statement's span that it does not list, in the statement's money only; notOnStatementOtherMoney counts those left out because their money is another or not known (r110). Payments are ignored and nothing is marked paid (r109 g5).",
   })
   async statementTieout(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
     if (!holdsHouseMoney(user.role ?? null))

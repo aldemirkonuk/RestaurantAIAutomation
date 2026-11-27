@@ -66,7 +66,8 @@ describe("GET /procurement/documents/:id/statement-tieout (r109 g5)", () => {
     ]);
     expect(out.paymentsIgnored).toBe(1);
     // 103 sits inside the span (2 to 8 Nov) and the statement does not list it by its number.
-    expect(out.notOnStatement).toEqual([{ id: "d103", docNumber: "103", docDate: "2026-11-07", total: "312.40", kind: "invoice" }]);
+    expect(out.notOnStatement).toEqual([{ id: "d103", docNumber: "103", docDate: "2026-11-07", total: "312.40", currency: "USD", kind: "invoice" }]);
+    expect(out.notOnStatementOtherMoney).toBe(0);
   });
 
   it("a credit row matches a credit memo, never an invoice of the same number; unchecked says so", async () => {
@@ -90,6 +91,39 @@ describe("GET /procurement/documents/:id/statement-tieout (r109 g5)", () => {
     });
     const out: any = await c.statementTieout("st1", owner);
     expect(out.rows[0]).toMatchObject({ verdict: "not_compared", reason: "the paper is in TRY and the statement in USD", paperId: "d9" });
+  });
+
+  it("a TRY paper the USD statement does not list is left out and counted, never printed as dollars (r110 F3)", async () => {
+    const c = controllerWith({
+      procurement_documents: [
+        statement([
+          { docNumber: "V-1", docDate: "2026-11-02", amount: 50, kind: "invoice" },
+          { docNumber: "V-2", docDate: "2026-11-28", amount: 60, kind: "invoice" },
+        ]),
+        paper({ id: "v1", doc_number: "V-1", total: "50.00", doc_date: "2026-11-02" }),
+        paper({ id: "v2", doc_number: "V-2", total: "60.00", doc_date: "2026-11-28" }),
+        // Three TRY papers and one with no money read, all inside the span and unlisted.
+        paper({ id: "r1", doc_number: "R102-1", total: "120.00", currency: "TRY", doc_date: "2026-11-26" }),
+        paper({ id: "r2", doc_number: "R102-2", total: "120.00", currency: "try ", doc_date: "2026-11-26" }),
+        paper({ id: "r3", doc_number: "R102-3", total: "120.00", currency: "TRY", doc_date: "2026-11-26", doc_type: "credit_memo" }),
+        paper({ id: "n1", doc_number: "N-1", total: "9.00", currency: null, doc_date: "2026-11-20" }),
+        // One USD paper unlisted: it stays, and says its money.
+        paper({ id: "u1", doc_number: "U-1", total: "7.50", doc_date: "2026-11-21" }),
+      ],
+    });
+    const out: any = await c.statementTieout("st1", owner);
+    expect(out.notOnStatement).toEqual([{ id: "u1", docNumber: "U-1", docDate: "2026-11-21", total: "7.50", currency: "USD", kind: "invoice" }]);
+    expect(out.notOnStatementOtherMoney).toBe(4);
+  });
+
+  it("an unknown statement money lists no paper under it, and counts them all as left out", () => {
+    const out = tieOutStatement(
+      [{ docNumber: "1", docDate: "2026-11-01", amount: 1, kind: "invoice" }, { docNumber: "2", docDate: "2026-11-09", amount: 1, kind: "invoice" }],
+      [{ id: "a", doc_type: "invoice", doc_number: "5", doc_date: "2026-11-05", total: 3, currency: "USD", status: "verified" }],
+      { vendorNamed: true, currency: null },
+    );
+    expect(out.notOnStatement).toEqual([]);
+    expect(out.notOnStatementOtherMoney).toBe(1);
   });
 
   it("a statement with no vendor named compares nothing and reads no papers", async () => {
