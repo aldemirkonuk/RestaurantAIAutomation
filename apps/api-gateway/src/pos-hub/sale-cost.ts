@@ -43,6 +43,7 @@ export interface SaleCostSource {
    * `loadSaleCosts` builds a fresh source per check.
    */
   lotQtyLeft: number;
+  /**
    * r109 g1: every live lot the unit cost was read over, so each delivery's
    * paper restates its own share of the WAC. Null when there were none, or
    * when there were more than COST_PARTS_CAP (then `partsCapped`).

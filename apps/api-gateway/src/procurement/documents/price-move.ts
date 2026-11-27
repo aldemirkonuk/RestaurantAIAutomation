@@ -113,6 +113,8 @@ export function perBottleCost(l: PricedLine): number | null {
 export function isPlainPerBottle(l: PricedLine): boolean {
   if (!BOTTLE.test((l.price_base_uom ?? l.uom ?? "").trim())) return false;
   return l.price_base_qty == null || Number(l.price_base_qty) === 1;
+}
+
 /**
  * A line's printed price per bottle (r108 g15), `line_total / bottles`, before
  * any landed charge, tax basis, FX or revaluation: papers compare like for
