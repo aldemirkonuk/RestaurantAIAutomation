@@ -60,6 +60,12 @@ export interface MailPersonRow {
    * only such a letter, so it can still be pulled back (QA round 16, HARM 1).
    */
   unsentStatus: string | null;
+  /**
+   * A thread of this person the house put off with "Not now" came back (its
+   * time came, the vendor has not written since) and still waits. Cleared
+   * when an owner or manager opens it.
+   */
+  backFromNotNow: boolean;
 }
 
 export interface MailPeoplePage {
@@ -97,6 +103,10 @@ export interface MailThreadRow {
   waiting: boolean;
   orderId: string | null;
   orderNumber: string | null;
+  /** Put off with "Not now" until this instant; null when it is not put off. */
+  notNowUntil: string | null;
+  /** Its "Not now" time came, the vendor has not written since, and it waits. */
+  backFromNotNow: boolean;
 }
 
 export interface MailThreadsPage {
@@ -224,6 +234,17 @@ export interface MailThreadPage {
    * never that they carried none.
    */
   attachmentsRead: boolean;
+  /**
+   * "Not now" on a vendor thread: `on` until `until` (the thread is not
+   * waiting meanwhile), or `back` once its time came. Null when not put off,
+   * when the vendor wrote again since, or for a team or guest thread.
+   */
+  notNow: MailNotNow | null;
+}
+
+export interface MailNotNow {
+  until: string;
+  state: "on" | "back";
 }
 
 /** The answer to POST/DELETE /mail/thread/not-now. */

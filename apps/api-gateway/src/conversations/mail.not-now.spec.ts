@@ -230,3 +230,70 @@ describe("POST/DELETE /mail/thread/not-now", () => {
     ]);
   });
 });
+
+describe("the reads say it", () => {
+  const snooze = (state: "on" | "back" | "ended") => ({
+    provider_id: VENDOR,
+    thread_key: "gm:1",
+    until: "2026-11-02T14:00:00Z",
+    state,
+  });
+
+  it("a thread row says until when it is put off, and Back once its time came and it waits", async () => {
+    for (const [state, waiting, until, back] of [
+      ["on", false, "2026-11-02T14:00:00Z", false],
+      ["back", true, null, true],
+      ["back", false, null, false],
+      ["ended", true, null, false],
+    ] as const) {
+      answer = (r) =>
+        r.name === "list_mail_threads"
+          ? { data: [{ thread_key: "gm:1", last_at: "2026-11-01T10:00:00Z", waiting }], error: null }
+          : r.name === "mail_thread_snooze_rows"
+            ? { data: [snooze(state)], error: null }
+            : { data: [], error: null };
+      rpcs = [];
+      const res = await call("GET", `/threads?with=${encodeURIComponent(WITH)}`);
+      expect(res.status).toBe(200);
+      expect(rpcs.find((r) => r.name === "mail_thread_snooze_rows")?.payload).toEqual({
+        p_restaurant_id: HOUSE_A,
+        p_provider_ids: [VENDOR],
+      });
+      expect(res.body.threads[0].notNowUntil).toBe(until);
+      expect(res.body.threads[0].backFromNotNow).toBe(back);
+    }
+  });
+
+  it("the thread does not wait while put off, and says until when", async () => {
+    answer = (r) =>
+      r.name === "mail_thread_letters"
+        ? {
+            data: [{ id: "e8000000-0000-4000-8000-000000000003", provider_id: VENDOR, direction: "inbound", thread_waiting: true, at: "2026-11-01T10:00:00Z" }],
+            error: null,
+          }
+        : r.name === "mail_thread_snooze_rows"
+          ? { data: [snooze("on")], error: null }
+          : { data: [], error: null };
+    const res = await call("GET", `/thread${q("gm:1")}`);
+    expect(res.status).toBe(200);
+    expect(res.body.waiting).toBe(false);
+    expect(res.body.notNow).toEqual({ until: "2026-11-02T14:00:00Z", state: "on" });
+  });
+
+  it("a person row says Back from Not now only while they wait", async () => {
+    answer = (r) =>
+      r.name === "list_mail_people"
+        ? {
+            data: [
+              { key: WITH, kind: "vendor", provider_id: VENDOR, last_at: "2026-11-01T10:00:00Z", waiting: true },
+            ],
+            error: null,
+          }
+        : r.name === "mail_thread_snooze_rows"
+          ? { data: [snooze("back")], error: null }
+          : { data: [], error: null };
+    const res = await call("GET", `/people`);
+    expect(res.status).toBe(200);
+    expect(res.body.people[0].backFromNotNow).toBe(true);
+  });
+});

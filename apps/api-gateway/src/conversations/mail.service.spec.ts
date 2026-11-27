@@ -466,6 +466,7 @@ describe("getThread", () => {
       before: null,
       waiting: false,
       attachmentsRead: true,
+      notNow: null,
     });
   });
 });

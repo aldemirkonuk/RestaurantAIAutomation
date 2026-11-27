@@ -18,6 +18,7 @@ import type {
   MailDelivery,
   MailMessage,
   MailNoReplyAnswer,
+  MailNotNow,
   MailNotNowAnswer,
   MailOrderRef,
   MailPeoplePage,
@@ -81,6 +82,15 @@ function emptyThread(key: string): MailThreadPage {
     before: null,
     waiting: false,
     attachmentsRead: true,
+    notNow: null,
+  };
+}
+
+/** A thread row's "Not now" words: put off until, or back and still waiting. */
+function notNowOfRow(z: MailNotNow | undefined, waiting: boolean) {
+  return {
+    notNowUntil: z?.state === "on" ? z.until : null,
+    backFromNotNow: z?.state === "back" && waiting,
   };
 }
 
@@ -274,6 +284,15 @@ export class MailService {
     }
     const page = rows.slice(0, limit);
     const last = page[page.length - 1];
+    const snoozes = await this.snoozesOf(
+      houseId,
+      page.filter((r) => r.waiting === true && r.provider_id).map((r) => r.provider_id),
+    );
+    const backFor = new Set(
+      [...snoozes.entries()]
+        .filter(([, z]) => z.state === "back")
+        .map(([k]) => k.split("|")[0]),
+    );
     // Staff read vendors only, so no roster or guest header is read for them.
     const names = await this.namesOf(
       houseId,
@@ -304,6 +323,7 @@ export class MailService {
           newestOpenOrderNumber: r.newest_open_order_number ?? null,
           unsentStatus:
             typeof r.unsent_status === "string" ? r.unsent_status : null,
+          backFromNotNow: r.waiting === true && backFor.has(String(r.provider_id)),
         }),
       ),
       next:
@@ -557,6 +577,9 @@ export class MailService {
     const rows = (threadsRes.data ?? []) as any[];
     const page = rows.slice(0, limit);
     const last = page[page.length - 1];
+    const snoozes = other
+      ? new Map<string, MailNotNow>()
+      : await this.snoozesOf(houseId, page.length ? [providerId!] : []);
     return {
       person: other
         ? otherPersonRef(
@@ -579,6 +602,7 @@ export class MailService {
           waiting: t.waiting === true,
           orderId: t.order_id ?? null,
           orderNumber: t.order_number ?? null,
+          ...notNowOfRow(snoozes.get(`${providerId}|${t.thread_key}`), t.waiting === true),
         }),
       ),
       next:
@@ -697,6 +721,15 @@ export class MailService {
       : null;
     const kept = rows.slice(0, MAIL_THREAD_PAGE);
     const oldest = kept[kept.length - 1];
+    // "Not now" is read by the same SQL rule the list and the badge use, so
+    // the thread never waits here while the list says it does not. A thread
+    // the house answered waits for nothing and has nothing to put off.
+    const notNow =
+      !other && head.provider_id && head.thread_waiting === true
+        ? ((await this.snoozesOf(houseId, [head.provider_id])).get(
+            `${head.provider_id}|${key}`,
+          ) ?? null)
+        : null;
     const files = await this.readAttachments(kept.map((m) => m.id));
     const who = await this.readWho(
       houseId,
@@ -753,8 +786,9 @@ export class MailService {
           ? encodeMailCursor(oldest.at, oldest.id)
           : null,
       // Every row carries the same thread-wide answer; the newest is read.
-      waiting: head.thread_waiting === true,
+      waiting: head.thread_waiting === true && notNow?.state !== "on",
       attachmentsRead: files !== null,
+      notNow,
     };
   }
 
@@ -1007,6 +1041,30 @@ export class MailService {
         this.logger.error(`mail no-reply mark: unknown outcome ${String(outcome)}`);
         throw new ServiceUnavailableException(NO_REPLY_FAILED);
     }
+  }
+
+  /**
+   * The house's "Not now" snoozes of these vendors that are on or came back,
+   * keyed `provider|thread_key`. A failed read fails the page, never "none".
+   */
+  private async snoozesOf(
+    houseId: string,
+    providerIds: string[],
+  ): Promise<Map<string, MailNotNow>> {
+    const out = new Map<string, MailNotNow>();
+    const ids = [...new Set(providerIds.filter((p) => UUID_RE.test(String(p))))];
+    if (!ids.length) return out;
+    const { data, error } = await this.db.rpc("mail_thread_snooze_rows", {
+      p_restaurant_id: houseId,
+      p_provider_ids: ids,
+    });
+    if (error) this.failed("not now", error);
+    for (const z of Array.isArray(data) ? (data as any[]) : []) {
+      if ((z.state === "on" || z.state === "back") && typeof z.until === "string") {
+        out.set(`${z.provider_id}|${z.thread_key}`, { until: z.until, state: z.state });
+      }
+    }
+    return out;
   }
 
   /**
