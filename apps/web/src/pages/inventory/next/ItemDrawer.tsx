@@ -447,12 +447,21 @@ export default function ItemDrawer(props: ItemDrawerProps) {
   const prevId = steps && at > 0 ? steps.ids[at - 1] : null;
   const nextId = steps && at >= 0 && at < steps.ids.length - 1 ? steps.ids[at + 1] : null;
   const stepRef = useRef<(d: 'next' | 'prev') => void>(() => {});
+  // The good a step is heading to: a change of good that is not this one (Cmd-K, a ?open= link) starts fresh.
+  const stepTo = useRef<string | null>(null);
   stepRef.current = (d) => {
     const to = d === 'next' ? nextId : prevId;
     if (to === null || !steps) return;
+    stepTo.current = to;
     setDir(d);
     steps.onStep(to);
   };
+  const rowId = row?.id ?? null;
+  useEffect(() => {
+    const stepped = stepTo.current !== null && stepTo.current === rowId;
+    stepTo.current = null;
+    if (!stepped) setEvidence(null);
+  }, [rowId]);
   useEffect(() => {
     if (!steps) return;
     const onKey = (e: KeyboardEvent) => {
