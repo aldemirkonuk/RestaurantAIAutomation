@@ -165,7 +165,7 @@ describe('swap a good in every drink (r108 drinks-g10)', () => {
     expect(most).toBe(4);
   });
 
-  it('confirm sends one PUT per drink: the version read, with only the good’s lines changed, qty, unit and usable share kept', async () => {
+  it('confirm sends one PUT per drink: the version read, with only the good’s lines changed, qty and unit kept, the old good’s usable share not carried', async () => {
     await choose('Better gin');
     await act(async () => fireEvent.click(screen.getByTestId('swap-confirm')));
     await waitFor(() => expect(h.put).toHaveBeenCalledTimes(2));
@@ -179,13 +179,22 @@ describe('swap a good in every drink (r108 drinks-g10)', () => {
         method: null,
         glass: 'Coupe',
         garnish: null,
-        lines: [col.lines[0], { ...col.lines[1], inventoryId: 'i-gin2', label: 'Better gin' }],
+        lines: [col.lines[0], { ...col.lines[1], inventoryId: 'i-gin2', label: 'Better gin', usablePct: null }],
       }),
     );
-    expect(body.lines[1]).toMatchObject({ qty: 50, unit: 'ml', usablePct: 95 });
+    expect(body.lines[1]).toMatchObject({ qty: 50, unit: 'ml', usablePct: null });
     // The old typed name is not carried onto a line that now pours the new good; lines not swapped keep theirs.
     expect(body.lines[1].label).toBe('Better gin');
     expect(body.lines[0].label).toBe('Lime juice');
+  });
+
+  it('says on each drink\'s plan line that the old good\'s usable share is not carried, and the preview prices the new good whole', async () => {
+    await choose('Better gin');
+    const notes = (await screen.findAllByTestId('swap-dropped')).map((n) => n.textContent);
+    expect(notes).toEqual(['. Gin\'s 95% usable share is not carried; set it again if the new good is not all usable.', '. Gin\'s 95% usable share is not carried; set it again if the new good is not all usable.']);
+    // The "after" preview body has no share on the swapped line; the "before" keeps it.
+    const bodies = h.post.mock.calls.filter(([u]) => u.includes('/c-neg')).map(([, b]) => b.lines[0].usablePct);
+    expect(bodies.sort()).toEqual([95, null].sort());
   });
 
   it('a drink with a made line says plainly that its cost could not be previewed, and still swaps', async () => {

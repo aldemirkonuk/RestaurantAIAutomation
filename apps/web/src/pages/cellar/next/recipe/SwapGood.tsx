@@ -6,8 +6,10 @@
  * Confirm saves each drink through its own PUT with `expectedVersionId`
  * (linkLines.ts), so each one keeps its earlier version.
  *
- * Each line keeps its quantity, unit and usable share: only `inventoryId`
- * changes. A line measured another way than the new good is counted (ml by
+ * Each line keeps its quantity and unit; `inventoryId` and `label` change. A
+ * usable share is a fact about the old good (45% of a lime is juice), so it is
+ * never carried onto the new one: the swapped line is sent with none, and the
+ * plan says so, per drink, so the owner sets it again if the new good needs one. A line measured another way than the new good is counted (ml by
  * volume, g by weight, a piece) is never sent: converting across those would
  * invent a density, so that drink is listed as not swapped. An incomplete
  * cost says how many lines are priced, never a partial sum or 0 (ADR 0051).
@@ -66,7 +68,12 @@ interface Plan {
   drink: LooseDrink;
   body: SaveRecipeBody;
   refused: string | null;
+  /** The swapped lines that had a usable share below 100%, said by their old label; the share is not carried. */
+  dropped: Array<{ label: string; pct: number }>;
 }
+
+const droppedWords = (d: Plan['dropped']) =>
+  d.map((x) => `${x.label}'s ${x.pct}% usable share is not carried; set it again if the new good is not all usable`).join('; ');
 
 function SwapSheet({ onClose }: { onClose: () => void }) {
   const { activeRestaurantId } = useAuth();
@@ -95,7 +102,15 @@ function SwapSheet({ onClose }: { onClose: () => void }) {
       const lines = at.get(drink.cocktailId);
       if (!lines) return [];
       const off = lines.some((l) => l.baseUnit !== want);
-      return [{ drink, body: linkBody(drink, lines.map((l) => l.index), to.id, to.name), refused: off ? `not swapped: counted ${COUNTED[want]}` : null }];
+      const indices = lines.map((l) => l.index);
+      const swapped = new Set(indices);
+      const linked = linkBody(drink, indices, to.id, to.name);
+      const body: SaveRecipeBody = { ...linked, lines: linked.lines.map((l, i) => (swapped.has(i) ? { ...l, usablePct: null } : l)) };
+      const dropped = indices.flatMap((i) => {
+        const pct = drink.lines[i]?.usablePct;
+        return pct != null && pct < 100 ? [{ label: drink.lines[i].label, pct }] : [];
+      });
+      return [{ drink, body, refused: off ? `not swapped: counted ${COUNTED[want]}` : null, dropped }];
     });
   }, [uses.data, to]);
 
@@ -215,6 +230,7 @@ function SwapSheet({ onClose }: { onClose: () => void }) {
             {plans.map((p) => (
               <li key={p.drink.cocktailId} data-refused={p.refused ? 'true' : 'false'}>
                 {p.drink.name}: {p.refused ?? previews[p.drink.cocktailId] ?? 'reading its cost…'}
+                {!p.refused && p.dropped.length ? <span data-testid="swap-dropped">. {droppedWords(p.dropped)}.</span> : null}
               </li>
             ))}
           </ul>
