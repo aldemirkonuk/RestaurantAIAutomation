@@ -180,6 +180,8 @@ export const SHEET_MIN_H = 3;
  * on a narrow screen lands on the same ruling a dragged one would.
  */
 export const SHEET_BREAKPOINTS = { lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 };
+/** Below this box width the sheet is a plain one-column stack, not a grid (r74). */
+export const SHEET_STACK_BELOW = SHEET_BREAKPOINTS.sm;
 export const SHEET_BREAKPOINT_COLS = {
   lg: SHEET_COLS,
   md: SHEET_COLS,
