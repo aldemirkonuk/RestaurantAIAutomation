@@ -35,6 +35,7 @@ to those would put a moving cutting somewhere the announcement says it is not.
 | `rp-ink` | `ink` | `cubic-bezier(.16,1,.3,1)` · 160ms | hover/focus micro-states on cuttings, chips, buttons and links — border, ground and colour only; nothing translates or scales. Also the till's last drawing dimming to 55% opacity while a newly picked window is read (`.rp-standin[data-stale]`); none under reduced motion |
 | `rp-working` | `turn` | `cubic-bezier(.32,.72,0,1)` · 420ms | "Show the working" — the server's own `basis` sentences revealing on `grid-template-rows: 0fr → 1fr`. Deliberately the slow token: this is the "show the working" page-turn, not a disclosure toggle |
 | `rp-ask` | `settle` | `cubic-bezier(.16,1,.3,1)` · 320ms | the ⌘K palette panel arriving; opacity + 6px from above. **Since 2026-09-04 this is the house `Panel`'s own `settle`** (`components/mudavym/Sheet.tsx`, ADR 0112) — same token, same 6px, run by the primitive rather than by this page's `animate()` call |
+| `rp-grow` | `settle` | `cubic-bezier(.16,1,.3,1)` · 360ms, stagger swept inside 160ms (`min(40ms, 160ms / (N-1))` a bar) | a bar chart's bars rising from the baseline, **once per cutting and drawing** per page session (`rp-draw.ts`: `pending` → `drawn` → `settled`), so the last bar is in by 520ms for any N. A resize, rotate, remount, or switch back to the same drawing paints `settled`, with no animation; `still` under reduced motion. transform only |
 | `rp-sheen` | — (not a `motion.ts` token) | `cubic-bezier(.45,0,.55,1)` · 1.9s loop | skeleton bars while a register is genuinely in flight — including the moment after a cutting is swapped to another analysis and its first read is on the wire. Same treatment and timing as the dashboard's `skel-sheen`; kept identical on purpose so "in flight" looks the same everywhere. **Never** shown for an unknown — that is the static em dash |
 
 ## Deliberate non-motions
@@ -50,7 +51,8 @@ to those would put a moving cutting somewhere the announcement says it is not.
 - **Figures of record do not count up.** No `tally` on this page. A figure of
   record is read, not watched — and half the figures in "Figures of record" are
   em dashes, so a ticker would be animating an absence.
-- **No chart animates in.** Every recharts series carries
+- **recharts' own series animation stays off, and the CSS bar rise is the one
+  exception.** Every recharts series carries
   `isAnimationActive={false}`. A line that draws itself makes a *projection*
   look like something happening, which is exactly the confusion the dashed
   forecast run exists to prevent.

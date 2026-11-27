@@ -57,6 +57,7 @@ import {
   Working,
 } from './rp-plot';
 import { CATALOGUE, graphOrDefault, type ViewCtx } from './rp-catalogue';
+import { DrawKey } from './rp-draw';
 import { readsRegister } from './rp-spec';
 import { cannotDraw } from './rp-strip';
 import { naturalPx } from './rp-fit';
@@ -388,7 +389,10 @@ export default function Cutting({
     ) : (
       kids
     );
-  const bodyFor = (g: GraphType, workingOpen = false, combo: ComboControl = sheetCombo) =>
+  const bodyFor = (g: GraphType, workingOpen = false, combo: ComboControl = sheetCombo) => (
+    <DrawKey.Provider value={`${id}:${g}`}>{bodyOf(g, workingOpen, combo)}</DrawKey.Provider>
+  );
+  const bodyOf = (g: GraphType, workingOpen = false, combo: ComboControl = sheetCombo) =>
     readsRegister(spec) ? (
       framed(
         <RegisterBody

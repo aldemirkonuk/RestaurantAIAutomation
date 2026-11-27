@@ -97,7 +97,7 @@ describe('bars rise once, when 40% of the plot is in view', () => {
     expect(plot(container).dataset.draw).toBe('still');
   });
 
-  it('each bar knows its place in the rise, so the stylesheet can stagger it by 40 ms', () => {
+  it('each bar knows its place in the rise and the count, so the stylesheet can fit the stagger to one sweep', () => {
     const { container } = render(<CatPlot series={week(5)} kind="bars" />);
     const idx = Array.from(container.querySelectorAll<SVGPathElement>('.recharts-bar-rectangle > path')).map(
       (p) => p.style.getPropertyValue('--rp-i'),
@@ -110,9 +110,9 @@ describe('bars rise once, when 40% of the plot is in view', () => {
     expect(ci).toEqual(['0', '1', '2']);
   });
 
-  it('[REVERT-FAILS] the stylesheet draws from the baseline over 480 ms on the settle curve, 40 ms apart, transform and opacity only', () => {
-    expect(css).toMatch(/\[data-draw='drawn'\] \.recharts-bar-rectangle > path \{[^}]*rp-grow 480ms cubic-bezier\(0\.16, 1, 0\.3, 1\)/);
-    expect(css).toMatch(/animation-delay:\s*calc\(var\(--rp-i, 0\) \* 40ms\)/);
+  it('[REVERT-FAILS] the stylesheet draws from the baseline over 360 ms on the settle curve, the stagger capped to one 160 ms sweep, transform and opacity only', () => {
+    expect(css).toMatch(/\[data-draw='drawn'\] \.recharts-bar-rectangle > path \{[^}]*rp-grow 360ms cubic-bezier\(0\.16, 1, 0\.3, 1\)/);
+    expect(css).toMatch(/animation-delay:\s*calc\(var\(--rp-i, 0\) \* min\(40ms, 160ms \/ max\(var\(--rp-n, 5\) - 1, 1\)\)\)/);
     expect(css).toMatch(/transform-origin:\s*50% 100%/);
     expect(css).toMatch(/@keyframes rp-grow \{\s*from \{\s*transform: scaleY\(0\);/);
     expect(css).not.toMatch(/rp-plot[^{]*\{[^}]*transition:\s*all/);

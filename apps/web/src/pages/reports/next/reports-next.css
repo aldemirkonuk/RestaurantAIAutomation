@@ -308,10 +308,13 @@ html[data-mudavym-ground='charcoal'] .rp-tip {
 }
 
 /* ── a plot arrives (N-15) ─────────────────────────────────────────────────
-   Bars rise from the baseline over 480 ms on the settle curve, 40 ms apart,
-   ONCE, when 40% of the plot is in view (rp-draw.ts sets data-draw). Only
-   transform and opacity move. 'still' (reduced motion, or no way to tell what
-   is in view) draws them where they are with no animation at all. */
+   Bars rise from the baseline over 360 ms on the settle curve, ONCE, when 40%
+   of the plot is in view (rp-draw.ts sets data-draw). The stagger sweeps the
+   whole series inside 160 ms (40 ms a bar, less when there are many), so the
+   last bar lands by 520 ms for any count. Only transform and opacity move.
+   'still' (reduced motion, or no way to tell what is in view) and 'settled'
+   (it has risen once; recharts has since made new bars on a resize) draw them
+   where they are with no animation at all: no rule below names either. */
 @keyframes rp-grow {
   from {
     transform: scaleY(0);
@@ -333,8 +336,8 @@ html[data-mudavym-ground='charcoal'] .rp-tip {
   opacity: 0;
 }
 .rp-plot[data-draw='drawn'] .recharts-bar-rectangle > path {
-  animation: rp-grow 480ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  animation-delay: calc(var(--rp-i, 0) * 40ms);
+  animation: rp-grow 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--rp-i, 0) * min(40ms, 160ms / max(var(--rp-n, 5) - 1, 1)));
 }
 .rp-plot[data-draw='drawn'] .rp-bar-value {
   animation: rp-value-in 160ms ease-out 360ms both;
@@ -525,6 +528,16 @@ html[data-mudavym-ground='charcoal'] .rp-tip {
   outline: 2px solid var(--seal);
   outline-offset: 2px;
   border-radius: 6px;
+}
+
+/* react-grid-layout's own stock transitions (200 ms ease on transform, width
+   and height) are off for everyone: a cutting does not tween between grid
+   positions (MOTIONS.md), and its stylesheet knows nothing of reduced motion.
+   Three classes deep so an import-order change cannot bring them back. */
+.rp-sheet .react-grid-layout,
+.rp-sheet .react-grid-layout > .react-grid-item,
+.rp-sheet .react-grid-layout > .react-grid-item.cssTransforms {
+  transition: none;
 }
 
 /* react-grid-layout's own placeholder, in house colours. */
