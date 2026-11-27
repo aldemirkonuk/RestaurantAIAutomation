@@ -36,6 +36,22 @@ export interface TransportSignals {
   listMail: boolean;
   /** `Auto-Submitted: auto-*` (RFC 3834) or an `X-Autoreply`/`X-Autorespond` header. */
   autoSubmitted: boolean;
+  /**
+   * `Auto-Submitted: auto-replied` exactly (RFC 3834 §5): an out-of-office or
+   * vacation answer the vendor's mail server wrote. Narrower than
+   * `autoSubmitted` on purpose: `auto-generated` is also what a vendor's ERP
+   * stamps on a real order confirmation or invoice, and
+   * `X-Auto-Response-Suppress` is an instruction to the RECIPIENT that
+   * Outlook / Microsoft 365 puts on ordinary person-written mail. The Mail
+   * tab reads this (with `deliveryReport`) to decide a row is not a letter,
+   * so it must never be true for a letter a person wrote.
+   */
+  autoReplied: boolean;
+  /**
+   * `Content-Type: multipart/report; report-type=delivery-status` (RFC 3464):
+   * a delivery status notification, i.e. a bounce, whoever it claims to be from.
+   */
+  deliveryReport: boolean;
   /** `From` (or `Return-Path`) is a no-reply / marketing / bounce address. */
   noReplyFrom: boolean;
   /** ESP fingerprint (`mailchimp`, `sendgrid`, …) or `null` if none detected. */
@@ -145,6 +161,13 @@ export function deriveTransportSignals(
       h["x-autoreply"] || h["x-autorespond"] || h["x-auto-response-suppress"],
     );
 
+  // The first token only: `auto-replied; owner-email=...` carries parameters.
+  const autoReplied = autoSub.split(/[\s;]/)[0] === "auto-replied";
+  const contentType = (h["content-type"] || "").toLowerCase();
+  const deliveryReport =
+    /^\s*multipart\/report\b/.test(contentType) &&
+    /\breport-type\s*=\s*"?delivery-status"?/.test(contentType);
+
   const fromValue = fromHeaderOverride ?? h["from"] ?? "";
   const fromAddr = extractEmailAddress(fromValue);
   const returnPathAddr = extractEmailAddress(h["return-path"]);
@@ -170,6 +193,8 @@ export function deriveTransportSignals(
     bulk,
     listMail,
     autoSubmitted,
+    autoReplied,
+    deliveryReport,
     noReplyFrom,
     esp,
     spfPass,
