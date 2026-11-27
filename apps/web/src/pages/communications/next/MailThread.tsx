@@ -26,7 +26,7 @@
  * read with the page, it says so, never that the letters carried none.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { EM, MONO, SANS, SERIF, failedReadWords, fmtWhen, heldBecause } from './cm-format';
@@ -51,6 +51,7 @@ import { LetterText } from './LetterText';
 import { FadeAway, MailMotionStyles } from './mail-motion';
 import { QueuedPullBack } from './QueuedPullBack';
 import { useMailThread, useMarkThreadSeen, useNoReplyMark } from './useMailData';
+import { RetryRead, useReadAgain } from './MailRetry';
 
 const QUIET = { fontSize: 12, color: 'var(--ink-4, #665D50)' } as const;
 
@@ -220,6 +221,8 @@ export function MailThread({
   bookFacts?: ReadonlyMap<string, LetterFacts>;
 }) {
   const q = useMailThread(threadKey, withKey);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const again = useReadAgain(q, headingRef);
   const pages = q.data?.pages ?? [];
   const head = pages[0] ?? null;
   // Pages are held newest-first; the reader joins them oldest-first.
@@ -267,9 +270,10 @@ export function MailThread({
         {backLabel}
       </button>
 
-      {q.isError && !q.data ? (
+      {again.failed ? (
         <p role="alert" data-testid="thread-unread" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
-          This thread could not be read ({failedReadWords(q.error)}). That does not mean it is empty.
+          This thread could not be read ({failedReadWords(again.error)}). That does not mean it is empty.{' '}
+          <RetryRead testId="thread-read-again" busy={again.busy} onClick={again.onPress} onRetry={() => void q.refetch()} />
         </p>
       ) : !q.data ? (
         <p style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>Reading the thread…</p>
@@ -281,7 +285,10 @@ export function MailThread({
         <>
           <header className="grid gap-1">
             <h2
+              ref={headingRef}
+              tabIndex={-1}
               style={{
+                outline: 'none',
                 fontFamily: SERIF,
                 fontSize: 20,
                 fontWeight: 600,
