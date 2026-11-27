@@ -168,6 +168,16 @@ describe('dismissability', () => {
     expect(screen.getByRole('button', { name: /hold to accept/i })).toBeInTheDocument();
   });
 
+  // DD-r110-onb-g6 (supersedes DD-r109-17): the founder's ruling is "must accept
+  // to continue", so the sign-in terms get no Close, and neither Esc nor the scrim opens a way out.
+  it('an outside click on the scrim does not close it when it is not dismissable', () => {
+    const { onClose } = mount({}, { dismissable: false });
+    fireEvent.click(screen.getByRole('button', { name: 'These terms stay open until you accept them' }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /hold to accept/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /put it down|close/i })).toBeNull();
+  });
+
   it('shows a close control, and calls onClose, when it is dismissable', () => {
     const { onClose } = mount({}, { dismissable: true });
     fireEvent.click(screen.getByRole('button', { name: /put it down/i }));
