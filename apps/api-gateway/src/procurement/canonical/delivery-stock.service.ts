@@ -1,5 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { commonCostTaxBasis, paperCostTaxBasis } from "./paper-cost-tax-basis";
+import { commonCostTaxBasis, lineTiesOut, paperCostTaxBasis } from "./paper-cost-tax-basis";
 import { DatabaseService } from "../../database/database.service";
 import { queueResearchIfLibraryLacks } from "../../inventory/house-item-research";
 import { closeDeliveryItemToNameBookedElsewhere } from "../delivery-item-to-name";
@@ -471,22 +471,36 @@ export class DeliveryStockService {
       if (!ids.length) return;
       const [docs, lines] = await Promise.all([
         client.from("procurement_documents").select("id, subtotal, tax, total").eq("restaurant_id", restaurantId).in("id", ids),
-        client.from("procurement_document_lines").select("document_id, line_total").eq("restaurant_id", restaurantId).in("document_id", ids),
+        client.from("procurement_document_lines").select("document_id, line_total, unit_price, qty, qty_bottles, free_goods_qty").eq("restaurant_id", restaurantId).in("document_id", ids),
       ]);
       if (docs.error) throw docs.error;
       if (lines.error) throw lines.error;
       const docRows = (docs.data ?? []) as { id: string; subtotal: unknown; tax: unknown; total: unknown }[];
       if (docRows.length !== ids.length) return;
-      const lineRows = (lines.data ?? []) as { document_id: string; line_total: number | string | null }[];
+      const lineRows = (lines.data ?? []) as {
+        document_id: string;
+        line_total: number | string | null;
+        unit_price?: number | string | null;
+        qty?: number | string | null;
+        qty_bottles?: number | string | null;
+        free_goods_qty?: number | string | null;
+      }[];
       const basis = commonCostTaxBasis(
-        docRows.map((d) =>
-          paperCostTaxBasis({
-            subtotal: d.subtotal as number | string | null,
-            tax: d.tax as number | string | null,
-            total: d.total as number | string | null,
-            lineTotals: lineRows.filter((l) => l.document_id === d.id).map((l) => l.line_total),
-          }),
-        ),
+        docRows.map((d) => {
+          const own = lineRows.filter((l) => l.document_id === d.id);
+          // The cost is the unit price: the paper's basis is inherited only when each costed line ties out.
+          const tied = own.every((l) =>
+            lineTiesOut({ unitPrice: l.unit_price ?? null, lineTotal: l.line_total, qty: l.qty, qtyBottles: l.qty_bottles, freeGoodsQty: l.free_goods_qty }),
+          );
+          return tied
+            ? paperCostTaxBasis({
+                subtotal: d.subtotal as number | string | null,
+                tax: d.tax as number | string | null,
+                total: d.total as number | string | null,
+                lineTotals: own.map((l) => l.line_total),
+              })
+            : null;
+        }),
       );
       if (basis === null) return;
       for (const f of fromInvoice) {

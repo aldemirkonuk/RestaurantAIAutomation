@@ -1,4 +1,4 @@
-import { commonCostTaxBasis, paperCostTaxBasis } from "./paper-cost-tax-basis";
+import { commonCostTaxBasis, lineTiesOut, paperCostTaxBasis } from "./paper-cost-tax-basis";
 
 /**
  * r108 inventory-1: a paper says whether its prices hold tax only through its
@@ -34,5 +34,23 @@ describe("commonCostTaxBasis", () => {
     expect(commonCostTaxBasis(["net", "gross_cost"])).toBeNull();
     expect(commonCostTaxBasis(["net", null])).toBeNull();
     expect(commonCostTaxBasis([])).toBeNull();
+  });
+});
+
+describe("lineTiesOut: the cost is the unit price, so quantity x price must be the line total", () => {
+  it("ties when qty x price is the line total to the cent, by bottles or by qty", () => {
+    expect(lineTiesOut({ unitPrice: 142.5, lineTotal: 1425, qtyBottles: 10 })).toBe(true);
+    expect(lineTiesOut({ unitPrice: 14.25, lineTotal: 1425, qty: 100 })).toBe(true);
+    expect(lineTiesOut({ unitPrice: 33.3333, lineTotal: 99.99, qty: 3 })).toBe(true);
+  });
+  it("does not tie when the unit price is net and the line total is gross (a KDV-dahil column)", () => {
+    expect(lineTiesOut({ unitPrice: 142.5, lineTotal: 1710, qtyBottles: 10 })).toBe(false);
+  });
+  it("free goods come off the charged quantity", () => {
+    expect(lineTiesOut({ unitPrice: 100, lineTotal: 1000, qtyBottles: 12, freeGoodsQty: 2 })).toBe(true);
+  });
+  it("a priced line with no total does not tie; an unpriced line is not a costed line", () => {
+    expect(lineTiesOut({ unitPrice: 5, lineTotal: null, qty: 2 })).toBe(false);
+    expect(lineTiesOut({ unitPrice: null, lineTotal: 50 })).toBe(true);
   });
 });

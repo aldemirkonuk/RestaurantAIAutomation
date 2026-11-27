@@ -515,9 +515,9 @@ describe("A5 — the two legacy paths are no longer second writers", () => {
 describe("DeliveryStockService — a settled cost says whether it holds tax (r108 inventory-1)", () => {
   let db: MockDb;
   let service: DeliveryStockService;
-  const line = (lineTotal: number | null) => ({
+  const line = (lineTotal: number | null, unitPrice = 142.5) => ({
     data: [
-      { document_id: "inv-1", line_no: 1, inventory_id: ITEM, qty_bottles: 10, unit_price: 142.5, line_total: lineTotal, description: "Öküzgözü", vendor_sku: null },
+      { document_id: "inv-1", line_no: 1, inventory_id: ITEM, qty: 10, qty_bottles: 10, free_goods_qty: 0, unit_price: unitPrice, line_total: lineTotal, description: "Öküzgözü", vendor_sku: null },
     ],
     error: null,
   });
@@ -550,10 +550,17 @@ describe("DeliveryStockService — a settled cost says whether it holds tax (r10
     });
   });
 
-  it("an invoice whose lines sum to its total with tax stamps it gross_cost", async () => {
-    db.answers.procurement_document_lines = line(1710);
+  it("an invoice whose lines sum to its total with tax stamps it gross_cost, when the unit price is the gross one", async () => {
+    db.answers.procurement_document_lines = line(1710, 171);
     await service.finaliseAtVerified(REST, DEL, USER);
     expect(stamps()[0]?.args.p_cost_tax_basis).toBe("gross_cost");
+    expect(stamps()[0]?.args.p_unit_cost).toBe(171);
+  });
+
+  it("net unit prices beside gross line amounts stamp nothing: the cost would be a net price called gross", async () => {
+    db.answers.procurement_document_lines = line(1710, 142.5);
+    expect((await service.finaliseAtVerified(REST, DEL, USER)).ok).toBe(true);
+    expect(stamps()).toEqual([]);
   });
 
   it("a paper that does not say is not stamped, and the house's basis is never asked", async () => {
