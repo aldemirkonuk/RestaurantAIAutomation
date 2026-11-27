@@ -346,12 +346,26 @@ function Body({
         </dl>
       )}
       {notes.map((n, i) => (
-        <p key={i} className="rp-cap" title={typeof n === 'string' ? n : undefined}>
-          {n}
-        </p>
+        <Note key={i} note={n} />
       ))}
       <Working lines={view.basis} defaultOpen={workingOpen} />
     </>
+  );
+}
+
+/** A note under a chart. The sheet clamps it to three lines, so the whole sentence is its title:
+    a JSX note (the projection's figures and its "not a measurement") has no string to give, so
+    its rendered text is read back. */
+function Note({ note }: { note: ReactNode }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && typeof note !== 'string') el.title = (el.textContent ?? '').trim();
+  });
+  return (
+    <p ref={ref} className="rp-cap" title={typeof note === 'string' ? note : undefined}>
+      {note}
+    </p>
   );
 }
 
@@ -404,6 +418,8 @@ export interface CuttingProps {
   onWarmDays?: (d: number) => void;
   /** The cuttings that can lay flat, in the sheet's read order (the one-column order); steps move along it. */
   flatOrder?: AnalysisId[];
+  /** The house being read: a stand-in is only ever the SAME house's last drawing. */
+  house?: string | null;
 }
 
 /** What the router half hands the body: whether the link lays this card flat, and the two moves. */
@@ -415,6 +431,8 @@ interface CuttingBodyProps extends CuttingProps {
   flatStep?: FlatStep;
   /** Which step button the last step came from, so focus lands back on it. */
   flatFocus?: 'prev' | 'next';
+  /** Some card lies flat: a step closed this one and opened a neighbour, so focus must not come back here. */
+  flatAny?: boolean;
 }
 
 function CuttingBody({
@@ -443,6 +461,8 @@ function CuttingBody({
   onCloseFlat: closeFlat,
   flatStep,
   flatFocus,
+  flatAny = false,
+  house,
 }: CuttingBodyProps) {
   const spec = CATALOGUE[id];
   // While a window just picked is still being read, the figures on screen are
@@ -450,9 +470,9 @@ function CuttingBody({
   // written, over the days and the compare they were read for, never the ones
   // just picked. One rule for the card and the page's phone hold (rp-strip.ts
   // `drawnRegister`): the hook's per-house stand-in (#1670) first, this card's
-  // own last drawing for a bare register (#1976).
+  // own last drawing for a bare register (#1976), only ever the same house's (#2542).
   const lastRead = useRef<LastRead>(null);
-  const drawn0 = drawnRegister(!!spec.takesWindow, register as Register<unknown> | undefined, ctx, lastRead);
+  const drawn0 = drawnRegister(!!spec.takesWindow, register as Register<unknown> | undefined, ctx, lastRead, house);
   const ownStandIn = drawn0.standIn;
   const standIn =
     register?.standIn ?? (ownStandIn ? { shownDays: ownStandIn.days, readingDays: ctx.days } : null);
@@ -468,6 +488,13 @@ function CuttingBody({
         ? `Reading the ${ctx.days} days before. Until they arrive, the last ${ctx.days} days are shown alone.`
         : `Reading the last ${ctx.days} days again. Until they arrive, the drawing shown still has the days before beside it.`
       : standInSentence(standIn);
+  // The head's line says what is drawn and, while the new window is read, what is coming. It is a line that is
+  // always there, so a pick moves nothing (#2542); the whole sentence is a status outside the busy drawing.
+  const headLine = !standIn
+    ? windowLine
+    : standIn.shownDays === standIn.readingDays
+      ? `${windowLine} · reading again`
+      : `${windowLine} · reading ${standIn.readingDays} days`;
   const answer = drawn0.data;
   // The register's view, built once per answer and window rather than on every render of the cutting
   // (perf-p10-4, #2459): the offered graphs, the compare hold and the body all read this one.
@@ -497,7 +524,7 @@ function CuttingBody({
   // Only the till takes a window; other bodies keep their blocks as direct children.
   const framed = (kids: ReactNode) =>
     spec.takesWindow ? (
-      <div className="rp-standin" data-stale={standIn ? '' : undefined} aria-busy={standIn ? true : undefined}>
+      <div className="rp-standin" data-stale={standIn ? '' : undefined}>
         {kids}
       </div>
     ) : (
@@ -508,7 +535,15 @@ function CuttingBody({
   );
   const bodyOf = (g: GraphType, workingOpen = false, combo: ComboControl = sheetCombo) =>
     readsRegister(spec) ? (
-      framed(
+      <>
+        {/* Outside the busy drawing, and out of the flow: assistive technology holds back changes
+            inside a busy subtree, and a visible sentence above the drawing moved it (#2542). */}
+        {standInLine && (
+          <p className="rp-sr-only" role="status">
+            {standInLine}
+          </p>
+        )}
+        {framed(
         <RegisterBody
           register={spec.register}
           loading={ownStandIn ? false : (register?.loading ?? true)}
@@ -527,7 +562,8 @@ function CuttingBody({
             />
           )}
         </RegisterBody>,
-      )
+        )}
+      </>
     ) : (
       <Body
         view={spec.view(null, ctx)}
@@ -595,14 +631,14 @@ function CuttingBody({
   const wasFlat = useRef(flat);
   useEffect(() => {
     // A step lays the neighbour flat: its dialog takes focus, this opener must not.
-    if (wasFlat.current && !flat && !params.get(FLAT_PARAM)) openerRef.current?.focus();
+    if (wasFlat.current && !flat && !flatAny) openerRef.current?.focus();
     wasFlat.current = flat;
   }, [flat]);
 
   const flatView = flat && (
     <CuttingFlat
       title={spec.title}
-      windowLine={[windowLine, flatOnly ? NOT_ON_SHEET : null, standInLine]
+      windowLine={[headLine, flatOnly ? NOT_ON_SHEET : null]
         .filter(Boolean)
         .join(' ')}
       graphs={offered}
@@ -646,12 +682,7 @@ function CuttingBody({
       <div className="rp-cut__head" data-window={(spec.takesWindow && !arranging) || undefined}>
         <div style={{ minWidth: 0 }}>
           <h2 className="rp-cut__title">{spec.title}</h2>
-          <p className="rp-cut__window">{windowLine}</p>
-          {standInLine && (
-            <p className="rp-cut__window rp-cut__standin" role="status">
-              {standInLine}
-            </p>
-          )}
+          <p className="rp-cut__window">{headLine}</p>
         </div>
         {arranging ? (
           <div className="rp-row" style={{ gap: 6 }}>
@@ -823,6 +854,7 @@ export default function Cutting(props: CuttingProps) {
       onCloseFlat={onCloseFlat}
       flatStep={flatStep}
       flatFocus={flatFocus}
+      flatAny={params.has(FLAT_PARAM)}
     />
   );
 }

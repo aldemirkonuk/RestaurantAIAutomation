@@ -130,7 +130,13 @@ export function sparkOf(
 }
 
 /** The last whole read of a windowed register, the days it answered, and whether it was the compare read. */
-export type LastRead = { data: unknown; days: number; compare: boolean } | null;
+export type LastRead = {
+  data: unknown;
+  days: number;
+  compare: boolean;
+  /** The house the read was for: a stand-in is only ever the same house's drawing (#2542). */
+  house?: string | null;
+} | null;
 
 /**
  * What a windowed card DRAWS right now (ADR 0020): the register's own answer, or,
@@ -144,13 +150,15 @@ export type LastRead = { data: unknown; days: number; compare: boolean } | null;
  * A register handed in bare falls back to `last` (#1976). Either way the kept
  * read is drawn with the compare it was read with: a 2N read shown as N days
  * would double the money (#2072). Laying the till beside the window before it
- * is a re-read too (#2157). Updates `last` as a render-time ref.
+ * is a re-read too (#2157). Only the same house's read stands in (#2542). Updates
+ * `last` as a render-time ref.
  */
 export function drawnRegister(
   takesWindow: boolean,
   register: Register<unknown> | undefined,
   ctx: ViewCtx,
   last: MutableRefObject<LastRead>,
+  house?: string | null,
 ): { standIn: NonNullable<LastRead> | null; data: unknown; ctx: ViewCtx } {
   const kept = register?.standIn;
   if (takesWindow && register && !register.loading && !register.failure && register.data !== undefined)
@@ -158,6 +166,7 @@ export function drawnRegister(
       data: register.data,
       days: kept?.shownDays ?? ctx.days,
       compare: kept ? !!kept.compare : !!ctx.compare,
+      house,
     };
   const standIn =
     !kept &&
@@ -165,6 +174,8 @@ export function drawnRegister(
     register?.loading &&
     !register.failure &&
     last.current &&
+    // A house switch does not remount the card: house A's last drawing never stands in on house B's page (#2542).
+    (last.current.house ?? null) === (house ?? null) &&
     (last.current.days !== ctx.days || last.current.compare !== !!ctx.compare)
       ? last.current
       : null;

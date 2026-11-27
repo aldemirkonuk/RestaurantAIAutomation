@@ -740,7 +740,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   );
 
   // The hold follows what the till card draws, stand-in included (Cutting's own rule).
-  const tillRead = drawnRegister(!!CATALOGUE.till.takesWindow, data.registers.till as Register<unknown> | undefined, ctx, tillLast);
+  const tillRead = drawnRegister(!!CATALOGUE.till.takesWindow, data.registers.till as Register<unknown> | undefined, ctx, tillLast, data.restaurantId);
   const tillHeld = tillAnswersCompare(tillRead.data, tillRead.ctx);
   // Full screen steps along the sheet as the phone reads it: the one-column order, only what has a register.
   const flatOrder = projectCuttings(view.cuttings, 1)
@@ -767,6 +767,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     body: (
       <Cutting
         id={c.id}
+        house={data.restaurantId}
         strip={strip}
         flatOrder={flatOrder}
         onFit={FIT_IDS.includes(c.id) ? onFit : undefined}

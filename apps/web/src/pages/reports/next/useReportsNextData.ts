@@ -661,6 +661,9 @@ export function useReportsNextData(
   // for reads nobody asked for (p9-2: the idle warm-up pushed settle from
   // 2790 to 4923 ms at 375).
 
+  // The last whole read of each windowed register, per house (#1670): the stand-in while a new window is read.
+  // Its declaration was lost in the integ resolution of #2217 while both uses stayed (integ B33).
+  const lastWindow = useRef(new Map<AnalysisId, { rid: string; days: number; compare: boolean; data: unknown }>());
   const kept = useRef<
     Partial<Record<AnalysisId, { reg: Register<unknown>; from: readonly unknown[] }>>
   >({});
