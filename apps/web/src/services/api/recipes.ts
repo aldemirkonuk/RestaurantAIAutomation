@@ -28,6 +28,8 @@ export interface RecipeLine {
   itemGone?: 'archived' | 'deleted' | null;
   qtyEntered: number;
   unitCode: string;
+  /** The share of what is bought that the amount is, 1 to 100; null is all of it. Absent from an older gateway. */
+  usablePct?: number | null;
   qtyBase: number;
   baseUnit: string;
   status: RecipeLineStatus;
@@ -194,6 +196,8 @@ export interface SaveRecipeLine {
   label: string;
   qty: number;
   unit: string;
+  /** As on a read line: the share of what is bought that the amount is, 1 to 100. Absent is all of it. */
+  usablePct?: number | null;
 }
 
 export interface SaveRecipeBody {
