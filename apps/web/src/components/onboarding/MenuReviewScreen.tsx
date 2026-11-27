@@ -105,7 +105,7 @@ function EditableCell({ value, placeholder, onSave }: EditableCellProps) {
       className={`w-full text-left px-2 py-1 rounded-lg hover:bg-paper-1 text-sm ${reduce ? '' : 'transition-colors motion-reduce:transition-none'} disabled:opacity-50`}
     >
       {saving ? (
-        <Loader2 className="w-3.5 h-3.5 animate-spin text-inkm-3" />
+        <Loader2 className={`w-3.5 h-3.5 ${reduce ? '' : 'animate-spin'} text-inkm-3`} />
       ) : value ? (
         <span className="text-inkm-1">{value}</span>
       ) : (

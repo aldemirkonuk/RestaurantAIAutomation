@@ -9,7 +9,7 @@ import { fireEvent, render as rtlRender, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
 import { MenuReviewScreen } from './MenuReviewScreen'
-import type { MenuImportReviewItem } from '../../services/api/menus'
+import { reviewMenuItem, type MenuImportReviewItem } from '../../services/api/menus'
 import { formatMoney } from '../../lib/currency'
 
 vi.mock('../../hooks/queries/useHouseCurrencyCode', () => ({ useHouseCurrencyCode: () => 'TRY' }))
@@ -152,5 +152,26 @@ describe('the review under reduced motion', () => {
     expect(chev()).not.toMatch(/transition|duration|rotate/)
     expect(toggle.innerHTML).not.toBe(before)
     expect(screen.getByRole('button', { name: 'Adana Kebap' }).className).not.toMatch(/\btransition-colors\b/)
+  })
+
+  const saveOne = () => {
+    vi.mocked(reviewMenuItem).mockReturnValue(new Promise(() => {}) as never)
+    mount([wine])
+    fireEvent.click(screen.getByRole('button', { name: 'Barolo' }))
+    const input = document.querySelector('input') as HTMLInputElement
+    fireEvent.change(input, { target: { value: 'Barolo Riserva' } })
+    fireEvent.blur(input)
+    return document.querySelector('svg.lucide-loader-circle, svg.lucide-loader2, button:disabled svg') as SVGElement
+  }
+
+  it('with motion on, a cell being saved shows a spinning loader', () => {
+    expect(saveOne().getAttribute('class')).toContain('animate-spin')
+  })
+
+  it('with reduce, a cell being saved shows the loader still, never spinning', () => {
+    reduceMotion(true)
+    const spinner = saveOne()
+    expect(spinner).not.toBeNull()
+    expect(spinner.getAttribute('class')).not.toContain('animate-spin')
   })
 })
