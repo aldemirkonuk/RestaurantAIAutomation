@@ -67,7 +67,7 @@ import {
   documentVerifySealArgs,
 } from "./document-seal";
 import { CORRECTABLE_PATHS, splitPath } from "../canonical/correctable-paths";
-import { tieOutStatement, TieOutPaper } from "./statement-tieout";
+import { tieOutStatement, overlayHeaderCorrections, HeaderCorrection, TieOutPaper } from "./statement-tieout";
 import type { ParsedStatementEntry } from "./parsed-document";
 import {
   assertHoldsHouseMoney,
@@ -1745,6 +1745,42 @@ export class DocumentsController {
     };
   }
 
+  /**
+   * The header corrections of some papers, read in a total order (document,
+   * revision, id) a page at a time, ids in chunks so no URL grows past a limit.
+   * A failed read stops the tie-out in words: a paper that may have been
+   * corrected is not compared as first read (ADR 0020).
+   */
+  private async headerCorrectionsOf(
+    client: ReturnType<DatabaseService["getClient"]>,
+    ids: string[],
+  ): Promise<Map<string, HeaderCorrection[]>> {
+    const out = new Map<string, HeaderCorrection[]>();
+    for (let i = 0; i < ids.length; i += 100) {
+      const chunk = ids.slice(i, i + 100);
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await client
+          .from("document_corrections")
+          .select("id, document_id, revision, kind, field_path, after")
+          .in("document_id", chunk)
+          .in("field_path", ["documentNumber", "totals.taxInclusiveAmount", "currency"])
+          .order("document_id", { ascending: true })
+          .order("revision", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, from + 999);
+        if (error)
+          throw new HttpException(
+            `The corrections to these papers could not be read, so nothing was tied out: ${error.message}`,
+            HttpStatus.INTERNAL_SERVER_ERROR,
+          );
+        for (const r of (data ?? []) as (HeaderCorrection & { document_id: string })[])
+          out.set(r.document_id, [...(out.get(r.document_id) ?? []), r]);
+        if (!data || data.length < 1000) break;
+      }
+    }
+    return out;
+  }
+
   @Get(":id/statement-tieout")
   @ApiOperation({
     summary: "A vendor's statement against this house's papers",
@@ -1807,9 +1843,18 @@ export class DocumentsController {
         if (!data || data.length < PAGE) break;
       }
     }
-    const out = tieOutStatement(entries, papers, { vendorNamed: !!providerId, currency: p.currency ?? null });
+    // The papers as corrected, not as first read (a correction never writes these columns).
+    const fixes = providerId
+      ? await this.headerCorrectionsOf(client, [id, ...papers.map((x) => x.id)])
+      : new Map<string, HeaderCorrection[]>();
+    const corrected = papers.map((x) => overlayHeaderCorrections(x, fixes.get(x.id) ?? []));
+    const money = overlayHeaderCorrections(
+      { doc_number: null, total: null, currency: p.currency ?? null },
+      fixes.get(id) ?? [],
+    ).currency;
+    const out = tieOutStatement(entries, corrected, { vendorNamed: !!providerId, currency: money });
     return {
-      currency: (p.currency ?? "").trim().toUpperCase() || null,
+      currency: (money ?? "").trim().toUpperCase() || null,
       providerId,
       notCompared: providerId ? null : ("vendor_unknown" as const),
       entriesRead: entries.length,
