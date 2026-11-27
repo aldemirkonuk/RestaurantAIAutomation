@@ -75,7 +75,8 @@ function FirstChoiceAsk({ ground }: { ground: GroundState }) {
   const [picked, setPicked] = useState<GroundSetting>('paper');
   const firstRef = useRef<HTMLInputElement>(null);
 
-  // r109 inventory-5: asked only once no drawer or other overlay is open.
+  // r109 inventory-5: theme is last in the first-run queue (terms, the drawer
+  // the person opened, theme): asked only once no drawer or other overlay is open.
   const open = useOwnTurn(
     !termsBusy &&
       (phase === 'saving' || phase === 'failed' || (phase === 'ask' && ground.source === 'default')),

@@ -19,6 +19,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { GroundFirstChoice } from './GroundFirstChoice';
 import { Sheet } from './Sheet';
 import { DataTermsSignInGate } from '../settings/DataTermsSignInGate';
+import { useDataTermsSignInBusy } from '../../hooks/queries/useDataTerms';
 import {
   GROUND_CHOICE_ATTR,
   applyAccountGround,
@@ -231,7 +232,7 @@ describe('never on top of the data terms', () => {
     expect(ask()).toBeInTheDocument();
   });
 
-  it('waits while a deep-linked drawer is open, and asks once it closes (r109 inventory-5)', () => {
+  it('waits while a good\'s drawer is open, and asks once it closes (r109 inventory-5)', () => {
     setGroundOwner(ALICE);
     client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const page = (drawer: boolean) => (
@@ -253,6 +254,48 @@ describe('never on top of the data terms', () => {
     expect(ask()).toBeNull();
     rerender(page(false));
     expect(ask()).toBeInTheDocument();
+  });
+
+  it('one queue for an owner who owes the terms: terms alone, then the drawer she opened, then theme', async () => {
+    roleMock.current = 'owner';
+    termsMock.getDataTerms.mockResolvedValue(readout({ current: false }));
+    neverChose();
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    // The drawer is held while the terms are owed: the rule InventoryNext
+    // applies (`!useDataTermsSignInBusy()`), with the real hook and a real Sheet.
+    const Drawer = ({ shown }: { shown: boolean }) => {
+      const termsBusy = useDataTermsSignInBusy();
+      return shown && !termsBusy ? (
+        <Sheet open onClose={() => {}} title="Gin" label="This shows one good. Nothing here writes.">
+          <p>the drawer</p>
+        </Sheet>
+      ) : null;
+    };
+    const page = (shown: boolean) => (
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <Drawer shown={shown} />
+          <DataTermsSignInGate />
+          <GroundFirstChoice />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const { rerender } = render(page(true));
+    // 1. Terms first, over no drawer and no theme sheet: one overlay.
+    expect(await screen.findByRole('dialog', { name: TERMS })).toBeInTheDocument();
+    expect(screen.queryByText('the drawer')).toBeNull();
+    expect(ask()).toBeNull();
+    // 2. Accepted: the drawer she opened comes next; theme still waits.
+    termsMock.getDataTerms.mockResolvedValue(readout({ current: true, yours: { current: true } }));
+    await act(async () => {
+      await client.invalidateQueries();
+    });
+    await waitFor(() => expect(screen.getByText('the drawer')).toBeInTheDocument());
+    expect(screen.queryByRole('dialog', { name: TERMS })).toBeNull();
+    expect(ask()).toBeNull();
+    // 3. The drawer closes: theme asks last.
+    rerender(page(false));
+    await waitFor(() => expect(ask()).toBeInTheDocument());
   });
 });
 
