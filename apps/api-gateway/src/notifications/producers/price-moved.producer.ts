@@ -19,6 +19,8 @@ import {
   type PrintedLine,
 } from "../../procurement/documents/price-move";
 import { readLastPrintedPrices } from "../../procurement/documents/last-printed-prices";
+import { OVERLAY_LINE_COLUMNS, readCorrections } from "../../procurement/documents/corrections-read";
+import { overlayCorrections } from "../../procurement/canonical/correction-overlay";
 
 /**
  * "A price moved on a paper that was just checked."
@@ -141,9 +143,7 @@ export class PriceMovedProducer {
 
     const { data: lineRows, error: lineErr } = await client
       .from("procurement_document_lines")
-      .select(
-        "document_id, line_no, description, inventory_id, line_total, qty, pack_size, qty_bottles, uom, format_ml",
-      )
+      .select(OVERLAY_LINE_COLUMNS)
       .eq("restaurant_id", restaurantId)
       .in("document_id", docs.map((d) => d.id))
       .order("line_no", { ascending: true });
@@ -156,6 +156,11 @@ export class PriceMovedProducer {
       list.push(l);
       linesByDoc.set(l.document_id, list);
     }
+
+    // A correction writes document_corrections, never these columns: the paper
+    // is priced as the owner corrected it, not as the reader first misread it.
+    // A failed read fails the run and sends nothing.
+    const corrections = await readCorrections(client, docs.map((d) => d.id));
 
     const vendors = await this.vendorNames(
       restaurantId,
@@ -171,7 +176,12 @@ export class PriceMovedProducer {
         );
         continue;
       }
-      const paperCurrency = String(doc.currency ?? "").trim().toUpperCase();
+      const laid = overlayCorrections(
+        doc as Record<string, unknown>,
+        linesByDoc.get(doc.id) ?? [],
+        corrections.get(doc.id) ?? [],
+      );
+      const paperCurrency = String(laid.header.currency ?? "").trim().toUpperCase();
       // DD-r105-19: no comparison across currencies, and none when either
       // money is unknown. Nothing is said; the paper's own page says why.
       if (!paperCurrency || !houseCurrency || paperCurrency !== houseCurrency) {
@@ -184,7 +194,7 @@ export class PriceMovedProducer {
           restaurantId,
           doc.id,
           paperCurrency,
-          linesByDoc.get(doc.id) ?? [],
+          laid.lines,
         );
       } catch (e: any) {
         tally.failed += 1;
