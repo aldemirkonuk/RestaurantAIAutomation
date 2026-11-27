@@ -62,6 +62,8 @@ describe('the taste line holds its slot (M6)', () => {
     wrap(<TasteSummary id="i1" restaurantId="r1" open={false} onOpen={() => {}} />);
     await settle();
     await act(async () => { vi.advanceTimersByTime(HOLD_GRACE_MS + 1); });
+    // The give-back is timed from the answer (r103): React draws the answer, then the timer runs.
+    await act(async () => { vi.advanceTimersByTime(1); });
     expect(screen.queryByTestId('taste-line-hold')).toBeNull();
   });
 
