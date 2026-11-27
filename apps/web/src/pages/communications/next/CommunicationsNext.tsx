@@ -349,13 +349,14 @@ export default function CommunicationsNext() {
               failed={data.failed.history}
               at={data.historyAt}
             />
+            {/* Counted by the server with Mail's own rule (D6): a bounce, an
+                auto-reply or a second copy of one letter is not a reply, so the
+                two tabs give the same number for the same mail. Exact, no floor. */}
             <GlanceFigure
               label="Replies · 30 days"
               value={data.glance.repliesLast30}
-              floor={data.glance.sentLast30Truncated}
-              floorNote={`At least this many: the book holds only the latest ${COMMS_SERVER_WINDOWS.HISTORY_ROWS} letters, and it is full.`}
-              failed={data.failed.history}
-              at={data.historyAt}
+              failed={data.failed.mail}
+              at={data.mailAt}
             />
           </div>
           )}

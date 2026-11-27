@@ -10,7 +10,18 @@
  *
  * The thread index left on 2026-10-01 (walk-through COMMS-W3, founder:
  * "Approve"): its only use was a "Threads" figure counting a list this page
- * never shows. The strip reads "Replies · 30 days" from the book instead.
+ * never shows.
+ *
+ * "Replies · 30 days" is counted by the server, from the same rows and the
+ * same flag as the Mail tab (`GET /mail/summary`, migration
+ * the_mail_list_is_read_by_person, `in_30d`) — D6, mail-receipts lane
+ * 2026-11-11. It used to be counted here over the book's newest 100 rows,
+ * where every INBOUND row was a "reply": a bounce, an auto-reply and the
+ * second copy of one letter each counted, and the strip read 7 beside Mail's
+ * 4. One count, one source: the two tabs cannot disagree, and the figure is
+ * exact (no 100-row floor). "Sent · 30 days" stays on the book: an outbound
+ * row is never a bounce or a copy, and the book's `sendState` is what decides
+ * a letter left.
  *
  * Two sources left this page on that date, by the founder's answer
  * ("amend ADR 0083", option a):
@@ -45,6 +56,7 @@ import {
 } from '../../../hooks/queries/useConversationQueries';
 import { useActiveConversations } from '../../../hooks/queries/useDraftEmailQueries';
 import { failedReadWords, sendState } from './cm-format';
+import { useMailSummary } from './useMailData';
 
 /**
  * Server-imposed windows this page renders behind. Each entry cites the query
@@ -57,7 +69,8 @@ export const COMMS_SERVER_WINDOWS = {
    * procurement.service.ts:4208 — `getConversationHistory` ends
    * `.or(…).or(…).order("created_at", { ascending: false }).limit(100)`. The
    * 30-day sent figure is filtered from that page, so once the page is full the
-   * figure is a floor and the strip prints `≥`.
+   * figure is a floor and the strip prints `≥`. (The replies figure left this
+   * window on 2026-11-11, D6: the server counts it.)
    *
    * WHAT THIS CITATION DOES AND DOES NOT BUY. `check_windowed_figures.py`
    * requires the `<file>.ts:<line>` form and re-reads the cited FILE for a
@@ -75,9 +88,9 @@ export interface CommsGlance {
   /** null = the query behind the figure has not answered (or has failed). */
   draftsPending: number | null;
   sentLast30: number | null;
-  /** Vendor replies in the book over the last 30 days. */
+  /** Letters in over the last 30 days, as Mail counts them (GET /mail/summary). Exact. */
   repliesLast30: number | null;
-  /** True when the history window hit its server cap — both 30-day figures are floors. */
+  /** True when the history window hit its server cap — the sent figure is a floor. */
   sentLast30Truncated: boolean;
 }
 
@@ -85,6 +98,8 @@ export interface CommsGlance {
 export interface CommsFailures {
   history: boolean;
   drafts: boolean;
+  /** GET /mail/summary, the source of "Replies · 30 days". */
+  mail: boolean;
 }
 
 /** Reader-facing names, in strip order, for the sentence the banner prints. */
@@ -92,6 +107,7 @@ const SOURCE_LABELS: Array<[keyof CommsFailures, string]> = [
   ['history', 'the conversation book'],
   // COMMS-W33: named as the page heads them ("The house has written").
   ['drafts', 'the replies the house has written'],
+  ['mail', 'the count of letters in'],
 ];
 
 /**
@@ -125,6 +141,9 @@ export function useCommsNextData() {
   // deriving "drafts waiting" from it was a structurally guaranteed false
   // zero (communications-audit.md, BLOCKER 2).
   const activeQ = useActiveConversations();
+  // "Replies · 30 days" (D6). The same query the tab label reads, so it is one
+  // fetch however many places read it; it polls only while Mail is shown.
+  const mailQ = useMailSummary(false);
   const drafts = useMemo(() => newestDraftPerOrder(activeQ.data ?? []), [activeQ.data]);
 
   const rows: ProcurementHistoryItem[] = useMemo(() => {
@@ -144,20 +163,19 @@ export function useCommsNextData() {
           ? null
           : historyQ.data.filter((i) => i.direction !== 'INBOUND' && sendState(i.status) === 'sent' && within30(i))
               .length,
-      repliesLast30:
-        historyQ.data === undefined
-          ? null
-          : historyQ.data.filter((i) => i.direction === 'INBOUND' && within30(i)).length,
+      // A server older than D6 sends no inLast30: unknown, never 0.
+      repliesLast30: mailQ.data?.inLast30 ?? null,
       // The history endpoint serves at most COMMS_SERVER_WINDOWS.HISTORY_ROWS;
-      // when the window is full both 30-day figures are floors, and the strip
-      // says so with GE.
+      // when the window is full the sent figure is a floor, and the strip says
+      // so with GE. The replies figure is counted by the server and is exact.
       sentLast30Truncated: (historyQ.data?.length ?? 0) >= COMMS_SERVER_WINDOWS.HISTORY_ROWS,
     };
-  }, [historyQ.data, activeQ.data, drafts]);
+  }, [historyQ.data, activeQ.data, drafts, mailQ.data]);
 
   const failed: CommsFailures = {
     history: historyQ.isError,
     drafts: activeQ.isError,
+    mail: mailQ.isError,
   };
 
   const failedSources = SOURCE_LABELS.filter(([k]) => failed[k]).map(([, label]) => label);
@@ -183,6 +201,8 @@ export function useCommsNextData() {
     /** When each read last answered (`dataUpdatedAt`, 0 = never): a failed refresh says it (COMMS-W33). */
     historyAt: historyQ.dataUpdatedAt,
     draftsAt: activeQ.dataUpdatedAt,
+    /** When the letters-in count last answered (0 = never). */
+    mailAt: mailQ.dataUpdatedAt,
     draftsError: activeQ.isError ? failedReadWords(activeQ.error) : null,
     /** Per-source failure. The banner and the strip both read this. */
     failed,
@@ -195,6 +215,7 @@ export function useCommsNextData() {
     refetch: () => {
       void historyQ.refetch();
       void activeQ.refetch();
+      void mailQ.refetch();
     },
   };
 }

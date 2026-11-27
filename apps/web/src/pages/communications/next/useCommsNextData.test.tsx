@@ -121,6 +121,7 @@ describe('useCommsNextData — every cache bucket names the tenant (P2)', () => 
 const LABELS = {
   history: 'the conversation book',
   drafts: 'the replies the house has written',
+  mail: 'the count of letters in',
 } as const;
 
 /** Route each owned source to its own client so one can fail alone. */
@@ -135,6 +136,9 @@ function sources(fail: Partial<Record<keyof typeof LABELS, boolean>>) {
     if (url.includes('/procurement/conversations/active')) {
       return fail.drafts ? Promise.reject(new Error('drafts 500')) : Promise.resolve({ data: [] });
     }
+    if (url === '/mail/summary') {
+      return fail.mail ? Promise.reject(new Error('mail 503')) : Promise.resolve({ data: { inLast30: 0 } });
+    }
     return Promise.resolve({ data: {} });
   });
 }
@@ -148,7 +152,7 @@ describe('useCommsNextData — ADR 0083 amended 2026-09-25 and 2026-10-01: two o
 
     await waitFor(() => expect(result.current.glance.draftsPending).toBe(0));
     await waitFor(() => expect(result.current.hasData).toBe(true));
-    expect(result.current.glance.repliesLast30).toBe(0);
+    await waitFor(() => expect(result.current.glance.repliesLast30).toBe(0));
 
     expect(mockListSchedules).not.toHaveBeenCalled();
     const urls = [...mockAxiosGet.mock.calls, ...mockApiGet.mock.calls].map((c) => String(c[0]));
@@ -162,7 +166,7 @@ describe('useCommsNextData — ADR 0083 amended 2026-09-25 and 2026-10-01: two o
     expect(result.current.failedSources).toEqual([]);
   });
 
-  for (const source of ['history', 'drafts'] as const) {
+  for (const source of ['history', 'drafts', 'mail'] as const) {
     it(`a real failure of ${LABELS[source]} alone is still named (ADR 0051: never swallowed)`, async () => {
       auth('active-rest-B');
       sources({ [source]: true });
@@ -191,20 +195,21 @@ describe('useCommsNextData — ADR 0083 amended 2026-09-25 and 2026-10-01: two o
     expect(result.current.failedSources).toEqual([]);
   });
 
-  it('exposes a failed state for every one of the two owned queries (P4)', async () => {
+  it('exposes a failed state for every one of the three queries (P4)', async () => {
     auth('active-rest-B');
-    sources({ history: true, drafts: true });
+    sources({ history: true, drafts: true, mail: true });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { result } = renderHook(() => useCommsNextData(), { wrapper: wrapper(qc) });
 
     await waitFor(() => expect(result.current.failed.history).toBe(true));
     await waitFor(() => expect(result.current.failed.drafts).toBe(true));
-    expect(result.current.failedSources).toEqual([LABELS.history, LABELS.drafts]);
-    expect(Object.keys(result.current.failed).sort()).toEqual(['drafts', 'history']);
+    await waitFor(() => expect(result.current.failed.mail).toBe(true));
+    expect(result.current.failedSources).toEqual([LABELS.history, LABELS.drafts, LABELS.mail]);
+    expect(Object.keys(result.current.failed).sort()).toEqual(['drafts', 'history', 'mail']);
   });
 });
 
-describe('useCommsNextData — the two 30-day figures split the book by direction (COMMS-W3)', () => {
+describe('useCommsNextData — sent is the book figure, replies are the Mail count (COMMS-W3, D6)', () => {
   const row = (over: Record<string, unknown>) => ({
     id: String(Math.random()),
     direction: 'OUTBOUND',
@@ -214,7 +219,7 @@ describe('useCommsNextData — the two 30-day figures split the book by directio
     ...over,
   });
 
-  it('counts vendor replies as replies and never as sent', async () => {
+  it('counts sent from the book, and replies as the server counts letters in, never the book inbound rows', async () => {
     auth('active-rest-B');
     const old = new Date(Date.now() - 40 * 86_400_000).toISOString();
     mockAxiosGet.mockImplementation((url: string) =>
@@ -229,13 +234,18 @@ describe('useCommsNextData — the two 30-day figures split the book by directio
           })
         : Promise.resolve({ data: [] }),
     );
-    mockApiGet.mockResolvedValue({ data: [] });
+    // Mail counted 4 letters in over 30 days: a bounce, an auto-reply and a
+    // second copy are not among them, whatever the book holds (D6: the strip
+    // read 7 beside Mail's 4 when it counted the book's inbound rows).
+    mockApiGet.mockImplementation((url: string) =>
+      Promise.resolve({ data: url === '/mail/summary' ? { inLast30: 4 } : [] }),
+    );
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { result } = renderHook(() => useCommsNextData(), { wrapper: wrapper(qc) });
 
     await waitFor(() => expect(result.current.hasData).toBe(true));
     expect(result.current.glance.sentLast30).toBe(1);
-    expect(result.current.glance.repliesLast30).toBe(2);
+    await waitFor(() => expect(result.current.glance.repliesLast30).toBe(4));
   });
 });
 
