@@ -1469,7 +1469,7 @@ export class DocumentsController {
   @ApiOperation({
     summary: "Lines whose printed price per bottle moved against the good's last other verified paper",
     description:
-      "Information only: it never blocks a verification and never changes a cost. A line is compared only when it is mapped to a good, its printed total can be counted per bottle, and another verified paper of this house in the same currency priced that good per bottle (r108 g15); every other line is listed as not compared, with the reason.",
+      "Owners and managers only (403 in words otherwise). Information only: it never blocks a verification and never changes a cost. A line is compared only when it is mapped to a good, its printed total can be counted per bottle, and another verified paper of this house in the same currency priced that good per bottle (r108 g15); every other line is listed as not compared, with the reason.",
   })
   @ApiQuery({ name: "thresholdPct", required: false })
   async priceMoves(
@@ -1482,6 +1482,14 @@ export class DocumentsController {
       thresholdPct != null && Number.isFinite(parsed) && parsed >= 0
         ? parsed
         : DEFAULT_MOVE_THRESHOLD_PCT;
+    // r109 (DD-r109-8a): both prices and the percent are the house's money, so
+    // the same rule as another vendor's prices, before any read. Rejected:
+    // leaving the r104 behaviour open to staff.
+    if (!holdsHouseMoney(user.role ?? null))
+      throw new HttpException(
+        "A line's price moves are shown to the owner and managers of the house.",
+        HttpStatus.FORBIDDEN,
+      );
     const client = this.db.getClient();
     // A paper that is not this house's is a 404 in words, never an empty list
     // that reads as "nothing moved" (ADR 0020).

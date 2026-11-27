@@ -62,7 +62,7 @@ function controllerWith(results: Sim) {
   return Object.assign(c, { calls });
 }
 
-const user = { userId: "u1", restaurantId: "rest-1" } as any;
+const user = { userId: "u1", restaurantId: "rest-1", role: "owner" } as any;
 const line = (over: Record<string, unknown> & { price?: number | string }) => {
   const { price = 11.8, ...rest } = over;
   return {

@@ -807,12 +807,18 @@ function PairedCell({
  * reading as "nothing moved".
  */
 function PriceMovesNote({ docId }: { docId: string }) {
+  // r109: owners and managers only; the gateway refuses anyone else, so staff
+  // never ask and see nothing, the way VendorPricesNote and HeldCostNote do.
+  const { activeRole, user } = useAuth();
+  const allowed = canSeeCreditLedger(activeRole, user?.role);
   const q = useQuery({
     queryKey: ['receipts-next', 'price-moves', docId],
     queryFn: () => documentsApi.priceMoves(docId),
     staleTime: 60_000,
     retry: false,
+    enabled: allowed,
   });
+  if (!allowed) return null;
   if (q.isError)
     return (
       <p role="status" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>
