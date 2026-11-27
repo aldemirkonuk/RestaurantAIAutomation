@@ -3,6 +3,11 @@ import { DatabaseService } from "../../database/database.service";
 import { CanonicalDocumentService } from "./canonical-document.service";
 import { LineMappingService } from "./line-mapping.service";
 import { VendorResolutionService } from "../vendor-identity/vendor-resolution.service";
+import { receivedAtTheDoor } from "./door-received";
+
+// r24: the door's count of a paper is read by its own helper (door-received.spec.ts).
+jest.mock("./door-received", () => ({ receivedAtTheDoor: jest.fn() }));
+const doorRead = receivedAtTheDoor as jest.MockedFunction<typeof receivedAtTheDoor>;
 
 /**
  * Mocked supabase. All ids and numbers are SYNTHETIC.
@@ -604,5 +609,26 @@ describe("CanonicalDocumentService — what the columns cannot hold", () => {
     expect(res.value.layer1.actualDeliveryDate.value).toBeNull();
     expect(res.value.layer1.vatBreakdown).toEqual([]);
     expect(res.value.layer1.lines[1].lineKind?.value).toBe("goods");
+  });
+
+  describe("what the door counted of this paper (r24)", () => {
+    it("puts the count on its own line as received; an uncounted line stays not counted", async () => {
+      doorRead.mockResolvedValueOnce({ ok: true, value: new Map([[2, 5]]) });
+      const res = await service.buildFromDocumentId("rest-1", "doc-1", { door: true });
+      expect(doorRead).toHaveBeenCalledWith(expect.anything(), "rest-1", "doc-1");
+      expect(res.ok && res.value.layer3.lines.map((l) => l.received)).toEqual(["not_counted", 5]);
+    });
+
+    it("a failed read is said in the notes", async () => {
+      doorRead.mockResolvedValueOnce({ ok: false, error: "could not be read (boom)" });
+      const res = await service.buildFromDocumentId("rest-1", "doc-1", { door: true });
+      expect(res.ok && res.notes?.join(" ")).toContain("could not be read (boom)");
+    });
+
+    it("is not read unless asked", async () => {
+      doorRead.mockClear();
+      await service.buildFromDocumentId("rest-1", "doc-1");
+      expect(doorRead).not.toHaveBeenCalled();
+    });
   });
 });

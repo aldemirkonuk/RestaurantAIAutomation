@@ -194,6 +194,8 @@ export class DocumentIntakeService {
       filename?: string | null;
       mimeType?: string | null;
     } | null;
+    /** The paper this count is of (r24); its lines keep the paper's line numbers. */
+    countedFor?: string | null;
   }): Promise<IntakeResult> {
     if (!input.lines.length)
       return {
@@ -334,6 +336,8 @@ export class DocumentIntakeService {
       ...(parsed as unknown as Record<string, unknown>),
       countedAt,
       countedBy: input.countedBy,
+      // The paper read back by its own sheet to say what each line received.
+      countedFor: input.countedFor ?? null,
       note: input.note ?? null,
       // ADR 0103 D3's second route to AGREED reads this. Absent means nobody
       // signed, which is a fact about the door, not a missing field.

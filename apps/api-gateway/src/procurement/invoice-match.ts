@@ -53,6 +53,9 @@
  *   - An **opaque** unit (keg/liter) may only be matched against the same
  *     opaque unit; mixing one with bottles throws. Inventing a keg-to-bottle
  *     factor produces confident, wrong cost maths.
+ *   - A **weight** (kg/g) is opaque the same way: it is matched only against
+ *     the same weight. `3 each` ordered and `3 kg` invoiced is not a clean
+ *     match of 3 against 3 (mail-receipts fix round 2026-11-12, #1110).
  *   - An **absent** unit resolves to the ORDER's unit, and the order's own
  *     absent unit resolves to `bottle`. This is not the guess the ADR forbids:
  *     a client that declares no unit counts in the order's own unit (the desk
@@ -67,7 +70,7 @@
  * what is persisted.
  */
 
-import { normalizeUom, Uom } from "./documents/document-types";
+import { isMass, normalizeUom, Uom } from "./documents/document-types";
 
 export type MatchVerdict =
   | "matched"
@@ -285,9 +288,11 @@ export interface MatchResult {
    */
   selfEvidenced: boolean;
   /**
-   * What each bottle in hand actually cost: (amount billed + allocated charges)
-   * / units accepted. Handles free goods ("11 for the price of 10" -> 10x$22/11
-   * = $20). Null when unpriced or nothing accepted. THIS is what must be written
+   * What each bottle in hand actually cost: (amount billed + allocated charges
+   * - the credit claimed for units not usably received) / units accepted.
+   * Handles free goods ("11 for the price of 10" -> 10x$22/11 = $20), and never
+   * charges a broken or missing bottle to the good ones while also claiming it
+   * back (r28 G6). Null when unpriced or nothing accepted. THIS is what must be written
    * to the stock lot — the whole match is theatre if the books keep the PO price.
    */
   effectiveUnitCost: number | null;
@@ -550,14 +555,22 @@ export function toBottleOperands(input: MatchInput): {
       ? ([["the physical count", counted]] as Array<[string, ResolvedUnit]>)
       : []),
   ];
-  const opaque = participating.filter(([, u]) => OPAQUE.has(u.uom));
+  // A weight is opaque here too (R8): `normalizeUom` reads KGM and GRM, and a
+  // weight passed through as one "bottle" a unit would match 3 kg against 3
+  // pieces as clean. It is compared only with the very same weight unit; no
+  // kg-to-g conversion is made here, because an order is never placed by
+  // weight, so a weighed operand always meets an order it cannot be read as.
+  const opaque = participating.filter(([, u]) => OPAQUE.has(u.uom) || isMass(u.uom));
   if (opaque.length > 0) {
     const mismatch = participating.find(([, u]) => u.uom !== opaque[0][1].uom);
     if (mismatch) {
+      const first = opaque[0][1].uom;
       throw new MatchUnitError(
         "not_comparable",
-        `${opaque[0][0]} is counted in ${opaque[0][1].uom}s and ${mismatch[0]} in ${mismatch[1].uom}s. ` +
-          `A ${opaque[0][1].uom} is not a number of bottles in any way a receiver would accept, so these cannot be compared.`,
+        `${opaque[0][0]} is counted in ${first}s and ${mismatch[0]} in ${mismatch[1].uom}s. ` +
+          (isMass(first)
+            ? `A weight is not a count of ${mismatch[1].uom.replace("_", " ")}s, so these cannot be compared.`
+            : `A ${first} is not a number of bottles in any way a receiver would accept, so these cannot be compared.`),
       );
     }
   }
@@ -739,17 +752,34 @@ export function computeMatch(input: MatchInput): MatchResult {
     (hasInvoice && (invoiceQty as number) > billableReceived);
 
   // Money owed back: units billed but not usably received, at the billed price.
+  // Never more than was billed: when the rejected units must have been the free
+  // ones (rejected > billableReceived) the paper still only billed invoiceQty.
   const unitsOwed = hasInvoice
-    ? Math.max(0, (invoiceQty as number) - (billableReceived - rejectedQty))
+    ? Math.min(
+        invoiceQty as number,
+        Math.max(0, (invoiceQty as number) - Math.max(0, billableReceived - rejectedQty)),
+      )
     : 0;
   const creditAmount =
     hasInvoice && invoiceUnitPrice != null && unitsOwed > 0
       ? Math.round(unitsOwed * invoiceUnitPrice * 100) / 100
       : null;
 
+  // A BOTTLE CLAIMED BACK IS NOT ALSO A COST (r28 invoices audit, G6). The
+  // credit above claims the billed price of every unit not usably received.
+  // Charging the whole bill to the good bottles as well counted that money
+  // twice: 12 billed at 10.00, 2 broken, gave a lot cost of 12.00 a bottle AND
+  // a credit of 20.00. The good bottles carry the bill and the charges less
+  // what is claimed back, which is the price each good bottle was billed at
+  // (plus its share of charges) - the same figure the delivery path settles.
+  // Free goods still lower the cost: nothing is claimed for them.
+  const claimedBack =
+    hasInvoice && invoiceUnitPrice != null ? unitsOwed * invoiceUnitPrice : 0;
   const effectiveUnitCost =
     hasInvoice && invoiceUnitPrice != null && acceptedQty > 0
-      ? ((invoiceQty as number) * invoiceUnitPrice + allocatedCharges) /
+      ? ((invoiceQty as number) * invoiceUnitPrice +
+          allocatedCharges -
+          claimedBack) /
         acceptedQty
       : null;
 
