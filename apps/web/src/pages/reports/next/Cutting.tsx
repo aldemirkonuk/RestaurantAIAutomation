@@ -187,6 +187,24 @@ function Body({
   );
 }
 
+/** The register's view, built once per answer and window rather than on every render of the cutting (perf-p10-4). */
+function Answered({
+  spec,
+  data,
+  ctx,
+  graph,
+  windowLine,
+}: {
+  spec: (typeof CATALOGUE)[AnalysisId];
+  data: unknown;
+  ctx: ViewCtx;
+  graph: GraphType;
+  windowLine: string;
+}) {
+  const view = useMemo(() => spec.view(data, ctx), [spec, data, ctx]);
+  return <Body view={view} graph={graph} windowLine={windowLine} />;
+}
+
 export interface CuttingProps {
   id: AnalysisId;
   graph: GraphType;
@@ -229,7 +247,7 @@ export default function Cutting({
       data={register?.data}
       onRetry={() => register?.refetch()}
     >
-      {(data) => <Body view={spec.view(data, ctx)} graph={drawn} windowLine={windowLine} />}
+      {(data) => <Answered spec={spec} data={data} ctx={ctx} graph={drawn} windowLine={windowLine} />}
     </RegisterBody>
   ) : (
     <Body view={spec.view(null, ctx)} graph={drawn} windowLine={windowLine} />

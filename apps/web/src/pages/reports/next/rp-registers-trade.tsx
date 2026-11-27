@@ -222,51 +222,72 @@ const till = analysis<TillWindow>({
         basis,
       };
 
-    const cols = weekColumns(w.from, w.to);
-    const byDate = new Map(w.dailySeries.map((d) => [d.date, d.revenue]));
-    const cells: Cell[] = [];
-    for (const [date, revenue] of byDate) {
-      cells.push({
-        row: WEEKDAY_SHORT[weekdayIndex(date)],
-        col: weekLabel(weekStart(date)),
-        value: revenue,
-        title: shortDay(date),
-      });
-    }
-    return {
-      cats: {
-        data: w.dailySeries.map((d) => ({
-          label: shortDay(d.date),
-          value: d.revenue,
-          full: shortDay(d.date),
-        })),
-        xLabel: 'day',
-        yLabel: 'taken',
-        unit: 'taken',
-        format: (v) => money(v, 'compact'),
-      },
-      matrix: {
+    // Only the drawing the cutting is set to is ever read, so the other two are built when (and if)
+    // they are asked for, once: the default area drawing no longer pays for the heat map's dates
+    // and the table's formatted rows on every window click (perf-p10-4).
+    const cats = () => ({
+      data: w.dailySeries.map((d) => ({
+        label: shortDay(d.date),
+        value: d.revenue,
+        full: shortDay(d.date),
+      })),
+      xLabel: 'day',
+      yLabel: 'taken',
+      unit: 'taken',
+      format: (v: number) => money(v, 'compact'),
+    });
+    const matrix = () => {
+      const cols = weekColumns(w.from, w.to);
+      const byDate = new Map(w.dailySeries.map((d) => [d.date, d.revenue]));
+      const cells: Cell[] = [];
+      for (const [date, revenue] of byDate) {
+        cells.push({
+          row: WEEKDAY_SHORT[weekdayIndex(date)],
+          col: weekLabel(weekStart(date)),
+          value: revenue,
+          title: shortDay(date),
+        });
+      }
+      return {
         rows: [...WEEKDAY_SHORT],
         cols: cols.map(weekLabel),
         cells,
         xLabel: 'week beginning',
         yLabel: 'weekday',
         unit: 'taken',
-        format: (v) => money(v, 'compact'),
+        format: (v: number) => money(v, 'compact'),
+      };
+    };
+    const table = () => ({
+      cols: [
+        { key: 'day', label: 'Day' },
+        { key: 'taken', label: 'Taken', numeric: true },
+      ],
+      rows: w.dailySeries.map((d) => ({
+        key: d.date,
+        cells: [shortDay(d.date), money(d.revenue, 'table')],
+      })),
+      more:
+        w.dailySeries.length < w.days
+          ? `${w.dailySeries.length} of the ${w.days} days in the window rang up a check; the rest are absent rather than zero.`
+          : undefined,
+    });
+    const once = <T,>(build: () => T): (() => T) => {
+      let built: { v: T } | null = null;
+      return () => (built ??= { v: build() }).v;
+    };
+    const getCats = once(cats);
+    const getMatrix = once(matrix);
+    const getTable = once(table);
+    return {
+      get cats() {
+        return getCats();
       },
-      table: {
-        cols: [
-          { key: 'day', label: 'Day' },
-          { key: 'taken', label: 'Taken', numeric: true },
-        ],
-        rows: w.dailySeries.map((d) => ({
-          key: d.date,
-          cells: [shortDay(d.date), money(d.revenue, 'table')],
-        })),
-        more:
-          w.dailySeries.length < w.days
-            ? `${w.dailySeries.length} of the ${w.days} days in the window rang up a check; the rest are absent rather than zero.`
-            : undefined,
+      get matrix() {
+        return getMatrix();
+      },
+      get table() {
+        return getTable();
       },
       figures,
       notes: [],
