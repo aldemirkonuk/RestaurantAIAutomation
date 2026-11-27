@@ -167,3 +167,43 @@ describe("statement-tieout pure parts", () => {
     expect(out.rows[0]).toMatchObject({ verdict: "not_compared", reason: "the statement's money is not known" });
   });
 });
+
+describe("a corrected paper is tied out as corrected (r109 invoices walk, DD-r108-20)", () => {
+  const corr = (over: Row) => ({ id: 1, kind: "correction", revision: 1, ...over });
+  const entry = (over: Row = {}) => ({ docNumber: "V-2", docDate: "2026-11-04", amount: 75, kind: "invoice", ...over });
+
+  it("a total corrected from 80.00 to 75.00 ties out as checked_same", async () => {
+    const c = controllerWith({
+      procurement_documents: [statement([entry()]), paper({ id: "v2", doc_number: "V-2", total: "80.00" })],
+      document_corrections: [corr({ document_id: "v2", field_path: "totals.taxInclusiveAmount", after: { value: 75 } })],
+    });
+    const out: any = await c.statementTieout("st1", owner);
+    expect(out.rows[0]).toMatchObject({ verdict: "checked_same", paperId: "v2", differsBy: null });
+  });
+
+  it("a misread number corrected to INV-103 is received, and not listed as off the statement", async () => {
+    const c = controllerWith({
+      procurement_documents: [
+        statement([entry({ docNumber: "INV-103", amount: 50 })]),
+        paper({ id: "v3", doc_number: "1NV-1O3", total: "50.00" }),
+      ],
+      document_corrections: [corr({ document_id: "v3", field_path: "documentNumber", after: { value: "INV-103" } })],
+    });
+    const out: any = await c.statementTieout("st1", owner);
+    expect(out.rows[0]).toMatchObject({ verdict: "checked_same", paperId: "v3" });
+    expect(out.notOnStatement).toEqual([]);
+  });
+
+  it("the latest revision wins, another paper's correction does not leak", async () => {
+    const c = controllerWith({
+      procurement_documents: [statement([entry()]), paper({ id: "v2", doc_number: "V-2", total: "80.00" })],
+      document_corrections: [
+        corr({ id: 2, revision: 2, document_id: "v2", field_path: "totals.taxInclusiveAmount", after: { value: 70 } }),
+        corr({ id: 1, revision: 1, document_id: "v2", field_path: "totals.taxInclusiveAmount", after: { value: 75 } }),
+        corr({ id: 3, revision: 3, document_id: "other", field_path: "totals.taxInclusiveAmount", after: { value: 75 } }),
+      ],
+    });
+    const out: any = await c.statementTieout("st1", owner);
+    expect(out.rows[0]).toMatchObject({ verdict: "amount_differs", differsBy: "5.00" });
+  });
+});

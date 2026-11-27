@@ -72,6 +72,50 @@ export function centsText(c: bigint): string {
   return `${neg ? "-" : ""}${a / 100n}.${(a % 100n).toString().padStart(2, "0")}`;
 }
 
+/** One `document_corrections` row, as the tie-out reads it. */
+export interface HeaderCorrection {
+  id?: string | number | null;
+  document_id?: string;
+  revision: number;
+  kind: string | null;
+  field_path: string;
+  after: unknown;
+}
+
+/** The three header fields a tie-out compares, and the paper columns they live in. */
+const HEADER_COLUMNS: Record<string, "doc_number" | "total" | "currency"> = {
+  documentNumber: "doc_number",
+  "totals.taxInclusiveAmount": "total",
+  currency: "currency",
+};
+
+/**
+ * The paper as the owner corrected it. A correction through the canonical sheet
+ * writes `document_corrections` and `document_revisions` and never the columns
+ * this tie-out matches on, so the stored number, total and money are the
+ * reader's first read. Lay each correction over them, oldest revision first
+ * (ties by id): a corrected number matches the statement's, a corrected total
+ * ties out (DD-r108-20, as #2330 closed it for costing).
+ */
+export function overlayHeaderCorrections<P extends { doc_number: string | null; total: number | string | null; currency: string | null }>(
+  paper: P,
+  corrections: HeaderCorrection[],
+): P {
+  const mine = corrections
+    .filter((c) => (c.kind == null || c.kind === "correction") && c.field_path in HEADER_COLUMNS)
+    .sort((a, b) => a.revision - b.revision || String(a.id ?? "").localeCompare(String(b.id ?? ""), "en", { numeric: true }));
+  if (!mine.length) return paper;
+  const out = { ...paper };
+  for (const c of mine) {
+    const v = (c.after as { value?: unknown } | null)?.value ?? null;
+    const col = HEADER_COLUMNS[c.field_path];
+    if (col === "doc_number") out.doc_number = typeof v === "string" && v ? v : null;
+    else if (col === "currency") out.currency = typeof v === "string" && v ? v : out.currency;
+    else out.total = typeof v === "number" || typeof v === "string" ? v : null;
+  }
+  return out;
+}
+
 const PAPER_KIND: Record<"invoice" | "credit", string> = { invoice: "invoice", credit: "credit_memo" };
 const OUT = new Set(["rejected", "superseded"]);
 
