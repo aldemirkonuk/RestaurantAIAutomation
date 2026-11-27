@@ -14,6 +14,7 @@ const REST = "11111111-1111-1111-1111-111111111111";
 const DEL = "dddddddd-dddd-dddd-dddd-dddddddddddd";
 const ORD = "abababab-abab-abab-abab-abababababab";
 const ITEM = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee";
+const ITEM_B = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 const DOC = "inv-1";
 const USER = "u1";
 
@@ -149,6 +150,60 @@ describe("DeliveryStockService.recostAfterCorrection (r109, DD-r108-20)", () => 
       { p_restaurant_id: REST, p_inventory_id: ITEM, p_source_order_id: ORD, p_unit_cost: 55, p_performed_by: USER },
     ]);
     expect(r.ok && r.value.deliveries[0].salesRestated).toBe(2);
+  });
+
+  describe("a line's correction revalues that line's item only", () => {
+    const two = (over: { second?: Record<string, unknown> } = {}) => {
+      given({
+        orderId: ORD,
+        lines: [line(), line({ line_no: 2, inventory_id: ITEM_B, unit_price: 40, line_total: 400, ...(over.second ?? {}) })],
+        corrections: [fix(2, "lines[0].netPrice", 55), fix(3, "lines[0].netAmount", 550)],
+      });
+      db.answers.inventory_transactions = {
+        data: [
+          { inventory_id: ITEM, quantity_change: 10 },
+          { inventory_id: ITEM_B, quantity_change: 10 },
+        ],
+        error: null,
+      };
+    };
+
+    it("correcting line 1 posts line 1's item and leaves line 2's lot alone", async () => {
+      two();
+      await recost("lines[0].netAmount");
+      expect(posted().map((c) => c.args.p_inventory_id)).toEqual([ITEM]);
+      expect(restated().map((c) => c.args.p_inventory_id)).toEqual([ITEM]);
+    });
+
+    it("correcting line 2 posts line 2's item only", async () => {
+      two();
+      await recost("lines[1].netAmount");
+      expect(posted().map((c) => c.args.p_inventory_id)).toEqual([ITEM_B]);
+    });
+
+    it("a header field can move every item, so it posts them all", async () => {
+      two();
+      await recost("totals.taxAmount");
+      expect(posted().map((c) => c.args.p_inventory_id).sort()).toEqual([ITEM, ITEM_B].sort());
+    });
+
+    it("a line that names no item cannot narrow it: every item is posted", async () => {
+      two({ second: {} });
+      db.answers.procurement_document_lines = {
+        data: [line({ inventory_id: null }), line({ line_no: 2, inventory_id: ITEM_B, unit_price: 40, line_total: 400 })],
+        error: null,
+      };
+      await recost("lines[0].netAmount");
+      expect(posted().length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("a failed read of the paper's lines revalues nothing (ADR 0020)", async () => {
+      two();
+      db.answers.procurement_document_lines = { data: null, error: { message: "boom" } };
+      const r = await recost("lines[0].netAmount");
+      expect(r).toMatchObject({ ok: false, status: 500 });
+      expect(posted()).toEqual([]);
+    });
   });
 
   it("a delivery with no order re-costs its lots and restates nothing", async () => {

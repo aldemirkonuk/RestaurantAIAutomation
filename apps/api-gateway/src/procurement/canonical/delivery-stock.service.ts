@@ -16,6 +16,7 @@ import {
   notHouseMoney,
 } from "./paper-landed-cost";
 import { CostTaxBasis, HouseTax, houseReclaims } from "../landed-cost";
+import { splitPath } from "./correctable-paths";
 import { CorrectionRowLite, movesCost, overlayCorrections } from "./correction-overlay";
 
 /**
@@ -886,7 +887,13 @@ export class DeliveryStockService {
       }
       const booked = await this.bookedSoFar(deliveryId);
       if (!booked.ok) return booked;
-      const costed = await this.finaliseAtVerified(restaurantId, deliveryId, userId, undefined, reason);
+      // A line's correction revalues that line's item and no other: another
+      // item's lot may have been moved since verify (a hand revaluation, a
+      // credit), and re-posting it to the paper's cost would undo that. A
+      // header field (currency, totals) can move every item, so it posts all.
+      const only = await this.itemOfCorrectedLine(restaurantId, documentId, path);
+      if (!only.ok) return only;
+      const costed = await this.finaliseAtVerified(restaurantId, deliveryId, userId, only.value, reason);
       if (!costed.ok) return costed;
       const kept = costed.value.stillProvisional.map((k) => ({
         inventoryId: k.inventoryId,
@@ -911,6 +918,33 @@ export class DeliveryStockService {
       out.deliveries.push({ deliveryId, recosted: costed.value.finalised, kept, salesRestated, drawnBefore });
     }
     return { ok: true, value: out };
+  }
+
+  /**
+   * The item a `lines[n].*` correction is about: `lines[n]` is the n-th row of
+   * this paper by `line_no`, as the canonical read numbers them. Undefined (every
+   * booked item) for a header path, and for a line that names no item (it is
+   * priced through the delivery's sole item or a proposal, so which lot it moves
+   * is not the line's to say). A failed read stops the re-cost (ADR 0020).
+   */
+  private async itemOfCorrectedLine(
+    restaurantId: string,
+    documentId: string,
+    path: string,
+  ): Promise<StockResult<ReadonlySet<string> | undefined>> {
+    const at = splitPath(path);
+    if (!at || at.line == null) return { ok: true, value: undefined };
+    const read = await this.db
+      .getClient()
+      .from("procurement_document_lines")
+      .select("line_no, inventory_id")
+      .eq("restaurant_id", restaurantId)
+      .eq("document_id", documentId)
+      .order("line_no", { ascending: true });
+    if (read.error)
+      return { ok: false, status: 500, error: `the lines of the paper ${documentId} could not be read to find the corrected item: ${read.error.message}. The correction stands; nothing was revalued.` };
+    const row = ((read.data ?? []) as { line_no: number | null; inventory_id: string | null }[])[at.line];
+    return { ok: true, value: row?.inventory_id ? new Set([row.inventory_id]) : undefined };
   }
 
   /** Each paper's corrections, oldest first, read a page at a time (r109). A failed read is not "none" (ADR 0067). */
