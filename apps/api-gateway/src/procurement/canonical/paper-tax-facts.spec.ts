@@ -197,14 +197,28 @@ describe("landDelivery — a house that answered is costed by what its paper pro
     const booked = { [A]: 10, [B]: 10 };
     const r = run(paper, reclaims, l, booked);
     expect(r.byItem.get(A)).toMatchObject({ unitCost: 60, costTaxBasis: "net" });
+    // r103: a keeping house on a before-tax paper needs each line's rate to add
+    // the tax it paid; booking 60 as printed would leave the 124 of tax out of
+    // cost and stamp it final. It is held in words instead.
     const k = run(paper, keeps, l, booked);
-    expect(k.byItem.get(A)).toMatchObject({ unitCost: 60, costTaxBasis: null });
-    expect(k.byItem.get(A)?.taxSaid).toMatch(/It prints 2 tax rates and not which line carries which/);
+    expect(k.byItem.get(A)).toBeUndefined();
+    expect(k.held.get(A)).toContain("tax rate unknown");
   });
 
-  it("a paper that proves nothing is costed as printed, unstamped, as before", () => {
-    const p = run({ tax: 100, total: 1100 }, reclaims).byItem.get(A);
-    expect(p).toMatchObject({ unitCost: 110, costTaxBasis: null });
+  it("two rates printed, tax inside the prices: a reclaiming house is held, a keeping house is costed as printed (r103)", () => {
+    const paper = { tax: 124, total: 1124, tax_breakdown: [{ rate: 20, taxableBase: 600, amount: 120 }, { rate: 1, taxableBase: 400, amount: 4 }] };
+    const l = [line({ unit_price: 72, line_total: 720 }), line({ line_no: 2, inventory_id: B, unit_price: 40.4, line_total: 404 })];
+    const booked = { [A]: 10, [B]: 10 };
+    const r = run(paper, reclaims, l, booked);
+    expect(r.byItem.get(A)).toBeUndefined();
+    expect(r.held.get(A)).toContain("tax rate unknown");
+    expect(run(paper, keeps, l, booked).byItem.get(A)).toMatchObject({ unitCost: 72 });
+  });
+
+  it("a paper that shows tax and proves no basis is held, in words, for a house that answered (r103)", () => {
+    const r = run({ tax: 100, total: 1100 }, reclaims);
+    expect(r.byItem.get(A)).toBeUndefined();
+    expect(r.held.get(A)).toContain("tax basis unknown");
   });
 
   it("freight 55 on a receipt with KDV 10 % inside is shared before tax too: (1100 + 55) / 1.1 / 10 = 105", () => {
