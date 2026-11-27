@@ -57,6 +57,7 @@ import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
 import { MailTab } from './MailTab';
 import { CodeHold, loaders, whoHoldPx } from './mail-code';
 import { composerLayout, type MailAnswer, mailTabLabel } from './mail-format';
+import { revealLetter } from './Compose/newer-in-thread';
 import { tabMove } from './mail-keys';
 import { useMailSummary } from './useMailData';
 
@@ -247,7 +248,8 @@ export default function CommunicationsNext() {
     setComposeFrom(held ? held.words : null);
     setWriteTo(null);
     setReplyOn(at ?? null);
-    setAnswerFrom(held ? held.answer : a);
+    // A held reply is asked about what is newer than the thread shown NOW (r110 g2).
+    setAnswerFrom(held ? { ...held.answer, seenThrough: a.seenThrough ?? held.answer.seenThrough } : a);
     setComposeKey((k) => k + 1);
     setCompose(true);
   };
@@ -928,6 +930,11 @@ export default function CommunicationsNext() {
         onQueued={() => {
           if (replyOn) replies.clear(replyOn.threadKey);
         }}
+        // "Read it first" (r110 g2): the thread is read again and the newer letter brought into view.
+        onReadNewer={(id) => {
+          void queryClient.invalidateQueries({ queryKey: ['mail-thread'] });
+          revealLetter(id);
+        }}
         // Beside the thread, on a desktop, from Mail only: a reply is written with the letter in view.
         layout={composerLayout(tab, composeFrom, answerFrom)}
         prefill={
@@ -942,6 +949,7 @@ export default function CommunicationsNext() {
                 answers: composeFrom.answers,
                 person: composeFrom.person,
                 answerContext: composeFrom.answerContext,
+                ...(composeFrom.answers && answerFrom?.seenThrough ? { seenThrough: answerFrom.seenThrough } : {}),
               }
             : answerFrom
               ? {
@@ -950,6 +958,7 @@ export default function CommunicationsNext() {
                   answers: answerFrom.answers,
                   person: answerFrom.person,
                   answerContext: answerFrom.context,
+                  seenThrough: answerFrom.seenThrough,
                 }
               : writeTo
                 ? { providerId: writeTo.providerId, writeToVendor: true }

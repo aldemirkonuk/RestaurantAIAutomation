@@ -683,7 +683,8 @@ export function MailThread({
               words={heldLine(heldReply.words.subject, heldReply.words.body)}
               onResume={() => {
                 writeReplyRef.current?.focus();
-                onAnswer?.(heldReply.answer, at);
+                // The words held, over the thread as it is shown now (r110 g2).
+                onAnswer?.(answer ? { ...heldReply.answer, seenThrough: answer.seenThrough } : heldReply.answer, at);
               }}
               onDiscard={() => replies?.discard(threadKey)}
               onRestore={() => replies?.restore(threadKey)}

@@ -62,6 +62,7 @@ import { RecipientField, type Recipient } from './RecipientField';
 import { InsightPicker } from './InsightPicker';
 import { MailMotionStyles } from '../mail-motion';
 import { SenderLine } from './SenderLine';
+import { NEWER_CSS, newerFrom, newerLine, type NewerItem, type SeenThrough } from './newer-in-thread';
 
 const ICON = { size: 13, strokeWidth: 1.75 } as const;
 
@@ -93,6 +94,8 @@ type SendState =
       notices: GuardrailHit[];
     }
   | { kind: 'cancelled'; says: string }
+  // Someone wrote on the thread since it was opened (r110 g2); the hold's seal is unspent.
+  | { kind: 'newer'; items: NewerItem[]; challenge: string | null }
   | { kind: 'asked'; says: string }
   | { kind: 'refused'; message: string; guardrails: GuardrailHit[] };
 
@@ -168,7 +171,11 @@ export interface ComposeSheetProps {
      * who wrote it, when, and its words. Nothing is fetched for it.
      */
     answerContext?: AnsweredLetter;
+    /** The newest letter the thread showed when this reply was opened (r110 g2). */
+    seenThrough?: SeenThrough;
   } | null;
+  /** "Read it first" (r110 g2): the page brings that letter into view. */
+  onReadNewer?: (letterId: string) => void;
   /** Called once a draft was discarded, so the page can drop it. */
   onDiscarded?: () => void;
   /**
@@ -178,7 +185,7 @@ export interface ComposeSheetProps {
   layout?: 'overlay' | 'compress';
 }
 
-export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDiscarded, layout = 'overlay' }: ComposeSheetProps) {
+export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDiscarded, onReadNewer, layout = 'overlay' }: ComposeSheetProps) {
   const data = useComposeData(open);
   const person = prefill?.person ?? null;
   const [to, setTo] = useState<Recipient | null>(
@@ -393,7 +400,7 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
     }
   }, [letter]);
 
-  const queue = useCallback(async (held?: string | null) => {
+  const queue = useCallback(async (held?: string | null, acknowledged?: string[]) => {
     if (!to || !letter) return;
     setSend({ kind: 'queueing' });
     const challenge = held ?? (await mint());
@@ -413,7 +420,12 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
         undoMs: number | null;
         notices: GuardrailHit[];
         insightsRecorded: number;
-      }>('/communications/letters', letter, {
+      }>('/communications/letters', {
+        ...letter,
+        // A reply says what it saw (r110 g2); the seal is over the words alone.
+        ...(letter.answers && prefill?.seenThrough ? { seenThrough: prefill.seenThrough } : {}),
+        ...(acknowledged?.length ? { acknowledged } : {}),
+      }, {
         headers: { 'X-Seal-Challenge': challenge },
       });
       setSend({
@@ -427,13 +439,18 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
       onQueued?.();
       data.refetchQueued();
     } catch (e) {
+      const newer = newerFrom(e);
+      if (newer) {
+        setSend({ kind: 'newer', items: newer, challenge });
+        return;
+      }
       setSend({
         kind: 'refused',
         message: errText(e),
         guardrails: guardrailsFrom(e),
       });
     }
-  }, [to, letter, mint, data, onQueued]);
+  }, [to, letter, mint, data, onQueued, prefill?.seenThrough]);
 
   /** Ask an owner or a manager to send this exact letter. Nothing is queued. */
   const ask = useCallback(async () => {
@@ -867,6 +884,25 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
             </p>
           )}
 
+        {/* Someone wrote since this reply opened (r110 g2): in space the footer
+            keeps for a reply, so nothing shifts; focus moves to it. */}
+        {isReply && prefill?.seenThrough && (
+          <div data-testid="letter-newer-slot" style={{ minHeight: 76 }}>
+            <style>{NEWER_CSS}</style>
+            {send.kind === 'newer' && (
+              <NewerNotice
+                items={send.items}
+                onSendAnyway={() => void queue(ceremony === 'seal' ? send.challenge : null, send.items.map((i) => i.id))}
+                onReadFirst={() => {
+                  const newest = send.items[send.items.length - 1];
+                  leave();
+                  if (newest) onReadNewer?.(newest.id);
+                }}
+              />
+            )}
+          </div>
+        )}
+
         {/* ── Send ────────────────────────────────────────────────────────── */}
         <div
           className="flex flex-wrap items-center gap-3 pt-1"
@@ -1039,3 +1075,34 @@ function AnsweredLetterRow({ letter }: { letter: AnsweredLetter }) {
 }
 
 export default ComposeSheet;
+
+/** "Ayşe answered at 14:05: …" with the two ways on (r110 g2). Focus lands on its line. */
+function NewerNotice({ items, onSendAnyway, onReadFirst }: { items: NewerItem[]; onSendAnyway: () => void; onReadFirst: () => void }) {
+  const head = useRef<HTMLParagraphElement | null>(null);
+  useEffect(() => head.current?.focus(), []);
+  const newest = items[items.length - 1];
+  const btn = {
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '5px 11px',
+    borderRadius: 8,
+    border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+    cursor: 'pointer',
+  } as const;
+  return (
+    <div role="alert" data-testid="letter-newer" className="cmp-newer grid gap-1.5">
+      <p ref={head} tabIndex={-1} style={{ margin: 0, fontSize: 12, lineHeight: 1.45, color: 'var(--ink-1, #211C16)', outline: 'none', overflowWrap: 'anywhere' }}>
+        {newerLine(newest)}
+        {items.length > 1 ? ` (and ${items.length - 1} more)` : ''}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" data-testid="letter-newer-read" onClick={onReadFirst} style={{ ...btn, background: 'var(--seal, #1A5E6B)', color: 'var(--paper-0, #FAF7F1)' }}>
+          Read it first
+        </button>
+        <button type="button" data-testid="letter-newer-send" onClick={onSendAnyway} style={{ ...btn, background: 'transparent', color: 'var(--seal-deep, #14515C)' }}>
+          Send mine as well
+        </button>
+      </div>
+    </div>
+  );
+}
