@@ -1202,3 +1202,19 @@ textarea.cl-field {
   .cl-print-card ol { padding-left: 18px; margin: 12px 0; }
   .cl-print-card .cl-print-method { white-space: pre-wrap; }
 }
+
+/* Learn the specs (r110 drinks-g4): the reveal is 200 ms on the house curve, the next face 120 ms; reduced motion has neither (ADR 0112). */
+.cl-learn { position: relative; }
+.cl-learn h3 { margin: 4px 0; font-size: 22px; }
+.cl-learn-room { margin-top: 12px; }
+.cl-learn-probe { position: absolute; visibility: hidden; pointer-events: none; left: 0; right: 0; }
+.cl-learn-lines { margin: 0; padding-left: 18px; line-height: 1.6; }
+.cl-learn-line { margin: 8px 0 0; }
+.cl-learn-method { white-space: pre-wrap; }
+.cl-learn-actions { display: flex; gap: 8px; margin-top: 16px; }
+.cl-learn-actions kbd { margin-left: 6px; font: inherit; opacity: 0.6; }
+.cl-learn-reveal { animation: cl-learn-reveal 200ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.cl-learn-face--in { animation: cl-learn-face 120ms linear both; }
+@keyframes cl-learn-reveal { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes cl-learn-face { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .cl-learn-reveal, .cl-learn-face--in { animation: none; } }
