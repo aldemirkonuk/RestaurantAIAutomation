@@ -2077,13 +2077,6 @@ export class DocumentsController {
     @CurrentUser() user: AuthedUser,
     @Query("thresholdPct") thresholdPct?: string,
   ) {
-    // The previous cost is the house's landed cost per bottle: the owner's own
-    // number, the same kind of figure the held-costs route keeps from staff.
-    if (!holdsHouseMoney(user?.role ? String(user.role).trim() : null))
-      throw new HttpException(
-        "What a cost moved from is desk work, so it is an owner's or a manager's to read. Ask a manager or an owner of this house.",
-        HttpStatus.FORBIDDEN,
-      );
     const parsed = Number(thresholdPct);
     const threshold =
       thresholdPct != null && Number.isFinite(parsed) && parsed >= 0
@@ -2092,7 +2085,9 @@ export class DocumentsController {
     // r109 (DD-r109-8a): both prices and the percent are the house's money, so
     // the same rule as another vendor's prices, before any read. Rejected:
     // leaving the r104 behaviour open to staff.
-    if (!holdsHouseMoney(user.role ?? null))
+    // One gate (#2167 r107 and #2356 r109 each added one; the first made the
+    // second unreachable). Trimmed role, as #2167 read it.
+    if (!holdsHouseMoney(user?.role ? String(user.role).trim() : null))
       throw new HttpException(
         "A line's price moves are shown to the owner and managers of the house.",
         HttpStatus.FORBIDDEN,
