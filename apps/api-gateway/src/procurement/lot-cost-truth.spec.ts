@@ -372,6 +372,43 @@ describe("D2 — a verified invoice restates the lot instead of rivalling it", (
     expect(restate!.args.p_restaurant_id).toBe(REST);
   });
 
+  it("a free line (invoice price 0) still restates the sales, at cost 0 (r103)", async () => {
+    // Zero is an allowed invoice price (@Min(0)). The sales restatement must be
+    // asked for it, not skipped as falsy, and the function must take it: it
+    // used to raise 22023 on 0, which made the receipt impossible to verify.
+    const { db, calls } = makeDb();
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 0,
+      invoiceCurrency: "USD",
+      acceptedQuantity: 10,
+      priceOverrideReason: "free case from the supplier",
+    } as any);
+
+    const restate = calls.rpc.find((c) => c.name === "restate_sale_cost");
+    expect(restate).toBeDefined();
+    expect(restate!.args.p_unit_cost).toBe(0);
+  });
+
+  it("verifyReceipt restates the delivery's sales a second time once the receipt is verified (r103)", async () => {
+    // A sale that read its cost before revalue_lot and inserted after the first
+    // restatement would otherwise keep the delivery's estimate for good.
+    const { db, calls } = makeDb();
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 43,
+      invoiceCurrency: "USD",
+      acceptedQuantity: 10,
+      priceOverrideReason: "fuel surcharge agreed by phone",
+    } as any);
+
+    const restates = calls.rpc.filter((c) => c.name === "restate_sale_cost");
+    expect(restates).toHaveLength(2);
+    expect(restates[1].args).toEqual(restates[0].args);
+  });
+
   it("an equal-quantity price correction still reaches the lot", async () => {
     // ledgerDelta is 0 here (accepted == already stocked). Pre-fix this was the
     // silent case: no movement, so the corrected price landed nowhere at all.
