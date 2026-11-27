@@ -1,6 +1,6 @@
 /** The Mail tab's quiet motion (r102 mail-motion-3/4/5): opacity steps only; reduced motion draws the end state. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -13,7 +13,7 @@ vi.mock('./QueuedPullBack', () => ({ QueuedPullBack: () => null }));
 
 import { MailArrival } from './MailArrival';
 import { MailTab } from './MailTab';
-import { FadeAway, MAIL_MOTION_CSS } from './mail-motion';
+import { FadeAway, MAIL_MOTION_CSS, useEnteringKeys } from './mail-motion';
 import type { MailSetupView, MailTestLetter } from './useMailSetup';
 
 const SUMMARY = {
@@ -107,6 +107,26 @@ describe('the people list', () => {
     expect(after).not.toBe(before);
     expect(after.className).toContain('mail-fade-in');
     expect(document.querySelectorAll('[data-entering]')).toHaveLength(0);
+  });
+});
+
+describe('rows that entered stop being marked as entering', () => {
+  it('the mark is gone once the fade has run, so a reorder that re-inserts a row cannot play it again', () => {
+    vi.useFakeTimers();
+    const { result, rerender } = renderHook(({ keys }) => useEnteringKeys(keys, 'all', true), {
+      initialProps: { keys: ['a', 'b'] },
+    });
+    expect(result.current.size).toBe(0);
+    rerender({ keys: ['a', 'b', 'c', 'd'] });
+    expect(Array.from(result.current.keys())).toEqual(['c', 'd']);
+    act(() => void vi.advanceTimersByTime(6 * 24 + 160 + 1));
+    expect(result.current.size).toBe(0);
+    // A person jumps to the top and every row after them is re-inserted: none is entering again.
+    rerender({ keys: ['d', 'a', 'b', 'c'] });
+    expect(result.current.size).toBe(0);
+    // A row that really is new still enters.
+    rerender({ keys: ['e', 'd', 'a', 'b', 'c'] });
+    expect(Array.from(result.current.keys())).toEqual(['e']);
   });
 });
 
