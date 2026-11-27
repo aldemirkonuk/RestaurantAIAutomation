@@ -3,7 +3,7 @@
  * review lanes. These fail with the old `select(null)`, with the keys removed,
  * and with a typing field or a held seal no longer guarded.
  */
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
@@ -22,6 +22,8 @@ const api = vi.hoisted(() => ({
   mintCurrencySeal: vi.fn(),
   /** Every call, in order, so the TIMING can be asserted rather than assumed. */
   calls: [] as string[],
+  /** While true the detail read never answers: the lines are `undefined`. */
+  hold: false,
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -38,7 +40,7 @@ vi.mock('../../../services/api/documents', async (importOriginal) => {
       list: (opts: { status?: string }) =>
         // Only the review queue is filled here; the clean list (W44) is empty.
         Promise.resolve(opts.status === 'needs_review' ? api.queue : []),
-      detail: () => Promise.resolve(api.detail),
+      detail: () => (api.hold ? new Promise(() => {}) : Promise.resolve(api.detail)),
       match: vi.fn(),
       linkLine: vi.fn(() => Promise.resolve()),
       editLine: api.editLine,
@@ -384,21 +386,44 @@ describe('where focus goes after a seal (r108)', () => {
   });
 });
 
-describe('the lines card holds its place while the lines are read (r109)', () => {
-  it('reserves its height before the lines arrive and keeps the same box when they do', async () => {
-    let arrive: (d: unknown) => void = () => {};
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (api as any).detail = new Promise((r) => { arrive = r; });
-    render(<ReceiptsNext />, { wrapper });
+describe('room for the lines while they are read (r109 g6)', () => {
+  const open = async (lineCount: number | null | undefined) => {
+    api.hold = true;
+    api.queue = [{ ...DOC, line_count: lineCount } as ProcurementDocument];
+    const view = render(<ReceiptsNext />, { wrapper });
     fireEvent.click(await paperRow('INV-88'));
-    const reserve = await screen.findByTestId('lines-reserve');
-    expect(reserve).toHaveTextContent('Reading the lines');
-    // The height itself is CSS (jsdom measures none); the box must be the one
-    // carrying the reserve class, and it must be gone once the lines are in.
-    expect(reserve).toHaveClass('rc-lines-wait');
-    expect(document.head.innerHTML + document.body.innerHTML).toMatch(/\.rc-lines-wait \{ min-height: \d+px \}/);
-    arrive({ document: DOC, lines: [LINE], links: [] });
-    await screen.findByLabelText('Quantity, line 1');
-    expect(screen.queryByTestId('lines-reserve')).toBeNull();
+    await screen.findByText('Reading the lines…');
+    return view;
+  };
+  const rows = () => screen.queryAllByTestId('lines-wait-row').length;
+  afterEach(() => {
+    api.hold = false;
+  });
+
+  it('holds one static row per line the list says the paper has', async () => {
+    await open(5);
+    expect(rows()).toBe(5);
+  });
+
+  it('holds at most eight', async () => {
+    await open(40);
+    expect(rows()).toBe(8);
+  });
+
+  it('holds one row when the count is zero, or did not come back, and still says it is reading', async () => {
+    for (const n of [0, null, undefined]) {
+      const { unmount } = await open(n);
+      expect(rows()).toBe(1);
+      expect(screen.getByText('Reading the lines…').closest('[aria-busy="true"]')).not.toBeNull();
+      unmount();
+    }
+  });
+
+  it('has no animation or fade on its rows, and the real table replaces them', async () => {
+    const { container } = await open(3);
+    const wait = container.querySelector('.rc-lines-wait') as HTMLElement;
+    expect(wait.outerHTML).not.toMatch(/animation|transition|opacity|shimmer/i);
+    api.hold = false;
+    api.detail = { document: DOC, lines: [LINE], links: [] };
   });
 });
