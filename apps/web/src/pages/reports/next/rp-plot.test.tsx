@@ -222,6 +222,20 @@ describe('a house with no time zone says so on spend and the week (ADR 0296)', (
   });
 });
 
+describe('the week when the log holds lines but none carries a bottle figure (r109)', () => {
+  const sayOf = (node: unknown) =>
+    render(<MemoryRouter>{node as never}</MemoryRouter>).container.textContent ?? '';
+  it('[REVERT-FAILS] says the lines exist, not that nothing is recorded', () => {
+    const raw = { weekdayProfile: [], bestDay: null, worstDay: null, zoneUnset: false, basis: { units: '3 lines carry no bottle figure' } };
+    const stated = week.view(week.select({ ...raw, uncountedOnly: true }) as WeekRegister, { days: 90 });
+    expect(sayOf(stated.say)).toBe('Consumption is logged, but no line carries a bottle figure, so the week has no shape to draw.');
+    expect(stated.basis).toContain('3 lines carry no bottle figure');
+    // Without the flag it is still the plain absence.
+    const absent = week.view(week.select(raw) as WeekRegister, { days: 90 });
+    expect(sayOf(absent.say)).toMatch(/^No consumption is recorded in the last 90 days/);
+  });
+});
+
 describe('tickInterval', () => {
   it('draws every day of a week, and thins only longer or wordier runs', () => {
     const week = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((label) => ({ label }));

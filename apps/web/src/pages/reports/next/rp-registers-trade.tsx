@@ -692,7 +692,9 @@ export interface WeekRegister {
   trendPerDayPct: number | null;
   /** True when the house has no time zone: no weekday can be named. */
   zoneUnset: boolean;
-  basis?: { weekday?: string; extremes?: string };
+  /** Lines are logged in the window but none carries a bottle figure: a known-unknown, not an absence. */
+  uncountedOnly?: boolean;
+  basis?: { weekday?: string; extremes?: string; units?: string };
 }
 
 const week = analysis<WeekRegister>({
@@ -719,6 +721,7 @@ const week = analysis<WeekRegister>({
       tie: typeof d.tie === 'boolean' ? d.tie : null,
       trendPerDayPct: num(d.trendPerDayPct),
       zoneUnset: d.zoneUnset === true,
+      uncountedOnly: d.uncountedOnly === true,
       basis: d.basis as WeekRegister['basis'],
     };
   },
@@ -734,6 +737,15 @@ const week = analysis<WeekRegister>({
         figures: [],
         notes: [],
         basis: [],
+      };
+    if (w.weekdayProfile.length === 0 && w.uncountedOnly)
+      return {
+        // Lines exist; none carries a bottle figure (ADR 0297). Not an absence, so not said as one.
+        say: 'Consumption is logged, but no line carries a bottle figure, so the week has no shape to draw.',
+        empty: 'No pours read this week',
+        figures: [],
+        notes: [],
+        basis: [...basis, w.basis?.units],
       };
     if (w.weekdayProfile.length === 0)
       return {
@@ -757,20 +769,27 @@ const week = analysis<WeekRegister>({
     const best = sent ? w.bestDay : null;
     const worst = sent ? w.worstDay : null;
     const shared = w.tie === true || !sent;
+    // One measured weekday has nothing to rank against, and shares nothing:
+    // the gateway leaves a weekday with no counted line out of the profile
+    // (r109, re-deriving #1631), so a house that records only Saturdays gets
+    // here. Say that, not a tie.
+    const lone = w.weekdayProfile.length < 2;
     const figures = [
       {
         label: 'Busiest day',
         value: best ?? EM,
-        note: 'More than one weekday shares the highest mean',
+        note: lone ? 'Fewer than two weekdays have a reading' : 'More than one weekday shares the highest mean',
       },
       {
         label: 'Quietest day',
         value: worst ?? EM,
-        note: 'More than one weekday shares the lowest mean',
+        note: lone ? 'Fewer than two weekdays have a reading' : 'More than one weekday shares the lowest mean',
       },
       { label: '28-day trend, per day', value: pct(w.trendPerDayPct) },
     ];
-    const notes = !shared
+    const notes = lone
+      ? ['Busiest and quietest are left blank because fewer than two weekdays have a reading in this window, so there is nothing to rank.']
+      : !shared
       ? []
       : !best && !worst
         ? [
