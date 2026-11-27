@@ -52,7 +52,7 @@ function show(canManage = true, sizeMl?: number | null, house?: { kind: string |
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <NutritionCard row={{ id: 'i1', bottleSizeRecordedMl: sizeMl }} house={house} restaurantId="r1" canManage={canManage} />
+      <NutritionCard row={{ id: 'i1', bottleSizeHouseMl: sizeMl }} house={house} restaurantId="r1" canManage={canManage} />
     </QueryClientProvider>,
   );
 }

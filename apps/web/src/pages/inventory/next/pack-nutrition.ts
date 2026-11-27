@@ -17,7 +17,8 @@ import type { StoredNutrition } from '../../../services/api/inventory';
 const DRINK_UNITS = new Set(['bottle', 'case', 'keg', 'glass', 'shot']);
 
 export interface PackSource {
-  bottleSizeRecordedMl?: number | null;
+  /** The house's own size; the library's default 750 is never a recorded size. */
+  bottleSizeHouseMl?: number | null;
 }
 export interface PackHouse {
   kind: string | null;
@@ -26,7 +27,7 @@ export interface PackHouse {
 
 /** The recorded size of one container, in ml, or null when none was recorded. */
 export function packSizeMl(row: PackSource, house: PackHouse | undefined): number | null {
-  const ml = row.bottleSizeRecordedMl;
+  const ml = row.bottleSizeHouseMl;
   if (ml === null || ml === undefined || !Number.isFinite(ml) || ml <= 0) return null;
   if (house && (house.kind === 'food' || house.kind === 'supply')) return null;
   if (house && house.uom !== null && !DRINK_UNITS.has(house.uom)) return null;

@@ -68,10 +68,10 @@ describe('packNutrition', () => {
 
 describe('packSizeMl', () => {
   it('reads only the recorded size, never a filled one, and only for goods kept in bottles', () => {
-    expect(packSizeMl({ bottleSizeRecordedMl: 750 }, { kind: 'wine', uom: 'bottle' })).toBe(750);
-    expect(packSizeMl({ bottleSizeRecordedMl: null }, { kind: 'wine', uom: 'bottle' })).toBeNull();
+    expect(packSizeMl({ bottleSizeHouseMl: 750 }, { kind: 'wine', uom: 'bottle' })).toBe(750);
+    expect(packSizeMl({ bottleSizeHouseMl: null }, { kind: 'wine', uom: 'bottle' })).toBeNull();
     expect(packSizeMl({}, { kind: 'wine', uom: 'bottle' })).toBeNull();
-    expect(packSizeMl({ bottleSizeRecordedMl: 750 }, { kind: 'food', uom: null })).toBeNull();
-    expect(packSizeMl({ bottleSizeRecordedMl: 750 }, { kind: null, uom: 'g' })).toBeNull();
+    expect(packSizeMl({ bottleSizeHouseMl: 750 }, { kind: 'food', uom: null })).toBeNull();
+    expect(packSizeMl({ bottleSizeHouseMl: 750 }, { kind: null, uom: 'g' })).toBeNull();
   });
 });

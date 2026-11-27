@@ -769,6 +769,9 @@ describe('the cost column says per what, and to whom (inventory r28 gaps 9, 10)'
     expect(toRow({ ...base, bottle_size_ml: 700, bottleSizeMl: 700 } as never).bottleSizeRecordedMl).toBe(700);
     // A wine the house left unsized takes the library's size, as before.
     expect(toRow({ ...base, bottle_size_ml: null, bottleSizeMl: 750 } as never, { bottleSizeMl: 1500 } as never).bottleSizeRecordedMl).toBe(1500);
+    // The pack line counts the house's size only: the library's default 750 is not a recorded size.
+    expect(toRow({ ...base, bottle_size_ml: null, bottleSizeMl: 750 } as never, { bottleSizeMl: 750 } as never).bottleSizeHouseMl).toBeNull();
+    expect(toRow({ ...base, bottle_size_ml: 375, bottleSizeMl: 375 } as never, { bottleSizeMl: 750 } as never).bottleSizeHouseMl).toBe(375);
     // A caller that sends only the camel field keeps reading it.
     expect(toRow({ ...base, bottleSizeMl: 500 } as never).bottleSizeRecordedMl).toBe(500);
   });
