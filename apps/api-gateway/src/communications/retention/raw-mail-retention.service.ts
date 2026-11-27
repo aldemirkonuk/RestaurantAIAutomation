@@ -88,6 +88,36 @@ const REPLIES_PAGE = 1000;
 /** Ids per `.in()` call: one response is capped at max_rows and a long list makes a URL too long. */
 const ID_CHUNK = 50;
 
+/**
+ * PostgREST caps an unranged read at max_rows = 1000 (supabase/config.toml), and
+ * an `.in()` list rides in the URL. A deletion that reads or writes a whole set
+ * in one call therefore stops at the cap without an error: ids past it are not
+ * returned, and a row nobody returned looks like a row that was not there. Every
+ * read of an unbounded set is paged, and every `.in()` list is chunked.
+ */
+const IN_CHUNK = 100;
+const PAGE_ROWS = 1000;
+
+function chunksOf<T>(items: readonly T[], size = IN_CHUNK): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+/** Read every page of a query ordered by id; the first error stops it and is returned. */
+async function readAllPages<T>(
+  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<{ data: T[]; error: { message: string } | null }> {
+  const all: T[] = [];
+  for (let from = 0; ; from += PAGE_ROWS) {
+    const { data, error } = await page(from, from + PAGE_ROWS - 1);
+    if (error) return { data: all, error };
+    const got = data ?? [];
+    all.push(...got);
+    if (got.length < PAGE_ROWS) return { data: all, error: null };
+  }
+}
+
 export interface DerivedWindow {
   restaurantId: string;
   figureDays: number;
@@ -548,12 +578,16 @@ export class RawMailRetentionService {
     // the row was written. The window is about the MAIL, so received_at is the
     // clock, and a row with no received_at falls back to created_at rather than
     // being skipped silently.
-    const { data: rows, error: rowsError } = await this.db.supabase
-      .from("procurement_conversations")
-      .select("id, received_at, created_at, kind, message_id")
-      .eq("restaurant_id", restaurantId)
-      .not("mirrored_by_grant_id", "is", null)
-      .is("raw_deleted_at", null);
+    const { data: rows, error: rowsError } = await readAllPages<Record<string, unknown>>((from, to) =>
+      this.db.supabase
+        .from("procurement_conversations")
+        .select("id, received_at, created_at, kind, message_id")
+        .eq("restaurant_id", restaurantId)
+        .not("mirrored_by_grant_id", "is", null)
+        .is("raw_deleted_at", null)
+        .order("id", { ascending: true })
+        .range(from, to),
+    );
     if (rowsError) {
       return this.recordSweep({
         restaurantId,
@@ -722,11 +756,15 @@ export class RawMailRetentionService {
      */
     integrationId?: string;
   }): Promise<SweepRun> {
-    const { data: rows, error: rowsError } = await this.db.supabase
-      .from("procurement_conversations")
-      .select("id, restaurant_id, message_id, kind")
-      .eq("mirrored_by_grant_id", params.connectionId)
-      .is("raw_deleted_at", null);
+    const { data: rows, error: rowsError } = await readAllPages<Record<string, unknown>>((from, to) =>
+      this.db.supabase
+        .from("procurement_conversations")
+        .select("id, restaurant_id, message_id, kind")
+        .eq("mirrored_by_grant_id", params.connectionId)
+        .is("raw_deleted_at", null)
+        .order("id", { ascending: true })
+        .range(from, to),
+    );
     if (rowsError) {
       return this.recordSweep({
         restaurantId: params.restaurantId || null,
@@ -852,12 +890,15 @@ export class RawMailRetentionService {
     let restampError: string | null = null;
     if (vendorOnlyGrantId && outcome.keptVendorIds?.length) {
       let restamp: { message: string } | null = null;
-      for (let i = 0; i < outcome.keptVendorIds.length && !restamp; i += ID_CHUNK) {
+      for (const part of chunksOf(outcome.keptVendorIds)) {
         const { error } = await this.db.supabase
           .from("procurement_conversations")
           .update({ mirrored_by_grant_id: vendorOnlyGrantId })
-          .in("id", outcome.keptVendorIds.slice(i, i + ID_CHUNK));
-        restamp = error;
+          .in("id", part);
+        if (error) {
+          restamp = error;
+          break;
+        }
       }
       if (restamp) {
         restampError = `The ${outcome.keptVendorIds.length} vendor repl${outcome.keptVendorIds.length === 1 ? "y" : "ies"} kept could NOT be handed to the vendor-only connection (${restamp.message}), so disconnecting it later will not delete ${outcome.keptVendorIds.length === 1 ? "that reply" : "those replies"}.`;
@@ -1093,10 +1134,19 @@ export class RawMailRetentionService {
     // row (`gmail_read_all`) has no order and no vendor, so there is nothing of
     // it that is the house's own record: it is deleted, row and all, with its
     // attachment rows (ON DELETE CASCADE).
-    const { data: kindRows, error: kindError } = await this.db.supabase
-      .from("procurement_conversations")
-      .select("id, kind")
-      .in("id", conversationIds);
+    const kindRows: Array<{ id: unknown; kind: unknown }> = [];
+    let kindError: { message: string } | null = null;
+    for (const part of chunksOf(conversationIds)) {
+      const { data, error } = await this.db.supabase
+        .from("procurement_conversations")
+        .select("id, kind")
+        .in("id", part);
+      if (error) {
+        kindError = error;
+        break;
+      }
+      kindRows.push(...(data ?? []));
+    }
     if (kindError) {
       return {
         deleted: 0,
@@ -1104,7 +1154,7 @@ export class RawMailRetentionService {
         error: `The raw mail was NOT deleted: which rows were a vendor's and which a team member's or guest's could not be read (${kindError.message}).`,
       };
     }
-    const strangerIds = (kindRows ?? [])
+    const strangerIds = kindRows
       .filter((r) => r.kind === "team" || r.kind === "guest")
       .map((r) => String(r.id));
     let strangersDeleted = 0;
@@ -1113,19 +1163,21 @@ export class RawMailRetentionService {
       const stamp = new Date().toISOString();
       const bytes = await this.deleteAttachmentBytes(strangerIds, stamp);
       strangerAttachments = bytes.deleted;
-      const { data: gone, error: goneError } = await this.db.supabase
-        .from("procurement_conversations")
-        .delete()
-        .in("id", strangerIds)
-        .select("id");
-      if (goneError) {
-        return {
-          deleted: 0,
-          attachmentsDeleted: strangerAttachments,
-          error: `The team and guest messages were NOT deleted: ${goneError.message}`,
-        };
+      for (const part of chunksOf(strangerIds)) {
+        const { data: gone, error: goneError } = await this.db.supabase
+          .from("procurement_conversations")
+          .delete()
+          .in("id", part)
+          .select("id");
+        if (goneError) {
+          return {
+            deleted: strangersDeleted,
+            attachmentsDeleted: strangerAttachments,
+            error: `The team and guest messages were NOT all deleted (${strangersDeleted} of ${strangerIds.length} were): ${goneError.message}`,
+          };
+        }
+        strangersDeleted += (gone ?? []).length;
       }
-      strangersDeleted = (gone ?? []).length;
     }
     const vendorIds = conversationIds.filter((id) => !strangerIds.includes(id));
     if (keepVendorRows && vendorIds.length) {
@@ -1154,28 +1206,31 @@ export class RawMailRetentionService {
 
     const attachments = await this.deleteAttachmentBytes(conversationIds, at);
 
-    const { data: updated, error } = await this.db.supabase
-      .from("procurement_conversations")
-      .update({
-        message_text: tombstone,
-        content: null,
-        email_headers: {},
-        raw_deleted_at: at,
-        raw_deleted_reason: reason,
-      })
-      .in("id", conversationIds)
-      .select("id");
-
-    if (error) {
-      return {
-        deleted: strangersDeleted,
-        attachmentsDeleted: attachments.deleted + strangerAttachments,
-        error: `The raw mail was NOT deleted: ${error.message}`,
-      };
+    let tombstoned = 0;
+    for (const part of chunksOf(conversationIds)) {
+      const { data: updated, error } = await this.db.supabase
+        .from("procurement_conversations")
+        .update({
+          message_text: tombstone,
+          content: null,
+          email_headers: {},
+          raw_deleted_at: at,
+          raw_deleted_reason: reason,
+        })
+        .in("id", part)
+        .select("id");
+      if (error) {
+        return {
+          deleted: tombstoned + strangersDeleted,
+          attachmentsDeleted: attachments.deleted + strangerAttachments,
+          error: `The raw mail was NOT all deleted (${tombstoned} of ${conversationIds.length} vendor rows were): ${error.message}`,
+        };
+      }
+      tombstoned += (updated ?? []).length;
     }
 
     return {
-      deleted: (updated ?? []).length + strangersDeleted,
+      deleted: tombstoned + strangersDeleted,
       attachmentsDeleted: attachments.deleted + strangerAttachments,
       error: attachments.error,
     };
@@ -1185,11 +1240,29 @@ export class RawMailRetentionService {
     conversationIds: string[],
     at: string,
   ): Promise<{ deleted: number; error: string | null }> {
-    const { data: rows, error } = await this.db.supabase
-      .from("conversation_attachments")
-      .select("id, storage_path")
-      .in("conversation_id", conversationIds)
-      .is("bytes_deleted_at", null);
+    let deleted = 0;
+    const errors: string[] = [];
+    for (const part of chunksOf(conversationIds)) {
+      const one = await this.deleteAttachmentBytesFor(part, at);
+      deleted += one.deleted;
+      if (one.error) errors.push(one.error);
+    }
+    return { deleted, error: errors.length ? errors.join(" ") : null };
+  }
+
+  private async deleteAttachmentBytesFor(
+    conversationIds: string[],
+    at: string,
+  ): Promise<{ deleted: number; error: string | null }> {
+    const { data: rows, error } = await readAllPages<Record<string, unknown>>((from, to) =>
+      this.db.supabase
+        .from("conversation_attachments")
+        .select("id, storage_path")
+        .in("conversation_id", conversationIds)
+        .is("bytes_deleted_at", null)
+        .order("id", { ascending: true })
+        .range(from, to),
+    );
     if (error) {
       return {
         deleted: 0,
@@ -1205,9 +1278,14 @@ export class RawMailRetentionService {
       .filter((p): p is string => Boolean(p));
 
     if (paths.length) {
-      const { error: removeError } = await this.db.supabase.storage
-        .from(ATTACHMENT_BUCKET)
-        .remove(paths);
+      let removeError: { message: string } | null = null;
+      for (const part of chunksOf(paths)) {
+        const { error: failed } = await this.db.supabase.storage.from(ATTACHMENT_BUCKET).remove(part);
+        if (failed) {
+          removeError = failed;
+          break;
+        }
+      }
       if (removeError) {
         return {
           deleted: 0,
@@ -1216,22 +1294,23 @@ export class RawMailRetentionService {
       }
     }
 
-    const { data: stamped, error: stampError } = await this.db.supabase
-      .from("conversation_attachments")
-      .update({ bytes_deleted_at: at })
-      .in(
-        "id",
-        items.map((r) => String(r.id)),
-      )
-      .select("id");
-    if (stampError) {
-      return {
-        deleted: paths.length,
-        error: `The attachment bytes were removed but the rows were not stamped, so a later sweep will try again: ${stampError.message}`,
-      };
+    let stampedCount = 0;
+    for (const part of chunksOf(items.map((r) => String(r.id)))) {
+      const { data: stamped, error: stampError } = await this.db.supabase
+        .from("conversation_attachments")
+        .update({ bytes_deleted_at: at })
+        .in("id", part)
+        .select("id");
+      if (stampError) {
+        return {
+          deleted: Math.max(paths.length, stampedCount),
+          error: `The attachment bytes were removed but the rows were not stamped, so a later sweep will try again: ${stampError.message}`,
+        };
+      }
+      stampedCount += (stamped ?? []).length;
     }
 
-    return { deleted: (stamped ?? []).length, error: null };
+    return { deleted: stampedCount, error: null };
   }
 
   // =========================================================================
