@@ -32,13 +32,15 @@ import { Mail, MessageCircle } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { EM, MONO, SANS, failedReadWords, fmtWhen, managesHouse } from './cm-format';
 import { IntakeHealthSheet } from './IntakeHealthSheet';
-import { MailSetup } from './MailSetup';
 import { FadeAway, MailMotionStyles, enterDelay, useArriveFocus, useEnteringKeys, useViewPlace } from './mail-motion';
 import type { LetterFacts } from './MailThread';
+import { CODE_HOLD_PANEL_PX, CodeHold, loaders, warmMailSetup, warmMailThread } from './mail-code';
 
 // The letters are read only once a thread is opened, so their code is fetched then;
 // the tab says it is opening them while it arrives.
-const MailThread = lazy(() => import('./MailThread').then((m) => ({ default: m.MailThread })));
+const MailThread = lazy(() => loaders.thread().then((m) => ({ default: m.MailThread })));
+// The setup page is read only after its entry is clicked, so its code is too.
+const MailSetup = lazy(() => loaders.setup().then((m) => ({ default: m.MailSetup })));
 import {
   MAIL_KIND_FILTERS,
   READS_ALL_LINE,
@@ -68,6 +70,7 @@ import {
   searchEmptyWords,
   setupLinkWords,
   storedKindsLine,
+  storesNonVendor,
   threadCountWords,
   todayLine,
   unsentChipText,
@@ -174,6 +177,10 @@ function UnsentChip({ status }: { status: string | null | undefined }) {
  * collapse to one line and jump when the people arrive. The bars are for the
  * eye only; the words are what is read aloud.
  */
+/** The search box's hint: the all-kinds view finds a person by the name the row shows (r104 walk finding 2). */
+const SEARCH_PLACEHOLDER_ALL = 'Find someone by name, address, subject, order number or word';
+const SEARCH_PLACEHOLDER_VENDOR = 'Find a vendor, subject, order number or word';
+
 /** A person's row measured at 60 px at 375, 768 and 1280 wide (r54 walk); a long snippet wraps to 83 at 375. */
 const PERSON_ROW_MIN = 60;
 
@@ -303,6 +310,8 @@ function PersonRow({
         data-mail-key={p.key}
         tabIndex={tabStop ? 0 : -1}
         onClick={onOpen}
+        onPointerEnter={warmMailThread}
+        onFocus={warmMailThread}
         className="cm-row grid w-full gap-0.5 px-1 py-2.5 text-left"
         style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: SANS, minHeight: PERSON_ROW_MIN }}
       >
@@ -410,6 +419,8 @@ function PersonThreads({
                   data-testid="mail-thread-row"
                   data-mail-key={t.key}
                   onClick={() => onOpenThread(t.key)}
+                  onPointerEnter={warmMailThread}
+                  onFocus={warmMailThread}
                   className="cm-row grid w-full gap-0.5 px-1 py-2.5 text-left"
                   style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: SANS }}
                 >
@@ -469,6 +480,7 @@ function People({
   onSetup,
   setupWords,
   onSettled,
+  onStoredKinds,
 }: {
   /** The list has answered, with people or with a failure (r107 g6: "Who is writing" waits for it). */
   onSettled?: () => void;
@@ -490,6 +502,8 @@ function People({
   onSetup: () => void;
   /** setupLinkWords(canReply): staff are not told to set up what they cannot change. */
   setupWords: string;
+  /** What kinds the stored rows hold, handed up so the search hint can name them. */
+  onStoredKinds: (kinds: readonly string[] | null) => void;
 }) {
   const q = useMailPeople(waitingOnly, search, kind);
   const pages = q.data?.pages ?? [];
@@ -506,6 +520,10 @@ function People({
   const shown = useRef(listIdentity);
   if (ready) shown.current = listIdentity;
   const storedKinds = pages[0]?.storedKinds ?? null;
+  const storedKey = storedKinds ? storedKinds.join('|') : null;
+  useEffect(() => {
+    onStoredKinds(storedKey === null ? null : storedKey.split('|'));
+  }, [storedKey, onStoredKinds]);
   const house = useHouse();
   // Remember the unfiltered first-page count so the next cold load draws that many bars.
   const settled = Boolean(q.data) && !waitingOnly && !search;
@@ -560,7 +578,7 @@ function People({
         <p data-testid="people-empty" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', maxWidth: '68ch' }}>
           {emptyListWords(reader, summary, { waitingOnly, on, reading })}{' '}
           {!waitingOnly && (
-            <button type="button" data-testid="empty-setup" onClick={onSetup} style={LINK_BUTTON}>
+            <button type="button" data-testid="empty-setup" onClick={onSetup} onPointerEnter={warmMailSetup} onFocus={warmMailSetup} style={LINK_BUTTON}>
               {setupWords}
             </button>
           )}
@@ -792,6 +810,7 @@ export function MailTab({
   const readAll = useReadAllGrants(canReply);
   // r28 mail gap 16: what is typed, and the term sent 300 ms after typing stops.
   const [typed, setTyped] = useState('');
+  const [storedKinds, setStoredKinds] = useState<readonly string[] | null>(null);
   const [search, setSearch] = useState('');
   useEffect(() => {
     const term = mailSearchTerm(typed);
@@ -932,7 +951,7 @@ export function MailTab({
             How mail reaches the house
           </button>
           {!setup && (
-            <button type="button" data-testid="setup-link" onClick={openSetup} style={{ ...LINK_BUTTON, fontWeight: 500 }}>
+            <button type="button" data-testid="setup-link" onClick={openSetup} onPointerEnter={warmMailSetup} onFocus={warmMailSetup} style={{ ...LINK_BUTTON, fontWeight: 500 }}>
               Mail setup
             </button>
           )}
@@ -942,6 +961,8 @@ export function MailTab({
             type="button"
             data-testid="status-setup"
             onClick={openSetup}
+            onPointerEnter={warmMailSetup}
+            onFocus={warmMailSetup}
             style={{
               justifySelf: 'start',
               marginTop: 4,
@@ -986,23 +1007,19 @@ export function MailTab({
 
       <div key={view} className={`grid gap-4 ${place.fade ?? ''}`.trim()}>
       {setup ? (
-        <MailSetup
-          status={status}
-          sender={senderQ.data ?? null}
-          senderFailed={senderQ.isError}
-          conversationWords={senderQ.data?.conversation?.words ?? null}
-          mailboxSwitchedOff={mailboxDoor.state === 'switched_off'}
-          readerGranted={readerFailed || !reader ? 'unknown' : reader.granted}
-          onBack={() => back({ setup: null })}
-        />
+        <Suspense fallback={<CodeHold testId="setup-opening" height={CODE_HOLD_PANEL_PX}>Opening the setup…</CodeHold>}>
+          <MailSetup
+            status={status}
+            sender={senderQ.data ?? null}
+            senderFailed={senderQ.isError}
+            conversationWords={senderQ.data?.conversation?.words ?? null}
+            mailboxSwitchedOff={mailboxDoor.state === 'switched_off'}
+            readerGranted={readerFailed || !reader ? 'unknown' : reader.granted}
+            onBack={() => back({ setup: null })}
+          />
+        </Suspense>
       ) : threadKey ? (
-        <Suspense
-          fallback={
-            <p role="status" data-testid="letters-opening" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
-              Opening the letters…
-            </p>
-          }
-        >
+        <Suspense fallback={<CodeHold testId="letters-opening" height={CODE_HOLD_PANEL_PX}>Opening the letters…</CodeHold>}>
         <MailThread
           threadKey={threadKey}
           withKey={withKey}
@@ -1034,7 +1051,7 @@ export function MailTab({
               data-testid="mail-search"
               ref={searchRef}
               aria-label="Search mail"
-              placeholder="Find a vendor, subject, order number or word"
+              placeholder={readAll.reads || storesNonVendor(storedKinds) ? SEARCH_PLACEHOLDER_ALL : SEARCH_PLACEHOLDER_VENDOR}
               value={typed}
               maxLength={MAIL_SEARCH_MAX}
               onChange={(e) => setTyped(e.target.value)}
@@ -1092,6 +1109,7 @@ export function MailTab({
             onSetup={openSetup}
             setupWords={setupLinkWords(canReply)}
             onSettled={() => setPeopleSettled(true)}
+            onStoredKinds={setStoredKinds}
           />
           {whoOn ? whoIsWriting : null}
         </>

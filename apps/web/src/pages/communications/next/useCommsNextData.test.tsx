@@ -249,6 +249,17 @@ describe('useCommsNextData — sent is the book figure, replies are the Mail cou
   });
 });
 
+describe('useCommsNextData — the 30-day figure is never below today (r104 mail-gap g5)', () => {
+  it('shows today when a server counted the 30 days narrower than the day', async () => {
+    mockApiGet.mockImplementation((url: string) =>
+      Promise.resolve({ data: url === '/mail/summary' ? { inLast30: 18, inToday: 8997 } : [] }),
+    );
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result } = renderHook(() => useCommsNextData(), { wrapper: wrapper(qc) });
+    await waitFor(() => expect(result.current.glance.repliesLast30).toBe(8997));
+  });
+});
+
 describe('useCommsNextData — one waiting draft per order (COMMS-W24)', () => {
   const draft = (id: string, orderId: string, createdAt: string) => ({ id, orderId, createdAt });
 

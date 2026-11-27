@@ -27,8 +27,9 @@
  * them any more.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../../../contexts/AuthContext';
 import { useSearchParams } from 'react-router-dom';
 import { PenLine, Library } from 'lucide-react';
 import { Stub, Wordmark } from '@/components/mudavym';
@@ -41,6 +42,7 @@ import {
   SERIF,
   failedReadsSentence,
   fmtAsOf,
+  managesHouse,
   readAgainFailed,
   type FailedRead,
 } from './cm-format';
@@ -53,10 +55,13 @@ import { useLetterSenderStanding } from './Compose/useComposeData';
 import { HouseDrafts, useHouseDrafts, type HouseDraft } from './Compose/HouseDrafts';
 import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
 import { MailTab } from './MailTab';
-import WhoIsWriting from './WhoIsWriting';
+import { CODE_HOLD_STRIP_PX, CodeHold, loaders } from './mail-code';
 import { mailTabLabel, type MailAnswer } from './mail-format';
 import { tabMove } from './mail-keys';
 import { useMailSummary } from './useMailData';
+
+// Who is writing is drawn only on the Mail list, so its code is fetched when that list shows it.
+const WhoIsWriting = lazy(() => loaders.whoIsWriting());
 
 function GlanceFigure({
   label,
@@ -154,6 +159,8 @@ export default function CommunicationsNext() {
   const data = useCommsNextData({
     enabled: tab === 'letters' || params.has('thread') || params.has('with') || params.has('draft') || params.has('reply'),
   });
+  const { user, activeRole } = useAuth();
+  const manages = managesHouse(activeRole, user?.role);
   // Letters staff asked a manager to send (founder answer 3, 2026-09-21).
   const letterStanding = useLetterSenderStanding();
   const [compose, setCompose] = useState(false);
@@ -389,11 +396,17 @@ export default function CommunicationsNext() {
               failed={data.failed.history}
               at={data.historyAt}
             />
+            {/* Labelled by who reads (r105 mail-1). The server counts every kind
+                for an owner or manager (team and guest letters beside vendors',
+                minus automatic ones, as Mail's Today does), but only vendor
+                letters for staff, who are never told of the others. This
+                supersedes the r104 mail-3 label, right only while the SQL was
+                vendor-only. */}
             {/* Counted by the server with Mail's own rule (D6): a bounce, an
                 auto-reply or a second copy of one letter is not a reply, so the
                 two tabs give the same number for the same mail. Exact, no floor. */}
             <GlanceFigure
-              label="Replies · 30 days"
+              label={manages ? 'Letters in · 30 days' : 'Vendor replies · 30 days'}
               value={data.glance.repliesLast30}
               failed={data.failed.mail}
               at={data.mailAt}
@@ -469,7 +482,11 @@ export default function CommunicationsNext() {
             // ADR 0160 §113, Open item 3 (founder, 2026-09-18): senders and
             // strangers are mail, not money. Drawn in the Mail tab since r21
             // (2026-11-13), so Mail reaches every person who writes.
-            whoIsWriting={<WhoIsWriting />}
+            whoIsWriting={
+              <Suspense fallback={<CodeHold testId="who-is-writing-opening" height={CODE_HOLD_STRIP_PX}>Opening who is writing…</CodeHold>}>
+                <WhoIsWriting />
+              </Suspense>
+            }
           />
         ) : (
         <>

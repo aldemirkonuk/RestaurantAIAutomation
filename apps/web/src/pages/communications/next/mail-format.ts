@@ -835,9 +835,14 @@ export function letterAt(m: MailMessage): string {
 export const ARRIVED_ONLY =
   'Only letters that arrived are read for team and guests; replies sent from your own mailbox are not, so these threads show what came in, not the whole conversation.';
 
+/** Rows of team or guest mail are stored, whatever the house's grant now says (the scope line and the search hint both follow this). */
+export function storesNonVendor(storedKinds: readonly string[] | null): boolean {
+  return Boolean(storedKinds && storedKinds.some((k) => k !== 'vendor'));
+}
+
 export function storedKindsLine(storedKinds: readonly string[] | null): string {
-  if (storedKinds && storedKinds.some((k) => k !== 'vendor')) {
-    return `Mail that arrived from ${storedKinds.join(', ')} is listed by person and thread. ${ARRIVED_ONLY}`;
+  if (storesNonVendor(storedKinds)) {
+    return `Mail that arrived from ${storedKinds!.join(', ')} is listed by person and thread. ${ARRIVED_ONLY}`;
   }
   // r28 gap 6: a letter from an unknown sender is kept (as a prospect, under
   // Who is writing) only when it carries an attachment or reads as an offer;
@@ -917,6 +922,19 @@ export function personWords(name: string | null | undefined, kind: MailKind = 'v
   const named = typeof name === 'string' ? name.trim() : '';
   if (named) return named;
   return kind === 'guest' ? 'The guest' : kind === 'team' ? 'The team member' : 'The vendor';
+}
+
+/**
+ * The 30-day letter count the strip shows (r104 mail-gap g5). A 30-day window
+ * holds today, so a count below today's is a server that counted two ways (an
+ * older one counted vendor letters only in the 30 days and every kind today);
+ * the strip never shows it. Null when the server sent none: unknown, never 0.
+ */
+export function lettersLast30(
+  summary: { inLast30?: number | null; inToday?: number | null } | null | undefined,
+): number | null {
+  if (typeof summary?.inLast30 !== 'number') return null;
+  return typeof summary.inToday === 'number' ? Math.max(summary.inLast30, summary.inToday) : summary.inLast30;
 }
 
 /**
