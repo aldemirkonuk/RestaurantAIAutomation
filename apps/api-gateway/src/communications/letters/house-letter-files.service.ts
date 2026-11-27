@@ -40,8 +40,9 @@ import {
   OUTBOUND_ATTACHMENT_MAX_BYTES,
   OUTBOUND_ATTACHMENT_MAX_FILES,
   assertMayAttach,
-  assertWithinLimits,
+  checkedFromSeal,
   safeFilename,
+  type CheckedAttachments,
   type OutboundAttachment,
 } from "../mime-attachments";
 
@@ -223,7 +224,7 @@ export class HouseLetterFilesService {
    * nothing of it leaves. A letter that sealed no files and has none tied
    * returns [] after one read.
    */
-  async releaseFiles(restaurantId: string, letterId: string, sealed: unknown): Promise<OutboundAttachment[]> {
+  async releaseFiles(restaurantId: string, letterId: string, sealed: unknown): Promise<CheckedAttachments> {
     const refuse = (why: string): never => {
       throw new Error(`Its files did not match what was approved (${why}), so the whole letter was held back and nothing of it was sent.`);
     };
@@ -254,11 +255,10 @@ export class HouseLetterFilesService {
       out.push({ filename: String(r.name), contentType: String(r.content_type), content: bytes });
     }
     try {
-      assertWithinLimits(out);
+      return checkedFromSeal(out);
     } catch (err) {
-      refuse(err instanceof Error ? err.message : String(err));
+      return refuse(err instanceof Error ? err.message : String(err));
     }
-    return out;
   }
 
   private async forget(paths: string[]): Promise<void> {

@@ -90,7 +90,20 @@ export function assertMayAttach(
   return out;
 }
 
-/** The limits alone; `assertMayAttach` is the only way in from outside. */
+/**
+ * Files re-read from a seal (g6b step 2). The sender was asked when the letter
+ * was sealed (owner or manager only, `assertMayAttach`), and the bytes were
+ * re-hashed against the seal by the caller; the limits are asked again here.
+ * This and `assertMayAttach` are the only two ways to a CheckedAttachments.
+ */
+export function checkedFromSeal(files: readonly OutboundAttachment[]): CheckedAttachments {
+  const out = Object.freeze([...files]) as unknown as CheckedAttachments;
+  assertWithinLimits(out);
+  checkedSet.add(out);
+  return out;
+}
+
+/** The limits alone; `assertMayAttach` and `checkedFromSeal` are the only ways in from outside. */
 function assertWithinLimits(
   files: readonly OutboundAttachment[] | undefined,
 ): void {

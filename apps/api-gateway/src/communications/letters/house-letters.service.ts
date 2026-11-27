@@ -83,7 +83,7 @@ import {
   buildLetterHeaders,
   MimeHeaderError,
 } from "../mime-headers";
-import { plainLetterWithFiles, type CheckedAttachments, type OutboundAttachment } from "../mime-attachments";
+import { checkedFromSeal, plainLetterWithFiles, type CheckedAttachments, type OutboundAttachment } from "../mime-attachments";
 import { HouseLetterFilesService, type SealedFile } from "./house-letter-files.service";
 import type {
   InsertedInsightDto,
@@ -2105,7 +2105,7 @@ export class HouseLettersService {
         if (!this.files && headers.files !== undefined) {
           throw new Error("its files could not be checked (not wired into the dispatcher), so nothing of it was sent");
         }
-        const attachments = this.files ? await this.files.releaseFiles(restaurantId, id, headers.files) : [];
+        const attachments = this.files ? await this.files.releaseFiles(restaurantId, id, headers.files) : checkedFromSeal([]);
         const token = await this.oauth.getAccessToken(
           identity.grant.personUserId,
           restaurantId,
