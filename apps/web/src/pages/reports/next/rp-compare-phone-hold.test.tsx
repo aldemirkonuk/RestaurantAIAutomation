@@ -112,7 +112,7 @@ describe('the 1440 till card holds the compare answer in rows', () => {
         cuttings={[{ id: 'till' as AnalysisId, slot: SLOT, holdRows, body: <div data-cut="till" /> }] as never}
       />,
     );
-    return Object.values(grid.layouts ?? {}).flat().find((l) => l.i === 'till')?.h;
+    return (Object.values(grid.layouts ?? {}) as { i: string; h: number }[][]).flat().find((l) => l.i === 'till')?.h;
   };
 
   it('[REVERT-FAILS] covers the 5 px the card ran over with whole rows, while compare is drawn and the sheet is read', () => {
