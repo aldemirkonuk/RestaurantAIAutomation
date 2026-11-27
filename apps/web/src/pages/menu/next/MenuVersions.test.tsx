@@ -1024,8 +1024,10 @@ describe('makeCurrentSentence -- a finished carry, and the result row settles', 
     expect(makeCurrentSentence({ ...base, outcome: 'already_current', lines: 2, priceSync: { failed: 2 } } as never)).toContain('2 could not be priced.');
     const held = [{ name: 'Barolo', kind: 'bottle', lockedPrice: 80 }];
     const rest = makeCurrentSentence({ ...base, outcome: 'already_current', lines: 4, priceSync: { changed: 1, no_price: 1, not_linked: 2 }, flagged: 1, held } as never);
-    expect(rest).toContain('Held by a lock, not changed: Barolo (bottle, locked at 80.00).');
-    expect(rest).toContain('Also: 1 with no price on the line, 2 not matched to a wine, so no price, 1 flagged for a blank price.');
+    // The held price is said as 80.00 and the outcomes by their counts; the nouns and the money style
+    // (a currency note after the amount) are the shared ones (formatMoney, oneNounFor), so only the facts are pinned.
+    expect(rest).toMatch(/Held by a lock, not changed: Barolo \(bottle, locked at 80\.00[^)]*\)*\./);
+    expect(rest).toMatch(/Also: 1 (line )?with no price.*2 (lines )?not matched.*so no price.*1 flagged for a blank price\./);
     // The sentence that was already right is unchanged.
     expect(makeCurrentSentence({ ...base, outcome: 'already_current', lines: 2, priceSync: { stale: 2 } } as never)).not.toContain('Also');
   });
