@@ -13,6 +13,7 @@ import {
   PaperHeaderRow,
   PaperLine,
   PaperNote,
+  HeldCause,
   notHouseMoney,
 } from "./paper-landed-cost";
 import { CostTaxBasis, HouseTax, houseReclaims } from "../landed-cost";
@@ -1214,7 +1215,7 @@ export class DeliveryStockService {
   ): Promise<
     StockResult<{
       taxBasisKnown: boolean;
-      held: { deliveryId: string; inventoryId: string; why: string }[];
+      held: { deliveryId: string; inventoryId: string; why: string; cause: HeldCause }[];
     }>
   > {
     const doc = await this.db
@@ -1257,7 +1258,7 @@ export class DeliveryStockService {
     const deliveryIds = [
       ...new Set(((joins.data ?? []) as unknown as { delivery_id: string }[]).map((r) => r.delivery_id)),
     ];
-    const held: { deliveryId: string; inventoryId: string; why: string }[] = [];
+    const held: { deliveryId: string; inventoryId: string; why: string; cause: HeldCause }[] = [];
     for (const deliveryId of deliveryIds) {
       const delivery = await this.deliveryFor(restaurantId, deliveryId);
       if (!delivery.ok) return delivery;
@@ -1266,7 +1267,7 @@ export class DeliveryStockService {
       const priced = await this.agreedPrices(restaurantId, deliveryId, booked.value);
       if (!priced.ok) return priced;
       for (const [inventoryId, why] of priced.value.held)
-        held.push({ deliveryId, inventoryId, why });
+        held.push({ deliveryId, inventoryId, why, cause: priced.value.heldCause.get(inventoryId) ?? "other" });
     }
     return { ok: true, value: { taxBasisKnown, held } };
   }
@@ -1337,6 +1338,8 @@ export class DeliveryStockService {
       refused: Map<string, string>;
       /** Items whose landed cost cannot be said, each with the sentence. */
       held: Map<string, string>;
+      /** Why each held item is held; an item with no entry is `other`. */
+      heldCause: Map<string, HeldCause>;
       /** Refusals of accepted proposals that name no item (QA 12b D1). */
       unattachedRefused: string[];
       /** Each held item's own per-bottle line price: a re-verify's repair only. */
@@ -1489,6 +1492,7 @@ export class DeliveryStockService {
     const landed = landDelivery({ papers, lines: fed, booked, houseCurrency, houseTax });
     const refused = landed.refused;
     const held = landed.held;
+    const heldCause = landed.heldCause;
     for (const [id, p] of [...lineOnly]) {
       const why = held.get(id);
       // A line price in another currency is no stand-in either (QA 15 (5)).
@@ -1551,6 +1555,7 @@ export class DeliveryStockService {
           byItem.delete(id);
           lineOnly.delete(id);
           held.set(id, `${reason}. The lot stays provisional.`);
+          heldCause.set(id, "currency");
         }
         continue;
       }
@@ -1565,6 +1570,7 @@ export class DeliveryStockService {
           lineOnly.delete(id);
           refused.set(id, reason);
           held.set(id, `the invoice prices this item, but not per bottle: ${reason}. The lot stays provisional.`);
+          heldCause.set(id, "lines");
         }
         continue;
       }
@@ -1581,6 +1587,7 @@ export class DeliveryStockService {
         byItem.set(id, agreed);
         refused.delete(id);
         held.delete(id);
+        heldCause.delete(id);
         lineOnly.delete(id);
       } else unattached.push(agreed);
     }
@@ -1593,6 +1600,7 @@ export class DeliveryStockService {
         refused,
         unattachedRefused,
         held,
+        heldCause,
         lineOnly,
         papers: landed.papers,
         printed,

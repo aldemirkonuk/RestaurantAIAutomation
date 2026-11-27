@@ -166,10 +166,15 @@ export interface PaperNote {
   taxSaid: string;
 }
 
+/** r108: the kind of reason an item's landed cost is held. */
+export type HeldCause = "tax_basis" | "currency" | "lines" | "other";
+
 export interface DeliveryLandedCost {
   byItem: Map<string, LandedPrice>;
   /** Items whose cost stays provisional, each with the whole sentence. */
   held: Map<string, string>;
+  /** Why each held item is held (r108); an item with no entry is `other`. */
+  heldCause: Map<string, HeldCause>;
   /** The gatekeeper's own refusal, by item (a re-verify names it). */
   refused: Map<string, string>;
   /** Held as not in the house's money (QA 15 (5)): no fallback price. */
@@ -519,8 +524,12 @@ export function landDelivery(input: {
   const refused = new Map<string, string>();
   const paired = new Map<string, string>();
   const papers: PaperNote[] = [];
-  const hold = (id: string, why: string) => {
-    if (!held.has(id)) held.set(id, why);
+  const heldCause = new Map<string, HeldCause>();
+  const hold = (id: string, why: string, cause: HeldCause = "lines") => {
+    if (!held.has(id)) {
+      held.set(id, why);
+      heldCause.set(id, cause);
+    }
   };
 
   const headerOf = new Map(input.papers.map((p) => [p.id, p]));
@@ -628,6 +637,7 @@ export function landDelivery(input: {
           hold(
             f.key,
             `the totals of the invoice it is on could not be found, so that paper's charges and discount are not known. The lot stays provisional.`,
+            "other",
           );
       continue;
     }
@@ -639,6 +649,7 @@ export function landDelivery(input: {
         if (f.key) {
           foreign.add(f.key);
           held.set(f.key, `${notHouse}. The lot stays provisional.`);
+          heldCause.set(f.key, "currency");
         }
       papers.push({
         documentId: docId,
@@ -699,7 +710,7 @@ export function landDelivery(input: {
       if (!key) return;
       docsOf.set(key, (docsOf.get(key) ?? new Set<string>()).add(docId));
       if (l.status === "unresolved")
-        hold(key, `${l.unresolved} The lot stays provisional.`);
+        hold(key, `${l.unresolved} The lot stays provisional.`, l.cause === "tax_basis" ? "tax_basis" : "lines");
       if (l.status === "costed")
         linesOf.set(key, [...(linesOf.get(key) ?? []), l]);
     });
@@ -718,6 +729,7 @@ export function landDelivery(input: {
       hold(
         key,
         `its invoices are in ${monies.join(" and ")}, and costs in different currencies are never added together. The lot stays provisional.`,
+        "currency",
       );
       continue;
     }
@@ -797,5 +809,5 @@ export function landDelivery(input: {
     });
   }
 
-  return { byItem, held, refused, paired, papers, foreign };
+  return { byItem, held, heldCause, refused, paired, papers, foreign };
 }

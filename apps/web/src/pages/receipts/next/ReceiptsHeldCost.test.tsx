@@ -195,7 +195,7 @@ beforeEach(() => {
 
 describe('the held-cost sentence', () => {
   it('says "Tax basis unknown" with an em dash when items are held and the basis is unset', async () => {
-    api.heldCosts.mockResolvedValue({ taxBasisKnown: false, held: [{ deliveryId: 'x', inventoryId: 'i', why: 'w' }] });
+    api.heldCosts.mockResolvedValue({ taxBasisKnown: false, held: [{ deliveryId: 'x', inventoryId: 'i', why: 'w', cause: 'tax_basis' }] });
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
     expect(await screen.findByText(/Tax basis unknown — one item on this paper keeps a provisional cost/)).toBeTruthy();
@@ -203,10 +203,23 @@ describe('the held-cost sentence', () => {
   });
 
   it('says nothing when nothing is held, or the basis is known', async () => {
-    api.heldCosts.mockResolvedValue({ taxBasisKnown: true, held: [{ deliveryId: 'x', inventoryId: 'i', why: 'w' }] });
+    api.heldCosts.mockResolvedValue({ taxBasisKnown: true, held: [{ deliveryId: 'x', inventoryId: 'i', why: 'w', cause: 'tax_basis' }] });
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
     await waitFor(() => expect(api.heldCosts).toHaveBeenCalled());
+    expect(screen.queryByText(/Tax basis unknown/)).toBeNull();
+  });
+
+  it('a paper held for a missing exchange rate says that, not the tax basis', async () => {
+    const why =
+      'its invoice is in TRY and this house keeps its costs in USD; no exchange rate is recorded, so a cost in TRY is not booked as USD. The lot stays provisional.';
+    api.heldCosts.mockResolvedValue({
+      taxBasisKnown: false,
+      held: [{ deliveryId: 'x', inventoryId: 'i', why, cause: 'currency' }],
+    });
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(await screen.findByText(/no exchange rate is recorded/)).toBeTruthy();
     expect(screen.queryByText(/Tax basis unknown/)).toBeNull();
   });
 
@@ -220,7 +233,7 @@ describe('the held-cost sentence', () => {
 
   it('is not asked of, or shown to, staff', async () => {
     api.role = 'staff';
-    api.heldCosts.mockResolvedValue({ taxBasisKnown: false, held: [{ deliveryId: 'x', inventoryId: 'i', why: 'w' }] });
+    api.heldCosts.mockResolvedValue({ taxBasisKnown: false, held: [{ deliveryId: 'x', inventoryId: 'i', why: 'w', cause: 'tax_basis' }] });
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
     expect(api.heldCosts).not.toHaveBeenCalled();
