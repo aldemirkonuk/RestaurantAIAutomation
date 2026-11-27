@@ -21,15 +21,20 @@ const pageTop = (el: Element) => el.getBoundingClientRect().top + (typeof window
  * it went and plays the difference.
  */
 export function useSortFlip(body: RefObject<HTMLElement | null>, sortKey: string): { before: () => void } {
-  const was = useRef<Map<string, number> | null>(null);
+  const was = useRef<{ key: string; rows: Map<string, number> } | null>(null);
+  const drawn = useRef(sortKey);
+  // Runs after every render, not only when the key changes: a snapshot is for the very next render, and
+  // one that renders no row change (a search keystroke that keeps the same rows) is dropped here, so it
+  // cannot play later against a different change (a refetch that adds a row).
   useLayoutEffect(() => {
-    const from = was.current;
+    const snap = was.current;
     was.current = null;
+    drawn.current = sortKey;
     const el = body.current;
-    if (!from || !el || prefersReducedMotion() || typeof Element.prototype.animate !== 'function') return;
+    if (!snap || snap.key === sortKey || !el || prefersReducedMotion() || typeof Element.prototype.animate !== 'function') return;
     const moved: Array<[HTMLElement, number]> = [];
     el.querySelectorAll<HTMLElement>('tr[data-row]').forEach((row) => {
-      const start = from.get(row.dataset.row as string);
+      const start = snap.rows.get(row.dataset.row as string);
       if (start == null) return;
       const delta = start - pageTop(row);
       if (Math.abs(delta) >= 1) moved.push([row, delta]);
@@ -38,14 +43,14 @@ export function useSortFlip(body: RefObject<HTMLElement | null>, sortKey: string
     for (const [row, delta] of moved) {
       row.animate([{ transform: `translateY(${delta}px)` }, { transform: 'translateY(0)' }], { duration: SORT_FLIP.ms, easing: SORT_FLIP.easing });
     }
-  }, [body, sortKey]);
+  });
   return {
     before: () => {
       const el = body.current;
       if (!el) return;
       const m = new Map<string, number>();
       el.querySelectorAll<HTMLElement>('tr[data-row]').forEach((row) => m.set(row.dataset.row as string, pageTop(row)));
-      was.current = m;
+      was.current = { key: drawn.current, rows: m };
     },
   };
 }

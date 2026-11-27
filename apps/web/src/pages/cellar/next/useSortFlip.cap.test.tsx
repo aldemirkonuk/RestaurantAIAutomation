@@ -41,4 +41,25 @@ describe('useSortFlip row cap', () => {
     slide(100);
     expect(animate).toHaveBeenCalledTimes(0);
   });
+
+  it('a snapshot that drew no row change is dropped, so it cannot play against a later change (r108 fix)', () => {
+    (Element.prototype as unknown as { animate: unknown }).animate = animate;
+    window.matchMedia = ((q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} })) as never;
+    const real = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      const at = Array.from(this.parentElement!.children).indexOf(this) * 40;
+      return { top: at, bottom: at + 40, left: 0, right: 0, width: 0, height: 40, x: 0, y: at, toJSON() {} } as DOMRect;
+    };
+    const ids = ['a', 'b', 'c'];
+    let before: () => void = () => {};
+    const { rerender } = render(<Table ids={ids} expose={(b) => { before = b; }} />);
+    animate.mockClear();
+    // A keystroke: before() runs, the same rows are drawn.
+    act(() => { before(); });
+    rerender(<Table ids={ids} expose={(b) => { before = b; }} />);
+    // Later a row arrives at the top (the refetch after Save): the rows below it move down, but no sort changed.
+    rerender(<Table ids={['new', ...ids]} expose={(b) => { before = b; }} />);
+    HTMLElement.prototype.getBoundingClientRect = real;
+    expect(animate).toHaveBeenCalledTimes(0);
+  });
 });
