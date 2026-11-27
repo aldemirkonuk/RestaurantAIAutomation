@@ -239,19 +239,31 @@ describe("senderAuthOf — the sender check kept on a letter (r108 mail-gap g8)"
       }),
     ).toEqual({ spf: true, dkim: true, dmarc: true, signedBy: "v.example" });
     expect(
-      senderAuthOf({ "authentication-results": "mx; dkim=pass header.d=mail.v.example. header.i=@other.example" }).signedBy,
+      senderAuthOf({ "authentication-results": "mx.google.com; dkim=pass header.d=mail.v.example. header.i=@other.example" })?.signedBy,
     ).toBe("mail.v.example");
   });
 
   it("says a failed check failed and names no signer", () => {
     expect(
-      senderAuthOf({ "authentication-results": "mx; dkim=fail header.d=v.example; spf=softfail; dmarc=fail" }),
+      senderAuthOf({ "authentication-results": "mx.google.com; dkim=fail header.d=v.example; spf=softfail; dmarc=fail" }),
     ).toEqual({ spf: false, dkim: false, dmarc: false, signedBy: null });
   });
 
   it("leaves a check that never came as unknown, never as a failure", () => {
-    expect(senderAuthOf({})).toEqual({ spf: null, dkim: null, dmarc: null, signedBy: null });
-    expect(senderAuthOf(null)).toEqual({ spf: null, dkim: null, dmarc: null, signedBy: null });
-    expect(senderAuthOf({ "authentication-results": "mx; dkim=pass" }).signedBy).toBeNull();
+    expect(senderAuthOf({})).toBeNull();
+    expect(senderAuthOf(null)).toBeNull();
+    expect(senderAuthOf({ "authentication-results": "mx.google.com; arc=none" })).toBeNull();
+    expect(senderAuthOf({ "authentication-results": "mx.google.com; dkim=pass" })?.signedBy).toBeNull();
+  });
+
+  it("believes only Gmail's own verdict, never one another server or the sender wrote", () => {
+    expect(senderAuthOf({ "authentication-results": "evil.example; dkim=pass header.d=v.example; dmarc=pass" })).toBeNull();
+    // A sender-written ARC header is never read, even when Gmail's verdict has no DKIM clause.
+    expect(
+      senderAuthOf({
+        "authentication-results": "mx.google.com; spf=pass smtp.mailfrom=evil.example",
+        "arc-authentication-results": "i=1; mx.google.com; dkim=pass header.d=v.example; dmarc=pass",
+      }),
+    ).toEqual({ spf: true, dkim: null, dmarc: null, signedBy: null });
   });
 });

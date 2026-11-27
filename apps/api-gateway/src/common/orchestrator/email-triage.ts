@@ -143,17 +143,29 @@ function dkimSigner(value: string): string | null {
   return d ? d[1].replace(/\.+$/, "") || null : null;
 }
 
-export function senderAuthOf(headers: HeaderMap | null | undefined): SenderAuth {
+/**
+ * The receiving server whose verdict is believed. Gmail stamps its own
+ * Authentication-Results above everything the sender wrote, and the header map
+ * keeps that topmost one (`inboundHeaderMap`). ARC-Authentication-Results is
+ * never read: with no forwarder in between, the topmost one is whatever the
+ * sender wrote.
+ */
+const TRUSTED_AUTHSERV_ID = "mx.google.com";
+
+/**
+ * The sender check to keep, or null when there is none to believe: no
+ * Authentication-Results, one some other server wrote, or one with no verdict.
+ * Null reads as "not recorded", never as a failure.
+ */
+export function senderAuthOf(headers: HeaderMap | null | undefined): SenderAuth | null {
   const h = normalizeHeaders(headers);
-  const auth =
-    `${h["authentication-results"] || ""} ${h["arc-authentication-results"] || ""}`.trim();
+  const auth = (h["authentication-results"] || "").trim();
+  if (auth.split(";")[0].trim().toLowerCase() !== TRUSTED_AUTHSERV_ID) return null;
+  const spf = readAuthMethod(auth, "spf");
   const dkim = readAuthMethod(auth, "dkim");
-  return {
-    spf: readAuthMethod(auth, "spf"),
-    dkim,
-    dmarc: readAuthMethod(auth, "dmarc"),
-    signedBy: dkim === true ? dkimSigner(auth) : null,
-  };
+  const dmarc = readAuthMethod(auth, "dmarc");
+  if (spf === null && dkim === null && dmarc === null) return null;
+  return { spf, dkim, dmarc, signedBy: dkim === true ? dkimSigner(auth) : null };
 }
 
 /**
