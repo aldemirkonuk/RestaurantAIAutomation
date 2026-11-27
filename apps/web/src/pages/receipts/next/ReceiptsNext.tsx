@@ -173,13 +173,16 @@ function HeldCostNote({ docId }: { docId: string }) {
   const taxHolds = q.data.held.filter((h) => h.cause === 'tax_basis');
   const others = q.data.held.filter((h) => h.cause !== 'tax_basis');
   const sentences: string[] = [];
-  if (taxHolds.length > 0 && !q.data.taxBasisKnown)
+  // The gateway marks a hold `tax_basis` only once the house HAS answered (the
+  // hold is then the paper's: it shows tax and does not say if prices include
+  // it), so this is never gated on `taxBasisKnown`, which is true on every one.
+  if (taxHolds.length > 0)
     sentences.push(
       `Tax basis unknown \u2014 ${
         taxHolds.length === 1
           ? 'one item on this paper keeps a provisional cost'
           : `${taxHolds.length} items on this paper keep a provisional cost`
-      } until the house says how it treats the tax it pays.`,
+      }: the paper shows tax but does not say whether its prices include it.`,
     );
   if (others.length > 0) {
     const why = others[0].why.replace(/\s*The lot stays provisional\.?$/, '').trim();
