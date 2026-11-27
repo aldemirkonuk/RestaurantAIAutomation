@@ -70,8 +70,84 @@ describe("DeliveryStockService.heldCostsOfDocument", () => {
     if (!res.ok) return;
     expect(res.value.taxBasisKnown).toBe(false);
     expect(res.value.held).toHaveLength(1);
-    expect(res.value.held[0]).toMatchObject({ deliveryId: DEL, inventoryId: ITEM });
+    expect(res.value.held[0]).toMatchObject({ deliveryIds: [DEL], inventoryId: ITEM });
     expect(res.value.held[0].why).toMatch(/provisional/);
+  });
+
+  it("a hold that has nothing to do with tax is not blamed on the tax basis", async () => {
+    // The fixture is a case price with no stated pack, held while the tax basis
+    // is unknown. Answering the tax question would not release it.
+    const res = await service.heldCostsOfDocument(REST, DOC);
+    expect(res.ok && res.value.taxBasisKnown).toBe(false);
+    expect(res.ok && res.value.held.map((h) => h.cause)).toEqual(["other"]);
+  });
+
+  it("a hold that clears under a known tax answer is tagged tax_basis; one that does not stays other", async () => {
+    const other = "99999999-9999-9999-9999-999999999999";
+    const real = new Map([[ITEM, "tax held. The lot stays provisional."], [other, "pack held. The lot stays provisional."]]);
+    db.answers.procurement_document_lines = {
+      data: [
+        { document_id: DOC, inventory_id: ITEM },
+        { document_id: DOC, inventory_id: other },
+      ],
+      error: null,
+    };
+    const spy = jest
+      .spyOn(service as unknown as { agreedPrices: (...a: unknown[]) => unknown }, "agreedPrices")
+      .mockImplementation(async (...a: unknown[]) => ({
+        ok: true,
+        // Under the hypothetical (4th argument) only the pack hold remains.
+        value: { held: a[3] ? new Map([[other, real.get(other)]]) : real },
+      }));
+    const res = await service.heldCostsOfDocument(REST, DOC);
+    spy.mockRestore();
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(Object.fromEntries(res.value.held.map((h) => [h.inventoryId, h.cause]))).toEqual({
+      [ITEM]: "tax_basis",
+      [other]: "other",
+    });
+  });
+
+  it("holds on another paper of the same delivery are not this paper's, and an item held on two deliveries is one entry", async () => {
+    const DOC_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+    const DEL_2 = "d2d2d2d2-d2d2-d2d2-d2d2-d2d2d2d2d2d2";
+    const X = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+    // Paper A (the one asked about) has only ITEM; paper B has X, and X is the held one.
+    db.answers.procurement_document_lines = {
+      data: [
+        { document_id: DOC, inventory_id: ITEM },
+        { document_id: DOC_B, inventory_id: X },
+      ],
+      error: null,
+    };
+    db.answers.document_deliveries = {
+      data: [
+        { document_id: DOC, role: "invoice", delivery_id: DEL },
+        { document_id: DOC_B, role: "invoice", delivery_id: DEL },
+      ],
+      error: null,
+    };
+    const held = new Map([[X, "no pack. The lot stays provisional."]]);
+    const spy = jest
+      .spyOn(service as unknown as { agreedPrices: (...a: unknown[]) => unknown }, "agreedPrices")
+      .mockImplementation(async () => ({ ok: true, value: { held } }));
+    const forA = await service.heldCostsOfDocument(REST, DOC);
+    expect(forA.ok && forA.value.held).toEqual([]);
+
+    // The same item held on this paper's two deliveries is counted once.
+    db.answers.procurement_document_lines = { data: [{ document_id: DOC, inventory_id: X }], error: null };
+    db.answers.document_deliveries = {
+      data: [
+        { document_id: DOC, role: "invoice", delivery_id: DEL },
+        { document_id: DOC, role: "invoice", delivery_id: DEL_2 },
+      ],
+      error: null,
+    };
+    const twice = await service.heldCostsOfDocument(REST, DOC);
+    spy.mockRestore();
+    expect(twice.ok && twice.value.held).toHaveLength(1);
+    expect(twice.ok && twice.value.held[0].deliveryIds).toEqual([DEL, DEL_2]);
   });
 
   it("says the tax basis is known when the house has said how it treats tax", async () => {

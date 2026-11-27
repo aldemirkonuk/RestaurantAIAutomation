@@ -195,19 +195,52 @@ beforeEach(() => {
 
 describe('the held-cost sentence', () => {
   it('says "Tax basis unknown" with an em dash when items are held and the basis is unset', async () => {
-    api.heldCosts.mockResolvedValue({ taxBasisKnown: false, held: [{ deliveryId: 'x', inventoryId: 'i', why: 'w' }] });
+    api.heldCosts.mockResolvedValue({ taxBasisKnown: false, held: [{ deliveryIds: ['x'], inventoryId: 'i', why: 'w', cause: 'tax_basis' }] });
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
     expect(await screen.findByText(/Tax basis unknown — one item on this paper keeps a provisional cost/)).toBeTruthy();
     expect(api.heldCosts).toHaveBeenCalledWith('d1');
   });
 
-  it('says nothing when nothing is held, or the basis is known', async () => {
-    api.heldCosts.mockResolvedValue({ taxBasisKnown: true, held: [{ deliveryId: 'x', inventoryId: 'i', why: 'w' }] });
+  it('says nothing when nothing is held, or the basis is known and the hold is a tax one', async () => {
+    api.heldCosts.mockResolvedValue({ taxBasisKnown: true, held: [{ deliveryIds: ['x'], inventoryId: 'i', why: 'w', cause: 'tax_basis' }] });
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
     await waitFor(() => expect(api.heldCosts).toHaveBeenCalled());
     expect(screen.queryByText(/Tax basis unknown/)).toBeNull();
+  });
+
+  it('a hold that is not the tax basis says its own reason, never "Tax basis unknown"', async () => {
+    api.heldCosts.mockResolvedValue({
+      taxBasisKnown: false,
+      held: [
+        {
+          deliveryIds: ['x'],
+          inventoryId: 'i',
+          why: 'there is no exchange rate for this paper. The lot stays provisional.',
+          cause: 'other',
+        },
+      ],
+    });
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(await screen.findByText(/there is no exchange rate for this paper/)).toBeTruthy();
+    expect(screen.queryByText(/Tax basis unknown/)).toBeNull();
+    expect(screen.queryByText(/lot stays provisional/)).toBeNull();
+  });
+
+  it('counts the tax holds for the tax sentence and lists the others apart', async () => {
+    api.heldCosts.mockResolvedValue({
+      taxBasisKnown: false,
+      held: [
+        { deliveryIds: ['x'], inventoryId: 'a', why: 'tax step open', cause: 'tax_basis' },
+        { deliveryIds: ['x'], inventoryId: 'b', why: 'no pack stated', cause: 'other' },
+      ],
+    });
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(await screen.findByText(/Tax basis unknown — one item on this paper keeps a provisional cost/)).toBeTruthy();
+    expect(screen.getByText(/no pack stated/)).toBeTruthy();
   });
 
   it('a failed read says it could not be read, never that nothing is held', async () => {
@@ -220,7 +253,7 @@ describe('the held-cost sentence', () => {
 
   it('is not asked of, or shown to, staff', async () => {
     api.role = 'staff';
-    api.heldCosts.mockResolvedValue({ taxBasisKnown: false, held: [{ deliveryId: 'x', inventoryId: 'i', why: 'w' }] });
+    api.heldCosts.mockResolvedValue({ taxBasisKnown: false, held: [{ deliveryIds: ['x'], inventoryId: 'i', why: 'w', cause: 'tax_basis' }] });
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
     expect(api.heldCosts).not.toHaveBeenCalled();
