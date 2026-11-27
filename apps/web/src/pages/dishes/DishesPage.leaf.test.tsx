@@ -1,7 +1,7 @@
 /**
  * r98 (motion need M10): the dish leaf opens with the SAME settle as the cocktail leaf. It sits in
  * `tr > td[colspan] > div.cl-stand`, draws closed, and opens a style flush later (except the dish a link named at load, which draws open at once) (the stylesheet's
- * `.cl-stand` carries the 320 ms house curve and none under reduced motion). Switching dishes does not
+ * `.cl-stand` settles its content over 280 ms and not at all under reduced motion). Switching dishes does not
  * settle again; a leaf opened by a click settles too (nothing was open). Close removes the row at once.
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';

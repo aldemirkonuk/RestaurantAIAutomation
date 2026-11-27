@@ -20,11 +20,15 @@
   margin: 0;
 }
 
-/* ── the reading stand: row-expand settle, the founder's named favourite ── */
+/* ── the reading stand: the drawer opens at its full height at once and its content settles in ──
+   The height is not animated (r108 walk N5: grid-template-rows over 320 ms is a layout property, and the page under the
+   drawer re-flowed on every frame). The drawer takes its room in one step, its content is clipped by the box and moves
+   8 px down into place over 280 ms, ease-out, a transform. Closing is at once (ADR 0112: no exit animation). Switching
+   from one open drink to another does not settle again, as the content stays mounted. Under reduced motion there is no
+   animation at all, no opacity fade either. */
 .cl-stand {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows 320ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 .cl-stand[data-open='true'] {
   grid-template-rows: 1fr;
@@ -32,6 +36,13 @@
 .cl-stand > * {
   min-height: 0;
   overflow: hidden;
+}
+.cl-stand[data-open='true'] > * > * {
+  animation: cl-stand-settle 280ms ease-out;
+}
+@keyframes cl-stand-settle {
+  from { transform: translateY(-8px); }
+  to { transform: none; }
 }
 
 /* The signature waits, unseen, while a register settles (a list in flight, or a
@@ -316,7 +327,9 @@
 
 /* ── reduced motion: the change still happens, it just doesn't travel ──── */
 @media (prefers-reduced-motion: reduce) {
-  .cl-stand,
+  .cl-stand[data-open='true'] > * > * {
+    animation: none;
+  }
   .cl-ink,
   .cl-register,
   .cl-bottle {
