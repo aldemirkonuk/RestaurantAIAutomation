@@ -370,6 +370,25 @@ export class MenuVersionsController {
     await this.organizations.assertCanManageRestaurant(userId, house, "raise the menu's prices");
     return this.menusService.repriceMenu(house, menuId, userId, dto);
   }
+
+  @Post(":menuId/draft")
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: "Copy the current menu as it is into a NEW draft to edit -- owner or manager only",
+    description:
+      "r109 menu-g5, 'Edit as a new draft'. Copies every live line of the house's current menu into a new draft named '<name>, draft of <house day>'. Lines are added, corrected or left out there with the existing routes, and the draft is made current through its plan. The current menu and the house's prices are not touched. The draft's read moment is the copy, so a price set by a person after it is listed first in the plan. 404 for another house's menu, 409 for a menu that is not current, 403 for staff.",
+  })
+  @ApiResponse({ status: 403, description: "The caller is not an owner or manager of this restaurant." })
+  @ApiResponse({ status: 409, description: "The menu is not the current one. Nothing was made." })
+  async copyIntoDraft(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+    @Param("menuId", new ParseUUIDPipe()) menuId: string,
+  ) {
+    const house = this.house(restaurantId);
+    await this.organizations.assertCanManageRestaurant(userId, house, "copy the menu into a new draft");
+    return this.menusService.copyMenuIntoDraft(house, menuId, userId);
+  }
 }
 
 @ApiTags("onboarding")
