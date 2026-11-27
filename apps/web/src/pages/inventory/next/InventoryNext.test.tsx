@@ -1129,6 +1129,23 @@ describe('INV-W38 — the view is the URL', () => {
     expect(new URLSearchParams(seen.search).has('open')).toBe(false);
   });
 
+  it('(e2) Previous and Next good replace ?open= in place, so one Back still closes the drawer (r108 g12)', () => {
+    mock.data = data({ rows: two() });
+    const seen = renderAt('/inventory', ['/home']);
+    fireEvent.click(screen.getByTestId('inv-row-b').querySelector('button[aria-expanded]')!);
+    expect(new URLSearchParams(seen.search).get('open')).toBe('b');
+    const prev = screen.getByRole('button', { name: 'Previous good' }) as HTMLButtonElement;
+    const next = screen.getByRole('button', { name: 'Next good' }) as HTMLButtonElement;
+    // The list shows a above b, so b is the last: nothing below it.
+    expect(next.disabled).toBe(true);
+    fireEvent.click(prev);
+    expect(new URLSearchParams(seen.search).get('open')).toBe('a');
+    expect(screen.getByRole('heading', { name: 'Ankara Red' })).toBeTruthy();
+    act(() => seen.back());
+    expect(screen.queryByTestId('ivd-cards')).toBeNull();
+    expect(seen.path).toBe('/inventory');
+  });
+
   it('(g) a carried food lists under Food, and the kind is kept in the URL', () => {
     mock.data = data({
       rows: [row({ id: 'a', name: 'Ankara Red' }), row({ id: 'f', wineId: null, name: 'Un', type: null, kind: null })],
