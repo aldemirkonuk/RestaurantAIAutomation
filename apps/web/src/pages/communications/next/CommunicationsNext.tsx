@@ -34,7 +34,6 @@ import { useSearchParams } from 'react-router-dom';
 import { PenLine, Library } from 'lucide-react';
 import { Stub, Wordmark } from '@/components/mudavym';
 import { ink } from '../../../lib/mudavym/motion';
-import { useAuth } from '../../../contexts/AuthContext';
 import {
   EM,
   GE,

@@ -186,13 +186,6 @@ export interface MailPersonRow {
   newestOpenOrderId: string | null;
   newestOpenOrderNumber: string | null;
   /**
-   * The stored status of the house's newest letter to this person that has
-   * not left, when it is newer than the last one that did (or is the only
-   * letter). The gateway keeps such a person listed so the letter can be seen
-   * and pulled back (QA round 16, HARM 1); the row says its state in words.
-   */
-  unsentStatus: string | null;
-  /**
    * The newest letter came from the vendor after the newest one this person
    * was shown, or they never opened it (r36 mail gap 6). Per person. Null
    * when the gateway could not read the marks; absent from a gateway that
@@ -273,8 +266,6 @@ export interface MailMessage {
   createdAt: string;
   rawDeletedAt: string | null;
   door: MailDoor;
-  /** A bounce or an automatic reply: shown, never counted as a letter (M-5). */
-  automatic: boolean;
   /** A bounce or an auto-reply: on the thread, never a letter anyone owes. */
   automatic?: boolean;
   /**

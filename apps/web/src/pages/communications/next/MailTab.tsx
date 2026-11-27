@@ -381,11 +381,16 @@ function PersonRow({
         data-mail-key={p.key}
         tabIndex={tabStop ? 0 : -1}
         onClick={onOpen}
-        onPointerEnter={onLook}
-        onFocus={onLook}
+        // The person's threads are read ahead (#1791) and the thread's code is fetched (#2094) on one look.
+        onPointerEnter={() => {
+          onLook();
+          warmMailThread();
+        }}
+        onFocus={() => {
+          onLook();
+          warmMailThread();
+        }}
         onTouchStart={onLook}
-        onPointerEnter={warmMailThread}
-        onFocus={warmMailThread}
         className="cm-row grid w-full gap-0.5 px-1 py-2.5 text-left"
         style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: SANS, minHeight: PERSON_ROW_MIN }}
       >
@@ -550,11 +555,15 @@ function PersonThreads({
                   data-testid="mail-thread-row"
                   data-mail-key={t.key}
                   onClick={() => onOpenThread(t.key)}
-                  onPointerEnter={() => lookAhead.thread(t.key, withKey)}
-                  onFocus={() => lookAhead.thread(t.key, withKey)}
+                  onPointerEnter={() => {
+                    lookAhead.thread(t.key, withKey);
+                    warmMailThread();
+                  }}
+                  onFocus={() => {
+                    lookAhead.thread(t.key, withKey);
+                    warmMailThread();
+                  }}
                   onTouchStart={() => lookAhead.thread(t.key, withKey)}
-                  onPointerEnter={warmMailThread}
-                  onFocus={warmMailThread}
                   className="cm-row grid w-full gap-0.5 px-1 py-2.5 text-left"
                   style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: SANS }}
                 >
@@ -644,8 +653,6 @@ function People({
   setupWords: string;
   /** Which kinds the house holds stored mail from, so the scope line can speak for the rows. */
   onStoredKinds: (kinds: string[] | null) => void;
-  /** What kinds the stored rows hold, handed up so the search hint can name them. */
-  onStoredKinds: (kinds: readonly string[] | null) => void;
 }) {
   const q = useMailPeople(waitingOnly, search, kind, awaiting);
   const lookAhead = useMailLookAhead();
@@ -666,10 +673,6 @@ function People({
   const storedKey = storedKinds ? storedKinds.join(',') : null;
   useEffect(() => {
     onStoredKinds(storedKey === null ? null : storedKey.split(',').filter(Boolean));
-  }, [storedKey, onStoredKinds]);
-  const storedKey = storedKinds ? storedKinds.join('|') : null;
-  useEffect(() => {
-    onStoredKinds(storedKey === null ? null : storedKey.split('|'));
   }, [storedKey, onStoredKinds]);
   const house = useHouse();
   // Remember the unfiltered first-page count so the next cold load draws that many bars: a kind's page is shorter.
@@ -980,7 +983,6 @@ export function MailTab({
   const readAll = useReadAllGrants(canReply);
   // r28 mail gap 16: what is typed, and the term sent 300 ms after typing stops.
   const [typed, setTyped] = useState('');
-  const [storedKinds, setStoredKinds] = useState<readonly string[] | null>(null);
   const [search, setSearch] = useState('');
   // r104 mail-4: "Who is writing" sits under the people. A search that matches
   // nobody collapses a 50-row list and the strip below it jumps up (CLS 0.012-
