@@ -672,7 +672,7 @@ export default function InventoryNext() {
               priceRead === 'unread'
                 ? 'What each delivery finally cost could not be read, so no price move can be named'
                 : (rows ?? []).some(priceBasisUnstated)
-                  ? 'Basis not stated: goods with two settled deliveries are there, but their papers do not say the same about tax, so no move is named'
+                  ? 'Basis not stated: goods with two settled deliveries are there, but their costs are not known to hold tax the same way, so no move is named'
                   : 'No good has two settled deliveries yet, so no price has moved to compare'
             }
           >

@@ -15,7 +15,8 @@
  * date.
  *
  * r108 inventory-1: a point also carries whether its cost holds tax (the
- * newest row's `cost_tax_basis`, stamped from the paper at verify). The move
+ * newest row's `cost_tax_basis`, copied from its lot's ADR 0359 C3 stamp
+ * at verify, r109 inventory-1). The move
  * names a basis only when BOTH points state the same one; a mixed or
  * unstated pair has no `basis`, and the list does not compare it.
  */

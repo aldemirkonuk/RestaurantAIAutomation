@@ -452,7 +452,7 @@ describe('chips', () => {
     expect(screen.queryByTestId('inv-row-one')).toBeNull();
   });
 
-  it('Price signals compares two costs only when both papers state the same tax basis (r108 inventory-1)', () => {
+  it('Price signals compares two costs only when both carry the same tax basis (r108/r109 inventory-1)', () => {
     mock.data = data({
       rows: [
         row({ id: 'gross', lastSettledCost: 13, previousSettledCost: 11.8, settledCostsReadable: true, settledCostTaxBasis: 'gross_cost' }),

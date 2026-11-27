@@ -491,7 +491,7 @@ export function countDue(row: InvRow, now = Date.now()): boolean {
 export const PRICE_SIGNAL_PCT = 10;
 
 /** What the chip says it holds, in words (the default is stated, not hidden). */
-export const PRICE_SIGNAL_WORDS = `A good whose last settled delivery cost per unit moved by more than ${PRICE_SIGNAL_PCT} percent from the delivery before. Two costs are compared only when both papers say the same about tax: both before tax, or both with it; a cost whose tax basis is not stated is not compared`;
+export const PRICE_SIGNAL_WORDS = `A good whose last settled delivery cost per unit moved by more than ${PRICE_SIGNAL_PCT} percent from the delivery before. Two costs are compared only when both are known to hold tax the same way: both before tax, or both with it; a cost whose tax basis is not stated is not compared`;
 
 /** The basis a compared move is on, in words. */
 export const TAX_BASIS_WORDS: Record<'net' | 'gross_cost', string> = { net: 'both before tax', gross_cost: 'both with tax' };
