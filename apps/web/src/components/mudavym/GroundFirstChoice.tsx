@@ -37,11 +37,17 @@
  * charcoal, System shows whatever this device resolves to (read when System is
  * picked) — while the page behind stays on Paper until Save.
  *
+ * NEVER ON TOP OF THE INVITE SHEET. `/settings?invite=1` holds Team's invite
+ * sheet open; while that param is in the address this waits, and asks once the
+ * sheet has closed and dropped it (`opensInviteSheet`, r109).
+ *
  * WHERE IT IS MOUNTED: once, in `components/layout/DashboardLayout.tsx`, beside
  * `DataTermsSignInGate` — see that file.
  */
 
 import { useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
+import { opensInviteSheet } from '../../lib/opensInviteSheet';
 import { Panel } from './Sheet';
 import { useDataTermsSignInBusy } from '../../hooks/queries/useDataTerms';
 import {
@@ -70,12 +76,18 @@ export function GroundFirstChoice() {
 
 function FirstChoiceAsk({ ground }: { ground: GroundState }) {
   const termsBusy = useDataTermsSignInBusy();
+  // The invite sheet (`/settings?invite=1`) is an ask the person made; this one
+  // waits under it, like it waits for the terms, and comes once it has closed
+  // (r109). No new motion: it arrives on `Panel`'s own `settle`.
+  const { pathname, search } = useLocation();
+  const inviteOpen = opensInviteSheet(pathname, search);
   const [phase, setPhase] = useState<Phase>('ask');
   const [picked, setPicked] = useState<GroundSetting>('paper');
   const firstRef = useRef<HTMLInputElement>(null);
 
   const open =
     !termsBusy &&
+    !inviteOpen &&
     (phase === 'saving' || phase === 'failed' || (phase === 'ask' && ground.source === 'default'));
 
   const save = async () => {

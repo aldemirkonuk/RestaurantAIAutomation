@@ -30,6 +30,7 @@ import { useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { InviteTeamDialog } from '@/components/team/InviteTeamDialog';
 import { useDataTermsSignInBusy } from '@/hooks/queries/useDataTerms';
+import { INVITE_PARAM } from '@/lib/opensInviteSheet';
 import { TeamLaborSettings } from '@/components/team/TeamLaborSettings';
 import { TeamGoalsSettings } from '@/components/team/TeamGoalsSettings';
 import { ConfirmAction, Disclosure, Micro, Note, Register, Row, SaveFailure, fieldStyle } from './SectionKit';
@@ -45,8 +46,18 @@ const ROLE_MEANS: Record<string, string> = {
 export function TeamSection({ data }: { data: SettingsNextData }) {
   const { team, role, canManage, restaurantId, writer, setMemberRole, removeMember, revokeInvite, userId } = data;
   // `?invite=1` (the first-menu page's "Invite your people") opens the sheet on arrival.
-  const [searchParams] = useSearchParams();
-  const [inviting, setInviting] = useState(() => canManage && searchParams.get('invite') === '1');
+  // The sheet's open state lives in that param, both ways: the button sets it and
+  // closing drops it (replace, no history entry). The layout's theme ask reads the
+  // same param (`opensInviteSheet`) and waits until the sheet has closed (r109).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const inviting = canManage && searchParams.get(INVITE_PARAM) === '1';
+  const setInviting = (on: boolean) =>
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (on) next.set(INVITE_PARAM, '1');
+      else next.delete(INVITE_PARAM);
+      return next;
+    }, { replace: true });
   // ADR 0112, one topmost overlay: the sign-in data-terms sheet cannot be
   // dismissed, so the invite intent waits under it and the sheet opens once the
   // terms are no longer busy (DD-r108-13). The terms are never skipped.
