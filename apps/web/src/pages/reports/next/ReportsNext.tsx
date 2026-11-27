@@ -330,20 +330,11 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     (next: SheetSlotCutting[]) => setDraft((d) => (d ? { cuttings: next } : d)),
     [],
   );
-  /* The rows each card's controls add while arranging: the grid draws slot + these, so the keyboard works on the
-     same (r101). Null while reading, so the hook works on the stored slots untouched. */
-  const arrangeRows = useMemo(() => {
-    if (!editing) return undefined;
-    const rows: Partial<Record<AnalysisId, number>> = {};
-    for (const [id, px] of Object.entries(controlPx)) rows[id as AnalysisId] = controlRows(px);
-    return rows;
-  }, [editing, controlPx]);
   const arrange = useArrange({
     cuttings: draft?.cuttings ?? null,
     apply: applyCuttings,
     sheetRef: sheetEl,
     arranging: editing,
-    extraRows: arrangeRows,
   });
   const holdSheetEl = useCallback((node: HTMLDivElement | null) => {
     sheetEl.current = node;

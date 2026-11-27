@@ -174,8 +174,6 @@ interface Placed {
   slot: Slot;
   /** Folded to a strip (`rp-strip.ts`): a sentence, not a card. Reading only. */
   strip?: boolean;
-  /** Rows the arrange controls add to the card while arranging (r101). The grid's floor rises by the same. */
-  extraRows?: number;
 }
 
 function toLayout(cuttings: Placed[]): LayoutItem[] {
@@ -307,8 +305,7 @@ export function sheetLayouts(
     i: c.id,
     ...c.slot,
     minW: Math.min(SHEET_MIN_W, cols),
-    // The controls row is room the card gains, so the plot's floor is SHEET_MIN_H on top of it (r101).
-    minH: SHEET_MIN_H + (c.extraRows ?? 0),
+    minH: SHEET_MIN_H,
     static: !arranging,
   });
   const at = (cols: number): LayoutItem[] => projectCuttings(cuttings, cols).map(item(cols));
@@ -326,39 +323,6 @@ export function sheetLayouts(
     xs: at(SHEET_BREAKPOINT_COLS.xs),
     xxs: at(SHEET_BREAKPOINT_COLS.xxs),
   };
-}
-
-/**
- * While arranging, a card's controls row is room the card gains, not room the plot gives up (r101): the grid
- * draws each slot plus the rows its controls take, compacted. `inflateCuttings` is what the reader sees.
- */
-export function inflateCuttings<T extends Placed>(cuttings: T[], extra: (id: AnalysisId) => number): T[] {
-  if (!cuttings.some((c) => extra(c.id) > 0)) return cuttings;
-  const grown = cuttings.map((c) => {
-    const e = extra(c.id);
-    return e ? { ...c, slot: { ...c.slot, h: c.slot.h + e } } : c;
-  });
-  // The grid compacts what it is handed, so a card below a taller one sits lower: say where it really is.
-  return fromLayout(grown, COMPACTOR.compact(toLayout(grown), SHEET_COLS));
-}
-
-/**
- * The reverse, for a layout the grid or the keyboard hands back on a ruling of `cols`: take each card's controls
- * rows off (never below the grid's floor, `SHEET_MIN_H`) and compact again. Compacting is not optional: the
- * inflated y values carry gaps of different sizes under row-mates, and saving them as they are re-sorts the
- * list order (`byRowThenColumn`) and keeps the gaps. Returns the layout untouched when nothing was inflated.
- */
-export function deflateLayout<T extends Placed>(
-  placed: T[],
-  extra: (id: AnalysisId) => number,
-  cols: number,
-): T[] {
-  if (!placed.some((c) => extra(c.id) > 0)) return placed;
-  const flat = placed.map((c) => {
-    const e = extra(c.id);
-    return e ? { ...c, slot: { ...c.slot, h: Math.max(SHEET_MIN_H, c.slot.h - e) } } : c;
-  });
-  return fromLayout(flat, COMPACTOR.compact(toLayout(flat), cols));
 }
 
 /** The wide sheet's reading order: row, then column. */
@@ -620,13 +584,9 @@ export interface ArrangeInput {
   sheetRef: { current: HTMLElement | null };
   /** True only while arranging; leaving the mode drops any pick-up. */
   arranging: boolean;
-  /** Rows each card's arrange controls add while arranging (r101). The keyboard works on what the grid draws —
-   *  slot plus these rows — so the ghost and the spoken square are the ones the reader sees, and the write-back
-   *  takes them off again. */
-  extraRows?: Partial<Record<AnalysisId, number>>;
 }
 
-export function useArrange({ cuttings, apply, sheetRef, arranging, extraRows }: ArrangeInput): ArrangeApi {
+export function useArrange({ cuttings, apply, sheetRef, arranging }: ArrangeInput): ArrangeApi {
   const [picked, setPicked] = useState<AnalysisId | null>(null);
   const [origin, setOrigin] = useState<Slot | null>(null);
   // The whole sheet as it was at pick-up, slots AND order — what Escape puts
@@ -637,13 +597,8 @@ export function useArrange({ cuttings, apply, sheetRef, arranging, extraRows }: 
 
   // The callbacks below run from event handlers, so they must read the CURRENT
   // draft rather than the one that was current when they were created.
-  const extra = useRef(extraRows);
-  extra.current = extraRows;
-  const extraOf = useCallback((id: AnalysisId) => extra.current?.[id] ?? 0, []);
   const live = useRef<Cutting[] | null>(cuttings);
   live.current = cuttings;
-  // The sheet as the reader SEES it: the stored slots, each plus its controls rows (identity when there are none).
-  const show = useCallback((cs: Cutting[]) => inflateCuttings(cs, extraOf), [extraOf]);
   const titles = useRef(new Map<AnalysisId, string>());
 
   const measure = useCallback((): number => {
@@ -681,13 +636,13 @@ export function useArrange({ cuttings, apply, sheetRef, arranging, extraRows }: 
       titles.current.set(id, title);
       const c = measure();
       // Say the square the reader can see, not the saved twelfths.
-      const slot = slotOf(projectCuttings(show(cs), c), id) ?? stored;
+      const slot = slotOf(projectCuttings(cs, c), id) ?? stored;
       setPicked(id);
       setOrigin({ ...slot });
       setHome(cs);
       setMessage(pickedUpWords(title, slot, c, c === 1 ? stackAt(cs, id) : undefined));
     },
-    [measure, show],
+    [measure],
   );
 
   const step = useCallback(
@@ -696,7 +651,7 @@ export function useArrange({ cuttings, apply, sheetRef, arranging, extraRows }: 
       if (!cs || !picked) return;
       // The move is made on the ruling in play, then written back onto the
       // twelve-column sheet (`liftCuttings`); identity at the full ruling.
-      const drawn = projectCuttings(show(cs), cols);
+      const drawn = projectCuttings(cs, cols);
       const before = slotOf(drawn, picked);
       if (!before) return;
       const intent: 'move' | 'resize' = dw === 0 && dh === 0 ? 'move' : 'resize';
@@ -707,25 +662,19 @@ export function useArrange({ cuttings, apply, sheetRef, arranging, extraRows }: 
       const next =
         intent === 'move' && dy !== 0 && cols < SHEET_COLS
           ? reorderCutting(cs, picked, dy < 0 ? -1 : 1)
-          : // Move on what the reader sees, lift on what is stored: the controls rows come off before the
-            // list is re-read, or row-mates with unequal controls swap places (r101).
-            liftCuttings(
+          : liftCuttings(
               cs,
-              deflateLayout(drawn, extraOf, cols),
-              deflateLayout(
-                intent === 'move'
-                  ? moveCutting(drawn, picked, dx, dy, cols)
-                  : resizeCutting(drawn, picked, dw, dh, cols),
-                extraOf,
-                cols,
-              ),
+              drawn,
+              intent === 'move'
+                ? moveCutting(drawn, picked, dx, dy, cols)
+                : resizeCutting(drawn, picked, dw, dh, cols),
               cols,
             );
       apply(next);
       // Read the answer back out of the layout the ruling will draw from what
       // was saved. This is the line that makes the announcement a report
       // rather than an echo.
-      const after = slotOf(projectCuttings(show(next), cols), picked);
+      const after = slotOf(projectCuttings(next, cols), picked);
       setMessage(
         movedWords(
           titles.current.get(picked) ?? 'The cutting',
@@ -737,7 +686,7 @@ export function useArrange({ cuttings, apply, sheetRef, arranging, extraRows }: 
         ),
       );
     },
-    [apply, cols, extraOf, picked, show],
+    [apply, cols, picked],
   );
 
   const nudge = useCallback((dx: number, dy: number) => step(dx, dy, 0, 0), [step]);
@@ -746,7 +695,7 @@ export function useArrange({ cuttings, apply, sheetRef, arranging, extraRows }: 
   const place = useCallback(() => {
     const cs = live.current;
     if (!picked || !cs || !origin) return;
-    const to = slotOf(projectCuttings(show(cs), cols), picked) ?? origin;
+    const to = slotOf(projectCuttings(cs, cols), picked) ?? origin;
     setMessage(
       placedWords(
         titles.current.get(picked) ?? 'The cutting',
@@ -759,7 +708,7 @@ export function useArrange({ cuttings, apply, sheetRef, arranging, extraRows }: 
     setPicked(null);
     setOrigin(null);
     setHome(null);
-  }, [cols, home, origin, picked, show]);
+  }, [cols, home, origin, picked]);
 
   const cancel = useCallback(() => {
     const cs = live.current;
@@ -770,7 +719,7 @@ export function useArrange({ cuttings, apply, sheetRef, arranging, extraRows }: 
     setMessage(
       cancelledWords(
         titles.current.get(picked) ?? 'The cutting',
-        slotOf(projectCuttings(show(restored), cols), picked) ?? origin,
+        slotOf(projectCuttings(restored, cols), picked) ?? origin,
         cols,
         cols === 1 ? stackAt(restored, picked) : undefined,
       ),
@@ -778,7 +727,7 @@ export function useArrange({ cuttings, apply, sheetRef, arranging, extraRows }: 
     setPicked(null);
     setOrigin(null);
     setHome(null);
-  }, [apply, cols, home, origin, picked, show]);
+  }, [apply, cols, home, origin, picked]);
 
   const keyDown = useCallback(
     (id: AnalysisId, title: string) =>
