@@ -73,10 +73,13 @@ const addCents = (a: number | null, b: number | null): number | null => (a === n
  * dollars, and a paper that states no currency is added to nothing, because
  * its money could be either: its Total row says so in words and carries no
  * figure. A figure no paper in a currency printed totals to empty, never 0.
+ * A figure only SOME of a currency's papers printed totals the ones that did
+ * and says, in that Total row, how many printed none (null is not 0, ADR 0020):
+ * a partly known column is never presented as the period's full figure.
  */
 export function verifiedCsv(rows: ExportRow[]): string {
   const lines: string[] = [EXPORT_COLUMNS.join(",")];
-  type Sum = { sub: number | null; fr: number | null; tax: number | null; tot: number | null };
+  type Sum = { sub: number | null; fr: number | null; tax: number | null; tot: number | null; n: number; none: [number, number, number, number] };
   const sums = new Map<string, Sum>();
   let unstated = 0;
   for (const r of rows) {
@@ -84,8 +87,15 @@ export function verifiedCsv(rows: ExportRow[]): string {
     const [sub, fr, tax, tot] = [r.subtotal, r.freight, r.tax, r.total].map(toCents);
     if (!cur) unstated += 1;
     else {
-      const s = sums.get(cur) ?? { sub: null, fr: null, tax: null, tot: null };
-      sums.set(cur, { sub: addCents(s.sub, sub), fr: addCents(s.fr, fr), tax: addCents(s.tax, tax), tot: addCents(s.tot, tot) });
+      const s = sums.get(cur) ?? { sub: null, fr: null, tax: null, tot: null, n: 0, none: [0, 0, 0, 0] as [number, number, number, number] };
+      sums.set(cur, {
+        sub: addCents(s.sub, sub),
+        fr: addCents(s.fr, fr),
+        tax: addCents(s.tax, tax),
+        tot: addCents(s.tot, tot),
+        n: s.n + 1,
+        none: [s.none[0] + (sub === null ? 1 : 0), s.none[1] + (fr === null ? 1 : 0), s.none[2] + (tax === null ? 1 : 0), s.none[3] + (tot === null ? 1 : 0)],
+      });
     }
     lines.push(
       [
@@ -102,10 +112,17 @@ export function verifiedCsv(rows: ExportRow[]): string {
       ].join(","),
     );
   }
-  for (const [cur, s] of sums)
-    lines.push(
-      ["Total", "", "", "", cell(cur), formatCents(s.sub), formatCents(s.fr), formatCents(s.tax), formatCents(s.tot), ""].join(","),
+  const COLUMN_NAMES = ["subtotal", "freight", "tax", "total"] as const;
+  for (const [cur, s] of sums) {
+    // All printed, or none printed, needs no word: the first is the full
+    // figure and the second totals to empty. Only a mixed column is short.
+    const short = COLUMN_NAMES.flatMap((name, i) =>
+      s.none[i] > 0 && s.none[i] < s.n ? [`${s.none[i]} of ${s.n} papers ${s.none[i] === 1 ? "prints" : "print"} no ${name}; not in this total`] : [],
     );
+    lines.push(
+      ["Total", "", "", "", cell(cur), formatCents(s.sub), formatCents(s.fr), formatCents(s.tax), formatCents(s.tot), cell(short.join("; "))].join(","),
+    );
+  }
   if (unstated > 0)
     lines.push(
       [
