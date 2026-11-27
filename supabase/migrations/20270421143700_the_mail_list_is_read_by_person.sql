@@ -111,12 +111,59 @@
 -- included: a page asked for by key alone belongs to the vendor of the
 -- thread's first letter, and never mixes in another vendor's letters.
 --
+-- NEEDS NO REPLY (r28 mail audit, gap 4)
+-- ----------------------------------------
+-- Before this, a thread stopped waiting only when a letter the house sent was
+-- stored in the same thread. A vendor's "Thanks!", an answer the owner gave by
+-- phone, or a reply sent from Gmail that Mudavym never reads kept "N vendors
+-- are waiting on you" and the tab badge up for good: Mail had no act at all.
+--
+-- An owner or manager can now say a letter the house received needs no reply.
+-- The mark is a row in mail_letter_no_reply_marks naming that letter. It
+-- settles that letter and every earlier letter of the same thread, in the
+-- thread's own order (at, id). It settles nothing after it: a letter that
+-- arrives later makes the thread wait again, from that letter. Letter rows are
+-- never changed (their status is read by orders, the scorecard and the AI
+-- responder), and the mark can be taken back.
+--
+-- The mark names a letter, never a thread key, so it follows the letter if
+-- its thread is joined to another one later (one_conversation_is_one_thread
+-- re-keys rows). A settled letter is still visible; it only stops owing.
+-- The two functions that set and take back a mark are in
+-- 20271013143000_a_letter_can_need_no_reply.sql; this file holds the table
+-- because mail_letter_rows reads it.
+--
 -- ACCESS
 -- ------
 -- SECURITY INVOKER, EXECUTE for service_role only, the same as
 -- list_conversation_threads: the withholding flag is caller-supplied, so a
 -- client able to call these could pass false. CREATE FUNCTION gives EXECUTE to
--- PUBLIC by default, so it is revoked explicitly below.
+-- PUBLIC by default, so it is revoked explicitly below. The marks table is the
+-- gateway's alone too: RLS on, no policy, nothing granted to anon or
+-- authenticated.
+
+CREATE TABLE IF NOT EXISTS public.mail_letter_no_reply_marks (
+  conversation_id uuid PRIMARY KEY
+    REFERENCES public.procurement_conversations(id) ON DELETE CASCADE,
+  restaurant_id uuid NOT NULL
+    REFERENCES public.restaurants(id) ON DELETE CASCADE,
+  -- public.users.id from the token (never auth.users); no foreign key, so a
+  -- person who leaves does not take the house's mark with them.
+  marked_by uuid,
+  marked_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.mail_letter_no_reply_marks IS
+  'A letter the house received that an owner or manager said needs no reply: it and every '
+  'earlier letter of its thread stop making the thread wait (the_mail_list_is_read_by_person, '
+  'r28 mail gap 4). Written only through mail_letter_mark_no_reply (a_letter_can_need_no_reply).';
+
+CREATE INDEX IF NOT EXISTS idx_mail_letter_no_reply_marks_restaurant
+  ON public.mail_letter_no_reply_marks (restaurant_id);
+
+ALTER TABLE public.mail_letter_no_reply_marks ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.mail_letter_no_reply_marks FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, DELETE ON TABLE public.mail_letter_no_reply_marks TO service_role;
 
 CREATE OR REPLACE FUNCTION public.mail_letter_rows(
   p_restaurant_id uuid,
@@ -143,12 +190,31 @@ CREATE OR REPLACE FUNCTION public.mail_letter_rows(
   visible boolean,
   owes boolean,
   automatic boolean,
-  duplicate boolean
+  duplicate boolean,
+  no_reply_marked_at timestamp with time zone
 )
     LANGUAGE sql STABLE SECURITY INVOKER
     SET search_path = ''
     AS $$
-WITH base AS (
+-- Per thread, the newest letter the house marked as needing no reply: every
+-- letter of that thread up to it, in (at, id) order, owes nothing.
+WITH marks AS (
+SELECT DISTINCT ON (mc.provider_id, mc.thread_key)
+       mc.provider_id,
+       mc.thread_key,
+       COALESCE(CASE WHEN lower(mc.direction::text) = 'inbound'
+                     THEN mc.received_at ELSE mc.sent_at END,
+                mc.created_at) AS through_at,
+       mc.id AS through_id
+FROM public.mail_letter_no_reply_marks k
+JOIN public.procurement_conversations mc
+  ON mc.id = k.conversation_id
+ AND mc.restaurant_id = p_restaurant_id
+WHERE k.restaurant_id = p_restaurant_id
+  AND (p_provider_id IS NULL OR mc.provider_id = p_provider_id)
+ORDER BY mc.provider_id, mc.thread_key, through_at DESC, mc.id DESC
+),
+base AS (
 SELECT c.id,
        c.provider_id,
        c.thread_key,
@@ -195,8 +261,21 @@ SELECT c.id,
         AND row_number() OVER (PARTITION BY c.provider_id, lower(btrim(c.message_id::text)),
                                             (lower(c.direction::text) = 'inbound'
                                              AND NULLIF(btrim(c.message_id::text), '') IS NOT NULL)
-                               ORDER BY c.created_at ASC, c.id ASC) > 1, false) AS duplicate
+                               ORDER BY c.created_at ASC, c.id ASC) > 1, false) AS duplicate,
+       -- Settled by a "needs no reply" mark on this letter or a later one of
+       -- its thread. Row comparison: the same (at, id) order the thread reads in.
+       COALESCE((COALESCE(CASE WHEN lower(c.direction::text) = 'inbound'
+                               THEN c.received_at ELSE c.sent_at END,
+                          c.created_at), c.id)
+                <= (mk.through_at, mk.through_id), false) AS settled,
+       own.marked_at AS no_reply_marked_at
 FROM public.procurement_conversations c
+LEFT JOIN marks mk
+  ON mk.provider_id = c.provider_id
+ AND mk.thread_key = c.thread_key
+LEFT JOIN public.mail_letter_no_reply_marks own
+  ON own.conversation_id = c.id
+ AND own.restaurant_id = p_restaurant_id
 WHERE c.restaurant_id = p_restaurant_id
   AND (p_provider_id IS NULL OR c.provider_id = p_provider_id)
   AND (p_withhold_house_letters IS NOT TRUE
@@ -208,9 +287,10 @@ SELECT r.id, r.provider_id, r.thread_key, r.order_id, r.order_number_snapshot, r
        r.sent_at, r.received_at, r.created_at, r.raw_deleted_at, r.mirrored_by_grant_id,
        r.at,
        r.sent_or_in AND NOT r.automatic AND NOT r.duplicate,
-       r.owes_raw AND NOT r.automatic AND NOT r.duplicate,
+       r.owes_raw AND NOT r.automatic AND NOT r.duplicate AND NOT r.settled,
        r.automatic,
-       r.duplicate
+       r.duplicate,
+       r.no_reply_marked_at
 FROM base r;
 $$;
 
@@ -218,7 +298,8 @@ COMMENT ON FUNCTION public.mail_letter_rows(uuid, boolean, uuid) IS
   'Every procurement_conversations row of a house (of one vendor, when named) the Mail tab '
   'reads, with its time, the visible/owes flags, and whether it is automatic mail (an '
   'auto-reply or a bounce) or a second copy of a letter already stored (same Message-ID); '
-  'neither is ever visible or owed. Withheld rows are removed first. The one definition '
+  'neither is ever visible or owed. A letter at or before a "needs no reply" mark of its '
+  'thread owes nothing. Withheld rows are removed first. The one definition '
   'the other mail functions share (the_mail_list_is_read_by_person).';
 
 
@@ -645,7 +726,9 @@ CREATE OR REPLACE FUNCTION public.mail_thread_letters(
   order_id uuid,
   order_number text,
   order_status text,
-  automatic boolean
+  automatic boolean,
+  no_reply_marked_at timestamp with time zone,
+  thread_waiting boolean
 )
     LANGUAGE sql STABLE SECURITY INVOKER
     SET search_path = ''
@@ -683,7 +766,12 @@ head AS (
            (array_agg(m.order_id ORDER BY m.at DESC, m.id DESC)
               FILTER (WHERE m.order_id IS NOT NULL))[1] AS order_id,
            (array_agg(m.order_number_snapshot ORDER BY m.at DESC, m.id DESC)
-              FILTER (WHERE m.order_id IS NOT NULL))[1] AS order_number_snapshot
+              FILTER (WHERE m.order_id IS NOT NULL))[1] AS order_number_snapshot,
+           -- Whether the house owes this thread a reply: its newest visible
+           -- letter owes one. The same rule as mail_thread_states' "waiting",
+           -- over the whole thread, not the page.
+           COALESCE((array_agg(m.owes ORDER BY m.at DESC, m.id DESC)
+                       FILTER (WHERE m.visible))[1], false) AS waiting
     FROM mine m
     CROSS JOIN LATERAL (
         SELECT COALESCE(
@@ -712,7 +800,9 @@ SELECT m.id,
        h.order_id,
        COALESCE(po.order_number::text, h.order_number_snapshot),
        po.status::text,
-       m.automatic
+       m.automatic,
+       m.no_reply_marked_at,
+       h.waiting
 FROM mine m
 CROSS JOIN head h
 LEFT JOIN public.providers pr ON pr.id = m.provider_id
@@ -728,7 +818,9 @@ $$;
 COMMENT ON FUNCTION public.mail_thread_letters(uuid, text, uuid, boolean, timestamp with time zone, uuid, integer) IS
   'One page of one vendor''s letters under one thread key, newest first by the letter''s own '
   'time, keyset-paged by (at desc, id desc). With no vendor named, the vendor of the thread''s '
-  'first letter. Never two vendors. (the_mail_list_is_read_by_person)';
+  'first letter. Never two vendors. Each row carries when it was marked as needing no reply, '
+  'and whether the thread is waiting on the house. (the_mail_list_is_read_by_person)';
+
 
 
 -- No new index. Measured on a 2,000-row house (PR body): one vendor's rows
