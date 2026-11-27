@@ -51,8 +51,9 @@ import {
   SHEET_BREAKPOINTS,
   SHEET_BREAKPOINT_COLS,
   SHEET_MARGIN,
-  SHEET_STACK_BELOW,
   SHEET_ROW_HEIGHT,
+  SHEET_STACK_BELOW,
+  slotHeightPx,
   type AnalysisId,
   type Slot,
 } from './rp-sheet';
@@ -86,11 +87,6 @@ function useSheetWidth(el: HTMLElement | null): number {
     return () => ro.disconnect();
   }, [el]);
   return width;
-}
-
-/** A cutting's height on the stack: the rows its slot spans, as the grid would size it. */
-function slotHeightPx(h: number): number {
-  return h * SHEET_ROW_HEIGHT + Math.max(0, h - 1) * SHEET_MARGIN[1];
 }
 
 /** Pointer targets that must never begin a drag — the two new selects included. */

@@ -28,7 +28,7 @@
  * those nulls, and the cuttings render them as em dashes.
  */
 
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
@@ -265,12 +265,32 @@ export function encodeSheet(state: SheetState): StoredSheet {
   };
 }
 
+/** How long a signed-in session may wait for its house before the page says it has none. */
+const HOUSE_WAIT_MS = 3000;
+
+/** The house the stored session names (its token's `restaurantId`), or null. */
+function tokenNamesHouse(): boolean {
+  try {
+    const token = window.localStorage.getItem('accessToken');
+    const payload = token ? JSON.parse(atob(token.split('.')[1] ?? '')) : null;
+    return typeof payload?.restaurantId === 'string' && payload.restaurantId.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 /* ─────────────────────────────────────────────────────── the hook ──────── */
 
 export interface ReportsNextData {
   restaurantId: string | null;
   /** The house role the registers are gated on (`activeRole`); null while unknown. */
   role?: HouseRole | null;
+  /**
+   * True while sign-in is still settling and no house is known yet. That is
+   * not "no house": the page holds the sheet's footprint instead of printing the
+   * no-restaurant note for a few frames and then dropping the footer by ~2,700 px.
+   */
+  housePending?: boolean;
   /**
    * The goals desk's writes. It lives behind this hook rather than beside it so
    * the page has exactly ONE data seam: everything the page does to the
@@ -355,8 +375,18 @@ export function useReportsNextData(
    */
   alsoRead: AnalysisId | null = null,
 ): ReportsNextData {
-  const { activeRestaurantId, activeRole } = useAuth();
+  const { activeRestaurantId, activeRole, loading: authLoading } = useAuth();
   const rid = activeRestaurantId;
+  // The house resolves a beat after sign-in settles (the branches read), so
+  // `rid` is null for a few frames of a reload. A session whose token names a
+  // house is waiting, not houseless; after HOUSE_WAIT_MS the page says so.
+  const waitingForHouse = !rid && (authLoading || tokenNamesHouse());
+  const [houseWaitOver, setHouseWaitOver] = useState(false);
+  useEffect(() => {
+    if (!waitingForHouse) return;
+    const id = setTimeout(() => setHouseWaitOver(true), HOUSE_WAIT_MS);
+    return () => clearTimeout(id);
+  }, [waitingForHouse]);
   const qc = useQueryClient();
   const {
     preferences,
@@ -586,6 +616,7 @@ export function useReportsNextData(
   return {
     restaurantId: rid,
     role: activeRole,
+    housePending: waitingForHouse && !houseWaitOver,
     goalsDesk,
     exportDesk,
     registers,

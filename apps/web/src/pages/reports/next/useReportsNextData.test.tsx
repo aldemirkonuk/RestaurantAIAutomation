@@ -14,11 +14,11 @@ import type { ReactNode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-const auth = vi.hoisted(() => ({ rid: 'r1' as string | null, role: 'staff' as string | null }));
+const auth = vi.hoisted(() => ({ rid: 'r1' as string | null, role: 'staff' as string | null, loading: false }));
 const api = vi.hoisted(() => ({ get: vi.fn() }));
 
 vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({ activeRestaurantId: auth.rid, activeRole: auth.role }),
+  useAuth: () => ({ activeRestaurantId: auth.rid, activeRole: auth.role, loading: auth.loading }),
 }));
 vi.mock('@/services/api/client', () => ({ apiClient: api }));
 /**
@@ -138,6 +138,24 @@ describe('useReportsNextData — registers a role is not sent (ADR 0348)', () =>
     await waitFor(() => expect(api.get.mock.calls.length).toBeGreaterThan(before));
     expect(paths()).not.toContain(SEATS);
     expect(paths()).not.toContain(SERVICE);
+  });
+
+  it('[REVERT-FAILS] no house yet while sign-in settles: pending, then says so after the wait', async () => {
+    vi.useFakeTimers();
+    try {
+      auth.rid = null;
+      auth.loading = true;
+      const { result } = mount();
+      expect(result.current.housePending).toBe(true);
+      await act(async () => {
+        vi.advanceTimersByTime(3100);
+      });
+      expect(result.current.housePending).toBe(false);
+    } finally {
+      vi.useRealTimers();
+      auth.loading = false;
+      auth.rid = 'r1';
+    }
   });
 
   it('a house role not known yet: nothing is asked, and the register says why', async () => {
