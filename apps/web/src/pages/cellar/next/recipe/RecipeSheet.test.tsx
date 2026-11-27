@@ -117,6 +117,7 @@ function margarita(): CocktailRecipe {
 }
 
 let versions: unknown[] = [];
+let past: Record<string, unknown> = {};
 let other: CocktailRecipe | null = null;
 function serve(recipe: CocktailRecipe, shelf: unknown[] = []) {
   h.get.mockImplementation(async (url: string) => {
@@ -125,6 +126,8 @@ function serve(recipe: CocktailRecipe, shelf: unknown[] = []) {
     if (other && url === `/recipes/${RID}/cocktails/${CID2}`) return { data: other };
     if (url === `/recipes/${RID}/shelf`) return { data: shelf };
     if (url === `/recipes/${RID}/cocktails/${CID}/versions`) return { data: versions };
+    const v = url.startsWith(`/recipes/${RID}/cocktails/${CID}/versions/`) ? past[url.split('/').pop() as string] : undefined;
+    if (v) return { data: v };
     throw new Error(`unexpected GET ${url}`);
   });
 }
@@ -149,6 +152,7 @@ beforeEach(() => {
   h.get.mockReset();
   h.put.mockReset();
   versions = [];
+  past = {};
   other = null;
   h.auth = { activeRestaurantId: RID, activeRole: 'manager', user: { userId: 'u1', role: 'manager' } };
   forgetDrafts();
@@ -892,6 +896,67 @@ describe('RecipeSheet', () => {
     fireEvent.click(within(box).getByRole('button', { name: 'Use these lines' }));
     expect(screen.getAllByTestId('recipe-line')).toHaveLength(40);
   });
+  it('round 17 D8: an earlier version opens to its lines and who saved it, and an editor can start from it', async () => {
+    versions = [
+      { versionId: V5, version: 5, createdAt: '2026-11-07T11:00:00Z', author: 'u2', authorName: 'Deniz', lineCount: 1 },
+      { versionId: V4, version: 4, createdAt: '2026-11-07T10:00:00Z', author: 'u1', authorName: 'Ayşe Bar', lineCount: 3 },
+    ];
+    const v4 = negroni();
+    past = { [V4]: { version: { ...v4.current!, yieldServes: 2, glass: 'Coupe', method: 'Stirred' }, cost: v4.cost } };
+    serve(negroniV5());
+    h.put.mockResolvedValue({ data: { versionId: 'v6', version: 6, lines: [] } });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Earlier versions (1)' }));
+    const list = await screen.findByTestId('recipe-versions');
+    expect(list).toHaveTextContent('Ayşe Bar');
+    fireEvent.click(within(list).getByRole('button', { name: /Version 4/ }));
+    const opened = await screen.findByTestId('recipe-past-version');
+    expect(within(opened).getAllByTestId('recipe-line')).toHaveLength(3);
+    expect(opened).toHaveTextContent("Would cost ₺57.00 a serve at today's prices.");
+    expect(within(opened).queryByLabelText('Amount')).toBeNull();
+
+    fireEvent.click(within(opened).getByRole('button', { name: 'Start from version 4' }));
+    expect(screen.getAllByLabelText('Amount')).toHaveLength(3);
+    expect(screen.getByTestId('recipe-said')).toHaveTextContent('Version 4 is on the sheet. Nothing is saved yet');
+    expect(screen.getByRole('region', { name: 'Recipe for Negroni' })).toHaveTextContent('Coupe');
+
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
+    const body = h.put.mock.calls[0][1];
+    // A new version over the current one, carrying version 4's serves and glass.
+    expect(body).toMatchObject({ expectedVersionId: V5, yieldServes: 2, glass: 'Coupe', method: 'Stirred' });
+    expect(body.lines.map((l: { label: string }) => l.label)).toEqual(['gin', 'Campari', 'sweet vermouth']);
+  });
+
+  it('round 17 D8: starting from an earlier version sets a typed draft aside rather than dropping it', async () => {
+    versions = [{ versionId: V4, version: 4, createdAt: '2026-11-07T10:00:00Z', author: null, lineCount: 3 }];
+    past = { [V4]: { version: negroni().current!, cost: null } };
+    serve(negroniV5());
+    mount();
+    fireEvent.change((await screen.findAllByLabelText('Amount'))[0], { target: { value: '55' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Earlier versions (1)' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Version 4/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Start from version 4' }));
+    expect(screen.getAllByLabelText('Amount')).toHaveLength(3);
+    fireEvent.click(screen.getByRole('button', { name: 'Put my lines back' }));
+    expect(screen.getAllByLabelText('Amount')).toHaveLength(1);
+    expect(amount(0)).toBe('55');
+  });
+
+  it('round 17 D8: staff open an earlier version to read, with no money and nothing to start from', async () => {
+    h.auth = { activeRestaurantId: RID, activeRole: 'staff', user: { role: 'staff' } };
+    versions = [{ versionId: V4, version: 4, createdAt: '2026-11-07T10:00:00Z', author: null, lineCount: 3 }];
+    const v4 = negroni().current!;
+    past = { [V4]: { version: { ...v4, lines: v4.lines.map((l) => ({ ...l, costPerServe: null })) }, cost: null } };
+    serve(negroniV5());
+    const { container } = mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Earlier versions (1)' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Version 4/ }));
+    expect(await screen.findByTestId('recipe-past-version')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Start from/ })).toBeNull();
+    expect(container.textContent).not.toMatch(/₺/);
+  });
+
   it('round 17 D9: a line linked to an archived good stops Save and says which', async () => {
     const n = negroni();
     serve({ ...n, current: { ...n.current!, lines: [{ ...n.current!.lines[0], itemGone: 'archived' }, ...n.current!.lines.slice(1)] } });
@@ -912,4 +977,15 @@ describe('RecipeSheet', () => {
     );
   });
 
+  it('round 19: a drink gone from the house (404) drops its kept draft, so leaving no longer warns', async () => {
+    keepDraft(draftKey('u1', RID, CID), { rows: [], openedFrom: null, dirty: true, setAside: null });
+    expect(leaveWarns()).toBe(true);
+    h.get.mockImplementation(async (url: string) => {
+      if (url === '/settings/currency') return { data: { restaurantId: RID, code: 'TRY', readable: true } };
+      throw Object.assign(new Error('gone'), { response: { status: 404, data: { message: "This drink is not on this house's list." } } });
+    });
+    mount();
+    expect(await screen.findByTestId('recipe-unread')).toBeInTheDocument();
+    await waitFor(() => expect(leaveWarns()).toBe(false));
+  });
 });

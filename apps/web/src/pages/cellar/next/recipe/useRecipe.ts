@@ -16,6 +16,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { draftKey, dropDraft } from './drafts';
 import { recipesApi, type SaveRecipeBody } from '../../../../services/api/recipes';
+import { getErrorStatus } from '../../../../services/api/client';
 import { settingsApi } from '../../../../services/api/settings';
 import { managesHouse } from '../../../communications/next/cm-format';
 import { fmtMoney } from '../../../receipts/next/rc2-format';
@@ -47,6 +48,8 @@ export function useRecipe(cocktailId: string) {
     loading: q.isLoading,
     fetching: q.isFetching,
     error: q.isError ? reason(q.error) : null,
+    /** The HTTP status of a failed read; 404 means the drink is gone from this house. */
+    status: q.isError ? getErrorStatus(q.error) : null,
     refetch: q.refetch,
   };
 }
@@ -57,6 +60,18 @@ export function useRecipeVersions(cocktailId: string, enabled: boolean) {
     queryKey: [...recipeKey(activeRestaurantId, cocktailId), 'versions'],
     enabled: enabled && Boolean(activeRestaurantId && cocktailId),
     queryFn: () => recipesApi.versions(activeRestaurantId as string, cocktailId),
+  });
+  return { data: q.data ?? null, loading: q.isLoading && enabled, error: q.isError ? reason(q.error) : null };
+}
+
+/** One earlier version's lines, read only when it is opened (round 17 D8). */
+export function useRecipeVersion(cocktailId: string, versionId: string, enabled: boolean) {
+  const { activeRestaurantId } = useAuth();
+  const q = useQuery({
+    queryKey: [...recipeKey(activeRestaurantId, cocktailId), 'versions', versionId],
+    enabled: enabled && Boolean(activeRestaurantId && cocktailId && versionId),
+    queryFn: () => recipesApi.version(activeRestaurantId as string, cocktailId, versionId),
+    staleTime: 60_000,
   });
   return { data: q.data ?? null, loading: q.isLoading && enabled, error: q.isError ? reason(q.error) : null };
 }

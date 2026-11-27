@@ -24,7 +24,11 @@ export type KeptDraft = {
   openedFrom: string | null;
   dirty: boolean;
   setAside: DraftRow[] | null;
+  /** Serves, glass, garnish and method as the draft has them; null while they are the saved ones. */
+  meta?: DraftMeta | null;
 };
+
+export type DraftMeta = { yieldServes: number; glass: string; garnish: string; method: string };
 
 const kept = new Map<string, KeptDraft>();
 
@@ -60,6 +64,13 @@ export function keepDraft(key: string, d: KeptDraft) {
 
 export function dropDraft(key: string) {
   if (kept.delete(key)) guard();
+}
+
+/** Every draft kept for a drink, for any person: the drink is gone from the house (its read is a 404). */
+export function dropDraftsForDrink(cocktailId: string) {
+  let dropped = false;
+  for (const k of [...kept.keys()]) if (k.endsWith(`|${cocktailId}`) && kept.delete(k)) dropped = true;
+  if (dropped) guard();
 }
 
 /** Every unsaved draft. Tests start from none. */
