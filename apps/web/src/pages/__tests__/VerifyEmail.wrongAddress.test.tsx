@@ -53,6 +53,13 @@ afterEach(() => {
 })
 
 describe('Wrong address? Change it', () => {
+  it('the closed control is a thumb target, 44 px tall (r106)', () => {
+    mount()
+    const control = screen.getByRole('button', { name: 'Wrong address? Change it' })
+    expect(control.style.minHeight).toBe('44px')
+    expect(control.style.display).toBe('inline-flex')
+  })
+
   it('is closed until asked, and opens an address field in place', async () => {
     mount()
     expect(screen.queryByLabelText('The address you meant')).toBeNull()
@@ -72,6 +79,24 @@ describe('Wrong address? Change it', () => {
     await waitFor(() => expect(h.auth.signInWithSession).toHaveBeenCalledWith({ accessToken: 'a2', refreshToken: 'r2' }))
     expect(h.toastSuccess).toHaveBeenCalledWith(expect.stringContaining('selin@house.test'))
     expect(screen.queryByLabelText('The address you meant')).toBeNull()
+  })
+
+  it("a not-sent answer for the old address is gone once the address is changed (r106)", async () => {
+    h.post.mockResolvedValueOnce({ data: { success: true, sent: false, verificationMail: 'not_sent' } })
+    mount()
+    await userEvent.click(screen.getByRole('button', { name: /^Resend/ }))
+    expect(await screen.findByTestId('verify-resend-tried')).toBeInTheDocument()
+    h.post.mockResolvedValueOnce({ data: { accessToken: 'a2', refreshToken: 'r2', email: 'selin@house.test' } })
+    // The new session carries the new address, as the real context does.
+    h.auth.signInWithSession.mockImplementation(async () => {
+      h.auth.user = { email: 'selin@house.test', emailVerified: false }
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'Wrong address? Change it' }))
+    await userEvent.type(screen.getByLabelText('The address you meant'), 'selin@house.test')
+    await userEvent.click(screen.getByRole('button', { name: 'Send it to this address' }))
+    await waitFor(() => expect(h.auth.signInWithSession).toHaveBeenCalled())
+    await waitFor(() => expect(screen.queryByTestId('verify-resend-tried')).toBeNull())
+    expect(screen.queryByText(/Nothing was sent|Still not/)).toBeNull()
   })
 
   it('a taken address says so in its own sentence and keeps the form open', async () => {

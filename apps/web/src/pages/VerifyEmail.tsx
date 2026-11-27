@@ -97,6 +97,7 @@ export function VerifyEmail() {
   const [verified, setVerified] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastResent, setLastResent] = useState<Date | null>(null)
+  const [lastTried, setLastTried] = useState<Date | null>(null)
   const [refusal, setRefusal] = useState<'sign-in' | 'other-account' | null>(null)
   // The next page is get-started: have it ready while the person reads this one.
   useEffect(() => prefetchWhenIdle(['get-started']), [])
@@ -391,8 +392,11 @@ export function VerifyEmail() {
       noteSignUpMail(outcome, user?.email)
       if (outcome !== 'sent') {
         setLastResent(null)
+        // The press is answered even when nothing changed: the time of this try.
+        setLastTried(new Date())
         return
       }
+      setLastTried(null)
       setLastResent(new Date())
       startCooldown(RESEND_WAIT_SECONDS)
       toast.success(verificationMailSentence('sent', user?.email))
@@ -551,6 +555,12 @@ export function VerifyEmail() {
                   {mailSentence}
                 </p>
               )}
+              {lastTried && mailTrouble && (
+                <p className="mdv-note" role="status" data-testid="verify-resend-tried">
+                  Tried again at {lastTried.toLocaleTimeString()}. Still not{' '}
+                  {mailState === 'unconfirmed' ? 'confirmed' : 'sent'}.
+                </p>
+              )}
               {waiting && <PollSlot trouble={pollTrouble} stopped={pollStopped} className="mdv-note" />}
               {token ? (
                 linkGate ?? (
@@ -638,7 +648,12 @@ export function VerifyEmail() {
                   {user && (
                     <WrongAddress
                       signInWithSession={signInWithSession}
-                      onChanged={() => setLastResent(new Date())}
+                      onChanged={() => {
+                    // The old address's answer is not the new one's: nothing of it stays.
+                    setLastTried(null)
+                    setMailState(null)
+                    setLastResent(new Date())
+                  }}
                     />
                   )}
                   {lastResent && (
@@ -826,7 +841,12 @@ export function VerifyEmail() {
               <div className="text-center">
                 <WrongAddress
                   signInWithSession={signInWithSession}
-                  onChanged={() => setLastResent(new Date())}
+                  onChanged={() => {
+                    // The old address's answer is not the new one's: nothing of it stays.
+                    setLastTried(null)
+                    setMailState(null)
+                    setLastResent(new Date())
+                  }}
                 />
               </div>
             )}
