@@ -10,7 +10,7 @@
  * An unread count is a dash, never zero. A manager still sets the price from
  * the card: the price sits beside the tap target, not inside it.
  */
-import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { useItemPrefetch } from './use-item-prefetch';
 import { HousePriceCell, type AdviceLoad } from '../command/HousePriceCell';
 import { cellMoney, fmtCount, SEVERITY_GROUP, severity, statusWord, type HouseCurrency, type InvRow } from './useInventoryNextData';
@@ -98,10 +98,18 @@ export default function PhoneRows(props: PhoneRowsProps) {
   const win = useRowWindow({ n: rows.length, offsets, listRef, anchor: anchor !== null && anchor >= 0 ? anchor : null, focused });
   const openAt = openId === null ? -1 : rows.findIndex((r) => r.id === openId);
   const { jumpTo, start: winStart, end: winEnd } = win;
+  // A card a link named is already drawn at the first paint (the anchor above);
+  // the page is put on it before that paint, at once, as the table does (r108-7).
+  useLayoutEffect(() => {
+    if (anchor === null || anchor < 0) return;
+    document.querySelector(`[data-row-id="${CSS.escape(openId as string)}"]`)?.scrollIntoView?.({ block: 'center', behavior: 'instant' });
+    // Only the first paint; a later open is the effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     if (openAt < 0 || (openAt >= winStart && openAt < winEnd)) return;
     jumpTo(openAt);
-    const t = window.requestAnimationFrame(() => document.querySelector(`[data-row-id="${CSS.escape(openId as string)}"]`)?.scrollIntoView?.({ block: 'center' }));
+    const t = window.requestAnimationFrame(() => document.querySelector(`[data-row-id="${CSS.escape(openId as string)}"]`)?.scrollIntoView?.({ block: 'center', behavior: 'instant' }));
     return () => window.cancelAnimationFrame(t);
     // Only a change of the opened card moves the window.
     // eslint-disable-next-line react-hooks/exhaustive-deps
