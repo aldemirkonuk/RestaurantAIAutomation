@@ -940,6 +940,10 @@ export class DeliveryStockService {
           p_source_order_id: delivery.value.orderId,
           p_unit_cost: item.unitCost,
           p_performed_by: userId,
+          // One order can arrive as two deliveries, each with its own paper:
+          // this paper restates the parts of the delivery it prices, not the
+          // order's other delivery (needs restate_sale_cost's p_delivery_id, #2532).
+          p_delivery_id: deliveryId,
         });
         if (restated.error)
           return { ok: false, status: 503, error: `the lots of item ${item.inventoryId} carry the corrected cost, but the sales already made from them were not restated: ${restated.error.message}. Correcting again, or verifying the delivery again, is safe.` };
