@@ -201,6 +201,13 @@ export const NEWSLETTER_CATEGORIES = [
   "forums",
 ] as const;
 
+/** Stored rows read per request: the API's `max_rows` is 1000, so a longer read is cut silently. */
+const STORED_PAGE = 1000;
+/** Ids per delete filter: hundreds of UUIDs in one `in.()` is a URL tens of KB long. */
+const DELETE_CHUNK = 200;
+/** One Gmail listing covers this much time, so no listing grows with the age of the oldest row. */
+const CLEAN_WINDOW_MS = 30 * 86_400_000;
+
 /** What one wide grant's cleanup did, in words. A failed step says so; it is never a zero. */
 export interface CategoryCleanOutcome {
   connectionId: string;
@@ -437,20 +444,31 @@ export class HouseInboxService {
         says: `${HOUSE_INBOX_FLAG} is not on for this restaurant, so Gmail was not asked and nothing was deleted.`,
       };
     }
-    const { data: stored, error: storedError } = await this.db.client
-      .from("procurement_conversations")
-      .select("id, gmail_message_id, received_at")
-      .eq("restaurant_id", restaurantId)
-      .eq("mirrored_by_grant_id", connectionId)
-      .eq("kind", "guest")
-      .not("gmail_message_id", "is", null);
-    if (storedError) {
-      return fail(
-        0,
-        `The guest messages stored for this grant could not be read (${storedError.message}).`,
-      );
+    // Every stored guest row of the grant, a page at a time: the API returns at most
+    // `max_rows` (1000) per read, and a grant that filed the newsletter flood holds more.
+    // Ordered by id so the pages do not overlap; a short page is the last.
+    const stored: Array<Record<string, unknown>> = [];
+    for (let from = 0; ; from += STORED_PAGE) {
+      const { data: page, error: storedError } = await this.db.client
+        .from("procurement_conversations")
+        .select("id, gmail_message_id, received_at")
+        .eq("restaurant_id", restaurantId)
+        .eq("mirrored_by_grant_id", connectionId)
+        .eq("kind", "guest")
+        .not("gmail_message_id", "is", null)
+        .order("id", { ascending: true })
+        .range(from, from + STORED_PAGE - 1);
+      if (storedError) {
+        return fail(
+          stored.length,
+          `The guest messages stored for this grant could not be read (${storedError.message}).`,
+        );
+      }
+      const got = (page ?? []) as unknown as Array<Record<string, unknown>>;
+      stored.push(...got);
+      if (got.length < STORED_PAGE) break;
     }
-    const guests = (stored ?? []) as unknown as Array<{
+    const guests = stored as unknown as Array<{
       id: string;
       gmail_message_id: string;
       received_at: string | null;
@@ -476,10 +494,6 @@ export class HouseInboxService {
         "A stored guest message has no readable date, so the Gmail listing could not be bounded.",
       );
     }
-    // One day of margin: Gmail's `after:` is second-granular and a stored date is
-    // the message's own.
-    const afterSeconds = Math.floor(Math.min(...stamps) / 1000) - 86_400;
-
     let token: string;
     try {
       token = await this.oauth.getAccessToken(
@@ -492,14 +506,23 @@ export class HouseInboxService {
       return fail(guests.length, `The grant's token could not be obtained (${message}).`);
     }
 
+    // Each category is listed one 30-day window at a time, and only for windows that hold a
+    // stored row, so one listing is bounded by a month of a category and not by everything
+    // since the oldest row. One day of margin each side: Gmail's `after:`/`before:` are
+    // second-granular and a stored date is the message's own.
+    const windows = [...new Set(stamps.map((n) => Math.floor(n / CLEAN_WINDOW_MS)))].sort((x, y) => x - y);
     const listed = new Set<string>();
     try {
-      for (const category of NEWSLETTER_CATEGORIES) {
-        const ids = await this.listEveryPage(
-          token,
-          `category:${category} after:${afterSeconds} -in:sent -in:drafts`,
-        );
-        for (const m of ids) listed.add(m.id);
+      for (const w of windows) {
+        const after = Math.floor((w * CLEAN_WINDOW_MS) / 1000) - 86_400;
+        const before = Math.floor(((w + 1) * CLEAN_WINDOW_MS) / 1000) + 86_400;
+        for (const category of NEWSLETTER_CATEGORIES) {
+          const ids = await this.listEveryPage(
+            token,
+            `category:${category} after:${after} before:${before} -in:sent -in:drafts`,
+          );
+          for (const m of ids) listed.add(m.id);
+        }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -521,19 +544,23 @@ export class HouseInboxService {
     }
     // Attachment rows go with the row (ON DELETE CASCADE); a guest's attachment
     // bytes were never fetched. The kind filter is repeated on the delete.
-    const { data: gone, error: goneError } = await this.db.client
-      .from("procurement_conversations")
-      .delete()
-      .in("id", doomed)
-      .eq("kind", "guest")
-      .select("id");
-    if (goneError) {
-      return fail(
-        guests.length,
-        `The guest messages from the newsletter tabs could not be deleted (${goneError.message}).`,
-      );
+    // In chunks: one filter of hundreds of ids is a URL tens of KB long.
+    let deleted = 0;
+    for (let i = 0; i < doomed.length; i += DELETE_CHUNK) {
+      const { data: gone, error: goneError } = await this.db.client
+        .from("procurement_conversations")
+        .delete()
+        .in("id", doomed.slice(i, i + DELETE_CHUNK))
+        .eq("kind", "guest")
+        .select("id");
+      if (goneError) {
+        return fail(
+          guests.length,
+          `The guest messages from the newsletter tabs could not be deleted (${goneError.message}). ${deleted} deleted before it failed.`,
+        );
+      }
+      deleted += (gone ?? []).length;
     }
-    const deleted = (gone ?? []).length;
     return {
       connectionId,
       restaurantId,
