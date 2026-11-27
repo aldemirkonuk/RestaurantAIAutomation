@@ -3304,3 +3304,103 @@ describe("a failed read is taken off the kept list, retired and never deleted (r
     await expect(service.removeFailedRead("rest-1", "m-failed", "user-1")).rejects.toBeInstanceOf(NotFoundException);
   });
 });
+
+describe("MenusService.importMenuFromUrl -- a menu read from a link (r110 menu-r110-2, DD-r108-66)", () => {
+  const wineSubmissions = {
+    resolveLibraryWinesBatch: async (items: unknown[]) =>
+      items.map(() => ({ masterWineId: "mw-1", matched: true, libraryTier: 1, confidence: 99 })),
+    normalizeText: (t: string | null | undefined) => (t ? t.toLowerCase() : null),
+  };
+  const base = (): Record<string, Row[]> => ({
+    restaurant_menus: [],
+    restaurants: [{ id: "rest-1", default_threshold_min: 3 }],
+    restaurant_inventory: [],
+    menu_items: [],
+    user_onboarding_progress: [],
+    master_wine_library_submissions: [],
+  });
+  const PAGE = "<html><head><title>x</title></head><body><nav>Home</nav><h2>Reds</h2><p>Opus One 2019 &mdash; 62</p><p>Chianti Classico 2020 48</p></body></html>";
+  function wire(fetched: { bytes: Buffer; kind: "html" | "pdf" | "image"; finalUrl?: string } | Error) {
+    const tables = base();
+    const reads = { text: [] as string[], file: [] as string[] };
+    const service = makeService(tables, {
+      wineSubmissions,
+      scanParser: {
+        parseWithWarnings: async (file: string) => {
+          reads.file.push(file);
+          return { items: [{ name: "Opus One", bottle_price: 62 }], warnings: [] };
+        },
+        parseTextWithWarnings: async (text: string) => {
+          reads.text.push(text);
+          return { items: [{ name: "Opus One", bottle_price: 62 }], warnings: [] };
+        },
+      },
+    });
+    service.linkFetcher = async (url: string) => {
+      if (fetched instanceof Error) throw fetched;
+      return { contentType: "x", host: "menu.example", finalUrl: fetched.finalUrl ?? url, bytes: fetched.bytes, kind: fetched.kind };
+    };
+    return { tables, reads, service };
+  }
+
+  it("a web page is read as its visible text, kept as text, and the version remembers the link after redirects", async () => {
+    const { tables, reads, service } = wire({ bytes: Buffer.from(PAGE), kind: "html", finalUrl: "https://menu.example/wines" });
+    const r = await service.importMenuFromUrl("rest-1", "user-1", "https://menu.example/");
+    expect(r.reading).toBe(true);
+    const version = tables.restaurant_menus.find((m) => m.id === r.menuId)!;
+    expect(version).toMatchObject({
+      restaurant_id: "rest-1",
+      source_method: "scan",
+      source_url: "https://menu.example/wines",
+      source_mime: "text/plain",
+      name: "Menu from menu.example",
+    });
+    expect(version.source_path).toMatch(/^rest-1\/menus\/[0-9a-f]{64}\.txt$/);
+    await service.whenRead(r.menuId);
+    expect(reads.file).toEqual([]);
+    expect(reads.text).toHaveLength(1);
+    expect(reads.text[0]).toContain("Opus One 2019");
+    expect(reads.text[0]).not.toMatch(/<p>|Home/);
+    expect(version.read_state).toBe("done");
+  });
+
+  it("a PDF link is read through the PDF path, exactly as an upload of the same bytes", async () => {
+    const pdf = Buffer.from("%PDF-1.7 fake");
+    const { tables, reads, service } = wire({ bytes: pdf, kind: "pdf" });
+    const r = await service.importMenuFromUrl("rest-1", "user-1", "https://menu.example/menu.pdf");
+    const version = tables.restaurant_menus.find((m) => m.id === r.menuId)!;
+    expect(version).toMatchObject({ source_mime: "application/pdf", source_url: "https://menu.example/menu.pdf" });
+    await service.whenRead(r.menuId);
+    expect(reads.text).toEqual([]);
+    expect(reads.file).toEqual([pdf.toString("base64")]);
+  });
+
+  it("a page that shows no menu text is refused with its sentence, and nothing is kept or read", async () => {
+    const { tables, reads, service } = wire({ bytes: Buffer.from("<html><body><script>app()</script></body></html>"), kind: "html" });
+    await expect(service.importMenuFromUrl("rest-1", "user-1", "https://menu.example/")).rejects.toMatchObject({
+      status: 422,
+      message: "That page shows no menu text a reader can see; try the PDF or a photo of the menu.",
+    });
+    expect(tables.restaurant_menus).toEqual([]);
+    expect(tables.__storage ?? []).toEqual([]);
+    expect(reads.text).toEqual([]);
+  });
+
+  it("a link the fence refuses is a 422 in the fence's words, and nothing is kept", async () => {
+    const { MenuLinkRefused } = jest.requireActual("./menu-url-fetch");
+    const { tables, service } = wire(new MenuLinkRefused("That link points into a private network, so it was not read."));
+    await expect(service.importMenuFromUrl("rest-1", "user-1", "https://10.0.0.5/")).rejects.toMatchObject({
+      status: 422,
+      message: "That link points into a private network, so it was not read.",
+    });
+    expect(tables.restaurant_menus).toEqual([]);
+  });
+
+  it("an upload keeps no source_url: the column is named only by a link read", async () => {
+    const { tables, service } = wire({ bytes: Buffer.from(PAGE), kind: "html" });
+    const pdf = Buffer.from("%PDF-1.7 fake").toString("base64");
+    const r = await service.importMenu({ method: "scan", data: { imageBase64: pdf }, restaurantId: "rest-1" } as any, "user-1");
+    await service.whenRead(r.menuId);
+    expect(tables.restaurant_menus.find((m) => m.id === r.menuId)).not.toHaveProperty("source_url");
+  });
+});
