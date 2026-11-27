@@ -4,11 +4,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { listMenuVersions, media, authUser, navigate } = vi.hoisted(() => ({
+const { listMenuVersions, media, authUser, navigate, logout } = vi.hoisted(() => ({
   listMenuVersions: vi.fn(),
   media: { desk: true, reduced: false },
   authUser: { current: { name: 'Selin Kaya', restaurantId: 'house-a', role: 'owner', emailVerified: true } },
   navigate: vi.fn(),
+  logout: vi.fn(),
 }))
 
 vi.mock('../../services/api/menus', () => ({ listMenuVersions, importMenu: vi.fn() }))
@@ -22,6 +23,7 @@ vi.mock('../../contexts/AuthContext', () => ({
     loading: false,
     createFirstHouse: vi.fn(),
     signInWithSession: vi.fn(),
+    logout,
     availableRestaurants: [{ id: 'house-a', name: 'Meyhane' }],
   }),
 }))
@@ -177,6 +179,23 @@ describe('GetStarted on the phone the QR opened', () => {
     expect(screen.getByTestId('desk-house-mismatch')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Choose the house' })).toHaveAttribute('href', '/choose-house')
     expect(screen.queryByText('Drop the menu here')).toBeNull()
+  })
+
+  it('a phone signed in to no house says so, and never sends the owner to open a second one', async () => {
+    media.desk = false
+    authUser.current = { name: 'Pat', email: 'pat@example.com', restaurantId: null, role: 'owner', emailVerified: true } as never
+    logout.mockResolvedValue(true)
+    at('/get-started?from=desk&house=house-b')
+    await tick(0)
+    expect(screen.getByTestId('desk-house-mismatch')).toHaveTextContent('signed in as pat@example.com, which is in no house')
+    expect(document.body.textContent).not.toContain('another house')
+    expect(screen.queryByRole('link', { name: 'Choose the house' })).toBeNull()
+    expect(screen.queryByRole('textbox')).toBeNull()
+    await act(async () => {
+      screen.getByRole('button', { name: 'Sign out and sign in again' }).click()
+    })
+    expect(navigate).toHaveBeenCalledWith('/login?redirect=%2Fget-started%3Ffrom%3Ddesk%26house%3Dhouse-b', { replace: true })
+    expect(navigate).not.toHaveBeenCalledWith(expect.stringContaining('choose-house'), expect.anything())
   })
 
   it('its own house reads, names the house, and draws no QR of its own', async () => {

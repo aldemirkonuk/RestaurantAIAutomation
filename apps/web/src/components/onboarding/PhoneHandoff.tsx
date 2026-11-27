@@ -122,7 +122,38 @@ function DeskHandoff({ restaurantId }: { restaurantId: string }) {
  * It never reads for the wrong house: ChooseHouse checks membership and
  * brings it back here.
  */
-export function DeskHouseMismatch({ search }: { search: string }) {
+export function DeskHouseMismatch({
+  search,
+  houseless,
+  email,
+  onSignOut,
+}: {
+  search: string
+  /** The phone's account is in no house at all: "another house" would be false. */
+  houseless?: boolean
+  email?: string | null
+  onSignOut?: () => void
+}) {
+  if (houseless) {
+    // ChooseHouse sends a zero-house account to a plain /get-started and drops
+    // from=desk, so no link there: the way back is the computer's account.
+    return (
+      <div data-testid="desk-house-mismatch">
+        <p role="status">
+          This phone is signed in{email ? ` as ${email}` : ''}, which is in no house. Sign in on the phone with the
+          account your computer uses.
+        </p>
+        <button
+          type="button"
+          onClick={onSignOut}
+          className="mdv-spread-textlink"
+          style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44 }}
+        >
+          Sign out and sign in again
+        </button>
+      </div>
+    )
+  }
   return (
     <div data-testid="desk-house-mismatch">
       <p role="status">This phone is signed in to another house than your computer.</p>

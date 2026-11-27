@@ -578,6 +578,17 @@ export default function GetStarted() {
       if (out) navigate('/login', { replace: true })
     })
 
+  // The phone's own sign-out for a QR visit keeps the house it was asked for.
+  const signOutToDesk = () =>
+    void logout().then((out) => {
+      if (out && deskHouse) {
+        navigate(
+          `/login?redirect=${encodeURIComponent(`/get-started?from=desk&house=${encodeURIComponent(deskHouse)}`)}`,
+          { replace: true },
+        )
+      }
+    })
+
   if (!entered) {
     return (
       <ArrivalShell step={null}>
@@ -589,7 +600,12 @@ export default function GetStarted() {
   if (otherHouse && deskHouse) {
     return (
       <ArrivalShell step="menu" onSignOut={signOut} eyebrow="Next" title="Your menu">
-        <DeskHouseMismatch search={`?from=desk&house=${encodeURIComponent(deskHouse)}`} />
+        <DeskHouseMismatch
+          search={`?from=desk&house=${encodeURIComponent(deskHouse)}`}
+          houseless={!user?.restaurantId}
+          email={user?.email}
+          onSignOut={signOutToDesk}
+        />
       </ArrivalShell>
     )
   }
