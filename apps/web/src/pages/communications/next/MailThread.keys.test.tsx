@@ -11,9 +11,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
+const who = vi.hoisted(() => ({ role: 'manager' }));
 vi.mock('../../../services/api/client', () => ({ apiClient: api }));
 vi.mock('../../../contexts/AuthContext', () => ({
-  useAuth: () => ({ user: { role: 'manager', restaurantId: 'r1' }, activeRestaurantId: 'r1', activeRole: 'manager' }),
+  useAuth: () => ({ user: { role: who.role, restaurantId: 'r1' }, activeRestaurantId: 'r1', activeRole: who.role }),
 }));
 vi.mock('./QueuedPullBack', () => ({ QueuedPullBack: () => null }));
 
@@ -65,6 +66,7 @@ const row = (key: string, subject: string, waiting: boolean) => ({
 const THREADS = [row('gm:a', 'First', true), row('gm:b', 'Second', false), row('gm:c', 'Third', true)];
 
 beforeEach(() => {
+  who.role = 'manager';
   onAnswer.mockReset();
   api.get.mockReset();
   api.get.mockImplementation(async (url: string, cfg?: { params?: Record<string, string> }) => {
@@ -121,6 +123,17 @@ describe('in a thread', () => {
     await openThread('First');
     fireEvent.keyDown(document.body, { key: 'r' });
     expect(onAnswer).toHaveBeenCalledTimes(1);
+  });
+
+  // ADR 0357 answer 3 (proposal F6): staff read mail, they do not write it.
+  // `r` opens no composer for them, the same as the absent "Write a reply" act.
+  it('r opens no composer for staff, who have no reply act', async () => {
+    who.role = 'staff';
+    mount();
+    await openThread('First');
+    expect(screen.queryByRole('button', { name: /write a reply/i })).toBeNull();
+    fireEvent.keyDown(document.body, { key: 'r' });
+    expect(onAnswer).not.toHaveBeenCalled();
   });
 
   it('the keys are the reader\'s while typing, in a dialog, with a modifier, or after g', async () => {
