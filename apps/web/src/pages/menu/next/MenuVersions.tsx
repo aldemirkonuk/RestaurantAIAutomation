@@ -39,6 +39,7 @@ import {
   type MenuImportResult,
   type MenuReadWarning,
   type MenuVersion,
+  // Integration 2026-11-27: #2508 dropped this import (its setQueryData was its only use); DueSentence (r104) still names it.
   type MenuVersions as MenuVersionsReply,
   type PlanLine,
 } from '../../../services/api/menus';
@@ -183,6 +184,7 @@ export function sourceWords(v: MenuVersion): string {
   // A member who may not open the file (ADR 0358 D2) is still told it was kept.
   if (v.source.kept) return v.source.mime === 'application/pdf' ? 'PDF kept' : v.source.mime?.startsWith('image/') ? 'photo kept' : 'file kept';
   if (v.source.failure) return `file not kept: ${keepFailure(v.source.failure)}`;
+  if (v.menuId === READING_NOW) return 'sending the file';
   if (v.sourceMethod === 'manual') return 'typed in, no file';
   return 'read before menus were kept, no file';
 }
@@ -326,7 +328,7 @@ function stillReading(err: unknown): boolean {
   return (err as { response?: { status?: number } })?.response?.status === 202;
 }
 
-export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onChosen, currentMenuId, zone }: {
+export function ReadMenuForm({ canManage, onRead, onReadStart, onReadEnd, onReadDone, onChosen, currentMenuId, zone }: {
   canManage: boolean
   /** The house's zone for the dates it says (menu-clock.ts); the device's clock without one. */
   zone?: string | null
@@ -337,9 +339,12 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
    * current menu (browser walk 2026-11-12).
    */
   currentMenuId?: string | null
-  onRead: () => void
+  /** Told the read's list is stale; with the kept read's id once the server has one (a scan in the background). */
+  onRead: (menuId?: string) => void
   /** Told when a new read begins, so a host drops what it offered for the last one. */
-  onReadStart?: () => void
+  onReadStart?: (about: ReadAbout) => void
+  /** Told when the read has settled, whichever way (the list is looked at again by `onRead`). */
+  onReadEnd?: () => void
   /** Told the finished read (used by the Scan buttons on /inventory and /cellar). */
   onReadDone?: (r: MenuImportResult) => void
   /** Told once the read was made the current menu (prices and stock lines moved). */
@@ -400,7 +405,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
         onReading: (menuId: string) => {
           setReadingId(menuId);
           // The kept version shows in the list at once, as "being read".
-          onRead();
+          onRead(menuId);
         },
       };
       if (shape.kind === 'csv') return importMenu('csv', { csvContent: await files[0].text() }, labels);
@@ -408,7 +413,12 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
       if (shape.kind === 'file') return importMenu('scan', { imageBase64: await fileToBase64(files[0]) }, labels);
       return importMenu('scan', await pagesOf(files, turns), labels);
     },
-    onMutate: () => onReadStart?.(),
+    onMutate: () =>
+      onReadStart?.({
+        ...(cadence ? { cadence } : {}),
+        ...(dateRead.value ? { menuDate: dateRead.value } : {}),
+        method: shape.kind === 'csv' || shape.kind === 'sheet' ? 'csv' : 'scan',
+      }),
     onSuccess: (r) => {
       setResult(r);
       setReplaced(false);
@@ -420,6 +430,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
       onReadDone?.(r);
     },
     onError: () => onRead(),
+    onSettled: () => onReadEnd?.(),
   });
 
   const submit = (e: FormEvent) => {
@@ -900,22 +911,28 @@ function MenusUnread({
 
 /** The id of the row held for a read that has just been sent. */
 export const READING_NOW = 'reading-now';
-function readingNow(): MenuVersion {
+/** What the form knew when the read was sent, so the held row says what the person typed. */
+export interface ReadAbout {
+  cadence?: MenuCadence;
+  menuDate?: string;
+  method: 'scan' | 'csv';
+}
+function readingNow(about: ReadAbout): MenuVersion {
   const now = new Date().toISOString();
   return {
     menuId: READING_NOW,
     name: null,
     status: 'draft',
     current: false,
-    cadence: null,
-    menuDate: null,
-    menuDatePrecision: null,
-    sourceMethod: 'scan',
+    cadence: about.cadence ?? null,
+    menuDate: about.menuDate ?? null,
+    menuDatePrecision: about.menuDate ? (about.menuDate.length === 7 ? 'month' : 'day') : null,
+    sourceMethod: about.method,
     source: { kept: false, mime: null, bytes: null, failure: null },
     linesExtracted: null,
     readState: 'reading',
     readFailure: null,
-    extractedAt: now,
+    extractedAt: null,
     extractedBy: null,
     madeCurrentAt: null,
     madeCurrentBy: null,
@@ -1075,9 +1092,21 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
       {backSaid}
     </p>
   ) : null;
+  // The row for a read is held from the click until the read settles (r103 menu-7,
+  // walk F1). It lives here, not in the cached list: a refetch (the 5 s poll the
+  // server's own "reading" rows start) replaces the cache and would drop it, and
+  // the row would leave and come back, two shifts nobody asked for. `id` is the
+  // kept read's id once the server has one; from then on the list's own row stands in.
+  const [held, setHeld] = useState<{ about: ReadAbout; id: string | null } | null>(null);
   const zone = q.data?.timezone ?? null;
-  const labels = versionLabels(q.data?.versions ?? [], zone);
+  const kept = q.data?.versions ?? [];
+  // Named among the kept menus only: the held row never renames a real one ("(1 of 2)").
+  const labels = versionLabels(kept, zone);
   const nameOf = (v: MenuVersion) => labels.get(v.menuId) ?? versionLabel(v, false, zone);
+  const heldRow = q.data && held && !(held.id && kept.some((v) => v.menuId === held.id)) ? readingNow(held.about) : null;
+  const rows = heldRow ? [heldRow, ...kept] : kept;
+  const heldLabel = (v: MenuVersion) =>
+    v.menuDate ? versionLabel(v, false, zone) : `the menu being read${v.cadence && v.cadence !== 'none' ? ` (${v.cadence})` : ''}`;
 
   return (
     <section style={{ marginTop: 32 }} aria-labelledby="menu-versions-h">
@@ -1087,20 +1116,17 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
       <HowThisWorks />
       <ReadMenuForm
         canManage={canManage}
-        onRead={refresh}
+        onRead={(menuId) => {
+          if (menuId) setHeld((h) => (h ? { ...h, id: menuId } : h));
+          refresh();
+        }}
         currentMenuId={q.data ? (q.data.current?.menuId ?? null) : undefined}
         zone={zone}
-        // The row for a read is held in the list from the click (inside the
-        // 500 ms that a person's own input is allowed to move the page), so it
-        // does not arrive on its own seconds later and push the page down
-        // (r103 menu-7, walk F1). The next read of the list replaces it.
-        onReadStart={() =>
-          queryClient.setQueryData<MenuVersionsReply>(['menu', 'versions', house], (old) =>
-            old && !old.versions.some((v) => v.menuId === READING_NOW)
-              ? { ...old, versions: [readingNow(), ...old.versions] }
-              : old,
-          )
-        }
+        // Held from the click, inside the 500 ms that a person's own input is
+        // allowed to move the page, so it does not arrive seconds later and push
+        // the page down. It stays until the list has been read again after the read settles.
+        onReadStart={(about) => setHeld({ about, id: null })}
+        onReadEnd={() => void queryClient.invalidateQueries({ queryKey: ['menu'] }).then(() => setHeld(null))}
         onChosen={() => {
           // The list's own sentence was about an earlier choice.
           setSaid(null);
@@ -1130,7 +1156,7 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
             {q.data?.lastUsed ? `Last one used: ${nameOf(q.data.lastUsed)}.` : 'No earlier menu has been used.'}
           </p>
           {canManage ? <DueSentence due={q.data?.due ?? null} /> : null}
-          {q.data && q.data.versions.length > 0 ? (
+          {q.data && rows.length > 0 ? (
             <>
             <div style={{ overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10, marginTop: 10 }}>
               <table className="cl-table mdv-cards" style={{ width: '100%' }}>
@@ -1144,11 +1170,11 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
                   </tr>
                 </thead>
                 <tbody>
-                  {q.data.versions.map((v) => (
+                  {rows.map((v) => (
                     <VersionRow
                       key={v.menuId}
                       v={v}
-                      label={nameOf(v)}
+                      label={v.menuId === READING_NOW ? heldLabel(v) : nameOf(v)}
                       canManage={canManage}
                       lastUsedId={q.data?.lastUsed?.menuId ?? null}
                       zone={zone}
