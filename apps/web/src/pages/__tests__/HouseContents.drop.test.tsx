@@ -41,7 +41,7 @@ beforeEach(() => {
 })
 
 describe('folio 0 on /house', () => {
-  it('sends the chosen paper with one upload, for the session house, and reads nothing back', async () => {
+  it('sends the chosen paper with one upload, for the session house, and reads back only that paper', async () => {
     page()
     fireEvent.change(screen.getByLabelText('Your last invoice'), { target: { files: [invoice()] } })
     expect(await screen.findByText(/Your last invoice is on Receipts\./)).toBeInTheDocument()
@@ -54,7 +54,8 @@ describe('folio 0 on /house', () => {
       source: 'upload',
     })
     expect(sent).not.toHaveProperty('restaurantId')
-    expect(h.detail).not.toHaveBeenCalled()
+    // r109 g2: the paper's own status is read back to propose its seller; no list.
+    await waitFor(() => expect(h.detail).toHaveBeenCalledWith('doc-1'))
     expect(h.list).not.toHaveBeenCalled()
     expect(h.getOnboardingProgress).toHaveBeenCalledTimes(1)
     expect(screen.getByRole('link', { name: 'See it on Receipts' })).toHaveAttribute('href', '/receipts')
