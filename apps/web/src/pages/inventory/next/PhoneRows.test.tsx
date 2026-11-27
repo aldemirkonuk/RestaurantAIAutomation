@@ -106,10 +106,10 @@ describe('/inventory on a phone', () => {
     expect(card.textContent).toContain('92');
   });
 
-  it('animates only the first 8 cards; card 9 on renders still', () => {
+  it('animates only the first 6 cards; card 7 on renders still', () => {
     draw(Array.from({ length: 12 }, (_, n) => row({ id: `r${n}`, name: `Good ${n}` })));
-    for (let n = 0; n < 8; n += 1) expect(screen.getByTestId(`inv-row-r${n}`).hasAttribute('data-still')).toBe(false);
-    for (let n = 8; n < 12; n += 1) expect(screen.getByTestId(`inv-row-r${n}`).getAttribute('data-still')).toBe('true');
+    for (let n = 0; n < 6; n += 1) expect(screen.getByTestId(`inv-row-r${n}`).hasAttribute('data-still')).toBe(false);
+    for (let n = 6; n < 12; n += 1) expect(screen.getByTestId(`inv-row-r${n}`).getAttribute('data-still')).toBe('true');
     const css = readFileSync(resolve(process.cwd(), 'src/pages/inventory/next/inventory-next.css'), 'utf8');
     expect(css).toMatch(/\.ivc-card\[data-still='true'\]\s*\{\s*animation:\s*none;/);
   });
@@ -217,5 +217,47 @@ describe('the 44 px tap rule at 640px and below (r81 walk, finding 3)', () => {
   });
   it('the row checkbox label is a 44 x 44 hit area', () => {
     expect(phone).toMatch(/\.ivc-pick\s*\{[^}]*min-width:\s*44px;[^}]*min-height:\s*44px/);
+  });
+});
+
+describe('a card says how many recipes use the good (r107 g2)', () => {
+  beforeEach(() => setPhone(true));
+  const used = (id = 'i1') => screen.getByTestId(`inv-usedin-${id}`);
+
+  it('a count is a chip that opens the sheet on its Used in group, and not the plain toggle', () => {
+    const onUsedIn = vi.fn();
+    draw([row({ usedIn: 3 })], { onUsedIn });
+    expect(used().textContent).toBe('Used in 3 recipes');
+    fireEvent.click(used());
+    expect(onUsedIn).toHaveBeenCalledWith('i1');
+    expect(toggle).not.toHaveBeenCalled();
+  });
+
+  it('one recipe is singular', () => {
+    draw([row({ usedIn: 1 })], { onUsedIn: vi.fn() });
+    expect(used().textContent).toBe('Used in 1 recipe');
+  });
+
+  it('0 is said as 0, in plain words with nothing to open', () => {
+    draw([row({ usedIn: 0 })], { onUsedIn: vi.fn() });
+    expect(used().textContent).toBe('Used in 0 recipes');
+    expect(used().tagName).not.toBe('BUTTON');
+  });
+
+  it('a read that has not landed says so and is not 0', () => {
+    draw([row({ usedIn: undefined })], { onUsedIn: vi.fn() });
+    expect(used().textContent).toBe('Used in: not read yet');
+    expect(used().textContent).not.toMatch(/\b0\b/);
+  });
+
+  it('a read that failed says it could not be read and is not 0', () => {
+    draw([row({ usedIn: null })], { onUsedIn: vi.fn() });
+    expect(used().textContent).toBe('Used in: could not be read');
+    expect(used().textContent).not.toMatch(/\b0\b/);
+  });
+
+  it('the chip is a 44 px target', () => {
+    const css = readFileSync(resolve(process.cwd(), 'src/pages/inventory/next/inventory-next.css'), 'utf8');
+    expect(css).toMatch(/\.ivc-used \{[^}]*min-height: 44px;[^}]*min-width: 44px;/);
   });
 });
