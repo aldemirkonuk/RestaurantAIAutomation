@@ -286,21 +286,22 @@ export const INTEGRATION_DEFINITIONS: Record<
         label:
           "Reads every conversation in this mailbox: vendors, team and guests",
         reason:
-          "Unlike the vendor-only connection, nothing narrows this one to the vendor book: every message that arrives after you connect is filed in this house's conversation book, marked as a vendor, a team member or a guest. It can never send, label, archive or delete anything, and it never looks at mail that arrived before you connected.",
+          "Unlike the vendor-only connection, nothing narrows this one to the vendor book: every message that arrives after you connect, outside Gmail's Promotions, Social, Forums and Updates tabs, is filed in this house's conversation book (a vendor in the book is read wherever it lands), marked as a vendor, a team member or a guest. It can never send, label, archive or delete anything, and it never looks at mail that arrived before you connected.",
       },
     ],
     notRequested: [
       "Anything that arrived before you connected; it starts from the moment you consent and never looks backwards",
       "Spam and trash",
+      "Gmail's Promotions, Social, Forums and Updates tabs, except for a vendor in the book, whose mail is read wherever it lands",
       "Sending mail as you, which is a separate connection you agree to separately",
       "Changing anything at all: no labelling, no archiving, no marking read, no deleting",
       "Your drafts, filters, settings, contacts or chat",
     ],
     dataHandling: {
       reads:
-        "Every message that reaches this mailbox after you connect, whoever it is from. Each one is marked as a vendor (the sender is in this restaurant's vendor book), a team member (the sender is a member of this restaurant) or a guest (anyone else).",
+        "Every message that reaches this mailbox after you connect, whoever it is from, outside Gmail's Promotions, Social, Forums and Updates tabs; a vendor in the book is read wherever it lands. Each one is marked as a vendor (the sender is in this restaurant's vendor book), a team member (the sender is a member of this restaurant) or a guest (anyone else).",
       doesNotRead:
-        "Anything older than the moment you connected, spam, trash, your drafts, filters, settings, contacts and chat. Nothing is ever changed in your mailbox.",
+        "Anything older than the moment you connected, spam, trash, Gmail's Promotions, Social, Forums and Updates tabs (except a vendor in the book), your drafts, filters, settings, contacts and chat. Nothing is ever changed in your mailbox.",
       landsIn:
         "This restaurant's conversation book, `procurement_conversations`, with who it was from and who it was sent to. A vendor's reply takes the same path a shared-mailbox reply takes; a team or guest message is filed with no order and no vendor, and never starts an automatic reply.",
       visibleTo:

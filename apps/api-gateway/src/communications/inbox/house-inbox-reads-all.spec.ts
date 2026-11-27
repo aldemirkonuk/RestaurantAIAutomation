@@ -28,9 +28,11 @@ import {
   GMAIL_READ_SCOPE,
   MAX_MESSAGES_PER_TICK,
   MAX_PAGES_ALL,
+  WIDE_CATEGORY_BOUND,
   classifySender,
 } from "./house-inbox.service";
 import { addressesInHeader } from "../gmail-mime";
+import { INTEGRATION_DEFINITIONS } from "../../integrations/integrations-oauth.constants";
 
 const HOUSE = "aaaaaaaa-0000-4000-8000-aaaaaaaaaaaa";
 const PROVIDER = "cccccccc-0000-4000-8000-cccccccccccc";
@@ -295,7 +297,8 @@ describe("the old grant is never widened", () => {
     const queries = urls
       .filter((u) => u.includes("/messages?"))
       .map((u) => new URL(u).searchParams.get("q")!);
-    expect(queries.filter((q) => q.includes("from:("))).toHaveLength(1);
+    // Two vendor queries (the old grant's, and the wide grant's own beside its wide one) and one wide query.
+    expect(queries.filter((q) => q.includes("from:("))).toHaveLength(2);
     expect(queries.filter((q) => !q.includes("from:"))).toHaveLength(1);
     // The token for each grant is asked for under ITS OWN id.
     expect(getAccessToken.mock.calls.map((c) => c[2]).sort()).toEqual(["gmail_read", "gmail_read_all"]);
@@ -364,5 +367,143 @@ describe("the wide cursor never jumps over unread mail", () => {
     expect(run.outcomes[0].says).toMatch(/oldest could not be found/i);
     expect(publish).not.toHaveBeenCalled();
     expect(run.outcomes[0].cursorAdvancedTo).toBe(CURSOR);
+  });
+});
+
+/** Like `gmail`, but each query lists its own ids (one page), so the wide and the vendor query can differ. */
+function gmailByQuery(listFor: (q: string) => Array<{ id: string }>, messages: Record<string, unknown>) {
+  const queries: string[] = [];
+  const base = gmail([[]], messages);
+  const impl = (async (input: unknown, init?: unknown) => {
+    const url = String(input);
+    if (url.includes("/messages?")) {
+      const q = new URL(url).searchParams.get("q")!;
+      queries.push(q);
+      return { ok: true, status: 200, json: async () => ({ messages: listFor(q) }) };
+    }
+    return (base.impl as unknown as (i: unknown, n?: unknown) => Promise<unknown>)(input, init);
+  }) as unknown as typeof fetch;
+  return { queries, impl };
+}
+
+describe("the words the house reads match the narrowed wide query (r103 fixer)", () => {
+  const def = INTEGRATION_DEFINITIONS.gmail_read_all;
+  const TABS = "Promotions, Social, Forums and Updates";
+  it("the consent reason, notRequested, reads and doesNotRead all name the four tabs, and a vendor read wherever it lands", () => {
+    expect(def.scopes[0].reason).toContain(TABS);
+    expect(def.dataHandling.reads).toContain(TABS);
+    expect(def.dataHandling.reads).toContain("a vendor in the book is read wherever it lands");
+    expect(def.dataHandling.doesNotRead).toContain(TABS);
+    expect(def.notRequested.some((t) => t.includes(TABS))).toBe(true);
+  });
+  it("the tabs named are the ones the query leaves out", () => {
+    for (const c of ["promotions", "social", "forums", "updates"]) expect(WIDE_CATEGORY_BOUND).toContain(`-category:${c}`);
+  });
+});
+
+describe("newsletters stay out of the wide query, and a vendor in Promotions is still read (r103 mail-2)", () => {
+  const isWide = (q: string) => !q.includes("from:(");
+
+  it("bounds only the wide query by the four newsletter tabs", async () => {
+    const db = build(wideRows());
+    const { service } = serviceOver(db);
+    const { queries, impl } = gmailByQuery(() => [], {});
+    service.fetchImpl = impl;
+    await service.readDue(CURSOR + 300_000);
+    const wide = queries.filter(isWide);
+    const vendor = queries.filter((q) => !isWide(q));
+    expect(wide).toHaveLength(1);
+    for (const tab of ["promotions", "social", "forums", "updates"]) expect(wide[0]).toContain(`-category:${tab}`);
+    expect(vendor.length).toBeGreaterThan(0);
+    expect(vendor.some((q) => q.includes("category"))).toBe(false);
+  });
+
+  it("a vendor in Promotions is still read and filed as a vendor, while the newsletter beside it is not listed", async () => {
+    const db = build(wideRows());
+    const { service, publish } = serviceOver(db);
+    const { impl } = gmailByQuery((q) => (isWide(q) ? [{ id: "m-guest" }] : [{ id: "m-promo-vendor" }]), {
+      "m-guest": message({ id: "m-guest", from: GUEST, at: CURSOR + 1000 }),
+      "m-promo-vendor": message({ id: "m-promo-vendor", from: VENDOR, at: CURSOR + 2000 }),
+    });
+    service.fetchImpl = impl;
+    const run = await service.readDue(CURSOR + 300_000);
+    expect(run.outcomes[0].outcome).toBe("read");
+    const events = publish.mock.calls.map((c) => c[2]);
+    expect(events.map((e) => [e.gmail_message_id, e.house_mail_kind])).toEqual([
+      ["m-guest", "guest"],
+      ["m-promo-vendor", "vendor"],
+    ]);
+  });
+
+  /** The wide listing paged by token, and a vendor query that answers its own ids; counts message gets. */
+  function wideAndVendor(wideIds: Array<{ id: string }>, vendorIds: Array<{ id: string }>, messages: Record<string, unknown>, refuseAfter = Infinity) {
+    const paged = gmail(
+      Array.from({ length: Math.ceil(wideIds.length / 100) }, (_, k) => wideIds.slice(k * 100, k * 100 + 100)),
+      messages,
+    );
+    let gets = 0;
+    const impl = (async (input: unknown, init?: unknown) => {
+      const url = String(input);
+      if (url.includes("/messages?") && new URL(url).searchParams.get("q")!.includes("from:(")) {
+        return { ok: true, status: 200, json: async () => ({ messages: vendorIds }) };
+      }
+      if (/\/messages\/[^?/]+\?format=full/.test(url)) {
+        gets += 1;
+        if (gets > refuseAfter) return { ok: false, status: 429, json: async () => ({}), text: async () => "rate limit" };
+      }
+      return (paged.impl as unknown as (i: unknown, n?: unknown) => Promise<unknown>)(input, init);
+    }) as unknown as typeof fetch;
+    return { impl, gets: () => gets };
+  }
+
+  it("a mailbox cut at the cap files nothing the budget did not reach, vendor mail included, and spends one budget (r103 fixer)", async () => {
+    const total = MAX_MESSAGES_PER_TICK + 5;
+    const wideIds = Array.from({ length: total }, (_, i) => ({ id: `m${total - i}` }));
+    const messages: Record<string, unknown> = {
+      "v-old": message({ id: "v-old", from: VENDOR, at: CURSOR + 500 }),
+      "v-new": message({ id: "v-new", from: VENDOR, at: CURSOR + (total + 5) * 1000 }),
+    };
+    for (let n = 1; n <= total; n += 1) messages[`m${n}`] = message({ id: `m${n}`, from: GUEST, at: CURSOR + n * 1000 });
+    const db = build(wideRows());
+    const { service, publish } = serviceOver(db);
+    const g = wideAndVendor(wideIds, [{ id: "v-new" }, { id: "v-old" }], messages);
+    service.fetchImpl = g.impl;
+
+    const run = await service.readDue(CURSOR + 10_000_000);
+
+    const got = publish.mock.calls.map((c) => c[2].gmail_message_id);
+    expect(got).toContain("v-old");
+    expect(got).not.toContain("v-new");
+    // One budget: the vendor fetches are inside the 250, not on top of them.
+    expect(g.gets()).toBeLessThanOrEqual(MAX_MESSAGES_PER_TICK);
+    // What was filed is a contiguous oldest prefix, and the cursor sits on its newest message.
+    const wideGot = got.filter((id) => id.startsWith("m")).map((id) => Number(id.slice(1)));
+    expect(wideGot).toEqual(Array.from({ length: wideGot.length }, (_, k) => k + 1));
+    expect(wideGot.length).toBeGreaterThan(MAX_MESSAGES_PER_TICK - 5);
+    expect(run.outcomes[0].cursorAdvancedTo).toBe(CURSOR + wideGot.length * 1000);
+  });
+
+  it("a busy mailbox with many newer vendor messages never fetches past one tick's budget, so the tick files and the cursor moves (r103 fixer)", async () => {
+    const total = MAX_MESSAGES_PER_TICK + 5;
+    const wideIds = Array.from({ length: total }, (_, i) => ({ id: `m${total - i}` }));
+    const vendorCount = 100;
+    const vendorIds = Array.from({ length: vendorCount }, (_, i) => ({ id: `vp${vendorCount - i}` }));
+    const messages: Record<string, unknown> = {};
+    for (let n = 1; n <= total; n += 1) messages[`m${n}`] = message({ id: `m${n}`, from: GUEST, at: CURSOR + n * 1000 });
+    for (let n = 1; n <= vendorCount; n += 1) {
+      messages[`vp${n}`] = message({ id: `vp${n}`, from: VENDOR, at: CURSOR + (total + n) * 1000 });
+    }
+    const db = build(wideRows());
+    const { service, publish } = serviceOver(db);
+    // Gmail answers 429 once 300 messages were fetched in the tick.
+    const g = wideAndVendor(wideIds, vendorIds, messages, 300);
+    service.fetchImpl = g.impl;
+
+    const run = await service.readDue(CURSOR + 10_000_000);
+
+    expect(g.gets()).toBeLessThanOrEqual(MAX_MESSAGES_PER_TICK);
+    expect(run.outcomes[0].outcome).toBe("read");
+    expect(publish.mock.calls.length).toBeGreaterThan(0);
+    expect(run.outcomes[0].cursorAdvancedTo).not.toBeNull();
   });
 });
