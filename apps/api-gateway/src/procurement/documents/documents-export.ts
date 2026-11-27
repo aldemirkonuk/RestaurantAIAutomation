@@ -64,19 +64,29 @@ export function cell(v: string | null): string {
   return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 
+/** Add whole cents, keeping "printed nowhere" apart from 0. */
+const addCents = (a: number | null, b: number | null): number | null => (a === null ? b : b === null ? a : a + b);
+
+/**
+ * One total per currency (r109, DD-r109-8b). INVARIANT: two amounts are added
+ * only when both papers state the same currency. Lira is never added to
+ * dollars, and a paper that states no currency is added to nothing, because
+ * its money could be either: its Total row says so in words and carries no
+ * figure. A figure no paper in a currency printed totals to empty, never 0.
+ */
 export function verifiedCsv(rows: ExportRow[]): string {
   const lines: string[] = [EXPORT_COLUMNS.join(",")];
-  // One total per currency: adding lira to dollars is not a total.
-  const sums = new Map<string, { sub: number; fr: number; tax: number; tot: number }>();
+  type Sum = { sub: number | null; fr: number | null; tax: number | null; tot: number | null };
+  const sums = new Map<string, Sum>();
+  let unstated = 0;
   for (const r of rows) {
-    const cur = (r.currency ?? "").trim();
+    const cur = (r.currency ?? "").trim().toUpperCase();
     const [sub, fr, tax, tot] = [r.subtotal, r.freight, r.tax, r.total].map(toCents);
-    const s = sums.get(cur) ?? { sub: 0, fr: 0, tax: 0, tot: 0 };
-    s.sub += sub ?? 0;
-    s.fr += fr ?? 0;
-    s.tax += tax ?? 0;
-    s.tot += tot ?? 0;
-    sums.set(cur, s);
+    if (!cur) unstated += 1;
+    else {
+      const s = sums.get(cur) ?? { sub: null, fr: null, tax: null, tot: null };
+      sums.set(cur, { sub: addCents(s.sub, sub), fr: addCents(s.fr, fr), tax: addCents(s.tax, tax), tot: addCents(s.tot, tot) });
+    }
     lines.push(
       [
         cell(r.doc_number),
@@ -94,7 +104,22 @@ export function verifiedCsv(rows: ExportRow[]): string {
   }
   for (const [cur, s] of sums)
     lines.push(
-      ["Total", "", "", "", cell(cur || null), formatCents(s.sub), formatCents(s.fr), formatCents(s.tax), formatCents(s.tot), ""].join(","),
+      ["Total", "", "", "", cell(cur), formatCents(s.sub), formatCents(s.fr), formatCents(s.tax), formatCents(s.tot), ""].join(","),
+    );
+  if (unstated > 0)
+    lines.push(
+      [
+        "Total",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        `${unstated} ${unstated === 1 ? "paper states" : "papers state"} no currency; not added up`,
+      ].join(","),
     );
   return lines.join("\r\n") + "\r\n";
 }
