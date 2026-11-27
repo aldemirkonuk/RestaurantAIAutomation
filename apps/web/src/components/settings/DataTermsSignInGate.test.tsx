@@ -6,9 +6,10 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { DataTermsSignInGate } from './DataTermsSignInGate';
+import { Sheet } from '../mudavym/Sheet';
 import type { DataTermsReadout } from '../../services/api/dataTerms';
 
 const roleMock = vi.hoisted(() => ({ current: 'owner' as 'owner' | 'manager' | 'staff' | null }));
@@ -147,5 +148,72 @@ describe('when the sheet shows, and when it never does', () => {
     });
     mount();
     expect(screen.getByRole('button', { name: /hold to accept/i })).toBeInTheDocument();
+  });
+});
+
+describe('a drawer opened by a deep link (r109 inventory-5, walk UX P1)', () => {
+  function Page({ drawer, second = false }: { drawer: boolean; second?: boolean }) {
+    return (
+      <MemoryRouter>
+        {drawer ? (
+          <Sheet open onClose={() => {}} title="Gin" label="This shows one good. Nothing here writes.">
+            <p>the drawer</p>
+          </Sheet>
+        ) : null}
+        <DataTermsSignInGate />
+        {second ? (
+          <Sheet open onClose={() => {}} title="Tonic" label="This shows one good. Nothing here writes.">
+            <p>a later drawer</p>
+          </Sheet>
+        ) : null}
+      </MemoryRouter>
+    );
+  }
+  const holds = () => screen.queryAllByRole('button', { name: /hold to accept/i });
+  const settle = () => act(async () => {});
+
+  it('waits while the drawer is open, then meets the owner exactly once when it closes, still owed', async () => {
+    // The walked order: the drawer opens from ?open= first, the terms read lands after.
+    const { rerender } = render(<Page drawer />);
+    await settle();
+    dataTermsMock.data = readout();
+    rerender(<Page drawer />);
+    await settle();
+    expect(screen.getByText('the drawer')).toBeInTheDocument();
+    expect(holds()).toHaveLength(0);
+    rerender(<Page drawer={false} />);
+    await settle();
+    expect(holds()).toHaveLength(1);
+    // Still "must accept to continue": nothing puts it down, Escape included.
+    expect(screen.queryByRole('button', { name: /put it down/i })).toBeNull();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await settle();
+    expect(holds()).toHaveLength(1);
+  });
+
+  it('keeps its turn once shown: a drawer opened later never hides it or makes it a second time', async () => {
+    dataTermsMock.data = readout();
+    const { rerender } = render(<Page drawer={false} />);
+    await settle();
+    expect(holds()).toHaveLength(1);
+    rerender(<Page drawer={false} second />);
+    await settle();
+    expect(holds()).toHaveLength(1);
+    rerender(<Page drawer={false} />);
+    await settle();
+    expect(holds()).toHaveLength(1);
+  });
+
+  it('waiting is not accepting: once accepted elsewhere while the drawer was open, nothing shows after it', async () => {
+    const { rerender } = render(<Page drawer />);
+    await settle();
+    dataTermsMock.data = readout();
+    rerender(<Page drawer />);
+    await settle();
+    expect(holds()).toHaveLength(0);
+    dataTermsMock.data = readout({ current: true, yours: { current: true } });
+    rerender(<Page drawer={false} />);
+    await settle();
+    expect(holds()).toHaveLength(0);
   });
 });

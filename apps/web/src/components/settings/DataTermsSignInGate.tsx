@@ -43,6 +43,7 @@
 import { useAuth } from '../../contexts/AuthContext';
 import { useDataTerms } from '../../hooks/queries/useDataTerms';
 import { DataTermsAcceptSheet } from './DataTermsAcceptSheet';
+import { useOwnTurn } from '../mudavym/useOwnTurn';
 
 export function DataTermsSignInGate() {
   // No session context (a signed-out render, or a test that mounts the
@@ -51,6 +52,15 @@ export function DataTermsSignInGate() {
   const activeRole = auth?.activeRole ?? null;
   const isOwner = activeRole === 'owner';
   const q = useDataTerms(isOwner);
+  const readout = q.data;
+  // EVERY owner accepts for themselves (question 19): a co-owner's
+  // acceptance makes the HOUSE current, not this owner. A gateway older than
+  // the per-owner field only knows the house, and is read as that.
+  const owed =
+    isOwner && !!readout && readout.readable && !(readout.yours ? readout.yours.current : readout.current);
+  // r109 inventory-5: owed is not yet shown while a drawer (or any overlay) is
+  // open; it shows when that closes, and stays until accepted.
+  const shown = useOwnTurn(owed);
 
   if (!isOwner) return null;
   // Loading, or a failed fetch that has not yet resolved to data: render
@@ -60,11 +70,8 @@ export function DataTermsSignInGate() {
   // would turn a read failure into a gate the app cannot get past, which is
   // exactly the lockout the founder's answer rules out.
   if (!q.data.readable) return null;
-  // EVERY owner accepts for themselves (question 19): a co-owner's
-  // acceptance makes the HOUSE current, not this owner. A gateway older than
-  // the per-owner field only knows the house, and is read as that.
-  const acceptedByYou = q.data.yours ? q.data.yours.current : q.data.current;
-  if (acceptedByYou) return null;
+  if (!owed) return null;
+  if (!shown) return null;
 
   return <DataTermsAcceptSheet readout={q.data} dismissable={false} />;
 }

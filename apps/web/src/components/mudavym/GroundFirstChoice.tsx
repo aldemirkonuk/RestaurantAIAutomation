@@ -43,6 +43,7 @@
 
 import { useRef, useState } from 'react';
 import { Panel } from './Sheet';
+import { useOwnTurn } from './useOwnTurn';
 import { useDataTermsSignInBusy } from '../../hooks/queries/useDataTerms';
 import {
   GROUND_OPTIONS,
@@ -74,9 +75,11 @@ function FirstChoiceAsk({ ground }: { ground: GroundState }) {
   const [picked, setPicked] = useState<GroundSetting>('paper');
   const firstRef = useRef<HTMLInputElement>(null);
 
-  const open =
+  // r109 inventory-5: asked only once no drawer or other overlay is open.
+  const open = useOwnTurn(
     !termsBusy &&
-    (phase === 'saving' || phase === 'failed' || (phase === 'ask' && ground.source === 'default'));
+      (phase === 'saving' || phase === 'failed' || (phase === 'ask' && ground.source === 'default')),
+  );
 
   const save = async () => {
     setPhase('saving');

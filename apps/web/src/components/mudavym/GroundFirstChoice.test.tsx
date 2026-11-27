@@ -17,6 +17,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { GroundFirstChoice } from './GroundFirstChoice';
+import { Sheet } from './Sheet';
 import { DataTermsSignInGate } from '../settings/DataTermsSignInGate';
 import {
   GROUND_CHOICE_ATTR,
@@ -227,6 +228,30 @@ describe('never on top of the data terms', () => {
     neverChose();
     mount();
     expect(termsMock.getDataTerms).not.toHaveBeenCalled();
+    expect(ask()).toBeInTheDocument();
+  });
+
+  it('waits while a deep-linked drawer is open, and asks once it closes (r109 inventory-5)', () => {
+    setGroundOwner(ALICE);
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const page = (drawer: boolean) => (
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          {drawer ? (
+            <Sheet open onClose={() => {}} title="Gin" label="This shows one good. Nothing here writes.">
+              <p>the drawer</p>
+            </Sheet>
+          ) : null}
+          <DataTermsSignInGate />
+          <GroundFirstChoice />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const { rerender } = render(page(true));
+    act(() => applyAccountGround(undefined));
+    expect(screen.getByText('the drawer')).toBeInTheDocument();
+    expect(ask()).toBeNull();
+    rerender(page(false));
     expect(ask()).toBeInTheDocument();
   });
 });
