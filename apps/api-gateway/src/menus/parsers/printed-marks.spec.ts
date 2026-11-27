@@ -20,6 +20,7 @@ describe("keepPrintedMarks -- only what the line's text prints", () => {
 
   it("a one-letter mark inside a word is not printed: V is not in 'Vino' or 'Velouté'", () => {
     expect(markIsPrinted("V", "Vino rosso, Velouté")).toBe(false);
+    expect(markIsPrinted("V", "Château Lafite Cuvée IV")).toBe(false);
     expect(markIsPrinted("V", "Velouté [V]")).toBe(true);
   });
 
