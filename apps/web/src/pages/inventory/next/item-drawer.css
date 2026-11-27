@@ -209,6 +209,10 @@ button.ivd-card:active {
     animation: none;
   }
 }
+/* While its reads are out the block changes height; it opts out of scroll anchoring until they answer. */
+.ivd-used[data-settling='true'] {
+  overflow-anchor: none;
+}
 .ivd-used-g {
   margin-top: 8px;
 }
