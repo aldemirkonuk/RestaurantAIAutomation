@@ -107,6 +107,51 @@ describe("RecipesService.getRecipe: money only for roles that see it", () => {
     expect(JSON.stringify(r)).not.toMatch(/confidence|restaurant_inventory|inventory_lot_rollup|recipe_lines/);
   });
 
+  const withFigures = (more: Record<string, Res>) =>
+    fakeDb(
+      {
+        recipe_versions: { data: null, count: 1 },
+        cocktail_ingredients: { data: [] },
+        recipe_lines: {
+          data: [
+            { id: "l1", position: 1, role: "stocked", inventory_id: "g", label: "Gin", qty_entered: 30, unit_code: "ml", qty_base: 300, base_unit: "ml10" },
+            { id: "l2", position: 2, role: "stocked", inventory_id: null, label: "Campari", qty_entered: 30, unit_code: "ml", qty_base: 300, base_unit: "ml10" },
+          ],
+        },
+        restaurant_inventory: { data: [{ id: "g", display_name: "Gin", kind: "spirit", uom: "bottle", bottle_size_ml: 700 }] },
+        inventory_lot_rollup: { data: [{ inventory_id: "g", has_invoice_cost: true, wac: 700, wac_qty: 1, live_qty: 1 }] },
+        item_nutrition: { data: [{ inventory_id: "g", basis: "100ml", energy_kcal: "222.0", fat_g: null, saturates_g: null, carbohydrate_g: "0.00", sugars_g: null, protein_g: null, salt_g: null, energy_from_abv: false }] },
+        item_allergens: { data: [{ inventory_id: "g", allergen: "milk", status: "free" }] },
+        ...more,
+      },
+      {
+        cocktails: { data: { id: DRINK, name: "Negroni", price: 450 } },
+        recipe_current: { data: { version_id: "v1" } },
+        recipe_versions: { data: { id: "v1", version: 1, yield_serves: 1, created_at: "2026-11-07" } },
+      },
+    );
+
+  it("carries what is in a serve from the linked item's figures, for every role", async () => {
+    const t = withFigures({});
+    const r: any = await new RecipesService(t.db).getRecipe(HOUSE, DRINK, "staff");
+    expect(r.whatIsIn.readable).toBe(true);
+    expect(r.whatIsIn.figures.energyKcal).toEqual({ value: 66.6, atLeast: true, missing: ["Campari"] });
+    expect(r.whatIsIn.figures.saltG).toEqual({ value: null, atLeast: false, missing: ["Campari", "Gin"] });
+    expect(r.whatIsIn.notCounted).toEqual([{ label: "Campari", why: "it is not linked to anything on the shelf" }]);
+    expect(r.whatIsIn.allergens.milk).toBe("not_stated");
+    expect(t.calls).toContain("item_nutrition.eq");
+    expect(t.calls).toContain("item_allergens.eq");
+  });
+
+  it("says a failed read of the figures failed, and still shows the recipe and its cost", async () => {
+    const t = withFigures({ item_nutrition: { error: { message: 'relation "item_nutrition" does not exist' } } });
+    const r: any = await new RecipesService(t.db).getRecipe(HOUSE, DRINK, "owner");
+    expect(r.whatIsIn).toEqual({ readable: false, sentence: expect.stringContaining("could not be read") });
+    expect(JSON.stringify(r.whatIsIn)).not.toContain("does not exist");
+    expect(r.cost).toEqual({ perServe: null, priced: 1, of: 2, complete: false });
+    expect(r.current.lines).toHaveLength(2);
+  });
+
   it("says a failed read failed instead of showing no recipe (ADR 0020)", async () => {
     const t = fakeDb({}, { cocktails: { data: { id: DRINK, name: "N" } }, recipe_current: { error: { message: "down" } } });
     await expect(new RecipesService(t.db).getRecipe(HOUSE, DRINK, "owner")).rejects.toMatchObject({ status: 503 });
