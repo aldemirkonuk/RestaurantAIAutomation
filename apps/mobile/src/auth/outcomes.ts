@@ -124,6 +124,26 @@ export function routeAfterVerification(
 }
 
 /**
+ * Where a freshly-verified person goes, decided from what the server says they
+ * hold (`GET /auth/houses`), never from the phone's own copy of the person:
+ * that copy is null whenever `/auth/me` failed (a 429 is enough), and a
+ * membership held for an unproved address leaves `users.restaurant_id` empty.
+ *
+ * Nothing held and no house: open one. A session already in a house, with
+ * nothing waiting, goes on as before (`null`: the caller reads the menu
+ * progress). Everything else is the chooser, which is also where a held
+ * membership is accepted.
+ */
+export function routeAfterVerificationFromHouses(
+  read: { houses: unknown[]; held: unknown[] },
+  sessionHasHouse: boolean,
+): "/open-house" | "/choose-house" | null {
+  if (read.houses.length === 0 && read.held.length === 0) return "/open-house";
+  if (sessionHasHouse && read.held.length === 0) return null;
+  return "/choose-house";
+}
+
+/**
  * Where a session lands after signing in.
  *
  * `login.md` §1a: *"Return-to-where-you-were after signing in (`?redirect=`)"*.

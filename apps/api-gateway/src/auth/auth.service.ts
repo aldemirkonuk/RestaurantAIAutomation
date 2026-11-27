@@ -1721,6 +1721,34 @@ export class AuthService {
       throw new ForbiddenException("Verify your email before creating a house");
     if (user.restaurant_id)
       throw new ConflictException("This account already has a house");
+    // `users.restaurant_id` is only the house the account signed up into. A
+    // person who joined by invite before proving the address holds a
+    // membership (active, or held until they accept it, ADR 0229 fork 13)
+    // with `restaurant_id` null; opening a first house for them would make
+    // them owner of a stray tenant and leave the invitation unaccepted. A row
+    // that ended (left, or removed) does not count: that person may open one.
+    const { data: member, error: memberErr } =
+      await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .select("id")
+        .eq("user_id", userId)
+        .or("is_active.eq.true,held_since.not.is.null")
+        .limit(1)
+        .maybeSingle();
+    if (memberErr) {
+      this.logger.error(
+        `createFirstHouse could not read ${userId}'s memberships: ${memberErr.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not check your houses right now. Nothing was opened; try again.",
+      );
+    }
+    if (member)
+      throw new ConflictException({
+        message:
+          "This account already belongs to a house, or has one waiting for it",
+        code: "ALREADY_IN_A_HOUSE",
+      });
 
     let orgId: string | null = null;
     let restaurantId: string | null = null;
