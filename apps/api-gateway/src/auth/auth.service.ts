@@ -1201,9 +1201,7 @@ export class AuthService {
             ? updateQuery.is("password_hash", null)
             : updateQuery.eq("password_hash", expectedCurrentHash);
       }
-      const { data: written, error: writeErr } = await updateQuery.select(
-        "*",
-      );
+      const { data: written, error: writeErr } = await updateQuery.select("*");
       if (writeErr) {
         this.logger.error(`${caller} failed: ${writeErr.message}`);
         throw new BadRequestException("Failed to update password");
@@ -1875,6 +1873,14 @@ export class AuthService {
         if (held.data) throw new PlaceAlreadyAHouse();
       }
 
+      // bcrypt runs on the libuv pool, so starting it here lets it work while
+      // the organization and restaurant inserts below are on the wire; the
+      // user insert awaits it. The no-op catch only keeps a throw before that
+      // await (a refused place, a failed insert) from being an unhandled
+      // rejection; the await still sees the real error.
+      const hashing = bcrypt.hash(dto.password, this.SALT_ROUNDS);
+      hashing.catch(() => undefined);
+
       const { data: org, error: orgErr } = await this.databaseService.supabase
         .from("organizations")
         .insert({ name: `${dto.restaurantName} Group`, owner_id: null })
@@ -1952,7 +1958,7 @@ export class AuthService {
         );
       restaurantId = restaurant.id;
 
-      const passwordHash = await bcrypt.hash(dto.password, this.SALT_ROUNDS);
+      const passwordHash = await hashing;
       const { data: user, error: userErr } = await this.databaseService.supabase
         .from("users")
         .insert({
@@ -1969,26 +1975,35 @@ export class AuthService {
         throw houseWriteError("user", userErr, "User creation failed");
       userId = user.user_id;
 
-      await this.databaseService.supabase
-        .from("organizations")
-        .update({ owner_id: userId })
-        .eq("id", orgId);
-
-      await this.databaseService.supabase.from("organization_members").insert({
-        organization_id: orgId,
-        user_id: userId,
-        role: "owner",
-      });
-
-      await this.databaseService.supabase
-        .from("user_restaurant_access")
-        .insert({
+      // The three access writes are independent of one another, so they go
+      // out together, as createFirstHouse does. Each answer is read: a failed
+      // write throws into the rollback below rather than leaving a house with
+      // no owner row, which generateTokens would then refuse to mint for.
+      const accessWrites = await Promise.all([
+        this.databaseService.supabase
+          .from("organizations")
+          .update({ owner_id: userId })
+          .eq("id", orgId),
+        this.databaseService.supabase.from("organization_members").insert({
+          organization_id: orgId,
+          user_id: userId,
+          role: "owner",
+        }),
+        this.databaseService.supabase.from("user_restaurant_access").insert({
           user_id: userId,
           restaurant_id: restaurantId,
           role: "owner",
           invited_via: null,
           is_active: true,
-        });
+        }),
+      ]);
+      const accessFailed = accessWrites.find((write) => write.error);
+      if (accessFailed?.error)
+        throw houseWriteError(
+          "access rows",
+          accessFailed.error,
+          "an access row was not written",
+        );
 
       // Registering lands in the house it opened (ADR 0164, R1); the owner
       // row above is what lets `generateTokens` name it. Minted, and awaited,
