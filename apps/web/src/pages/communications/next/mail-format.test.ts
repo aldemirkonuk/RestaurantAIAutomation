@@ -22,6 +22,7 @@ import {
   storedKindsLine,
   todayLine,
   unrecordedDoorStatus,
+  unsentWords,
   type MailboxReader,
   type MailMessage,
   type MailSummary,
@@ -65,6 +66,7 @@ const msg = (over: Partial<MailMessage> = {}): MailMessage => ({
   createdAt: '2026-11-06T08:59:00Z',
   rawDeletedAt: null,
   door: 'from_house',
+  automatic: false,
   ...over,
 });
 
@@ -259,6 +261,13 @@ describe('a letter in a thread', () => {
     expect(letterLook(msg()).removed).toBeNull();
   });
 
+  it('a bounce or an automatic reply is labelled, never read as the vendor answering (M-5)', () => {
+    const look = letterLook(msg({ direction: 'inbound', door: 'house_mailbox', automatic: true }));
+    expect(look.chip).toBe('Automatic');
+    expect(look.line).toBe('arrived in your mailbox · an automatic reply or a bounce, not a letter from the vendor');
+    expect(letterLook(msg({ direction: 'inbound', door: 'house_mailbox' })).chip).toBeNull();
+  });
+
   it('dates a letter by the field its direction fills', () => {
     expect(letterAt(msg({ direction: 'inbound', receivedAt: '2026-11-01T00:00:00Z' }))).toBe('2026-11-01T00:00:00Z');
     expect(letterAt(msg({ sentAt: null }))).toBe('2026-11-06T08:59:00Z');
@@ -287,5 +296,27 @@ describe('the list around the people', () => {
     expect(lastWriterWords('inbound', 'Bodega Álvaro')).toBe('Bodega Álvaro wrote last');
     expect(lastWriterWords('outbound', null)).toBe('The house wrote last');
     expect(lastWriterWords(null, null)).toBe('Who wrote last was not recorded');
+  });
+});
+
+describe("a person's letter that has not left (HARM 1)", () => {
+  it('says each unsent state in words, never "sent" alone and never the stored status', () => {
+    expect(unsentWords(null)).toBeNull();
+    const said = {
+      HOUSE_QUEUED: 'A letter from the house is queued · not sent yet',
+      SENDING: 'A letter from the house is being sent · not confirmed yet',
+      AUTO_SENDING: 'A letter from the house is being sent · not confirmed yet',
+      SCHEDULED: 'A letter from the house is set to go later · not sent yet',
+      AUTO_SEND_SCHEDULED: 'A letter from the house is set to go later · not sent yet',
+      HOUSE_FAILED: 'A letter from the house did not leave · not sent',
+      SEND_REFUSED: 'A letter from the house did not leave · not sent',
+      RELAY_REFUSED: 'A letter from the house did not leave · not sent',
+      HOUSE_CANCELLED: 'A letter from the house was pulled back · not sent',
+      CANCELLED: 'A letter from the house has not been sent',
+    } as const;
+    for (const [status, words] of Object.entries(said)) {
+      expect(unsentWords(status)).toBe(words);
+      expect(unsentWords(status)).not.toMatch(/[A-Z]{2,}_/);
+    }
   });
 });

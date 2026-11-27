@@ -61,6 +61,7 @@ const person = (n: number, over: Record<string, unknown> = {}) => ({
   channels: ['email'],
   openThreads: 1,
   newestOpenOrderNumber: n === 1 ? 'PO-014' : null,
+  unsentStatus: null,
   ...over,
 });
 
@@ -76,6 +77,7 @@ const letter = (over: Partial<MailMessage>): MailMessage => ({
   createdAt: '2026-11-06T08:59:00Z',
   rawDeletedAt: null,
   door: 'from_house',
+  automatic: false,
   ...over,
 });
 
@@ -162,6 +164,20 @@ describe('the list', () => {
       'All',
       'Waiting on you',
     ]);
+  });
+
+  it('a vendor whose only letter has not left stays listed and says its state in words (HARM 1)', async () => {
+    routes['/mail/people'] = () => ({
+      people: [person(1), person(3, { lastLine: 'Six cases, as every week.', lastDirection: 'outbound', waiting: false, unsentStatus: 'HOUSE_QUEUED' })],
+      next: null,
+      storedKinds: ['vendor'],
+    });
+    mount();
+    const rows = await screen.findAllByTestId('mail-person');
+    expect(rows).toHaveLength(2);
+    expect(within(rows[1]).getByTestId('person-unsent')).toHaveTextContent('A letter from the house is queued · not sent yet');
+    expect(rows[1]).not.toHaveTextContent('HOUSE_QUEUED');
+    expect(within(rows[0]).queryByTestId('person-unsent')).toBeNull();
   });
 
   it('Waiting on you asks for only the waiting people', async () => {

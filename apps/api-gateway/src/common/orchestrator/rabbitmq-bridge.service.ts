@@ -23,6 +23,7 @@ import { deriveTransportSignals, looksPromotional } from "./email-triage";
 import {
   decodeEncodedWords,
   displayLabel,
+  ilikeExactly,
   parseSender,
 } from "../../communications/inbound-headers";
 import { createHash, randomUUID } from "crypto";
@@ -685,10 +686,12 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
 
     try {
       // 1. Find provider by email (scoped to the attributed restaurant when we know it).
+      // Matched exactly, never as a pattern: `%`, `_` and `*` are legal in an
+      // addr-spec, and `<%@%>` must not match a real vendor (ilikeExactly).
       let providerQuery = this.databaseService.supabase
         .from("providers")
         .select("id, restaurant_id, name")
-        .ilike("contact_email", senderEmail);
+        .ilike("contact_email", ilikeExactly(senderEmail));
       if (restaurantIdFromEvent) {
         providerQuery = providerQuery.eq(
           "restaurant_id",

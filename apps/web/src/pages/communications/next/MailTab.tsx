@@ -31,6 +31,7 @@ import {
   lastWriterWords,
   storedKindsLine,
   todayLine,
+  unsentWords,
   type MailboxReader,
   type MailPersonRow,
 } from './mail-format';
@@ -72,6 +73,7 @@ function WaitingDot() {
 }
 
 function PersonRow({ p, onOpen }: { p: MailPersonRow; onOpen: () => void }) {
+  const unsent = unsentWords(p.unsentStatus ?? null);
   return (
     <li style={{ borderBottom: '1px solid var(--paper-2, #EAE4D8)' }}>
       <button
@@ -119,6 +121,11 @@ function PersonRow({ p, onOpen }: { p: MailPersonRow; onOpen: () => void }) {
         >
           {p.lastLine ?? EM}
         </span>
+        {unsent && (
+          <span data-testid="person-unsent" style={{ fontSize: 11.5, color: 'var(--warn, #96601A)', overflowWrap: 'anywhere' }}>
+            {unsent}
+          </span>
+        )}
       </button>
     </li>
   );
@@ -360,6 +367,7 @@ export function MailTab({
       {threadKey ? (
         <MailThread
           threadKey={threadKey}
+          withKey={withKey}
           backLabel={withKey ? 'Back to their threads' : 'Back to everyone'}
           onBack={() => go({ thread: null })}
           onOpenPerson={(key) => go({ with: key, thread: null })}

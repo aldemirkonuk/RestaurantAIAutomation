@@ -243,3 +243,21 @@ export function displayLabel(
   if (tokens.some((t) => t !== mailbox!.address)) return null;
   return name;
 }
+
+/**
+ * `address` as a PostgREST `ilike` value that matches that address and nothing
+ * else, case aside — for the provider lookup that attributes a message.
+ *
+ * An addr-spec may legally hold `%` and `_` (RFC 5322 atext), and PostgREST
+ * also reads `*` as `%`. Passed raw, `From: <%@%>` matched the first vendor
+ * of the house (or of every house, on the unscoped legacy path), and a
+ * stranger's mail was stored against that vendor's open negotiation — N-1
+ * again without knowing any vendor address (audit follow-up on PR 951).
+ * Each of `\ % _ *` is escaped with a backslash, so Postgres ILIKE compares
+ * the address character for character, case aside. `*` still becomes `%`
+ * inside PostgREST, but escaped it is a literal `%`: an address holding `*`
+ * can only miss, never widen.
+ */
+export function ilikeExactly(address: string): string {
+  return address.replace(/[\\%_*]/g, (c) => `\\${c}`);
+}

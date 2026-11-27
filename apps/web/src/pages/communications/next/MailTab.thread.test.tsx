@@ -76,6 +76,7 @@ const letter = (over: Partial<MailMessage>): MailMessage => ({
   createdAt: '2026-11-06T08:59:00Z',
   rawDeletedAt: null,
   door: 'from_house',
+  automatic: false,
   ...over,
 });
 
@@ -141,6 +142,23 @@ describe('a thread', () => {
     mount('/communications?thread=gm%3Aabc');
     await screen.findByText('Standing order');
     expect(calls('/mail/thread')[0]).toEqual({ key: 'gm:abc' });
+  });
+
+  it('a thread opened from a person names them: ?with=vendor:p1&thread=gm%3Aabc asks for key AND with', async () => {
+    mount('/communications?with=vendor%3Ap1&thread=gm%3Aabc');
+    await screen.findByText('Standing order');
+    expect(calls('/mail/thread')[0]).toEqual({ key: 'gm:abc', with: 'vendor:p1' });
+  });
+
+  it('a bounce in a thread wears an "Automatic" label', async () => {
+    routes['/mail/thread'] = () => ({
+      ...THREAD,
+      messages: [letter({ id: 'b1', direction: 'inbound', door: 'house_mailbox', automatic: true, text: 'Delivery failed.' })],
+    });
+    mount('/communications?thread=gm%3Aabc');
+    const [bounce] = await screen.findAllByTestId('mail-letter');
+    expect(within(bounce).getByTestId('letter-chip')).toHaveTextContent('Automatic');
+    expect(within(bounce).getByTestId('letter-provenance')).toHaveTextContent('not a letter from the vendor');
   });
 
   it('letters run oldest to newest, each with its provenance in words', async () => {

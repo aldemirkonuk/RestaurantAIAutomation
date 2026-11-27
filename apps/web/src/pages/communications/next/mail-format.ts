@@ -30,6 +30,13 @@ export interface MailPersonRow {
   channels: string[];
   newestOpenOrderId: string | null;
   newestOpenOrderNumber: string | null;
+  /**
+   * The stored status of the house's newest letter to this person that has
+   * not left, when it is newer than the last one that did (or is the only
+   * letter). The gateway keeps such a person listed so the letter can be seen
+   * and pulled back (QA round 16, HARM 1); the row says its state in words.
+   */
+  unsentStatus: string | null;
 }
 
 export interface MailPeoplePage {
@@ -74,6 +81,8 @@ export interface MailMessage {
   createdAt: string;
   rawDeletedAt: string | null;
   door: MailDoor;
+  /** A bounce or an automatic reply: shown, never counted as a letter (M-5). */
+  automatic: boolean;
 }
 
 export interface MailThreadPage {
@@ -308,7 +317,15 @@ export function letterLook(m: MailMessage): LetterLook {
     removedAt === null ? null : `Original removed on ${removedDay.format(new Date(removedAt))}; the facts stay.`;
   const base = { dashed: false, queued: false, removed };
   if (m.direction === 'inbound') {
-    return { ...base, chip: null, line: doorWords(m.door) };
+    // A bounce or an auto-reply is shown so nothing is hidden, and labelled so
+    // nobody reads it as the vendor answering (M-5: it is not counted either).
+    return m.automatic
+      ? {
+          ...base,
+          chip: 'Automatic',
+          line: `${doorWords(m.door)} · an automatic reply or a bounce, not a letter from the vendor`,
+        }
+      : { ...base, chip: null, line: doorWords(m.door) };
   }
   const by = m.aiGenerated ? ' · written by Mudavym' : '';
   switch (sendState(m.status)) {
@@ -336,6 +353,28 @@ export function letterLook(m: MailMessage): LetterLook {
       return { ...base, chip: null, line: `from the house${by}` };
     default:
       return { ...base, chip: null, line: `from the house; whether it was sent was not recorded${by}` };
+  }
+}
+
+/**
+ * A person row's line for a letter from the house that has not left (HARM 1).
+ * Said in the same words as the letter's own chip; never "sent".
+ */
+export function unsentWords(status: string | null): string | null {
+  if (status === null) return null;
+  const s = status.toUpperCase();
+  if (s === 'SCHEDULED' || s === 'AUTO_SEND_SCHEDULED') return 'A letter from the house is set to go later · not sent yet';
+  switch (sendState(s)) {
+    case 'queued':
+      return 'A letter from the house is queued · not sent yet';
+    case 'sending':
+      return 'A letter from the house is being sent · not confirmed yet';
+    case 'failed':
+      return 'A letter from the house did not leave · not sent';
+    case 'cancelled':
+      return 'A letter from the house was pulled back · not sent';
+    default:
+      return 'A letter from the house has not been sent';
   }
 }
 
