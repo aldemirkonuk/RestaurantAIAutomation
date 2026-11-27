@@ -38,7 +38,7 @@ import { shortDate, volume } from '../../cellar/next/cellar-format';
 import { useRowRecord } from '../../cellar/next/useCellarNextData';
 import { velocity, whenItSells, type TillLine } from '../../cellar/next/rowSeries';
 import { CountSheet, OrderSheet, PourSheet, TransferSheet, WriteOffSheet } from './InventorySheets';
-import { OnOrderEvidence, openOrdersOf, type OnOrderLoad } from './OnOrder';
+import { OnOrderEvidence, openOrderCount, type OnOrderLoad } from './OnOrder';
 import { amountUnit, isPoured } from './iv-amount';
 import { fmtQty, NOT_DRAWN_BY_SALES, perUnit, usageWords as usageWordsOf } from './ItemCards';
 import { writeFailure } from './iv-failure';
@@ -558,7 +558,7 @@ export default function RowDropdown(props: RowDropdownProps) {
           providersError={props.providersError}
           restaurantId={props.restaurantId}
           uom={props.uom}
-          openOrders={openOrdersOf(props.onOrder)}
+          alreadyOpen={openOrderCount(props.onOrder)}
         />
       ) : null}
       {acts && sheet === 'writeoff' && canManage ? <WriteOffSheet row={row} uom={props.uom} onClose={() => setSheet(null)} /> : null}

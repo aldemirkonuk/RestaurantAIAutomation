@@ -39,8 +39,6 @@ import OrderLetter from './OrderLetter';
 import { useCellarSettings } from '../../cellar/next/useCellarNextData';
 import { fmtCount, suggestedToPar, type InvRow } from './useInventoryNextData';
 import { amountUnit, orderUnitOf, type AmountUnit } from './iv-amount';
-import { holdEffect } from './OnOrder';
-import type { ItemOpenOrder } from '../../../services/api/inventory';
 import { LANDED_EARLIER, SAFE_RETRY, failureReason, landedEarlier, writeFailure } from './iv-failure';
 
 /** A whole number typed as a string, or null. "2.5", "" and "-1" are null. */
@@ -683,13 +681,13 @@ export function OrderSheet({
   providersError,
   restaurantId,
   uom,
-  openOrders = null,
+  alreadyOpen = null,
 }: SheetProps & {
   providers: Provider[] | null;
   providersError: string | null;
   restaurantId: string | null;
   /** Orders for this good already open on Orders (r109 g1), said above the hold; null when not read. */
-  openOrders?: ItemOpenOrder[] | null;
+  alreadyOpen?: number | null;
 }) {
   const queryClient = useQueryClient();
   // The order's unit is the book's own; a good the order vocabulary cannot
@@ -739,7 +737,6 @@ export function OrderSheet({
   // Said once, on the seal; the sentence under it says what (INV-W32).
   const sealedLabel = merged ? 'Changed on Orders' : 'Placed on Orders';
   const vendorName = providers?.find((p) => p.id === vendorId)?.name ?? 'this vendor';
-  const effect = openOrders ? holdEffect(openOrders, vendorId) : null;
   const noVendors = !providersError && providers !== null && providers.length === 0;
   const blocked = orderUnit === null
     ? `This good is kept in ${unitWords.base === 'g' ? 'grams' : unitWords.base === 'ml' ? 'millilitres' : unitWords.fieldUnit}, and an order from here is placed in bottles, kegs or items, so it is not ordered from this sheet. Place it on Orders, where the vendor's own unit is written down.`
@@ -822,15 +819,10 @@ export function OrderSheet({
           ) : null}
         </p>
       ) : null}
-      {effect && effect.total > 0 ? (
+      {alreadyOpen !== null && alreadyOpen > 0 ? (
         <p className="iv-note" data-testid="iv-order-already-open">
-          {fmtCount(effect.total)} already open for it.
-          {effect.changed > 0
-            ? ` ${fmtCount(effect.changed)} with ${vendorName} ${effect.changed === 1 ? 'is' : 'are'} changed by this hold, not placed again.`
-            : ''}
-          {effect.total - effect.changed > 0 && vendorId !== ''
-            ? ` ${effect.changed > 0 ? 'The other ' : ''}${fmtCount(effect.total - effect.changed)} ${effect.total - effect.changed === 1 ? 'is' : 'are'} on its way or with another vendor; this hold places a new order.`
-            : ''}{' '}
+          {fmtCount(alreadyOpen)} already open for it. An open order with the same vendor is changed by this hold, not
+          placed again.{' '}
           <Link to="/orders" className="iv-linkish iv-focus">
             See them on Orders
           </Link>

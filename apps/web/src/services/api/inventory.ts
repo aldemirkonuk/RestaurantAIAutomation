@@ -621,11 +621,7 @@ export interface ItemOpenOrder {
   openQty: number;
   unit: string | null;
   expected: string | null;
-  /** The vendor the order is with (null when the order names none). */
-  providerId?: string | null;
   inBookUnit: number | null;
-  /** An APPROVED order whose letter to the vendor has gone out: it counts as sent. */
-  letterSent?: boolean;
 }
 
 /** Sent = confirmed, on its way or part received; `arrivingInBookUnit` sums only those, or is null. */
