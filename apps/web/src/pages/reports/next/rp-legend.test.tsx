@@ -56,7 +56,7 @@ describe('the legend hides and shows a series', () => {
     expect(screen.getByRole('button', { name: 'Show the prior 30 days' })).toHaveAttribute('aria-pressed', 'false');
     expect(ticks(container)).toEqual(before);
     expect(container.querySelector('.recharts-yAxis')?.getAttribute('width') ?? container.querySelector('.recharts-yAxis .recharts-cartesian-axis-line')?.outerHTML).toBe(axisBefore);
-    expect(screen.getByRole('img').getAttribute('aria-label')).toMatch(/, the prior 30 days hidden/);
+    expect(screen.getByRole('group', { name: /hidden/ }).getAttribute('aria-label')).toMatch(/, the prior 30 days hidden/);
   });
 
   it('the last series still shown cannot be hidden', () => {
@@ -121,7 +121,7 @@ describe('the combination legend', () => {
     expect(container.querySelectorAll('.recharts-bar-rectangle').length).toBeGreaterThan(0);
     expect(axes()).toBe(n);
     expect(all()).toEqual(t);
-    expect(screen.getByRole('img').getAttribute('aria-label')).toMatch(/, the line hidden$|the line hidden/);
+    expect(screen.getByRole('group', { name: /hidden/ }).getAttribute('aria-label')).toMatch(/, the line hidden$|the line hidden/);
     expect(bars).toHaveAttribute('aria-disabled', 'true');
   });
 
