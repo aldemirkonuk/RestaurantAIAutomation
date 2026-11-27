@@ -24,6 +24,9 @@ export const NOT_THIS_VERSION = "That version is not one of this drink's.";
 export const DISH_NOT_THIS_HOUSE = "This dish is not on this house's list.";
 export const NOT_THIS_DISH_VERSION = "That version is not one of this dish's.";
 
+/** A house-made component as a line that draws it reads it: its name, its cost per base unit, the kind of unit it is made in. */
+type MadeRate = { name: string; perBase: number | null; baseUnit: BaseUnit | null };
+
 /** What a recipe belongs to (ADR 0366): a drink (`cocktails`) or a plate (`dishes`). */
 export type OwnerKind = "cocktail" | "dish";
 export interface RecipeOwner {

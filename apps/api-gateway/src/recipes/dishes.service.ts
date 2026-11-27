@@ -1152,6 +1152,11 @@ export class DishesService {
       .is("deleted_at", null)
       .select("id, name, yield_qty_base, yield_base_unit")
       .maybeSingle();
+    // The database refuses the change too, with the lock held (a save that
+    // committed a line between the read above and this write): the same sentence.
+    if (error && (error as { hint?: string }).hint === "component_unit_in_use" && was) {
+      throw new BadRequestException(yieldUnitInUse(BASE_UNIT_WORDS[was]));
+    }
     if (error) this.writeFailed(error, undefined);
     if (!data) throw new NotFoundException(DISH_NOT_THIS_HOUSE);
     return {
@@ -1161,7 +1166,12 @@ export class DishesService {
     };
   }
 
-  /** Does a current recipe (a drink's or a dish's) draw this component? Old versions do not count. */
+  /**
+   * Does a current recipe (a drink's or a dish's) draw this component? Old
+   * versions do not count, and neither does the recipe of a drink or dish the
+   * house has taken off its list: its pointer stays (a soft delete), but it can
+   * no longer be opened to take the line out, so it must not hold the unit.
+   */
   private async isDrawn(restaurantId: string, dishId: string): Promise<boolean> {
     const lines = await this.all<{ version_id: string }>("yield drawn read", YIELD_UNREAD, (from, to) =>
       this.db
@@ -1174,11 +1184,20 @@ export class DishesService {
         .range(from, to),
     );
     const versions = [...new Set(lines.map((l) => l.version_id))];
+    const client = this.db.getClient();
+    const owners = [
+      { pointer: "recipe_current_dish", key: "dish_id", table: "dishes" },
+      { pointer: "recipe_current", key: "cocktail_id", table: "cocktails" },
+    ];
     for (const part of chunks(versions)) {
-      for (const table of ["recipe_current_dish", "recipe_current"]) {
-        const { data, error } = await this.db.getClient().from(table).select("version_id").eq("restaurant_id", restaurantId).in("version_id", part);
+      for (const o of owners) {
+        const { data, error } = await client.from(o.pointer).select(`version_id, ${o.key}`).eq("restaurant_id", restaurantId).in("version_id", part);
         if (error) this.failed("yield drawn read", error, YIELD_UNREAD);
-        if ((data ?? []).length) return true;
+        const ids = [...new Set(((data ?? []) as unknown as Array<Record<string, string>>).map((p) => p[o.key]))];
+        if (!ids.length) continue;
+        const live = await client.from(o.table).select("id").eq("restaurant_id", restaurantId).is("deleted_at", null).in("id", ids);
+        if (live.error) this.failed("yield drawn read", live.error, YIELD_UNREAD);
+        if ((live.data ?? []).length) return true;
       }
     }
     return false;

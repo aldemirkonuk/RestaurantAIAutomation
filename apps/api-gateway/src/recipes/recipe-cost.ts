@@ -72,9 +72,10 @@ export interface CostLineInput {
    * For a made line (ADR 0397): the component it draws and what one base unit
    * of it costs, or null when that is not known. Absent on a made line is the
    * same as null: a line that cannot say what it draws is not priced.
-   * `baseUnit` is what the component's batch is measured in; a line measured in
-   * another unit is not priced (`unit_mismatch`), because one base unit of
-   * millilitres and one of grams are not the same amount.
+   * `baseUnit` is the kind of unit the component's yield is in (ml10, mg,
+   * each_milli): a line in another kind is not priced, because its amount is
+   * not the same thing as the thing `perBase` is a rate of. A made line whose
+   * component says no `baseUnit` (a caller that has not read it) is not checked.
    */
   made?: { name: string; perBase: number | null; /** The component's own batch counted a partly invoiced price. */ partial?: boolean; baseUnit?: string | null } | null;
 }
@@ -266,8 +267,10 @@ export function recipeCost(lines: CostLineInput[], yieldServes: number): RecipeC
         ...(name ? { throughComponent: name } : {}),
       };
       if (perBase == null || !Number.isFinite(perBase)) return unknown;
-      const yieldUnit = line.made?.baseUnit;
-      if (yieldUnit != null && yieldUnit !== line.baseUnit) return { ...unknown, costBasis: "unit_mismatch" };
+      // A rate per millilitre is not a rate per milligram: a line in another kind of unit than the
+      // component's batch (or a component whose batch states no unit) is not priced, never read at the
+      // wrong unit (#2113 84ec282d9 + #2464 a346cf433).
+      if (line.made?.baseUnit !== undefined && line.made.baseUnit !== line.baseUnit) return { ...unknown, costBasis: "unit_mismatch" };
       const cost = (Number(line.qtyBase) * perBase) / serves;
       if (!Number.isFinite(cost)) return unknown;
       exact[exact.length - 1] = cost;
